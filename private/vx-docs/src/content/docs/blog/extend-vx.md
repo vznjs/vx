@@ -19,10 +19,11 @@ Declare it in .vx/workspace.ts: import { dirCache } from '../plugins/cache.ts', 
 Test it: bun test plugins/cache.test.ts (needs @vzn/vx installed)
 ```
 
-Drop `--dry` to write the files. There is a template for every seam
-(`executor`, `cache`, `telemetry`, `schedule`, `admit`, `commands`,
-`project`, `graph`, `key`). vx's own CI runs each one, so they keep
-working.
+Drop `--dry` to write the files.
+
+There is a template for every plugin stage (`executor`, `cache`,
+`telemetry`, `schedule`, `admit`, `commands`, `project`, `graph`,
+`key`). vx's own CI runs each one, so they keep working.
 
 ## A remote cache is three methods
 
@@ -73,11 +74,13 @@ export function dirCache(dir: string): VxPlugin {
 }
 ```
 
-A `RemoteCacheLayer` has `has`, `get` and `put`, plus an optional batched
-`hasMany`. `put` links the file into place, so a reader never sees half
-a file. Swap the directory for S3, R2 or your own server. vx keeps the
-local cache in front and uploads in the background. Give each network
-call its own deadline.
+A `RemoteCacheLayer` has `has`, `get` and `put`, plus an optional
+batched `hasMany`. `put` links the file into place, so a reader never
+sees half a file.
+
+Swap the directory for S3, R2 or your own server. vx keeps the local
+cache in front and uploads in the background. Give each network call its
+own deadline.
 
 ## Code before and after the run
 
@@ -111,5 +114,6 @@ packages/a#build hit-local 823174d6
 
 `planRun()` tells you each task's cache status without running it.
 `run()` runs them. See the [API reference](../../api/) and
-[Plugins](../../modules/plugins/). More at
-[vznjs.github.io/vx](https://vznjs.github.io/vx/).
+[Plugins](../../modules/plugins/).
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

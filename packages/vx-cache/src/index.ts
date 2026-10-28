@@ -107,6 +107,18 @@ async function refusal(res: Response): Promise<Error> {
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
+/**
+ * A redirect, never followed: fetch drops only `Authorization` on one to
+ * another origin, so `headers` (a proxy's secret) went where a 307 named.
+ */
+async function redirected(res: Response, from: string): Promise<Error> {
+  await res.body?.cancel()
+  const to = res.headers.get('location')
+  return new Error(
+    `HTTP ${res.status}${to === null ? '' : ` to ${new URL(to, from).href}`}: not followed, as it would carry the server's headers; name the server's own URL`,
+  )
+}
+
 /** A deadline that names itself: the runtime's own abort says only "The operation timed out." */
 function deadline(ms: number): AbortSignal {
   const controller = new AbortController()
@@ -274,6 +286,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   private asking: Promise<string> | undefined
+  /** A failed ask was said: the requests that shared it say nothing. */
+  private tokenFailed = false
 
   /**
    * One answer from GitHub's OIDC endpoint, asked again after a 5xx, a 429
@@ -309,7 +323,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
     let jwt: unknown
     try {
       const res = await this.askOnce(ask)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        // Unread, its body would hold the connection.
+        await res.body?.cancel()
+        throw new Error(`HTTP ${res.status}`)
+      }
       jwt = ((await res.json()) as { value?: unknown }).value
       if (typeof jwt !== 'string' || jwt === '') throw new Error('no token in its answer')
     } catch (err) {
@@ -351,12 +369,21 @@ export class VxCacheLayer implements RemoteCacheLayer {
       streamed?: boolean
     } = {},
   ): Promise<Response | undefined> {
-    const bearer = await this.bearer()
+    let bearer: string
+    try {
+      bearer = await this.bearer()
+    } catch (err) {
+      // The requests waiting on one ask share its failure: the first says it.
+      if (this.tokenFailed) return undefined
+      this.tokenFailed = true
+      throw err
+    }
     const ms = init.timeoutMs ?? this.config.timeoutMs
     const controller = new AbortController()
     const answer = setTimeout(() => controller.abort(new Error(`no answer within ${ms} ms`)), ms)
     answer.unref()
-    let res = await this.fetchImpl(`${this.config.url}${path}`, {
+    const url = `${this.config.url}${path}`
+    let res = await this.fetchImpl(url, {
       method: init.method ?? 'POST',
       headers: {
         ...this.config.headers,
@@ -366,7 +393,12 @@ export class VxCacheLayer implements RemoteCacheLayer {
       },
       ...(init.body === undefined ? {} : { body: init.body }),
       signal: controller.signal,
+      redirect: 'manual',
     })
+    if (res.status >= 300 && res.status < 400) {
+      clearTimeout(answer)
+      throw await redirected(res, url)
+    }
     if (init.streamed === true) {
       clearTimeout(answer)
       res = streamed(res, controller, ms)
@@ -374,7 +406,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (init.write === true && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
-      if (!first) return undefined
+      // The first says it; an unread body would hold its connection.
+      if (!first) {
+        await res.body?.cancel()
+        return undefined
+      }
       throw new Error(
         `${(await refusal(res)).message}: the write was refused (this job reads only); writes off for this run, reads go on`,
       )
@@ -382,7 +418,10 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
-      if (!first) return undefined
+      if (!first) {
+        await res.body?.cancel()
+        return undefined
+      }
       throw new Error(
         `${(await refusal(res)).message}: ${bearer === '' ? 'a read with no token was refused' : `the token was refused (this workspace names ${this.config.repository} at ${this.config.issuer})`}; remote cache off for this run`,
       )
@@ -573,12 +612,25 @@ function namedOf(options: VxCacheOptions): { issuer: string; repository: string 
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
+/** The deadlines, each one a timer waits on: Bun fires a zero, NaN or past-2^31 one after 1 ms. */
+function deadlinesOf(options: VxCacheOptions): { timeoutMs: number; uploadTimeoutMs: number } {
+  const out = {
+    timeoutMs: options.timeoutMs ?? 30_000,
+    uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
+  }
+  for (const [key, ms] of Object.entries(out))
+    if (!(ms >= 1 && ms <= 2 ** 31 - 1))
+      throw new Error(`vxCache(): ${key} must be a number of ms from 1 to 2147483647, got ${ms}`)
+  return out
+}
+
 /** Options over `VX_CACHE_URL`; `undefined`: no server named. */
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
 ): ResolvedVxCacheConfig | undefined {
   const named = namedOf(options)
+  const deadlines = deadlinesOf(options)
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
   if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
@@ -588,8 +640,7 @@ export function resolveVxCacheConfig(
   return {
     url,
     ...named,
-    timeoutMs: options.timeoutMs ?? 30_000,
-    uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
+    ...deadlines,
     headers: proxyHeaders('vxCache()', options.headers),
   }
 }
@@ -623,6 +674,7 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
 export function vxCache(options: VxCacheOptions): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
   namedOf(options)
+  deadlinesOf(options)
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveVxCacheConfig(options)

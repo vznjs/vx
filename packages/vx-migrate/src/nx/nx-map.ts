@@ -572,7 +572,7 @@ export async function mapNxWorkspace(
         )
         followNxGraph(t.task, nodeName, meta.name, nxEdges, metaByNode, emittedIds, reached)
       }
-      dropUnheldDeps(t, emitted, emittedIds)
+      dropUnheldDeps(t, meta.name, emitted, emittedIds)
       const reader = dependentReaders.get(t)
       if (reader !== undefined && !reachesProducer(t, meta.name, emittedIds, reached)) {
         delete t.task!['cache']
@@ -754,6 +754,7 @@ export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
 
 function dropUnheldDeps(
   t: GeneratedTask,
+  owner: string,
   emitted: ReadonlySet<string>,
   emittedIds: ReadonlySet<string>,
 ): void {
@@ -767,7 +768,9 @@ function dropUnheldDeps(
     if (d.startsWith('^')) return emitted.has(d.slice(1))
     // `pkg#task` on a project no package holds (the root project with no
     // vx.config) refused the whole run as "no such project".
-    if (!d.includes('#') || emittedIds.has(d)) return true
+    // A same-project target written as no task (an `nx:noop` with nothing
+    // to chain) is nothing Nx runs; kept, `vx lock` refused the project.
+    if (emittedIds.has(d.includes('#') ? d : `${owner}#${d}`)) return true
     t.todos.push(
       `dependsOn ${JSON.stringify(d)}: no vx project runs it — edge dropped, and the key misses it`,
     )
@@ -865,7 +868,10 @@ function buildTask(
         patterns,
         Object.entries(nodeMap).map(([name, n]) => ({
           name,
-          tags: nxTags(n),
+          // Every tag Nx matches, its own `npm:*` too: nxTags is what vx writes.
+          tags: Array.isArray(n?.data?.tags)
+            ? n.data.tags.filter((t): t is string => typeof t === 'string')
+            : [],
           ...(typeof n?.data?.root === 'string' ? { root: n.data.root } : {}),
         })),
       ),
@@ -875,6 +881,12 @@ function buildTask(
       : { node: nodeName, configuration: variant.configuration! },
     options,
   )
+  // Nx draws no edge from a task to itself (`task.id !== selfTaskId`): a
+  // `projects: "*"` or a tag the project carries named it, and vx refused
+  // the workspace as a cycle (2026-10-28).
+  for (const own of [variant.name, `${meta.name}#${variant.name}`]) {
+    for (let i = deps.indexOf(own); i !== -1; i = deps.indexOf(own)) deps.splice(i, 1)
+  }
   // A nested `nx <target>` runs the target's default configuration, whatever this one runs.
   for (const c of mapped?.nxCalls ?? []) {
     const edge =

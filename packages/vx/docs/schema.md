@@ -25,7 +25,7 @@ re-exported from `@vzn/vx`.
 **A project is a directory holding a `vx.config.*`**, in any language;
 core reads no `package.json` and no package-manager member list. `vx lock`
 finds them (git's tracked and unignored files; a config at or under a
-nested `.vx/workspace.*` is that workspace's) and records each by
+nested `.vx/workspace.*`, ignored or not, is that workspace's) and records each by
 directory; a run takes its projects from the lock, so a config added since
 runs once `vx lock` records it. A `discover` plugin may add directories
 with no config (`@vzn/vx-lockfile` adds the package manager's members).
@@ -92,6 +92,13 @@ referenced by `dependsOn`, by `inputs.tasks`, and by the CLI
 could not spell is refused at load: an empty one, one with surrounding
 whitespace, one holding `#` (the project separator) or `*` (a pattern),
 and one starting with `^` (dependencies' tasks) or `!` (a negation).
+
+`name` is refused at load when `dependsOn` or `--filter` could not
+spell it: surrounding whitespace, a `#`, a `*` (a pattern), a leading
+`^` (dependencies' tasks) or `!` (an exclusion), a leading `tag:`, a
+leading or trailing `...` (a dependency walk), a trailing `[<ref>]` (a
+git range), or a directory form (`./x`, `{x}`). A name a plugin gives
+and a project's path name are held to the same rule.
 
 `tags` label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
@@ -505,7 +512,7 @@ Semantics:
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
   as its `128 + n` code), at once while the graph still runs (`… while
-the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
+  the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). An exit 0 on its own is
   fine (a daemon that forks and returns), and one kept only as a
   dependency does not end the foreground hold (WD-3).
@@ -747,8 +754,9 @@ Semantics:
   from this project's direct deps: the edges a plugin's `discover`
   returns as `deps` (the lockfile plugins `bun()` / `pnpm()` / `npm()` /
   `yarn()` return what the package manager installed; core reads no
-  edge from a `package.json`) and the cross-project `pkg#task` edges.
-  With no plugin returning `deps` the workspace has no edge source and
+  edge from a `package.json`). A cross-project `pkg#task` edge is not
+  one: it widens `--filter '...pkg'` and `--affected`, never a `'^name'`
+  walk. With no plugin returning `deps` the workspace has no edge source and
   a `'^name'` is refused (`VX_E_DEPENDS_ON`: "`^build` needs project
   edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile
   exists, or a plugin that returns `deps`"): it would resolve to nothing and fold no upstream into the
@@ -788,7 +796,7 @@ Semantics:
   declaring at least one matching task; the holder receives edges to
   ALL its matches and stops the walk. Patterns are not supported in
   the `'pkg#task'` form. (Nx 19.5 `build-*` parity.)
-- **No bare wildcards or negation here.** `'*'` / `'^*'` / `'!form'`
+- **No bare wildcards or negation here.** `'*'` / `'^*'` (or `'**'`, any run of `*`) / `'!form'`
   belong in `inputs.tasks` (filtering which upstream hashes
   participate in this task's cache key), not in `dependsOn` (declaring
   graph edges). The micro-syntax parser rejects them in this position.
@@ -874,7 +882,10 @@ one you mean, `\{b\}.ts` for the braces. So is an input under `.git`
 (`.git/config`): git never lists it, so it would key nothing. An extglob (`@(a|b)`, `!(x)`,
 `+(…)`, `*(…)`, `?(…)`) is refused too: vx's own matchers read it as
 literal text or a plain wildcard, so the key would miss the files it
-names; write `{a,b}`. A brace range is `Bun.Glob`'s (Bun 1.4.4):
+names; write `{a,b}`. So is a bare group holding a `|` (`src/*.(js|ts)`):
+`Bun.Glob` reads its parens and bar as literal text; write `src/*.{js,ts}`.
+Parens with no `|` (`app/(marketing)/**`) are filename characters and
+stay. A brace range is `Bun.Glob`'s (Bun 1.4.4):
 `{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
 a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
 names is refused wherever it sits in the glob. A leading `!` is still the negation, so `!(group)/**`
@@ -919,12 +930,15 @@ Always applied to every glob pass (regardless of what you wrote):
   Its bytes differ per machine, so machines with different files miss
   each other's shared entries. An ignored file never selects a task
   under `--affected` on its own, as in Nx (only what git sees does); `vx
-watch` re-runs it on an edit there.
+  watch` re-runs it on an edit there.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`,
   `.vx/projects.lock.json`, `vx.lock.json`, and `.vx/tmp/**`, where vx's
   restores stage, only where vx writes them: at the project's root (a
   project's own `src/.vx/tmp/x` or `src/sub/vx.lock.json` is an input),
-  and for `workspaceFiles` every project's `vx.lock.json`. Nothing else: a tool's temp files are the
+  and for `workspaceFiles` every project's `vx.lock.json`. The run's
+  cache directory (`cache.dir`, `--cache-dir`) wherever it sits in the
+  workspace, even under an ignored prefix a glob names outright
+  (`tmp/**` over `tmp/vx-cache`). Nothing else: a tool's temp files are the
   task's to exclude. A broad glob on a `bun build --compile` task, or on
   one that runs beside it, excludes Bun's intermediate and its
   cross-compile extraction directory itself:
@@ -1155,7 +1169,13 @@ entry's own `*` pattern (`dependsOn: ['build.*']` names
 either form; two `pkg#task` entries must agree on the project. One that
 is not named (`['buidl']`) is refused at load: it would match nothing at hash time and fold no upstream hash,
 decoupling the task from its dependencies with no diagnostic — a stale
-hit waiting for the next upstream change. Patterns, wildcards and
+hit waiting for the next upstream change. An exact entry is held again once the
+graph is built, when the run plans: one that names none of the task's
+dependencies is refused (`['nope#build']`, or `['a#build']` for a
+project named `packages/a`, over `dependsOn: ['build']`; `['build']`
+over another project's `['b#build']`; `['^build']` over this project's
+own), unless a `^` entry or a pattern in `dependsOn` names its task,
+which a preset's project may legally lack. Patterns, wildcards and
 negations stay silent (a preset-spread pattern legitimately matches
 nothing in some projects); `[]` is the explicit way to decouple.
 
@@ -1366,7 +1386,8 @@ positive globs, so a task with a `!` entry keeps it (A-46).
   from the cache entry into the project dir. The post-restore tree
   is the cached snapshot, byte-for-byte.
 - A file git tracks is never wiped (2026-10-14). It is still saved and
-  restored, and stays in the task's key, so an edit to it moves the key.
+  restored, and is in the task's key even when no `inputs.files` glob
+  reaches it, so an edit to it moves the key.
 
 Skipped when `cache.outputs.files` is empty (nothing declared as
 output) and when no cache-write axis is enabled (e.g. `--no-cache`,
@@ -1538,7 +1559,8 @@ task never wrote, so an unwritten one is never archived as an output).
 A grant that leaves the project through a symlink is refused: the grant
 binds the path it names, and vx follows no link out of the project. So
 is one whose bind would make `.git`, `.vx/cache`, the cache directory or a
-nested project writable:
+nested project writable, and one inside `.git`, `.vx/cache` or the cache
+directory (`../.git/hooks/` would plant a hook that runs unsandboxed):
 a file grant at a single-package workspace's root binds the root. A
 directory grant is judged as the directory, made before the judgement
 when it does not exist yet, so `dist/` or `dist/**` at that root stands.
@@ -1613,6 +1635,10 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/Library/Application Support/doctl`, `~/.config/stripe/config.toml`,
 `~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
 `~/.codex/auth.json`.
+vx's own stores are denied the same way: `~/.vx`, where every
+repository's shared store lives, and a cache directory outside the
+workspace (`VX_CACHE_DIR=~/.cache/vx`). Read, they handed a task every
+project's cached outputs, around the cross-project wall and its key.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `inputs` says what INVALIDATES a task, `sandbox.allow`
@@ -1704,7 +1730,9 @@ as a pattern too. So a sandboxed task in a project under such a directory
 (`~/[old]/repo`, `~/w*s/repo`) is refused, naming it: rename the
 directory or drop `exec.sandbox`. On Linux so is a project under a
 directory holding a backslash, which the runtime cannot mount at all (its
-task saw no project and ran in `$HOME`).
+task saw no project and ran in `$HOME`). On every platform so is one
+under a directory holding a line break: the runtime reports a refused
+touch one line per record, so it arrived split and was misreported.
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
@@ -1833,7 +1861,7 @@ default and where it came from.
 
 | Setting                                        | Variable                            | Flag                           | Value                                                                   | Default                                                                       | What it does                                                                                                                                                                                     |
 | ---------------------------------------------- | ----------------------------------- | ------------------------------ | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `baseBranch`                                   | `VX_BASE_BRANCH`                    | —                              | a non-blank string                                                      | origin/HEAD's branch, then main, then master                                  | The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`.                                                |
+| `baseBranch`                                   | `VX_BASE_BRANCH`                    | —                              | a non-blank string                                                      | origin/HEAD's branch, then main, then master                                  | The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`. Named alone: `main`, not `origin/main`.        |
 | `affectedBase` (variable or flag only)         | `VX_AFFECTED_BASE`                  | —                              | a non-blank string                                                      | a plugin's base commit, else the merge base with `baseBranch`                 | The commit a bare `--affected` compares with, on the base branch too. `--affected=<base>` beats it; it beats a plugin's base commit. Env only: a committed base would be stale on the next push. |
 | `run.concurrency`                              | `VX_RUN_CONCURRENCY`                | `--concurrency`                | a positive integer, or a share of the cores like '50%'                  | the cores this process may use                                                | Tasks at once: a positive integer, or a share of the cores (`'50%'`).                                                                                                                            |
 | `run.schedule`                                 | `VX_RUN_SCHEDULE`                   | `--schedule`                   | one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' | most-work                                                                     | Which ready task starts first when there are more than workers.                                                                                                                                  |
@@ -1944,7 +1972,7 @@ interface CacheSettings {
   the default is ignored by `.vx/.gitignore` (`/cache`, `/tmp`) instead, written
   when missing and never edited.
 - **Cleaning**: no run evicts anything. `vx cache clean --older-than <d>
---max-size <s>` is the one cleaner ([cli.md](cli.md#vx-cache-clean)); run it
+  --max-size <s>` is the one cleaner ([cli.md](cli.md#vx-cache-clean)); run it
   from a schedule or CI to bound the cache.
 - **`baseBranch`** — the repository's default branch, by name
   (`'develop'`; `VX_BASE_BRANCH` beats it). Omitted → `origin/HEAD`'s
@@ -2035,8 +2063,8 @@ interface CacheSettings {
   - **`exclusiveOutputs`** (X-53) — two tasks whose declared outputs
     overlap are refused even when a `dependsOn` edge orders them:
     `<a> and <b> both declare the output "<glob>" … Give each task its
-own output path, or set run.rules.exclusiveOutputs: false in
-.vx/workspace.ts to let a dependant add to its upstream's outputs.`
+    own output path, or set run.rules.exclusiveOutputs: false in
+    .vx/workspace.ts to let a dependant add to its upstream's outputs.`
     Off, the dependant adds to its upstream's tree (item 588;
     `caching.md` § Additive outputs). Two overlapping tasks with no
     edge are refused either way.
@@ -2062,9 +2090,9 @@ own output path, or set run.rules.exclusiveOutputs: false in
   `inputs.files` can match another task's `outputs.workspaceFiles`
   landing in its project (X-135), is refused by `vx lock` unless one of
   the exceptions below applies: `<reader> reads "<glob>" in inputs.<field>,
-which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
-to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
-<reader>'s inputs.tasks, so its key hashes those bytes instead.` Such a key
+  which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
+  to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
+  <reader>'s inputs.tasks, so its key hashes those bytes instead.` Such a key
   reads what the producer writes this run, so vx cannot know it before
   the producer ran: it is not probed, prefetched or restored ahead of
   the schedule (`caching.md` § Local restore tier). The upstream's key

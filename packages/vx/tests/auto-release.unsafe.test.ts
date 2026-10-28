@@ -75,7 +75,7 @@ describe('auto-release.yml', () => {
       ],
     ])
     const checkout = job?.steps?.find((s) => s.uses?.startsWith('actions/checkout@'))
-    expect(checkout?.with).toEqual({ ref: 'main', 'fetch-depth': 0 })
+    expect(checkout?.with).toEqual({ ref: 'main', 'fetch-depth': 0, 'persist-credentials': false })
   })
 
   it('holds only the grants it uses, and none at the top', () => {

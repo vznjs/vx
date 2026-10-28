@@ -5,6 +5,7 @@
 
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import path from 'node:path'
 import {
   canDigest,
@@ -15,6 +16,7 @@ import {
   strField,
   type DigestFunctionName,
 } from './merkle.js'
+import { ui } from '@vzn/vx'
 
 /**
  * Default bytes per ByteStream message.
@@ -337,6 +339,13 @@ function abortableSleep(ms: number, signal: AbortSignal | undefined): Promise<vo
 
 const NOT_FOUND = grpc.status.NOT_FOUND
 
+/**
+ * The action a call is made for, per async context: one client serves every
+ * task of a run at once, and a field on it named, on each action's uploads,
+ * whichever action had set it last.
+ */
+const currentAction = new AsyncLocalStorage<{ id: string }>()
+
 export interface ReapiOptions {
   /** `host:port` of the REAPI server; TLS unless `grpc://`, `http://` or a socket. */
   endpoint: string
@@ -472,7 +481,7 @@ export class ReapiClient {
   private readonly correlatedInvocationsId: string
   /** Set when a call spent its retries on UNAVAILABLE; cleared by any answer. */
   private unreachable = false
-  /** Set per action so the server can group its RPCs under one action. */
+  /** The action last named (`nameAction`); a call outside any `inAction` carries it. */
   actionId = ''
   toolInvocationId = ''
 
@@ -513,7 +522,7 @@ export class ReapiClient {
     // not silently lengthen every metadata probe too.
     this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
     // No listener is no reason to say nothing.
-    this.onWarn = opts.onWarn ?? ((m) => void process.stderr.write(`[vx] ${m}\n`))
+    this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', `[vx] ${m}`))
     // A zero, negative or non-number deadline ended every call as it began.
     for (const [name, ms] of [
       ['callTimeoutMs', this.callTimeoutMs],
@@ -622,10 +631,22 @@ export class ReapiClient {
     const tool = concat([strField(1, this.toolName), strField(2, this.toolVersion)])
     return concat([
       tool.length === 0 ? tool : lenField(1, tool),
-      strField(2, this.actionId),
+      strField(2, currentAction.getStore()?.id ?? this.actionId),
       strField(3, this.toolInvocationId),
       strField(4, this.correlatedInvocationsId),
     ])
+  }
+
+  /** Runs `fn` as one action's calls: each carries the id `nameAction` gives it there. */
+  inAction<T>(fn: () => Promise<T>): Promise<T> {
+    return currentAction.run({ id: '' }, fn)
+  }
+
+  /** Names the action of the `inAction` this runs in, so the server groups its RPCs under it. */
+  nameAction(id: string): void {
+    const scope = currentAction.getStore()
+    if (scope !== undefined) scope.id = id
+    this.actionId = id
   }
 
   /**
@@ -984,7 +1005,7 @@ export class ReapiClient {
     inline?: { stdout: boolean; files: readonly string[] },
   ): Promise<ActionResult | null> {
     try {
-      return await this.unary<ActionResult>(
+      const result = await this.unary<ActionResult>(
         this.svc.ac,
         'getActionResult',
         {
@@ -997,6 +1018,7 @@ export class ReapiClient {
         this.meta(),
         this.boundedMeta(),
       )
+      return withNumericSizes(result)
     } catch (err) {
       if ((err as grpc.ServiceError).code === NOT_FOUND) return null
       throw err
@@ -1568,6 +1590,34 @@ export class ReapiClient {
    */
   close(): void {
     this.svc.cas.close()
+  }
+}
+
+/**
+ * proto-loader reads an int64 as a string (`longs: String`), and every reader
+ * of a result sums and compares `size_bytes` as a number: a record replay's
+ * batch budget concatenated `"12" + 128`, so each output file was a
+ * BatchReadBlobs round trip of its own, and an empty file grafted from a
+ * record encoded its `"0"` size where the canonical form omits it.
+ */
+function withNumericSizes(result: ActionResult): ActionResult {
+  const num = <D extends Digest | null | undefined>(d: D): D =>
+    d === null || d === undefined ? d : ({ ...d, size_bytes: Number(d.size_bytes) } as D)
+  return {
+    ...result,
+    ...(result.output_files === undefined
+      ? {}
+      : { output_files: result.output_files.map((f) => ({ ...f, digest: num(f.digest) })) }),
+    ...(result.output_directories === undefined
+      ? {}
+      : {
+          output_directories: result.output_directories.map((d) => ({
+            ...d,
+            tree_digest: num(d.tree_digest),
+          })),
+        }),
+    ...(result.stdout_digest === undefined ? {} : { stdout_digest: num(result.stdout_digest) }),
+    ...(result.stderr_digest === undefined ? {} : { stderr_digest: num(result.stderr_digest) }),
   }
 }
 

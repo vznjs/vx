@@ -40,6 +40,21 @@ describe('vx run', () => {
     ])
   })
 
+  it('refuses an empty or blank task name in its own words, run and watch alike', async () => {
+    // It reached the orchestrator, which answered in the embedder API's
+    // words ("RunOptions.tasks names no task").
+    const refused = []
+    for (const verb of ['run', 'watch'] as const) {
+      for (const tasks of [[''], [' '], ['build', '']]) {
+        refused.push(await resolveRunOptions(parseRunArgs(['--all', ...tasks]), root, tasks, verb))
+      }
+    }
+    const empty = (t: string) => ({
+      error: `empty task name ${JSON.stringify(t)} (vx show lists the tasks)`,
+    })
+    expect(refused).toEqual([empty(''), empty(' '), empty(''), empty(''), empty(' '), empty('')])
+  })
+
   it('Ctrl-C at the picker exits 130, as an interrupted run does', async () => {
     // The picker runs only on a terminal: stdin, stdout and stderr (the
     // menu's stream) are TTY streams here, and Ctrl-C reaches readline raw

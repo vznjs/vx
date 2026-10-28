@@ -35,6 +35,7 @@ import {
   nearest,
   UserError,
   sayNotice,
+  ui,
 } from '../util/index.js'
 import {
   claimedAffected,
@@ -87,7 +88,7 @@ export async function workspaceGlobOwners(
   // "nothing affected" and exit 0 without ever reaching the run's own
   // refusal. The sweep reads each entry from the lock: it never evaluates.
   const lock = await readLockfile(root)
-  if (lock === null) throw new UserError(NO_LOCK)
+  if (lock === null) throw new UserError(NO_LOCK, 'VX_E_LOCK')
   const owners: string[] = []
   for (const meta of projects) {
     if (meta.configPath === null || meta.configPath === '') continue
@@ -118,7 +119,7 @@ async function workspaceFingerprintClaims(
   const ctx = {
     workspaceRoot: root,
     cacheDir: load.cacheDir ?? ws.cacheDir,
-    warn: (m: string) => process.stderr.write(`${maskedLine(m)}\n`),
+    warn: (m: string) => ui.say('warn', maskedLine(m)),
     projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
   }
   return {
@@ -344,6 +345,10 @@ export async function resolveFilters(
                 const out: string[] = []
                 for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
                 return out
+              },
+              flagged: async () => {
+                const g = await git.start()
+                return g.scopes.includes('.') ? g.flagged : null
               },
             }
           : {}),
@@ -598,13 +603,21 @@ export async function pickTask(
   }
 }
 
+/**
+ * A pattern's name without its operators. In one pass `^\.\.\.`
+ * anchored to the string's start, so `!...apq` kept its dots.
+ */
+function typedName(pattern: string): string {
+  return pattern.replace(/^!/, '').replace(/^\.\.\.|\.\.\.$|\^/g, '')
+}
+
 /** The hint for the first unmatched pattern: a near tag for a `tag:` one, else a near project name. */
 function didYouMean(
   unmatched: readonly string[],
   projects: Iterable<{ name: string }>,
   tags: ReadonlyMap<string, readonly string[]> | undefined,
 ): string {
-  const first = unmatched[0]?.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+  const first = unmatched[0] === undefined ? undefined : typedName(unmatched[0])
   if (first?.startsWith('tag:') !== true) return didYouMeanProject(unmatched, projects)
   const known = [...new Set([...(tags?.values() ?? [])].flat())].sort()
   if (known.length === 0) return '. No project declares tags'
@@ -626,7 +639,7 @@ function didYouMeanProject(
     if (bare !== n) byBare.set(bare, [...(byBare.get(bare) ?? []), n])
   }
   for (const pattern of unmatched) {
-    const typed = pattern.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+    const typed = typedName(pattern)
     // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
     if (typed === '//') {
       return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'

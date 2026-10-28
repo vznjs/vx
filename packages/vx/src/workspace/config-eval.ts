@@ -210,7 +210,16 @@ self.onmessage = async (e) => {
     // A thrown string or plain object has no message, and String() of a
     // null-prototype object throws here, inside the catch.
     const isError = err !== null && typeof err === 'object' && typeof err.message === 'string'
+    // A cause holds the reason a wrapper names only by its own words.
+    const causes = []
+    const seen = new Set([err])
+    for (let c = isError ? err.cause : undefined; c !== undefined && c !== null && !seen.has(c) && causes.length < 8; c = c.cause) {
+      seen.add(c)
+      const isE = typeof c === 'object' && typeof c.message === 'string'
+      causes.push(isE ? (c.stack ?? (c.name + ': ' + c.message)) : globalThis.Bun.inspect(c, { compact: true }))
+    }
     postMessage({
+      causes,
       id,
       ok: false,
       thrown: isError ? null : globalThis.Bun.inspect(err, { compact: true }),
@@ -243,6 +252,8 @@ interface WorkerReply {
   /** What a config threw that is not an Error, as `thrownValueMessage` shows it; null for an Error. */
   thrown?: string | null
   stack: string | null
+  /** Each `cause` under a thrown Error, outermost first, as its stack (or inspected value). */
+  causes?: string[]
   /** A transpile error's location — `BuildMessage.position`, trimmed to what the loader reads. */
   position: { file?: string; line?: number; column?: number } | null
 }
@@ -336,6 +347,13 @@ function acquireWorker(): Worker {
     if (msg.stack !== null) err.stack = msg.stack
     else delete err.stack
     if (msg.position !== null) err.position = msg.position
+    let cause: Error | undefined
+    for (const stack of (msg.causes ?? []).toReversed()) {
+      const c = new Error('', cause === undefined ? undefined : { cause })
+      c.stack = stack
+      cause = c
+    }
+    if (cause !== undefined) err.cause = cause
     p.reject(err)
   }
   w.onerror = (event: ErrorEvent): void => {

@@ -49,3 +49,37 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  'a scoped bare task in a project whose config the lock has not seen asks for `vx lock`',
+  async () => {
+    // From c's directory, or `--filter c`, the run said only projects
+    // outside the selection declare build and to pass --all, which skips
+    // c too: its config is no project config until it is locked.
+    const root = await makeWorkspace({ prefix: 'vx-unlocked-scoped-', edges: {} })
+    try {
+      const dir = await addProject(root, 'c', {})
+      await addProject(root, 'd', {
+        config: "export default { tasks: { build: { exec: { command: 'echo d' } } } }\n",
+      })
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'echo c' } } } }\n",
+      )
+      for (const r of [
+        await vx(dir, ['run', 'build']),
+        await vx(root, ['run', 'build', '--filter', 'c']),
+      ]) {
+        expect(r.code).toBe(1)
+        expect(r.text).toContain(
+          'build: packages/c/vx.config.mjs is not in the lock yet — run `vx lock`',
+        )
+        expect(r.text).not.toContain('outside the selection')
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)

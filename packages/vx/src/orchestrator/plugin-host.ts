@@ -364,13 +364,22 @@ export async function claimedAffected(
 ): Promise<Set<string> | undefined> {
   const answer = await safe(plugin, 'fingerprint', () => plugin.fingerprint!.affected(change, ctx))
   if (answer === undefined) return undefined
-  if (typeof answer === 'string' || typeof answer !== 'object' || answer === null) {
+  // A plain object is no list: `for…of` threw "is not iterable", naming
+  // neither the plugin nor the hook.
+  if (
+    typeof answer === 'string' ||
+    typeof answer !== 'object' ||
+    answer === null ||
+    typeof (answer as Partial<Iterable<unknown>>)[Symbol.iterator] !== 'function'
+  ) {
     throw new UserError(
       `plugin '${plugin.name}' failed in fingerprint: returned ${describeValue(answer)}, not a list of project names`,
     )
   }
   const names = new Set<string>()
-  for (const name of answer as Iterable<unknown>) {
+  // A lazy list (a generator) runs the plugin's code as it is read.
+  const read = await safe(plugin, 'fingerprint', () => [...(answer as Iterable<unknown>)])
+  for (const name of read) {
     if (typeof name !== 'string') {
       throw new UserError(
         `plugin '${plugin.name}' failed in fingerprint: affected project ${describeValue(name)} is not a name`,
@@ -765,6 +774,17 @@ export function executorDemand(
   }
 }
 
+const EXECUTOR_FLAGS = ['remote', 'sandbox', 'servers', 'runtime', 'exclusive', 'timeouts'] as const
+const EXECUTOR_HOOKS = [
+  'accepts',
+  'demand',
+  'footer',
+  'machines',
+  'idealMs',
+  'profile',
+  'running',
+] as const
+
 /**
  * Collect every plugin's `executor`, in declaration order, with core's
  * own appended at the tail: per task, `selectExecutor` takes the first
@@ -803,6 +823,22 @@ export async function resolveExecutors(
       throw new UserError(
         `plugin '${plugin.name}' returned executor '${executor.name}' with platforms ${JSON.stringify(platforms)}: it must be a non-empty array of ${PLATFORMS.join(', ')}`,
       )
+    }
+    // Placement reads each flag as `=== true`: `remote: 'yes'` read as a
+    // local executor, offered sandboxed and `exec.remote: false` tasks.
+    for (const flag of EXECUTOR_FLAGS) {
+      const v: unknown = executor[flag]
+      if (v !== undefined && typeof v !== 'boolean')
+        throw new UserError(
+          `plugin '${plugin.name}' returned executor '${executor.name}' with ${flag} ${v === null ? 'null' : JSON.stringify(v)}: it must be true or false`,
+        )
+    }
+    for (const hook of EXECUTOR_HOOKS) {
+      const v: unknown = executor[hook]
+      if (v !== undefined && typeof v !== 'function')
+        throw new UserError(
+          `plugin '${plugin.name}' returned executor '${executor.name}' with ${hook} that is not a function`,
+        )
     }
     executorPlugin.set(executor, plugin.name)
     executors.push(executor)

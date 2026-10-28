@@ -66,7 +66,8 @@ run(
 
 const want = `vx ${((await Bun.file(path.join(root, 'package.json')).json()) as { version: string }).version}`
 const got = launchVersion(out)
-const version = got.version
+// Painted when the env forces colour; the words are what is checked.
+const version = Bun.stripANSI(got.version)
 if (got.exitCode !== 0 || version !== want) {
   process.stderr.write(
     `binary reports ${JSON.stringify(version)} (exit ${got.exitCode}), expected ${JSON.stringify(want)}\n${got.stderr}`,

@@ -45,8 +45,10 @@ flowchart LR
 
 The remote has to tell vx the entry's size and its task's time. Turbo's
 cache API sends both (`Content-Length`, `x-artifact-duration`), and
-`turboCache()` passes them on. Twice the task time, because a run here
-also saves its outputs. The task counts as a miss and uploads nothing.
+`turboCache()` passes them on.
+
+Twice the task time, because a run here also saves its outputs. The task
+counts as a miss and uploads nothing.
 
 A remote that doesn't send the time is always waited for, as in the
 second row. vx won't guess.
@@ -60,9 +62,10 @@ would download, before anything runs.
 
 A remote's `has` returns `{ size, durationMs }`, either one, `{}`, or
 `null` for a missing key. `hasMany` returns a `Map` of the same. Send a
-size and you get the `--dry` figure. Send a duration too and you get
-the slow-download check. [Your own cache](../../docs/writing-plugins/#your-own-cache)
-shows a whole remote.
+size and you get the `--dry` figure.
+
+Send a duration too and you get the slow-download check. [Your own
+cache](../../docs/writing-plugins/#your-own-cache) shows a whole remote.
 
 Setup: [Remote cache](../../docs/remote-cache/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

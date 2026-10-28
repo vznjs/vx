@@ -98,6 +98,32 @@ describe('CI OIDC tokens', () => {
     expect(await status('e7', near.ref)).toBe(200)
   })
 
+  // The queue's rename keyed on the ref alone: a push to a branch named
+  // like a queue ref, or a pull request whose head branch was, wrote main.
+  it('only a merge_group run writes its base branch', async () => {
+    const queued = `gh-readonly-queue/main/pr-12-${'a'.repeat(40)}`
+    const push = { event_name: 'push', ref: `refs/heads/${queued}` }
+    expect((await put(await sign(push), 'a11')).status).toBe(204)
+    expect(await status('a11')).toBe(404)
+    expect(await status('a11', push.ref)).toBe(200)
+    const pr = { event_name: 'pull_request', ref: 'refs/pull/7/merge', head_ref: queued }
+    expect((await put(await sign(pr), 'a12')).status).toBe(204)
+    expect(await status('a12')).toBe(404)
+  })
+
+  // A fork names its own head branch: a fork's branch `main` wrote main
+  // wherever fork pull requests get a token.
+  it("a pull request whose head branch is its base branch's name writes nothing", async () => {
+    const pr = await sign({
+      event_name: 'pull_request',
+      ref: 'refs/pull/7/merge',
+      head_ref: 'main',
+      base_ref: 'main',
+    })
+    expect(await detail(await put(pr, 'a13'))).toEqual([403, 'this request reads only'])
+    expect(await status('a13')).toBe(404)
+  })
+
   // A pull_request_target run carries a fork's head_ref, named by the
   // fork: it wrote that branch's scope, so a fork poisoned a branch of the
   // same name (found 2026-10-26). Its ref is the base: a fork's code never
@@ -154,9 +180,11 @@ describe('CI OIDC tokens', () => {
       403,
       'the token is of repository acme/app at https://token.actions.githubusercontent.com, not the repository named',
     ])
+    // Behind a proxy that ends TLS the server is reached at http://: the
+    // refusal names both, so the fix (AUDIENCE) is in the message.
     expect(await detail(await put(await sign(MAIN, 'https://elsewhere'), 'd4'))).toEqual([
       401,
-      'wrong audience',
+      `wrong audience: the token names https://elsewhere, this server takes ${AUD} (AUDIENCE)`,
     ])
     const [h, p] = (await sign(MAIN)).split('.')
     const forged = `${h}.${p}.${'A'.repeat(342)}`
@@ -227,14 +255,14 @@ describe('READ_ACCESS=public', () => {
   })
 })
 
-describe('a server that admits no CI', () => {
+describe('a server whose ALLOW is empty', () => {
   it('refuses every request while ALLOW is empty', async () => {
     const none = createCacheServer({
       blobs: memBlobs(),
       authorize: oidcAuth({ allow: [] }),
     })
     const res = await none(new Request(`${AUD}/v1/artifacts/abc`))
-    expect(await detail(res)).toEqual([401, 'the server admits no CI: set ALLOW'])
+    expect(await detail(res)).toEqual([401, 'ALLOW is empty: set it to the CI workflows this server serves'])
   })
 })
 

@@ -137,6 +137,9 @@ async function build(rand: () => number): Promise<Fixture> {
   return { root, pkg, nested, entries }
 }
 
+/** Paths a glob could reach below a linked directory, one per glob shape in the menu. */
+const LINKED_SAMPLES = ['a.ts', '.env', 'b.md', '[id]/a.ts']
+
 function oracle(
   fx: Fixture,
   pos: Array<(r: string) => boolean>,
@@ -149,7 +152,15 @@ function oracle(
   for (const [rel, visible] of fx.entries) {
     if (!visible && !hidden.some((n) => tree(n)(rel))) continue
     if (fx.nested !== undefined && rel.startsWith('sub/')) continue
-    if (!pos.some((p) => p(rel)) || neg.some((p) => p(rel))) continue
+    if (neg.some((p) => p(rel))) continue
+    // `linkdir` links to `src`: when that is a directory, an input once a
+    // glob reaches below it (the task reads through it), not only when its
+    // own name matches. Dangling, it is a name like any file's.
+    const reached =
+      rel === 'linkdir' &&
+      all.some(([r]) => r.startsWith('src/')) &&
+      LINKED_SAMPLES.some((f) => pos.some((p) => p(`${rel}/${f}`)))
+    if (!pos.some((p) => p(rel)) && !reached) continue
     out.push(rel)
   }
   return out.sort()

@@ -367,8 +367,13 @@ function play(
     }
     const joined = slots.filter((s) => s.at <= now)
     // A task that filled a size waits for a bigger one still to join.
-    const later = (above: { cores: number; memory: number }): boolean =>
-      slots.some((s) => s.at > now && (s.cores > above.cores || s.memory > above.memory))
+    const later = (above: { cores: number; memory: number }, platform?: string): boolean =>
+      slots.some(
+        (s) =>
+          s.at > now &&
+          (platform === undefined || s.platform === platform) &&
+          (s.cores > above.cores || s.memory > above.memory),
+      )
     const to = assign(ready.asks(spent, bounds, needs.size), joined, later, how.place, {
       floor: (floor ??= floorOf(needs.values())),
       kinds: needs.size,
@@ -592,7 +597,7 @@ export function plan(
 
 /**
  * The sizes the run would start next, in order: for each task that
- * filled its worker last time (`above`), one of the smallest size bigger
+ * filled its worker last time (`above`), one of the smallest size of its platform bigger
  * than it while the run has none of that size; for each platform tasks
  * run on, its sizes in declared order, up to one per task of it; then
  * sizes in declared order up to each one's max.
@@ -600,7 +605,7 @@ export function plan(
 export function candidates(
   sizes: readonly Size[],
   started: ReadonlyMap<string, number>,
-  above: Iterable<{ cores: number; memory: number }>,
+  above: Iterable<{ cores: number; memory: number; platform?: string | undefined }>,
   limit: number,
   platforms: ReadonlyMap<string, number> = new Map(),
 ): Size[] {
@@ -612,7 +617,11 @@ export function candidates(
   }
   const up = [...sizes].sort((x, y) => x.cpu - y.cpu || x.memory - y.memory)
   for (const a of above) {
-    const z = up.find((s) => s.cpu > a.cores || s.memory > a.memory)
+    const z = up.find(
+      (s) =>
+        (a.platform === undefined || s.platform === a.platform) &&
+        (s.cpu > a.cores || s.memory > a.memory),
+    )
     if (z !== undefined && (count.get(z.name) ?? 0) === 0 && z.max > 0) add(z)
   }
   // A platform the declared order reaches late gets its workers too, one
@@ -687,7 +696,7 @@ export function decide(input: {
           ? input.sizes
           : input.sizes.filter((s) => !input.queued!.has(s.name)),
         input.started,
-        tasks.flatMap((t) => t.above ?? []),
+        tasks.flatMap((t) => (t.above === undefined ? [] : [{ ...t.above, platform: t.platform }])),
         tasks.length,
         platforms,
       )
@@ -722,23 +731,51 @@ function backlog(
   const running = new Set<string>()
   for (const w of workers) for (const r of w.running) if (r.id !== undefined) running.add(r.id)
   const widest = Math.max(1, ...workers.map((w) => w.cores), ...candidates.map((c) => c.cpu))
+  // Cores asked and had, all told and of each platform a task names: only
+  // a worker of it runs such a task, so spare Linux cores left a Mac task
+  // waiting for a Mac worker never started.
   let asked = 0
-  for (const t of tasks)
-    if (t.deps.every((d) => !ids.has(d) && !running.has(d))) asked += Math.min(t.cores, widest)
-  for (const w of workers) for (const r of w.running) asked += r.cores
   let have = 0
-  for (const w of workers) have += w.cores
+  const askedOf = new Map<string, number>()
+  const haveOf = new Map<string, number>()
+  const add = (m: Map<string, number>, p: string | undefined, n: number): void => {
+    if (p !== undefined) m.set(p, (m.get(p) ?? 0) + n)
+  }
+  for (const t of tasks)
+    if (t.deps.every((d) => !ids.has(d) && !running.has(d))) {
+      const cores = Math.min(t.cores, widest)
+      asked += cores
+      add(askedOf, t.platform, cores)
+    }
+  for (const w of workers)
+    for (const r of w.running) {
+      asked += r.cores
+      add(askedOf, w.platform, r.cores)
+    }
+  for (const w of workers) {
+    have += w.cores
+    add(haveOf, w.platform, w.cores)
+  }
+  const short = (p: string | undefined): boolean =>
+    p !== undefined && (haveOf.get(p) ?? 0) < (askedOf.get(p) ?? 0) - 1e-9
   const start: Size[] = []
   for (const c of candidates) {
-    if (have >= asked - 1e-9) break
+    if (have >= asked - 1e-9 && !short(c.platform)) continue
     start.push(c)
     have += c.cpu
+    add(haveOf, c.platform, c.cpu)
   }
   const release: string[] = []
   for (const w of workers)
-    if (w.idle && have - w.cores >= asked - 1e-9) {
+    if (
+      w.idle &&
+      have - w.cores >= asked - 1e-9 &&
+      (w.platform === undefined ||
+        (haveOf.get(w.platform) ?? 0) - w.cores >= (askedOf.get(w.platform) ?? 0) - 1e-9)
+    ) {
       release.push(w.id)
       have -= w.cores
+      add(haveOf, w.platform, -w.cores)
     }
   const kept = [
     ...workers.filter((w) => !release.includes(w.id)),

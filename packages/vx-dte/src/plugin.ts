@@ -6,6 +6,7 @@ import {
   PLATFORMS,
   refuseUnknownOptions,
   taskDefinitions,
+  ui,
   UserError,
   type CommandContext,
   type Platform,
@@ -125,6 +126,18 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   headers: 'object',
 }
 
+const SIZE_KEYS: PluginOptionKinds<WorkerSize> = {
+  max: 'number',
+  cpu: 'number',
+  memory: 'any',
+  platform: 'string',
+}
+
+const UNMEASURED_KEYS: PluginOptionKinds<NonNullable<DteOptions['unmeasured']>> = {
+  cpu: 'number',
+  memory: 'any',
+}
+
 const USAGE = 'Usage: vx dte worker | vx dte init [--dry] [--force]'
 
 /** `headers` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
@@ -154,6 +167,8 @@ export function dte(options: DteOptions) {
     ;(how as unknown as Record<string, unknown>)[layer] = choice
   }
   const sizes = Object.entries(options.workers ?? {}).map(([name, s]) => {
+    // A typo read as unset: `maxx: 2` started workers uncapped.
+    refuseUnknownOptions(`dte(): workers.${name}`, s, SIZE_KEYS)
     const memory = bytes(s?.memory)
     if (
       !(
@@ -278,8 +293,10 @@ export function dte(options: DteOptions) {
         'vx dte init: dte() names no adapter, so vx starts no workers and needs no CI files',
       )
     if (adapter.init === undefined) {
-      process.stdout.write(
-        'vx dte init: this adapter starts workers on this machine; no CI files to write\n',
+      ui.say(
+        'info',
+        'vx dte init: this adapter starts workers on this machine; no CI files to write',
+        'out',
       )
       return 0
     }
@@ -304,9 +321,9 @@ export function dte(options: DteOptions) {
       tasks: askTasks(),
       ...originOf(root),
     })
-    const out = (line: string): void => void process.stdout.write(`${line}\n`)
+    const out = (line: string): void => ui.say('info', line, 'out')
     if (args.includes('--dry')) {
-      for (const [rel, text] of Object.entries(files.files)) out(`# ${rel}\n${text}`)
+      for (const [rel, text] of Object.entries(files.files)) ui.print('out', ui.excerpt(rel, text))
       for (const line of files.next) out(line)
       return 0
     }
@@ -320,7 +337,7 @@ export function dte(options: DteOptions) {
         async run(argv, ctx) {
           // Asked for, the usage is an answer: `vx dte --help` exited 1 (2026-10-26).
           if (argv.some((a) => a === '--help' || a === '-h') || argv[0] === 'help') {
-            process.stdout.write(`${USAGE}\n`)
+            ui.say('info', USAGE, 'out')
             return 0
           }
           if (argv[0] === 'init') return init(argv.slice(1), ctx)
@@ -660,7 +677,9 @@ export function dte(options: DteOptions) {
           ++index
           const id = nextId(s.name)
           const a = spawnOf(s, id, index)
-          void Promise.resolve(adapter.spawn(a)).catch((err: unknown) =>
+          // A sync throw too: `spawn` may return void, and one thrown here
+          // escaped the plan's timer and ended the process.
+          void new Promise<void>((done) => done(adapter.spawn(a))).catch((err: unknown) =>
             o.failed(id, err instanceof Error ? err.message : String(err)),
           )
         }
@@ -833,6 +852,7 @@ const PLACED = { cores: 1, memory: 0 }
 
 function unmeasuredOf(u: DteOptions['unmeasured']): Need {
   if (u === undefined) return FRESH
+  refuseUnknownOptions('dte(): unmeasured', u, UNMEASURED_KEYS)
   const memory = bytes(u.memory)
   if (!(typeof u.cpu === 'number' && u.cpu > 0) || memory === undefined)
     throw new UserError("dte(): unmeasured needs cpu > 0 and memory such as '4GB'")

@@ -13,6 +13,6 @@ it('a non-string header value is not sent, and says so once', () => {
   )
   expect(c?.headers).toEqual({ 'x-team': 'core' })
   expect(warns).toEqual([
-    '[vx-otel] header "x-tenant" holds a non-string value, which no HTTP header can carry — not sent (its value is not printed)',
+    '[vx] vx-otel: header "x-tenant" holds a non-string value, which no HTTP header can carry — not sent (its value is not printed)',
   ])
 })

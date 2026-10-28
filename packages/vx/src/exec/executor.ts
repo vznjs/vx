@@ -456,6 +456,8 @@ export function assertExecuteResult(
       `executor '${executor}' returned an invalid result for ${taskId}: ${what} — a plugin bug, not a task failure`,
     )
   }
+  const shown = (v: unknown): string =>
+    typeof v === 'object' && v !== null ? 'an object' : String(v as string)
   if (typeof res !== 'object' || res === null)
     fail(`${res === null ? 'null' : typeof res} (expected an object)`)
   const r = res as Record<string, unknown>
@@ -473,6 +475,41 @@ export function assertExecuteResult(
   }
   if (!Array.isArray(r['violations']))
     fail(`violations is ${typeof r['violations']} (expected an array)`)
+  // The optional fields reach the task's row, telemetry and the run
+  // history: a `where` object lost the whole run's history to a bind error
+  // naming no executor, and a `null` violation failed the task as a TypeError.
+  for (const [i, v] of (r['violations'] as unknown[]).entries()) {
+    if (typeof v !== 'object' || v === null || typeof (v as { line?: unknown }).line !== 'string')
+      fail(`violations[${i}] is not an object with a string line`)
+  }
+  const where = r['where']
+  if (where !== undefined && (typeof where !== 'string' || where === ''))
+    fail(`where is ${where === '' ? 'empty' : typeof where} (expected a non-empty string)`)
+  for (const key of ['cpuMs', 'peakRssBytes']) {
+    const n = r[key]
+    if (n !== undefined && !(typeof n === 'number' && Number.isFinite(n) && n >= 0))
+      fail(`${key} is ${shown(n)} (expected a non-negative number)`)
+  }
+  if (r['signal'] !== undefined && typeof r['signal'] !== 'string')
+    fail(`signal is ${typeof r['signal']} (expected a string)`)
+  if (r['timedOut'] !== undefined && typeof r['timedOut'] !== 'boolean')
+    fail(`timedOut is ${typeof r['timedOut']} (expected a boolean)`)
+  const machine = r['machine']
+  if (machine !== undefined) {
+    if (typeof machine !== 'object' || machine === null) fail('machine is not an object')
+    const m = machine as Record<string, unknown>
+    // A worker that cannot read its memory reports 0 (vx-dte's join takes it).
+    for (const [key, least] of [
+      ['cores', 'positive'],
+      ['memoryBytes', 'non-negative'],
+      ['cpuShare', 'positive'],
+    ] as const) {
+      const n = m[key]
+      if (key === 'cpuShare' && n === undefined) continue
+      if (!(typeof n === 'number' && Number.isFinite(n) && (least === 'positive' ? n > 0 : n >= 0)))
+        fail(`machine.${key} is ${shown(n)} (expected a ${least} number)`)
+    }
+  }
   const outputs = r['outputs'] as { kind?: unknown; materialize?: unknown } | undefined
   if (outputs !== undefined) {
     if (typeof outputs !== 'object' || outputs === null) fail('outputs is not an object')

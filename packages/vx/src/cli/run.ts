@@ -18,7 +18,7 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
+import { detectColors, parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
 import { formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -256,6 +256,12 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
         return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
       out.verbosity = n
     } else if (a === '--dry') {
+      // As `--continue`'s mode: `--dry json` read `json` as a task, and the
+      // run said no project declares it.
+      const next = before[i + 1]
+      if (next === 'text' || next === 'json') {
+        return { ...out, error: `--dry takes its format with '=': --dry=${next}` }
+      }
       out.dry = 'text'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
@@ -285,6 +291,13 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       const v = a === name ? before[++i] : a.slice(name.length + 1)
       if (v === undefined || v === '')
         return { ...out, error: `${name} requires a value (${kindHint(set.kind)})` }
+      // A string takes any word, so `--branch $EMPTY --dry` named the branch
+      // `--dry` and the "dry" run executed; every other kind refuses it.
+      if (a === name && set.kind.type === 'string' && v.startsWith('-'))
+        return {
+          ...out,
+          error: `${name} requires a value (got flag ${v}; a value that starts with - needs ${name}=${v})`,
+        }
       const value = parseSettingValue(set.kind, v)
       if (value === null) return { ...out, error: settingRefusal(set.path, name, v) }
       out.settings[set.path] = value
@@ -403,6 +416,10 @@ export async function resolveRunOptions(
   scopeOut?: { affectedBase?: string },
 ): Promise<RunOptions | { error: string; code?: string } | { nothingSelected: string }> {
   for (const t of tasks) {
+    // A blank name (`vx run --all ''`) otherwise reached the orchestrator,
+    // which refuses it in the embedder API's words.
+    if (t.trim() === '')
+      return { error: `empty task name ${JSON.stringify(t)} (vx show lists the tasks)` }
     const idx = t.indexOf('#')
     if (idx >= 0) {
       const project = t.slice(0, idx)
@@ -650,7 +667,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     if (parsed.dry === 'json') {
       process.stdout.write(formatPlanJson(plan, scopeOut.affectedBase))
     } else {
-      process.stdout.write(formatPlanText(plan))
+      process.stdout.write(formatPlanText(plan, detectColors(process.stdout)))
     }
     return 0
   }

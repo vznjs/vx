@@ -222,8 +222,26 @@ const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
   chunkBytes: 'number',
 }
 
+/**
+ * `headers` and `platform` map names to strings. A value read from an unset
+ * variable (`process.env.KEY!`) is undefined: the header check read it as
+ * the text "undefined", and grpc-js then spun on every call until its
+ * deadline (15 s each, no word of why), and a platform value reached the
+ * worker as "undefined".
+ */
+function refuseNonStringValues(name: 'headers' | 'platform', map: object | undefined): void {
+  for (const [key, value] of Object.entries(map ?? {})) {
+    if (typeof value === 'string') continue
+    throw new UserError(
+      `reapi() option "${name}" must map each name to a string — ${JSON.stringify(key)} is ${JSON.stringify(value) ?? String(value)} (an unset environment variable?)`,
+    )
+  }
+}
+
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
+  refuseNonStringValues('headers', options.headers)
+  refuseNonStringValues('platform', options.platform)
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {
@@ -241,8 +259,12 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       // plugin's setting nor anything to do about it. Core turns a throwing
       // factory into a UserError and ABORTS — deliberately, an executor is
       // load-bearing — so this is the message a user acts on.
+      // Both asks: a failed second one escaped as the raw status, naming
+      // neither the server nor the setting.
+      let caps: Awaited<ReturnType<ReapiClient['capabilities']>>
       try {
         await executorClient.negotiate()
+        caps = await executorClient.capabilities()
       } catch (err) {
         executorClient.close()
         executorClient = undefined
@@ -262,7 +284,6 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       // A cache-only deployment (bazel-remote) advertises no execution
       // capability. Offering it work would hang the run on a server that will
       // never answer, so DECLINE loudly and let the local executor take over.
-      const caps = await executorClient.capabilities()
       if (!caps.execEnabled) {
         ctx.warn(
           `vx/reapi: ${conn.endpoint} does not advertise remote execution (cache only) — tasks will run locally`,

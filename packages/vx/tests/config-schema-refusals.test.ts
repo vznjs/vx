@@ -94,6 +94,26 @@ describe('a NUL in a workspace string', () => {
   })
 })
 
+// `origin/main` passed as a branch: vx asks for `origin/origin/main`,
+// found no base, and a run on main took a branch's cache scope.
+describe('a baseBranch spelled as a ref', () => {
+  it('is refused: the branch alone, as git names it after origin/', () => {
+    expect([
+      refusal({ baseBranch: 'origin/main' }),
+      refusal({ baseBranch: 'refs/heads/main' }),
+      refusal({ baseBranch: 'refs/remotes/origin/main' }),
+      refusal({ baseBranch: 'main' }),
+      refusal({ baseBranch: 'release/origin' }),
+    ]).toEqual([
+      `${WS}: \`baseBranch\` must be a branch name like 'main'`,
+      `${WS}: \`baseBranch\` must be a branch name like 'main'`,
+      `${WS}: \`baseBranch\` must be a branch name like 'main'`,
+      null,
+      null,
+    ])
+  })
+})
+
 describe('workspace refusals the sweep found unheld (item 653)', () => {
   it('a fractional concurrency is refused — the integer arm, past the positivity one', () => {
     expect(refusal({ run: { concurrency: 1.5 } })).toBe(
@@ -941,6 +961,10 @@ describe('project tags', () => {
     ['ui*', "holds '*', which makes it a pattern"],
     ['v1...', "ends in '...', which a filter reads as a dependency walk"],
     ['v1^...', "ends in '...', which a filter reads as a dependency walk"],
+    // The walk alone left the filter no tag: its own refusal escaped,
+    // `filter "tag:..." names no tag`, naming neither config nor tag.
+    ['...', "ends in '...', which a filter reads as a dependency walk"],
+    ['^...', "ends in '...', which a filter reads as a dependency walk"],
     ['v[2]', 'ends in "[2]", which a filter reads as a git range'],
   ])('refuses %j, which a tag filter cannot name', (tag, why) => {
     expect(refusal(['ok', tag])).toBe(
@@ -949,6 +973,51 @@ describe('project tags', () => {
   })
   it('keeps the characters a tag filter reads literally', () => {
     expect(refusal(['scope:web', 'a.b', 'v1..', '[x', 'x]', 'a b', 'a#b', '^x', '!x'])).toBeNull()
+  })
+})
+
+describe('project name', () => {
+  const refusal = (name: unknown): string | null => {
+    try {
+      validateProjectConfig({ name, tasks: {} } as never, CFG)
+    } catch (err) {
+      return (err as Error).message
+    }
+    return null
+  }
+  // Each loaded and could not be addressed: `^ui#build` refused as `^` with
+  // `pkg#task`, `--filter '!ui'` excluded it, `tag:ui` and `ui...` read as a
+  // tag and a walk, `ui*#build` as a pattern.
+  it.each([
+    ['^ui', "starts with '^', which names dependencies' tasks"],
+    ['!ui', "starts with '!', which a filter reads as an exclusion"],
+    ['ui*', "holds '*', which makes it a pattern"],
+    ['tag:ui', "starts with 'tag:', which a filter reads as a tag selector"],
+    ['ui...', "starts or ends with '...', which a filter reads as a dependency walk"],
+    ['...ui', "starts or ends with '...', which a filter reads as a dependency walk"],
+    ['...', "starts or ends with '...', which a filter reads as a dependency walk"],
+    ['ui[2]', 'ends in "[2]", which a filter reads as a git range'],
+    ['./ui', 'reads as a directory to a filter'],
+    ['{ui}', 'reads as a directory to a filter'],
+  ])('refuses %j, which dependsOn or --filter cannot name', (name, why) => {
+    expect(refusal(name)).toBe(
+      `${CFG}: \`name\` ${JSON.stringify(name)} ${why} — dependsOn, --filter and the CLI could not name the project. Rename it.`,
+    )
+  })
+  it('keeps the names a filter reads literally', () => {
+    for (const ok of [
+      'ui',
+      '@acme/ui',
+      'ui.kit',
+      'ui..',
+      'scope:ui',
+      'u^i',
+      'u!i',
+      '[x',
+      'x]',
+      '//',
+    ])
+      expect(refusal(ok)).toBeNull()
   })
 })
 
@@ -996,6 +1065,46 @@ describe('an extglob in a task glob', () => {
     // CONTROL: `(group)` is a Next.js route group, and a leading `!` is
     // vx's own negation, so `!(group)/**` takes one back.
     expect(taskRefusal(task({ files: ['app/(marketing)/**', 'src/{x,y}.ts'] }))).toBeNull()
+    expect(taskRefusal(task({ files: ['**', '!(group)/**'] }))).toBeNull()
+  })
+})
+
+// A bare `(a|b)` is no group to `Bun.Glob`: it reads the parens and the bar
+// literally, so `src/*.(js|ts)` keyed no file and an edit to src/a.js
+// replayed a stale hit behind only a "matched no files" warning.
+describe('a bare parenthesised group in a task glob', () => {
+  const task = (inputs: object, outputs: object = { files: ['dist/**'] }) => ({
+    exec: { command: 'x' },
+    inputs,
+    cache: { outputs },
+  })
+  const tail =
+    `" holds a bare (…|…) group, which vx's glob engine reads as literal text, never as ` +
+    'the alternatives it lists, so the cache key would miss the files it names.'
+
+  it('is refused in every task glob field, with the brace it means', () => {
+    expect(taskRefusal(task({ files: ['src/*.(js|ts)'] }))).toBe(
+      `${CFG}: tasks.t.inputs.files: "src/*.(js|ts)${tail} Write "src/*.{js,ts}" instead.`,
+    )
+    expect(taskRefusal(task({ files: ['**', '!src/(a|b).ts'] }))).toBe(
+      `${CFG}: tasks.t.inputs.files: "!src/(a|b).ts${tail} Write "!src/{a,b}.ts" instead.`,
+    )
+    expect(taskRefusal(task({ files: ['**'], workspaceFiles: ['(a|b).json'] }))).toBe(
+      `${CFG}: tasks.t.inputs.workspaceFiles: "(a|b).json${tail} Write "{a,b}.json" instead.`,
+    )
+    expect(taskRefusal(task({ files: ['**'] }, { files: ['(dist|lib)/**'] }))).toBe(
+      `${CFG}: tasks.t.cache.outputs.files: "(dist|lib)/**${tail} Write "{dist,lib}/**" instead.`,
+    )
+    expect(
+      taskRefusal(task({ files: ['**'] }, { files: ['dist/**'], workspaceFiles: ['(*.a|b)'] })),
+    ).toBe(
+      `${CFG}: tasks.t.cache.outputs.workspaceFiles: "(*.a|b)${tail} Write braces ("{a,b}") or one entry per alternative instead.`,
+    )
+  })
+
+  it('leaves parens without a bar alone', () => {
+    // CONTROL: parens are filename characters, and a route group holds no `|`.
+    expect(taskRefusal(task({ files: ['app/(marketing)/**', 'src/a (1).ts'] }))).toBeNull()
     expect(taskRefusal(task({ files: ['**', '!(group)/**'] }))).toBeNull()
   })
 })

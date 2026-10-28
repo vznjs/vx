@@ -477,6 +477,7 @@ describe('each schema object is its source type', () => {
         notReady: true,
         remoteError: true,
         forwarded: true,
+        attempts: true,
         output: true,
         locations: true,
         fixedIn: true,

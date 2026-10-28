@@ -18,7 +18,7 @@ import type {
   TaskArtifacts,
 } from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
-import { machineParallelism, maskedLine, SecretBroker } from '../util/index.js'
+import { machineParallelism, maskedLine, SecretBroker, ui } from '../util/index.js'
 import { resolveSetting } from '../settings.js'
 
 export interface ResolvedPluginCommand {
@@ -104,8 +104,10 @@ export async function resolvePluginCommand(
   const declaredVerbs = new Set<string>()
   for (const plugin of ws.plugins) {
     for (const declared of Object.keys(plugin.commands ?? {})) declaredVerbs.add(declared)
-    const command = plugin.commands?.[verb]
-    if (command === undefined) continue
+    // Own keys only: `commands` is a plain object, and `vx constructor` ran
+    // `Object` as the plugin's verb.
+    if (plugin.commands === undefined || !Object.hasOwn(plugin.commands, verb)) continue
+    const command = plugin.commands[verb]!
     return {
       plugin,
       command,
@@ -127,7 +129,7 @@ export async function resolvePluginCommand(
 }
 
 const warn = (m: string): void => {
-  process.stderr.write(`${maskedLine(m)}\n`)
+  ui.say('warn', maskedLine(m))
 }
 
 /** Read-only: a verb reads what runs stored, and only a run's policy may write. */

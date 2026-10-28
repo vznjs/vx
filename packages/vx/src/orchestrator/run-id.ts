@@ -22,6 +22,7 @@ export function resolveRunId(db: Database, raw: string, verb: string): string | 
   const shown = rows.slice(0, 5).map((r) => `  ${r.run_id}`)
   throw new UserError(
     `${verb}: run id ${raw} is the start of ${rows.length > 5 ? 'more than 5' : rows.length} runs — type more of it:\n${shown.join('\n')}`,
+    'VX_E_AMBIGUOUS',
   )
 }
 

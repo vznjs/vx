@@ -60,10 +60,7 @@ export function parseLockfile(text: string): Lockfile {
           : '',
       link,
       isWorkspace:
-        p !== '' &&
-        !p.startsWith('node_modules/') &&
-        !p.includes('/node_modules/') &&
-        (globs === undefined || globs.some((g) => g.match(p))),
+        p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/') && globs(p),
       peers: peerOnly(e),
     })
   }
@@ -80,18 +77,27 @@ export function parseLockfile(text: string): Lockfile {
 }
 
 /**
- * The root's `workspaces` globs: what tells a workspace from a `file:`
- * directory, both entries outside node_modules that a link resolves to.
- * Taking every such entry for a workspace made `vendor/dep` a project, so
- * an edit under it selected nothing. `undefined` when the root names none.
+ * Whether a path is one of the root's `workspaces`: what tells a workspace
+ * from a `file:` directory, both entries outside node_modules that a link
+ * resolves to. Taking every such entry for a workspace made `vendor/dep` a
+ * project, so an edit under it selected nothing. A `!` glob excludes, as
+ * npm reads it: compiled as one, it matched every path it did not name, so
+ * `vendor/dep` was a workspace again. A root that names none has none: read
+ * as "any", a one-package repo's `file:` directory was a project too.
  */
-function workspaceGlobs(root: unknown): Bun.Glob[] | undefined {
+function workspaceGlobs(root: unknown): (p: string) => boolean {
   const ws = record(root)?.['workspaces']
   const list = Array.isArray(ws) ? ws : record(ws)?.['packages']
-  if (!Array.isArray(list)) return undefined
-  return list
-    .filter((g): g is string => typeof g === 'string')
-    .map((g) => new Bun.Glob(g.replace(/^\.\//, '').replace(/\/+$/, '')))
+  if (!Array.isArray(list)) return () => false
+  // Matched against the manifest's path, as npm globs `<pattern>/package.json`.
+  const glob = (g: string): Bun.Glob =>
+    new Bun.Glob(`${g.replace(/^\.\//, '').replace(/\/+$/, '')}/package.json`)
+  const strings = list.filter((g): g is string => typeof g === 'string')
+  const include = strings.filter((g) => !g.startsWith('!')).map(glob)
+  const exclude = strings.filter((g) => g.startsWith('!')).map((g) => glob(g.slice(1)))
+  return (p) =>
+    include.some((g) => g.match(`${p}/package.json`)) &&
+    !exclude.some((g) => g.match(`${p}/package.json`))
 }
 
 /**

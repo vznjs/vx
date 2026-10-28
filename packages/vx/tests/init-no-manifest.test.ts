@@ -26,12 +26,12 @@ async function tmp(prefix: string): Promise<string> {
   return root
 }
 
-async function vx(cwd: string, args: string[]) {
+async function vx(cwd: string, args: string[], extra: Record<string, string> = {}) {
   // The `next:` line names the runner that started vx; none here.
   const { npm_config_user_agent: _, ...env } = process.env
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
     cwd,
-    env,
+    env: { ...env, ...extra },
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
@@ -44,10 +44,13 @@ async function vx(cwd: string, args: string[]) {
   return { out, err, code }
 }
 
+// Type-only: Bun erases the import, so the files load with nothing
+// installed, and a user's tsc checks them against config.ts alone, never
+// core's Bun-only sources (J-94).
 const WORKSPACE =
-  "import { defineWorkspace } from '@vzn/vx'\n\nexport default defineWorkspace({ plugins: [] })\n"
+  "import type { WorkspaceConfig } from '@vzn/vx/config'\n\nexport default { plugins: [] } satisfies WorkspaceConfig\n"
 const PROJECT =
-  "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: {} })\n"
+  "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default { tasks: {} } satisfies ProjectConfig\n"
 
 describe('vx init with no package.json', () => {
   it('writes the workspace file and an empty root project, then the lock', async () => {
@@ -87,8 +90,8 @@ describe('vx init with no package.json', () => {
     const root = await tmp('vx-init-bare-dry-')
     const r = await vx(root, ['init', '--dry', '--mjs'])
     expect([r.code, r.err, existsSync(path.join(root, '.vx'))]).toEqual([0, '', false])
-    expect(r.out).toContain(`── .vx/workspace.mjs ──\n${WORKSPACE}`)
-    expect(r.out).toContain(`── vx.config.mjs ──\n${PROJECT}`)
+    expect(r.out).toContain('── .vx/workspace.mjs ──\nexport default { plugins: [] }\n\n')
+    expect(r.out).toContain('── vx.config.mjs ──\nexport default { tasks: {} }\n\n')
     expect(r.out).toContain(
       '  dry run   nothing written\n' +
         '  files     .vx/workspace.mjs\n' +
@@ -186,6 +189,36 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
     ]).toEqual([PROJECT, true, false])
   })
 
+  // Outside git there is no top-level to stop at: init climbed to the
+  // topmost package.json up to `/`, so a stray one in the home directory
+  // took the workspace and its install (2026-10-28). There the root is the
+  // nearest package.json, or an outer one that declares a workspace.
+  it('outside git, takes the nearest package.json, not a stray one above it', async () => {
+    const outer = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-init-nogit-')))
+    roots.push(outer)
+    await writeFile(path.join(outer, 'package.json'), '{"name":"home"}\n')
+    const proj = path.join(outer, 'proj')
+    await mkdir(path.join(proj, 'packages', 'a'), { recursive: true })
+    await writeFile(path.join(proj, 'package.json'), '{"name":"r","workspaces":["packages/*"]}\n')
+    await writeFile(path.join(proj, 'packages', 'a', 'package.json'), '{"name":"a"}\n')
+    const env = { GIT_CEILING_DIRECTORIES: path.dirname(outer) }
+    const r = await vx(path.join(proj, 'packages', 'a'), ['init'], env)
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect([
+      existsSync(path.join(outer, '.vx')),
+      existsSync(path.join(outer, 'vx.config.ts')),
+      await readFile(path.join(proj, 'vx.config.ts'), 'utf8'),
+    ]).toEqual([false, false, PROJECT])
+    const lone = path.join(outer, 'lone')
+    await mkdir(lone)
+    await writeFile(path.join(lone, 'package.json'), '{"name":"lone"}\n')
+    expect((await vx(lone, ['init'], env)).code).toBe(0)
+    expect([
+      existsSync(path.join(lone, 'vx.config.ts')),
+      existsSync(path.join(outer, '.vx')),
+    ]).toEqual([true, false])
+  })
+
   // A Bun workspace with scripts got an empty root project and a `next`
   // that never named the tool that makes scripts tasks (2026-10-26).
   it('names vx-migrate in next when there are scripts to map', async () => {
@@ -204,7 +237,9 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
       await next('{"name":"r","private":true,"workspaces":["packages/*"]}'),
       await next('{"name":"r"}', ['pnpm-workspace.yaml', 'packages:\n  - packages/*\n']),
       await next('{"name":"r","scripts":{}}'),
-    ]).toEqual([mapped, mapped, mapped, declare])
+      // A byte-order mark, which npm strips: JSON.parse threw on it.
+      await next('﻿{"name":"r","scripts":{"build":"tsc"}}'),
+    ]).toEqual([mapped, mapped, mapped, declare, mapped])
   })
 })
 

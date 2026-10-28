@@ -100,6 +100,14 @@ describe('resolveFilters', () => {
     expect(value).toEqual({ error: 'no projects matched filter(s): apq.... Did you mean app?' })
   })
 
+  it('the hint reads a negated walk through its operators', async () => {
+    // The strip's `^...` anchored to the string's start, so after `!` went
+    // `...apq` kept its dots and `!...apq` listed the projects instead.
+    const plain = await quiet(() => resolveFilters(root, ['lib', '!apq']))
+    const walked = await quiet(() => resolveFilters(root, ['lib', '!...apq']))
+    expect([plain.stderr, walked.stderr].map((e) => e.includes('fix  app'))).toEqual([true, true])
+  })
+
   it('a diff that matched nothing beside a name that matched is not called a typo', async () => {
     const { value, stderr } = await quiet(() => resolveFilters(root, ['app', '[HEAD]']))
     expect({ value: { ...value, staged: undefined, discovered: undefined }, stderr }).toEqual({

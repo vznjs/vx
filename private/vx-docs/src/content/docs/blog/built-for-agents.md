@@ -58,9 +58,10 @@ $ vx last --format json | jq '.tasks[0] | {project, task, status, exitCode, dura
 
 Each JSON shape ships as a schema in `node_modules/@vzn/vx/schemas/`:
 `plan.json`, `show.json`, `info.json`, `why.json`, `last.json`,
-`cache.json`. A new field is a schema change, never a surprise. A test
-checks each command's output against its schema. Refusals are JSON too:
-[A refusal an agent can read](../error-codes/).
+`cache.json`. A new field is a schema change, never a surprise.
+
+A test checks each command's output against its schema. Refusals are
+JSON too: [A refusal an agent can read](../error-codes/).
 
 ## A failure keeps its log and its files
 
@@ -103,9 +104,12 @@ packages/api|bundle|success|5
 ## Docs and a skill, as markdown
 
 [llms.txt](https://vznjs.github.io/vx/llms.txt) indexes every docs page
-as markdown, and [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt)
-is the whole site in one file. `@vzn/vx` also ships a `SKILL.md` that
-teaches an agent to run, debug and query vx:
+as markdown, and
+[llms-full.txt](https://vznjs.github.io/vx/llms-full.txt) is the whole
+site in one file.
+
+`@vzn/vx` also ships a `SKILL.md` that teaches an agent to run, debug
+and query vx:
 
 ```sh frame="terminal"
 $ mkdir -p .claude/skills/vx

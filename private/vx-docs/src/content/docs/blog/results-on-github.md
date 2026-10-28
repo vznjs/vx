@@ -59,11 +59,14 @@ A killed task reads `exit 137 (128 + SIGKILL)`. A timeout reads
 ## A cache a pull request cannot poison
 
 The cache server decides where a pull request may write. It checks the
-CI token: main writes to the trusted cache, a branch to its own. The
-plugin also gives the PR's base commit, so a bare `--affected` works,
-and a scope name like `acme/app:feat-x`. Opt out with
-`github({ cacheScope: false })`, or set `VX_CACHE_SCOPE` yourself. More
-in [Branch caches a server enforces](../branch-caches-a-server-enforces/).
+CI token: main writes to the trusted cache, a branch to its own.
+
+The plugin also gives the PR's base commit, so a bare `--affected`
+works, and a scope name like `acme/app:feat-x`. Opt out with `github({
+cacheScope: false })`, or set `VX_CACHE_SCOPE` yourself.
+
+More in [Branch caches a server
+enforces](../branch-caches-a-server-enforces/).
 
 ## It never breaks the build
 

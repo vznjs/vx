@@ -23,7 +23,9 @@ time each runner adds on top of the tasks, on one 9,603-task graph:
 
 Lower is better. A cold build's tasks alone take 1 min 53 s with an
 ideal schedule. With nothing changed the ideal is 0, so all of that time
-is the runner. No tool wins every row: Vite Task uses the least CPU.
+is the runner.
+
+No tool wins every row: Vite Task uses the least CPU.
 
 ## Re-run it
 
@@ -60,14 +62,16 @@ Turbo uses none for `turbo run`).
 
 The first two columns are wall time. The third is the runner's own CPU
 time, minus the tasks. A daemon that outlives the run isn't counted, so
-Turborepo's and Nx's CPU are lower bounds. Every row is on
-[Benchmarks](../../benchmarks/).
+Turborepo's and Nx's CPU are lower bounds.
+
+Every row is on [Benchmarks](../../benchmarks/).
 
 ## The method
 
 Every change to vx's warm path ships with a number measured like this:
 before and after interleaved, fastest of N, "before" built from its own
-git worktree. If a number here doesn't reproduce on your machine,
-please file a bug.
+git worktree.
+
+If a number here doesn't reproduce on your machine, please file a bug.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

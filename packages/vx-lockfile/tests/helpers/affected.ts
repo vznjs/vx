@@ -32,6 +32,18 @@ export function commitAll(root: string): void {
   git('commit', '-q', '-m', 'init')
 }
 
+/** The same run, after `vx lock`, when it is refused: its exit code and stderr. */
+export function affectedRefusal(root: string, task: string): { exitCode: number; stderr: string } {
+  const lock = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'lock'], cwd: root })
+  if (lock.exitCode !== 0) throw new Error(`vx lock: ${new TextDecoder().decode(lock.stderr)}`)
+  const r = Bun.spawnSync({
+    cmd: [process.execPath, CORE_BIN, 'run', task, '--affected=HEAD', '--dry=json'],
+    cwd: root,
+    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+  })
+  return { exitCode: r.exitCode, stderr: new TextDecoder().decode(r.stderr) }
+}
+
 /**
  * `vx run <task> --affected=HEAD --dry=json` through the real CLI: the ids
  * of the tasks the run selected, sorted. An empty selection prints no plan,

@@ -35,8 +35,8 @@ describe('resolveNxCacheConfig, exactly', () => {
     const msg = (accessToken: string) =>
       refusal(() => resolveNxCacheConfig({ server: SERVER, accessToken }, {}))
     expect([msg('SECRET\r\nX: y'), msg('SECRET\0'), msg('SECRET')]).toEqual([
-      'vx/nx-cache: the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
-      'vx/nx-cache: the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
+      'nxCache(): the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
+      'nxCache(): the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
       '(no refusal)',
     ])
   })
@@ -49,7 +49,7 @@ describe('resolveNxCacheConfig, exactly', () => {
 
   it('a password with no user name is refused too', () => {
     expect(() => resolveNxCacheConfig({ server: 'http://:pw@nx.invalid' }, {})).toThrow(
-      'vx/nx-cache: server carries credentials (user:pass@); pass them as the accessToken instead',
+      'nxCache(): server carries credentials (user:pass@); pass them as the accessToken instead',
     )
   })
 

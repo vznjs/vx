@@ -49,9 +49,11 @@ flowchart LR
 
 Each run asks git, which already holds a hash for every clean file. A
 clean tree is keyed with no read of a source file
-([how](../keys-from-git/)). Config comes from the lock file, so no
-`vx.config.ts` is evaluated. A hit on an up-to-date tree only checks that
-the outputs are there ([how](../strict-output-ownership/)).
+([how](../keys-from-git/)).
+
+Config comes from the lock file, so no `vx.config.ts` is evaluated. A
+hit on an up-to-date tree only checks that the outputs are there
+([how](../strict-output-ownership/)).
 
 That is the 799 ms. Nothing stays running after it, and a run in a
 terminal, in CI or in a container gives the same answer.

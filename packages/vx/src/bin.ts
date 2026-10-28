@@ -27,9 +27,26 @@ async function main(): Promise<void> {
       // Handed off, it says which vx ran and which one handed it the call.
       const from = process.env['VX_HANDED_OFF']
       const where = from === undefined ? '' : ` (${vxPath()}, handed off from ${from})`
-      await Bun.write(Bun.stdout, `vx ${(await import('./version.js')).VERSION}${where}\n`).catch(
-        () => {},
-      )
+      // Painted as every other line; piped, the same words a script reads.
+      // Decided here, not by util's `detectColors`: the util barrel was the
+      // 20 ms above, and `node:tty` 17 ms; fd 1 as a character device is the
+      // TTY answer. A CI's log is not painted for this one line.
+      const [{ VERSION }, { fstatSync }] = await Promise.all([
+        import('./version.js'),
+        import('node:fs'),
+      ])
+      const env = process.env
+      const on = env['NO_COLOR']
+        ? false
+        : env['FORCE_COLOR'] !== undefined
+          ? env['FORCE_COLOR'] !== '0' && env['FORCE_COLOR'] !== 'false'
+          : env['TERM'] !== 'dumb' && fstatSync(1).isCharacterDevice()
+      const sgr = (code: string, text: string): string =>
+        on ? `\x1b[${code}m${text}\x1b[0m` : text
+      await Bun.write(
+        Bun.stdout,
+        `${sgr('1', 'vx')} ${sgr('38;2;6;182;212', VERSION)}${where === '' ? '' : sgr('2', where)}\n`,
+      ).catch(() => {})
       settled = true
       return
     }
@@ -64,7 +81,10 @@ async function main(): Promise<void> {
     // A plugin's failure quotes what it was told (a remote's reply, a
     // header), and a config's own throw is its author's text: a secret in
     // either reached stderr whole (L-11).
-    const say = (line: string): void => void process.stderr.write(maskedLine(line))
+    const say = (line: string): void =>
+      void process.stderr.write(
+        `${ui.tagged('error', maskedLine(line), detectColors(process.stderr))}\n`,
+      )
     // UserError (workspace not found, cycle, config invalid, ...) —
     // print the message only; the stack is noise the user can't act
     // on. Everything else gets the full stack so internal bugs are
@@ -87,8 +107,7 @@ async function main(): Promise<void> {
       // the verb's write, which the reader cannot act on either.
       say(`vx: ${err.message} — ${fsRefusalHint(err)}\n`)
     } else {
-      const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
-      say(`vx: ${message}\n`)
+      say(`vx: ${withCauses(err)}\n`)
     }
     // A verb asked for JSON answers JSON on a refusal too: an agent reading
     // stdout got nothing to parse, and only prose on stderr to branch on.
@@ -126,6 +145,26 @@ async function exitOnceFlushed(): Promise<void> {
   process.stderr.end(ended)
 }
 
+/**
+ * An error's stack, then each `cause` under it: a config or plugin that
+ * wraps a failure (`new Error(msg, { cause })`) put the reason there, and
+ * the stack alone printed only the wrapper. Bounded, and a cause seen
+ * before ends the chain.
+ */
+function withCauses(err: unknown): string {
+  const text = (e: unknown): string =>
+    e instanceof Error ? (e.stack ?? `${e.name}: ${e.message}`) : String(e)
+  let out = text(err)
+  const seen = new Set<unknown>([err])
+  let at = err instanceof Error ? err.cause : undefined
+  for (let depth = 0; at !== undefined && at !== null && !seen.has(at) && depth < 8; depth++) {
+    seen.add(at)
+    out += `\nCaused by: ${at instanceof Error ? text(at) : Bun.inspect(at)}`
+    at = at instanceof Error ? at.cause : undefined
+  }
+  return out
+}
+
 // The loop drained while the verb was still pending: something it awaits
 // can never settle (a plugin hook whose promise is never resolved), and
 // with no exit code set Bun exits 0 — a run whose task failed reported
@@ -134,8 +173,9 @@ async function exitOnceFlushed(): Promise<void> {
 process.on('beforeExit', () => {
   if (settled) return
   settled = true
-  process.stderr.write(
-    'vx: the run stopped before it finished: something it awaited can never settle (a plugin hook?)\n',
+  ;(require('./util/index.js') as typeof import('./util/index.js')).ui.say(
+    'error',
+    'vx: the run stopped before it finished: something it awaited can never settle (a plugin hook?)',
   )
   process.exitCode = 1
 })

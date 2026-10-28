@@ -234,6 +234,9 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     // a dev session still leaves its record.
     const last = await lastRun(root)
     expect(last.tasks.map((t) => t.status)).toEqual(['success'])
+    // The server's 130 was the stop's, not a crash: the record read FAILED
+    // with no failure in it, over the previous real run (item 854).
+    expect(last.invocation.exitOk).toBe(true)
   }, 20_000)
   // WD-16: a stop after the summary signalled once by the abort, then again
   // by the wait's own teardown once another kept server went: a server that
@@ -551,6 +554,16 @@ describe('a persistent server that dies before the run stops it', () => {
       pinned: [],
       tally: '1 failed · 1 success · 2 total',
     })
+  }, 20_000)
+
+  // Dead within a few ms of its spawn, the server was not yet reaped when
+  // the graph ended: nothing gave Bun a turn, so `exitCode` still read
+  // null, the footer said `1 success` with the server `running`, over a
+  // red exit (20 of 20 runs).
+  it('a requested server that dies at once fails the footer it exits on', async () => {
+    await addProject(root, 'app', crashing('echo READY; exit 3'))
+    const r = await run(root, ['srv'])
+    expect([r.code, r.pinned, r.tally]).toEqual([1, [], '1 failed · 1 total'])
   }, 20_000)
 
   // WD-10: its output block closed `running` under the line naming its exit.

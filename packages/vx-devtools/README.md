@@ -67,8 +67,8 @@ export function oidcTokenAuth(
 - With `oidcAuth`, every request names its repository: `vx-issuer` and `vx-repository`,
   the `hashPart`s of the issuer's URL (no trailing slash) and of its
   `org/name` lowercased; one missing or not a hash is `400`.
-- The token's repository is its issuer and its name, `org/name`
-  lowercased: `repository` (GitHub) or `project_path` (GitLab), what a
+- The token's repository is its issuer (a trailing slash, in `ALLOW` or
+  the token, is the same issuer) and its name, `org/name` lowercased: `repository` (GitHub) or `project_path` (GitLab), what a
   checkout's origin names (2026-10-25). One `ALLOW` does not name is
   `403`, and so is one other than the request names.
 - The token's workflow (`job_workflow_ref` on GitHub, `ci_config_ref_uri`
@@ -78,6 +78,7 @@ export function oidcTokenAuth(
   reads the repository it names when `ALLOW` names it (else `403`), and
   writes nothing. Any other value than `public` or unset throws.
 - A token writes its branch (a `pull_request` run's head branch on GitHub;
-  a merge queue's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
+  a `merge_group` run's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
   ref, else `ref`; GitLab's `ref_path`). A `pull_request_target` run writes
-  nothing: its `head_ref` a fork names, and its `ref` is the base.
+  nothing: its `head_ref` a fork names, and its `ref` is the base. Nor does
+  a `pull_request` run whose head branch has its base branch's name.

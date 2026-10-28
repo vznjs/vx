@@ -192,17 +192,44 @@ describe('vx run with no vx config', () => {
       const r = await vx(root, ['run', 'build', '--all'])
       expect(r.code).not.toBe(0)
       expect(`${r.out}${r.err}`).toContain(
-        'No directory holds a vx.config — run `vx init` to write them, then `vx lock`',
+        'The lock holds no project — write a vx.config (`vx init`), then run `vx lock`',
       )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  // A run reads only the lock: with configs on disk and none locked, "no
+  // directory holds a vx.config" was false, and sent the user to `vx init`.
+  it('a lock that holds no project, beside a vx.config, does not deny the config', async () => {
+    const root = await makeRoot('vx-init-empty-lock-')
+    await addPackage(root, 'w', { build: 'echo hi' })
+    await Bun.write(
+      path.join(root, 'packages/w/vx.config.mjs'),
+      "export default { tasks: { build: { command: 'echo hi' } } }\n",
+    )
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"version":4,"projects":{}}\n')
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    const said = (args: string[]): string => {
+      const r = Bun.spawnSync([process.execPath, bin, ...args], { cwd: root })
+      return `${r.stdout.toString()}${r.stderr.toString()}`
+    }
+    try {
+      for (const out of [said(['run', 'build', '--all']), said(['show'])]) {
+        expect(out).not.toContain('o directory holds a vx.config')
+        expect(out).toContain('run `vx lock`')
+      }
     } finally {
       await rm(root, { recursive: true, force: true })
     }
   })
 })
 
-describe('vx init --plugin <seam>', () => {
+describe('vx init --plugin <hook>', () => {
   it(
-    "writes the seam's plugin and its test, refuses to overwrite, and names the seams",
+    "writes the hook's plugin and its test, refuses to overwrite, and names the hooks",
     async () => {
       const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-plugin-'))
       try {
@@ -225,15 +252,21 @@ describe('vx init --plugin <seam>', () => {
         expect([bad.code, bad.err]).toEqual([
           1,
           noticed(
-            `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope') (see \`vx init --help\`)\n`,
+            `vx init: --plugin takes a hook: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope') (see \`vx init --help\`)\n`,
           ),
         ])
         const empty = await vx(root, ['init', '--plugin='])
         expect([empty.code, empty.err]).toEqual([
           1,
           noticed(
-            `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (see \`vx init --help\`)\n`,
+            `vx init: --plugin takes a hook: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (see \`vx init --help\`)\n`,
           ),
+        ])
+        // "Seam" is vx's own word for its design; users write hooks.
+        const help = await vx(root, ['init', '--help'])
+        expect([help.out.includes('--plugin <hook>'), /seam/i.test(help.out)]).toEqual([
+          true,
+          false,
         ])
         // --dry writes nothing.
         const dry = await vx(root, ['init', '--plugin=graph', '--dry'])

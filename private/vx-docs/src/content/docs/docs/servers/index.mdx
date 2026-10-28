@@ -37,7 +37,8 @@ What that gives each run of `ci.yml`:
 - **A `pull_request_target` run** reads and writes nothing: it runs on
   the base branch for a fork's code.
 - **A run of another workflow or repository** is refused. With `ALLOW`
-  empty, every request is refused: `the server admits no CI: set ALLOW`.
+  empty, every request is refused: `ALLOW is empty: set it to the CI
+  workflows this server serves`.
 
 On GitLab, the workflow is the CI file:
 `https://gitlab.com:acme/web:.gitlab-ci.yml`.
@@ -45,8 +46,9 @@ On GitLab, the workflow is the CI file:
 <details>
 <summary>What a merge queue writes</summary>
 
-A GitHub merge queue run, on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
-writes `main` before its code lands. Code you queue is code you trust,
+A GitHub merge queue run (`merge_group`), on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
+writes `main` before its code lands. A push to a branch of that name
+writes only that branch. Code you queue is code you trust,
 so run security checks on the pull request, before it is queued.
 
 </details>
@@ -62,6 +64,9 @@ branch name. A renamed repository starts with an empty cache.
 
 `AUDIENCE` is the `aud` a token must name. By default it is the URL the
 server is reached at, which is what the plugins ask the CI for.
+
+Behind a proxy that ends TLS the server sees `http://`, so set
+`AUDIENCE` to its public URL there.
 
 `READ_ACCESS=public` lets a request with no token, such as a laptop's,
 read a repository `ALLOW` names. It writes nothing.

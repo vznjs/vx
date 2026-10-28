@@ -51,7 +51,7 @@ describe("a task's PATH decides its command, never its shell", () => {
       await spawn.ready
       expect(out.join('')).toStartWith('parsed by the real shell\ntool ran')
     } finally {
-      await spawn.child.exited
+      await spawn.child!.exited
     }
   })
 

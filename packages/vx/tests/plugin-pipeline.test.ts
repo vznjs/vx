@@ -193,6 +193,32 @@ describe('config stage', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a plugin that edits `plugins` is refused: the list is fixed before the stage',
+    async () => {
+      // The edit was validated, then dropped: a plugin that took one off
+      // (`ws.plugins.length = 0`) loaded, changed nothing and said nothing.
+      await pkg('a', build)
+      const refusal = async (edit: string): Promise<string | undefined> => {
+        await workspace([
+          pluginSource('org/other', `{ teardown() {} }`),
+          pluginSource('org/broken', `{ config(ws) { ${edit} } }`),
+        ])
+        return planRun({ cwd: root, tasks: ['build'], log: silent() }).then(
+          () => undefined,
+          (e: unknown) => (e as Error).message,
+        )
+      }
+      const refused = `${LOCK_REFUSED}.vx/workspace (after plugin 'org/broken'): \`plugins\` is fixed before the config stage runs — a plugin cannot add, drop or reorder plugins`
+      expect(await refusal('ws.plugins.length = 0')).toBe(refused)
+      expect(await refusal('ws.plugins.reverse()')).toBe(refused)
+      expect(await refusal('delete ws.plugins')).toBe(refused)
+      // CONTROL: an edit beside the list passes.
+      expect(await refusal('ws.plugins.slice(); ws.run = {}')).toBeUndefined()
+    },
+    TIMEOUT,
+  )
 })
 
 describe('discover stage', () => {

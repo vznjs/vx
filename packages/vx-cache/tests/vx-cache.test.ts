@@ -205,6 +205,42 @@ describe('VxCacheLayer', () => {
     expect(await c.has('aa11')).not.toBeNull()
   })
 
+  // A refusal answered to requests already in flight was said by the first
+  // alone; the others' bodies were left unread, each holding its connection.
+  it('releases the body of every refusal it does not say', async () => {
+    const open = new Set<number>()
+    let n = 0
+    const refusing: typeof fetch = Object.assign(
+      () => {
+        const id = n++
+        open.add(id)
+        // Pulled only as it is read: unread, it stays open.
+        const body = new ReadableStream(
+          {
+            pull(c) {
+              c.enqueue(new TextEncoder().encode('{"message":"no"}'))
+              c.close()
+              open.delete(id)
+            },
+            cancel: () => void open.delete(id),
+          },
+          { highWaterMark: 0 },
+        )
+        return Promise.resolve(new Response(body, { status: 403 }))
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const c = layer(srv.url, write, [MAIN], refusing)
+    const puts = ['a1', 'a2', 'a3'].map((h) => c.put(h, new Blob(['x']), { durationMs: 1 }))
+    expect((await Promise.allSettled(puts)).map((p) => p.status).sort()).toEqual([
+      'fulfilled',
+      'fulfilled',
+      'rejected',
+    ])
+    expect(await Promise.allSettled([c.has('b1'), c.get('b2')])).toHaveLength(2)
+    expect([n, open.size]).toEqual([5, 0])
+  })
+
   // #4439: git takes any UTF-8 in a branch name, a header only bytes; the
   // old header of every read ref refused the whole run's reads.
   it('reads and writes under a UTF-8 branch name', async () => {
@@ -246,6 +282,44 @@ describe('VxCacheLayer', () => {
     expect(
       layer(srv.url, write).put('ee55', new Blob([new Uint8Array(65)]), { durationMs: 1 }),
     ).rejects.toThrow('HTTP 413: an upload is at most 64 bytes')
+  })
+
+  // fetch drops only Authorization on a cross-origin redirect: `headers`
+  // (a CF-Access secret) went on to the host the 307 named.
+  it('follows no redirect, naming it, and sends its headers nowhere else', async () => {
+    const other: string[] = []
+    const elsewhere = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => (other.push(req.url), Response.json({})),
+    })
+    const moved = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => Response.redirect(`${elsewhere.url.origin}${new URL(req.url).pathname}`, 307),
+    })
+    try {
+      const c = new VxCacheLayer(
+        {
+          url: moved.url.origin,
+          timeoutMs: 5_000,
+          uploadTimeoutMs: 5_000,
+          headers: { 'CF-Access-Client-Secret': 's' },
+          issuer: GITHUB,
+          repository: REPO,
+        },
+        fetch,
+        { VX_CACHE_TOKEN: write },
+      )
+      c.refs = [MAIN]
+      await expect(c.has('aa11')).rejects.toThrow(
+        `HTTP 307 to ${elsewhere.url.origin}/v1/capabilities: not followed`,
+      )
+      expect(other).toEqual([])
+    } finally {
+      await moved.stop(true)
+      await elsewhere.stop(true)
+    }
   })
 })
 
@@ -541,6 +615,25 @@ describe('config', () => {
       [{ issuer: GITHUB, repository: 'app' }, 'vxCache(): repository must be org/name, got app'],
     ] as const)
       expect(() => vxCache(options as never)).toThrow(said)
+  })
+
+  // A deadline a timer cannot wait on ended every request at once: Bun
+  // fires a zero, NaN, Infinity or past-2^31 one after 1 ms.
+  it('refuses a deadline a timer cannot wait on', () => {
+    for (const [key, ms] of [
+      ['timeoutMs', 0],
+      ['timeoutMs', -1],
+      ['timeoutMs', Number.NaN],
+      ['uploadTimeoutMs', Number.POSITIVE_INFINITY],
+      ['uploadTimeoutMs', 2 ** 31],
+    ] as const)
+      expect(() => vxCache({ ...NAMED, url: 'https://c.example', [key]: ms })).toThrow(
+        `vxCache(): ${key} must be a number of ms from 1 to 2147483647, got ${ms}`,
+      )
+    expect(
+      resolveVxCacheConfig({ ...NAMED, url: 'https://c.example', timeoutMs: 2 ** 31 - 1 }, {})
+        ?.timeoutMs,
+    ).toBe(2 ** 31 - 1)
   })
 
   it('reads with no token from a public server, sends none, and uploads nothing', async () => {

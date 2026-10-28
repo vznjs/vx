@@ -14,8 +14,11 @@ import { VERSION } from '../version.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
 /** The root config `vx init` writes outside a Turbo or Nx repo: no task yet. */
-export const STARTER_PROJECT =
-  "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: {} })\n"
+export function starterProject(format: MigrationFormat): string {
+  return format === 'ts'
+    ? "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default { tasks: {} } satisfies ProjectConfig\n"
+    : 'export default { tasks: {} }\n'
+}
 
 /**
  * Whether `file` is `vx init`'s starter, untouched: a migration maps over it
@@ -23,7 +26,8 @@ export const STARTER_PROJECT =
  */
 export function isStarterConfig(file: string): boolean {
   try {
-    return readFileSync(file, 'utf8') === STARTER_PROJECT
+    const text = readFileSync(file, 'utf8')
+    return text === starterProject('ts') || text === starterProject('mjs')
   } catch {
     return false
   }
@@ -320,7 +324,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     files.push({
       relPath: relPosix(root, abs),
       abs,
-      contents: workspaceFile(format, args.plugins ?? []),
+      contents: renderWorkspace(format, args.plugins ?? []),
     })
   }
   // `.vx/.gitignore` keeps the machine-local `.vx/cache` out of git and the
@@ -364,7 +368,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   }
   if (dry && args.json !== true) {
     for (const f of files) {
-      process.stdout.write(`── ${f.relPath} ──\n${f.contents}\n`)
+      ui.print('out', ui.excerpt(f.relPath, f.contents))
     }
   } else if (!dry) {
     for (const f of files) await Bun.write(f.abs, f.contents)
@@ -647,12 +651,15 @@ function exampleConfig(format: MigrationFormat): string {
 
 // ─── TS emission ──────────────────────────────────────────────────────
 
-// Type-only import + `satisfies`, like the project configs: a runtime
-// `import { defineWorkspace } from '@vzn/vx'` loads a SECOND copy of core
-// into every run — measured 2026-09-09 at ~17 ms on a two-package
-// workspace, a fifth of the whole run — for an identity function.
+// Type-only import + `satisfies`, like the project configs: Bun erases it,
+// so the file loads with nothing installed, and a user's tsc checks it
+// against config.ts alone, where `@vzn/vx` walks core's Bun-only sources
+// (527 errors, J-94). `vx init` writes the same file.
 // No explanatory comment: the file is the user's (2026-10-06).
-function workspaceFile(format: MigrationFormat, plugins: readonly WorkspacePlugin[]): string {
+export function renderWorkspace(
+  format: MigrationFormat,
+  plugins: readonly WorkspacePlugin[],
+): string {
   const imports = plugins.map((p) => `import { ${p.factory} } from '${p.pkg}'\n`).join('')
   const body = `export default { plugins: [${plugins.map((p) => `${p.factory}()`).join(', ')}] }`
   return format === 'ts'
@@ -774,7 +781,10 @@ function ownConfigNamed(
 
 function readManifest(dir: string): { type?: unknown } | undefined {
   try {
-    return JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as { type?: unknown }
+    // A byte-order mark is stripped, as npm strips it.
+    return JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8').replace(/^﻿/, '')) as {
+      type?: unknown
+    }
   } catch {
     return undefined
   }

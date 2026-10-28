@@ -25,7 +25,9 @@ export default defineWorkspace({
 Off CI a run reads the remote and does not write it unless its policy names
 the remote. Give the write credential only to the default branch's CI and a
 read-only one to laptops and pull request jobs: the server's token is the
-boundary (`docs/security.md` § Cache poisoning).
+boundary (`docs/security.md` § Cache poisoning). A server that refuses a
+save's `UpdateActionResult` (`PERMISSION_DENIED`, `UNIMPLEMENTED`) is taken
+at its word for the run: later saves fail the same way without uploading.
 
 `ReapiRemoteCache` is the layer class behind `reapi()`, for a workspace that
 composes cache layers by hand. The package exports `reapi`, `ReapiPluginOptions`,
@@ -49,7 +51,9 @@ boolean: a string (`process.env.X`) is refused.
 `instanceName` is the option form of `VX_REAPI_INSTANCE`; like the endpoint
 it is trimmed, and a blank one is unset. `headers`
 adds gRPC metadata to every call: a hosted server's API key goes there
-(`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`).
+(`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`); a value
+that is not a string, such as an unset variable's, is refused when the
+plugin is declared, as is one in `platform`.
 `toolName` and `toolVersion` (default `vx`, `0.0.0`) fill each call's
 `RequestMetadata.tool_details`, and `correlatedInvocationsId` groups several
 runs as one build in a server's UI.
@@ -102,9 +106,10 @@ See Bun [#30342](https://github.com/oven-sh/bun/issues/30342) and
 [#26915](https://github.com/oven-sh/bun/issues/26915), largely fixed by
 [#31584](https://github.com/oven-sh/bun/pull/31584) — which is why the ceiling
 _rose_ from ~64 KB on Bun 1.3.x to ~216 KB on 1.4.0 rather than the hang going
-away. Hence **Bun >= 1.4** is required, and the plugin refuses to start on
-anything older with a named error: the alternative is a wedged upload with
-nothing for a user to act on.
+away. Hence **Bun >= 1.4.4** is required (core's own floor, the package's
+`engines.bun`), and the plugin refuses to start on anything older with a
+named error: the alternative is a wedged upload with nothing for a user to
+act on.
 
 The default is the one size with no peer-dependence — 65535, the RFC 7540
 default initial window every peer must honour with no `WINDOW_UPDATE` at
@@ -114,7 +119,7 @@ the call's 30 s deadline; 65535 stalled in none, and costs ~51% on a 32 MiB
 upload (390 → 590 ms on loopback). A larger `chunkBytes` is still accepted:
 
 ```ts
-reapi({ endpoint: '…', chunkBytes: 128 * 1024 })
+reapi({ endpoint: 'grpcs://cache.example.com:443', chunkBytes: 128 * 1024 })
 ```
 
 The stall is a RACE, not a boundary. So above the safe size the client
@@ -229,8 +234,9 @@ digest not asked for is dropped.
 A verified blob still lands where the server's ActionResult says, so its
 paths are held to the workspace: an output path or Tree name that climbs
 out (`..`, absolute), a link whose target leaves the workspace (read as
-the OS follows it, through the links the result placed), and a
-directory that resolves out through a link are refused before anything
+the OS follows it, through the links the result placed), a
+directory that resolves out through a link, and a file or link that
+lands, through one, where no declared glob names are refused before anything
 is written through them; a link standing at an output file is replaced, never written
 through; a Tree file's setuid and setgid bits are dropped.
 
@@ -269,9 +275,10 @@ minutes before it can degrade, which is the opposite of what the deadline is
 for.
 
 Each deadline must be a positive number of ms; anything else is refused when
-the plugin starts. `executeTimeoutMs` and `queueTimeoutMs` are held to the
-same rule when the executor starts, so with `execute` off they are not
-checked.
+the plugin starts. `executeTimeoutMs` and `queueTimeoutMs` are checked when
+the executor starts, so with `execute` off they are not checked. They wait
+on a timer, so each must also be at most 2147483647 (a longer timer fires at
+once).
 
 That is not hypothetical. A NativeLink instance degraded into a state where it
 answered every ActionCache MISS in 3 ms and every HIT never — idle CPU,

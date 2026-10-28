@@ -108,9 +108,9 @@ export const CATEGORIES: readonly Category[] = [
   {
     id: 'extend',
     title: 'Plugins',
-    line: 'Seams for where tasks run, cache and report.',
+    line: 'Plugins decide where tasks run, cache and report.',
     intro:
-      'vx is a pipeline with seams. A plugin decides where a task runs, where its outputs live and who hears about it, from remote execution to OpenTelemetry.',
+      'vx is a pipeline of stages. A plugin decides where a task runs, where its outputs live and who hears about it, from remote execution to OpenTelemetry.',
   },
 ]
 
@@ -701,12 +701,12 @@ export default defineProject({
   // ---- Plugins ----
   {
     slug: 'plugins',
-    title: 'A pipeline with seams',
+    title: 'A pipeline plugins fill',
     category: 'extend',
-    hook: 'Fifteen seams, and core applies no plugin by default.',
+    hook: 'Fifteen stages, and core applies no plugin by default.',
     body: [
-      'vx is a pipeline: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, output, setup, teardown and commands. Each is a seam a plugin can fill.',
-      'Plugins decide where a task runs, where artifacts live, who observes, who draws the terminal and which CLI verbs exist. Running and caching on this machine are core’s floor, so a workspace with no plugin still runs and caches.',
+      'vx is a pipeline: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, output, setup, teardown and commands. A plugin can fill any of them.',
+      'Plugins decide where a task runs, where artifacts live, who observes, who draws the terminal and which CLI verbs exist. Running and caching on this machine are built into core, so a workspace with no plugin still runs and caches.',
     ],
     example: {
       lang: 'ts',
@@ -720,9 +720,9 @@ export default defineWorkspace({
 })`,
     },
     image: 'plugins.png',
-    imageAlt: 'The vx pipeline and the seams plugins fill.',
+    imageAlt: 'The vx pipeline and the stages plugins fill.',
     docs: { label: 'Plugins', href: 'docs/plugins/' },
-    deepDive: { label: 'A pipeline with seams', href: 'blog/pipeline-with-seams/' },
+    deepDive: { label: 'A plugin fills one stage', href: 'blog/pipeline-with-seams/' },
   },
   {
     slug: 'remote-execution',

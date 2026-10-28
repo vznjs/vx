@@ -625,6 +625,21 @@ describe('Nx glob grammar in inputs', () => {
     expect([got.files, got.todos]).toEqual([['**/*', '!**/{*.,}{spec,test}.[jt]s{x,}'], []])
   })
 
+  // Nx's native glob reads a bare `(a|b)` as `{a,b}` and `(a)` as `a`; read
+  // as literal text, `src/*.(js|ts)` keyed on nothing and an edit hit.
+  it('a bare group is its alternatives', () => {
+    const got = inputs(['{projectRoot}/src/*.(js|ts)', '!{projectRoot}/src/(gen)/**'])
+    expect([got.files, got.todos]).toEqual([['src/*.{js,ts}', '!src/gen/**'], []])
+  })
+
+  it('a bare group whose alternative holds a brace or a comma is a todo', () => {
+    const got = inputs(['{projectRoot}/src/*.({a,b}|c)'])
+    expect([got.files, got.todos]).toEqual([
+      [],
+      ['input "{projectRoot}/src/*.({a,b}|c)": glob syntax vx cannot take — map manually'],
+    ])
+  })
+
   it('what has no safe form is a todo', () => {
     const got = inputs(['{projectRoot}/+(a|b).ts', '!{projectRoot}/!(a).ts'])
     expect([got.files, got.todos]).toEqual([

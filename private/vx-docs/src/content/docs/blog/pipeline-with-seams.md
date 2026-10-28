@@ -81,9 +81,11 @@ is its package name, read from `import.meta`.
 | `@vzn/vx-otel`, `@vzn/vx-ci` | `telemetry` |
 
 Each imports core only through `@vzn/vx`, and a test pins that surface.
-When core grows a branch for one consumer, the seam is too narrow, so
-we widen it. Core applies no plugin by default. Only running and
-caching here are built in ([the local floor](../the-local-floor/)).
+When core grows a branch for one consumer, the plugin point is too
+narrow, so we widen it. Core applies no plugin by default.
+
+Only running and caching here are built in ([running here is not a
+plugin](../the-local-floor/)).
 
 Guide: [Writing a vx plugin](../../docs/plugins/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

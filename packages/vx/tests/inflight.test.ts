@@ -240,6 +240,36 @@ describe('in-flight dedup', () => {
     }, 30_000)
   }
 
+  it('joiners released by a sibling that saved nothing run one at a time', async () => {
+    // The executor fails, so its barrier lifts with no entry and every
+    // joiner runs the task itself. Each must take the barrier in turn: two
+    // released at once ran it side by side in the one directory.
+    const root = await makeWorkspace()
+    try {
+      await writeFile(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+  tasks: {
+    flaky: {
+      exec: { command: 'printf s >> log.txt; sleep 1; printf e >> log.txt; exit 1' },
+      inputs: { files: ['input.txt'] }, cache: { outputs: { files: [] } },
+    },
+  },
+}
+`,
+      )
+      const inflight = new Map<string, Promise<void>>()
+      const opts: RunOptions = { cwd: root, tasks: ['flaky'], log: silent, inflight }
+      await lock(root)
+      const runs = await Promise.all([coreRun(opts), coreRun(opts), coreRun(opts)])
+      expect(runs.map((r) => r.ok)).toEqual([false, false, false])
+      expect(await readFile(path.join(root, 'log.txt'), 'utf8')).toBe('sesese')
+      expect(inflight.size).toBe(0)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it('without a shared registry, concurrent duplicates BOTH execute', async () => {
     const root = await makeWorkspace()
     try {

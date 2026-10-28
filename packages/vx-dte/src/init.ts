@@ -61,14 +61,14 @@ export function originOf(root: string): { repository?: string; host?: string } {
 const SITE = 'https://vznjs.github.io/vx/docs'
 const RELAY_DOCS = 'https://vznjs.github.io/vx/docs/relay/'
 
-/** What is left after the files: a relay that admits them, a shared cache, a commit. */
+/** What is left after the files: a relay that lets them in, a shared cache, a commit. */
 function nextSteps(relay: string | undefined, allow: string, files: readonly string[]): string[] {
   return [
     '',
     'Next:',
     relay === undefined
       ? `  1. A relay, where the run and its workers meet. Deploy your own on Cloudflare's free plan (the Deploy button) or run it with Bun or Docker: ${RELAY_DOCS}`
-      : `  1. The relay at ${relay} must admit these workflows.`,
+      : `  1. Let these workflows use the relay at ${relay}: set its ALLOW.`,
     `     Its ALLOW (a plain var, no secret): ${allow}`,
     ...(relay === undefined
       ? ["     Then name it in .vx/workspace.ts: dte({ relay: 'https://<your relay>' })"]
@@ -239,13 +239,14 @@ ${install.join('\n')}
 `
   const vx = vxCommand(setup.manager)
   const named = setup.tasks.main !== '' && setup.tasks.change !== ''
-  const run = `# Written by vx dte init: the run. main runs every task and fills the cache;
+  const run = `# Written by vx dte init: the run. main and a merge queue run every task;
 # a pull request runs what it changed and its dependents. This job only
 # orchestrates: every task runs on a worker (${workflow}).
 name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 

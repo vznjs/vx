@@ -77,6 +77,6 @@ it('a collector that redirects is refused, and the key never leaves for the new 
   await sink.flush(new AbortController().signal)
   expect(moved).toEqual([])
   expect(warnings.map((w) => w.replace(/127\.0\.0\.1:\d+|localhost:\d+/g, 'H'))).toEqual([
-    '[vx-otel] export failed for http://H/v1/traces: HTTP 307: the collector redirected to http://H/moved; OTLP exporters follow no redirect — set the endpoint to where it points',
+    '[vx] vx-otel: export failed for http://H/v1/traces: HTTP 307: the collector redirected to http://H/moved; OTLP exporters follow no redirect — set the endpoint to where it points',
   ])
 })

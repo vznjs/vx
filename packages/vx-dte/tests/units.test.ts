@@ -14,7 +14,7 @@ import {
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, homeOf, needOf, pace } from '../src/plugin.js'
-import type { Platform } from '@vzn/vx'
+import { hostPlatform, type Platform } from '@vzn/vx'
 import {
   type CacheFacts,
   type CapturedChunk,
@@ -27,7 +27,7 @@ import { nestedIn, Orchestrator, runKey } from '../src/orchestrator.js'
 import { assign, fits, type Need } from '../src/dispatch.js'
 import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
-import { planTasks, tailsMs } from '../src/planner.js'
+import { plan, planTasks, tailsMs } from '../src/planner.js'
 import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder, ToWorker, WiredResult } from '../src/messages.js'
@@ -348,6 +348,69 @@ it('a worker sent a task it runs already does not run it again', async () => {
   }
 })
 
+// A task runs in a process group of its own: a Ctrl-C reaches the worker
+// (local() starts it in the terminal's group) but not the task, and a
+// worker that died of it left the task running.
+it('a worker stopped by a signal stops its tasks before it exits', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  let pid: number | undefined
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, 'worker-child.ts'), served.url, R, root],
+      { stdio: ['ignore', 'ignore', 'inherit'] },
+    )
+    const order: RunOrder = {
+      task: 't',
+      key: 'k-t',
+      runKey: runKey(R, 't'),
+      deps: [],
+      nested: [],
+      command: 'echo $$ > pid.txt && exec sleep 30',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    for (let i = 0; i < 100 && pid === undefined; i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string }
+        if (from !== 'relay' || m.type !== 'joined') continue
+        await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+        await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+      }
+      const text = await readFile(path.join(root, 'pid.txt'), 'utf8').catch(() => '')
+      if (text.endsWith('\n')) pid = Number(text)
+    }
+    expect(pid).toBeNumber()
+    child.kill('SIGINT')
+    expect(await child.exited).toBe(130)
+    const alive = (): boolean => {
+      try {
+        process.kill(pid!, 0)
+        return true
+      } catch {
+        return false
+      }
+    }
+    expect(alive()).toBe(false)
+    pid = undefined
+    // Not the task's failure: it runs again on another worker.
+    const after = (await o.poll()).map(({ body }) => (body as { type: string }).type)
+    expect(after).not.toContain('end')
+  } finally {
+    if (pid !== undefined) process.kill(pid, 'SIGKILL')
+    await served.stop()
+  }
+})
+
 it('gives failed worker starts three more workers, then fails the run', async () => {
   const served = servedRelay()
   const url = served.url
@@ -648,6 +711,35 @@ it('a worker reads the cache as the run does, and is lent its remotes’ access 
       },
       { type: 'cache', cache: { refs: ['refs/heads/feat'], lent: { '@vzn/vx-migrate': 't2' } } },
     ])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Core's lend lends nothing for a remote whose lend threw (a CI OIDC 5xx):
+// the run sent that to its workers, which lost the remote while its token
+// still held, and, as that token ended no relend came, for the rest of the run.
+it('a relend that lends a remote nothing keeps the token it lent before', async () => {
+  const h = await harness(new Map())
+  try {
+    h.cache.facts = {
+      refs: ['refs/heads/main'],
+      lent: { '@vzn/vx-cache': 't1' },
+      expiresAt: Date.now() + 4 * 60_000 + 200,
+    }
+    const a = await h.worker(2)
+    const got: { type: string; cache?: { lent: Record<string, string> } }[] = []
+    const until = Date.now() + 1200
+    while (Date.now() < until) {
+      got.push(
+        ...(await Promise.race([a.poll(), Bun.sleep(until - Date.now()).then(() => [])])).map(
+          (m) => m.body as (typeof got)[number],
+        ),
+      )
+      if (got.length === 1) h.cache.facts = { refs: ['refs/heads/main'], lent: {} }
+    }
+    expect(got[0]?.type).toBe('welcome')
+    for (const m of got) expect(m.cache?.lent).toEqual({ '@vzn/vx-cache': 't1' })
   } finally {
     await h.stop()
   }
@@ -1121,6 +1213,27 @@ it('a task naming no platform goes only to a worker of the run’s home platform
     void h.o.execute(h.req('t1'))
     expect(await linux.batches()).toEqual([['t1']])
     expect(h.o.planState(() => undefined, 0).workers.find((w) => w.id === mac.id)?.idle).toBe(true)
+  } finally {
+    await h.stop()
+  }
+})
+
+// A size that names no platform is planned as this machine's (plugin.ts),
+// but its workers still starting were planned on none: in a run over two
+// platforms every task names one, so none fit them, and each plan
+// cancelled the Linux workers the one before had asked.
+it('plans a worker still starting, of a size naming no platform, as this machine’s', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    home: hostPlatform(),
+  })
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 1e9 })
+    const { workers } = h.o.planState(() => undefined, 20_000)
+    expect(workers.map((w) => w.platform)).toEqual([hostPlatform()])
+    const t1 = { id: 't1', cores: 1, memory: 1, ms: 10_000, deps: [], platform: hostPlatform() }
+    const small = { name: 'small', max: 2, cpu: 4, memory: 1e9, platform: hostPlatform() }
+    const p = plan([t1], workers, [small], 20_000)
+    expect([p.release, p.start]).toEqual([[], []])
   } finally {
     await h.stop()
   }
@@ -1658,12 +1771,15 @@ it('a task whose command ended keeps its lease while its worker holds it, and a 
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
-    await a.say({ type: 'ran', task: 't1' })
-    const b = await h.worker(1)
-    // Saving, it still holds t1: past a run's lease (0.6 s here), t1 stays.
+    // Held each beat from the batch on, as a worker says it. Begun after
+    // `ran` and `b`'s join, a runner's 400 ms stall there ended the lease
+    // before the first `held` (CI, 2026-10-28).
     const alive = setInterval(() => void a.say({ type: 'held', running: ['t1'] }), beat)
     try {
+      await a.begin('t1')
+      await a.say({ type: 'ran', task: 't1' })
+      const b = await h.worker(1)
+      // Saving, it still holds t1: past a run's lease (0.6 s here), t1 stays.
       expect(await b.batches()).toEqual([])
       expect(await b.batches()).toEqual([])
     } finally {
@@ -1827,6 +1943,38 @@ it('sends a dependency a worker could not read over the remotes’ copy, and the
     await a.finish('t', a.orders[1]!.runKey, unread)
     expect((await ran).exitCode).toBe(1)
     expect(h.store.shared).toEqual(['k-d again'])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Two dependants of one dependency fail to read it together: the first's
+// end sent it again and ran it again, the second's found the key sent and
+// failed its task, though the copy it could not read was now replaced.
+it('runs again each task that could not read a dependency sent again for them', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const a = await h.worker(2)
+    await Bun.sleep(50)
+    const ran = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    expect((await a.batches()).flat().sort()).toEqual(['t1', 't2'])
+    const unread = { exitCode: 1, durationMs: 0, unread: ['k-d'] }
+    const key = (t: string) => a.orders.find((o) => o.task === t)!.runKey
+    await a.finish('t1', key('t1'), unread)
+    await a.finish('t2', key('t2'), unread)
+    const t2 = await Promise.race([ran[1]!.then((r) => r.exitCode), Bun.sleep(300)])
+    expect(t2).toBeUndefined()
+    const again: string[] = []
+    while (again.length < 2) {
+      const b = (await a.batches()).flat()
+      if (b.length === 0) break
+      again.push(...b)
+    }
+    expect(again.sort()).toEqual(['t1', 't2'])
+    expect(h.store.shared).toEqual(['k-d again'])
+    const resends = a.orders.slice(2)
+    for (const o of resends) await a.finish(o.task, o.runKey)
+    expect((await Promise.all(ran)).map((r) => r.exitCode)).toEqual([0, 0])
   } finally {
     await h.stop()
   }
@@ -3125,6 +3273,25 @@ it('refuses options it does not read and workers it cannot start', () => {
       dte({ workers: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } }, adapter }),
     ),
   ).toBe('dte(): workers.s.platform is one of linux-x64, linux-arm64, darwin-x64, darwin-arm64')
+  // A size's typo was read as nothing: `maxx: 2` started workers uncapped.
+  expect(
+    refusal(() => dte({ workers: { s: { maxx: 2, cpu: 1, memory: '1GB' } as never }, adapter })),
+  ).toBe(
+    'dte(): workers.s has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
+  )
+  expect(
+    refusal(() =>
+      dte({ relay: 'https://r', unmeasured: { cpu: 1, memory: '1GB', mem: 1 } as never }),
+    ),
+  ).toContain('dte(): unmeasured has unknown option "mem"')
+  expect(
+    refusal(() =>
+      dte({
+        workers: { s: { max: 1, cpu: 1, memory: '1GB', platform: undefined } as never },
+        adapter,
+      }),
+    ),
+  ).toBe('taken')
   expect(refusal(() => dte({ workers: W, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
     'dte(): scheduler.order is one of critical-path, graphene, fifo',
   )
@@ -3507,6 +3674,26 @@ it('gives an unmeasured task a whole worker, and one that filled its worker a bi
     await Bun.sleep(50)
     const big = await h.worker(8)
     expect(await big.batches()).toEqual([['heavy']])
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
+
+// A bigger worker of another platform cannot take it: a Mac task that
+// filled its Mac waited for a Linux worker to join, and then ran on the Mac.
+it('a task that filled its worker waits for no bigger one of another platform', async () => {
+  const h = await harness(new Map([node('heavy')]), () => ({
+    cores: Infinity,
+    memory: Infinity,
+    above: { cores: 2, memory: 100 },
+  }))
+  try {
+    const mac = await h.worker(2, undefined, 'darwin-arm64')
+    h.o.spawned('big#1', { size: 'big', cpu: 8, memory: 1000, platform: 'linux-x64' })
+    await Bun.sleep(50)
+    void h.o.execute({ ...h.req('heavy'), platform: 'darwin-arm64' })
+    const sent = await Promise.race([mac.batches(), Bun.sleep(2_000).then(() => 'none')])
+    expect(sent).toEqual([['heavy']])
   } finally {
     await h.stop()
   }
@@ -3896,6 +4083,23 @@ it('names a tracked file a task changed as the workspace does, in a repository s
   const outputs = { files: ['gen/**'], workspaceFiles: [] }
   const m = { project: 'a', nested: [], outputs } as unknown as RunOrder
   expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
+})
+
+// A git that failed answered "nothing changed", and the task's rewrite of
+// a tracked file was saved under its clean key.
+it('a diff git cannot answer names the project as changed, never nothing', async () => {
+  const ws = await tmp()
+  await mkdir(path.join(ws, 'a'), { recursive: true })
+  await writeFile(path.join(ws, 'a/in.txt'), '1\n')
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: ws })
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  const outputs = { files: [], workspaceFiles: [] }
+  const m = { project: 'a', nested: [], outputs } as unknown as RunOrder
+  expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual([])
+  expect(await changedTracked(ws, '0'.repeat(40), m, names('a', outputs))).toEqual(['a'])
 })
 
 // A worker checkout whose prepare rewrote a tracked file joined on HEAD's

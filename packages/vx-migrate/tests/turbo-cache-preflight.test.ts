@@ -118,7 +118,7 @@ describe('resolveTurboCacheConfig: preflight', () => {
   })
   it('refuses a TURBO_PREFLIGHT Turbo would refuse', () => {
     expect(() => resolveTurboCacheConfig({}, { ...base, TURBO_PREFLIGHT: 'yes' })).toThrow(
-      'vx/turbo-cache: TURBO_PREFLIGHT should be 1 or 0, got "yes"',
+      'turboCache(): TURBO_PREFLIGHT should be 1 or 0, got "yes"',
     )
   })
 })

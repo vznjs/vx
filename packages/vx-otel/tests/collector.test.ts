@@ -223,14 +223,14 @@ describe('a credential in the export URL', () => {
     driveOneTask(sink)
     await sink.flush()
     expect(warnings).toEqual([
-      `[vx-otel] export failed for http://***:***@${authority}/v1/traces?***: HTTP 401: no`,
+      `[vx] vx-otel: export failed for http://***:***@${authority}/v1/traces?***: HTTP 401: no`,
     ])
   })
 })
 
 // Item 807's sweep: each row fails with one line of sink.ts undone.
 describe('the transport, as the vx-otel sweep found it unheld', () => {
-  const at = (path: string) => `[vx-otel] export failed for ${url}${path}: `
+  const at = (path: string) => `[vx] vx-otel: export failed for ${url}${path}: `
 
   it('an error body is folded onto one line before it is cut', async () => {
     expect(await exportWith({ status: 413, body: 'too\n  big\tbody' })).toEqual([
@@ -334,6 +334,9 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
       // F-53: its own timeout is this side's abort, never retried: two more
       // tries held the flush three timeouts and a second.
       expect([Date.now() - t0 < 600, warnings.length, tries]).toEqual([true, 1, 1])
+      // The warning names the timeout spent: "The operation was aborted."
+      // alone did not say whether the collector or vx gave up, nor when.
+      expect(warnings[0]).toEndWith(': no answer within 100 ms')
     } finally {
       await hang.stop(true)
     }
@@ -484,7 +487,7 @@ describe('a refused certificate', () => {
 
 // F-53: a mutation sweep of sink.ts found these unheld.
 describe('the sink, as its second sweep found it unheld', () => {
-  const at = (path: string) => `[vx-otel] export failed for ${url}${path}: `
+  const at = (path: string) => `[vx] vx-otel: export failed for ${url}${path}: `
 
   it('a partialSuccess reports each rejected count by its noun, message or not; null is none', async () => {
     const warned = async (partialSuccess: unknown) =>
@@ -610,7 +613,7 @@ describe('the plugin and transport, as the plugin sweep found them', () => {
       } as never)
       expect([sink !== undefined, warns]).toEqual([
         true,
-        ['[vx-otel] compression "zstd" is not gzip or none — sent uncompressed'],
+        ['[vx] vx-otel: compression "zstd" is not gzip or none — sent uncompressed'],
       ])
     } finally {
       keys.forEach((k, i) => {

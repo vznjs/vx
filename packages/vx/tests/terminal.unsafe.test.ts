@@ -181,7 +181,7 @@ describe('an interactive task under a vx on a terminal', () => {
 // `stty -a` by a shell on the same pty before and after vx: Bun's
 // `localFlags` did not see the task's change.
 describe('a task that leaves the terminal raw', () => {
-  const modesAround = async (command: string, interrupt: boolean, persistent = false) => {
+  const modesAround = async (command: string, interrupt: boolean | 2, persistent = false) => {
     const root = await makeWorkspace({ prefix: 'vx-tty-modes-' })
     try {
       const marker = path.join(root, 'raw.txt')
@@ -199,7 +199,12 @@ describe('a task that leaves the terminal raw', () => {
             .text()
             .catch(() => '')
         while ((await raw()) !== 'raw\n') await Bun.sleep(10)
-        process.kill(Number(await Bun.file(path.join(root, 'vx.pid')).text()), 'SIGINT')
+        const pid = Number(await Bun.file(path.join(root, 'vx.pid')).text())
+        process.kill(pid, 'SIGINT')
+        if (interrupt === 2) {
+          await Bun.sleep(100)
+          process.kill(pid, 'SIGINT')
+        }
       }
       const stop = setTimeout(() => proc.kill('SIGKILL'), 15_000)
       const code = await proc.exited
@@ -239,6 +244,16 @@ describe('a task that leaves the terminal raw', () => {
       before: true,
       restored: true,
     })
+  }, 20_000)
+
+  // A second signal is "now": SIGKILL and exit, past the runner's own
+  // restore, which runs when the task exits. Bun restores the modes it
+  // started with only when vx's stdout is the terminal, so `> log` left
+  // the user's shell with no echo.
+  it('gets its modes back when vx is interrupted twice', async () => {
+    expect(
+      await modesAround(`trap '' INT; stty raw -echo; echo raw > MARKER; sleep 30`, 2),
+    ).toEqual({ code: 0, before: true, restored: true })
   }, 20_000)
 
   it('gets its modes back when the task exits', async () => {

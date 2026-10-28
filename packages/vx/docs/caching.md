@@ -131,7 +131,7 @@ over (in order):
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
    settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`:
-   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`)
+   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, the root `package.json`'s `workspaces.nohoist` and `installConfig`)
    and folds each whole into every task.
 
    The run reads each claimed root file once, before any task. A task
@@ -290,7 +290,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A task glob is a **standard glob**: `[ab]` is a character class, as
     in `Bun.Glob`, Turbo and Nx, and a route directory is escaped:
     `app/\[id\]/**` folds `app/[id]`. Bare, `app/[id]/**` is the class
-    and folds `app/i/…` and `app/d/…`, never the route.
+    and folds `app/i/…` and `app/d/…`, never the route. When an
+    input or output glob matches no files and, read as a literal path,
+    names one that exists, the "matched no files" warning says so and
+    gives the escaped spelling.
 
     An index OID is only trusted where git stores the worktree bytes
     **verbatim**, so the enumeration prunes it three ways:
@@ -344,7 +347,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     string, kept the key that `git status` and `--affected` saw move.
     Under `core.fileMode=false` (WSL's DrvFs) git reports no chmod, so
     there a clean file's mode comes from an lstat too, and its OID
-    from the index (item 1076).
+    from the index (item 1076). Each of these settings is read as git
+    reads a boolean: `false`, `no`, `off`, the empty value or a zero
+    integer (`0`, `00`) is false, and a bare key is true.
 
     A **symlink** folds as git folds it, the blob of its target
     _string_ (its mode-120000 index OID), and then the content behind
@@ -364,8 +369,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     whose static directory passes through a link (`lib/**` over
     `lib -> ../shared`) takes the link as an input: git lists a linked
     directory as the link alone, so the glob matched nothing and an
-    edit behind it was a hit (2026-10-25). A `**` glob does not enter
-    one it meets.
+    edit behind it was a hit (2026-10-25). A link to a directory below
+    a glob's fixed prefix (`src/**/*.ts` over `src/v -> ../shared`,
+    `**/*.ts` over `lib -> ../shared`) is an input the same way whenever
+    the glob could match a path under it: its name alone matched no
+    pattern, and an edit behind it was a hit (2026-10-28).
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.
@@ -433,10 +441,9 @@ On a hit:
    output that blocks a rename (a file where the entry needs a directory,
    or the reverse) goes before. Turbo also restores in place; Nx deletes
    and copies each file, and a reader meets a missing or short file.
-4. Captured stdout is replayed to the live terminal via the logger —
-   the framed block looks like a fresh run. (stderr is not cached —
-   only successful runs are cached and their stderr is near-always
-   empty; live runs still stream stderr normally.)
+4. The captured output is replayed to the live terminal via the
+   logger — stdout and stderr, each on its own stream, in the order the
+   task wrote them — so the framed block looks like a fresh run.
 5. The task is marked `cache-hit` (or `cache-hit-remote` when the
    `LayeredCache` hydrated from the remote layer this run);
    `durationMs` is the wallclock for the restore op, not the original
@@ -811,7 +818,9 @@ has moved whatever it holds (a whole-second stamp counts as any moment
 of its second, an even one of two, in both checks): an input changed and changed BACK while the
 command ran matched its digest again, and its output, built from the
 edit, was filed under the key and restored over the original (item
-1015). When one moved, the task's result stands but no entry is saved,
+1015). A symlinked input is also followed again: the key folds the
+content behind it, which an edit changes without touching the link, and
+a different digest there has moved. When one moved, the task's result stands but no entry is saved,
 one status line names the file (``[vx] app#format: `packages/app/a.ts`
 changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
@@ -940,9 +949,14 @@ installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
 No clean deletes a file git tracks (2026-10-14). Under an output
 glob it is still an output: the task may rewrite it (TanStack Router's
 committed `routeTree.gen.ts`), the artifact saves the bytes the run left,
-and a restore writes them. It also stays in the task's key, even under its
-own output glob, so an edit moves the key and the saved bytes follow from
-it; the task's rewrite is no input that moved mid-run. Until then the
+and a restore writes them. It is also in the task's key, even under its
+own output glob and when no `inputs.files` glob reaches it (`dist/LICENSE`
+under `dist/**` with inputs `src/**`; until 2026-10-28 that one was left
+out, and a hit wrote the old bytes over a committed edit, as
+turborepo#14831 fixed in Turbo), so an edit moves the key and the saved
+bytes follow from it; the task's rewrite is no input that moved mid-run.
+A committed file under `outputs.workspaceFiles` is keyed only where
+`inputs.workspaceFiles` reaches it. Until then the
 clean deleted a committed file under an output, and a reader with no edge
 to its producer failed naming only the file (A-48, vueuse's
 `metadata/index.json`). Untracked files under the glob are cleaned as

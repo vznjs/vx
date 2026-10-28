@@ -70,6 +70,31 @@ describe('exec.platforms', () => {
     ])
   })
 
+  // `--continue=always` runs past a FAILED upstream; a platform skip is
+  // not one. Its dependants ran anyway, built on outputs never made, and
+  // the taint kept them from saving, so every such run ran them again.
+  it('skips the dependants of a task off its platforms under --continue=always', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: {
+        other: { exec: { command: 'touch other.txt', platforms: ['${OTHER}'] } },
+        broken: { exec: { command: 'exit 1' } },
+        after: { dependsOn: ['broken', 'other'], exec: { command: 'touch after.txt' } },
+        last: { dependsOn: ['after'], exec: { command: 'touch last.txt' } },
+      } }`,
+    )
+    const r = await run({ cwd: dir, tasks: ['last'], log: logger([]), continueMode: 'always' })
+    const by = new Map(r.outcomes.map((o) => [o.node.id, o]))
+    expect(
+      ['app#after', 'app#last'].map((id) => [by.get(id)?.status, by.get(id)?.blockedBy]),
+    ).toEqual([
+      ['skipped', 'app#other'],
+      ['skipped', 'app#other'],
+    ])
+    expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
+  })
+
   it('refuses the run on CI before any task starts', async () => {
     const dir = await addProject(root, 'app', CONFIG)
     process.env['CI'] = 'true'

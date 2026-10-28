@@ -39,6 +39,7 @@ import {
 } from '../settings.js'
 import { compileNameGlob, parseFilter } from './filter.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
+import { projectNameProblem } from './workspace.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
 // the same reason the task levels reject them: `plugin: [...]` (singular)
@@ -63,13 +64,17 @@ const BASE_BRANCH_RULE = "must be a branch name like 'main'"
 
 /**
  * A branch name git takes after `origin/`: a leading '-' would reach git
- * as an option, and whitespace, `..`, `~^:?*[\\` are no ref's.
+ * as an option, and whitespace, `..`, `~^:?*[\\` are no ref's. A ref
+ * spelling (`origin/main`, `refs/heads/main`) is no branch either: vx
+ * looked for `origin/origin/main`, found no base, and a run on main took
+ * a branch's cache scope.
  */
 function isBaseBranch(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     /^[^-\s\0~^:?*[\\][^\s\0~^:?*[\\]*$/.test(value) &&
-    !value.includes('..')
+    !value.includes('..') &&
+    !/^(?:origin|refs)\//.test(value)
   )
 }
 
@@ -463,6 +468,12 @@ export function validateProjectConfig(
     if (typeof name !== 'string' || name === '' || name.trim() !== name || name.includes('#')) {
       throw new UserError(
         `${configPath}: \`name\` must be a non-empty string with no surrounding whitespace and no "#" (a task is <name>#<task>)`,
+      )
+    }
+    const why = projectNameProblem(name)
+    if (why !== null) {
+      throw new UserError(
+        `${configPath}: \`name\` ${JSON.stringify(name)} ${why} — dependsOn, --filter and the CLI could not name the project. Rename it.`,
       )
     }
   }
@@ -1282,7 +1293,25 @@ function assertNoForeignToken(glob: string, where: string): void {
         `files it names. Write ${rewrite} instead.`,
     )
   }
+  assertNoBareGroup(glob, body, where)
   assertNoBraceRange(glob, where)
+}
+
+/** `(a|b)` with no extglob sigil: `Bun.Glob` reads parens and `|` as literal text. */
+const BARE_GROUP = /(?<!\\)\(([^()|]*(?:\|[^()|]*)+)\)/
+
+function assertNoBareGroup(glob: string, body: string, where: string): void {
+  const group = BARE_GROUP.exec(body)
+  if (group === null) return
+  const names = group[1]!.split('|')
+  const rewrite = BUN_GLOB_WILDCARDS.test(group[1]!)
+    ? 'braces ("{a,b}") or one entry per alternative'
+    : `"${glob.replace(group[0], `{${names.join(',')}}`)}"`
+  throw new UserError(
+    `${where}: "${glob}" holds a bare (…|…) group, which vx's glob engine reads as literal ` +
+      `text, never as the alternatives it lists, so the cache key would miss the files it ` +
+      `names. Write ${rewrite} instead.`,
+  )
 }
 
 const BRACE_RANGE = /(?<!\\)\{(-?\d+|[a-zA-Z])\.\.(-?\d+|[a-zA-Z])(\.\.-?\d+)?\}/g
@@ -1569,11 +1598,19 @@ export function taskNameProblem(name: string): string | null {
 function tagProblem(tag: string): string | null {
   if (tag.trim() !== tag) return 'has surrounding whitespace'
   if (tag.includes('*')) return "holds '*', which makes it a pattern"
-  const f = parseFilter(`tag:${tag}`, '/')
+  const walk = "ends in '...', which a filter reads as a dependency walk"
+  let f: ReturnType<typeof parseFilter>
+  try {
+    f = parseFilter(`tag:${tag}`, '/')
+  } catch {
+    // `...` alone: the walk leaves the filter no tag, and its refusal
+    // named neither the config nor the tag.
+    return walk
+  }
   if (f.gitSince !== undefined) {
     return `ends in "[${f.gitSince}]", which a filter reads as a git range`
   }
-  if (f.withDeps || f.onlyDeps) return "ends in '...', which a filter reads as a dependency walk"
+  if (f.withDeps || f.onlyDeps) return walk
   return null
 }
 

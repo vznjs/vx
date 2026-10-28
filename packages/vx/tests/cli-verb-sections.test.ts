@@ -6,7 +6,7 @@
 // `vx watch` takes run's, and its section names the ones it refuses.
 //
 // Named means a token in the section's code: an inline span
-// (`` `vx init --plugin <seam>` ``) or a fenced sample.
+// (`` `vx init --plugin <hook>` ``) or a fenced sample.
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -42,7 +42,7 @@ const VERBS = CORE_VERBS.filter((v) => !['run', 'help', 'version'].includes(v))
 describe("each verb's cli.md section names its flags", () => {
   it('reads a section and its code, and only code', () => {
     expect(section('lock')).toBeDefined()
-    expect(named('the `vx init --plugin <seam>` form', '--plugin')).toBe(true)
+    expect(named('the `vx init --plugin <hook>` form', '--plugin')).toBe(true)
     expect(named('```\nvx last --list=5\n```\n', '--list')).toBe(true)
     expect(named('pass --plugin to it', '--plugin')).toBe(false)
     expect(named('`--plugins`', '--plugin')).toBe(false)

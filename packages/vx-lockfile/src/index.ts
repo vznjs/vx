@@ -17,7 +17,7 @@
 // each importer's `package.json` to its tasks' inputs.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { mkdir, rename } from 'node:fs/promises'
+import { mkdir, rename, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import {
@@ -43,6 +43,7 @@ const bunLock = (): typeof import('./bun.js') => load('./bun.js')
 const npmLock = (): typeof import('./npm.js') => load('./npm.js')
 const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
 const pnpmSettings = (): typeof import('./pnpm-settings.js') => load('./pnpm-settings.js')
+const yarnSettings = (): typeof import('./yarn-settings.js') => load('./yarn-settings.js')
 
 export interface LockfileOptions {
   /**
@@ -56,7 +57,7 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 18
+const DIGEST_VERSION = 19
 
 interface Manager {
   readonly name: string
@@ -69,6 +70,8 @@ interface Manager {
   /** Each importer's dependency names the file records, whatever they resolve to. */
   readonly recorded: (text: string) => ReadonlyMap<string, ReadonlyMap<string, unknown>>
   readonly extraFiles?: (text: string) => readonly string[]
+  /** Dirs the manager's workspace walk never enters (default `node_modules`). */
+  readonly skippedDirs?: readonly string[]
   /** Root files no lockfile records that lay the install out: folded whole into every task. */
   readonly settings: readonly string[]
   /**
@@ -76,8 +79,15 @@ interface Manager {
    * records part of what it says per project; undefined folds them whole.
    */
   readonly settingsText?: (file: string, text: string) => string | undefined
+  /**
+   * Whether the manager lists a manifest its workspace globs match;
+   * undefined lists every one.
+   */
+  readonly member?: (pkg: Record<string, unknown>) => boolean
   /** The lockfile files a peer under `dependencies`: the manifest says which entries are peers. */
   readonly peersInManifest?: true
+  /** The manager reads package.json as JSONC (trailing commas, comments): bun does. */
+  readonly jsoncManifests?: true
   /**
    * Importers a format leaves out of the lockfile (yarn classic), from the
    * workspace's manifests through `manifest`; undefined where the file
@@ -115,6 +125,8 @@ const MANAGERS = {
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
     extraFiles: (t) => pnpmLock().fileDeps(pnpmParse(t)),
     recorded: (t) => pnpmLock().recordedImporters(t),
+    // pnpm's walk skips bower_components as it does node_modules (pnpm 10).
+    skippedDirs: ['node_modules', 'bower_components'],
     settings: ['pnpm-workspace.yaml', '.npmrc'],
     settingsText: (file, text) =>
       file === 'pnpm-workspace.yaml' ? pnpmSettings().workspaceSettings(text) : undefined,
@@ -132,8 +144,12 @@ const MANAGERS = {
     digest: (t, files) => bunLock().importerDigests(bunParse(t), files),
     importers: (t) => bunLock().importerLinks(bunParse(t)),
     recorded: (t) => bunParse(t).workspaces,
+    // Bun leaves out a manifest with no name, as build output's
+    // `{"type":"module"}` (probed on 1.4.4); no version is listed.
+    member: (pkg) => typeof pkg['name'] === 'string' && pkg['name'] !== '',
     extraFiles: (t) => [...bunLock().patchFiles(t), ...bunLock().fileDeps(bunParse(t))],
     settings: ['bunfig.toml', '.npmrc'],
+    jsoncManifests: true,
   },
   npm: {
     name: 'npm',
@@ -165,14 +181,20 @@ const MANAGERS = {
     },
     // `.yarnrc` is Yarn 1's: `ignore-scripts true` there changes the install
     // under an unchanged yarn.lock (probed, yarn 1.22).
-    settings: ['.yarnrc.yml', '.yarnrc'],
+    // The root package.json for `workspaces.nohoist` and `installConfig`,
+    // which lay the install out and the lockfile does not record.
+    settings: ['.yarnrc.yml', '.yarnrc', 'package.json'],
+    settingsText: (file, text) =>
+      file === 'package.json' ? yarnSettings().packageSettings(text) : undefined,
     async manifestImporters(t, root, manifest) {
       const lock = yarnParse(t)
       if (lock.generation !== 'classic') return undefined
       const pkg = await manifest(root)
       const manifests = new Map<string, Record<string, unknown>>()
       if (pkg !== null) manifests.set('.', pkg)
-      for (const dir of await workspaceDirs(root, globsOf(pkg))) {
+      // Yarn 1 takes no `!` glob: it links the directory anyway.
+      const globs = globsOf(pkg).filter((g) => typeof g !== 'string' || !g.startsWith('!'))
+      for (const dir of await workspaceDirs(root, globs)) {
         const m = await manifest(path.join(root, dir))
         if (m !== null) manifests.set(dir, m)
       }
@@ -320,10 +342,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         : { ...deps, ...folded }
     },
     async discover(ctx) {
-      const manifest = manifestReader(ctx.workspaceRoot)
+      const manifest = manifestReader(ctx.workspaceRoot, manager.jsoncManifests === true)
       // The staleness check's walk overlaps the lockfile read.
       const dirs = workspaceGlobs(ctx.workspaceRoot, manager.name, manifest).then((globs) =>
-        workspaceDirs(ctx.workspaceRoot, globs),
+        workspaceDirs(ctx.workspaceRoot, globs, manager.skippedDirs),
       )
       dirs.catch(() => {})
       const read = await readImporters(ctx, manifest)
@@ -350,6 +372,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
           await recordedOnce(ctx.cacheDir, file, text, manager.recorded),
           await dirs,
           manifest,
+          manager.member,
         )
         if (missing.length > 0) {
           throw new UserError(
@@ -369,7 +392,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     async project(config, ctx) {
       let importers = perRun.get(ctx.projects)
       if (importers === undefined) {
-        importers = importersOf(ctx, manifestReader(ctx.workspaceRoot))
+        importers = importersOf(
+          ctx,
+          manifestReader(ctx.workspaceRoot, manager.jsoncManifests === true),
+        )
         perRun.set(ctx.projects, importers)
       }
       if ((await importers)?.has(importerOf(ctx.workspaceRoot, ctx.dir)) !== true) return
@@ -417,7 +443,10 @@ async function recordedOnce(
     await mkdir(path.dirname(memo), { recursive: true })
     await Bun.write(tmp, JSON.stringify({ hash, names }))
     await rename(tmp, memo)
-  } catch {}
+  } catch {
+    // Left behind, one more temp file piled up in the cache every run.
+    await rm(tmp, { force: true }).catch(() => {})
+  }
   return out
 }
 
@@ -442,8 +471,13 @@ async function readSettings(
     let bytes: Uint8Array
     try {
       bytes = await Bun.file(path.join(workspaceRoot, file)).bytes()
-    } catch {
-      continue
+    } catch (err) {
+      // Only an absent file is absent: one there but unreadable (EACCES,
+      // a directory) folded as none, and the key named no setting at all.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue
+      throw new UserError(
+        `${file}: cannot be read (${err instanceof Error ? err.message : String(err)})`,
+      )
     }
     const text = settingsText?.(file, new TextDecoder().decode(bytes))
     out[file] = Bun.hash
@@ -464,20 +498,31 @@ function importerOf(workspaceRoot: string, dir: string): string {
  * not parse refuses, named: read as none, a conflicted manifest lost its
  * dependencies and its dependents hit with old bytes (Turbo and Nx refuse).
  */
-async function manifestOf(root: string, dir: string): Promise<Record<string, unknown> | null> {
+async function manifestOf(
+  root: string,
+  dir: string,
+  jsonc: boolean,
+): Promise<Record<string, unknown> | null> {
   const file = path.join(dir, 'package.json')
+  const name = path.relative(root, file).split(path.sep).join('/')
   let text: string
   try {
     text = await Bun.file(file).text()
-  } catch {
-    return null
+  } catch (err) {
+    // As readSettings: one there but unreadable read as none, and its
+    // workspace globs and names dropped out of the staleness check. A
+    // lockfile importer whose directory is now a file has none either.
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null
+    throw new UserError(
+      `${name}: cannot be read (${err instanceof Error ? err.message : String(err)})`,
+    )
   }
-  const name = path.relative(root, file).split(path.sep).join('/')
   if (CONFLICT.test(text))
     throw new UserError(`${name}: holds git merge conflict markers — resolve them`)
   let pkg: unknown
   try {
-    pkg = JSON.parse(text)
+    pkg = jsonc ? Bun.JSONC.parse(text) : JSON.parse(text)
   } catch (err) {
     throw new UserError(`${name}: not JSON (${err instanceof Error ? err.message : String(err)})`)
   }
@@ -488,12 +533,15 @@ async function manifestOf(root: string, dir: string): Promise<Record<string, unk
 }
 
 /** `manifestOf`, each directory read once. */
-function manifestReader(root: string): (dir: string) => Promise<Record<string, unknown> | null> {
+function manifestReader(
+  root: string,
+  jsonc: boolean,
+): (dir: string) => Promise<Record<string, unknown> | null> {
   const read = new Map<string, Promise<Record<string, unknown> | null>>()
   return (dir) => {
     let pkg = read.get(dir)
     if (pkg === undefined) {
-      pkg = manifestOf(root, dir)
+      pkg = manifestOf(root, dir, jsonc)
       read.set(dir, pkg)
     }
     return pkg
@@ -518,11 +566,22 @@ async function workspaceGlobs(
   manifest: (dir: string) => Promise<Record<string, unknown> | null>,
 ): Promise<readonly unknown[]> {
   if (manager !== 'pnpm') return globsOf(await manifest(root))
+  let text: string
+  try {
+    text = await Bun.file(path.join(root, 'pnpm-workspace.yaml')).text()
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw err
+  }
+  // Read as no globs, an unparsable one turned the staleness check off,
+  // as a package.json that does not parse would (manifestOf refuses it).
   let doc: unknown
   try {
-    doc = Bun.YAML.parse(await Bun.file(path.join(root, 'pnpm-workspace.yaml')).text())
-  } catch {
-    return []
+    doc = Bun.YAML.parse(text)
+  } catch (err) {
+    throw new UserError(
+      `pnpm-workspace.yaml: not YAML (${err instanceof Error ? err.message : String(err)})`,
+    )
   }
   const list =
     doc !== null && typeof doc === 'object'
@@ -533,29 +592,35 @@ async function workspaceGlobs(
 
 /**
  * The directories the globs name that hold a `package.json`, root-relative
- * POSIX, sorted; none a `!` glob excludes, none under `node_modules`.
+ * POSIX, sorted; none a `!` glob excludes, none under a `skipped` dir.
  */
-async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<string[]> {
+async function workspaceDirs(
+  root: string,
+  globs: readonly unknown[],
+  skipped: readonly string[] = ['node_modules'],
+): Promise<string[]> {
   const strip = (p: string): string => p.replace(/^\.\//, '').replace(/\/+$/, '')
   const excluded = globs
     .filter((p): p is string => typeof p === 'string' && p.startsWith('!'))
-    .map((p) => new Bun.Glob(strip(p.slice(1))))
+    // Matched as the managers match it, against the manifest's path: a
+    // bare `!**/test/**` matched against the dir never drops packages/a/test.
+    .map((p) => new Bun.Glob(`${strip(p.slice(1))}/package.json`))
   const dirs = new Set<string>()
   for (const pattern of globs) {
     if (typeof pattern !== 'string' || pattern.startsWith('!')) continue
     const glob = new Bun.Glob(`${strip(pattern)}/package.json`)
     for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
       const dir = path.dirname(file).split(path.sep).join('/')
-      if (dir === '.' || dir.split('/').includes('node_modules')) continue
-      if (!excluded.some((g) => g.match(dir))) dirs.add(dir)
+      if (dir === '.' || dir.split('/').some((seg) => skipped.includes(seg))) continue
+      if (!excluded.some((g) => g.match(`${dir}/package.json`))) dirs.add(dir)
     }
   }
   return [...dirs].sort()
 }
 
 /**
- * What the manifests name that the lockfile does not: each workspace it
- * lists no importer for, and each importer's dependency (any field but
+ * What the manifests name that the lockfile does not: each workspace the
+ * manager lists (`member`) that it lists no importer for, and each importer's dependency (any field but
  * peers, which a manager may leave out) on a workspace package's name that
  * it records no entry for.
  */
@@ -565,9 +630,10 @@ async function staleness(
   recorded: ReadonlyMap<string, ReadonlySet<string>>,
   dirs: readonly string[],
   manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+  member: ((pkg: Record<string, unknown>) => boolean) | undefined,
 ): Promise<string[]> {
   const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
-  const missing = dirs.filter((d) => !importers.has(d)).map((d) => `the workspace ${d}`)
+  const missing: string[] = []
   const names = new Set<string>()
   const all = new Set([...importers.keys(), ...dirs])
   // Read at once, then visited in order: the first unparsable one still
@@ -576,6 +642,11 @@ async function staleness(
   for (const d of all) {
     const n = (await manifest(dirOf(d)))?.['name']
     if (typeof n === 'string') names.add(n)
+  }
+  for (const d of dirs) {
+    if (importers.has(d)) continue
+    const pkg = await manifest(dirOf(d))
+    if (pkg === null || member?.(pkg) !== false) missing.push(`the workspace ${d}`)
   }
   for (const [importer, deps] of recorded) {
     const pkg = await manifest(dirOf(importer))
@@ -601,9 +672,10 @@ async function staleness(
  * (D-39). Its name is the
  * manifest's `name` when no other importer shares it (core refuses two
  * projects of one name, so a shared one names neither); its `deps` the
- * importers it installs, and its peers on importers. A peer orders a build
- * unless it would close a cycle through the order edges, then it is
- * `reach` only, in name order so the edge kept is stable.
+ * importers it installs, its peers on importers, and the importers the root
+ * installs. A peer or root-installed importer orders a build unless it
+ * would close a cycle through the order edges, then it is `reach` only, in
+ * name order so the edge kept is stable.
  */
 async function discovered(
   root: string,
@@ -635,12 +707,17 @@ async function discovered(
     const [x, y] = [label(a), label(b)]
     return x < y ? -1 : x > y ? 1 : 0
   }
+  // Installed at the root `node_modules`, so every project resolves it
+  // whatever its own manifest declares (Turbo #8364, #8465).
+  const rootLinked = Object.values(importers.get('.')?.deps ?? {}).filter(
+    (t) => t !== '.' && manifests.has(t),
+  )
   const order = new Map<string, Set<string>>()
   const peers = new Map<string, Set<string>>()
   for (const [i, links] of importers) {
     if (!manifests.has(i)) continue
     const own = new Set<string>()
-    const peer = new Set<string>()
+    const peer = new Set<string>(i === '.' ? [] : rootLinked.filter((t) => t !== i))
     const manifestPeers = peersInManifest ? manifestPeerNames(manifests.get(i)!) : undefined
     for (const [name, target] of Object.entries(links.deps)) {
       if (manifests.has(target)) (manifestPeers?.has(name) === true ? peer : own).add(target)

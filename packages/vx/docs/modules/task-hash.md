@@ -60,6 +60,7 @@ export interface InputFact {
   path: string
   digest: string
   since: number
+  behind?: string // a link's content as the key folds it (`behindLink`)
 }
 export async function movedInput(
   facts: readonly InputFact[],

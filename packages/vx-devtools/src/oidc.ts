@@ -72,15 +72,19 @@ const workflowClaimOf = (iss: string): string =>
   iss === GITHUB ? 'job_workflow_ref' : 'ci_config_ref_uri'
 
 /**
- * `ALLOW`'s entries, space or comma separated, each
+ * `ALLOW`'s entries, space separated, each
  * `issuer:owner/repo:workflow`, as @vzn/vx-dte-server reads it: read from
  * the right, since the issuer holds `:`s of its own.
  */
 export function parseAllow(list: string): Allowed[] {
   return list
-    .split(/[\s,]+/)
+    .split(/\s+/)
     .filter((e) => e !== '')
     .map((e) => {
+      // One grammar on every server: read as a separator nowhere, a comma
+      // would end up inside a workflow name no token ever carries.
+      if (e.includes(','))
+        throw new Error(`${e} is not issuer:owner/repo:workflow: entries are space separated`)
       const w = e.lastIndexOf(':')
       const r = e.lastIndexOf(':', w - 1)
       const [issuer, repository, workflow] = [e.slice(0, r), e.slice(r + 1, w), e.slice(w + 1)]
@@ -112,13 +116,19 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
  * name); a merge queue's run its base branch, which its code is about to
  * become (2026-10-25: "just strip it"); any other run its `ref`,
  * GitLab's its `ref_path`. Only a `pull_request` run takes its head
- * branch. A `pull_request_target` run writes nothing: its `head_ref` is a
- * fork's branch name, chosen by the fork, and its `ref` is the base branch,
- * which a fork's code must never write.
+ * branch, and only a `merge_group` run's ref is renamed: anyone can push
+ * a branch named like a queue ref. A `pull_request_target` run writes
+ * nothing: its `head_ref` is a fork's branch name, chosen by the fork, and
+ * its `ref` is the base branch, which a fork's code must never write. Nor
+ * does a pull request whose head branch has its base branch's name: only
+ * a fork's can.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
-  if (claims['event_name'] === 'pull_request_target') return undefined
-  const head = claims['event_name'] === 'pull_request' ? claims['head_ref'] : undefined
+  const event = claims['event_name']
+  if (event === 'pull_request_target') return undefined
+  const head = event === 'pull_request' ? claims['head_ref'] : undefined
+  // Only a fork's head branch can share its base branch's name.
+  if (head !== undefined && head === claims['base_ref']) return undefined
   const ref =
     iss === GITHUB
       ? typeof head === 'string' && head !== ''
@@ -126,7 +136,7 @@ function branchOf(iss: string, claims: JWTPayload): string | undefined {
         : claims['ref']
       : claims['ref_path']
   if (typeof ref !== 'string' || !ref.startsWith('refs/') || ref.length > 512) return undefined
-  const queued = iss === GITHUB ? QUEUE.exec(ref) : null
+  const queued = iss === GITHUB && event === 'merge_group' ? QUEUE.exec(ref) : null
   return queued === null ? ref : `refs/heads/${queued[1]}`
 }
 
@@ -164,7 +174,7 @@ export function oidcAuth(opts: OidcOptions): Authorize {
   const verify = tokenVerifier(opts)
 
   return async (req) => {
-    if (opts.allow.length === 0) throw new Refusal(401, 'the server admits no CI: set ALLOW')
+    if (opts.allow.length === 0) throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
     const asked = `${req.headers.get(ISSUER_HEADER)}/${req.headers.get(REPOSITORY_HEADER)}`
     if (!asked.split('/').every((p) => PART.test(p)))
       throw new Refusal(
@@ -207,7 +217,7 @@ export function oidcTokenAuth(
   const open = readAccessOf(opts)
   const verify = tokenVerifier(opts)
   return async (req, asked) => {
-    if (opts.allow.length === 0) throw new Refusal(401, 'the server admits no CI: set ALLOW')
+    if (opts.allow.length === 0) throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
     const named = asked === undefined ? undefined : repoOf(asked)
     const bearer = bearerOf(req)
     if (bearer === undefined) {
@@ -277,13 +287,16 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
   }
 
   return async (token, req) => {
-    let iss: unknown
+    let said: unknown
     try {
-      iss = decodeJwt(token).iss
+      said = decodeJwt(token).iss
     } catch {
       throw new Refusal(401, 'not a JWT')
     }
-    if (typeof iss !== 'string' || !opts.allow.some((a) => a.issuer === iss)) {
+    // A trailing slash is no other issuer, as a key and a tokenless read
+    // name it: one in ALLOW or in the token refused every token.
+    const iss = typeof said === 'string' ? issuerOf(said) : undefined
+    if (iss === undefined || !opts.allow.some((a) => issuerOf(a.issuer) === iss)) {
       throw new Refusal(401, "an issuer this server's ALLOW does not name")
     }
     const audience = opts.audience ?? new URL(req.url).origin
@@ -299,14 +312,19 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
         })
       ).payload
     } catch (err) {
-      throw refusal(err, iss)
+      throw refusal(err, iss, () => {
+        const aud = decodeJwt(token).aud
+        return `the token names ${[aud ?? 'none'].flat().join(', ')}, this server takes ${audience} (AUDIENCE)`
+      })
     }
     const claim = repoClaimOf(iss)
     const named = claims[claim]
     if (typeof named !== 'string') throw new Refusal(403, `no ${claim} claim`)
     // GitHub and GitLab names ignore case; a checkout's origin may spell it either way.
     const repository = named.toLowerCase()
-    const ofRepo = opts.allow.filter((a) => a.issuer === iss && same(a.repository, repository))
+    const ofRepo = opts.allow.filter(
+      (a) => issuerOf(a.issuer) === iss && same(a.repository, repository),
+    )
     if (ofRepo.length === 0)
       throw new Refusal(403, `${claim} ${repository} is not in this server's ALLOW`)
     const wclaim = workflowClaimOf(iss)
@@ -315,7 +333,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     const workflow = ran.replace(/@.*$/, '')
     if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
       throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
-    const repo = { issuer: issuerOf(iss), repository }
+    const repo = { issuer: iss, repository }
     const branch = branchOf(iss, claims)
     return branch === undefined ? repo : { ...repo, write: branch }
   }
@@ -324,8 +342,12 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
 /** An issuer as a key names it: its URL, no trailing slash. */
 const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
 
-/** What jose's refusal of a token says. */
-function refusal(err: unknown, iss: string): Refusal {
+/**
+ * What jose's refusal of a token says. A wrong audience names both: behind
+ * a proxy that ends TLS a server is reached at `http://`, refusing every
+ * token until AUDIENCE is set, and "wrong audience" alone did not say so.
+ */
+function refusal(err: unknown, iss: string, audiences: () => string): Refusal {
   if (err instanceof Refusal) return err
   // A refetch of the keys for a kid not held failed: the network, not the token.
   if (!(err instanceof errors.JOSEError) || err instanceof errors.JWKSTimeout)
@@ -335,7 +357,7 @@ function refusal(err: unknown, iss: string): Refusal {
   if (err instanceof errors.JWSSignatureVerificationFailed) return new Refusal(401, 'bad signature')
   if (err instanceof errors.JWTExpired) return new Refusal(401, 'expired')
   if (err instanceof errors.JWTClaimValidationFailed) {
-    if (err.claim === 'aud') return new Refusal(401, 'wrong audience')
+    if (err.claim === 'aud') return new Refusal(401, `wrong audience: ${audiences()}`)
     if (err.claim === 'nbf') return new Refusal(401, 'not yet valid')
   }
   return new Refusal(401, 'not a JWT')

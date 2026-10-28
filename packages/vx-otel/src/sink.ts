@@ -166,7 +166,12 @@ async function postOnce(
   const controller = new AbortController()
   // A timer past 2^31-1 ms fires after 1 ms: OTEL_EXPORTER_OTLP_TIMEOUT=1e10
   // aborted every export at once (F-56). Held to the longest a timer waits.
-  const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, MAX_TIMER_MS))
+  // The reason is what fetch rejects with, so the warning names the
+  // timeout spent; a bare abort said only "The operation was aborted."
+  const timer = setTimeout(
+    () => controller.abort(new Error(`no answer within ${timeoutMs} ms`)),
+    Math.min(timeoutMs, MAX_TIMER_MS),
+  )
   // Core's flush deadline ends the POST too: `timeoutMs` (15 s by
   // default) alone held the process that long after the run (item 1055).
   const onDeadline = (): void => controller.abort()
@@ -447,7 +452,9 @@ export class OtelSink implements TelemetrySink {
           ...(links.length > 0 ? { links } : {}),
         })
         // A skipped task never ran: a zero duration would read as a fast one.
-        if (record.status !== 'skipped') {
+        // An aborted one (a stop) never ran or ran in part: a Ctrl-C charted
+        // every pending task at 0 ms. Core keeps neither in its history.
+        if (record.status !== 'skipped' && record.status !== 'aborted') {
           this.taskPoints.push({
             kind: 'end',
             task: t,
@@ -493,7 +500,9 @@ export class OtelSink implements TelemetrySink {
   }
 
   private liveEvent(event: LiveEvent): void {
-    if (this.cfg.live && this.cfg.logsEnabled) this.liveEvents.push(event)
+    if (!this.cfg.live || !this.cfg.logsEnabled) return
+    this.liveEvents.push(event)
+    this.kick()
   }
 
   /**
@@ -748,7 +757,7 @@ export class OtelSink implements TelemetrySink {
       ? ` — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)`
       : ''
     const share = bodies.length > 1 ? ` (${failed.length} of ${bodies.length} requests)` : ''
-    this.cfg.warn?.(`[vx-otel] export failed for ${shownUrl(url)}: ${failed[0]}${share}${hint}`)
+    this.cfg.warn?.(`[vx] vx-otel: export failed for ${shownUrl(url)}: ${failed[0]}${share}${hint}`)
   }
 }
 

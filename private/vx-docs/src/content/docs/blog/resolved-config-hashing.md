@@ -58,9 +58,11 @@ flowchart LR
 ```
 
 The key hashes the **task object**, the thing the scheduler will run.
+
 What a preset returned, what a template string became, what a plugin
-added: all of it is in the object, so all of it is in the key. Part
-three of the [key](../keys-from-git/) is
+added: all of it is in the object, so all of it is in the key.
+
+Part three of the [key](../keys-from-git/) is
 `xxh3(JSON.stringify(hashableConfig(node.config)))`.
 
 - **Presets are safe to share.** No `globalDependencies` list to keep in
@@ -75,16 +77,19 @@ longer may finish where a shorter one was killed.
 
 ## Evaluate once: `vx lock`
 
-A program can give a different answer on another machine. So no run
-runs a config. `vx lock` runs them once and saves the objects. Every
-`vx run` reads that file, so CI computes the same keys you did.
+A program can give a different answer on another machine. So no run runs
+a config. `vx lock` runs them once and saves the objects. Every `vx run`
+reads that file, so CI computes the same keys you did.
+
 `vx lock --check` catches drift ([more](../lock-and-frozen/)).
 
 ## Why not named inputs
 
 Turborepo's `globalDependencies` and Nx's `namedInputs` exist because
 JSON can't import. A `vx.config.ts` can, so a shared input list is a
-constant you import. That's why vx has no named inputs, global inputs
-or global env, and won't.
+constant you import.
+
+That's why vx has no named inputs, global inputs or global env, and
+won't.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

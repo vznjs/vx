@@ -94,11 +94,53 @@ describe('HistoryServer', () => {
     )
   })
 
+  // fetch drops only Authorization on a cross-origin redirect: serverHeaders
+  // (a CF-Access secret) went on to the host the 307 named.
+  it('follows no redirect, naming it, and sends serverHeaders nowhere else', async () => {
+    const other: string[] = []
+    const elsewhere = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => (other.push(req.url), Response.json({})),
+    })
+    const moved = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => Response.redirect(`${elsewhere.url.origin}${new URL(req.url).pathname}`, 307),
+    })
+    try {
+      const client = new HistoryServer(moved.url.origin, NAMED, {}, fetch, {
+        'CF-Access-Client-Secret': 's',
+      })
+      await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+        `HTTP 307 to ${elsewhere.url.origin}/v1/capabilities: not followed`,
+      )
+      expect(other).toEqual([])
+    } finally {
+      await moved.stop(true)
+      await elsewhere.stop(true)
+    }
+  })
+
   it('says why a read with no token was refused, and what lets it in', async () => {
     const client = new HistoryServer(url, NAMED, {})
     await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
       'HTTP 401: no bearer token: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)',
     )
+  })
+
+  // A refused token said only "HTTP 401: wrong audience", and the upload
+  // at the run's end asked again and said it a second time.
+  it('says what a refused token names and what to check, then stops asking', async () => {
+    const token = await iss.sign('main', 'https://elsewhere.example')
+    const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token })
+    await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+      `HTTP 401: wrong audience: the token was refused (this workspace names ${NAMED.repository} at ${NAMED.issuer}; the server's ALLOW must name it, and the token's audience be ${new URL(url).origin}); the history server is off for this run`,
+    )
+    const before = seen.length
+    await client.upload(new Map([['p1', { durationMs: 1 }]]))
+    expect(await client.query(['refs/heads/main'], ['p1'])).toEqual(new Map())
+    expect(seen.length).toBe(before)
   })
 
   it("asks GitHub for a new token before the job's ends, once for parallel calls", async () => {
@@ -136,6 +178,53 @@ describe('HistoryServer', () => {
     } finally {
       setSystemTime()
     }
+  })
+
+  // One 503 from GitHub's OIDC endpoint lost the run's timings: the upload
+  // asks for the token at the run's end, once (vx-cache asks again, #4571).
+  it("asks GitHub's OIDC endpoint again after a 5xx or 429, never after a 4xx", async () => {
+    const exp = Math.floor(Date.now() / 1000) + 3600
+    const jwt = `h.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.s`
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.example/token',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 't',
+    }
+    const clientOf = (answers: (number | 'reset')[]) => {
+      const asked: string[] = []
+      const fake = (async (input: string | URL) => {
+        const u = new URL(String(input))
+        if (u.hostname === 'oidc.example') {
+          const a = answers.shift() ?? 200
+          asked.push(String(a))
+          if (a === 'reset') throw new Error('connection reset')
+          return a === 200 ? Response.json({ value: jwt }) : new Response('no', { status: a })
+        }
+        if (u.pathname === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+        return new Response(null, { status: 204 })
+      }) as typeof fetch
+      const waits: number[] = []
+      const client = new HistoryServer('https://h.example', NAMED, env, fake, {}, async (ms) => {
+        waits.push(ms)
+      })
+      return { client, asked, waits }
+    }
+    const blips = clientOf([503, 'reset', 200])
+    await blips.client.upload(new Map([['a', { durationMs: 1 }]]))
+    expect([blips.asked, blips.waits]).toEqual([
+      ['503', 'reset', '200'],
+      [1000, 2000],
+    ])
+    const busy = clientOf([429, 502, 500])
+    await expect(busy.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      "GitHub's OIDC endpoint: HTTP 500: no",
+    )
+    expect(busy.asked).toEqual(['429', '502', '500'])
+    const refused = clientOf([403])
+    await expect(refused.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      "GitHub's OIDC endpoint: HTTP 403: no",
+    )
+    expect(refused.asked).toEqual(['403'])
   })
 
   // 2026-10-25: a proxy in front of the server (an Access service token).
@@ -313,6 +402,47 @@ describe('vx run with vxHistory({ url })', () => {
       await rm(other, { recursive: true, force: true })
     }
   }, 30_000)
+
+  // Core bounds a teardown (3 s): an upload first held the timings file's
+  // write behind it, and a server slower than the bound cost the file.
+  it('writes the timings file while the history server is slow to take the upload', async () => {
+    const slow = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => {
+        const at = new URL(req.url).pathname
+        if (at === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 100, maxQueryHashes: 100 })
+        if (at === '/v1/timings/query') return Response.json({ timings: {} })
+        return new Promise<Response>(() => {})
+      },
+    })
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-slow-'))
+    Bun.env.VX_TEST_TEARDOWN_TIMEOUT = '300ms'
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory({ url: ${JSON.stringify(`http://127.0.0.1:${slow.port}`)}, file: 'timings.json', ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      const r = await run({ cwd: other, tasks: ['build'], handleSignals: false })
+      expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+      const written = (await Bun.file(path.join(other, 'timings.json'))
+        .json()
+        .catch(() => undefined)) as { tasks?: Record<string, number> } | undefined
+      expect(Object.keys(written?.tasks ?? {})).toEqual(['pkg#build'])
+    } finally {
+      delete Bun.env.VX_TEST_TEARDOWN_TIMEOUT
+      await slow.stop(true)
+      await rm(other, { recursive: true, force: true })
+    }
+  })
 
   // `main` was assumed: a repository whose trunk is another branch read
   // no trunk's numbers on any branch.

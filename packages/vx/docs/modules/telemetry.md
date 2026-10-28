@@ -74,7 +74,7 @@ interface RunContextRecord {
   ci: boolean
   ciProvider: string | null
   ciRunUrl?: string // the CI provider's page for this run
-  ciChange?: string // the pull or merge request number
+  ciChange?: string // the pull or merge request number (a merge queue or train run's too)
   ciPipeline?: string // the CI workflow or pipeline name
   ciJob?: string // the CI job (or step)
   ciAttempt?: number // 1 on a first run, 2 on its first re-run

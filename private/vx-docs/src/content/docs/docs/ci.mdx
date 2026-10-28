@@ -59,6 +59,7 @@ git commit -m "ci: run vx on GitHub Actions"
 name: ci
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 jobs:
@@ -72,8 +73,8 @@ jobs:
       - run: bun install --frozen-lockfile
       # Fails if someone changed a vx.config.ts and did not run vx lock.
       - run: bun vx lock --check
-      # main runs every task. A pull request runs only the projects it
-      # changed and the projects that depend on them.
+      # main and a merge queue run every task. A pull request runs
+      # only the projects it changed and the projects that depend on them.
       - run: >
           bun vx run ci
           ${{ github.event_name == 'pull_request'

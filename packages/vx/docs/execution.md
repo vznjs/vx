@@ -380,7 +380,10 @@ The child process gets, in priority order (lowest first):
 4. **PATH augmentation** — `<projectDir>/node_modules/.bin`, then
    `<workspaceRoot>/node_modules/.bin`, are prepended so installed
    tools (`oxlint`, `vite`, etc.) run by name. Never a sibling
-   project's bin; those stay invisible. A bin directory whose path holds
+   project's bin; those stay invisible, even when vx itself runs from
+   `npm run` in a sibling: the PATH vx inherits loses each
+   `node_modules/.bin` inside the workspace first, and so does an
+   `inputs.runtime` probe's. A bin directory whose path holds
    PATH's delimiter (`:`) is left out: PATH cannot name it, and split it
    became two entries, one relative to the task's cwd. A task whose shell exits 127 or 126 gets one more frame line
    (`orchestrator/shell-verdict.ts`): for a bare word, that 127 is the
@@ -589,7 +592,10 @@ admitted against that number instead — so a 64-wide worker pool is not
 throttled by a 10-core laptop, and a `--concurrency 1` run still keeps the
 pool full. A `capacity` that is not a positive integer is refused:
 `plugin '<p>' returned executor '<e>' with capacity <v>: it must be a
-positive integer`.
+positive integer`. So is a flag (`remote`, `sandbox`, `servers`,
+`runtime`, `exclusive`, `timeouts`) that is not `true` or `false`, which
+placement read as false (`remote: 'yes'` was offered sandboxed tasks), and
+an optional hook (`accepts`, `demand`, …) that is not a function.
 
 - **Placement is decided once per task, before scheduling.** `run()` asks
   the declared executors, in order, which one takes each task (see

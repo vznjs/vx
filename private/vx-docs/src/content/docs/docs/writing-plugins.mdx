@@ -216,9 +216,9 @@ import { vxHistory } from '@vzn/vx-history'
 export default defineWorkspace({ plugins: [vxHistory()] })
 ```
 
-On CI it keeps timings in the remote cache; with none,
-`vxHistory({ file: '.vx-timings.json' })` keeps them in a file
-([post](../../blog/ci-timings-file/)).
+On CI it shares timings through a [history server](../servers/history/);
+without one, `vxHistory({ file: '.vx-timings.json' })` keeps them in a
+file ([post](../../blog/ci-timings-file/)).
 
 ---
 

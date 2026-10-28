@@ -20,6 +20,7 @@ import {
   UserError,
 } from '../util/index.js'
 import { gitTop, WORKSPACE_CONFIG_FILENAMES, workspaceFile, workspaceRootOf } from '../handoff.js'
+import { parseFilter } from './filter.js'
 import { repoIdOf } from './repo-id.js'
 
 export interface ProjectMeta {
@@ -251,13 +252,15 @@ export interface ProjectConfigs {
  * the first that is a file.
  */
 export async function findProjectConfigs(root: string): Promise<ProjectConfigs> {
-  const rels = (await gitTop(root)) === null ? await scanConfigs(root) : await gitConfigs(root)
+  const inGit = (await gitTop(root)) !== null
+  const rels = inGit ? await gitConfigs(root) : await scanConfigs(root)
   const nested: string[] = []
   for (const rel of rels) {
     const at = rel.lastIndexOf('.vx/workspace.')
     if (at > 0 && rel[at - 1] === '/' && rel.lastIndexOf('/') === at + 3)
       nested.push(rel.slice(0, at - 1))
   }
+  if (inGit) nested.push(...(await unlistedNested(root, rels, nested)))
   const byDir = new Map<string, string[]>()
   const reviewed: string[] = []
   for (const rel of rels) {
@@ -302,12 +305,57 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     .filter((f): f is ConfigDir => f !== null)
     .sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0))
   const configured = new Set(configs.map((c) => c.dir))
-  const strayReviews = reviewed
-    .map((rel) => (rel === '' ? root : path.join(root, rel)))
-    .filter((dir) => !configured.has(dir))
-    .map((dir) => path.join(dir, REVIEW_FILE))
+  // On disk too: git lists a tracked copy deleted from the worktree.
+  const strayReviews = (
+    await Promise.all(
+      reviewed
+        .map((rel) => (rel === '' ? root : path.join(root, rel)))
+        .filter((dir) => !configured.has(dir))
+        .map(async (dir) => {
+          const file = path.join(dir, REVIEW_FILE)
+          return (await isFile(file)) ? file : null
+        }),
+    )
+  )
+    .filter((f) => f !== null)
     .sort()
   return { configs, strayReviews, shadowed }
+}
+
+/**
+ * The nested workspace roots git did not list (an ignored `.vx/`) among the
+ * directories holding `rels` and their ancestors under `root`: a run from
+ * under one takes it as its root, so the outer lock must not claim it.
+ */
+async function unlistedNested(
+  root: string,
+  rels: readonly string[],
+  listed: readonly string[],
+): Promise<string[]> {
+  const dirs = new Set<string>()
+  for (const rel of rels) {
+    for (let d = rel.slice(0, Math.max(rel.lastIndexOf('/'), 0)); d !== '';) {
+      if (dirs.has(d)) break
+      dirs.add(d)
+      d = d.slice(0, Math.max(d.lastIndexOf('/'), 0))
+    }
+  }
+  for (const n of listed) dirs.delete(n)
+  // A stat, no descriptor: most directories have no `.vx`.
+  const found = await Promise.all(
+    [...dirs].map(async (d) =>
+      (await stat(path.join(root, d, '.vx')).then(
+        (st) => st.isDirectory(),
+        (err: unknown) => {
+          if (isOutOfFds(err)) throw err
+          return false
+        },
+      )) && (await workspaceFileIn(root, d))
+        ? d
+        : null,
+    ),
+  )
+  return found.filter((d) => d !== null)
 }
 
 async function isFile(p: string): Promise<boolean> {
@@ -529,6 +577,36 @@ function nameFault(name: string): string | null {
   if (name.trim() !== name) return 'the name has surrounding whitespace'
   // A task is `<project>#<task>` split at the first `#`.
   if (name.includes('#')) return 'the name holds "#" — vx addresses a task as <name>#<task>'
+  const why = projectNameProblem(name)
+  return why === null ? null : `the name ${why}`
+}
+
+/**
+ * Why `dependsOn` or `--filter` cannot name a project called `name`, or
+ * null; surrounding whitespace and `#` are each caller's own words. Each
+ * shape loaded and could not be addressed: `^ui#build` was refused as `^`
+ * with `pkg#task`, `--filter '!ui'` excluded it, `tag:ui` and `ui...` read
+ * as a tag and a walk. Asked of the filter parser itself, as `tagProblem`.
+ */
+export function projectNameProblem(name: string): string | null {
+  if (name.includes('*')) return "holds '*', which makes it a pattern"
+  if (name.startsWith('^')) return "starts with '^', which names dependencies' tasks"
+  if (name.startsWith('!')) return "starts with '!', which a filter reads as an exclusion"
+  // The root's own name, which the filter reads as the root's directory.
+  if (name === ROOT_NAME) return null
+  const walk = "starts or ends with '...', which a filter reads as a dependency walk"
+  let f: ReturnType<typeof parseFilter>
+  try {
+    f = parseFilter(name, '/')
+  } catch {
+    // `...` alone: the walk with no project between.
+    return walk
+  }
+  if (f.withDeps || f.withDependents || f.onlyDeps || f.onlyDependents) return walk
+  if (f.gitSince !== undefined)
+    return `ends in "[${f.gitSince}]", which a filter reads as a git range`
+  if (f.tag === true) return "starts with 'tag:', which a filter reads as a tag selector"
+  if (f.isPath) return 'reads as a directory to a filter'
   return null
 }
 

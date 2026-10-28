@@ -17,7 +17,7 @@ import type { Need } from './dispatch.js'
  *   (history and a fifth more, Borg's), `whole` (a worker each);
  * - `scale`, how many workers: `plan` (the fewest that end the known
  *   work near its best, `planner.ts`), `backlog` (enough cores for what
- *   is ready or running, Spark's dynamic allocation).
+ *   is ready or running, of each platform, Spark's dynamic allocation).
  */
 export interface Strategy {
   readonly order: 'critical-path' | 'graphene' | 'fifo'

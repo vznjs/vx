@@ -62,31 +62,31 @@ export function resolveNxCacheConfig(
   if (!server) return undefined
   // With no scheme every request failed on its own, as a bare "Invalid URL".
   if (!/^https?:\/\//.test(server))
-    throw new Error(`vx/nx-cache: server must be http(s), got ${server}`)
+    throw new Error(`nxCache(): server must be http(s), got ${server}`)
   // The URL is printed in every refusal line, so a `user:pass@` in it would
   // leak to the log. Credentials go in the access token.
   if (URL.canParse(server)) {
     const u = new URL(server)
     if (u.username !== '' || u.password !== '')
       throw new Error(
-        'vx/nx-cache: server carries credentials (user:pass@); pass them as the accessToken instead',
+        'nxCache(): server carries credentials (user:pass@); pass them as the accessToken instead',
       )
   }
   const accessToken = options.accessToken ?? env['NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN']
   const fault = accessToken === undefined ? null : headerValueFault(accessToken)
   if (fault !== null)
     throw new Error(
-      `vx/nx-cache: the access token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
+      `nxCache(): the access token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
     )
   const retries = options.retries ?? 1
   // A NaN never reaches the bound, and the request would be resent forever.
   if (!Number.isInteger(retries) || retries < 0)
-    throw new Error(`vx/nx-cache: retries must be a whole number ≥ 0, got ${retries}`)
+    throw new Error(`nxCache(): retries must be a whole number ≥ 0, got ${retries}`)
   // A zero timeout aborted every request as it started.
   const ms = options.timeoutMs
   if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0))
     throw new Error(
-      `vx/nx-cache: timeoutMs must be a positive number of ms, got ${JSON.stringify(ms)}`,
+      `nxCache(): timeoutMs must be a positive number of ms, got ${typeof ms === 'number' ? ms : JSON.stringify(ms)}`,
     )
   return {
     server,

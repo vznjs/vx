@@ -20,7 +20,10 @@
           "id": { "type": "string", "description": "project#task" },
           "project": { "type": "string" },
           "task": { "type": "string" },
-          "hash": { "type": "string", "description": "the cache key" },
+          "hash": {
+            "type": "string",
+            "description": "the cache key; empty when the run derives none"
+          },
           "cacheStatus": {
             "enum": ["hit-local", "hit-remote", "miss", "no-cache", "group", "not-started"]
           },

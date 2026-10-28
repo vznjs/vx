@@ -902,6 +902,23 @@ describe('vx info — the rendered rows', () => {
     )
   })
 
+  // cli.md explained a `cache policy` and a `cache scope` row the printout
+  // had stopped carrying: they live in `settings` now.
+  it("each row cli.md's vx info section explains is a row vx info prints", async () => {
+    const md = await Bun.file(path.resolve(import.meta.dir, '..', 'docs', 'cli.md')).text()
+    const section = md.slice(md.indexOf('## `vx info`'), md.indexOf('## `vx why`'))
+    const explained = [...section.matchAll(/^- `([^`]+)`/gm)].map((m) => m[1])
+    const printed = renderInfo({
+      ...healthy,
+      orphans: { artifacts: 1, bytes: 1 },
+      settings: { 'run.timeout': { value: '30m', source: 'env' } },
+    })
+      .split('\n')
+      .map((l) => /^ {2}(\S.*?)(?: {2,}|$)/.exec(l)?.[1])
+    expect(explained.length).toBeGreaterThan(5)
+    expect(explained.filter((row) => !printed.includes(row))).toEqual([])
+  })
+
   it('prints paths under the home directory as ~', () => {
     const home = os.homedir()
     const out = renderInfo({

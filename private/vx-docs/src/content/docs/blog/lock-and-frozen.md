@@ -59,8 +59,9 @@ A project with no `vx.config.*`, whose tasks come from a plugin like
 ## The check a file hash can't do
 
 `--check` runs every config again and compares. It catches edits, and
-also an env value, a changed preset import or a computed command. On
-this repo (12 projects) it takes 170 ms (min of 10, linux x64,
+also an env value, a changed preset import or a computed command.
+
+On this repo (12 projects) it takes 170 ms (min of 10, linux x64,
 2026-10-23).
 
 In CI:

@@ -35,6 +35,7 @@ export interface RelayOptions {
   /**
    * Answers a participant's `socket` request: the host accepts the
    * websocket and `attach`es it. A participant speaks only over it.
+   * Any status but 101 says it could not: the join it carried is undone.
    */
   upgrade: (key: string, id: string, req: Request, protocol?: string) => Response
 }
@@ -157,6 +158,15 @@ interface Session {
 /** A random (v4) UUID: no one can guess a session id to open it first or join it. */
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_BODY = 1 << 20
+let room: Uint8Array | undefined
+/** Over MAX_BODY in UTF-8: a UTF-16 unit is 1 to 3 bytes, so 1 MiB of `€` is 3. */
+function overMax(text: string): boolean {
+  if (text.length > MAX_BODY) return true
+  if (text.length * 3 <= MAX_BODY) return false
+  // No Buffer on Workers: encode into a fixed 1 MiB, which stops short of one that does not fit.
+  room ??= new Uint8Array(MAX_BODY)
+  return new TextEncoder().encodeInto(text, room).read < text.length
+}
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
@@ -392,6 +402,9 @@ export function createRelay(opts: RelayOptions): Relay {
       // No one reads the host's.
       info: role === 'peer' ? (body.info ?? null) : null,
       queue: [],
+      // Its socket has yet to attach: one that never does (its upgrade
+      // failed, its client went) is gone a grace on, as a dropped one.
+      droppedAt: Date.now(),
     }
     session.byId.set(p.id, p)
     if (p.role === 'host') {
@@ -459,10 +472,15 @@ export function createRelay(opts: RelayOptions): Relay {
     if (version === undefined) throw new HttpError(406, SUPPORTED)
     const asked = url.searchParams.get('join')
     if (asked !== null) {
-      if (asked.length > MAX_BODY) throw new HttpError(413, 'join over 1 MiB')
+      if (overMax(asked)) throw new HttpError(413, 'join over 1 MiB')
       const p = await enter(key, req, url, parse(asked))
       p.hello = JSON.stringify({ joined: { id: p.id, heartbeatMs } })
-      return opts.upgrade(key, p.id, req, protocol)
+      const res = opts.upgrade(key, p.id, req, protocol)
+      // No socket comes, so neither does a redial or a `leave`: kept, a host
+      // so joined held its run's id forever.
+      const session = sessions.get(key)
+      if (res.status !== 101 && session?.byId.get(p.id) === p) drop(session, p)
+      return res
     }
     const session = sessions.get(key)
     if (session !== undefined) lapse(session)
@@ -526,7 +544,11 @@ export function createRelay(opts: RelayOptions): Relay {
         if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
           const id = `refused-${crypto.randomUUID()}`
           refusals.set(id, err)
-          return opts.upgrade('', id, req, protocol)
+          const res = opts.upgrade('', id, req, protocol)
+          // No socket will attach to take it (Bun's upgrade fails on a
+          // request with no websocket key): kept, one leaked per request.
+          if (res.status !== 101) refusals.delete(id)
+          return res
         }
         return Response.json(errorBody(err), { status: err.status })
       }
@@ -584,7 +606,7 @@ export function createRelay(opts: RelayOptions): Relay {
     frame(key, id, text, socket) {
       let n: unknown = null
       try {
-        if (text.length > MAX_BODY) {
+        if (overMax(text)) {
           // Answered by its number, read without parsing the rest.
           const k = /^\{"n":(\d+)[,}]/.exec(text)?.[1]
           if (k !== undefined) n = Number(k)

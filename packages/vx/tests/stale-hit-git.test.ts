@@ -121,6 +121,44 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'an edit to a committed file under its own output moves the key though no input glob reaches it',
+    async () => {
+      // `dist/LICENSE` is committed under `dist/**`, outside `src/**`. A hit
+      // writes the artifact's copy of it back, so the key must fold it: left
+      // out, a committed edit hit and the restore put the old bytes back
+      // (turborepo#14831).
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'src/a.txt'), 'a')
+      await write(path.join(root, 'dist/LICENSE'), 'license v1')
+      await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out.txt\n')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await writeLocalWorkspace(root)
+      vx(root, 'run', 'build')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      await write(path.join(root, 'dist/LICENSE'), 'license v2')
+      git(root, 'commit', '-q', '-am', 'license v2')
+      expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v2')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a codegen that rewrites its committed output is saved, and a hit writes what it left',
     async () => {
       // TanStack Router's committed `routeTree.gen.ts`, declared an output
@@ -1131,18 +1169,31 @@ describe('autocrlfConverts', () => {
     // The last value wins, as it does in git.
     expect(autocrlfConverts('core.autocrlf=true\ncore.autocrlf=false')).toBe(false)
   })
+
+  // Git reads `yes`, `on`, a nonzero integer and a bare key as true; only
+  // `true` was taken, so `autocrlf = 1` read as no conversion.
+  it('takes every spelling git reads as true', () => {
+    for (const v of ['yes', 'on', '1', '2k', 'On']) {
+      expect(autocrlfConverts(`core.autocrlf=${v}`)).toBe(true)
+    }
+    expect(autocrlfConverts('core.autocrlf=false\ncore.autocrlf')).toBe(true)
+  })
 })
 
 describe('gitStatWeakened', () => {
   it('is true for a ctime git does not trust or a minimal stat, and only then', () => {
-    for (const v of ['false', 'no', 'off', '0', 'FALSE']) {
+    // Git reads an empty value and any zero integer (`00`, `-0`, `0k`) as
+    // false too: `trustctime =` kept index OIDs trusted, and a same-size
+    // rewrite with its mtime kept replayed the old output.
+    for (const v of ['false', 'no', 'off', '0', 'FALSE', '', '00', '-0', '0k', ' 0 ']) {
       expect(gitStatWeakened(`core.trustctime=${v}`)).toBe(true)
     }
+    // A bare key is true, and the last value wins.
+    expect(gitStatWeakened('core.trustctime=false\ncore.trustctime')).toBe(false)
     expect(gitStatWeakened('core.checkstat=minimal')).toBe(true)
     for (const vars of [
       '',
       'core.trustctime=true',
-      'core.trustctime=',
       'core.checkstat=default',
       'core.trustctime=false\ncore.trustctime=true',
     ]) {

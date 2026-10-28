@@ -20,7 +20,14 @@ import {
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
-import { maskedLine, nearest, type PluginSecrets, SecretBroker, UserError } from '../util/index.js'
+import {
+  maskedLine,
+  nearest,
+  type PluginSecrets,
+  SecretBroker,
+  ui,
+  UserError,
+} from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, Logger, RunStartInfo } from '../report/index.js'
 import type { CiContext } from './run-context.js'
@@ -60,7 +67,8 @@ export interface VxPlugin {
 
   /**
    * The workspace config, before anything is derived from it (concurrency,
-   * cacheDir, timeout, …). `plugins` is already fixed by the time this runs.
+   * cacheDir, timeout, …). `plugins` is already fixed by the time this runs:
+   * an edit to it is refused.
    * Core re-validates after each plugin, as it does a user's file.
    * `ctx.setBranch` names what the CI knows of the branch: its cache scope
    * and the commit it is compared with.
@@ -223,8 +231,8 @@ export interface VxPlugin {
    * (the contract `run({ log })` takes), or `undefined` to leave core's
    * renderer in place. The first plugin, in declaration order, that
    * returns one renders the run; the rest are not asked. Not consulted
-   * when an embedder passed its own `log`. A logger that throws hands the
-   * rest of the run back to core's renderer with one warning.
+   * when an embedder passed its own `log`. A logger that throws or rejects
+   * hands the rest of the run back to core's renderer with one warning.
    */
   output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
 
@@ -787,7 +795,7 @@ export interface InstallPluginsArgs {
   cacheDir: string
   bus: EventBus
   /**
-   * Where plugin-throw warnings go. Defaults to console.error; passing
+   * Where plugin-throw warnings go. Defaults to `ui.say` on stderr; passing
    * a callback lets the orchestrator funnel into the framed-output
    * `run:status` channel.
    */
@@ -830,7 +838,7 @@ export class PluginSetupError extends UserError {
  */
 export async function installPlugins(args: InstallPluginsArgs): Promise<() => void> {
   const { plugins, bus, workspaceRoot, cacheDir } = args
-  const warn = args.warn ?? ((m) => console.error(m))
+  const warn = args.warn ?? ((m) => ui.say('warn', m))
   const secrets = args.secrets ?? new SecretBroker(args.ci ?? false, warn)
   const disposers: Array<() => void> = []
   // By object, not name: one package can export two plugins.

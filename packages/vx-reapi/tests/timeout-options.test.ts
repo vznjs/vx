@@ -30,9 +30,26 @@ it('an execute deadline that is not a positive number is refused', () => {
   const c = new ReapiClient({ endpoint: 'grpc://127.0.0.1:1' })
   try {
     expect(said(() => reapiExecutor(c, { executeTimeoutMs: 0 }))).toBe(
-      '@vzn/vx-reapi: executeTimeoutMs must be a positive number of ms (got 0)',
+      '@vzn/vx-reapi: executeTimeoutMs must be a number of ms from 1 to 2147483647 (got 0)',
     )
     expect(said(() => reapiExecutor(c, { executeTimeoutMs: 60_000 }))).toBe('taken')
+  } finally {
+    c.close()
+  }
+})
+
+// Bun fires a timer past 2^31 - 1 ms after 1 ms: queueTimeoutMs: 2 ** 31
+// cancelled every action at once, executeTimeoutMs: 2 ** 31 timed every task out.
+it('an execute or queue deadline past what a timer can wait is refused', () => {
+  const c = new ReapiClient({ endpoint: 'grpc://127.0.0.1:1' })
+  try {
+    expect(said(() => reapiExecutor(c, { executeTimeoutMs: 2 ** 31 }))).toBe(
+      '@vzn/vx-reapi: executeTimeoutMs must be a number of ms from 1 to 2147483647 (got 2147483648)',
+    )
+    expect(said(() => reapiExecutor(c, { queueTimeoutMs: 1e10 }))).toBe(
+      '@vzn/vx-reapi: queueTimeoutMs must be a number of ms from 1 to 2147483647 (got 10000000000)',
+    )
+    expect(said(() => reapiExecutor(c, { queueTimeoutMs: 2 ** 31 - 1 }))).toBe('taken')
   } finally {
     c.close()
   }

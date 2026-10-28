@@ -116,7 +116,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]',
     '  vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]',
     '  vx lock [--check] [--format pretty|json]',
-    '  vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]',
+    '  vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]',
     '  vx upgrade [TAG] [-g|--global]',
     '  vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]',
     '  vx info [--format pretty|json] [--cache-dir <path>]',
@@ -268,7 +268,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --mjs            Write .mjs files (no type import) instead of .ts.',
     '      --native         Turbo or Nx: write a vx.config.ts per package (no question).',
     '      --keep           Turbo or Nx: only .vx/workspace.ts, declaring turbo() or nx().',
-    '      --plugin <seam>  Instead: write plugins/<seam>.ts, a runnable plugin, and its',
+    '      --plugin <hook>  Instead: write plugins/<hook>.ts, a runnable plugin, and its',
     '                       test (executor, cache, telemetry, schedule, admit, commands,',
     '                       project, graph, key).',
     '',
@@ -354,6 +354,9 @@ export function flagHint(verb: string, arg: string): string {
   // from `--format`: a run with its cache reads turned off.
   if ((name === '--format' || name === '--json') && flags.includes('--dry'))
     return ' (the run as JSON is `vx last --format json` after it; the plan is --dry=json)'
+  // Watch takes run's flags but --dry, so the branch above missed it.
+  if ((name === '--format' || name === '--json') && verb === 'watch')
+    return " (vx watch prints no JSON; each cycle's run is `vx last --format json` after it)"
   // A flag cut short at a word (`--dry` for prune's `--dry-run`, which
   // `vx run` spells `--dry`) is too many edits away for either budget, and
   // so is one a word too long (`vx run --dry-run`).

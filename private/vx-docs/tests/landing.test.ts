@@ -231,7 +231,7 @@ describe('the landing page', () => {
     expect(h1).toHaveLength(1)
     expect(text(h1[0]![1]!)).toBe('Task orchestration you own.')
     expect(text(/<p class="lede">([\s\S]*?)<\/p>/.exec(hero)![1]!)).toBe(
-      'vx runs and caches your task graph correctly, and every stage after that is a seam you can fill.',
+      'vx runs and caches your task graph correctly, and a plugin can fill every stage after that.',
     )
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)

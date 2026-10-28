@@ -27,7 +27,8 @@ sends one query: its repository, the refs it reads (its branch, then the
 branch it merges into, then the default branch) and every task hash;
 the server answers each from the first ref that holds it. A token of
 another repository than the query names is refused. `AUDIENCE` is the
-`aud` a token must name, by default the origin the server is reached at.
+`aud` a token must name, by default the origin the server is reached at;
+behind a proxy that ends TLS that origin is `http://`, so set it there.
 `READ_ACCESS=public` lets a query with no token read a repository
 `ALLOW` names; it uploads nothing.
 

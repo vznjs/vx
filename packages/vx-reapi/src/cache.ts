@@ -9,7 +9,9 @@
 // as a general key/value cache.
 
 import { createHash } from 'node:crypto'
+import * as grpc from '@grpc/grpc-js'
 import { type ActionResult, type Digest, ReapiClient, type ReapiOptions } from './wire.js'
+import { ui } from '@vzn/vx'
 
 /** The artifact's `output_files` path. Constant: the AC entry holds exactly one. */
 const ARTIFACT_PATH = 'vx-artifact.tar.zst'
@@ -78,11 +80,17 @@ export class ReapiRemoteCache {
   private readonly onWarn: (message: string) => void
   /** What was said already: a fault every hit meets is said once a run. */
   private readonly said = new Set<string>()
+  /**
+   * The action cache's refusal of a write, which stands for the run: a
+   * read-only key or an AC with updates off refuses every save the same
+   * way, and each one uploaded its whole artifact before it was refused.
+   */
+  private refused: Error | undefined
 
   constructor(opts: ReapiOptions) {
     this.client = new ReapiClient(opts)
     this.endpoint = opts.endpoint
-    this.onWarn = opts.onWarn ?? ((m) => void process.stderr.write(`[vx] ${m}\n`))
+    this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', `[vx] ${m}`))
   }
 
   /** A fault the cache works around, said once per kind (2026-10-23: none is silent). */
@@ -194,6 +202,7 @@ export class ReapiRemoteCache {
    * stream.
    */
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
+    if (this.refused !== undefined) throw this.refused
     // An entry is immutable, and UpdateActionResult replaces one: the
     // lookup runs beside the upload (CAS writes are idempotent), so a key
     // stored already costs no round trip of its own and keeps its result.
@@ -237,11 +246,19 @@ export class ReapiRemoteCache {
     ) {
       return
     }
-    await this.client.updateActionResult(action, {
-      exit_code: 0,
-      output_files: [{ path: ARTIFACT_PATH, digest, is_executable: false }],
-      stdout_raw: encodeDuration(meta.durationMs),
-    })
+    await this.client
+      .updateActionResult(action, {
+        exit_code: 0,
+        output_files: [{ path: ARTIFACT_PATH, digest, is_executable: false }],
+        stdout_raw: encodeDuration(meta.durationMs),
+      })
+      .catch((err: unknown) => {
+        const code = (err as { code?: unknown } | null)?.code
+        if (code === grpc.status.PERMISSION_DENIED || code === grpc.status.UNIMPLEMENTED) {
+          this.refused = err as Error
+        }
+        throw err
+      })
   }
 
   close(): void {

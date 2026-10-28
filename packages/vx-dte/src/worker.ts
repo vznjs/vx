@@ -7,7 +7,7 @@
 
 import { readFileSync, realpathSync } from 'node:fs'
 import { lstat, rm } from 'node:fs/promises'
-import os from 'node:os'
+import os, { constants } from 'node:os'
 import path from 'node:path'
 import {
   answerRuntime,
@@ -142,6 +142,21 @@ export async function runWorker(opts: {
   const present = new Map<string, Promise<void>>()
   /** Of `present`, which files each holds: a task that clears one makes it absent. */
   const holds = new Map<string, (file: string) => boolean>()
+  // Each task runs in a process group of its own, which a Ctrl-C (local()
+  // starts this worker in the terminal's group) or a CI job's stop never
+  // reaches: a worker that died of the signal left its tasks running. So
+  // it stops them, as `vx run` stops its own, and leaves. Once: a second
+  // signal is the default's, the user saying "now".
+  const quit = new AbortController()
+  const onSignal = (signal: 'SIGINT' | 'SIGTERM') => (): void => {
+    quit.abort(signal)
+    for (const c of running.values()) c.abort(signal)
+  }
+  const onInt = onSignal('SIGINT')
+  const onTerm = onSignal('SIGTERM')
+  process.once('SIGINT', onInt)
+  process.once('SIGTERM', onTerm)
+  const quitCode = (): number => 128 + constants.signals[quit.signal.reason as 'SIGINT' | 'SIGTERM']
 
   /** Saves the task's files (none when `bare`) and output under `key` and says so. */
   const reply = async (
@@ -151,6 +166,9 @@ export async function runWorker(opts: {
     res: WiredResult & { output: CapturedChunk[] },
     bare = false,
   ): Promise<void> => {
+    // Stopped by a signal: its end would fail the task in the run, which
+    // runs it again elsewhere once this worker leaves.
+    if (quit.signal.aborted) return
     const { output, ...result } = res
     // Forced: the key keeps an entry it holds, so the run's machines restore
     // the fresh bytes under the run key.
@@ -506,8 +524,9 @@ export async function runWorker(opts: {
     for (;;) {
       let messages
       try {
-        messages = await me.poll()
+        messages = await me.poll(quit.signal)
       } catch (err) {
+        if (quit.signal.aborted) return quitCode()
         if (err instanceof RelayError && err.status === 410) return 0
         // The relay lost it (silent too long, or restarted): the run gave its
         // tasks to others, so this job has nothing left and is no failure.
@@ -520,6 +539,7 @@ export async function runWorker(opts: {
         }
         throw err
       }
+      if (quit.signal.aborted) return quitCode()
       for (const { from, body } of messages) {
         if (from === 'relay') {
           if ((body as { type?: string }).type === 'closed') return 0
@@ -571,6 +591,8 @@ export async function runWorker(opts: {
     if (err instanceof RelayError && err.status === 410) return 0
     throw err
   } finally {
+    process.off('SIGINT', onInt)
+    process.off('SIGTERM', onTerm)
     clearInterval(held)
     trees.stop()
     for (const c of running.values()) c.abort()
@@ -871,7 +893,7 @@ export async function changedTracked(
       '--no-renames',
       base,
       '--',
-      m.project === '' ? '.' : m.project,
+      m.project === '' ? '.' : `:(literal)${m.project}`,
     ],
     {
       cwd: root,
@@ -880,8 +902,10 @@ export async function changedTracked(
       stderr: 'ignore',
     },
   )
-  const out = await new Response(p.stdout).text()
-  await p.exited
+  const [out, exit] = await Promise.all([new Response(p.stdout).text(), p.exited])
+  // A git that could not say is no proof the task changed nothing: the
+  // project itself is named, and its entry is withheld.
+  if (exit !== 0) return [m.project === '' ? '.' : m.project]
   return out
     .split('\0')
     .filter((f) => f !== '' && !output(f) && !m.nested.some((n) => f.startsWith(`${n}/`)))

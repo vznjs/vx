@@ -18,6 +18,7 @@ import {
   isUserError,
   normalizeGlob,
   restorableOutput,
+  ui,
   UserError,
   withForwardArgs,
 } from '@vzn/vx'
@@ -514,22 +515,27 @@ export function acceptsTask(task: TaskPlacement): boolean {
 
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
   // A zero or non-number bound stopped every action the moment it began
-  // executing.
+  // executing; Bun fires a timer past 2^31 - 1 ms after 1 ms, the same.
   for (const key of ['executeTimeoutMs', 'queueTimeoutMs'] as const) {
     const ms = opts[key]
-    if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
+    if (ms !== undefined && !(typeof ms === 'number' && ms >= 1 && ms <= 2 ** 31 - 1)) {
       throw new Error(
-        `@vzn/vx-reapi: ${key} must be a positive number of ms (got ${JSON.stringify(ms)})`,
+        `@vzn/vx-reapi: ${key} must be a number of ms from 1 to 2147483647 (got ${JSON.stringify(ms)})`,
       )
     }
   }
   // No listener is no reason to say nothing.
-  const warn = opts.warn ?? ((m: string) => void process.stderr.write(`[vx] ${m}\n`))
+  const warn = opts.warn ?? ((m: string) => ui.say('warn', `[vx] ${m}`))
   // One Capabilities round trip per executor, not per task — the answer
   // cannot change mid-run, and a 400-task graph would otherwise ask 400 times.
   let capsPromise: ReturnType<ReapiClient['capabilities']> | undefined
+  // A failed ask is not kept: one call past its deadline failed every later
+  // task of the run with the same error.
   const capabilitiesOnce = (): ReturnType<ReapiClient['capabilities']> =>
-    (capsPromise ??= client.capabilities())
+    (capsPromise ??= client.capabilities().catch((err: unknown) => {
+      capsPromise = undefined
+      throw err
+    }))
   const executor: TaskExecutor = {
     name: 'vx/reapi',
     remote: true,
@@ -880,6 +886,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       })
       const actionDigest = sha256(actionBytes)
 
+      // The action id lets a server group this action's CAS/AC traffic in its
+      // UI; named before the upload, which is most of that traffic.
+      client.nameAction(actionDigest.hash)
       const caps = await capabilitiesOnce()
       const upload: Blob[] = [
         ...tree.blobs,
@@ -888,9 +897,6 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       ]
       await client.uploadBlobs(upload, caps.maxBatchBytes)
 
-      // The action id lets a server group this action's CAS/AC traffic in its
-      // UI; set before Execute so the streaming call carries it too.
-      client.actionId = actionDigest.hash
       // `exec.timeout` rides the Action so the SERVER can enforce it, but a
       // server that ignores it — or has stopped making progress at all —
       // leaves the client waiting forever, and the operation stream is no
@@ -1199,9 +1205,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   }
   const run = executor.execute.bind(executor)
   executor.execute = (req) =>
-    run(req).catch((err: unknown) => {
-      throw namedRefusal(req.taskId, err)
-    })
+    client
+      .inAction(() => run(req))
+      .catch((err: unknown) => {
+        throw namedRefusal(req.taskId, err)
+      })
   return executor
 }
 
@@ -1642,13 +1650,25 @@ class Fence {
     this.checked.add(dir)
   }
 
-  /** A link whose target, read from where it stands, stays under the root. */
+  /**
+   * A link whose target, read from where it stands, stays under the root,
+   * placed only where a declared output lands: through an earlier link it
+   * planted a hook or replaced another project's file.
+   */
   async symlink(target: string, abs: string, created: string[] | undefined): Promise<void> {
     const to = path.resolve(path.dirname(abs), target)
     if (target.includes('\0') || (to !== this.root && !to.startsWith(this.root + path.sep))) {
       throw this.refuse(`${abs} -> ${target}`)
     }
+    await this.landing(abs)
     await placeSymlink(target, abs, created)
+    // A link re-placed at `abs` moves every directory under it: a memo
+    // judged through the old one let the next write land through the new.
+    for (const memo of [this.realDirs, this.checked]) {
+      for (const dir of memo.keys()) {
+        if (dir === abs || dir.startsWith(abs + path.sep)) memo.delete(dir)
+      }
+    }
     this.links.push({ abs, target })
   }
 

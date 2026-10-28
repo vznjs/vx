@@ -29,7 +29,7 @@ export default {
 }
 ```
 
-A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a finite non-negative number (`Number()` of an unset variable is NaN) is dropped with one warning naming its task ids; the rest still order the run. vx's own CI declares four, this one among them — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
+A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a finite non-negative number (`Number()` of an unset variable is NaN) is dropped with one warning naming its task ids; the rest still order the run. The example is vx's own docs build, once the 29 s tail of a 99 s cold gate: ready from the second second and started last (2026-09-10).
 
 ## Timings from a history server
 
@@ -37,7 +37,8 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 [`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server).
 On a CI job with a token (GitHub's OIDC token, which needs
 `permissions: id-token: write`, or a GitLab `id_tokens` entry
-`VX_HISTORY_TOKEN` with the server's origin as `aud`), each run asks it
+`VX_HISTORY_TOKEN` with the server's origin as `aud`; a 5xx or 429 from
+GitHub's endpoint is asked again up to three times), each run asks it
 for its tasks' numbers, by task definition, in the refs the run reads,
 as a remote cache does: its branch's, the branch it merges into, then
 the default branch's (`baseBranch`, else git's or the CI's). `defaultBranch`
@@ -48,7 +49,9 @@ timings of the tasks it ran, once: under DTE that is the orchestrator,
 with each worker's measurements. A task that shared a crowded worker's
 cores is sent as long as it would have taken alone, as local history
 keeps it. A refusal is said with the server's
-words, and a CI job with no token says so once (on GitHub Actions,
+words; a refused token (401) also names the repository and issuer the
+workspace declares and the audience it must carry, and the server is
+off for the rest of the run. A CI job with no token says so once (on GitHub Actions,
 `GITHUB_ACTIONS`, naming the permission).
 A run with no token (off CI) reads only, from a server whose
 `READ_ACCESS` is `public`, and sends nothing.
@@ -59,7 +62,9 @@ them; `VX_HISTORY_URL` alone, with neither declared, is said and not asked.
 `headers` are sent on every request to the server, for a proxy in
 front of it (a Cloudflare Access service token:
 `{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID, … }`); an
-unset value is left out, and `authorization` stays the CI token's.
+unset value is left out, and `authorization` stays the CI token's. A
+redirect is not followed (it would carry them on): it fails the request,
+naming where it pointed.
 
 ```ts
 export default {
@@ -146,7 +151,8 @@ plugins: [
 
 `vx history [--format pretty|json]` (a verb this plugin adds; `--help`
 prints its usage) shows what it learned per task and the reservation it
-will pack, with the budgets it packs into:
+will pack, with the budgets it packs into. It reads each task as a run
+does: one whose command changed shows none of its old runs.
 
 ```
 $ vx history

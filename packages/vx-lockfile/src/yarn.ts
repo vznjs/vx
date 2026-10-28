@@ -14,6 +14,7 @@
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { depsOf, record, stable } from './json.js'
 import { joinPosix } from './posix.js'
+import { parseSyml } from './syml.js'
 
 export interface Lockfile {
   readonly generation: 'berry' | 'classic'
@@ -57,9 +58,9 @@ export function parseLockfile(text: string): Lockfile {
 }
 
 function parseBerry(text: string): Lockfile {
-  let doc: unknown
+  let doc: unknown = parseSyml(text)
   try {
-    doc = Bun.YAML.parse(text)
+    doc ??= Bun.YAML.parse(text)
   } catch (err) {
     throw new Error(`yarn.lock: ${err instanceof Error ? err.message : String(err)}`)
   }
@@ -101,6 +102,7 @@ function parseBerry(text: string): Lockfile {
         } catch {
           inner = patch[1]!
         }
+        inner = npmDefault(inner)
         const ids = patches.get(inner)
         if (ids === undefined) patches.set(inner, [resolution])
         else if (!ids.includes(resolution)) ids.push(resolution)
@@ -123,6 +125,15 @@ function parseBerry(text: string): Lockfile {
     patches,
     global: JSON.stringify({ version: meta['version'], cacheKey: meta['cacheKey'] }),
   }
+}
+
+// Yarn 2/3 write a patch's inner descriptor with no protocol
+// (`resolve@^1.22.0`) where Yarn 4 writes `resolve@npm:^1.22.0`; npm: is
+// Yarn's default, so both key the same plain descriptor (turborepo#4770).
+function npmDefault(descriptor: string): string {
+  const at = descriptor.indexOf('@', 1)
+  const range = descriptor.slice(at + 1)
+  return range.includes(':') ? descriptor : `${descriptor.slice(0, at)}@npm:${range}`
 }
 
 /** The classic format: an unquoted-YAML dialect with `key value` lines. */
@@ -265,7 +276,7 @@ function resolveDescriptor(
   // A patched descriptor reaches the patched entries Yarn installs as well
   // as the plain one it keys (item 1074).
   const withPatch = (descriptor: string, id: string): readonly string[] => {
-    const patched = lock.patches.get(descriptor)
+    const patched = lock.patches.get(npmDefault(descriptor))
     return patched === undefined ? [id] : [id, ...patched.filter((p) => p !== id)]
   }
   const direct = lock.descriptors.get(`${name}@${range}`)
