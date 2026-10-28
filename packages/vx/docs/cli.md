@@ -1465,7 +1465,8 @@ idles is said (`vx: app#dev exited with code 3`); the next change
 starts it again. A cycle in which a task the server depends on fails
 stops it. An edit while a cycle waits only on a server that has not
 printed its `readyWhen` line stops that cycle and starts the next, so a
-fix reaches a server stuck before ready, in the initial run too.
+fix reaches a server stuck before ready, in the initial run too; the
+servers already up stay up through it.
 Stopping watch stops the server too. A one-shot task (`vx watch build`)
 re-runs itself and what it depends on.
 
