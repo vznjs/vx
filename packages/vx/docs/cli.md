@@ -388,6 +388,8 @@ What counts as a change:
   it changed.
 - `.vx/projects.lock.json` is left out, so `vx lock` never marks every
   project affected.
+- `.vx/workspace.ts`, or a file it imports (a local plugin), selects
+  every project: its plugins shape every task.
 
 **A lockfile change selects everything.** These root files are in
 every task's key (the [workspace fingerprint](./caching.md)), so a

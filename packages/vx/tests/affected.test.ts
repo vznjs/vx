@@ -487,6 +487,24 @@ describe('affectedProjects', () => {
     expect(await all()).toEqual(['a', 'b'])
   })
 
+  it('an edit to a file the workspace config imports selects every project', async () => {
+    // A local plugin is the workspace config's import: its edit re-keys
+    // what the config's own edit does, and it selected nothing.
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      "import plugin from './plugin.mjs'\nexport default { plugins: [plugin] }\n",
+    )
+    await Bun.write(path.join(root, '.vx/plugin.mjs'), "export default { name: 'p' }\n")
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'workspace config')
+    const all = () =>
+      affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }).then((s) => [...s].sort())
+    await writeFile(path.join(root, 'unrelated.mjs'), 'export {}\n')
+    expect(await all()).toEqual([])
+    await Bun.write(path.join(root, '.vx/plugin.mjs'), "export default { name: 'q' }\n")
+    expect(await all()).toEqual(['a', 'b'])
+  })
+
   it('a new nested project selects the project it took files from (D-1)', async () => {
     // `a`'s inputs stop at every project below it, so a config that makes
     // `packages/a/sub` a project re-keys `a` while containment maps the

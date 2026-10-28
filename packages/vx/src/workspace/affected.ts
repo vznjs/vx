@@ -19,7 +19,7 @@ import {
   UserError,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
-import { configImportOwners, realpathOr } from './config-imports.js'
+import { configImportOwners, configImports, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
 import { PROJECT_CONFIG_FILENAMES, type ProjectMeta } from './workspace.js'
@@ -317,6 +317,13 @@ export async function affectedChanges(
   // changes no key.
   const wsConfig = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
   if (wsConfig !== undefined) return everything(wsConfig)
+  // So can an edit to what it imports (a local plugin), which the config's
+  // own path is not: the files it reads at the moment are the ones a run
+  // loads, deleted imports named by the names they would have.
+  if (args.configImports !== false && changed.length > 0) {
+    const reached = await workspaceImportChanged(args.workspaceRoot, changed)
+    if (reached !== undefined) return everything(reached)
+  }
   // Loading the workspace file costs an evaluation; only a changed ROOT
   // name can be claimed, so a diff inside the projects never loads it.
   let claims: FingerprintClaims | undefined
@@ -469,6 +476,22 @@ export async function affectedChanges(
 }
 
 const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
+
+/** The first of `changed` the workspace config imports, transitively, or undefined. */
+async function workspaceImportChanged(
+  workspaceRoot: string,
+  changed: readonly string[],
+): Promise<string | undefined> {
+  for (const name of WORKSPACE_CONFIG_FILENAMES) {
+    const file = path.join(workspaceRoot, name)
+    if (!(await Bun.file(file).exists())) continue
+    const imports = new Set(await configImports(realpathOr(file)))
+    if (imports.size === 0) return undefined
+    const realRoot = realpathOr(workspaceRoot)
+    return changed.find((rel) => imports.has(path.resolve(realRoot, rel)))
+  }
+  return undefined
+}
 
 /**
  * The projects a NEW nested project took files from. A project's inputs
