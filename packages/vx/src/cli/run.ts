@@ -403,6 +403,10 @@ export async function resolveRunOptions(
   scopeOut?: { affectedBase?: string },
 ): Promise<RunOptions | { error: string; code?: string } | { nothingSelected: string }> {
   for (const t of tasks) {
+    // A blank name (`vx run --all ''`) otherwise reached the orchestrator,
+    // which refuses it in the embedder API's words.
+    if (t.trim() === '')
+      return { error: `empty task name ${JSON.stringify(t)} (vx show lists the tasks)` }
     const idx = t.indexOf('#')
     if (idx >= 0) {
       const project = t.slice(0, idx)
