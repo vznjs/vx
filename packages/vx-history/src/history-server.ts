@@ -17,6 +17,8 @@ export interface ServerTiming {
 
 /** Every request's deadline: a run never waits on history longer. */
 const DEADLINE_MS = 10_000
+/** Tries of GitHub's OIDC endpoint before the run's history goes unsent (`askGithub`). */
+const ASK_ATTEMPTS = 3
 
 /** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
 export function serverUrlOf(
@@ -135,6 +137,7 @@ export class HistoryServer {
     private readonly env: Record<string, string | undefined> = Bun.env,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly headers: Readonly<Record<string, string>> = {},
+    private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
   ) {}
 
   /** Whether the run has a token to send: with none it reads only. */
@@ -157,10 +160,7 @@ export class HistoryServer {
       if (ask === undefined || ask === '') return { jwt: this.env.VX_HISTORY_TOKEN ?? '', exp: 0 }
       const u = new URL(ask)
       u.searchParams.set('audience', new URL(this.url).origin)
-      const res = await this.fetchImpl(u, {
-        headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
-        signal: deadline(),
-      })
+      const res = await this.askGithub(u)
       if (!res.ok) throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res)).message}`)
       const jwt = ((await res.json()) as { value?: unknown }).value
       if (typeof jwt !== 'string' || jwt === '') throw new Error("GitHub's OIDC endpoint: no token")
@@ -169,6 +169,33 @@ export class HistoryServer {
       .then((t) => (this.held = t).jwt)
       .finally(() => (this.token = undefined))
     return this.token
+  }
+
+  /**
+   * One answer from GitHub's OIDC endpoint, asked again after a 5xx, a 429
+   * or none, up to three tries, as vx-cache asks it: the upload asks once,
+   * at the run's end, and one 503 lost the run's timings. A 4xx is final.
+   */
+  private async askGithub(ask: URL): Promise<Response> {
+    for (let attempt = 1; ; attempt++) {
+      let res: Response | undefined
+      let failure: unknown
+      try {
+        res = await this.fetchImpl(ask, {
+          headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
+          signal: deadline(),
+        })
+      } catch (err) {
+        failure = err
+      }
+      if (res !== undefined && res.status !== 429 && res.status < 500) return res
+      if (attempt === ASK_ATTEMPTS) {
+        if (res === undefined) throw failure
+        return res
+      }
+      await res?.body?.cancel()
+      await this.wait(1000 * attempt)
+    }
   }
 
   private async call(path: string, body?: unknown): Promise<Response> {

@@ -138,6 +138,53 @@ describe('HistoryServer', () => {
     }
   })
 
+  // One 503 from GitHub's OIDC endpoint lost the run's timings: the upload
+  // asks for the token at the run's end, once (vx-cache asks again, #4571).
+  it("asks GitHub's OIDC endpoint again after a 5xx or 429, never after a 4xx", async () => {
+    const exp = Math.floor(Date.now() / 1000) + 3600
+    const jwt = `h.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.s`
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.example/token',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 't',
+    }
+    const clientOf = (answers: (number | 'reset')[]) => {
+      const asked: string[] = []
+      const fake = (async (input: string | URL) => {
+        const u = new URL(String(input))
+        if (u.hostname === 'oidc.example') {
+          const a = answers.shift() ?? 200
+          asked.push(String(a))
+          if (a === 'reset') throw new Error('connection reset')
+          return a === 200 ? Response.json({ value: jwt }) : new Response('no', { status: a })
+        }
+        if (u.pathname === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+        return new Response(null, { status: 204 })
+      }) as typeof fetch
+      const waits: number[] = []
+      const client = new HistoryServer('https://h.example', NAMED, env, fake, {}, async (ms) => {
+        waits.push(ms)
+      })
+      return { client, asked, waits }
+    }
+    const blips = clientOf([503, 'reset', 200])
+    await blips.client.upload(new Map([['a', { durationMs: 1 }]]))
+    expect([blips.asked, blips.waits]).toEqual([
+      ['503', 'reset', '200'],
+      [1000, 2000],
+    ])
+    const busy = clientOf([429, 502, 500])
+    await expect(busy.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      "GitHub's OIDC endpoint: HTTP 500: no",
+    )
+    expect(busy.asked).toEqual(['429', '502', '500'])
+    const refused = clientOf([403])
+    await expect(refused.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      "GitHub's OIDC endpoint: HTTP 403: no",
+    )
+    expect(refused.asked).toEqual(['403'])
+  })
+
   // 2026-10-25: a proxy in front of the server (an Access service token).
   it('sends headers on every request, never over the CI token', async () => {
     const seen: Headers[] = []
