@@ -1322,6 +1322,39 @@ describe('runGraph restore-tier (local short-circuit)', () => {
       expect(out.get('api#dev')?.status).toBe('skipped')
       expect(out.get('web#ci')?.status).toBe('skipped')
     })
+
+    it('a dependant already queued when its held server answers is dispatched once', async () => {
+      const restoreTier = new Set<string>()
+      let answer!: (ids: readonly string[]) => void
+      const held = new Promise<readonly string[]>((r) => (answer = r))
+      const calls: string[] = []
+      const finished: string[] = []
+      await runGraph({
+        nodes: nodes(
+          node('db#migrate'),
+          server('api#dev', ['db#migrate']),
+          { ...node('web#e2e', ['api#dev']), requested: false },
+          node('x#slow'),
+        ),
+        concurrency: 1,
+        restoreTier,
+        heldServers: new Map([['api#dev', held]]),
+        onFinish: (o) => finished.push(o.node.id),
+        execute: async (n) => {
+          calls.push(n.id)
+          if (n.id === 'x#slow') {
+            // The remote answers while web#e2e waits on the full exec lane.
+            restoreTier.add('web#e2e')
+            answer(['web#e2e'])
+            await Bun.sleep(5)
+          }
+          if (n.id === 'db#migrate') return failed(n)
+          return n.id === 'web#e2e' ? hit(n) : success(n)
+        },
+      })
+      expect(calls.filter((c) => c === 'web#e2e')).toEqual(['web#e2e'])
+      expect(finished.filter((c) => c === 'web#e2e')).toEqual(['web#e2e'])
+    })
   })
 
   // A held server skipped before the remote answered released its

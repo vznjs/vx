@@ -13,6 +13,9 @@ import { resolveSetting, runRules } from '../settings.js'
 import {
   refusalNotice,
   DOT_VX_GITATTRIBUTES,
+  fsRefusalHint,
+  isFsRefusal,
+  isOutOfFds,
   isUserError,
   maskedLine,
   relPosix,
@@ -35,6 +38,7 @@ import {
   lockKey,
   readLockfile,
   buildPackageGraph,
+  checkBracketLiterals,
   checkDependencyRules,
   writeLockfile,
   type Lockfile,
@@ -170,6 +174,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       lock: true,
     })
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
+    checkBracketLiterals(root, projects.values())
     const names = new Set<string>()
     for (const entry of projects.values()) {
       const tasks = Object.entries(entry.config.tasks ?? {})
@@ -367,12 +372,37 @@ async function writeLock(
     })
     return 1
   }
+  // The copies first: one that cannot be written leaves the lock as it was,
+  // not a new lock beside stale copies and a stack.
   for (const r of reviews) refuseSymlink(r.file)
+  const blocked = (
+    await Promise.all(
+      reviews.map((r) =>
+        writeNoFollow(r.file, r.text).then(
+          () => null,
+          (err: unknown): { file: string; err: NodeJS.ErrnoException } => {
+            if (typeof (err as NodeJS.ErrnoException).code !== 'string' || isOutOfFds(err))
+              throw err
+            return { file: r.file, err: err as NodeJS.ErrnoException }
+          },
+        ),
+      ),
+    )
+  ).filter((b) => b !== null)
+  if (blocked.length > 0) {
+    const first = blocked[0]!
+    notWritten('', {
+      headline: `${blocked.length === 1 ? 'a review copy' : 'review copies'} could not be written`,
+      // The code and the copy's path: the message names the temp the write renames.
+      what: blocked.map((b) => `${b.err.code}: ${relPosix(root, b.file)}`),
+      fix: isFsRefusal(first.err)
+        ? fsRefusalHint(first.err)
+        : `remove what stands at ${relPosix(root, first.file)}, then run vx lock again`,
+    })
+    return 1
+  }
   await writeLockfile(root, check.fresh)
-  await Promise.all([
-    ...reviews.map((r) => writeNoFollow(r.file, r.text)),
-    writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES),
-  ])
+  await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
   // A second config beside the one read was edited and nothing changed.

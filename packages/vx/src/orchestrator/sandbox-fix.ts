@@ -9,7 +9,7 @@ import path from 'node:path'
 import type { SandboxViolation } from '../exec/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import { isLiteralPattern } from '../util/index.js'
-import { CREDENTIAL_STORES } from './sandbox-request.js'
+import { credentialStorePaths } from './sandbox-request.js'
 
 /** Grants to add under `exec.sandbox.allow`, each list sorted and unique. */
 type SandboxFix = NonNullable<TaskOutcome['sandboxFix']>
@@ -22,9 +22,7 @@ type Kind = Exclude<keyof SandboxFix, 'withheld' | 'inputs'>
 function isCredential(abs: string): boolean {
   const base = path.basename(abs)
   if (base === '.env' || base.startsWith('.env.')) return true
-  const rel = path.relative(os.homedir(), abs)
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return false
-  return CREDENTIAL_STORES.some((d) => rel === d || rel.startsWith(d + path.sep))
+  return credentialStorePaths(os.homedir()).some((d) => abs === d || abs.startsWith(d + path.sep))
 }
 
 /**

@@ -1792,7 +1792,9 @@ add directories (X-143). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
 included, and checks the graph rules (`run.rules`), which no run
 checks, `dependencies` (which projects a project may depend on,
-`VX_E_DEPENDENCY_RULE`) among them: a broken one prints `✗ vx lock  lock not written`
+`VX_E_DEPENDENCY_RULE`) among them, and refuses a task glob whose
+bracket class spells a path that exists (`app/[id]/**` beside the
+directory `app/[id]`; write `app/\[id\]/**`): a broken one prints `✗ vx lock  lock not written`
 with the rule's refusal under it and writes nothing.
 
 `.vx/projects.lock.json` is minified: it is the one file vx reads, and it loads
@@ -1823,6 +1825,10 @@ Masking it instead would freeze a `***` that every run runs. Let the
 shell expand it: `$API_TOKEN` in the command, the name in
 `exec.env.passThrough` (L-42).
 
+The review copies are written before the lock: one that cannot be
+written (a directory in its place, a read-only file) is named and the
+lock is left as it was.
+
 ### How runs read it
 
 Every run consumes it: configs come from the
@@ -1834,7 +1840,8 @@ may not search (EACCES, named as such), or a missing lock, is a hard error; a co
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`"; so does a bare `build` that
 the cwd's project or a `--filter` leaves unresolved while one of the
-selected projects holds such a config). An entry edited by
+selected projects holds such a config, and a run from that config's
+directory, which would otherwise fall under the parent project). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
 something has crashed, so a normal run pays nothing for it.
