@@ -181,6 +181,18 @@ function parseResourceAttributes(
 }
 
 /**
+ * The option is held to the variable's rule: a zero, negative or
+ * non-number timeout aborted every export the moment it started.
+ */
+function refuseBadTimeout(opts: OtelPluginOptions): void {
+  const ms = opts.timeoutMs
+  if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0))
+    throw new UserError(
+      `[vx-otel] timeoutMs must be a positive number of ms, got ${JSON.stringify(ms)}`,
+    )
+}
+
+/**
  * Resolve the export config from options + env. Returns undefined when no
  * endpoint is configured (the plugin then declines — zero-config safe).
  */
@@ -363,16 +375,7 @@ export function resolveOtelConfig(
     }
     return pem.get(file)
   }
-  // The option is held to the variable's rule: a zero, negative or
-  // non-number timeout aborted every export the moment it started.
-  if (
-    opts.timeoutMs !== undefined &&
-    !(typeof opts.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0)
-  ) {
-    throw new Error(
-      `[vx-otel] timeoutMs must be a positive number of ms, got ${JSON.stringify(opts.timeoutMs)}`,
-    )
-  }
+  refuseBadTimeout(opts)
   const timeoutMs = opts.timeoutMs ?? envTimeout(env, 'OTEL_EXPORTER_OTLP_TIMEOUT', warn) ?? 15_000
   const tls: Partial<Record<'traces' | 'metrics' | 'logs', OtlpTls>> = {}
   for (const signal of ['traces', 'metrics', 'logs'] as const) {
@@ -464,6 +467,9 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('otel()', opts, OTEL_PLUGIN_KEYS)
+  // At the factory too: a sink's refusal is said only where an endpoint
+  // is set, and skips the sink as a telemetry failure.
+  refuseBadTimeout(opts)
   // A string passes the kind check: `'zstd'` warned on every run instead.
   if (opts.compression !== undefined && opts.compression !== 'gzip' && opts.compression !== 'none')
     throw new UserError(
