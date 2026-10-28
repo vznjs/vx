@@ -1174,7 +1174,9 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     const answer = (id: string, found: readonly string[]): void => {
       if (resolved || !unanswered.delete(id)) return
       for (const d of found) {
-        if (promoted.has(d) || outcomes.has(d) || !inRestoreTier(d)) continue
+        // In `readyAt`: already queued, released to the exec queue when its
+        // server was skipped before this answer. On both lanes it ran twice.
+        if (promoted.has(d) || outcomes.has(d) || readyAt.has(d) || !inRestoreTier(d)) continue
         promoted.add(d)
         restoreReady.push(d)
         readyAt.set(d, Date.now())

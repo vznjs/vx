@@ -1323,6 +1323,51 @@ describe('runGraph restore-tier (local short-circuit)', () => {
       expect(out.get('web#ci')?.status).toBe('skipped')
     })
   })
+
+  // A held server skipped before the remote answered released its
+  // dependant to the exec queue; the answer then queued it on the restore
+  // lane as well, and it ran twice.
+  it('a held server skipped before its answer runs its dependant once', async () => {
+    const live = new Set<string>()
+    let answer!: (ids: readonly string[]) => void
+    const held = new Map([['api#dev', new Promise<readonly string[]>((r) => (answer = r))]])
+    const calls: string[] = []
+    let releaseBusy!: () => void
+    const busy = new Promise<void>((r) => (releaseBusy = r))
+    const out = await runGraph({
+      nodes: nodes(
+        node('db#migrate'),
+        {
+          ...node('api#dev', ['db#migrate']),
+          config: { exec: { command: 'serve', persistent: {} } },
+          requested: false,
+        },
+        { ...node('web#e2e', ['api#dev']), requested: false },
+        node('a#busy'),
+        node('b#busy'),
+      ),
+      concurrency: 2,
+      restoreTier: live,
+      heldServers: held,
+      execute: async (n) => {
+        calls.push(n.id)
+        if (n.id === 'db#migrate') return failed(n)
+        if (n.id.endsWith('#busy')) await busy
+        return live.has(n.id) ? hit(n) : success(n)
+      },
+      onStart: (n) => {
+        // The exec lane is full and web#e2e waits on it: the remote answers.
+        if (n.id === 'b#busy')
+          queueMicrotask(() => {
+            live.add('web#e2e')
+            answer(['web#e2e'])
+            setTimeout(releaseBusy, 10)
+          })
+      },
+    })
+    expect(calls.filter((c) => c === 'web#e2e')).toHaveLength(1)
+    expect(out.get('web#e2e')).toBeDefined()
+  })
 })
 
 describe('runGraph — priorities override', () => {
