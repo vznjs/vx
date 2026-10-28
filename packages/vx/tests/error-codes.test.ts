@@ -213,6 +213,25 @@ describe('a refusal under --format json', () => {
     // past bun's 5 s default.
   }, 30_000)
 
+  // `--format json` as the verb's own word, and the verbs that take no
+  // flag: each refused with prose alone and an empty stdout.
+  it('a refusal of the JSON flag itself, or of help or version, answers a code', async () => {
+    const codes = await Promise.all([
+      refusal(['--format', 'json']),
+      refusal(['--format=json']),
+      refusal(['help', '--bogus', '--format', 'json']),
+      refusal(['help', 'bogus', '--format', 'json']),
+      refusal(['version', '--format', 'json']),
+    ])
+    expect(codes).toEqual([
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+      'VX_E_UNKNOWN_COMMAND',
+      'VX_E_USAGE',
+    ])
+  })
+
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
     const plain = await vx(['run', 'nope', '--all'])
     const forwarded = await vx(['run', 'nope', '--all', '--', '--dry=json'])
