@@ -61,7 +61,7 @@ function cacheSubHint(sub: string): string {
   if (elsewhere !== undefined) return ` — ${elsewhere}`
   const best = nearest(sub, ['clean'])
   // `clean` is the one subcommand: name it when nothing is near (M-58).
-  return best === undefined ? '. The subcommand is clean' : `. Did you mean ${best}?`
+  return best === undefined ? '. Its one subcommand is `vx cache clean`' : `. Did you mean ${best}?`
 }
 
 export async function cacheCmd(args: readonly string[]): Promise<number> {

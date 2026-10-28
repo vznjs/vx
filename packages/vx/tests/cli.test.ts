@@ -122,7 +122,7 @@ describe('cli run()', () => {
       [
         1,
         noticed(
-          'vx cache: unknown subcommand: bogus. The subcommand is clean (see `vx cache --help`)\n',
+          'vx cache: unknown subcommand: bogus. Its one subcommand is `vx cache clean` (see `vx cache --help`)\n',
         ),
       ],
       [
