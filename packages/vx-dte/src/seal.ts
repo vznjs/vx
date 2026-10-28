@@ -37,6 +37,8 @@ export function secretProof(secret: string): Proof {
 }
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
+/** GitHub's keys are read again for a key not among them at most this often. */
+const KEYS_REREAD_MS = 60_000
 
 /**
  * An OIDC token for `audience` from GitHub's token endpoint. A 5xx or a
@@ -72,8 +74,9 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
     throw new Error('not a GitHub Actions job with id-token: write (ACTIONS_ID_TOKEN_REQUEST_URL)')
   const aud = (parts: readonly string[]): string =>
     `vx-dte:${createHash('sha256').update(parts.join('\0')).digest('base64url')}`
-  // GitHub's keys, read once for every check.
-  const seen = new Map<string, Promise<unknown>>()
+  // GitHub's keys, read once for every check, and again for a key not
+  // among them once a minute at most.
+  const seen = new Map<string, { at: number; p: Promise<unknown> }>()
   const read =
     fetchJson ??
     (async (u: string): Promise<unknown> => {
@@ -81,42 +84,50 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
       if (!res.ok) throw new Error(`${u}: ${res.status}`)
       return res.json()
     })
-  const once = (u: string): Promise<unknown> => {
-    let p = seen.get(u)
-    if (p === undefined) {
-      p = read(u)
-      // quiet: the caller awaits p and hears its error; this only forgets it
-      p.catch(() => seen.delete(u))
-      seen.set(u, p)
-    }
-    return p
+  const once = (u: string, fresh: boolean): Promise<unknown> => {
+    const had = seen.get(u)
+    if (had !== undefined && !(fresh && Date.now() - had.at >= KEYS_REREAD_MS)) return had.p
+    const entry = { at: Date.now(), p: read(u) }
+    // quiet: the caller awaits p and hears its error; this only forgets it
+    entry.p.catch(() => seen.get(u) === entry && seen.delete(u))
+    seen.set(u, entry)
+    return entry.p
   }
   return {
     async sign(parts) {
       return oidcToken(url, bearer, aud(parts))
     },
     async check(token, parts) {
-      const { createVerifier } = await import('@vzn/vx-dte-server')
+      const { createVerifier, TokenError } = await import('@vzn/vx-dte-server')
       // A read of GitHub's keys that failed is no check: refused as one, a
       // keys outage read "its key is not the run's" (2026-10-23).
       let unread: unknown
-      const verify = createVerifier({
-        allow: [{ issuer: GITHUB }],
-        audience: aud(parts),
-        runClaims: { [GITHUB]: ['repository_id'] },
-        fetchJson: (u) =>
-          once(u).catch((err: unknown) => {
-            unread = err
-            throw err
-          }),
-      })
-      return verify(token).then(
-        (t) => t.run[0] === repo,
-        () => {
-          if (unread !== undefined) throw unread
-          return false
-        },
-      )
+      // A verifier per check, its audience the parts: its own refetch for
+      // an unknown key never fires, so a stale read is redone here.
+      const verify = (fresh: boolean) =>
+        createVerifier({
+          allow: [{ issuer: GITHUB }],
+          audience: aud(parts),
+          runClaims: { [GITHUB]: ['repository_id'] },
+          fetchJson: (u) =>
+            once(u, fresh).catch((err: unknown) => {
+              unread = err
+              throw err
+            }),
+        })(token)
+      return verify(false)
+        .catch((err: unknown) => {
+          if (err instanceof TokenError && err.message === 'unknown signing key')
+            return verify(true)
+          throw err
+        })
+        .then(
+          (t) => t.run[0] === repo,
+          () => {
+            if (unread !== undefined) throw unread
+            return false
+          },
+        )
     },
     mismatch: 'run it in a job of this repository with id-token: write',
   }
