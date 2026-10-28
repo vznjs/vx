@@ -52,6 +52,14 @@ function settledState(abs: string): bigint {
   return xxh3(Buffer.from(entries.join('\n')))
 }
 
+function isDirectory(abs: string): boolean {
+  try {
+    return fs.statSync(abs).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 /**
  * What a link points to, as change detection reads it: a file's bytes and
  * mode, a directory's files by size and times (cache/linked-inputs.ts keys
@@ -222,6 +230,7 @@ export class ChangeJudge {
     const spell = gitSpeller(this.ctx.workspaceRoot)
     let first: string | undefined
     let firstAbs: string | undefined
+    let firstIsFile = false
     // `sameState` before the `first` test, never after it: it is what
     // RECORDS a path's settled state, and every path this judgement saw
     // must be recorded even though only the first change names the cycle.
@@ -261,9 +270,12 @@ export class ChangeJudge {
         continue
       }
       live++
-      if (first !== undefined) continue
+      // A file names the cycle before a directory: `mkdir -p` and a write
+      // in it fire the directory first, and the cycle was named by it.
+      if (first !== undefined && (firstIsFile || isDirectory(p))) continue
       first = l
       firstAbs = p
+      firstIsFile = !isDirectory(p)
     }
     if (first === undefined && gone !== undefined) [first, firstAbs] = gone
     this.pending.clear()
