@@ -37,6 +37,11 @@ export function plainOutput(sink: Logger): Logger {
   // whose methods live on its prototype and read `this`.
   return {
     status: (line) => sink.status(line),
+    ...(sink.warn && { warn: (line) => sink.warn!(line) }),
+    ...(sink.stepStart && { stepStart: (id) => sink.stepStart!(id) }),
+    ...(sink.stepEnd && { stepEnd: (id, info) => sink.stepEnd!(id, info) }),
+    ...(sink.runStop && { runStop: () => sink.runStop!() }),
+    ...(sink.runDone && { runDone: () => sink.runDone!() }),
     ...(sink.runStart && { runStart: (info) => sink.runStart!(info) }),
     ...(sink.taskStart && { taskStart: (node) => sink.taskStart!(node) }),
     ...(sink.runEnd && { runEnd: () => sink.runEnd!() }),
