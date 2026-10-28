@@ -169,6 +169,12 @@ export interface PreparedRun {
    * mistaken for a workspace vx was never set up in.
    */
   anyProjectConfig: boolean
+  /**
+   * With no config in the lock, one a directory holds anyway (root-relative):
+   * written after `vx lock`, so the fix is `vx lock`, not `vx init`. Asked
+   * only by a refusal, so a run that goes on pays no stat.
+   */
+  unlockedConfig: () => string | undefined
   /** The claimed root files, and whether a task has since rewritten one (fingerprint-watch.ts). */
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
@@ -573,6 +579,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
+      unlockedConfig: () => unlockedConfigOf(projectsWithConfigs, projectMetas, workspaceRoot),
       fingerprintWatch,
       nestedDirsByProject,
       gitFilesCache: new GitFilesCache(),
@@ -852,6 +859,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
+      unlockedConfig: () => unlockedConfigOf(projectsWithConfigs, projectMetas, workspaceRoot),
       fingerprintWatch,
       nestedDirsByProject,
       gitFilesCache,
@@ -971,6 +979,20 @@ export function workspaceCachePolicy(
       'VX_E_CONFIG',
     )
   }
+}
+
+/** A config no locked project has, looked for only when the lock holds none. */
+function unlockedConfigOf(
+  configured: readonly unknown[],
+  metas: ReadonlyArray<{ dir: string }>,
+  workspaceRoot: string,
+): string | undefined {
+  if (configured.length > 0) return undefined
+  for (const m of metas) {
+    const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(m.dir, n)))
+    if (config !== undefined) return relPosix(workspaceRoot, path.join(m.dir, config))
+  }
+  return undefined
 }
 
 /**
