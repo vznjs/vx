@@ -5,10 +5,11 @@ description: Host @vzn/vx-cache-server, the remote cache vxCache() reads and wri
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components'
 
-`@vzn/vx-cache-server` is the remote cache you host. It keeps task
-results in one bucket, Cloudflare R2 or any S3 bucket, and nothing
-else: no database, and no state on the server itself. `vxCache()` from
+`@vzn/vx-cache-server` is the remote cache you host. `vxCache()` from
 `@vzn/vx-cache` points vx at it.
+
+It keeps task results in one bucket, Cloudflare R2 or any S3 bucket, and
+nothing else: no database, and no state on the server itself.
 
 [Remote cache](../../remote-cache/) walks through the whole setup on
 Cloudflare. This page is the reference: every way to host it, every
@@ -53,24 +54,23 @@ Results go in any S3-compatible bucket:
 
 ```sh
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' \
+AUDIENCE=https://cache.example.com \
 S3_BUCKET=vx-cache S3_ENDPOINT=https://s3.example.com \
 S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
 bunx @vzn/vx-cache-server --port 8080
 ```
 
-```text
-vx-cache-server on http://0.0.0.0:8080/
-```
+It prints the address it listens on, `vx-cache-server on http://0.0.0.0:8080/`.
+`--port` (default 8080) and `--host` (default `0.0.0.0`) set it.
 
-`--port` (default 8080) and `--host` (default `0.0.0.0`) set where it
-listens. A server keeps no state of its own, so you can run as many as
-you like over one bucket, behind a load balancer.
+A server keeps no state of its own, so you can run as many as you like
+over one bucket, behind a load balancer.
 
 </TabItem>
 <TabItem label="Docker">
 
 ```sh
-docker run -p 8080:8080 -e ALLOW='…' -e S3_BUCKET=… -e S3_ENDPOINT=… \
+docker run -p 8080:8080 -e ALLOW='…' -e AUDIENCE=https://cache.example.com -e S3_BUCKET=… -e S3_ENDPOINT=… \
   -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… ghcr.io/vznjs/vx-cache-server
 ```
 
@@ -89,7 +89,7 @@ To check it answers, ask for its limits:
 curl https://cache.example.com/v1/capabilities
 ```
 
-```text
+```json
 {"code":"bad_request","message":"vx-issuer and vx-repository: the issuer's and the repository's hashes (PROTOCOL.md § Keys)"}
 ```
 
@@ -103,7 +103,7 @@ instead.
 | --- | --- | --- |
 | `ALLOW` | empty: refuse every request | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
 | `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token, such as a laptop's, reads a repository `ALLOW` names, and writes nothing |
-| `AUDIENCE` | the URL it is reached at | the `aud` a CI token must name |
+| `AUDIENCE` | Workers: the URL it is reached at. Bun and Docker: required | the `aud` a CI token must name |
 | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | | the bucket (Bun and Docker), as Bun's S3 client reads them |
 | `MAX_CHECK_HASHES` | 500 (6 on Workers) | how many lookups one check may make |
 | `MAX_UPLOAD_BYTES` | 100 MB | the largest result it takes |
@@ -137,7 +137,7 @@ export default defineWorkspace({
 
 | Option | Default | What it sets |
 | --- | --- | --- |
-| `url` | `VX_CACHE_URL` | the server's URL; a redirect is not followed |
+| `url` | `VX_CACHE_URL` | the server's URL: https, http only to `127.0.0.1`, `::1` or `localhost`; a redirect is not followed |
 | `issuer` | required | your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL |
 | `repository` | required | the repository, `org/name`, as `ALLOW` names it |
 | `timeoutMs` | 30 000 | how long one read or check may take |
@@ -145,8 +145,8 @@ export default defineWorkspace({
 | `headers` | none | headers sent on every request, for a proxy in front of the server |
 
 `github()` or `gitlab()` from `@vzn/vx-ci` tells the cache which branch
-a CI run is on. Without one, a CI run reads only git's branch and the
-default branch.
+a CI run is on. Without one, a CI run reads only the checked-out branch
+and the default branch.
 
 For a proxy such as Cloudflare Access, pass its service token:
 
@@ -163,8 +163,10 @@ vxCache({
 ```
 
 An unset value is left out. The `authorization` header stays the CI
-token's. DTE workers send the headers too, so give their job the same
-secrets.
+token's.
+
+The workers of a [distributed task execution](../../distributed-task-execution/)
+run send the headers too, so give their job the same secrets.
 
 ### Tokens
 
@@ -196,11 +198,14 @@ vx:
 </Tabs>
 
 Off CI there is no token. A run then reads from a server with
-`READ_ACCESS=public` and uploads nothing. Any other server refuses the
-first read, vx says so once, and the run goes on with its local cache.
-A refused write turns off uploads only. In a
-[DTE run](../../distributed-task-execution/), the run lends its token to
-its workers, so they read and write where the run does.
+`READ_ACCESS=public` and uploads nothing.
+
+Any other server refuses the first read. vx says so once, and the run
+goes on with its local cache. A refused write turns off uploads only.
+
+With [distributed task execution](../../distributed-task-execution/),
+the run lends its token to its workers, so they read and write where the
+run does.
 
 ## Expiry
 
@@ -216,16 +221,15 @@ that misses an expired result runs the task and stores it again.
 
 ## How it stores results
 
-A result's name in the bucket is:
-
-```text
-<hash(issuer)>/<hash(repository)>/<hash(branch)>/<key>
-```
+A result's name in the bucket is
+`<hash(issuer)>/<hash(repository)>/<hash(branch)>/<key>`.
 
 Each hash is the first 128 bits of a SHA-256, in hex, so the bucket
 names no repository and no branch. One repository never reads another's
-results. A result is never rewritten: a second upload of the same key
-keeps the first bytes.
+results.
+
+A result is never rewritten: a second upload of the same key keeps the
+first bytes.
 
 A download through Workers goes through Cloudflare's cache: after R2
 serves a result once, that data center answers it without R2.
@@ -249,8 +253,10 @@ A branch on the wire is its hash, the first 128 bits of the ref's
 SHA-256 as 32 lowercase hex characters (`refs/heads/main` is
 `f921bd05e68b03740c450e565e0e6173`). A plain ref is refused with `400`.
 
-Any server that speaks the protocol can stand in for this one. To mount
-it in a server of your own, `createCacheServer({ blobs, authorize, limits? })`
-returns a `fetch` handler over a bucket of your own. The
-[README](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#api)
+Any server that speaks the protocol can stand in for this one.
+
+To mount it in a server of your own, `createCacheServer({ blobs, authorize, limits? })`
+returns a `fetch` handler over your bucket.
+
+The [README](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#api)
 lists the whole API.

@@ -1,5 +1,5 @@
 // The environment variables each first-party plugin reads are configured
-// in CI, not in a config file: a workflow sets `VX_REAPI_ENDPOINT`,
+// in CI, not in a config file: a workflow sets
 // `OTEL_EXPORTER_OTLP_ENDPOINT`, `GITHUB_TOKEN` or `TURBO_TOKEN`, and a
 // release that renamed one would drop the remote or the exporter with no
 // config change to review. Core's `VX_*` reads are held by

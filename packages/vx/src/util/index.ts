@@ -49,7 +49,7 @@ export {
   stageTimes,
   type StageTime,
 } from './timing.js'
-export { clampInt, formatElapsed, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
+export { clampInt, formatElapsed, isMeasure, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export {
   asTrees,
   BUN_GLOB_WILDCARDS,
@@ -115,6 +115,7 @@ export {
   wholeIgnored,
 } from './git-ignored.js'
 export { realPath, realpathOf } from './real-path.js'
+export { refuseSymlink, writeNoFollow } from './write-file.js'
 export {
   maskedCommand,
   maskedStreams,

@@ -512,7 +512,7 @@ Semantics:
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
   as its `128 + n` code), at once while the graph still runs (`… while
-  the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
+the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). An exit 0 on its own is
   fine (a daemon that forks and returns), and one kept only as a
   dependency does not end the foreground hold (WD-3).
@@ -702,7 +702,11 @@ key) is also masked line by line, each line of six characters or more,
 and a value holding a `'` also as a shell-quoted line spells it (`'\''`).
 A value
 split across two output chunks is still caught; the output holds back
-that many characters until the next chunk. A plugin that reads a task's
+that many characters until the next chunk. On screen the hold lasts
+25 ms, so a value written in two pieces with a longer pause between
+them shows; every stored copy (the entry a hit replays and a remote
+cache receives, the failure record `vx last` reads) is masked again
+whole and never holds it. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
 those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
 then masked in the same places.
@@ -930,7 +934,7 @@ Always applied to every glob pass (regardless of what you wrote):
   Its bytes differ per machine, so machines with different files miss
   each other's shared entries. An ignored file never selects a task
   under `--affected` on its own, as in Nx (only what git sees does); `vx
-  watch` re-runs it on an edit there.
+watch` re-runs it on an edit there.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`,
   `.vx/projects.lock.json`, `vx.lock.json`, and `.vx/tmp/**`, where vx's
   restores stage, only where vx writes them: at the project's root (a
@@ -1972,7 +1976,7 @@ interface CacheSettings {
   the default is ignored by `.vx/.gitignore` (`/cache`, `/tmp`) instead, written
   when missing and never edited.
 - **Cleaning**: no run evicts anything. `vx cache clean --older-than <d>
-  --max-size <s>` is the one cleaner ([cli.md](cli.md#vx-cache-clean)); run it
+--max-size <s>` is the one cleaner ([cli.md](cli.md#vx-cache-clean)); run it
   from a schedule or CI to bound the cache.
 - **`baseBranch`** — the repository's default branch, by name
   (`'develop'`; `VX_BASE_BRANCH` beats it). Omitted → `origin/HEAD`'s
@@ -2063,8 +2067,8 @@ interface CacheSettings {
   - **`exclusiveOutputs`** (X-53) — two tasks whose declared outputs
     overlap are refused even when a `dependsOn` edge orders them:
     `<a> and <b> both declare the output "<glob>" … Give each task its
-    own output path, or set run.rules.exclusiveOutputs: false in
-    .vx/workspace.ts to let a dependant add to its upstream's outputs.`
+own output path, or set run.rules.exclusiveOutputs: false in
+.vx/workspace.ts to let a dependant add to its upstream's outputs.`
     Off, the dependant adds to its upstream's tree (item 588;
     `caching.md` § Additive outputs). Two overlapping tasks with no
     edge are refused either way.
@@ -2090,9 +2094,9 @@ interface CacheSettings {
   `inputs.files` can match another task's `outputs.workspaceFiles`
   landing in its project (X-135), is refused by `vx lock` unless one of
   the exceptions below applies: `<reader> reads "<glob>" in inputs.<field>,
-  which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
-  to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
-  <reader>'s inputs.tasks, so its key hashes those bytes instead.` Such a key
+which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
+to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
+<reader>'s inputs.tasks, so its key hashes those bytes instead.` Such a key
   reads what the producer writes this run, so vx cannot know it before
   the producer ran: it is not probed, prefetched or restored ahead of
   the schedule (`caching.md` § Local restore tier). The upstream's key

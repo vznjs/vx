@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v48'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v49'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -130,7 +130,7 @@ over (in order):
    `npm-shrinkwrap.json` over `package-lock.json`, as npm does; `bun()`
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
-   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`:
+   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
    `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, the root `package.json`'s `workspaces.nohoist` and `installConfig`)
    and folds each whole into every task.
 
@@ -1391,7 +1391,8 @@ root) and it holds everything, shared with no other workspace:
     ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
     │                                       packed under (v35), the miss's CPU and RSS,
     │                                       the empty output directories (v44),
-    │                                       the output symlinks (v45)
+    │                                       the output symlinks (v45), the modes of
+    │                                       output directories narrower than 0755 (v49)
     └── .vx-sum                             CRC-32 of the archive this tree packs to (v36)
 ```
 
@@ -1502,7 +1503,7 @@ Its cost is the CRC's (~10 GB/s): a 32 MB restore 11.3 → 14.4 ms and
 Tar headers carry mode and second mtimes. vx needs both permission bits (a lost executable bit builds cold
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
-`.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, dirs?, exec? }` —
+`.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, dirs?, links?, dirModes?, exec? }` —
 into the archive. Restore applies both, the mode minus the process
 umask as tar gives a non-root user (under `umask 077` a 0644 output comes
 back 0600; until 2026-10-16 it came back 0644, readable by every user,
@@ -1522,7 +1523,8 @@ it), every wire ships the bytes verbatim, and an artifact without it
 reads as before. The ingest side takes the numbers only as plain
 non-negative numbers; anything else in a foreign sidecar is dropped.
 `dirs` (v44) names the empty directories the output globs matched at
-save (`outputs/dist/empty`): a tar of regular files cannot hold them, and
+save (`outputs/dist/empty`, `workspace-outputs/gen/empty` under
+`outputs.workspaceFiles`): a tar of regular files cannot hold them, and
 a hit makes each one, so the tree a hit leaves is the one the miss left.
 Each name is held to a file entry's rules and to the declared outputs,
 and is reached only through directories that stay in the project. Its
@@ -2138,6 +2140,15 @@ breaking footer).
 
 ### History
 
+- **v48 → v49**: stored bytes wrong under a key the change does not move
+  (2026-10-28). A hit made each missing output directory with mkdir's
+  default, so `chmod 700 dist/keys` came back 0755 after `rm -rf dist` or
+  on a fresh checkout, and every user could read the files it kept to
+  its owner. The sidecar now keeps `dirModes`, the mode of each output
+  directory that withholds a permission 0755 grants, and a hit gives
+  each directory it makes that mode, minus the umask as a file's
+  (`tests/restore-dir-mode.test.ts`); a directory that stands is left as
+  it is. A v48 artifact keeps none.
 - **v47 → v48**: stored bytes wrong under a key the change does not move
   (2026-10-18). A task glob is a standard glob again: `[...]` is a
   character class and `\[id\]` names a route directory, which reverts

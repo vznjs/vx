@@ -53,29 +53,32 @@ the manager installed, and `--affected` follows both. `pnpm({ scope:
 ---
 
 <details>
-<summary>What each plugin folds</summary>
+<summary>What each plugin adds to a key</summary>
 
-| Plugin   | A package's key folds                                                                 | Install-wide, for every package |
+| Plugin   | A package's key includes                                                              | Install-wide, for every package |
 | -------- | ------------------------------------------------------------------------------------- | ------------------------------- |
 | `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs` and `overrides` (`settings`, `onlyBuiltDependencies`, …) |
 | `bun()`  | the same, through Bun's hoisted layout                                                | every top-level field but `workspaces`, `packages`, `catalog`, `catalogs`, `overrides` and `patchedDependencies` (`trustedDependencies`, …) |
 | `npm()`  | the same, from `npm-shrinkwrap.json` or `package-lock.json` versions 2 and 3                                | the `lockfileVersion`; root `overrides` reach a package through the entries they force |
-| `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every package folds the whole file | `__metadata`'s `version` and `cacheKey`, and the root workspace's entry (its `dependenciesMeta`) through the root's closure |
+| `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every package's key includes the whole file | `__metadata`'s `version` and `cacheKey`, and the root workspace's entry (its `dependenciesMeta`) through the root's closure |
 
 Every package's key also holds the root package's own dependencies.
 Their bins run from the root `node_modules/.bin`, on every task's
-`PATH`. So bumping a root devDependency re-runs every package.
+`PATH`.
+
+So bumping a root devDependency re-runs every package.
 A workspace package the root depends on is installed at the root
-`node_modules`, where every package can load it, so every other package
-builds after it (`^build`) and folds its key; editing it re-runs them
-all, and `--affected` selects them.
+`node_modules`, where every package can load it.
+
+So every other package builds after it (`^build`) and includes its key.
+Editing it re-runs them all, and `--affected` selects them.
 
 Each plugin also puts its manager's install settings in every task's
 key, and adds a package's `package.json` to its tasks' inputs:
 
 | Plugin | Install settings in the key |
 | --- | --- |
-| `pnpm()` | `pnpm-workspace.yaml` except `patchedDependencies`, `overrides` and the catalogs (the lockfile records their effect per package), `.npmrc` |
+| `pnpm()` | `pnpm-workspace.yaml` except `patchedDependencies`, `overrides` and the catalogs (the lockfile records their effect per package), `.npmrc`, the root `package.json`'s `pnpm` field |
 | `bun()` | `bunfig.toml`, `.npmrc` |
 | `npm()` | `.npmrc` |
 | `yarn()` | `.yarnrc.yml`, `.yarnrc` (yarn 1), the root `package.json`'s `workspaces.nohoist` and `installConfig` |

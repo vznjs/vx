@@ -16,7 +16,7 @@ bun tests/docker/issuer.ts >tests/docker/.allow &
 issuer=$!
 trap 'kill $issuer 2>/dev/null; docker rm -f "${name:-}" >/dev/null 2>&1; docker rmi -f "$tag" >/dev/null 2>&1; rm -f tests/docker/.allow' EXIT
 for _ in $(seq 50); do [ -s tests/docker/.allow ] && break; sleep 0.1; done
-name=$(docker run -d --network host -e ALLOW="$(cat tests/docker/.allow)" "$tag" --port "$port" --host 127.0.0.1)
+name=$(docker run -d --network host -e ALLOW="$(cat tests/docker/.allow)" -e AUDIENCE="$VX_HISTORY_SMOKE" "$tag" --port "$port" --host 127.0.0.1)
 ready=
 for _ in $(seq 50); do
   if docker logs "$name" 2>&1 | grep -q "vx-history-server on"; then ready=1; break; fi

@@ -43,13 +43,13 @@ optional `grpc(s)://` or `http(s)://` scheme, or a gRPC resolver target
 (`unix:`, `unix-abstract:`, `dns:`, `ipv4:`, `ipv6:`), is refused at startup
 with a line naming the setting. So is a TLS endpoint at an IP address:
 Bun's TLS refuses an IP as the server name, so name the server by host
-name, or use `grpc://` for plaintext. `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE` configure it
-from the environment, and `VX_REAPI_EXECUTE=1` turns on remote execution the
-way `execute: true` does (off by default: a plugin must not move where a
-build runs merely by being configured for caching). `execute` is a
-boolean: a string (`process.env.X`) is refused.
-`instanceName` is the option form of `VX_REAPI_INSTANCE`; like the endpoint
-it is trimmed, and a blank one is unset. `headers`
+name, or use `grpc://` for plaintext. The plugin reads no environment
+variable: every setting is an option, and a value from CI is named in
+`.vx/workspace.ts` (`endpoint: process.env.REAPI_ENDPOINT`). `execute:
+true` turns on remote execution (off by default: a plugin must not move
+where a build runs merely by being configured for caching). `execute` is
+a boolean: a string (`process.env.X`) is refused. `instanceName`, like
+the endpoint, is trimmed, and a blank one is unset. `headers`
 adds gRPC metadata to every call: a hosted server's API key goes there
 (`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`); a value
 that is not a string, such as an unset variable's, is refused when the
@@ -62,10 +62,8 @@ TLS is on unless asked off, as in Bazel: a bare `host:port`, a `grpcs://`
 or `https://` endpoint, and a `dns:`/`ipv4:`/`ipv6:` target all use it.
 Plaintext takes a `grpc://` or `http://` endpoint or `tls: false`; a `unix:`
 or `unix-abstract:` socket is plaintext (`tls: true` turns it on). It uses the system roots unless told otherwise. A server behind a private
-CA takes `tlsCertificate` (or `VX_REAPI_TLS_CERTIFICATE`), a PEM file of
-that CA; one that asks for mutual TLS takes `tlsClientCertificate` and
-`tlsClientKey` (`VX_REAPI_TLS_CLIENT_CERTIFICATE` / `VX_REAPI_TLS_CLIENT_KEY`)
-— Bazel's `--tls_certificate`, `--tls_client_certificate` and
+CA takes `tlsCertificate`, a PEM file of that CA; one that asks for
+mutual TLS takes `tlsClientCertificate` and `tlsClientKey` — Bazel's `--tls_certificate`, `--tls_client_certificate` and
 `--tls_client_key`. Any of them turns TLS on unless `tls: false` is set; a file that cannot be read
 is refused at startup, naming the setting.
 

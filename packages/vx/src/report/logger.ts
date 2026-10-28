@@ -465,6 +465,11 @@ export function defaultLogger(
   }
   const printsKept = (tail: { outcome?: TaskOutcome }): boolean =>
     flushedPersistent && tail.outcome !== undefined && view.mode !== 'errors-only'
+  // A server writing before this run started its task is one an earlier run
+  // left running (`vx watch` keeps its dev server): it streams as a kept
+  // one, live above the rows. Buffered as a task yet to run, it was never shown.
+  const heldOver = (node: TaskNode): boolean =>
+    node.config.exec?.persistent !== undefined && view.mode !== 'errors-only'
 
   const refresh = (forced: boolean): void => {
     if (statusDead) return
@@ -892,6 +897,7 @@ export function defaultLogger(
         else appendTail(tail.out, chunk)
         return
       }
+      if (heldOver(node)) return streamKept(node, chunk)
       pushChunk(node.id, chunk, false)
     },
     taskStderr(node, chunk) {
@@ -908,6 +914,7 @@ export function defaultLogger(
         else appendTail(tail.err, chunk)
         return
       }
+      if (heldOver(node)) return streamKept(node, chunk)
       pushChunk(node.id, chunk, true)
     },
     taskComplete(node, outcome) {

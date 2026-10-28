@@ -47,7 +47,9 @@ split across two chunks is caught and output that cannot be one (a
 characters do not wait for its exit, and before a chunk on the other
 stream, so stdout and stderr keep the order the task wrote them in; a
 value split by a longer pause, or by a write to the other stream, is
-not caught. `maskCut` masks the two sides of a
+not caught on screen. What vx stores of the output (`encodeOutputLog`,
+`failedOutputLog`) masks each stream's run of chunks again, joined, so
+no stored copy keeps a value a pause split. `maskCut` masks the two sides of a
 cut whose middle is gone: a value the cut split leaves a piece at the
 end of `head` or the start of `tail`, and each piece is masked too.
 

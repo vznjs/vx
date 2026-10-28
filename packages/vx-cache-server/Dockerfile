@@ -6,11 +6,11 @@
 FROM oven/bun:1.4.4-slim AS build
 WORKDIR /repo
 COPY packages/vx-devtools/package.json packages/vx-devtools/
+# jose as @vzn/vx-devtools pins it: the image names no version of its own.
+RUN cd packages/vx-devtools && bun install --production --ignore-scripts
 COPY packages/vx-devtools/src packages/vx-devtools/src/
 COPY packages/vx-cache-server/src packages/vx-cache-server/src/
-RUN echo '{}' > package.json \
- && bun add jose@6.2.13 \
- && mkdir -p node_modules/@vzn && ln -s ../../packages/vx-devtools node_modules/@vzn/vx-devtools \
+RUN mkdir -p node_modules/@vzn && ln -s ../../packages/vx-devtools node_modules/@vzn/vx-devtools \
  && bun build packages/vx-cache-server/src/bun.ts --target=bun --outfile=/out/vx-cache-server.js
 
 FROM oven/bun:1.4.4-slim

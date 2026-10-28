@@ -1554,8 +1554,8 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
       await spawn.ready
       expect(live.join('')).toBe('up\nrc=124\n')
     } finally {
-      spawn.child.kill('SIGKILL')
-      await spawn.child.exited
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
     }
   })
 

@@ -595,8 +595,14 @@ describe('config', () => {
       headers: {},
     })
     expect(() => resolveVxCacheConfig({ ...NAMED, url: 'c.example' }, {})).toThrow(
-      'vxCache(): url must be http(s), got c.example',
+      'vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got c.example',
     )
+    // http:// sent the CI token in clear to any host.
+    expect(() => resolveVxCacheConfig({ ...NAMED, url: 'http://c.example' }, {})).toThrow(
+      'vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got http://c.example',
+    )
+    for (const local of ['http://127.0.0.1:8080', 'http://[::1]:8080', 'http://localhost:8080'])
+      expect(resolveVxCacheConfig({ ...NAMED, url: local }, {})?.url).toBe(local)
     expect(() => resolveVxCacheConfig({ ...NAMED, url: 'https://c.example/v1' }, {})).toThrow(
       "vxCache(): url is the server's base, without /v1: https://c.example",
     )

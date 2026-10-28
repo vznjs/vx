@@ -31,8 +31,10 @@ const ALLOWED: Record<string, readonly string[]> = {
   // `settings`: every setting's path, env name, flag and parse (src/settings.ts).
   settings: ['util'],
   // `handoff`: the hand-off to a project's own vx runs before anything else
-  // loads, so it stands alone; the doctor reports which vx ran.
-  handoff: [],
+  // loads, so it stands alone; the doctor reports which vx ran. `util` only
+  // as a lazy import on the submodule path: git spawned with vx's git env
+  // and resolved PATH, as every other git spawn is.
+  handoff: ['util'],
   // `version`: the lock records which vx validated it.
   // `handoff`: the git top-level, learned once for the hand-off and the root walk.
   workspace: ['util', 'config', 'version', 'settings', 'handoff'],

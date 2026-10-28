@@ -49,12 +49,12 @@ Files no lockfile records lay `node_modules` out anew under a byte-identical loc
 
 | Plugin   | Settings                                                                                              |
 | -------- | ----------------------------------------------------------------------------------------------------- |
-| `pnpm()` | `pnpm-workspace.yaml`, `.npmrc`                                                                       |
+| `pnpm()` | `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field                               |
 | `bun()`  | `bunfig.toml`, `.npmrc`                                                                               |
 | `npm()`  | `.npmrc`                                                                                              |
 | `yarn()` | `.yarnrc.yml`, `.yarnrc` (yarn 1), the root `package.json`'s `workspaces.nohoist` and `installConfig` |
 
-`pnpm()` folds `pnpm-workspace.yaml` without `patchedDependencies`, `overrides`, `catalog` and `catalogs`, which pnpm 10+ keeps there: the lockfile records what each one did, per project, so a patch, an override or a catalog bump re-keys only the projects that reach the package it changes, and `--affected` selects them through the lockfile. Any other setting in the file re-keys every project, and a file that does not parse folds whole.
+`pnpm()` folds `pnpm-workspace.yaml` without `patchedDependencies`, `overrides`, `catalog` and `catalogs`, which pnpm 10+ keeps there: the lockfile records what each one did, per project, so a patch, an override or a catalog bump re-keys only the projects that reach the package it changes, and `--affected` selects them through the lockfile. Any other setting in the file re-keys every project, and a file that does not parse folds whole. The root `package.json` folds only its `pnpm` field (`onlyBuiltDependencies` and the rest pnpm reads there and the lockfile does not record), its `overrides` and `patchedDependencies` aside: a root dependency edit is the lockfile's.
 
 A file has one claimant, so two of these plugins that share a settings file (`pnpm()` and `bun()` both claim `.npmrc`) cannot be declared together.
 

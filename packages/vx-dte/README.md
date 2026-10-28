@@ -191,7 +191,12 @@ size as a matrix, each job named for its worker (`name: ${{ matrix.worker }}`):
 a job that ends badly before its worker joins marks that worker `failed`
 with the step it failed at, and the run starts another in its place. When the run ends it cancels each worker run it
 dispatched, so one still queued does not hold a runner the next run
-waits for. On GitHub Actions with a relay, the run names itself: no
+waits for. Every job of a repository shares its `GITHUB_TOKEN`'s API
+limit, 1000 requests an hour, so the run reads its workers' jobs at most
+every 30 s, asks with each answer's ETag (an unchanged answer is free),
+and asks nothing until a spent limit resets. A dispatch the limit refuses
+is sent again at the reset, if that comes within 5 minutes; past that it
+fails, naming when. On GitHub Actions with a relay, the run names itself: no
 `VX_DTE_RUN` to set. No secret: each side proves its key with the job's OIDC
 token, and the relay's token is an OIDC token for the relay's URL. Such a
 token lasts 5 minutes, so each side asks for a new one a minute before

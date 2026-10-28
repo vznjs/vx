@@ -17,10 +17,12 @@ const allow = parseAllow(`${GITHUB}:Acme/App:ci.yml`)
 let sign: (claims: JWTPayload, aud?: string) => Promise<string>
 let handle: (req: Request) => Promise<Response>
 let read: string
+let jwks: { keys: unknown[] }
 
 beforeAll(async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
   const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
+  jwks = { keys: [jwk] }
   sign = (claims, aud = AUD) =>
     new SignJWT({
       repository: 'acme/app',
@@ -139,6 +141,19 @@ describe('CI OIDC tokens', () => {
     expect(await status('f8', 'refs/heads/feature')).toBe(404)
   })
 
+  // An issue_comment run (a "/test" comment on a pull request) or a
+  // workflow_run a pull request started carries main's ref while it may
+  // check out the pull request's code: it wrote main's scope, so a fork's
+  // code reached main's entries (#4570 dropped the event filter that
+  // kept it out).
+  it('an issue_comment or workflow_run token writes nothing', async () => {
+    for (const event_name of ['issue_comment', 'workflow_run']) {
+      const token = await sign({ event_name, ref: 'refs/heads/main' })
+      expect(await detail(await put(token, 'f9'))).toEqual([403, 'this request reads only'])
+      expect(await status('f9')).toBe(404)
+    }
+  })
+
   it('refuses a job of a workflow ALLOW does not name', async () => {
     const other = await sign({
       ...MAIN,
@@ -149,6 +164,29 @@ describe('CI OIDC tokens', () => {
       "job_workflow_ref acme/app/.github/workflows/release.yml is not in this server's ALLOW",
     ])
     expect(await status('c3')).toBe(404)
+  })
+
+  // An issuer's URL written with a trailing slash in ALLOW matched no
+  // token's iss (which has none): every job was refused "an issuer this
+  // server's ALLOW does not name".
+  it('admits a job whatever trailing slash ALLOW gives its issuer', async () => {
+    const slashed = createCacheServer({
+      blobs: memBlobs(),
+      authorize: oidcAuth({
+        allow: parseAllow(`${GITHUB}/:acme/app:ci.yml`),
+        audience: AUD,
+        fetchJson: async (url) =>
+          url.endsWith('/.well-known/openid-configuration') ? { jwks_uri: `${GITHUB}/keys` } : jwks,
+      }),
+    })
+    const res = await slashed(
+      new Request(`${AUD}/v1/artifacts/e1`, {
+        method: 'PUT',
+        body: 'x',
+        headers: { ...NAMED, authorization: `Bearer ${await sign(MAIN)}`, 'content-length': '1' },
+      }),
+    )
+    expect(res.status).toBe(204)
   })
 
   // A missing claim read as the text "undefined": the refusal named a
@@ -262,7 +300,10 @@ describe('a server whose ALLOW is empty', () => {
       authorize: oidcAuth({ allow: [] }),
     })
     const res = await none(new Request(`${AUD}/v1/artifacts/abc`))
-    expect(await detail(res)).toEqual([401, 'ALLOW is empty: set it to the CI workflows this server serves'])
+    expect(await detail(res)).toEqual([
+      401,
+      'ALLOW is empty: set it to the CI workflows this server serves',
+    ])
   })
 })
 

@@ -76,6 +76,27 @@ describe('HistoryServer', () => {
     )
   })
 
+  // `1e400` parses as Infinity: kept, every later run's schedule failed.
+  it('drops a timing or a need that is not a finite, non-negative number', async () => {
+    const body =
+      '{"timings":{"a":{"durationMs":1e400},"b":{"durationMs":1,"cores":-3},' +
+      '"c":{"durationMs":1,"rssBytes":1e400},"d":{"durationMs":1,"cores":0},' +
+      '"e":{"durationMs":-1},"f":{"durationMs":2,"cores":1.5,"rssBytes":0}}}'
+    const fake = (async (u: string) =>
+      new URL(u).pathname === '/v1/capabilities'
+        ? Response.json({ maxUploadTimings: 9, maxQueryHashes: 9 })
+        : new Response(body)) as unknown as typeof fetch
+    const client = new HistoryServer('https://h.example', NAMED, { VX_HISTORY_TOKEN: 't' }, fake)
+    expect(await client.query(['refs/heads/main'], ['a', 'b', 'c', 'd', 'e', 'f'])).toEqual(
+      new Map([
+        ['b', { durationMs: 1 }],
+        ['c', { durationMs: 1 }],
+        ['d', { durationMs: 1, cores: 0 }],
+        ['f', { durationMs: 2, cores: 1.5, rssBytes: 0 }],
+      ]),
+    )
+  })
+
   it("says a refusal with the server's own words", async () => {
     const read = await iss.sign('read', new URL(url).origin)
     const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: read })
@@ -320,7 +341,15 @@ describe('HistoryServer', () => {
     expect(serverUrlOf(undefined, { VX_HISTORY_URL: 'https://h.example/' })).toBe(
       'https://h.example',
     )
-    expect(() => serverUrlOf('h.example', {})).toThrow('vxHistory(): url must be http(s)')
+    expect(() => serverUrlOf('h.example', {})).toThrow(
+      'vxHistory(): url must be https (http only to 127.0.0.1, ::1 or localhost), got h.example',
+    )
+    // http:// sent the CI token in clear to any host.
+    expect(() => serverUrlOf('http://h.example', {})).toThrow(
+      'vxHistory(): url must be https (http only to 127.0.0.1, ::1 or localhost), got http://h.example',
+    )
+    for (const local of ['http://127.0.0.1:8080', 'http://[::1]:8080', 'http://localhost:8080'])
+      expect(serverUrlOf(local, {})).toBe(local)
     expect(() => serverUrlOf('https://h.example/v1/', {})).toThrow(
       "vxHistory(): url is the server's base, without /v1: https://h.example",
     )
