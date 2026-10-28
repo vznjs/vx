@@ -81,6 +81,8 @@ const CONFIG = (dep: boolean) => `export default {
       exec: { command: 'test -f ../../flag || { echo src/a.txt:1:2; exit 1; }' },
       inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
+    // Inputs that match nothing: a warning, which vx last keeps.
+    lost: { exec: { command: 'true' }, inputs: { files: ['nowhere/**'] }, cache: { outputs: { files: [] } } },
   },
 }`
 
@@ -187,6 +189,8 @@ beforeAll(async () => {
   json('last', ['--failed'])
   json('last', ['--log', 'app#fail'])
   json('last', ['--stats'])
+  expect(vx(['run', 'lib#lost']).code).toBe(0)
+  json('last', [])
   json('last', ['--sql', 'SELECT project, task, cpu_ms, remote_error FROM runs'])
   // The flaky task passes again: the replayed failure names that run (`fixedIn`).
   await writeFile(path.join(root, 'flag'), '')

@@ -1155,6 +1155,11 @@ export function maskCaptured(text: string, secrets: SecretMask): string {
 
 const DROPPED_LINE = /^\n\[vx\] [\d.]+ [KMGTP]?B of output not kept — /
 
+/** Whether `chunk` is the line a `BoundedCapture` puts where its dropped middle was. */
+export function isDroppedOutputChunk(chunk: CapturedChunk): boolean {
+  return !chunk.err && DROPPED_LINE.test(chunk.text)
+}
+
 const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
 
 /** One piece of a task's output and the stream it came on. */

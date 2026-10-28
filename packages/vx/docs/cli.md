@@ -93,13 +93,14 @@ affected: the change reaches no test task.`
 
 There is no `-V`; use `vx --version`, as in Turbo.
 
-`vx <verb> --help` (also `-h` and `vx help <verb>`) prints this
+`vx <verb> --help` (also `-h`, `vx help <verb>` and `vx --help <verb>`) prints this
 reference for that verb: its usage lines and sections, then
 `Full reference: vx help`. Every argument error points at it.
 `vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
 
 `vx help <name>` for a name that is no verb is refused like
-`vx <name>`: one line, a guess when one is close, exit 1.
+`vx <name>`: one line, a guess when one is close, exit 1. A second
+word after the verb is refused too.
 
 After `--`, a flag belongs to the task: `vx run build -- --help` passes
 `--help` to it. A plugin verb handles its own arguments, `--help` included.
@@ -291,7 +292,8 @@ change), or name the last good commit, --affected=<sha>`. `HEAD~1`
 - A shallow clone needs no more history. vx fetches what the merge base
   needs: commits and trees only, no file contents, deepening 1, 2, 4…
   commits until git finds it. A pull request's merge checkout needs one
-  fetch. When origin cannot give that history, vx refuses (`has no merge
+  fetch. A base it lacks is fetched as named: a commit id, `origin/<branch>`,
+  or a tag (`v1`, `refs/tags/v1`). When origin cannot give that history, vx refuses (`has no merge
 base with HEAD in this shallow clone`) rather than diff from the base's tip.
 - With no base branch and no origin to fetch from, vx says `--affected has
 no base here`.
@@ -317,7 +319,9 @@ git: <root> is not inside a git work tree`. A repository with no commit
 - `<base>...HEAD`, Turbo's CI spelling, reads as `<base>`. Two-dot
   `<base>..HEAD` diffs from `<base>` itself, not the merge base; a shallow
   clone fetches that commit as it fetches the merge base.
-- A ref that does not exist is `git ref "<ref>" did not resolve`. In a
+- A ref that does not exist is `git ref "<ref>" did not resolve`, with
+  git's reason when it gives one (`main@{9}`: `log for 'main' only has 2
+entries`). In a
   shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`).
 - A project whose directory is a symlink inside the workspace
   (`packages/b -> ../ext/b`) is selected by a change at the real place
@@ -392,8 +396,8 @@ What counts as a change:
 - A gitignored file a task names (`.env.local`, `dist/**`) never
   selects it, as in Nx. The key still hashes it, so the task misses when
   it changed.
-- `.vx/projects.lock.json` is left out, so `vx lock` never marks every
-  project affected.
+- `.vx/projects.lock.json` and each project's `vx.lock.json` review
+  copy are left out, so `vx lock` never marks a project affected.
 
 **A lockfile change selects everything.** These root files are in
 every task's key (the [workspace fingerprint](./caching.md)), so a
@@ -993,7 +997,9 @@ hands off to a Node launcher. On Node 22.15 or later that one
 replaces itself with the binary (`process.execve`) too. On older Node it runs the binary and waits for it:
 a signal sent to the launcher alone (`kill`, a process manager) is
 passed to the binary, and a terminal's Ctrl-C already reaches both, so
-the launcher does not send it twice.
+the launcher does not send it twice. Either way it dies of the signal vx
+died of, as vx does. So does a compiled vx that hands the call to the
+workspace's own.
 
 A reader that leaves does not change the code. `vx run build | head -1`
 closes the pipe after one line; the run still finishes, saves what it
@@ -1570,7 +1576,7 @@ history and hash memos older than 30 days; a run never does.
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
-**Duration units**: `s`, `m`, `h`, `d`, case-insensitive. Examples:
+**Duration units**: `ms`, `s`, `m`, `h`, `d`, case-insensitive. Examples:
 `30d`, `24h`, `60m`, `30s`, `30D`.
 
 **Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive, with an optional `B` or `iB` (`512MB`, `32KiB`).
@@ -1823,7 +1829,7 @@ may not search (EACCES, named as such), or a missing lock, is a hard error; a co
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
-around it). An entry edited by
+around it, and so does `--filter ./c`). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
 something has crashed, so a normal run pays nothing for it.
@@ -1835,7 +1841,9 @@ environment and `Bun.deepEquals`-compares it with the frozen object. A
 project that differs gets one message, whether its config, a file it
 imports or the environment it reads changed. A lock an earlier vx wrote,
 or one that is not valid JSON, is a problem the audit names (a
-`problems` entry under `--format json`, not a refusal) and asks for `vx lock`. It also checks the graph rules over the configs as they
+`problems` entry under `--format json`, not a refusal) and asks for `vx lock`. Every config that does
+not load is named, as `vx lock` names them: each with its line and frame,
+and root-relative under `--format json`. It also checks the graph rules over the configs as they
 evaluate now, and that each `vx.lock.json` is what its project resolves to
 here, and that none is left where a `vx.config` was deleted, the
 directory still a project or not (delete that one yourself: vx never
@@ -2009,7 +2017,8 @@ never hands off.
 ## `vx upgrade`
 
 `vx upgrade` brings vx to a newer release (`vx upgrade TAG` pins one, `v0.4.0` or
-`0.4.0`; default latest; a second tag is refused, not dropped), the way
+`0.4.0`; default latest; a second tag, or one that is no version, is
+refused first, not dropped), the way
 it was installed. Named `upgrade` per CLI convention (`bun upgrade`,
 `deno upgrade`). Refuses when running from source: use `git pull`.
 
@@ -2592,10 +2601,11 @@ it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 `vx show <project>` prints a block per task, headed by its
 `project#task`, with every field the run reads: description, command (`(group)` for group tasks), `dependsOn`,
 `timeout`, `retries`, `env.passThrough` / `env.define` / `env.secret`,
-`remote`, `sandbox`, `persistent`, `interactive` (`yes` / `no`), and the
-cache block
+`remote`, `platforms`, `sandbox`, `persistent`, `interactive` (`yes` /
+`no`), and the cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
-`.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
+`.workspaceRuntime`, `outputs.files` / `.workspaceFiles` / `.clean`,
+`inputStability.strategy` / `.severity`). Fields the
 task does not set are not printed, an empty list prints `none`; a value that spans lines (a
 multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
@@ -2872,7 +2882,8 @@ cache (nothing re-ran), it re-executed on the same key, or it recorded
 no cache outcome at all, in which case vx says so instead of guessing.
 A re-execution names its cause when the index shows one: the previous
 run on the key failed and saved nothing, the run did not read the cache
-(`--force`, or a `--cache-policy` without read), no entry for the key was
+(`--force`, or a `--cache-policy` without read) or did not use it at all
+(`--no-cache`, or a `--cache-policy` without read or write), no entry for the key was
 there when it ran (pruned or evicted), the previous run was not saved
 because it ran beside a failed task (a task run past a failed dependency
 under `--continue` is never cached; said ahead of a prune, and as
@@ -3060,6 +3071,13 @@ remote's downloads beside the tasks), which its own output never shows:
 newest 50, in `<cache dir>/steps/<run id>.json`, written only by a run
 that had one; `--format json` adds them as `steps`.
 
+**Warnings.** Below the steps, what the run warned of (a glob that
+matched no files, a remote's 403, a plugin's notice), each as it said
+it, colour stripped, under `warnings`: on a terminal they scroll past,
+and the footer keeps only their count. Kept per run like the steps, the
+newest 50, in `<cache dir>/warnings/<run id>.json`, written only by a
+run that warned.
+
 **Re-run what failed.** A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
 vx run app#test -- …`, with the arguments the run forwarded to the
@@ -3154,8 +3172,8 @@ change with `SCHEMA_VERSION`; read `sqlite_schema` rather than assume.
 ### JSON
 
 `--format json`
-emits `{ invocation, tasks, steps }` for scripting (`steps` only when the
-run kept some, above); `--list --format json`
+emits `{ invocation, tasks, steps, warnings }` for scripting (`steps`
+and `warnings` only when the run kept some, above); `--list --format json`
 an array of the same `invocation` objects, newest first. A failed task's row adds
 `output` (its output as plain text, the first 8 KiB and last 56 KiB,
 secrets masked) and `locations` (the existing files it names,
