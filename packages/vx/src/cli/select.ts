@@ -449,7 +449,8 @@ export async function resolveFilters(
     // Every pattern matched and an exclusion took them all back: "no
     // projects matched filter(s): one, !one" read as a typo of `one`.
     const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
-    const excluded = `${negations.join(', ')} excluded every project the other filters matched`
+    // With no include the base is every project: there is no "other filter".
+    const excluded = `${negations.join(', ')} excluded every project${includes.length > 0 ? ' the other filters matched' : ''}`
     if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
       if (includes.every((f) => emptyDiffs.has(f))) {
         const refs = includes.map((f) => f.gitSince).join(', ')
@@ -478,9 +479,10 @@ export async function resolveFilters(
     }
     // One line, not a warning per pattern and then an error saying the same:
     // the patterns are in the error, and the nearest project name is the
-    // hint a typo needs.
+    // hint a typo needs. Only the ones that matched nothing: `app !app apq` named
+    // app, and `--affected` a `...[<base>]` nobody typed.
     return {
-      error: `no projects matched filter(s): ${raw.join(', ')}${didYouMean(unmatched, projects, tags)}`,
+      error: `no projects matched filter(s): ${unmatched.join(', ')}${didYouMean(unmatched, projects, tags)}`,
     }
   }
   // Something matched, so the run proceeds; a pattern that matched nothing

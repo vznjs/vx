@@ -38,7 +38,9 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
 /**
  * The refs an Actions run reads, in order (2026-10-25): a merge
  * queue's run only its base branch, the code it is about to become; any
- * other its own branch (a pull request's head, else `GITHUB_REF`), then
+ * other a pull request's merge ref (`refs/pull/<n>/merge`, the one scope
+ * its token writes), then its own branch (a pull request's head, else
+ * `GITHUB_REF`), then
  * the branch it merges into, then the default branch (`baseBranch`, else
  * the event's).
  */
@@ -53,10 +55,11 @@ function githubRefs(
     const base = stringOf(event?.merge_group?.base_ref) ?? head(QUEUE.exec(ref ?? '')?.[1])
     return base === undefined ? [] : [base]
   }
+  const merge = /^refs\/pull\/\d+\//.test(ref ?? '') ? ref : undefined
   const own = head(stringOf(env['GITHUB_HEAD_REF'])) ?? ref
   const into = head(stringOf(env['GITHUB_BASE_REF']))
   const trunk = head(baseBranch ?? stringOf(event?.repository?.default_branch))
-  return [...new Set([own, into, trunk].filter((r): r is string => r !== undefined))]
+  return [...new Set([merge, own, into, trunk].filter((r): r is string => r !== undefined))]
 }
 
 function scopeOf(

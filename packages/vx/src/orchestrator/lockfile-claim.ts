@@ -347,15 +347,22 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
  * Node's resolution walking up to the root `node_modules` (`@types/*`,
  * a config's plugins) — so a root devDependency bump that moved only the
  * root's digest replayed the old tool's output (nx#36415 class,
- * 2026-09-24). A project the lockfile has no importer for (outside the
- * workspace's `packages`) folds the root's alone; a file with neither
- * folds a constant.
+ * 2026-09-24). A project the lockfile has no importer for folds its
+ * nearest listed ancestor's, as Node resolves from that ancestor's
+ * `node_modules` (`packages/a/e2e` from `packages/a`'s): the root's alone
+ * keyed it on no bump only `a` reached. Outside every importer it folds
+ * the root's alone; a file with neither folds a constant.
  */
 function digestFor(importers: ReadonlyMap<string, string>, importer: string): string {
-  const own = importers.get(importer)
+  let dir = importer
+  while (dir !== '.' && !importers.has(dir)) {
+    const slash = dir.lastIndexOf('/')
+    dir = slash === -1 ? '.' : dir.slice(0, slash)
+  }
+  const own = importers.get(dir)
   const root = importers.get('.')
   if (own === undefined) return root ?? 'no-importer'
-  if (root === undefined || importer === '.') return own
+  if (root === undefined || dir === '.') return own
   return xxh3hex(`${own}\0${root}`)
 }
 

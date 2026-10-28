@@ -791,6 +791,8 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
     sayNotice('error', 'vx upgrade', `unexpected argument: ${extra}${seeHelp('upgrade')}`)
     return 1
   }
+  // A mistyped tag is the mistake to name, before any guard about this install.
+  versionSpec(tag)
   if (!isCompiledBinary()) {
     throw new UserError(
       'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull',

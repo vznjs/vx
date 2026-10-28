@@ -377,6 +377,19 @@ describe('project stage', () => {
   )
 
   it(
+    'a project-stage edit of `name` is refused, naming the plugin: the stage runs after naming',
+    async () => {
+      // The edit validated and was dropped: the project kept its name.
+      await pkg('a', build)
+      await workspace([pluginSource('org/renamer', `{ project(config) { config.name = 'b' } }`)])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        'vx.config.mjs (after plugin \'org/renamer\'): project "a" is named before the project stage, so `name: "b"` cannot rename it — a plugin names a project in its `discover` hook',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     "a plugin's output is judged against the project's own config file, not the refusal's label",
     async () => {
       // The label `<path> (after plugin 'org/x')` was read as the config

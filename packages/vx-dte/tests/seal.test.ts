@@ -372,6 +372,58 @@ it('says a token check GitHub’s keys could not answer, never a key mismatch', 
   }
 })
 
+// A run's id is a dispatch input, which anyone who reads the repository's
+// Actions sees: a job of this repository that is none of the runs the
+// orchestrator dispatched (a branch's own dispatch of vx-worker.yml) joined
+// main's run as a worker, and got its task env and its cache's write.
+it('admits only a worker of a workflow run the orchestrator dispatched, when it names them', async () => {
+  const pair = (await crypto.subtle.generateKey(
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: 'SHA-256',
+    },
+    true,
+    ['sign', 'verify'],
+  )) as CryptoKeyPair
+  const jwk = await crypto.subtle.exportKey('jwk', pair.publicKey)
+  const ISS = 'https://token.actions.githubusercontent.com'
+  const b64 = (v: unknown): string => Buffer.from(JSON.stringify(v)).toString('base64url')
+  const aud = (parts: string[]): string =>
+    `vx-dte:${new Bun.CryptoHasher('sha256').update(parts.join('\0')).digest('base64url')}`
+  const tokenOf = async (claims: object): Promise<string> => {
+    const head = `${b64({ alg: 'RS256', kid: 'k1' })}.${b64({ iss: ISS, aud: aud(['join', R3, 'n']), exp: Date.now() / 1000 + 300, repository_id: '11', ...claims })}`
+    const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', pair.privateKey, Buffer.from(head))
+    return `${head}.${Buffer.from(sig).toString('base64url')}`
+  }
+  const keys = async (url: string): Promise<unknown> =>
+    url.endsWith('/openid-configuration')
+      ? { jwks_uri: `${ISS}/jwks` }
+      : { keys: [{ ...jwk, kid: 'k1' }] }
+  process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'http://127.0.0.1:1/token?v=1'
+  process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] = 'req-token'
+  process.env['GITHUB_REPOSITORY_ID'] = '11'
+  try {
+    let runs: Set<string> | undefined = new Set(['5'])
+    const proof = githubProof(keys, () => runs)
+    const parts = ['join', R3, 'n']
+    expect(await proof.check!(await tokenOf({ run_id: '5' }), parts)).toBe(true)
+    expect(await proof.check!(await tokenOf({ run_id: '6' }), parts)).toBe(false)
+    expect(await proof.check!(await tokenOf({}), parts)).toBe(false)
+    // A dispatch that named no run: any job of this repository, as before.
+    runs = undefined
+    expect(await proof.check!(await tokenOf({ run_id: '6' }), parts)).toBe(true)
+  } finally {
+    for (const k of [
+      'ACTIONS_ID_TOKEN_REQUEST_URL',
+      'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+      'GITHUB_REPOSITORY_ID',
+    ])
+      delete process.env[k]
+  }
+})
+
 // PR #4146, 2026-10-23: one 503 from GitHub's token endpoint ended small#2
 // before it joined.
 it('asks GitHub for an OIDC token again after a 5xx, three tries at most, never after a 4xx', async () => {
