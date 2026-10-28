@@ -24,7 +24,13 @@ import {
   type RunOptions,
   shellQuote,
 } from '../orchestrator/index.js'
-import { findWorkspaceRoot, LOCKFILE_NAME, NO_LOCK, type ProjectMeta } from '../workspace/index.js'
+import {
+  findWorkspaceRoot,
+  LOCKFILE_NAME,
+  NO_LOCK,
+  type ProjectMeta,
+  WORKSPACE_CONFIG_FILENAMES,
+} from '../workspace/index.js'
 import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './workspace-config.js'
 import { resolveSetting } from '../settings.js'
 import {
@@ -475,6 +481,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   }
   let windowOpened = 0
 
+  const hasWorkspaceFile = (): boolean =>
+    WORKSPACE_CONFIG_FILENAMES.some((n) => fs.existsSync(path.join(workspaceRoot, n)))
   const lockAbs = path.join(workspaceRoot, LOCKFILE_NAME)
   const lockStamp = (): string => {
     try {
@@ -538,6 +546,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             lockAtRun = lockStamp()
             const relocked = lockAtRun !== lockSeen
             lockSeen = lockAtRun
+            // The file marks the root, and `vx run` refuses without it; a
+            // cycle ran on with no workspace config, its plugins gone and
+            // its tasks named by path.
+            if (!hasWorkspaceFile()) {
+              process.stdout.write(`\nchanged ${label}\n`)
+              throw new Error(
+                `no .vx/workspace.ts in ${workspaceRoot}; restore it, or stop vx watch`,
+              )
+            }
             if (reread) await rearm(false)
             process.stdout.write(`\nchanged ${label}\n`)
             if (!relocked) sayUnlocked(changes.changed)
@@ -587,7 +604,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config
         // was never an event.
-        if (reread && !stop.aborted) {
+        if (reread && !stop.aborted && hasWorkspaceFile()) {
           reread = false
           await rearm()
         }

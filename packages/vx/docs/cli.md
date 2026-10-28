@@ -1293,7 +1293,8 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    watched (non-recursively) for a claimed file (a lockfile), for
    `.vx/projects.lock.json` and for an edit to `.vx/workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
-   task's input; the cycle after it re-evaluates the file. A `.gitignore`
+   task's input; the cycle after it re-evaluates the file. With the file
+   removed a cycle fails, as `vx run` refuses, until it is back. A `.gitignore`
    there or in a project's parent directory is a cycle too: inputs are
    gitignore-aware, so it changes what keys read (X-136). A file a
    config imports by relative path from outside the watched projects (a
