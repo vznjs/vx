@@ -110,7 +110,8 @@ export default defineWorkspace({
 })
 ```
 
-`issuer` and `repository` must match your `ALLOW` entry. Run `vx lock`
+`url` is https (http only to `127.0.0.1`, `::1` or `localhost`). `issuer`
+and `repository` must match your `ALLOW` entry. Run `vx lock`
 and commit.
 
 ### 3. Let CI jobs prove who they are

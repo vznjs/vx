@@ -18,6 +18,17 @@ export interface ServerTiming {
 /** Every request's deadline: a run never waits on history longer. */
 const DEADLINE_MS = 10_000
 
+/**
+ * https, or http to this machine: every request carries the CI token, and
+ * http:// to another host sent it in clear.
+ */
+function secure(url: string): boolean {
+  if (/^https:\/\/\S/.test(url)) return true
+  if (!/^http:\/\/\S/.test(url)) return false
+  const host = URL.parse(url)?.hostname
+  return host === '127.0.0.1' || host === '[::1]' || host === 'localhost'
+}
+
 /** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
 export function serverUrlOf(
   option: string | undefined,
@@ -25,7 +36,10 @@ export function serverUrlOf(
 ): string | undefined {
   const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
-  if (!/^https?:\/\//.test(url)) throw new Error(`vxHistory(): url must be http(s), got ${url}`)
+  if (!secure(url))
+    throw new Error(
+      `vxHistory(): url must be https (http only to 127.0.0.1, ::1 or localhost), got ${url}`,
+    )
   // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
     throw new Error(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
