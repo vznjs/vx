@@ -365,7 +365,7 @@ export class Orchestrator {
 
   async execute(req: ExecuteRequest): Promise<ExecuteResult> {
     if (this.lost !== undefined) throw new Error(this.lost)
-    // A worker runs the run's tree: a file its key folds that the tree
+    // A worker runs the run's tree: a file its key includes that the tree
     // lacks (untracked) is not there, and the output it saved under that
     // key was a stale hit for the next run (2026-10-24).
     if (req.inputs !== undefined && req.inputs.files.length > 0) {

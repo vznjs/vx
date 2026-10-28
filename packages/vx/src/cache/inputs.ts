@@ -1676,7 +1676,7 @@ function filesPlan(
  * git lists a linked directory as one path, the link, so `lib/**` over
  * `lib -> ../shared` matched nothing, and an edit behind it kept the key
  * the task's last bytes were saved under (2026-10-25). The link is then
- * an input, and its key folds every file behind it.
+ * an input, and its key includes every file behind it.
  */
 function throughLinks(
   positive: readonly string[],

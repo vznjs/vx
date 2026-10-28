@@ -1192,7 +1192,7 @@ The grants are the task's whole permission surface — nothing is derived
 from `cache`, and the only thing core adds is `node_modules` plus the
 workspace packages linked there, never a link back to the task's own
 project (npm and Yarn link that too). For a task that declares `cache`
-a linked package is granted only when its key folds a task of that
+a linked package is granted only when its key includes a task of that
 package; declaring `cache` narrows core's grant and widens nothing.
 Enforcement anchors at the workspace root (a task never leaves its
 project); only denials inside the project, or under a withheld linked
@@ -2830,7 +2830,7 @@ task with no `inputs` is new every run, so the task never hits; the
 verdict names that task:
 
 ```
-  verdict    never cached: its key folds app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate
+  verdict    never cached: its key includes app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate
 ```
 
 An **unchanged** key has three endings, and the verdict distinguishes
