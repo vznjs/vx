@@ -326,7 +326,10 @@ names (`VX_DTE_PICK`), at the run's commit, and each takes its name from
 `VX_DTE_IDS`. The run starts workers as its work needs them, up to each
 size's `max`, which `gitlab()` needs (at most 200, a matrix's limit).
 GitLab lets a job token trigger but not cancel, so a worker the run no
-longer needs leaves when it joins or when the run ends.
+longer needs leaves when it joins or when the run ends. Each trigger
+passes the workers' variables, so set Settings > CI/CD > Variables >
+"Minimum role to use pipeline variables" to Developer: a project made
+since GitLab 17.7 lets no one, and refuses every trigger.
 
 ```ts
 // .vx/workspace.ts

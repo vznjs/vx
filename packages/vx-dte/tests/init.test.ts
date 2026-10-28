@@ -207,6 +207,22 @@ it('gitlab() writes one pipeline file: the run, and a job per size only its trig
   )
 })
 
+it('gitlab() says to let a developer set pipeline variables, which its trigger passes', async () => {
+  // Before: a project made since GitLab 17.7 lets no one set them, so every
+  // trigger was refused, 400 "Insufficient permissions to set pipeline variables".
+  const { next } = await gitlab().init!({
+    workspaceRoot: root,
+    dir: '',
+    relay: 'https://relay.example.com',
+    sizes: [{ name: 'small', max: 4 }],
+    manager: 'bun',
+    tasks: { main: '', change: '' },
+  })
+  expect(next.join('\n')).toContain(
+    'Settings > CI/CD > Variables: set "Minimum role to use pipeline variables" to Developer',
+  )
+})
+
 it("gitlab()'s ALLOW names the origin's GitLab, a self-managed one too", async () => {
   await writeFile(path.join(root, 'bun.lock'), '')
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })

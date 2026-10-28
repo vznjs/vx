@@ -411,12 +411,16 @@ ${lines([...cd, ...root])}
 ${lines([...cd, ...installLines(setup.manager)])}
   script: [${vx} dte worker]
 ${workers.join('')}`.replace(/\n+$/, '\n')
-  return {
-    files: { '.gitlab-ci.yml': ci },
-    next: nextSteps(
-      relay,
-      `https://${setup.host ?? 'gitlab.com'}:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml`,
-      ['.gitlab-ci.yml'],
-    ),
-  }
+  const next = nextSteps(
+    relay,
+    `https://${setup.host ?? 'gitlab.com'}:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml`,
+    ['.gitlab-ci.yml'],
+  )
+  // A project made since GitLab 17.7 lets no one set them: every trigger is refused.
+  next.splice(
+    -1,
+    0,
+    '  4. In Settings > CI/CD > Variables: set "Minimum role to use pipeline variables" to Developer: each pipeline the run triggers takes its workers\' variables.',
+  )
+  return { files: { '.gitlab-ci.yml': ci }, next }
 }
