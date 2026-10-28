@@ -573,12 +573,25 @@ function namedOf(options: VxCacheOptions): { issuer: string; repository: string 
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
+/** The deadlines, each one a timer waits on: Bun fires a zero, NaN or past-2^31 one after 1 ms. */
+function deadlinesOf(options: VxCacheOptions): { timeoutMs: number; uploadTimeoutMs: number } {
+  const out = {
+    timeoutMs: options.timeoutMs ?? 30_000,
+    uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
+  }
+  for (const [key, ms] of Object.entries(out))
+    if (!(ms >= 1 && ms <= 2 ** 31 - 1))
+      throw new Error(`vxCache(): ${key} must be a number of ms from 1 to 2147483647, got ${ms}`)
+  return out
+}
+
 /** Options over `VX_CACHE_URL`; `undefined`: no server named. */
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
 ): ResolvedVxCacheConfig | undefined {
   const named = namedOf(options)
+  const deadlines = deadlinesOf(options)
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
   if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
@@ -588,8 +601,7 @@ export function resolveVxCacheConfig(
   return {
     url,
     ...named,
-    timeoutMs: options.timeoutMs ?? 30_000,
-    uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
+    ...deadlines,
     headers: proxyHeaders('vxCache()', options.headers),
   }
 }
@@ -623,6 +635,7 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
 export function vxCache(options: VxCacheOptions): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
   namedOf(options)
+  deadlinesOf(options)
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveVxCacheConfig(options)
