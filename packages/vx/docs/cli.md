@@ -572,7 +572,8 @@ start (see "Every requested name must resolve" above).
 `--exclude-dependencies=` with an EMPTY value is rejected rather than
 guessed — "drop every edge" and "drop none" are both plausible readings.
 Pass bare `--exclude-dependencies` for the first, omit the flag for the
-second.
+second. Given twice, the name lists add up, and a bare one drops every
+edge.
 
 Value flags (`--filter`, `--concurrency`, `--output-logs`,
 `--verbosity`, `--cache-dir`, …)
@@ -934,7 +935,8 @@ down with it:
   clean run a stale hit. A server that died after it became ready is
   such a failure to what starts after its death. A cache hit still
   restores (that artifact came from a healthy run), and the next run
-  without the failure rebuilds the rest.
+  without the failure rebuilds the rest. A task `exec.platforms` skips
+  here is no failure: its dependents are skipped in every mode.
 
 The mode is the local scheduler's: a task a plugin executor runs
 elsewhere is one dispatch, failed or not, like any other.
@@ -1752,9 +1754,10 @@ The full workflow: the site's CI guide and `examples/ci`.
 `.vx/projects.lock.json` at the workspace root. A project is a directory
 holding a `vx.config.*`, in any language: `vx lock` lists them with git
 (`git ls-files`, tracked and untracked, git's ignore rules applied; a
-nested repository's own configs too), or walks the tree outside git,
-and leaves out any under a nested `.vx/workspace.*` or under a
-`node_modules` (an installed package is no project, ignored or not). Configs are
+nested repository's own configs too), or walks the tree outside git
+(every directory but `.git` and `.vx`), and leaves out any under a
+nested `.vx/workspace.*` or under a `node_modules` (an installed package
+is no project, ignored or not). Configs are
 programs; `vx lock` evaluates them in the current environment and
 stores the post-evaluation objects, by directory (version 4; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
@@ -2140,7 +2143,9 @@ one (bun add -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
 
 After an upgrade that installed something, inside a workspace, the new
 vx runs `vx lock` at the workspace root, since a release may record the
-lock differently. A lock that fails leaves the upgrade done and prints
+lock differently (an npm global install's own binary, which keeps its
+path). A lock that fails, or a new vx that does not start, leaves the
+upgrade done and prints
 `vx upgrade  vx lock failed: run vx lock`. `vx upgrade -g` never locks.
 
 vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from a
