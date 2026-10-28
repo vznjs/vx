@@ -171,7 +171,12 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     if (alg !== 'RS256') throw new TokenError('alg is not RS256', 401)
     const ofIssuer = opts.allow.filter((a) => a.issuer === iss)
     if (typeof iss !== 'string' || ofIssuer.length === 0) {
-      throw new TokenError('untrusted issuer', 401)
+      throw new TokenError(
+        typeof iss === 'string'
+          ? `issuer ${iss.slice(0, 200)} is not in this relay's ALLOW: add issuer:owner/repo:workflow for it`
+          : 'the token names no issuer (iss)',
+        401,
+      )
     }
     let claims: JWTPayload
     try {

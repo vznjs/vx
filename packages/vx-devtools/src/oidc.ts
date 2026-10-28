@@ -275,7 +275,12 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
       throw new Refusal(401, 'not a JWT')
     }
     if (typeof iss !== 'string' || !opts.allow.some((a) => a.issuer === iss)) {
-      throw new Refusal(401, "an issuer this server's ALLOW does not name")
+      throw new Refusal(
+        401,
+        typeof iss === 'string'
+          ? `issuer ${iss.slice(0, 200)} is not in this server's ALLOW: add issuer:owner/repo:workflow for it`
+          : 'the token names no issuer (iss)',
+      )
     }
     const audience = opts.audience ?? new URL(req.url).origin
     let claims: JWTPayload

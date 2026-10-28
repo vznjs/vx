@@ -149,7 +149,10 @@ describe('a CI OIDC token', () => {
       401,
       'alg is not RS256',
     ])
-    expect(await refusal(verify(await sign(other)))).toEqual([401, 'untrusted issuer'])
+    expect(await refusal(verify(await sign(other)))).toEqual([
+      401,
+      "issuer https://evil.example is not in this relay's ALLOW: add issuer:owner/repo:workflow for it",
+    ])
     expect(await refusal(verify(await sign(good, { kid: 'k2' })))).toEqual([
       401,
       'unknown signing key',

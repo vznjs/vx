@@ -161,6 +161,14 @@ describe('CI OIDC tokens', () => {
     const [h, p] = (await sign(MAIN)).split('.')
     const forged = `${h}.${p}.${'A'.repeat(342)}`
     expect(await detail(await put(forged, 'd4'))).toEqual([401, 'bad signature'])
+    // Its issuer is read before its signature: no key of it is needed.
+    const elsewhere = Buffer.from(JSON.stringify({ iss: 'https://ci.example' })).toString(
+      'base64url',
+    )
+    expect(await detail(await put(`${h}.${elsewhere}.${'A'.repeat(342)}`, 'd4'))).toEqual([
+      401,
+      "issuer https://ci.example is not in this server's ALLOW: add issuer:owner/repo:workflow for it",
+    ])
   })
 })
 
