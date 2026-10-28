@@ -418,7 +418,7 @@ async function index(
   }
   if (unattached.length > 0) {
     notes.push(
-      `Nx project(s) ${unattached.join(', ')} have no workspace package to attach targets to ` +
+      `${unattached.length === 1 ? 'Nx project' : 'Nx projects'} ${unattached.join(', ')} ${unattached.length === 1 ? 'has' : 'have'} no workspace package to attach targets to ` +
         '(a package holds the name, or the directory is gone) — run those targets with nx',
     )
   }

@@ -57,7 +57,7 @@ export function warnGaps(
     const names = [...new Set(ids.map((id) => id.slice(id.indexOf('#') + 1)))]
     const packages = new Set(ids.map((id) => id.slice(0, id.indexOf('#'))))
     warn(
-      `[${pluginName}] ${ids.length} task(s) (${names.join(', ')} across ${packages.size} package(s)): ${todo}`,
+      `[${pluginName}] ${ids.length} tasks (${names.join(', ')} across ${packages.size} package${packages.size === 1 ? '' : 's'}): ${todo}`,
     )
   }
 }

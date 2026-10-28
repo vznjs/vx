@@ -294,7 +294,7 @@ describe('turbo()', () => {
       )
       const lines = (await lockWarnings()).filter((l) => l.includes('persistent'))
       expect(lines).toEqual([
-        '[@vzn/vx-migrate] 2 task(s) (dev across 2 package(s)): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
+        '[@vzn/vx-migrate] 2 tasks (dev across 2 packages): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
       ])
     },
     TIMEOUT,
@@ -340,7 +340,7 @@ describe('turbo()', () => {
       // carried one gap in 57 tasks, and a line per task was 57 identical
       // lines before the first frame (2026-09-11).
       expect(text).toContain(
-        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): turbo key "foo" (1) has no vx equivalent',
+        '[@vzn/vx-migrate] 2 tasks (build across 2 packages): turbo key "foo" (1) has no vx equivalent',
       )
       expect(text).not.toContain('app#build: output')
       expect(text).toContain('[@vzn/vx-migrate] note: root task //#root not migrated')
@@ -743,7 +743,7 @@ describe('output negation', () => {
         '!package.json',
       ])
       expect(warned).toContain(
-        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): output "*/**": vx cleans outputs before a run and a restore, so every untracked file this glob reaches is deleted; committed files are kept',
+        '[@vzn/vx-migrate] 2 tasks (build across 2 packages): output "*/**": vx cleans outputs before a run and a restore, so every untracked file this glob reaches is deleted; committed files are kept',
       )
       const result = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       expect(result.ok).toBe(true)
