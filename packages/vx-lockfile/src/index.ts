@@ -43,6 +43,7 @@ const bunLock = (): typeof import('./bun.js') => load('./bun.js')
 const npmLock = (): typeof import('./npm.js') => load('./npm.js')
 const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
 const pnpmSettings = (): typeof import('./pnpm-settings.js') => load('./pnpm-settings.js')
+const yarnSettings = (): typeof import('./yarn-settings.js') => load('./yarn-settings.js')
 
 export interface LockfileOptions {
   /**
@@ -165,7 +166,11 @@ const MANAGERS = {
     },
     // `.yarnrc` is Yarn 1's: `ignore-scripts true` there changes the install
     // under an unchanged yarn.lock (probed, yarn 1.22).
-    settings: ['.yarnrc.yml', '.yarnrc'],
+    // The root package.json for `workspaces.nohoist` and `installConfig`,
+    // which lay the install out and the lockfile does not record.
+    settings: ['.yarnrc.yml', '.yarnrc', 'package.json'],
+    settingsText: (file, text) =>
+      file === 'package.json' ? yarnSettings().packageSettings(text) : undefined,
     async manifestImporters(t, root, manifest) {
       const lock = yarnParse(t)
       if (lock.generation !== 'classic') return undefined
