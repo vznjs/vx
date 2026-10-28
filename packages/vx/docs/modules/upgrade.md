@@ -35,7 +35,12 @@ export function isBunfsPath(p: string): boolean // a path inside the compiled bi
 export function isCompiledBinary(): boolean
 export function npmOwnedBinary(execPath: string): string | null // the package that owns this file, or null
 export function versionSpec(tag: string | undefined): string // `latest`, or the version a tag names
-export async function fetchManifest(pkg: string, spec: string, verb?: string, registry?: Registry): Promise<unknown> // the registry's document
+export async function fetchManifest(
+  pkg: string,
+  spec: string,
+  verb?: string,
+  registry?: Registry,
+): Promise<unknown> // the registry's document
 export interface SignedRelease {
   version: string
   tarball: string
