@@ -64,7 +64,7 @@ const status = (key: string, ref = 'refs/heads/main') =>
 const detail = async (res: Response) =>
   [res.status, ((await res.json()) as { message: string }).message] as const
 
-const MAIN = { event_name: 'push', ref: 'refs/heads/main', ref_protected: 'true' }
+const MAIN = { event_name: 'push', ref: 'refs/heads/main' }
 
 describe('CI OIDC tokens', () => {
   it('a job of a workflow ALLOW names writes the ref it runs on', async () => {
@@ -77,7 +77,6 @@ describe('CI OIDC tokens', () => {
       event_name: 'pull_request',
       ref: 'refs/pull/7/merge',
       head_ref: 'feature',
-      ref_protected: 'false',
     })
     expect((await put(pr, 'b2')).status).toBe(204)
     expect(await status('b2')).toBe(404)
@@ -89,7 +88,6 @@ describe('CI OIDC tokens', () => {
     const queue = {
       event_name: 'merge_group',
       ref: `refs/heads/gh-readonly-queue/main/pr-12-${SHA}`,
-      ref_protected: 'true',
     }
     expect((await put(await sign(queue), 'e5')).status).toBe(204)
     expect(await status('e5')).toBe(200)
@@ -125,6 +123,15 @@ describe('CI OIDC tokens', () => {
       "job_workflow_ref acme/app/.github/workflows/release.yml is not in this server's ALLOW",
     ])
     expect(await status('c3')).toBe(404)
+  })
+
+  // A missing claim read as the text "undefined": the refusal named a
+  // repository or workflow `undefined` instead of the claim to set.
+  it('refuses a token missing its repository or workflow claim, naming the claim', async () => {
+    const noRepo = await sign({ ...MAIN, repository: undefined })
+    expect(await detail(await put(noRepo, 'a9'))).toEqual([403, 'no repository claim'])
+    const noWorkflow = await sign({ ...MAIN, job_workflow_ref: undefined })
+    expect(await detail(await put(noWorkflow, 'a9'))).toEqual([403, 'no job_workflow_ref claim'])
   })
 
   it('refuses another repository, another audience and a forged signature', async () => {

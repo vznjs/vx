@@ -302,13 +302,17 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
       throw refusal(err, iss)
     }
     const claim = repoClaimOf(iss)
+    const named = claims[claim]
+    if (typeof named !== 'string') throw new Refusal(403, `no ${claim} claim`)
     // GitHub and GitLab names ignore case; a checkout's origin may spell it either way.
-    const repository = String(claims[claim]).toLowerCase()
+    const repository = named.toLowerCase()
     const ofRepo = opts.allow.filter((a) => a.issuer === iss && same(a.repository, repository))
     if (ofRepo.length === 0)
       throw new Refusal(403, `${claim} ${repository} is not in this server's ALLOW`)
     const wclaim = workflowClaimOf(iss)
-    const workflow = String(claims[wclaim]).replace(/@.*$/, '')
+    const ran = claims[wclaim]
+    if (typeof ran !== 'string') throw new Refusal(403, `no ${wclaim} claim`)
+    const workflow = ran.replace(/@.*$/, '')
     if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
       throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
     const repo = { issuer: issuerOf(iss), repository }
