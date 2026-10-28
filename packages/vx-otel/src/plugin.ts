@@ -326,17 +326,22 @@ export function resolveOtelConfig(
   )
   // `OTEL_EXPORTER_OTLP_COMPRESSION=gzip` was not read, and a pipeline
   // configured for it sent every export uncompressed (F-33).
-  let badCompression = false
+  // Each bad variable said once, by name: the warning named none of the
+  // three a value may come from, and a second bad one went unsaid.
+  const badCompression = new Set<string>()
   const gzip = (['traces', 'metrics', 'logs'] as const).filter((signal) => {
-    const name = `OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_COMPRESSION`
-    const raw =
-      opts.compression ?? present(env[name]) ?? present(env['OTEL_EXPORTER_OTLP_COMPRESSION'])
+    if (opts.compression !== undefined) return opts.compression === 'gzip'
+    const own = `OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_COMPRESSION`
+    const [name, raw] =
+      present(env[own]) !== undefined
+        ? [own, present(env[own])]
+        : ['OTEL_EXPORTER_OTLP_COMPRESSION', present(env['OTEL_EXPORTER_OTLP_COMPRESSION'])]
     const value = raw?.trim().toLowerCase()
     if (value === undefined || value === 'none') return false
     if (value === 'gzip') return true
-    if (!badCompression) {
-      badCompression = true
-      warn?.(`[vx-otel] compression ${JSON.stringify(raw)} is not gzip or none — sent uncompressed`)
+    if (!badCompression.has(name)) {
+      badCompression.add(name)
+      warn?.(`[vx-otel] ${name} ${JSON.stringify(raw)} is not gzip or none — sent uncompressed`)
     }
     return false
   })

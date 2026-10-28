@@ -610,7 +610,7 @@ describe('the plugin and transport, as the plugin sweep found them', () => {
       } as never)
       expect([sink !== undefined, warns]).toEqual([
         true,
-        ['[vx-otel] compression "zstd" is not gzip or none — sent uncompressed'],
+        ['[vx-otel] OTEL_EXPORTER_OTLP_COMPRESSION "zstd" is not gzip or none — sent uncompressed'],
       ])
     } finally {
       keys.forEach((k, i) => {
