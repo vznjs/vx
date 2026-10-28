@@ -83,6 +83,22 @@ const SKETCHES = new Map([
   ],
 ])
 
+/**
+ * Release notes are a record of what shipped: a key a later release took
+ * away stays in the note that introduced it, so its fence no longer loads.
+ * Each entry names the key and where it went.
+ */
+const RECORDS = new Map([
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-325.md#1',
+    '`run.affectedBase`, since the `VX_AFFECTED_BASE` variable only',
+  ],
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-644.md#1',
+    '`cache.store.verify`, since removed',
+  ],
+])
+
 function corpus(): Sample[] {
   const md = (p: string): boolean => /\.mdx?$/.test(p)
   const docs = path.join(CORE, 'docs')
@@ -141,27 +157,48 @@ describe('the documented configs load under the current schema', () => {
 
   it('each sketch it exempts is still one of its configs', () => {
     const where = new Set(samples.map((s) => s.where))
-    expect([...SKETCHES.keys()].filter((k) => !where.has(k))).toEqual([])
+    expect([...SKETCHES.keys(), ...RECORDS.keys()].filter((k) => !where.has(k))).toEqual([])
   })
 
   const dir = home()
   // Each page's fences share a directory, a named one written at its path,
   // so a config can import the preset the page showed first.
   const pageDir = new Map<string, string>()
+  // A page often shows several `// .vx/workspace.ts` fences: written up
+  // front, the last overwrote the rest and every row imported it, so a
+  // stale key in an earlier fence passed. A config is written when its row
+  // runs and imported under its own query, so each row loads its own fence.
+  const write = (file: string, s: Sample): void => {
+    mkdirSync(path.dirname(file), { recursive: true })
+    // A page imports an unpublished package from a checkout: this one.
+    writeFileSync(file, s.source.replaceAll('/path/to/vx/packages/', `${PACKAGES}/`))
+  }
   const written = samples.map((s, i) => {
     let d = pageDir.get(s.page)
     if (d === undefined) pageDir.set(s.page, (d = path.join(dir, String(pageDir.size))))
     const rel = s.named ?? `${i}.${s.workspace ? '.vx/workspace' : 'vx.config'}.ts`
     const file = path.join(d, rel)
-    mkdirSync(path.dirname(file), { recursive: true })
-    // A page imports an unpublished package from a checkout: this one.
-    writeFileSync(file, s.source.replaceAll('/path/to/vx/packages/', `${PACKAGES}/`))
+    if (s.where === '') write(file, s)
     return file
   })
   for (const [i, s] of samples.entries()) {
     if (s.where === '' || SKETCHES.has(s.where)) continue
+    if (RECORDS.has(s.where)) {
+      // The excuse holds only while the fence still fails to load.
+      it(`${s.where} (a record of a removed key)`, async () => {
+        write(written[i]!, s)
+        const mod = (await import(`${written[i]!}?${i}`)) as { default: unknown }
+        const load = (): void =>
+          s.workspace
+            ? validateWorkspace(mod.default as WorkspaceConfig, s.where)
+            : validateProjectConfig(mod.default as ProjectConfig, s.where)
+        expect(load).toThrow('unknown field')
+      })
+      continue
+    }
     it(s.where, async () => {
-      const mod = (await import(written[i]!)) as { default: unknown }
+      write(written[i]!, s)
+      const mod = (await import(`${written[i]!}?${i}`)) as { default: unknown }
       if (s.workspace) validateWorkspace(mod.default as WorkspaceConfig, s.where)
       else validateProjectConfig(mod.default as ProjectConfig, s.where)
     })
