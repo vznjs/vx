@@ -886,6 +886,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       })
       const actionDigest = sha256(actionBytes)
 
+      // The action id lets a server group this action's CAS/AC traffic in its
+      // UI; named before the upload, which is most of that traffic.
+      client.nameAction(actionDigest.hash)
       const caps = await capabilitiesOnce()
       const upload: Blob[] = [
         ...tree.blobs,
@@ -894,9 +897,6 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       ]
       await client.uploadBlobs(upload, caps.maxBatchBytes)
 
-      // The action id lets a server group this action's CAS/AC traffic in its
-      // UI; set before Execute so the streaming call carries it too.
-      client.actionId = actionDigest.hash
       // `exec.timeout` rides the Action so the SERVER can enforce it, but a
       // server that ignores it — or has stopped making progress at all —
       // leaves the client waiting forever, and the operation stream is no
@@ -1205,9 +1205,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   }
   const run = executor.execute.bind(executor)
   executor.execute = (req) =>
-    run(req).catch((err: unknown) => {
-      throw namedRefusal(req.taskId, err)
-    })
+    client
+      .inAction(() => run(req))
+      .catch((err: unknown) => {
+        throw namedRefusal(req.taskId, err)
+      })
   return executor
 }
 
