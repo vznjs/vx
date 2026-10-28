@@ -345,11 +345,7 @@ function renderList(
     }
   })
   if (format === 'json') {
-    return `${JSON.stringify(
-      rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })),
-      null,
-      2,
-    )}\n`
+    return `${JSON.stringify(rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })))}\n`
   }
   if (rows.length === 0) return ''
   const anyTags = rows.some((r) => r.tags.length > 0)

@@ -1050,10 +1050,11 @@ Status legend:
 | `−`    | not started — a server you did not request whose every dependant restores a local hit      |
 | `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
-`--dry=json` emits the same data as a structured object, alone on stdout
+`--dry=json` emits the same data as one JSON object on one line, alone on stdout
 (a stage's warnings go to stderr), and with nothing to run (nothing
 affected) an empty `tasks` list, the note on stderr; `schemas/plan.json`
-is its JSON Schema, held like the read verbs' (see Machine-readable output):
+is its JSON Schema, held like the read verbs' (see Machine-readable output).
+Indented here to read:
 
 ```json
 {
