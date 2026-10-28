@@ -317,6 +317,27 @@ export function seeHelp(verb: string): string {
   return ` (see \`vx ${verb} --help\`)`
 }
 
+/**
+ * The refusal for a `project#task` spec with an empty half, or undefined.
+ * An empty task wins over an empty project: `#` names no task to run in
+ * every project, so `bare(task)` would print a hint with no task in it.
+ */
+export function anchoredSpecError(
+  spec: string,
+  bare: (task: string) => string,
+): string | undefined {
+  const idx = spec.indexOf('#')
+  if (idx < 0) return undefined
+  const project = spec.slice(0, idx)
+  const task = spec.slice(idx + 1)
+  if (!task) {
+    const list = project ? `vx show ${project}` : 'vx show'
+    return `missing task name after '#' in "${spec}" (${list} lists the tasks)`
+  }
+  if (!project) return `missing project name before '#' in "${spec}" (${bare(task)})`
+  return undefined
+}
+
 /** `--format`'s value, or the one refusal every verb gives for a bad one. */
 export function formatValue(
   v: string | undefined,
