@@ -62,6 +62,8 @@ export interface RunOrder {
   cwd: string
   project: string
   env: Record<string, string>
+  /** Its `exec.env.secret`: the names in `env` whose values its saved output masks. */
+  secret?: string[]
   timeoutMs?: number
   outputs: { files: string[]; workspaceFiles: string[] }
   /** Its recorded peak: the worker starts it when that much is free. */
