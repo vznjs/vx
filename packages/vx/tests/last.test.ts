@@ -502,6 +502,16 @@ describe('parseLastArgs', () => {
       undefined,
     ])
   })
+
+  it('--list takes a plain decimal count, as every numeric flag does', () => {
+    // `Number()` read `0x10` as 16, `1e1` as 10 and ` 5` as 5.
+    for (const v of ['0x10', '1e1', ' 5', '+5'])
+      for (const args of [[`--list=${v}`], ['--list', v]])
+        expect(parseLastArgs(args).error).toBe(
+          `--list must be a whole number from 1 to 500 (got ${v}) (see \`vx last --help\`)`,
+        )
+    expect(parseLastArgs(['--list=007']).list).toBe(7)
+  })
 })
 
 // A thousand-task warm run replayed as a thousand rows put the one failure
