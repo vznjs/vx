@@ -17,6 +17,10 @@ import { gitInitCommit } from './helpers/workspace.js'
 import { rng } from './helpers/rng.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
+// A slot per task, as many as a scenario makes: the oracle says a saved
+// task hits on the second run, and under 'never' a one-core runner's one
+// slot let the first failure stop the run before the hit was restored.
+const SLOTS = 8
 const errs: string[] = []
 const log: Logger = {
   status: () => undefined,
@@ -103,6 +107,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
     continueMode: mode,
     log,
     handleSignals: false,
+    concurrency: SLOTS,
   })
   const status = new Map(res.outcomes.map((o) => [o.node.id.slice(2), o.status]))
   const upstream = (t: string): Set<string> => {
@@ -162,6 +167,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
     continueMode: mode,
     log,
     handleSignals: false,
+    concurrency: SLOTS,
   })
   const st2 = new Map(again.outcomes.map((o) => [o.node.id.slice(2), o.status]))
   for (const t of ts) {
