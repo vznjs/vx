@@ -76,6 +76,12 @@ export interface DteAdapter {
   report?(warn: (message: string) => void): void
   /** Its workers prove themselves by their CI identity (GitHub OIDC): the run makes no secret for them. */
   readonly keyless?: boolean
+  /**
+   * A keyless adapter's: the CI runs (GitHub workflow run ids) whose jobs
+   * alone may join as its workers; `undefined` admits any job of the
+   * repository.
+   */
+  workerRuns?(): ReadonlySet<string> | undefined
   /** A worker's name in a job its CI started for several, when `VX_DTE_WORKER` is unset. */
   workerId?(): string | undefined
   /** The run's id when `VX_DTE_RUN` is unset, in a CI job it starts workers from; none elsewhere. */
@@ -459,7 +465,10 @@ export function dte(options: DteOptions) {
       let proof: Proof | undefined
       if (secret === undefined) {
         if ((adapter === undefined || adapter.keyless === true) && onGitHub())
-          proof = seal.githubProof()
+          proof = seal.githubProof(
+            undefined,
+            adapter?.workerRuns === undefined ? undefined : () => adapter.workerRuns!(),
+          )
         else if (adapter === undefined)
           throw new UserError(
             'dte(): with no adapter, set VX_DTE_SECRET here and on each worker, or run on GitHub Actions with id-token: write',
