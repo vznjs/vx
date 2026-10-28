@@ -2385,6 +2385,14 @@ The task graph has a cycle. The message names the loop; drop one of its
 `dependsOn` edges.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
+#### `VX_E_LOCK`
+
+A run reads its configs only from `.vx/projects.lock.json`, and that
+lock is missing, not one this vx reads (not JSON, another version, a
+hand-edited entry), or holds no entry for a project the workspace has.
+Run `vx lock`, then the verb again. Commit the lock; `vx lock --check`
+on CI fails one that no longer matches the configs.
+
 #### `VX_E_NO_WORKSPACE`
 
 No `.vx/workspace.*` in the working directory or a parent, up to the git

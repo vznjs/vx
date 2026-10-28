@@ -465,7 +465,7 @@ export function lockReader(workspaceRoot: string): () => Promise<Lockfile> {
   let read: Promise<Lockfile> | undefined
   return () =>
     (read ??= readLockfile(workspaceRoot).then((lock) => {
-      if (lock === null) throw new UserError(NO_LOCK)
+      if (lock === null) throw new UserError(NO_LOCK, 'VX_E_LOCK')
       return lock
     }))
 }
