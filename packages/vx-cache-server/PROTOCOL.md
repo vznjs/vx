@@ -54,12 +54,14 @@ alone decides what it reads and where it writes, by the server's
   does not name is `403`, and so is a job of a workflow it does not name
   (`job_workflow_ref`, GitLab's `ci_config_ref_uri`). A repository's artifacts are never another's.
 - It writes its branch's scope: on GitHub a `pull_request` run's head
-  branch (`refs/heads/<head_ref>`), a merge queue's run
+  branch (`refs/heads/<head_ref>`), a `merge_group` run
   (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, that exact form)
   its base branch (`refs/heads/<base>`), which its code is about to
   become, else its `ref`; on GitLab its `ref_path`.
 - A `pull_request_target` run writes nothing (a write is `403`): its
-  `head_ref` a fork names, and its `ref` is the base.
+  `head_ref` a fork names, and its `ref` is the base. Nor does a
+  `pull_request` run whose head branch has its base branch's name (only
+  a fork's can).
 
 A bad token is `401`. A server with `ALLOW` empty refuses every
 request: `401`, `the server admits no CI: set ALLOW`. A server that

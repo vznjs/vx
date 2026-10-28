@@ -116,13 +116,19 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
  * name); a merge queue's run its base branch, which its code is about to
  * become (2026-10-25: "just strip it"); any other run its `ref`,
  * GitLab's its `ref_path`. Only a `pull_request` run takes its head
- * branch. A `pull_request_target` run writes nothing: its `head_ref` is a
- * fork's branch name, chosen by the fork, and its `ref` is the base branch,
- * which a fork's code must never write.
+ * branch, and only a `merge_group` run's ref is renamed: anyone can push
+ * a branch named like a queue ref. A `pull_request_target` run writes
+ * nothing: its `head_ref` is a fork's branch name, chosen by the fork, and
+ * its `ref` is the base branch, which a fork's code must never write. Nor
+ * does a pull request whose head branch has its base branch's name: only
+ * a fork's can.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
-  if (claims['event_name'] === 'pull_request_target') return undefined
-  const head = claims['event_name'] === 'pull_request' ? claims['head_ref'] : undefined
+  const event = claims['event_name']
+  if (event === 'pull_request_target') return undefined
+  const head = event === 'pull_request' ? claims['head_ref'] : undefined
+  // Only a fork's head branch can share its base branch's name.
+  if (head !== undefined && head === claims['base_ref']) return undefined
   const ref =
     iss === GITHUB
       ? typeof head === 'string' && head !== ''
@@ -130,7 +136,7 @@ function branchOf(iss: string, claims: JWTPayload): string | undefined {
         : claims['ref']
       : claims['ref_path']
   if (typeof ref !== 'string' || !ref.startsWith('refs/') || ref.length > 512) return undefined
-  const queued = iss === GITHUB ? QUEUE.exec(ref) : null
+  const queued = iss === GITHUB && event === 'merge_group' ? QUEUE.exec(ref) : null
   return queued === null ? ref : `refs/heads/${queued[1]}`
 }
 
