@@ -706,7 +706,9 @@ export function runGitLsFiles(cwd: string): GitLsResult {
 /**
  * The files git tracks under `dir`, absolute: one `ls-files` of the index,
  * no worktree walk. Outside a work tree (an embedder's temp dir) nothing
- * is tracked.
+ * is tracked. A git that fails otherwise refuses: read as "nothing
+ * tracked", every committed file under `dir` was the output clean's to
+ * delete (2026-10-28).
  */
 function listTracked(dir: string): string[] {
   let proc
@@ -719,9 +721,16 @@ function listTracked(dir: string): string[] {
       stderr: 'pipe',
     })
   } catch {
-    return []
+    throw gitSpawnRefusal(dir)
   }
-  if (proc.exitCode !== 0) return []
+  if (proc.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(proc.stderr).trim()
+    if (/not a git repository/i.test(stderr)) return []
+    throw new UserError(
+      `git ls-files failed (exit ${proc.exitCode}) in ${dir}: ${stderr || 'no output'}. Run it there to see why.`,
+      'VX_E_GIT',
+    )
+  }
   const { text } = decodeGitZ(proc.stdout)
   return text
     .split('\0')
