@@ -67,7 +67,10 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     if (a === '--run' || a.startsWith('--run=')) {
       const rv = a === '--run' ? args[++i] : a.slice(6)
       if (rv === undefined || rv === '')
-        return { ...out, error: '--run requires a run id (`vx last --list` shows them)' }
+        return {
+          ...out,
+          error: `--run requires a run id (\`vx last --list\` shows them)${seeHelp('why')}`,
+        }
       out.runId = rv
       continue
     }
@@ -79,7 +82,7 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     }
     const cd = parseCacheDirFlag(args, i)
     if (cd !== null) {
-      if ('error' in cd) return { ...out, error: cd.error }
+      if ('error' in cd) return { ...out, error: `${cd.error}${seeHelp('why')}` }
       out.cacheDir = cd.cacheDir
       i = cd.next
       continue
