@@ -198,8 +198,9 @@ describe('ci.yml', () => {
   // Spotlight indexed what a Mac worker's tasks wrote: a fixed test
   // workload ran 27.6 s with it, 23.3 s without (2026-10-24). Our
   // workflow's concern, not vx's (2026-10-24).
+  // Only the check that its run is still on comes before: one API call.
   it('turns Spotlight off on a Mac worker, first and in the background', () => {
-    const first = worker.steps![0]!
+    const first = worker.steps![1]!
     expect([first.if, first.run]).toEqual([
       "runner.os == 'macOS'",
       '(sudo mdutil -a -i off && sudo mdutil -a -d) >/dev/null 2>&1 &',
@@ -251,6 +252,19 @@ describe('ci.yml', () => {
 })
 
 describe('vx-worker.yml', () => {
+  // The step github() lists its worker runs for: a run cancelled or
+  // timed out can die before it cancels them (2026-10-28).
+  it('is cancelled with the run that dispatched it', () => {
+    const last = doc.jobs['linux']!.steps!.at(-1)!
+    expect([last.if, last.run]).toEqual([
+      'cancelled()',
+      expect.stringContaining('done < "$RUNNER_TEMP/vx-dte-runs"'),
+    ])
+    expect(read('vx-worker.yml').on!['workflow_dispatch']).toMatchObject({
+      inputs: { parent: { required: false, default: '' } },
+    })
+  })
+
   it('runs each size on its runner', () => {
     expect(worker['runs-on']).toBe(
       `\${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}`,
@@ -276,8 +290,10 @@ describe('vx-worker.yml', () => {
   // runner runs twice?"): the runtime set up by the CI plugin before the
   // worker starts (owner: "vx setup github", "we should do before"), its
   // packages kept per runner image, and no mount of its own.
-  it('is Spotlight off, checkout, Bun, install, the sandbox runtime and the worker', () => {
+  it('is leave if the run is over, Spotlight off, checkout, Bun, install, the sandbox runtime and the worker', () => {
     expect(worker.steps!.map((s) => s.uses?.split('@')[0] ?? s.run)).toEqual([
+      // A worker of a run that is over cancels its own run (@vzn/vx-dte's README).
+      expect.stringMatching(/^runs=.*\/cancel"\n$/s),
       '(sudo mdutil -a -i off && sudo mdutil -a -d) >/dev/null 2>&1 &',
       'actions/checkout',
       'oven-sh/setup-bun',
