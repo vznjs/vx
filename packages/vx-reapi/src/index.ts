@@ -222,8 +222,26 @@ const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
   chunkBytes: 'number',
 }
 
+/**
+ * `headers` and `platform` map names to strings. A value read from an unset
+ * variable (`process.env.KEY!`) is undefined: the header check read it as
+ * the text "undefined", and grpc-js then spun on every call until its
+ * deadline (15 s each, no word of why), and a platform value reached the
+ * worker as "undefined".
+ */
+function refuseNonStringValues(name: 'headers' | 'platform', map: object | undefined): void {
+  for (const [key, value] of Object.entries(map ?? {})) {
+    if (typeof value === 'string') continue
+    throw new UserError(
+      `reapi() option "${name}" must map each name to a string — ${JSON.stringify(key)} is ${JSON.stringify(value) ?? String(value)} (an unset environment variable?)`,
+    )
+  }
+}
+
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
+  refuseNonStringValues('headers', options.headers)
+  refuseNonStringValues('platform', options.platform)
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {
