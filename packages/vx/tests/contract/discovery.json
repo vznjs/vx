@@ -1,5 +1,6 @@
 {
   "projects: a vx.config in any directory": [
+    ".hidden/vx.config.ts",
     "packages/a/nested/vx.config.mjs",
     "packages/a/vx.config.ts",
     "tools/gen/vx.config.js",

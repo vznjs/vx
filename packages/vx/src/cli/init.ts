@@ -57,6 +57,12 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
           error: `--plugin takes a seam: one of ${seams}${seam === undefined || seam === '' ? '' : ` (got '${seam}')`}${seeHelp('init')}`,
         }
       }
+      if (out.plugin !== undefined && out.plugin !== seam) {
+        return {
+          ...out,
+          error: `--plugin takes one seam; run vx init --plugin once per seam${seeHelp('init')}`,
+        }
+      }
       out.plugin = seam
     } else if (a === '--format' || a.startsWith('--format=')) {
       const fv = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'init')
@@ -373,6 +379,8 @@ async function starter(
     return 0
   }
   const rows: ui.FieldRow[] = [['from', 'no turbo.json or nx.json: one project, the root']]
+  // The files are root-relative: a root above the cwd is named, or they read as written here.
+  if (root !== process.cwd()) rows.push(['root', root])
   if (args.dry) rows.push(['dry run', 'nothing written'])
   if (installs.length > 0) rows.push(['install', ...installs])
   if (files.length > 0) rows.push(['files', ...files.map((f) => f.path)])

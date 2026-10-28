@@ -74,6 +74,33 @@ describe('findCwdProject', () => {
     await mkdir(path.join(root, 'packages', 'app', 'src'), { recursive: true })
     expect(await findCwdProject(path.join(root, 'packages', 'app', 'src'))).toBe('app')
   })
+
+  it('a config added since the lock is said, never read as the project around it', async () => {
+    // The lock holds the projects, so a config written after it was no
+    // project: from its directory a run took the locked project above it
+    // (the root's `build` ran for a new member) or said "not inside a project".
+    const config = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`
+    const nested = path.join(root, 'packages', 'app', 'tools')
+    const fresh = path.join(root, 'packages', 'fresh')
+    await Bun.write(path.join(nested, 'vx.config.mjs'), config)
+    await Bun.write(path.join(fresh, 'vx.config.mjs'), config)
+    await mkdir(path.join(fresh, 'src'), { recursive: true })
+    try {
+      await expect(findCwdProject(nested)).rejects.toThrow(
+        'packages/app/tools/vx.config.mjs is not in the lock yet — run `vx lock`',
+      )
+      await expect(findCwdProject(path.join(fresh, 'src'))).rejects.toThrow(
+        'packages/fresh/vx.config.mjs is not in the lock yet — run `vx lock`',
+      )
+      // CONTROL: a config git ignores is no project `vx lock` would add.
+      await Bun.write(path.join(root, '.gitignore'), 'packages/app/tools/\n')
+      expect(await findCwdProject(nested)).toBe('app')
+    } finally {
+      await rm(nested, { recursive: true, force: true })
+      await rm(fresh, { recursive: true, force: true })
+      await rm(path.join(root, '.gitignore'), { force: true })
+    }
+  })
 })
 
 describe('resolveFilters', () => {
