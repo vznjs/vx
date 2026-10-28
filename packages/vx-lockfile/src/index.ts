@@ -17,7 +17,7 @@
 // each importer's `package.json` to its tasks' inputs.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { mkdir, rename } from 'node:fs/promises'
+import { mkdir, rename, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import {
@@ -417,7 +417,10 @@ async function recordedOnce(
     await mkdir(path.dirname(memo), { recursive: true })
     await Bun.write(tmp, JSON.stringify({ hash, names }))
     await rename(tmp, memo)
-  } catch {}
+  } catch {
+    // Left behind, one more temp file piled up in the cache every run.
+    await rm(tmp, { force: true }).catch(() => {})
+  }
   return out
 }
 
@@ -442,8 +445,13 @@ async function readSettings(
     let bytes: Uint8Array
     try {
       bytes = await Bun.file(path.join(workspaceRoot, file)).bytes()
-    } catch {
-      continue
+    } catch (err) {
+      // Only an absent file is absent: one there but unreadable (EACCES,
+      // a directory) folded as none, and the key named no setting at all.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue
+      throw new UserError(
+        `${file}: cannot be read (${err instanceof Error ? err.message : String(err)})`,
+      )
     }
     const text = settingsText?.(file, new TextDecoder().decode(bytes))
     out[file] = Bun.hash
@@ -518,11 +526,22 @@ async function workspaceGlobs(
   manifest: (dir: string) => Promise<Record<string, unknown> | null>,
 ): Promise<readonly unknown[]> {
   if (manager !== 'pnpm') return globsOf(await manifest(root))
+  let text: string
+  try {
+    text = await Bun.file(path.join(root, 'pnpm-workspace.yaml')).text()
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw err
+  }
+  // Read as no globs, an unparsable one turned the staleness check off,
+  // as a package.json that does not parse would (manifestOf refuses it).
   let doc: unknown
   try {
-    doc = Bun.YAML.parse(await Bun.file(path.join(root, 'pnpm-workspace.yaml')).text())
-  } catch {
-    return []
+    doc = Bun.YAML.parse(text)
+  } catch (err) {
+    throw new UserError(
+      `pnpm-workspace.yaml: not YAML (${err instanceof Error ? err.message : String(err)})`,
+    )
   }
   const list =
     doc !== null && typeof doc === 'object'
