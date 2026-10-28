@@ -147,7 +147,9 @@ export function initInstalls(
 ): { argv: string[]; cwd: string | null }[] {
   const out: { argv: string[]; cwd: string | null }[] = []
   if (globalAt !== version) {
-    const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1] ?? 'bun'
+    // Yarn 2+ has no `yarn global`: Bun, which vx needs anyway, as with no runner.
+    const ua = /^(npm|pnpm|yarn|bun)\/(\d+)/.exec(userAgent ?? '')
+    const runner = ua === null || (ua[1] === 'yarn' && Number(ua[2]) >= 2) ? 'bun' : ua[1]!
     const manager = runner as ManagedInstall['manager']
     out.push({ argv: upgradeArgv({ manager, scope: 'global', cwd: '' }, version), cwd: null })
   }
