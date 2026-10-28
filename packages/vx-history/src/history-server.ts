@@ -69,10 +69,11 @@ function aloneMs(o: TaskOutcome): number {
   return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
 }
 
-const deadline = (): AbortSignal => {
+/** {@link DEADLINE_MS}, or `stop` first. */
+const deadline = (stop?: AbortSignal): AbortSignal => {
   const c = new AbortController()
   setTimeout(() => c.abort(new Error(`no answer within ${DEADLINE_MS} ms`)), DEADLINE_MS).unref()
-  return c.signal
+  return stop === undefined ? c.signal : AbortSignal.any([c.signal, stop])
 }
 
 /** A refusal, named by its status and the server's own `message`. */
@@ -147,7 +148,7 @@ export class HistoryServer {
    * again a minute before it ends (it lives minutes, a run can outlive it),
    * else `VX_HISTORY_TOKEN`.
    */
-  private bearer(): Promise<string> {
+  private bearer(signal?: AbortSignal): Promise<string> {
     const held = this.held
     if (held !== undefined && (held.exp === 0 || Date.now() < held.exp - 60_000)) {
       return Promise.resolve(held.jwt)
@@ -159,7 +160,7 @@ export class HistoryServer {
       u.searchParams.set('audience', new URL(this.url).origin)
       const res = await this.fetchImpl(u, {
         headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
-        signal: deadline(),
+        signal: deadline(signal),
       })
       if (!res.ok) throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res)).message}`)
       const jwt = ((await res.json()) as { value?: unknown }).value
@@ -171,8 +172,8 @@ export class HistoryServer {
     return this.token
   }
 
-  private async call(path: string, body?: unknown): Promise<Response> {
-    const bearer = this.writes ? await this.bearer() : ''
+  private async call(path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
+    const bearer = this.writes ? await this.bearer(signal) : ''
     const res = await this.fetchImpl(`${this.url}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers: {
@@ -181,7 +182,7 @@ export class HistoryServer {
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: deadline(),
+      signal: deadline(signal),
     })
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
@@ -246,13 +247,13 @@ export class HistoryServer {
     return out
   }
 
-  /** The run's timings, by task definition hash, in uploads of at most `maxUploadTimings`. */
-  async upload(timings: ReadonlyMap<string, ServerTiming>): Promise<void> {
+  /** The run's timings, by task definition hash, in uploads of at most `maxUploadTimings`; `stop` abandons them. */
+  async upload(timings: ReadonlyMap<string, ServerTiming>, stop?: AbortSignal): Promise<void> {
     if (timings.size === 0) return
     const per = (await this.limitsNow()).maxUploadTimings
     const all = [...timings].map(([hash, t]) => ({ hash, ...t }))
     for (let i = 0; i < all.length; i += per) {
-      await this.call('/v1/timings/upload', { timings: all.slice(i, i + per) })
+      await this.call('/v1/timings/upload', { timings: all.slice(i, i + per) }, stop)
     }
   }
 }
