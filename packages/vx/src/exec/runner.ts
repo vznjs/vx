@@ -973,13 +973,36 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
  * bare `$ <command>` and nothing else (2026-09-16). An ENOENT with the
  * working directory in place is the shell; Bun's own text names the rest.
  */
-export function spawnFailureText(err: unknown, cwd: string, what = 'task'): string {
+export function spawnFailureText(
+  err: unknown,
+  cwd: string,
+  what = 'task',
+  command?: string,
+): string {
   if (isExecutableMissing(err) && existsSync(cwd)) {
     return `\n[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
   }
   const message = err instanceof Error ? err.message : String(err)
-  const hint = isOutOfFds(err) ? ` — ${OUT_OF_FDS_HINT}` : ''
+  const hint = isOutOfFds(err)
+    ? ` — ${OUT_OF_FDS_HINT}`
+    : command !== undefined && (err as NodeJS.ErrnoException | undefined)?.code === 'E2BIG'
+      ? ` — ${argTooLongHint(command)}`
+      : ''
   return `\n[vx] failed to spawn ${what}: ${message}${hint}\n`
+}
+
+/**
+ * A task's command, the args after `--` folded in, is ONE argument to
+ * `sh -c`, and Linux caps one argument at 128 KiB (MAX_ARG_STRLEN), far
+ * below the argv total: a file list forwarded to a linter failed with a
+ * bare E2BIG, which reads as "too many files" and names no way out.
+ */
+function argTooLongHint(command: string): string {
+  const kib = Math.ceil(Buffer.byteLength(command) / 1024)
+  return (
+    `the command, with the args after --, is ${kib} KiB, and one argument to sh -c may hold at ` +
+    `most 128 KiB on Linux: pass a long list through a file the tool reads (xargs, a response file)`
+  )
 }
 
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
@@ -1007,7 +1030,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     )
   } catch (err) {
     pipes.close()
-    const stderr = spawnFailureText(err, opts.cwd)
+    const stderr = spawnFailureText(err, opts.cwd, 'task', fullCommand)
     opts.onStderr?.(stderr)
     return { exitCode: 127, durationMs: Date.now() - start, stdout: '', stderr, spawnFailed: true }
   } finally {
