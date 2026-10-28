@@ -241,3 +241,15 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
     426,
   ])
 })
+
+// A deploy that bound no Durable Object threw the runtime's TypeError: a bare 500.
+it('refuses every join with a 403 naming the binding while no RELAY is bound', async () => {
+  const res = await join({ ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml' } as Env, A)
+  expect([res.status, await res.json()]).toEqual([
+    403,
+    {
+      error:
+        'this relay has no Durable Object bound as RELAY: bind RelayRun in wrangler.jsonc (durable_objects)',
+    },
+  ])
+})
