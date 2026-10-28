@@ -121,9 +121,23 @@ export function localFloor(
   }
   return {
     async execute(req) {
+      // A stop while a server is not yet ready ends the wait: one that never
+      // prints its `readyWhen` line held the task, and a worker's shutdown
+      // waits on its tasks before `close()` stops the servers. The aborted
+      // request then reads as one stopped before its spawn.
+      const signal = req.signal
+      const stopped =
+        signal === undefined
+          ? undefined
+          : new Promise<void>((resolve) => {
+              if (signal.aborted) resolve()
+              else signal.addEventListener('abort', () => resolve(), { once: true })
+            })
       for (const spec of req.servers ?? []) {
+        if (signal?.aborted === true) break
         try {
-          await serve(spec, req.workspaceRoot)
+          const up = serve(spec, req.workspaceRoot)
+          await (stopped === undefined ? up : Promise.race([up, stopped]))
         } catch (err) {
           const why = err instanceof Error ? err.message : String(err)
           const text = `${spec.taskId}, which ${req.taskId} depends on, did not start: ${why}\n`
