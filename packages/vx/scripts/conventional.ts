@@ -53,15 +53,23 @@ export function squashBreakingError(title: string, commits: readonly Commit[]): 
 }
 
 /**
- * Whether `base..head` lands other PRs as `chore: land #N` merges: such a
- * branch merges into main by a merge commit, each PR's commits as
- * themselves, so no squash counts its breaking commits (2026-10-28).
+ * The PR heads `base..head` lands as `chore: land #N` merges (each merge's
+ * second parent): such a branch merges into main by a merge commit, each
+ * PR's commits as themselves (2026-10-28: 255 PRs, one CI run).
  */
-export function landsByMerge(base: string, head: string, cwd: string): boolean {
-  const r = Bun.spawnSync(['git', 'log', '--merges', '--format=%s', `${base}..${head}`], { cwd })
+export function landedHeads(base: string, head: string, cwd: string): string[] {
+  const r = Bun.spawnSync(['git', 'log', '--merges', '--format=%P %s', `${base}..${head}`], { cwd })
   if (r.exitCode !== 0) throw new Error(`git log ${base}..${head}: ${r.stderr.toString().trim()}`)
   return r.stdout
     .toString()
     .split('\n')
-    .some((s) => /^chore: land #\d+$/.test(s))
+    .flatMap((l) => {
+      const m = /^\S+ (\S+) chore: land #\d+$/.exec(l)
+      return m === null ? [] : [m[1]!]
+    })
+}
+
+/** Whether `base..head` lands PRs by merge, so no squash counts its breaking commits. */
+export function landsByMerge(base: string, head: string, cwd: string): boolean {
+  return landedHeads(base, head, cwd).length > 0
 }
