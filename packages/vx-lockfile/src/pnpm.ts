@@ -29,6 +29,8 @@ export interface Lockfile {
   readonly directories: ReadonlyMap<string, string>
   /** Material every importer folds: the lockfile version and the install-wide knobs. */
   readonly global: string
+  /** `settings.excludeLinksFromLockfile`: no importer records its `link:` dependencies. */
+  readonly excludesLinks: boolean
 }
 
 type Yaml = Record<string, unknown>
@@ -119,7 +121,8 @@ export function parseLockfile(text: string): Lockfile {
       ? { lockfileVersion: version, rest }
       : { lockfileVersion: version, rest, leading },
   )
-  return { version, importers, snapshots, resolutions, patches, directories, global }
+  const excludesLinks = record(doc['settings'])?.['excludeLinksFromLockfile'] === true
+  return { version, importers, snapshots, resolutions, patches, directories, global, excludesLinks }
 }
 
 /**
@@ -237,8 +240,15 @@ export function importerDigests(
   // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
   // bits of a seed, so two lockfiles' globals could share one (item 682).
   const global = Bun.hash.xxHash3(lock.global).toString(16).padStart(16, '0')
+  const reachOf = (dir: string): string => hashes[g.index.get(importerNode(dir))!]!
+  // With its links left out, the file does not say which importer links
+  // which, so each folds them all: keyed by its own reach, a project
+  // linking another missed a bump in the linked one's dependencies.
+  const all = lock.excludesLinks
+    ? [...lock.importers.keys()].sort().map(reachOf).join('\0')
+    : undefined
   for (const dir of lock.importers.keys()) {
-    const h = Bun.hash.xxHash3(`${global}\0${hashes[g.index.get(importerNode(dir))!]!}`)
+    const h = Bun.hash.xxHash3(`${global}\0${all ?? reachOf(dir)}`)
     out.set(dir, h.toString(16).padStart(16, '0'))
   }
   return out
