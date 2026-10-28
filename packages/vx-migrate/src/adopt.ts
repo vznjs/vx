@@ -72,6 +72,23 @@ function pnpmRoot(root: string): string[] {
   return existsSync(path.join(root, 'pnpm-workspace.yaml')) ? ['-w'] : []
 }
 
+/**
+ * Yarn 2+: its lockfile carries `__metadata`, and before the first install
+ * there is none, so `packageManager` names it (`-W` was refused there).
+ */
+function berry(root: string): boolean {
+  const lock = readText(path.join(root, 'yarn.lock'))
+  if (lock !== '') return lock.includes('__metadata:')
+  try {
+    const pm = (
+      JSON.parse(readText(path.join(root, 'package.json')) || '{}') as { packageManager?: unknown }
+    ).packageManager
+    return typeof pm === 'string' && /^yarn@([2-9]|\d{2,})/.test(pm)
+  } catch {
+    return false
+  }
+}
+
 /** argv that adds `packages` as root dev dependencies. */
 export function installArgv(
   root: string,
@@ -83,8 +100,8 @@ export function installArgv(
       return ['pnpm', 'add', '-D', ...pnpmRoot(root), ...packages]
     case 'yarn':
       // Yarn 1 refuses `add` at a workspace root without `-W`; Berry has no
-      // such flag. A Berry lockfile carries `__metadata`.
-      return readText(path.join(root, 'yarn.lock')).includes('__metadata:')
+      // such flag.
+      return berry(root)
         ? ['yarn', 'add', '-D', ...packages]
         : ['yarn', 'add', '-D', '-W', ...packages]
     case 'bun':
@@ -140,9 +157,7 @@ export function removeArgv(
     case 'pnpm':
       return ['pnpm', 'remove', ...pnpmRoot(root), ...packages]
     case 'yarn':
-      return readText(path.join(root, 'yarn.lock')).includes('__metadata:')
-        ? ['yarn', 'remove', ...packages]
-        : ['yarn', 'remove', '-W', ...packages]
+      return berry(root) ? ['yarn', 'remove', ...packages] : ['yarn', 'remove', '-W', ...packages]
     case 'bun':
       return ['bun', 'remove', ...packages]
     case 'npm':
