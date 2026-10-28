@@ -306,6 +306,11 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         rels: staleWsRels,
         outputs: wsOutputs,
         committed: wsCleanArgs.committed,
+        keep: new Set(
+          heldWsRels
+            .filter((r) => r.endsWith('/'))
+            .map((r) => path.join(args.workspaceRoot, r.slice(0, -1))),
+        ),
       })
     }
     // The tree now holds this entry's bytes: stamp them for the next hit

@@ -184,3 +184,34 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  'a stale file in a workspace output directory the entry holds empty goes, and the directory stays',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-ws-empty-stale-' })
+    made.push(root)
+    await addProject(root, 'app', {
+      config: `
+        export default { tasks: { build: {
+          exec: { command: 'cd ../.. && rm -rf gen && mkdir -p gen/empty && echo real > gen/real.txt' },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+        } } }`,
+      files: { 'src/in.txt': 'v1\n' },
+    })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const build = async (): Promise<string> => {
+      const r = await vx(root, ['run', 'build', '--all', '--cache-dir', path.join(root, '.cache')])
+      expect(`${r.code}\n${r.err}`).toStartWith('0\n')
+      return r.out
+    }
+    await build()
+    writeFileSync(path.join(root, 'gen/empty/stale.txt'), 'stale\n')
+    expect(await build()).toContain('1↓')
+    expect(existsSync(path.join(root, 'gen/empty/stale.txt'))).toBe(false)
+    expect(statSync(path.join(root, 'gen/empty')).isDirectory()).toBe(true)
+    expect(existsSync(path.join(root, 'gen/real.txt'))).toBe(true)
+  },
+  TIMEOUT,
+)
