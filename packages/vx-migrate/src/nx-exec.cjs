@@ -133,7 +133,7 @@ async function loadGraph(nx, project) {
   }
   // A cache written before the project existed (one added since Nx last
   // ran) is stale: \`nx run\` computes the graph and finds it, so compute.
-  if (graph === null || graph.nodes[project] === undefined) {
+  if (graph === null || !Object.hasOwn(graph.nodes, project)) {
     graph = unwrapGraph(await pg.createProjectGraphAsync({ exitOnError: false }))
   }
   if (graph === null) throw new Error('nx produced a project graph with no nodes')
@@ -168,7 +168,7 @@ async function main(argv) {
   loadTaskEnv(nx, process.env, args.dotenv, undefined)
 
   const { graph, pg } = await loadGraph(nx, args.project)
-  const node = graph.nodes[args.project]
+  const node = Object.hasOwn(graph.nodes, args.project) ? graph.nodes[args.project] : undefined
   if (node === undefined) {
     process.stderr.write(
       `nx-exec: no project ${JSON.stringify(args.project)} in the Nx project graph\n`,

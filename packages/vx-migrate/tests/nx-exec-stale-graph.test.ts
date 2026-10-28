@@ -62,4 +62,13 @@ describe('nx-exec with a stale graph cache', () => {
     expect(await run('app')).toBe(0)
     expect(await computed()).toBe(false)
   })
+
+  // `graph.nodes.constructor` is Object's own: the cache seemed to hold
+  // the project, and `--project __proto__` set `data` on Object.prototype.
+  it('a project named after an Object.prototype member is no project', async () => {
+    for (const name of ['constructor', '__proto__', 'toString']) {
+      expect(await run(name)).toBe(1)
+      expect(await computed()).toBe(true)
+    }
+  })
 })

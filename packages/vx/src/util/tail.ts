@@ -46,7 +46,12 @@ export function appendTail(t: Tail, chunk: string, limit = PERSISTENT_TAIL_CHARS
   // A single chunk over the cap is the one place we copy.
   if (t.chars > limit) {
     const only = t.chunks[0]!
-    const keep = only.slice(only.length - limit)
+    let start = only.length - limit
+    // A cut between a surrogate pair opened the frame on a lone low
+    // surrogate, which the terminal's UTF-8 encode prints as U+FFFD.
+    const first = only.charCodeAt(start)
+    if (first >= 0xdc00 && first <= 0xdfff) start++
+    const keep = only.slice(start)
     t.dropped += only.length - keep.length
     t.chunks[0] = keep
     t.chars = keep.length

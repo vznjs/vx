@@ -205,7 +205,9 @@ export interface RunOptions {
    * never-started ones `aborted`. The seam for an embedder that owns its
    * process's lifetime instead of `handleSignals` — the watch loop aborts
    * its in-flight cycle on SIGINT/SIGTERM this way, so a cancellation
-   * never orphans a cycle's children.
+   * never orphans a cycle's children. A reason naming a signal
+   * (`'SIGINT'`, `'SIGTERM'`, `'SIGHUP'`) is a stop as vx's own handler
+   * makes one: the run records no history, only what finished.
    */
   signal?: AbortSignal
   /**

@@ -11,6 +11,7 @@ import {
   releaseBridges,
   resetSandbox,
   runPersistent,
+  signalExitCode,
   type ExecuteRequest,
   type ExecuteResult,
   type ServerSpec,
@@ -109,7 +110,7 @@ export function localFloor(
     heard = undefined
     return spawn.child
   }
-  const serve = (spec: ServerSpec, root: string): Promise<unknown> => {
+  const serve = (spec: ServerSpec, root: string): Promise<ReturnType<typeof Bun.spawn>> => {
     let up = servers.get(spec.taskId)
     if (up === undefined) {
       up = start(spec, root)
@@ -137,7 +138,17 @@ export function localFloor(
         if (signal?.aborted === true) break
         try {
           const up = serve(spec, req.workspaceRoot)
-          await (stopped === undefined ? up : Promise.race([up, stopped]))
+          const child = await (stopped === undefined ? up : Promise.race([up, stopped]))
+          // One that crashed after it was ready serves nobody: the task ran
+          // against nothing and failed on its own "connection refused". A
+          // clean exit is a setup step that did its work (runPersistent).
+          const died = child === undefined ? null : (child.exitCode ?? child.signalCode)
+          if (died !== null && died !== 0) {
+            const code = typeof died === 'number' ? died : signalExitCode(died)
+            const text = `${spec.taskId}, which ${req.taskId} depends on, exited with code ${code} after it was ready\n`
+            req.onStderr(text)
+            return { exitCode: 1, durationMs: 0, stdout: '', stderr: text, violations: [] }
+          }
         } catch (err) {
           const why = err instanceof Error ? err.message : String(err)
           const text = `${spec.taskId}, which ${req.taskId} depends on, did not start: ${why}\n`
