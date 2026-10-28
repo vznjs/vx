@@ -12,3 +12,15 @@ it('an option of the wrong kind is refused at the factory', () => {
     new Error('reapi() option "platform" must be an object, got "linux"'),
   )
 })
+
+// A capacity of 0 or 1.5 was taken, and with `execute` refused only once
+// the server answered, by core, naming the executor and not the option.
+it('a capacity that is no whole number above 0 is refused at the factory', () => {
+  for (const capacity of [0, -1, 1.5, Number.NaN, Infinity])
+    expect(() => reapi({ capacity })).toThrow(
+      new Error(
+        `reapi() option "capacity" must be a whole number above 0, got ${String(capacity)}`,
+      ),
+    )
+  expect(() => reapi({ capacity: 4 })).not.toThrow()
+})

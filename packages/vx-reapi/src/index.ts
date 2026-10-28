@@ -224,6 +224,13 @@ const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
 
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
+  // Core refuses it too, but only once `execute` has reached the server,
+  // and naming the executor, not this option.
+  const { capacity } = options
+  if (capacity !== undefined && !(Number.isInteger(capacity) && capacity > 0))
+    throw new UserError(
+      `reapi() option "capacity" must be a whole number above 0, got ${String(capacity)}`,
+    )
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {
