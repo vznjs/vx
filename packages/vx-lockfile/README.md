@@ -47,12 +47,12 @@ A lockfile the parser cannot read **refuses the run**, naming the file, the reas
 
 Files no lockfile records lay `node_modules` out anew under a byte-identical lockfile (pnpm's `node-linker`, bun's `linker = "isolated"`, a registry in `.npmrc`, Yarn 4's catalogs). Each plugin claims its manager's and folds each present file whole into every task; a change to one selects every project under `--affected`:
 
-| Plugin   | Settings                          |
-| -------- | --------------------------------- |
-| `pnpm()` | `pnpm-workspace.yaml`, `.npmrc`   |
-| `bun()`  | `bunfig.toml`, `.npmrc`           |
-| `npm()`  | `.npmrc`                          |
-| `yarn()` | `.yarnrc.yml`, `.yarnrc` (yarn 1) |
+| Plugin   | Settings                                                                                              |
+| -------- | ----------------------------------------------------------------------------------------------------- |
+| `pnpm()` | `pnpm-workspace.yaml`, `.npmrc`                                                                       |
+| `bun()`  | `bunfig.toml`, `.npmrc`                                                                               |
+| `npm()`  | `.npmrc`                                                                                              |
+| `yarn()` | `.yarnrc.yml`, `.yarnrc` (yarn 1), the root `package.json`'s `workspaces.nohoist` and `installConfig` |
 
 `pnpm()` folds `pnpm-workspace.yaml` without `patchedDependencies`, `overrides`, `catalog` and `catalogs`, which pnpm 10+ keeps there: the lockfile records what each one did, per project, so a patch, an override or a catalog bump re-keys only the projects that reach the package it changes, and `--affected` selects them through the lockfile. Any other setting in the file re-keys every project, and a file that does not parse folds whole.
 
