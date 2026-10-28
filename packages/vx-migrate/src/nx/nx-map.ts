@@ -23,7 +23,7 @@ import type { PackageMeta } from '../packages.js'
 import { withoutTakenBack } from '../glob-grammar.js'
 import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
-import { scriptCommand, yarnPnp } from '../script-command.js'
+import { runsScriptHooks, scriptCommand, yarnPnp, type Owner } from '../script-command.js'
 import {
   ownFileTakeBacks,
   takingBack,
@@ -275,6 +275,8 @@ type MapOpts = MapNxOptions & {
   /** The root TypeScript config Nx folds into every task's hash, if any. */
   readonly rootTsConfig: string | undefined
   readonly pnp: boolean
+  /** Whether the manager owning a directory runs `pre` / `post` hooks (`runsScriptHooks`). */
+  readonly hooks: (dir: string) => boolean
   /** Tasks per `syncGenerators` list, said once in the notes. */
   readonly syncTasks: Map<string, number>
 }
@@ -326,6 +328,7 @@ export async function mapNxWorkspace(
   const g = graph
 
   const { namedInputs, cacheable, globalSync } = await readNxJsonFacts(root)
+  const hookMemo = new Map<string, Owner>()
   const mapOpts: MapOpts = {
     ...opts,
     cacheable: new Set([...opts.cacheable, ...cacheable]),
@@ -334,6 +337,7 @@ export async function mapNxWorkspace(
       existsSync(path.join(root, f)),
     ),
     pnp: yarnPnp(root),
+    hooks: (dir) => runsScriptHooks(dir, hookMemo) !== null,
     syncTasks: new Map(),
   }
 
@@ -826,6 +830,7 @@ function buildTask(
     todos,
     dotenv,
     opts.pnp,
+    opts.hooks(meta.dir),
     meta.packageJson,
     opts.manifestField,
     opts.executors,
@@ -1143,6 +1148,7 @@ function mapCommand(
   todos: string[],
   dotenv: readonly string[] | null,
   pnp: boolean,
+  hooks: boolean,
   manifest: { readonly name?: unknown; readonly version?: unknown },
   manifestField: MapNxOptions['manifestField'],
   executors: NxExecutors | undefined,
@@ -1213,7 +1219,7 @@ function mapCommand(
     // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
     // that refuses to load, so it is the placeholder with its todo.
     if (body !== undefined && body.length > 0) {
-      const command = scriptCommand(script, body, scripts, pnp)
+      const command = scriptCommand(script, body, scripts, pnp, hooks)
       // `yarn run <name>` sets its own.
       const env =
         command === `yarn run ${script}`
