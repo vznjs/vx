@@ -827,7 +827,8 @@ async function scanOutputs(
   // outside the project, so any future caller reaching it by another route (a
   // programmatic embedder, a config source that skips the loader) is contained
   // by construction.
-  return { files: containedIn(args.projectDir, scanned).sort() }
+  const contained = containedIn(args.projectDir, scanned)
+  return { files: outsideNested(args.nestedProjectDirs, contained).sort() }
 }
 
 /**
@@ -1000,6 +1001,27 @@ function committedPastLinks(
     }
     return canon !== null && canon !== dir && committed(path.join(canon, path.basename(abs)))
   }
+}
+
+/**
+ * Drop the files whose real directory is in a nested project: a link at a
+ * glob's head that stays in the project is followed (X-88), and the
+ * lexical nested-project filter cannot see where it lands.
+ */
+function outsideNested(nestedDirs: readonly string[], files: string[]): string[] {
+  if (nestedDirs.length === 0 || files.length === 0) return files
+  const realNested = nestedDirs.map((d) => realOrNull(d) ?? d)
+  const verdict = new Map<string, boolean>()
+  return files.filter((f) => {
+    const dir = path.dirname(f)
+    let ok = verdict.get(dir)
+    if (ok === undefined) {
+      const real = realOrNull(dir) ?? dir
+      ok = !realNested.some((n) => isInside(n, real))
+      verdict.set(dir, ok)
+    }
+    return ok
+  })
 }
 
 /** Is `abs` the directory `dir` itself or something beneath it? */

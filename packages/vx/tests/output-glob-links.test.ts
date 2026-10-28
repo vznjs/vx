@@ -1,0 +1,38 @@
+// Edge cases where what the output walk takes, what the clean deletes and
+// what the temp sweep touches disagreed with the rules they share: project
+// boundaries are hard, links out of the project are never followed for a
+// delete, and a committed file is never deleted.
+
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, expect, it } from 'bun:test'
+import { cleanOutputs, resolveOutputs } from '../src/cache/inputs.js'
+
+const made: string[] = []
+afterEach(() => {
+  for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true })
+})
+function tmp(): string {
+  const d = mkdtempSync(path.join(os.tmpdir(), 'vx-glob-links-'))
+  made.push(d)
+  return d
+}
+
+it("a link at an output's head into a nested project is not this project's output", async () => {
+  // The walk follows a head link that stays in the project (X-88), but the
+  // nested-project filter read the lexical `docs/...`: the clean deleted the
+  // site's untracked build and the save packed it into the parent's entry.
+  const d = tmp()
+  mkdirSync(path.join(d, 'packages/site/dist'), { recursive: true })
+  writeFileSync(path.join(d, 'packages/site/dist/index.html'), 'x')
+  symlinkSync('packages/site/dist', path.join(d, 'docs'))
+  const args = {
+    projectDir: d,
+    outputs: ['docs/**'],
+    nestedProjectDirs: [path.join(d, 'packages/site')],
+  }
+  expect(await resolveOutputs(args)).toEqual([])
+  await cleanOutputs({ ...args, committed: () => false })
+  expect(existsSync(path.join(d, 'packages/site/dist/index.html'))).toBe(true)
+})
