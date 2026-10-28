@@ -111,6 +111,44 @@ describe('the schema', () => {
     )
     expect(refusal([{ from: 'a', deny: ['b'], only: [] }])).toContain('unknown field')
   })
+
+  // Each loaded, matched no project, and so a deny passed every edge.
+  it.each([
+    ['./apps/*', 'reads as a directory'],
+    ['{apps/web}', 'reads as a directory'],
+    ['!tag:shared', "starts with '!'"],
+    ['web...', "'...'"],
+    ['...web', "'...'"],
+    ['web[main]', 'git range'],
+    [' tag:app', 'surrounding whitespace'],
+    ['tag: app', 'surrounding whitespace'],
+    ['...', "'...'"],
+  ])('refuses the selector %p, which no project can match', (sel, why) => {
+    for (const rule of [
+      { from: 'tag:lib', deny: [sel] },
+      { from: 'tag:lib', allow: ['tag:lib', sel] },
+      { from: sel, deny: ['tag:lib'] },
+    ]) {
+      const msg = refusal([rule])
+      expect(msg).toStartWith('.vx/workspace.ts: `run.rules.dependencies`[0].')
+      expect(msg).toContain(JSON.stringify(sel))
+      expect(msg).toContain(why)
+      expect(msg).toContain("a selector is 'tag:<tag>' or a project name")
+    }
+  })
+
+  it('names the field, the selector and the forms it takes', () => {
+    expect(refusal([{ from: 'tag:lib', deny: ['tag:lib', './apps/*'] }])).toBe(
+      '.vx/workspace.ts: `run.rules.dependencies`[0].deny[1] "./apps/*" reads as a directory to a filter; ' +
+        "a selector is 'tag:<tag>' or a project name, either may hold '*' (like 'tag:app' or '@acme/*')",
+    )
+  })
+
+  it('takes a name or tag glob, the root project and a scoped name', () => {
+    expect(
+      refusal([{ from: '//', allow: ['@acme/*', 'tag:scope:*', 'apps/web', '*'], deny: ['x'] }]),
+    ).toBeNull()
+  })
 })
 
 describe('vx lock', () => {
