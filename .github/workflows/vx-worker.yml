@@ -59,7 +59,18 @@ jobs:
         run: |
           jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\r\n]") | not) then "\(.key)=\(.value)" else error("env \(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
 
+      # An install takes 4 s (median, p90 9 s, slowest 49 s), but a stalled
+      # fetch printed nothing for up to 322 s and held the run's one arm
+      # worker (2026-10-28, 3 of 210 installs). Two minutes, then one more
+      # try; a step's own timeout bounds it on every runner image.
       - name: Install dependencies
+        id: install
+        timeout-minutes: 2
+        continue-on-error: true
+        run: bun install --frozen-lockfile
+      - name: Install dependencies again
+        if: steps.install.outcome != 'success'
+        timeout-minutes: 3
         run: bun install --frozen-lockfile
 
       # The sandbox runtime, as @vzn/vx-ci sets it up. Its packages are

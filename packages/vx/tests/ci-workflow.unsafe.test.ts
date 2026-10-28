@@ -17,6 +17,8 @@ interface Step {
   if?: string
   env?: Record<string, string>
   with?: Record<string, unknown>
+  'timeout-minutes'?: number
+  'continue-on-error'?: boolean
 }
 interface Job {
   name?: string
@@ -287,10 +289,25 @@ describe('vx-worker.yml', () => {
       // The variables the run hands its workers (github({ env })).
       expect.stringMatching(/^jq -r 'to_entries/),
       'bun install --frozen-lockfile',
+      'bun install --frozen-lockfile',
       'actions/cache/restore',
       'bun packages/vx/src/bin.ts setup github',
       'actions/cache/save',
       'bun packages/vx/src/bin.ts dte worker',
+    ])
+  })
+
+  // Of 210 worker installs (2026-10-28, 00:00-12:00 UTC) the median took
+  // 4 s, p90 9 s, the slowest that finished on its own 49 s; three
+  // printed nothing past `bun install v1.4.4` for 159, 233 and 322 s, two
+  // of them until the run ended and cancelled them. A stalled fetch, so a
+  // bound and a second try, not a longer wait: the arm worker is the
+  // run's only one, and its 322 s held the arm64 binary behind it.
+  it('bounds the install and tries it once more after a stall', () => {
+    const steps = worker.steps!.filter((s) => s.run === 'bun install --frozen-lockfile')
+    expect(steps.map((s) => [s.id, s['timeout-minutes'], s['continue-on-error'], s.if])).toEqual([
+      ['install', 2, true, undefined],
+      [undefined, 3, undefined, "steps.install.outcome != 'success'"],
     ])
   })
 })
