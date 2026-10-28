@@ -865,7 +865,10 @@ function buildTask(
         patterns,
         Object.entries(nodeMap).map(([name, n]) => ({
           name,
-          tags: nxTags(n),
+          // Every tag Nx matches, its own `npm:*` too: nxTags is what vx writes.
+          tags: Array.isArray(n?.data?.tags)
+            ? n.data.tags.filter((t): t is string => typeof t === 'string')
+            : [],
           ...(typeof n?.data?.root === 'string' ? { root: n.data.root } : {}),
         })),
       ),
