@@ -41,6 +41,13 @@ describe('renderHistory', () => {
     ).toContain('  2 tasks with no execution in the window reserve nothing\n')
   })
 
+  // `reservations: { 'a#t': { memory: 0 } }` (or a bad entry) declares
+  // nothing: its cell read ` (declared)`, an amount left blank.
+  it('a declared reservation of nothing says so', () => {
+    const text = table([row({ id: 'a#t', runs: 0, reservation: {}, declared: true })])
+    expect(cells(text, 'a#t')).toEqual(['a#t', '0', '—', '—', '—', '— (declared)'])
+  })
+
   it.each([
     [999, '999ms'],
     [1000, '1.00s'],

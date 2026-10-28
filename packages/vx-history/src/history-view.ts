@@ -40,15 +40,19 @@ export function renderHistory(
       `  ${'task'.padEnd(idW)}  ${'runs'.padStart(4)}  ${'p50'.padStart(7)}  ${'peak rss'.padStart(8)}  ${'cpu'.padStart(5)}  reserves`,
     )
     for (const r of seen) {
-      const reserve =
+      const amounts =
         r.reservation === null
-          ? '—'
+          ? []
           : [
               ...(r.reservation.memory !== undefined ? [`${r.reservation.memory} MB`] : []),
               ...(r.reservation.cpus !== undefined
                 ? [`${r.reservation.cpus} core${r.reservation.cpus === 1 ? '' : 's'}`]
                 : []),
-            ].join(' · ') + (r.declared ? ' (declared)' : '')
+            ]
+      // A declaration of nothing (`{ memory: 0 }`) still names itself.
+      const reserve =
+        (amounts.length === 0 ? '—' : amounts.join(' · ')) +
+        (r.reservation !== null && r.declared ? ' (declared)' : '')
       lines.push(
         `  ${r.id.padEnd(idW)}  ${String(r.runs).padStart(4)}  ${fmtMs(r.p50DurationMs).padStart(7)}  ` +
           `${fmtBytes(r.maxPeakRssBytes).padStart(8)}  ${(r.maxCpuParallelism === null ? '—' : `${r.maxCpuParallelism.toFixed(1)}×`).padStart(5)}  ${reserve}`,
