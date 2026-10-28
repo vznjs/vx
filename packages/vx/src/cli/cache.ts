@@ -78,6 +78,16 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
         'VX_E_USAGE',
       )
     default:
+      // `vx cache --older-than 30d` dropped the verb, not misspelled it:
+      // name the clean command those flags make, when they parse as one.
+      if (sub.startsWith('-') && parsePruneArgs(args).error === undefined) {
+        return refuse(
+          'cache',
+          args,
+          `missing subcommand before ${sub}. Did you mean \`vx cache clean ${args.join(' ')}\`?${seeHelp('cache')}`,
+          'VX_E_USAGE',
+        )
+      }
       return refuse(
         'cache',
         args,

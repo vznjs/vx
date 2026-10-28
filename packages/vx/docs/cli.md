@@ -1630,6 +1630,8 @@ put under a `cache` verb — the directory, the entry count, the size —
 are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `gc` and their neighbours say so (`list` also names `vx last --list`;
 `clear`, `purge`, `reset` and `wipe` name a bare `vx cache clean`) rather than printing a bare "unknown subcommand".
+Clean's flags typed without the verb (`vx cache --older-than 30d`)
+name the whole command they make: `vx cache clean --older-than 30d`.
 
 ### With no bound: clear the cache
 
