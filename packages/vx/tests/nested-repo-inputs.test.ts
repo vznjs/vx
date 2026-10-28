@@ -240,6 +240,36 @@ describe('a nested repository inside a project', () => {
   )
 
   it(
+    "is listed by its own index when a hook's GIT_INDEX_FILE or GIT_DIR names the outer one",
+    async () => {
+      // A pre-commit hook runs vx with git's location variables set for the
+      // OUTER repository. The nested listing inherited them and read the outer
+      // index, so a file the nested repository tracks under an ignore rule
+      // fell out of the inputs: its edits were a stale hit.
+      const a = await vendoredFixture(root)
+      const lib = path.join(a, 'vendor/lib')
+      await write(path.join(lib, '.gitignore'), '*.gen\n')
+      await write(path.join(lib, 'keep.gen'), 'one')
+      git(lib, 'add', '-f', '.gitignore', 'keep.gen')
+      git(lib, 'commit', '-qm', 'gen')
+      for (const [name, value] of [
+        ['GIT_INDEX_FILE', path.join(root, '.git', 'index')],
+        ['GIT_DIR', path.join(root, '.git')],
+      ] as const) {
+        const memo = new GitFilesCache()
+        process.env[name] = value
+        try {
+          await populateGitFilesCache(root, [a], memo)
+        } finally {
+          delete process.env[name]
+        }
+        expect(memo.get(a)).toContain('vendor/lib/keep.gen')
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'an edit inside it is a miss, not a stale hit',
     async () => {
       const a = await vendoredFixture(root)

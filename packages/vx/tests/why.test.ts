@@ -374,20 +374,26 @@ describe('parseWhyArgs', () => {
     // the space form refusing a flag-shaped value.
     expect(parseWhyArgs(['build', '--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parseWhyArgs(['build', '--cache-dir=y/z']).cacheDir).toBe('y/z')
-    expect(parseWhyArgs(['build', '--cache-dir']).error).toMatch(/requires a path/)
-    expect(parseWhyArgs(['build', '--cache-dir=']).error).toMatch(/requires a path/)
-    expect(parseWhyArgs(['build', '--cache-dir', '--format']).error).toMatch(/got flag/)
+    expect(parseWhyArgs(['build', '--cache-dir']).error).toBe(
+      '--cache-dir requires a path (see `vx why --help`)',
+    )
+    expect(parseWhyArgs(['build', '--cache-dir=']).error).toBe(
+      '--cache-dir requires a path (see `vx why --help`)',
+    )
+    expect(parseWhyArgs(['build', '--cache-dir', '--format']).error).toMatch(
+      /got flag .* \(see `vx why --help`\)$/,
+    )
     expect(parseWhyArgs(['--format', 'xml']).error).toBe(
       '--format must be pretty or json (got xml) (see `vx why --help`)',
     )
     expect(parseWhyArgs(['--run=']).error).toBe(
-      '--run requires a run id (`vx last --list` shows them)',
+      '--run requires a run id (`vx last --list` shows them) (see `vx why --help`)',
     )
     expect(parseWhyArgs(['a', 'b']).error).toBe('unexpected argument: b (see `vx why --help`)')
   })
 
   it.each([
-    ['--run', '--run requires a run id (`vx last --list` shows them)'],
+    ['--run', '--run requires a run id (`vx last --list` shows them) (see `vx why --help`)'],
     ['--format', '--format requires a value: pretty or json (see `vx why --help`)'],
   ])('names %s when its value is omitted, instead of calling it unknown', (flag, expected) => {
     // A trailing flag used to consume a non-existent argv slot, fall through

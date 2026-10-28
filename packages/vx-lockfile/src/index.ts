@@ -115,9 +115,15 @@ const MANAGERS = {
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
     extraFiles: (t) => pnpmLock().fileDeps(pnpmParse(t)),
     recorded: (t) => pnpmLock().recordedImporters(t),
-    settings: ['pnpm-workspace.yaml', '.npmrc'],
+    // The root package.json for its `pnpm` field: pnpm reads install
+    // settings there that the lockfile does not record.
+    settings: ['pnpm-workspace.yaml', '.npmrc', 'package.json'],
     settingsText: (file, text) =>
-      file === 'pnpm-workspace.yaml' ? pnpmSettings().workspaceSettings(text) : undefined,
+      file === 'pnpm-workspace.yaml'
+        ? pnpmSettings().workspaceSettings(text)
+        : file === 'package.json'
+          ? pnpmSettings().packageSettings(text)
+          : undefined,
     peersInManifest: true,
   },
   bun: {
