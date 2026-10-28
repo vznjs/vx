@@ -45,6 +45,8 @@ scope, which only runs of that branch read:
 
 `AUDIENCE` is the `aud` a token must name, by default the origin the
 server is reached at, which is what `vxCache()` asks GitHub for.
+Behind a proxy that ends TLS that origin is `http://`, so set it there:
+a refusal names the audience the token has and the one the server takes.
 `READ_ACCESS=public` lets a request with no token read a repository
 `ALLOW` names (a developer's laptop): it writes nothing. Unset, a
 request with no token is `401`.
