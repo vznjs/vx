@@ -117,9 +117,38 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   if (dirs.some((d) => TOOL_CONFIGS.some((f) => existsSync(path.join(d, f))))) {
     return migrate(dirs, parsed)
   }
-  // The topmost package.json: a monorepo's root, wherever below it init ran.
-  const pkgRoot = dirs.findLast((d) => existsSync(path.join(d, 'package.json'))) ?? null
+  const pkgRoot = packageRoot(dirs, top !== null)
   return starter(marked ?? pkgRoot ?? cwd, pkgRoot, top === null, parsed)
+}
+
+/**
+ * Inside git, the topmost package.json: a monorepo's root, wherever below
+ * it init ran. Outside git `dirs` reach `/`, and the topmost took a stray
+ * package.json in the home directory (2026-10-28); there it is the nearest
+ * one, or the outermost above it that declares a workspace.
+ */
+function packageRoot(dirs: readonly string[], inGit: boolean): string | null {
+  const has = (d: string, f: string): boolean => existsSync(path.join(d, f))
+  if (inGit) return dirs.findLast((d) => has(d, 'package.json')) ?? null
+  const at = dirs.findIndex((d) => has(d, 'package.json'))
+  if (at === -1) return null
+  const outer = dirs
+    .slice(at + 1)
+    .findLast(
+      (d) => has(d, 'package.json') && (has(d, 'pnpm-workspace.yaml') || declaresWorkspaces(d)),
+    )
+  return outer ?? dirs[at]!
+}
+
+function declaresWorkspaces(dir: string): boolean {
+  try {
+    const pj = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
+      workspaces?: unknown
+    }
+    return pj.workspaces !== undefined
+  } catch {
+    return false
+  }
 }
 
 /** What makes a repo vx-migrate's to map: a Turbo or Nx config. */

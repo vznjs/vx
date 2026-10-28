@@ -2212,7 +2212,9 @@ rules; [`bunx @vzn/vx-migrate`](#bunx-vznvx-migrate) below sums them up.
 
 With none of those files, it writes a workspace whose one project is
 the root, at the nearest workspace root up from the working directory,
-else at the topmost `package.json`, else there:
+else at the topmost `package.json` in the git work tree, else there.
+Outside git it is the nearest `package.json`, or an outer one that
+declares a workspace, never a stray one above:
 
 ```ts
 // .vx/workspace.ts

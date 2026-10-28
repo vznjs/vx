@@ -26,12 +26,12 @@ async function tmp(prefix: string): Promise<string> {
   return root
 }
 
-async function vx(cwd: string, args: string[]) {
+async function vx(cwd: string, args: string[], extra: Record<string, string> = {}) {
   // The `next:` line names the runner that started vx; none here.
   const { npm_config_user_agent: _, ...env } = process.env
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
     cwd,
-    env,
+    env: { ...env, ...extra },
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
@@ -184,6 +184,36 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
       existsSync(path.join(root, '.vx', 'workspace.ts')),
       existsSync(path.join(sub, 'vx.config.ts')),
     ]).toEqual([PROJECT, true, false])
+  })
+
+  // Outside git there is no top-level to stop at: init climbed to the
+  // topmost package.json up to `/`, so a stray one in the home directory
+  // took the workspace and its install (2026-10-28). There the root is the
+  // nearest package.json, or an outer one that declares a workspace.
+  it('outside git, takes the nearest package.json, not a stray one above it', async () => {
+    const outer = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-init-nogit-')))
+    roots.push(outer)
+    await writeFile(path.join(outer, 'package.json'), '{"name":"home"}\n')
+    const proj = path.join(outer, 'proj')
+    await mkdir(path.join(proj, 'packages', 'a'), { recursive: true })
+    await writeFile(path.join(proj, 'package.json'), '{"name":"r","workspaces":["packages/*"]}\n')
+    await writeFile(path.join(proj, 'packages', 'a', 'package.json'), '{"name":"a"}\n')
+    const env = { GIT_CEILING_DIRECTORIES: path.dirname(outer) }
+    const r = await vx(path.join(proj, 'packages', 'a'), ['init'], env)
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect([
+      existsSync(path.join(outer, '.vx')),
+      existsSync(path.join(outer, 'vx.config.ts')),
+      await readFile(path.join(proj, 'vx.config.ts'), 'utf8'),
+    ]).toEqual([false, false, PROJECT])
+    const lone = path.join(outer, 'lone')
+    await mkdir(lone)
+    await writeFile(path.join(lone, 'package.json'), '{"name":"lone"}\n')
+    expect((await vx(lone, ['init'], env)).code).toBe(0)
+    expect([
+      existsSync(path.join(lone, 'vx.config.ts')),
+      existsSync(path.join(outer, '.vx')),
+    ]).toEqual([true, false])
   })
 
   // A Bun workspace with scripts got an empty root project and a `next`
