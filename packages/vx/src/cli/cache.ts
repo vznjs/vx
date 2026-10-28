@@ -149,7 +149,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
         }
       }
       out.maxBytes = bytes
-    } else if (a === '--dry-run') {
+    } else if (a === '--dry') {
       out.dryRun = true
     } else if (a === '--global') {
       out.global = true

@@ -28,7 +28,7 @@ const CASES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['watch: a rejected flag', ['watch', 'build', '--all', '--dry']],
   ['watch: nothing affected since the ref', ['watch', 'build', '--affected=HEAD']],
   ['cache clean: a policy', ['cache', 'clean', '--older-than', '1d']],
-  ['cache clean: no bound clears', ['cache', 'clean', '--dry-run']],
+  ['cache clean: no bound clears', ['cache', 'clean', '--dry']],
   ['lock: write', ['lock']],
   ['lock --check: up to date', ['lock', '--check']],
   ['show', ['show']],

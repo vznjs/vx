@@ -1279,7 +1279,7 @@ any task, then restores what it holds and runs the rest without saving
 it. An empty one has nothing to serve and fails the run before any task:
 `cache directory <path> is not writable (EACCES: …)`, with
 `--cache-dir <path>` as the way out. `vx cache clean` is refused the
-same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
+same way (its `--dry` only reads, and reads). The readers (`vx show`, `why`,
 `last`, `info`) open such a directory read-only and go on.
 Where the directory cannot be created at all (a read-only checkout with
 no cache yet) a run says `cannot create cache directory <path>
@@ -1636,7 +1636,7 @@ and stamp are one write transaction, so another version's open waits
 rather than landing between them; an index already current is opened
 without the lock.
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
-says why (item 896; `vx cache clean --dry-run` previews the reset
+says why (item 896; `vx cache clean --dry` previews the reset
 instead, item 1083).
 That open prints nothing (2026-10-06: the cache is vx's to
 keep). The artifacts stay: each is indexed again from its own bytes

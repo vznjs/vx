@@ -28,7 +28,7 @@ measurements.
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
-vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]
+vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
@@ -1507,7 +1507,7 @@ bound clears the cache. It operates on the entries and
 ```
 vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
-vx cache clean ... --dry-run                # Say what either policy would reap; delete nothing.
+vx cache clean ... --dry                    # Say what either policy would reap; delete nothing.
 vx cache clean ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
 vx cache clean ... --cache-dir <path>       # The cache a run with the same flag uses.
 vx cache clean                              # No bound: clear the whole cache (below).
@@ -1527,7 +1527,7 @@ $ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
 
   42 orphaned artifacts
 
-$ vx cache clean --older-than 30d --dry-run
+$ vx cache clean --older-than 30d --dry
 › vx cache clean  would free 1.3 GB (dry run)
 
   42 entries · 3 orphaned artifacts
@@ -1539,7 +1539,7 @@ $ vx cache clean --older-than 30d --dry-run
 | ------------------------- | -------------------------------------------------------- |
 | `--older-than <duration>` | drop entries last used before now minus the duration     |
 | `--max-size <size>`       | then evict the least recently used until under the size  |
-| `--dry-run`               | say what would go; delete nothing                        |
+| `--dry`                   | say what would go; delete nothing                        |
 | `--global`                | with no bound, also clear every other repository's store |
 | `--format json`           | the result as one object                                 |
 | `--cache-dir <path>`      | the cache a run with the same flag uses                  |
@@ -1591,9 +1591,9 @@ is kept until a later prune, but its bytes are left out all the same
 (item 1081). The sweep runs on every prune, under
 either flag, and reports separately from the policy's evictions.
 
-### `--dry-run`
+### `--dry`
 
-`--dry-run` picks the victims under the same policy and counts the
+`--dry` picks the victims under the same policy and counts the
 orphans the sweep would take, then returns without touching the index
 or the directory; the real prune with the same flags reaps exactly what
 it named (an in-flight save aside). On an index an earlier vx wrote,
@@ -1658,7 +1658,7 @@ $ vx cache clean
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
 
-$ vx cache clean --global --dry-run
+$ vx cache clean --global --dry
 › vx cache clean  would free 3.1 GB (dry run)
 
   .vx/cache

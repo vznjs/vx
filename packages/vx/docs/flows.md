@@ -293,7 +293,7 @@ flowchart TD
 Every `get` notes its hash, and the `accessed_at` bumps land in one
 batched UPDATE at prune, stats or close, so LRU reflects real use. A
 `vx run --dry` plan probes with `has`, which does not bump it — planning
-is read-only. (Prune's own rehearsal flag is `--dry-run`.)
+is read-only.
 
 ## 9. `--dry` — the plan path
 
