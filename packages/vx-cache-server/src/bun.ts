@@ -69,6 +69,20 @@ export function s3Blobs(client: Bun.S3Client): Blobs {
   }
 }
 
+/**
+ * The handler on Bun.serve. Bun's own body limit is lifted: the handler
+ * refuses an upload past `MAX_UPLOAD_BYTES` by its Content-Length, as a
+ * `{ code, message }`, where Bun's 413 had no body and the client warned
+ * with no reason.
+ */
+export function listen(
+  fetch: (req: Request) => Promise<Response>,
+  hostname: string,
+  port: number,
+): Bun.Server<undefined> {
+  return Bun.serve({ hostname, port, maxRequestBodySize: Number.MAX_SAFE_INTEGER, fetch })
+}
+
 function main(argv: string[]): void {
   const { values } = parseArgs({
     args: argv,
@@ -109,12 +123,7 @@ function main(argv: string[]): void {
     }),
     limits,
   })
-  const server = Bun.serve({
-    hostname: values.host,
-    port,
-    maxRequestBodySize: limits.maxUploadBytes,
-    fetch: handle,
-  })
+  const server = listen(handle, values.host, port)
   console.log(`vx-cache-server on ${server.url.href}`)
   const stop = (): void => void server.stop().then(() => process.exit(0))
   process.on('SIGINT', stop)

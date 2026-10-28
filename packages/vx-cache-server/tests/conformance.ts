@@ -207,7 +207,14 @@ export function conformance(name: string, target: Target): void {
       ])
       expect((await put('a-b', 'x')).status).toBe(400)
       expect((await put('f'.repeat(129), 'x')).status).toBe(400)
-      expect((await put(key(), new Uint8Array(target.maxUploadBytes + 1))).status).toBe(413)
+      const big = await put(key(), new Uint8Array(target.maxUploadBytes + 1))
+      expect([big.status, await big.json()]).toEqual([
+        413,
+        {
+          code: 'payload_too_large',
+          message: `an upload is at most ${target.maxUploadBytes} bytes`,
+        },
+      ])
     })
 
     it('names its limits on every check, and at /v1/capabilities', async () => {

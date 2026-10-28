@@ -2,7 +2,7 @@
 
 import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test'
 import { oidcAuth } from '@vzn/vx-devtools'
-import { s3Blobs } from '../src/bun.js'
+import { listen, s3Blobs } from '../src/bun.js'
 import { blobName } from '../src/store.js'
 import { createCacheServer, limitsFrom } from '../src/server.js'
 import { conformance, scopeOf } from './conformance.js'
@@ -26,7 +26,7 @@ beforeAll(async () => {
     authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
     limits: LIMITS,
   })
-  server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: handle })
+  server = listen(handle, '127.0.0.1', 0)
   token = await iss.sign(MAIN_JOB, server.url.origin)
 })
 
