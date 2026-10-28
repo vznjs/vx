@@ -838,3 +838,40 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
   )
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
 })
+
+// A join whose socket Bun could not open (no `sec-websocket-key`) kept its
+// participant with no socket and no grace: a host so joined held its run's
+// id forever, and its real host was refused 409.
+it('undoes a join whose socket the Bun relay could not open', async () => {
+  const server = serveRelay({ hostname: '127.0.0.1', port: 0 })
+  try {
+    const joinPath = async (prover: Prover) => {
+      const at = `/v1/sessions/${R}/socket?join=${encodeURIComponent(
+        JSON.stringify({ role: 'host', key: prover.key }),
+      )}`
+      return { at, proof: await prover.proof('GET', at, '') }
+    }
+    const ghost = await joinPath(await createProver())
+    const failed = await fetch(server.url + ghost.at, {
+      headers: {
+        upgrade: 'websocket',
+        connection: 'upgrade',
+        'sec-websocket-protocol': 'switchboard.v1',
+        'relay-proof': ghost.proof,
+      },
+    })
+    expect(failed.status).toBe(426)
+    const real = await joinPath(await createProver())
+    const ws = new WebSocket(server.url.replace(/^http/, 'ws') + real.at, {
+      protocols: ['switchboard.v1'],
+      headers: { 'relay-proof': real.proof },
+    } as never)
+    const first = await new Promise<Record<string, unknown>>((resolve) => {
+      ws.onmessage = (e) => resolve(JSON.parse(String(e.data)))
+    })
+    ws.close()
+    expect(Object.keys(first)).toEqual(['joined'])
+  } finally {
+    await server.stop()
+  }
+})
