@@ -314,6 +314,47 @@ describe('vx run with vxHistory({ url })', () => {
     }
   }, 30_000)
 
+  // Core bounds a teardown (3 s): an upload first held the timings file's
+  // write behind it, and a server slower than the bound cost the file.
+  it('writes the timings file while the history server is slow to take the upload', async () => {
+    const slow = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => {
+        const at = new URL(req.url).pathname
+        if (at === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 100, maxQueryHashes: 100 })
+        if (at === '/v1/timings/query') return Response.json({ timings: {} })
+        return new Promise<Response>(() => {})
+      },
+    })
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-slow-'))
+    Bun.env.VX_TEST_TEARDOWN_TIMEOUT = '300ms'
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory({ url: ${JSON.stringify(`http://127.0.0.1:${slow.port}`)}, file: 'timings.json', ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      const r = await run({ cwd: other, tasks: ['build'], handleSignals: false })
+      expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+      const written = (await Bun.file(path.join(other, 'timings.json'))
+        .json()
+        .catch(() => undefined)) as { tasks?: Record<string, number> } | undefined
+      expect(Object.keys(written?.tasks ?? {})).toEqual(['pkg#build'])
+    } finally {
+      delete Bun.env.VX_TEST_TEARDOWN_TIMEOUT
+      await slow.stop(true)
+      await rm(other, { recursive: true, force: true })
+    }
+  })
+
   // `main` was assumed: a repository whose trunk is another branch read
   // no trunk's numbers on any branch.
   it('asks in the refs the run reads: its branch, then baseBranch', async () => {
