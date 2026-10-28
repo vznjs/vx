@@ -414,19 +414,13 @@ directory. Only a plugin that cannot tell selects everything, as
 `@vzn/vx-lockfile` does for the install settings it claims (`.npmrc`,
 `bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`, `.yarnrc`).
 
-**A dropped dependency selects its dependent.** Two changes remove a
-dependency today's graph cannot show:
-
-- a deleted package (its `package.json` is gone);
-- a `version` or `name` change, after which a dependent's range
-  (`lib: ^1.0.0` after a bump to 2.0.0) may no longer match.
-
-So vx rebuilds the package graph as the base had it, and selects every
-project whose workspace dependencies differ. It also selects a project
-whose task names a removed or renamed package (`dependsOn:
-['lib#build']`).
-
-An edit to the root manifest's `workspaces` selects every project.
+**A deleted project selects everything.** Its dependents' keys lost an
+upstream, and the edge that named them went with it, so today's graph
+cannot say who they are. A `vx.config` the base had in a directory that
+is no project now selects every project, naming that file as the
+reason. A dependency a plugin's `discover` drops without deleting a
+project is the plugin's to claim (`VxPlugin.fingerprint`, as the
+lockfile plugins do).
 
 **A new nested project selects the project above it.** A project's
 inputs stop at every project below it. A `package.json` that turns a
