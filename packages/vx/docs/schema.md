@@ -1007,8 +1007,8 @@ Env var names whose host values are folded into the cache key.
 - Listing a name here does NOT forward it to the child process.
 
 To both forward AND track, list it in both places. Yes, the
-double-declaration is mild noise; a preset helper
-(`envTracked('NODE_ENV')`) can sugar it.
+double-declaration is mild noise; vx ships no helper for it, but a
+config is TypeScript, so a function of your own can return both lists.
 
 Names are exact: a wildcard (`NEXT_PUBLIC_*`) is refused, and so is
 Turbo's `!NAME` exclusion, here, in `exec.env.passThrough` and in
@@ -2460,7 +2460,7 @@ a user meets most:
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `did not export a default object`                                                                                                     | Forgot `export default`, or exported a non-object; a function (Vite's `defineConfig(() => …)` shape) adds that it is one and to export what it returns (D-110).                                                                |
 | `tasks must be an object keyed by task name`                                                                                          | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                  |
-| `<path> is <what> — a config must be JSON data, because the cache key is built from its JSON`                                                 | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
+| `<path> is <what> — a config must be JSON data, because the cache key is built from its JSON`                                         | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
 | `<level> has unknown field "<key>"`                                                                                                   | Typo'd / unsupported key (see below).                                                                                                                                                                                          |
 | `<level> must be an object (fields: <fields>), not an array`                                                                          | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                       |
 | `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first`                     | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above). |
