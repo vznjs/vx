@@ -645,6 +645,7 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
   namedOf(options)
   timeoutsOf(options)
+  proxyHeaders('vxCache()', options.headers)
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveVxCacheConfig(options)
