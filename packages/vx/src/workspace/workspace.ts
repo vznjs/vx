@@ -20,6 +20,7 @@ import {
   UserError,
 } from '../util/index.js'
 import { gitTop, WORKSPACE_CONFIG_FILENAMES, workspaceFile, workspaceRootOf } from '../handoff.js'
+import { parseFilter } from './filter.js'
 import { repoIdOf } from './repo-id.js'
 
 export interface ProjectMeta {
@@ -576,6 +577,36 @@ function nameFault(name: string): string | null {
   if (name.trim() !== name) return 'the name has surrounding whitespace'
   // A task is `<project>#<task>` split at the first `#`.
   if (name.includes('#')) return 'the name holds "#" — vx addresses a task as <name>#<task>'
+  const why = projectNameProblem(name)
+  return why === null ? null : `the name ${why}`
+}
+
+/**
+ * Why `dependsOn` or `--filter` cannot name a project called `name`, or
+ * null; surrounding whitespace and `#` are each caller's own words. Each
+ * shape loaded and could not be addressed: `^ui#build` was refused as `^`
+ * with `pkg#task`, `--filter '!ui'` excluded it, `tag:ui` and `ui...` read
+ * as a tag and a walk. Asked of the filter parser itself, as `tagProblem`.
+ */
+export function projectNameProblem(name: string): string | null {
+  if (name.includes('*')) return "holds '*', which makes it a pattern"
+  if (name.startsWith('^')) return "starts with '^', which names dependencies' tasks"
+  if (name.startsWith('!')) return "starts with '!', which a filter reads as an exclusion"
+  // The root's own name, which the filter reads as the root's directory.
+  if (name === ROOT_NAME) return null
+  const walk = "starts or ends with '...', which a filter reads as a dependency walk"
+  let f: ReturnType<typeof parseFilter>
+  try {
+    f = parseFilter(name, '/')
+  } catch {
+    // `...` alone: the walk with no project between.
+    return walk
+  }
+  if (f.withDeps || f.withDependents || f.onlyDeps || f.onlyDependents) return walk
+  if (f.gitSince !== undefined)
+    return `ends in "[${f.gitSince}]", which a filter reads as a git range`
+  if (f.tag === true) return "starts with 'tag:', which a filter reads as a tag selector"
+  if (f.isPath) return 'reads as a directory to a filter'
   return null
 }
 

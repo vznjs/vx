@@ -976,6 +976,51 @@ describe('project tags', () => {
   })
 })
 
+describe('project name', () => {
+  const refusal = (name: unknown): string | null => {
+    try {
+      validateProjectConfig({ name, tasks: {} } as never, CFG)
+    } catch (err) {
+      return (err as Error).message
+    }
+    return null
+  }
+  // Each loaded and could not be addressed: `^ui#build` refused as `^` with
+  // `pkg#task`, `--filter '!ui'` excluded it, `tag:ui` and `ui...` read as a
+  // tag and a walk, `ui*#build` as a pattern.
+  it.each([
+    ['^ui', "starts with '^', which names dependencies' tasks"],
+    ['!ui', "starts with '!', which a filter reads as an exclusion"],
+    ['ui*', "holds '*', which makes it a pattern"],
+    ['tag:ui', "starts with 'tag:', which a filter reads as a tag selector"],
+    ['ui...', "starts or ends with '...', which a filter reads as a dependency walk"],
+    ['...ui', "starts or ends with '...', which a filter reads as a dependency walk"],
+    ['...', "starts or ends with '...', which a filter reads as a dependency walk"],
+    ['ui[2]', 'ends in "[2]", which a filter reads as a git range'],
+    ['./ui', 'reads as a directory to a filter'],
+    ['{ui}', 'reads as a directory to a filter'],
+  ])('refuses %j, which dependsOn or --filter cannot name', (name, why) => {
+    expect(refusal(name)).toBe(
+      `${CFG}: \`name\` ${JSON.stringify(name)} ${why} — dependsOn, --filter and the CLI could not name the project. Rename it.`,
+    )
+  })
+  it('keeps the names a filter reads literally', () => {
+    for (const ok of [
+      'ui',
+      '@acme/ui',
+      'ui.kit',
+      'ui..',
+      'scope:ui',
+      'u^i',
+      'u!i',
+      '[x',
+      'x]',
+      '//',
+    ])
+      expect(refusal(ok)).toBeNull()
+  })
+})
+
 // Nx 23.3 compare, 2026-10-04: `Bun.Glob` has no extglob, so an input of
 // `src/@(x|y).ts` keyed no file and an edit to src/x.ts replayed a stale
 // hit with `vx why` reporting the key unchanged.
