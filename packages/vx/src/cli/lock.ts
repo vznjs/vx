@@ -23,6 +23,8 @@ import {
   secretMask,
   ui,
   sayNotice,
+  refuseSymlink,
+  writeNoFollow,
 } from '../util/index.js'
 import {
   ConfigsRefused,
@@ -361,10 +363,11 @@ async function writeLock(
   }
   // The copies first: one that cannot be written leaves the lock as it was,
   // not a new lock beside stale copies and a stack.
+  for (const r of reviews) refuseSymlink(r.file)
   const blocked = (
     await Promise.all(
       reviews.map((r) =>
-        Bun.write(r.file, r.text).then(
+        writeNoFollow(r.file, r.text).then(
           () => null,
           (err: unknown): { file: string; err: NodeJS.ErrnoException } => {
             if (typeof (err as NodeJS.ErrnoException).code !== 'string' || isOutOfFds(err))
@@ -379,7 +382,8 @@ async function writeLock(
     const first = blocked[0]!
     notWritten('', {
       headline: `${blocked.length === 1 ? 'a review copy' : 'review copies'} could not be written`,
-      what: blocked.map((b) => b.err.message.split(b.file).join(relPosix(root, b.file))),
+      // The code and the copy's path: the message names the temp the write renames.
+      what: blocked.map((b) => `${b.err.code}: ${relPosix(root, b.file)}`),
       fix: isFsRefusal(first.err)
         ? fsRefusalHint(first.err)
         : `remove what stands at ${relPosix(root, first.file)}, then run vx lock again`,

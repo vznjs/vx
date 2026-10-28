@@ -207,3 +207,17 @@ it('answers 502 naming R2 when R2 refuses an upload', async () => {
     delete g.FixedLengthStream
   }
 })
+
+// wrangler.jsonc vars may be JSON numbers, which reach the Worker as
+// numbers: `"MAX_CHECK_HASHES": 20` was skipped, unsaid, for the default 6.
+it('takes a limit wrangler.jsonc writes as a number', async () => {
+  const other = await start({ ALLOW: ALLOW_VAR, MAX_CHECK_HASHES: 20 })
+  try {
+    const res = await fetch(new URL('/v1/capabilities', await other.ready), {
+      headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
+    })
+    expect(((await res.json()) as { maxCheckHashes: number }).maxCheckHashes).toBe(20)
+  } finally {
+    await other.dispose()
+  }
+})

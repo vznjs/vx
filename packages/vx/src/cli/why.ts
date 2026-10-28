@@ -6,7 +6,7 @@
 // upstream is a group: it records no run, so the graph names what it gathers.
 
 import { Cache } from '../cache/index.js'
-import { flagHint, formatValue, seeHelp } from './help.js'
+import { anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
 import { buildTaskGraph, isGroupTask, splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
@@ -119,6 +119,13 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     // Empty is no task: read as a query it matched every recorded one.
     if (a !== '') out.target = a
   }
+  if (out.target !== undefined) {
+    const error = anchoredSpecError(
+      out.target,
+      (task) => `vx why ${task} finds the project that ran it`,
+    )
+    if (error !== undefined) return { ...out, error }
+  }
   return out
 }
 
@@ -220,7 +227,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   if (parsed.error !== undefined) throw new UserError(`vx why: ${parsed.error}`, 'VX_E_USAGE')
   if (parsed.target === undefined) {
     throw new UserError(
-      'vx why: <task> required (e.g. vx why app#build, or vx why build)',
+      `vx why: <task> required (e.g. vx why app#build, or vx why build)${seeHelp('why')}`,
       'VX_E_USAGE',
     )
   }

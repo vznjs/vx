@@ -155,7 +155,7 @@ it('a review copy vx lock cannot write refuses the lock and leaves it as it was'
     1,
     '✗ vx lock  lock not written\n\n' +
       '  a review copy could not be written\n' +
-      "  EISDIR: illegal operation on a directory, open 'packages/a/vx.lock.json'\n\n" +
+      '  EISDIR: packages/a/vx.lock.json\n\n' +
       '  fix  remove what stands at packages/a/vx.lock.json, then run vx lock again\n',
   ])
   expect(await text(lockPath)).toBe(before)

@@ -173,7 +173,8 @@ export function oidcAuth(opts: OidcOptions): Authorize {
   const verify = tokenVerifier(opts)
 
   return async (req) => {
-    if (opts.allow.length === 0) throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
+    if (opts.allow.length === 0)
+      throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
     const asked = `${req.headers.get(ISSUER_HEADER)}/${req.headers.get(REPOSITORY_HEADER)}`
     if (!asked.split('/').every((p) => PART.test(p)))
       throw new Refusal(
@@ -216,7 +217,8 @@ export function oidcTokenAuth(
   const open = readAccessOf(opts)
   const verify = tokenVerifier(opts)
   return async (req, asked) => {
-    if (opts.allow.length === 0) throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
+    if (opts.allow.length === 0)
+      throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
     const named = asked === undefined ? undefined : repoOf(asked)
     const bearer = bearerOf(req)
     if (bearer === undefined) {

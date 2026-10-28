@@ -300,3 +300,11 @@ it('takes a check longer than MAX_UPLOAD_BYTES, and answers every refusal itself
     await cli.exited
   }
 })
+
+// The image pinned jose itself (`bun add jose@…`), apart from the version
+// @vzn/vx-devtools pins: a bump there left the image on the old one.
+it('builds its image with the dependencies package.json pins, naming no version of its own', async () => {
+  const dockerfile = await Bun.file(`${import.meta.dir}/../Dockerfile`).text()
+  expect(dockerfile).not.toMatch(/bun add/)
+  expect(dockerfile).toContain('bun install --production')
+})

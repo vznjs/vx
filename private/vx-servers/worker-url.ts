@@ -58,7 +58,9 @@ export interface PreviewDeps {
 // 8 min after its job asked (2026-10-28). 12 min fits that inside the
 // job's 25 min, leaving the run its time.
 const WAIT_MS = 12 * 60_000
-const POLL_MS = 5_000
+// Every job of the repository shares GITHUB_TOKEN's API limit, 1000 an
+// hour: a dozen jobs asking every 5 s spent it (2026-10-28).
+const POLL_MS = 30_000
 
 /**
  * The newest check of `name` on the PR's commits whose build is of the
@@ -98,8 +100,15 @@ export async function workerUrl(
   if (!watched(watch, await deps.changed())) return undefined
   // A PR's commits do not change while it waits; every poll asked again,
   // spending the API limit every job of the repository shares.
-  const listed = deps.commits()
-  deps = { ...deps, commits: () => listed }
+  // Nor does what changed since an older commit.
+  const asked = deps
+  const listed = asked.commits()
+  const since = new Map<string, Promise<string[]>>()
+  deps = {
+    ...asked,
+    commits: () => listed,
+    since: (sha) => since.get(sha) ?? since.set(sha, asked.since(sha)).get(sha)!,
+  }
   const name = `Workers Builds: ${worker}`
   const end = deps.now() + WAIT_MS
   for (;;) {

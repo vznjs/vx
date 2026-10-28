@@ -81,6 +81,10 @@ A name declared by only some projects is fine; the check fires only when
 a name matches nowhere. So `vx run lint test typecheck` fails on CI the
 day `typecheck` is renamed, instead of running two of three.
 
+A name no config can declare is refused before the lookup: an empty one
+(`vx run ''`) and one with surrounding whitespace (`vx run 'build '`),
+which the refusal quotes so the space shows.
+
 Under `--affected` or a `[ref]` filter, a bare name is checked against
 the whole workspace, since what changed decides the projects:
 
@@ -1579,8 +1583,9 @@ history and hash memos older than 30 days; a run never does.
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
-**Duration units**: `s`, `m`, `h`, `d`, case-insensitive. Examples:
-`30d`, `24h`, `60m`, `30s`, `30D`.
+**Duration units**: `ms`, `s`, `m`, `h`, `d`, case-insensitive, except
+minutes, which are `m` only: `1M` is refused, since some tools read it
+as a month. Examples: `30d`, `24h`, `60m`, `30s`, `30D`.
 
 **Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive, with an optional `B` or `iB` (`512MB`, `32KiB`).
 Optional `B` suffix is accepted. Examples: `500M`, `1G`, `100K`, `2T`,
@@ -2705,7 +2710,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v48 · index schema v49
+  cache versions    keys vx-cache-v49 · index schema v49
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -3065,7 +3070,9 @@ read it, `failed (exit 137)`, with the signal an exit above 128 stands
 for at the row's end (`128 + SIGKILL`; the shell's convention, so a
 command that exits 137 on its own reads the same). Where the run's
 footer gave a reason, the row ends with it instead: `timed out`,
-`never ready: exited`, `2 sandbox violations`, and for a skipped task
+`never ready: exited`, `src/a.ts changed during the run` (an
+`inputStability.severity: 'error'` failure, read from its kept output),
+`2 sandbox violations`, and for a skipped task
 `after lib#build failed` (the v27 columns; rows older than them read
 as before). A task that retried ends with its attempts, `2 attempts`,
 passed or failed (`attempts` in `--format json`, null for a task run
