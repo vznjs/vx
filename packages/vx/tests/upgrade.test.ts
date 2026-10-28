@@ -590,6 +590,16 @@ describe('managedInstall', () => {
     }
   })
 
+  it('a package.json that is not JSON is one refusal naming it, not "no package.json lists vx"', async () => {
+    const root = await tree({ 'package.json': '{ "devDependencies": { "@vzn/vx": "^1" }, }' })
+    const file = path.join(root, 'package.json')
+    expect(() => managedInstall(path.join(root, BIN), root)).toThrow(
+      new RegExp(
+        `^vx upgrade: ${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is not JSON \\(.+\\) — fix it, then run vx upgrade again$`,
+      ),
+    )
+  })
+
   it('a hoisted workspace finds the member that lists vx from cwd; the root adds with --workspace-root', async () => {
     const root = await tree({
       'package.json': '{}',
