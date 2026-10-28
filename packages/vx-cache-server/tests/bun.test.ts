@@ -81,6 +81,12 @@ it('reads the limits from the environment, and refuses one that is not a count',
   expect(() => limitsFrom({ MAX_CHECK_HASHES: '1.5' })).toThrow(
     'MAX_CHECK_HASHES: not a whole number above 0: 1.5',
   )
+  // wrangler.jsonc's `"vars": { "MAX_CHECK_HASHES": 40 }` binds a number:
+  // read as unset, the Worker kept its default of 6, unsaid.
+  expect(limitsFrom({ MAX_CHECK_HASHES: 40 })).toEqual({ maxCheckHashes: 40 })
+  expect(() => limitsFrom({ MAX_UPLOAD_BYTES: 0 })).toThrow(
+    'MAX_UPLOAD_BYTES: not a whole number above 0: 0',
+  )
 })
 
 // A truncated upload stored would be a wrong artifact under a right key:
