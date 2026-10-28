@@ -19,9 +19,14 @@ import path from 'node:path'
 const PACKAGES = path.resolve(import.meta.dir, '..', '..')
 const RECORD = path.join(import.meta.dir, 'contract', 'plugin-env.txt')
 
-/** Each variable-shaped word, `<PLACEHOLDER>` segments included. */
+/**
+ * Each variable-shaped word, `<PLACEHOLDER>` segments included, and a
+ * one-word name (`TERM`) in a code span: bare, it could be any capital word.
+ */
 function named(readme: string): string[] {
-  return readme.match(/[A-Z][A-Z0-9]*(?:_(?:[A-Z0-9]+|<[A-Z]+>))+/g) ?? []
+  const words: string[] = [...(readme.match(/[A-Z][A-Z0-9]*(?:_(?:[A-Z0-9]+|<[A-Z]+>))+/g) ?? [])]
+  for (const m of readme.matchAll(/`([A-Z][A-Z0-9]+)`/g)) words.push(m[1]!)
+  return words
 }
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -62,6 +67,8 @@ describe('every plugin env read is named in its README', () => {
     )
     expect(documented('`OTEL_EXPORTER_OTLP_PROTOCOL`', 'OTEL_EXPORTER_OTLP_*_PROTOCOL')).toBe(false)
     expect(documented('`OTEL_EXPORTER_OTLP_CERTIFICATE`', 'OTEL_EXPORTER_OTLP_*')).toBe(true)
+    expect(documented('a terminal whose `TERM` is not dumb', 'TERM')).toBe(true)
+    expect(documented('a TERM of years', 'TERM')).toBe(false)
   })
 
   it('names none that its README leaves out', () => {
