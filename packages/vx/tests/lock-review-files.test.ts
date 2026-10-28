@@ -5,7 +5,7 @@
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
 
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -121,6 +121,21 @@ it('vx lock --check names a review copy left where no project is', async () => {
     ),
   ])
   await rm(path.join(gone, 'vx.lock.json'))
+  expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
+})
+
+// git lists a removed project's committed copy until the removal is
+// committed: the copy is gone, so there is nothing to delete.
+it('a review copy git lists but the worktree deleted is not named', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-gone-' }))
+  await addProject(r, 'a', { config: CONFIG })
+  const old = await addProject(r, 'old', { config: CONFIG })
+  expect(vx(r, 'lock').code).toBe(0)
+  const git = gitIn(r)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'lock')
+  await rm(old, { recursive: true })
+  expect(vx(r, 'lock')).toMatchObject({ code: 0, err: '' })
   expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
 })
 
