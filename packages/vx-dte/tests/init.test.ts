@@ -156,7 +156,7 @@ it('writes the CI files at the repository’s root, running in the workspace’s
   const relay = 'https://relay.example.com'
   expect(await at({ relay, workers: sizes, adapter: gitlab() })).toBe(0)
   const ci = await readFile(path.join(root, '.gitlab-ci.yml'), 'utf8')
-  expect(ci).toContain("  before_script:\n    - cd 'ws'\n    - pnpm install --frozen-lockfile\n")
+  expect(ci).toContain("    - cd 'ws'\n    - pnpm install --frozen-lockfile\n")
   expect(ci).toContain("    - git checkout -q FETCH_HEAD\n    - cd 'ws'\n")
 })
 
@@ -186,7 +186,7 @@ it('gitlab() writes one pipeline file: the run, and a job per size only its trig
   expect(ci).toContain('  id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }\n')
   expect(ci).toContain('    - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE\n')
   // No task runs on the orchestrator: vx and the plugins only.
-  expect(ci).toContain("  before_script:\n    - bun install --frozen-lockfile --filter './'\n")
+  expect(ci).toContain("    - bun install --frozen-lockfile --filter './'\n  script:\n")
   expect(ci).toContain("      variables: { VX_TASKS: '--all' }\n")
   expect(ci).toContain('# Name the tasks in the vx job')
   expect(ci).toContain('    - git fetch -q --depth 1 origin $VX_DTE_SHA\n')
@@ -205,6 +205,44 @@ it('gitlab() writes one pipeline file: the run, and a job per size only its trig
   expect(printed.join('')).toContain(
     'The relay at https://relay.example.com must admit these workflows.',
   )
+})
+
+it('gitlab() says to let a developer set pipeline variables, which its trigger passes', async () => {
+  // Before: a project made since GitLab 17.7 lets no one set them, so every
+  // trigger was refused, 400 "Insufficient permissions to set pipeline variables".
+  const { next } = await gitlab().init!({
+    workspaceRoot: root,
+    dir: '',
+    relay: 'https://relay.example.com',
+    sizes: [{ name: 'small', max: 4 }],
+    manager: 'bun',
+    tasks: { main: '', change: '' },
+  })
+  expect(next.join('\n')).toContain(
+    'Settings > CI/CD > Variables: set "Minimum role to use pipeline variables" to Developer',
+  )
+})
+
+it('gitlab() jobs add git to an image that lacks it, as oven/bun does', async () => {
+  // Before: oven/bun has no git, so the run failed "a DTE run needs a git
+  // commit" and each worker's `git fetch` was "command not found".
+  const ci = (
+    await gitlab().init!({
+      workspaceRoot: root,
+      dir: '',
+      relay: 'https://relay.example.com',
+      sizes: [{ name: 'small', max: 4 }],
+      manager: 'bun',
+      tasks: { main: '', change: '' },
+    })
+  ).files['.gitlab-ci.yml']!
+  expect(ci).toContain('  image: oven/bun:1.4\n')
+  const git =
+    '    - command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)\n'
+  expect(ci).toContain(
+    `  before_script:\n${git}    - bun install --frozen-lockfile --filter './'\n`,
+  )
+  expect(ci).toContain(`  before_script:\n${git}    - git fetch -q --depth 1 origin $VX_DTE_SHA\n`)
 })
 
 it("gitlab()'s ALLOW names the origin's GitLab, a self-managed one too", async () => {

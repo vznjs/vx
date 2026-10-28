@@ -1,6 +1,6 @@
 // `vx-history-server` on Cloudflare Workers, the timings in D1.
-// `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and TIMING_DAYS are vars in
-// it.
+// `wrangler.jsonc` deploys it; ALLOW, AUDIENCE, READ_ACCESS and TIMING_DAYS
+// are vars in it.
 
 import { oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'

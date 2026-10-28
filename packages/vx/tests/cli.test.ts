@@ -889,6 +889,20 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     ])
   })
 
+  it('an exclusion alone that takes back every project names no other filter', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['run', '--filter', '!*', 'hello'])
+    expect([code, stderr.trim()]).toEqual([
+      1,
+      noticed('vx run: no projects selected: !* excluded every project').trimEnd(),
+    ])
+  })
+
   it('a filter that matches nothing warns, even when another one matched', async () => {
     let stdout = ''
     let stderr = ''
