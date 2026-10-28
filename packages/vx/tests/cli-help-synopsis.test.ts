@@ -71,3 +71,17 @@ describe("each usage flag is explained in the verb's own help", () => {
     })
   }
 })
+
+// `vx lock --check` re-evaluates every config and compares; it keeps no
+// per-file digests to report, yet its help promised a report of them.
+it('vx lock --check is described as what it does', () => {
+  const text = verbHelpText('lock')
+  const at = text.indexOf('  vx lock --check')
+  expect(text.slice(at, text.indexOf('\n\n', at)).split('\n')).toEqual([
+    '  vx lock --check      Audit the lock: a full re-evaluation compared against the',
+    '                       frozen objects, and the graph rules. Exits 1 on drift (e.g.',
+    '                       configs that read env vars). Run it before the run in CI.',
+    '                       With --format json it prints',
+    '                       {upToDate, audited, notAudited, problems}.',
+  ])
+})
