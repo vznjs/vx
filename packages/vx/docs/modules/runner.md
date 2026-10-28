@@ -166,8 +166,9 @@ export class TaskPipes {
   fails the spawn with the reason). Cost: 0.9 ms once per process,
   13 µs a spawn; `runCommand` of `/usr/bin/env` min / median 1.458 /
   2.060 ms against 1.458 / 2.056 before (1,000 interleaved runs).
-  `runPersistent` alone spawns with `stdin: 'pipe'` and never writes
-  it: a dev server that exits on stdin EOF (esbuild `--watch`) stays up
+  `runPersistent` alone hands its child a stdin pipe vx holds and never
+  writes (on Linux a `pipe2` pipe too: `cat /dev/stdin` on the socketpair
+  failed with ENXIO instead of blocking): a dev server that exits on stdin EOF (esbuild `--watch`) stays up
   while vx lives, and sees EOF when vx exits (execution.md § Output
   capture and rendering). `terminal: true` (an `exec.interactive` task
   on a TTY) spawns either with `'inherit'` on all three: no stream, no
