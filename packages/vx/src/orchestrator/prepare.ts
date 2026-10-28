@@ -7,7 +7,7 @@
 // closes at the bottom of execution, `planRun()` does so via
 // try/finally around its plan() call.
 
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
 import { beginRun, mark, nearest, relPosix, type SecretBroker, UserError } from '../util/index.js'
@@ -711,6 +711,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // `prepare (graph)` row until 2026-09-10.
     mark('build graph')
     const gitFilesCache = new GitFilesCache()
+    gitFilesCache.vxDirs = withinRoot(workspaceRoot, cacheDir)
     // Bulk-populate via a single `git ls-files` at the workspace root —
     // partitions the output by project. Avoids one fork+exec per project
     // (~5-10ms each on Linux; the dominant cold-start cost on big
@@ -1066,4 +1067,22 @@ export async function openRemotes(
     }
   }
   return closed && !remotes.some((r) => r.read || r.write)
+}
+
+/**
+ * `dir` spelled under `root` as the run spells the root, when it lies
+ * there; compared through links, so a root reached by a symlink (macOS's
+ * `/var/folders`) still finds a cache directory written canonical.
+ */
+function withinRoot(root: string, dir: string): string[] {
+  const real = (p: string): string => {
+    try {
+      return realpathSync(p)
+    } catch {
+      return path.resolve(p)
+    }
+  }
+  const rel = path.relative(real(root), real(dir))
+  const outside = rel === '' || rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)
+  return outside ? [] : [path.join(root, rel)]
 }

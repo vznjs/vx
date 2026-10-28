@@ -935,7 +935,10 @@ Always applied to every glob pass (regardless of what you wrote):
   `.vx/projects.lock.json`, `vx.lock.json`, and `.vx/tmp/**`, where vx's
   restores stage, only where vx writes them: at the project's root (a
   project's own `src/.vx/tmp/x` or `src/sub/vx.lock.json` is an input),
-  and for `workspaceFiles` every project's `vx.lock.json`. Nothing else: a tool's temp files are the
+  and for `workspaceFiles` every project's `vx.lock.json`. The run's
+  cache directory (`cache.dir`, `--cache-dir`) wherever it sits in the
+  workspace, even under an ignored prefix a glob names outright
+  (`tmp/**` over `tmp/vx-cache`). Nothing else: a tool's temp files are the
   task's to exclude. A broad glob on a `bun build --compile` task, or on
   one that runs beside it, excludes Bun's intermediate and its
   cross-compile extraction directory itself:
