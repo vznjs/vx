@@ -13,6 +13,7 @@ import {
   inputWriters,
   latestRunId,
   rootCauses,
+  upstreamTask,
   whyDidThisRerun,
 } from '../history/index.js'
 import { resolveRunId } from '../orchestrator/index.js'
@@ -67,7 +68,10 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     if (a === '--run' || a.startsWith('--run=')) {
       const rv = a === '--run' ? args[++i] : a.slice(6)
       if (rv === undefined || rv === '')
-        return { ...out, error: '--run requires a run id (`vx last --list` shows them)' }
+        return {
+          ...out,
+          error: `--run requires a run id (\`vx last --list\` shows them)${seeHelp('why')}`,
+        }
       out.runId = rv
       continue
     }
@@ -79,7 +83,7 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     }
     const cd = parseCacheDirFlag(args, i)
     if (cd !== null) {
-      if ('error' in cd) return { ...out, error: cd.error }
+      if ('error' in cd) return { ...out, error: `${cd.error}${seeHelp('why')}` }
       out.cacheDir = cd.cacheDir
       i = cd.next
       continue
@@ -347,14 +351,20 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         }
       }
       const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
+      // An upstream row names the task to ask next: the command, not a
+      // placeholder to fill in from the row above. A group records no run,
+      // so `vx why` on one refuses: its members are asked instead.
+      const upstream = [
+        ...new Set(
+          diff.entries.filter((e) => e.kind === 'upstream').map((e) => upstreamTask(e.name)),
+        ),
+      ].filter((n) => cacheKeyDiff(db, runId, n).found)
       const kinds = [...new Set([...diff.entries.map((e) => e.kind), ...rootKinds])].filter(
-        (k) => k in WHAT_TO_DO && !(k === 'upstream' && roots.length > 0),
+        (k) =>
+          k in WHAT_TO_DO && !(k === 'upstream' && (roots.length > 0 || upstream.length === 0)),
       )
       if (kinds.length > 0) {
         lines.push('', '  what to do:')
-        // An upstream row names the task to ask next: the command, not a
-        // placeholder to fill in from the row above.
-        const upstream = diff.entries.filter((e) => e.kind === 'upstream').map((e) => e.name)
         for (const k of kinds) {
           const todo =
             k === 'upstream'

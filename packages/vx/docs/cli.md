@@ -572,7 +572,8 @@ start (see "Every requested name must resolve" above).
 `--exclude-dependencies=` with an EMPTY value is rejected rather than
 guessed — "drop every edge" and "drop none" are both plausible readings.
 Pass bare `--exclude-dependencies` for the first, omit the flag for the
-second.
+second. Given twice, the name lists add up, and a bare one drops every
+edge.
 
 Value flags (`--filter`, `--concurrency`, `--output-logs`,
 `--verbosity`, `--cache-dir`, …)
@@ -934,7 +935,8 @@ down with it:
   clean run a stale hit. A server that died after it became ready is
   such a failure to what starts after its death. A cache hit still
   restores (that artifact came from a healthy run), and the next run
-  without the failure rebuilds the rest.
+  without the failure rebuilds the rest. A task `exec.platforms` skips
+  here is no failure: its dependents are skipped in every mode.
 
 The mode is the local scheduler's: a task a plugin executor runs
 elsewhere is one dispatch, failed or not, like any other.
@@ -1631,6 +1633,8 @@ put under a `cache` verb — the directory, the entry count, the size —
 are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `gc` and their neighbours say so (`list` also names `vx last --list`;
 `clear`, `purge`, `reset` and `wipe` name a bare `vx cache clean`) rather than printing a bare "unknown subcommand".
+Clean's flags typed without the verb (`vx cache --older-than 30d`)
+name the whole command they make: `vx cache clean --older-than 30d`.
 
 ### With no bound: clear the cache
 
@@ -1750,9 +1754,10 @@ The full workflow: the site's CI guide and `examples/ci`.
 `.vx/projects.lock.json` at the workspace root. A project is a directory
 holding a `vx.config.*`, in any language: `vx lock` lists them with git
 (`git ls-files`, tracked and untracked, git's ignore rules applied; a
-nested repository's own configs too), or walks the tree outside git,
-and leaves out any under a nested `.vx/workspace.*` or under a
-`node_modules` (an installed package is no project, ignored or not). Configs are
+nested repository's own configs too), or walks the tree outside git
+(every directory but `.git` and `.vx`), and leaves out any under a
+nested `.vx/workspace.*` or under a `node_modules` (an installed package
+is no project, ignored or not). Configs are
 programs; `vx lock` evaluates them in the current environment and
 stores the post-evaluation objects, by directory (version 4; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
@@ -1804,7 +1809,9 @@ semantics: env reads in a config keep their lock-time values; a
 locked directory whose config file is gone (X-144) or that this user
 may not search (EACCES, named as such), or a missing lock, is a hard error; a config added since the lock is no project until
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
-is not in the lock yet — run `vx lock`"). An entry edited by
+is not in the lock yet — run `vx lock`", as a run from its directory says
+`c/vx.config.ts is not in the lock yet`, where it ran the locked project
+around it). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
 something has crashed, so a normal run pays nothing for it.
@@ -2138,7 +2145,9 @@ one (bun add -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
 
 After an upgrade that installed something, inside a workspace, the new
 vx runs `vx lock` at the workspace root, since a release may record the
-lock differently. A lock that fails leaves the upgrade done and prints
+lock differently (an npm global install's own binary, which keeps its
+path). A lock that fails, or a new vx that does not start, leaves the
+upgrade done and prints
 `vx upgrade  vx lock failed: run vx lock`. `vx upgrade -g` never locks.
 
 vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from a
@@ -2853,7 +2862,8 @@ because it ran beside a failed task (a task run past a failed dependency
 under `--continue` is never cached; said ahead of a prune, and as
 "neither run saved it" when this run ran beside one too), or the previous run executed and no entry
 holds the key (its save failed, or a prune took it; a previous run whose
-policy wrote no cache says that instead). Otherwise, with this run's
+policy wrote no cache says that instead, and one that built on a
+dependency `--exclude-dependencies` left out names that dependency). Otherwise, with this run's
 policy recorded as reading the cache, it says it cannot name the cause;
 only a run with no recorded policy names `--no-cache` / `--force`.
 
@@ -2873,8 +2883,11 @@ count), and `what to do` speaks to those kinds instead:
     app#build ← lib#build ← file packages/lib/src/index.ts
 ```
 
-A dependency the walk cannot find in the run keeps the `upstream` line,
-which names the `vx why` to run next; a `config` line names the
+A group records no run, so the key also names each task under a group
+it folds, through the group (`upstream app#prep ← lib#build`), and the
+walk goes on from that task. A dependency the walk cannot find in the
+run keeps the `upstream` line, which names the `vx why` to run next
+(never a group's, which refuses); a `config` line names the
 `vx show` that prints the task's config now.
 
 **Changed during a run.** A moved input file whose last change fell inside a recorded task's run
@@ -3117,7 +3130,7 @@ a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
 elsewhere is replayed, explained, reported on and pruned there. Without
 the flag they open the workspace's cache (`defineWorkspace({ cache: { dir } })`
 or `.vx/cache`). A `--cache-dir` that is not there is refused by name
-(`--cache-dir .vx/cahce: no such directory`). In a workspace that never
+(`--cache-dir .vx/cahce: no such directory`, `VX_E_USAGE`). In a workspace that never
 ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache clean`
 (dry or not) read it as empty and create nothing (item 900, E-7, E-38).
 
