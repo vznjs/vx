@@ -102,6 +102,25 @@ it('masks a secret of the task env out of the stored output', async () => {
   expect(got?.[0]?.text).toBe('token ***\n')
 })
 
+it("masks a value the task's env.secret names, whatever its name", async () => {
+  const remote = memoryRemote()
+  const agent = await machine('agent', remote.layer)
+  const task = {
+    id: 'app#t',
+    projectDir: path.join(agent.root, 'app'),
+    command: 'publish',
+    outputs: { files: [], workspaceFiles: [] },
+  }
+  const pat = 'ghp-personal-access-value'
+  await agent.artifacts.save(KEY, task, {
+    output: [{ text: `auth ${pat}\n`, err: false }],
+    durationMs: 1,
+    env: { GH_PAT: pat },
+    secret: ['GH_PAT'],
+  })
+  expect(await agent.artifacts.output(KEY)).toEqual([{ text: 'auth ***\n', err: false }])
+})
+
 // A run whose tasks run on other machines hands them its facts: its refs,
 // so they read as it does, and what its remotes lend, so one with no access
 // of its own reaches the remote with the run's.

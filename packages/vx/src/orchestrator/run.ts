@@ -1543,7 +1543,8 @@ async function runOnBus(
     // own output follows.
     // The footer replaces the live region in place.
     log.runDone?.()
-    if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
+    if (options.summaryTable === true)
+      for (const line of formatOutcomeTable(list, colors)) log.status(line)
     if (options.footer !== false)
       for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
@@ -1730,7 +1731,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // line would carry the same label. Resolving the executors here is
       // the same plugin-factory call `prepareRun` already makes for the
       // cache capability, so plan mode gains no new class of side effect.
-      ...(await planExecutorOf(prepared, log, options.download ?? 'all')),
+      ...(await planExecutorOf(prepared, log, options.download ?? 'all', detectCi(process.env).ci)),
       ...(await planRestorable(prepared, policy, options.forwardArgs)),
     })
     mark('plan')

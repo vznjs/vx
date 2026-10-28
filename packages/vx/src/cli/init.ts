@@ -403,7 +403,8 @@ async function starter(
     lock.code === 0 ? next : `fix the above, then vx lock and ${next}`,
   ])
   ui.print('out', ui.report(`vx init ${VERSION}`, rows))
-  return 0
+  // A run reads only the lock: init without one is not done, as vx-migrate exits.
+  return lock.code === 0 ? 0 : 1
 }
 
 /**

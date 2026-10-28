@@ -86,10 +86,13 @@ All are on the `@vzn/vx` façade.
   alone is not narrower-and-sound: `@types/node` has no bin. The cost is
   every project on a root-dependency bump, the root's `workspace:`
   devDependencies' closures included.
-- **A project the file does not list** (outside the workspace's
-  `packages`) folds the root importer's digest alone — the only
-  installed tree it can resolve from; a file with neither folds a
-  constant.
+- **A project the file does not list** folds its nearest listed
+  ancestor's digest, with the root's: inside a member with no manifest
+  of its own (`packages/a/e2e`), Node resolves it from that member's
+  `node_modules` first, and the root's alone moved no key of it on a
+  bump only `a` reached. Outside every member it folds the root
+  importer's digest alone — the only installed tree it can resolve
+  from; a file with neither folds a constant.
 - **`affected`** digests both sides and names the projects whose digest
   moved; a side that is absent (the file appeared or went) answers
   `undefined`, and so does `scope: 'workspace'`.

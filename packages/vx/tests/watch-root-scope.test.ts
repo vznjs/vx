@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { BIN, SETTLE_MS, startWatch, until, type Watch } from './helpers/watch-loop.js'
+import { BIN, NOT_CI, SETTLE_MS, startWatch, until, type Watch } from './helpers/watch-loop.js'
 
 let w: Watch | undefined
 let root = ''
@@ -79,6 +79,51 @@ describe('vx watch //#task', () => {
       until(() => ww.out().includes('watching '), 'watching').then(() => 'watching'),
     ])
     expect({ exited, err: ww.err() }).toEqual({ exited: 'watching', err: '' })
+    await writeFile(path.join(root, 'tools', 't.txt'), '2\n')
+    await until(async () => (await runs(log)) === 2, 'the re-run')
+  }, 30_000)
+
+  // Started with no lock, the root had no name yet: `//` resolved once, to
+  // nothing, and the lock `vx lock` wrote armed no project.
+  it('watches the root project once `vx lock` writes the lock it started without', async () => {
+    root = await makeWorkspace({ prefix: 'vx-watch-root-unlocked-' })
+    outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-root-unlocked-count-'))
+    const log = path.join(outside, 'runs.log')
+    await writeFile(
+      path.join(root, 'vx.config.mjs'),
+      `export default { tasks: { check: {
+        exec: { command: 'echo run >> ${log}' },
+        inputs: { files: ['tools/**'] }, cache: { outputs: { files: [] } } } } }`,
+    )
+    await mkdir(path.join(root, 'tools'))
+    await writeFile(path.join(root, 'tools', 't.txt'), '1\n')
+    const proc = Bun.spawn([process.execPath, BIN, 'watch', '//#check'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, ...NOT_CI, VX_TEST_KILL_GRACE: '200ms' },
+    })
+    let out = ''
+    void (async () => {
+      for await (const c of proc.stdout) out += new TextDecoder().decode(c)
+    })()
+    void (async () => {
+      for await (const _ of proc.stderr);
+    })()
+    w = { proc, out: () => out, err: () => '', cycles: () => 0 }
+    await until(() => out.includes('watching '), 'watching')
+    const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], {
+      cwd: root,
+      env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+    })
+    expect(lock.exitCode).toBe(0)
+    await until(async () => (await runs(log)) === 1, 'the locked run')
+    await Bun.sleep(SETTLE_MS)
+    // The cache's own `.vx/.gitignore` write starts no cycle: the lock's is the one.
+    expect({ runs: await runs(log), cycles: out.split('\nchanged ').length - 1 }).toEqual({
+      runs: 1,
+      cycles: 1,
+    })
     await writeFile(path.join(root, 'tools', 't.txt'), '2\n')
     await until(async () => (await runs(log)) === 2, 'the re-run')
   }, 30_000)

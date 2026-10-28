@@ -347,6 +347,9 @@ export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
   const lines = (l: readonly string[]): string => l.map((x) => `    - ${x}`).join('\n')
   // A workspace in a subdirectory: the job's commands run in it.
   const cd = setup.dir === '' ? [] : [`cd ${quoted(setup.dir)}`]
+  // oven/bun has no git, which the run's snapshot and a worker's fetch need.
+  const git =
+    'command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)'
   const workers = setup.sizes.map((s) => {
     const tags = options.tags?.[s.name]
     if (tags !== undefined && (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string')))
@@ -382,7 +385,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
 
-# The image needs Bun and git.
+# The image needs Bun; a job adds git if it lacks it.
 default:
   image: oven/bun:1.4
 
@@ -396,7 +399,7 @@ vx:
       variables: { VX_TASKS: '${both(setup.tasks.main, '--all')}' }
   id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
   before_script:
-${lines([...cd, ...root])}
+${lines([git, ...cd, ...root])}
   script:
     - ${vx} lock --check
     - ${vx} run $VX_TASKS
@@ -406,17 +409,22 @@ ${lines([...cd, ...root])}
   variables: { GIT_DEPTH: 1 }
   id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
   before_script:
+${lines([git])}
     - git fetch -q --depth 1 origin $VX_DTE_SHA
     - git checkout -q FETCH_HEAD
 ${lines([...cd, ...installLines(setup.manager)])}
   script: [${vx} dte worker]
 ${workers.join('')}`.replace(/\n+$/, '\n')
-  return {
-    files: { '.gitlab-ci.yml': ci },
-    next: nextSteps(
-      relay,
-      `https://${setup.host ?? 'gitlab.com'}:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml`,
-      ['.gitlab-ci.yml'],
-    ),
-  }
+  const next = nextSteps(
+    relay,
+    `https://${setup.host ?? 'gitlab.com'}:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml`,
+    ['.gitlab-ci.yml'],
+  )
+  // A project made since GitLab 17.7 lets no one set them: every trigger is refused.
+  next.splice(
+    -1,
+    0,
+    '  4. In Settings > CI/CD > Variables: set "Minimum role to use pipeline variables" to Developer: each pipeline the run triggers takes its workers\' variables.',
+  )
+  return { files: { '.gitlab-ci.yml': ci }, next }
 }
