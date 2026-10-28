@@ -90,15 +90,19 @@ export function workflowClaimOf(iss: string): string {
 }
 
 /**
- * `ALLOW`'s entries, space or comma separated, each
+ * `ALLOW`'s entries, space separated, each
  * `issuer:owner/repo:workflow`: read from the right, since the issuer
  * holds `:`s of its own.
  */
 export function parseAllow(list: string): Allowed[] {
   return list
-    .split(/[\s,]+/)
+    .split(/\s+/)
     .filter((e) => e !== '')
     .map((e) => {
+      // One grammar on every server: read as a separator nowhere, a comma
+      // would end up inside a workflow name no token ever carries.
+      if (e.includes(','))
+        throw new Error(`${e} is not issuer:owner/repo:workflow: entries are space separated`)
       const w = e.lastIndexOf(':')
       const r = e.lastIndexOf(':', w - 1)
       const [issuer, repository, workflow] = [e.slice(0, r), e.slice(r + 1, w), e.slice(w + 1)]

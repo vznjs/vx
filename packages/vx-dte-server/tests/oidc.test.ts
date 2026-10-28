@@ -123,7 +123,7 @@ describe('a CI OIDC token', () => {
   it('reads ALLOW’s entries from the right, since an issuer holds colons', () => {
     expect(
       parseAllow(
-        ' https://gitlab.example:8443:group/sub/app:ci/main.yml,\nhttps://x.dev:o/r:a.yml ',
+        ' https://gitlab.example:8443:group/sub/app:ci/main.yml\nhttps://x.dev:o/r:a.yml ',
       ),
     ).toEqual([
       {
@@ -137,6 +137,9 @@ describe('a CI OIDC token', () => {
       'vznjs/vx:ci.yml is not issuer:owner/repo:workflow',
     )
     expect(() => parseAllow('https://x.dev:vx:ci.yml')).toThrow('is not issuer:owner/repo:workflow')
+    expect(() => parseAllow('https://x.dev:o/r:a.yml,https://x.dev:o/s:a.yml')).toThrow(
+      'entries are space separated',
+    )
   })
 
   it('is refused for what is wrong with it', async () => {
