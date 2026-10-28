@@ -284,6 +284,25 @@ describe('the built feature pages', () => {
     expect(bad).toEqual([])
   })
 
+  // The example renders through Expressive Code, as a docs block does: a
+  // plain <pre> would print an ansi example's escapes as text, uncoloured.
+  it('renders each example as the docs render a code block, ansi in colour', () => {
+    const bad: string[] = []
+    for (const f of FEATURES) {
+      const html = page(`features/${f.slug}/`)
+      const box = /<div class="fexample">([\s\S]*?)<\/figure>/.exec(html)?.[1] ?? html
+      if (/<pre(?![^>]*data-language)/.test(box)) bad.push(`${f.slug}: plain <pre>`)
+      if (!box.includes(`<pre data-language="${f.example.lang}"`))
+        bad.push(`${f.slug}: not rendered`)
+      if (f.example.code.includes('\x1b[')) {
+        const colours = new Set([...box.matchAll(/style="--0:(#[0-9a-f]+)/g)].map((m) => m[1]))
+        if (colours.size < 2 || box.includes('\x1b[') || box.includes('[38;'))
+          bad.push(`${f.slug}: ansi not painted`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+
   // The sources are 1600×900 PNGs; a page ships resized WebP only.
   it('ships every feature image as resized WebP, never the source PNG', () => {
     const rels = [
