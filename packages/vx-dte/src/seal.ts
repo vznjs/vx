@@ -153,11 +153,14 @@ function padded(n: number): number {
  * One worker and the orchestrator after their handshake. Each body is
  * Noise transport messages of at most 64 KiB, each naming its nonce, as
  * Noise allows for a transport that may reorder (§11.4); a nonce seen
- * before is a replay.
+ * before is a replay. The wire delivers in send order, so a body older
+ * than one opened does not open.
  */
 class Session {
   private sent = 0
   private readonly seen = new Set<number>()
+  /** The last nonce of the newest body opened. */
+  private newest = -1
   /** The last send handed to the wire, or still sealing: the next waits on it. */
   private turn: Promise<unknown> = Promise.resolve()
 
@@ -215,14 +218,19 @@ class Session {
       parts.push({ n: seq, c })
     }
     if (this.seen.has(parts[0]!.n)) return REPLAY
+    // The wire numbers sends outside the seal, in the order they were
+    // sealed: one older than a body already opened was held back by the relay.
+    if (parts[0]!.n <= this.newest) return undefined
     // Each part is sealed to its body's first nonce and part count: unbound,
     // a relay spliced a fresh first part onto a delivered body's second.
     const ad = bodyAd(parts[0]!.n, parts.length)
     try {
       const plain: Uint8Array[] = []
       for (const p of parts) plain.push(await this.rx.decrypt(p.n, ad, unb64(p.c)))
+      const body: unknown = JSON.parse(unsqueeze(Buffer.concat(plain)).toString())
       for (const p of parts) this.seen.add(p.n)
-      return JSON.parse(unsqueeze(Buffer.concat(plain)).toString())
+      this.newest = parts.at(-1)!.n
+      return body
       // quiet: a body that does not open is the relay's tampering, which the caller says
     } catch {
       return undefined
