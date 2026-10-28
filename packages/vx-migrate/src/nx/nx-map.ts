@@ -875,6 +875,12 @@ function buildTask(
       : { node: nodeName, configuration: variant.configuration! },
     options,
   )
+  // Nx draws no edge from a task to itself (`task.id !== selfTaskId`): a
+  // `projects: "*"` or a tag the project carries named it, and vx refused
+  // the workspace as a cycle (2026-10-28).
+  for (const own of [variant.name, `${meta.name}#${variant.name}`]) {
+    for (let i = deps.indexOf(own); i !== -1; i = deps.indexOf(own)) deps.splice(i, 1)
+  }
   // A nested `nx <target>` runs the target's default configuration, whatever this one runs.
   for (const c of mapped?.nxCalls ?? []) {
     const edge =
