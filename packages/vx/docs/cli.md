@@ -427,10 +427,11 @@ whose task names a removed or renamed package (`dependsOn:
 An edit to the root manifest's `workspaces` selects every project.
 
 **A new nested project selects the project above it.** A project's
-inputs stop at every project below it. A `package.json` that turns a
-directory into a project changes the key of the project that held it,
-so that one is selected too. "New" means it had no manifest at the
-base, or one with no `name`.
+inputs stop at every project below it. A `vx.config.*`, or a
+`package.json` a `discover` plugin reads, that turns a directory into a
+project changes the key of the project that held it, so that one is
+selected too. "New" means none of the changed ones in that directory
+was there at the base.
 
 **A workspace config change selects everything.** The plugins in
 `.vx/workspace.*` shape every resolved config, so an edit there can
