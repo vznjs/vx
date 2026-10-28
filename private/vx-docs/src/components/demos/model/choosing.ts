@@ -263,7 +263,7 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'Plugin stages, from config to telemetry. Core applies no plugin by default; running and caching on this machine are the floor under every plugin.',
+          'Plugin stages, from config to telemetry. Core applies no plugin by default; running and caching on this machine are built in, under every plugin.',
         buys: 'Remote caches, remote execution, Turbo and Nx adoption and telemetry are all plugins, built without forking core.',
         costs:
           'A young API with few plugins besides the first-party ones. Plugins run on Bun, and none can turn a task into anything but a command.',
