@@ -130,6 +130,7 @@ import {
   sessionEnd,
   takeHeldServers,
 } from './persistent.js'
+import { serverKey } from './persistent-task.js'
 import { writeRunProfile } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { commandWindows } from './command-windows.js'
@@ -1244,9 +1245,12 @@ async function runOnBus(
         const skip = platformSkip(node)
         if (skip !== undefined) return Promise.resolve(skip)
         const kept = keepServer(node)
-        return kept !== undefined
-          ? Promise.resolve(kept)
-          : executeWithDedup(node, keyUpstream(node, upstream))
+        if (kept === undefined) return executeWithDedup(node, keyUpstream(node, upstream))
+        // Keyed as a started server is: a cached dependant folds its key,
+        // and without it an edit to the server's sources hit stale.
+        return Promise.resolve(
+          serverKey(argsOf(node, keyUpstream(node, upstream), true, false)),
+        ).then((hash) => (hash === undefined ? kept : { ...kept, hash }))
       },
       // An unkeyed group runs nothing, and a restore-tier hit whose tree is
       // current restores nothing: settled in place, unless a taint may ride

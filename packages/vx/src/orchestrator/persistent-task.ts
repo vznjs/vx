@@ -45,6 +45,29 @@ const READY_NOTICE_MS = 10_000
  * Never routed through an executor: a persistent task is local by
  * construction (its port lives on this machine).
  */
+/**
+ * A server is keyed on its inputs like any task, so a cached dependant
+ * behind a dev server re-runs when the server's sources change; with none
+ * it has no key and the dependant always runs (A-17). A server the watch
+ * loop keeps up is keyed too: its dependant folds the key either way.
+ */
+export function serverKey(args: ExecuteArgs): Promise<string | undefined> | string | undefined {
+  if (args.noDependants === true) return undefined
+  return (
+    args.upfrontKey ??
+    computeTaskHash({
+      node: args.node,
+      upstream: args.upstream,
+      workspaceRoot: args.workspaceRoot,
+      cache: args.cache,
+      forwardArgs: args.forwardArgs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+    })
+  )
+}
+
 export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node, log } = args
   // Type narrowing: the dispatcher checks `exec.persistent` before
@@ -55,23 +78,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
   const env = taskEnv(node, step, args.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  // Keyed on its inputs like any task, so a cached dependant behind a dev
-  // server re-runs when the server's sources change; with none it has no
-  // key and the dependant always runs (A-17).
-  const hash =
-    args.noDependants === true
-      ? undefined
-      : (args.upfrontKey ??
-        (await computeTaskHash({
-          node,
-          upstream: args.upstream,
-          workspaceRoot: args.workspaceRoot,
-          cache: args.cache,
-          forwardArgs: args.forwardArgs,
-          nestedProjectDirs: args.nestedProjectDirs,
-          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-          ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        })))
+  const hash = await serverKey(args)
 
   // Every dependant starts it where it runs (`ServerSpec`): nothing to spawn
   // here, and nothing that ran (2026-10-22: nothing runs on a
