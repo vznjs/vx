@@ -15,7 +15,7 @@ import { isLiteralPattern, pruneOrphanPersistentNotes, UserError } from '@vzn/vx
 import type { PackageMeta } from '../packages.js'
 import { literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
-import { scriptCommand, yarnPnp } from '../script-command.js'
+import { type Owner, runsScriptHooks, scriptCommand, yarnPnp } from '../script-command.js'
 import {
   ownFileTakeBacks,
   excludeSiblingOutputs,
@@ -1165,6 +1165,7 @@ export async function mapTurboWorkspace(
     }
 
   const projects: TurboMappedProject[] = []
+  const hookMemo = new Map<string, Owner>()
   const literals = { tasks: [] as Literals[], globalIgnored }
   for (const meta of metas) {
     const scripts = packageScripts(meta)
@@ -1277,7 +1278,9 @@ export async function mapTurboWorkspace(
         }
         continue
       }
-      const command = override ?? scriptCommand(name, script as string, scripts, pnp)
+      // Turbo runs `<pm> run <name>`: the hooks fold only where the manager runs them.
+      const hooks = runsScriptHooks(meta.dir, hookMemo) === null ? {} : scripts
+      const command = override ?? scriptCommand(name, script as string, hooks, pnp)
       const mapped = buildTask(
         literals,
         name,
@@ -1311,6 +1314,35 @@ export async function mapTurboWorkspace(
   // not, and a test cached on one platform hit on another. The reader
   // keys those files by a probe at the workspace root.
   const metaNamed = new Map(metas.map((m) => [m.name, m]))
+
+  // An entry group's `//#task` edge is the root's, and the root has no
+  // group of that name (it runs only `//#` tasks): left to `entryEdges`,
+  // `deploy → //#format` ran no format, where `turbo run deploy` runs it.
+  // The root gets the group, edges to its own tasks only, unless it
+  // declares the name itself.
+  const rootProject =
+    rootMeta === undefined || singlePackage
+      ? undefined
+      : projects.find((p) => p.name === rootMeta.name)
+  if (rootProject !== undefined) {
+    const rootRuns = emitted.get(rootProject.name)!
+    const groups = new Map<string, string[]>()
+    for (const id of entry) {
+      const at = id.indexOf('#')
+      const pkg = metaNamed.get(id.slice(0, at))
+      const name = id.slice(at + 1)
+      if (pkg === undefined || pkg === rootMeta || rootRuns.has(name)) continue
+      for (const d of definitions(pkg).defFor(name)?.dependsOn ?? []) {
+        const task = d.slice(ROOT.length + 1)
+        if (!d.startsWith(`${ROOT}#`) || !rootRuns.has(task)) continue
+        const edges = groups.get(name) ?? []
+        if (!edges.includes(task)) edges.push(task)
+        groups.set(name, edges)
+      }
+    }
+    for (const [name, dependsOn] of groups)
+      rootProject.tasks.push({ name, todos: [], task: { dependsOn }, uses: new Set() })
+  }
   for (const meta of metas) {
     const { defFor } = definitions(meta)
     for (const t of projects.find((p) => p.name === meta.name)?.tasks ?? []) {

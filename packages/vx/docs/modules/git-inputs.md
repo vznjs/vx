@@ -142,7 +142,7 @@ export async function populateGitFilesCache(
   workspaceWide?: boolean,
 ): Promise<void> // start + apply in one call
 
-export function runGitLsFiles(cwd: string): GitLsResult // the synchronous per-project fallback
+export function runGitLsFiles(cwd: string, env?: Record<string, string>): GitLsResult // the synchronous per-project fallback
 
 // Read off a plain `.git` directory (no location variable or
 // `GIT_INDEX_FILE`, no include, no `.git` file), else one `git rev-parse
@@ -259,9 +259,15 @@ with the files `git ls-files` lists inside it, prefixed by its path,
 recursively (`expandNestedRepos`). They carry no index OID, so they hash
 by content. One spawn per nested repository per listing; a listing with
 none pays nothing. A gitlink with no `.git` behind it (a submodule never
-initialised, or one whose `.git` was removed to vendor its files) has no
+initialised, or one whose `.git` was removed to vendor its files), or
+with a `.git` git cannot open (a lost `.git/modules` entry), has no
 repository to ask, so a walk lists what is there (`walkFiles`, A-61);
-an empty one folds nothing. Until 2026-09-27 (A-1) the
+an empty one folds nothing. The nested `git ls-files` runs without the
+variables that name a repository (`GIT_DIR`, `GIT_INDEX_FILE`, …, git's
+own list for a submodule), and so does the per-project listing of a
+project inside a nested repository (`listingEnv`): a pre-commit hook sets
+them for the outer repository, and the nested listing read the outer index, dropping a file
+the nested repository tracks under an ignore rule. Until 2026-09-27 (A-1) the
 entry was dropped as a directory, the files never reached the key, and
 an edit inside the nested repository was a hit on the old output while
 `git status` named the path.
