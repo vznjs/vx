@@ -93,13 +93,14 @@ affected: the change reaches no test task.`
 
 There is no `-V`; use `vx --version`, as in Turbo.
 
-`vx <verb> --help` (also `-h` and `vx help <verb>`) prints this
+`vx <verb> --help` (also `-h`, `vx help <verb>` and `vx --help <verb>`) prints this
 reference for that verb: its usage lines and sections, then
 `Full reference: vx help`. Every argument error points at it.
 `vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
 
 `vx help <name>` for a name that is no verb is refused like
-`vx <name>`: one line, a guess when one is close, exit 1.
+`vx <name>`: one line, a guess when one is close, exit 1. A second
+word after the verb is refused too.
 
 After `--`, a flag belongs to the task: `vx run build -- --help` passes
 `--help` to it. A plugin verb handles its own arguments, `--help` included.
