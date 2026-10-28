@@ -512,7 +512,7 @@ Semantics:
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
   as its `128 + n` code), at once while the graph still runs (`… while
-  the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
+the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). An exit 0 on its own is
   fine (a daemon that forks and returns), and one kept only as a
   dependency does not end the foreground hold (WD-3).
@@ -589,7 +589,8 @@ highest priority:
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
    `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
-   `COREPACK_HOME`, `PNPM_HOME`.
+   `COREPACK_HOME`, `PNPM_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
+   `XDG_CACHE_HOME`, `XDG_STATE_HOME`, `XDG_RUNTIME_DIR`.
    Nothing else from the parent environment reaches a task —
    that is the whole list. When neither `FORCE_COLOR` nor a non-empty
    `NO_COLOR` reaches the task by any layer, vx sets `FORCE_COLOR=1`
@@ -880,7 +881,10 @@ The wildcards are `*`, `**`, `?`, a character class `[ab]` (`[a-z]`,
 match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`. A
 backslash escapes: a route directory (Next.js, SvelteKit, Astro) is
 `app/\[id\]/**`; bare, `app/[id]/**` is the class that matches `app/i`
-and `app/d`, never the route. An input brace of one alternative (`{b}.ts`) is refused at `vx
+and `app/d`, never the route. When the path the class spells exists
+(`app/[id]`), `vx lock` refuses the glob and names the escaped form:
+beside another glob it matched nothing with no warning, and an edit
+under the route replayed a stale hit. An input brace of one alternative (`{b}.ts`) is refused at `vx
 lock`: it would match `b.ts` and never a file named `{b}.ts`; write the
 one you mean, `\{b\}.ts` for the braces. So is an input under `.git`
 (`.git/config`): git never lists it, so it would key nothing. An extglob (`@(a|b)`, `!(x)`,
@@ -889,7 +893,10 @@ literal text or a plain wildcard, so the key would miss the files it
 names; write `{a,b}`. So is a bare group holding a `|` (`src/*.(js|ts)`):
 `Bun.Glob` reads its parens and bar as literal text; write `src/*.{js,ts}`.
 Parens with no `|` (`app/(marketing)/**`) are filename characters and
-stay. A brace range is `Bun.Glob`'s (Bun 1.4.4):
+stay. So is `**` glued to other text in one segment (`src/**.ts`, `a**`):
+the engine reads it as one `*`, a single level, so deeper inputs would
+leave the key and deeper outputs go unsaved; write `src/**/*.ts` for every
+depth or `src/*.ts` for one. A brace range is `Bun.Glob`'s (Bun 1.4.4):
 `{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
 a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
 names is refused wherever it sits in the glob. A leading `!` is still the negation, so `!(group)/**`
@@ -934,7 +941,7 @@ Always applied to every glob pass (regardless of what you wrote):
   Its bytes differ per machine, so machines with different files miss
   each other's shared entries. An ignored file never selects a task
   under `--affected` on its own, as in Nx (only what git sees does); `vx
-  watch` re-runs it on an edit there.
+watch` re-runs it on an edit there.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`,
   `.vx/projects.lock.json`, `vx.lock.json`, and `.vx/tmp/**`, where vx's
   restores stage, only where vx writes them: at the project's root (a
@@ -1638,7 +1645,8 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.fly/config.yml`, `~/.supabase/access-token`, `~/.config/doctl`,
 `~/Library/Application Support/doctl`, `~/.config/stripe/config.toml`,
 `~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
-`~/.codex/auth.json`.
+`~/.codex/auth.json`. A store in home's `.config` or `.local/share` is
+denied again under `$XDG_CONFIG_HOME` or `$XDG_DATA_HOME`, which a task sees.
 vx's own stores are denied the same way: `~/.vx`, where every
 repository's shared store lives, and a cache directory outside the
 workspace (`VX_CACHE_DIR=~/.cache/vx`). Read, they handed a task every
@@ -1976,7 +1984,7 @@ interface CacheSettings {
   the default is ignored by `.vx/.gitignore` (`/cache`, `/tmp`) instead, written
   when missing and never edited.
 - **Cleaning**: no run evicts anything. `vx cache clean --older-than <d>
-  --max-size <s>` is the one cleaner ([cli.md](cli.md#vx-cache-clean)); run it
+--max-size <s>` is the one cleaner ([cli.md](cli.md#vx-cache-clean)); run it
   from a schedule or CI to bound the cache.
 - **`baseBranch`** — the repository's default branch, by name
   (`'develop'`; `VX_BASE_BRANCH` beats it). Omitted → `origin/HEAD`'s
@@ -2067,8 +2075,8 @@ interface CacheSettings {
   - **`exclusiveOutputs`** (X-53) — two tasks whose declared outputs
     overlap are refused even when a `dependsOn` edge orders them:
     `<a> and <b> both declare the output "<glob>" … Give each task its
-    own output path, or set run.rules.exclusiveOutputs: false in
-    .vx/workspace.ts to let a dependant add to its upstream's outputs.`
+own output path, or set run.rules.exclusiveOutputs: false in
+.vx/workspace.ts to let a dependant add to its upstream's outputs.`
     Off, the dependant adds to its upstream's tree (item 588;
     `caching.md` § Additive outputs). Two overlapping tasks with no
     edge are refused either way.
@@ -2094,9 +2102,9 @@ interface CacheSettings {
   `inputs.files` can match another task's `outputs.workspaceFiles`
   landing in its project (X-135), is refused by `vx lock` unless one of
   the exceptions below applies: `<reader> reads "<glob>" in inputs.<field>,
-  which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
-  to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
-  <reader>'s inputs.tasks, so its key hashes those bytes instead.` Such a key
+which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
+to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
+<reader>'s inputs.tasks, so its key hashes those bytes instead.` Such a key
   reads what the producer writes this run, so vx cannot know it before
   the producer ran: it is not probed, prefetched or restored ahead of
   the schedule (`caching.md` § Local restore tier). The upstream's key

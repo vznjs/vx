@@ -34,6 +34,8 @@ for the extension seams.
 ```ts
 export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
+// The abort reason `vx watch` stops a cycle with: the run's own work stops, the servers it was handed (`RunOptions.keep`) are spared.
+export const CYCLE_INTERRUPT: 'vx:cycle-interrupt'
 export function nxProjectTarget(spec: string, projects): string | undefined // Nx's `web:build` as `web#build`, when web declares build
 export function projectNamed(typed: string, projects): string | undefined // `cart` as `@scope/cart`, when that is the one such project
 export function shouldShortCircuit(nodes, policy): boolean

@@ -539,6 +539,43 @@ describe('discover', () => {
     })
   }
 
+  it('pnpm(): a lockfile per package (sharedWorkspaceLockfile: false) refuses, naming the setting', async () => {
+    // pnpm writes one pnpm-lock.yaml per package and the root's lists only
+    // `.`: "run `pnpm install`" rewrote the same files, so the refusal
+    // looped (turborepo#14874). Core claims only root files, so pnpm()
+    // cannot key a package's own lockfile and says so.
+    const ROOT_ONLY = "lockfileVersion: '9.0'\n\nimporters:\n\n  .: {}\n"
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), ROOT_ONLY)
+    const metas = await projects({ root: { name: 'root' } })
+    const unshared =
+      'pnpm-lock.yaml lists no workspace package: shared-workspace-lockfile is false, so pnpm writes a pnpm-lock.yaml per package, which pnpm() does not read — remove the setting and run `pnpm install`'
+    for (const [file, text] of [
+      ['pnpm-workspace.yaml', 'packages:\n  - packages/*\nsharedWorkspaceLockfile: false\n'],
+      ['.npmrc', 'shared-workspace-lockfile = false\n'],
+    ] as const) {
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n')
+      await writeFile(path.join(root, file), text)
+      await expect(discover(pnpm(), metas)).rejects.toThrow(unshared)
+      await rm(path.join(root, '.npmrc'), { force: true })
+    }
+    // CONTROL: the workspace file's `true` wins over .npmrc, as pnpm 10 has it.
+    await writeFile(
+      path.join(root, 'pnpm-workspace.yaml'),
+      'packages:\n  - packages/*\nsharedWorkspaceLockfile: true\n',
+    )
+    await writeFile(path.join(root, '.npmrc'), 'shared-workspace-lockfile=false\n')
+    await expect(discover(pnpm(), metas)).rejects.toThrow('pnpm-lock.yaml is out of date')
+    // CONTROL: a shared lockfile the setting did not split (pnpm < 10.8
+    // reads no pnpm-workspace.yaml setting) reads as ever.
+    await rm(path.join(root, '.npmrc'))
+    await writeFile(
+      path.join(root, 'pnpm-workspace.yaml'),
+      'packages:\n  - packages/*\nsharedWorkspaceLockfile: false\n',
+    )
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), PNPM)
+    expect(await discover(pnpm(), await projects())).toEqual(EXPECTED)
+  })
+
   it('yarn(): a classic dependency on a range the workspace misses is the registry copy', async () => {
     await writeFile(
       path.join(root, 'yarn.lock'),

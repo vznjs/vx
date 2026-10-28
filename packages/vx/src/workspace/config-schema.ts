@@ -1295,6 +1295,27 @@ function assertNoForeignToken(glob: string, where: string): void {
   }
   assertNoBareGroup(glob, body, where)
   assertNoBraceRange(glob, where)
+  assertNoGluedGlobstar(glob, where)
+}
+
+/**
+ * `Bun.Glob` reads `**` glued to other text (`src/**.ts`, `a**`) as `*`, one
+ * level: deeper inputs left the key and deeper outputs were never saved.
+ * Turbo rewrites it to the deep reading (vercel/turborepo#5431); vx refuses
+ * and names both.
+ */
+function assertNoGluedGlobstar(glob: string, where: string): void {
+  const body = glob.startsWith('!') ? glob.slice(1) : glob
+  if (!body.split(/[/{},]/).some((seg) => seg.includes('**') && /[^*]/.test(seg))) return
+  const deep = glob.replace(/\*\*([^*/{},]+)/g, '**/*$1').replace(/([^*/{},]+)\*\*/g, '$1*/**')
+  const one = glob.replace(/\*{2,}/g, (run, at: number) =>
+    /[^*/{},]/.test(glob[at - 1] ?? '') || /[^*/{},]/.test(glob[at + run.length] ?? '') ? '*' : run,
+  )
+  throw new UserError(
+    `${where}: "${glob}" glues ** to other text in one path segment, which vx's glob engine ` +
+      `reads as one *, a single directory level. Write "${deep}" for every depth, or "${one}" ` +
+      `for one level.`,
+  )
 }
 
 /** `(a|b)` with no extglob sigil: `Bun.Glob` reads parens and `|` as literal text. */

@@ -204,6 +204,7 @@ export function createRelay(opts: RelayOptions): Relay {
         p.socket.send(JSON.stringify({ messages: [m] }))
         return
       } catch {
+        // quiet: a socket that cannot send is unplugged; the participant rejoins
         unplug(p)
       }
     }
@@ -222,6 +223,7 @@ export function createRelay(opts: RelayOptions): Relay {
     try {
       if (s !== undefined) closeSocket(s)
     } catch {}
+      // quiet: the socket is already gone; closing it again says nothing new
   }
 
   /** `socket` reaches the participant: what queued for it goes down it. */
@@ -233,6 +235,7 @@ export function createRelay(opts: RelayOptions): Relay {
         socket.send(p.hello)
         delete p.hello
       } catch {
+        // quiet: a socket that cannot send is unplugged; the participant rejoins
         unplug(p)
         return
       }
@@ -242,6 +245,7 @@ export function createRelay(opts: RelayOptions): Relay {
     try {
       socket.send(JSON.stringify({ messages }))
     } catch {
+      // quiet: a socket that cannot send is unplugged; what queued waits for the rejoin
       unplug(p)
       p.queue = messages
     }
@@ -291,6 +295,7 @@ export function createRelay(opts: RelayOptions): Relay {
         try {
           p.socket?.send(JSON.stringify({ messages: left }))
         } catch {}
+          // quiet: the close code tells the participant it is gone
       }
     }
     // Its socket learns it is gone by the close code; its next socket, from `socket`.
@@ -588,6 +593,7 @@ export function createRelay(opts: RelayOptions): Relay {
         try {
           closeSocket(earlier)
         } catch {}
+          // quiet: the earlier socket is replaced; its close says nothing new
       }
       return {
         key,

@@ -375,7 +375,8 @@ The child process gets, in priority order (lowest first):
 1. **Essential allowlist** (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`,
    `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`,
    `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
-   `COREPACK_HOME`, `PNPM_HOME` — the list is
+   `COREPACK_HOME`, `PNPM_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
+   `XDG_CACHE_HOME`, `XDG_STATE_HOME`, `XDG_RUNTIME_DIR` — the list is
    `ESSENTIAL_ENV` in `src/util/essential-env.ts`).
 2. **`exec.env.passThrough`** names → values from host `process.env`.
 3. **`exec.env.define`** literal name/value pairs.

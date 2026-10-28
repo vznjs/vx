@@ -57,8 +57,11 @@ export function refusal(
 }
 
 // A refusal that opens with the config that caused it: the schema's
-// `<file>: tasks.<name> …` and the loader's `<file> has unknown field …`.
-const CONFIG_REFUSAL = /^\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
+// `<file>: tasks.<name> …`, the loader's `<file> has unknown field …` and
+// its `Workspace config <file>: …` (a load that failed: a syntax error, a
+// missing import, no default object), which read VX_E_REFUSED (2026-10-28).
+const CONFIG_REFUSAL =
+  /^(?:(?:Workspace|Project) config (?:at )?)?\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
 
 /**
  * The stable code of anything `bin.ts` catches. A UserError's own, but
@@ -212,6 +215,20 @@ export function notAWorkTree(cwd: string, stderr = ''): UserError {
   return new UserError(
     `vx requires git: ${cwd} is not inside a git work tree. ` +
       `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
+  )
+}
+
+/**
+ * A git that ran in `cwd` and failed: no repository there is
+ * `notAWorkTree`, anything else (a corrupt index, a missing object) is git's
+ * own failure, `VX_E_GIT`. Every failed `ls-files` read as "not a work
+ * tree", telling a user with a broken index to `git init` (2026-10-28).
+ */
+export function gitFailure(cwd: string, args: string, exitCode: number, stderr: string): UserError {
+  if (/not a git repository/i.test(stderr)) return notAWorkTree(cwd, stderr)
+  return new UserError(
+    `git ${args} failed (exit ${exitCode}) in ${cwd}: ${stderr || 'no output'}. Run it there to see why.`,
+    'VX_E_GIT',
   )
 }
 

@@ -191,7 +191,11 @@ describe('a CI OIDC token', () => {
           return { jwks_uri: `${ISS}/jwks` }
         },
       })
-      expect(await refusal(verify(await sign(good)))).toEqual([502, `could not read ${ISS}'s keys`])
+      // The cause is said: an operator could not tell a 503 from a missing jwks_uri.
+      expect(await refusal(verify(await sign(good)))).toEqual([
+        502,
+        `could not read ${ISS}'s keys: ${ISS}${down}: 503`,
+      ])
     }
   })
 

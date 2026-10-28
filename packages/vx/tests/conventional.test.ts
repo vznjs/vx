@@ -3,7 +3,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { conventionalError, landsByMerge, squashBreakingError } from '../scripts/conventional.js'
+import {
+  conventionalError,
+  landedHeads,
+  landsByMerge,
+  squashBreakingError,
+} from '../scripts/conventional.js'
 
 it('accepts type, optional scope and !, and names why anything else fails', () => {
   const check = (lines: string[]): Array<[string, string | null]> =>
@@ -95,7 +100,9 @@ it('tells a branch that lands PRs by merge from one main is merged into', async 
       git('-c', 'user.name=t', '-c', 'user.email=t@t', 'merge', '-q', '--no-ff', '-m', m, 'pr')
       return git('rev-parse', 'HEAD')
     }
-    expect(landsByMerge(base, merge('chore: land #1'), dir)).toBe(true)
+    const pr = git('rev-parse', 'pr')
+    const landed = merge('chore: land #1')
+    expect([landsByMerge(base, landed, dir), landedHeads(base, landed, dir)]).toEqual([true, [pr]])
     git('checkout', '-q', '-B', 'mega', base)
     expect(landsByMerge(base, merge("Merge branch 'main'"), dir)).toBe(false)
     expect(landsByMerge(base, base, dir)).toBe(false)

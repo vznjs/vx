@@ -147,6 +147,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     const entry = { at: nowMs(), set: loadKeys(iss, (url) => fetchJson(url, fresh)) }
     keys.set(iss, entry)
     // A failed load is not kept: the next token tries again.
+    // quiet: the awaited set rethrows it; this only forgets it
     entry.set.catch(() => keys.get(iss) === entry && keys.delete(iss))
     return entry
   }
@@ -156,8 +157,8 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       held !== undefined && nowMs() - held.at < KEYS_MAX_AGE_MS ? held : load(iss, fresh)
     // The issuer's outage, not the token's fault: a client ends its run on
     // a 401, and retries a 5xx.
-    const set = await entry.set.catch(() => {
-      throw new TokenError(`could not read ${iss}'s keys`, 502)
+    const set = await entry.set.catch((err: unknown) => {
+      throw keysUnread(iss, err)
     })
     const { payload } = await jwtVerify(token, set, {
       algorithms: ['RS256'],
@@ -234,7 +235,8 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
 function refusal(err: unknown, iss: string): TokenError {
   if (err instanceof TokenError) return err
   // A refetch of the keys for a kid not held failed: the network, not the token.
-  if (!(err instanceof errors.JOSEError)) return new TokenError(`could not read ${iss}'s keys`, 502)
+  if (!(err instanceof errors.JOSEError) || err instanceof errors.JWKSInvalid)
+    return keysUnread(iss, err)
   if (err instanceof errors.JOSEAlgNotAllowed) return new TokenError('alg is not RS256', 401)
   if (err instanceof errors.JWKSNoMatchingKey) return new TokenError('unknown signing key', 401)
   if (err instanceof errors.JWSSignatureVerificationFailed)
@@ -261,6 +263,13 @@ async function loadKeys(
   const jwks = (await fetchJson(config.jwks_uri)) as { keys?: unknown }
   return createLocalJWKSet({ keys: Array.isArray(jwks.keys) ? jwks.keys : [] })
 }
+
+/** The issuer's keys out of reach, with why: a 503 and a missing jwks_uri read the same. */
+const keysUnread = (iss: string, err: unknown): TokenError =>
+  new TokenError(
+    `could not read ${iss}'s keys: ${err instanceof Error ? err.message : String(err)}`,
+    502,
+  )
 
 async function defaultFetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })

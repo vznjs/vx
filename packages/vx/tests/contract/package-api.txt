@@ -1361,6 +1361,7 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry>
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
+  unlockedConfig: () => string | undefined
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

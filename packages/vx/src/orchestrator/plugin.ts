@@ -21,6 +21,7 @@ import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../con
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
 import {
+  errorCode,
   maskedLine,
   nearest,
   type PluginSecrets,
@@ -821,8 +822,9 @@ export class PluginSetupError extends UserError {
   constructor(
     readonly plugin: Plugin,
     message: string,
+    code = 'VX_E_REFUSED',
   ) {
-    super(message)
+    super(message, code)
   }
 }
 
@@ -960,6 +962,8 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
         maskedLine(
           `plugin '${plugin.name}' failed in setup: ${err instanceof Error ? err.message : String(err)}`,
         ),
+        // The plugin's own code survives, as `safe()` keeps it.
+        errorCode(err) === 'VX_E_INTERNAL' ? 'VX_E_REFUSED' : errorCode(err),
       )
     }
   }
