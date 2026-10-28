@@ -2142,7 +2142,9 @@ one (bun add -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
 
 After an upgrade that installed something, inside a workspace, the new
 vx runs `vx lock` at the workspace root, since a release may record the
-lock differently. A lock that fails leaves the upgrade done and prints
+lock differently (an npm global install's own binary, which keeps its
+path). A lock that fails, or a new vx that does not start, leaves the
+upgrade done and prints
 `vx upgrade  vx lock failed: run vx lock`. `vx upgrade -g` never locks.
 
 vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from a
