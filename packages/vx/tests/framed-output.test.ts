@@ -239,13 +239,11 @@ describe('the compact one-liners', () => {
     // The dim code, not a hue: which colour `miss` takes is free to change,
     // that it is DIM is the claim (it is the quiet half of the row).
     expect(painted).toContain('\x1b[2mmiss\x1b[0m')
-    // A skipped row has no cache word at all. An empty cell must emit no
-    // escape, so the only empty dim pair in the line is the blank TIME
-    // cell — two would mean the cache cell painted nothing, visibly
-    // identical and wrong.
+    // A skipped row has no cache word and no time. An empty cell emits no
+    // escape: neither its blank time cell nor its blank cache cell.
     const skipped = formatTaskSkippedLine(node('@vzn/vx#fmt', 'oxfmt .'), on)
     const emptyDim = '\x1b[2m\x1b[0m' // counted by split: a regex literal here trips no-control-regex
-    expect(skipped.split(emptyDim).length - 1).toBe(1)
+    expect(skipped.split(emptyDim).length - 1).toBe(0)
   })
 })
 
