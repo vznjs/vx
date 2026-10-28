@@ -17,10 +17,13 @@ const allow = parseAllow(`${GITHUB}:Acme/App:ci.yml`)
 let sign: (claims: JWTPayload, aud?: string) => Promise<string>
 let handle: (req: Request) => Promise<Response>
 let read: string
+let jwk: Record<string, unknown>
+let key: CryptoKey
 
 beforeAll(async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
-  const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
+  key = privateKey
+  jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
   sign = (claims, aud = AUD) =>
     new SignJWT({
       repository: 'acme/app',
@@ -98,6 +101,15 @@ describe('CI OIDC tokens', () => {
     expect(await status('e7', near.ref)).toBe(200)
   })
 
+  // Any branch may be named gh-readonly-queue/main/pr-1-<sha> where no
+  // merge queue claims the prefix: a push to it wrote main's scope.
+  it('a push to a branch named like a merge queue ref writes that branch', async () => {
+    const ref = `refs/heads/gh-readonly-queue/main/pr-12-${'b'.repeat(40)}`
+    expect((await put(await sign({ event_name: 'push', ref }), 'c9')).status).toBe(204)
+    expect(await status('c9')).toBe(404)
+    expect(await status('c9', ref)).toBe(200)
+  })
+
   // A pull_request_target run carries a fork's head_ref, named by the
   // fork: it wrote that branch's scope, so a fork poisoned a branch of the
   // same name (found 2026-10-26). Its ref is the base: a fork's code never
@@ -125,6 +137,34 @@ describe('CI OIDC tokens', () => {
     expect(await status('c3')).toBe(404)
   })
 
+  // The claim was cut at its first `@`, so a workflow file with one in its
+  // name (`ci@x.yml`) was refused whatever ALLOW said.
+  it('admits a job of a workflow file whose name holds an @', async () => {
+    const at = createCacheServer({
+      blobs: memBlobs(),
+      authorize: oidcAuth({
+        allow: parseAllow(`${GITHUB}:acme/app:ci@x.yml`),
+        audience: AUD,
+        fetchJson: async (url) =>
+          url.endsWith('/.well-known/openid-configuration')
+            ? { jwks_uri: `${GITHUB}/keys` }
+            : { keys: [jwk] },
+      }),
+    })
+    const token = await sign({
+      ...MAIN,
+      job_workflow_ref: 'acme/app/.github/workflows/ci@x.yml@refs/heads/main',
+    })
+    const res = await at(
+      new Request(`${AUD}/v1/artifacts/e2`, {
+        method: 'PUT',
+        body: 'x',
+        headers: { ...NAMED, authorization: `Bearer ${token}`, 'content-length': '1' },
+      }),
+    )
+    expect(res.status).toBe(204)
+  })
+
   // A missing claim read as the text "undefined": the refusal named a
   // repository or workflow `undefined` instead of the claim to set.
   it('refuses a token missing its repository or workflow claim, naming the claim', async () => {
@@ -132,6 +172,20 @@ describe('CI OIDC tokens', () => {
     expect(await detail(await put(noRepo, 'a9'))).toEqual([403, 'no repository claim'])
     const noWorkflow = await sign({ ...MAIN, job_workflow_ref: undefined })
     expect(await detail(await put(noWorkflow, 'a9'))).toEqual([403, 'no job_workflow_ref claim'])
+  })
+
+  // A token with no exp was refused as "not a JWT", which named nothing to fix.
+  it('refuses a token with no exp, naming the claim', async () => {
+    const noExp = await new SignJWT({
+      ...MAIN,
+      repository: 'acme/app',
+      job_workflow_ref: 'acme/app/.github/workflows/ci.yml@refs/heads/main',
+    })
+      .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
+      .setIssuer(GITHUB)
+      .setAudience(AUD)
+      .sign(key)
+    expect(await detail(await put(noExp, 'a9'))).toEqual([401, 'no exp claim'])
   })
 
   it('refuses another repository, another audience and a forged signature', async () => {
