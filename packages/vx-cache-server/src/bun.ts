@@ -112,7 +112,11 @@ function main(argv: string[]): void {
   const server = Bun.serve({
     hostname: values.host,
     port,
-    maxRequestBodySize: limits.maxUploadBytes,
+    // The handler measures every body itself, as `{ code, message }`: an
+    // upload by its Content-Length before a byte is read, a check as it
+    // arrives. Bun's cap, set to the upload limit, refused a check longer
+    // than a small one, 413 with no body.
+    maxRequestBodySize: Number.MAX_SAFE_INTEGER,
     fetch: handle,
   })
   console.log(`vx-cache-server on ${server.url.href}`)
