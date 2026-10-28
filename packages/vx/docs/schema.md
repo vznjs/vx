@@ -1538,7 +1538,8 @@ task never wrote, so an unwritten one is never archived as an output).
 A grant that leaves the project through a symlink is refused: the grant
 binds the path it names, and vx follows no link out of the project. So
 is one whose bind would make `.git`, `.vx/cache`, the cache directory or a
-nested project writable:
+nested project writable, and one inside `.git`, `.vx/cache` or the cache
+directory (`../.git/hooks/` would plant a hook that runs unsandboxed):
 a file grant at a single-package workspace's root binds the root. A
 directory grant is judged as the directory, made before the judgement
 when it does not exist yet, so `dist/` or `dist/**` at that root stands.
