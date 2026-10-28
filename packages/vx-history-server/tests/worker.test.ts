@@ -77,3 +77,21 @@ it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS i
     }
   }
 })
+
+it('reads AUDIENCE without the blanks around it', async () => {
+  for (const audience of [` ${AUD}\n`, ' ']) {
+    const other = await start({ ALLOW: allowVarOf(), AUDIENCE: audience })
+    try {
+      const url = new URL('/v1/capabilities', await other.ready)
+      // Blank, AUDIENCE is unset: the audience is the origin reached.
+      const res = await other.dispatchFetch(url, {
+        headers: {
+          authorization: `Bearer ${await iss.sign('read', audience.trim() || url.origin)}`,
+        },
+      })
+      expect([audience, res.status]).toEqual([audience, 200])
+    } finally {
+      await other.dispose()
+    }
+  }
+})
