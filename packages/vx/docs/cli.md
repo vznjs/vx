@@ -1829,7 +1829,7 @@ may not search (EACCES, named as such), or a missing lock, is a hard error; a co
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
-around it). An entry edited by
+around it, and so does `--filter ./c`). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
 something has crashed, so a normal run pays nothing for it.
@@ -2711,8 +2711,9 @@ $ vx info
 - `git status cache`: vx runs ONE `git status` per run to find dirty
   and untracked files, and on a large tree that walk is the warm run's
   critical path. git's `core.fsmonitor` (a daemon that watches the
-  worktree) and `core.untrackedCache` make it near-free after the first
-  run; both are off by default, so `vx info` says when they are.
+  worktree, or a hook it names) and `core.untrackedCache` make it
+  near-free after the first run; both are off by default, so `vx info`
+  says when they are, reading each as git does (the last value set wins).
 - `sandbox` is the runtime probe's verdict for THIS host — one sandboxed
   `true`, memoized — and how many loaded tasks declare `exec.sandbox`. A
   declared sandbox whose runtime cannot start fails the task at run
