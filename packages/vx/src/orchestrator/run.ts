@@ -95,7 +95,7 @@ import type { AffectedReason } from './affected-tasks.js'
 import { namesRemote, openRemotes, prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
 import { terminateChildren } from './signals.js'
-import { runStop } from './run-stop.js'
+import { CYCLE_INTERRUPT, runStop } from './run-stop.js'
 import {
   hasPooledExecutor,
   placeTasks,
@@ -651,7 +651,10 @@ async function runOnBus(
     | boolean
     | undefined
 
+  // The held servers this run took over, spared by a `CYCLE_INTERRUPT`.
+  const handed = new Set<ReturnType<typeof Bun.spawn>>()
   const stop = runStop({
+    handed: (child) => handed.has(child),
     log,
     cache,
     external: options.signal,
@@ -1195,6 +1198,7 @@ async function runOnBus(
       heldBefore.kept.delete(node.id)
       if (hasEnded(server.child)) return undefined
       server.handOver()
+      handed.add(server.child)
       server.out.bus = bus
       serverOuts.set(node.id, server.out)
       persistentRegistry.set(node.id, server.child)
@@ -1309,8 +1313,11 @@ async function runOnBus(
     // signal loop) and embedders that manage lifecycle themselves — both
     // expect run() to return, not block on a server.
     const foreground = options.log === undefined && (options.handleSignals ?? true)
-    // An aborted run's children are already being torn down: nothing to hold.
-    const hold = options.holdPersistent === true && !stop.signal.aborted
+    // An aborted run's children are already being torn down: nothing to
+    // hold, but the servers a `CYCLE_INTERRUPT` spared.
+    const hold =
+      options.holdPersistent === true &&
+      (!stop.signal.aborted || stop.signal.reason === CYCLE_INTERRUPT)
     const { keepAlive, crashed: crashedPersistent } = await disposeServers({
       registry: persistentRegistry,
       nodes,

@@ -22,8 +22,9 @@ checked as `@vzn/vx-devtools` checks it (the same `ALLOW` as
 vx-cache-server's): a repository, or a workflow, `ALLOW` does not name
 is `403`. A token writes its own branch (`refs/heads/<branch>`; a
 `merge_group` run, `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, its
-base branch); a `pull_request_target` run reads only, and so does a
-`pull_request` run whose head branch has its base branch's name. A query names its
+base branch); a `pull_request_target`, `issue_comment` or `workflow_run`
+run reads only, and so does a `pull_request` run whose head branch has its
+base branch's name. A query names its
 repository; a token of another is `403`. A server whose `READ_ACCESS`
 is `public` takes a query with no token for a repository `ALLOW` names;
 an upload with none is `403`.

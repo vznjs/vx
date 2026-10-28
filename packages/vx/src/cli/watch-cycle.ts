@@ -5,7 +5,7 @@
 // as Ctrl-C would and the loop starts the next one; a cycle running any
 // other work is never stopped.
 
-import { type RunOptions } from '../orchestrator/index.js'
+import { CYCLE_INTERRUPT, type RunOptions } from '../orchestrator/index.js'
 import { createEventBus } from '../report/index.js'
 
 export interface WatchCycle {
@@ -13,7 +13,7 @@ export interface WatchCycle {
   readonly opts: RunOptions
   /** Every task in flight is a persistent one not yet ready. */
   waitsOnReadiness(): boolean
-  /** Stop the run as a SIGTERM would; watch keeps going. */
+  /** Stop the run's own work as a SIGTERM would, sparing the servers it was handed; watch keeps going. */
   interrupt(): void
   readonly interrupted: boolean
   /** The run's task count, once it has started. */
@@ -40,7 +40,7 @@ export function watchCycle(opts: RunOptions, stop: AbortSignal, onWaiting: () =>
   return {
     opts: { ...opts, bus, footer: false, signal: AbortSignal.any([stop, own.signal]) },
     waitsOnReadiness,
-    interrupt: () => own.abort('SIGTERM'),
+    interrupt: () => own.abort(CYCLE_INTERRUPT),
     get interrupted() {
       return own.signal.aborted
     },

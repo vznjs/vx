@@ -25,6 +25,10 @@ inputs.runtime and inputs.workspaceRuntime probes see only the essential env all
 
 a Store implements sweptAt() and sweep(before, now), which records the sweep at now. sqliteStore does both.
 
+## vx-devtools: refuse writes from issue_comment and workflow_run
+
+the cache and history servers refuse writes from issue_comment and workflow_run jobs, as from pull_request_target.
+
 ## vx-dte-server: read ALLOW and AUDIENCE from the environment
 
 vx-dte-server no longer takes --allow or --audience; set ALLOW and AUDIENCE in its environment. In compose.yaml set CACHE_ALLOW, CACHE_AUDIENCE, CACHE_READ_ACCESS and HISTORY_ALLOW, HISTORY_AUDIENCE, HISTORY_READ_ACCESS in place of ALLOW, AUDIENCE and READ_ACCESS.

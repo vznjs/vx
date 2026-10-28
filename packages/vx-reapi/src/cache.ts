@@ -70,6 +70,12 @@ function decodeDuration(raw: Uint8Array | undefined): number | undefined {
   return typeof parsed.durationMs === 'number' ? parsed.durationMs : undefined
 }
 
+/**
+ * A duration record vx writes is some 20 bytes; a blob past this is not
+ * one, and is never read: a 256 MiB one was held whole for its number.
+ */
+const DURATION_BYTES = 1024
+
 /** Artifacts up to this size are batch-uploaded without a FindMissingBlobs probe. */
 const SMALL_PUT_BYTES = 256 * 1024
 
@@ -185,7 +191,15 @@ export class ReapiRemoteCache {
     // The duration is metadata: a read of it that fails (retries spent, a
     // blob failing its digest) leaves it unknown, where it made core drop a
     // valid hit as a miss (F-21).
-    if ((result.stdout_digest?.size_bytes ?? 0) > 0) {
+    const size = Number(result.stdout_digest?.size_bytes ?? 0)
+    if (size > DURATION_BYTES) {
+      this.warn(
+        'reading a task duration',
+        new Error(`its record is ${size} bytes, over ${DURATION_BYTES}: not read`),
+      )
+      return undefined
+    }
+    if (size > 0) {
       const raw = await this.client.readBlob(result.stdout_digest!).catch((err: unknown) => {
         this.warn('reading a task duration', err)
         return null

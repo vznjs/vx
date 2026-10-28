@@ -28,15 +28,17 @@ sends one query: its repository, the refs it reads (its branch, then the
 branch it merges into, then the default branch) and every task hash;
 the server answers each from the first ref that holds it. A token of
 another repository than the query names is refused. `AUDIENCE` is the
-`aud` a token must name, by default the origin the server is reached at;
-behind a proxy that ends TLS that origin is `http://`, so set it there.
+`aud` a token must name: the origin clients reach the server at. On
+Workers, unset, it is that origin (Cloudflare routes only the Worker's
+own hostnames to it); on Bun and Docker it is required, since there the
+origin is the request's `Host` header, which a client picks.
 `READ_ACCESS=public` lets a query with no token read a repository
 `ALLOW` names; it uploads nothing.
 
 ## On Bun
 
 ```sh
-ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' bun packages/vx-history-server/src/bun.ts --db /var/lib/vx-history.sqlite --port 8080
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' AUDIENCE=https://history.example.com bun packages/vx-history-server/src/bun.ts --db /var/lib/vx-history.sqlite --port 8080
 ```
 
 `TIMING_DAYS` (default 30) is how long a task's row outlives its last
@@ -49,7 +51,7 @@ From the repo root:
 
 ```sh
 docker build -f packages/vx-history-server/Dockerfile -t vx-history-server .
-docker run -p 8080:8080 -v vx-history:/data -e ALLOW='…' vx-history-server
+docker run -p 8080:8080 -v vx-history:/data -e ALLOW='…' -e AUDIENCE=https://history.example.com vx-history-server
 ```
 
 The database is `/data/vx-history.sqlite`.

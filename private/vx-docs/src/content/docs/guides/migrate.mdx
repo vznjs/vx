@@ -86,42 +86,45 @@ export default {
 } satisfies WorkspaceConfig
 ```
 
-```text
-$ bunx @vzn/vx init --keep
+```sh
+bunx @vzn/vx init --keep
+```
 
-─ vx-migrate 0.0.637 ─────────────────────────────────────────
-  from      turbo.json, run by turbo() from @vzn/vx-migrate
-  ran       npm install -D @vzn/vx-lockfile @vzn/vx-history
-  files     .vx/workspace.ts
-  lock      0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
-  note      a temporary start: vx init --native writes native config
+```ansi
+[38;2;167;139;250m─ [0m[1mvx-migrate 0.0.0[0m [38;2;167;139;250m────────[0m[38;2;178;135;240m────────[0m[38;2;189;132;231m────────[0m[38;2;200;128;221m────────[0m[38;2;211;125;211m────────[0m[38;2;222;121;201m───[0m
+  [2mfrom    [0m  turbo.json, run by turbo() from @vzn/vx-migrate
+  [2mran     [0m  npm install -D @vzn/vx-history
+  [2mfiles   [0m  .vx/workspace.ts
+            .vx/.gitignore
+  [2mlock    [0m  [38;2;34;197;94m✓[0m [1mvx lock[0m  0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
+  [2mnote    [0m  a temporary start: vx init --native writes native config
 
-  next      vx run build --all
+  [2mnext    [0m  [1mvx run build --all[0m
 ```
 
 Where the repo shows a Turbo remote cache, the file declares
 `turboCache()` too, and init says why:
-
-```text
-turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remote cache (token: the variable, else the OS keychain).
-```
+`turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remote cache`.
 
 `bunx @vzn/vx-migrate` then writes the configs (`--dry` previews them)
 and takes `turbo()` out of `.vx/workspace.ts`:
 
-```text
-$ bunx @vzn/vx-migrate
+```sh
+bunx @vzn/vx-migrate
+```
 
-─ vx-migrate 0.0.637 ─────────────────────────────────────────
-  from      turbo.json
-  config    dropped turbo() from .vx/workspace.ts
-  ran       npm uninstall @vzn/vx-migrate
-  tasks     3 clean
-  files     packages/app/vx.config.ts
+```ansi
+[38;2;167;139;250m─ [0m[1mvx-migrate 0.0.0[0m [38;2;167;139;250m────────[0m[38;2;178;135;240m────────[0m[38;2;189;132;231m────────[0m[38;2;200;128;221m────────[0m[38;2;211;125;211m────────[0m[38;2;222;121;201m───[0m
+  [2mfrom    [0m  turbo.json
+  [2mconfig  [0m  dropped turbo() from .vx/workspace.ts
+  [2mran     [0m  npm install -D @vzn/vx-history
+  [2mran     [0m  npm uninstall @vzn/vx-migrate
+  [2mtasks   [0m  [38;2;34;197;94m3 clean[0m
+  [2mfiles   [0m  packages/app/vx.config.ts
             packages/lib/vx.config.ts
-  lock      2 project configs → .vx/projects.lock.json
+  [2mlock    [0m  [38;2;34;197;94m✓[0m [1mvx lock[0m  2 project configs → .vx/projects.lock.json
 
-  next      vx run build --all
+  [2mnext    [0m  [1mvx run build --all[0m
 ```
 
 `packages/lib/vx.config.ts`, as written:
@@ -199,7 +202,7 @@ vx run test --all      # local 3✓
 | `globalDependencies` / `globalEnv` / `globalPassThroughEnv` (and Turbo 1's `globalDotEnv`) | a generated `vx-preset.ts` each config imports as `vx-preset.js` (your `tsc` accepts it without `allowImportingTsExtensions`; Bun loads the `.ts`), except where a `tsconfig*.json` in the config's directory or above it (below the root) is a composite project or sets `rootDir` and takes the config in: there the config declares the values itself, as `tsc` refuses a file outside the package (TS6059); a wildcard env name is reported, not mapped |
 
 The command itself comes from your `package.json` script, with its
-`pre<name>` / `post<name>` hooks folded in.
+`pre<name>` / `post<name>` hooks added around it.
 
 </details>
 
@@ -234,35 +237,20 @@ export default {
 } satisfies WorkspaceConfig
 ```
 
-```text
-$ bunx @vzn/vx init --keep
-
-─ vx-migrate 0.0.637 ─────────────────────────────────────────
-  from      nx.json, run by nx() from @vzn/vx-migrate
-  ran       npm install -D @vzn/vx-lockfile @vzn/vx-history
-  files     .vx/workspace.ts
-            .vx/.gitignore
-  lock      0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
-  note      a temporary start: vx init --native writes native config
-
-  next      vx run build --all
+```sh
+bunx @vzn/vx init --keep
+bunx @vzn/vx-migrate
 ```
 
-```text
-$ bunx @vzn/vx-migrate
+Each prints the same report as for [Turborepo](#turborepo), its `from`
+row naming `nx.json`, then `nx graph`. The second run's `note` says how
+targets map:
 
-─ vx-migrate 0.0.637 ─────────────────────────────────────────
-  from      nx graph
-  config    dropped nx() from .vx/workspace.ts
-  ran       npm uninstall @vzn/vx-migrate
-  tasks     2 clean
-  files     packages/app/vx.config.ts
-            packages/lib/vx.config.ts
-  lock      2 project configs → .vx/projects.lock.json
-  note      migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
-
-  next      vx run build --all
-```
+- a target an Nx plugin infers is written out as a plain task;
+- an `nx:run-commands` target becomes its shell line;
+- any other executor runs as itself through `nx-exec`, so keep Nx and
+  `@vzn/vx-migrate` installed until you rewrite it as a command;
+- a target with `.env` files runs through `nx-env`.
 
 `packages/lib/vx.config.ts`, as written:
 
