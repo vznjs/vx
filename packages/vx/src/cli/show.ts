@@ -56,17 +56,17 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     let format: string | undefined
     if (a === '--format') format = args[++i] ?? ''
     else if (a.startsWith('--format=')) format = a.slice('--format='.length)
-    else if (a === '--filter') {
-      const v = args[++i]
-      // `--filter --format json` took `--format` as the pattern; no filter opens with `--`.
-      if (v === undefined || v === '' || v.startsWith('--'))
+    else if (a === '--filter' || a.startsWith('--filter=')) {
+      const v = a === '--filter' ? args[++i] : a.slice('--filter='.length)
+      // `--filter --format json` took `--format` as the pattern; no filter
+      // opens with `--`. An empty `=` said `filter "" names no project`.
+      if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
         return {
           ...out,
           error: `--filter requires a value: a project name, glob or path${seeHelp('show')}`,
         }
       out.filters.push(v)
-    } else if (a.startsWith('--filter=')) out.filters.push(a.slice('--filter='.length))
-    else if (a === '--affected') out.affected = ''
+    } else if (a === '--affected') out.affected = ''
     else if (a.startsWith('--affected=')) out.affected = a.slice('--affected='.length)
     else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('show', a)}${seeHelp('show')}` }
