@@ -4,27 +4,43 @@ import {
   DependencySpecError,
   isTaskPattern,
   parseDependencySpec,
-} from '../src/graph/dependency-spec.js'
+} from '../src/util/dependency-spec.js'
 
 describe('parseDependencySpec', () => {
   it('parses the concrete forms', () => {
-    expect(parseDependencySpec('build')).toEqual({ kind: 'self', task: 'build', negated: false })
-    expect(parseDependencySpec('^build')).toEqual({ kind: 'deps', task: 'build', negated: false })
-    expect(parseDependencySpec('pkg#build')).toEqual({
+    expect(parseDependencySpec('build', 'dependsOn')).toEqual({
+      kind: 'self',
+      task: 'build',
+      negated: false,
+    })
+    expect(parseDependencySpec('^build', 'dependsOn')).toEqual({
+      kind: 'deps',
+      task: 'build',
+      negated: false,
+    })
+    expect(parseDependencySpec('pkg#build', 'dependsOn')).toEqual({
       kind: 'cross',
       project: 'pkg',
       task: 'build',
       negated: false,
     })
-    expect(parseDependencySpec('*')).toEqual({ kind: 'wildcardSelf', negated: false })
-    expect(parseDependencySpec('^*')).toEqual({ kind: 'wildcardDeps', negated: false })
+    expect(parseDependencySpec('*', 'dependsOn')).toEqual({ kind: 'wildcardSelf', negated: false })
+    expect(parseDependencySpec('^*', 'dependsOn')).toEqual({ kind: 'wildcardDeps', negated: false })
   })
 
   it('carries the negation flag through each form', () => {
-    expect(parseDependencySpec('!build')).toEqual({ kind: 'self', task: 'build', negated: true })
-    expect(parseDependencySpec('!^build')).toEqual({ kind: 'deps', task: 'build', negated: true })
-    expect(parseDependencySpec('!*')).toEqual({ kind: 'wildcardSelf', negated: true })
-    expect(parseDependencySpec('!^*')).toEqual({ kind: 'wildcardDeps', negated: true })
+    expect(parseDependencySpec('!build', 'dependsOn')).toEqual({
+      kind: 'self',
+      task: 'build',
+      negated: true,
+    })
+    expect(parseDependencySpec('!^build', 'dependsOn')).toEqual({
+      kind: 'deps',
+      task: 'build',
+      negated: true,
+    })
+    expect(parseDependencySpec('!*', 'dependsOn')).toEqual({ kind: 'wildcardSelf', negated: true })
+    expect(parseDependencySpec('!^*', 'dependsOn')).toEqual({ kind: 'wildcardDeps', negated: true })
   })
 
   // The parser is pure — every malformed shape throws DependencySpecError,
@@ -50,7 +66,7 @@ describe('parseDependencySpec', () => {
     it(`throws DependencySpecError on ${JSON.stringify(raw)}`, () => {
       let err: unknown
       try {
-        parseDependencySpec(raw)
+        parseDependencySpec(raw, 'dependsOn')
       } catch (e) {
         err = e
       }
@@ -58,11 +74,17 @@ describe('parseDependencySpec', () => {
       expect((err as DependencySpecError).message).toBe(message)
     })
   }
+
+  it('names the field it parses', () => {
+    expect(() => parseDependencySpec('^', 'inputs.tasks')).toThrow(
+      'invalid inputs.tasks "^": "^" with no task name',
+    )
+  })
 })
 
 describe('a cross edge splits on the first #', () => {
   it('so a task name that holds one round-trips', () => {
-    expect(parseDependencySpec('a#b#c')).toEqual({
+    expect(parseDependencySpec('a#b#c', 'dependsOn')).toEqual({
       kind: 'cross',
       project: 'a',
       task: 'b#c',

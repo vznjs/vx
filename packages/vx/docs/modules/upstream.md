@@ -7,7 +7,7 @@ NOT the same question:
 
 1. **Which upstream hashes the cache key folds** — per the task's
    `inputs.tasks` declaration. The patterns share
-   `graph/dependency-spec.ts`'s parser; this module owns the filter
+   `util/dependency-spec.ts`'s parser; this module owns the filter
    semantics (`*` / `^*` / negation).
 2. **Which real tasks are in the input closure** — what an
    input-shipping executor must place in the input root. That is the
@@ -128,9 +128,10 @@ previously included one. So `['*', '^*', '!^noisy']` reads
 
 ## Error surface
 
-Invalid spec strings (caught by the shared `parseDependencySpec`)
-throw `UserError` prefixed with the task id and `inputs.tasks:`.
-The CLI prints this cleanly.
+Invalid spec strings are refused at load (`vx lock` too) by the
+shared `parseDependencySpec`, naming the config, the task and
+`inputs.tasks`; one a plugin's `graph` or `key` stage writes is
+refused when the run plans, prefixed with the task id.
 
 ## Tests
 
