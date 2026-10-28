@@ -39,7 +39,14 @@ import {
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
-import { hangupIgnored, maskedLine, restartTimings, sayNotice, sayLine } from '../util/index.js'
+import {
+  hangupIgnored,
+  maskedLine,
+  printable,
+  restartTimings,
+  sayNotice,
+  sayLine,
+} from '../util/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -458,7 +465,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         sayNotice(
           'warn',
           'vx watch',
-          `${path.relative(workspaceRoot, abs)} changed; runs read the lock, so run \`vx lock\` to apply it`,
+          `${printable(path.relative(workspaceRoot, abs))} changed; runs read the lock, so run \`vx lock\` to apply it`,
         )
   }
   const trigger = (label: string, abs: string): void => {
@@ -848,7 +855,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
             staleNamed.set(abs, now)
             process.stdout.write(
-              `vx watch: ${rel} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
+              `vx watch: ${printable(rel)} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
             )
           }),
         )
