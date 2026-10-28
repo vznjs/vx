@@ -12,7 +12,7 @@ import {
   wrapSandboxedCommand,
 } from '../exec/index.js'
 import type { TaskOutcome } from '../graph/index.js'
-import { maskedEmitter, secretMask, testTimerMs } from '../util/index.js'
+import { maskedStreams, secretMask, testTimerMs } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import {
@@ -140,16 +140,21 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // is matched on the raw chunks, before this. Its held tail is flushed by
   // the idle timer: a server never ends on the way to a flush.
   const serverSecrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
-  const serverOut = serverSecrets && maskedEmitter(serverSecrets, (t) => log.taskStdout(node, t))
-  const serverErr = serverSecrets && maskedEmitter(serverSecrets, (t) => log.taskStderr(node, t))
+  const serverMasked =
+    serverSecrets &&
+    maskedStreams(
+      serverSecrets,
+      (t) => log.taskStdout(node, t),
+      (t) => log.taskStderr(node, t),
+    )
   // A server writes until the run stops it: its window stays open.
   args.commandWindows?.open(node.id, node.projectDir, commandWriteReach(node, args.workspaceRoot))
   const persistentOpts: Parameters<typeof runPersistent>[0] = {
     command,
     cwd: node.projectDir,
     env,
-    onStdout: serverOut ? (chunk) => serverOut.push(chunk) : (chunk) => log.taskStdout(node, chunk),
-    onStderr: serverErr ? (chunk) => serverErr.push(chunk) : (chunk) => log.taskStderr(node, chunk),
+    onStdout: serverMasked ? serverMasked.out : (chunk) => log.taskStdout(node, chunk),
+    onStderr: serverMasked ? serverMasked.err : (chunk) => log.taskStderr(node, chunk),
     ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
     ...(args.track !== undefined
       ? { onSpawn: (pid: number) => void args.track!(node.id, pid) }

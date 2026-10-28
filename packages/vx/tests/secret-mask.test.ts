@@ -10,7 +10,7 @@ import path from 'node:path'
 import { run as runFromLock } from '../src/orchestrator/index.js'
 import { lock, run } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/report/logger.js'
-import { MASKED, maskedEmitter, secretMask } from '../src/util/index.js'
+import { MASKED, maskedStreams, secretMask } from '../src/util/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
@@ -63,12 +63,34 @@ describe('secretMask', () => {
 
   it('a held tail is emitted once no chunk follows it', async () => {
     const got: string[] = []
-    const e = maskedEmitter(secretMask([{ API_TOKEN: SECRET }])!, (t) => void got.push(t), 20)
-    e.push('progress hun')
+    const e = maskedStreams(
+      secretMask([{ API_TOKEN: SECRET }])!,
+      (t) => void got.push(t),
+      () => {},
+      20,
+    )
+    e.out('progress hun')
     expect(got.join('')).toBe('progress ')
     // The shortest wait that shows it: well past the idle bound.
     await Bun.sleep(80)
     expect(got.join('')).toBe('progress hun')
+  })
+
+  // Each stream held its own tail: a stdout tail that could begin a value
+  // waited out the idle bound while stderr printed, and the run log, live
+  // and cached, put the stderr line before text the task wrote first.
+  it('keeps the order of the two streams across a held tail', () => {
+    const got: string[] = []
+    const s = maskedStreams(
+      secretMask([{ API_TOKEN: SECRET }])!,
+      (t) => void got.push(`out:${t}`),
+      (t) => void got.push(`err:${t}`),
+    )
+    s.out('progress hun')
+    s.err('ERROR\n')
+    s.out(`ter ${SECRET}\n`)
+    s.end()
+    expect(got).toEqual(['out:progress ', 'out:hun', 'err:ERROR\n', `out:ter ${MASKED}\n`])
   })
 
   it('masks a value split across chunks without emitting its prefix', () => {
