@@ -708,6 +708,13 @@ function linksOf(meta: MetaFile): Array<[string, string]> {
 }
 
 /** `p` is `root` or under it, lexically. */
+/** The deepest directory holding both `a` and `b`. */
+function commonDir(a: string, b: string): string {
+  let dir = a
+  while (!inside(b, dir) && path.dirname(dir) !== dir) dir = path.dirname(dir)
+  return dir
+}
+
 const inside = (p: string, root: string): boolean => {
   const r = path.resolve(root)
   return p === r || p.startsWith(r + path.sep)
@@ -811,7 +818,12 @@ export async function extractArtifactStream(
       provided.add(`${name}/`)
     }
     // A link may point only inside the workspace (the project, without one).
-    const bound = stageRoot ?? workspaceDest ?? destDir
+    // Unpacked into a cache tree (no stage root), `outputs/` and
+    // `workspace-outputs/` are siblings: bounded by the latter alone, a
+    // `dist/link -> big.bin` pointed "out" and the ingest failed. The tree
+    // bounds by their parent; its restore checks against the workspace.
+    const bound =
+      stageRoot ?? (workspaceDest === undefined ? destDir : commonDir(destDir, workspaceDest))
     for (const [name, to] of links) {
       if (accept !== undefined && !accept(name)) {
         throw new ArchiveSecurityError(
