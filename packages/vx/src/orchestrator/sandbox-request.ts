@@ -279,6 +279,7 @@ export async function sandboxRequestFor(
     baseDenyRead: [
       ...(process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot]),
       ...(await credentialStores(workspaceRoot, config.allowWrite)),
+      ...(await vxStores(workspaceRoot, config.allowWrite, cacheDir)),
     ],
     // …but only denials INSIDE the project are worth reporting. A task
     // bumping into the wall is the sandbox working, not a finding: the
@@ -706,6 +707,29 @@ async function credentialStores(
     (p) => workspaceRoot !== p && !workspaceRoot.startsWith(p + path.sep),
   )
   return (await Promise.all(stores.map((p) => denyAround(toRealPath(p), writes)))).flat()
+}
+
+/**
+ * vx's own stores outside the workspace: `~/.vx`, which holds every
+ * repository's shared store (`resolveStoreRoot`), and a cache directory
+ * configured outside it. The rest of home stays readable, so without this
+ * a task with no grant read every project's cached outputs, around the
+ * cross-project wall and its own key. One inside the workspace is denied
+ * with it already.
+ */
+async function vxStores(
+  workspaceRoot: string,
+  writes: readonly string[],
+  cacheDir: string | undefined,
+): Promise<string[]> {
+  const root = toRealPath(workspaceRoot)
+  // HOME first, as `resolveStoreRoot` reads it.
+  const home = process.env['HOME'] || homedir()
+  const stores = [path.join(home, '.vx'), ...(cacheDir === undefined ? [] : [cacheDir])]
+    .filter((p) => existsSync(p))
+    .map(toRealPath)
+    .filter((p) => !atOrUnder(root, p) && !atOrUnder(p, root))
+  return (await Promise.all(stores.map((p) => denyAround(p, writes)))).flat()
 }
 
 /** `dir` denied, or its entries no write grant lies under or at when one is inside it. */
