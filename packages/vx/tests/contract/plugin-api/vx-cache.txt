@@ -7,6 +7,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     private readonly config: ResolvedVxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly env: Record<string, string | undefined> = Bun.env,
+    private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
   )
   lent: (() => string | undefined) | undefined
   async lend(): Promise<LentAccess | undefined>
