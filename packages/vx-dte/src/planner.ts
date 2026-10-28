@@ -2,7 +2,7 @@
 // its known work played out on the workers it has and on N more, as the
 // orchestrator would place it, for each N. The run takes the fewest that
 // end within a margin of the best, and plays again at each event: a miss
-// found, a task done, a worker joined, history read (M, 2026-10-23: "its
+// found, a task done, a worker joined, history read (2026-10-23: "its
 // a TETRIS game. every time we get new data we refine next step").
 
 import type { TaskNode } from '@vzn/vx'
@@ -428,8 +428,8 @@ function play(
  * in the order the run would start them, each joining after its size's `warmUpMs`)
  * whose plan ends within a margin of the best; of those, the ones it gives
  * work within their warm-up start now, the rest when that nears
- * (`againInMs`): a graph that widens later starts its workers later (M,
- * 2026-10-23). An idle worker goes when the plan still ends in that margin
+ * (`againInMs`): a graph that widens later starts its workers later
+ * (2026-10-23). An idle worker goes when the plan still ends in that margin
  * with one started in its place a warm-up later, joining after its own:
  * needed again sooner, it stays, so none is let go and started again.
  */

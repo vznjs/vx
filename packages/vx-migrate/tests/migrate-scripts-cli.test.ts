@@ -1,7 +1,7 @@
 // A repo with package.json scripts and no Turbo, Nx or Vite Task config:
 // vx-migrate maps the scripts, one vx.config.ts per package, and declares
 // the lockfile plugin its lockfile calls for. `vx init` hands such a repo
-// here (M, 2026-10-14: core reads no package.json).
+// here (2026-10-14: core reads no package.json).
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'

@@ -289,7 +289,7 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    'a hand-broken lock entry says the lock is invalid, not a raw crash (M, 2026-10-14)',
+    'a hand-broken lock entry says the lock is invalid, not a raw crash (2026-10-14)',
     async () => {
       // Runs validate no entry (no cost on a run); a crash it causes is
       // named on the failure path only.

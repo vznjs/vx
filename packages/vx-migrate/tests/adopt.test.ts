@@ -1,7 +1,7 @@
 // What vx-migrate does around the mapping (src/adopt.ts): the native/keep
 // choice and installing vx with the repo's manager. solidjs/solid,
 // 2026-10-04: configs were written and nothing installed vx. The repo's
-// own scripts are never edited (owner, 2026-10-06).
+// own scripts are never edited (2026-10-06).
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
@@ -311,7 +311,7 @@ async function migrate(root: string, env: Record<string, string>, args: string[]
 const calls = (root: string) => readFile(path.join(root, '.pnpm-calls'), 'utf8').catch(() => '')
 
 describe('vx-migrate ends with the lock', () => {
-  // owner, 2026-10-14: "vx migrate should generate lock as well". solid's
+  // 2026-10-14: "vx migrate should generate lock as well". solid's
   // shape: ssr has no task Turbo runs, and gets a config all the same.
   it('writes .vx/projects.lock.json once the plugins resolve; --no-install leaves it to vx lock', async () => {
     const { root, env } = await solidShaped()
@@ -368,7 +368,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-history\n',
           { build: 'turbo run build' },
           true,
-          // No task Turbo runs, and still a config (owner, 2026-10-14).
+          // No task Turbo runs, and still a config (2026-10-14).
           true,
           ['pnpm', 'vxHistory'],
           true,
@@ -415,7 +415,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
     TIMEOUT,
   )
 
-  // owner, 2026-10-08: native after --keep left turbo() declared and
+  // 2026-10-08: native after --keep left turbo() declared and
   // @vzn/vx-migrate installed, with a note asking the user to remove them.
   it(
     'native after --keep drops turbo() and removes @vzn/vx-migrate; a turboCache() keeps it',
@@ -489,7 +489,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
     TIMEOUT,
   )
 
-  // owner, 2026-10-16: `vx init --force` on solid removed vx-migrate while
+  // 2026-10-16: `vx init --force` on solid removed vx-migrate while
   // the workspace file, formatted with double quotes, still imported it.
   it(
     'a formatted workspace file that imports vx-migrate keeps it installed',
@@ -512,7 +512,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
     TIMEOUT,
   )
 
-  // M, 2026-10-16: `vx init` on solid, whose `.vx/workspace.ts` an earlier
+  // 2026-10-16: `vx init` on solid, whose `.vx/workspace.ts` an earlier
   // init wrote, installed only vx and vx-migrate; the lock then could not
   // find the @vzn/vx-lockfile the file imports.
   it(
@@ -520,7 +520,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
     async () => {
       const { root, env } = await solidShaped()
       try {
-        // M's file: three plugins package.json does not list, one by subpath.
+        // A real workspace file: three plugins package.json does not list, one by subpath.
         const ws =
           'import { pnpm } from "@vzn/vx-lockfile";\nimport { vxHistory } from "@vzn/vx-history";\nimport { ci } from "@vzn/vx-ci/sub";\n\nexport default {\n  plugins: [pnpm(), vxHistory(), ci()],\n};\n'
         await Bun.write(path.join(root, '.vx/workspace.ts'), ws)
@@ -538,7 +538,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
     TIMEOUT,
   )
 
-  // M, 2026-10-16: "vx init should always install latest and upgrade all".
+  // 2026-10-16: "vx init should always install latest and upgrade all".
   it(
     'the install moves every @vzn/vx-* plugin the root lists with core',
     async () => {
@@ -675,7 +675,7 @@ describe('vx-migrate on a pnpm Nx repo', () => {
   )
 })
 
-// owner, 2026-10-08: "can we make vx init the only command to run?"
+// 2026-10-08: "can we make vx init the only command to run?"
 describe('vx init in a Turbo repo', () => {
   const CORE_BIN = path.join(path.dirname(Bun.resolveSync('@vzn/vx', import.meta.dir)), 'bin.ts')
   const init = async (root: string, env: Record<string, string>, args: string[]) => {
@@ -791,7 +791,7 @@ try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } cat
 
   it('names minimumReleaseAgeExclude when pnpm ran and refused', async () => {
     expect(await probe('', '#!/bin/sh\nexit 1\n')).toBe(
-      'installing vx failed (pnpm add -D -w @vzn/vx exited 1); run it, then vx-migrate again; if pnpm refused a version published within its minimumReleaseAge, list @vzn/vx under minimumReleaseAgeExclude in pnpm-workspace.yaml',
+      'installing vx failed (pnpm add -D -w @vzn/vx exited 1); run it, then vx lock; if pnpm refused a version published within its minimumReleaseAge, list @vzn/vx under minimumReleaseAgeExclude in pnpm-workspace.yaml',
     )
   })
 

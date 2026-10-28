@@ -1,6 +1,6 @@
 // Whether a run is distributed, and under which id: VX_DTE_RUN, or on
 // GitHub Actions the run's own when a keyless adapter and a relay are set,
-// so ci.yml names nothing (owner, 2026-10-23: "super simple" CI).
+// so ci.yml names nothing (2026-10-23: "super simple" CI).
 
 import { afterEach, expect, it } from 'bun:test'
 import { dte, type DteAdapter } from '../src/plugin.js'

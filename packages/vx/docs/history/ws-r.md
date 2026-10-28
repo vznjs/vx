@@ -1,4 +1,4 @@
-# Workstream R — positioning (owner, 2026-10-02)
+# Workstream R — positioning (2026-10-02)
 
 > "vx is faster than everything on the market. Never say vx works in an
 > Nx or Turbo repo — it does not. It can help you migrate; it is only a

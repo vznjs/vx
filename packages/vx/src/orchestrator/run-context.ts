@@ -234,7 +234,7 @@ function ciBranch(env: NodeJS.ProcessEnv | Record<string, string | undefined>): 
  * The repository's DEFAULT (trunk) branch — the axis that separates a
  * mainline run from a PR / feature-branch experiment. A run whose `branch`
  * equals this is a trunk run; everything else is branch work whose timings
- * must NOT pollute the shared scheduling baseline (owner 2026-07-14: "I can
+ * must NOT pollute the shared scheduling baseline (2026-07-14: "I can
  * be experimenting on a branch increasing task time for all later on… don't
  * count their times into main"). Resolution ladder, most-reliable first:
  *   1. GitLab: `CI_DEFAULT_BRANCH` (the project's configured default).
@@ -528,7 +528,7 @@ export function currentBranch(
 
 /**
  * The cache scope a checkout on a branch reads, from the `.git` files
- * alone (owner, 2026-10-17): `<owner>/<repo>:<branch>`, the branch it
+ * alone (2026-10-17): `<owner>/<repo>:<branch>`, the branch it
  * tracks (`branch.<name>.merge` on `branch.<name>.remote`), else its own
  * name on `origin`, the repository named by that remote's URL. None on
  * the default branch, on a detached HEAD, or with no remote URL. CI writes
@@ -555,7 +555,7 @@ export function localBranchScope(
 
 /**
  * The refs a remote reads, in order: a plugin's (`setBranch`, `github()`
- * and `gitlab()` on CI, M 2026-10-25), else git's: the checked-out branch,
+ * and `gitlab()` on CI, 2026-10-25), else git's: the checked-out branch,
  * then the default (`origin/HEAD`). A remote plugin keys or scopes its
  * entries by them (`scope` on turboCache/nxCache); core keys nothing by them.
  */
@@ -610,7 +610,7 @@ function gitConfigSections(workspaceRoot: string): Map<string, Map<string, strin
 }
 
 /**
- * The run's cache scope (owner, 2026-10-17): `VX_CACHE_SCOPE` (empty: none),
+ * The run's cache scope (2026-10-17): `VX_CACHE_SCOPE` (empty: none),
  * else a plugin's (`setBranch`, `github()` on Actions; null: the plugin
  * named the run trusted), else, with a cache plugin to share it, the
  * branch's from git. Undefined: no scope. It keys plugin entries only.

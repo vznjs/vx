@@ -1,11 +1,11 @@
 // vx's own steps (reading the lock, keying, uploads, teardown) rendered as
-// tasks (M, 2026-10-15): `vx:<step>`, and `<plugin package>:setup` /
+// tasks (2026-10-15): `vx:<step>`, and `<plugin package>:setup` /
 // `:teardown`. `:` is no task id's separator, so a step never collides with
 // a project named `vx` or a plugin package's own `#setup` task. A step is
 // not a task: no stat, history row or telemetry record counts it.
 //
 // A run shows only the steps it waits on, before its first task or its end
-// (M, 2026-10-16). One that runs beside the tasks (`vx:prefetch`) is a
+// (2026-10-16). One that runs beside the tasks (`vx:prefetch`) is a
 // `background` step: never shown, and kept for `vx last` (run-steps.ts).
 import type { Logger } from '../report/index.js'
 import type { RunStep } from './run-steps.js'

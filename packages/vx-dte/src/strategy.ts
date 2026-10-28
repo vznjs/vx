@@ -6,7 +6,7 @@ import type { Need } from './dispatch.js'
 /**
  * How a distributed run schedules, one choice per layer, so each can be
  * compared on the same runs (tests/sim.test.ts) and a workspace can pick
- * another (M, 2026-10-23):
+ * another (2026-10-23):
  * - `order`, which waiting task goes first: `critical-path` (longest
  *   chain after it, HEFT's rank), `graphene` (the long and the wide
  *   first, then by chain, Grandl OSDI'16), `fifo` (as they got ready);

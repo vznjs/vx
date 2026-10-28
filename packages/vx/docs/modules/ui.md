@@ -2,7 +2,7 @@
 
 ## Purpose
 
-vx's lines are UI, not a stream of text (M, 2026-10-15). A verb or a
+vx's lines are UI, not a stream of text (2026-10-15). A verb or a
 plugin composes components; each owns its color, indent and spacing, so
 every surface shares one look. Design: `org/devex/log-design.md`. The
 façade exports the set as `ui`, so a plugin draws with the same parts.

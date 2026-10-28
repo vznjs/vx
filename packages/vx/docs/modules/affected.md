@@ -34,7 +34,7 @@ export interface AffectedArgs {
 
 export function affectedProjects(args: AffectedArgs): Promise<Set<string>>
 
-/** What `--affected` seeds its tasks from (owner, 2026-10-04). */
+/** What `--affected` seeds its tasks from (2026-10-04). */
 export interface AffectedChanges {
   projects: Set<string> // what affectedProjects returns
   changed: readonly string[] // workspace-relative changed paths
@@ -157,7 +157,7 @@ a channel that reads a declaration differently from the key does
 exactly that. The config-import channel
 [documents where it stops](./config-imports.md#where-this-stops).
 
-`defaultAffectedBase` (owner, 2026-10-17):
+`defaultAffectedBase` (2026-10-17):
 
 - The base branch is the configured `baseBranch`, else the
   `origin/HEAD` symref's branch (one naming a branch the remote deleted
@@ -214,7 +214,7 @@ spawns) — easy to test against in-memory fixtures.
 - file outside any project → no project selected.
 - bad git ref → UserError with the ref name.
 - `defaultAffectedBase` returns `origin/<baseBranch>`, else the local
-  branch; on that branch it refuses (no default, owner 2026-10-17).
+  branch; on that branch it refuses (no default, 2026-10-17).
 
 Every git spawn goes through `spawnGitSync` / `spawnGit`: a git that is
 not on PATH is util's `gitSpawnRefusal` (one line, the install named),

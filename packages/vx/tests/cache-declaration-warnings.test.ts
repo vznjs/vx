@@ -91,6 +91,20 @@ describe('cache declarations that match nothing', () => {
     await rm(root, { recursive: true, force: true })
   })
 
+  it('the footer counts the warnings on its warn row, and says them no second time', async () => {
+    const lines: string[] = []
+    await run({
+      cwd: root,
+      tasks: ['lost'],
+      projects: ['app'],
+      log: logger(lines),
+      handleSignals: false,
+    })
+    const all = lines.flatMap((l) => l.split('\n'))
+    expect(all.find((l) => l.startsWith('  warn'))).toBe('  warn      2 warnings above')
+    expect(all.filter((l) => l.includes('matched no files'))).toHaveLength(2)
+  })
+
   it('an input glob and an output glob that match nothing are each named once, on the miss only', async () => {
     const first = await runTask('lost')
     expect(first).toEqual([

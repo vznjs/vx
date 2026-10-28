@@ -1,5 +1,5 @@
 // A cache hit restores an output with the mtime it was saved with, and the
-// watcher hears the write. Solid (M, 2026-10-15): `link` read every file
+// watcher hears the write. Solid (2026-10-15): `link` read every file
 // beside `build`'s `**/dist/**`, so `h/dist/h.cjs` was an input by glob and
 // not ignored by path; it is git-ignored, but `types` runs uncached, so an
 // ignored path there counts unless the last cycle wrote it, and "wrote it"

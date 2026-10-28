@@ -1,7 +1,7 @@
 // The words a user reads when a member's package.json is broken, pinned
 // whole: an unparseable manifest names its file, and one saved with a
 // byte-order mark (Windows editors) reads as if it had none (core's until
-// M, 2026-10-14, when manifests left core).
+// 2026-10-14, when manifests left core).
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'

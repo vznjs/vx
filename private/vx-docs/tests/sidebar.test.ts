@@ -47,7 +47,7 @@ const DOCS_PAGES: [string, string][] = [
   ['DTE server', 'docs/servers/dte/'],
   ['Write a plugin', 'docs/writing-plugins/'],
 ]
-// Everything that is not core sits under Plugins (owner, 2026-10-26).
+// Everything that is not core sits under Plugins (2026-10-26).
 const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Plugins']
 const GUIDES_GROUPS = ['Get started', 'Caching', 'Running', 'CI', 'Debugging']
 const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare', 'Plugins', 'Protocols']
@@ -153,7 +153,7 @@ describe('the sidebars', () => {
     )
   })
 
-  // vx takes issues, not contributions (M, 2026-10-20): no contributor
+  // vx takes issues, not contributions (2026-10-20): no contributor
   // index ends the Reference.
   it('the Reference is its groups, ending with the glossary', () => {
     expect(groupLabels(reference)).toEqual(REFERENCE_GROUPS)

@@ -2,7 +2,7 @@
 
 **Start every session by reading `packages/vx/docs/STATUS.md`.** It holds
 direction and what is next. Edit it only when direction or the Next list
-changes, never per PR (owner, 2026-10-12: per-PR STATUS and history
+changes, never per PR (2026-10-12: per-PR STATUS and history
 entries made every open PR conflict). A merged change is recorded in its
 PR and its change file, not in a repo log. This file holds only what does
 not change week to week.
@@ -31,7 +31,7 @@ Pipeline stages a plugin can fill, in order: `config` → `discover` → `projec
 
 Decision drivers, in order: **performance, modularity, extensibility.**
 No cloud or dashboard ships in this repo; the seams exist so someone can
-build those on top. The one exception is `@vzn/vx-dte` (owner, 2026-10-21):
+build those on top. The one exception is `@vzn/vx-dte` (2026-10-21):
 one run spread over workers the user's own CI spawns, through a relay
 (`@vzn/vx-dte-server`) anyone can host. `@vzn/vx-reapi` is the proof
 the seams are wide enough. Pre-alpha, owner-delegated: you own it, ship it.
@@ -92,8 +92,8 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
                         This repo declares bun()
 packages/vx-cache-server  a cache server anyone hosts (PROTOCOL.md, /v1): one bucket, no database; Bun or Docker + S3,
                         or Workers + R2, one handler, one conformance suite
-packages/vx-devtools    code vx's servers and plugins share, never core (M, 2026-10-25: core has nothing to do with
-                        OIDC): first the CI OIDC token check (TRUST, oidcAuth), only jose
+packages/vx-devtools    code vx's servers and plugins share, never core (2026-10-25: core has nothing to do with
+                        OIDC): first the CI OIDC token check (ALLOW, oidcAuth), only jose
 packages/vx-history-server  the task timings vx-history reads, one folded row per task (PROTOCOL.md, /v1): Bun +
                         SQLite, Workers + D1, or Docker
 packages/vx-cache       vxCache(): the remote cache, CI jobs only, over vx-cache-server's /v1 wire
@@ -112,7 +112,7 @@ packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, 
 
 `packages/` holds what ships to npm (vx-dte and its relay too, private
 only until npm has them); `private/` holds what never ships (the site,
-the bench, the plugin examples, deploy configs) (owner, 2026-10-23).
+the bench, the plugin examples, deploy configs) (2026-10-23).
 
 Module boundaries: each `src/<module>/index.ts` is the contract; cross-module
 imports go through it only (`tests/module-boundaries.test.ts`). Plugin
@@ -121,8 +121,8 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 ## Workflow
 
 - **Push, open the PR, let CI judge, merge it yourself once CI is green**
-  (owner, 2026-09-10: "merge whenever you own the project"). No full gate
-  locally before a push (owner, 2026-10-12: gating twice wastes the
+  (2026-09-10: "merge whenever you own the project"). No full gate
+  locally before a push (2026-10-12: gating twice wastes the
   time CI already spends); run only the fast checks for what you touched
   (that test file, oxlint on those files, `oxfmt --check`). Start the next
   unrelated work while CI runs; never wait idle on it. The full gate,
@@ -172,7 +172,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - Sandbox tests skip without `bwrap`/`socat`/`strace`; `VX_REQUIRE_SANDBOX=1`
   (CI) makes an unavailable sandbox a failure.
 - Format: `bun packages/vx/src/bin.ts run lint.oxfmt.fix`.
-- Commits and PR titles: Conventional Commits (owner, 2026-09-27),
+- Commits and PR titles: Conventional Commits (2026-09-27),
   `type(scope): imperative summary`, first line < 72 chars, body says
   why. Types: feat fix perf refactor test docs ci build chore revert; scope is
   the module or package (`cache`, `cli`, `vx-reapi`). CI holds a PR's title and
@@ -184,19 +184,19 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   updates `packages/vx/docs/features.md` (`tests/features-inventory.unsafe.test.ts`
   holds it to the CLI and config contracts). Any behaviour change or
   addition also updates every text it makes stale (docs, blog, site) in
-  the same PR, and Marketing signs that text off (owner, 2026-10-12).
+  the same PR, and Marketing signs that text off (2026-10-12).
 
 ## Conventions
 
-- Always optimize for token usage (owner, 2026-09-27): replies,
+- Always optimize for token usage (2026-09-27): replies,
   commits, PR titles and bodies, docs and logs use plain words, only
   what is needed, fewest words.
 - No comments restating code; only "why" comments for non-obvious decisions.
 - A plugin is `definePlugin(import.meta, hooks)` and its name is its
-  package name — never a field, never overridden (owner, 2026-09-10).
+  package name — never a field, never overridden (2026-09-10).
 - No half-finished implementations behind flags. Ship it or don't write it.
 - Until 1.0 a breaking change ships with no alias, rename notice or
-  migration shim (owner, 2026-10-14): old names simply stop working.
+  migration shim (2026-10-14): old names simply stop working.
   Release notes, blog posts and change files may name the rename.
 - Trust internal code; validate only at boundaries (user input, FS, network).
 - Test fixtures use heredoc strings for `vx.config.mjs`.

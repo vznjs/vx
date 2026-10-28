@@ -6,7 +6,7 @@ A remote cache's token typed into every shell (`export TURBO_TOKEN=…`) is
 friction a laptop should not have. `ctx.secret` keeps a plugin's secrets
 in the OS keychain (`Bun.secrets`: macOS Keychain, libsecret, Windows
 Credential Manager) and, when the plugin offers a prompt, asks once on the
-terminal and saves the answer (owner, 2026-10-17). Core reads no
+terminal and saves the answer (2026-10-17). Core reads no
 environment here: a variable, an option or a config file is the plugin's
 to check first, so the keychain is always the last source.
 `src/util/hidden-prompt.ts` is the terminal side.
@@ -56,7 +56,7 @@ export function terminalOf(stdin, stderr, interrupt?): SecretTerminal
   `runStart`, so a later ask is `no-terminal`, never drawn over the frames.
   An earlier step (`vx:load`) has already started the region's ticker, so
   `quiet` holds every draw from the question to its answer: the ticker's
-  erase wiped the prompt line, and vx looked frozen (M, 2026-10-17).
+  erase wiped the prompt line, and vx looked frozen (2026-10-17).
 - **Order.** The keychain entry (service: the plugin's package name, name:
   `key`), else, given a `prompt`, the terminal's answer, trimmed and saved.
   Else a rejection `isSecretUnavailable` names: `not-found` (no prompt),

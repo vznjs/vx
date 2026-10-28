@@ -149,12 +149,12 @@ pre.mermaid svg {
   height: auto;
 }
 
-/* Tables (owner, 2026-10-24: "ugly and unreadable"): a tinted header, row
+/* Tables (2026-10-24: "ugly and unreadable"): a tinted header, row
    rules and a faint zebra, figures right-aligned on tabular digits
    (data-charts.ts marks figure columns). No outer frame, and a wide table
    scrolls in its .vx-table-scroll wrapper (data-charts.ts) while the table
    itself spans the whole scrolled width, so header and rows run edge to edge
-   (owner, 2026-10-24). */
+   (2026-10-24). */
 .sl-markdown-content .vx-table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;

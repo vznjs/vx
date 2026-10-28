@@ -135,7 +135,7 @@ async function generate(dir: string): Promise<void> {
     workspaces: ['packages/*'],
   })
   await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-  // vx as a user tunes it for CI (owner, 2026-10-09: "config is part of
+  // vx as a user tunes it for CI (2026-10-09: "config is part of
   // the experience"): the history plugin orders by the critical path a
   // timings file from an earlier run recorded. The file sits outside .vx,
   // so a cache wipe keeps it, as CI caches it between runners.
@@ -341,8 +341,8 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   const vxRun = binWorks
     ? [vxBin]
     : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
-  // A source build reports 0.0.0; the commit says which vx ran (owner,
-  // 2026-10-09: every bench table names its versions).
+  // A source build reports 0.0.0; the commit says which vx ran
+  // (2026-10-09: every bench table names its versions).
   const rev = await sh(['git', 'rev-parse', '--short=9', 'HEAD'], vxRoot)
   const vxCommit = rev.ok ? rev.out.trim() : ''
   const vxVer = `${(await sh([...vxRun, '--version'], dir)).out.trim().replace(/ \(.*\)$/, '') || 'workspace'}${vxCommit ? ` @ ${vxCommit}` : ''}`
@@ -488,7 +488,7 @@ async function measure(r: Runner, dir: string): Promise<Row> {
 
 // ---- baseline: the theoretical best case, so every row shows its overhead ----
 //
-// Theoretical, never measured (owner, 2026-10-20): nothing changed and a
+// Theoretical, never measured (2026-10-20): nothing changed and a
 // restore cost 0, so everything a runner spends there is overhead. Cold:
 // the tasks' own durations list-scheduled (critical path first) on
 // CONCURRENCY workers along the exact graph. CPU: the tasks' own commands
@@ -554,7 +554,7 @@ function markdown(rows: Row[], b: Baseline): string {
   const overhead = rows.map(
     (r) => `| ${r.runner} | ${r.version} | ${STATES.map((k) => over(r, k)).join(' | ')} |`,
   )
-  // No cold totals (owner, 2026-10-09 17:54): cold shows only as overhead.
+  // No cold totals (2026-10-09 17:54): cold shows only as overhead.
   const WALL = STATES.filter((k) => k !== 'fresh')
   const totals = [
     `| Runner | ${WALL.map((k) => LABEL[k]).join(' | ')} | CPU, cold | CPU, warm |`,

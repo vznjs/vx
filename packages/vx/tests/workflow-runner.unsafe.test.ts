@@ -89,7 +89,7 @@ describe('a Linux CI job that runs a vx task', () => {
   })
 })
 
-// CI runs vx tasks, never commands of its own (owner, 2026-10-03): the
+// CI runs vx tasks, never commands of its own (2026-10-03): the
 // release logic lives in `release.*` tasks (scripts/release.ts,
 // scripts/auto-release.ts), where it is typed, tested and sandboxed. The
 // three release workflows run nothing but the install and vx tasks, and no

@@ -1,5 +1,5 @@
 // A gitignored path is an input only when the config asks for it outright
-// (owner, 2026-10-16): a literal naming it, or a glob whose fixed prefix is
+// (2026-10-16): a literal naming it, or a glob whose fixed prefix is
 // an ignored directory (`dist/**`), which is then walked on disk. Its bytes
 // are hashed from disk, never stored. A broad glob (`**`, `src/**`) still
 // skips what git ignores, so `node_modules` is never walked.
@@ -112,7 +112,7 @@ it(
   TIMEOUT,
 )
 
-// `node_modules` is no special case (owner, 2026-10-16): an ignored path
+// `node_modules` is no special case (2026-10-16): an ignored path
 // named outright is an input. A generated client (`prisma generate` writes
 // node_modules/.prisma/client) folded nothing, silently, and a build
 // replayed its output after the client changed.

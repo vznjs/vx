@@ -200,7 +200,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
 - Persistent tasks (`exec.persistent`) never reach an executor as tasks
   — a worker cannot hand the submitter a port. A `servers` executor gets
   them as a dependant's `req.servers` instead; a server every dependant
-  of which went to one is never spawned here (owner, 2026-10-22: nothing
+  of which went to one is never spawned here (2026-10-22: nothing
   runs on a DTE run's orchestrator). One with `exec.sandbox` or
   `exec.remote: false`, or one the run holds for itself (requested), is
   not carried.
@@ -209,7 +209,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   it, so the wait for a worker still booting is not the task's run time
   (a 0.5 s task with a 2 s timeout was killed unrun, 2026-10-24). The
   run's stop still aborts its request.
-- An `exclusive` executor runs every task of the run (owner, 2026-10-24:
+- An `exclusive` executor runs every task of the run (2026-10-24:
   no task ever runs on a DTE run's orchestrator; only hits
   restore there). Nothing is pinned for it: `exec.remote: false`,
   `exec.interactive`, sandboxed and probed tasks and every server a

@@ -371,7 +371,7 @@ describe('startRemotePrefetch', () => {
     TIMEOUT,
   )
 
-  // M, 2026-10-23: "We wait for remote before we plan. We need data to
+  // 2026-10-23: "We wait for remote before we plan. We need data to
   // plan. We don't wait for remote without dte". The kept hit's pull starts
   // before the probe answers either way; only demand (an executor that
   // plans, `held`) hears after it.

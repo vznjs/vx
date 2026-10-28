@@ -222,7 +222,7 @@ interface Outputs {
 /**
  * Fit a mapped task's outputs to the committed files they cover, in place,
  * and return one `[pkg#task, todo]` per task this leaves uncached. Core
- * never cleans a committed file (owner, 2026-10-14), so
+ * never cleans a committed file (2026-10-14), so
  * the outputs keep them; what is left is the readers' `!` that hides one.
  * `tracked` is root-relative.
  */

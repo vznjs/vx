@@ -219,7 +219,7 @@ describe('the cache meter obeys the same rules', () => {
     const s = stats({ skipped: 3, total: 3 })
     expect(bar(render(s), 'cache')).toHaveLength(BAR_WIDTH)
     // The count is the tasks legend's alone: the footer never says a fact
-    // twice (M, 2026-10-14).
+    // twice (2026-10-14).
     expect(legend(render(s), 'cache')).not.toContain('skipped')
   })
 

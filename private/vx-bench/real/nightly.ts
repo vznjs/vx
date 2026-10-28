@@ -1,4 +1,4 @@
-// The nightly real-repo bench (owner, 2026-10-12): every repo on
+// The nightly real-repo bench (2026-10-12): every repo on
 // /compare/real-repos/, re-run against the tool it ships with on this
 // checkout's vx. Each case's best rep is compared; a case vx loses is a
 // LOSS line and the run exits 1, so the routine that runs it files the
@@ -216,7 +216,7 @@ for (const repo of REPOS) {
 }
 
 const secs = (ms: number): string => `${(ms / 1000).toFixed(ms < 1000 ? 3 : 2)} s`
-// "N× faster" from 2×, a percentage below it (owner, 2026-10-09).
+// "N× faster" from 2×, a percentage below it (2026-10-09).
 const verdict = (r: Row): string => {
   const [fast, slow] = r.vx <= r.rival ? [r.vx, r.rival] : [r.rival, r.vx]
   const ratio = slow / fast

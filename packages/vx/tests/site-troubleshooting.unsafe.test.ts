@@ -42,7 +42,7 @@ describe('the Troubleshooting page quotes vx as it prints', () => {
     expect(missing).toEqual([])
   })
 
-  // A project is a directory with a vx.config (owner, 2026-10-14): the
+  // A project is a directory with a vx.config (2026-10-14): the
   // J2-38 row (a config with no package.json, skipped) left with the
   // warning, and the refusal a name clash prints took its place.
   it('names the two-projects-one-name refusal and its fix', () => {

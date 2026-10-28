@@ -1,6 +1,6 @@
 // A remote layer's `open`: asked once per run, before the first task, only
 // when the policy lets the remote read or write, never by a plan; a throw
-// is a warning and the remote leaves the run (owner, 2026-10-17: where
+// is a warning and the remote leaves the run (2026-10-17: where
 // turboCache() asks the OS keychain, or the terminal, for a token).
 
 import { rm } from 'node:fs/promises'

@@ -85,7 +85,7 @@ a core feature.
 **Exit:** 2.1–2.5 done, `parity.md` and `comparison.md` show no open
 row, and the STATUS "Next" list holds nothing but milestone 3.
 
-## Track W — the site teaches (owner, 2026-09-23)
+## Track W — the site teaches (2026-09-23)
 
 The owner asked for a site that explains what task orchestration is, with
 interactive examples and diagrams. It should show where vx is stronger:

@@ -4,16 +4,12 @@
 
 import { beforeAll, describe, expect, it } from 'bun:test'
 
-/** A ref's scope on the wire, by an implementation apart from the server's. */
-export const scopeOf = (ref: string): string =>
-  new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
-
 export interface Target {
   /** The server's URL. */
   base(): string
-  /** A token for the server: of main (the ref TRUST protects), of `feature`, or reading only. */
+  /** A token for the server: of main, of `feature`, or reading only. */
   sign(job: 'main' | 'branch' | 'read'): Promise<string>
-  /** The issuer and repository its tokens name, which every request names by their hashes. */
+  /** The issuer and repository its tokens name, which every query names. */
   readonly issuer: string
   readonly repository: string
 }
@@ -29,10 +25,6 @@ export function conformance(name: string, target: Target): void {
   const call = (path: string, init: RequestInit = {}, token: string | null = tokens.read) => {
     const headers = new Headers(init.headers)
     if (token !== null) headers.set('authorization', `Bearer ${token}`)
-    if (!headers.has('vx-repository')) {
-      headers.set('vx-issuer', scopeOf(target.issuer))
-      headers.set('vx-repository', scopeOf(target.repository))
-    }
     return fetch(new URL(path, target.base()), { ...init, headers })
   }
   const post = (path: string, body: unknown, token?: string | null) =>
@@ -47,16 +39,12 @@ export function conformance(name: string, target: Target): void {
     )
   const upload = (timings: unknown[], token = tokens.main) =>
     post('/v1/timings/upload', { timings }, token)
-  const query = async (
-    hashes: string[],
-    scopes = [scopeOf('refs/heads/main')],
-    token = tokens.read,
-  ) =>
-    (
-      (await (await post('/v1/timings/query', { scopes, hashes }, token)).json()) as {
-        timings: Record<string, unknown>
-      }
-    ).timings
+  const named = () => ({ issuer: target.issuer, repository: target.repository })
+  const ask = (refs: string[], hashes: unknown, token: string | null = tokens.read) =>
+    post('/v1/timings/query', { ...named(), refs, hashes }, token)
+  const query = async (hashes: string[], refs = ['refs/heads/main'], token = tokens.read) =>
+    ((await (await ask(refs, hashes, token)).json()) as { timings: Record<string, unknown> })
+      .timings
   describe(`${name} speaks vx-history v1`, () => {
     it('folds each upload into one row per task', async () => {
       const h = hash()
@@ -107,7 +95,7 @@ export function conformance(name: string, target: Target): void {
       })
     })
 
-    it('reads each hash from the first scope asked that holds it', async () => {
+    it("writes under the key of the token's ref, which a reader builds from its refs", async () => {
       const [a, b] = [hash(), hash()]
       await upload([
         { hash: a, durationMs: 10 },
@@ -115,14 +103,37 @@ export function conformance(name: string, target: Target): void {
       ])
       await query([a, b])
       await upload([{ hash: a, durationMs: 99 }], tokens.branch)
-      const both = [scopeOf('refs/heads/feature'), scopeOf('refs/heads/main')]
+      const both = ['refs/heads/feature', 'refs/heads/main']
       expect(await query([a, b], both)).toMatchObject({
         [a]: { durationMs: 99 },
         [b]: { durationMs: 20 },
       })
-      expect((await query([a, b], [scopeOf('refs/heads/feature')]))[b]).toBeUndefined()
+      expect((await query([a, b], ['refs/heads/feature']))[b]).toBeUndefined()
       expect((await query([a], [...both].reverse()))[a]).toMatchObject({ durationMs: 10 })
       expect(await query([hash()])).toEqual({})
+    })
+
+    it('takes an upload and a query at its limits: 10 000 tasks, each hash 512 characters', async () => {
+      const hashes = Array.from({ length: 10_000 }, (_, i) =>
+        `${i}`.padStart(512, crypto.randomUUID()),
+      )
+      const timings = hashes.map((h) => ({
+        hash: h,
+        durationMs: 2_147_483_647_000,
+        cores: 1.2345678901234567,
+        rssBytes: 9_007_199_254_740_991,
+      }))
+      expect((await upload(timings)).status).toBe(204)
+      const got = await query(hashes)
+      expect([Object.keys(got).length, got[hashes[9_999]!]]).toEqual([
+        10_000,
+        {
+          durationMs: 2_147_483_647_000,
+          cores: 1.2345678901234567,
+          rssBytes: 9_007_199_254_740_991,
+          runs: 1,
+        },
+      ])
     })
 
     it('refuses a write from a token that reads only, and reports that are not some', async () => {
@@ -143,26 +154,53 @@ export function conformance(name: string, target: Target): void {
       }
     })
 
-    it("refuses a query without refs' hashes, or with too many scopes or hashes", async () => {
-      const main = [scopeOf('refs/heads/main')]
-      // A plain ref never goes on the wire: it is refused, not hashed.
-      const plain = [['refs/heads/main'], [main[0]!.toUpperCase()]]
-      for (const scopes of [undefined, [], ...plain, main[0], Array(9).fill(main[0])]) {
-        expect((await post('/v1/timings/query', { scopes, hashes: ['a'] })).status).toBe(400)
+    it('refuses a query that names no repository, refs or hashes, or too many', async () => {
+      const main = ['refs/heads/main']
+      for (const body of [
+        { ...named(), refs: main },
+        { ...named(), hashes: ['a'] },
+        { ...named(), refs: [], hashes: ['a'] },
+        { ...named(), refs: ['main'], hashes: ['a'] },
+        { ...named(), refs: Array(9).fill(main[0]), hashes: ['a'] },
+        { ...named(), refs: main, hashes: Array.from({ length: 10_001 }, (_, i) => String(i)) },
+        { repository: target.repository, refs: main, hashes: ['a'] },
+        { issuer: target.issuer, repository: 'nameonly', refs: main, hashes: ['a'] },
+      ]) {
+        expect((await post('/v1/timings/query', body)).status).toBe(400)
       }
-      const many = Array.from({ length: 10_001 }, (_, i) => String(i))
-      expect((await post('/v1/timings/query', { scopes: main, hashes: many })).status).toBe(400)
+    })
+
+    it('refuses the body a client before plain refs sent, saying what it takes', async () => {
+      const res = await post('/v1/timings/query', { scopes: ['refs/heads/main'], hashes: ['a'] })
+      expect(res.status).toBe(400)
+      expect(JSON.stringify(await res.json())).toContain('issuer')
+    })
+
+    it('refuses a token of another repository than the query names', async () => {
+      const res = await post('/v1/timings/query', {
+        ...named(),
+        repository: 'acme/other',
+        refs: ['refs/heads/main'],
+        hashes: ['a'],
+      })
+      expect(res.status).toBe(403)
+      // Names differ in case only: the same repository.
+      const upper = await post('/v1/timings/query', {
+        ...named(),
+        repository: target.repository.toUpperCase(),
+        refs: ['refs/heads/main'],
+        hashes: ['a'],
+      })
+      expect(upper.status).toBe(200)
     })
 
     it('names its limits, refuses no token, a wrong method and an unknown route', async () => {
       expect(await (await call('/v1/capabilities')).json()).toEqual({
         maxUploadTimings: 10_000,
         maxQueryHashes: 10_000,
-        maxQueryScopes: 8,
+        maxQueryRefs: 8,
       })
       expect((await call('/v1/capabilities', {}, null)).status).toBe(401)
-      const other = { 'vx-issuer': scopeOf(target.issuer), 'vx-repository': scopeOf('acme/other') }
-      expect((await call('/v1/capabilities', { headers: other })).status).toBe(403)
       const get = await call('/v1/timings/query')
       expect([get.status, get.headers.get('allow')]).toEqual([405, 'POST'])
       expect((await call('/v1/nope')).status).toBe(404)

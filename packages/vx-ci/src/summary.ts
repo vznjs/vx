@@ -35,7 +35,7 @@ function fmtMs(ms: number): string {
 
 function statusLabel(t: TaskTelemetry): string {
   // A carried server ran inside each dependant, on its worker: its time is
-  // theirs, and a `ran 0ms` row read as a run that did nothing (M, 2026-10-23).
+  // theirs, and a `ran 0ms` row read as a run that did nothing (2026-10-23).
   if (t.carried === true) return '🔗 served'
   // A hit that found its outputs in place restored nothing: up to date,
   // as vx's own summary says it (a remote hit always restored).
@@ -159,7 +159,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
       (summary.hitCount > 0 ? ` ${hitSplit(summary)}` : ''),
     ...(summary.failedCount > 0 ? [`**${summary.failedCount}** failed`] : []),
     ...(summary.abortedCount > 0 ? [`**${summary.abortedCount}** aborted`] : []),
-    // The run played perfectly on what each task took, beside the real time (M, 2026-10-23).
+    // The run played perfectly on what each task took, beside the real time (2026-10-23).
     summary.idealMs === undefined
       ? fmtMs(summary.totalDurationMs)
       : `${fmtMs(summary.totalDurationMs)} (ideal ${fmtMs(summary.idealMs)})`,
@@ -203,7 +203,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   lines.push(`| ${header.join(' | ')} |`)
   lines.push(`|${header.map(() => ' --- ').join('|')}|`)
   // By status, failures first (the eye lands on the table's top rows),
-  // then the longest first (M, 2026-10-23).
+  // then the longest first (2026-10-23).
   const ordered = [...summary.tasks].sort(
     (a, b) =>
       rank(a) - rank(b) ||
@@ -231,7 +231,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   return lines.join('\n')
 }
 
-// "13 (1 failed)" read as 13 run in all, of 14 (owner, 2026-10-23).
+// "13 (1 failed)" read as 13 run in all, of 14 (2026-10-23).
 const tasksCell = (ok: number, failed: number): string =>
   failed > 0 ? `${ok} ok, ${failed} failed` : `${ok}`
 
@@ -241,7 +241,7 @@ const pct = (x: number): string => `${Math.round(x * 100)}%`
  * The workers an executor ran the run on (vx-dte's): the cores its tasks
  * booked beside the cores they used, each averaged over the time the
  * worker was online, so an idle or overfilled one shows on the page
- * (owner, 2026-10-23). "4.0 of 4" read as a peak; it is that average (M:
+ * (2026-10-23). "4.0 of 4" read as a peak; it is that average (M:
  * "is this an avg booking?").
  */
 function renderWorkers(
@@ -278,7 +278,7 @@ function renderWorkers(
       ].join(' | ')} |`,
     )
   }
-  // Nothing runs on a distributed run's own machine (owner, 2026-10-23):
+  // Nothing runs on a distributed run's own machine (2026-10-23):
   // a task that did is named, a bug to see. A carried server ran inside its
   // dependants, on their worker.
   const ran = tasks.filter(

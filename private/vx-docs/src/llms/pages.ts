@@ -1,4 +1,4 @@
-// The site as plain markdown for AI agents (owner, 2026-10-08: vx is AI
+// The site as plain markdown for AI agents (2026-10-08: vx is AI
 // first). Every docs page is served raw beside its HTML (`<page>.md`),
 // llms.txt indexes them, llms-full.txt is all of them in one file.
 import { getCollection, type CollectionEntry } from 'astro:content'

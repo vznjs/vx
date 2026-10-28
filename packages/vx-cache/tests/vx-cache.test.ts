@@ -17,13 +17,13 @@ import {
   issuer,
   READ_JOB,
   REPO,
-  TRUST,
+  ALLOW,
   MAIN_JOB,
 } from '../../vx-cache-server/tests/issuer.js'
 import { memBlobs } from '../../vx-cache-server/tests/mem-blobs.js'
 import { hasCiToken, resolveVxCacheConfig, vxCache, VxCacheLayer } from '../src/index.js'
 
-/** The repository the server's TRUST serves, as a workspace names it. */
+/** The repository the server's ALLOW names, as a workspace names it. */
 const NAMED = { issuer: GITHUB, repository: 'Acme/App' }
 
 let iss: Issuer
@@ -37,7 +37,7 @@ function server(maxUploadBytes = 1 << 20, readAccess?: string) {
   const seen: { method: string; path: string; body: string; scope: string | null }[] = []
   const handle = createCacheServer({
     blobs: memBlobs(blobs),
-    authorize: oidcAuth({ trust: TRUST, readAccess, fetchJson: (u) => iss.fetchJson(u) }),
+    authorize: oidcAuth({ allow: ALLOW, readAccess, fetchJson: (u) => iss.fetchJson(u) }),
     limits: { maxUploadBytes },
   })
   const srv = Bun.serve({
@@ -119,7 +119,7 @@ describe('VxCacheLayer', () => {
     expect([await got!.body.text(), srv.seen.at(-1)!.scope]).toEqual(['hello', main])
     expect(await c.get('bb22')).toBeNull()
     expect(srv.seen.slice(-2).map((r) => r.scope)).toEqual([f, main])
-    // No ref goes on the wire plain (M, 2026-10-25).
+    // No ref goes on the wire plain (2026-10-25).
     expect(srv.seen.filter((r) => `${r.body} ${r.scope}`.includes('refs/'))).toEqual([])
   })
 
@@ -365,6 +365,53 @@ describe('GitHub OIDC', () => {
       await github.stop(true)
     }
   })
+
+  // A DTE run asks GitHub again every few minutes, for itself and the
+  // token it lends: one 503 among those asks turned the remote cache off
+  // for the rest of the run, on every worker.
+  it('asks GitHub again after a 5xx or a 429, and gives up on a refusal', async () => {
+    const srv = server()
+    const answers = [503, 429, 200]
+    let asked = 0
+    const github = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: async (req) => {
+        asked++
+        const status = answers.shift() ?? 403
+        if (status !== 200) return new Response('busy', { status })
+        const audience = new URL(req.url).searchParams.get('audience')!
+        return Response.json({ value: await iss.sign(BRANCH_JOB, audience) })
+      },
+    })
+    try {
+      const env = {
+        ACTIONS_ID_TOKEN_REQUEST_URL: github.url.href,
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'gh',
+      }
+      const c = new VxCacheLayer(
+        resolveVxCacheConfig({ ...NAMED, url: srv.url }, env)!,
+        fetch,
+        env,
+        async () => {},
+      )
+      await c.put('b1', new Blob(['x']), { durationMs: 1 })
+      expect(asked).toBe(3)
+      const refused = new VxCacheLayer(
+        resolveVxCacheConfig({ ...NAMED, url: srv.url }, env)!,
+        fetch,
+        env,
+        async () => {},
+      )
+      await expect(refused.put('b2', new Blob(['y']), { durationMs: 1 })).rejects.toThrow(
+        "GitHub's OIDC endpoint: HTTP 403; remote cache off for this run",
+      )
+      expect(asked).toBe(4)
+    } finally {
+      await srv.stop()
+      await github.stop(true)
+    }
+  })
 })
 
 describe('lend', () => {
@@ -400,7 +447,7 @@ describe('lend', () => {
       expect(lent?.token.split('.')).toHaveLength(3)
       expect(lent!.expiresAt! - Date.now()).toBeGreaterThan(4 * 60_000)
 
-      // Its own token reads only: main's ref from a job no rule trusts.
+      // Its own token reads only: a pull_request_target job writes nothing.
       await expect(on('other').put('a1', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
         'writes off for this run',
       )
@@ -429,7 +476,7 @@ describe('lend', () => {
 })
 
 describe('config', () => {
-  // M, 2026-10-25: a proxy in front of the server (an Access service token).
+  // 2026-10-25: a proxy in front of the server (an Access service token).
   it('sends its headers on every request to the server, never over the CI token', async () => {
     const seen: Headers[] = []
     const fetchImpl = (async (_url: string, init: RequestInit) => {
@@ -485,7 +532,7 @@ describe('config', () => {
     expect(hasCiToken(gh, false)).toBe(true)
   })
 
-  // M, 2026-10-25: the user names both, always; nothing guesses them.
+  // 2026-10-25: the user names both, always; nothing guesses them.
   it('refuses a workspace that names no issuer or repository', () => {
     for (const [options, said] of [
       [{ repository: 'acme/app' }, "vxCache(): issuer must be the CI issuer's URL"],

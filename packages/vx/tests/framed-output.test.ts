@@ -79,7 +79,7 @@ describe('identity hues never read as an outcome', () => {
   })
 })
 
-// M, 2026-10-15: "same project same color, same target name same color".
+// 2026-10-15: "same project same color, same target name same color".
 describe('a target hue is a function of its name', () => {
   const on = { enabled: true }
   const taskPart = (s: string): string => s.slice(s.indexOf('#') + 1)
@@ -666,7 +666,7 @@ describe('persistent task framing', () => {
   it('the LIVE frame shows sandbox violations too — a focused run is where they are read', () => {
     // The focused/live frame omitted the section entirely, so `vx run
     // <one-task>` — exactly how someone debugging a single task invokes it —
-    // printed a failure with no violations at all (owner, 2026-09-05).
+    // printed a failure with no violations at all (2026-09-05).
     const n = node('@vzn/vx#test', 'bun test')
     const close = formatFrameClose(
       n,

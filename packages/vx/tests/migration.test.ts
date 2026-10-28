@@ -126,7 +126,7 @@ describe('applyMigration', () => {
       ]),
     )
     expect(existsSync(path.join(root, 'app', 'vx.config.ts'))).toBe(true)
-    // owner, 2026-10-14: "no skips. every project gets a config".
+    // 2026-10-14: "no skips. every project gets a config".
     expect(readFileSync(path.join(root, 'empty', 'vx.config.ts'), 'utf8')).toBe(
       "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default {\n  tasks: {},\n} satisfies ProjectConfig\n",
     )
@@ -216,7 +216,7 @@ describe('applyMigration', () => {
     )
   })
 
-  // Every fact said once (M, 2026-10-15): the cache TODO already says the
+  // Every fact said once (2026-10-15): the cache TODO already says the
   // task always runs without the block; a line after it said it again.
   it('says the cache TODO once, with no second line about caching', async () => {
     mkdirSync(path.join(root, 'app'))

@@ -388,7 +388,7 @@ describe('Nx parity — project roots, ignored files and refused spellings', () 
 // Nx's symlink cases: tasks/hashers/disk_expansion (a fileset reads a link
 // where it points) and walker.rs (a linked file is read, a linked directory
 // is not entered). vx keys what a link points to wherever it lies, and
-// enters a linked directory too (owner, 2026-10-16: "Do like nx", directory
+// enters a linked directory too (2026-10-16: "Do like nx", directory
 // links included); linked-inputs.test.ts pins the runs and hits.
 describe('Nx parity — symlinked inputs', () => {
   let root: string

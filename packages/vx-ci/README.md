@@ -52,8 +52,7 @@ checked and nothing loads, so declaring it unconditionally is safe.
 The options type is `GithubPluginOptions`; `renderJobSummary` renders the
 summary lines the plugin posts (the site's CI guide sample is rendered from it).
 The package exports `github`, `gitlab`, `renderJobSummary` and the types
-`GithubPluginOptions` and `GitlabPluginOptions`; nothing else. `append` and `sizeOf` are test seams:
-they replace the summary writer and its size probe.
+`GithubPluginOptions` and `GitlabPluginOptions`; nothing else.
 
 ```ts
 github({

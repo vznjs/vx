@@ -447,14 +447,14 @@ use your own instead.
 - A persistent task a task depends on starts on the worker that runs the
   task, once per worker, ready before it, and stops when the worker leaves;
   the orchestrator never starts it, and a worker no dependant reaches
-  never does (owner, 2026-10-22).
+  never does (2026-10-22).
 - A task whose key folds a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path
   under the worker's checkout root reads as the same path under this
   machine's, as the task's environment does.
 - No task runs on the orchestrator, only cache hits restore there
-  (owner, 2026-10-24): a task with `exec.remote: false`, an interactive
+  (2026-10-24): a task with `exec.remote: false`, an interactive
   one and their dependants run on workers too (the executor is
   `exclusive`). A task no worker can take refuses the run before any
   starts, naming it: one whose `exec.platforms` no size offers, or a
@@ -552,7 +552,7 @@ use your own instead.
   one asked then would queue behind it. When none is online
   or starting and this machine has no share, the remaining tasks fail
   with `no worker could start`.
-- Only `leave` ends a participant at once (owner, 2026-10-25): the
+- Only `leave` ends a participant at once (2026-10-25): the
   orchestrator's at its run's end is the final call that closes the run,
   and a worker's when it is done. Either whose socket drops without it
   dials again, 3 times within 10 s, and the relay keeps it, and its run,

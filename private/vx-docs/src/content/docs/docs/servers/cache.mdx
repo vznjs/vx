@@ -31,12 +31,12 @@ bun add @vzn/vx-cache-server
   "name": "vx-cache-server",
   "main": "node_modules/@vzn/vx-cache-server/src/worker.ts",
   "compatibility_date": "2026-10-01",
-  "vars": { "TRUST": [] },
+  "vars": { "ALLOW": "" },
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }]
 }
 ```
 
-Fill `TRUST` ([`TRUST`](../#trust-who-reads-and-who-writes)), then:
+Fill `ALLOW` ([`ALLOW`](../#allow-who-takes-part)), then:
 
 ```sh
 bunx wrangler login
@@ -52,7 +52,7 @@ is a var in `wrangler.jsonc`.
 Results go in any S3-compatible bucket:
 
 ```sh
-TRUST='[{"iss":"https://token.actions.githubusercontent.com","repository":"acme/app","event_name":"push","ref":"refs/heads/main"}]' \
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' \
 S3_BUCKET=vx-cache S3_ENDPOINT=https://s3.example.com \
 S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
 bunx @vzn/vx-cache-server --port 8080
@@ -70,7 +70,7 @@ you like over one bucket, behind a load balancer.
 <TabItem label="Docker">
 
 ```sh
-docker run -p 8080:8080 -e TRUST='[…]' -e S3_BUCKET=… -e S3_ENDPOINT=… \
+docker run -p 8080:8080 -e ALLOW='…' -e S3_BUCKET=… -e S3_ENDPOINT=… \
   -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… ghcr.io/vznjs/vx-cache-server
 ```
 
@@ -93,15 +93,15 @@ curl https://cache.example.com/v1/capabilities
 {"code":"bad_request","message":"vx-issuer and vx-repository: the issuer's and the repository's hashes (PROTOCOL.md § Keys)"}
 ```
 
-That refusal means it is up and has a `TRUST`. With `TRUST` empty it
-says `the server trusts no CI: set TRUST` instead.
+That refusal means it is up and has an `ALLOW`. With `ALLOW` empty it
+says `the server admits no CI: set ALLOW` instead.
 
 ## Settings
 
 | Setting | Default | What it sets |
 | --- | --- | --- |
-| `TRUST` | empty: refuse every request | the repositories it serves, and which runs write their protected branches ([`TRUST`](../#trust-who-reads-and-who-writes)) |
-| `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token, such as a laptop's, reads a repository `TRUST` names, and writes nothing |
+| `ALLOW` | empty: refuse every request | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
+| `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token, such as a laptop's, reads a repository `ALLOW` names, and writes nothing |
 | `AUDIENCE` | the URL it is reached at | the `aud` a CI token must name |
 | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | | the bucket (Bun and Docker), as Bun's S3 client reads them |
 | `MAX_CHECK_HASHES` | 500 (6 on Workers) | how many lookups one check may make |
@@ -138,7 +138,7 @@ export default defineWorkspace({
 | --- | --- | --- |
 | `url` | `VX_CACHE_URL` | the server's URL |
 | `issuer` | required | your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL |
-| `repository` | required | the repository, `org/name`, as `TRUST` names it |
+| `repository` | required | the repository, `org/name`, as `ALLOW` names it |
 | `timeoutMs` | 30 000 | how long one read or check may take |
 | `uploadTimeoutMs` | 60 000 | how long one upload may take |
 | `headers` | none | headers sent on every request, for a proxy in front of the server |
@@ -228,6 +228,8 @@ keeps the first bytes.
 
 A download through Workers goes through Cloudflare's cache: after R2
 serves a result once, that data center answers it without R2.
+
+Whether a result exists is asked of R2 alone, so every data center agrees.
 
 ## API
 

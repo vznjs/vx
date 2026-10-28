@@ -1,5 +1,5 @@
 // `vx init` in a Turbo or Nx repo, the temporary start the migrate guide
-// shows (owner, 2026-10-02: Turbo and Nx only via migration): four
+// shows (2026-10-02: Turbo and Nx only via migration): four
 // commands, and the guide's `.vx/workspace.ts` held to the one init writes.
 // The run spawns bunx, which a sandboxed shard cannot host — hence the
 // unsafe suite.
@@ -187,7 +187,7 @@ case "$2" in --file=*) f="\${2#--file=}"; mkdir -p "$(dirname "$f")"; cp "$(dirn
   chmodSync(bin, 0o755)
 }
 
-// `vx init` runs vx-migrate, native without a terminal (owner, 2026-10-08):
+// `vx init` runs vx-migrate, native without a terminal (2026-10-08):
 // the workspace file declares the npm lockfile's plugin, never turbo() or nx().
 const NATIVE = `import type { WorkspaceConfig } from '@vzn/vx/config'
 import { npm } from '@vzn/vx-lockfile'

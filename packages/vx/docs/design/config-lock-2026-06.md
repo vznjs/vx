@@ -95,8 +95,8 @@ Hard failures (`UserError`, exit 1):
 There is deliberately **no silent fallback to evaluation**: the lock's
 contract is "what runs is what was locked". Falling back would
 reintroduce exactly the env-dependence the user locked against. A run
-parses the lock's JSON shape and validates no entry (owner,
-2026-10-14): `vx lock` validated what it wrote, and `--check` audits.
+parses the lock's JSON shape and validates no entry
+(2026-10-14): `vx lock` validated what it wrote, and `--check` audits.
 
 Cache-key interaction: keys hash the resolved config object (principle
 "resolved-config hashing"), so frozen configs simply pin the hashed
@@ -201,7 +201,7 @@ confidence. Revised contract:
   and rejected: scoped runs evaluate only a dep closure and cannot
   correctly rewrite a whole-workspace lock.
 
-**Revision (owner, 2026-06-13):** `--frozen` performs no staleness
+**Revision (2026-06-13):** `--frozen` performs no staleness
 checks at all — in the canonical pipeline `vx lock --check` runs
 first and re-evaluates everything, so a per-file byte-hash re-check
 inside the run is redundant work wearing a safety costume. The byte

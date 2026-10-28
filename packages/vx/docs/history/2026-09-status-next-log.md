@@ -1763,7 +1763,7 @@ their editor — says the baseline "may read its resolved
 `cache.inputs.files`, write the prefixes of its `cache.outputs.files`",
 and says it again on `read` ("beyond the resolved `cache.inputs.files`")
 and on `write` ("beyond the `cache.outputs.files` prefixes"). The code
-deliberately derives NOTHING from `cache` (owner, 2026-09-05; stated in
+deliberately derives NOTHING from `cache` (2026-09-05; stated in
 `sandbox-request.ts`, pinned by 433, and `sandbox-request.ts:140` binds
 `sandbox.allow?.write ?? []`, never the cache). `schema.md` already
 says it correctly. So the prose doc is right, the code is right, and

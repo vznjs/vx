@@ -340,7 +340,7 @@ describe("troubleshooting's known limits are still limits", () => {
 
 describe('the flaky-tasks post shows the rows a run prints', () => {
   // A flaky verdict rides the task's row (nothing prints below the footer,
-  // owner 2026-10-06): a failure as the ◼ row, a pass as the executed row.
+  // 2026-10-06): a failure as the ◼ row, a pass as the executed row.
   const row = (
     id: string,
     status: 'success' | 'failed',
@@ -752,7 +752,7 @@ describe('the from-nx post says how executors run, and names the servers', () =>
     expect(page.replace(/\s+/g, ' ')).toContain('executor target is written as its `nx-exec` line')
     expect(guide).toContain('An executor target is written as an `nx-exec` line')
     // The mapper agrees: one executor line, `nxExecCommand`'s (its `.env`
-    // files appended), and no translator beside it (owner, 2026-10-03).
+    // files appended), and no translator beside it (2026-10-03).
     expect(src).toContain(
       'line(nxExecCommand(executor, projectName, targetName, configuration, options, files))',
     )
@@ -1316,7 +1316,7 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
       .map((d) => path.join(packagesDir, d, 'package.json'))
       .filter((f) => existsSync(f))
       // A package still marked private ships too: the docs describe the
-      // released product (owner, 2026-10-26).
+      // released product (2026-10-26).
       .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string })
       .filter((m) => m.name !== '@vzn/vx')
       .map((m) => m.name)
@@ -1497,9 +1497,9 @@ describe('the README and the Docs say which packages npm has', () => {
   // Both once told readers to install plugins npm answered 404 for (J-93),
   // under a note that said so; every plugin has been published since 0.0.484,
   // and a note left behind would send a reader away from a working install.
-  // A private package is listed too (owner, 2026-10-25: "vx-dte is missing
+  // A private package is listed too (2026-10-25: "vx-dte is missing
   // in readme"), unmarked: the docs describe the published product, and
-  // publishing is the owner's to do (owner, 2026-10-26: "Remove all this bs").
+  // publishing is the owner's to do (2026-10-26: "Remove all this bs").
   it("the README's plugin table is every package but @vzn/vx", () => {
     const packagesDir = path.resolve(import.meta.dir, '..', '..')
     const all = readdirSync(packagesDir)
@@ -1522,7 +1522,7 @@ describe('the README and the Docs say which packages npm has', () => {
       .map((d) => path.join(packagesDir, d, 'package.json'))
       .filter((f) => existsSync(f))
       // A package still marked private ships too: the docs describe the
-      // released product (owner, 2026-10-26).
+      // released product (2026-10-26).
       .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string })
       .filter((m) => m.name !== '@vzn/vx')
       .map((m) => m.name.replace('/', '\\/'))
@@ -2280,8 +2280,8 @@ describe('the pages say where an entry stdout lives', () => {
 })
 
 // The headline Nx column once paid npm and a Node fork per task
-// (item 735); the harness now gives Nx `nx:run-commands` targets (owner,
-// 2026-10-04), and benchmarks.md keeps the measured why.
+// (item 735); the harness now gives Nx `nx:run-commands` targets
+// (2026-10-04), and benchmarks.md keeps the measured why.
 describe('the headline Nx column runs nx:run-commands', () => {
   it('the harness writes them, and benchmarks.md keeps the run-script read', () => {
     const root = path.resolve(import.meta.dir, '..', '..', '..')

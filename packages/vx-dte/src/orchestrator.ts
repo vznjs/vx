@@ -82,7 +82,7 @@ interface Job {
   up?: Set<string>
 }
 
-/** The longest a task waits on the worker holding its upstream's files before they are made again (M, 2026-10-23: 10 s on any wait). */
+/** The longest a task waits on the worker holding its upstream's files before they are made again (2026-10-23: 10 s on any wait). */
 const PIN_WAIT_MS = 10_000
 
 /** No task began or ended this long: the run says what it waits on, each time again. */
@@ -267,7 +267,7 @@ export class Orchestrator {
   private ended = false
   /**
    * How long a worker of a size may take to join: twice the first of its
-   * size that did (owner, 2026-10-23: "we learn that from first we get, and
+   * size that did (2026-10-23: "we learn that from first we get, and
    * double its time"). Unknown until one joins, so no wait before.
    */
   private readonly joinLimitMs = new Map<string, number>()
@@ -288,7 +288,7 @@ export class Orchestrator {
   private restarts = 0
   /**
    * Each uncached task a worker ran: its files are there alone, so its
-   * dependants go there (M, 2026-10-25). An uncached task declares no
+   * dependants go there (2026-10-25). An uncached task declares no
    * outputs, and a dependant elsewhere did not find them (#4407).
    */
   private readonly kept = new Map<string, { worker: string; req: ExecuteRequest; need: Need }>()
@@ -353,8 +353,8 @@ export class Orchestrator {
       }
     })()
     // Leases ran on while either side was away, as a relay restarted: what
-    // a worker holds is still its own, not run again elsewhere (owner,
-    // 2026-10-25: "make sure on rejoin we don't repeat work").
+    // a worker holds is still its own, not run again elsewhere
+    // (2026-10-25: "make sure on rejoin we don't repeat work").
     o.me.resumed((peer) => {
       for (const a of this.workers.values())
         if (peer === undefined || a.id === peer)
@@ -844,7 +844,7 @@ export class Orchestrator {
           // forced run's fresh bytes with the ones it bypassed (2026-10-25).
           ...(req.refresh === true ? { fresh: true as const } : {}),
           // A HEAD per upload was the workers' only remote probe: the run
-          // already knows the key is in no cache (M, 2026-10-25).
+          // already knows the key is in no cache (2026-10-25).
           ...(req.refresh !== true && this.missed.has(req.taskId) ? { absent: true as const } : {}),
           deps,
           nested: node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root),
@@ -1118,12 +1118,15 @@ export class Orchestrator {
     // deferred one's land only if a task here needs them: under
     // `--cache-download=none` every file of the run came home (2026-10-24).
     const deferred = job.req.remoteOnly !== true && job.req.download === 'deferred'
+    const read = () =>
+      job.req.remoteOnly === true || deferred ? this.o.artifacts.output(key) : restore()
     const log = await (
       unshared
         ? Promise.resolve(wiredLog(head.output))
-        : job.req.remoteOnly === true || deferred
-          ? this.o.artifacts.output(key)
-          : restore()
+        : // A failed download reads as a miss: asked once more, since one
+          // stalled download failed a CI run whose upload had landed
+          // (main, 2026-10-28).
+          read().then((got) => got ?? read())
     ).catch((err: unknown) => {
       job.reject(err)
       return undefined
@@ -1139,7 +1142,7 @@ export class Orchestrator {
     if (log === null) {
       job.reject(
         new Error(
-          `${task}: ${a.label} ran it, and no cache this machine reads holds its entry: ${a.label}'s upload failed (its log says why), or the workers and this machine share no remote cache the workers write`,
+          `${task}: ${a.label} ran it, and no cache this machine reads gave its entry, asked twice: a download failed (warned above), ${a.label}'s upload failed (its log says why), or the workers and this machine share no remote cache the workers write`,
         ),
       )
       return
@@ -1372,8 +1375,6 @@ export class Orchestrator {
         this.fail(`the relay is unreachable (${(err as Error).message})`)
         return
       }
-      this.expire()
-      this.stall()
       for (const { from, body } of messages) {
         if (from === 'relay') {
           this.onRelay(body as { type?: string })
@@ -1438,6 +1439,11 @@ export class Orchestrator {
           void this.finish(a, m.task, m.key, result as WiredResult)
         }
       }
+      // After the batch: a `held` in it renews its lease first. Expired
+      // before, a stalled loop's waiting `held` came too late and the task
+      // ran again on another worker (2026-10-27).
+      this.expire()
+      this.stall()
     }
   }
 
@@ -1757,7 +1763,7 @@ export class Orchestrator {
   }
 
   /**
-   * The run's end had it placed its tasks perfectly (M, 2026-10-23: "how
+   * The run's end had it placed its tasks perfectly (2026-10-23: "how
    * close the run was"): each task a worker ran, as long as it held its
    * worker and with the cores it used meanwhile, played on as
    * many workers as the sizes allow, each joining after its platform's
@@ -1840,7 +1846,7 @@ export class Orchestrator {
       }
     }
     return [...this.workers.values(), ...this.gone].map((a) => ({
-      // Whether it failed or ran its part, not why it left (M, 2026-10-23).
+      // Whether it failed or ran its part, not why it left (2026-10-23).
       ...report(
         a.label,
         (gone.has(a) && !this.retired.has(a)) || a.faulty ? 'failed' : 'ok',
@@ -1979,7 +1985,7 @@ export class Orchestrator {
                   .join(' · ')}`,
               ),
             ] as [string, ui.Inline],
-            // Beside core's time row, how close the run came (M, 2026-10-23).
+            // Beside core's time row, how close the run came (2026-10-23).
             ...((ms) =>
               ms === undefined
                 ? []

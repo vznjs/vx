@@ -1,6 +1,6 @@
 // `vx help` and cli.md's flag table say what a bare --affected compares
 // with: the merge base with `origin/<baseBranch>`, and nothing on that
-// branch (owner, 2026-10-17). They said `HEAD~1` after the rule was gone.
+// branch (2026-10-17). They said `HEAD~1` after the rule was gone.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'

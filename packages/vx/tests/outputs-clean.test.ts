@@ -1,4 +1,4 @@
-// `cache.outputs.clean: false` (M, 2026-10-15): a miss leaves the declared
+// `cache.outputs.clean: false` (2026-10-15): a miss leaves the declared
 // outputs in place for the command (tsc's `.tsbuildinfo`), and the save
 // stores every file the outputs match after the run, a leftover included.
 // "You opt out of security" (M, 07:44): the clean-tree guarantee is off.

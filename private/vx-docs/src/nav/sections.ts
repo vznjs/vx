@@ -68,7 +68,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: 'CI', link: '/docs/ci/' },
       ],
     },
-    // Everything that is not core (owner, 2026-10-26): each plugin, the
+    // Everything that is not core (2026-10-26): each plugin, the
     // servers they talk to, and how to write one.
     {
       label: 'Plugins',

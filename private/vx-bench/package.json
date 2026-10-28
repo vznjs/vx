@@ -9,7 +9,7 @@
     "bun": ">=1.4"
   },
   "//": [
-    "turbo: pr-bench.ts's rival (the per-PR vx vs Turborepo ratio, owner 2026-10-12); pinned so CI and the baseline see one version."
+    "turbo: pr-bench.ts's rival (the per-PR vx vs Turborepo ratio, 2026-10-12); pinned so CI and the baseline see one version."
   ],
   "devDependencies": {
     "@types/bun": "^1.4.0",

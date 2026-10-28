@@ -281,7 +281,7 @@ file system` under bwrap whenever the workspace root is denied, which
   belongs in mount ordering (deepest bind last), not in the allow
   lists.
 
-- **`--verify` is gone (owner, 2026-09-04).** All of it: the
+- **`--verify` is gone (2026-09-04).** All of it: the
   determinism proof, the input-completeness proof, the cross-machine
   fingerprint feed, `--verify-allow`, the verdict vocabulary and the
   telemetry fields. The input half could only work by ENCLOSING a task
@@ -807,7 +807,7 @@ but found end of file`, nothing else, because Bun's `BuildMessage`
     execute suites and the unsafe suite green on CI.
 17. DONE: two claims the code lacked, de-claimed. `frozenProjectConfig`'s
     doc comment promised a content-hash tripwire and a hard error on a
-    changed file; its body skips both on purpose (owner, 2026-06-13),
+    changed file; its body skips both on purpose (2026-06-13),
     and `docs/modules/lockfile.md` repeated the promise ("hash
     tripwire", "stale file is a hard UserError"). A DX probe ran an
     edited config as locked under `--frozen` with no word — which IS

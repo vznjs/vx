@@ -1,6 +1,6 @@
 #!/bin/sh
 # compose.yaml as a user runs it: all three images built, each answering
-# on its published port, then a clean stop (M, 2026-10-25: one compose file
+# on its published port, then a clean stop (2026-10-25: one compose file
 # for all vx servers). Each image's own suite is its package's test.live;
 # this proves the file wires them.
 set -eu
@@ -9,7 +9,7 @@ export COMPOSE_PROJECT_NAME="vx-servers-smoke-$$"
 export DTE_PORT=18801 CACHE_PORT=18802 HISTORY_PORT=18803
 export DTE_ALLOW='https://token.actions.githubusercontent.com:o/r:.github/workflows/ci.yml'
 export DTE_AUDIENCE='https://relay.example'
-export TRUST='[{"iss":"https://token.actions.githubusercontent.com","repository":"1","ref":"refs/heads/main"}]'
+export ALLOW='https://token.actions.githubusercontent.com:o/r:ci.yml'
 export S3_BUCKET=b S3_ENDPOINT='http://127.0.0.1:1' S3_ACCESS_KEY_ID=a S3_SECRET_ACCESS_KEY=s
 trap 'docker compose down -v --rmi local >/dev/null 2>&1' EXIT
 docker compose up -d --build --quiet-pull

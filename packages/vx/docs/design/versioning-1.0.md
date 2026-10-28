@@ -317,7 +317,7 @@ These may change in any release.
 ## Deprecation
 
 Until 1.0 a breaking change ships with no alias, rename notice or
-migration shim (owner, 2026-10-14): an old config key fails the unknown
+migration shim (2026-10-14): an old config key fails the unknown
 field check, an old flag the unknown flag check, and an old variable is
 ignored. The release notes and the change's record name each rename.
 From 1.0 a contract surface is removed in three steps: a minor

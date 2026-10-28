@@ -1,4 +1,4 @@
-// The `gitlab()` plugin (owner, 2026-10-18): on GitLab CI it names the
+// The `gitlab()` plugin (2026-10-18): on GitLab CI it names the
 // run's branch through `setBranch`, as `github()` does on Actions. Off
 // GitLab CI (`GITLAB_CI` not 'true') the factory returns undefined, which
 // `plugins` skips, so declaring it costs nothing on a laptop.
@@ -56,7 +56,7 @@ export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined 
  * `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`) and its diff base; a merge
  * train's pipeline builds what lands on the target, so it is trusted; a
  * branch or tag pipeline names its ref, none on the default branch.
- * `refs`, what a remote reads (M, 2026-10-25): a merge train's only its
+ * `refs`, what a remote reads (2026-10-25): a merge train's only its
  * target branch; any other its own ref (the tag, else a merge request's
  * source branch, else the branch), then
  * a merge request's target, then the default branch.

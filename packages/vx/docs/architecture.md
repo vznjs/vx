@@ -24,14 +24,14 @@ specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 | `packages/vx-dte`            | `@vzn/vx-dte` — distributed task execution: one run spread over workers the CI starts, through a relay; `local()` adapter; private until it is on npm                                |
 | `packages/vx-dte-server`     | `@vzn/vx-dte-server` — the reference relay of `@vzn/vx-dte`: passes a run's messages between sockets behind CI OIDC tokens, storing none (`PROTOCOL.md`); private until it is on npm |
 | `packages/vx-cache-server`   | `@vzn/vx-cache-server` — a cache server anyone hosts (`PROTOCOL.md`, `/v1`): one bucket, no database; Bun or Docker + S3, or Workers + R2                                            |
-| `packages/vx-devtools`       | `@vzn/vx-devtools` — code vx's servers and plugins share, never core: first the CI OIDC token check (`TRUST`, `oidcAuth`); imports only jose                                         |
+| `packages/vx-devtools`       | `@vzn/vx-devtools` — code vx's servers and plugins share, never core: first the CI OIDC token check (`ALLOW`, `oidcAuth`); imports only jose                                         |
 | `packages/vx-history-server` | `@vzn/vx-history-server` — the task timings `vxHistory()` reads, one folded row per task (`PROTOCOL.md`, `/v1`): Bun + SQLite, Workers + D1, or Docker                               |
 | `packages/vx-cache`          | `@vzn/vx-cache` — `vxCache()` cache plugin: a remote cache for CI jobs, on a server that speaks `@vzn/vx-cache-server`'s `/v1` wire                                                  |
 | `private/vx-bench`           | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                                |
 | `private/vx-plugin-examples` | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                          |
 | `private/vx-dte-service`     | vznjs's own relay deploy: `@vzn/vx-dte-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                                  |
-| `private/vx-cache-service`   | vznjs's own cache server deploy: `@vzn/vx-cache-server`'s worker with this repo's `TRUST`, built by Workers Builds (private)                                                         |
-| `private/vx-history-service` | vznjs's own history server deploy: `@vzn/vx-history-server`'s worker with this repo's `TRUST`, built by Workers Builds (private)                                                     |
+| `private/vx-cache-service`   | vznjs's own cache server deploy: `@vzn/vx-cache-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                         |
+| `private/vx-history-service` | vznjs's own history server deploy: `@vzn/vx-history-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                     |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (57 runtime symbols, a deliberate

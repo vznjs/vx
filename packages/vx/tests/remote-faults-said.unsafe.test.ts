@@ -1,4 +1,4 @@
-// A remote's fault is at least a warning (M, 2026-10-23). Vercel answered a
+// A remote's fault is at least a warning (2026-10-23). Vercel answered a
 // batch query of 107 hashes with 400 "Too many hashes. Limit is 100.", the
 // cache plugin read it as no answer, and DTE sized a run for every task with
 // nothing said. In code that talks to a remote (a cache, an executor, the

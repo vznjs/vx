@@ -3515,7 +3515,7 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
 
 // nx#35403: artifacts copied into a cache directory without the index that
 // named them failed the run. The artifact is the record and the index only
-// its inventory (owner, 2026-10-06): an artifact with no row is indexed from
+// its inventory (2026-10-06): an artifact with no row is indexed from
 // its own bytes and hits.
 describe('an artifact on disk with no index row, through a run', () => {
   // Only the archive form is adopted: a tree's stdout lives in its row.

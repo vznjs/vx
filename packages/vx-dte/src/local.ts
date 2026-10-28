@@ -137,7 +137,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
       await Promise.all([...procs].map((p) => p.exited))
       clearTimeout(grace)
       // A detached shell removes the worktrees after vx exits: removing ones
-      // an install filled took seconds after a Ctrl-C (M, 2026-10-21), and a
+      // an install filled took seconds after a Ctrl-C (2026-10-21), and a
       // 300k-file tree 2.7 s. `prune` then drops git's record of each.
       const roots = [...new Set(trees.splice(0).map((t) => t.root))]
       if (base !== undefined) {

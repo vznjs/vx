@@ -5,7 +5,7 @@ project up: the direction, what shipped, what is in flight, what is next.
 Update it in the SAME commit as the work it describes. Newest state wins;
 delete stale lines rather than appending corrections.
 
-## Direction (owner, 2026-09-02)
+## Direction (2026-09-02)
 
 > "VX should be the Vite of task orchestration. Perf first, then
 > modularity. Slim core; add features with plugins or replace
@@ -35,7 +35,7 @@ Concretely:
    exists — verified against the code, not remembered.
 
 Process: gate (`bun packages/vx/src/bin.ts run ci --all`), push a
-branch, open a PR, merge it on green (owner, 2026-09-10). Small, focused
+branch, open a PR, merge it on green (2026-09-10). Small, focused
 commits.
 
 ## Shipped — the record
@@ -267,13 +267,13 @@ at a time (W12, W13, …) takes a queue from the coordinator and records
 its items in the stream file of their area (adoption in `ws-g.md`) or
 its own `ws-W<n>.md`.
 
-**Cold CPU (owner, 2026-10-04: "Make VX cpu burn lower than Vite
+**Cold CPU (2026-10-04: "Make VX cpu burn lower than Vite
 Task"; `docs/history/ws-q.md`).** The 1,090-package cold run read 17.27 s
 of CPU against Vite Task's 12.46. Q-1 cut vx's own CPU by a sixth. The
 rest of the gap is mostly the shell: vx runs every task as `sh -c`,
 one exec more per task than Vite Task, which execs `a && b` itself.
 
-**All-cached run (owner, 2026-10-06: "optimize these";
+**All-cached run (2026-10-06: "optimize these";
 `docs/history/ws-v.md`).** This repo's `vx run build --all` with every
 task cached: 136 → 107 ms (median, compiled, Linux). Two configs no
 longer evaluate on every run, check-attr overlaps git status, the
@@ -287,9 +287,9 @@ synchronously) is X-191. Next: step 2, a small artifact packed
 synchronously, with an A/B that splits plan, pack and the unaccounted
 ~1.3 s.
 
-**Positioning (owner, 2026-10-02; `docs/history/ws-r.md`).** vx is the
+**Positioning (2026-10-02; `docs/history/ws-r.md`).** vx is the
 fastest task runner, shown by the native-config benchmark with every
-competitor cell as `(vx N× faster|slower)` (owner, 2026-10-04: "say how
+competitor cell as `(vx N× faster|slower)` (2026-10-04: "say how
 many X", replacing the percentage). Never say vx works in, runs
 or speeds up a Turbo or Nx repo: `@vzn/vx-migrate` / `vx init` is a
 temporary start toward native config. The real-repo rows measured
@@ -532,7 +532,7 @@ one key on both paths (727). WHAT STANDS: 14dj is in the next-log file
 (Next 16), cut 0.1.0 (the tag, then delete `NPM_TOKEN`), the scope list (roadmap 2.4), the soak length. NEXT: the owner's read of the short site (Next 16); the trim when the loop reaches twenty items; the warm-path A/B on the next run-path change (Next 6). Never end with "what
 next?".
 
-16. **The site, short (owner, 2026-09-24, after 728).** Shipped as item
+16. **The site, short (2026-09-24, after 728).** Shipped as item
     729 (`design/site-short-2026-09.md`). Left: the owner's read.
 17. DONE as item 744 — **Turbo 2.11 won warm at 476 packages on the Linux box (item 735).**
     Two one-rep runs read Turbo at 255 and 303 ms against vx's 334 and
@@ -549,7 +549,7 @@ next?".
     layer's tests run before the next layer's builds; a FIFO replay of the
     graph reads 4m 58s against its measured 4m 59s (benchmarks.md § Why
     Turborepo is slower cold). Vite Task (`vp run`, vite-plus 1.0.0) joined
-    the chart (owner, 2026-10-04): 4m 49s cold, 2.49 s cached; it burns
+    the chart (2026-10-04): 4m 49s cold, 2.49 s cached; it burns
     less CPU cold than vx (12.46 s against 17.27 s), so the landing claims
     time added, cold and cached, not every column.
     The chart shows four metrics (owner): cold time added, cold CPU,
@@ -691,7 +691,7 @@ next?".
 
 ## Decisions (this arc)
 
-- **`@vzn/vx-github` is `@vzn/vx-ci` (owner, 2026-10-06).** Package and
+- **`@vzn/vx-github` is `@vzn/vx-ci` (2026-10-06).** Package and
   directory renamed; the `github()` export is unchanged. A new npm
   name needs the owner's placeholder publish and `npm trust` first.
 - **Rust rewrite: stay (2026-09-29).** Assessed and prototyped on Bun
@@ -708,7 +708,7 @@ next?".
   digest misses is a stale hit on every run. Not built while vx leads the
   warm column; revisit on a measured warm-no-op loss or an agent-loop
   workload, and land only through that doc's gate.
-- **Once per run (owner, 2026-09-24, item 732).** Within a run nothing
+- **Once per run (2026-09-24, item 732).** Within a run nothing
   outside vx changes the files it reads; what vx learns once (a read, a
   stat, a PATH lookup, a spawn's answer) it reuses, and only vx's own
   writes or its tasks' runs invalidate a fact. A repeat that stays has a
@@ -746,24 +746,24 @@ next?".
   cost 300 ms per clean sandboxed task and went 2026-09-05 (owner); no
   unprivileged channel reports a denial the child survived. Enforcement
   is unaffected and the Known limits page says so. Not an open item.
-- **`--affected` follows task edges (owner, 2026-10-04).** A change
+- **`--affected` follows task edges (2026-10-04).** A change
   seeds the tasks whose inputs it touches (every task of a project
   holding a path no cached task declares), and a requested task runs
   when its `dependsOn` closure holds one; `--filter '...[<base>]'` keeps
   the project walk (item 287's dependents), `[<base>]` the changed set.
   A project with no `build` gets a group behind `^build` keyed on all its
   files. `docs/history/ws-t.md` T-5.
-- **Resources are the schedule plugin's (owner, 2026-09-12).** Core
+- **Resources are the schedule plugin's (2026-09-12).** Core
   gates on the worker count and asks the `admit` stage for anything
   finer; it holds no per-task cores or megabytes, no config field for
   them, no budget flag. What a task needs is learned from what it used
   (`@vzn/vx-history`), or declared to that plugin. Item 157.
-- **No first-party technology plugins (owner, 2026-09-10).** A plugin
+- **No first-party technology plugins (2026-09-10).** A plugin
   that gives packages tasks from a framework's config (`vite()`,
   `next()`, …) is the community's to write on the `project` stage; core
   names no tool, and this repo ships no such plugin. `turbo()` in
   `@vzn/vx-migrate` is an adoption plugin, not a technology plugin, and stays.
-- **Windows is WSL (owner, 2026-09-10).** vx spawns POSIX shell and ships
+- **Windows is WSL (2026-09-10).** vx spawns POSIX shell and ships
   linux / darwin binaries; a Windows developer runs it under WSL, and the
   docs say so instead of listing Windows as a gap.
 - **One core per process (2026-09-10).** The running `vx` serves its
@@ -781,12 +781,12 @@ next?".
   back when a plugin needs it, shaped by that plugin's use — not
   before. The same rule retired `recordRun` / `recordRuns` from the
   layer contract (item 72).
-- **Merge your own PR once it is green (owner, 2026-09-10, "Merge
+- **Merge your own PR once it is green (2026-09-10, "Merge
   whenever you own the project").** The session's PR flow stays
   (branch, PR, CI), but a green, mergeable PR no longer waits for the
   owner's word; the next PR starts from the merged main.
-- **A plugin's name is its package name; no overrides (owner,
-  2026-09-10).** `definePlugin(import.meta, hooks)` reads it and stamps
+- **A plugin's name is its package name; no overrides
+  (2026-09-10).** `definePlugin(import.meta, hooks)` reads it and stamps
   it; the workspace loader refuses anything else. Item 69.
 - **Gap audit vs Nx 23 / Turbo 2.10 (2026-09-04, owner's ask).** Core
   is at parity or ahead on every must-have a developer would miss
@@ -797,7 +797,7 @@ next?".
   whose mapping is a `project`-stage plugin and whose core half is one
   seam widening (§ Next 3). `.env` loading, configurations, cache caps,
   graph UI, release, test splitting, boundaries: plugin or the
-  language. Windows is WSL (owner, 2026-10-02), not a gap.
+  language. Windows is WSL (2026-10-02), not a gap.
   Full table in `docs/comparison.md` § Gap audit 2026-09-04.
 - **Agents removed.** `@vzn/vx-agents` (synchronizer + persistent
   workers, Nomad/K8s backends) was an in-repo distributed-execution
@@ -815,9 +815,9 @@ next?".
   `vx last` need stay in `metrics.ts`; the rest went.
 - **`vx why` / `vx last` stay.** Cache-miss explainability is a core
   promise; both read the local run history core already writes.
-- **Entries live in a store every checkout of the repo shares (owner,
-  2026-10-05; schema v32).** `~/.vx/<id>/cache` (owner,
-  2026-10-06: "exactly like Nx", whose `~/.nx/<id>` the id ports) holds
+- **Entries live in a store every checkout of the repo shares
+  (2026-10-05; schema v32).** `~/.vx/<id>/cache`
+  (2026-10-06: "exactly like Nx", whose `~/.nx/<id>` the id ports) holds
   the entries and artifacts; each workspace keeps its
   history and memos in `.vx/cache` and attaches the store. A named
   `cacheDir` / `VX_CACHE_DIR` / `--cache-dir` holds everything and

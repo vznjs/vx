@@ -238,7 +238,7 @@ describe('the published plugin packages', async () => {
   // notes and the shipped history quote packages that never shipped
   // (`@vzn/cache`) and are not instructions. A package under packages/
   // still marked private ships too: the docs describe the released product
-  // (owner, 2026-10-26: "docs describe perfect experience").
+  // (2026-10-26: "docs describe perfect experience").
   it('are the only @vzn packages the docs tell a user to install, run or import', () => {
     const shipping = readdirSync(path.join(REPO, 'packages'))
       .map((d) => path.join(REPO, 'packages', d, 'package.json'))

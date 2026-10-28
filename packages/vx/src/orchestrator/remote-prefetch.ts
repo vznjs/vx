@@ -14,7 +14,7 @@
 // HARD SCOPE: this runs ONLY when a remote layer is configured. It
 // asks the local index only which keys it holds (no local get / no
 // isOutputsCurrent), and probes the remote for the rest: a run the local
-// cache answers makes no remote call (M, 2026-10-15). Local-only
+// cache answers makes no remote call (2026-10-15). Local-only
 // runs are byte-identical to before; the caller gates on the layer's
 // own `hasRemote`, so a third-party remote layer gets the overlap too.
 // The two batch-probe hooks are OPTIONAL on the contract: a remote layer
@@ -134,7 +134,7 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
     args.cache.prefetch(k.hash, getContext(k.node, k.node.config.exec?.command ?? '')),
   )
   // Trusted at once: a key the index says a remote holds is a hit and its
-  // pull starts now, before any remote answers (M, 2026-10-23). The probe
+  // pull starts now, before any remote answers (2026-10-23). The probe
   // below still asks for all of them.
   // One that knows none of them says nothing: a fresh CI runner's empty
   // index called every key a miss, and main asked 15 workers for 16 misses

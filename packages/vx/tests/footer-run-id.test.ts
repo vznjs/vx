@@ -1,4 +1,4 @@
-// Every run's footer names the run by its whole id (M, 2026-10-17: "we
+// Every run's footer names the run by its whole id (2026-10-17: "we
 // need full run id"): the id a reader copies opens that run's record.
 
 import { Database } from 'bun:sqlite'
@@ -61,7 +61,7 @@ it('a passing and a failing run each print their whole id on the info row, and v
   expect(opened.out).toContain(`run ${okId} — ok`)
 }, 60_000)
 
-// M, 2026-10-21: "why run id is not listed with dte? should always be".
+// 2026-10-21: "why run id is not listed with dte? should always be".
 // A long run is read live: the region's info row names the id from the start.
 it('the live region has the run id from the run start', async () => {
   let live: string | undefined

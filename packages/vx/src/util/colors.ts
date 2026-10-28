@@ -107,7 +107,7 @@ export function paint(
 
 /**
  * Identity hues for the two halves of a `project#task` id, never a status
- * colour: one name, one hue, in every run, list and row (M, 2026-10-15:
+ * colour: one name, one hue, in every run, list and row (2026-10-15:
  * every `#build` matches every other `#build`).
  */
 const IDENTITY_PALETTE = [

@@ -1,8 +1,8 @@
 // `vx-cache-server` on Cloudflare Workers: artifacts in R2, nothing else.
-// `wrangler.jsonc` deploys it; TRUST, AUDIENCE and the limits are vars in
+// `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and the limits are vars in
 // it (README.md § On Cloudflare Workers).
 
-import { type Authorize, oidcAuth, parseTrust } from '@vzn/vx-devtools'
+import { type Authorize, oidcAuth, parseAllow } from '@vzn/vx-devtools'
 import { errorJson, Refusal } from './protocol.js'
 import { createCacheServer, DEFAULT_LIMITS, type Limits, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
@@ -29,11 +29,11 @@ declare const FixedLengthStream: new (length: number) => {
 
 export interface Env {
   readonly BLOBS: R2Bucket
-  /** The CI repositories served and the refs they protect (`parseTrust`), a JSON list. */
-  readonly TRUST?: string | readonly unknown[]
+  /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow` entries, space separated. */
+  readonly ALLOW?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
   readonly AUDIENCE?: string
-  /** `public`: a request with no token reads a repository TRUST names. */
+  /** `public`: a request with no token reads a repository ALLOW names. */
   readonly READ_ACCESS?: string
   readonly MAX_CHECK_HASHES?: string
   readonly MAX_UPLOAD_BYTES?: string
@@ -74,16 +74,12 @@ function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): 
       ctx.waitUntil(cache.then((c) => c.put(key, new Response(copy, { headers }))))
       return { body, size: o.size }
     },
-    // A check or HEAD asks the data center's copy first: free, and no R2
-    // call. A miss is never kept, since the artifact may come a minute later.
-    size: async (name) => {
-      const hit = await (await cache).match(keyOf(name))
-      if (hit !== undefined) {
-        await hit.body?.cancel()
-        return Number(hit.headers.get('content-length'))
-      }
-      return (await bucket.head(name))?.size ?? null
-    },
+    // R2 alone answers whether it holds an object: a check, a HEAD and a
+    // PUT's skip. The data center's copy outlives R2's (expiry, a wipe), so
+    // a writer told "held" there skipped its upload and a reader in another
+    // data center found nothing (2026-10-27: a DTE worker's save, then the
+    // run's read, a 404).
+    size: async (name) => (await bucket.head(name))?.size ?? null,
   }
 }
 
@@ -100,7 +96,7 @@ const CHECK_LOOKUPS = 6
 
 /**
  * The limits as set, unclamped: a plan's limits are the operator's to set
- * (M, 2026-10-25: never optimize for the free plan).
+ * (2026-10-25: never optimize for the free plan).
  */
 function workerLimits(env: Env): Limits {
   return { ...DEFAULT_LIMITS, maxCheckHashes: CHECK_LOOKUPS, ...limitsFrom(env) }
@@ -112,25 +108,25 @@ let made: { key: string; authorize: Authorize; limits: Limits } | undefined
 export default {
   async fetch(req: Request, env: Env, ctx: Context): Promise<Response> {
     const key = [
-      trustOf(env),
+      env.ALLOW,
       env.AUDIENCE,
       env.READ_ACCESS,
       env.MAX_CHECK_HASHES,
       env.MAX_UPLOAD_BYTES,
     ].join('\0')
     if (made?.key !== key) {
-      let trust
+      let allow
       let limits
       try {
-        trust = parseTrust(trustOf(env))
+        allow = parseAllow(env.ALLOW ?? '')
       } catch (err) {
-        return errorJson(500, `TRUST: ${(err as Error).message}`)
+        return errorJson(500, `ALLOW: ${(err as Error).message}`)
       }
       let authorize
       try {
         limits = workerLimits(env)
         authorize = oidcAuth({
-          trust,
+          allow,
           readAccess: env.READ_ACCESS,
           ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
         })
@@ -146,16 +142,4 @@ export default {
       limits: made.limits,
     })(req)
   },
-}
-
-/**
- * `TRUST` as `parseTrust` reads it: wrangler hands a var written as a JSON
- * list in `wrangler.jsonc` to the Worker as that list, not as text.
- */
-function trustOf(env: Env): string {
-  return typeof env.TRUST === 'string'
-    ? env.TRUST
-    : env.TRUST === undefined
-      ? ''
-      : JSON.stringify(env.TRUST)
 }

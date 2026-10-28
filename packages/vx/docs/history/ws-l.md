@@ -419,8 +419,8 @@ prune` deletes only artifact names. No bug.
   post predates the lock); real-repo rows are marked as run without a
   lock.
   `turbo()` and `nx()` lock and run frozen (their tasks, no vx.config,
-  map live). A `--frozen` run does not fail on an edited config (owner
-  2026-06-13: runs trust the lock, `vx lock --check` audits); it fails
+  map live). A `--frozen` run does not fail on an edited config
+  (2026-06-13: runs trust the lock, `vx lock --check` audits); it fails
   on a project the lock lacks. Rows: `turbo.test.ts` / `nx.test.ts` ›
   "… under vx lock and --frozen" (the turbo row red when the missing-
   entry refusal returns `{}`), `ab.test.ts` › `frozenArgs`.

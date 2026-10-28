@@ -937,7 +937,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     }
     // A clean exit is ready: a setup step (migrate, seed, a `docker
     // compose up --wait`) has done its work, and what it started, if
-    // anything, is torn down with the run (M 2026-10-22).
+    // anything, is torn down with the run (2026-10-22).
     if (code === 0) markReady()
     if (readyAt === undefined && gaveUpAt === undefined) {
       rejectReady(

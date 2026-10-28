@@ -167,7 +167,7 @@ export function prepareSandbox(nodes: Iterable<SandboxedNode>): SandboxArmer | n
  * The sandbox half of an `ExecuteRequest` for one task, shared by the
  * cached path (through the executor) and the persistent path (spawned here).
  *
- * The user's grants derive NOTHING from `cache` (owner, 2026-09-05). Those
+ * The user's grants derive NOTHING from `cache` (2026-09-05). Those
  * are two different questions: `inputs` says what INVALIDATES the
  * task, `sandbox.allow` says what it may TOUCH. Deriving one from the other
  * coupled them in both directions — a declaration added for caching
@@ -226,7 +226,7 @@ export async function sandboxRequestFor(
   // sibling project, so granting `node_modules` grants a link whose
   // target is outside it. That target is a dependency, not a reach-out:
   // no project config should have to name a sibling to import what its
-  // own `package.json` depends on (owner, 2026-09-05) — when the key
+  // own `package.json` depends on (2026-09-05) — when the key
   // moves with it.
   const links = await linkedDeps(depDirs, node.projectDir, workspaceRoot, keyed)
   depDirs.push(...links.granted)

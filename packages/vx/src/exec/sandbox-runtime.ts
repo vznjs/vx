@@ -2147,8 +2147,8 @@ async function runSandboxedOnce(
   // DROPPED by the unified log under pressure, not delayed. Reporting on
   // macOS is therefore lossy-by-OS under load; ENFORCEMENT is unaffected
   // (every observed loss still denied the read and failed the child).
-  // EVERY record SRT's store saw for this command, unfiltered (owner,
-  // 2026-09-05). A sandboxed task that fails must say what it was denied;
+  // EVERY record SRT's store saw for this command, unfiltered
+  // (2026-09-05). A sandboxed task that fails must say what it was denied;
   // deciding on the user's behalf that a record was "just traversal" is how
   // a failure ends up with an empty violations section and no explanation.
   const records = takeRecords()
@@ -2163,7 +2163,7 @@ async function runSandboxedOnce(
   // below (`refusedWrites`).
   const macViolations = process.platform === 'darwin' ? records : []
   // No settle window: the store is read once, right after the child exits
-  // (owner, 2026-09-05). It cost 300ms on EVERY clean sandboxed task — the
+  // (2026-09-05). It cost 300ms on EVERY clean sandboxed task — the
   // full budget, since a task with nothing to report can only prove that by
   // waiting — against 26ms for one that reports something and breaks out
   // early. Measured: clean `echo` 331ms sandboxed vs 16ms plain.

@@ -1,6 +1,6 @@
 // `vx show <task> --affected` lists the projects whose task `vx run <task>
 // --affected` keeps: a change reaches another project only along a task
-// edge (owner, 2026-10-04), so a package dependent with no edge to the
+// edge (2026-10-04), so a package dependent with no edge to the
 // changed project's task is not listed (X-147).
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'

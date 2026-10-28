@@ -3,7 +3,7 @@
 // existing Turbo or Nx setup (`--keep`: the workspace file that reads it
 // live instead), from Vite Task, or from package.json scripts, and vx
 // installed with the repo's manager. `vx init` hands every repo with a
-// package.json here (M, 2026-10-14: core reads no package.json).
+// package.json here (2026-10-14: core reads no package.json).
 // Without either mode flag a terminal is asked; anything else is native. Source auto-detect: turbo.json → Turbo;
 // .nx/workspace-data/project-graph.json, nx.json or a Lerna-on-Nx lerna.json → Nx (the resolved
 // graph, exported by nx if absent); `vite-plus` in the root package.json → Vite Task:
@@ -364,7 +364,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   // adoption's install of it is dropped with turbo() / nx().
   const finalWorkspace = workspaceText ?? readFileSync(path.join(root, existingWorkspace!), 'utf8')
   // Imports parsed, not matched: a formatter's double quotes hid it, and
-  // the file still imported the package removed (owner, 2026-10-16).
+  // the file still imported the package removed (2026-10-16).
   const imported = importedPackages(finalWorkspace)
   const needsSelf = runsBins || imported.includes('@vzn/vx-migrate')
   const cacheNote =
@@ -392,7 +392,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
             needsSelf ? [] : ['@vzn/vx-migrate'],
           )),
         ]
-  return applyMigration({
+  const code = await applyMigration({
     root,
     metas,
     plan,
@@ -407,6 +407,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     // The written workspace file imports plugins `--no-install` left out.
     ...(parsed.noInstall === true ? {} : { lock: lockWorkspace }),
   })
+  return exitAfter(code, steps)
 }
 
 /**
@@ -506,15 +507,34 @@ async function prepareRepo(
   const missing = missingPackages(root, all, version)
   if (missing.length > 0) {
     steps.push(
-      args.dry ? ['install', missing.join(' ')] : ['ran', await install(root, missing, version)],
+      args.dry ? ['install', missing.join(' ')] : await ran(() => install(root, missing, version)),
     )
   }
   // Last: the package removed may be the one running this.
   const listed = listedPackages(root, unwanted)
   if (listed.length > 0) {
-    steps.push(args.dry ? ['remove', listed.join(' ')] : ['ran', await uninstall(root, listed)])
+    steps.push(args.dry ? ['remove', listed.join(' ')] : await ran(() => uninstall(root, listed)))
   }
   return steps
+}
+
+/**
+ * A manager step's row. Its failure is a `failed` row, not the end of the
+ * migration: the configs are still written and the report names what to
+ * re-run, where a throw left a repo with neither.
+ */
+async function ran(step: () => Promise<string>): Promise<Step> {
+  try {
+    return ['ran', await step()]
+  } catch (e) {
+    if (!isUserError(e)) throw e
+    return ['failed', e.message]
+  }
+}
+
+/** The exit a migration ends with: 1 when a manager step failed, whatever the rest did. */
+function exitAfter(code: number, steps: readonly Step[]): number {
+  return code === 0 && steps.some(([label]) => label === 'failed') ? 1 : code
 }
 
 /**
@@ -632,7 +652,7 @@ async function keep(
     ],
   ]
   ui.print('out', ui.report(`vx-migrate ${VERSION}`, rows))
-  return lock?.code ?? 0
+  return exitAfter(lock?.code ?? 0, steps)
 }
 
 /** `vx lock`'s outcome as the report's row. */
@@ -665,7 +685,7 @@ export function adoptionNext(
     (p) => !existsSync(path.join(root, 'node_modules', p, 'package.json')),
   )
   // `vx init` installs vx globally first: vx alone, never a package
-  // manager's runner (owner, 2026-10-22: vx owns the command).
+  // manager's runner (2026-10-22: vx owns the command).
   const run = `vx run ${firstTask(path.join(root, source), runner)} --all`
   if (missing.length === 0) return run
   const pinned = version === null ? missing : missing.map((p) => `${p}@${version}`)
@@ -694,7 +714,7 @@ function firstTask(file: string, runner: 'turbo' | 'nx'): string {
 /**
  * package.json scripts → one vx.config.ts per package, and the workspace
  * file declaring the lockfile plugin its lockfile calls for: `vx init`'s
- * mapper until core stopped reading package.json (M, 2026-10-14).
+ * mapper until core stopped reading package.json (2026-10-14).
  */
 async function scripts(
   root: string,
@@ -733,7 +753,7 @@ async function scripts(
         ]
       : []
   const installed = await prepareRepo(root, [...new Set(plugins.map((p) => p.pkg))], args)
-  return applyMigration({
+  const code = await applyMigration({
     root,
     metas,
     plan,
@@ -751,6 +771,7 @@ async function scripts(
     plugins,
     ...(args.noInstall === true ? {} : { lock: lockWorkspace }),
   })
+  return exitAfter(code, installed)
 }
 
 /**

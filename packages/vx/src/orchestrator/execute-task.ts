@@ -391,7 +391,7 @@ async function restoreOrMiss(
 /**
  * What a write to an input during the command means, each field highest
  * first: the env var (`layers.run`), the task's `cache.inputStability`,
- * the workspace's, then `'immutable'` and `'warn'` (owner, 2026-10-12), so
+ * the workspace's, then `'immutable'` and `'warn'` (2026-10-12), so
  * by default any such write withholds the save, on CI too, since a
  * concurrent task can change an input and put it back.
  */
@@ -730,8 +730,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let wsStampedBefore: ReadonlyMap<string, OutputStamp> | undefined
   // `cache.outputs.clean: false` leaves the outputs to the first attempt's
   // command, and the save stores whatever they hold after it, a leftover
-  // included: the user opted out of the clean-tree guarantee (M,
-  // 2026-10-15). A retry still starts clean. An additive task never cleans
+  // included: the user opted out of the clean-tree guarantee
+  // (2026-10-15). A retry still starts clean. An additive task never cleans
   // by glob anyway.
   const keepOutputs = !additive && (cacheCfg?.outputs.clean ?? args.cleanOutputs ?? true) === false
 
@@ -1049,7 +1049,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // before the strace pass shipped, false since, and the branch below is
     // live on Linux.) Violations surface via `TaskOutcome.sandboxViolationLines`.
     let code = res.exitCode
-    // ANY violation fails the task (owner, 2026-09-05). A sandboxed task
+    // ANY violation fails the task (2026-09-05). A sandboxed task
     // declares what it touches; a denial means it touched something else,
     // and an artifact built while reading — or failing to read — something
     // the cache key never folded is not a safe thing to replay. A task that

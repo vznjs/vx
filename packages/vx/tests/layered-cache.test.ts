@@ -209,7 +209,7 @@ describe('LayeredCache', () => {
   })
 
   // A DTE worker HEADed each upload of a key the run had found in no cache
-  // (turboCache()), and a write-only lane asked `has` too (M, 2026-10-25).
+  // (turboCache()), and a write-only lane asked `has` too (2026-10-25).
   for (const read of [true, false])
     it(`save({ absent }) tells the remote the key is missing and asks no has (read ${read})`, async () => {
       const told: string[] = []
@@ -253,7 +253,7 @@ describe('LayeredCache', () => {
 
   // A distributed run's worker told the orchestrator its task was saved
   // though no remote took the upload, and the run failed restoring it
-  // (M, 2026-10-25): the worker now asks.
+  // (2026-10-25): the worker now asks.
   it('uploaded() says whether a remote took what save() sent', async () => {
     const layered = makeLayered()
     expect(await layered.uploaded('h-up')).toBeUndefined()
@@ -1270,7 +1270,7 @@ describe('LayeredCache', () => {
     })
 
     // The footer's `remote N✗ M⇡` counts tasks, and `vx last` names each
-    // one's failure (M, 2026-10-15): so a read's failure is the key's too.
+    // one's failure (2026-10-15): so a read's failure is the key's too.
     it("each failure lands on its task's key, read and write alike; a batch probe's on none", async () => {
       const layered = layeredOver(
         local,
