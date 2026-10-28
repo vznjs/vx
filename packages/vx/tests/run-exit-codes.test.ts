@@ -57,6 +57,19 @@ describe('vx run', () => {
     expect(refused).toEqual([empty(''), empty(' '), empty(''), empty(''), empty(' '), empty('')])
   })
 
+  it('refuses a padded task name, by name', async () => {
+    // `vx run 'build ' --all` said "no projects declare task(s): build",
+    // its space invisible. No config can declare it (taskNameProblem).
+    const refused = []
+    for (const spec of ['build ', 'app# build']) {
+      refused.push(await resolveRunOptions(parseRunArgs(['--all', spec]), root, [spec]))
+    }
+    expect(refused).toEqual([
+      { error: `task name "build " has surrounding whitespace (vx show lists the tasks)` },
+      { error: `task name " build" has surrounding whitespace (vx show lists the tasks)` },
+    ])
+  })
+
   it('Ctrl-C at the picker exits 130, as an interrupted run does', async () => {
     // The picker runs only on a terminal: stdin, stdout and stderr (the
     // menu's stream) are TTY streams here, and Ctrl-C reaches readline raw

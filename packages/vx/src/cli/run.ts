@@ -422,6 +422,14 @@ export async function resolveRunOptions(
       return { error: `empty task name ${JSON.stringify(t)} (vx show lists the tasks)` }
     const error = anchoredSpecError(t, (task) => `vx ${verb} ${task} runs it in every project`)
     if (error !== undefined) return { error }
+    // No config can declare a padded name (taskNameProblem): `'build '` was
+    // reported as "no projects declare task(s): build", its space unseen.
+    const task = t.slice(t.indexOf('#') + 1)
+    if (task.trim() !== task) {
+      return {
+        error: `task name ${JSON.stringify(task)} has surrounding whitespace (vx show lists the tasks)`,
+      }
+    }
   }
 
   const scope = await scopeFilters(parsed, cwd)
