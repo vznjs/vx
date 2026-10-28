@@ -40,6 +40,7 @@ import {
   stripTrailingSlash,
   taskGlob,
   UserError,
+  writableUnder,
 } from '../util/index.js'
 import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
@@ -809,7 +810,7 @@ async function scanOutputs(
   if (positive.length === 0) return { files: [] }
   const excludeGlobs = [...outputExcludes(positive, 'project'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  refuseDirLinkedOut(args.projectDir, trees)
+  refuseDirLinkedOut(args.projectDir, trees, 'project')
   const scanned = [
     ...(await scanUnion(
       trees,
@@ -846,16 +847,24 @@ export function committedFiles(
 /**
  * The literal head of each output glob, walked: the scan follows a link
  * there (`dist -> ../elsewhere` for `dist/**`) and only there. A link
- * below it is an output, kept as the link (`archive.ts`).
+ * below it is an output, kept as the link (`archive.ts`). One into `.git`
+ * or `.vx` is refused in either scope: for the root project and for
+ * workspace outputs those are inside, and the clean deleted the
+ * repository through `dist -> .git`. One out of a workspace output's root
+ * is left to `containedIn`.
  */
-function refuseDirLinkedOut(projectDir: string, trees: readonly string[]): void {
+function refuseDirLinkedOut(
+  root: string,
+  trees: readonly string[],
+  scope: 'project' | 'workspace',
+): void {
   let realRoot: string | undefined
   for (const tree of trees) {
-    let at = projectDir
+    let at = root
     for (const part of staticPrefix(tree).split('/')) {
       if (part === '' || part === '.') continue
       at = path.join(at, part)
-      if (!isInside(projectDir, at)) break
+      if (!isInside(root, at)) break
       let st
       try {
         st = lstatSync(at, { throwIfNoEntry: false })
@@ -871,16 +880,39 @@ function refuseDirLinkedOut(projectDir: string, trees: readonly string[]): void 
       } catch {
         break
       }
-      realRoot ??= realOr(projectDir)
+      realRoot ??= realOr(root)
       if (!isInside(realRoot, real)) {
+        if (scope === 'workspace') break
         throw new UserError(
-          `${at} is a symbolic link to ${real}, outside ${projectDir} — vx never cleans, saves ` +
+          `${at} is a symbolic link to ${real}, outside ${root} — vx never cleans, saves ` +
             'or restores declared outputs through a link that leaves the project. Remove the ' +
+            'link and re-run, or stop declaring outputs under it.',
+        )
+      }
+      if (inMetadata(real, realRoot)) {
+        throw new UserError(
+          `${at} is a symbolic link to ${real}, Git's or vx's metadata — vx never cleans, ` +
+            'saves or restores declared outputs through a link into .git or .vx. Remove the ' +
             'link and re-run, or stop declaring outputs under it.',
         )
       }
     }
   }
+}
+
+/**
+ * Whether `real`, under `realRoot`, is in a `.git` there (`writableUnder`'s
+ * rule) or in its `.vx`. Asked only of where a link landed: a build's own
+ * `dist/.git/**` is an output (2026-10-17).
+ */
+function inMetadata(real: string, realRoot: string): boolean {
+  if (!writableUnder(real, realRoot)) return true
+  return (
+    real
+      .slice(realRoot.length + 1)
+      .split(path.sep, 1)[0]!
+      .toLowerCase() === '.vx'
+  )
 }
 
 function realOr(p: string): string {
@@ -940,6 +972,36 @@ function containedIn(root: string, paths: readonly string[]): string[] {
   return lexical.filter((_p, i) => contained.has(lexDirs[i]!))
 }
 
+/**
+ * `committed`, also asked by each path's real directory: the output walk
+ * follows a link at a glob's head that stays inside `root` (X-88), so
+ * `public/logo.txt` may be `static/logo.txt`, the only name git lists.
+ * Asked by the lexical name alone, an untracked `public -> static` link
+ * let the clean delete a committed file. One realpath per directory.
+ */
+function committedPastLinks(
+  root: string,
+  committed: (abs: string) => boolean,
+): (abs: string) => boolean {
+  let realRoot: string | undefined
+  const canonical = new Map<string, string | null>()
+  return (abs) => {
+    if (committed(abs)) return true
+    const dir = path.dirname(abs)
+    let canon = canonical.get(dir)
+    if (canon === undefined) {
+      const real = realOrNull(dir)
+      realRoot ??= realOrNull(root) ?? root
+      canon =
+        real === null || !isInside(realRoot, real)
+          ? null
+          : path.join(root, path.relative(realRoot, real))
+      canonical.set(dir, canon)
+    }
+    return canon !== null && canon !== dir && committed(path.join(canon, path.basename(abs)))
+  }
+}
+
 /** Is `abs` the directory `dir` itself or something beneath it? */
 function isInside(dir: string, abs: string): boolean {
   if (abs === dir) return true
@@ -972,7 +1034,10 @@ export async function cleanOutputs(args: {
    */
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
-  const committed = args.committed ?? committedFiles(undefined, args.projectDir)
+  const committed = committedPastLinks(
+    args.projectDir,
+    args.committed ?? committedFiles(undefined, args.projectDir),
+  )
   sweepRestoreTemps(args.projectDir, args.outputs)
   const matched = args.resolved ?? (await resolveOutputs(args))
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
@@ -1231,7 +1296,8 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
  * that skipped `dist -> real-out` left the last run's files for the next
  * entry to save (X-88). One that leaves the project is never deleted
  * through (X-5); `cleanOutputPaths` takes recorded rows, not the resolver's
- * contained set, so the check is here too.
+ * contained set, so the check is here too, and so is the one into
+ * `.git` or `.vx`.
  */
 function insideRoot(files: readonly string[], root: string): string[] {
   // Resolved only once a directory exists to compare: after a clean pruned
@@ -1246,7 +1312,14 @@ function insideRoot(files: readonly string[], root: string): string[] {
       // A directory already gone has nothing to delete through; its path
       // stays so the prune still reaches the parents it emptied.
       const r = realOrNull(dir)
-      ok = r === null || isInside((realRoot ??= realOrNull(root) ?? root), r)
+      if (r === null) ok = true
+      else {
+        realRoot ??= realOrNull(root) ?? root
+        // Where no link moved it, a `.git` is the build's own (inMetadata).
+        ok =
+          isInside(realRoot, r) &&
+          (path.relative(realRoot, r) === path.relative(root, dir) || !inMetadata(r, realRoot))
+      }
       own.set(dir, ok)
     }
     return ok
@@ -1356,19 +1429,36 @@ function inScope(dir: string, scope: PruneScope): boolean {
  * with NO project-dir exclusion: workspace outputs are the documented
  * boundary escape hatch.
  */
-export async function resolveWorkspaceOutputs(args: {
-  workspaceRoot: string
-  outputs: readonly string[]
-}): Promise<string[]> {
+export async function resolveWorkspaceOutputs(
+  args: {
+    workspaceRoot: string
+    outputs: readonly string[]
+  },
+  emptyDirs?: Set<string>,
+): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive, 'workspace'), ...asTrees(negative).map(globFor)]
-  const scanned = [...(await scanUnion(asTrees(positive), excludeGlobs, args.workspaceRoot))]
+  const trees = asTrees(positive)
+  refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace')
+  const scanned = [
+    ...(await scanUnion(trees, excludeGlobs, args.workspaceRoot, undefined, emptyDirs)),
+  ]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
   // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
   // deletes what this returns.
   return containedIn(args.workspaceRoot, scanned).sort()
+}
+
+/** `resolveOutputTree` for `outputs.workspaceFiles`: the files and the empty directories. */
+export async function resolveWorkspaceOutputTree(args: {
+  workspaceRoot: string
+  outputs: readonly string[]
+}): Promise<{ files: string[]; emptyDirs: string[] }> {
+  const emptyDirs = new Set<string>()
+  const files = await resolveWorkspaceOutputs(args, emptyDirs)
+  return { files, emptyDirs: containedIn(args.workspaceRoot, [...emptyDirs]).sort() }
 }
 
 /**
@@ -1386,7 +1476,10 @@ export async function cleanWorkspaceOutputs(args: {
   /** `cleanOutputs`'s `resolved`, from `resolveWorkspaceOutputs`. */
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
-  const committed = args.committed ?? committedFiles(undefined, args.workspaceRoot)
+  const committed = committedPastLinks(
+    args.workspaceRoot,
+    args.committed ?? committedFiles(undefined, args.workspaceRoot),
+  )
   sweepRestoreTemps(args.workspaceRoot, args.outputs)
   const matched = args.resolved ?? (await resolveWorkspaceOutputs(args))
   await pruneEmptiedDirs(

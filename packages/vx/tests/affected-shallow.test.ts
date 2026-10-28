@@ -94,6 +94,16 @@ describe('a shallow clone', () => {
     expect(shallow(root)).toBe('true')
   })
 
+  it('a two-dot range fetches its base as the three-dot one does', async () => {
+    // `[A..HEAD]` diffs from A's tip itself, so main's own edit (a.txt) counts.
+    expect(await changed(await clone('feat'), 'origin/main..HEAD')).toEqual([
+      'a.txt',
+      'b.txt',
+      'c.txt',
+    ])
+    expect(await changed(await clone('feat'), 'HEAD~1..HEAD')).toEqual(['c.txt'])
+  })
+
   it("a bare --affected with no base branch fetches origin's default", async () => {
     const root = await clone('feat')
     expect(gitIn(root)('branch', '-r').trim()).toBe('origin/feat')

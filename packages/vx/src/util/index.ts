@@ -24,6 +24,7 @@ export {
   wantsJson,
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
+export { envFlagOn } from './env-flag.js'
 export {
   detectColors,
   dumbTerminal,
@@ -79,6 +80,7 @@ export {
   braceAlternatives,
   braceRange,
   BRACE_RANGE_LIMIT,
+  writableUnder,
 } from './paths.js'
 export {
   claimExitForSignal,
