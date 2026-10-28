@@ -2445,9 +2445,10 @@ message is that plugin's or check's: do what it says.
 
 #### `VX_E_FS`
 
-The file system refused a write: permissions, a full disk. The message
+The file system refused a write, or the cache index could not be opened:
+permissions, a full disk, a directory where `cache.db` goes. The message
 names the path. Free space (`vx cache clean --max-size <size>` trims the
-cache) or grant the write, then re-run.
+cache), grant the write, or move the path away, then re-run.
 
 #### `VX_E_FDS`
 

@@ -220,20 +220,28 @@ function unreadableIndexError(dbFile: string, err: unknown): UserError {
  * SQLite reports a descriptor it could not get as `SQLITE_CANTOPEN`, never
  * `EMFILE`, so an open under a low `ulimit -n` reached the user as a bare
  * `vx: SQLiteError: unable to open database file` (D's lead, A-56). One
- * open of a file that exists says which it was.
+ * open of a file that exists says which it was. Any other `CANTOPEN` is
+ * the path itself.
  */
-function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
+function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
   const code = (err as { code?: unknown } | null)?.code
   if (typeof code !== 'string' || !code.startsWith('SQLITE_CANTOPEN')) return undefined
   try {
     closeSync(openSync(process.execPath, 'r'))
-    return undefined
   } catch (probe) {
     if (!isOutOfFds(probe)) return undefined
     return new UserError(
       `the cache index ${dbFile} could not be opened (${(err as Error).message}) — ${OUT_OF_FDS_HINT}`,
+      'VX_E_FDS',
     )
   }
+  // Any other: a directory, or a file this user may not open, where the
+  // index goes. It reached every verb as a stack (2026-10-28).
+  return new UserError(
+    `the cache index ${dbFile} could not be opened (${(err as Error).message}) — ` +
+      'it is not a file this user can open; move it away and re-run (vx rebuilds the index)',
+    'VX_E_FS',
+  )
 }
 
 // SCHEMA history (drop+recreate on mismatch; pre-alpha, no migrations):
@@ -1030,7 +1038,7 @@ export class Cache implements CacheLayer {
     try {
       this.db = new Database(memory ? ':memory:' : dbFile, { create: true })
     } catch (err) {
-      throw outOfFdsAtOpen(dbFile, err) ?? err
+      throw cantOpenIndex(dbFile, err) ?? err
     }
     // busy_timeout makes concurrent writers wait for the lock instead of
     // failing immediately with SQLITE_BUSY. Two parallel `vx run`
@@ -1049,7 +1057,7 @@ export class Cache implements CacheLayer {
         return read()
       } catch (err) {
         if (!unreadableIndex(err)) {
-          const fds = outOfFdsAtOpen(dbFile, err)
+          const fds = cantOpenIndex(dbFile, err)
           if (fds === undefined) throw err
           try {
             closeDb(this.db)
@@ -1378,7 +1386,7 @@ export class Cache implements CacheLayer {
       }
       throw unreadableIndex(err)
         ? unreadableIndexError(storeFile, err)
-        : (outOfFdsAtOpen(storeFile, err) ?? err)
+        : (cantOpenIndex(storeFile, err) ?? err)
     }
   }
 

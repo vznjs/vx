@@ -3,7 +3,7 @@
 // branches on the code instead of parsing prose. stderr and the exit code
 // stay as they were.
 import { readdirSync, readFileSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -326,6 +326,35 @@ describe('a refusal under --format json', () => {
       await rm(ws, { recursive: true, force: true })
     }
   }, 30_000)
+
+  // SQLite's `unable to open database file` reached every verb as a stack
+  // and VX_E_INTERNAL; only an fd shortage was named (2026-10-28).
+  it('a cache index SQLite cannot open is VX_E_FS, naming the file', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-db-' })
+    try {
+      await addProject(ws, 'a', `export default { tasks: { b: { exec: { command: 'true' } } } }\n`)
+      const db = path.join(ws, '.vx', 'cache', 'cache.db')
+      await rm(db, { recursive: true, force: true })
+      await mkdir(db, { recursive: true })
+      const r = await vx(['last', '--format', 'json'], ws)
+      const { code, message } = (
+        JSON.parse(r.stdout) as { error: { code: string; message: string } }
+      ).error
+      expect([
+        r.code,
+        code,
+        message.replaceAll(ws, '<root>'),
+        r.stderr.includes('    at '),
+      ]).toEqual([
+        1,
+        'VX_E_FS',
+        expect.stringContaining('the cache index <root>/.vx/cache/cache.db could not be opened'),
+        false,
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
 
   it('every reading verb answers its refusals with a code too', async () => {
     expect({
