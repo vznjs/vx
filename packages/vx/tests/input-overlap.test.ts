@@ -384,6 +384,21 @@ describe('a task whose own outputs take back an input entry whole is always refu
     )
   })
 
+  // `**` sparing only the config (the config refusal asks for exactly
+  // that `!`) deleted every source under `src` before each run.
+  it('an output of the whole project tree, the config spared', () => {
+    for (const all of ['**', '**/*', './**'])
+      expect(refusal(app({ fmt: task(['src/**'], [all, '!vx.config.ts']) }), off)).toBe(
+        said('src/**'),
+      )
+    expect(refusal(app({ fmt: task(['src/x.ts'], ['**', '!vx.config.ts']) }), off)).toBe(
+      said('src/x.ts'),
+    )
+    expect(refusal(app({ fmt: wsTask(['docs/**'], ['**', '!package.json']) }), off)).toBe(
+      said('docs/**', 'workspaceFiles'),
+    )
+  })
+
   it('CONTROL: an output that takes back only part of an input passes', () => {
     expect(refusal(app({ gen: task(['src/**'], ['src/gen/**']) }), off)).toBeNull()
     expect(refusal(app({ build: task(['**'], ['dist/**']) }), off)).toBeNull()
