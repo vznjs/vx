@@ -2801,9 +2801,13 @@ export class Cache implements CacheLayer {
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     }
     const { entries } = scanned
+    // What the entry's form holds on disk, as `--max-size` counts it: a
+    // tree its files, saved or ingested, never the body it was sent as.
+    let treeBytes = 0
+    for (const e of entries) treeBytes += e.size
     const totalBytes =
-      saved !== undefined
-        ? saved.bytes
+      inline === null && this.store.decompress
+        ? (saved?.bytes ?? treeBytes)
         : compressed instanceof Uint8Array
           ? compressed.byteLength
           : Bun.file(tmpPath!).size

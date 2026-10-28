@@ -145,6 +145,34 @@ describe.each(combos)('cache.store %o', (store) => {
     other.close()
   })
 
+  // `size_bytes` is what `--max-size` and `vx info` count: the bytes the
+  // entry's form holds on disk. An ingested tree recorded the compressed
+  // body's size, so a remote hit of 1 MiB counted as its ~48 KiB download.
+  it('an ingested entry records the size a saved one of the same form does', async () => {
+    const bytes = new Uint8Array(LARGE.byteLength + 1024 * 1024)
+    bytes.set(LARGE)
+    const { cache } = await saved(store, bytes)
+    const pinned = await cache.pinArtifact(HASH)
+    const other = new Cache(
+      path.join(root, 'o'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    )
+    await other.ingest(HASH, pinned.body, { taskId: 'p#build', command: 'build', durationMs: 1 })
+    await pinned.release()
+    expect(form(path.join(root, 'o'))).toBe(form(path.join(root, 'c')))
+    const size = (c: Cache): number =>
+      (c.dbHandle().query('SELECT size_bytes AS s FROM entries').get() as { s: number }).s
+    expect(size(other)).toBe(size(cache))
+    if (store.decompress) expect(size(other)).toBeGreaterThan(bytes.byteLength)
+    cache.close()
+    other.close()
+  })
+
   it('prune takes the entry in every form', async () => {
     const { cache } = await saved(store, LARGE)
     await cache.prune({ olderThanMs: Date.now() + 2 * 60 * 60 * 1000 })
