@@ -86,6 +86,22 @@ describe('resolveFilters', () => {
     })
   })
 
+  it('a name or dir no project has is a typo with a git range too, not "nothing affected"', async () => {
+    // The name was checked only against the diff's projects, so a misspelled
+    // package in CI ran nothing and exited 0 (vercel/turborepo#9102's class).
+    for (const f of ['nosuch[HEAD]', 'nosuch...[HEAD]', '{packages/nosuch}[HEAD]']) {
+      const { value } = await quiet(() => resolveFilters(root, [f]))
+      expect(value).toEqual({ error: `no projects matched filter(s): ${f}. Projects: app, lib` })
+    }
+    const near = await quiet(() => resolveFilters(root, ['apq[HEAD]']))
+    expect(near.value).toEqual({
+      error: 'no projects matched filter(s): apq[HEAD]. Did you mean app?',
+    })
+    // CONTROL: a real name its diff did not reach is the exit-0 note.
+    const named = await quiet(() => resolveFilters(root, ['app[HEAD]']))
+    expect((named.value as { empty: string }).empty).toStartWith('nothing affected since HEAD')
+  })
+
   it('a typo beside a walk that came back empty names the typo, with its hint', async () => {
     // `lib^...` matched lib, which depends on no project; `apq` matched
     // nothing. The empty walk's error hid the typo and its "did you mean".
