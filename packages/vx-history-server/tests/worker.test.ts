@@ -58,6 +58,12 @@ it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS i
       500,
       'ALLOW: https://gitlab.com:group/app is not issuer:owner/repo:workflow',
     ],
+    // wrangler.jsonc may write a var as a JSON list: "list.split is not a function".
+    [
+      { ALLOW: [allowVarOf()] },
+      500,
+      'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
+    ],
     [{ ALLOW: allowVarOf(), TIMING_DAYS: '0' }, 500, 'TIMING_DAYS: a whole number of days, got 0'],
     [{ ALLOW: allowVarOf(), READ_ACCESS: 'yes' }, 500, 'READ_ACCESS: public, or unset, not yes'],
   ] as const) {

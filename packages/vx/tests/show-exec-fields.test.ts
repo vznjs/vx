@@ -1,6 +1,7 @@
 // `vx show <task>` claims every field the run reads, yet its block left
 // out `exec.interactive` (the task holds the terminal) and
-// `exec.env.secret` (names masked whatever they are called) (X-47).
+// `exec.env.secret` (names masked whatever they are called) (X-47), and
+// later `exec.platforms`, `cache.outputs.clean` and `cache.inputStability`.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -16,8 +17,8 @@ afterAll(async () => {
   if (root !== undefined) await rm(root, { recursive: true, force: true })
 })
 
-describe('vx show prints exec.interactive and exec.env.secret', () => {
-  it('the pretty block carries both, in the order the run reads them', async () => {
+describe('vx show prints every field the run reads', () => {
+  it('the pretty block carries each, in the order the run reads them', async () => {
     const ws = (root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-exec-')))
     await writeFile(
       path.join(root, 'package.json'),
@@ -40,6 +41,14 @@ export default {
       },
     },
     quiet: { exec: { command: 'true', interactive: false } },
+    tsc: {
+      exec: { command: 'tsc -b', platforms: ['linux-x64', 'darwin-arm64'] },
+      inputs: { files: ['src/**'] },
+      cache: {
+        outputs: { files: ['dist/**'], clean: false },
+        inputStability: { strategy: 'mutable', severity: 'error' },
+      },
+    },
   },
 }
 `,
@@ -51,7 +60,7 @@ export default {
         env: { ...process.env },
         stdout: 'pipe',
       }).stdout.toString()
-    expect([show('a#repl'), show('a#quiet')]).toEqual([
+    expect([show('a#repl'), show('a#quiet'), show('a#tsc')]).toEqual([
       [
         '',
         gradientRule({ enabled: false }, 'a#repl'),
@@ -68,6 +77,19 @@ export default {
         '  dir          packages/a',
         '  command      true',
         '  interactive  no',
+        '',
+      ].join('\n'),
+      [
+        '',
+        gradientRule({ enabled: false }, 'a#tsc'),
+        '  dir                      packages/a',
+        '  command                  tsc -b',
+        '  platforms                linux-x64, darwin-arm64',
+        '  inputs.files             src/**',
+        '  outputs.files            dist/**',
+        '  outputs.clean            false',
+        '  inputStability.strategy  mutable',
+        '  inputStability.severity  error',
         '',
       ].join('\n'),
     ])

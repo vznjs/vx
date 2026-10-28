@@ -993,10 +993,15 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             viaSkip?.blockedBy ??
             (viaSkip?.otherPlatform !== undefined ? viaSkip.node.id : undefined) ??
             (viaRestore === undefined ? undefined : blockedRestores.get(viaRestore))
+          // Behind a platform skip is no failure: the run passes, so the exit does.
+          const notHere =
+            !aborted() &&
+            blockedBy !== undefined &&
+            outcomes.get(blockedBy)?.otherPlatform !== undefined
           finishOne(id, {
             node,
             status: aborted() ? 'aborted' : 'skipped',
-            exitCode: 1,
+            exitCode: notHere ? 0 : 1,
             durationMs: 0,
             ...(blockedBy !== undefined ? { blockedBy } : {}),
           })
