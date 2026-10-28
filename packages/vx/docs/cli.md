@@ -1809,7 +1809,9 @@ semantics: env reads in a config keep their lock-time values; a
 locked directory whose config file is gone (X-144) or that this user
 may not search (EACCES, named as such), or a missing lock, is a hard error; a config added since the lock is no project until
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
-is not in the lock yet — run `vx lock`"). An entry edited by
+is not in the lock yet — run `vx lock`", as a run from its directory says
+`c/vx.config.ts is not in the lock yet`, where it ran the locked project
+around it). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
 something has crashed, so a normal run pays nothing for it.
