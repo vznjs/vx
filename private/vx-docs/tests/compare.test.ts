@@ -333,7 +333,7 @@ describe('the choosing page', () => {
       '0.1.0 is not cut',
       'Explicit inputs are work.',
       'A small ecosystem.',
-      'Nothing distributed ships.',
+      'You host the servers.',
       'No first-party cloud.',
     ]) {
       expect(costs).toContain(phrase)

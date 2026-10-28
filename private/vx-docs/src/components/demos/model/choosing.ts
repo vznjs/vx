@@ -491,7 +491,7 @@ export const CHOICES: readonly Choice[] = [
           'Distributed task execution through @vzn/vx-dte: one run over workers your own CI starts, through a relay you host. Or, through @vzn/vx-reapi, a Bazel REAPI worker pool such as NativeLink or BuildBuddy. The scheduler stays on your machine. Off by default.',
         buys: 'A laptop or a CI job can use a build farm, one task at a time, with the rest of the run unchanged.',
         costs:
-          'Every input must be declared, since the worker sees nothing else. vx ships no workers, service or dashboard: you run a pool or rent one.',
+          'Every input must be declared, since the worker sees nothing else. Workers run on your own CI or pool, and you host the relay: vx sells no service and ships no dashboard.',
         sources: [
           { label: 'Remote execution', href: 'docs/remote-execution/' },
           {
@@ -720,7 +720,7 @@ export const CHOICES: readonly Choice[] = [
           'Pre-alpha. @vzn/vx and its plugins are on npm as 0.0.x builds, and 0.1.0 is not cut.',
         buys: 'Nothing yet, beyond the design: the API can still change where it is wrong.',
         costs:
-          'No stable release, no support policy, a small ecosystem (the first-party plugins), and nothing distributed ships in the repository: no cloud, no workers, no dashboard.',
+          'No stable release, no support policy, a small ecosystem (the first-party plugins), and no hosted service: you run the cache, history and DTE servers yourself, and there is no dashboard.',
         sources: [{ label: 'Roadmap to 1.0', href: 'design/roadmap-10/' }],
       },
       turbo: {

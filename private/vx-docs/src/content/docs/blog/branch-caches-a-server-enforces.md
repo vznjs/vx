@@ -91,9 +91,12 @@ header.
 
 ### Server config
 
-vx ships no cache server, so this is an example for one you run: a trust
-policy per team. A rule names token claims; each value is an exact
-string, a glob, or a list.
+vx's own [cache server](../../docs/servers/cache/) does this over its
+`/v1` wire. For a server on the Turbo wire, here is an example: a trust
+policy per team.
+
+A rule names token claims; each value is an exact string, a glob, or a
+list.
 
 A token matches a rule when every claim in it matches.
 
