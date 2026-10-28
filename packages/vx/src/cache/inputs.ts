@@ -1062,7 +1062,13 @@ export async function cleanOutputs(args: {
     args.committed ?? committedFiles(undefined, args.projectDir),
   )
   sweepRestoreTemps(args.projectDir, args.outputs, committed)
-  const matched = args.resolved ?? (await resolveOutputs(args))
+  // An empty directory under the outputs is one too (a save keeps it): one
+  // an older build left would otherwise be saved by this run.
+  const tree =
+    args.resolved === undefined
+      ? await resolveOutputTree(args)
+      : { files: args.resolved, emptyDirs: [] }
+  const matched = tree.files
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
@@ -1070,7 +1076,13 @@ export async function cleanOutputs(args: {
     matched.filter((f) => !committed(f)),
     args.projectDir,
   )
-  await pruneEmptiedDirs(args.projectDir, removed, pruneScope(args.projectDir, args.outputs))
+  await pruneEmptiedDirs(
+    args.projectDir,
+    removed,
+    pruneScope(args.projectDir, args.outputs),
+    undefined,
+    tree.emptyDirs,
+  )
   // Project-relative posix paths the outputs reach, for the caller's
   // GitFilesCache.markOutputsChanged: a committed one kept here is the
   // task's to rewrite or remove, so its index OID no longer vouches for it.
@@ -1361,11 +1373,11 @@ function insideRoot(files: readonly string[], root: string): string[] {
 }
 
 /**
- * Remove the directories a clean emptied, bottom-up, never `root` itself.
+ * Remove the directories a clean emptied, and the `emptyDirs` it found
+ * (an older build's, which a save would keep), bottom-up, never `root` itself.
  * A restore writes files where the cached entry has them; a directory left
  * standing where the entry holds a FILE of the same name (a task that once
- * wrote `dist/out/…` and now writes `dist/out`) blocks the rename, and an
- * empty directory is not an output anyone declared. A directory that still
+ * wrote `dist/out/…` and now writes `dist/out`) blocks the rename. A directory that still
  * holds something — a stray the globs do not cover — stays, and the restore
  * says so if it is in the way. With a `scope`, only a directory inside it
  * goes (`pruneScope`).
@@ -1375,6 +1387,7 @@ async function pruneEmptiedDirs(
   removed: readonly string[],
   scope?: PruneScope,
   keep?: ReadonlySet<string>,
+  emptyDirs: readonly string[] = [],
 ): Promise<void> {
   const rootResolved = path.resolve(root)
   // LEVEL ORDER, not a walk-up per directory. A parent is attempted only
@@ -1387,7 +1400,7 @@ async function pruneEmptiedDirs(
   // standing when a sibling's turn came first; the same walk-up without
   // the memo is correct and 60 ms, because every child re-attempts the
   // shared parent. This is correct at 44 ms.
-  let level = new Set(removed.map((f) => path.dirname(f)))
+  let level = new Set([...removed.map((f) => path.dirname(f)), ...emptyDirs])
   while (level.size > 0) {
     const parents = new Set<string>()
     const dirs = [...level].filter(
@@ -1517,7 +1530,11 @@ export async function cleanWorkspaceOutputs(args: {
     args.committed ?? committedFiles(undefined, args.workspaceRoot),
   )
   sweepRestoreTemps(args.workspaceRoot, args.outputs, committed)
-  const matched = args.resolved ?? (await resolveWorkspaceOutputs(args))
+  const tree =
+    args.resolved === undefined
+      ? await resolveWorkspaceOutputTree(args)
+      : { files: args.resolved, emptyDirs: [] }
+  const matched = tree.files
   await pruneEmptiedDirs(
     args.workspaceRoot,
     await removeAll(
@@ -1525,6 +1542,8 @@ export async function cleanWorkspaceOutputs(args: {
       args.workspaceRoot,
     ),
     pruneScope(args.workspaceRoot, args.outputs),
+    undefined,
+    tree.emptyDirs,
   )
   return matched.map((f) => relPosix(args.workspaceRoot, f))
 }
