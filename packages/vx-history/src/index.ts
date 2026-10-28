@@ -57,7 +57,8 @@ export interface VxHistoryOptions {
   /**
    * Reservations declared by hand (task id → cores, megabytes) for the
    * task history cannot size: a first run, or a task whose peak the
-   * runner cannot see. A declared reservation wins over a learned one.
+   * runner cannot see. A declared axis wins over the learned one; an axis
+   * left out keeps it.
    */
   readonly reservations?: Readonly<Record<string, ResourceEstimate>>
   /**
@@ -148,13 +149,13 @@ function numberWarnings(options: VxHistoryOptions, warn: (m: string) => void): v
   for (const [id, r] of Object.entries(options.reservations ?? {})) {
     if (r === null || typeof r !== 'object' || Array.isArray(r)) {
       bad.push(
-        `reservations[${JSON.stringify(id)}] ${JSON.stringify(r) ?? String(r)} (using none; must be { cpus?, memory? })`,
+        `reservations[${JSON.stringify(id)}] ${JSON.stringify(r) ?? String(r)} (using what history learned; must be { cpus?, memory? })`,
       )
       continue
     }
     for (const axis of ['cpus', 'memory'] as const) {
       const v = r[axis]
-      if (v !== 0) check(`reservations[${JSON.stringify(id)}].${axis}`, v, 'none')
+      if (v !== 0) check(`reservations[${JSON.stringify(id)}].${axis}`, v, 'what history learned')
     }
   }
   if (bad.length > 0) {
@@ -163,11 +164,12 @@ function numberWarnings(options: VxHistoryOptions, warn: (m: string) => void): v
 }
 
 /**
- * The declared reservations, each axis only where it is a number above 0.
- * A NaN (`Number(process.env.X)`, X unset) held a task alone and every
+ * The declared reservations, each axis only where it is a number above 0,
+ * or 0: a declared nothing, over what history learned. A NaN
+ * (`Number(process.env.X)`, X unset) held a task alone and every
  * reserving task beside it waited — the NaN summed into what runs — so the
- * run went serial and said nothing (G-4's class). A bad axis reserves
- * nothing, named by `numberWarnings`.
+ * run went serial and said nothing (G-4's class). A bad axis is not
+ * declared, named by `numberWarnings`.
  */
 function declaredOf(
   options: VxHistoryOptions,
@@ -176,8 +178,8 @@ function declaredOf(
   const out: Record<string, ResourceEstimate> = {}
   for (const [id, r] of Object.entries(options.reservations)) {
     const e: { cpus?: number; memory?: number } = {}
-    if (usable(r?.cpus)) e.cpus = r.cpus
-    if (usable(r?.memory)) e.memory = r.memory
+    if (r?.cpus === 0 || usable(r?.cpus)) e.cpus = r.cpus
+    if (r?.memory === 0 || usable(r?.memory)) e.memory = r.memory
     out[id] = e
   }
   return out
@@ -597,8 +599,9 @@ function estimatesFor(
 }
 
 /**
- * A declared reservation wins over a learned one; a task with neither
- * reserves nothing.
+ * A declared axis wins over the learned one, and an axis the declaration
+ * leaves out keeps it: cores are only ever declared, and declaring them
+ * dropped the task's learned memory. A task with neither reserves nothing.
  */
 export function withDeclared(
   learned: ReadonlyMap<string, ResourceEstimate>,
@@ -606,7 +609,12 @@ export function withDeclared(
 ): ReadonlyMap<string, ResourceEstimate> {
   if (declared === undefined) return learned
   const out = new Map(learned)
-  for (const [id, r] of Object.entries(declared)) out.set(id, r)
+  for (const [id, r] of Object.entries(declared)) {
+    const merged: { cpus?: number; memory?: number } = { ...learned.get(id) }
+    if (r.cpus !== undefined) merged.cpus = r.cpus
+    if (r.memory !== undefined) merged.memory = r.memory
+    if (merged.cpus !== undefined || merged.memory !== undefined) out.set(id, merged)
+  }
   return out
 }
 
