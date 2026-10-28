@@ -7,7 +7,17 @@ import { blobName } from '../src/store.js'
 import { createCacheServer, limitsFrom } from '../src/server.js'
 import { conformance, scopeOf } from './conformance.js'
 import { fakeS3, type FakeS3 } from './fake-s3.js'
-import { ALLOW, GITHUB, type Issuer, issuer, JOBS, MAIN_JOB, NAMED, REPO } from './issuer.js'
+import {
+  ALLOW,
+  ALLOW_VAR,
+  GITHUB,
+  type Issuer,
+  issuer,
+  JOBS,
+  MAIN_JOB,
+  NAMED,
+  REPO,
+} from './issuer.js'
 
 const LIMITS = { maxCheckHashes: 50, maxUploadBytes: 7 * 1024 * 1024 }
 
@@ -174,4 +184,51 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     stderr: 'pipe',
   })
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+})
+
+// Bun's own body cap was the upload limit: a check longer than a small
+// MAX_UPLOAD_BYTES was refused before the server read it, 413 with no
+// `{ code, message }`, and so was an upload past it.
+it('takes a check longer than MAX_UPLOAD_BYTES, and answers every refusal itself', async () => {
+  const cli = Bun.spawn(
+    ['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0', '--host', '127.0.0.1'],
+    {
+      env: {
+        ...process.env,
+        S3_BUCKET: 'b',
+        S3_ENDPOINT: s3.url,
+        S3_ACCESS_KEY_ID: 'a',
+        S3_SECRET_ACCESS_KEY: 's',
+        ALLOW: ALLOW_VAR,
+        READ_ACCESS: 'public',
+        MAX_UPLOAD_BYTES: '1000',
+      },
+      stdout: 'pipe',
+    },
+  )
+  try {
+    const reader = cli.stdout.getReader()
+    const line = new TextDecoder().decode((await reader.read()).value)
+    const base = /on (\S+)/.exec(line)![1]!
+    const hashes = Array.from({ length: 40 }, (_, i) => i.toString(16).padStart(64, 'a'))
+    const check = await fetch(new URL('/v1/artifacts', base), {
+      method: 'POST',
+      body: JSON.stringify({ hashes, scopes: [scopeOf('refs/heads/main')] }),
+      headers: { ...NAMED, 'content-type': 'application/json' },
+    })
+    const held = (await check.text()) || 'null'
+    expect([check.status, Object.keys(JSON.parse(held) ?? {}).length]).toEqual([200, 40])
+    const upload = await fetch(new URL('/v1/artifacts/ab', base), {
+      method: 'PUT',
+      body: 'x'.repeat(2000),
+      headers: NAMED,
+    })
+    expect([upload.status, JSON.parse((await upload.text()) || 'null')]).toEqual([
+      403,
+      { code: 'forbidden', message: 'this request reads only' },
+    ])
+  } finally {
+    cli.kill()
+    await cli.exited
+  }
 })
