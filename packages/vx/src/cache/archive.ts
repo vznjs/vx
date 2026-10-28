@@ -332,7 +332,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
             `${shown} is a symlink to ${to}, outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there, or take it back with a '!' entry`,
           )
         }
-        return { name, link: to }
+        return { name, link: to, abs, shown }
       }
       if (!st.isFile()) {
         throw new UserError(
@@ -353,6 +353,19 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       }
     }),
   )
+  const linked = new Map<string, string>()
+  const symlinks = files.filter(
+    (f): f is Extract<(typeof files)[number], { link: string }> => 'link' in f,
+  )
+  for (const f of symlinks) linked.set(f.abs, f.shown)
+  for (const f of symlinks) {
+    const via = throughLink(path.dirname(f.abs), f.link, linked)
+    if (via !== undefined) {
+      throw new UserError(
+        `${f.shown} is a symlink to ${f.link} through ${linked.get(via)}, another link: vx restores each link as written and checks where it points alone — point it at the target directly, or take it back with a '!' entry`,
+      )
+    }
+  }
   // In the outputs' order, not as each stat settled: one tree, one artifact.
   const regular: Array<Exclude<(typeof files)[number], { link: string }>> = []
   for (const f of files) {
@@ -707,6 +720,26 @@ function linksOf(meta: MetaFile): Array<[string, string]> {
   })
 }
 
+/**
+ * The first of `links` (absolute paths) that `to` passes through, walked
+ * from `dir` a segment at a time. Each link's target is checked as text,
+ * but the kernel follows one link while it resolves the next: `up -> ..`
+ * and `esc -> up/../../x` each read as inside while `esc` lands outside.
+ */
+function throughLink(
+  dir: string,
+  to: string,
+  links: ReadonlyMap<string, string>,
+): string | undefined {
+  let at = dir
+  for (const seg of to.split('/')) {
+    if (seg === '' || seg === '.') continue
+    at = seg === '..' ? path.dirname(at) : path.join(at, seg)
+    if (links.has(at)) return at
+  }
+  return undefined
+}
+
 /** `p` is `root` or under it, lexically. */
 const inside = (p: string, root: string): boolean => {
   const r = path.resolve(root)
@@ -812,6 +845,11 @@ export async function extractArtifactStream(
     }
     // A link may point only inside the workspace (the project, without one).
     const bound = stageRoot ?? workspaceDest ?? destDir
+    const linked = new Map<string, string>()
+    for (const [name] of links) {
+      const dest = x.destFor(name)
+      if (dest !== null && dest.rel.length > 0) linked.set(path.join(dest.base, dest.rel), name)
+    }
     for (const [name, to] of links) {
       if (accept !== undefined && !accept(name)) {
         throw new ArchiveSecurityError(
@@ -824,6 +862,12 @@ export async function extractArtifactStream(
       await x.assertContained(dest.base, target, name)
       if (!inside(path.resolve(path.dirname(target), to), bound)) {
         throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
+      }
+      const via = throughLink(path.dirname(target), to, linked)
+      if (via !== undefined) {
+        throw new ArchiveSecurityError(
+          `archive link ${name} points through ${linked.get(via)}, another link it restores: ${to}`,
+        )
       }
       await x.stageLink(name, dest.base, target, to)
       provided.add(name)

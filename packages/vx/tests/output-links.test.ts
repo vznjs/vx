@@ -147,6 +147,55 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
+// Each link was checked alone, as text, but the kernel follows one link
+// while it resolves the next: `up -> ..` and `esc -> up/../../SECRET` each
+// read as inside, and `esc` landed on a file beside the workspace. A link
+// may not reach its target through another link the artifact restores.
+it.skipIf(process.platform === 'win32')(
+  'an artifact whose link reaches out through another of its links restores nothing',
+  async () => {
+    const outer = mkdtempSync(path.join(os.tmpdir(), 'vx-links-chain-'))
+    made.push(outer)
+    const ws = path.join(outer, 'ws')
+    const dest = path.join(ws, 'app')
+    mkdirSync(dest, { recursive: true })
+    const err = await extractArtifactStream(
+      streamOf(
+        await artifact({
+          links: { 'outputs/dist/up': '..', 'outputs/dist/esc': 'up/../../SECRET' },
+        }),
+      ),
+      dest,
+      ws,
+      undefined,
+      undefined,
+      ws,
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(String(err)).toContain(
+      'ArchiveSecurityError: archive link outputs/dist/esc points through outputs/dist/up, another link it restores',
+    )
+    expect(lstatSync(path.join(dest, 'dist/up'), { throwIfNoEntry: false })).toBeUndefined()
+    expect(lstatSync(path.join(dest, 'dist/esc'), { throwIfNoEntry: false })).toBeUndefined()
+  },
+)
+
+it.skipIf(process.platform === 'win32')(
+  'a link out of the workspace through another output link fails the save',
+  async () => {
+    const out = await workspace(
+      'rm -rf dist && mkdir -p dist && ln -s ../.. dist/up && ln -s up/../../x dist/esc',
+    )
+    const r = await build(out.root)
+    expect(r.out + r.err).toMatch(
+      /output dist\/esc is a symlink to up\/\.\.\/\.\.\/x through output dist\/up, another link/,
+    )
+  },
+  TIMEOUT,
+)
+
 // A tmpfs beside the disk: the only second filesystem a test reaches
 // without a mount.
 const otherFs =

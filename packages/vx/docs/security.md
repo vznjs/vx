@@ -170,7 +170,10 @@ A task with `exec.sandbox` runs where only what it declares exists:
   outputs outside the sandbox, and packing a link as its target's bytes
   carried a file the task could not read into the cache (L-23). A link
   must be relative and stay inside the workspace, on save and again on
-  restore, where a link out of it fails the whole restore. An output
+  restore, where a link out of it fails the whole restore. Nor may it
+  reach its target through another link of the same outputs: each
+  target is checked as text, and `up -> ..` with `esc -> up/../../x`
+  each read as inside while `esc` lands outside. An output
   directory linked out of the project refuses the task by name (X-88).
   Linux judges making a link by the link, never its target
   (`tests/sandbox-output-link.unsafe.test.ts`).
