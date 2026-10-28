@@ -199,7 +199,7 @@ describe('an executor that ignores the signal', () => {
   const deaf = pluginSource(
     'org/deaf',
     `{ executor() { return { name: 'deaf', execute(req) {
-        req.onStderr('started\\n')
+        req.onStderr('working')
         return new Promise(() => {})
       } } } }`,
   )
@@ -233,8 +233,9 @@ describe('an executor that ignores the signal', () => {
       ['app#slow', 'failed', true],
     ])
     expect(Date.now() - started).toBeLessThan(10_000)
-    expect(stderr.join('')).toContain(
-      "vx: plugin 'org/deaf' (executor 'deaf') did not return within 200ms of the timeout (300ms); abandoned\n",
+    // On its own line: the executor's last output ended mid-line.
+    expect(stderr.join('')).toStartWith(
+      "working\nvx: plugin 'org/deaf' (executor 'deaf') did not return within 200ms of the timeout (300ms); abandoned\n",
     )
   }, 20_000)
 

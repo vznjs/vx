@@ -164,23 +164,22 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     unlocked = true
     return []
   })
-  // `//#check` is the root project's task, under the name the run gives
-  // it (prepare.ts, D-39): taken literally, no project was in scope and
-  // the watch exited 1 after a green run.
-  const rootDir = path.resolve(workspaceRoot)
-  const rootName = allProjects.find((p) => path.resolve(p.dir) === rootDir)?.name
-  const anchored = opts.tasks
-    .filter((t) => t.includes('#'))
-    .map((t) => t.slice(0, t.indexOf('#')))
-    .map((p) => (p === '//' && rootName !== undefined ? rootName : p))
+  const anchored = opts.tasks.filter((t) => t.includes('#')).map((t) => t.slice(0, t.indexOf('#')))
   const named =
     anchored.length === opts.tasks.length
       ? new Set(anchored)
       : opts.projects === undefined
         ? undefined
         : new Set([...opts.projects, ...anchored])
+  // `//#check` is the root project's task, under the name the run gives
+  // it (prepare.ts, D-39): taken literally, no project was in scope and
+  // the watch exited 1 after a green run. Resolved per discovery: started
+  // with no lock, the root has no name until `vx lock` writes one.
+  const rootDir = path.resolve(workspaceRoot)
   const inScope = (all: readonly ProjectMeta[]): ProjectMeta[] =>
-    named === undefined ? [...all] : all.filter((p) => named.has(p.name))
+    named === undefined
+      ? [...all]
+      : all.filter((p) => named.has(p.name) || (named.has('//') && path.resolve(p.dir) === rootDir))
   const scope = inScope(allProjects)
 
   // Initial run — same code path as `vx run`.

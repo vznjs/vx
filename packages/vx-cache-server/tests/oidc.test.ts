@@ -101,13 +101,30 @@ describe('CI OIDC tokens', () => {
     expect(await status('e7', near.ref)).toBe(200)
   })
 
-  // Any branch may be named gh-readonly-queue/main/pr-1-<sha> where no
-  // merge queue claims the prefix: a push to it wrote main's scope.
-  it('a push to a branch named like a merge queue ref writes that branch', async () => {
-    const ref = `refs/heads/gh-readonly-queue/main/pr-12-${'b'.repeat(40)}`
-    expect((await put(await sign({ event_name: 'push', ref }), 'c9')).status).toBe(204)
-    expect(await status('c9')).toBe(404)
-    expect(await status('c9', ref)).toBe(200)
+  // The queue's rename keyed on the ref alone: a push to a branch named
+  // like a queue ref, or a pull request whose head branch was, wrote main.
+  it('only a merge_group run writes its base branch', async () => {
+    const queued = `gh-readonly-queue/main/pr-12-${'a'.repeat(40)}`
+    const push = { event_name: 'push', ref: `refs/heads/${queued}` }
+    expect((await put(await sign(push), 'a11')).status).toBe(204)
+    expect(await status('a11')).toBe(404)
+    expect(await status('a11', push.ref)).toBe(200)
+    const pr = { event_name: 'pull_request', ref: 'refs/pull/7/merge', head_ref: queued }
+    expect((await put(await sign(pr), 'a12')).status).toBe(204)
+    expect(await status('a12')).toBe(404)
+  })
+
+  // A fork names its own head branch: a fork's branch `main` wrote main
+  // wherever fork pull requests get a token.
+  it("a pull request whose head branch is its base branch's name writes nothing", async () => {
+    const pr = await sign({
+      event_name: 'pull_request',
+      ref: 'refs/pull/7/merge',
+      head_ref: 'main',
+      base_ref: 'main',
+    })
+    expect(await detail(await put(pr, 'a13'))).toEqual([403, 'this request reads only'])
+    expect(await status('a13')).toBe(404)
   })
 
   // A pull_request_target run carries a fork's head_ref, named by the
@@ -321,4 +338,75 @@ it("answers 502 while the issuer's keys cannot be read, never 401", async () => 
     )
     expect(await detail(res)).toEqual([502, `could not read ${GITHUB}'s keys`])
   }
+})
+
+// A fork's merge request pipeline runs in the parent project with the
+// fork's branch as its `ref_path`: a fork's branch `main` wrote main.
+describe('GitLab merge request pipelines', () => {
+  const GITLAB = 'https://gitlab.com'
+  const AT = { 'vx-issuer': scopeOf(GITLAB), 'vx-repository': scopeOf('acme/app') }
+  let lab: (claims: JWTPayload) => Promise<string>
+  let h: (req: Request) => Promise<Response>
+  beforeAll(async () => {
+    const { privateKey, publicKey } = await generateKeyPair('RS256')
+    const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
+    lab = (claims) =>
+      new SignJWT({
+        project_path: 'acme/app',
+        ci_config_ref_uri: 'gitlab.com/acme/app//.gitlab-ci.yml@refs/heads/main',
+        ...claims,
+      })
+        .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
+        .setIssuer(GITLAB)
+        .setAudience(AUD)
+        .setIssuedAt()
+        .setExpirationTime('5m')
+        .sign(privateKey)
+    h = createCacheServer({
+      blobs: memBlobs(),
+      authorize: oidcAuth({
+        allow: parseAllow(`${GITLAB}:acme/app:.gitlab-ci.yml`),
+        audience: AUD,
+        fetchJson: async (url) =>
+          url.endsWith('/.well-known/openid-configuration')
+            ? { jwks_uri: `${GITLAB}/keys` }
+            : { keys: [jwk] },
+      }),
+    })
+  })
+  const write = (token: string, key: string) =>
+    h(
+      new Request(`${AUD}/v1/artifacts/${key}`, {
+        method: 'PUT',
+        body: 'x',
+        headers: { ...AT, authorization: `Bearer ${token}`, 'content-length': '1' },
+      }),
+    )
+  const held = (token: string, key: string, ref: string) =>
+    h(
+      new Request(`${AUD}/v1/artifacts/${key}`, {
+        headers: { ...AT, authorization: `Bearer ${token}`, 'vx-scope': scopeOf(ref) },
+      }),
+    ).then(async (r) => (await r.arrayBuffer(), r.status))
+  const MR = { pipeline_source: 'merge_request_event', job_project_path: 'acme/app' }
+
+  it("a fork's merge request writes nothing, nor one naming no source project", async () => {
+    const fork = await lab({ ...MR, source_project_path: 'eve/app', ref_path: 'refs/heads/main' })
+    expect(await detail(await write(fork, 'b1'))).toEqual([403, 'this request reads only'])
+    const unnamed = await lab({ ...MR, ref_path: 'refs/heads/main' })
+    expect(await detail(await write(unnamed, 'b2'))).toEqual([403, 'this request reads only'])
+    const main = await lab({ pipeline_source: 'push', ref_path: 'refs/heads/main' })
+    expect(await held(main, 'b1', 'refs/heads/main')).toBe(404)
+    expect(await held(main, 'b2', 'refs/heads/main')).toBe(404)
+  })
+
+  it("the project's own merge request writes its source branch", async () => {
+    const own = await lab({
+      ...MR,
+      source_project_path: 'Acme/App',
+      ref_path: 'refs/heads/feature',
+    })
+    expect((await write(own, 'b3')).status).toBe(204)
+    expect(await held(own, 'b3', 'refs/heads/feature')).toBe(200)
+  })
 })

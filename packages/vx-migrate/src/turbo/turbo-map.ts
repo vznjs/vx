@@ -15,7 +15,7 @@ import { isLiteralPattern, pruneOrphanPersistentNotes, UserError } from '@vzn/vx
 import type { PackageMeta } from '../packages.js'
 import { literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
-import { scriptCommand, yarnPnp } from '../script-command.js'
+import { type Owner, runsScriptHooks, scriptCommand, yarnPnp } from '../script-command.js'
 import {
   ownFileTakeBacks,
   excludeSiblingOutputs,
@@ -1165,6 +1165,7 @@ export async function mapTurboWorkspace(
     }
 
   const projects: TurboMappedProject[] = []
+  const hookMemo = new Map<string, Owner>()
   const literals = { tasks: [] as Literals[], globalIgnored }
   for (const meta of metas) {
     const scripts = packageScripts(meta)
@@ -1277,7 +1278,9 @@ export async function mapTurboWorkspace(
         }
         continue
       }
-      const command = override ?? scriptCommand(name, script as string, scripts, pnp)
+      // Turbo runs `<pm> run <name>`: the hooks fold only where the manager runs them.
+      const hooks = runsScriptHooks(meta.dir, hookMemo) === null ? {} : scripts
+      const command = override ?? scriptCommand(name, script as string, hooks, pnp)
       const mapped = buildTask(
         literals,
         name,

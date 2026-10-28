@@ -165,8 +165,10 @@ function notAllowed(allow: string): Response {
 const field = (body: unknown, key: string): unknown =>
   typeof body === 'object' && body !== null ? (body as Record<string, unknown>)[key] : undefined
 
+// A lone surrogate is stored as bytes that read back as U+FFFD: the row
+// answers to a hash no client asked for.
 const isOpaque = (s: unknown): s is string =>
-  typeof s === 'string' && s.length > 0 && s.length <= MAX_STRING
+  typeof s === 'string' && s.length > 0 && s.length <= MAX_STRING && !/\p{Cs}/u.test(s)
 
 const isCount = (n: unknown): n is number =>
   typeof n === 'number' && Number.isSafeInteger(n) && n >= 0

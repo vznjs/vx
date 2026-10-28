@@ -449,7 +449,8 @@ export async function resolveFilters(
     // Every pattern matched and an exclusion took them all back: "no
     // projects matched filter(s): one, !one" read as a typo of `one`.
     const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
-    const excluded = `${negations.join(', ')} excluded every project the other filters matched`
+    // With no include the base is every project: there is no "other filter".
+    const excluded = `${negations.join(', ')} excluded every project${includes.length > 0 ? ' the other filters matched' : ''}`
     if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
       if (includes.every((f) => emptyDiffs.has(f))) {
         const refs = includes.map((f) => f.gitSince).join(', ')

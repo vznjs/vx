@@ -7,7 +7,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { local } from '../src/index.ts'
 import { snapshot } from '../src/tree.ts'
-import { CORE_BIN, DTE, root, setup, teardown, vx } from './local-e2e-fixture.ts'
+import { CORE_BIN, CORE_INDEX, DTE, root, setup, teardown, vx } from './local-e2e-fixture.ts'
 
 beforeEach(setup)
 afterEach(teardown)
@@ -114,6 +114,60 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1G
     })
   } finally {
     await rm(tmp, { recursive: true, force: true })
+  }
+}, 60_000)
+
+// A worker masked only secret-named values out of the output it uploaded:
+// one the task's env.secret names (a GH_PAT) reached the remote whole.
+it("masks what a task's env.secret names out of the entry its worker uploads", async () => {
+  const away = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-pat-'))
+  const store = path.join(away, 'store')
+  await mkdir(store)
+  await mkdir(path.join(away, 'plugin'))
+  await writeFile(path.join(away, 'plugin', 'package.json'), '{"name":"e2e-remote"}')
+  const at = (h: string) => `${JSON.stringify(store)} + '/' + ${h}`
+  await writeFile(
+    path.join(root, '.vx/workspace.mjs'),
+    `import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { definePlugin } from ${JSON.stringify(CORE_INDEX)}
+import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [
+  dte({ workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local() }),
+  definePlugin({ dir: ${JSON.stringify(path.join(away, 'plugin'))} }, { cache: () => ({
+    has: async (h) => (existsSync(${at('h')}) ? {} : null),
+    get: async (h) => (existsSync(${at('h')}) ? { body: new Blob([readFileSync(${at('h')})]), durationMs: 1 } : null),
+    // First write wins, as a content-addressed store keeps it.
+    put: async (h, b) => existsSync(${at('h')}) || writeFileSync(${at('h')}, new Uint8Array(await b.arrayBuffer())),
+  }) }),
+] }
+`,
+  )
+  Bun.spawnSync(
+    ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'p'],
+    {
+      cwd: root,
+    },
+  )
+  const pat = 'pat-value-the-worker-saw'
+  try {
+    const r = vx(['run', 'b#pat'], 'pat', { VX_E2E_PAT: pat, CI: 'true' })
+    const out = r.stdout.toString() + r.stderr.toString()
+    expect([r.exitCode, out.includes('auth=***'), out.includes(pat)]).toEqual([0, true, false])
+    const stored: string[] = []
+    for (const f of await readdir(store)) {
+      const bytes = await Bun.file(path.join(store, f)).bytes()
+      try {
+        stored.push(new TextDecoder().decode(Bun.zstdDecompressSync(bytes)))
+      } catch {
+        stored.push(new TextDecoder().decode(bytes))
+      }
+    }
+    expect([
+      stored.some((t) => t.includes('auth=***')),
+      stored.some((t) => t.includes(pat)),
+    ]).toEqual([true, false])
+  } finally {
+    await rm(away, { recursive: true, force: true })
   }
 }, 60_000)
 
