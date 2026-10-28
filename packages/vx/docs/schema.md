@@ -491,7 +491,9 @@ Semantics:
 - **Not started when nothing needs it.** A persistent task you did not
   request, whose every dependant is a confirmed cache hit, local or
   remote, is never spawned: a fully cached `vx run e2e` does not boot the server
-  `e2e` depends on, and the server is in no outcome or count. Behind a
+  `e2e` depends on, and the server is in no outcome or count. A group
+  between them that nobody requested (`env: { dependsOn: ['dev'] }`) is
+  passed through for local hits. Behind a
   remote cache, the server waits for the remote's answer on the
   dependants the local store missed, and starts at the first miss. It starts
   if one of those hits turns out to need running (its artifact went),
