@@ -514,12 +514,12 @@ export function acceptsTask(task: TaskPlacement): boolean {
 
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
   // A zero or non-number bound stopped every action the moment it began
-  // executing.
+  // executing; Bun fires a timer past 2^31 - 1 ms after 1 ms, the same.
   for (const key of ['executeTimeoutMs', 'queueTimeoutMs'] as const) {
     const ms = opts[key]
-    if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
+    if (ms !== undefined && !(typeof ms === 'number' && ms >= 1 && ms <= 2 ** 31 - 1)) {
       throw new Error(
-        `@vzn/vx-reapi: ${key} must be a positive number of ms (got ${JSON.stringify(ms)})`,
+        `@vzn/vx-reapi: ${key} must be a number of ms from 1 to 2147483647 (got ${JSON.stringify(ms)})`,
       )
     }
   }

@@ -269,9 +269,10 @@ minutes before it can degrade, which is the opposite of what the deadline is
 for.
 
 Each deadline must be a positive number of ms; anything else is refused when
-the plugin starts. `executeTimeoutMs` and `queueTimeoutMs` are held to the
-same rule when the executor starts, so with `execute` off they are not
-checked.
+the plugin starts. `executeTimeoutMs` and `queueTimeoutMs` are checked when
+the executor starts, so with `execute` off they are not checked. They wait
+on a timer, so each must also be at most 2147483647 (a longer timer fires at
+once).
 
 That is not hypothetical. A NativeLink instance degraded into a state where it
 answered every ActionCache MISS in 3 ms and every HIT never — idle CPU,
