@@ -255,14 +255,14 @@ describe('READ_ACCESS=public', () => {
   })
 })
 
-describe('a server that admits no CI', () => {
+describe('a server whose ALLOW is empty', () => {
   it('refuses every request while ALLOW is empty', async () => {
     const none = createCacheServer({
       blobs: memBlobs(),
       authorize: oidcAuth({ allow: [] }),
     })
     const res = await none(new Request(`${AUD}/v1/artifacts/abc`))
-    expect(await detail(res)).toEqual([401, 'the server admits no CI: set ALLOW'])
+    expect(await detail(res)).toEqual([401, 'ALLOW is empty: set it to the CI workflows this server serves'])
   })
 })
 
