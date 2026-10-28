@@ -116,7 +116,7 @@ export function normalize(svg: string): string {
     svg
       .replace(/height="\d+"|viewBox="[^"]*"|y="\d+"|style="animation-delay:[^"]*"/g, '')
       .replace(/\d+(\.\d+)?(ms|s)\b/g, 'N')
-      .replace(/\d+ workers/g, 'N workers')
+      .replace(/\d+ workers?\b/g, 'N workers')
       .replace(/run [0-9a-f]{8}-[0-9a-f-]+/g, 'run ID')
       // The footer drops a spread value equal to one already on the row, so
       // which of max/avg/min print is a timing too.
