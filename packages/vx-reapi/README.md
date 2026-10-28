@@ -137,11 +137,11 @@ entirely: the outputs are already in the CAS, and stdout replays from
 the record. `--force` bypasses it.
 
 The input tree is read after the key was taken, so each file's bytes are
-held to the git blob id the key folded for it. A file edited or removed
+held to the git blob id the key hashed for it. A file edited or removed
 in between (an edit mid-run under `vx watch`) still runs, but the
 execution is not recorded under a key that no longer describes it; the
 record once replayed the edited outputs on every machine after the file
-was restored. The input root holds exactly the files the key folded: core
+was restored. The input root holds exactly the files the key hashed: core
 keys no package file, so a project's `package.json` is in it only as a
 listed input (`@vzn/vx-lockfile` lists it on every cached task).
 
@@ -165,7 +165,7 @@ An UPSTREAM's evicted blobs get the opposite answer, because there is
 nothing to fall through to. When a dependency's outputs live only in
 the CAS — vx grafts them by reference precisely because no local copy
 exists — and those blobs are gone, the action cannot be built with the
-inputs its key claims. vx fails the task and names the upstream rather
+inputs its key names. vx fails the task and names the upstream rather
 than shipping the action without them: a command that tolerates the
 absence exits 0, and that successful-but-wrong result would be cached
 under a key asserting those bytes were present. Which upstream bytes a
@@ -178,7 +178,7 @@ Bringing a task's OWN outputs back gets the same treatment. Core's
 contract is that once an executor returns, the declared outputs are on
 disk, because the ordinary save path then tars whatever it finds — so
 an output blob that cannot be fetched is a hole that would be cached
-under a key claiming a complete build. Under a literal capture the
+under a key that stands for a complete build. Under a literal capture the
 worker returns only what `output_paths` named, so every returned file
 is a declared output and an unfetchable one fails the task. The
 exception is a glob whose FIRST segment is a wildcard (`*.js`): it has
