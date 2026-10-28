@@ -862,8 +862,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         return true
       }
       if (inRestoreTier(id)) return false
-      if (continueMode === 'always') return false
       const node = nodes.get(id) as TaskNode
+      // `always` runs past a FAILURE only. Under it a skipped dep is one
+      // `exec.platforms` left off this machine (or a dependant of one): no
+      // failure, and what depends on it is skipped in every mode.
+      if (continueMode === 'always')
+        return node.deps.some((d) => outcomes.get(d)?.status === 'skipped')
       return node.deps.some((d) => {
         const u = outcomes.get(d)
         // `aborted` propagates even though it is counted nowhere: the
