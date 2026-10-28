@@ -13,6 +13,10 @@ first; its text is that footer: what changed and what to do.
 
 ALLOW no longer takes commas between entries. Separate them with spaces or newlines.
 
+## inputs: run a runtime probe with the essential env only
+
+inputs.runtime and inputs.workspaceRuntime probes see only the essential env allowlist, not vx's full environment; declare a variable a probe read as an inputs.env name.
+
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 
 the cache and history servers read ALLOW (space separated issuer:owner/repo:workflow entries) in place of TRUST; @vzn/vx-devtools exports parseAllow and Allowed in place of parseTrust and TrustRule, and oidcAuth and oidcTokenAuth take allow, not trust. Protected refs are gone: any run of a named workflow writes its branch. Set ALLOW to each repository's CI workflow.
