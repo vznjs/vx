@@ -988,3 +988,56 @@ describe('vx why — an input another task rewrites', () => {
     TIMEOUT,
   )
 })
+
+describe('vx why — an upstream that is a group', () => {
+  it(
+    'follows the moved key through the group to the file, and advises no verb on the group',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-why-group-', git: false })
+      try {
+        await writeEdges(root, { app: ['lib'] })
+        const configs: Array<[string, string]> = [
+          [
+            'app',
+            `export default { tasks: {
+              prep: { dependsOn: ['^build'] },
+              test: { dependsOn: ['prep'], exec: { command: 'true' }, inputs: { files: ['a.txt'] }, cache: { outputs: { files: [] } } },
+            } }`,
+          ],
+          [
+            'lib',
+            `export default { tasks: {
+              build: { exec: { command: 'true' }, inputs: { files: ['a.txt'] }, cache: { outputs: { files: [] } } },
+            } }`,
+          ],
+        ]
+        for (const [name, config] of configs) {
+          const dir = path.join(root, 'packages', name)
+          await mkdir(dir, { recursive: true })
+          await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+          await writeFile(path.join(dir, 'a.txt'), name)
+          await writeFile(path.join(dir, 'vx.config.mjs'), config)
+        }
+        const git = gitIn(root)
+        git('init', '-q')
+        git('add', '-A')
+        expect((await vx(root, ['run', 'app#test'])).code).toBe(0)
+        await writeFile(path.join(root, 'packages', 'lib', 'a.txt'), 'changed')
+        expect((await vx(root, ['run', 'app#test'])).code).toBe(0)
+
+        const j = JSON.parse((await vx(root, ['why', 'app#test', '--format', 'json'])).out) as {
+          roots: { chain: string[]; entries: { name: string }[] }[]
+        }
+        expect(j.roots.map((r) => [r.chain.join(' <- '), r.entries.map((e) => e.name)])).toEqual([
+          ['app#test <- app#prep <- lib#build', ['packages/lib/a.txt']],
+        ])
+        const r = await vx(root, ['why', 'app#test'])
+        expect(r.out).toContain('app#test ← app#prep ← lib#build ← file packages/lib/a.txt')
+        expect(r.out).not.toContain('vx why app#prep')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})

@@ -54,7 +54,7 @@ alone decides what it reads and where it writes, by the server's
   does not name is `403`, and so is a job of a workflow it does not name
   (`job_workflow_ref`, GitLab's `ci_config_ref_uri`). A repository's artifacts are never another's.
 - It writes its branch's scope: on GitHub a `pull_request` run's head
-  branch (`refs/heads/<head_ref>`), a `merge_group` run
+  branch (`refs/heads/<head_ref>`), a merge queue's (`merge_group`) run
   (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, that exact form)
   its base branch (`refs/heads/<base>`), which its code is about to
   become, else its `ref`; on GitLab its `ref_path`.
@@ -96,9 +96,9 @@ no bytes.
 to `maxCheckHashes` lookups (hashes × scopes): `{ "<hash>": { "size":
 <bytes>, "scope": <scope> } | null, … }`, one per hash, naming the first
 scope asked that holds it, which its download names. Each lookup is
-exact, and its time does not grow with what a scope holds. Every answer
-names the server's limits, which a client chunks its checks by, sending
-the chunks at once:
+exact, and its time does not grow with what a scope holds. Every
+`/v1/artifacts` answer, a refusal too, names the server's limits, which
+a client chunks its checks by, sending the chunks at once:
 
 ```
 vx-max-check-hashes: 500

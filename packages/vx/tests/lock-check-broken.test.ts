@@ -52,3 +52,26 @@ it('a graph-rule refusal still names a gone project and a stray review copy', as
   expect(err).toContain('the lock holds packages/c')
   expect(err).toContain('packages/e/vx.lock.json has no vx.config beside it')
 })
+
+it('a lock that is not valid JSON is a drift the audit names, in its own shape', async () => {
+  const ws = await makeWorkspace({ prefix: 'vx-lock-check-corrupt-' })
+  await addProject(ws, 'a', CONFIG)
+  await writeFile(path.join(ws, '.vx', 'projects.lock.json'), '{bad')
+  const json = Bun.spawnSync({
+    cmd: [process.execPath, BIN, 'lock', '--check', '--format', 'json'],
+    cwd: ws,
+  })
+  const pretty = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock', '--check'], cwd: ws })
+  await rm(ws, { recursive: true, force: true })
+  expect(json.exitCode).toBe(1)
+  expect(JSON.parse(json.stdout.toString())).toEqual({
+    upToDate: false,
+    audited: 1,
+    notAudited: 0,
+    problems: ['.vx/projects.lock.json is not valid JSON — re-run `vx lock` or delete it'],
+  })
+  expect(pretty.exitCode).toBe(1)
+  expect(pretty.stderr.toString()).toContain(
+    '✗ vx lock --check  .vx/projects.lock.json is not valid JSON',
+  )
+})

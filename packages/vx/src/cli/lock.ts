@@ -467,7 +467,16 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     }
     return problems.length === 0 ? 0 : 1
   }
-  const lock = await readLockfile(root)
+  // A lock that does not read is drift `vx lock` fixes, as a missing one
+  // is: the audit answers it in its own shape, not as a refusal.
+  let lock: Lockfile | null
+  try {
+    lock = await readLockfile(root)
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    if (!json) sayNotice('error', 'vx lock --check', err.message)
+    return answer([err.message])
+  }
   if (!lock) {
     const problem = `no ${LOCKFILE_NAME} at ${root} — run \`vx lock\` first`
     if (!json) sayNotice('error', 'vx lock --check', problem)

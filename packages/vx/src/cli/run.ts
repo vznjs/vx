@@ -173,16 +173,21 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       // half the callers mean. Reject and name both explicit forms; the
       // sibling value flags (--retries=, --timeout=, --cache-dir=)
       // reject an empty `=` value the same way.
-      if (raw === '') {
+      const names = raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+      // `=,` named nothing and ran every edge, as `=` would have.
+      if (names.length === 0) {
         return {
           ...out,
           error: `--exclude-dependencies= needs a value — pass bare --exclude-dependencies to drop every dependsOn edge, or omit the flag to keep them`,
         }
       }
-      out.excludeDependencies = raw
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
+      // Repeated, the last list replaced the earlier ones, so their
+      // edges ran; `--filter` adds up the same way.
+      if (out.excludeDependencies !== 'all')
+        out.excludeDependencies = [...new Set([...out.excludeDependencies, ...names])]
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
       if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
@@ -446,6 +451,7 @@ export async function resolveRunOptions(
           filterStrings,
           parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
           affectedFilter,
+          verb,
         )
       : undefined
   if (resolved !== undefined && 'error' in resolved) return resolved
