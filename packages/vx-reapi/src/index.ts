@@ -222,8 +222,35 @@ const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
   chunkBytes: 'number',
 }
 
+/**
+ * The number options, checked at the call: the client and the executor
+ * refused a bad one only once an endpoint was set, so a laptop passed what
+ * failed the first CI run, and a NaN read as `null`.
+ */
+function refuseBadNumbers(options: ReapiPluginOptions): void {
+  const refuse = (name: string, v: unknown, want: string): never => {
+    throw new UserError(`reapi() option "${name}" must be ${want}, got ${String(v)}`)
+  }
+  for (const name of [
+    'callTimeoutMs',
+    'metaTimeoutMs',
+    'executeTimeoutMs',
+    'queueTimeoutMs',
+  ] as const) {
+    const v = options[name]
+    if (v !== undefined && !(Number.isFinite(v) && v > 0))
+      refuse(name, v, 'a positive number of ms')
+  }
+  for (const name of ['chunkBytes', 'capacity'] as const) {
+    const v = options[name]
+    if (v !== undefined && !(Number.isInteger(v) && v > 0))
+      refuse(name, v, 'a whole number above 0')
+  }
+}
+
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
+  refuseBadNumbers(options)
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {
