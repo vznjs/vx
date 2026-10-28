@@ -348,6 +348,69 @@ it('a worker sent a task it runs already does not run it again', async () => {
   }
 })
 
+// A task runs in a process group of its own: a Ctrl-C reaches the worker
+// (local() starts it in the terminal's group) but not the task, and a
+// worker that died of it left the task running.
+it('a worker stopped by a signal stops its tasks before it exits', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  let pid: number | undefined
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, 'worker-child.ts'), served.url, R, root],
+      { stdio: ['ignore', 'ignore', 'inherit'] },
+    )
+    const order: RunOrder = {
+      task: 't',
+      key: 'k-t',
+      runKey: runKey(R, 't'),
+      deps: [],
+      nested: [],
+      command: 'echo $$ > pid.txt && exec sleep 30',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    for (let i = 0; i < 100 && pid === undefined; i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string }
+        if (from !== 'relay' || m.type !== 'joined') continue
+        await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+        await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+      }
+      const text = await readFile(path.join(root, 'pid.txt'), 'utf8').catch(() => '')
+      if (text.endsWith('\n')) pid = Number(text)
+    }
+    expect(pid).toBeNumber()
+    child.kill('SIGINT')
+    expect(await child.exited).toBe(130)
+    const alive = (): boolean => {
+      try {
+        process.kill(pid!, 0)
+        return true
+      } catch {
+        return false
+      }
+    }
+    expect(alive()).toBe(false)
+    pid = undefined
+    // Not the task's failure: it runs again on another worker.
+    const after = (await o.poll()).map(({ body }) => (body as { type: string }).type)
+    expect(after).not.toContain('end')
+  } finally {
+    if (pid !== undefined) process.kill(pid, 'SIGKILL')
+    await served.stop()
+  }
+})
+
 it('gives failed worker starts three more workers, then fails the run', async () => {
   const served = servedRelay()
   const url = served.url
