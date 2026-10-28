@@ -84,6 +84,29 @@ describe('definePlugin — the name is the package name', () => {
     }
   })
 
+  it('refuses hooks that are not a plain object', () => {
+    // A class's methods live on its prototype, which the copy dropped:
+    // `setup` and `teardown` vanished and the plugin loaded without them.
+    class Hooks {
+      readonly commands = {}
+      setup(): void {}
+    }
+    const origin = pluginOrigin('@acme/hooks-shape')
+    const said = (hooks: unknown): string => {
+      try {
+        definePlugin(origin, hooks as never)
+        return 'taken'
+      } catch (err) {
+        return `${(err as Error).name}: ${(err as Error).message}`
+      }
+    }
+    expect([said(new Hooks()), said(undefined), said({ setup() {} })]).toEqual([
+      'UserError: definePlugin: the hooks must be a plain object ({ setup() { … } }), got a Hooks',
+      'UserError: definePlugin: the hooks must be a plain object ({ setup() { … } }), got undefined',
+      'taken',
+    ])
+  })
+
   it('refuses an origin that is not import.meta', () => {
     expect(() => definePlugin({}, {})).toThrow(/must be the plugin module's import.meta/)
   })

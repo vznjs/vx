@@ -11,7 +11,9 @@ consults capabilities at fixed points and otherwise ignores plugins —
 behavior lives in the plugin package (vite-style), not in core. A
 `package.json` that does not parse is refused naming the file (X-20),
 and a key on the plugin that names no hook (`excutor`) is refused by
-the workspace schema with the nearest hook hinted (X-19).
+the workspace schema with the nearest hook hinted (X-19). The hooks are a
+plain object: a class instance is refused, since its methods live on its
+prototype and the copy `definePlugin` makes would drop them.
 
 A factory that takes options calls `refuseUnknownOptions('name()',
 options, kinds)` first: Bun strips a config's types, so a misspelt option

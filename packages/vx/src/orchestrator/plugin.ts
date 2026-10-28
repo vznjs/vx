@@ -712,6 +712,20 @@ function pluginPackageName(dir: string): string {
  * checks for it, so a plugin cannot be named anything but its package.
  */
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin {
+  // The hooks are copied by spread, which takes own fields only: a class
+  // instance's methods stayed on its prototype and the plugin loaded
+  // without them, saying nothing.
+  const proto: unknown =
+    hooks !== null && typeof hooks === 'object' ? Object.getPrototypeOf(hooks) : undefined
+  if (proto !== Object.prototype && proto !== null) {
+    const got =
+      hooks === null || typeof hooks !== 'object'
+        ? String(hooks)
+        : `a ${(hooks as object).constructor?.name || 'class instance'}`
+    throw new UserError(
+      `definePlugin: the hooks must be a plain object ({ setup() { … } }), got ${got}`,
+    )
+  }
   if ('name' in hooks) {
     throw new UserError(`definePlugin: a plugin's name is its package name — drop the 'name' field`)
   }
