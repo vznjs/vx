@@ -638,15 +638,20 @@ async function historyCmd(
       )
       return 0
     }
+    // Worded as core's verbs word theirs, help pointer included.
+    const see = ' (see `vx history --help`)'
     if (a === '--format' || a.startsWith('--format=')) {
       const v = a === '--format' ? argv[++i] : a.slice(9)
-      if (v !== 'pretty' && v !== 'json') {
-        throw new UserError(`vx history: invalid --format: ${v ?? ''} (expected pretty | json)`)
-      }
+      if (v === undefined || v === '')
+        throw new UserError(`vx history: --format requires a value: pretty or json${see}`)
+      if (v !== 'pretty' && v !== 'json')
+        throw new UserError(`vx history: --format must be pretty or json (got ${v})${see}`)
       format = v
       continue
     }
-    throw new UserError(`vx history: unknown flag: ${a} (only --format pretty|json)`)
+    throw new UserError(
+      `vx history: ${a.startsWith('-') ? 'unknown flag' : 'unexpected argument'}: ${a}${see}`,
+    )
   }
   // The tasks a run would see, plugin stages included — the same ids the
   // `schedule` hook is handed.
