@@ -192,6 +192,11 @@ const LIMIT_HEADERS: Record<keyof Limits, string> = {
 const count = (n: unknown): number | undefined =>
   typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : undefined
 
+const chunks = <T>(all: readonly T[], size: number): T[][] =>
+  Array.from({ length: Math.ceil(all.length / size) }, (_, i) =>
+    all.slice(i * size, (i + 1) * size),
+  )
+
 /** Each limit, or undefined when one is missing or bad. */
 function limitsOf(read: (k: keyof Limits) => unknown): Limits | undefined {
   const maxCheckHashes = count(read('maxCheckHashes'))
@@ -461,14 +466,18 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const scopes = this.refs.map(scopeOf)
     const ask = [...new Set(hashes)]
     const max = (await this.limitsNow())?.maxCheckHashes ?? scopes.length
-    const per = Math.max(1, Math.floor(max / scopes.length))
+    // More refs than one check takes: each hash's scopes span several
+    // checks, the first in order holding it answering (a check of every
+    // scope at once was refused, every time).
+    const span = Math.min(scopes.length, max)
+    const per = Math.max(1, Math.floor(max / span))
+    const spans = chunks(scopes, span)
     const parts = await Promise.all(
-      Array.from({ length: Math.ceil(ask.length / per) }, (_, i) =>
-        this.check(scopes, ask.slice(i * per, (i + 1) * per)),
-      ),
+      chunks(ask, per).flatMap((some) => spans.map((s) => this.check(s, some))),
     )
     for (const part of parts)
       for (const [hash, { size, scope }] of part) {
+        if (held.has(hash)) continue
         held.set(hash, { size })
         this.found.set(hash, scope)
       }

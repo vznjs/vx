@@ -32,13 +32,13 @@ beforeAll(async () => {
 })
 
 /** The server over a Map bucket: what the wire sees is the server's own. */
-function server(maxUploadBytes = 1 << 20, readAccess?: string) {
+function server(maxUploadBytes = 1 << 20, readAccess?: string, maxCheckHashes?: number) {
   const blobs = new Map<string, Uint8Array>()
   const seen: { method: string; path: string; body: string; scope: string | null }[] = []
   const handle = createCacheServer({
     blobs: memBlobs(blobs),
     authorize: oidcAuth({ allow: ALLOW, readAccess, fetchJson: (u) => iss.fetchJson(u) }),
-    limits: { maxUploadBytes },
+    limits: { maxUploadBytes, ...(maxCheckHashes === undefined ? {} : { maxCheckHashes }) },
   })
   const srv = Bun.serve({
     port: 0,
@@ -246,6 +246,32 @@ describe('VxCacheLayer', () => {
     expect(
       layer(srv.url, write).put('ee55', new Blob([new Uint8Array(65)]), { durationMs: 1 }),
     ).rejects.toThrow('HTTP 413: an upload is at most 64 bytes')
+  })
+})
+
+describe("the server's limits", () => {
+  // Each check of one hash named every scope: a run reading more refs than
+  // the server's maxCheckHashes sent more lookups than it takes, and every
+  // check was refused.
+  it('checks a run that reads more refs than one check takes, scopes in order', async () => {
+    const srv = server(1 << 20, undefined, 2)
+    try {
+      const [write, read] = await Promise.all([srv.token(MAIN_JOB), srv.token(READ_JOB)])
+      await layer(srv.url, write).put('ab12', new Blob(['held']), { durationMs: 1 })
+      const refs = ['refs/heads/a', 'refs/heads/b', 'refs/heads/c', 'refs/heads/d', MAIN]
+      const c = layer(srv.url, read, refs)
+      const before = srv.seen.length
+      expect(await c.hasMany(['ab12', 'cd34'])).toEqual(new Map([['ab12', { size: 4 }]]))
+      const checks = srv.seen.slice(before).filter((r) => r.path === '/v1/artifacts')
+      for (const r of checks) {
+        const { hashes, scopes } = JSON.parse(r.body) as { hashes: string[]; scopes: string[] }
+        expect(hashes.length * scopes.length).toBeLessThanOrEqual(2)
+      }
+      expect(await (await c.get('ab12'))!.body.text()).toBe('held')
+      expect(srv.seen.at(-1)!.scope).toBe(await hashPart(MAIN))
+    } finally {
+      await srv.stop()
+    }
   })
 })
 
