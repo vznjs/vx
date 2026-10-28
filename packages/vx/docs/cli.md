@@ -678,7 +678,7 @@ unless explicitly overridden:
 - **BROAD** — the invocation used `--all`, `--filter`, or
   `--affected`. The user asked about a swath of the workspace and
   wants news, not output.
-- **CI** — the `CI` env var is truthy (`CI=0` / `CI=false` don't
+- **CI** — the `CI` env var is truthy (`CI=0` and `CI=false`, in any case, don't
   count). Wins over the flow.
 
 Reported task lines share one column grid —
@@ -1745,7 +1745,8 @@ The full workflow: the site's CI guide and `examples/ci`.
 holding a `vx.config.*`, in any language: `vx lock` lists them with git
 (`git ls-files`, tracked and untracked, git's ignore rules applied; a
 nested repository's own configs too), or walks the tree outside git,
-and leaves out any under a nested `.vx/workspace.*`. Configs are
+and leaves out any under a nested `.vx/workspace.*` or under a
+`node_modules` (an installed package is no project, ignored or not). Configs are
 programs; `vx lock` evaluates them in the current environment and
 stores the post-evaluation objects, by directory (version 4; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
@@ -2647,7 +2648,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v48 · index schema v49
+  cache versions    keys vx-cache-v49 · index schema v49
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
