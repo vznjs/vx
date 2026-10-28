@@ -3,8 +3,15 @@
 // an artifact is one object, named by its issuer, repository name, scope and
 // hash, and a read names the exact scope it wants (2026-10-25).
 
-import { type Access, type Authorize, hashPart, Refusal } from '@vzn/vx-devtools'
-import { errorJson, isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
+import {
+  type Access,
+  type Authorize,
+  errorJson,
+  hashPart,
+  notAllowed,
+  Refusal,
+} from '@vzn/vx-devtools'
+import { isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
 import { blobName, type Blobs } from './store.js'
 
 /** What an operator may set; each defaults, and a backend may cap them. */
@@ -31,15 +38,21 @@ const VARS = {
   maxUploadBytes: 'MAX_UPLOAD_BYTES',
 } as const
 
-/** `MAX_CHECK_HASHES` and `MAX_UPLOAD_BYTES` from the environment, each a whole number above 0. */
+/**
+ * `MAX_CHECK_HASHES` and `MAX_UPLOAD_BYTES` from the environment, each a
+ * whole number above 0: a string, or a number as wrangler.jsonc may write
+ * it (a number was skipped, unsaid, for the default).
+ */
 export function limitsFrom(env: object): Partial<Limits> {
   const out: Partial<Record<keyof Limits, number>> = {}
   for (const [field, name] of Object.entries(VARS) as [keyof Limits, string][]) {
     const v = (env as Record<string, unknown>)[name]
-    if (typeof v !== 'string' || v === '') continue
-    const n = Number(v)
+    if (v === undefined || v === '') continue
+    const n = typeof v === 'number' || typeof v === 'string' ? Number(v) : Number.NaN
     if (!(Number.isSafeInteger(n) && n > 0))
-      throw new Error(`${name}: not a whole number above 0: ${v}`)
+      throw new Error(
+        `${name}: not a whole number above 0: ${typeof v === 'string' || typeof v === 'number' ? v : JSON.stringify(v)}`,
+      )
     out[field] = n
   }
   return out
@@ -214,12 +227,6 @@ function bucketOf(blobs: Blobs): Blobs {
     get: (name) => blobs.get(name).catch((err) => failed(err, '')),
     size: (name) => blobs.size(name).catch((err) => failed(err, '')),
   }
-}
-
-const notAllowed = (allow: string): Response => {
-  const res = errorJson(405, `this route takes ${allow}`)
-  res.headers.set('allow', allow)
-  return res
 }
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))

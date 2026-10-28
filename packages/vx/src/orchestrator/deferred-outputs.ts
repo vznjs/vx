@@ -156,6 +156,8 @@ export class DeferredOutputs {
       await this.args.cache.save({
         hash: entry.hash,
         projectDir: producer.projectDir,
+        // As saveMiss: a link is bounded by the workspace, not the project.
+        workspaceRoot: this.args.workspaceRoot,
         outputFiles,
         ...(emptyDirs.length > 0 ? { outputDirs: emptyDirs } : {}),
         entry: entry.entry,

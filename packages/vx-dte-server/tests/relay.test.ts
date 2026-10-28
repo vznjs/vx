@@ -817,6 +817,19 @@ describe('a host that keeps runs and holds websockets', () => {
     await c.frame(R, o, { sends: [] })
     expect(await c.poll(R, o)).toEqual([{ from: 'relay', body: { type: 'left', id: body.id } }])
   })
+
+  // A join's proof was checked against the session it opens, whose nonces
+  // were new: the same join, sent again once its session ended, opened
+  // the run again as its orchestrator.
+  it('takes a join’s proof once: replayed after its run ended, it opens nothing', async () => {
+    const c = client()
+    const [join] = await c.request(R, 'join', { role: 'host' })
+    const replay = new Request(join)
+    const o = await c.open(join)
+    expect(o.status).toBe(200)
+    await c.frame(R, o.json.id, { leave: true })
+    expect((await c.open(replay)).status).toBe(403)
+  })
 })
 
 it('the Bun entry serves the protocol, without auth on loopback only', async () => {
@@ -854,26 +867,31 @@ beforeAll(() => {
 afterAll(() => served?.stop())
 conformance('the Bun relay', { base: () => served!.url, headers: () => ({}) })
 
-it('names the flags it lacks', () => {
-  const said = (...args: string[]) =>
+it('reads ALLOW and AUDIENCE from the environment, as the other servers do, and names what it lacks', () => {
+  const said = (env: Record<string, string>, ...args: string[]) =>
     Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), ...args], {
+      env: { PATH: process.env.PATH ?? '', ...env },
       stderr: 'pipe',
     })
       .stderr.toString()
       .split('\n')[0]
-  const allow = ['--allow', 'https://token.actions.githubusercontent.com:acme/app:ci.yml']
+  const ALLOW = 'https://token.actions.githubusercontent.com:acme/app:ci.yml'
   expect([
-    said(),
-    said(...allow),
-    said('--audience', 'x'),
-    said('--allow', '', '--audience', ''),
-    said(...allow, '--audience', ' '),
+    said({}),
+    said({ ALLOW }),
+    said({ AUDIENCE: 'x' }),
+    said({ ALLOW: '', AUDIENCE: '' }),
+    said({ ALLOW, AUDIENCE: ' ' }),
+    said({ ALLOW: 'acme/app', AUDIENCE: 'x' }),
+    said({ ALLOW, AUDIENCE: 'x' }, '--allow', ALLOW),
   ]).toEqual([
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
-    'missing --allow (or --no-auth)',
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
+    'missing ALLOW and AUDIENCE (or --no-auth)',
+    'missing AUDIENCE (or --no-auth)',
+    'missing ALLOW (or --no-auth)',
+    'missing ALLOW and AUDIENCE (or --no-auth)',
+    'missing AUDIENCE (or --no-auth)',
+    'ALLOW: acme/app is not issuer:owner/repo:workflow',
+    "Unknown option '--allow'",
   ])
 })
 

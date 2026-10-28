@@ -17,15 +17,15 @@ On a branch, vx compares with the commit where it left your base branch
 vx run build --affected --dry
 ```
 
-```text
-would run:
-  ▶  @demo/ui#build   cache miss — would exec   ea371b1a  ~9ms
-                      affected: packages/ui/src/index.ts changed (an input)
-  ▶  @demo/web#build  cache miss — would exec   3bc7cf82  ~5ms
-                      affected: packages/ui/src/index.ts changed (an input), via @demo/ui#build
+```ansi
+[1mwould run:[0m
+  [38;2;234;179;8m▶[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m   [38;2;234;179;8mcache miss — would exec [0m  [2mea61da13[0m[2m  ~14ms[0m
+                      [2maffected: packages/ui/src/index.ts changed (an input)[0m
+  [38;2;234;179;8m▶[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [38;2;234;179;8mcache miss — would exec [0m  [2m47fb6826[0m[2m  ~14ms[0m
+                      [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
 
-2 task(s) planned, 2 would run.
-predicted: ~14ms wall · ~14ms total execution
+[2m2 task(s) planned, 2 would run.[0m
+[2mpredicted: ~28ms wall · ~28ms total execution[0m
 ```
 
 ---

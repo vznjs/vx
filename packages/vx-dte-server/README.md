@@ -64,24 +64,26 @@ the button made, or in the Worker's settings in the Cloudflare dashboard:
 ### On Bun
 
 ```sh
-bunx @vzn/vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com --port 8080
+ALLOW=https://gitlab.com:group/app:.gitlab-ci.yml AUDIENCE=https://relay.example.com \
+bunx @vzn/vx-dte-server --port 8080
 ```
 
 Or as a container:
 
 ```sh
-docker run -p 8080:8080 ghcr.io/vznjs/vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
+docker run -p 8080:8080 -e ALLOW=https://gitlab.com:group/app:.gitlab-ci.yml \
+  -e AUDIENCE=https://relay.example.com ghcr.io/vznjs/vx-dte-server
 ```
 
 All vx servers at once, this relay with its state on a volume included:
 [`private/vx-servers/compose.yaml`](../../private/vx-servers/compose.yaml)
 (`docker compose up`).
 
-- `--allow <issuer:owner/repo:workflow>`, repeated, is an `ALLOW` entry
-  (above). GitLab names a project by its full path,
-  `group/subgroup/project`.
-- `--audience <aud>` is the `aud` every token must name: the URL the CI
-  job asks its ID token for.
+- `ALLOW` is the same list as on Workers (above), read from the
+  environment as every vx server reads it. GitLab names a project by
+  its full path, `group/subgroup/project`.
+- `AUDIENCE` is the `aud` every token must name: the URL the CI job
+  asks its ID token for.
 - `--port` (default 8080) and `--host` (default `0.0.0.0`) set where it
   listens.
 - `--no-auth` admits every request. Use it only to try `@vzn/vx-dte`

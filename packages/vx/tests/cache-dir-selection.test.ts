@@ -129,6 +129,45 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
     )
 
     it(
+      'serves a hit looked up after another hit restored',
+      async () => {
+        // A restore queues output stamps; the next lookup wrote them and
+        // failed its task with `attempt to write a readonly database`.
+        // b's key folds a's outputs, so it is looked up after a restores.
+        const config = (name: string, deps: string) => `export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist && echo ${name} > dist/out.txt' },
+          dependsOn: [${deps}],
+          inputs: { files: ['src/**'], ${deps === '' ? '' : "workspaceFiles: ['packages/a/dist/**'], tasks: []"} },
+          cache: { outputs: { files: ['dist/**'] } },
+        } } }`
+        for (const [name, deps] of [
+          ['a', ''],
+          ['b', "'a#build'"],
+        ] as const)
+          await addProject(root, name, {
+            config: config(name, deps),
+            files: { 'src/i.js': name, '.gitignore': 'dist/\n' },
+          })
+        const git = gitIn(root)
+        git('add', '-A')
+        git('commit', '-q', '-m', 'two')
+        expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+        const { chmod, readdir } = await import('node:fs/promises')
+        for (const f of await readdir(ro)) await chmod(path.join(ro, f), 0o444)
+        await chmod(ro, 0o555)
+        for (const p of ['a', 'b'])
+          await rm(path.join(root, 'packages', p, 'dist'), { recursive: true })
+        const hit = await vx(['run', 'build', '--all'])
+        expect(hit.out + hit.err).not.toContain('internal error')
+        expect(hit.code).toBe(0)
+        expect(await Bun.file(path.join(root, 'packages', 'b', 'dist', 'out.txt')).text()).toBe(
+          'b\n',
+        )
+      },
+      TIMEOUT,
+    )
+
+    it(
       'an empty one is refused the same way, with no SQLite stack',
       async () => {
         // No index yet: bun:sqlite threw `unable to open database file`

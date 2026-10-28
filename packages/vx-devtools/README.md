@@ -23,6 +23,8 @@ option.
   `(req, named?)`, `named` a `Repo`, answers the token's `Access`, refusing a token of
   another repository than `named`; with no token where `readAccess` is
   `public`, `named` when ALLOW names it, or `undefined` when none is named.
+- `errorJson(status, message)` is every server's refusal, `{ code, message }`
+  (Turbo's spec's `Error`); `notAllowed(allow)` its `405`, naming the methods in `Allow`.
 - `hashPart(text)` is what a server stores in place of an issuer, a repository name or a scope: the first
   128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
 
@@ -30,6 +32,8 @@ option.
 export class Refusal extends Error {
   readonly status: number
 }
+export function errorJson(status: number, message: string): Response
+export function notAllowed(allow: string): Response
 export interface Allowed {
   readonly issuer: string
   readonly repository: string
@@ -79,6 +83,7 @@ export function oidcTokenAuth(
   writes nothing. Any other value than `public` or unset throws.
 - A token writes its branch (a `pull_request` run's head branch on GitHub;
   a `merge_group` run's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
-  ref, else `ref`; GitLab's `ref_path`). A `pull_request_target` run writes
-  nothing: its `head_ref` a fork names, and its `ref` is the base. Nor does
-  a `pull_request` run whose head branch has its base branch's name.
+  ref, else `ref`; GitLab's `ref_path`). A `pull_request_target`,
+  `issue_comment` or `workflow_run` run writes nothing: its `ref` is the
+  base while it may run a pull request's code. Nor does a `pull_request`
+  run whose head branch has its base branch's name.

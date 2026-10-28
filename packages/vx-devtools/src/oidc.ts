@@ -11,6 +11,7 @@
 // jose's to check: signature, algorithm, audience and times.
 
 import { hashPart } from './hash-part.js'
+import { Refusal } from './refusal.js'
 import {
   createRemoteJWKSet,
   customFetch,
@@ -19,16 +20,6 @@ import {
   jwtVerify,
   type JWTPayload,
 } from 'jose'
-
-/** A request refused: its HTTP status and what to fix. */
-export class Refusal extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 /** One entry of `ALLOW`: the jobs of one workflow file of one repository at one issuer. */
 export interface Allowed {
@@ -111,21 +102,29 @@ const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCas
 const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /**
+ * GitHub events that run in the base branch's context on a pull request's
+ * behalf (design cache-signing-2026-10.md, "Events"): the token carries the
+ * base's `ref` while the job may run the pull request's code, a fork's
+ * included, which must never write the base. A `pull_request_target`
+ * run's `head_ref` is also a branch name the fork chose, and the token
+ * cannot tell a `workflow_run` a pull request started from one a push did.
+ */
+const ON_BEHALF = new Set(['pull_request_target', 'issue_comment', 'workflow_run'])
+
+/**
  * The scope a token writes: its branch. A GitHub pull request's run writes
  * its head branch (its `ref` is the merge ref the run's own reads never
  * name); a merge queue's run its base branch, which its code is about to
  * become (2026-10-25: "just strip it"); any other run its `ref`,
  * GitLab's its `ref_path`. Only a `pull_request` run takes its head
  * branch, and only a `merge_group` run's ref is renamed: anyone can push
- * a branch named like a queue ref. A `pull_request_target` run writes
- * nothing: its `head_ref` is a fork's branch name, chosen by the fork, and
- * its `ref` is the base branch, which a fork's code must never write. Nor
- * does a pull request whose head branch has its base branch's name: only
- * a fork's can.
+ * a branch named like a queue ref. A run of an event in `ON_BEHALF` writes
+ * nothing. Nor does a pull request whose head branch has its base
+ * branch's name: only a fork's can.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
   const event = claims['event_name']
-  if (event === 'pull_request_target') return undefined
+  if (ON_BEHALF.has(event as string)) return undefined
   const head = event === 'pull_request' ? claims['head_ref'] : undefined
   // Only a fork's head branch can share its base branch's name.
   if (head !== undefined && head === claims['base_ref']) return undefined
@@ -174,7 +173,8 @@ export function oidcAuth(opts: OidcOptions): Authorize {
   const verify = tokenVerifier(opts)
 
   return async (req) => {
-    if (opts.allow.length === 0) throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
+    if (opts.allow.length === 0)
+      throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
     const asked = `${req.headers.get(ISSUER_HEADER)}/${req.headers.get(REPOSITORY_HEADER)}`
     if (!asked.split('/').every((p) => PART.test(p)))
       throw new Refusal(
@@ -217,7 +217,8 @@ export function oidcTokenAuth(
   const open = readAccessOf(opts)
   const verify = tokenVerifier(opts)
   return async (req, asked) => {
-    if (opts.allow.length === 0) throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
+    if (opts.allow.length === 0)
+      throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
     const named = asked === undefined ? undefined : repoOf(asked)
     const bearer = bearerOf(req)
     if (bearer === undefined) {

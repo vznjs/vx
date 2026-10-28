@@ -59,6 +59,11 @@ export interface Repo {
 const DROP_OLD = 'DROP TABLE IF EXISTS task_timings'
 const SCHEMA = `CREATE TABLE IF NOT EXISTS timings (issuer TEXT NOT NULL, repository TEXT NOT NULL, ref TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (issuer, repository, ref, hash)) WITHOUT ROWID`
 
+// When the database was last swept, by whichever node: a Worker runs many
+// isolates and starts new ones all day, and each swept on its first upload.
+const SWEEPS =
+  'CREATE TABLE IF NOT EXISTS sweeps (id INTEGER PRIMARY KEY CHECK (id = 1), at INTEGER NOT NULL)'
+
 // One statement per 2 MB of a report's rows, passed as one JSON parameter:
 // D1 binds at most 100 parameters, and a free plan's Worker runs at most
 // 50 queries a request.
@@ -88,8 +93,10 @@ export interface Store {
   fold(repo: Repo, ref: string, now: number, reports: readonly Report[]): Promise<void>
   /** Each hash's row in the first of `refs` that holds one. */
   read(repo: Repo, refs: readonly string[], hashes: readonly string[]): Promise<Map<string, Timing>>
-  /** Deletes the rows not reported since `before`; how many. */
-  sweep(before: number): Promise<number>
+  /** When a node last swept the database; 0 before the first sweep. */
+  sweptAt(): Promise<number>
+  /** Deletes the rows not reported since `before`, and records the sweep at `now`; how many. */
+  sweep(before: number, now: number): Promise<number>
 }
 
 /**
@@ -123,6 +130,7 @@ export function sqliteStore(db: Db): Store {
     async init() {
       await db.run(DROP_OLD, [])
       await db.run(SCHEMA, [])
+      await db.run(SWEEPS, [])
     },
     async fold(repo, ref, now, reports) {
       for (const part of jsonParams(reports))
@@ -152,8 +160,19 @@ export function sqliteStore(db: Db): Store {
         ]),
       )
     },
-    // A report that would not move its row is not written for up to a
-    // day (FOLD): a row's write time lags its last report by up to that.
-    sweep: (before) => db.run('DELETE FROM timings WHERE updated_at < ?1', [before - DAY_MS]),
+    async sweptAt() {
+      const [row] = await db.all<{ at: number }>('SELECT at FROM sweeps WHERE id = 1', [])
+      return row?.at ?? 0
+    },
+    async sweep(before, now) {
+      // A report that would not move its row is not written for up to a
+      // day (FOLD): a row's write time lags its last report by up to that.
+      const deleted = await db.run('DELETE FROM timings WHERE updated_at < ?1', [before - DAY_MS])
+      await db.run(
+        'INSERT INTO sweeps (id, at) VALUES (1, ?1) ON CONFLICT (id) DO UPDATE SET at = excluded.at',
+        [now],
+      )
+      return deleted
+    },
   }
 }

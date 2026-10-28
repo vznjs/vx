@@ -2,8 +2,7 @@
 // `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and the limits are vars in
 // it (README.md § On Cloudflare Workers).
 
-import { type Authorize, oidcAuth, parseAllow } from '@vzn/vx-devtools'
-import { errorJson } from './protocol.js'
+import { type Authorize, errorJson, oidcAuth, parseAllow } from '@vzn/vx-devtools'
 import { createCacheServer, DEFAULT_LIMITS, type Limits, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
@@ -35,8 +34,9 @@ export interface Env {
   readonly AUDIENCE?: string
   /** `public`: a request with no token reads a repository ALLOW names. */
   readonly READ_ACCESS?: string
-  readonly MAX_CHECK_HASHES?: string
-  readonly MAX_UPLOAD_BYTES?: string
+  /** A string, or a number as wrangler.jsonc may write it. */
+  readonly MAX_CHECK_HASHES?: string | number
+  readonly MAX_UPLOAD_BYTES?: string | number
 }
 
 /** An object's key in the data center's cache. */

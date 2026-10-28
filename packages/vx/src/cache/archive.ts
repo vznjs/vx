@@ -214,6 +214,14 @@ interface MetaFile {
    */
   links?: Record<string, string>
   /**
+   * The directories under the outputs whose mode withholds a permission
+   * 0755 grants (`chmod 700 dist/keys`), entry name → permission bits
+   * (v49): a hit made each missing directory with mkdir's default, so a
+   * directory that kept its files to their owner came back readable by
+   * every user.
+   */
+  dirModes?: Record<string, number>
+  /**
    * What the PRODUCING execution used (2026-09-12, additive: an artifact
    * without it reads as before). Rides the artifact so a machine that
    * never ran the task — a fresh CI runner on a remote hit — still learns
@@ -265,6 +273,8 @@ interface PackArgs {
   exec?: ExecUsage | undefined
   /** The workspace root an output symlink's target must stay inside; absent, every link is refused. */
   root?: string
+  /** Where `outputs/` names lie, for the directory modes (`dirModes`); absent, none is recorded. */
+  projectDir?: string
 }
 
 /** The largest second count ustar's 12-byte mtime field holds: 11 octal digits. */
@@ -375,6 +385,17 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       regular.push(f)
     }
   }
+  if (args.projectDir !== undefined) {
+    const modes = narrowDirModes(
+      [...args.outputs.keys(), ...(args.dirs ?? [])],
+      args.dirs ?? [],
+      (name) =>
+        name.startsWith('outputs/')
+          ? path.join(args.projectDir!, name.slice('outputs/'.length))
+          : path.join(args.root ?? args.projectDir!, name.slice(WORKSPACE_PREFIX.length)),
+    )
+    if (modes !== undefined) meta.dirModes = modes
+  }
   const stdout = new TextEncoder().encode(args.stdout)
   const metaBytes = new TextEncoder().encode(JSON.stringify(meta))
   const inputs: TarInput[] = [
@@ -389,6 +410,36 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
     { name: META_ENTRY, size: metaBytes.byteLength, body: metaBytes },
   ]
   return { inputs, size: tarSize([...inputs, sumInput('0'.repeat(SUM_SIZE))]) }
+}
+
+/**
+ * The modes `MetaFile.dirModes` keeps: of each directory on the way to an
+ * output name below its namespace, and of each empty output directory, the
+ * ones that withhold a permission 0755 grants. A wider mode is left to the
+ * restoring umask, as a plain mkdir's is, so most artifacts carry none.
+ */
+function narrowDirModes(
+  names: readonly string[],
+  emptyDirs: readonly string[],
+  abs: (name: string) => string,
+): Record<string, number> | undefined {
+  const seen = new Set<string>()
+  let out: Record<string, number> | undefined
+  const visit = (dir: string): void => {
+    if (seen.has(dir)) return
+    seen.add(dir)
+    const st = statSync(abs(dir), { throwIfNoEntry: false })
+    if (st?.isDirectory() !== true || (st.mode & 0o755) === 0o755) return
+    ;(out ??= {})[dir] = st.mode & 0o777
+  }
+  for (const d of emptyDirs) visit(d)
+  for (const name of names) {
+    const top = name.startsWith('outputs/') ? 'outputs/'.length : WORKSPACE_PREFIX.length
+    for (let i = name.lastIndexOf('/'); i > top; i = name.lastIndexOf('/', i - 1)) {
+      visit(name.slice(0, i))
+    }
+  }
+  return out
 }
 
 /** The tar as a stream: each output is read from disk as it is written. */
@@ -539,6 +590,7 @@ export async function sealTree(dir: string, scan: ArtifactScan): Promise<void> {
   }
   if (scan.dirs.length > 0) meta.dirs = scan.dirs
   if (scan.links.length > 0) meta.links = Object.fromEntries(scan.links)
+  if (scan.dirModes.length > 0) meta.dirModes = Object.fromEntries(scan.dirModes)
   if (scan.exec !== undefined) meta.exec = scan.exec
   await writeFile(path.join(dir, META_ENTRY), JSON.stringify(meta))
 }
@@ -574,6 +626,8 @@ interface ArtifactScan {
   dirs: string[]
   /** The sidecar's symlinks, `[name, target]`, each name and target proven safe. */
   links: Array<[name: string, target: string]>
+  /** The sidecar's directory modes, each a directory the artifact holds something in or is. */
+  dirModes: Array<[name: string, mode: number]>
   stdout: string | null
   exec: ExecUsage | undefined
   key: string | undefined
@@ -585,6 +639,7 @@ class ScanFold {
   private files: MetaFile['files'] = {}
   private dirs: string[] = []
   private links: Array<[string, string]> = []
+  private dirModes: Array<[string, number]> = []
   private exec: ExecUsage | undefined
   private key: string | undefined
   stdout: string | null = null
@@ -594,6 +649,7 @@ class ScanFold {
     this.files = parsed.files ?? {}
     this.dirs = dirsOf(parsed)
     this.links = linksOf(parsed)
+    this.dirModes = dirModesOf(parsed)
     // The ingest side is the untrusted boundary: a foreign sidecar's
     // usage is taken only when it is a plain non-negative number.
     this.exec = usageOf(parsed.exec)
@@ -605,6 +661,26 @@ class ScanFold {
   }
 
   result(): ArtifactScan {
+    // A mode names a directory the artifact holds, never one a restore
+    // would otherwise not make: the row it becomes is a directory a hit
+    // makes and asks to stand.
+    if (this.dirModes.length > 0) {
+      const held = new Set(this.dirs)
+      const hold = (name: string): void => {
+        for (let i = name.indexOf('/'); i !== -1; i = name.indexOf('/', i + 1))
+          held.add(name.slice(0, i))
+      }
+      for (const s of this.seen) hold(s.name)
+      for (const d of this.dirs) hold(d)
+      for (const [name] of this.links) hold(name)
+      for (const [name] of this.dirModes) {
+        if (!held.has(name)) {
+          throw new ArchiveSecurityError(
+            `archive directory mode names no output directory: ${name}`,
+          )
+        }
+      }
+    }
     return {
       entries: this.seen.map((s) => {
         const m = this.files[s.name]
@@ -615,6 +691,7 @@ class ScanFold {
       }),
       dirs: this.dirs,
       links: this.links,
+      dirModes: this.dirModes,
       stdout: this.stdout,
       exec: this.exec,
       key: this.key,
@@ -744,6 +821,46 @@ function throughLink(
   return undefined
 }
 
+/**
+ * The sidecar's directory modes, each name held to a file entry's rules and
+ * each mode to permission bits.
+ */
+function dirModesOf(meta: MetaFile): Array<[string, number]> {
+  const raw: unknown = meta.dirModes
+  if (raw === undefined) return []
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new ArchiveSecurityError('archive sidecar dirModes is not a map')
+  }
+  return Object.entries(raw as Record<string, unknown>).map(([name, mode]) => {
+    if (!(name.startsWith('outputs/') || name.startsWith(WORKSPACE_PREFIX))) {
+      throw new ArchiveSecurityError(`archive directory is not an output: ${name}`)
+    }
+    assertSafeName(name)
+    if (typeof mode !== 'number' || !Number.isInteger(mode) || mode < 0 || mode > 0o777) {
+      throw new ArchiveSecurityError(
+        `archive directory ${name} has an unsafe mode: ${String(mode)}`,
+      )
+    }
+    return [name, mode]
+  })
+}
+
+/** A file this user cannot read is not the same bytes: the rename replaces it. */
+function sameBytes(file: string, body: Uint8Array): boolean {
+  try {
+    return readFileSync(file).equals(body)
+  } catch {
+    return false
+  }
+}
+
+/** The deepest directory holding both `a` and `b`. */
+function commonDir(a: string, b: string): string {
+  let dir = a
+  while (!inside(b, dir) && path.dirname(dir) !== dir) dir = path.dirname(dir)
+  return dir
+}
+
 /** `p` is `root` or under it, lexically. */
 const inside = (p: string, root: string): boolean => {
   const r = path.resolve(root)
@@ -794,6 +911,7 @@ export async function extractArtifactStream(
   let meta: MetaFile['files'] = {}
   let dirs: string[] = []
   let links: Array<[string, string]> = []
+  let dirModes: Array<[string, number]> = []
   const fold = onScan === undefined ? undefined : new ScanFold()
   try {
     const check = new SumCheck()
@@ -808,6 +926,7 @@ export async function extractArtifactStream(
         meta = parsed.files ?? {}
         dirs = dirsOf(parsed)
         links = linksOf(parsed)
+        dirModes = dirModesOf(parsed)
         continue
       }
       assertSafeName(e.name)
@@ -848,7 +967,12 @@ export async function extractArtifactStream(
       provided.add(`${name}/`)
     }
     // A link may point only inside the workspace (the project, without one).
-    const bound = stageRoot ?? workspaceDest ?? destDir
+    // Unpacked into a cache tree (no stage root), `outputs/` and
+    // `workspace-outputs/` are siblings: bounded by the latter alone, a
+    // `dist/link -> big.bin` pointed "out" and the ingest failed. The tree
+    // bounds by their parent; its restore checks against the workspace.
+    const bound =
+      stageRoot ?? (workspaceDest === undefined ? destDir : commonDir(destDir, workspaceDest))
     const linked = new Map<string, string>()
     for (const [name] of links) {
       const dest = x.destFor(name)
@@ -880,6 +1004,12 @@ export async function extractArtifactStream(
       }
       await x.stageLink(name, dest.base, target, to)
       provided.add(name)
+    }
+    // A moded directory is one the entries above make; its row, like an
+    // empty directory's, names it with a trailing slash. The cache applies
+    // the mode (`Cache.restoreOutputs`), to the directories a hit makes.
+    for (const [name] of dirModes) {
+      if (x.destFor(name) !== null) provided.add(`${name}/`)
     }
     verify?.(provided)
     // The sidecar's stat is the truth, a mode of 000 and an mtime at or
@@ -940,7 +1070,8 @@ function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined)
   const fd = openSync(s.target, constants.O_RDONLY | constants.O_NOFOLLOW)
   try {
     const st = fstatSync(fd)
-    if (st.ino !== ino || st.nlink !== 1) {
+    // An in-place write since the compare keeps the inode and bumps the ctime.
+    if (st.ino !== ino || st.nlink !== 1 || st.ctimeMs !== s.sameCtimeMs) {
       throw new Error(`${s.target} changed while it was restored`)
     }
     if ((st.mode & 0o7777) !== restoredMode(mode)) fchmodSync(fd, restoredMode(mode))
@@ -968,6 +1099,8 @@ interface Staged {
   base: string
   /** The target already holds the entry's bytes: nothing was written, and only its mode and mtime may change. */
   same?: number
+  /** The kept target's ctime when its bytes were compared. */
+  sameCtimeMs?: number
   /** `tmp` was copied beside `target`, which is on another filesystem than the staging (`crossOver`). */
   beside?: true
   /** A symlink to this target, made at `tmp`: no mode, no mtime. */
@@ -1279,7 +1412,7 @@ class Extractor {
         st.isFile() &&
         st.nlink === 1 &&
         st.size === body.byteLength &&
-        readFileSync(target).equals(body)
+        sameBytes(target, body)
       ) {
         this.staged.push({
           staged: false,
@@ -1290,6 +1423,7 @@ class Extractor {
           streamed: false,
           base,
           same: st.ino,
+          sameCtimeMs: st.ctimeMs,
         })
         return
       }

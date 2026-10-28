@@ -151,8 +151,6 @@ interface Session {
   /** The public key its host joined with; only its holder acts as it. */
   cert?: string
   certKey?: Promise<CryptoKey>
-  /** Proof nonces seen, and when: each is taken once. */
-  nonces?: Map<string, number>
 }
 
 /** A random (v4) UUID: no one can guess a session id to open it first or join it. */
@@ -185,6 +183,13 @@ export function createRelay(opts: RelayOptions): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 2_000
   const graceMs = opts.graceMs ?? 10_000
   const sessions = new Map<string, Session>()
+  /**
+   * Proof nonces seen, and when: each is taken once. The relay's, not a
+   * session's: a host's join proves itself to the session it opens, so a
+   * session's own were new to it, and that join sent again once its
+   * session ended opened it again.
+   */
+  const nonces = new Map<string, number>()
 
   /**
    * Down the participant's socket, or nowhere: a participant's message the
@@ -340,7 +345,6 @@ export function createRelay(opts: RelayOptions): Relay {
     delete session.host
     delete session.cert
     delete session.certKey
-    delete session.nonces
   }
 
   const forget = (session: Session): void => {
@@ -365,8 +369,11 @@ export function createRelay(opts: RelayOptions): Relay {
     }
     const [, ts, nonce, sig] = m as unknown as [string, string, string, string]
     const now = Date.now()
-    const nonces = (session.nonces ??= new Map())
-    for (const [n, at] of nonces) if (now - at > 2 * PROOF_SKEW_MS) nonces.delete(n)
+    // Taken in time order: the first one still fresh ends the prune.
+    for (const [n, at] of nonces) {
+      if (now - at <= 2 * PROOF_SKEW_MS) break
+      nonces.delete(n)
+    }
     if (Math.abs(now - Number(ts)) > PROOF_SKEW_MS || nonces.has(nonce)) {
       throw new HttpError(403, 'not signed by the session’s host key')
     }

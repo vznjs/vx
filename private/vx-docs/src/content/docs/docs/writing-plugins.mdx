@@ -156,9 +156,9 @@ returning `deps`, a `^build` is refused:
 discover: () => [{ dir: 'apps/web', deps: ['packages/ui'], reach: ['packages/config'] }]
 ```
 
-`fingerprint` claims a root file. An edit to it asks `affected` which
-projects it touches (`undefined`: all). Fold its bytes into the key with
-`key`:
+`fingerprint` names a root file the plugin keys itself. An edit to it
+asks `affected` which projects it touches (`undefined`: all). Add its
+bytes to the key with `key`:
 
 ```ts
 import { readFileSync } from 'node:fs'
@@ -174,7 +174,7 @@ export function toolVersions(): VxPlugin {
 }
 ```
 
-[`@vzn/vx-lockfile`](../../docs/lockfiles/) claims a lockfile this way.
+[`@vzn/vx-lockfile`](../../docs/lockfiles/) keys a lockfile this way.
 
 ---
 
@@ -458,7 +458,7 @@ class AcmeRemote implements RemoteCacheLayer {
   }
   async put(hash: string, body: Blob) {
     // An entry is immutable, and this server would overwrite: ask first.
-    if (!this.absent.has(hash) && (await this.has(hash)) !== null) return
+    if (!this.absent.has(hash) && (await this.has(hash)) !== null) return false // nothing sent
     const res = await fetch(`${this.endpoint}/${hash}`, { method: 'PUT', body, signal: deadline() })
     if (!res.ok) throw new Error(`HTTP ${res.status}`) // fetch resolves on a 500
   }
