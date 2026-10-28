@@ -677,12 +677,12 @@ const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])
  * tree; vx requires git. `-z` survives filenames with newlines /
  * spaces.
  */
-export function runGitLsFiles(cwd: string): GitLsResult {
+export function runGitLsFiles(cwd: string, env = gitEnv()): GitLsResult {
   let proc
   try {
     proc = Bun.spawnSync({
       cmd: [executablePath('git'), 'ls-files', '-s', '--others', '--exclude-standard', '-z', '.'],
-      env: gitEnv(),
+      env,
       cwd,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -764,11 +764,41 @@ function expandNestedRepos(
       for (const f of walkFiles(abs)) out.push(`${nested}/${f}`)
       continue
     }
-    const inner = runGitLsFiles(abs)
+    const inner = runGitLsFiles(abs, nestedRepoEnv())
     for (const f of inner.files) out.push(`${nested}/${f}`)
     for (const f of inner.undecodable) undecodable.push(`${nested}/${f}`)
   }
   return { files: out ?? files, undecodable }
+}
+
+/**
+ * Variables that name the repository git works on (git's `local_repo_env`),
+ * which a nested repository's git must not inherit. A pre-commit hook runs
+ * vx with `GIT_INDEX_FILE` or `GIT_DIR` naming the OUTER repository, and
+ * the nested listing read the outer index: a file the nested repository
+ * tracks under an ignore rule fell out of the inputs, a stale hit. git
+ * clears the same list for a submodule's commands; config variables stay.
+ */
+const LOCAL_REPO_ENV = new Set([
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_COMMON_DIR',
+  'GIT_DIR',
+  'GIT_GRAFT_FILE',
+  'GIT_IMPLICIT_WORK_TREE',
+  'GIT_INDEX_FILE',
+  'GIT_INTERNAL_SUPER_PREFIX',
+  'GIT_NO_REPLACE_OBJECTS',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_PREFIX',
+  'GIT_REPLACE_REF_BASE',
+  'GIT_SHALLOW_FILE',
+  'GIT_WORK_TREE',
+])
+
+function nestedRepoEnv(): Record<string, string> {
+  const env = gitEnv()
+  for (const name of LOCAL_REPO_ENV) delete env[name]
+  return env
 }
 
 /** Every file and symlink under `dir`, relative and `/`-separated; a `.git` is skipped, a link not followed. */
