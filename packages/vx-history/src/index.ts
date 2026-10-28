@@ -647,8 +647,12 @@ async function historyCmd(
   // `schedule` hook is handed.
   const projects = await loadResolvedProjects(ctx.workspaceRoot, { scope: 'all', warn: ctx.warn })
   const ids: string[] = []
+  const tasks: Pick<TaskNode, 'id' | 'config'>[] = []
   for (const p of projects.values()) {
-    for (const t of Object.keys(p.config.tasks ?? {})) ids.push(`${p.name}#${t}`)
+    for (const [t, config] of Object.entries(p.config.tasks ?? {})) {
+      ids.push(`${p.name}#${t}`)
+      tasks.push({ id: `${p.name}#${t}`, config })
+    }
   }
   numberWarnings(options, ctx.warn)
   const window = windowOf(options)
@@ -659,6 +663,8 @@ async function historyCmd(
       cache.dbHandle(),
       window,
       currentBranch(ctx.workspaceRoot),
+      // As a run reads them: a task whose command changed has no rows yet.
+      taskDefinitions(tasks as TaskNode[]),
     ).loadFor(ids)
   } finally {
     cache.close()
