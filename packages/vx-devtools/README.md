@@ -83,6 +83,7 @@ export function oidcTokenAuth(
   writes nothing. Any other value than `public` or unset throws.
 - A token writes its branch (a `pull_request` run's head branch on GitHub;
   a `merge_group` run's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
-  ref, else `ref`; GitLab's `ref_path`). A `pull_request_target` run writes
-  nothing: its `head_ref` a fork names, and its `ref` is the base. Nor does
-  a `pull_request` run whose head branch has its base branch's name.
+  ref, else `ref`; GitLab's `ref_path`). A `pull_request_target`,
+  `issue_comment` or `workflow_run` run writes nothing: its `ref` is the
+  base while it may run a pull request's code. Nor does a `pull_request`
+  run whose head branch has its base branch's name.

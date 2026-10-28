@@ -5,7 +5,7 @@
 // store by hand (2026-10-14).
 
 import { Database } from 'bun:sqlite'
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, realpathSync, symlinkSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -174,6 +174,59 @@ describe('vx cache clean with no bound clears the cache', () => {
       const again = await vx(['run', 'build', '--all'], env)
       expect(again.code).toBe(0)
       expect(existsSync(path.join(shared, 'cache.db'))).toBe(true)
+    },
+    TIMEOUT,
+  )
+  it(
+    "in a cache.dir the user named, keeps the user's runs/ and compiled/ and takes vx's steps/",
+    async () => {
+      // vx never writes `runs` (history is in cache.db) or `compiled` (always
+      // `.vx/cache/compiled`) into a named directory, yet the clear took them;
+      // it left `steps`, which run-steps.ts does write there.
+      const shared = path.join(home, 'shared')
+      const env = { VX_CACHE_DIR: shared }
+      expect((await vx(['run', 'build', '--all'], env)).code).toBe(0)
+      expect(readdirSync(shared)).not.toContain('runs')
+      expect(readdirSync(shared)).not.toContain('compiled')
+      await Bun.write(path.join(shared, 'runs', 'ci.log'), 'mine')
+      await Bun.write(path.join(shared, 'compiled', 'app.js'), 'mine')
+      await Bun.write(path.join(shared, 'steps', '0190a000-0000-7000-8000-000000000000.json'), '[]')
+
+      const r = await vx(['cache', 'clean'], env)
+      expect(r.code).toBe(0)
+      expect(readdirSync(shared).sort()).toEqual(['compiled', 'runs'])
+    },
+    TIMEOUT,
+  )
+  it(
+    'clears an index SQLite cannot read, the recovery its own refusal names',
+    async () => {
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const db = path.join(root, '.vx', 'cache', 'cache.db')
+      for (const f of ['', '-wal', '-shm']) await rm(db + f, { force: true })
+      await Bun.write(db, 'not a database '.repeat(200))
+
+      const r = await vx(['cache', 'clean'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
+      expect(existsSync(store())).toBe(false)
+    },
+    TIMEOUT,
+  )
+  it(
+    'a .vx/cache that is a symlink: clears what it points at, not only the link',
+    async () => {
+      // CI restores the cache onto a volume and links it in.
+      const mount = path.join(home, 'ci-mount')
+      mkdirSync(mount)
+      symlinkSync(mount, path.join(root, '.vx', 'cache'))
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      expect(existsSync(path.join(mount, 'cache.db'))).toBe(true)
+
+      const r = await vx(['cache', 'clean'])
+      expect(r.code).toBe(0)
+      expect(r.out).toContain('.vx/cache')
+      expect(readdirSync(mount)).toEqual([])
     },
     TIMEOUT,
   )

@@ -13,16 +13,37 @@ first; its text is that footer: what changed and what to do.
 
 CACHE_VERSION is vx-cache-v49: every cached task misses once after upgrading.
 
-## vx-devtools,vx-dte-server: read ALLOW as space separated only
+## workspace: refuse project names dependsOn or --filter misread
 
-ALLOW no longer takes commas between entries. Separate them with spaces or newlines.
-## vx-dte-server: read ALLOW and AUDIENCE from the environment
+a project name with '*', a leading '^' or '!', 'tag:', '...', a trailing '[ref]', './x' or '{x}' is refused at vx lock; rename it.
 
-vx-dte-server no longer takes --allow or --audience; set ALLOW and AUDIENCE in its environment. In compose.yaml set CACHE_ALLOW, CACHE_AUDIENCE, CACHE_READ_ACCESS and HISTORY_ALLOW, HISTORY_AUDIENCE, HISTORY_READ_ACCESS in place of ALLOW, AUDIENCE and READ_ACCESS.
+## workspace: refuse a baseBranch spelled as a ref
+
+a baseBranch or VX_BASE_BRANCH starting with origin/ or refs/ is refused; name the branch alone ('main').
 
 ## inputs: run a runtime probe with the essential env only
 
 inputs.runtime and inputs.workspaceRuntime probes see only the essential env allowlist, not vx's full environment; declare a variable a probe read as an inputs.env name.
+
+## vx-history-server: sweep once a day across every node
+
+a Store implements sweptAt() and sweep(before, now), which records the sweep at now. sqliteStore does both.
+
+## vx-devtools: refuse writes from issue_comment and workflow_run
+
+the cache and history servers refuse writes from issue_comment and workflow_run jobs, as from pull_request_target.
+
+## vx-dte-server: read ALLOW and AUDIENCE from the environment
+
+vx-dte-server no longer takes --allow or --audience; set ALLOW and AUDIENCE in its environment. In compose.yaml set CACHE_ALLOW, CACHE_AUDIENCE, CACHE_READ_ACCESS and HISTORY_ALLOW, HISTORY_AUDIENCE, HISTORY_READ_ACCESS in place of ALLOW, AUDIENCE and READ_ACCESS.
+
+## vx-devtools: one refusal body for every vx server
+
+@vzn/vx-history-server no longer exports errorJson; import it from @vzn/vx-devtools.
+
+## vx-devtools,vx-dte-server: read ALLOW as space separated only
+
+ALLOW no longer takes commas between entries. Separate them with spaces or newlines.
 
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 

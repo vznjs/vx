@@ -998,7 +998,10 @@ cache entry for them, so the next run is a plain local hit.
 | `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
-and each task hears it once: from vx, as SIGINT. A stop starts no more remote
+and each task hears it once: from vx, as SIGINT. Ctrl-Z (SIGTSTP) stops
+each task's process group, then vx; `fg` or `bg` continues vx, and vx
+continues them. A Linux sandboxed task's command is not stopped, only
+held once its output pipe fills. A stop starts no more remote
 cache uploads and does not wait on one in flight, nor on a remote lookup or
 download: what was half-read is dropped and fetched again next run.
 
@@ -1275,8 +1278,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 ### Lifecycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
-   same task graph, same cache behaviour. The line `vx watch: initial
-run...` precedes it.
+   same task graph, same cache behaviour, printed as its rows alone.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
@@ -1388,7 +1390,8 @@ watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** A cycle opens with a blank line and
    `changed <project> <relpath>`, plus ` (+N more)` when more paths
    changed, then its task rows as `vx run` prints them, with no footer.
-   The named path is the first changed one that still exists, so an
+   The named path is the first changed file that still exists (a
+   directory only when no file changed), so an
    editor's temporary file renamed away names nothing; a deletion names
    the cycle when nothing else changed. The `watching` line is said
    once: a cycle that re-reads the watched set (a member came or went,
@@ -1460,8 +1463,10 @@ decide which projects actually re-run: core keys no package file, so a
 lockfile edit re-keys only through its claimant
 ([cache key derivation](./caching.md#cache-key-derivation)). Every
 cycle's configs come from `.vx/projects.lock.json`, so a config edit
-alone changes no command, and a re-lock (`vx lock`) is a cycle that
-re-reads the watched set (item 971).
+alone changes no command: the cycle it starts says so on stderr,
+`vx watch: packages/app/vx.config.ts changed; runs read the lock, so run
+\`vx lock\` to apply it` (a config import's edit too). A re-lock
+(`vx lock`) is a cycle that re-reads the watched set (item 971).
 
 ### Constraints
 
@@ -1479,7 +1484,8 @@ once and stays up across cycles; each cycle re-runs what it depends on,
 as the cache keys decide. So `vx watch dev`, with `dev` depending on
 `^build`, rebuilds only the libraries an edit reaches on the way to the
 app and leaves the server running; the dev tool's own reload picks up
-what was rebuilt. What the server writes keeps printing. It restarts
+what was rebuilt. What the server writes keeps printing, under its id
+above the rows while a cycle rebuilds. It restarts
 only when its own task config (or the args forwarded to it) changed, or
 when it died: the old one is stopped first (the kill grace, then
 SIGKILL), so the two never hold one port. One that dies while watch
@@ -1487,7 +1493,8 @@ idles is said (`vx: app#dev exited with code 3`); the next change
 starts it again. A cycle in which a task the server depends on fails
 stops it. An edit while a cycle waits only on a server that has not
 printed its `readyWhen` line stops that cycle and starts the next, so a
-fix reaches a server stuck before ready, in the initial run too.
+fix reaches a server stuck before ready, in the initial run too; the
+servers already up stay up through it.
 Stopping watch stops the server too. A one-shot task (`vx watch build`)
 re-runs itself and what it depends on.
 
@@ -1506,9 +1513,10 @@ re-runs itself and what it depends on.
   same `Did you mean` hint, and watch exits rather than re-run the
   refusal on every change.
 
-A cycle that throws — a `vx.config.*` that does not parse — prints
-`vx watch: cycle failed: <reason>` and watch keeps watching, the initial
-run included, so saving the fix re-runs (item 1017).
+A cycle that throws — no `.vx/projects.lock.json`, or one that locks a
+config since removed — prints `vx watch: cycle failed: <reason>` once
+and watch keeps watching, the initial run included, so the `vx lock`
+that fixes it re-runs (item 1017).
 
 Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit
 the watch loop — a failed cycle just prints the framed FAILED block
@@ -1519,7 +1527,7 @@ watch`.
 
 `vx cache clean` evicts old or oversized cache entries, or with no
 bound clears the cache. It operates on the entries and
-`<hash>.tar.zst` artifacts of the store the workspace's index records
+`<hash>.tar.zst` artifacts of the store a run opens
 (`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
@@ -1656,7 +1664,8 @@ are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `vx cache clean` with neither `--older-than` nor `--max-size` clears
 the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
 `--cache-dir`: the index and this workspace's run history, so `vx last`
-and `vx why` start over) and the store its index names, where the
+and `vx why` start over), the store a run opens and the one its index
+last named, if another (a changed HOME, an origin added), where the
 entries live (`~/.vx/<id>/cache`, shared by this repository's
 checkouts, so their entries go too). `--global` also clears every other
 repository's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
@@ -1672,6 +1681,10 @@ index is a file in the checkout, which a commit or a restored CI cache
 could point at any directory. A workspace that never ran says
 `› vx cache clean  nothing to free`. The next run misses every task once
 and saves again.
+
+A `.vx/cache` linked to another directory (a CI cache volume) is
+emptied through the link, and the link stays. An index SQLite cannot
+read is cleared like any other.
 
 ```
 $ vx cache clean

@@ -875,7 +875,9 @@ describe('every page enumerating the run signal handlers names all three', () =>
       'utf8',
     )
     const registered = [...src.matchAll(/process\.on\('(SIG[A-Z]+)'/g)].map((m) => m[1]!)
-    expect(registered.sort()).toEqual(['SIGHUP', 'SIGINT', 'SIGTERM'])
+    // SIGTSTP and SIGCONT pause and continue the tasks (Ctrl-Z, fg); they
+    // end nothing, so no exit code and no page's stop set names them.
+    expect(registered.sort()).toEqual(['SIGCONT', 'SIGHUP', 'SIGINT', 'SIGTERM', 'SIGTSTP'])
 
     const pages: string[] = []
     const wrong: string[] = []
