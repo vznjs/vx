@@ -24,6 +24,7 @@ import {
   runFailures,
   type RunStep,
   runSteps,
+  runWarnings,
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
@@ -687,8 +688,14 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
             }
       })
       const steps = runSteps(cacheDir, inv.runId)
+      const warnings = runWarnings(cacheDir, inv.runId)
       process.stdout.write(
-        `${JSON.stringify({ invocation: inv, tasks, ...(steps.length > 0 ? { steps } : {}) })}\n`,
+        `${JSON.stringify({
+          invocation: inv,
+          tasks,
+          ...(steps.length > 0 ? { steps } : {}),
+          ...(warnings.length > 0 ? { warnings } : {}),
+        })}\n`,
       )
       return 0
     }
@@ -708,6 +715,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     )
     lines.push(...formatTaskRows(detail?.tasks ?? []))
     lines.push(...formatStepRows(runSteps(cacheDir, inv.runId)))
+    const warnings = runWarnings(cacheDir, inv.runId)
+    if (warnings.length > 0) {
+      lines.push('', '  warnings', ...warnings.flatMap((w) => w.split('\n').map((l) => `    ${l}`)))
+    }
     // The next command after reading a failed run, with the arguments the
     // run forwarded to the tasks that got them (a failure under `-- --shard
     // 2` is that shard's); a dependency never got them, so its line has none.

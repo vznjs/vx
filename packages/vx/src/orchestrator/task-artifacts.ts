@@ -8,12 +8,12 @@ import {
   type CacheLayer,
   type ResolvedRemote,
   resolveOutputTree,
-  resolveWorkspaceOutputs,
+  resolveWorkspaceOutputTree,
   sayRemoteFault,
 } from '../cache/index.js'
 import type { CapturedChunk } from '../exec/index.js'
 import { secretMask } from '../util/index.js'
-import { decodeOutputLog, encodeOutputLog } from './output-log.js'
+import { decodeOutputLog, encodeOutputLog, maskedOutputLog } from './output-log.js'
 
 /** The task a `TaskArtifacts` call names: where its outputs are and what ran. */
 export interface ArtifactTask {
@@ -94,19 +94,19 @@ export interface TaskArtifacts {
 export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArtifacts {
   return {
     async save(key, task, run) {
-      const [tree, wsFiles] = await Promise.all([
+      const [tree, wsTree] = await Promise.all([
         resolveOutputTree({
           projectDir: task.projectDir,
           outputs: task.outputs.files,
           nestedProjectDirs: [...(task.nestedProjectDirs ?? [])],
         }),
-        resolveWorkspaceOutputs({ workspaceRoot, outputs: task.outputs.workspaceFiles }),
+        resolveWorkspaceOutputTree({ workspaceRoot, outputs: task.outputs.workspaceFiles }),
       ])
       const mine = (f: string) => task.others?.has(f) !== true
       const files = tree.files.filter(mine)
-      const ws = wsFiles.filter(mine)
+      const ws = wsTree.files.filter(mine)
       const mask = secretMask([process.env, run.env ?? {}], run.secret)
-      const log = encodeOutputLog(run.output)
+      const log = mask === null ? encodeOutputLog(run.output) : maskedOutputLog(run.output, mask)
       await cache.save({
         hash: key,
         projectDir: task.projectDir,
@@ -114,12 +114,13 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
         ...(tree.emptyDirs.length > 0 ? { outputDirs: tree.emptyDirs } : {}),
         workspaceRoot,
         ...(ws.length > 0 ? { workspaceOutputFiles: ws } : {}),
+        ...(wsTree.emptyDirs.length > 0 ? { workspaceOutputDirs: wsTree.emptyDirs } : {}),
         ...(run.absent === true ? { absent: true } : {}),
         entry: {
           taskId: task.id,
           command: mask?.mask(task.command) ?? task.command,
           durationMs: run.durationMs,
-          stdout: mask?.mask(log) ?? log,
+          stdout: log,
           ...(run.cpuMs !== undefined ? { cpuMs: run.cpuMs } : {}),
           ...(run.peakRssBytes !== undefined ? { peakRssBytes: run.peakRssBytes } : {}),
         },
