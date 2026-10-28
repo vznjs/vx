@@ -198,8 +198,13 @@
             "read": [
               "**/*",
               "../../packages/vx/src/**",
+              "../../packages/vx-cache/src/**",
               "../../packages/vx-ci/src/**",
+              "../../packages/vx-dte/src/**",
               "../../packages/vx-history/src/**",
+              "../../packages/vx-lockfile/src/**",
+              "../../packages/vx-migrate/src/**",
+              "../../packages/vx-otel/src/**",
               "../../packages/vx/tests/config.test.ts",
               "../../packages/vx/tests/sandbox-runtime.unsafe.test.ts",
               "../../packages/vx/tests/task-hash-derive.test.ts",

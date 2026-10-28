@@ -238,9 +238,12 @@
       },
       "devDependencies": {
         "@vzn/vx": "workspace:*",
+        "@vzn/vx-cache": "workspace:*",
         "@vzn/vx-ci": "workspace:*",
+        "@vzn/vx-dte": "workspace:*",
         "@vzn/vx-history": "workspace:*",
         "@vzn/vx-lockfile": "workspace:*",
+        "@vzn/vx-migrate": "workspace:*",
         "@vzn/vx-otel": "workspace:*",
         "@vzn/vx-reapi": "workspace:*",
       },

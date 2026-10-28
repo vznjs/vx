@@ -174,11 +174,12 @@ export default defineProject({
     // reaches this one through `dependsOn`, and a hit on `build` restores
     // `dist/` before this runs.
     //
-    // Two rows read across project boundaries through packages this one
+    // Three rows read across project boundaries through packages this one
     // links (package.json), whose keys arrive through `install`
     // (`^build` folds each linked package's `source`, item 687): the CI
-    // guide's job summary is rendered by `@vzn/vx-ci`, and the plugins
-    // guide's snippets type-check against `@vzn/vx-history`.
+    // guide's job summary is rendered by `@vzn/vx-ci`, the plugins
+    // guide's snippets type-check against `@vzn/vx-history`, and every
+    // page's config blocks against the plugins they call.
     test: {
       description:
         'bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)',
@@ -192,8 +193,11 @@ export default defineProject({
             read: [
               '**/*',
               '../../packages/vx/src/**',
-              '../../packages/vx-ci/src/**',
-              '../../packages/vx-history/src/**',
+              // config-snippets.test.ts checks each page's plugin call
+              // against the plugin's source.
+              ...['cache', 'ci', 'dte', 'history', 'lockfile', 'migrate', 'otel'].map(
+                (p) => `../../packages/vx-${p}/src/**`,
+              ),
               ...PROOFS.map((p) => `../../${p}`),
               // reference-pages.test.ts maps the one-page references' ids to their pages.
               '../../packages/vx/docs/cli.md',
