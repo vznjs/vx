@@ -582,7 +582,8 @@ highest priority:
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
    `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
-   `COREPACK_HOME`, `PNPM_HOME`.
+   `COREPACK_HOME`, `PNPM_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
+   `XDG_CACHE_HOME`, `XDG_STATE_HOME`, `XDG_RUNTIME_DIR`.
    Nothing else from the parent environment reaches a task —
    that is the whole list. When neither `FORCE_COLOR` nor a non-empty
    `NO_COLOR` reaches the task by any layer, vx sets `FORCE_COLOR=1`
@@ -1612,7 +1613,8 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.fly/config.yml`, `~/.supabase/access-token`, `~/.config/doctl`,
 `~/Library/Application Support/doctl`, `~/.config/stripe/config.toml`,
 `~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
-`~/.codex/auth.json`.
+`~/.codex/auth.json`. A store in home's `.config` or `.local/share` is
+denied again under `$XDG_CONFIG_HOME` or `$XDG_DATA_HOME`, which a task sees.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `inputs` says what INVALIDATES a task, `sandbox.allow`

@@ -55,6 +55,25 @@ describe('buildIsolatedEnv', () => {
     expect([env['COREPACK_HOME'], env['PNPM_HOME']]).toEqual(['/c', '/p'])
   })
 
+  // A task resolved another home than the shell's: pnpm used
+  // ~/.local/share/pnpm/store over $XDG_DATA_HOME's, a CLI keeping its
+  // login under $XDG_CONFIG_HOME ran signed out (vercel/turborepo#13145).
+  it('passes the XDG base directories, as HOME', () => {
+    const xdg = {
+      XDG_CONFIG_HOME: '/x/config',
+      XDG_DATA_HOME: '/x/data',
+      XDG_CACHE_HOME: '/x/cache',
+      XDG_STATE_HOME: '/x/state',
+      XDG_RUNTIME_DIR: '/run/user/1',
+    }
+    const env = buildIsolatedEnv({
+      passThrough: [],
+      define: {},
+      source: { ...xdg, XDG_CURRENT_DESKTOP: 'GNOME' },
+    })
+    expect(env).toEqual({ ...xdg, FORCE_COLOR: '1' })
+  })
+
   it('omits essentials that are not set in source', () => {
     const env = buildIsolatedEnv({
       passThrough: [],
