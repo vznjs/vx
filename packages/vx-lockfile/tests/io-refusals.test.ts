@@ -63,3 +63,17 @@ it('a recorded-names memo that cannot be written leaves no temp file behind', as
   await discover(bun())
   expect((await readdir(claims)).filter((f) => f.includes('.tmp-'))).toEqual([])
 })
+
+it('a package.json that is there but unreadable refuses the lock, not reads as no manifest', async () => {
+  // Read as none, the root's workspace globs were none: a workspace the
+  // lockfile does not list yet passed `vx lock` with no edges.
+  await writeFile(
+    path.join(root, 'bun.lock'),
+    '{ "lockfileVersion": 1, "workspaces": { "": { "name": "r" } }, "packages": {} }\n',
+  )
+  await mkdir(path.join(root, 'package.json'))
+  await expect(discover(bun())).rejects.toThrow('package.json: cannot be read (')
+  // CONTROL: none at all is no manifest.
+  await rm(path.join(root, 'package.json'), { recursive: true })
+  expect(await discover(bun())).toBeDefined()
+})

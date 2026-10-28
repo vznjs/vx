@@ -474,13 +474,20 @@ function importerOf(workspaceRoot: string, dir: string): string {
  */
 async function manifestOf(root: string, dir: string): Promise<Record<string, unknown> | null> {
   const file = path.join(dir, 'package.json')
+  const name = path.relative(root, file).split(path.sep).join('/')
   let text: string
   try {
     text = await Bun.file(file).text()
-  } catch {
-    return null
+  } catch (err) {
+    // As readSettings: one there but unreadable read as none, and its
+    // workspace globs and names dropped out of the staleness check. A
+    // lockfile importer whose directory is now a file has none either.
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null
+    throw new UserError(
+      `${name}: cannot be read (${err instanceof Error ? err.message : String(err)})`,
+    )
   }
-  const name = path.relative(root, file).split(path.sep).join('/')
   if (CONFLICT.test(text))
     throw new UserError(`${name}: holds git merge conflict markers — resolve them`)
   let pkg: unknown
