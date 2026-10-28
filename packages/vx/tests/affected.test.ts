@@ -1644,6 +1644,28 @@ describe('affectedProjects: config import closures', () => {
     ).toEqual(['lib', 'x'])
   })
 
+  it('a file the workspace config imports selects every project, like the config', async () => {
+    // Its plugins shape every resolved config, and they see what it
+    // imports: an edit there re-keyed every task and selected none.
+    await mkdir(path.join(root, '.vx'), { recursive: true })
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { DESC } from './desc.mjs'\nexport default { plugins: [], DESC }\n`,
+    )
+    await writeFile(
+      path.join(root, '.vx/desc.mjs'),
+      `import { DEEP } from '../shared/deep.mjs'\nexport const DESC = DEEP\n`,
+    )
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'workspace config')
+    expect(await editThenSelect('tools/build-helper.mjs', `export const helper = 2\n`)).toEqual([])
+    expect(await editThenSelect('shared/deep.mjs', `export const DEEP = 2\n`)).toEqual([
+      'app',
+      'lib',
+      'x',
+    ])
+  })
+
   it("PIN: through the config's own helper file to an orphan", async () => {
     // lib's config imports its own `tasks.mjs`, which imports a shared
     // file. The walk stopped at `tasks.mjs` as owned, and an edit to the

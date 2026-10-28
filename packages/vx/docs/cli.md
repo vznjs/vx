@@ -434,7 +434,8 @@ base, or one with no `name`.
 
 **A workspace config change selects everything.** The plugins in
 `.vx/workspace.*` shape every resolved config, so an edit there can
-change any key, and vx cannot tell which. A root file a plugin reads
+change any key, and vx cannot tell which. So does an edit to a file it
+imports, directly or through another file. A root file a plugin reads
 without importing it counts when the plugin claims it
 (`VxPlugin.fingerprint`): `turbo()` claims `turbo.json` and
 `turbo.jsonc`, `nx()` claims `nx.json`, and either answers every project.
