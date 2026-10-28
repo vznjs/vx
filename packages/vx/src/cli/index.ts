@@ -61,7 +61,8 @@ async function brokenLockNamed(err: unknown): Promise<unknown> {
   try {
     const { findWorkspaceRoot, LOCK_INVALID, lockEntryBroken } =
       await import('../workspace/index.js')
-    if (lockEntryBroken(await findWorkspaceRoot(process.cwd()))) return new UserError(LOCK_INVALID, 'VX_E_LOCK')
+    if (lockEntryBroken(await findWorkspaceRoot(process.cwd())))
+      return new UserError(LOCK_INVALID, 'VX_E_LOCK')
   } catch {}
   return err
 }
