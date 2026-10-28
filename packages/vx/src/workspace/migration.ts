@@ -26,8 +26,8 @@ export function starterProject(format: MigrationFormat): string {
  */
 export function isStarterConfig(file: string): boolean {
   try {
-    const text = readFileSync(file, 'utf8')
-    return text === starterProject('ts') || text === starterProject('mjs')
+    // By extension: the mjs starter's text in a .ts file is a user's config.
+    return readFileSync(file, 'utf8') === starterProject(file.endsWith('.ts') ? 'ts' : 'mjs')
   } catch {
     return false
   }

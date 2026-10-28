@@ -30,6 +30,8 @@ export default {
 `vxCache({ url?, issuer, repository, timeoutMs?, uploadTimeoutMs?, headers? })`:
 
 - `url` is the server's base URL (`https://cache.example.com`, without `/v1`), or `VX_CACHE_URL`.
+  It must be `https://`: every request carries the CI token, so `http://`
+  is taken only to this machine (`127.0.0.1`, `::1`, `localhost`).
 - `issuer` (the CI issuer's URL, as its tokens name it) and `repository`
   (`org/name` there) are required: nothing guesses them. Every request
   names both by their hashes (`vx-issuer`, `vx-repository`), and the
