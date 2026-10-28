@@ -764,14 +764,14 @@ describe('a host that keeps runs and holds websockets', () => {
 it('the Bun entry serves the protocol, without auth on loopback only', async () => {
   const bin = path.join(import.meta.dir, '..', 'src', 'bun.ts')
   const refused = Bun.spawnSync(['bun', bin, '--no-auth', '--host', '0.0.0.0'], { stderr: 'pipe' })
-  expect([refused.exitCode, refused.stderr.toString().trim()]).toEqual([
+  expect([refused.exitCode, Bun.stripANSI(refused.stderr.toString()).trim()]).toEqual([
     2,
-    '--no-auth listens on loopback only',
+    '✗ vx-dte-server  --no-auth listens on loopback only',
   ])
   const proc = Bun.spawn(['bun', bin, '--no-auth', '--port', '0'], { stdout: 'pipe' })
   try {
     const reader = proc.stdout.getReader()
-    const line = new TextDecoder().decode((await reader.read()).value)
+    const line = Bun.stripANSI(new TextDecoder().decode((await reader.read()).value))
     const url = /http:\/\/\S+/.exec(line)![0]
     // Refused, its socket is let in and closed saying why: a failed upgrade says nothing.
     const join = encodeURIComponent(JSON.stringify({ role: 'peer' }))
@@ -798,11 +798,11 @@ conformance('the Bun relay', { base: () => served!.url, headers: () => ({}) })
 
 it('names the flags it lacks', () => {
   const said = (...args: string[]) =>
-    Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), ...args], {
-      stderr: 'pipe',
-    })
-      .stderr.toString()
-      .split('\n')[0]
+    Bun.stripANSI(
+      Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), ...args], {
+        stderr: 'pipe',
+      }).stderr.toString(),
+    ).split('\n')[0]
   const allow = ['--allow', 'https://token.actions.githubusercontent.com:acme/app:ci.yml']
   expect([
     said(),
@@ -811,11 +811,11 @@ it('names the flags it lacks', () => {
     said('--allow', '', '--audience', ''),
     said(...allow, '--audience', ' '),
   ]).toEqual([
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
-    'missing --allow (or --no-auth)',
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --allow and --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --allow (or --no-auth)',
+    '✗ vx-dte-server  missing --allow and --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --audience (or --no-auth)',
   ])
 })
 
@@ -823,10 +823,10 @@ it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {
     stderr: 'pipe',
   })
-  const [said, usage] = cli.stderr.toString().split('\n')
+  const [said, usage] = Bun.stripANSI(cli.stderr.toString()).split('\n')
   expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
     2,
-    "Unknown option '--bogus'",
+    "✗ vx-dte-server  Unknown option '--bogus'",
     'usage: vx-dte-server',
   ])
 })
@@ -836,7 +836,10 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--no-auth', '--port', ''],
     { stderr: 'pipe' },
   )
-  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+  expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString())]).toEqual([
+    2,
+    '✗ vx-dte-server  --port: not a port: \n',
+  ])
 })
 
 // A host join whose upgrade Bun refused (no Sec-WebSocket-Key) still made
