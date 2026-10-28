@@ -2,7 +2,7 @@
 // `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and TIMING_DAYS are vars in
 // it.
 
-import { oidcAuth, parseAllow } from '@vzn/vx-devtools'
+import { oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
 import { createHistoryServer, errorJson } from './server.js'
 import { type Db, sqliteStore } from './store.js'
@@ -65,7 +65,7 @@ export default {
       let timingDays
       try {
         timingDays = timingDaysOf(env.TIMING_DAYS)
-        authorize = oidcAuth({
+        authorize = oidcTokenAuth({
           allow,
           readAccess: env.READ_ACCESS,
           ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),

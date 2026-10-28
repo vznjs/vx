@@ -21,13 +21,14 @@ points vx at it.
 Every request carries a CI job's own OIDC token, checked by `@vzn/vx-devtools`,
 under the same `ALLOW` as [`@vzn/vx-cache-server`'s](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#ci-tokens)
 (`issuer:owner/repo:workflow` entries): a job of a workflow it names
-writes its branch's scope, and any other job is refused. A query names its
-scopes in order, each its ref's hash (no ref goes on the wire or into a
-row plain): `vxHistory()` asks in the refs the run reads, its branch,
-then the branch it merges into, then the default branch. Every request names its issuer and repository by their hashes
-(`vx-issuer`, `vx-repository`), which a token must match. `AUDIENCE` is
-the `aud` a token must name, by default the origin the server is reached
-at. `READ_ACCESS=public` lets a query with no token read a repository
+writes its own branch, and any other job is refused. A row is the issuer,
+repository, ref and task hash, stored plainly, and its numbers. A run
+sends one query: its repository, the refs it reads (its branch, then the
+branch it merges into, then the default branch) and every task hash;
+the server answers each from the first ref that holds it. A token of
+another repository than the query names is refused. `AUDIENCE` is the
+`aud` a token must name, by default the origin the server is reached at.
+`READ_ACCESS=public` lets a query with no token read a repository
 `ALLOW` names; it uploads nothing.
 
 ## On Bun
@@ -70,14 +71,13 @@ The same server as a `fetch` handler, over storage of your own
 
 - `createHistoryServer(options: ServerOptions)` returns
   `(req: Request) => Promise<Response>`. `ServerOptions` is
-  `{ store, authorize, timingDays?, now? }`: `authorize` is an
-  `Authorize` from `@vzn/vx-devtools`.
+  `{ store, authorize, timingDays?, now? }`: `authorize` is
+  `oidcTokenAuth` from `@vzn/vx-devtools`.
 - `sqliteStore(db: Db)` is the `Store` over a SQLite `Db`
   (`{ all(sql, params), run(sql, params) }`), as bun:sqlite and D1 are.
   A `Store` folds `Report`s and reads `Timing`s, each of a `Repo`
-  (`{ issuer, repository }`, as the token names them, stored hashed) and a scope
-  (a ref's hash).
+  (`{ issuer, repository }`) and a ref.
 - `WEIGHT` (0.3) and `RSS_DECAY` (0.9) are the fold's constants;
-  `MAX_UPLOAD_TIMINGS`, `MAX_QUERY_HASHES` and `MAX_QUERY_SCOPES` its
+  `MAX_UPLOAD_TIMINGS`, `MAX_QUERY_HASHES` and `MAX_QUERY_REFS` its
   limits; `errorJson`
   answers a refusal.

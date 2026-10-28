@@ -1507,6 +1507,7 @@ export interface RunContext {
     notDownloaded: () => number
   }
   workspaceProjectCount?: number
+  warnings?: () => readonly string[]
 }
 == type RunContextRecord (src/orchestrator/telemetry.ts)
 export interface RunContextRecord {

@@ -760,7 +760,7 @@ describe('signal handling during vx run (e2e)', () => {
       expect(await proc.exited).toBe(130)
       expect(await list()).toEqual(['ok'])
       // What finished before the stop is still measured, so the next run
-      // knows it (M, 2026-10-21); the task the stop ended is not.
+      // knows it (2026-10-21); the task the stop ended is not.
       const db = new Database(path.join(fixture.root, '.vx', 'cache', 'cache.db'), {
         readonly: true,
       })

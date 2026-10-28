@@ -1,6 +1,6 @@
 # Run explorer (2026-10)
 
-Status: parked. Owner call M 2026-10-14 21:41 (via EA): spec only, nothing
+Status: parked. Owner call 2026-10-14 21:41 (via EA): spec only, nothing
 scheduled.
 
 ## Goal
@@ -18,7 +18,7 @@ service: the store is the user's own cache, read with the user's own token.
   the rule against a first-party dashboard: the explorer is local and
   opt-in.
 - **The cache is immutable.** Every entry is written once (`put` never
-  overwrites, M 2026-10-14).
+  overwrites, 2026-10-14).
 - **The cache is trusted,** like CI artifacts. Log content is not filtered
   (M 21:37).
 - **A run record never becomes a cache hit.** Only task keys are hits. Log

@@ -34,22 +34,27 @@ See [Other remote caches](#other-remote-caches).
 
 ## 1. Deploy the server
 
-Get the server's code:
+Make a folder for the server and install it:
 
 ```sh
-git clone https://github.com/vznjs/vx
-cd vx/packages/vx-cache-server
-bun install
+mkdir vx-cache-server && cd vx-cache-server
+bun add @vzn/vx-cache-server
 ```
 
-Open `wrangler.jsonc` and say who may use the server, in `ALLOW`.
-With this, every run of `acme/app`'s `ci.yml` workflow on GitHub
-Actions may use the cache:
+Write its `wrangler.jsonc`. `ALLOW` says who may use the server. With
+this, every run of `acme/app`'s `ci.yml` workflow on GitHub Actions may
+use the cache, each run writing its own branch's results:
 
 ```jsonc title="wrangler.jsonc"
-"vars": {
-  "ALLOW": "https://token.actions.githubusercontent.com:acme/app:ci.yml"
-},
+{
+  "name": "vx-cache-server",
+  "main": "node_modules/@vzn/vx-cache-server/src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "vars": {
+    "ALLOW": "https://token.actions.githubusercontent.com:acme/app:ci.yml"
+  },
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }]
+}
 ```
 
 Then deploy it:
@@ -83,22 +88,6 @@ it in and deploy again.
 ```sh
 bun add -d @vzn/vx-cache @vzn/vx-ci
 ```
-
-<Aside title="Not on npm yet">
-
-`@vzn/vx-cache` ships to npm with the next release. Until then, link it from a
-checkout of the vx repository. The vx you run must come from the same
-checkout:
-
-```sh
-git clone https://github.com/vznjs/vx ~/vx
-cd ~/vx && bun install
-(cd packages/vx && bun link) && (cd packages/vx-cache && bun link)
-cd ~/your-repo
-bun link --save @vzn/vx @vzn/vx-cache
-```
-
-</Aside>
 
 ```ts title=".vx/workspace.ts" ins={2,3,9-14}
 import { defineWorkspace } from '@vzn/vx/config'
@@ -266,5 +255,5 @@ folds the branch into each key: branches stay apart, but nothing
 enforces it. [Branch caches a server enforces](../../blog/branch-caches-a-server-enforces/)
 shows the server side.
 
-Next: [Distributed runs](../distributed-runs/) spread one run over many
+Next: [Distributed task execution](../distributed-task-execution/) spread one run over many
 runners.

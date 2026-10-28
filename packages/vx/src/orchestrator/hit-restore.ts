@@ -398,7 +398,7 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
   // "up-to-date" vs "local-cache" / "remote-cache" label in the
   // framed block. A hit the remote answered is never up to date: up to
   // date is fresh here, and a remote hit waited on the network and
-  // downloaded its entry, outputs or none (M, 2026-10-24: "Up to date is
+  // downloaded its entry, outputs or none (2026-10-24: "Up to date is
   // a fresh. It should not require any cache").
   return {
     node,

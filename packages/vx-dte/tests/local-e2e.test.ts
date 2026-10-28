@@ -44,7 +44,7 @@ it('runs a task on a worker with its dependency’s outputs, and brings its outp
 
 // Two uncached generators ran on two workers, and their dependant, on
 // one, found the other's file missing (#4407): it now runs where both
-// lie, one made again beside the other (M, 2026-10-25).
+// lie, one made again beside the other (2026-10-25).
 it('a task reads the files of uncached tasks that ran on other workers', async () => {
   const run = vx(['run', 'k#both'], 'e2e-kept')
   const out = run.stdout.toString() + run.stderr.toString()
@@ -53,7 +53,7 @@ it('a task reads the files of uncached tasks that ran on other workers', async (
 
 // Timings are the orchestrator's to report: each task's, as its worker
 // measured it, reaches the plugins there once, and a worker hands none to
-// its own (M, 2026-10-25). A history plugin uploads them once, at the end.
+// its own (2026-10-25). A history plugin uploads them once, at the end.
 it('only the orchestrator reports timings: every task a worker ran, once, as the worker measured it', async () => {
   const log = path.join(root, 'timings.log')
   const dir = path.join(root, 'timings')
@@ -129,7 +129,7 @@ it('saves where the run reads under --cache-dir', async () => {
 
 // `--force` reads no hit, but a worker's entry is the run's own work: it
 // came back unreadable and every task failed.
-// The run in time (owner, 2026-10-23): --profile holds the workers' lanes.
+// The run in time (2026-10-23): --profile holds the workers' lanes.
 it('profiles a distributed run’s workers with --profile', async () => {
   const r = vx(['run', 'b#use', '--profile=out.json'], 'e2e-profile')
   expect(r.exitCode).toBe(0)
@@ -190,7 +190,7 @@ it('gives a task on a worker only the env it passes through', () => {
   expect(out).toMatch(/^ {2}workers /m)
 }, 60_000)
 
-// Nothing runs on the orchestrator (owner, 2026-10-22): each worker that
+// Nothing runs on the orchestrator (2026-10-22): each worker that
 // runs a server's dependant starts the server itself, once, beside it.
 it('starts a task’s server on the worker that runs it, once per worker, never here', async () => {
   const r = vx(['run', 's#t1', 's#t2', 's#t3'], 'e2e-srv')
@@ -202,7 +202,7 @@ it('starts a task’s server on the worker that runs it, once per worker, never 
 }, 60_000)
 
 // Two shards of one suite on two machines each need the server where they
-// run: it starts on both, never once for both (owner, 2026-10-24).
+// run: it starts on both, never once for both (2026-10-24).
 it('starts a server on each machine its shards run on', async () => {
   const r = vx(['run', 's#shard1', 's#shard2'], 'e2e-shards')
   const out = r.stdout.toString() + r.stderr.toString()
@@ -214,7 +214,7 @@ it('starts a server on each machine its shards run on', async () => {
 }, 60_000)
 
 // No task ever runs on the orchestrator under dte(), only cache hits
-// restore there (owner, 2026-10-24): not a task that says
+// restore there (2026-10-24): not a task that says
 // \`exec.remote: false\`, its dependant, an interactive one, or a server.
 it('runs no task on the orchestrator, pinned ones included', async () => {
   const r = vx(['run', 'p#above', 'p#tty', 'p#near'], 'e2e-pinned')
@@ -230,7 +230,7 @@ it('runs no task on the orchestrator, pinned ones included', async () => {
   for (const l of ran) expect(l).not.toEndWith(` ${path.join(root, 'p')}`)
 }, 60_000)
 
-// Nothing runs on the orchestrator (owner, 2026-10-22), a task that keys
+// Nothing runs on the orchestrator (2026-10-22), a task that keys
 // on `bun --version` included: its worker answers the probe, and one that
 // answers otherwise than this machine fails it, as its key holds this
 // machine's answer (C-2).

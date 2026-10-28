@@ -333,7 +333,7 @@ const HITS_SHOWN = 16
 
 /**
  * The steps the run did not wait on (`vx:prefetch`), which its own output
- * never showed (M, 2026-10-16): here for debugging, marked `internal`.
+ * never showed (2026-10-16): here for debugging, marked `internal`.
  */
 function formatStepRows(steps: readonly RunStep[]): string[] {
   if (steps.length === 0) return []

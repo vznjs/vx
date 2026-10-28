@@ -4,7 +4,7 @@
 // under run names), a plugin writes its own manifest from the report its
 // teardown gets, and its verb reads all of it back from the remote on a
 // machine with no local cache. Each task's bytes leave when it ends, and
-// `cache.upload.failures` says which runs keep failures (owner, 2026-10-16).
+// `cache.upload.failures` says which runs keep failures (2026-10-16).
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -174,7 +174,7 @@ it("`cache.upload.failures: 'local'` keeps no CI failure, and an uncached log st
 }, 30_000)
 
 it("a local run that writes the remote keeps an uncached task's log, and no failure by default", async () => {
-  // M, 2026-10-16: "Always keep". The uncached log goes up whenever the
+  // 2026-10-16: "Always keep". The uncached log goes up whenever the
   // remote takes the run's writes; `cache.upload.failures` gates failures only.
   await fixture()
   expect((await runAs(false, ['test'], { remoteReadOnlyByDefault: false })).ok).toBe(false)

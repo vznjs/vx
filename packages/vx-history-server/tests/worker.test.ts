@@ -3,7 +3,7 @@
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
-import { conformance, scopeOf } from './conformance.js'
+import { conformance } from './conformance.js'
 import { allowVarOf, GITHUB, type Issuer, issuer, REPO } from './issuer.js'
 
 /** The Worker's own origin, its tokens' audience. */
@@ -66,8 +66,6 @@ it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS i
       const res = await other.dispatchFetch(new URL('/v1/capabilities', await other.ready), {
         headers: {
           authorization: `Bearer ${await iss.sign('read', AUD)}`,
-          'vx-issuer': scopeOf(GITHUB),
-          'vx-repository': scopeOf(REPO),
         },
       })
       expect([res.status, ((await res.json()) as { message: string }).message]).toEqual([

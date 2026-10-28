@@ -257,8 +257,8 @@ export function createRelay(opts: RelayOptions): Relay {
       drop(session, p, false)
     }
     // A session is live while its host is, and only a live one is kept:
-    // a peer that comes or calls after it learns it at once (owner,
-    // 2026-10-23: "job is live, or it isnt"). Kept closed, or opened by a
+    // a peer that comes or calls after it learns it at once
+    // (2026-10-23: "job is live, or it isnt"). Kept closed, or opened by a
     // peer alone, a session held a late peer's runner ten minutes.
     forget(session)
   }
@@ -573,7 +573,7 @@ export function createRelay(opts: RelayOptions): Relay {
       const p = session?.byId.get(id)
       if (p === undefined || p.socket !== socket) return
       p.socket = undefined
-      // Only `leave` ends a participant at once (owner, 2026-10-25): one
+      // Only `leave` ends a participant at once (2026-10-25): one
       // whose socket dropped dials again within `graceMs`, and its session,
       // a host's too, waits. Main 8d0619f's host socket ended 1006 and its
       // redial 350 ms on found the session closed (2026-10-24). A peer

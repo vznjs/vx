@@ -74,16 +74,12 @@ function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): 
       ctx.waitUntil(cache.then((c) => c.put(key, new Response(copy, { headers }))))
       return { body, size: o.size }
     },
-    // A check or HEAD asks the data center's copy first: free, and no R2
-    // call. A miss is never kept, since the artifact may come a minute later.
-    size: async (name) => {
-      const hit = await (await cache).match(keyOf(name))
-      if (hit !== undefined) {
-        await hit.body?.cancel()
-        return Number(hit.headers.get('content-length'))
-      }
-      return (await bucket.head(name))?.size ?? null
-    },
+    // R2 alone answers whether it holds an object: a check, a HEAD and a
+    // PUT's skip. The data center's copy outlives R2's (expiry, a wipe), so
+    // a writer told "held" there skipped its upload and a reader in another
+    // data center found nothing (2026-10-27: a DTE worker's save, then the
+    // run's read, a 404).
+    size: async (name) => (await bucket.head(name))?.size ?? null,
   }
 }
 
@@ -100,7 +96,7 @@ const CHECK_LOOKUPS = 6
 
 /**
  * The limits as set, unclamped: a plan's limits are the operator's to set
- * (M, 2026-10-25: never optimize for the free plan).
+ * (2026-10-25: never optimize for the free plan).
  */
 function workerLimits(env: Env): Limits {
   return { ...DEFAULT_LIMITS, maxCheckHashes: CHECK_LOOKUPS, ...limitsFrom(env) }

@@ -17,7 +17,7 @@ import {
   type VxPlugin,
 } from '@vzn/vx'
 import { readFileSync } from 'node:fs'
-import type { OtelSinkConfig, OtlpTls, PostFn } from './sink.js'
+import type { OtelSinkConfig, OtlpTls } from './sink.js'
 
 export interface OtelPluginOptions {
   /** OTLP base endpoint. Falls back to `OTEL_EXPORTER_OTLP_ENDPOINT`. */
@@ -55,8 +55,6 @@ export interface OtelPluginOptions {
    * else `'none'`.
    */
   compression?: 'gzip' | 'none'
-  /** Test seam — inject the POST transport. Defaults to fetch. */
-  post?: PostFn
 }
 
 /**
@@ -410,7 +408,6 @@ export function resolveOtelConfig(
       metrics: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_METRICS_TIMEOUT']) ?? timeoutMs,
       logs: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_LOGS_TIMEOUT']) ?? timeoutMs,
     },
-    ...(opts.post ? { post: opts.post } : {}),
     ...(warn ? { warn } : {}),
   }
 }
@@ -428,7 +425,6 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
   live: 'boolean',
   timeoutMs: 'number',
   compression: 'string',
-  post: 'function',
 }
 
 /**

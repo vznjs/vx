@@ -1,4 +1,4 @@
-// The per-PR bench against Turborepo (owner, 2026-10-12): a run that takes
+// The per-PR bench against Turborepo (2026-10-12): a run that takes
 // seconds and fails when this checkout's vx loses ground to Turbo.
 //
 //   bun pr-bench.ts            check against pr-bench-baseline.json

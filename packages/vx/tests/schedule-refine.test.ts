@@ -1,7 +1,7 @@
 // A `schedule` plugin's answer is awaited before the first task, so it comes
 // from what is at hand; weights that need a fetch reach the run through
 // `ctx.refine` without holding it, and re-rank what has not started
-// (owner, 2026-10-16). Each plugin's call is its own step, `<plugin>:schedule`.
+// (2026-10-16). Each plugin's call is its own step, `<plugin>:schedule`.
 
 import { rm } from 'node:fs/promises'
 import path from 'node:path'

@@ -1,5 +1,5 @@
 // The CLI as a user drives it since a run reads configs only from the lock
-// (owner, 2026-10-14): `vx lock`, then the verb. A test that spawns `vx run`,
+// (2026-10-14): `vx lock`, then the verb. A test that spawns `vx run`,
 // `watch`, `show` or `info` over configs it just wrote spawns this instead. A lock that
 // fails prints why and leaves no lock behind, so the run then refuses.
 import { rmSync } from 'node:fs'

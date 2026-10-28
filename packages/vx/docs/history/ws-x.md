@@ -337,7 +337,7 @@ time (bugs, correctness, simplification, the plugin seams).
   `dist/**`, so each task's clean deleted the other's files under a green
   run. `outputsOverlap` now also builds a path under the deeper literal
   prefix ending in either glob's last segment, wildcards filled, and a
-  path both match proves the overlap (M, 2026-10-07: two tasks never
+  path both match proves the overlap (2026-10-07: two tasks never
   share an output). Only globs as written take part: a literal's `/**`
   twin met `dist/**/*.js` at a path no one can write. The path index
   pairs globs whose prefixes nest. Rows: `output-collision.test.ts` ›
@@ -356,7 +356,7 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   `dependsOn` edge ordered them (item 588's additive shape): correct, but
   each run of the dependant paid a stamp, a diff and a clean by rows. A
   workspace rule now refuses it, `rules: { exclusiveOutputs }` in
-  `vx.workspace.ts`, on unless set to `false` (M, 2026-10-07: one path,
+  `vx.workspace.ts`, on unless set to `false` (2026-10-07: one path,
   one task; a rule that only buys speed is configurable, on by default).
   The refusal names the rule; off, the additive path runs as before. A
   pair with no edge is refused either way. `@vzn/vx-migrate` maps for
@@ -369,7 +369,7 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
 - **X-54.** A cached task whose input globs could match another task's
   declared outputs had a preliminary key: it was not probed, prefetched
   or restored ahead of the schedule and was keyed again once the producer
-  ran (M, 2026-10-07: hash ahead of time, not as a waterfall). A
+  ran (2026-10-07: hash ahead of time, not as a waterfall). A
   workspace rule now refuses it, `rules: { upfrontKeys }`, on unless set
   to `false`: `inputs.files` against the same project's `outputs.files`,
   `inputs.workspaceFiles` against every `outputs.workspaceFiles` and
@@ -1494,7 +1494,7 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   re-parked the whole ready queue, O(R²) per run: the bench's cold run
   took 131.5 s with `scheduleHistoryPlugin` vs 120.7 s without. Fixed:
   120.6 s. Row in `scheduler.test.ts` counts looks (20,101 → under 600).
-- **X-222** Bench times CI states only (owner, 2026-10-09: Nx needs its
+- **X-222** Bench times CI states only (2026-10-09: Nx needs its
   daemon for edits): leaf and core edit rows dropped from the bench,
   results and site.
 - **X-223** Bench re-run as M set it (2026-10-09): tasks at 300 ms build

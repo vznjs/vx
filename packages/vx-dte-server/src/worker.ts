@@ -83,7 +83,7 @@ let allowChecked: { allow: string | undefined; why: string | undefined } | undef
 /**
  * Why no run can join under `allow`, or `undefined`. A 403, not the 503 an
  * object that will not start gives: a client retries a 5xx, and this
- * refusal does not pass (owner, 2026-10-23: fail quickly).
+ * refusal does not pass (2026-10-23: fail quickly).
  */
 function allowRefusal(allow: string | undefined): string | undefined {
   if (allowChecked !== undefined && allowChecked.allow === allow) return allowChecked.why

@@ -3,6 +3,12 @@
 // a DTE worker checks out shallow, and the one task that needs history
 // fetches it, commits and tags only (trees and blobs come on demand).
 // A full clone was 5-7 s of every worker's warm-up (2026-10-23).
+//
+// Only HEAD's history and the tags are fetched, never origin's branches:
+// a branch pushed during the run whose parent is HEAD made the filtered
+// fetch's "repack local links" step die in git itself ("BUG:
+// builtin/pack-objects.c: should_include_obj"), on every retry, three
+// main runs of five on 2026-10-27.
 
 const SHALLOW = ['rev-parse', '--is-shallow-repository']
 
@@ -16,11 +22,12 @@ const git = (root: string, args: string[]): { ok: boolean; out: string } => {
 }
 
 /**
- * Makes `root`'s checkout hold all of origin's commits and tags. Tasks on
+ * Makes `root`'s checkout hold all of HEAD's commits and origin's tags. Tasks on
  * one worker may fetch at once; git takes one `shallow.lock`, so the
  * loser asks again. Throws naming git's error when it cannot.
  */
 export function fetchHistory(root: string): void {
+  const head = git(root, ['rev-parse', 'HEAD']).out
   let why = ''
   for (let attempt = 0; attempt < 5; attempt++) {
     if (git(root, SHALLOW).out !== 'true') return
@@ -32,6 +39,7 @@ export function fetchHistory(root: string): void {
       '--filter=tree:0',
       '--no-recurse-submodules',
       'origin',
+      head,
     ])
     if (r.ok) return
     why = r.out

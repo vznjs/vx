@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { beforeAll, expect, it } from 'bun:test'
-import { hashPart, oidcAuth, parseAllow } from '@vzn/vx-devtools'
+import { oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
@@ -18,7 +18,7 @@ let access: (claims: JWTPayload) => Promise<string | undefined | number>
 beforeAll(async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
   const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
-  const auth = oidcAuth({
+  const auth = oidcTokenAuth({
     allow: parseAllow(config.vars.ALLOW),
     audience: AUD,
     fetchJson: async (url) =>
@@ -41,13 +41,10 @@ beforeAll(async () => {
     const req = new Request(`${AUD}/v1/timings/query`, {
       headers: {
         authorization: `Bearer ${token}`,
-        // What .vx/workspace.ts names: our repository at GitHub, hashed.
-        'vx-issuer': await hashPart(GITHUB),
-        'vx-repository': await hashPart('vznjs/vx'),
       },
     })
-    return auth(req).then(
-      (a) => a.write,
+    return auth(req, { issuer: GITHUB, repository: 'vznjs/vx' }).then(
+      (a) => a?.write,
       (err: { status: number }) => err.status,
     )
   }

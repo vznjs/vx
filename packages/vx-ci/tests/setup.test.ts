@@ -1,4 +1,4 @@
-// `vx setup github` / `vx setup gitlab` (owner, 2026-10-23): a CI step
+// `vx setup github` / `vx setup gitlab` (2026-10-23): a CI step
 // before vx runs, the plugin's verb, not core's. What it runs, by machine.
 import { expect, it } from 'bun:test'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'

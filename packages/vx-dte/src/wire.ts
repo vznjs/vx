@@ -54,7 +54,7 @@ const LOST_BEATS = 1.9
 /**
  * A relay that forgot this participant (a restart: it stores nothing) is
  * joined again for this many heartbeats; the orchestrator joins as the
- * run's host again, a worker as itself (owner, 2026-10-25: "If they can't
+ * run's host again, a worker as itself (2026-10-25: "If they can't
  * rejoin for 2 heartbeats, it's over").
  */
 const REJOIN_BEATS = 2
@@ -71,13 +71,13 @@ const GONE = 4404
 const NOT_PROTOCOL = 1002
 /**
  * No answer from the relay this long, every try counted, and it is gone
- * (owner, 2026-10-23: "no reply for 10s no matter of attempts its over").
+ * (2026-10-23: "no reply for 10s no matter of attempts its over").
  */
 const REPLY_MS = 10_000
 /**
  * How many times a request or a socket is tried again, after a fault (a
  * 5xx, a dropped connection), before the participant gives
- * up: the run is live, or it isn't (owner, 2026-10-23: "3 retries nothing
+ * up: the run is live, or it isn't (2026-10-23: "3 retries nothing
  * more").
  */
 const RETRIES = 3
@@ -285,8 +285,8 @@ export async function join(
   /**
    * When each peer was last heard from: the orchestrator's workers from
    * their `joined`, a worker's orchestrator from its join. One quiet
-   * `PROBE_BEATS` is probed; one quiet `LOST_BEATS` is lost (owner,
-   * 2026-10-23: "if it does not reply for 10s its dead"), on a socket that
+   * `PROBE_BEATS` is probed; one quiet `LOST_BEATS` is lost
+   * (2026-10-23: "if it does not reply for 10s its dead"), on a socket that
    * never closed: the relay loses one whose socket closed and says so.
    */
   const heard = new Map<string, number>()
@@ -627,7 +627,7 @@ export async function join(
       const seq = ++o.next
       o.unacked.set(seq, { body, at: performance.now() })
       // With no socket, as while the relay restarts, it waits in the outbox
-      // for the next: the caller goes on (owner, 2026-10-25: "they just
+      // for the next: the caller goes on (2026-10-25: "they just
       // continue uninterrupted").
       const s = socket
       if (s?.open !== true && ended === undefined) {
@@ -670,7 +670,7 @@ export async function join(
       leaving = true
       clearInterval(listening)
       clearTimeout(acking)
-      // The final call (owner, 2026-10-25): the relay keeps one whose socket
+      // The final call (2026-10-25): the relay keeps one whose socket
       // dropped for its redial, so only `leave` ends it, and a host's
       // session, at once. A socket that drops under it is dialed again
       // for it. The relay drops it and closes the socket: that is its answer.

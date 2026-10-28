@@ -1,6 +1,6 @@
 // What the remotes said they hold, kept across runs and processes: `vx dte
 // plan` and `vx run` are separate commands on GitLab, and a run trusts this
-// at once instead of waiting on a has-many (M, 2026-10-23). Only hits are
+// at once instead of waiting on a has-many (2026-10-23). Only hits are
 // kept: a key not here is a miss. Every has-many that answers rewrites the
 // keys it asked, and a GET that finds nothing forgets its key.
 

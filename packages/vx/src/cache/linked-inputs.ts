@@ -1,5 +1,5 @@
 // A symlinked input keys the content behind it, as Nx reads a linked file
-// where it points (owner, 2026-10-16: "Do like nx"). Its own fold stays the
+// where it points (2026-10-16: "Do like nx"). Its own fold stays the
 // blob of its target STRING (file-hashes.ts), so a retarget to equal bytes
 // moves the key; this is what follows it. The target string alone let an
 // edit behind the link replay the old output (Growth, 2026-10-16), wherever

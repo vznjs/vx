@@ -9,9 +9,17 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
+## vx-ci,vx-otel: drop the test transports from the options
 
-the cache and history servers read ALLOW (space separated issuer:owner/repo:workflow entries) in place of TRUST; @vzn/vx-devtools exports parseAllow and Allowed in place of parseTrust and TrustRule, and oidcAuth takes allow, not trust. Protected refs are gone: any run of a named workflow writes its branch. Set ALLOW to each repository's CI workflow.
+github({ append, sizeOf }) and otel({ post }) are removed; @vzn/vx-otel no longer exports PostFn or OtlpTls.
+
+## vx-history: name the server options url and headers
+
+vxHistory({ server, serverHeaders }) is vxHistory({ url, headers }).
+
+## vx-history-server: store and send repo and refs plainly
+
+/v1/timings/query takes {issuer, repository, refs, hashes} in the body; capabilities name maxQueryRefs. Update @vzn/vx-history with the server.
 
 ## vx-dte-server: answer 502 when the issuer's keys cannot be read
 

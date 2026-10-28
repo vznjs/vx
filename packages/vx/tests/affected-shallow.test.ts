@@ -1,7 +1,7 @@
 // `--affected` in a shallow clone (CI's checkout fetches one commit)
 // fetches from origin what the merge base needs and nothing more: the
 // base's tip, then history only until git finds the merge base, without
-// blobs (owner, 2026-10-24: "we only need current commit and branch out
+// blobs (2026-10-24: "we only need current commit and branch out
 // commit"). Each clone is `file://`, so git honours `--depth`.
 import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'

@@ -1,10 +1,11 @@
 // CI OIDC tokens, the only tokens vx's servers take (@vzn/vx-cache-server,
 // @vzn/vx-history-server): a job's token names its repository and the one
-// scope it writes, its own branch, never a header or a client option. Every
-// request names its issuer and repository by their hashes (M, 2026-10-25:
-// the user names them, no client guesses), which a token must match.
+// scope it writes, its own branch, never a header or a client option. A
+// cache request names its issuer and repository by their hashes (2026-10-25:
+// the user names them, no client guesses), which a token must match; a
+// history request names them plainly in its body (`oidcTokenAuth`).
 // Who may take part is `ALLOW`, the string @vzn/vx-dte-server reads
-// (M, 2026-10-26: that string and nothing else): `issuer:owner/repo:workflow`
+// (2026-10-26: that string and nothing else): `issuer:owner/repo:workflow`
 // entries. `READ_ACCESS=public` lets a request with no token read a
 // repository ALLOW names. Any other repository is refused. The JWT itself is
 // jose's to check: signature, algorithm, audience and times.
@@ -48,7 +49,7 @@ export interface Access {
   readonly issuer: string
   /**
    * The repository at that issuer, lowercased: `org/name` (`repository`,
-   * GitLab's `project_path`, M 2026-10-25), what a checkout's origin names.
+   * GitLab's `project_path`, 2026-10-25), what a checkout's origin names.
    */
   readonly repository: string
   /** The token's own ref: the one scope it writes. */
@@ -109,7 +110,7 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
  * The scope a token writes: its branch. A GitHub pull request's run writes
  * its head branch (its `ref` is the merge ref the run's own reads never
  * name); a merge queue's run its base branch, which its code is about to
- * become (M, 2026-10-25: "just strip it"); any other run its `ref`,
+ * become (2026-10-25: "just strip it"); any other run its `ref`,
  * GitLab's its `ref_path`. Only a `pull_request` run takes its head
  * branch. A `pull_request_target` run writes nothing: its `head_ref` is a
  * fork's branch name, chosen by the fork, and its `ref` is the base branch,
@@ -147,9 +148,7 @@ const LEEWAY_S = 60
 
 /** The `Access` a request's verified CI token has; a refused one throws a 401 or 403. */
 export function oidcAuth(opts: OidcOptions): Authorize {
-  if (opts.readAccess !== undefined && opts.readAccess !== '' && opts.readAccess !== 'public')
-    throw new Error(`READ_ACCESS: public, or unset, not ${opts.readAccess}`)
-  const open = opts.readAccess === 'public'
+  const open = readAccessOf(opts)
   // The repositories ALLOW names, by their hashes: what a public read may name.
   let named: Promise<Map<string, Access>> | undefined
   const allowed = () =>
@@ -162,6 +161,96 @@ export function oidcAuth(opts: OidcOptions): Authorize {
         ]
       }),
     ).then((pairs) => new Map(pairs)))
+  const verify = tokenVerifier(opts)
+
+  return async (req) => {
+    if (opts.allow.length === 0) throw new Refusal(401, 'the server admits no CI: set ALLOW')
+    const asked = `${req.headers.get(ISSUER_HEADER)}/${req.headers.get(REPOSITORY_HEADER)}`
+    if (!asked.split('/').every((p) => PART.test(p)))
+      throw new Refusal(
+        400,
+        `${ISSUER_HEADER} and ${REPOSITORY_HEADER}: the issuer's and the repository's hashes (PROTOCOL.md § Keys)`,
+      )
+    const bearer = bearerOf(req)
+    if (bearer === undefined) {
+      if (!open) throw new Refusal(401, 'no bearer token')
+      const repo = (await allowed()).get(asked)
+      if (repo === undefined)
+        throw new Refusal(403, "the repository named is not in this server's ALLOW")
+      return repo
+    }
+    const access = await verify(bearer, req)
+    if (`${await hashPart(access.issuer)}/${await hashPart(access.repository)}` !== asked)
+      throw new Refusal(
+        403,
+        `the token is of ${repoClaimOf(access.issuer)} ${access.repository} at ${access.issuer}, not the repository named`,
+      )
+    return access
+  }
+}
+
+/** A repository as a request names it plainly: the issuer's URL and `org/name` there. */
+export interface Repo {
+  readonly issuer: string
+  readonly repository: string
+}
+
+/**
+ * A server whose requests name their repository plainly, in the body
+ * (@vzn/vx-history-server). A token must be of `named`, when one is named;
+ * with no token, `READ_ACCESS=public` reads a repository ALLOW names, and
+ * answers `undefined` where none is named. Else a 401 or 403.
+ */
+export function oidcTokenAuth(
+  opts: OidcOptions,
+): (req: Request, named?: Repo) => Promise<Access | undefined> {
+  const open = readAccessOf(opts)
+  const verify = tokenVerifier(opts)
+  return async (req, asked) => {
+    if (opts.allow.length === 0) throw new Refusal(401, 'the server admits no CI: set ALLOW')
+    const named = asked === undefined ? undefined : repoOf(asked)
+    const bearer = bearerOf(req)
+    if (bearer === undefined) {
+      if (!open) throw new Refusal(401, 'no bearer token')
+      if (named === undefined) return undefined
+      if (
+        !opts.allow.some(
+          (a) => issuerOf(a.issuer) === named.issuer && same(a.repository, named.repository),
+        )
+      )
+        throw new Refusal(403, `${named.repository} is not in this server's ALLOW`)
+      return named
+    }
+    const access = await verify(bearer, req)
+    if (
+      named !== undefined &&
+      (access.issuer !== named.issuer || access.repository !== named.repository)
+    )
+      throw new Refusal(
+        403,
+        `the token is of ${access.repository} at ${access.issuer}, not ${named.repository} at ${named.issuer}`,
+      )
+    return access
+  }
+}
+
+/** A named repository as a token names it: the issuer's URL with no trailing slash, `org/name` lowercased. */
+const repoOf = (r: Repo): Repo => ({
+  issuer: issuerOf(r.issuer),
+  repository: r.repository.toLowerCase(),
+})
+
+function readAccessOf(opts: OidcOptions): boolean {
+  if (opts.readAccess !== undefined && opts.readAccess !== '' && opts.readAccess !== 'public')
+    throw new Error(`READ_ACCESS: public, or unset, not ${opts.readAccess}`)
+  return opts.readAccess === 'public'
+}
+
+const bearerOf = (req: Request): string | undefined =>
+  /^Bearer\s+(\S+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]
+
+/** A token checked: jose's checks, then ALLOW's repository and workflow, and the branch it may write. */
+function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Promise<Access> {
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
   // jose keeps each issuer's keys, and refetches them for a key it lacks.
@@ -187,23 +276,7 @@ export function oidcAuth(opts: OidcOptions): Authorize {
     })
   }
 
-  return async (req) => {
-    if (opts.allow.length === 0) throw new Refusal(401, 'the server admits no CI: set ALLOW')
-    const asked = `${req.headers.get(ISSUER_HEADER)}/${req.headers.get(REPOSITORY_HEADER)}`
-    if (!asked.split('/').every((p) => PART.test(p)))
-      throw new Refusal(
-        400,
-        `${ISSUER_HEADER} and ${REPOSITORY_HEADER}: the issuer's and the repository's hashes (PROTOCOL.md § Keys)`,
-      )
-    const bearer = /^Bearer\s+(\S+)$/i.exec(req.headers.get('authorization') ?? '')
-    if (bearer === null) {
-      if (!open) throw new Refusal(401, 'no bearer token')
-      const repo = (await allowed()).get(asked)
-      if (repo === undefined)
-        throw new Refusal(403, "the repository named is not in this server's ALLOW")
-      return repo
-    }
-    const token = bearer[1]!
+  return async (token, req) => {
     let iss: unknown
     try {
       iss = decodeJwt(token).iss
@@ -239,11 +312,6 @@ export function oidcAuth(opts: OidcOptions): Authorize {
     if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
       throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
     const repo = { issuer: issuerOf(iss), repository }
-    if (`${await hashPart(repo.issuer)}/${await hashPart(repository)}` !== asked)
-      throw new Refusal(
-        403,
-        `the token is of ${claim} ${repository} at ${repo.issuer}, not the repository named`,
-      )
     const branch = branchOf(iss, claims)
     return branch === undefined ? repo : { ...repo, write: branch }
   }

@@ -9,6 +9,10 @@ export class Refusal extends Error {
 export function hashPart(text: string): Promise<string>
 == function oidcAuth (src/oidc.ts)
 export function oidcAuth(opts: OidcOptions): Authorize
+== function oidcTokenAuth (src/oidc.ts)
+export function oidcTokenAuth(
+  opts: OidcOptions,
+): (req: Request, named?: Repo) => Promise<Access | undefined>
 == function parseAllow (src/oidc.ts)
 export function parseAllow(list: string): Allowed[]
 == type Access (src/oidc.ts)
@@ -37,4 +41,9 @@ export interface OidcOptions {
   readonly now?: () => number
   /** `READ_ACCESS`: `public` lets a request with no token read a repository ALLOW names. */
   readonly readAccess?: string | undefined
+}
+== type Repo (src/oidc.ts)
+export interface Repo {
+  readonly issuer: string
+  readonly repository: string
 }

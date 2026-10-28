@@ -1,7 +1,7 @@
 // An upgrade that moves SCHEMA_VERSION drops every table — cache entries
 // and run history — on the next open, and a CACHE_VERSION bump moves
-// every key. vx keeps its own cache: neither is printed (owner,
-// 2026-10-06, "no more comments like this").
+// every key. vx keeps its own cache: neither is printed
+// (2026-10-06, "no more comments like this").
 
 import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'

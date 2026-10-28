@@ -2,7 +2,7 @@
 // ten builds read `packages/metadata/index.json` (committed, the output of
 // `metadata#update`) with no edge to it, so each vx cold run failed while
 // `update` ran (N's dogfood; A-48 named the file). A committed file is no
-// output now (owner, 2026-10-14: "never delete committed file"): the clean
+// output now (2026-10-14: "never delete committed file"): the clean
 // leaves it, and a reader with no edge reads the committed copy.
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, expect, it } from 'bun:test'

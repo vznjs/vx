@@ -38,7 +38,7 @@ generated from the source.
 | Telemetry        | `TELEMETRY_SCHEMA_VERSION`, `isPassStatus`, `isCacheHit`, `TaskLogBuffer`, `LOG_WIRE_VERSION`, `exitSignal`                                                                                                                                     | `TelemetrySink`, `TelemetryContext`, `TelemetryRecord`, `RunSummaryRecord`, `RunContextRecord`, `TaskTelemetry`, `CacheSource`, `TaskLogBundle`, `TaskLogEntry`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 Core reads no package manager's members: `@vzn/vx-migrate` does, for
-an adoption (M, 2026-10-14). `PROJECT_CONFIG_FILENAMES` is the names a
+an adoption (2026-10-14). `PROJECT_CONFIG_FILENAMES` is the names a
 project config may take, in the order the loader prefers them.
 
 ## Conventions

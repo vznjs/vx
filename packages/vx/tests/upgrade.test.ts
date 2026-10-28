@@ -45,7 +45,13 @@ const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-upgrade-'))
 const FAKE = '#!/bin/sh\necho fake-vx\n'
 const fake = (): Promise<Uint8Array> => Promise.resolve(new TextEncoder().encode(FAKE))
 
+// The stubs answer npmjs.org; a developer's own .npmrc must not move them.
+const ownRegistry = process.env['npm_config_registry']
+process.env['npm_config_registry'] = 'https://registry.npmjs.org/'
+
 afterAll(async () => {
+  if (ownRegistry === undefined) delete process.env['npm_config_registry']
+  else process.env['npm_config_registry'] = ownRegistry
   await rm(dir, { recursive: true, force: true })
 })
 
@@ -295,6 +301,53 @@ describe('a release from the npm registry', () => {
     })
   })
 
+  it('a configured mirror serves the release with its token; another host gets none', async () => {
+    const mirror = 'https://npm.corp.example/api/npm/'
+    const rc = path.join(mkdtempSync(path.join(dir, 'rc-')), '.npmrc')
+    await writeFile(rc, `//npm.corp.example/api/npm/:_authToken=\${CORP_TOKEN}\n`)
+    const tarballs = { mirror: `${mirror}${PKG}/-/vx-linux-x64-9.9.9.tgz`, other: TARBALL_URL }
+    const env = {
+      npm_config_registry: process.env['npm_config_registry'],
+      npm_config_userconfig: process.env['npm_config_userconfig'],
+      CORP_TOKEN: process.env['CORP_TOKEN'],
+    }
+    process.env['npm_config_registry'] = mirror
+    process.env['npm_config_userconfig'] = rc
+    process.env['CORP_TOKEN'] = 's3cret'
+    const real = globalThis.fetch
+    try {
+      for (const tarballAt of Object.values(tarballs)) {
+        const asked: [string, string | null][] = []
+        const integrity = integrityOf(TGZ)
+        const doc = {
+          version: '9.9.9',
+          dist: {
+            tarball: tarballAt,
+            integrity,
+            signatures: [{ keyid: TEST_KEY.id, sig: signed(`${PKG}@9.9.9:${integrity}`) }],
+          },
+        }
+        globalThis.fetch = ((input: string, init?: RequestInit) => {
+          asked.push([input, new Headers(init?.headers).get('authorization')])
+          if (input === `${mirror}${PKG}/9.9.9`) return Promise.resolve(Response.json(doc))
+          if (input === tarballAt) return Promise.resolve(new Response(TGZ))
+          return Promise.resolve(new Response('nope', { status: 404 }))
+        }) as unknown as typeof fetch
+        await releaseBinary(PKG, '9.9.9', () => {}, TEST_KEY)
+        expect(asked).toEqual([
+          [`${mirror}${PKG}/9.9.9`, 'Bearer s3cret'],
+          [tarballAt, tarballAt === tarballs.mirror ? 'Bearer s3cret' : null],
+        ])
+      }
+    } finally {
+      globalThis.fetch = real
+      for (const [k, v] of Object.entries(env)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  })
+
   it('a forged signature is refused before the tarball is fetched', async () => {
     // Signed by a key that is not npm's, under npm's key id.
     const r = await upgradeAgainst(manifest({ keyid: NPM_SIGNING_KEY.id }), NPM_SIGNING_KEY)
@@ -422,7 +475,7 @@ describe('a release from the npm registry', () => {
       ),
     )
     expect(message).toBe(
-      `vx upgrade: could not read ${PKG}@9.9.8 from the npm registry (404) — is 9.9.8 a published version?`,
+      `vx upgrade: could not read ${PKG}@9.9.8 from registry.npmjs.org (404) — is 9.9.8 a published version?`,
     )
   })
 
@@ -565,7 +618,7 @@ describe('managedInstall', () => {
   })
 
   it('moves every @vzn/vx-* plugin the manifest lists to the same release, in one install', async () => {
-    // M, 2026-10-16: core and a plugin on different releases is a broken
+    // 2026-10-16: core and a plugin on different releases is a broken
     // workspace; one `add` installs them all or none. Platform packages and
     // workspace links are no plugins to pin.
     const manifest = (deps: Record<string, string>): string =>
@@ -696,7 +749,7 @@ describe('npmOwnedBinary', () => {
 describe('upgradeGlobal: the global vx that handed the run to the project', () => {
   // A global vx run inside a project hands `vx upgrade` to the project's
   // own; the global that started the run moves to the same version
-  // (owner, 2026-10-15), the way it was installed.
+  // (2026-10-15), the way it was installed.
   const HOST = `@vzn/vx-${process.platform}-${process.arch}`
   const answering = async (file: string, version: string): Promise<string> => {
     await mkdir(path.dirname(file), { recursive: true })
@@ -932,7 +985,7 @@ describe('vx upgrade (CLI)', () => {
 })
 
 describe('relock', () => {
-  // M, 2026-10-18: an upgrade locks with the new vx; a failed lock says to run it.
+  // 2026-10-18: an upgrade locks with the new vx; a failed lock says to run it.
   const workspace = async (name: string, lock: string): Promise<{ root: string; bin: string }> => {
     const root = path.join(dir, name)
     await mkdir(path.join(root, '.vx', 'sub'), { recursive: true })

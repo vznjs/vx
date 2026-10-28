@@ -256,7 +256,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
 
   // A probe's hit is a hint, not the artifact: the server may have dropped
   // it since, or a hit recorded by an earlier run may be stale. The GET's
-  // 404 is the truth, and the task runs (M, 2026-10-23).
+  // 404 is the truth, and the task runs (2026-10-23).
   it(
     'a key hasMany reports held whose GET is 404 runs as a miss',
     async () => {
@@ -303,7 +303,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
 
   // `vx run --dry` and `vx run` are separate processes: what the
   // plan's probe found must reach the run through the index, never memory.
-  // Only hits are kept, and the run's GETs wait on no probe (M, 2026-10-23).
+  // Only hits are kept, and the run's GETs wait on no probe (2026-10-23).
   it(
     'plan then run: the run trusts the hits the plan kept and GETs them before its probe answers',
     async () => {
@@ -680,7 +680,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
 
   // `--force` re-executes and restores nothing, yet a key the remote holds
   // is the same bytes by the immutable contract: re-uploading it was a PUT
-  // per task for nothing (M, 2026-10-15).
+  // per task for nothing (2026-10-15).
   describe('--force', () => {
     const seeded = async (opts?: { failBatch?: boolean }) => {
       const fixture = await makeFixture('vx-remote-force-')
@@ -804,7 +804,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     )
 
     it(
-      'a slow probe holds no task: only the upload decision waits for it (M, 2026-10-15)',
+      'a slow probe holds no task: only the upload decision waits for it (2026-10-15)',
       async () => {
         const { fixture, remote } = await seeded()
         remote.probes.delayMs = 2_000
@@ -1065,7 +1065,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(remote.getCounts.get(aHash)).toBe(1)
         expect(remote.getCounts.get(bHash) ?? 0).toBeLessThanOrEqual(1)
         // One existence probe a run: no task's lookup asks the remote again
-        // whether it holds a key (M, 2026-10-23).
+        // whether it holds a key (2026-10-23).
         expect(remote.batchCalls() - batches).toBe(1)
         expect(remote.headCounts.size).toBe(0)
       } finally {
@@ -1318,7 +1318,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
   )
 
   // turborepo#3127 asked `--force` to overwrite the remote's artifact. vx
-  // does not: an entry is immutable (M, 2026-10-15), so a forced run
+  // does not: an entry is immutable (2026-10-15), so a forced run
   // re-executes and refreshes the disk, and the key keeps its first bytes.
   it(
     '--force re-executes but leaves the artifact the remote holds, and the next cold run is served it',
@@ -1550,7 +1550,7 @@ describe('orchestrator: a prefetch still in flight when the run stops', () => {
       // `startRemotePrefetch` promises that the caller awaits its handle
       // before closing the cache (item 634). A stopped run waits on no
       // read: a Ctrl-C during a slow download waited for its last byte
-      // (M, 2026-10-17). Each prefetch ends at the stop, so the cache
+      // (2026-10-17). Each prefetch ends at the stop, so the cache
       // closes under no ingest, nothing half-read lands, and the next run
       // GETs both again and hits.
       const fixture = await makeFixture('vx-remote-e2e-')
@@ -1753,7 +1753,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
     TIMEOUT,
   )
 
-  // M, 2026-10-15: a remote read's failure counts with a write's, as one
+  // 2026-10-15: a remote read's failure counts with a write's, as one
   // `N✗` in the footer, and `vx last` names each, though the upload's
   // failure lands after the run's rows went in.
   it(

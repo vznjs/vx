@@ -1,7 +1,7 @@
 // vx-cache v1 (PROTOCOL.md) over any `Blobs` bucket: one fetch handler
 // the Bun server, the Worker and the Docker image all serve. No database:
 // an artifact is one object, named by its issuer, repository name, scope and
-// hash, and a read names the exact scope it wants (M, 2026-10-25).
+// hash, and a read names the exact scope it wants (2026-10-25).
 
 import { type Access, type Authorize, hashPart, Refusal } from '@vzn/vx-devtools'
 import { errorJson, isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
@@ -45,10 +45,10 @@ export function limitsFrom(env: object): Partial<Limits> {
   return out
 }
 
-/** A held artifact's bytes never change (M, 2026-10-25). */
+/** A held artifact's bytes never change (2026-10-25). */
 const IMMUTABLE = 'private, max-age=31536000, immutable'
 
-/** A scope on the wire: its ref's `hashPart`, so no ref is ever sent or stored plain (M, 2026-10-25). */
+/** A scope on the wire: its ref's `hashPart`, so no ref is ever sent or stored plain (2026-10-25). */
 const SCOPE = /^[0-9a-f]{32}$/
 
 export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response> {
@@ -145,7 +145,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
    * An upload: one artifact, its bytes the whole body (Turbo's
    * `PUT /v8/artifacts/<hash>`), stored in the token's scope. They reach
    * the bucket without passing through this code, so a large one costs
-   * no CPU here (M, 2026-10-25: no batch upload; a batch is split by this
+   * no CPU here (2026-10-25: no batch upload; a batch is split by this
    * code, and on Workers a 40 MB one ran out of CPU).
    */
   async function put(req: Request, hash: string): Promise<Response> {

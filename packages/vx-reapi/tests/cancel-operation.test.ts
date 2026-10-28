@@ -89,7 +89,7 @@ describe('a queue timeout cancels the operation', () => {
     expect(r.cancelled[0]).toMatch(/^operations\/\d+$/)
   })
 
-  // M, 2026-10-23: a remote fault is at least a warning. A refused cancel
+  // 2026-10-23: a remote fault is at least a warning. A refused cancel
   // leaves the action running on its worker, said by nothing.
   it('gives the task back when the server refuses the cancel, and says the action may still run', async () => {
     fake.fail('CancelOperation', grpc.status.UNIMPLEMENTED)

@@ -608,7 +608,7 @@ graph`, and a missed input is a stale hit on every run.
       failed two rows of the unmutated baseline until the tree changed
       owner). The equivalent: `baseAllowWrite` emptied, because core
       passes `[]` for it on every request (a declared output is not a
-      write grant, owner 2026-09-05). The runtime's doc comments said the
+      write grant, 2026-09-05). The runtime's doc comments said the
       opposite for both baselines — reads "built from resolved
       `cache.inputs.files`", writes "from the static prefix of
       `cache.outputs.files`" — the claim item 443 corrected in

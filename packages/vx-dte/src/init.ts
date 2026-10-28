@@ -1,4 +1,4 @@
-// `vx dte init`: the whole CI of a distributed run, written from
+// `vx dte init`: the whole CI of a DTE run, written from
 // `dte()` itself: the run's job and its workers', never copied by hand.
 // Each adapter writes its own (`DteAdapter.init`); one that starts workers
 // on this machine (`local()`, `docker()`) needs none.
@@ -75,7 +75,7 @@ function nextSteps(relay: string | undefined, allow: string, files: readonly str
       : []),
     `  2. A remote cache the run and the workers share: workers hand back outputs only through it. ${SITE}/remote-cache/`,
     `  3. Commit ${files.join(', ')}, .vx/workspace.ts and the lock (vx lock), and push.`,
-    `  How a run spreads over workers: ${SITE}/distributed-runs/`,
+    `  How a run spreads over workers: ${SITE}/distributed-task-execution/`,
   ]
 }
 
@@ -194,7 +194,7 @@ export function githubInit(options: GithubOptions, setup: DteSetup): DteInit {
     ...installLines(setup.manager).map((l) => `      - run: ${l}`),
   ]
   const text = `# Written by vx dte init from dte() in .vx/workspace.ts: the workers of a
-# distributed run, which github() dispatches once per size. Run vx dte init
+# DTE run, which github() dispatches once per size. Run vx dte init
 # again after changing the sizes.
 name: vx-worker
 

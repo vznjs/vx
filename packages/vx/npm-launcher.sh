@@ -29,14 +29,14 @@ base=${here##*/}
 scope=${here%/*}
 scope=${scope##*/}
 
-# A global vx hands off to the project's own (owner, 2026-10-13): the
+# A global vx hands off to the project's own (2026-10-13): the
 # workspace root's node_modules/<scope>/<name>, through its .bin entry. The
 # root is the first directory holding a .vx/workspace.* from the working
 # directory up to the git top-level (handoff.ts workspaceFile, the same
 # rule). One hop (VX_HANDED_OFF, which also names this launcher), never to
 # this package itself (`-ef`: same inode, so a pnpm symlink counts as
 # itself). Shell tests and builtins only, no fork per level. `vx upgrade -g`
-# moves only this global vx, so it never hands off (owner, 2026-10-16).
+# moves only this global vx, so it never hands off (2026-10-16).
 stay=
 if [ "${1-}" = upgrade ]; then
   for a in "$@"; do

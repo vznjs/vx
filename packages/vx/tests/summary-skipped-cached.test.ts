@@ -27,7 +27,7 @@ const footer = (outcomes: TaskOutcome[]): string[] =>
     },
   )
 
-// The result row is gone (M, 2026-10-14: it only repeated other rows); the
+// The result row is gone (2026-10-14: it only repeated other rows); the
 // cache legend is where a skipped task must still not read as a miss.
 describe('a skipped task is no cache miss', () => {
   it('no task with a cache: no miss', () => {

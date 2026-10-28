@@ -1,4 +1,4 @@
-// What a project is (owner, 2026-10-14): a directory holding a
+// What a project is (2026-10-14): a directory holding a
 // `vx.config.*`. `vx lock` finds them (`findProjectConfigs`) and records
 // each by directory; a run takes them from the lock (`lockedProjects`) and
 // never walks. A project is named by `name` in its config, else by a
@@ -57,7 +57,7 @@ export const PROJECT_CONFIG_FILENAMES = [
  * The workspace root for `start`: the directory holding the first
  * `.vx/workspace.*` from `start` up to the git top-level, or up to `/`
  * outside git ({@link workspaceFile}, shared with the hand-off). Nothing
- * else decides it (owner, 2026-10-13: "Workspace file is the ultimate"):
+ * else decides it (2026-10-13: "Workspace file is the ultimate"):
  * not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
  * `VX_E_NO_WORKSPACE` when there is none.
  *
@@ -138,7 +138,7 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
 
 /**
  * Where this repository's shared store lives: `~/.vx/<repo id>/cache`, as
- * Nx 23 keeps `~/.nx/<id>/cache` (owner, 2026-10-06), so every checkout of
+ * Nx 23 keeps `~/.nx/<id>/cache` (2026-10-06), so every checkout of
  * the repository hits what another saved and no other repository shares
  * it (`repoIdOf`). Null when the workspace names its cache (`cache.dir`,
  * `VX_CACHE_DIR`): that directory then holds everything, as one

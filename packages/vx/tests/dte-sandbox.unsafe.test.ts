@@ -115,7 +115,7 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 2, memory: '1G
 
   // The worker builds a task's sandbox on its own machine: its home's
   // credential stores are walled, not the orchestrator's (which may be
-  // another OS, owner 2026-10-22).
+  // another OS, 2026-10-22).
   it('walls the worker’s own credential stores, not the orchestrator’s', async () => {
     // Typed here: the checker of this project may not read the relay's source.
     const { serveRelay } = (await import(RELAY)) as {

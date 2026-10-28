@@ -1,4 +1,4 @@
-// A branch's cache scope (owner, 2026-10-17): `<owner>/<repo>:<branch>`.
+// A branch's cache scope (2026-10-17): `<owner>/<repo>:<branch>`.
 // CI names it (`github()`'s `setBranch`), and a checkout on that branch
 // derives the same name from its `.git` files, with no network. It keys
 // plugin entries only; task keys never carry it (2026-10-20).
@@ -92,7 +92,7 @@ it("a plugin's trusted run has no scope, whatever git names", async () => {
     trusted: true,
     base: 'b4',
   })
-  expect(await facts('{ trusted: true }', "{ scope: 'a/b:c' }")).toEqual({ scope: 'a/b:c' }) // A plugin names the refs a remote reads (M, 2026-10-25); a later one wins.
+  expect(await facts('{ trusted: true }', "{ scope: 'a/b:c' }")).toEqual({ scope: 'a/b:c' }) // A plugin names the refs a remote reads (2026-10-25); a later one wins.
   expect(
     await facts(
       "{ refs: ['refs/heads/a', 'refs/heads/a', 'refs/heads/main'] }",

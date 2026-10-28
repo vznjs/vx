@@ -558,7 +558,7 @@ describe('normalizeRemoteUrl — a port is only a port when a protocol said so',
 describe('cacheRefs', () => {
   const none = '/nonexistent-vx-root'
 
-  // M, 2026-10-25: CI's refs are its plugin's (github(), gitlab()); core
+  // 2026-10-25: CI's refs are its plugin's (github(), gitlab()); core
   // reads no CI env for them, so a queue or train reads only what its
   // plugin names.
   it("a plugin's refs win, and core reads no CI env", () => {

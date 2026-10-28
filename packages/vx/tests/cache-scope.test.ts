@@ -1,7 +1,7 @@
 // The run's cache scope and policy, end to end over an injected remote. A
 // task key reaches every remote plain, whatever the scope: a remote plugin
 // keeps branches apart itself (`scope` on turboCache/nxCache, 2026-10-20).
-// The policy alone decides whether anything is written (owner, 2026-10-14).
+// The policy alone decides whether anything is written (2026-10-14).
 
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -88,7 +88,7 @@ describe('cache.scope', () => {
   // footer looked its traffic up by the task key: `local 1↑`, no remote
   // part, and a failed one never showed as ✗ (Growth, footer-scoped-upload.sh).
   it.each([undefined, 'pr-1'])(
-    'the footer says what each layer restored and saved (scope %p; M, 2026-10-15)',
+    'the footer says what each layer restored and saved (scope %p; 2026-10-15)',
     async (scope) => {
       const fixture = await makeWorkspace('vx-cache-footer-uploads-')
       try {
@@ -122,7 +122,7 @@ describe('cache.scope', () => {
   )
 
   it.each([undefined, 'pr-1'])(
-    'a run the local cache answers asks the remote nothing (scope %p; M, 2026-10-15)',
+    'a run the local cache answers asks the remote nothing (scope %p; 2026-10-15)',
     async (scope) => {
       const fixture = await makeWorkspace('vx-cache-warm-local-')
       const { layer } = memoryRemote()
@@ -187,7 +187,7 @@ describe('cache.scope', () => {
     'a remote hit is never up to date, outputs or none; a local one with nothing to restore is',
     async () => {
       // CI's summary called a remote hit of a task with no outputs up to
-      // date, at ~300 ms of network (M, 2026-10-24: "Up to date is a fresh.
+      // date, at ~300 ms of network (2026-10-24: "Up to date is a fresh.
       // It should not require any cache").
       const fixture = await makeWorkspace('vx-cache-uptodate-')
       const { layer } = memoryRemote()

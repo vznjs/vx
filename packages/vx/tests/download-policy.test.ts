@@ -970,7 +970,7 @@ describe('--cache-download end to end', () => {
 
   // A distributed run's worker whose upload no remote took holds the files
   // alone: saved from this disk, the entry held whatever stale files lay
-  // here (M, 2026-10-25).
+  // here (2026-10-25).
   it('an executor that cannot bring the files here answers deferred to an eager request: nothing saved', async () => {
     const a = await fixture({ deferAlways: true, failMaterialize: true })
     try {

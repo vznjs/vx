@@ -662,7 +662,7 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
       }
     }
     // The six were honest-benchmarks' solidjs rows, gone with the
-    // real-repo claims (owner, 2026-10-02); a new blog table raises this.
+    // real-repo claims (2026-10-02); a new blog table raises this.
     // The eleven are scheduling-strategies' rows (2026-10-09), the three
     // more ci-timings-file's; seven more where-a-run-spends-its-time's
     // (2026-10-14); four more why-vx-is-fast's head-to-head and three
@@ -752,7 +752,7 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     let checked = 0
     // The post quotes the headline row, `vx` (the frozen lock), as the
     // README does (2026-10-03); the cold column is the time the runner adds
-    // over the ideal schedule, never the build's total (owner, 2026-10-09
+    // over the ideal schedule, never the build's total (2026-10-09
     // 17:54: "the overhead is what matters").
     for (const [runner, label] of [
       ['vx', 'vx'],

@@ -1,4 +1,4 @@
-// ci.yml is one distributed run for every platform (owner, 2026-10-23:
+// ci.yml is one distributed run for every platform (2026-10-23:
 // "merge all 3 workflows into 1 dte"): a task bound to one platform runs
 // on a worker of it, with no `changes` job skipping the run.
 //
@@ -57,7 +57,7 @@ describe('ci.yml', () => {
   })
 
   // A DTE worker is packed for the run's wall time, so a benchmark there
-  // timed its neighbours (owner, 2026-10-24): it runs where no relay is set,
+  // timed its neighbours (2026-10-24): it runs where no relay is set,
   // and the run's `ci` does not reach it.
   it('runs the benchmarks off the DTE run', () => {
     const perf = doc.jobs['perf']!
@@ -87,8 +87,8 @@ describe('ci.yml', () => {
     expect(checkout(doc.jobs['linux'])?.with).toBeUndefined()
   })
 
-  // The run's report is the job summary; github() posts no check run (M,
-  // 2026-10-25), so no job grants checks: write. The run reads them: the
+  // The run's report is the job summary; github() posts no check run
+  // (2026-10-25), so no job grants checks: write. The run reads them: the
   // relay's Preview is named by its Workers Builds check.
   it('grants no checks: write: the report is the job summary', () => {
     expect(
@@ -99,8 +99,8 @@ describe('ci.yml', () => {
   })
 
   // A PR that changes the relay runs on its own relay code, Workers Builds'
-  // Preview of its commit; the rest keep the deployed one (owner,
-  // 2026-10-25). Before the run, on a PR only.
+  // Preview of its commit; the rest keep the deployed one
+  // (2026-10-25). Before the run, on a PR only.
   it('points a PR’s run at the relay Preview, and main’s at its deploy, before it runs', () => {
     const steps = doc.jobs['linux']!.steps!
     const at = steps.findIndex(
@@ -124,7 +124,7 @@ describe('ci.yml', () => {
     })
   })
 
-  // Nothing runs on a distributed run's orchestrator (owner, 2026-10-22):
+  // Nothing runs on a distributed run's orchestrator (2026-10-22):
   // each platform's checks are tasks a worker of it runs, on main. The
   // platform's test files run on a PR too: a Mac-only test merged green
   // and turned main red (#4293).
@@ -141,9 +141,9 @@ describe('ci.yml', () => {
   })
 
   // docs.yml was its own workflow, its own install and sandbox runtime, for
-  // a site the run already builds (owner, 2026-10-23: fold workflows into
+  // a site the run already builds (2026-10-23: fold workflows into
   // vx tasks on DTE). The deploy is a task of the run on a push to main
-  // (owner, 2026-10-24): the Pages actions after the run were 33 s.
+  // (2026-10-24): the Pages actions after the run were 33 s.
   it('deploys the docs site as a task of the run, on a push to main', () => {
     const job = doc.jobs['linux']!
     const main = "github.event_name == 'push' && github.ref == 'refs/heads/main'"
@@ -161,12 +161,12 @@ describe('ci.yml', () => {
     expect([job.permissions?.['pages'], job.permissions?.['id-token']]).toEqual(['write', 'write'])
   })
 
-  // A run is what a developer would write (owner, 2026-10-23: "super
+  // A run is what a developer would write (2026-10-23: "super
   // simple"); vx names the run, sizes, starts and cancels its workers.
   it('is checkout, Bun, install, lock check and vx run, nothing else', () => {
     const job = doc.jobs['linux']!
     const run = job.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
-    // The lock check is in the run (owner, 2026-10-23: "lock is the most
+    // The lock check is in the run (2026-10-23: "lock is the most
     // critical step on CI to run").
     expect(
       job.steps!.filter((s) => s.if === undefined).map((s) => s.uses?.split('@')[0] ?? s.run),
@@ -180,7 +180,7 @@ describe('ci.yml', () => {
     expect(job.env?.['VX_DTE_RELAY']).toMatch(/^https:\/\//)
   })
 
-  // The remote cache serves every hit (owner, 2026-10-23: "we dont need
+  // The remote cache serves every hit (2026-10-23: "we dont need
   // to carry any vx cache anymore"), and Bun's packages restored took as
   // long as a cold install (4-9 s against about 5 s, main 68b851d): only
   // the sandbox runtime of a worker and of the benchmarks' job is kept.
@@ -197,7 +197,7 @@ describe('ci.yml', () => {
 
   // Spotlight indexed what a Mac worker's tasks wrote: a fixed test
   // workload ran 27.6 s with it, 23.3 s without (2026-10-24). Our
-  // workflow's concern, not vx's (owner, 2026-10-24).
+  // workflow's concern, not vx's (2026-10-24).
   it('turns Spotlight off on a Mac worker, first and in the background', () => {
     const first = worker.steps![0]!
     expect([first.if, first.run]).toEqual([
@@ -231,7 +231,7 @@ describe('ci.yml', () => {
     ])
   })
 
-  // A PR runs what its diff affects (owner, 2026-10-23: "PR should run on
+  // A PR runs what its diff affects (2026-10-23: "PR should run on
   // affected and DTE"); main runs everything, which seeds the cache.
   it('runs a PR affected, main all', () => {
     const run = doc.jobs['linux']!.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
@@ -272,7 +272,7 @@ describe('vx-worker.yml', () => {
     expect(step?.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
   })
 
-  // The worker is what a developer would write (owner, 2026-10-23: "why vx
+  // The worker is what a developer would write (2026-10-23: "why vx
   // runner runs twice?"): the runtime set up by the CI plugin before the
   // worker starts (owner: "vx setup github", "we should do before"), its
   // packages kept per runner image, and no mount of its own.

@@ -1,29 +1,30 @@
 // The vx-history protocol, v1 (PROTOCOL.md), as one fetch handler over a
 // `Store`: Bun and Workers serve the same one.
 
-import { type Authorize, hashPart, Refusal } from '@vzn/vx-devtools'
-import type { Report, Store } from './store.js'
+import { type Access, Refusal } from '@vzn/vx-devtools'
+import type { Report, Repo, Store } from './store.js'
 
 /** Reports one upload folds in: a run's tasks. */
 export const MAX_UPLOAD_TIMINGS = 10_000
 /** Hashes one query names. */
 export const MAX_QUERY_HASHES = 10_000
-/** Scopes one query names, read in order. */
-export const MAX_QUERY_SCOPES = 8
+/** Refs one query names, read in order. */
+export const MAX_QUERY_REFS = 8
 const MAX_STRING = 512
 const DAY_MS = 86_400_000
 
 export interface ServerOptions {
   readonly store: Store
-  readonly authorize: Authorize
+  /** A request's verified token, checked against the repository it names (`oidcTokenAuth`). */
+  readonly authorize: (req: Request, named?: Repo) => Promise<Access | undefined>
   /** Days a task's row outlives its last report (default 30). */
   readonly timingDays?: number
   /** Milliseconds since the epoch; tests move the clock. */
   readonly now?: () => number
 }
 
-/** A scope on the wire: its ref's `hashPart`, so no ref is ever sent or stored plain (M, 2026-10-25). */
-const SCOPE = /^[0-9a-f]{32}$/
+/** A full ref, as a token names one. */
+const REF = /^refs\/\S+$/
 
 export function createHistoryServer(opts: ServerOptions): (req: Request) => Promise<Response> {
   const { store, authorize } = opts
@@ -37,31 +38,48 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
   const capabilities = {
     maxUploadTimings: MAX_UPLOAD_TIMINGS,
     maxQueryHashes: MAX_QUERY_HASHES,
-    maxQueryScopes: MAX_QUERY_SCOPES,
+    maxQueryRefs: MAX_QUERY_REFS,
   }
 
-  // The fold is one upsert, a few ms for a thousand tasks: done inline (M, 2026-10-25).
+  // The fold is one upsert, a few ms for a thousand tasks: done inline (2026-10-25).
   async function upload(req: Request): Promise<Response> {
     const access = await authorize(req)
-    if (access.write === undefined) throw new Refusal(403, 'this request reads only')
+    if (access?.write === undefined) throw new Refusal(403, 'this request reads only')
     const reports = parseReports(await readJson(req, MAX_UPLOAD_TIMINGS * 200))
     await schema()
-    await store.fold(access, await hashPart(access.write), now(), reports)
+    await store.fold(access, access.write, now(), reports)
     return new Response(null, { status: 204 })
   }
 
+  // One request a run: every hash, each answered from the first ref that holds it.
   async function query(req: Request): Promise<Response> {
-    const access = await authorize(req)
-    const body = await readJson(req, MAX_QUERY_HASHES * 600 + 1000)
-    const scopes = field(body, 'scopes')
+    const body = await readJson(req, MAX_QUERY_HASHES * 600 + 10_000)
+    const issuer = field(body, 'issuer')
+    const repository = field(body, 'repository')
+    const refs = field(body, 'refs')
     const hashes = field(body, 'hashes')
     if (
-      !Array.isArray(scopes) ||
-      scopes.length === 0 ||
-      scopes.length > MAX_QUERY_SCOPES ||
-      !scopes.every((s) => typeof s === 'string' && SCOPE.test(s))
+      typeof issuer !== 'string' ||
+      !/^https?:\/\/\S+$/.test(issuer) ||
+      issuer.length > MAX_STRING
+    )
+      throw new Refusal(400, "issuer: the CI issuer's URL, as its tokens name it")
+    if (
+      typeof repository !== 'string' ||
+      !/^[^/\s]+(\/[^/\s]+)+$/.test(repository) ||
+      repository.length > MAX_STRING
+    )
+      throw new Refusal(400, 'repository: org/name at the issuer')
+    if (
+      !Array.isArray(refs) ||
+      refs.length === 0 ||
+      refs.length > MAX_QUERY_REFS ||
+      !refs.every((r) => typeof r === 'string' && REF.test(r) && r.length <= MAX_STRING)
     ) {
-      throw new Refusal(400, `scopes: 1 to ${MAX_QUERY_SCOPES} refs' hashes, 32 hex digits each`)
+      throw new Refusal(
+        400,
+        `refs: 1 to ${MAX_QUERY_REFS} full refs (refs/heads/main), read in order`,
+      )
     }
     if (
       !Array.isArray(hashes) ||
@@ -70,8 +88,9 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     ) {
       throw new Refusal(400, `hashes: a list of up to ${MAX_QUERY_HASHES} strings`)
     }
+    const repo = (await authorize(req, { issuer, repository }))!
     await schema()
-    const rows = await store.read(access, scopes as string[], hashes as string[])
+    const rows = await store.read(repo, refs as string[], hashes as string[])
     return Response.json({ timings: Object.fromEntries(rows) })
   }
 

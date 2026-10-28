@@ -289,7 +289,7 @@ export interface TaskExecutor {
    * it runs the task (`ExecuteRequest.servers`). It is offered the
    * dependants of a persistent task with no `exec.sandbox` and no
    * `exec.remote: false`; that task then runs here only for a dependant
-   * placed here (owner, 2026-10-22: nothing runs on a distributed run's
+   * placed here (2026-10-22: nothing runs on a distributed run's
    * orchestrator).
    */
   readonly servers?: boolean
@@ -303,7 +303,7 @@ export interface TaskExecutor {
   readonly runtime?: boolean
   /**
    * A `remote` executor that runs every task of the run, so none runs on
-   * this machine; only cache hits restore here (owner, 2026-10-24: "no
+   * this machine; only cache hits restore here (2026-10-24: "no
    * task should ever run on the orchestrator"). Nothing is pinned for it:
    * it is offered `exec.remote: false` and `exec.interactive` tasks too,
    * and starts every server a dependant needs. A task it cannot take (a

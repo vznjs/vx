@@ -115,7 +115,7 @@ export interface TaskTelemetry {
    *  Additive-optional, no schema bump (the `attempts` precedent). */
   where?: string
   /** A persistent task each dependant's executor started where that ran:
-   *  part of those runs, never an execution of its own (owner, 2026-10-23:
+   *  part of those runs, never an execution of its own (2026-10-23:
    *  nothing runs on a distributed run's orchestrator). Additive-optional. */
   carried?: true
   /** `'deferred'` when the outputs stayed remote (`--cache-download=none`).

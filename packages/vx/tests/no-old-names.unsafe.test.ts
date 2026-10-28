@@ -1,4 +1,4 @@
-// Until 1.0 an old name just stops working (owner, 2026-10-14): no alias,
+// Until 1.0 an old name just stops working (2026-10-14): no alias,
 // no rename notice. So no text in the repo may still teach one; a docs
 // example has to work as written today. The old → new list lives only in
 // the upgrading page and each release note's Breaking changes section,
@@ -49,8 +49,8 @@ const SKIP = [
   /^private\/vx-docs\/src\/content\/docs\/guides\/upgrading\.md$/,
 ]
 
-// A post is kept current, with no note on what changed (owner,
-// 2026-10-16). The one exception shows a misspelled flag refused with
+// A post is kept current, with no note on what changed
+// (2026-10-16). The one exception shows a misspelled flag refused with
 // the right one as its fix.
 const NAMES_THE_RENAME: ReadonlyMap<string, string> = new Map([
   ['private/vx-docs/src/content/docs/blog/upgrade-you-can-trust.md', '--retries'],

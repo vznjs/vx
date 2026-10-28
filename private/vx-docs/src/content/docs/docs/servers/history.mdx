@@ -24,24 +24,29 @@ it starts.
 
 ### 1. Deploy the server
 
-Start from a checkout of the vx repository:
-
-```sh
-git clone https://github.com/vznjs/vx
-cd vx
-bun install
-```
-
 <Tabs syncKey="server-host">
 <TabItem label="Cloudflare Workers">
 
-The numbers go in a D1 database. Fill `ALLOW` in
-`packages/vx-history-server/wrangler.jsonc`, the same way as for the
-[cache server](../../remote-cache/#1-deploy-the-server)
-([`ALLOW`](../#allow-who-takes-part)), then:
+The numbers go in a D1 database.
 
 ```sh
-cd packages/vx-history-server
+mkdir vx-history-server && cd vx-history-server
+bun add @vzn/vx-history-server
+```
+
+```jsonc title="wrangler.jsonc"
+{
+  "name": "vx-history-server",
+  "main": "node_modules/@vzn/vx-history-server/src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "vars": { "ALLOW": "" },
+  "d1_databases": [{ "binding": "DB", "database_name": "vx-history" }]
+}
+```
+
+Fill `ALLOW` ([`ALLOW`](../#allow-who-takes-part)), then:
+
+```sh
 bunx wrangler login
 bunx wrangler deploy
 ```
@@ -55,7 +60,7 @@ The numbers go in one SQLite file:
 
 ```sh
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' \
-bun packages/vx-history-server/src/bun.ts --db vx-history.sqlite --port 8080
+bunx @vzn/vx-history-server --db vx-history.sqlite --port 8080
 ```
 
 ```text
@@ -68,11 +73,8 @@ vx-history-server on http://0.0.0.0:8080/
 </TabItem>
 <TabItem label="Docker">
 
-From the root of the checkout:
-
 ```sh
-docker build -f packages/vx-history-server/Dockerfile -t vx-history-server .
-docker run -p 8080:8080 -v vx-history:/data -e ALLOW='…' vx-history-server
+docker run -p 8080:8080 -v vx-history:/data -e ALLOW='…' ghcr.io/vznjs/vx-history-server
 ```
 
 The database is `/data/vx-history.sqlite`, on the volume. Or run it
@@ -91,22 +93,6 @@ Put HTTPS in front of it: a CI token is a bearer token.
 bun add -d @vzn/vx-history @vzn/vx-ci
 ```
 
-<Aside title="Not on npm yet">
-
-`@vzn/vx-history` ships to npm with the next release. Until then, link it from a
-checkout of the vx repository. The vx you run must come from the same
-checkout:
-
-```sh
-git clone https://github.com/vznjs/vx ~/vx
-cd ~/vx && bun install
-(cd packages/vx && bun link) && (cd packages/vx-history && bun link)
-cd ~/your-repo
-bun link --save @vzn/vx @vzn/vx-history
-```
-
-</Aside>
-
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-ci'
@@ -116,7 +102,7 @@ export default defineWorkspace({
   plugins: [
     github(), // on GitLab, gitlab()
     vxHistory({
-      server: 'https://history.example.com', // or VX_HISTORY_URL
+      url: 'https://history.example.com', // or VX_HISTORY_URL
       issuer: 'https://token.actions.githubusercontent.com',
       repository: 'acme/app',
     }),
@@ -164,7 +150,7 @@ orders its tasks as it would without one.
   branch's. It does not wait for them: it starts on what this machine
   knows and re-orders the tasks not yet started when they arrive.
 - **At the end**, it sends the numbers of the tasks it ran, once. In a
-  [distributed run](../../distributed-runs/) the run that hands out the
+  [DTE run](../../distributed-task-execution/) the run that hands out the
   tasks sends them, with each worker's measurements.
 - **Off CI** there is no token. A run then reads from a server with
   `READ_ACCESS=public`, and sends nothing.
@@ -213,11 +199,13 @@ All under `/v1`
 | Route | Does |
 | --- | --- |
 | `POST /v1/timings/upload` | `{ timings: [{ hash, durationMs, cores?, rssBytes? }] }`, up to 10 000, each folded into the token's branch; `204` |
-| `POST /v1/timings/query` | `{ scopes, hashes }`, 1 to 8 branches (each a ref's hash, as the [cache server](../cache/#api) sends it) and up to 10 000 hashes: each hash's row in the first branch that holds one |
-| `GET /v1/capabilities` | `{ maxUploadTimings, maxQueryHashes, maxQueryScopes }` |
+| `POST /v1/timings/query` | `{ issuer, repository, refs, hashes }`, 1 to 8 refs and up to 10 000 hashes: each hash's row in the first ref that holds one |
+| `GET /v1/capabilities` | `{ maxUploadTimings, maxQueryHashes, maxQueryRefs }` |
 
-A query answers `{ timings: { <hash>: { durationMs, cores, rssBytes, runs } } }`.
-A hash no branch holds is left out. Every refusal is `{ code, message }`.
+A run asks once, with every hash. A row is the issuer, repository, ref
+and task hash, stored plainly, so the table reads as it is. A query
+answers `{ timings: { <hash>: { durationMs, cores, rssBytes, runs } } }`;
+a hash no ref holds is left out. Every refusal is `{ code, message }`.
 
 To mount it in a server of your own,
 `createHistoryServer({ store, authorize, timingDays? })` returns a

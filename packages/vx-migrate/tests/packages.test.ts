@@ -1,5 +1,5 @@
 // Package-manager discovery: the root a migration starts from and the
-// members it maps (src/packages.ts, core's until M, 2026-10-14).
+// members it maps (src/packages.ts, core's until 2026-10-14).
 import * as fsp from 'node:fs/promises'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -1041,7 +1041,7 @@ describe('discovery out of file descriptors (D-60)', () => {
 })
 
 // Core's discovery contract recorded these until the root a migration
-// starts from left core (M, 2026-10-14).
+// starts from left core (2026-10-14).
 describe('the root findManifestRoot starts a migration from', () => {
   const pkg = (name: string, extra: object = {}): string => JSON.stringify({ name, ...extra })
   const MEMBERS = {

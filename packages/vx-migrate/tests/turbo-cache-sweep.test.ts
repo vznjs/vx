@@ -343,7 +343,7 @@ describe('the signed download', () => {
   })
 })
 
-describe('a put never replaces a stored artifact (M, 2026-10-15)', () => {
+describe('a put never replaces a stored artifact (2026-10-15)', () => {
   // Turbo's PUT overwrites; an entry is immutable, and core asks no `has`
   // before a put, so the wire asks.
   it('asks HEAD first and sends nothing for a key the server holds', async () => {
@@ -368,7 +368,7 @@ describe('a put never replaces a stored artifact (M, 2026-10-15)', () => {
     expect(calls.map((r) => r.method)).toEqual(['GET', 'POST', 'PUT', 'PUT'])
   })
 
-  // A DTE worker never saw the run's probe: it HEADed every upload (M, 2026-10-25).
+  // A DTE worker never saw the run's probe: it HEADed every upload (2026-10-25).
   it('asks nothing first for a key the run says is absent', async () => {
     const { fetchImpl, calls } = stub(() => new Response(null))
     const c = cacheWith(fetchImpl)

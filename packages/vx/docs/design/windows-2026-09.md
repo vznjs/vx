@@ -1,6 +1,6 @@
 # vx on Windows (2026-09-28, stream O)
 
-**Status: stopped (owner, 2026-09-28): Windows users run WSL.** Its
+**Status: stopped (2026-09-28): Windows users run WSL.** Its
 native code paths were removed on 2026-10-02 (owner); vx spawns `sh -c`
 only. What follows is the record of the attempt.
 
@@ -9,7 +9,7 @@ replaces the 2026-09-10 "Windows is WSL" decision (coordinator,
 2026-09-28). Linux and macOS behaviour does not change: every fix is a
 separator-neutral rewrite or a `win32` branch.
 
-CI: the Windows workflow was removed (owner, 2026-10-02: "we don't
+CI: the Windows workflow was removed (2026-10-02: "we don't
 support Windows; Windows users use WSL").
 
 ## Decisions

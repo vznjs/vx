@@ -1,5 +1,5 @@
 // A duration forecast is the median of a task's last five timings on this
-// run's branch, else on any branch, else none (owner, 2026-10-14). The
+// run's branch, else on any branch, else none (2026-10-14). The
 // timings live in the shared store, so every worktree of a repo reads them.
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { Database } from 'bun:sqlite'

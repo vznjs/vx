@@ -108,7 +108,7 @@ export interface DteOptions {
   /**
    * Headers every dial to the relay carries, the orchestrator's and each
    * worker's, for a proxy in front of it (`{ 'CF-Access-Client-Id':
-   * process.env.CF_ACCESS_CLIENT_ID }`, an Access service token, M
+   * process.env.CF_ACCESS_CLIENT_ID }`, an Access service token,
    * 2026-10-25). An unset value is left out; `authorization` stays the
    * token's.
    */
@@ -187,7 +187,7 @@ export function dte(options: DteOptions) {
   const unmeasured = unmeasuredOf(options.unmeasured)
   const adapter = options.adapter
   // An adapter's run in its own CI with a relay names itself: the CI file
-  // sets nothing (owner, 2026-10-23: "super simple" CI).
+  // sets nothing (2026-10-23: "super simple" CI).
   let made: string | undefined
   /** Each task's sends under the run's id, across the runs `vx watch` makes. */
   const sent = new Map<string, number>()
@@ -316,8 +316,7 @@ export function dte(options: DteOptions) {
   return definePlugin(import.meta, {
     commands: {
       dte: {
-        description:
-          'dte init: write the CI of a distributed run; dte worker: run tasks for a distributed run',
+        description: 'dte init: write the CI of a DTE run; dte worker: run tasks for a DTE run',
         async run(argv, ctx) {
           // Asked for, the usage is an answer: `vx dte --help` exited 1 (2026-10-26).
           if (argv.some((a) => a === '--help' || a === '-h') || argv[0] === 'help') {
@@ -469,7 +468,7 @@ export function dte(options: DteOptions) {
       }
       proof ??= seal.secretProof(secret!)
       const { commit, tree } = await snapshot(ctx.workspaceRoot)
-      if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
+      if (tree === '') throw new UserError('dte(): a DTE run needs a git commit')
       const need = (id: string): Need => booked(needOf(peaks.get(id), unmeasured), how.book)
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
@@ -715,7 +714,7 @@ export function dte(options: DteOptions) {
       return {
         name: 'dte',
         remote: true,
-        // No task runs on the orchestrator; only hits restore here (owner, 2026-10-24).
+        // No task runs on the orchestrator; only hits restore here (2026-10-24).
         exclusive: true,
         // Each worker times a task from its start: a wait for a booting worker is not its run.
         timeouts: true,
@@ -819,12 +818,12 @@ export function pace(fn: () => void): { soon(): void; now(): void } {
 
 /**
  * What an unmeasured task counts for in the worker ask (`dte({ unmeasured
- * })`): fixed, since a plan cannot know which worker it lands on (M,
- * 2026-10-23: "by default, 2 cores, 4 gigs").
+ * })`): fixed, since a plan cannot know which worker it lands on
+ * (2026-10-23: "by default, 2 cores, 4 gigs").
  */
 const FRESH: Need = { cores: 2, memory: 4e9 }
 /**
- * What it books: one free core, no memory (M, 2026-10-23: "pack them
+ * What it books: one free core, no memory (2026-10-23: "pack them
  * where we have free capability"). Simulated on main's graph with a third
  * of its tasks unmeasured, it ended at 161 s where a whole worker each
  * ended at 195 s; a quarter core packed a cold run's tasks 16 to a
@@ -845,7 +844,7 @@ export function needOf(r: TaskResources | undefined, ask: Need = FRESH): Need {
   // Unmeasured (new, or over before the Linux sandbox's first look, which
   // leaves no CPU): any free core, counted as `ask` when the run is sized.
   // A whole worker each left main's small#1 at 13% for three sub-second
-  // tasks (M, 2026-10-23: "we can't waste whole worker for one task").
+  // tasks (2026-10-23: "we can't waste whole worker for one task").
   // One that filled its worker: a whole bigger one.
   if (r?.maxCpuParallelism === undefined)
     return { ...PLACED, ask: { cores: ask.cores, memory: ask.memory } }
@@ -856,7 +855,7 @@ export function needOf(r: TaskResources | undefined, ask: Need = FRESH): Need {
       above: { cores: r.saturatedCores ?? 0, memory: r.saturatedMemoryBytes ?? 0 },
     }
   // The cores it keeps busy on average, unrounded: a suite at 0.7 booked a
-  // whole core and CI's workers ran at 30-50% (M, 2026-10-22: "close to
+  // whole core and CI's workers ran at 30-50% (2026-10-22: "close to
   // 100%"). A quarter at least, so a task that only waits is not free.
   return { cores: Math.max(0.25, r.maxCpuParallelism), memory: r.maxPeakRssBytes ?? 0 }
 }
@@ -927,7 +926,7 @@ async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
  * The platform a task naming none runs on: `host`, when the sizes run it
  * and another. A worker of another platform then runs only the tasks that
  * name it, so they never wait behind the rest, and leaves when they are
- * done (owner, 2026-10-23). No size of `host`: anywhere, or nothing runs them.
+ * done (2026-10-23). No size of `host`: anywhere, or nothing runs them.
  */
 export function homeOf(sizes: readonly Size[], host: string): string | undefined {
   const of = new Set(sizes.filter((s) => s.max > 0).map((s) => s.platform))

@@ -113,7 +113,7 @@ export async function lockWorkspace(
 /**
  * The lock as `vx lock` would write it, and the graph rules (`run.rules`)
  * checked over every project and task the workspace declares: a run trusts
- * the lock and does not check them (owner, 2026-10-13). Every config is
+ * the lock and does not check them (2026-10-13). Every config is
  * found (`findProjectConfigs`) and evaluated once; the projects, names and
  * graph are the ones a run builds from that lock, the `discover` and
  * `graph` stages included.

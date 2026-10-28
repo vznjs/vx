@@ -488,7 +488,7 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'Distributed runs through @vzn/vx-dte: one run over workers your own CI starts, through a relay you host. Or, through @vzn/vx-reapi, a Bazel REAPI worker pool such as NativeLink or BuildBuddy. The scheduler stays on your machine. Off by default.',
+          'Distributed task execution through @vzn/vx-dte: one run over workers your own CI starts, through a relay you host. Or, through @vzn/vx-reapi, a Bazel REAPI worker pool such as NativeLink or BuildBuddy. The scheduler stays on your machine. Off by default.',
         buys: 'A laptop or a CI job can use a build farm, one task at a time, with the rest of the run unchanged.',
         costs:
           'Every input must be declared, since the worker sees nothing else. vx ships no workers, service or dashboard: you run a pool or rent one.',

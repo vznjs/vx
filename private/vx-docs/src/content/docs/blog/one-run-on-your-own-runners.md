@@ -10,9 +10,8 @@ tags:
 excerpt: "vx's CI is one run spread over its own Linux and Mac runners. On Nx Cloud's Team plan with Nx's agents, the same CI would cost about $12,192 a year. On vx it costs $0."
 ---
 
-:::caution[Alpha, not released]
-`@vzn/vx-dte` and `@vzn/vx-dte-server` are alpha. They are not on npm
-and not in any vx release. They are open source, MIT, in
+:::caution[Alpha]
+`@vzn/vx-dte` and `@vzn/vx-dte-server` are alpha. They are open source, MIT, in
 [the vx repository](https://github.com/vznjs/vx/tree/main/packages/vx-dte),
 and vx's own CI runs on them every push. Names and options may still
 change.
@@ -31,7 +30,7 @@ Cloud's Team plan with Nx's agents, the same CI would cost about
 
 ## One run, two minutes, six workers
 
-The first green main as one distributed run
+The first green main as one DTE run
 ([#4119](https://github.com/vznjs/vx/pull/4119),
 [49adc41](https://github.com/vznjs/vx/actions/runs/39985872848)) took
 1 min 59 s, docs deploy included. It was three jobs before: Linux, arm64
@@ -309,10 +308,7 @@ runners already bill.
 
 ## Try it
 
-Not on npm yet: import `dte` and `github` from a checkout's
-`packages/vx-dte/src/index.ts`
-([README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#try-it)),
-and host a relay
+`bun add -d @vzn/vx-dte`, and host a relay
 ([README](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server#run-it)):
 
 ```ts

@@ -47,7 +47,7 @@ describe('the settings list', () => {
     expect(envName('debug.timing')).toBe('VX_DEBUG_TIMING')
   })
 
-  it('reads no variable for cache.outputs.clean: config only (M, 2026-10-15)', () => {
+  it('reads no variable for cache.outputs.clean: config only (2026-10-15)', () => {
     const env = { VX_CACHE_OUTPUTS_CLEAN: 'false' }
     expect(settingEnv('cache.outputs.clean', env)).toBeUndefined()
     expect(

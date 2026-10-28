@@ -14,15 +14,15 @@ page changes in the same PR as the item it describes.
   R2. One conformance suite (`tests/conformance.ts`) runs against each;
   the Worker runs in workerd (miniflare), the image in Docker, and the
   bucket is an in-memory S3 that Bun's own client talks to.
-- Shipped: no database (M, 2026-10-25). An artifact is one object named
-  `<issuer>/<id>/<scope>/<hash>`, the first three each hashed (M,
-  2026-10-25: nothing else, no tier); its size is
+- Shipped: no database (2026-10-25). An artifact is one object named
+  `<issuer>/<id>/<scope>/<hash>`, the first three each hashed
+  (2026-10-25: nothing else, no tier); its size is
   the bucket's metadata, and a put replaces a name whole, so racing
   uploads keep one whole artifact and nodes share nothing but the bucket.
   Expiry is one bucket lifecycle rule by age; the server sweeps nothing,
   and no prefix tells main from a branch.
-- Shipped: every read names exact scopes (M, 2026-10-25: the whole
-  point of scope is exact keys) on Turbo's routes (M, 2026-10-25: "use
+- Shipped: every read names exact scopes (2026-10-25: the whole
+  point of scope is exact keys) on Turbo's routes (2026-10-25: "use
   turbo"): `GET`, `HEAD` and `PUT /v1/artifacts/<hash>`, a download's
   scope in `x-artifact-scope`, and `POST /v1/artifacts` with `{ hashes,
 scopes }` (M: "checks can ask many scopes"), up to `maxCheckHashes`
@@ -33,14 +33,14 @@ scopes }` (M: "checks can ask many scopes"), up to `maxCheckHashes`
   client sends chunks at once.
 - Shipped: limits an operator sets (`MAX_CHECK_HASHES`,
   `MAX_UPLOAD_BYTES`), named on every check and
-  at `/v1/capabilities`; the server never lowers them to a plan's (M,
-  2026-10-25: never optimize for the free plan).
-- Shipped: Turbo's shape where it fits (M, 2026-10-25: keep to the
+  at `/v1/capabilities`; the server never lowers them to a plan's
+  (2026-10-25: never optimize for the free plan).
+- Shipped: Turbo's shape where it fits (2026-10-25: keep to the
   standard, differ only where it blocks us): `{ code, message }` errors,
   hex hashes, our own `/v1`. Batches and exact scoped keys are ours:
   Turbo has neither.
-- Shipped: task timings left for `@vzn/vx-history-server` (M,
-  2026-10-25): this server keeps artifacts only.
+- Shipped: task timings left for `@vzn/vx-history-server`
+  (2026-10-25): this server keeps artifacts only.
 
 ## Encryption (planned, no format change)
 

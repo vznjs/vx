@@ -1,5 +1,5 @@
 // Warm-ups learned across runs: a CI run writes each size's under its
-// commit, and a later commit's run reads it (M, 2026-10-23).
+// commit, and a later commit's run reads it (2026-10-23).
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'

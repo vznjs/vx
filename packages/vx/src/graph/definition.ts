@@ -1,5 +1,5 @@
 // What a task is, for its history: a task whose command changed under the
-// same name is a new task, and its timings start over (M, 2026-10-23: "task
+// same name is a new task, and its timings start over (2026-10-23: "task
 // can disappear and appear as a completely new one with the same name").
 // Only what decides what the command costs: the command and the values it
 // is given (`env.define`). Inputs, outputs, cache, sandbox grants, timeout,

@@ -1,7 +1,7 @@
 // Which repository a workspace is, so its checkouts share one store under
 // `~/.vx/<id>` and other repositories keep theirs: Nx 23.2's
 // `~/.nx/<id>` (`utils/workspace-id.js`, `utils/git-utils.js`), ported
-// rule for rule (owner, 2026-10-06: "do exactly like nx"), minus the Nx
+// rule for rule (2026-10-06: "do exactly like nx"), minus the Nx
 // Cloud id. Read from the `.git` files; git is asked only when they cannot
 // settle it (no parseable remote, an `include`, an `insteadOf`).
 

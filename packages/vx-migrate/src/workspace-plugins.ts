@@ -1,5 +1,5 @@
 // The plugins a migrated workspace declares, from what the repo shows
-// (owner, 2026-10-06: "install and migrate fully … use the plugins"). Each
+// (2026-10-06: "install and migrate fully … use the plugins"). Each
 // is inert where it does not apply, so declaring one costs a run nothing,
 // and each is installed beside vx at vx-migrate's own version (plugins
 // pin their core peer to the release they shipped with).
@@ -26,7 +26,7 @@ export function workspacePlugins(root: string, runner?: 'turbo' | 'nx'): Workspa
   out.push({ pkg: '@vzn/vx-history', factory: 'vxHistory' })
   if (existsSync(path.join(root, '.github', 'workflows')))
     out.push({ pkg: '@vzn/vx-ci', factory: 'github' })
-  // A remote cache on CI reads the refs only these name (M, 2026-10-25).
+  // A remote cache on CI reads the refs only these name (2026-10-25).
   if (existsSync(path.join(root, '.gitlab-ci.yml')))
     out.push({ pkg: '@vzn/vx-ci', factory: 'gitlab' })
   return out

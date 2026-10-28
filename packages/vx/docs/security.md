@@ -69,7 +69,7 @@ the header. Whether a run writes at all is `cache.policy`'s call: off
 CI the default reads the remote and writes nothing, since a key holds
 only declared inputs and a laptop's undeclared tool or file would
 replay on CI. A laptop that should never write gets a read-only token
-too. The local cache never knows a scope (owner, 2026-10-17): one disk
+too. The local cache never knows a scope (2026-10-17): one disk
 is one pool under the task keys. So a persistent runner that runs
 untrusted pull requests and main on one disk shares their entries; give
 such a runner its own `cache.dir` per trust level, or an ephemeral
@@ -242,7 +242,7 @@ package's `name@version:integrity` verifies against npm's key, pinned
 in vx, and the tarball matches that integrity: the host that serves the
 bytes cannot make the signature, so a swapped tarball is refused before
 anything is written, and a key id vx does not pin is refused with a hint
-that the installer needs updating (owner, 2026-10-13; pnpm's installer
+that the installer needs updating (2026-10-13; pnpm's installer
 checks the same). The new binary is staged in a fresh directory, never a
 name another user could plant a link at. A vx a package manager
 installed is upgraded by that manager, which checks its own integrity.

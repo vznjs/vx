@@ -119,7 +119,7 @@ describe('VxCacheLayer', () => {
     expect([await got!.body.text(), srv.seen.at(-1)!.scope]).toEqual(['hello', main])
     expect(await c.get('bb22')).toBeNull()
     expect(srv.seen.slice(-2).map((r) => r.scope)).toEqual([f, main])
-    // No ref goes on the wire plain (M, 2026-10-25).
+    // No ref goes on the wire plain (2026-10-25).
     expect(srv.seen.filter((r) => `${r.body} ${r.scope}`.includes('refs/'))).toEqual([])
   })
 
@@ -429,7 +429,7 @@ describe('lend', () => {
 })
 
 describe('config', () => {
-  // M, 2026-10-25: a proxy in front of the server (an Access service token).
+  // 2026-10-25: a proxy in front of the server (an Access service token).
   it('sends its headers on every request to the server, never over the CI token', async () => {
     const seen: Headers[] = []
     const fetchImpl = (async (_url: string, init: RequestInit) => {
@@ -485,7 +485,7 @@ describe('config', () => {
     expect(hasCiToken(gh, false)).toBe(true)
   })
 
-  // M, 2026-10-25: the user names both, always; nothing guesses them.
+  // 2026-10-25: the user names both, always; nothing guesses them.
   it('refuses a workspace that names no issuer or repository', () => {
     for (const [options, said] of [
       [{ repository: 'acme/app' }, "vxCache(): issuer must be the CI issuer's URL"],

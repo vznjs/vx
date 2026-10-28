@@ -136,7 +136,7 @@ any target Nx marks `continuous`.
 <small>Synthetic monorepo, 1,601 projects · linux x64, 4 cores, concurrency 10 · vx `0be036747` · 2026-10-23 · [benchmarks](../../benchmarks/)</small>
 
 - **The daemon:** vx has [none](../no-daemon/).
-- **Distributed runs:** `@vzn/vx-dte` (alpha) on your own CI
+- **Distributed task execution:** `@vzn/vx-dte` (alpha) on your own CI
   ([how](../one-run-on-your-own-runners/)), or `@vzn/vx-reapi` on a
   Bazel pool.
 - **Remote cache:** `nxCache()` speaks the self-hosted `/v1/cache` wire.

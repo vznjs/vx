@@ -1,5 +1,5 @@
 // What a mapping could not say, reported once by `vx lock`, the pass that
-// checks configs (a run checks nothing, M 2026-10-15). What this machine
+// checks configs (a run checks nothing, 2026-10-15). What this machine
 // lacks to run the mapping (a bin, a graph export) is said on runs too. One line per DISTINCT gap, not one per task: n8n has a
 // `dev` and a `watch` in most of its 84 packages, and astro's `build`
 // carries the same `!vendor/**` output in every package — the per-task

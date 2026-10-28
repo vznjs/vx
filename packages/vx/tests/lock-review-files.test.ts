@@ -1,5 +1,5 @@
 // `vx lock` writes the lock vx reads minified, a pretty `vx.lock.json`
-// beside each project's config for review (M, 2026-10-14), and
+// beside each project's config for review (2026-10-14), and
 // `.vx/.gitattributes` so GitHub collapses the machine lock.
 
 import { rm } from 'node:fs/promises'

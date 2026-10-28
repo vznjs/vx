@@ -1,5 +1,5 @@
 // turboCache({ oidc }): a GitHub Actions job's OIDC token exchanged for a
-// short-lived cache token at open, revoked at teardown (owner, 2026-10-17;
+// short-lived cache token at open, revoked at teardown (2026-10-17;
 // Vercel's flow as vercel/setup-turborepo-remote-cache-action runs it).
 // Driven through a stub `fetch` standing in for GitHub, the exchange and
 // the cache: nothing binds a port.

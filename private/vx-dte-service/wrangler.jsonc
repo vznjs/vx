@@ -6,7 +6,7 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   // Who may take part: this repo's CI and its workers. A plain var, never a
-  // secret, hardcoded here so each deploy sets it (owner, 2026-10-23).
+  // secret, hardcoded here so each deploy sets it (2026-10-23).
   "vars": {
     "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-worker.yml",
   },
@@ -20,7 +20,7 @@
   // 120 requests, far inside the free plan's daily events.
   // One event in 10: every message of a run is an invocation (a worker's
   // heartbeat every 2 s, #4473), 400k events a day at 1, twice Workers
-  // Logs' daily allowance (M, 2026-10-25: "limit reached, reduce").
+  // Logs' daily allowance (2026-10-25: "limit reached, reduce").
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.1,

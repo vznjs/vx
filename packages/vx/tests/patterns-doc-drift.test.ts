@@ -79,8 +79,8 @@ describe('patterns.md quotes the benchmark rows benchmarks.md has', () => {
           .split('|')
           .slice(2, 4)
           // The figure, not its aside: patterns.md says `(vx 1.1× faster)`
-          // where the dated benchmarks.md row says `(1.2×)` (owner,
-          // 2026-10-04: every cell names vx's multiple).
+          // where the dated benchmarks.md row says `(1.2×)`
+          // (2026-10-04: every cell names vx's multiple).
           .map((cell) => cell.trim().replace(/\s*\([^)]*\)$/, '')),
       )
     expect(rows.length).toBe(3)

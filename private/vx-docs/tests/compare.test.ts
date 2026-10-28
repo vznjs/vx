@@ -369,7 +369,7 @@ describe('the choosing page', () => {
     const measured = readFileSync(bench, 'utf8')
     const FIGURE = /\d[\d,.]*\s?(?:ms|s)\b|\d[\d.]*×/g
     // Its four figures were real-repo runs through turbo() and went with
-    // them (owner, 2026-10-02); the pattern still has to find one.
+    // them (2026-10-02); the pattern still has to find one.
     expect([...'947 ms, 3.29 s, 1.9×'.matchAll(FIGURE)].map((m) => m[0])).toEqual([
       '947 ms',
       '3.29 s',

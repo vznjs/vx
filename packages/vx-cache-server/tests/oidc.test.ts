@@ -11,7 +11,7 @@ import { memBlobs } from './mem-blobs.js'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
 const AUD = 'https://cache.example.com'
-// A name, matched whatever its case (M, 2026-10-25: org/name, not id).
+// A name, matched whatever its case (2026-10-25: org/name, not id).
 const allow = parseAllow(`${GITHUB}:Acme/App:ci.yml`)
 
 let sign: (claims: JWTPayload, aud?: string) => Promise<string>

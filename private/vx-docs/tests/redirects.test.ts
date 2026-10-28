@@ -117,6 +117,7 @@ const MERGED: Record<string, string> = {
   'guides/remote-caching/': 'docs/remote-cache/',
   'guides/remote-execution/': 'docs/remote-execution/',
   'docs/relay/': 'docs/servers/dte/',
+  'docs/distributed-runs/': 'docs/distributed-task-execution/',
   'guides/extensibility/': 'docs/plugins/',
   'guides/otel-bridge/': 'docs/plugins/#opentelemetry',
   'guides/mcp/': 'docs/agents/',
@@ -132,7 +133,7 @@ const MERGED: Record<string, string> = {
   'learn/extending/': '#plugins',
   'learn/playground/': 'quickstart/',
   'learn/labs/': 'quickstart/',
-  // The playground was removed (owner, 2026-10-23).
+  // The playground was removed (2026-10-23).
   'playground/': 'quickstart/',
   'blog/the-playground/': 'quickstart/',
   'features/playground/': 'quickstart/',
@@ -150,9 +151,9 @@ const MERGED: Record<string, string> = {
   'guide/try-it/': 'quickstart/',
   'guide/labs/': 'quickstart/',
   // It measured vx running turbo.json and Nx configs; the native-config
-  // rerun has no page yet (owner, 2026-10-02).
+  // rerun has no page yet (2026-10-02).
   'benchmarks/real-repos/': 'benchmarks/',
-  // Release notes left the blog for their own section (owner, 2026-10-08).
+  // Release notes left the blog for their own section (2026-10-08).
   'blog/tags/release/': 'releases/',
   'blog/tags/essays/': 'blog/',
   'blog/errors-that-say-the-fix/': 'blog/error-codes/#each-code-says-the-fix',

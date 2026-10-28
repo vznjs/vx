@@ -88,7 +88,7 @@ const cases: Case[] = [
     failing: ['utilization'],
   },
   // The probe said a remote held these two; each GET then 404'd and core
-  // ran them as misses (M, 2026-10-23). They must join the queue and run
+  // ran them as misses (2026-10-23). They must join the queue and run
   // on a worker like any other.
   {
     name: 'main a09b987, two probed hits gone by their GET',
@@ -220,7 +220,7 @@ function aThirdUnmeasured(): SimTask[] {
   return load(a09).map((t) => (t.ran !== undefined && i++ % 3 === 0 ? { ...t, known: null } : t))
 }
 
-// M, 2026-10-23: "we can't waste whole worker for one task", "pack them
+// 2026-10-23: "we can't waste whole worker for one task", "pack them
 // where we have free capability". Booking each unmeasured task a whole
 // worker ended this run at 195 s, its workers 37% busy.
 it('a run a third unmeasured ends within 165 s, its workers 70% busy', () => {
@@ -295,7 +295,7 @@ describe('a graph over two platforms', () => {
   })
 })
 
-// M, 2026-10-23: "the Mac would be only for Mac tasks". With a size of
+// 2026-10-23: "the Mac would be only for Mac tasks". With a size of
 // this machine's platform, a task naming none runs on it only: a Mac worker
 // is never filled with the rest while its own tasks wait, and leaves once
 // they are done.
@@ -334,7 +334,7 @@ describe('each scheduler choice, on main a09b987', () => {
       })
 })
 
-// M, 2026-10-23: history is an estimate; a suite given more workers (a
+// 2026-10-23: history is an estimate; a suite given more workers (a
 // Playwright config from 3 to 10) uses far more than it says. Four shards
 // that used 0.75 cores now fill a worker: none is sent work while its
 // tasks use all its cores.

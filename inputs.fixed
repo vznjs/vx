@@ -1335,7 +1335,7 @@ function filesPlan(
  * `projectRel` (the path relative to the project that owns it) against
  * `files`, `workspaceRel` (relative to the workspace root) against
  * `workspaceFiles`; null skips that half, by the globs, `!` exclusions and own-output takebacks
- * the key resolves. `--affected` seeds a task with it (owner, 2026-10-04).
+ * the key resolves. `--affected` seeds a task with it (2026-10-04).
  */
 export function declaresInput(
   cache: CacheConfig,

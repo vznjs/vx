@@ -1,4 +1,4 @@
-// "Never do anything twice" (owner, 2026-09-24), held as syscall COUNTS: a
+// "Never do anything twice" (2026-09-24), held as syscall COUNTS: a
 // strace of each code path, filtered to the calls vx's own process makes
 // on the paths it owns. Each row pins a repeat that was removed:
 //

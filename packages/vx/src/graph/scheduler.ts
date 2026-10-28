@@ -1123,7 +1123,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
                 : `${message} — ${isOutOfFds(err) ? OUT_OF_FDS_HINT : fsRefusalHint(err)}`
               // In a task's own output block, in full: that block is read
               // alone, and "as <task> above" named one printed elsewhere or
-              // not at all (M, 2026-10-22). On bare stderr the first is above.
+              // not at all (2026-10-22). On bare stderr the first is above.
               const first = options.onError === undefined ? refusedBy.get(text) : undefined
               if (!refusedBy.has(text)) refusedBy.set(text, id)
               line = `[vx] ${id}: ${first === undefined ? text : `as ${first} above`}\n`

@@ -141,9 +141,11 @@ build: {
     ```
   </TabItem>
   <TabItem label="3. Fixed">
-    Grant it and add it to `inputs.files`, and the task passes. Without the
-    sandbox, this build would have cached with `tsconfig.json` outside its
-    key, and an edit to that file would have replayed the old `dist/`.
+    Grant it and add it to `inputs.files`, and the task passes.
+
+    Without the sandbox, this build would have cached with
+    `tsconfig.json` outside its key. An edit to that file would then have
+    restored the old `dist/`.
   </TabItem>
 </Tabs>
 
@@ -171,11 +173,15 @@ union per run.
 
 ## The boundary is the project
 
-A task never reaches another package or a root file you did not grant;
-that wall is silent. An undeclared touch of its own files fails the task,
-and a failed task is never cached. A write refused past the wall is named
-with the directory to grant; under the host's temp directory it names
-`$TMPDIR` instead, the task's own empty temp directory.
+A task never reaches another package, or a root file you did not grant.
+That wall is silent.
+
+Touching one of its own files that it did not declare fails the task, and
+a failed task is never cached.
+
+A refused write outside the project names the directory to grant. Under
+the host's temp directory, it names `$TMPDIR` instead: the task's own
+empty temp directory.
 
 ---
 
