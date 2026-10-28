@@ -594,7 +594,8 @@ layer carries it as it carried stdout (v42).
    4 MiB or less is packed in memory; a larger one streams into
    `<cacheDir>/<hash>.tar.zst.tmp-<pid>-…`.
 2. Scans it as a restore would (a readable archive whose sum
-   matches, a `stdout` entry, its own key in the sidecar); a failure
+   matches, a `stdout` entry, its own key in the sidecar, an integer mode and a
+   Date-sized mtime for each file); a failure
    removes the temp. An artifact of at most `INLINE_MAX` compressed
    is never written to a file; a larger one in memory is written to
    the temp first.
@@ -655,6 +656,10 @@ Reads via `get()` are non-blocking thanks to WAL.
   its target directory is created first, decided on where the link
   resolves (`resolveThrough`), and only when a `mkdir` has failed, so a
   clean tree pays nothing. A cycle of links is a `UserError` by name.
+  A path that resolves into a `.git` under the anchor (any case) is
+  refused as a link out is, and an artifact's link into one is an
+  `ArchiveSecurityError` (`writableUnder` in util, the rule the output
+  clean holds a glob root's link and a recorded row to as well).
   A path holding a backslash is resolved link by link (`realOf`): Bun's
   `realpath` answers ENOENT for any such path.
   On any throw, nothing was renamed into place.
@@ -724,7 +729,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v48'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v49'`; `SCHEMA_VERSION` is
 `'v49'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

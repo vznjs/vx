@@ -169,6 +169,8 @@ export interface PreparedRun {
    * mistaken for a workspace vx was never set up in.
    */
   anyProjectConfig: boolean
+  /** A workspace project that declares no task: no config, and nothing configured reaches it. */
+  taskless: (name: string) => boolean
   /** The claimed root files, and whether a task has since rewritten one (fingerprint-watch.ts). */
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
@@ -413,6 +415,12 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // name, never by count: a config-less project counts as loaded, so a
   // scope holding one hid an unloaded declarer (X-129, X-182).
   const partialLoad = projectsWithConfigs.some((m) => !projects.has(m.name))
+  // Asked on a refusal only: a scope never loads a config-less project
+  // nothing configured reaches.
+  const taskless = (name: string): boolean =>
+    !projects.has(name) &&
+    projectMetas.some((m) => m.name === name) &&
+    !projectsWithConfigs.some((m) => m.name === name)
 
   // Boundary geometry considers every workspace project, loaded or not,
   // config or not: `--affected` gives a changed path to the deepest project
@@ -430,6 +438,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // A dependant's `^build` still reaches it, and `lib#build` names it.
   const requested = expandRequested(tasks, candidateProjects, projects, isDefaultBuild)
   let unresolvedTasks = unresolvedRequests(tasks, candidateProjects, projects, isDefaultBuild)
+  // A diff that changed only config-less projects loads none of them: no
+  // candidate to ask, so every bare name is still to judge, or a typo ran
+  // nothing, exit 0.
+  if (options.selectedByDiff === true && candidateProjects.length === 0)
+    unresolvedTasks = [...new Set([...tasks.filter((t) => !t.includes('#')), ...unresolvedTasks])]
   refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
   if (options.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
     // A name a loaded project declares is no typo, whether or not the load
@@ -571,6 +584,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
+      taskless,
       fingerprintWatch,
       nestedDirsByProject,
       gitFilesCache: new GitFilesCache(),
@@ -849,6 +863,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
+      taskless,
       fingerprintWatch,
       nestedDirsByProject,
       gitFilesCache,
@@ -937,9 +952,11 @@ function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>
   const stack = [...roots]
   while (stack.length > 0) {
     const id = stack.pop()!
-    if (keep.has(id)) continue
+    // A `pkg#task` the user named is kept, though a hook may have dropped it.
+    const node = nodes.get(id)
+    if (node === undefined || keep.has(id)) continue
     keep.add(id)
-    stack.push(...nodes.get(id)!.deps)
+    stack.push(...node.deps)
   }
   for (const [id, n] of nodes) {
     if (!keep.has(id)) nodes.delete(id)

@@ -115,7 +115,10 @@ open it first or join it; vx and the relay refuse any other. `local()` starts ea
 git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not: a task that keys one fails), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
-saving to the run's store (a relative `cache.dir` or `--cache-dir` too). When a worker fails, its row names
+saving to the run's store (a relative `cache.dir` or `--cache-dir` too).
+A run from a git hook works too: the worktree and its worker drop the
+hook's repository variables (`git rev-parse --local-env-vars`), so the
+index being committed is left as it is. When a worker fails, its row names
 the error line and the log that holds its whole stderr and all `prepare`
 printed. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
@@ -237,8 +240,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       # One commit: --affected fetches its base itself.
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile --filter './'
       - run: bun vx lock --check
       # Name the tasks to run, as 'bun vx run build test --affected': with
@@ -298,12 +302,12 @@ jobs:
       VX_DTE_RELAY: ${{ inputs.relay }}
       VX_DTE_WORKER: ${{ matrix.worker }}
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: '${{ inputs.sha }}' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: '${{ inputs.sha }}', persist-credentials: false }
       - env: { HANDED: '${{ inputs.env }}' }
         run: |
           jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\r\n]") | not) then "\(.key)=\(.value)" else error("env \(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       # Every project: only pnpm selects by a git diff, as
       # `pnpm install --frozen-lockfile --filter "...[origin/main]"`
       # (fetch origin/main first: the checkout is one commit).
@@ -322,7 +326,10 @@ names (`VX_DTE_PICK`), at the run's commit, and each takes its name from
 `VX_DTE_IDS`. The run starts workers as its work needs them, up to each
 size's `max`, which `gitlab()` needs (at most 200, a matrix's limit).
 GitLab lets a job token trigger but not cancel, so a worker the run no
-longer needs leaves when it joins or when the run ends.
+longer needs leaves when it joins or when the run ends. Each trigger
+passes the workers' variables, so set Settings > CI/CD > Variables >
+"Minimum role to use pipeline variables" to Developer: a project made
+since GitLab 17.7 lets no one, and refuses every trigger.
 
 ```ts
 // .vx/workspace.ts
@@ -354,7 +361,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
 
-# The image needs Bun and git.
+# The image needs Bun; a job adds git if it lacks it.
 default:
   image: oven/bun:1.4
 
@@ -368,6 +375,7 @@ vx:
       variables: { VX_TASKS: '--all' }
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
   before_script:
+    - command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)
     - bun install --frozen-lockfile --filter './'
   script:
     - bun vx lock --check
@@ -378,6 +386,7 @@ vx:
   variables: { GIT_DEPTH: 1 }
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
   before_script:
+    - command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)
     - git fetch -q --depth 1 origin $VX_DTE_SHA
     - git checkout -q FETCH_HEAD
     - bun install --frozen-lockfile

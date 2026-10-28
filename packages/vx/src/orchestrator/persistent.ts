@@ -176,9 +176,8 @@ export function sessionEnd(keepAlive: KeepAlive): Promise<{ code: number; i: num
 
 export interface HoldArgs {
   forwardArgs: readonly string[] | undefined
-  /** Where a held server's output goes. */
+  /** Where a held server's output, and the notice of its death, go. */
   outOf: (id: string) => HeldServer['out']
-  warn: (message: string) => void
 }
 
 /** The kept servers handed to the caller (`RunOptions.hold`) instead of waited on. */
@@ -193,17 +192,24 @@ export function holdServers(keepAlive: KeepAlive, args: HoldArgs): HeldPersisten
   const servers = new Map<string, HeldServer>()
   keepAlive.nodes.forEach((n, i) => {
     const child = held[i]!
+    const out = args.outOf(n.id)
     servers.set(n.id, {
       child,
       config: serverConfig(n, args.forwardArgs),
-      out: args.outOf(n.id),
+      out,
       handOver: () => void handed.add(child),
     })
     // One that died during the graph was said then.
     if (hasEnded(child)) return
+    // Said where its output goes: a later run that keeps it owns the
+    // terminal from its start, and this run's renderer wrote over its rows.
     void child.exited.then((code) => {
       if (!stopping && !handed.has(child) && code !== 0)
-        args.warn(`vx: ${n.id} exited with code ${code}`)
+        out.bus.emit({
+          kind: 'run:status',
+          line: `vx: ${n.id} exited with code ${code}`,
+          warn: true,
+        })
     })
   })
   return {

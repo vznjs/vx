@@ -310,6 +310,16 @@ describe('affectedProjects', () => {
       'git ref "HEAD:packages" names what is at packages, not a commit: vx diffs the whole ' +
         'workspace, so pass the commit alone ("HEAD").',
     )
+    // Turbo's two-dot form diffs from the ref itself, and selected both.
+    const ranged = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD:packages..HEAD',
+      projects,
+    }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(ranged?.message).toBe(err?.message)
     const sel = async (since: string) =>
       [...(await affectedProjects({ workspaceRoot: root, since, projects }))].sort()
     expect(await sel('HEAD^{tree}')).toEqual([])
