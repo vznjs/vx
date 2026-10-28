@@ -63,6 +63,42 @@ it('a submodule walks on to its superproject, and no further', async () => {
   expect(await found('super/mods/sub')).toBe('super')
 })
 
+it('a submodule whose own .git is a directory walks on to its superproject too', async () => {
+  // `git submodule add` of a path that is a clone already keeps its `.git`
+  // directory: the walk stopped there, and a run inside it found no root
+  // while one at the superproject ran its projects.
+  const git = (cwd: string, ...args: string[]) => {
+    const p = Bun.spawnSync({
+      cmd: [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...args,
+      ],
+      cwd: path.join(shared, cwd),
+      stderr: 'pipe',
+    })
+    if (p.exitCode !== 0) throw new Error(p.stderr.toString())
+  }
+  await file('super/.vx/workspace.ts')
+  await file('super/mods/sub/package.json', JSON.stringify({ name: 'sub' }))
+  git('super/mods/sub', 'init', '-q')
+  git('super/mods/sub', 'add', '-A')
+  git('super/mods/sub', 'commit', '-q', '-m', 'sub')
+  git('super', 'init', '-q')
+  git('super', 'add', '-A')
+  git('super', 'commit', '-q', '-m', 'super')
+  expect(await found('super/mods/sub')).toBe('super')
+  // CONTROL: a repository the superproject does not track is its own top-level.
+  await file('super/other/package.json', JSON.stringify({ name: 'other' }))
+  git('super/other', 'init', '-q')
+  expect(await found('super/other')).toBe('VX_E_NO_WORKSPACE')
+})
+
 it('outside git the walk reaches the file above', async () => {
   expect(await found('repo/pkgs/a')).toBe('.')
 })
