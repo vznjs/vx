@@ -373,6 +373,7 @@ export async function join(
     heard.delete(peer)
     outbox.delete(peer)
     taken.delete(peer)
+    owing.delete(peer)
     const now = relayIds.get(peer)
     relayIds.delete(peer)
     if (now !== undefined) heldIds.delete(now)
@@ -647,7 +648,10 @@ export async function join(
           return
         // Refused: the caller hears it. Its number still goes, delivering
         // nothing: dropped, its receiver waited on it and on every send after.
-        o.unacked.set(seq, { body: PROBED, at: 0 })
+        // One neither the relay nor this side knows waits on nothing, and
+        // would be asked every heartbeat for the rest of the run.
+        if (err.status === 404 && !heard.has(to)) outbox.delete(to)
+        else o.unacked.set(seq, { body: PROBED, at: 0 })
         throw err
       }
     },
