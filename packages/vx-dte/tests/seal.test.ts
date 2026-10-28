@@ -11,7 +11,7 @@ import {
   sealOrchestrator,
   secretProof,
 } from '../src/seal.js'
-import { join, type Participant, type RelayMessage } from '../src/wire.js'
+import { join, RelayError, type Participant, type RelayMessage } from '../src/wire.js'
 import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -231,6 +231,19 @@ it('loses a worker whose body the relay changed, and drops one it replays', asyn
   )
   await a.send('orchestrator', { type: 'start', task: 'w' })
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+})
+
+// A send to a worker already lost failed as a plain Error: the run's batch
+// still chained to that worker took it for a refusal and failed tasks
+// that had already gone back to the queue, some running elsewhere.
+it('a send to a worker it lost is refused as one the relay does not know (404)', async () => {
+  const { o, a } = await pair()
+  await until(o)
+  await a.leave()
+  expect((await until(o)).map((m) => (m.body as { type: string }).type)).toEqual(['lost'])
+  const err = await o.send(a.id, { type: 'batch' }).catch((e: unknown) => e)
+  expect(err).toBeInstanceOf(RelayError)
+  expect((err as RelayError).status).toBe(404)
 })
 
 it('loses a worker whose body the relay spliced from two, each part sealed', async () => {
