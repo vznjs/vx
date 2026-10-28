@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import type { ExecuteRequest } from '../src/exec/executor.js'
 import { localFloor } from '../src/orchestrator/local-floor.js'
+import { isAlive } from './helpers/alive.js'
 
 let dir = ''
 afterEach(async () => {
@@ -188,6 +189,43 @@ it('CONTROL: a server that exited 0 (a setup step) still serves the next task', 
   try {
     expect((await floor.execute(task(1))).exitCode).toBe(0)
     expect((await floor.execute(task(2))).exitCode).toBe(0)
+  } finally {
+    await floor.close()
+  }
+}, 20_000)
+
+// A shell that exits before ready can leave what it forked running
+// (`server & …; exit`): the next task starts the server again, and the
+// leftover held its port until the worker closed (as persistent-task.ts
+// stops it in a run).
+it('a server that exits before ready leaves nothing it forked running', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const floor = localFloor()
+  try {
+    const r = await floor.execute({
+      taskId: 's#t',
+      workspaceRoot: dir,
+      outputs: { files: [], workspaceFiles: [] },
+      command: 'true',
+      forwardArgs: [],
+      cwd: dir,
+      env: { PATH: process.env['PATH'] },
+      envDefine: {},
+      capture: { stdout: false, stderr: false },
+      onStdout: () => {},
+      onStderr: () => {},
+      servers: [
+        {
+          taskId: 's#srv',
+          command: 'sleep 30 & echo $! > bg.pid; exit 3',
+          cwd: dir,
+          env: { PATH: process.env['PATH'] },
+          readyWhen: 'up',
+        },
+      ],
+    })
+    const pid = Number(await readFile(path.join(dir, 'bg.pid'), 'utf8'))
+    expect([r.exitCode, isAlive(pid)]).toEqual([1, false])
   } finally {
     await floor.close()
   }

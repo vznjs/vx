@@ -116,6 +116,8 @@ async function findWorkspaceFile(start: string): Promise<string | null> {
  * Asked only when the walk found nothing, so a run pays nothing for it.
  */
 async function outerWorkspaceFile(top: string): Promise<string | null> {
+  // A worktree's `.git` is a file: another checkout, its own top-level.
+  if (!(await Bun.file(`${top}/.git/HEAD`).exists())) return null
   const parent = top.slice(0, top.lastIndexOf('/')) || '/'
   const outer = await gitTop(parent)
   if (outer === null) return null
