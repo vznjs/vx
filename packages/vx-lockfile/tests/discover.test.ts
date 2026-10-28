@@ -460,6 +460,28 @@ describe('discover', () => {
         /^package\.json: holds git merge conflict markers — resolve them$/,
       )
     })
+
+    it(`${c.name}(): a package.json with a trailing comma and a comment reads as ${c.name} reads it`, async () => {
+      // `bun install` takes a manifest with a trailing comma or a comment;
+      // npm, pnpm and yarn refuse one. bun() refused it as "not JSON", so a
+      // workspace bun installed could not be locked.
+      await writeFile(path.join(root, c.file), c.text)
+      await workspaces()
+      const metas = await projects({
+        root: rootPkg,
+        a: { name: 'a', dependencies: { b: '*' }, peerDependencies: { c: '*' } },
+        c: { name: 'c', devDependencies: { d: '*' } },
+      })
+      await writeFile(
+        path.join(root, 'packages/a/package.json'),
+        '{\n  // a\n  "name": "a",\n  "dependencies": { "b": "*", },\n  "peerDependencies": { "c": "*" },\n}\n',
+      )
+      if (c.name === 'bun') expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+      else
+        await expect(discover(c.make(), metas)).rejects.toThrow(
+          'packages/a/package.json: not JSON (',
+        )
+    })
   }
 
   it('yarn(): a classic dependency on a range the workspace misses is the registry copy', async () => {

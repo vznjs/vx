@@ -80,6 +80,8 @@ interface Manager {
   readonly settingsText?: (file: string, text: string) => string | undefined
   /** The lockfile files a peer under `dependencies`: the manifest says which entries are peers. */
   readonly peersInManifest?: true
+  /** The manager reads package.json as JSONC (trailing commas, comments): bun does. */
+  readonly jsoncManifests?: true
   /**
    * Importers a format leaves out of the lockfile (yarn classic), from the
    * workspace's manifests through `manifest`; undefined where the file
@@ -138,6 +140,7 @@ const MANAGERS = {
     recorded: (t) => bunParse(t).workspaces,
     extraFiles: (t) => [...bunLock().patchFiles(t), ...bunLock().fileDeps(bunParse(t))],
     settings: ['bunfig.toml', '.npmrc'],
+    jsoncManifests: true,
   },
   npm: {
     name: 'npm',
@@ -326,7 +329,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         : { ...deps, ...folded }
     },
     async discover(ctx) {
-      const manifest = manifestReader(ctx.workspaceRoot)
+      const manifest = manifestReader(ctx.workspaceRoot, manager.jsoncManifests === true)
       // The staleness check's walk overlaps the lockfile read.
       const dirs = workspaceGlobs(ctx.workspaceRoot, manager.name, manifest).then((globs) =>
         workspaceDirs(ctx.workspaceRoot, globs, manager.skippedDirs),
@@ -375,7 +378,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     async project(config, ctx) {
       let importers = perRun.get(ctx.projects)
       if (importers === undefined) {
-        importers = importersOf(ctx, manifestReader(ctx.workspaceRoot))
+        importers = importersOf(
+          ctx,
+          manifestReader(ctx.workspaceRoot, manager.jsoncManifests === true),
+        )
         perRun.set(ctx.projects, importers)
       }
       if ((await importers)?.has(importerOf(ctx.workspaceRoot, ctx.dir)) !== true) return
@@ -470,7 +476,11 @@ function importerOf(workspaceRoot: string, dir: string): string {
  * not parse refuses, named: read as none, a conflicted manifest lost its
  * dependencies and its dependents hit with old bytes (Turbo and Nx refuse).
  */
-async function manifestOf(root: string, dir: string): Promise<Record<string, unknown> | null> {
+async function manifestOf(
+  root: string,
+  dir: string,
+  jsonc: boolean,
+): Promise<Record<string, unknown> | null> {
   const file = path.join(dir, 'package.json')
   let text: string
   try {
@@ -483,7 +493,7 @@ async function manifestOf(root: string, dir: string): Promise<Record<string, unk
     throw new UserError(`${name}: holds git merge conflict markers — resolve them`)
   let pkg: unknown
   try {
-    pkg = JSON.parse(text)
+    pkg = jsonc ? Bun.JSONC.parse(text) : JSON.parse(text)
   } catch (err) {
     throw new UserError(`${name}: not JSON (${err instanceof Error ? err.message : String(err)})`)
   }
@@ -494,12 +504,15 @@ async function manifestOf(root: string, dir: string): Promise<Record<string, unk
 }
 
 /** `manifestOf`, each directory read once. */
-function manifestReader(root: string): (dir: string) => Promise<Record<string, unknown> | null> {
+function manifestReader(
+  root: string,
+  jsonc: boolean,
+): (dir: string) => Promise<Record<string, unknown> | null> {
   const read = new Map<string, Promise<Record<string, unknown> | null>>()
   return (dir) => {
     let pkg = read.get(dir)
     if (pkg === undefined) {
-      pkg = manifestOf(root, dir)
+      pkg = manifestOf(root, dir, jsonc)
       read.set(dir, pkg)
     }
     return pkg
