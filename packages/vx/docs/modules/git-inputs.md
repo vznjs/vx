@@ -86,6 +86,7 @@ export interface GitEnumeration {
   tracked: readonly string[] // every index path (a submodule as its gitlink), root-relative: never cleaned
   scopes: readonly string[] // the pathspecs listed, root-relative
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
+  flagged: readonly string[] // tracked paths git does not look at on disk (assume-unchanged, skip-worktree)
   dirty: boolean | null
   vars: string | null // `git var -l` output, read once for config lookups
   changed: readonly string[] | null // what `status` listed (dirty, both sides of a rename, untracked)
