@@ -208,7 +208,7 @@ it('answers a flag it does not know with its usage', () => {
   const [said, usage] = cli.stderr.toString().split('\n')
   expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
     2,
-    "Unknown option '--bogus'",
+    "✗ vx-history-server  Unknown option '--bogus'",
     'usage: vx-history-server',
   ])
 })
@@ -222,8 +222,8 @@ it('names ALLOW when it cannot be read', () => {
     return [cli.exitCode, cli.stderr.toString()]
   }
   expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
-    [2, 'ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
-    [2, 'ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
+    [2, '✗ vx-history-server  ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
+    [2, '✗ vx-history-server  ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
   ])
 })
 
@@ -236,8 +236,8 @@ it('names --db when it cannot be opened, and refuses an empty one', () => {
     return [cli.exitCode, cli.stderr.toString().split('\n')[0]]
   }
   expect([said('/proc/no/such/dir/x.db'), said('')]).toEqual([
-    [2, '--db /proc/no/such/dir/x.db: unable to open database file'],
-    [2, "--db: needs a file path, got ''"],
+    [2, '✗ vx-history-server  --db /proc/no/such/dir/x.db: unable to open database file'],
+    [2, "✗ vx-history-server  --db: needs a file path, got ''"],
   ])
 })
 
@@ -246,7 +246,10 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '', '--db', ':memory:'],
     { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
   )
-  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+  expect([cli.exitCode, cli.stderr.toString()]).toEqual([
+    2,
+    '✗ vx-history-server  --port: not a port: \n',
+  ])
 })
 
 it('reads with no token where READ_ACCESS is public, only a repository ALLOW names', async () => {
