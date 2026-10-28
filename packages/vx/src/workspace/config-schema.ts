@@ -1569,11 +1569,19 @@ export function taskNameProblem(name: string): string | null {
 function tagProblem(tag: string): string | null {
   if (tag.trim() !== tag) return 'has surrounding whitespace'
   if (tag.includes('*')) return "holds '*', which makes it a pattern"
-  const f = parseFilter(`tag:${tag}`, '/')
+  const walk = "ends in '...', which a filter reads as a dependency walk"
+  let f: ReturnType<typeof parseFilter>
+  try {
+    f = parseFilter(`tag:${tag}`, '/')
+  } catch {
+    // `...` alone: the walk leaves the filter no tag, and its refusal
+    // named neither the config nor the tag.
+    return walk
+  }
   if (f.gitSince !== undefined) {
     return `ends in "[${f.gitSince}]", which a filter reads as a git range`
   }
-  if (f.withDeps || f.onlyDeps) return "ends in '...', which a filter reads as a dependency walk"
+  if (f.withDeps || f.onlyDeps) return walk
   return null
 }
 

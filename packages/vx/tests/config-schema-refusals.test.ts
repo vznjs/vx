@@ -941,6 +941,10 @@ describe('project tags', () => {
     ['ui*', "holds '*', which makes it a pattern"],
     ['v1...', "ends in '...', which a filter reads as a dependency walk"],
     ['v1^...', "ends in '...', which a filter reads as a dependency walk"],
+    // The walk alone left the filter no tag: its own refusal escaped,
+    // `filter "tag:..." names no tag`, naming neither config nor tag.
+    ['...', "ends in '...', which a filter reads as a dependency walk"],
+    ['^...', "ends in '...', which a filter reads as a dependency walk"],
     ['v[2]', 'ends in "[2]", which a filter reads as a git range'],
   ])('refuses %j, which a tag filter cannot name', (tag, why) => {
     expect(refusal(['ok', tag])).toBe(
