@@ -444,27 +444,22 @@ describe('appendTail — unicode at the cap boundary', () => {
     expect(isWellFormed(text)).toBe(true)
   })
 
-  // FINDING (src/util/tail.ts:49). The single-chunk slice cuts by UTF-16 code
-  // UNIT, so a cut landing inside a surrogate pair leaves a LONE SURROGATE at
-  // the head of the retained text — `isWellFormed()` is false and a terminal
-  // renders U+FFFD. Reachable: a real spawned child hands over 262144-char
-  // chunks (4× the cap), and dev-server banners are full of emoji. Cosmetic
-  // only — the block already announces the truncation right above it — so
-  // this is pinned as CURRENT behaviour rather than worked around.
-  it('DOES split a surrogate pair when the slice path cuts one (documented defect)', () => {
+  // The single-chunk slice cuts by UTF-16 code UNIT. A cut inside a surrogate
+  // pair left a LONE low surrogate at the head of the retained text, which a
+  // terminal renders as U+FFFD. Reachable: a spawned child hands over 262144-char
+  // chunks (4x the cap), and dev-server banners are full of emoji. The cut
+  // moves past the low half, as BoundedCapture and the task-log buffer do.
+  it('never opens the slice on half of a surrogate pair', () => {
     const { tail, text } = feed(['😀😀'], 3) // 4 code units, cut at 1
-    expect(isWellFormed(text)).toBe(false)
-    expect(text.charCodeAt(0)).toBe(0xde00) // a lone LOW surrogate
-    expect(tail.dropped).toBe(1)
-    // The fix, if it is ever wanted, is to nudge the cut off a low surrogate.
-    expect(isWellFormed(text.slice(1))).toBe(true)
+    expect(isWellFormed(text)).toBe(true)
+    expect(text).toBe('😀')
+    expect(tail.dropped).toBe(2)
+    expect(tail.chars).toBe(2)
   })
 
-  it('the whole-chunk path stays well-formed where the slice path does not', () => {
-    // Same characters, same cap — only the chunking differs. Proves the defect
-    // above belongs to the slice, not to bounded capture in general.
+  it('the whole-chunk and slice paths both stay well-formed', () => {
     expect(isWellFormed(feed(['😀', '😀'], 3).text)).toBe(true)
-    expect(isWellFormed(feed(['😀😀'], 3).text)).toBe(false)
+    expect(isWellFormed(feed(['😀😀'], 3).text)).toBe(true)
   })
 
   // FINDING (low): `dropped` counts UTF-16 code units, while
