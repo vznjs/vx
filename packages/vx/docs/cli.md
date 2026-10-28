@@ -2403,7 +2403,9 @@ type more of it.
 #### `VX_E_CONFIG`
 
 A `vx.config.*` or `.vx/workspace.*` that does not load or is refused. The
-message names the file and the field; fix that field
+message names the file and the field, or what the config (or a plugin it
+called, such as a factory refusing an option) threw and the line it threw
+at; fix that field
 (`vx docs <field>` prints its reference). `vx lock` names every
 project config's error at once. A project config's refusal is `vx lock`'s,
 not a run's: a run never evaluates one.

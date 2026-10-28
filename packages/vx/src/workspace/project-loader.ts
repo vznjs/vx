@@ -178,7 +178,10 @@ async function loadDefaultExport(
     // the user sees is the source's.
     compiled =
       literal || compiledRoot === undefined ? null : tryCompiled(compiledRoot, configPath, bytes)
-    if (compiled) return defaultOf(compiled, kind, configPath)
+    // Awaited here: a default that is a rejected Promise is the config's
+    // throw too, and passed out unawaited it reached bin.ts as a vx
+    // defect (2026-10-28).
+    if (compiled) return await defaultOf(compiled, kind, configPath)
     if (compiled === undefined) loaded = loadedModules(compiledRoot!)
     // The worker's budget, here too: a top-level await that never settled
     // while a timer kept the loop alive hung `vx run` for good, silently
@@ -216,7 +219,11 @@ async function loadDefaultExport(
   if (compiledRoot !== undefined && loaded !== undefined) {
     await buildCompiled(compiledRoot, configPath, bytes, loaded, ns)
   }
-  return mod
+  try {
+    return await mod
+  } catch (err) {
+    throw loadFailure(err, configPath, kind)
+  }
 }
 
 function defaultOf(ns: { default?: unknown }, kind: string, configPath: string): unknown {
@@ -377,14 +384,43 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
   return null
 }
 
-/** What a failed load throws: Bun's own errors and non-Error throws as user errors, the rest as thrown. */
+/**
+ * What a failed load throws: always a user error. A config's own throw, or
+ * a plugin factory's it called, is the config's to fix, not a vx defect:
+ * passed through, it printed a stack under VX_E_INTERNAL, whose fix is to
+ * report a vx bug (2026-10-28). Its line stands in for the stack.
+ */
 function loadFailure(err: unknown, configPath: string, kind: string): unknown {
   const user = configLoadError(err, configPath, kind)
   if (user !== null) return user
+  if (isUserError(err)) return err
   if (err !== null && typeof err === 'object' && typeof (err as Error).message === 'string') {
-    return err
+    const at = throwSite(String((err as Error).stack ?? ''), configPath)
+    const user = new UserError(
+      `${kind} config ${configPath} threw: ${(err as Error).message}${at === undefined ? '' : ` (at ${at})`}`,
+      'VX_E_CONFIG',
+    )
+    // The thrown error, stack and all, for an embedder of the loader.
+    user.cause = err
+    return user
   }
   return new UserError(thrownValueMessage(kind, configPath, Bun.inspect(err, { compact: true })))
+}
+
+const VX_SRC = `${path.resolve(import.meta.dir, '..')}${path.sep}`
+
+/**
+ * Where a throw came from: its first frame that names a file, and the
+ * config's own line that led there when that is another.
+ */
+function throwSite(stack: string, configPath: string): string | undefined {
+  // vx's own frames (the process.exit guard) are not where the config went wrong.
+  const sites = [...stack.matchAll(/^\s+at (?:.*\()?(\/[^()\n]+:\d+:\d+)\)?$/gm)]
+    .map((m) => m[1]!.replace(BUST_QUERY, ''))
+    .filter((s) => !s.startsWith(VX_SRC))
+  const own = sites.find((s) => s.startsWith(`${configPath}:`))
+  if (sites[0] === undefined || own === undefined || own === sites[0]) return sites[0] ?? own
+  return `${sites[0]}, from ${own}`
 }
 
 /**
