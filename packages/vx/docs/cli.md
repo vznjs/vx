@@ -2423,8 +2423,8 @@ itself; with no origin, fetch it (`git fetch --depth=1 origin <base>`).
 
 #### `VX_E_GIT`
 
-A git command vx runs to read the diff failed; the message carries
-git's exit and its own words. Run that command in the workspace to see
+A git command vx runs to read the diff or list a run's inputs failed;
+the message carries git's exit and its own words. Run that command in the workspace to see
 why (a broken index, a missing object in a partial clone).
 
 #### `VX_E_NETWORK`

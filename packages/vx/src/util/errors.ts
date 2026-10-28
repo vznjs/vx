@@ -203,6 +203,20 @@ export function notAWorkTree(cwd: string, stderr = ''): UserError {
   )
 }
 
+/**
+ * A git that ran in `cwd` and failed: no repository there is
+ * `notAWorkTree`, anything else (a corrupt index, a missing object) is git's
+ * own failure, `VX_E_GIT`. Every failed `ls-files` read as "not a work
+ * tree", telling a user with a broken index to `git init` (2026-10-28).
+ */
+export function gitFailure(cwd: string, args: string, exitCode: number, stderr: string): UserError {
+  if (/not a git repository/i.test(stderr)) return notAWorkTree(cwd, stderr)
+  return new UserError(
+    `git ${args} failed (exit ${exitCode}) in ${cwd}: ${stderr || 'no output'}. Run it there to see why.`,
+    'VX_E_GIT',
+  )
+}
+
 export const TMPDIR_HINT = 'point TMPDIR at a writable directory'
 
 /**
