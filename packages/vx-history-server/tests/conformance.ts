@@ -202,8 +202,16 @@ export function conformance(name: string, target: Target): void {
       })
       expect((await call('/v1/capabilities', {}, null)).status).toBe(401)
       const get = await call('/v1/timings/query')
-      expect([get.status, get.headers.get('allow')]).toEqual([405, 'POST'])
-      expect((await call('/v1/nope')).status).toBe(404)
+      expect([get.status, get.headers.get('allow'), await get.json()]).toEqual([
+        405,
+        'POST',
+        { code: 'method_not_allowed', message: 'this route takes POST' },
+      ])
+      const nope = await call('/v1/nope')
+      expect([nope.status, await nope.json()]).toEqual([
+        404,
+        { code: 'not_found', message: 'no such route' },
+      ])
     })
   })
 }

@@ -3,7 +3,6 @@
 
 export {
   createHistoryServer,
-  errorJson,
   MAX_QUERY_HASHES,
   MAX_QUERY_REFS,
   MAX_UPLOAD_TIMINGS,
