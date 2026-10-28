@@ -607,9 +607,17 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             return null
           })
         if (prior !== null) {
+          // The stdout blob too: a Read of an evicted one answers "none", and
+          // the replay printed nothing where the task had printed.
+          const stdoutBlob =
+            (prior.stdout_raw?.length ?? 0) === 0 &&
+            Number(prior.stdout_digest?.size_bytes ?? 0) > 0
+              ? [prior.stdout_digest!]
+              : []
           const referenced = [
             ...(prior.output_files ?? []).map((f) => f.digest),
             ...(prior.output_directories ?? []).map((d) => d.tree_digest),
+            ...stdoutBlob,
           ]
           // AC and CAS evict independently, so a record can outlive its
           // blobs. A gap means it cannot produce the outputs — fall through

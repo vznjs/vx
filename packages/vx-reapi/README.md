@@ -149,7 +149,7 @@ listed input (`@vzn/vx-lockfile` lists it on every cached task).
 This matters most under `--cache-download=none`, where deferral leaves no
 local cache entry behind, so vx's own probe misses on every later run
 and the record is what makes the second run cheap. Records are checked
-against the CAS first (`FindMissingBlobs`) — the action cache and the
+against the CAS first (`FindMissingBlobs`, the outputs and a stdout blob) — the action cache and the
 CAS evict independently, so a record that outlived its blobs falls
 through to a real execution rather than "succeeding" with nothing.
 The replay itself is a cache read too: a transport failure reading the

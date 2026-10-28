@@ -303,6 +303,20 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     })
   })
 
+  // The probe named the outputs and not the stdout blob, and a Read of an
+  // evicted blob answers "none": the replay printed nothing and core saved
+  // the entry with its logs gone, on every machine that hit the record.
+  it('a record whose stdout blob is gone executes', async () => {
+    fake.actions.set(execDigestFor('k-stdout-gone').hash, {
+      exit_code: 0,
+      stdout_digest: sha256(bytes('evicted stdout')),
+    })
+    fake.onExecute = () => ({ response: { result: { exit_code: 0, stdout_raw: bytes('ran\n') } } })
+    const before = executes()
+    const res = await withExecutor((run) => run(request({ cacheKey: 'k-stdout-gone' })))
+    expect([executes() - before, res.stdout]).toEqual([1, 'ran\n'])
+  })
+
   // DATA_LOSS, not UNAVAILABLE or INTERNAL: a transient Read is retried
   // (items 919, F-1).
   it('a replay whose stdout Read fails executes instead of failing the task', async () => {
