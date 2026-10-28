@@ -224,6 +224,27 @@ export function conformance(name: string, target: Target): void {
       expect((await call('/v1/capabilities', { token: null })).status).toBe(401)
     })
 
+    // A check refused for its size, or an upload for its, named no limits:
+    // a client holding older ones (a server restarted with new ones, a
+    // Worker's rollout) was refused every check of the run.
+    it('names its limits on every /v1/artifacts answer, a refusal too', async () => {
+      const named = (res: Response) => [
+        res.status,
+        Number(res.headers.get('vx-max-check-hashes')),
+        Number(res.headers.get('vx-max-upload-bytes')),
+      ]
+      const too = Array.from({ length: target.maxCheckHashes + 1 }, key)
+      const answers = [
+        await json('/v1/artifacts', { hashes: too, scopes: [MAIN] }),
+        await put(key(), new Uint8Array(target.maxUploadBytes + 1)),
+        await put(key(), 'x'),
+        await get(key()),
+      ]
+      expect(answers.map(named)).toEqual(
+        [400, 413, 204, 404].map((s) => [s, target.maxCheckHashes, target.maxUploadBytes]),
+      )
+    })
+
     it('answers each hash of a check with the first scope asked that holds it, or null', async () => {
       for (const n of [1, 12]) {
         const hashes = Array.from({ length: n }, key)

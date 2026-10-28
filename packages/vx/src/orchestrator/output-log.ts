@@ -60,7 +60,7 @@ export const FAILED_OUTPUT_TAIL_CHARS = 56 * 1024
 /** A failed attempt's capture, re-bounded to the failure's limits when it is the entry's. */
 export function failedOutputLog(capture: BoundedCapture, entrySized: boolean): string {
   if (!entrySized) return encodeOutputLog(capture.chunks())
-  const small = new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
-  for (const c of capture.chunks()) small.push(c.text, c.err)
-  return encodeOutputLog(small.chunks())
+  return encodeOutputLog(
+    capture.rebound(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS).chunks(),
+  )
 }

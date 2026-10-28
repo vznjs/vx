@@ -428,6 +428,11 @@ export async function affectedChanges(
   const configs = changed.filter((rel) => CONFIG_NAMES.has(path.posix.basename(rel)))
   if (configs.length > 0) {
     const atBase = await gitBlobsAt(args.workspaceRoot, base, configs)
+    // A config the base had in a directory that is no project now: the
+    // project is gone, and with it the edge naming who depended on it,
+    // while their keys lost an upstream. Today's graph cannot say who.
+    const gone = await removedProjectConfig(args.workspaceRoot, atBase, projects)
+    if (gone !== undefined) return everything(gone)
     for (const name of parentsOfNewNested(args.workspaceRoot, atBase, projects)) {
       owned.add(name)
       whole.add(name)
@@ -503,6 +508,23 @@ function parentsOfNewNested(
     if (parent !== undefined) out.add(parent)
   }
   return out
+}
+
+/** The first config in `atBase` the base had whose file and project are both gone now. */
+async function removedProjectConfig(
+  workspaceRoot: string,
+  atBase: ReadonlyMap<string, Uint8Array | null>,
+  projects: readonly ProjectMeta[],
+): Promise<string | undefined> {
+  const dirs = new Set(projects.map((p) => p.dir.normalize('NFC')))
+  for (const [rel, bytes] of atBase) {
+    if (bytes === null) continue
+    const dir = path.resolve(workspaceRoot, path.posix.dirname(rel)).normalize('NFC')
+    if (dirs.has(dir)) continue
+    if (await Bun.file(path.join(workspaceRoot, rel)).exists()) continue
+    return rel
+  }
+  return undefined
 }
 
 /**
@@ -635,7 +657,8 @@ async function linkedChanges(
     '--directory',
     '-z',
     '--',
-    ...(named.length === inside.length ? named : ['.']),
+    // A name is a path, never pathspec magic (`:x`, `*`).
+    ...(named.length === inside.length ? named.map((n) => `:(literal)${n}`) : ['.']),
   ])
   const changedSet = new Set(changed)
   const under = (p: string, dir: string): boolean => dir === '' || p.startsWith(`${dir}/`)
@@ -868,6 +891,21 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
   const reached = await reachMergeBase(workspaceRoot, ref)
   if (reached !== undefined) return reached
   await verifyTreeRef(workspaceRoot, ref)
+  // The ref itself is the base only for histories that share nothing. A
+  // shallow clone may just lack the commits between them (origin gone, a
+  // fetch failed, past MAX_DEEPEN), and its tip selected what the base
+  // branch changed.
+  if (
+    revParse(workspaceRoot, ref) !== undefined &&
+    revParse(workspaceRoot, 'HEAD') !== undefined &&
+    isShallow(workspaceRoot)
+  ) {
+    throw new UserError(
+      `git ref "${ref}" has no merge base with HEAD in this shallow clone, and origin did not ` +
+        'give the history between them: fetch it (`git fetch --unshallow origin`).',
+      'VX_E_AFFECTED_BASE',
+    )
+  }
   return ref
 }
 

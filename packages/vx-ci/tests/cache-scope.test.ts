@@ -200,6 +200,18 @@ it('an unknown default branch gets its own scope', async () => {
   ).toBe('vznjs/vx:main')
 })
 
+it("the workspace's baseBranch names the default branch, as it does for the refs", async () => {
+  const unknown = {
+    ...actions('refs/heads/trunk', 'trunk'),
+    GITHUB_EVENT_PATH: path.join(dir, 'none'),
+  }
+  expect(await branchOf(unknown, {}, 'trunk')).toEqual({ refs: ['refs/heads/trunk'] })
+  expect(await scopeOf(actions('refs/heads/main', 'main'))).toBeUndefined()
+  expect((await branchOf(actions('refs/heads/main', 'main'), {}, 'trunk')).scope).toBe(
+    'vznjs/vx:main',
+  )
+})
+
 it('outside Actions, or with cacheScope: false, names nothing', async () => {
   expect(await branchOf({ GITHUB_REF: 'refs/pull/1/merge' })).toEqual({})
   expect(await branchOf(actions('refs/pull/1/merge', '1/merge'), { cacheScope: false })).toEqual({})
