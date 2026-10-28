@@ -574,7 +574,7 @@ class ScanFold {
 
   sidecar(text: string): void {
     const parsed = JSON.parse(text) as MetaFile
-    this.files = parsed.files ?? {}
+    this.files = filesOf(parsed)
     this.dirs = dirsOf(parsed)
     this.links = linksOf(parsed)
     // The ingest side is the untrusted boundary: a foreign sidecar's
@@ -661,6 +661,37 @@ export function scanTarBytes(tar: Uint8Array): ArtifactScan {
   }
   check.done()
   return fold.result()
+}
+
+/** The largest millisecond count a Date holds (ECMA-262 §21.4.1.1). */
+const DATE_MAX_MS = 8.64e15
+
+/**
+ * The sidecar's stats, each an integer mode in 0..0o7777 and an integer
+ * mtime a Date holds: one taken as is reached the index, and its restore
+ * threw a TypeError out of `utimesSync` after renames had begun.
+ */
+function filesOf(meta: MetaFile): MetaFile['files'] {
+  const raw: unknown = meta.files
+  if (raw === undefined || raw === null) return {}
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ArchiveSecurityError('archive sidecar files is not a map')
+  }
+  for (const [name, pair] of Object.entries(raw as Record<string, unknown>)) {
+    if (
+      !Array.isArray(pair) ||
+      !Number.isInteger(pair[0]) ||
+      pair[0] < 0 ||
+      pair[0] > 0o7777 ||
+      !Number.isInteger(pair[1]) ||
+      Math.abs(pair[1]) > DATE_MAX_MS
+    ) {
+      throw new ArchiveSecurityError(
+        `archive sidecar has a bad stat for ${name}: ${JSON.stringify(pair)}`,
+      )
+    }
+  }
+  return raw as MetaFile['files']
 }
 
 /**
@@ -784,7 +815,7 @@ export async function extractArtifactStream(
         const text = await textOf(body)
         fold?.sidecar(text)
         const parsed = JSON.parse(text) as MetaFile
-        meta = parsed.files ?? {}
+        meta = filesOf(parsed)
         dirs = dirsOf(parsed)
         links = linksOf(parsed)
         continue
