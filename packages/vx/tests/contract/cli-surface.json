@@ -142,6 +142,15 @@
       "30s",
       "500M"
     ],
+    "docs --format": [
+      "json",
+      "pretty"
+    ],
+    "docs --limit": [
+      "1",
+      "10",
+      "2"
+    ],
     "info --cache-dir": [
       "*"
     ],

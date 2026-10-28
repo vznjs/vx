@@ -784,23 +784,35 @@ async function named<T>(what: string, run: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function upgradeCmd(argv: readonly string[]): Promise<number> {
+interface UpgradeArgs {
+  global: boolean
+  tag?: string
+  error?: string
+}
+
+export function parseUpgradeArgs(argv: readonly string[]): UpgradeArgs {
   const global = argv.some((a) => a === '-g' || a === '--global')
   const args = argv.filter((a) => a !== '-g' && a !== '--global')
   const unknown = args.find((a) => a.startsWith('-'))
   if (unknown !== undefined) {
-    sayNotice(
-      'error',
-      'vx upgrade',
-      `unknown flag: ${unknown}${flagHint('upgrade', unknown)}${seeHelp('upgrade')}`,
-    )
-    return 1
+    return {
+      global,
+      error: `unknown flag: ${unknown}${flagHint('upgrade', unknown)}${seeHelp('upgrade')}`,
+    }
   }
   // One release is installed; a second tag was dropped without a word and
   // the first one went in (`vx upgrade v0.0.22 v0.0.23`).
   const [tag, extra] = args
   if (extra !== undefined) {
-    sayNotice('error', 'vx upgrade', `unexpected argument: ${extra}${seeHelp('upgrade')}`)
+    return { global, error: `unexpected argument: ${extra}${seeHelp('upgrade')}` }
+  }
+  return tag === undefined ? { global } : { global, tag }
+}
+
+export async function upgradeCmd(argv: readonly string[]): Promise<number> {
+  const { global, tag, error } = parseUpgradeArgs(argv)
+  if (error !== undefined) {
+    sayNotice('error', 'vx upgrade', error)
     return 1
   }
   // A mistyped tag is the mistake to name, before any guard about this install.

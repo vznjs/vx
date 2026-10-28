@@ -10,6 +10,8 @@ import { parseShowArgs } from '../../src/cli/show.js'
 import { parseWhyArgs } from '../../src/cli/why.js'
 import { parseInfoArgs } from '../../src/cli/info.js'
 import { watchRefusal } from '../../src/cli/watch.js'
+import { parseDocsArgs } from '../../src/cli/docs.js'
+import { parseUpgradeArgs } from '../../src/cli/upgrade.js'
 
 /** Each verb's own parser; the error it returns for `argv`, or null. */
 export const PARSE: Readonly<Record<string, (argv: string[]) => string | null>> = {
@@ -25,4 +27,6 @@ export const PARSE: Readonly<Record<string, (argv: string[]) => string | null>> 
   info: (a) => parseInfoArgs(a).error ?? null,
   why: (a) => parseWhyArgs(a).error ?? null,
   last: (a) => parseLastArgs(a).error ?? null,
+  docs: (a) => parseDocsArgs(a).error ?? null,
+  upgrade: (a) => parseUpgradeArgs(a).error ?? null,
 }
