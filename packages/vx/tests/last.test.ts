@@ -412,6 +412,42 @@ describe('vx last tells a restored hit from an up-to-date one (e2e)', () => {
   )
 })
 
+// The run printed its rows as they finished; the replay read the history
+// newest first and listed a dependency below the task that waited on it.
+describe('vx last lists rows in the order the run recorded them (e2e)', () => {
+  it(
+    'a dependency before its dependant, in the pretty rows and the JSON alike',
+    async () => {
+      const root = await makeWorkspace()
+      try {
+        await writeFile(
+          path.join(root, 'packages', 'app', 'vx.config.mjs'),
+          `export default { tasks: {
+            one: { exec: { command: 'true' } },
+            two: { dependsOn: ['one'], exec: { command: 'true' } },
+            three: { dependsOn: ['two'], exec: { command: 'true' } },
+          } }`,
+        )
+        await vx(root, ['run', 'app#three'])
+        const rows = (await vx(root, ['last'])).out
+          .split('\n')
+          .filter((l) => /^ {2}success /.test(l))
+          .map((l) => l.trim().split(/\s+/)[1])
+        const json = JSON.parse((await vx(root, ['last', '--format', 'json'])).out) as {
+          tasks: { task: string }[]
+        }
+        expect([rows, json.tasks.map((t) => t.task)]).toEqual([
+          ['app#one', 'app#two', 'app#three'],
+          ['one', 'two', 'three'],
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('parseLastArgs', () => {
   it('parses runId, --list in both forms, --format; rejects garbage', () => {
     expect(parseLastArgs([]).format).toBe('pretty')
