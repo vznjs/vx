@@ -35,6 +35,7 @@ export interface RelayOptions {
   /**
    * Answers a participant's `socket` request: the host accepts the
    * websocket and `attach`es it. A participant speaks only over it.
+   * Any status but 101 says it could not: the join it carried is undone.
    */
   upgrade: (key: string, id: string, req: Request, protocol?: string) => Response
 }
@@ -474,7 +475,12 @@ export function createRelay(opts: RelayOptions): Relay {
       if (overMax(asked)) throw new HttpError(413, 'join over 1 MiB')
       const p = await enter(key, req, url, parse(asked))
       p.hello = JSON.stringify({ joined: { id: p.id, heartbeatMs } })
-      return opts.upgrade(key, p.id, req, protocol)
+      const res = opts.upgrade(key, p.id, req, protocol)
+      // No socket comes, so neither does a redial or a `leave`: kept, a host
+      // so joined held its run's id forever.
+      const session = sessions.get(key)
+      if (res.status !== 101 && session?.byId.get(p.id) === p) drop(session, p)
+      return res
     }
     const session = sessions.get(key)
     if (session !== undefined) lapse(session)
