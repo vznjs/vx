@@ -234,6 +234,9 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     // a dev session still leaves its record.
     const last = await lastRun(root)
     expect(last.tasks.map((t) => t.status)).toEqual(['success'])
+    // The server's 130 was the stop's, not a crash: the record read FAILED
+    // with no failure in it, over the previous real run (item 854).
+    expect(last.invocation.exitOk).toBe(true)
   }, 20_000)
   // WD-16: a stop after the summary signalled once by the abort, then again
   // by the wait's own teardown once another kept server went: a server that

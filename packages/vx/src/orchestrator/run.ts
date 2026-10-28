@@ -1598,7 +1598,9 @@ async function runOnBus(
       if (stop.signal.aborted) await stop.aborting?.catch(() => {})
       else await terminateChildren(() => keepAlive.children)
       // The server that ended the session on its own, not cleanly, failed.
-      if (!stop.signal.aborted && first.code !== 0) failServer(outcomes, node.id, first.code)
+      // A stop's own kill is no crash: the user ended the session.
+      const crashed = !stop.signal.aborted && first.code !== 0
+      if (crashed) failServer(outcomes, node.id, first.code)
       const final = [...outcomes.values()]
       if (historyAfterWait) {
         recordHistory(() => {
@@ -1606,14 +1608,14 @@ async function runOnBus(
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            local.recordRunBundle(recordsOf(final, ok && first.code === 0))
+            local.recordRunBundle(recordsOf(final, ok && !crashed))
           } finally {
             local.close()
           }
         })
         recordFailures(final)
       }
-      return { ok: ok && first.code === 0, outcomes: final }
+      return { ok: ok && !crashed, outcomes: final }
     }
 
     return { ok, outcomes: list }
