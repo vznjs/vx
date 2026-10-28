@@ -2787,7 +2787,7 @@ vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path
 $ vx why app#build
 app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
   this run   2026-10-08T01:57:05.486Z · success · executed · key 9ef9806a9c69209e
-  previous   2026-10-08T01:57:05.325Z · success · key e240348b20e79fd6
+  previous   2026-10-08T01:57:05.325Z · success · executed · key e240348b20e79fd6
   verdict    cache key changed: file packages/app/src/input.txt
 
   what changed (1 component, 6 unchanged):
