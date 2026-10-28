@@ -425,6 +425,28 @@ describe('TaskLogBuffer — exact edges (C-43)', () => {
     expect(buf.drain('r', 'ws').tasks.map((t) => t.taskId)).toEqual(['p#f2', 'p#f1'])
   })
 
+  it('a run past the budget evicts in linear time, not a sort per task', () => {
+    // Every finish past the budget sorted every retained entry, stubs
+    // included: 40,000 tasks of 200 chars took 17 s inside a sink's
+    // onRecord, which must return promptly. Linear, they take ~50 ms.
+    const buf = new TaskLogBuffer()
+    const line = 'x'.repeat(200)
+    const t0 = performance.now()
+    for (let i = 0; i < 30_000; i++) {
+      buf.append(`p#${i}`, line)
+      buf.finish(`p#${i}`, i % 100 === 0 ? 'failed' : 'success', 'miss')
+    }
+    expect(performance.now() - t0).toBeLessThan(2_000)
+    expect(buf.budgetUsed()).toBeLessThanOrEqual(RUN_LOG_BUDGET_CHARS)
+    // The failures, the newest successes and nothing else keep their content.
+    const kept = buf.drain('r', 'ws').tasks.filter((t) => t.content.length > 0)
+    expect(kept.filter((t) => t.status === 'failed')).toHaveLength(300)
+    const ok = kept.filter((t) => t.status === 'success').map((t) => Number(t.taskId.slice(2)))
+    const newest: number[] = []
+    for (let i = ok[0]!; i < 30_000; i++) if (i % 100 !== 0) newest.push(i)
+    expect(ok).toEqual(newest)
+  })
+
   it('eviction stops at exactly the budget', () => {
     const B = RUN_LOG_BUDGET_CHARS
     const T = TASK_LOG_TAIL_CHARS

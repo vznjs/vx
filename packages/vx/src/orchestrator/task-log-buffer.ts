@@ -115,6 +115,16 @@ export class TaskLogBuffer {
   private readonly retained = new Map<string, Retained>()
   private retainedChars = 0
   private seq = 0
+  /**
+   * Retained entries in eviction order, kept as they arrive: successes are
+   * stubbed from `successHead` on (oldest first), failures from the end
+   * (newest first). An entry since stubbed, taken or replaced is skipped
+   * where it lies. A sort of every entry per finish made a run past the
+   * budget quadratic: 40,000 tasks took 17 s in a sink's `onRecord`.
+   */
+  private readonly successes: Retained[] = []
+  private successHead = 0
+  private failures: Retained[] = []
 
   append(taskId: string, chunk: string): void {
     if (chunk.length === 0) return
@@ -183,7 +193,30 @@ export class TaskLogBuffer {
     if (prior !== undefined) this.retainedChars -= budgetCost(prior.chars, prior.chunks.length)
     this.retained.set(taskId, entry)
     this.retainedChars += budgetCost(entry.chars, entry.chunks.length)
+    ;(status === 'success' ? this.successes : this.failures).push(entry)
+    this.compact()
     this.evictToBudget()
+  }
+
+  /** Whether `e` may still be stubbed: retained as it is, content and all. */
+  private evictable(e: Retained): boolean {
+    return e.chars > 0 && this.retained.get(e.taskId) === e
+  }
+
+  /**
+   * Drop what eviction would only skip, once the queues hold twice what is
+   * retained: a sink that takes every entry (`takeEntry`) never evicts, and
+   * its queues would grow by a task each. Amortized constant per finish.
+   */
+  private compact(): void {
+    const room = 2 * this.retained.size + 1024
+    if (this.successes.length - this.successHead > room || this.successHead > room) {
+      const live = this.successes.slice(this.successHead).filter((e) => this.evictable(e))
+      this.successes.length = 0
+      this.successes.push(...live)
+      this.successHead = 0
+    }
+    if (this.failures.length > room) this.failures = this.failures.filter((e) => this.evictable(e))
   }
 
   /**
@@ -252,7 +285,7 @@ export class TaskLogBuffer {
   /**
    * Evict until `retainedChars <= RUN_LOG_BUDGET_CHARS`. Successes go first
    * (oldest by seq); only when failures ALONE still exceed the budget do the
-   * oldest failures go — a failure is never dropped to keep a success.
+   * newest failures go — a failure is never dropped to keep a success.
    *
    * An evicted task is degraded to a STUB (no content, `truncatedHeadChars`
    * = everything it emitted) rather than removed. Dropping the entry makes a
@@ -272,25 +305,25 @@ export class TaskLogBuffer {
    * sees it.
    */
   private evictToBudget(): void {
-    if (this.retainedChars <= RUN_LOG_BUDGET_CHARS) return
-    const order = [...this.retained.values()].sort((a, b) => {
-      const sa = a.status === 'success' ? 0 : 1
-      const sb = b.status === 'success' ? 0 : 1
-      if (sa !== sb) return sa - sb // successes are dropped first, always
-      // Within a tier the tiebreak DIFFERS by status, and the failed one is
-      // the point: when failures alone blow the budget, the FIRST failure is
-      // usually the root cause and the later ones its cascade, so it must be
-      // the last thing stubbed. Successes keep oldest-first — none of them
-      // is more interesting than another, and recency is the better guess.
-      return a.status === 'failed' ? b.seq - a.seq : a.seq - b.seq
-    })
-    for (const e of order) {
-      if (this.retainedChars <= RUN_LOG_BUDGET_CHARS) break
-      if (e.chars === 0) continue // already a stub — frees nothing
-      this.retainedChars -= budgetCost(e.chars, e.chunks.length)
-      e.truncatedHeadChars += e.chars
-      e.chunks = []
-      e.chars = 0
+    // Successes are dropped first, always, and keep oldest-first: none of
+    // them is more interesting than another, and recency is the better
+    // guess. Failures go newest-first: when failures alone blow the budget,
+    // the FIRST failure is usually the root cause and the later ones its
+    // cascade, so it must be the last thing stubbed.
+    while (this.retainedChars > RUN_LOG_BUDGET_CHARS && this.successHead < this.successes.length) {
+      const e = this.successes[this.successHead++]!
+      if (this.evictable(e)) this.stub(e)
     }
+    while (this.retainedChars > RUN_LOG_BUDGET_CHARS && this.failures.length > 0) {
+      const e = this.failures.pop()!
+      if (this.evictable(e)) this.stub(e)
+    }
+  }
+
+  private stub(e: Retained): void {
+    this.retainedChars -= budgetCost(e.chars, e.chunks.length)
+    e.truncatedHeadChars += e.chars
+    e.chunks = []
+    e.chars = 0
   }
 }
