@@ -2,7 +2,7 @@
 // beside each project's config for review (2026-10-14), and
 // `.vx/.gitattributes` so GitHub collapses the machine lock.
 
-import { rm } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -73,6 +73,22 @@ it('vx lock --check fails on a stale or missing review copy', async () => {
   ])
   expect(vx(r, 'lock').code).toBe(0)
   expect(vx(r, 'lock', '--check').code).toBe(0)
+})
+
+it('vx lock --check names a review copy it cannot read, not a missing one', async () => {
+  // A directory in the copy's place read as "has no packages/a/vx.lock.json".
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-unread-' }))
+  const dir = await addProject(r, 'a', { config: CONFIG })
+  expect(vx(r, 'lock').code).toBe(0)
+  await rm(path.join(dir, 'vx.lock.json'))
+  await mkdir(path.join(dir, 'vx.lock.json'))
+  const unread = vx(r, 'lock', '--check')
+  expect([unread.code, unread.err]).toEqual([
+    1,
+    noticed(
+      `vx lock --check: "a" (packages/a/vx.lock.json) could not be read (EISDIR) — remove it and run 'vx lock'\n`,
+    ),
+  ])
 })
 
 it('vx lock --check fails on a review copy whose config is gone', async () => {
