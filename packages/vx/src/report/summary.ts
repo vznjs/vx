@@ -314,10 +314,10 @@ export function formatSummarySection(
     const wsTotal = context.workspaceProjectCount
     if (wsTotal !== undefined && wsTotal > 0) {
       const width = barWidth(colors)
-      const cells = Math.min(
-        width,
-        Math.max(1, Math.round((context.packageCount / wsTotal) * width)),
-      )
+      const cells =
+        context.packageCount === 0
+          ? 0
+          : Math.min(width, Math.max(1, Math.round((context.packageCount / wsTotal) * width)))
       const bar =
         paint(WARN, '▰'.repeat(cells), colors) +
         paint('', '▱'.repeat(width - cells), colors, { dim: true })
