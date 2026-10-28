@@ -13,8 +13,10 @@ import {
   executablePath,
   gitEnv,
   gitSpawnRefusal,
+  hasControl,
   isExecutableMissing,
   isOutOfFds,
+  printable,
   refusal,
   relPosix,
   UserError,
@@ -529,6 +531,8 @@ function nameFault(name: string): string | null {
   if (name.trim() !== name) return 'the name has surrounding whitespace'
   // A task is `<project>#<task>` split at the first `#`.
   if (name.includes('#')) return 'the name holds "#" — vx addresses a task as <name>#<task>'
+  // Printed raw by the status line and summary: `ESC ]0;` retitled the terminal.
+  if (hasControl(name)) return 'the name holds a control character'
   return null
 }
 
@@ -549,7 +553,7 @@ export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMe
     const fault = namedBy.has(meta) ? null : nameFault(meta.name)
     if (fault !== null) {
       throw new UserError(
-        `${rel}: a project is named by its path unless named, and ${fault.replace('the name', 'this one')} — set \`name\` in its vx.config`,
+        `${printable(rel)}: a project is named by its path unless named, and ${fault.replace('the name', 'this one')} — set \`name\` in its vx.config`,
       )
     }
     const next = metas[i + 1]
