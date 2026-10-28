@@ -2804,11 +2804,11 @@ app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
 
 ### Options
 
-| Option                  | Meaning                                                                                                                                                                           |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--run RUNID`           | explain that run instead of the latest; a unique prefix of the id is enough. A task that run did not run is refused, pointing at `vx last --list`, and so is an id no run carries |
-| `--format pretty\|json` | `json` emits one object, below                                                                                                                                                    |
-| `--cache-dir <path>`    | read the cache a run with the same flag uses                                                                                                                                      |
+| Option                  | Meaning                                                                                                                                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--run RUNID`           | explain that run instead of the latest; a unique prefix of the id is enough. A task that run did not run is refused, pointing at `vx last --list`, and so is an id no run carries. The space form refuses a value starting with `-` (a swallowed flag) |
+| `--format pretty\|json` | `json` emits one object, below                                                                                                                                                                                                                         |
+| `--cache-dir <path>`    | read the cache a run with the same flag uses                                                                                                                                                                                                           |
 
 By default it compares the task's **latest** recorded run against its
 immediately-previous run. History is

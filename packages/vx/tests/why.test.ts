@@ -404,6 +404,19 @@ describe('parseWhyArgs', () => {
     expect(err).not.toContain('undefined')
   })
 
+  it('--run refuses a flag-shaped value in the space form', () => {
+    // `vx why build --run $EMPTY --format json` took `--format` as the run
+    // id and refused `json` as an extra argument; `--run --format=json`
+    // looked up a run named `--format=json`. No run id starts with `-`.
+    expect(parseWhyArgs(['build', '--run', '--format', 'json']).error).toBe(
+      '--run requires a run id (got flag --format; `vx last --list` shows them)',
+    )
+    expect(parseWhyArgs(['--run', '--format=json', 'build']).error).toBe(
+      '--run requires a run id (got flag --format=json; `vx last --list` shows them)',
+    )
+    expect(parseWhyArgs(['build', '--run', 'r1']).runId).toBe('r1')
+  })
+
   it('still rejects a genuinely unknown flag that merely shares a prefix', () => {
     // Control: the fix matches on the flag NAME, so it must not swallow
     // anything that happens to start with the same letters.
