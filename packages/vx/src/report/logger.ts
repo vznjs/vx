@@ -12,6 +12,7 @@ import {
   flakyNote,
   pathNote,
   whereNote,
+  formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
   type OutputChunk,
@@ -1080,8 +1081,7 @@ export function defaultLogger(
           // The word carries the outcome (skips/failures included); the
           // key is what this mode exists to show — absent for a task
           // that never computed one (skipped, uncacheable).
-          const key = outcome.hash === undefined ? '' : ` ${outcome.hash}`
-          emitLine(`${outcomeWord(outcome)} ${node.id}${key}`)
+          emitLine(formatTaskHashLine(node, outcome, colors))
           return
         }
         case 'errors-only':

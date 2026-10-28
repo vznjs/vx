@@ -1139,3 +1139,21 @@ describe('the task log opens with one blank line', () => {
     }
   }
 })
+
+// On a colour terminal hash-only's lines were bare white: the only lines of
+// the run with no colour. Plain, the bytes are what they were.
+describe('--output-logs hash-only', () => {
+  const line = (enabled: boolean): string => {
+    const s = pipe()
+    const log = defaultLogger({ enabled }, { mode: 'hash-only' }, s)
+    const n = mkNode('app#build')
+    log.taskComplete(n, mkOutcome(n, 'failed'))
+    return s.text().trim()
+  }
+  it('paints the word in its outcome colour and the key dim', () => {
+    expect(line(false)).toBe('failed app#build abcdef0123456789')
+    const painted = line(true)
+    expect(painted).toStartWith('\x1b[38;2;239;68;68mfailed\x1b[0m ')
+    expect(painted).toEndWith('\x1b[2mabcdef0123456789\x1b[0m')
+  })
+})

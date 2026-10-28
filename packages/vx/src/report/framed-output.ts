@@ -38,7 +38,7 @@ import {
   type ColorSupport,
 } from '../util/index.js'
 import { neverStarted } from './summary.js'
-import { outcomeLabel, ranNoCache, skippedReason } from './events.js'
+import { outcomeLabel, outcomeWord, ranNoCache, skippedReason } from './events.js'
 import { fileMemo, linkPaths } from './path-links.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
@@ -400,6 +400,21 @@ export function formatTaskHitLine(
   onPath = false,
 ): string {
   return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath)
+}
+
+/**
+ * The `--output-logs hash-only` line: outcome word, task id, cache key —
+ * absent for a task that never computed one (skipped, uncacheable). The
+ * word in its outcome's colour, the key dim.
+ */
+export function formatTaskHashLine(
+  node: TaskNode,
+  o: TaskOutcome,
+  colors: ColorSupport = NO_COLOR,
+): string {
+  const color = o.status === 'aborted' ? ABORTED : statusOf(o).color
+  const key = o.hash === undefined ? '' : ` ${paint('', o.hash, colors, { dim: true })}`
+  return `${paint(color, outcomeWord(o), colors)} ${paintTaskId(node, colors)}${key}`
 }
 
 /** Compact one-liner for an executed task in broad mode. */
