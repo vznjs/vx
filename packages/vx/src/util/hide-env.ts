@@ -97,7 +97,6 @@ export function gitEnv(): Record<string, string> {
     if (
       name.startsWith('GIT_') ||
       name.startsWith('LC_') ||
-      name === 'XDG_CONFIG_HOME' ||
       name === 'LANGUAGE' ||
       ESSENTIAL_ENV.includes(name)
     )

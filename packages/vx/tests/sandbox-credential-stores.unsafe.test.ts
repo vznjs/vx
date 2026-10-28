@@ -28,6 +28,10 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-cred-')))
     const home = path.join(root, 'home')
     const ws = path.join(root, 'ws')
+    // A task sees $XDG_CONFIG_HOME, so gh reads its login there.
+    const xdg = path.join(root, 'xdg')
+    await mkdir(path.join(xdg, 'gh'), { recursive: true })
+    await writeFile(path.join(xdg, 'gh', 'hosts.yml'), 'GHXDG\n')
     for (const [rel, body] of [
       ['.ssh/id_ed25519', 'SSHKEY'],
       ['.npmrc', 'NPMRC'],
@@ -62,6 +66,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       '.cache/tool/state',
     ]
       .map(read)
+      .concat(`grep -s . "${xdg}/gh/hosts.yml" || echo "no .xdg/gh"`)
       .join('; ')
     // A write grant names a store too: on Linux a file grant binds its
     // directory, and the store's deny landed on top of the bind, so the
@@ -88,7 +93,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       const r = Bun.spawnSync({
         cmd: [process.execPath, BIN, 'run', `a#${task}`, '--output-logs', 'full'],
         cwd: ws,
-        env: { ...process.env, HOME: home },
+        env: { ...process.env, HOME: home, XDG_CONFIG_HOME: xdg },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -98,7 +103,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
         .split('\n')
         .map((l) => l.replace(/^.*?│\s?/, '').trim())
         .filter((l) =>
-          /^(no \.|SSHKEY|NPMRC|AWSKEY|BUNFIG|CARGO|FIREBASE|AGENT|CACHE|WROTE|CLI)/.test(l),
+          /^(no \.|SSHKEY|NPMRC|AWSKEY|BUNFIG|CARGO|FIREBASE|AGENT|CACHE|GHXDG|WROTE|CLI)/.test(l),
         )
     }
     expect(out('peek')).toEqual([
@@ -110,6 +115,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       'no .config/configstore/firebase-tools.json',
       'no .claude/.credentials.json',
       'CACHE',
+      'no .xdg/gh',
     ])
     expect(out('granted')).toEqual(['NPMRC'])
     expect(out('written')).toEqual(['NPMRC', 'WROTE', 'CLI', 'no .aws/credentials'])

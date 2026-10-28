@@ -40,6 +40,11 @@ const DOC_ESSENTIALS = [
   'NODE_OPTIONS',
   'COREPACK_HOME',
   'PNPM_HOME',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_CACHE_HOME',
+  'XDG_STATE_HOME',
+  'XDG_RUNTIME_DIR',
 ]
 
 const CHARS = ['a', 'Z', '0', '=', ' ', '\n', '\r', '\t', 'é', '漢', '😀', '"', "'", '$', '\\', ':']

@@ -690,8 +690,26 @@ export const CREDENTIAL_STORES = [
   '.codex/auth.json',
 ]
 
-/** The stores present on this host, learned once per home. */
-let presentStores: { home: string; paths: string[] } | undefined
+/**
+ * Each store's path: under `home`, and again where `$XDG_CONFIG_HOME` or
+ * `$XDG_DATA_HOME` moves a `.config` or `.local/share` one. A task sees
+ * both, so a CLI reads its login there. A relative value is no XDG path.
+ */
+export function credentialStorePaths(home: string): string[] {
+  const moved = [
+    ['.config/', process.env['XDG_CONFIG_HOME']],
+    ['.local/share/', process.env['XDG_DATA_HOME']],
+  ] as const
+  const out = new Set(CREDENTIAL_STORES.map((rel) => path.join(home, rel)))
+  for (const rel of CREDENTIAL_STORES)
+    for (const [prefix, dir] of moved)
+      if (dir !== undefined && path.isAbsolute(dir) && rel.startsWith(prefix))
+        out.add(path.join(dir, rel.slice(prefix.length)))
+  return [...out]
+}
+
+/** The stores present on this host, learned once per home and XDG pair. */
+let presentStores: { at: string; paths: string[] } | undefined
 
 /**
  * The credential stores to deny, less any that holds the workspace, and
@@ -706,11 +724,9 @@ async function credentialStores(
   writes: readonly string[],
 ): Promise<string[]> {
   const home = homedir()
-  if (presentStores?.home !== home) {
-    presentStores = {
-      home,
-      paths: CREDENTIAL_STORES.map((rel) => path.join(home, rel)).filter((p) => existsSync(p)),
-    }
+  const at = `${home}\0${process.env['XDG_CONFIG_HOME']}\0${process.env['XDG_DATA_HOME']}`
+  if (presentStores?.at !== at) {
+    presentStores = { at, paths: credentialStorePaths(home).filter((p) => existsSync(p)) }
   }
   const stores = presentStores.paths.filter(
     (p) => workspaceRoot !== p && !workspaceRoot.startsWith(p + path.sep),
