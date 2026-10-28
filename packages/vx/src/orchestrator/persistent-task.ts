@@ -236,8 +236,8 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // A shell that exited before ready can leave its group running
     // (`server & …; exit`): never registered, so no teardown reached it,
     // and it held its port against the next `vx watch` cycle's server.
-    if (err instanceof PersistentReadyError && err.reason === 'exited')
-      await terminateChildren(() => [spawn.child])
+    if (err instanceof PersistentReadyError && err.reason === 'exited' && spawn.child !== undefined)
+      await terminateChildren(() => [spawn.child!])
     // A server the run's stop killed while it started is aborted, as any
     // task the stop kills (item 962): it read `failed (never ready:
     // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
@@ -295,7 +295,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       // A server that traps the TERM and exits 0 still timed out, as a
       // one-shot task that does so reports 143 (X-116).
       exitCode:
-        ready?.reason === 'timeout'
+        ready?.reason === 'timeout' && spawn.child !== undefined
           ? (await spawn.child.exited) || signalExitCode('SIGTERM')
           : (ready?.exitCode ?? 1),
       durationMs: spawn.readyMs(),
@@ -319,7 +319,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
     }
   }
-  args.persistentRegistry?.set(node.id, spawn.child)
+  // Ready, so it spawned: only a failed spawn has no child.
+  const child = spawn.child!
+  args.persistentRegistry?.set(node.id, child)
   forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
   if (mayWriteFingerprint(node, args.workspaceRoot, args.fingerprintWatch?.names ?? [])) {
     args.fingerprintWatch?.wrote()

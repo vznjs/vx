@@ -672,8 +672,11 @@ export class PersistentReadyError extends Error {
 }
 
 export interface PersistentSpawn {
-  /** Underlying Bun subprocess so the orchestrator can SIGTERM it later. */
-  child: ReturnType<typeof Bun.spawn>
+  /**
+   * Underlying Bun subprocess so the orchestrator can SIGTERM it later;
+   * undefined when the spawn itself failed and `ready` has rejected.
+   */
+  child: ReturnType<typeof Bun.spawn> | undefined
   /**
    * Resolves once the task is considered "ready":
    *   - immediately on successful spawn when no `readyWhen` is given,
@@ -772,7 +775,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     pipes.close()
     const message = err instanceof Error ? err.message : String(err)
     return {
-      child: undefined as unknown as ReturnType<typeof Bun.spawn>,
+      child: undefined,
       ready: Promise.reject(
         new PersistentReadyError(`failed to spawn persistent task: ${message}`, 'spawn'),
       ),
