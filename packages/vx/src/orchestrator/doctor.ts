@@ -339,7 +339,7 @@ function memoryFact(): InfoFacts['memory'] {
  * the warm run (STATUS, waves 5 and the 2026-09-03 refutations) — the
  * status walk's cost is git's own, and vx already overlaps it.
  */
-function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
+export function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
   try {
     const p = Bun.spawnSync({
       cmd: [executablePath('git'), 'config', '--get-regexp', '^core\\.(fsmonitor|untrackedcache)$'],
@@ -351,9 +351,25 @@ function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
     // exit 1 is git's "no key matched": both off, still an answer.
     if (p.exitCode !== 0 && p.exitCode !== 1) return null
     const out = p.exitCode === 0 ? new TextDecoder().decode(p.stdout) : ''
-    const on = (key: string): boolean =>
-      new RegExp(`^core\\.${key} (true|1|yes|on)$`, 'im').test(out)
-    return { fsmonitor: on('fsmonitor'), untrackedCache: on('untrackedcache') }
+    // The last value set wins, as git reads it (a global `true` under a
+    // repo's `false` is off), and a key with no `=` is true.
+    const last = new Map<string, string | null>()
+    for (const line of out.split('\n')) {
+      if (line === '') continue
+      const sp = line.indexOf(' ')
+      last.set(
+        (sp === -1 ? line : line.slice(0, sp)).toLowerCase(),
+        sp === -1 ? null : line.slice(sp + 1),
+      )
+    }
+    const on = (key: string, hook: boolean): boolean => {
+      const v = last.get(`core.${key}`)
+      if (v === undefined) return false
+      if (v === null || /^(true|yes|on|1)$/i.test(v)) return true
+      // core.fsmonitor may name a hook command instead of a boolean.
+      return hook && v !== '' && !/^(false|no|off|0)$/i.test(v)
+    }
+    return { fsmonitor: on('fsmonitor', true), untrackedCache: on('untrackedcache', false) }
   } catch {
     return null
   }

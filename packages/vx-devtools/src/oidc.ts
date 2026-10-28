@@ -110,17 +110,15 @@ const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCas
 const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /**
- * The scope a token writes: its branch. A GitHub pull request's run writes
- * its head branch (its `ref` is the merge ref the run's own reads never
- * name); a merge queue's (`merge_group`) run its base branch, which its
- * code is about to become (2026-10-25: "just strip it"); any other run its `ref`,
- * GitLab's its `ref_path`. Only a `pull_request` run takes its head
- * branch, and only a `merge_group` run's ref is renamed: anyone can push
- * a branch named like a queue ref. A `pull_request_target` run writes
- * nothing: its `head_ref` is a fork's branch name, chosen by the fork, and
- * its `ref` is the base branch, which a fork's code must never write. Nor
- * does a pull request whose head branch has its base branch's name: only
- * a fork's can. A GitLab merge request pipeline writes its source branch
+ * The scope a token writes: its `ref`, GitLab's `ref_path`. A GitHub pull
+ * request's run writes its merge ref, `refs/pull/<n>/merge`, never its
+ * `head_ref`: a fork names that, and no claim tells a fork's from the
+ * repository's own, so a fork's branch `release` wrote release. A merge
+ * queue's (`merge_group`) run writes its base branch, which its code is
+ * about to become (2026-10-25: "just strip it"); only its ref is renamed:
+ * anyone can push a branch named like a queue ref. A `pull_request_target`
+ * run writes nothing: it runs a fork's code on the base branch's `ref`,
+ * which that code must never write. A GitLab merge request pipeline writes its source branch
  * only when `source_project_path` names its own project: a fork's runs in
  * the parent project with the fork's branch as its `ref_path`, and a
  * GitLab before 19.5 names no source project.
@@ -139,15 +137,7 @@ function branchOf(iss: string, claims: JWTPayload): string | undefined {
   }
   const event = claims['event_name']
   if (event === 'pull_request_target') return undefined
-  const head = event === 'pull_request' ? claims['head_ref'] : undefined
-  // Only a fork's head branch can share its base branch's name.
-  if (head !== undefined && head === claims['base_ref']) return undefined
-  const ref =
-    iss === GITHUB
-      ? typeof head === 'string' && head !== ''
-        ? `refs/heads/${head}`
-        : claims['ref']
-      : claims['ref_path']
+  const ref = iss === GITHUB ? claims['ref'] : claims['ref_path']
   if (typeof ref !== 'string' || !ref.startsWith('refs/') || ref.length > 512) return undefined
   const queued = iss === GITHUB && event === 'merge_group' ? QUEUE.exec(ref) : null
   return queued === null ? ref : `refs/heads/${queued[1]}`
@@ -282,6 +272,9 @@ const bearerOf = (req: Request): string | undefined =>
 
 /** A token checked: jose's checks, then ALLOW's repository and workflow, and the branch it may write. */
 function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Promise<Access> {
+  // A blank one is no origin a token names: every token was "wrong audience".
+  if (opts.audience !== undefined && opts.audience.trim() === '')
+    throw new Error('AUDIENCE: the aud CI tokens name, or unset, not blank')
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
   // jose keeps each issuer's keys, and refetches them for a key it lacks.

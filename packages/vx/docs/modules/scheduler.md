@@ -126,11 +126,13 @@ export function deadServerBehind(
   id: string,
 ): string | undefined
 
-// Persistent tasks nobody asked for whose every dependant is a restore-tier hit.
+// Persistent tasks nobody asked for whose every dependant is a restore-tier hit,
+// or an unrequested group only such hits stand behind (those groups go in `groups`).
 export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
   dependents: ReadonlyMap<string, string[]>,
   restoreTier: ReadonlySet<string> | undefined,
+  groups?: Set<string>,
 ): Set<string>
 
 // Thrown by `execute` for a restore-tier task with nothing to restore.
@@ -174,6 +176,10 @@ dependant starts it, and that dependant runs once it is ready. Once
 every dependant has an outcome it settles with none of its own and
 releases them, so it is never spawned and the returned map lacks it.
 Its own deps still run first and a failed one skips it as before.
+A group neither requested nor surfaced that stands only between such a
+server and its hits is idle with it: it waits the same way, settles
+with no outcome once every hit above it has one, and a demotion above
+it wakes it and the server.
 A `heldServers` server does not dispatch until its promise answers: the
 dependants it names join the restore lane, and it is idle when every
 dependant is then in the tier, else it dispatches as usual
@@ -291,7 +297,7 @@ dependents get `skipped`, through a restore-tier hit between them too
 (the hit stays a `cache-hit`, its key being its deps' inputs, and passes
 the block down with the root); unrelated tasks continue; the promise
 resolves only after every task has _some_ outcome (an idle server
-excepted, above). This is Turbo's
+and its groups excepted, above). This is Turbo's
 middle `--continue` setting, `deps-ok`, as the default; `never` stops
 dispatch at the first failure (in-flight tasks finish, everything not
 yet started — restores included — completes `skipped`); `always` runs
