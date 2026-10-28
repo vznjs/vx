@@ -1015,6 +1015,19 @@ describe('relock', () => {
     }
   })
 
+  it('a new vx that is not there says to run vx lock, and the upgrade stands', async () => {
+    // An npm global install has no `<prefix>/lib/node_modules/.bin/vx`: the
+    // spawn's ENOENT reached the user as a crash after a finished upgrade.
+    const { root } = await workspace('relock-missing', 'exit 0')
+    const err = spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      await relock(path.join(root, 'node_modules', '.bin', 'vx'), root)
+      expect(err.mock.calls.map((c) => String(c[0])).join('')).toContain('run vx lock')
+    } finally {
+      err.mockRestore()
+    }
+  })
+
   it('outside a workspace runs nothing', async () => {
     const out = path.join(dir, 'relock-none')
     await mkdir(out, { recursive: true })
