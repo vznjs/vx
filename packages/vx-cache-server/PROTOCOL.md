@@ -61,7 +61,9 @@ alone decides what it reads and where it writes, by the server's
 - A `pull_request_target` run writes nothing (a write is `403`): its
   `head_ref` a fork names, and its `ref` is the base. Nor does a
   `pull_request` run whose head branch has its base branch's name (only
-  a fork's can).
+  a fork's can), nor a GitLab `merge_request_event` pipeline unless its
+  `source_project_path` (GitLab 19.5+) names its own project: a fork's
+  runs in the parent project with the fork's branch as its `ref_path`.
 
 A bad token is `401`. A server with `ALLOW` empty refuses every
 request: `401`, `the server admits no CI: set ALLOW`. A server that

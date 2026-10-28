@@ -117,9 +117,23 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
  * nothing: its `head_ref` is a fork's branch name, chosen by the fork, and
  * its `ref` is the base branch, which a fork's code must never write. Nor
  * does a pull request whose head branch has its base branch's name: only
- * a fork's can.
+ * a fork's can. A GitLab merge request pipeline writes its source branch
+ * only when `source_project_path` names its own project: a fork's runs in
+ * the parent project with the fork's branch as its `ref_path`, and a
+ * GitLab before 19.5 names no source project.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
+  if (iss !== GITHUB && claims['pipeline_source'] === 'merge_request_event') {
+    const own = (claim: string) => {
+      const p = claims[claim]
+      return typeof p === 'string' && same(p, String(claims['project_path']))
+    }
+    if (
+      !own('source_project_path') ||
+      (claims['job_project_path'] !== undefined && !own('job_project_path'))
+    )
+      return undefined
+  }
   const event = claims['event_name']
   if (event === 'pull_request_target') return undefined
   const head = event === 'pull_request' ? claims['head_ref'] : undefined
