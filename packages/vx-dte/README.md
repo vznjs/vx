@@ -58,7 +58,10 @@ the initiator.
   `join` carries an OIDC token whose audience is
   `vx-dte:<base64url SHA-256 of "join\0<run>\0<message 1>">`; the
   orchestrator's `hello` one for `"hello\0<run>\0<handshake hash>"`. Each
-  side checks the other's as a token of the same `repository_id`.
+  side checks the other's as a token of the same `repository_id`; with
+  `github()`, the orchestrator also checks a worker's `run_id` is a
+  workflow run it dispatched, since the run's id is a dispatch input
+  anyone who reads the repository's Actions sees.
 
 | Who           | `info` / `body`                                         |
 | ------------- | ------------------------------------------------------- |
@@ -115,7 +118,10 @@ open it first or join it; vx and the relay refuse any other. `local()` starts ea
 git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not: a task that keys one fails), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
-saving to the run's store (a relative `cache.dir` or `--cache-dir` too). When a worker fails, its row names
+saving to the run's store (a relative `cache.dir` or `--cache-dir` too).
+A run from a git hook works too: the worktree and its worker drop the
+hook's repository variables (`git rev-parse --local-env-vars`), so the
+index being committed is left as it is. When a worker fails, its row names
 the error line and the log that holds its whole stderr and all `prepare`
 printed. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
@@ -237,8 +243,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       # One commit: --affected fetches its base itself.
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile --filter './'
       - run: bun vx lock --check
       # Name the tasks to run, as 'bun vx run build test --affected': with
@@ -298,12 +305,12 @@ jobs:
       VX_DTE_RELAY: ${{ inputs.relay }}
       VX_DTE_WORKER: ${{ matrix.worker }}
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: '${{ inputs.sha }}' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: '${{ inputs.sha }}', persist-credentials: false }
       - env: { HANDED: '${{ inputs.env }}' }
         run: |
           jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\r\n]") | not) then "\(.key)=\(.value)" else error("env \(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       # Every project: only pnpm selects by a git diff, as
       # `pnpm install --frozen-lockfile --filter "...[origin/main]"`
       # (fetch origin/main first: the checkout is one commit).
@@ -322,7 +329,10 @@ names (`VX_DTE_PICK`), at the run's commit, and each takes its name from
 `VX_DTE_IDS`. The run starts workers as its work needs them, up to each
 size's `max`, which `gitlab()` needs (at most 200, a matrix's limit).
 GitLab lets a job token trigger but not cancel, so a worker the run no
-longer needs leaves when it joins or when the run ends.
+longer needs leaves when it joins or when the run ends. Each trigger
+passes the workers' variables, so set Settings > CI/CD > Variables >
+"Minimum role to use pipeline variables" to Developer: a project made
+since GitLab 17.7 lets no one, and refuses every trigger.
 
 ```ts
 // .vx/workspace.ts
@@ -354,7 +364,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
 
-# The image needs Bun and git.
+# The image needs Bun; a job adds git if it lacks it.
 default:
   image: oven/bun:1.4
 
@@ -368,6 +378,7 @@ vx:
       variables: { VX_TASKS: '--all' }
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
   before_script:
+    - command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)
     - bun install --frozen-lockfile --filter './'
   script:
     - bun vx lock --check
@@ -378,6 +389,7 @@ vx:
   variables: { GIT_DEPTH: 1 }
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
   before_script:
+    - command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)
     - git fetch -q --depth 1 origin $VX_DTE_SHA
     - git checkout -q FETCH_HEAD
     - bun install --frozen-lockfile
@@ -806,7 +818,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   `VX_DTE_WORKER` (its name). It is
   described only by the cores and memory its machine reports. It exits 0
   when the run ended before it joined.
-- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn) }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset.
+- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset; `keyless` workers prove themselves by GitHub OIDC, and `workerRuns` names the workflow runs whose jobs alone may join as them (`undefined`: any job of the repository).
   `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env }`,
   with `memory` in bytes and `max` its size's (`Infinity` uncapped),
   where `id` is the worker's name (`small#2`, numbered within its size), `commit` the
@@ -821,7 +833,8 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   `{ workflow?, env? }`: `workflow` defaults to `vx-worker.yml`; `env`
   is variables every worker gets (one-line strings), sent as the
   dispatch's `env` input only when set, which `vx dte init`'s workflow
-  exports. Its workers are `keyless`. It
+  exports. Its workers are `keyless`, and only jobs of the workflow runs
+  it dispatched join as them. It
   needs `GITHUB_TOKEN` with `actions: write`. See [On GitHub](#on-github).
 - `gitlab(options?: GitlabOptions)` triggers a pipeline of the project's
   `.gitlab-ci.yml` per wave and size, with `CI_JOB_TOKEN`. `GitlabOptions` is

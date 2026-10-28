@@ -766,7 +766,7 @@ it('the Bun entry serves the protocol, without auth on loopback only', async () 
   const refused = Bun.spawnSync(['bun', bin, '--no-auth', '--host', '0.0.0.0'], { stderr: 'pipe' })
   expect([refused.exitCode, refused.stderr.toString().trim()]).toEqual([
     2,
-    '--no-auth listens on loopback only',
+    '✗ vx-dte-server  --no-auth listens on loopback only',
   ])
   const proc = Bun.spawn(['bun', bin, '--no-auth', '--port', '0'], { stdout: 'pipe' })
   try {
@@ -811,11 +811,11 @@ it('names the flags it lacks', () => {
     said('--allow', '', '--audience', ''),
     said(...allow, '--audience', ' '),
   ]).toEqual([
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
-    'missing --allow (or --no-auth)',
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --allow and --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --allow (or --no-auth)',
+    '✗ vx-dte-server  missing --allow and --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --audience (or --no-auth)',
   ])
 })
 
@@ -826,7 +826,7 @@ it('answers a flag it does not know with its usage', () => {
   const [said, usage] = cli.stderr.toString().split('\n')
   expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
     2,
-    "Unknown option '--bogus'",
+    "✗ vx-dte-server  Unknown option '--bogus'",
     'usage: vx-dte-server',
   ])
 })
@@ -836,5 +836,8 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--no-auth', '--port', ''],
     { stderr: 'pipe' },
   )
-  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+  expect([cli.exitCode, cli.stderr.toString()]).toEqual([
+    2,
+    '✗ vx-dte-server  --port: not a port: \n',
+  ])
 })

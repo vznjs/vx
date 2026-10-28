@@ -10,6 +10,7 @@ import { expect } from 'bun:test'
 
 export const DTE = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 export const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
+export const CORE_INDEX = path.resolve(import.meta.dir, '../../vx/src/index.ts')
 // Relative, as this package's test task sets it: each worker's worktree
 // must still share the run's store.
 process.env['VX_CACHE_DIR'] = '.vx/cache'
@@ -77,6 +78,11 @@ export default { name: 'b', tasks: {
     command: 'echo "shown=\${VX_E2E_SHOWN:-none} hidden=\${VX_E2E_HIDDEN:-none}"',
     env: { passThrough: ['VX_E2E_SHOWN'] },
   } },
+  pat: {
+    exec: { command: 'echo "auth=$VX_E2E_PAT"', env: { passThrough: ['VX_E2E_PAT'], secret: ['VX_E2E_PAT'] } },
+    inputs: { files: ['vx.config.mjs'] },
+    cache: { outputs: { files: [] } },
+  },
 } }
 `,
     // A server its tests need where they run: each start says where.

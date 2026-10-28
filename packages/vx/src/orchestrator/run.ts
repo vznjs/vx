@@ -555,6 +555,7 @@ async function runOnBus(
   // that lands meanwhile ends the run here, having run nothing: an aborted
   // graph printed a `not run` row and a footer above `stopped` (WD-22).
   const heldBefore = takeHeldServers(options.keep?.servers, nodes, options.forwardArgs)
+  for (const server of heldBefore.kept.values()) server.out.bus = bus
   if (heldBefore.stale.length > 0) {
     await terminateChildren(() => heldBefore.stale)
     if (options.signal?.aborted === true) {
@@ -1542,7 +1543,8 @@ async function runOnBus(
     // own output follows.
     // The footer replaces the live region in place.
     log.runDone?.()
-    if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
+    if (options.summaryTable === true)
+      for (const line of formatOutcomeTable(list, colors)) log.status(line)
     if (options.footer !== false)
       for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
@@ -1567,7 +1569,6 @@ async function runOnBus(
         persistent: holdServers(keepAlive, {
           forwardArgs: options.forwardArgs,
           outOf: (id) => serverOuts.get(id) ?? { bus },
-          warn: warnOf(log),
         }),
       }
     }
@@ -1730,7 +1731,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // line would carry the same label. Resolving the executors here is
       // the same plugin-factory call `prepareRun` already makes for the
       // cache capability, so plan mode gains no new class of side effect.
-      ...(await planExecutorOf(prepared, log, options.download ?? 'all')),
+      ...(await planExecutorOf(prepared, log, options.download ?? 'all', detectCi(process.env).ci)),
       ...(await planRestorable(prepared, policy, options.forwardArgs)),
     })
     mark('plan')
@@ -1801,12 +1802,14 @@ async function unresolvedHint(prepared: {
   hintProjects: ReadonlyMap<string, ProjectEntry>
   declaredElsewhere: readonly string[]
   anyProjectConfig: boolean
+  taskless: (name: string) => boolean
 }): Promise<string> {
   const elsewhere = elsewhereHint(prepared.declaredElsewhere)
   const near = didYouMean(
     prepared.unresolvedTasks,
     prepared.hintProjects,
     prepared.declaredElsewhere,
+    prepared.taskless,
   )
   const init = await initHint(prepared)
   const lock =
@@ -1836,7 +1839,8 @@ async function initHint(prepared: { anyProjectConfig: boolean }): Promise<string
 function didYouMean(
   unresolved: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,
-  elsewhere: readonly string[] = [],
+  elsewhere: readonly string[],
+  taskless: (name: string) => boolean,
 ): string {
   const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
   // What a bare name can select: a default `build` is no match (X-102).
@@ -1878,6 +1882,12 @@ function didYouMean(
     if (!isLiteralPattern(proj) && !projects.has(proj)) {
       lists.add(
         `\`${spec}\` names one project, not a pattern: run \`${task}\` with --filter '${proj}' instead.`,
+      )
+      continue
+    }
+    if (taskless(proj)) {
+      lists.add(
+        `${proj} has no vx config, and no configured project depends on it: it has no tasks.`,
       )
       continue
     }

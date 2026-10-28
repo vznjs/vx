@@ -295,7 +295,11 @@ export class RemoteLane {
       this.report('download', hash, err)
       return undefined
     }
-    if (!result) return null
+    if (!result) {
+      // Gone, whatever a probe said: the re-run's save uploads it.
+      this.held.delete(hash)
+      return null
+    }
     if (typeof result !== 'object' || !isBody((result as { body?: unknown }).body)) {
       const shape =
         typeof result !== 'object'

@@ -28,6 +28,7 @@ import { findWorkspaceRoot, LOCKFILE_NAME, NO_LOCK, type ProjectMeta } from '../
 import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './workspace-config.js'
 import { resolveSetting } from '../settings.js'
 import {
+  isProjectConfigFile,
   isWorkspaceConfigFile,
   gitFiles,
   makeFence,
@@ -163,23 +164,22 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     unlocked = true
     return []
   })
-  // `//#check` is the root project's task, under the name the run gives
-  // it (prepare.ts, D-39): taken literally, no project was in scope and
-  // the watch exited 1 after a green run.
-  const rootDir = path.resolve(workspaceRoot)
-  const rootName = allProjects.find((p) => path.resolve(p.dir) === rootDir)?.name
-  const anchored = opts.tasks
-    .filter((t) => t.includes('#'))
-    .map((t) => t.slice(0, t.indexOf('#')))
-    .map((p) => (p === '//' && rootName !== undefined ? rootName : p))
+  const anchored = opts.tasks.filter((t) => t.includes('#')).map((t) => t.slice(0, t.indexOf('#')))
   const named =
     anchored.length === opts.tasks.length
       ? new Set(anchored)
       : opts.projects === undefined
         ? undefined
         : new Set([...opts.projects, ...anchored])
+  // `//#check` is the root project's task, under the name the run gives
+  // it (prepare.ts, D-39): taken literally, no project was in scope and
+  // the watch exited 1 after a green run. Resolved per discovery: started
+  // with no lock, the root has no name until `vx lock` writes one.
+  const rootDir = path.resolve(workspaceRoot)
   const inScope = (all: readonly ProjectMeta[]): ProjectMeta[] =>
-    named === undefined ? [...all] : all.filter((p) => named.has(p.name))
+    named === undefined
+      ? [...all]
+      : all.filter((p) => named.has(p.name) || (named.has('//') && path.resolve(p.dir) === rootDir))
   const scope = inScope(allProjects)
 
   // Initial run — same code path as `vx run`.
@@ -446,6 +446,20 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       return ''
     }
   }
+  /** The lock as the last cycle found it: a config edit with no re-lock since changes no command. */
+  let lockSeen = lockStamp()
+  // Every cycle's configs are the lock's, so a config edit alone ran a cycle
+  // that printed `changed` and nothing else, read as the edit applied. A
+  // config gone is the run's own refusal to name.
+  const sayUnlocked = (paths: readonly string[]): void => {
+    for (const abs of paths)
+      if ((isProjectConfigFile(abs) || configImportFiles.includes(abs)) && fs.existsSync(abs))
+        sayNotice(
+          'warn',
+          'vx watch',
+          `${path.relative(workspaceRoot, abs)} changed; runs read the lock, so run \`vx lock\` to apply it`,
+        )
+  }
   const trigger = (label: string, abs: string): void => {
     if (!changes.pending.has(abs)) changes.pending.set(abs, label)
     if (running) return interruptIfWaiting()
@@ -484,8 +498,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // only after, it fell in the gap and ran nothing (X-138). The re-read
             // after the run stays, for what the run itself changed.
             lockAtRun = lockStamp()
+            const relocked = lockAtRun !== lockSeen
+            lockSeen = lockAtRun
             if (reread) await rearm(false)
             process.stdout.write(`\nchanged ${label}\n`)
+            if (!relocked) sayUnlocked(changes.changed)
             if (stop.aborted) break
             restartTimings()
             // On the mtime clock, as the arm is: from `Date.now()` a write the
@@ -920,7 +937,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     try {
       next = await args.rediscover()
     } catch (err) {
-      sayCannot(`cannot re-read the workspace`, err)
+      // No lock is the cycle's own failure to say; said here too, it was two lines.
+      if (!(err instanceof Error && err.message === NO_LOCK))
+        sayCannot(`cannot re-read the workspace`, err)
       return
     }
     projectDirs = next.projects.map((p) => p.dir)
