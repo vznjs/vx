@@ -158,6 +158,17 @@ export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set
     stack.push(...nodes.get(id)!.deps)
   }
   const clash = [...holders].filter((id) => id !== server && !before.has(id))
+  // One that runs after the server cannot run before it: the advice to make
+  // the server depend on it wrote a cycle.
+  const after = clash.filter((id) => reaches(nodes, id, server))
+  if (after.length > 0) {
+    const one = after.length === 1
+    throw new UserError(
+      `${server} is persistent and interactive, so it holds the terminal until the run ends, ` +
+        `and ${after.join(', ')}, which ${one ? 'depends' : 'depend'} on it, would ask for it too: ` +
+        `run ${one ? 'it' : 'them'} on ${one ? 'its' : 'their'} own`,
+    )
+  }
   if (clash.length > 0) {
     throw new UserError(
       `${server} is persistent and interactive, so it holds the terminal until the run ends, ` +
@@ -167,6 +178,20 @@ export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set
     )
   }
   return holders
+}
+
+/** Does `from` depend on `to`, directly or through others? */
+function reaches(nodes: Map<string, TaskNode>, from: string, to: string): boolean {
+  const seen = new Set<string>()
+  const stack = [...nodes.get(from)!.deps]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (id === to) return true
+    if (seen.has(id)) continue
+    seen.add(id)
+    stack.push(...(nodes.get(id)?.deps ?? []))
+  }
+  return false
 }
 
 export interface Placements {
