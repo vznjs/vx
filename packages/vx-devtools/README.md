@@ -80,10 +80,10 @@ export function oidcTokenAuth(
 - With `readAccess: 'public'` (`READ_ACCESS`), a request with no token
   reads the repository it names when `ALLOW` names it (else `403`), and
   writes nothing. Any other value than `public` or unset throws.
-- A token writes its branch (a `pull_request` run's head branch on GitHub;
-  a `merge_group` run's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
-  ref, else `ref`; GitLab's `ref_path`). A `pull_request_target` run writes
-  nothing: its `head_ref` a fork names, and its `ref` is the base. Nor does
-  a `pull_request` run whose head branch has its base branch's name, nor
-  a GitLab merge request pipeline unless `source_project_path` (GitLab
+- A token writes its `ref` (GitLab's `ref_path`): a `pull_request` run
+  its merge ref, `refs/pull/<n>/merge`, never its `head_ref`, which a fork
+  names; a `merge_group` run its base branch for a
+  `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>` ref. A
+  `pull_request_target` run writes nothing: it runs a fork's code on the
+  base branch's `ref`. Nor does a GitLab merge request pipeline unless `source_project_path` (GitLab
   19.5+) names its own project: a fork's runs in the parent project.

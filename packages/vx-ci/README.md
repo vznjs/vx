@@ -82,8 +82,10 @@ keys only what plugins store themselves (`ctx.cache`, run records):
 task keys never carry it, and the cache server decides from the CI OIDC
 token where a task's entry lands. `VX_CACHE_SCOPE` overrides it.
 
-It also names the refs a remote cache reads, in order (`refs`): the
-run's own branch (a pull request's head, else `GITHUB_REF`), then the
+It also names the refs a remote cache reads, in order (`refs`): a pull
+request's merge ref (`refs/pull/<n>/merge`, the one scope its token
+writes), then the run's own branch (a pull request's head, else
+`GITHUB_REF`), then the
 branch it merges into (`GITHUB_BASE_REF`), then the default branch (the
 workspace's `baseBranch`, else the event's). A merge queue's run reads
 only its base branch (`merge_group.base_ref`, else the queue ref's
