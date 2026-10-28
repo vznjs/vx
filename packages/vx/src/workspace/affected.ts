@@ -138,6 +138,28 @@ export interface FingerprintClaims {
 }
 
 /**
+ * `extraFiles` on one side of a claimed file. Which side failed to parse is
+ * the whole fix: a broken lockfile at the base ref is not the working
+ * tree's to regenerate, and the bare refusal named neither.
+ */
+function extraFilesOn(
+  claims: FingerprintClaims,
+  file: string,
+  bytes: Uint8Array,
+  side: string,
+): readonly string[] | undefined {
+  try {
+    return claims.extraFiles?.(file, bytes)
+  } catch (err) {
+    if (!(err instanceof Error)) throw err
+    throw new UserError(
+      `${err.message} (${side})`,
+      err instanceof UserError ? err.code : 'VX_E_REFUSED',
+    )
+  }
+}
+
+/**
  * Return the set of project names whose files changed between
  * `<since>` and the current working tree. Errors if `git` is missing
  * or `<since>` doesn't resolve to a commit.
@@ -342,9 +364,12 @@ export async function affectedChanges(
   for (const file of extraClaims?.files ?? []) {
     const after = await bytesOrNull(path.join(args.workspaceRoot, file))
     const before = await gitBytesAt(args.workspaceRoot, base, file)
-    const namedAfter = after === null ? [] : extraClaims!.extraFiles?.(file, after)
+    const namedAfter =
+      after === null ? [] : extraFilesOn(extraClaims!, file, after, 'in the working tree')
     const named = new Set([
-      ...(before === null ? [] : (extraClaims!.extraFiles?.(file, before) ?? [])),
+      ...(before === null
+        ? []
+        : (extraFilesOn(extraClaims!, file, before, 'as of the base ref') ?? [])),
       ...(namedAfter ?? []),
     ])
     const extras = new Map<string, { before: Uint8Array | null; after: Uint8Array | null }>()
