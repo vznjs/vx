@@ -390,7 +390,8 @@ on, as the cache keys decide.
   rule; outside a repository nothing is. A path inside a submodule makes
   git refuse the batch; that path is skipped and the rest asked again
   (`watch-ignore-submodule.test.ts`). A project reached through a symlink
-  (`packages/x -> ../shared/x`) is watched at the link, which git refuses
+  out of the root (`packages/x -> ../../shared/x`; one inside it is the
+  project at its real directory) is watched at the link, which git refuses
   ("beyond a symbolic link"), so each path is asked, and looked up in
   `gitFiles`, at its real place (`gitSpeller`).
 - Settle a file the task rewrites with DIFFERENT bytes every run when

@@ -143,9 +143,13 @@ function vx(args: string[]): { code: number; out: string; err: string } {
   return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
 }
 
+// Every document as printed: a script reads one line per document.
+const printed: { what: string; out: string }[] = []
+
 function json(verb: string, args: string[]): void {
   const r = vx([verb, ...args, '--format', 'json'])
   if (r.code !== 0) throw new Error(`vx ${verb} ${args.join(' ')}: ${r.code}\n${r.err}`)
+  printed.push({ what: `vx ${verb} ${args.join(' ')}`, out: r.out })
   outputs[verb]!.push(JSON.parse(r.out))
 }
 
@@ -188,6 +192,7 @@ beforeAll(async () => {
   json('last', ['--failed'])
   const dry = vx(['run', 'build', '--filter', 'app...', '--dry=json'])
   expect(dry.code).toBe(0)
+  printed.push({ what: 'vx run --dry=json', out: dry.out })
   outputs['plan']!.push(JSON.parse(dry.out))
   // What a workspace with two executors and a remote shows, built by hand:
   // the fields only those plugins provoke.
@@ -234,9 +239,9 @@ beforeAll(async () => {
   // A config that does not load: \`vx info\` names it.
   await addProject(root, 'broken', { config: 'export default { tasks: 1 }' })
   json('info', [])
-  json('cache', ['clean', '--max-size', '1K', '--dry-run'])
+  json('cache', ['clean', '--max-size', '1K', '--dry'])
   json('cache', ['clean', '--max-size', '1K'])
-  json('cache', ['clean', '--dry-run'])
+  json('cache', ['clean', '--dry'])
   // A refusal: exit 1, and the error document on stdout.
   const refused = vx(['show', 'nope', '--format', 'json'])
   if (refused.code !== 1) throw new Error(`vx show nope: ${refused.code}\n${refused.err}`)
@@ -311,6 +316,12 @@ afterAll(async () => {
 const VERBS = ['show', 'info', 'why', 'last', 'cache', 'lock', 'init', 'docs', 'plan', 'error']
 
 describe('read verbs hold their --format json to a checked-in schema', () => {
+  it('print each document on one line', () => {
+    expect(printed.length).toBeGreaterThan(0)
+    const multi = printed.filter(({ out }) => out.trimEnd().includes('\n')).map((p) => p.what)
+    expect(multi).toEqual([])
+  })
+
   it('ships one schema per read verb, and nothing else', () => {
     expect(readdirSync(SCHEMAS).sort()).toEqual(VERBS.map((v) => `${v}.json`).sort())
   })

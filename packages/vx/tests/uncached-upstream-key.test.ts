@@ -36,6 +36,9 @@ const WEB = `
 async function vx(root: string, args: string[]): Promise<{ code: number; out: string }> {
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
     cwd: root,
+    // The preload's VX_CACHE_DIR lives in process.env; a spawn without
+    // `env` wrote the real home's store.
+    env: { ...process.env },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -85,6 +88,10 @@ describe('an uncached upstream that writes an un-ignored file', () => {
       expect(await thisRun(root, 'web#build')).toContain('· success · executed')
       // The dependent's why names the upstream as the moved component.
       const why = await vx(root, ['why', 'web#build'])
+      // The previous row reads as this run's does: it ran too.
+      expect(why.out.split('\n').find((l) => l.startsWith('  previous'))).toContain(
+        '· success · executed',
+      )
       expect(why.out).toMatch(/changed\s+upstream\s+lib#build/)
 
       expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)

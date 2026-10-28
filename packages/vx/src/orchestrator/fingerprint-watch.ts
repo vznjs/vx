@@ -85,7 +85,7 @@ export class FingerprintWatch {
     this.said = true
     warnOf(log)(
       `[vx] a task rewrote \`${this.movedFiles.join('`, `')}\` during the run, which a plugin ` +
-        `folds into every key: nothing keyed before it is restored or saved from here on`,
+        `puts into every key: nothing keyed before it is restored or saved from here on`,
     )
   }
 }

@@ -1047,7 +1047,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       files: "the task's `inputs.files`",
       output: '`outputs.files`',
       env: "the task's `inputs.env`",
-      dependencies: "the task's `dependsOn` (an upstream's key folds into this one)",
+      dependencies: "the task's `dependsOn` (an upstream's key goes into this one)",
       enabled: 'no field: a task with a `cache` block caches, one without runs every time',
     },
   ],

@@ -92,24 +92,12 @@ locally and what `'only'` means.
 
 ## `formatPlanJson`
 
-JSON-friendly object, each task a `PlanTaskJson`, led by `affectedBase` (the ref the diff
+One JSON object on one line, each task a `PlanTaskJson`, led by `affectedBase` (the ref the diff
 was taken from) under `--affected`; `schemas/plan.json`
 states it and `tests/cli-json-schemas.test.ts` holds it:
 
 ```json
-{
-  "tasks": [
-    {
-      "id": "@vzn/vx#lint",
-      "project": "@vzn/vx",
-      "task": "lint",
-      "hash": "d66cfed2a1b2c3d4",
-      "cacheStatus": "hit-remote",
-      "deps": [],
-      "description": "oxlint with tsgolint-backed type-aware checks"
-    }
-  ]
-}
+{"tasks":[{"id":"@vzn/vx#lint","project":"@vzn/vx","task":"lint","hash":"d66cfed2a1b2c3d4","cacheStatus":"hit-remote","deps":[],"description":"oxlint with tsgolint-backed type-aware checks"}]}
 ```
 
 `p50Ms`, `executor`, `download` and `affected` ride a task only when set, and

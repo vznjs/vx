@@ -231,7 +231,7 @@ describe('an upgrade resets the cache in silence', () => {
     // every aged artifact as row-less. It now names what that prune reaps,
     // in silence, and still writes nothing. A reset keeps inline artifacts
     // too, so the preview reads them where they are.
-    it(`\`vx cache clean --dry-run\` on an earlier schema names what the real prune reaps (${where})`, async () => {
+    it(`\`vx cache clean --dry\` on an earlier schema names what the real prune reaps (${where})`, async () => {
       if (where === 'file') await fileArtifact()
       expect(await runOnce()).toEqual([])
       pokeVersion('v0')
@@ -239,7 +239,7 @@ describe('an upgrade resets the cache in silence', () => {
       expect(a.inline).toBe(where === 'inline')
       await lastUsed(a, new Date(Date.now() - 40 * 24 * 60 * 60 * 1000))
       const before = index()
-      const dry = await verb(['cache', 'clean', '--older-than', '30d', '--dry-run'])
+      const dry = await verb(['cache', 'clean', '--older-than', '30d', '--dry'])
       expect({ ...dry, after: index() }).toEqual({
         threw: null,
         stderr: '',
@@ -255,13 +255,13 @@ describe('an upgrade resets the cache in silence', () => {
 
     // The preview reads the reset's row-less artifacts through the same
     // policy the real prune applies: one younger than `--older-than` stays.
-    it(`\`vx cache clean --dry-run\` on an earlier schema keeps an artifact the policy keeps (${where})`, async () => {
+    it(`\`vx cache clean --dry\` on an earlier schema keeps an artifact the policy keeps (${where})`, async () => {
       if (where === 'file') await fileArtifact()
       expect(await runOnce()).toEqual([])
       pokeVersion('v0')
       const a = artifact()
       await lastUsed(a, new Date(Date.now() - 2 * 24 * 60 * 60 * 1000))
-      const dry = await verb(['cache', 'clean', '--older-than', '30d', '--dry-run'])
+      const dry = await verb(['cache', 'clean', '--older-than', '30d', '--dry'])
       expect(dry).toEqual({
         threw: null,
         stderr: '',
@@ -328,7 +328,7 @@ describe('an upgrade resets the cache in silence', () => {
 
   // A reading verb wrote the new format over the old one, so the run after
   // it missed everything with no word of why (item 1080).
-  for (const args of [['info'], ['cache', 'clean', '--older-than', '30d', '--dry-run']]) {
+  for (const args of [['info'], ['cache', 'clean', '--older-than', '30d', '--dry']]) {
     it(`\`vx ${args.join(' ')}\` and the run after it say nothing of a format bump`, async () => {
       expect(await runOnce()).toEqual([])
       pokeFormat('vx-cache-v0')

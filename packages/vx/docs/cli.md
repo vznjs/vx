@@ -28,7 +28,7 @@ measurements.
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
-vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]
+vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
@@ -96,6 +96,7 @@ There is no `-V`; use `vx --version`, as in Turbo.
 `vx <verb> --help` (also `-h` and `vx help <verb>`) prints this
 reference for that verb: its usage lines and sections, then
 `Full reference: vx help`. Every argument error points at it.
+`vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
 
 `vx help <name>` for a name that is no verb is refused like
 `vx <name>`: one line, a guess when one is close, exit 1.
@@ -223,7 +224,7 @@ selected: !app excluded every project the other filters matched`.
 | Form              | Meaning                                                                                                                                                                                                                                                                                                                                 |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `<pattern>`       | Match by package name. `*` matches any characters, including `/`. A pattern matching no package may leave out the scope, as pnpm reads it (`cart` is `@nx-example/cart` when one package carries it). One holding a `/` outside a scope that matches no package is a directory, as Nx's `--projects` reads it (`apps/*` is `./apps/*`). |
-| `./<dir>`         | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43).                                                                                                                                                       |
+| `./<dir>`         | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43). A link to a package's directory names that package.                                                                                                   |
 | `{<dir>}`         | Same as `./<dir>`.                                                                                                                                                                                                                                                                                                                      |
 | `./<glob>`        | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too; a trailing `**` matches zero dirs, so `./packages/kit/**` holds kit itself, as pnpm and Turbo read it). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory.                  |
 | `.`               | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                                                                                                                                                  |
@@ -310,7 +311,8 @@ git: <root> is not inside a git work tree`. A repository with no commit
   - a path inside a commit (`main:packages`), naming the commit to pass.
     A root tree (`main^{tree}`) is still a base.
 - `<base>...HEAD`, Turbo's CI spelling, reads as `<base>`. Two-dot
-  `<base>..HEAD` diffs from `<base>` itself, not the merge base.
+  `<base>..HEAD` diffs from `<base>` itself, not the merge base; a shallow
+  clone fetches that commit as it fetches the merge base.
 - A ref that does not exist is `git ref "<ref>" did not resolve`. In a
   shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`).
 - A project whose directory is a symlink inside the workspace
@@ -677,7 +679,7 @@ unless explicitly overridden:
 - **BROAD** — the invocation used `--all`, `--filter`, or
   `--affected`. The user asked about a swath of the workspace and
   wants news, not output.
-- **CI** — the `CI` env var is truthy (`CI=0` / `CI=false` don't
+- **CI** — the `CI` env var is truthy (`CI=0` and `CI=false`, in any case, don't
   count). Wins over the flow.
 
 Reported task lines share one column grid —
@@ -1050,10 +1052,11 @@ Status legend:
 | `−`    | not started — a server you did not request whose every dependant restores a local hit      |
 | `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
-`--dry=json` emits the same data as a structured object, alone on stdout
+`--dry=json` emits the same data as one JSON object on one line, alone on stdout
 (a stage's warnings go to stderr), and with nothing to run (nothing
 affected) an empty `tasks` list, the note on stderr; `schemas/plan.json`
-is its JSON Schema, held like the read verbs' (see Machine-readable output):
+is its JSON Schema, held like the read verbs' (see Machine-readable output).
+Indented here to read:
 
 ```json
 {
@@ -1190,7 +1193,7 @@ The grants are the task's whole permission surface — nothing is derived
 from `cache`, and the only thing core adds is `node_modules` plus the
 workspace packages linked there, never a link back to the task's own
 project (npm and Yarn link that too). For a task that declares `cache`
-a linked package is granted only when its key folds a task of that
+a linked package is granted only when its key includes a task of that
 package; declaring `cache` narrows core's grant and widens nothing.
 Enforcement anchors at the workspace root (a task never leaves its
 project); only denials inside the project, or under a withheld linked
@@ -1497,7 +1500,7 @@ watch`.
 
 `vx cache clean` evicts old or oversized cache entries, or with no
 bound clears the cache. It operates on the entries and
-`<hash>.tar.zst` artifacts of the store the workspace's index records
+`<hash>.tar.zst` artifacts of the store a run opens
 (`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
@@ -1507,7 +1510,7 @@ bound clears the cache. It operates on the entries and
 ```
 vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
-vx cache clean ... --dry-run                # Say what either policy would reap; delete nothing.
+vx cache clean ... --dry                    # Say what either policy would reap; delete nothing.
 vx cache clean ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
 vx cache clean ... --cache-dir <path>       # The cache a run with the same flag uses.
 vx cache clean                              # No bound: clear the whole cache (below).
@@ -1527,7 +1530,7 @@ $ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
 
   42 orphaned artifacts
 
-$ vx cache clean --older-than 30d --dry-run
+$ vx cache clean --older-than 30d --dry
 › vx cache clean  would free 1.3 GB (dry run)
 
   42 entries · 3 orphaned artifacts
@@ -1539,7 +1542,7 @@ $ vx cache clean --older-than 30d --dry-run
 | ------------------------- | -------------------------------------------------------- |
 | `--older-than <duration>` | drop entries last used before now minus the duration     |
 | `--max-size <size>`       | then evict the least recently used until under the size  |
-| `--dry-run`               | say what would go; delete nothing                        |
+| `--dry`                   | say what would go; delete nothing                        |
 | `--global`                | with no bound, also clear every other repository's store |
 | `--format json`           | the result as one object                                 |
 | `--cache-dir <path>`      | the cache a run with the same flag uses                  |
@@ -1591,9 +1594,9 @@ is kept until a later prune, but its bytes are left out all the same
 (item 1081). The sweep runs on every prune, under
 either flag, and reports separately from the policy's evictions.
 
-### `--dry-run`
+### `--dry`
 
-`--dry-run` picks the victims under the same policy and counts the
+`--dry` picks the victims under the same policy and counts the
 orphans the sweep would take, then returns without touching the index
 or the directory; the real prune with the same flags reaps exactly what
 it named (an in-flight save aside). On an index an earlier vx wrote,
@@ -1634,7 +1637,8 @@ are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `vx cache clean` with neither `--older-than` nor `--max-size` clears
 the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
 `--cache-dir`: the index and this workspace's run history, so `vx last`
-and `vx why` start over) and the store its index names, where the
+and `vx why` start over), the store a run opens and the one its index
+last named, if another (a changed HOME, an origin added), where the
 entries live (`~/.vx/<id>/cache`, shared by this repository's
 checkouts, so their entries go too). `--global` also clears every other
 repository's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
@@ -1651,6 +1655,10 @@ could point at any directory. A workspace that never ran says
 `› vx cache clean  nothing to free`. The next run misses every task once
 and saves again.
 
+A `.vx/cache` linked to another directory (a CI cache volume) is
+emptied through the link, and the link stays. An index SQLite cannot
+read is cleared like any other.
+
 ```
 $ vx cache clean
 ✓ vx cache clean  freed 1.4 GB
@@ -1658,7 +1666,7 @@ $ vx cache clean
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
 
-$ vx cache clean --global --dry-run
+$ vx cache clean --global --dry
 › vx cache clean  would free 3.1 GB (dry run)
 
   .vx/cache
@@ -1743,7 +1751,8 @@ The full workflow: the site's CI guide and `examples/ci`.
 holding a `vx.config.*`, in any language: `vx lock` lists them with git
 (`git ls-files`, tracked and untracked, git's ignore rules applied; a
 nested repository's own configs too), or walks the tree outside git,
-and leaves out any under a nested `.vx/workspace.*`. Configs are
+and leaves out any under a nested `.vx/workspace.*` or under a
+`node_modules` (an installed package is no project, ignored or not). Configs are
 programs; `vx lock` evaluates them in the current environment and
 stores the post-evaluation objects, by directory (version 4; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
@@ -2185,7 +2194,7 @@ $ vx init --dry
 ### Install
 
 `vx init` first installs `@vzn/vx` globally (the package manager that
-ran it, else npm; skipped when the `vx` on `PATH` is already that
+ran it, else Bun; skipped when the `vx` on `PATH` is already that
 version) and, under the topmost `package.json`, as a root
 devDependency with that repo's own manager (2026-10-20). The latest
 version is read from the registry that manager is configured for
@@ -2549,7 +2558,8 @@ task count, and `no vx config` for config-less packages; one whose
 tasks all come from plugins reads `N tasks from plugins (no vx
 config)`, and one a configured project depends on reads `1 task,
 default build (no vx config)`: a run loads it for that dependant's
-`^build` (X-48). A `tags` column appears when any project has tags. With `--format json`
+`^build` (X-48). One nothing configured reaches has no task in any
+view: `vx show bare` lists none, and `vx run bare#build` refuses it. A `tags` column appears when any project has tags. With `--format json`
 it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 
 **A project or task.** A report naming the project opens it: its `dir`, its `tags`, and
@@ -2561,7 +2571,7 @@ it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
-task does not set are not printed; a value that spans lines (a
+task does not set are not printed, an empty list prints `none`; a value that spans lines (a
 multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
 narrows to one task (`{ name, dir, task, config }` in JSON). A bare
@@ -2644,7 +2654,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v48 · index schema v49
+  cache versions    keys vx-cache-v49 · index schema v49
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -2785,7 +2795,7 @@ vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path
 $ vx why app#build
 app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
   this run   2026-10-08T01:57:05.486Z · success · executed · key 9ef9806a9c69209e
-  previous   2026-10-08T01:57:05.325Z · success · key e240348b20e79fd6
+  previous   2026-10-08T01:57:05.325Z · success · executed · key e240348b20e79fd6
   verdict    cache key changed: file packages/app/src/input.txt
 
   what changed (1 component, 6 unchanged):
@@ -2828,7 +2838,7 @@ task with no `inputs` is new every run, so the task never hits; the
 verdict names that task:
 
 ```
-  verdict    never cached: its key folds app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate
+  verdict    never cached: its key includes app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate
 ```
 
 An **unchanged** key has three endings, and the verdict distinguishes

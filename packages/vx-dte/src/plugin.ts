@@ -316,7 +316,7 @@ export function dte(options: DteOptions) {
   return definePlugin(import.meta, {
     commands: {
       dte: {
-        description: 'dte init: write the CI of a DTE run; dte worker: run tasks for a DTE run',
+        description: "Write a DTE run's CI (dte init) or run its tasks (dte worker).",
         async run(argv, ctx) {
           // Asked for, the usage is an answer: `vx dte --help` exited 1 (2026-10-26).
           if (argv.some((a) => a === '--help' || a === '-h') || argv[0] === 'help') {
@@ -906,16 +906,16 @@ function givenRun(): string | undefined {
  * working tree's changes included: none when git cannot say (no parent, a
  * shallow clone), and the run waits for its misses as before.
  */
-async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
+export async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
   try {
     const proc = Bun.spawn({
-      cmd: ['git', 'diff', '--name-only', '--relative', '--no-renames', 'HEAD^', '--'],
+      cmd: ['git', 'diff', '--name-only', '-z', '--relative', '--no-renames', 'HEAD^', '--'],
       cwd: workspaceRoot,
       stdout: 'pipe',
       stderr: 'ignore',
     })
     const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-    return exit === 0 ? out.split('\n').filter((l) => l !== '') : []
+    return exit === 0 ? out.split('\0').filter((l) => l !== '') : []
     // quiet: a local git read; no files is the answer
   } catch {
     return []

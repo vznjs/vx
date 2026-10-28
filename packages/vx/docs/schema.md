@@ -811,7 +811,7 @@ build: {
 inputs?: InputsConfig
 ```
 
-What the task reads, and so what its key folds. A task is keyed on its
+What the task reads, and so what its key includes. A task is keyed on its
 inputs whether it caches or not, as Turbo and Nx hash every task: a
 dependant folds that key, so an edit to an uncached generator's inputs
 re-runs the cached task behind it. A group with `inputs` is a keyed
@@ -865,7 +865,10 @@ is taken as one and only warns when it matches nothing.
 
 The wildcards are `*`, `**`, `?`, a character class `[ab]` (`[a-z]`,
 `[!a]`) and a brace set `{a,b}`, which matches what its alternatives
-match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`. A
+match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`, and
+`{src,lib}` is the two directory trees, as `['src', 'lib']` is; the
+spellings fold per alternative (`{./src,lib}/**` is `src/**` plus
+`lib/**`), in inputs and outputs alike. A
 backslash escapes: a route directory (Next.js, SvelteKit, Astro) is
 `app/\[id\]/**`; bare, `app/[id]/**` is the class that matches `app/i`
 and `app/d`, never the route. An input brace of one alternative (`{b}.ts`) is refused at `vx
@@ -2460,10 +2463,11 @@ a user meets most:
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `did not export a default object`                                                                                                     | Forgot `export default`, or exported a non-object; a function (Vite's `defineConfig(() => …)` shape) adds that it is one and to export what it returns (D-110).                                                                |
 | `tasks must be an object keyed by task name`                                                                                          | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                  |
-| `<path> is <what> — a config must be JSON data, because the cache key folds its JSON`                                                 | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
+| `<path> is <what> — a config must be JSON data, because the cache key is built from its JSON`                                                 | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
 | `<level> has unknown field "<key>"`                                                                                                   | Typo'd / unsupported key (see below).                                                                                                                                                                                          |
 | `<level> must be an object (fields: <fields>), not an array`                                                                          | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                       |
 | `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first`                     | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above). |
+| `<file> imports '<name>', which no node_modules above it provides; install the workspace's dependencies first`                        | The same, in a file the config imports by relative path (a preset), looked up from that file.                                                                                                                                  |
 | `cannot find '<name>' — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set <remedy>` | The same, with a `.pnp.cjs` at or above the config: the install is there and Bun cannot read it, so the remedy is `nodeLinker: node-modules` in `.yarnrc.yml` and `yarn install` (D-109).                                      |
 | `tasks.<name> must be an object`                                                                                                      | The task value is null / a string / etc.; a string (package.json's `name: 'command'`) adds the `{ exec: { command } }` it goes in.                                                                                             |
 | `exec must be an object with a command string`                                                                                        | `exec` is malformed.                                                                                                                                                                                                           |

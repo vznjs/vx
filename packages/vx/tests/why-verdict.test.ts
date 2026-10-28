@@ -169,7 +169,7 @@ describe('vx why names the task with no inputs that keeps a key from hitting', (
       const why = await vx(root, ['why', 'app#build'])
       expect(why.code).toBe(0)
       expect(verdict(why.out)).toBe(
-        'verdict    never cached: its key folds app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate',
+        'verdict    never cached: its key includes app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate',
       )
     },
     TIMEOUT,
