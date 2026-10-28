@@ -84,7 +84,7 @@ import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
 import { keepsFailures, reportOf, RunKeeper } from './run-report.js'
 import { buildAdmission, executorDemand, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { createSteps } from './steps.js'
-import { writeRunSteps } from './run-steps.js'
+import { writeRunSteps, writeRunWarnings } from './run-steps.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
 import { assembleRunSummary } from './telemetry.js'
@@ -1477,6 +1477,7 @@ async function runOnBus(
       await Promise.all([cache.drainUploads?.(), keeper?.settled()])
     })
     writeRunSteps(prepared.cacheDir, runId, steps.ended, warnOf(log))
+    writeRunWarnings(prepared.cacheDir, runId, warned, warnOf(log))
     // An upload that failed after the rows went in: its row says so too.
     if (prepared.localCache.uploads.failed > 0 && stop.stoppedBy === undefined && !historyAfterWait)
       recordHistory(() => recordLateRemoteErrors(prepared.localCache, records.runs, runId))

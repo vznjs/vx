@@ -9,7 +9,12 @@
       "required": ["invocation", "tasks"],
       "properties": {
         "invocation": { "$ref": "#/$defs/invocation" },
-        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } }
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+        "warnings": {
+          "type": "array",
+          "description": "what the run warned of, plain text; absent when it warned of nothing",
+          "items": { "type": "string" }
+        }
       }
     },
     { "type": "array", "items": { "$ref": "#/$defs/invocation" } },
