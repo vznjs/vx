@@ -100,6 +100,23 @@ describe('a refused word names the nearest one the verb takes', () => {
     expect(await run(['--version'])).toBe(0)
   })
 
+  // `vx run build --poll` was told "did you mean --all?": two edits away,
+  // and nothing like the watch flag it is.
+  it("another verb's own flag names that verb, not a near one here", async () => {
+    expect([
+      await refused(['run', 'build', '--poll']),
+      await refused(['why', 'build', '--list']),
+    ]).toEqual([
+      [1, '✗ vx run  unknown flag: --poll\n\n  `vx watch` takes it\n  see vx run --help\n'],
+      [1, 'vx why: unknown flag: --list. `vx last` takes it (see `vx why --help`)\n'],
+    ])
+    // A flag two other verbs take names neither (control).
+    expect(await refused(['show', '--global'])).toEqual([
+      1,
+      '✗ vx show  unknown flag: --global\n\n  see vx show --help\n',
+    ])
+  })
+
   it('a flag far from --help gets no hint (control)', async () => {
     expect(await refused(['lock', '--zzz'])).toEqual([
       1,

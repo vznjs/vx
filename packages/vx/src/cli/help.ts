@@ -356,6 +356,13 @@ export function flagHint(verb: string, arg: string): string {
   // from `--format`: a run with its cache reads turned off.
   if ((name === '--format' || name === '--json') && flags.includes('--dry'))
     return ' (the run as JSON is `vx last --format json` after it; the plan is --dry=json)'
+  // Another verb's own flag is no typo: `vx run --poll` was told "did you
+  // mean --all?". Named only when one other verb takes it.
+  const owners = CORE_VERBS.filter(
+    (v) => v !== verb.split(' ')[0] && acceptedFlags(v).includes(name),
+  )
+  if (owners.length === 1)
+    return `. \`vx ${owners[0] === 'cache' ? 'cache clean' : owners[0]}\` takes it`
   // A flag one word too long (`--dry-run` for `--dry`) is too many edits
   // away for either budget, and so is one cut short at a word.
   const cut = flags.filter((f) => f.startsWith(`${name}-`) || name.startsWith(`${f}-`))
