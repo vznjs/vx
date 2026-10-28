@@ -215,8 +215,7 @@ async function postOnce(
     if (!res.ok) {
       const refused = new Error(`HTTP ${res.status}${detail(text)}`)
       if (!RETRYABLE_STATUS.has(res.status)) throw refused
-      const after = Number(res.headers.get('retry-after'))
-      throw new OtlpRetryable(refused, Number.isFinite(after) && after > 0 ? after * 1000 : 0)
+      throw new OtlpRetryable(refused, retryAfterMs(res.headers.get('retry-after')))
     }
     // OTLP's other silent loss: a 200 whose body says part of the export
     // was dropped (over quota, past a limit). Success at the transport,
@@ -227,6 +226,17 @@ async function postOnce(
     clearTimeout(timer)
     deadline?.removeEventListener('abort', onDeadline)
   }
+}
+
+/**
+ * A `Retry-After` in ms, or 0: seconds, or an HTTP date (RFC 9110), which
+ * `Number()` read as NaN and the retry came at the default delay.
+ */
+function retryAfterMs(value: string | null): number {
+  if (value === null) return 0
+  const seconds = Number(value)
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now()
+  return Number.isFinite(ms) && ms > 0 ? ms : 0
 }
 
 /** One line of a collector's error body, bounded — it is remote text. */

@@ -203,7 +203,7 @@ fail a run (every export is buffered, time-bounded, and swallows errors).
 
 A collector shedding load (`429`, `502`, `503`, `504`, or a dropped
 connection) is retried twice, 200 then 800 ms apart or after the
-`Retry-After` it names (at most 2 s), inside the end-of-run deadline; a
+`Retry-After` it names, in seconds or as a date (at most 2 s), inside the end-of-run deadline; a
 deadline that passes mid-wait ends the retries and warns the last answer.
 
 Swallowed, but not silent: an export that does not land warns once per
