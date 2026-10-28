@@ -520,6 +520,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       if (log === null) {
         throw new UserError(
           `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`} (a task id is project#task)`,
+          'VX_E_NO_HISTORY',
         )
       }
       if (parsed.format === 'json') {
