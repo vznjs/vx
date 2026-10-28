@@ -32,6 +32,13 @@ function unpinned(text: string): string[] {
   return bad
 }
 
+/** Every SHA-pinned `uses:` ref whose line names no version (`# v1.2.3`). */
+function unversioned(text: string): string[] {
+  return [...text.matchAll(/^\s*(?:-\s*)?uses:\s*['"]?([^\s'"#]+@[0-9a-f]{40})['"]?(.*)$/gm)]
+    .filter((m) => !/^\s*#\s*v\d+(?:\.\d+){0,2}\s*$/.test(m[2]!))
+    .map((m) => m[1]!)
+}
+
 /**
  * Every line of a `run:` script that expands a value an event or a
  * dispatcher supplies (`github.event.*`, `inputs.*`, `github.head_ref`):
@@ -103,6 +110,42 @@ describe('the supply chain', () => {
     expect(refs.filter((r) => !r.startsWith('./')).length).toBeGreaterThan(5)
     expect(
       files.flatMap((f) => unpinned(readFileSync(f, 'utf8')).map((r) => `${rel(f)}: ${r}`)),
+    ).toEqual([])
+  })
+
+  // A bare SHA says nothing a reviewer or an updater can check: each pin
+  // names the release it is, as `# v7.0.1`.
+  it('names the version of every pinned action beside its SHA', () => {
+    expect(
+      files.flatMap((f) => unversioned(readFileSync(f, 'utf8')).map((r) => `${rel(f)}: ${r}`)),
+    ).toEqual([])
+  })
+
+  it('finds a pin with no version comment (the checker itself)', () => {
+    expect(
+      unversioned(
+        [
+          '      - uses: owner/a@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2',
+          '        uses: owner/b@4d101475d8b20a2381f78447822ac1eab6504dd8',
+          '      - uses: owner/c@4d101475d8b20a2381f78447822ac1eab6504dd8 # pinned',
+          '      - uses: ./.github/actions/vx-runner',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      'owner/b@4d101475d8b20a2381f78447822ac1eab6504dd8',
+      'owner/c@4d101475d8b20a2381f78447822ac1eab6504dd8',
+    ])
+  })
+
+  // A hung job holds its runner for GitHub's six hours, and a DTE run's
+  // workers queue behind it.
+  it('bounds every job with timeout-minutes', () => {
+    const jobs = workflows.flatMap(({ file, doc }) =>
+      Object.entries(doc.jobs).map(([id, job]) => [`${path.basename(file)}#${id}`, job] as const),
+    )
+    expect(jobs.length).toBeGreaterThan(5)
+    expect(
+      jobs.filter(([, job]) => typeof job['timeout-minutes'] !== 'number').map(([at]) => at),
     ).toEqual([])
   })
 
