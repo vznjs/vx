@@ -200,8 +200,11 @@ async function loadDefaultExport(
     ])) as { default?: unknown }
   } catch (err) {
     // A served module's frames name its specifier; the user wrote the path.
-    if (err instanceof Error && err.stack !== undefined) {
-      err.stack = err.stack.replaceAll(specifier, configPath).replace(BUST_QUERY, '')
+    const seen = new Set<unknown>()
+    for (let e: unknown = err; e instanceof Error && !seen.has(e); e = e.cause) {
+      seen.add(e)
+      if (e.stack !== undefined)
+        e.stack = e.stack.replaceAll(specifier, configPath).replace(BUST_QUERY, '')
     }
     throw loadFailure(err, configPath, kind)
   } finally {

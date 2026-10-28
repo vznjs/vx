@@ -46,6 +46,16 @@ it('a config that throws names the error and its own line', async () => {
   })
 })
 
+// A config that wraps a failure (`new Error(msg, { cause })`) puts the
+// reason in the cause, and vx printed only the wrapper.
+it('a config that throws a wrapped error names its cause too', async () => {
+  const body = "\nthrow new Error('outer', { cause: new Error('inner') })\n"
+  const want = (file: string) =>
+    `vx: Error: outer\n    at <root>/${file}:2:11\nCaused by: Error: inner\n    at <root>/${file}:2:39`
+  expect((await vx({ 'p/vx.config.ts': body }, ['lock'])).err).toBe(want('p/vx.config.ts'))
+  expect((await vx({ '.vx/workspace.mjs': body }, ['lock'])).err).toBe(want('.vx/workspace.mjs'))
+})
+
 it('a config importing a missing file names the specifier', async () => {
   expect(
     await vx({ 'p/vx.config.ts': "import x from './nope.ts'\nexport default x\n" }, ['lock']),

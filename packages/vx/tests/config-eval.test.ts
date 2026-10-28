@@ -562,6 +562,23 @@ describe('evaluateConfigFresh: errors cross the boundary', () => {
     expect(err.stack).toContain(path.basename(file))
   })
 
+  it('carries a thrown error’s cause chain back, each with its stack', async () => {
+    const file = await write(
+      `const inner = new RangeError('port out of range')\n` +
+        `throw new Error('preset failed', { cause: new Error('load failed', { cause: inner }) })\n`,
+    )
+    const err = await evaluateConfigFresh(file).then(
+      () => new Error('NO THROW'),
+      (e: unknown) => e as Error,
+    )
+    const c1 = err.cause as Error
+    const c2 = c1.cause as Error
+    expect(c1.stack).toStartWith('Error: load failed\n')
+    expect(c2.stack).toStartWith('RangeError: port out of range\n')
+    expect(c2.stack).toContain(path.basename(file))
+    expect(c2.cause).toBeUndefined()
+  })
+
   it("forwards a transpile error's position, which its message does not carry", async () => {
     // `BuildMessage` says only `Expected "}" but found end of file`; the file,
     // line and column live in `position`, which the loader turns into the
