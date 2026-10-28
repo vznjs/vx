@@ -68,7 +68,13 @@ import {
   type WithheldLink,
   withheldLinkLine,
 } from './sandbox-request.js'
-import { markUnsaved, saveMiss, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
+import {
+  bracketLiteralHint,
+  markUnsaved,
+  saveMiss,
+  type OutputDirSnapshot,
+  type SaveFacts,
+} from './miss-save.js'
 import type { FingerprintWatch } from './fingerprint-watch.js'
 import { currentHit, restoreHit } from './hit-restore.js'
 import type { MissExplainer } from '../history/index.js'
@@ -859,7 +865,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (inputs !== undefined && declaredInputs.length > 0 && inputs.files.length === 0) {
     warnOf(log)(
       `[vx] ${node.id}: inputs matched no files (${declaredInputs.join(', ')}) — ` +
-        `the key will not change when this project's source does`,
+        `the key will not change when this project's source does` +
+        bracketLiteralHint([
+          ...(cfg.inputs?.files ?? []).map((g) => [node.projectDir, g] as const),
+          ...(cfg.inputs?.workspaceFiles ?? []).map((g) => [args.workspaceRoot, g] as const),
+        ]),
     )
   }
 

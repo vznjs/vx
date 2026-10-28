@@ -290,7 +290,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A task glob is a **standard glob**: `[ab]` is a character class, as
     in `Bun.Glob`, Turbo and Nx, and a route directory is escaped:
     `app/\[id\]/**` folds `app/[id]`. Bare, `app/[id]/**` is the class
-    and folds `app/i/…` and `app/d/…`, never the route.
+    and folds `app/i/…` and `app/d/…`, never the route. When an
+    input or output glob matches no files and, read as a literal path,
+    names one that exists, the "matched no files" warning says so and
+    gives the escaped spelling.
 
     An index OID is only trusted where git stores the worktree bytes
     **verbatim**, so the enumeration prunes it three ways:
