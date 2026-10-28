@@ -303,10 +303,12 @@ never branches on layering.
   `admit` gate, `poolOf` (an executor's own pool), `settledOf` (the
   deferred save a task's dependents wait on), `continueMode`, an abort
   `signal`, and `onStart` / `onFinish` observers.
-- **`graph/dependency-spec.ts`** — shared Turbo/Nx micro-syntax parser
+- **`util/dependency-spec.ts`** — shared Turbo/Nx micro-syntax parser
   (`'name'`, `'^name'`, `'pkg#name'`, plus `'*'` / `'^*'` / `'!form'`
-  for filter contexts). Used by `task-graph` for `dependsOn` edges
-  and by `orchestrator/upstream` for `inputs.tasks` filtering.
+  for filter contexts). Used by `task-graph` for `dependsOn` edges,
+  by `graph/folds` for `inputs.tasks` filtering, and by
+  `workspace/config-schema`, which parses each `inputs.tasks` entry at
+  load.
 
 ### Runner
 

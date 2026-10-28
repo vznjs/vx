@@ -329,9 +329,9 @@ describe('a module page shows what a formatter prints', () => {
 
 describe('a module page lists the errors a parser throws', () => {
   it("dependency-spec.md's five errors are parseDependencySpec's, as a set", () => {
-    const src = read('src/graph/dependency-spec.ts')
+    const src = read('src/util/dependency-spec.ts')
     const thrown = new Set(
-      [...src.matchAll(/new DependencySpecError\(raw, '([^']+)'\)/g)].map((m) => m[1]!),
+      [...src.matchAll(/new DependencySpecError\(field, raw, '([^']+)'\)/g)].map((m) => m[1]!),
     )
     const doc = read('docs/modules/dependency-spec.md')
     const errors = /Errors:\n\n([\s\S]*?)\n\n/.exec(doc)

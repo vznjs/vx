@@ -2086,7 +2086,11 @@ own output path, or set run.rules.exclusiveOutputs: false in
     tasks' cross-project `dependsOn`). Each rule is
     `{ from, allow?, deny? }`; a selector is `tag:<tag>` (a project
     carrying the tag) or a project name, and `*` matches any characters
-    in either (`tag:scope:*`, `@acme/*`). Every rule whose `from`
+    in either (`tag:scope:*`, `@acme/*`). A `--filter` form that is no
+    name (`./apps/*`, `{apps/web}`, `!x`, `x...`, `...x`, `x[main]`) or a
+    selector with surrounding whitespace is refused, naming the field
+    (`run.rules.dependencies[0].deny[1]`): it would match no project, so
+    a `deny` of it passed every edge. Every rule whose `from`
     selects a project applies: each dependency must match an `allow`
     selector when `allow` is given, and none of `deny`, so a deny beats
     any allow. A project no rule selects is free, and an untagged
@@ -2527,6 +2531,7 @@ a user meets most:
 | `inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                             | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
 | `inputs.tasks must be an array of non-empty strings`                                                                                  | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                            | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
+| `invalid inputs.tasks "<entry>": <reason>`                                                                                            | A malformed entry (`^`, `a#`, `#x`, `!`, `^a#b`), refused at load with the parser's reason.                                                                                                                                    |
 | `cache.outputs is required when cache is set`                                                                                         | Forgot `outputs`.                                                                                                                                                                                                              |
 | `cache.inputStability must be an object`                                                                                              | A bare string (`inputStability: 'mutable'`).                                                                                                                                                                                   |
 | `cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'`                                                         | Any other value (`'content'`, `false`).                                                                                                                                                                                        |

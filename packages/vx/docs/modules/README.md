@@ -164,7 +164,7 @@ here, itself or in a brace group.
 | [`scheduler.md`](./scheduler.md)             | `src/graph/scheduler.ts` — parallel topological executor.                                                 |
 |                                              | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md).                                   |
 |                                              | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).                                    |
-| [`dependency-spec.md`](./dependency-spec.md) | `src/graph/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.                                     |
+| [`dependency-spec.md`](./dependency-spec.md) | `src/util/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.                                      |
 | [`folds.md`](./folds.md)                     | `src/graph/folds.ts` — which dependencies a key folds (`inputs.tasks`).                                   |
 
 ## Cache cluster
