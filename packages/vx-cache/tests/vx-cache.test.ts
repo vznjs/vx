@@ -379,7 +379,7 @@ describe('GitHub OIDC', () => {
       fetch: async (req) => {
         asked++
         const status = answers.shift() ?? 403
-        if (status !== 200) return new Response('busy', { status })
+        if (status !== 200) return Response.json({ message: 'not this time' }, { status })
         const audience = new URL(req.url).searchParams.get('audience')!
         return Response.json({ value: await iss.sign(BRANCH_JOB, audience) })
       },
@@ -404,7 +404,7 @@ describe('GitHub OIDC', () => {
         async () => {},
       )
       await expect(refused.put('b2', new Blob(['y']), { durationMs: 1 })).rejects.toThrow(
-        "GitHub's OIDC endpoint: HTTP 403; remote cache off for this run",
+        "GitHub's OIDC endpoint: HTTP 403: not this time; remote cache off for this run",
       )
       expect(asked).toBe(4)
     } finally {
