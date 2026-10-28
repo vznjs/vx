@@ -114,7 +114,12 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
   return async (req) => {
     const path = new URL(req.url).pathname
     try {
-      if (new URL(req.url).search !== '') throw new Refusal(400, 'no query parameters')
+      const search = new URL(req.url).search
+      if (search !== '')
+        throw new Refusal(
+          400,
+          `this server takes no query parameters: drop ${search.slice(0, 200)} from the url`,
+        )
       if (path === '/v1/timings/upload') {
         if (req.method !== 'POST') return notAllowed('POST')
         const res = await upload(req)

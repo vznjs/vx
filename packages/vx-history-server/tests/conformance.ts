@@ -224,6 +224,14 @@ export function conformance(name: string, target: Target): void {
         400,
         { code: 'bad_request', message: 'send the body as Content-Type: application/json' },
       ])
+      const query = await call('/v1/capabilities?team=a')
+      expect([query.status, await query.json()]).toEqual([
+        400,
+        {
+          code: 'bad_request',
+          message: 'this server takes no query parameters: drop ?team=a from the url',
+        },
+      ])
     })
   })
 }
