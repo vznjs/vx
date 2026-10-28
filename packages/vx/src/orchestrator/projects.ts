@@ -184,7 +184,8 @@ interface LoadProjectsBase {
   projectMetas: readonly ProjectMeta[]
   /**
    * Projects whose configs must load — `'all'`, or names (unknown and
-   * config-less ones are ignored). With `closure`, each seed's transitive
+   * config-less ones are ignored, unless a configured project's closure
+   * reaches them, as in the `'all'` load). With `closure`, each seed's transitive
    * package dependencies load too, which bounds `^task` frontier
    * expansion; a `pkg#task` dependsOn entry pulls its project in either
    * way, since the package graph cannot see the cross form.
@@ -276,7 +277,17 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     for (const dep of packageGraph.transitiveDeps(name)) consider(dep)
   }
   const seedAll = (): Iterable<string> => configured.map((m) => m.name)
-  const seeds = args.seeds === 'all' ? seedAll() : [...args.seeds]
+  // A named config-less seed loads only where the `'all'` load would load
+  // it: a configured project's closure reaches it. Seeded as itself, it got
+  // a default build `vx show` listed nowhere and no run of the workspace had
+  // (`vx run lone#build` ran a group no dependant reaches).
+  const configuredNames = new Set(configured.map((m) => m.name))
+  const seedable = (name: string): boolean =>
+    configuredNames.has(name) ||
+    (graph !== null &&
+      metaByName.has(name) &&
+      graph.transitiveDependents(name).some((d) => configuredNames.has(d)))
+  const seeds = args.seeds === 'all' ? seedAll() : [...args.seeds].filter(seedable)
   for (const seed of seeds) consider(seed)
   if (graph !== null && pending.length < metaByName.size) {
     for (const seed of args.seeds === 'all' ? seedAll() : seeds) {
