@@ -18,9 +18,11 @@ let sign: (claims: JWTPayload, aud?: string) => Promise<string>
 let handle: (req: Request) => Promise<Response>
 let read: string
 let jwk: Record<string, unknown>
+let key: CryptoKey
 
 beforeAll(async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
+  key = privateKey
   jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
   sign = (claims, aud = AUD) =>
     new SignJWT({
@@ -170,6 +172,20 @@ describe('CI OIDC tokens', () => {
     expect(await detail(await put(noRepo, 'a9'))).toEqual([403, 'no repository claim'])
     const noWorkflow = await sign({ ...MAIN, job_workflow_ref: undefined })
     expect(await detail(await put(noWorkflow, 'a9'))).toEqual([403, 'no job_workflow_ref claim'])
+  })
+
+  // A token with no exp was refused as "not a JWT", which named nothing to fix.
+  it('refuses a token with no exp, naming the claim', async () => {
+    const noExp = await new SignJWT({
+      ...MAIN,
+      repository: 'acme/app',
+      job_workflow_ref: 'acme/app/.github/workflows/ci.yml@refs/heads/main',
+    })
+      .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
+      .setIssuer(GITHUB)
+      .setAudience(AUD)
+      .sign(key)
+    expect(await detail(await put(noExp, 'a9'))).toEqual([401, 'no exp claim'])
   })
 
   it('refuses another repository, another audience and a forged signature', async () => {

@@ -355,6 +355,7 @@ function refusal(err: unknown, iss: string): Refusal {
   if (err instanceof errors.JWTClaimValidationFailed) {
     if (err.claim === 'aud') return new Refusal(401, 'wrong audience')
     if (err.claim === 'nbf') return new Refusal(401, 'not yet valid')
+    if (err.reason === 'missing') return new Refusal(401, `no ${err.claim} claim`)
   }
   return new Refusal(401, 'not a JWT')
 }
