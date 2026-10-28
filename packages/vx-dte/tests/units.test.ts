@@ -14,7 +14,7 @@ import {
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, homeOf, needOf, pace } from '../src/plugin.js'
-import type { Platform } from '@vzn/vx'
+import { isUserError, type Platform } from '@vzn/vx'
 import {
   type CacheFacts,
   type CapturedChunk,
@@ -3150,6 +3150,22 @@ it('refuses options it does not read and workers it cannot start', () => {
   expect(refusal(() => docker({} as never))).toBe(
     "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
   )
+})
+
+it('docker() with no options says what it needs, as a user error', () => {
+  // A bare docker() threw a TypeError reading options.image: a crash, not a setting to fix.
+  for (const options of [undefined, {}, { image: '' }]) {
+    let err: unknown
+    try {
+      docker(options as never)
+    } catch (e) {
+      err = e
+    }
+    expect([isUserError(err), (err as Error).message]).toEqual([
+      true,
+      "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
+    ])
+  }
 })
 
 it('a run that is not distributed loads none of it', async () => {
