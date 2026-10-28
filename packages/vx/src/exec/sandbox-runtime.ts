@@ -32,6 +32,7 @@ import {
   lstatSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readdirSync,
   readFileSync,
@@ -62,6 +63,7 @@ import {
 import { watchTree } from './proc-sample.js'
 import {
   BUN_GLOB_WILDCARDS,
+  ESSENTIAL_ENV,
   executablePath,
   helperEnv,
   taskShell,
@@ -240,6 +242,16 @@ export function unavailableReason(exitCode: number | null, stderr: string): stri
   return `a sandboxed \`true\` failed (exit ${exitCode}): ${stderr.slice(0, 200)}${hint}`
 }
 
+/** vx's values of the variables every task gets (`ESSENTIAL_ENV`). */
+function essentialEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const name of ESSENTIAL_ENV) {
+    const value = process.env[name]
+    if (value !== undefined) env[name] = value
+  }
+  return env
+}
+
 async function trySandboxedTrue(
   SandboxManager: SrtModule['SandboxManager'],
   weakerNested: boolean,
@@ -252,6 +264,8 @@ async function trySandboxedTrue(
     )
     const proc = Bun.spawn([taskShell(), '-c', wrapped], {
       argv0: 'sh',
+      // What a task gets of vx's env: the probe is a sandboxed `true`.
+      env: essentialEnv(),
       stdout: 'ignore',
       stderr: 'pipe',
       stdin: 'ignore',
@@ -608,11 +622,53 @@ function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
     // SRT's dependency check says so
   }
   try {
-    paths.socatPath = executablePath('socat')
+    paths.socatPath = envCutSocat(executablePath('socat'))
   } catch {
     // SRT's dependency check says so
   }
   return paths
+}
+
+/**
+ * socat behind a wrapper that `exec`s it with the essential env only.
+ * SRT spawns its host bridge (`socat UNIX-LISTEN:… TCP:localhost:…`) with
+ * no `env`, so it held vx's whole environment for the run, readable from
+ * its `/proc/<pid>/environ` by any unsandboxed task beside it, the hole
+ * `hideEnvFromTasks` closes for vx itself. SRT takes no env for it, and
+ * narrowing `process.env` around `initialize` would hand a task spawned
+ * meanwhile the narrowed one. The same path runs socat inside the
+ * sandbox, so the wrapper keeps `SOCAT_DEFAULT_LISTEN_IP` (`hostHasIpv6`).
+ * Made once per process in a 0700 directory; a host where it cannot run
+ * (`/tmp` mounted noexec) keeps the bare socat.
+ */
+const socatWrappers = new Map<string, string>()
+function envCutSocat(socat: string): string {
+  const known = socatWrappers.get(socat)
+  if (known !== undefined) return known
+  let wrapper = socat
+  try {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-socat-'))
+    trackTaskTmpdir(dir)
+    const keep = [...ESSENTIAL_ENV, 'SOCAT_DEFAULT_LISTEN_IP']
+      .map((n) => `\${${n}+"${n}=$${n}"}`)
+      .join(' ')
+    const file = path.join(dir, 'socat')
+    writeFileSync(
+      file,
+      `#!/bin/sh\nexec ${shellQuote(executablePath('env'))} -i ${keep} ${shellQuote(socat)} "$@"\n`,
+      { mode: 0o500 },
+    )
+    if (
+      Bun.spawnSync([file, '-V'], { env: helperEnv(), stdout: 'ignore', stderr: 'ignore' })
+        .exitCode === 0
+    ) {
+      wrapper = file
+    }
+  } catch {
+    // no temp dir or no `env`: the bare socat, as before
+  }
+  socatWrappers.set(socat, wrapper)
+  return wrapper
 }
 
 /**
@@ -2902,6 +2958,7 @@ function straceState(): Promise<{ form: false | 'plain' | 'seccomp'; why: string
 async function probeStrace(): Promise<{ form: false | 'plain' | 'seccomp'; why: string }> {
   try {
     const p = Bun.spawn([executablePath('strace'), '--version'], {
+      env: helperEnv(),
       stdout: 'pipe',
       stderr: 'ignore',
     })
@@ -2975,7 +3032,7 @@ async function traceRefusal(
       '--',
       executablePath('true'),
     ],
-    { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe' },
+    { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe', env: helperEnv() },
   )
   const err = await new Response(p.stderr).text()
   const line = err.split('\n').find((l) => STRACE_OWN_ERROR.test(l))
