@@ -111,9 +111,20 @@ export function taskId(project: string, task: string): string {
 // graph is where every reader of a task id looks for it.
 export { splitTaskId } from '../util/index.js'
 
-/** A keyed group: the default `build` (orchestrator/projects.ts), or a config's group with `inputs`. */
-function isKeyedGroup(task: TaskConfig): boolean {
-  return task.exec === undefined && task.inputs !== undefined
+/**
+ * A keyed group that is only its dependencies' own `name` (`^name`): the
+ * default `build` (orchestrator/projects.ts), or a config's of that shape.
+ * Only this shape walks last on a package cycle and is passed through.
+ * Any keyed group was: `ci` keyed on `lint` lost its edge and ran nothing,
+ * and `deploy` on `^build` walked `^deploy`.
+ */
+function isChainGroup(task: TaskConfig, name: string): boolean {
+  return (
+    task.exec === undefined &&
+    task.inputs !== undefined &&
+    task.dependsOn?.length === 1 &&
+    task.dependsOn[0] === `^${name}`
+  )
 }
 
 /**
@@ -349,7 +360,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 
   function add(node: TaskNode): void {
     nodes.set(node.id, node)
-    if (isKeyedGroup(node.config) && onCycle(node.projectName)) deferred.push(node)
+    if (isChainGroup(node.config, node.taskName) && onCycle(node.projectName)) deferred.push(node)
     else if ((node.config.dependsOn?.length ?? 0) > 0) {
       stack.push({ node, entry: 0, added: false, pending: null, next: 0 })
     }
@@ -415,7 +426,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     return declared.has(name)
   }
 
-  // Package cycles, for the default `build` (`isKeyedGroup`): each project
+  // Package cycles, for the default `build` (`isChainGroup`): each project
   // on one maps to its strongly connected component, found on the first ask
   // (iterative Tarjan over `directDeps`, the order the `^name` walk reads).
   const component = new Map<string, number>()
@@ -480,7 +491,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       if (visit(frame, target, name, false)) {
         held = true
         const task = declaredTask(projects.get(target)!.config, name)!
-        if (isKeyedGroup(task) && onCycle(target)) {
+        if (isChainGroup(task, name) && onCycle(target)) {
           frontier.push(...packageGraph.directDeps(target))
         }
       } else frontier.push(...packageGraph.directDeps(target))
@@ -488,13 +499,14 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     return held
   }
 
-  // An edge by name (`build`, `pkg#build`) to a default build on a package
-  // cycle goes on past it as a `^build` walk does: that build folds nothing
-  // of the builds on its cycle, so `a#test` on `build` with `a` ↔ `b` both
-  // on the default build folded none of `b` and hit after `b` changed.
+  // An edge by name (`build`, `pkg#build`) or pattern (`bui*`, `^bui*`) to
+  // a default build on a package cycle goes on past it as a `^build` walk
+  // does: that build folds nothing of the builds on its cycle, so `a#test`
+  // on `build` with `a` ↔ `b` both on the default build folded none of `b`
+  // and hit after `b` changed.
   function goPast(frame: Frame, project: string, name: string, visited: Set<string>): void {
     const task = declaredTask(projects.get(project)!.config, name)!
-    if (isKeyedGroup(task) && onCycle(project)) walkHolders(frame, name, visited, project)
+    if (isChainGroup(task, name) && onCycle(project)) walkHolders(frame, name, visited, project)
   }
 
   // Resolves one `dependsOn` entry of `frame`'s task into its edges.
@@ -544,6 +556,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         for (const name of Object.keys(projects.get(projectName)!.config.tasks ?? {})) {
           if (name === taskName || !re.test(name)) continue
           visit(frame, projectName, name, false)
+          goPast(frame, projectName, name, new Set([projectName]))
         }
       } else {
         // Missing target is a hard error — the user typed a name that
@@ -620,7 +633,10 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
           re.test(n),
         )
         if (names.length > 0) {
-          for (const name of names) visit(frame, target, name, false)
+          for (const name of names) {
+            visit(frame, target, name, false)
+            goPast(frame, target, name, new Set([projectName, target]))
+          }
         } else {
           frontier.push(...packageGraph.directDeps(target))
         }
@@ -704,13 +720,13 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       }
       const to = taskId(target, name)
       if (sameCycle(x.projectName, target)) {
-        if (!isKeyedGroup(task) && !nodes.has(to)) {
+        if (!isChainGroup(task, name) && !nodes.has(to)) {
           visit(null, target, name, false)
           drain()
           expanded = true
           reaching = null
         }
-        if (isKeyedGroup(task) || (reaching ??= reachingTo(nodes, x.id)).has(to)) {
+        if (isChainGroup(task, name) || (reaching ??= reachingTo(nodes, x.id)).has(to)) {
           frontier.push(...packageGraph.directDeps(target))
           continue
         }
@@ -720,7 +736,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       visit(frame, target, name, false)
       drain()
       if (nodes.size !== size) reaching = null
-      if (isKeyedGroup(task) && onCycle(target)) frontier.push(...packageGraph.directDeps(target))
+      if (isChainGroup(task, name) && onCycle(target))
+        frontier.push(...packageGraph.directDeps(target))
     }
     x.deps = [...new Set(x.deps)].sort()
   }
