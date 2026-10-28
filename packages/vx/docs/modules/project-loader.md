@@ -57,8 +57,9 @@ readers that reach it here.
   to a native `await import()`. Bun resolves TypeScript natively —
   no transpile step, no separate loader, no `jiti`.
 - On a first load the import specifier is
-  `<absolutePath>?vx-bust=<xxh3-of-bytes>`, or `?vx-held=` for a
-  project config evaluated from the bytes the loader read (below).
+  `<absolutePath>?vx-bust=<xxh3-of-bytes>`; a project config evaluated
+  from the bytes the loader read (below) is imported under its plain
+  path, `?vx-held=` only when Bun's registry already held that path.
   Content changes produce a different query string → different ESM
   module identity → fresh evaluation. Same content → cached module (the
   no-op fast path).
@@ -211,8 +212,15 @@ readers that reach it here.
 The loader reads a project config's bytes to refuse an unprovided
 import; `import()` then opened and read the file again. A first load of
 a project config is now served those bytes by the `vx-config-bytes`
-onLoad (`Bun.plugin`), under `?vx-held=`: one read of the config, and
-the evaluation runs exactly the bytes the gate saw. It is also the cheaper import — 1,000 configs took 80–100
+onLoad (`Bun.plugin`), under its plain path: one read of the config, and
+the evaluation runs exactly the bytes the gate saw. Under a query it was
+a second module beside the one an import cycle reaches (`Cannot access
+'task' before initialization`), and its `import.meta.url` differed from
+the worker's. An `onLoad` that did not serve the load (Bun's registry
+held the path, from a config that imported it) is followed by the
+`?vx-held=` import, a fresh evaluation; a `vx.config.*` imported while no
+load holds it is served from disk, or re-exported from Bun's own load
+when CommonJS. It is also the cheaper import — 1,000 configs took 80–100
 ms served against 180 ms read by Bun, and the cold `load configs` stage
 of a 1,000-package `vx run --dry` dropped from 256 to 181 ms (min of 7,
 interleaved, 2026-09-24; 100 packages: 51 to 33).
@@ -411,6 +419,11 @@ Drop in any function that takes an absolute config path and returns
 
 Before either evaluation path (the first in-process import, the repeat
 load's worker), a bare import nothing above the config provides is refused
-with the install named (`refuseUnprovidedImports`, item 239): left to Bun, a
+with the install named (`refuseUnprovided`, item 239): left to Bun, a
 workspace with no `node_modules` would auto-install it from the registry
-first, and a config must never download.
+first, and a config must never download. Each script the config reaches
+by relative import (`configImports`) is held to the same rule, naming the
+file that holds the import: a preset's import was installed and run where
+the config's own was refused (`--no-install` holds only the shebang). A
+config with no relative specifier skips the walk; a fresh bytecode bundle
+skips it too, every import it holds already resolved.

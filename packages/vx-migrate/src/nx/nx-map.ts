@@ -363,6 +363,8 @@ export async function mapNxWorkspace(
     const relRoot = normRel(node?.data?.root ?? '')
     if (node?.data?.targets === undefined) continue
     const dir = relRoot === '' || relRoot === '.' ? root : path.join(root, relRoot)
+    const rel = path.relative(root, dir)
+    if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) continue
     let pkg: PackageMeta['packageJson'] = { name: nodeName }
     try {
       pkg = (await Bun.file(path.join(dir, 'package.json')).json()) as PackageMeta['packageJson']

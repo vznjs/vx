@@ -229,7 +229,7 @@ export async function affectedChanges(
   const partial = isPartialClone(args.workspaceRoot).catch(() => false)
   const base = fromMergeBase
     ? await mergeBase(args.workspaceRoot, since)
-    : (await verifyRef(args.workspaceRoot, since), since)
+    : await rangeBase(args.workspaceRoot, since)
 
   const [diffed, untracked] = await Promise.all([
     // `--no-renames` is crucial for project-affected detection: with
@@ -635,7 +635,8 @@ async function linkedChanges(
     '--directory',
     '-z',
     '--',
-    ...(named.length === inside.length ? named : ['.']),
+    // A name is a path, never pathspec magic (`:x`, `*`).
+    ...(named.length === inside.length ? named.map((n) => `:(literal)${n}`) : ['.']),
   ])
   const changedSet = new Set(changed)
   const under = (p: string, dir: string): boolean => dir === '' || p.startsWith(`${dir}/`)
@@ -867,11 +868,18 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
   if (sha !== undefined) return sha
   const reached = await reachMergeBase(workspaceRoot, ref)
   if (reached !== undefined) return reached
+  await verifyTreeRef(workspaceRoot, ref)
+  return ref
+}
+
+/**
+ * `verifyRef`, then refuse `<rev>:<path>`: it names the tree (or blob) at
+ * <path>, and diffed against the working tree its paths miss the <path>/
+ * prefix, so `develop:pkgs` selected projects nothing had changed, green.
+ * A root tree (`develop^{tree}`, the empty tree) diffs right and stays a base.
+ */
+async function verifyTreeRef(workspaceRoot: string, ref: string): Promise<void> {
   await verifyRef(workspaceRoot, ref)
-  // `<rev>:<path>` names the tree (or blob) at <path>: diffed against the
-  // working tree, its paths miss the <path>/ prefix, and `develop:pkgs`
-  // selected projects nothing had changed, green. A root tree
-  // (`develop^{tree}`, the empty tree) diffs right and stays a base.
   const sub = /^([^:]*):(?!\/)(.+)$/s.exec(ref)
   if (sub !== null) {
     throw new UserError(
@@ -880,7 +888,6 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
       'VX_E_AFFECTED_BASE',
     )
   }
-  return ref
 }
 
 /**
@@ -920,11 +927,7 @@ async function reachMergeBase(workspaceRoot: string, ref: string): Promise<strin
   const ancestor = HEAD_ANCESTOR.test(ref)
   let tip = ancestor ? undefined : revParse(workspaceRoot, ref)
   if (tip === undefined && !ancestor) {
-    const spec = originSpec(ref)
-    if (spec === undefined || !(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) {
-      return undefined
-    }
-    tip = revParse(workspaceRoot, ref)
+    tip = await fetchTip(workspaceRoot, ref)
     if (tip === undefined) return undefined
   }
   if (tip !== undefined && parentsOf(workspaceRoot, head).includes(tip)) return tip
@@ -942,6 +945,30 @@ async function reachMergeBase(workspaceRoot: string, ref: string): Promise<strin
     if (!isShallow(workspaceRoot)) return undefined
   }
   return undefined
+}
+
+/** `ref`'s commit fetched from origin at depth 1, or undefined when origin cannot name it. */
+async function fetchTip(workspaceRoot: string, ref: string): Promise<string | undefined> {
+  const spec = originSpec(ref)
+  if (spec === undefined || !(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) {
+    return undefined
+  }
+  return revParse(workspaceRoot, ref)
+}
+
+/**
+ * The base of a two-dot `<ref>..HEAD`: `ref` itself, which a shallow clone
+ * fetches as the three-dot form fetches its tip (CI's depth-1 checkout
+ * refused `origin/main..HEAD` while `origin/main...HEAD` worked). HEAD's
+ * own ancestor is its merge base with HEAD, reached by deepening.
+ */
+async function rangeBase(workspaceRoot: string, ref: string): Promise<string> {
+  if (HEAD_ANCESTOR.test(ref)) return mergeBase(workspaceRoot, ref)
+  if (revParse(workspaceRoot, ref) === undefined && isShallow(workspaceRoot)) {
+    await fetchTip(workspaceRoot, ref)
+  }
+  await verifyTreeRef(workspaceRoot, ref)
+  return ref
 }
 
 /** The clones `fetchOrigin` fetched into, so made partial: `isPartialClone` may have answered first. */
