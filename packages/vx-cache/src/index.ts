@@ -197,6 +197,10 @@ const chunks = <T>(all: readonly T[], size: number): T[][] =>
     all.slice(i * size, (i + 1) * size),
   )
 
+/** The limits an answer's `vx-max-*` headers name. */
+const limitsNamed = (res: Response): Limits | undefined =>
+  limitsOf((k) => Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
+
 /** Each limit, or undefined when one is missing or bad. */
 function limitsOf(read: (k: keyof Limits) => unknown): Limits | undefined {
   const maxCheckHashes = count(read('maxCheckHashes'))
@@ -372,6 +376,9 @@ export class VxCacheLayer implements RemoteCacheLayer {
       ...(init.body === undefined ? {} : { body: init.body }),
       signal: controller.signal,
     })
+    // Any answer's, a refusal's too: one refused for its size by a server
+    // whose limits fell mid-run names them for the next check and upload.
+    this.limits = limitsNamed(res) ?? this.limits
     if (init.streamed === true) {
       clearTimeout(answer)
       res = streamed(res, controller, ms)
@@ -492,9 +499,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const res = await this.json('/v1/artifacts', { hashes, scopes })
     if (res === undefined) return new Map()
     if (res.status !== 200) throw await refusal(res)
-    const named = limitsOf((k) => Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
-    if (named === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
-    else this.limits = named
+    if (limitsNamed(res) === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
     const body = (await res.json()) as Record<string, unknown> | null
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       throw new Error('the check answered no object of hashes')

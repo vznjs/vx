@@ -273,6 +273,52 @@ describe("the server's limits", () => {
       await srv.stop()
     }
   })
+
+  // A server restarted with lower limits refused each check and upload for
+  // its size, and the run kept the old ones: every check of the run failed.
+  it('keeps to the limits a refusal names, from the next check and upload', async () => {
+    const blobs = new Map<string, Uint8Array>()
+    const made = (maxCheckHashes: number, maxUploadBytes: number) =>
+      createCacheServer({
+        blobs: memBlobs(blobs),
+        authorize: oidcAuth({ allow: ALLOW, fetchJson: (u) => iss.fetchJson(u) }),
+        limits: { maxCheckHashes, maxUploadBytes },
+      })
+    let handle = made(500, 1 << 20)
+    const lookups: number[] = []
+    const srv = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: async (req) => {
+        if (new URL(req.url).pathname === '/v1/artifacts') {
+          const { hashes, scopes } = (await req.clone().json()) as Record<string, string[]>
+          lookups.push(hashes!.length * scopes!.length)
+        }
+        return handle(req as never)
+      },
+    })
+    try {
+      const url = srv.url.href.replace(/\/$/, '')
+      const c = layer(url, await iss.sign(MAIN_JOB, new URL(url).origin))
+      const said: string[] = []
+      c.warn = (m) => said.push(m)
+      const keys = ['a1', 'a2', 'a3']
+      expect((await c.hasMany(keys)).size).toBe(0)
+      handle = made(2, 1 << 20)
+      await expect(c.hasMany(keys)).rejects.toThrow('HTTP 400')
+      handle = made(2, 4)
+      await expect(c.put('b1', new Blob(['12345']), { durationMs: 1 })).rejects.toThrow('HTTP 413')
+      lookups.length = 0
+      expect((await c.hasMany(keys)).size).toBe(0)
+      expect(lookups.sort((a, b) => a - b)).toEqual([1, 2])
+      expect(await c.put('b2', new Blob(['12345']), { durationMs: 1 })).toBe(false)
+      expect(said).toEqual([
+        "[vx] vx-cache: b2 is 5 bytes, over the server's upload limit of 4: not uploaded",
+      ])
+    } finally {
+      await srv.stop(true)
+    }
+  })
 })
 
 describe('download deadline', () => {
