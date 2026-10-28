@@ -933,6 +933,8 @@ down with it:
   such a failure to what starts after its death. A cache hit still
   restores (that artifact came from a healthy run), and the next run
   without the failure rebuilds the rest.
+  A task skipped off its `exec.platforms` is no failure: what depends
+  on it is skipped in every mode.
 
 The mode is the local scheduler's: a task a plugin executor runs
 elsewhere is one dispatch, failed or not, like any other.

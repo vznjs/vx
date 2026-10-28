@@ -792,10 +792,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     const blockedRestores = new Map<string, string | undefined>()
     const heldRelease = new Set<string>()
     const release = (id: string): void => {
-      if (inRestoreTier(id) && continueMode !== 'always') {
+      if (inRestoreTier(id)) {
         for (const dep of (nodes.get(id) as TaskNode).deps) {
           const u = outcomes.get(dep)
-          if (u?.status === 'failed' || u?.status === 'aborted') {
+          if (continueMode !== 'always' && (u?.status === 'failed' || u?.status === 'aborted')) {
             blockedRestores.set(id, dep)
             break
           }
@@ -862,8 +862,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         return true
       }
       if (inRestoreTier(id)) return false
-      if (continueMode === 'always') return false
       const node = nodes.get(id) as TaskNode
+      // `always` runs past a failed upstream, never past one that did not
+      // run on this platform: under it, a skip has no other cause.
+      if (continueMode === 'always')
+        return node.deps.some(
+          (d) => outcomes.get(d)?.status === 'skipped' || blockedRestores.has(d),
+        )
       return node.deps.some((d) => {
         const u = outcomes.get(d)
         // `aborted` propagates even though it is counted nowhere: the
@@ -977,9 +982,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         if (willSkip(id)) {
           // The root of the block: a failed or aborted upstream names
           // itself; a skipped one hands down its own root.
-          const blocker = upstream.find(
-            (u) => u !== undefined && (u.status === 'failed' || u.status === 'aborted'),
-          )
+          const blocker =
+            continueMode === 'always'
+              ? undefined
+              : upstream.find(
+                  (u) => u !== undefined && (u.status === 'failed' || u.status === 'aborted'),
+                )
           const viaSkip = upstream.find((u) => u !== undefined && u.status === 'skipped')
           const viaRestore = node.deps.find((d) => blockedRestores.has(d))
           const blockedBy =
