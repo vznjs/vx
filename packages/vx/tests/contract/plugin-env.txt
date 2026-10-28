@@ -24,6 +24,9 @@
 @vzn/vx-ci GITLAB_CI
 @vzn/vx-ci RUNNER_ARCH
 @vzn/vx-ci RUNNER_OS
+@vzn/vx-devtools FORCE_COLOR
+@vzn/vx-devtools NO_COLOR
+@vzn/vx-devtools TERM
 @vzn/vx-history GITHUB_ACTIONS
 @vzn/vx-history VX_HISTORY_URL
 @vzn/vx-migrate ACTIONS_ID_TOKEN_REQUEST_TOKEN
