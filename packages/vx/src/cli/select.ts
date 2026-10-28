@@ -309,6 +309,8 @@ export async function resolveFilters(
   load: CliLoadOptions = {},
   /** The raw filter `--affected` became: its diff is kept per path for the run. */
   affected?: string,
+  /** The verb a warning names: `vx show` and `vx watch` select as a run does. */
+  verb: 'run' | 'show' | 'watch' = 'run',
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
   const projects = await loadWorkspaceProjects(cwd)
@@ -447,7 +449,8 @@ export async function resolveFilters(
     // Every pattern matched and an exclusion took them all back: "no
     // projects matched filter(s): one, !one" read as a typo of `one`.
     const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
-    const excluded = `${negations.join(', ')} excluded every project the other filters matched`
+    // With no include the base is every project: there is no "other filter".
+    const excluded = `${negations.join(', ')} excluded every project${includes.length > 0 ? ' the other filters matched' : ''}`
     if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
       if (includes.every((f) => emptyDiffs.has(f))) {
         const refs = includes.map((f) => f.gitSince).join(', ')
@@ -486,7 +489,7 @@ export async function resolveFilters(
   for (const f of unmatched)
     sayNotice(
       'warn',
-      'vx run',
+      `vx ${verb}`,
       `filter "${f}" matched no projects${didYouMean([f], projects, tags)}`,
     )
   // Each include is a union: what `--filter other` selected runs its tasks

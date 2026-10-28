@@ -186,6 +186,7 @@ beforeAll(async () => {
   json('last', ['--failed'])
   json('last', ['--log', 'app#fail'])
   json('last', ['--stats'])
+  json('last', ['--sql', 'SELECT project, task, cpu_ms, remote_error FROM runs'])
   // The flaky task passes again: the replayed failure names that run (`fixedIn`).
   await writeFile(path.join(root, 'flag'), '')
   expect(vx(['run', 'lib#flaky', '--force']).code).toBe(0)
@@ -223,6 +224,20 @@ beforeAll(async () => {
               },
             },
             { node: node('a#ci'), hash: 'k2', cacheStatus: 'group', deps: ['a#build'] },
+            {
+              node: node('a#mac'),
+              hash: 'k3',
+              cacheStatus: 'skipped',
+              deps: [],
+              otherPlatform: { needs: ['darwin-arm64'], host: 'linux-x64' },
+            },
+            {
+              node: node('a#app'),
+              hash: 'k4',
+              cacheStatus: 'skipped',
+              deps: ['a#mac'],
+              blockedBy: 'a#mac',
+            },
           ],
           downloadDowngrades: [{ taskId: 'a#build', reason: 'a dependant reads its outputs' }],
         },
@@ -590,6 +605,8 @@ describe('each schema object is its source type', () => {
         download: true,
         description: true,
         affected: true,
+        otherPlatform: true,
+        blockedBy: true,
       }),
     )
     expect(props('plan', 'properties', 'predicted')).toEqual(

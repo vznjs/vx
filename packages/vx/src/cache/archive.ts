@@ -140,6 +140,7 @@ class EntrySum {
  */
 class SumCheck {
   private readonly sum = new EntrySum()
+  private readonly names = new Set<string>()
   private seen: boolean = false
   /** The entry's body, hashed as the caller reads it; null for the sum entry itself (checked here). */
   async body(
@@ -157,6 +158,10 @@ class SumCheck {
   enter(name: string): boolean {
     if (this.seen) throw new TarFormatError(`entry ${name} follows the artifact's checksum`)
     if (name === SUM_ENTRY) return true
+    // vx never packs a name twice, and a restore staged both: their renames
+    // ran together, so which body landed was a race the index never saw.
+    if (this.names.has(name)) throw new ArchiveSecurityError(`archive holds ${name} twice`)
+    this.names.add(name)
     this.sum.entry(name)
     return false
   }

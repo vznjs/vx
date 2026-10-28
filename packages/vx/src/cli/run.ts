@@ -414,7 +414,8 @@ export async function resolveRunOptions(
       const task = t.slice(idx + 1)
       if (!project) {
         return {
-          error: `missing project name before '#' in "${t}" (vx ${verb} ${task} runs it in every project)`,
+          // A bare name runs in the cwd project: `--all` is every project.
+          error: `missing project name before '#' in "${t}" (vx ${verb} ${task} --all runs it in every project)`,
         }
       }
       if (!task) {
@@ -451,6 +452,7 @@ export async function resolveRunOptions(
           filterStrings,
           parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
           affectedFilter,
+          verb,
         )
       : undefined
   if (resolved !== undefined && 'error' in resolved) return resolved
