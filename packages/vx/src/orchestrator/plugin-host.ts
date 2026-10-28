@@ -766,6 +766,8 @@ export function executorDemand(
   }
 }
 
+const EXECUTOR_FLAGS = ['remote', 'sandbox', 'servers', 'runtime', 'exclusive', 'timeouts'] as const
+
 /**
  * Collect every plugin's `executor`, in declaration order, with core's
  * own appended at the tail: per task, `selectExecutor` takes the first
@@ -791,6 +793,15 @@ export async function resolveExecutors(
       throw new UserError(
         `plugin '${plugin.name}' returned executor '${executor.name}' with capacity ${typeof capacity === 'number' ? String(capacity) : JSON.stringify(capacity)}: it must be a positive integer`,
       )
+    }
+    // Read as `=== true`: `remote: 'yes'` ran a remote executor as a local one.
+    for (const flag of EXECUTOR_FLAGS) {
+      const v: unknown = executor[flag]
+      if (v !== undefined && typeof v !== 'boolean') {
+        throw new UserError(
+          `plugin '${plugin.name}' returned executor '${executor.name}' with ${flag} ${typeof v === 'string' ? JSON.stringify(v) : typeof v === 'object' && v !== null ? describeValue(v) : String(v as number)}: it must be true or false`,
+        )
+      }
     }
     const platforms: unknown = executor.platforms
     if (

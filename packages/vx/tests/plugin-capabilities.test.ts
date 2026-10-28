@@ -320,6 +320,41 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     expect(await said(undefined)).toBe('ok')
   })
 
+  it('resolveExecutors: a flag that is not a boolean is refused by name', async () => {
+    // Core reads each flag as `=== true`: `remote: 'yes'` ran a remote
+    // executor as a local one, offered tasks pinned to this machine.
+    const said = async (flags: Record<string, unknown>): Promise<string> => {
+      try {
+        await resolveExecutors(
+          [
+            testPlugin('org/pool', {
+              executor: () => ({
+                name: 'pool',
+                ...flags,
+                execute: () => Promise.reject(new Error('unused')),
+              }),
+            }),
+          ],
+          { ...baseCtx, concurrency: 1 },
+        )
+        return 'ok'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect([
+      await said({ remote: 'yes' }),
+      await said({ remote: true, exclusive: 1 }),
+      await said({ remote: true, sandbox: null }),
+      await said({ remote: true, servers: true, runtime: false, timeouts: true }),
+    ]).toEqual([
+      `plugin 'org/pool' returned executor 'pool' with remote "yes": it must be true or false`,
+      `plugin 'org/pool' returned executor 'pool' with exclusive 1: it must be true or false`,
+      `plugin 'org/pool' returned executor 'pool' with sandbox null: it must be true or false`,
+      'ok',
+    ])
+  })
+
   it('resolveExecutors: an empty executor name is refused like a missing one', async () => {
     const said = await resolveExecutors(
       [
