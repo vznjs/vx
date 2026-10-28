@@ -759,6 +759,19 @@ describe('a host that keeps runs and holds websockets', () => {
     const a = await c.join(R, 'peer')
     expect((await c.call(R, 'socket', undefined, `?id=${a}`)).status).toBe(426)
   })
+
+  // A join's proof was checked against the session it opens, whose nonces
+  // were new: the same join, sent again once its session ended, opened
+  // the run again as its orchestrator.
+  it('takes a join’s proof once: replayed after its run ended, it opens nothing', async () => {
+    const c = client()
+    const [join] = await c.request(R, 'join', { role: 'host' })
+    const replay = new Request(join)
+    const o = await c.open(join)
+    expect(o.status).toBe(200)
+    await c.frame(R, o.json.id, { leave: true })
+    expect((await c.open(replay)).status).toBe(403)
+  })
 })
 
 it('the Bun entry serves the protocol, without auth on loopback only', async () => {
