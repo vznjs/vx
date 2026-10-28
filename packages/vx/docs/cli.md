@@ -243,8 +243,8 @@ graph knows both, so selection follows both: `vx run test --filter
 is no `implicitDependencies` field — declare the edge where the task
 needs it.
 
-A filter that names no project (`...`, a bare `!`) is refused, and one
-whose pattern matched but whose walk selected nothing says what it
+A filter that names no project (`...`, a bare `!`, an empty `{}`) is
+refused, and one whose pattern matched but whose walk selected nothing says what it
 matched: `no projects selected: filter "...^core" matched core, and no
 project depends on it` (item 1030).
 
