@@ -1071,15 +1071,15 @@ Semantics:
   flaky probe should not silently degrade to a stale hit.
 - **Output that is not UTF-8 fails the run** too: a lossy decode keyed
   every invalid byte alike. Pipe binary output through a hash or `od`.
-- The command **inherits vx's full environment**, _not_ the isolated
-  env that task `exec` commands get — `exec.env.define` and
-  `passThrough` describe the command's environment, not the probe's.
-  This is deliberate — `node -v` / `rustc --version` need the real
-  `PATH` and toolchain env, and it is what lets two tasks sharing a
-  probe share one spawn (the per-run dedup above). The flip side (same
-  as `inputs.env`): an env var that differs between machines silently
-  changes the key; declare such inputs explicitly if you want them
-  visible.
+- The command sees **only the essential environment** every task sees
+  (the essential allowlist under `ExecEnv`: `PATH`, `HOME`, the locale), with
+  vx's values. Not the task's `exec.env.define` or `passThrough`, which
+  describe the command's environment, not the probe's; one environment
+  for every probe is what lets two tasks sharing a probe share one spawn
+  (the per-run dedup above). Not vx's other variables either: a task
+  could read them from the probe's `/proc/<pid>/environ` while it runs.
+  A value the probe would read from the environment is an `inputs.env`
+  name instead.
 - Its `PATH` does lead with the **same `node_modules/.bin` directories
   the task's does** (the project's, then the workspace root's), so
   `tsc --version` keys the `tsc` the task runs. Before item 996 it keyed

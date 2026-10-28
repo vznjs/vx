@@ -35,6 +35,7 @@ import {
   shellArgv,
   slashBraceExpansions,
   braceAlternatives,
+  ESSENTIAL_ENV,
   splitNegations,
   staticPrefix,
   stripTrailingSlash,
@@ -142,8 +143,8 @@ export interface ResolveInputsArgs {
    * by `projectDir + '\0' + command`. Shared across a run's tasks so a
    * project's command runs once even across build/test/lint and across
    * the hash + sandbox-baseline resolveInputs calls. The key is sound
-   * ONLY because the probe runs in vx's own ambient environment, never a
-   * task's `exec.env` (`runRuntimeCommand`): two tasks with different
+   * ONLY because every probe runs in one environment, vx's essentials,
+   * never a task's `exec.env` (`runRuntimeCommand`): two tasks with different
    * `define`s share one value. Threading the task env in would have to
    * widen this key too, or task A's probe becomes task B's key component.
    */
@@ -524,6 +525,16 @@ function isInputOnDisk(abs: string): boolean {
   }
 }
 
+/** vx's values of `ESSENTIAL_ENV`: the one environment every probe gets. */
+function probeEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const name of ESSENTIAL_ENV) {
+    const value = process.env[name]
+    if (value !== undefined) env[name] = value
+  }
+  return env
+}
+
 /** The task's `node_modules/.bin` directories, as `taskBinDirs` gives its PATH. */
 function projectBinDirs(projectDir: string, workspaceRoot: string): string[] {
   const own = path.join(projectDir, 'node_modules', '.bin')
@@ -565,10 +576,13 @@ function resolveEnvValues(
  * work — "shell is the API"). Returns trimmed stdout+stderr. A non-zero
  * exit is a hard UserError naming the command (fail-loud, like git).
  *
- * The probe inherits vx's AMBIENT environment on purpose — not the task's
- * `exec.env.define` / `passThrough`, which describe the command's
- * environment, not the machine's. That is what lets the run-scoped memo
- * key on (projectDir, command) alone; see `runtimeCache`.
+ * The probe sees the essential environment every task sees
+ * (`ESSENTIAL_ENV`), from vx's own — never the task's `exec.env`, which
+ * describes the command, not the machine, and never the rest of vx's: a
+ * child is dumpable after its exec, so an unsandboxed task read every
+ * secret vx holds from the probe's `/proc/<pid>/environ`. One env for
+ * every probe is what lets the run-scoped memo key on (projectDir,
+ * command) alone; see `runtimeCache`.
  *
  * Its PATH does lead with the task's own `node_modules/.bin` directories
  * (`binDirs`), as the task's does: `tsc --version` otherwise keyed the
@@ -594,7 +608,7 @@ async function runRuntimeCommand(
     // `node_modules/.bin`, so a dependency's `sh` bin ran every probe (J-69).
     proc = Bun.spawn(shellArgv(command), {
       cwd,
-      env: { ...process.env, PATH },
+      env: { ...probeEnv(), PATH },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
