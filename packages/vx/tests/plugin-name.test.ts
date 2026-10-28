@@ -30,6 +30,17 @@ describe('definePlugin — the name is the package name', () => {
     )
   })
 
+  it('passes a nameless package.json below the package root (a dual build marker)', () => {
+    // tshy and other dual builds write `{ "type": "module" }` into
+    // `dist/esm/`: not a package, and the walk refused it as one with no
+    // name, so a plugin built that way could not load.
+    const { dir } = pluginOrigin('@acme/dual')
+    const esm = path.join(dir, 'dist', 'esm')
+    mkdirSync(esm, { recursive: true })
+    writeFileSync(path.join(esm, 'package.json'), JSON.stringify({ type: 'module' }))
+    expect(definePlugin({ dir: esm }, {}).name).toBe('@acme/dual')
+  })
+
   it('refuses a name field: there is nothing to override', () => {
     expect(() => definePlugin(pluginOrigin('@acme/named'), { name: 'other' } as never)).toThrow(
       /name is its package name/,

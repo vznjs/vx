@@ -591,7 +591,7 @@ function · `src/orchestrator/plugin.ts`
 
 The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
 The name is read from the package the calling module belongs to — the
-nearest `package.json` above it — and stamped where the workspace loader
+nearest `package.json` above it that has a name — and stamped where the workspace loader
 checks for it, so a plugin cannot be named anything but its package.
 
 ```ts

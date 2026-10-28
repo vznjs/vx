@@ -663,10 +663,15 @@ export interface PluginOrigin {
 
 const packageNameByDir = new Map<string, string>()
 
-/** The name of the nearest `package.json` above `dir` — the one that owns it. */
+/** The name of the nearest named `package.json` above `dir` — the one that owns it. */
 function pluginPackageName(dir: string): string {
   const memo = packageNameByDir.get(dir)
   if (memo !== undefined) return memo
+  // A package.json with no `name` below the package root is no package:
+  // dual builds (tshy) write `{ "type": "module" }` into `dist/esm/`. The
+  // walk passes it, as Vite's package lookup does; with no named one
+  // above, the nearest is refused.
+  let nameless: string | undefined
   for (let d = dir; ;) {
     let text: string | undefined
     try {
@@ -687,18 +692,22 @@ function pluginPackageName(dir: string): string {
         )
       }
       const name = pkg?.name
-      if (typeof name !== 'string' || name.length === 0) {
+      if (name === undefined) nameless ??= path.join(d, 'package.json')
+      else if (typeof name !== 'string' || name.length === 0) {
         throw new UserError(
           `definePlugin: ${path.join(d, 'package.json')} has no name — a plugin is a package, and its name is the package's`,
         )
+      } else {
+        packageNameByDir.set(dir, name)
+        return name
       }
-      packageNameByDir.set(dir, name)
-      return name
     }
     const parent = path.dirname(d)
     if (parent === d) {
       throw new UserError(
-        `definePlugin: no package.json above ${dir} — a plugin is a package, and its name is the package's`,
+        nameless === undefined
+          ? `definePlugin: no package.json above ${dir} — a plugin is a package, and its name is the package's`
+          : `definePlugin: ${nameless} has no name — a plugin is a package, and its name is the package's`,
       )
     }
     d = parent
@@ -708,7 +717,7 @@ function pluginPackageName(dir: string): string {
 /**
  * The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
  * The name is read from the package the calling module belongs to — the
- * nearest `package.json` above it — and stamped where the workspace loader
+ * nearest `package.json` above it that has a name — and stamped where the workspace loader
  * checks for it, so a plugin cannot be named anything but its package.
  */
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin {
