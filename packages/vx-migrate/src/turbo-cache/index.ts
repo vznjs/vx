@@ -306,7 +306,7 @@ export function resolveTurboCacheConfig(
   if (!apiUrl) return undefined
   // With no scheme every request failed on its own, as a bare "Invalid URL".
   if (!/^https?:\/\//.test(apiUrl))
-    throw new Error(`vx/turbo-cache: apiUrl must be http(s), got ${apiUrl}`)
+    throw new Error(`turboCache(): apiUrl must be http(s), got ${apiUrl}`)
   const oidc =
     options.oidc === undefined
       ? undefined
@@ -317,13 +317,13 @@ export function resolveTurboCacheConfig(
     const u = new URL(apiUrl)
     if (u.username !== '' || u.password !== '')
       throw new Error(
-        'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead',
+        'turboCache(): apiUrl carries credentials (user:pass@); pass them as the token instead',
       )
   }
   const fault = token === undefined ? null : headerValueFault(token)
   if (fault !== null)
     throw new Error(
-      `vx/turbo-cache: the token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
+      `turboCache(): the token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
     )
   const preflight =
     options.preflight ??
@@ -338,24 +338,26 @@ export function resolveTurboCacheConfig(
   if (signatureKey !== undefined) {
     if (Buffer.byteLength(signatureKey) < MIN_SIGNATURE_KEY_LENGTH) {
       throw new Error(
-        `vx/turbo-cache: signatureKey must be at least ${MIN_SIGNATURE_KEY_LENGTH} bytes (Turbo's minimum)`,
+        `turboCache(): signatureKey must be at least ${MIN_SIGNATURE_KEY_LENGTH} bytes (Turbo's minimum)`,
       )
     }
     if (!teamId)
       throw new Error(
-        'vx/turbo-cache: signatureKey needs teamId — the team id is part of the signed message',
+        'turboCache(): signatureKey needs teamId — the team id is part of the signed message',
       )
   }
   const retries = options.retries ?? 1
   // A NaN never reaches the bound, and the request would be resent forever.
   if (!Number.isInteger(retries) || retries < 0)
-    throw new Error(`vx/turbo-cache: retries must be a whole number ≥ 0, got ${retries}`)
+    throw new Error(`turboCache(): retries must be a whole number ≥ 0, got ${retries}`)
   // 0 is no deadline, as Turbo reads it; a negative or non-number one made
   // AbortSignal.timeout throw on every request.
   for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
     const ms = options[name]
     if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms >= 0))
-      throw new Error(`vx/turbo-cache: ${name} must be ms ≥ 0 (0: none), got ${JSON.stringify(ms)}`)
+      throw new Error(
+        `turboCache(): ${name} must be ms ≥ 0 (0: none), got ${typeof ms === 'number' ? ms : JSON.stringify(ms)}`,
+      )
   }
   return {
     apiUrl,
@@ -388,7 +390,7 @@ export function resolveTurboCacheConfig(
 function truthy(v: string | undefined, name: string): boolean | undefined {
   if (v === undefined || v === '') return undefined
   if (!/^(1|0|true|false)$/.test(v))
-    throw new Error(`vx/turbo-cache: ${name} should be 1 or 0, got ${JSON.stringify(v)}`)
+    throw new Error(`turboCache(): ${name} should be 1 or 0, got ${JSON.stringify(v)}`)
   return v === '1' || v === 'true'
 }
 
@@ -400,7 +402,7 @@ function seconds(v: unknown, name: string): number | undefined {
   if (v === undefined || v === null || v === '') return undefined
   const n = typeof v === 'string' ? Number(v) : v
   if (typeof n !== 'number' || !Number.isInteger(n) || n < 0)
-    throw new Error(`vx/turbo-cache: ${name} must be whole seconds ≥ 0, got ${JSON.stringify(v)}`)
+    throw new Error(`turboCache(): ${name} must be whole seconds ≥ 0, got ${JSON.stringify(v)}`)
   return n * 1000
 }
 

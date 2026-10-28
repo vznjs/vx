@@ -189,10 +189,10 @@ describe('resolveTurboCacheConfig', () => {
       [7, 8],
     ])
     expect(() => at({}, { TURBO_REMOTE_CACHE_TIMEOUT: '1.5' }, {})).toThrow(
-      'vx/turbo-cache: TURBO_REMOTE_CACHE_TIMEOUT must be whole seconds ≥ 0, got "1.5"',
+      'turboCache(): TURBO_REMOTE_CACHE_TIMEOUT must be whole seconds ≥ 0, got "1.5"',
     )
     expect(() => at({}, {}, { uploadTimeout: -1 })).toThrow(
-      'vx/turbo-cache: remoteCache.uploadTimeout must be whole seconds ≥ 0, got -1',
+      'turboCache(): remoteCache.uploadTimeout must be whole seconds ≥ 0, got -1',
     )
   })
 
@@ -263,7 +263,7 @@ describe('resolveTurboCacheConfig', () => {
       key({ signature: true }, { ...env, TURBO_SIGNATURE: '' }),
     ]).toEqual(['k'.repeat(32), undefined, 'k'.repeat(32)])
     expect(() => key({}, { ...env, TURBO_SIGNATURE: 'yes' })).toThrow(
-      'vx/turbo-cache: TURBO_SIGNATURE should be 1 or 0, got "yes"',
+      'turboCache(): TURBO_SIGNATURE should be 1 or 0, got "yes"',
     )
   })
 
@@ -282,11 +282,11 @@ describe('resolveTurboCacheConfig', () => {
 
   it('refuses an apiUrl with no http(s) scheme, from options or TURBO_API', () => {
     expect(() => resolveTurboCacheConfig({ apiUrl: 'cache.example.com', token: 't' }, {})).toThrow(
-      'vx/turbo-cache: apiUrl must be http(s), got cache.example.com',
+      'turboCache(): apiUrl must be http(s), got cache.example.com',
     )
     expect(() =>
       resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'cache.example.com/' }),
-    ).toThrow('vx/turbo-cache: apiUrl must be http(s), got cache.example.com')
+    ).toThrow('turboCache(): apiUrl must be http(s), got cache.example.com')
   })
 
   it('refuses an apiUrl carrying user:pass@, from options or TURBO_API (gaps §8 L232)', () => {
@@ -299,7 +299,7 @@ describe('resolveTurboCacheConfig', () => {
       }
     }
     const MSG =
-      'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead'
+      'turboCache(): apiUrl carries credentials (user:pass@); pass them as the token instead'
     expect([
       refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u:p@c.example', token: 't' }, {})),
       refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u@c.example', token: 't' }, {})),
