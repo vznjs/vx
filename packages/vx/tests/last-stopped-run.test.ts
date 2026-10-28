@@ -54,3 +54,12 @@ it('a failed task of a stopped run keeps its output for `vx last --log`', async 
     output: 'boom\n',
   })
 }, 30_000)
+
+it('`vx why --run` accepts the stopped run id `vx last --log` printed', async () => {
+  await stopAfterSlowStarts('a#build', 'a#slow')
+  const log = JSON.parse(vx('last', '--log', 'a#build', '--format', 'json').out) as {
+    runId: string
+  }
+  const why = vx('why', 'a#build', '--run', log.runId)
+  expect({ code: why.code, err: why.err }).toEqual({ code: 0, err: '' })
+}, 30_000)
