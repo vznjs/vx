@@ -473,24 +473,31 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     const sent = reported
     remote = undefined
     reported = undefined
-    if (server !== undefined && sent !== undefined) {
-      try {
-        await server.upload(sent.timings)
-      } catch (err) {
-        sent.warn(
-          `[vx] vx-history: the timings were not sent to the history server at ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
-        )
-      }
-    }
     const done = scheduled
     const wrote = inRun && changed
     scheduled = undefined
     inRun = false
-    if (!wrote || done === undefined) return
-    const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
-    const timings = await import('./timings-file.js')
-    timings.writeTimings(done.file, done.carried, table)
-    if (fileWarn !== undefined) timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
+    // The file first: core bounds a teardown (3 s), and an upload ahead of
+    // it held the write hostage to the server's network. A failed write
+    // still sends.
+    try {
+      if (wrote && done !== undefined) {
+        const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
+        const timings = await import('./timings-file.js')
+        timings.writeTimings(done.file, done.carried, table)
+        if (fileWarn !== undefined) timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
+      }
+    } finally {
+      if (server !== undefined && sent !== undefined) {
+        try {
+          await server.upload(sent.timings)
+        } catch (err) {
+          sent.warn(
+            `[vx] vx-history: the timings were not sent to the history server at ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+      }
+    }
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
   // serves both) and declared in the options; asked at every dispatch.
