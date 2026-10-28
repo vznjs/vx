@@ -251,13 +251,15 @@ export interface ProjectConfigs {
  * the first that is a file.
  */
 export async function findProjectConfigs(root: string): Promise<ProjectConfigs> {
-  const rels = (await gitTop(root)) === null ? await scanConfigs(root) : await gitConfigs(root)
+  const inGit = (await gitTop(root)) !== null
+  const rels = inGit ? await gitConfigs(root) : await scanConfigs(root)
   const nested: string[] = []
   for (const rel of rels) {
     const at = rel.lastIndexOf('.vx/workspace.')
     if (at > 0 && rel[at - 1] === '/' && rel.lastIndexOf('/') === at + 3)
       nested.push(rel.slice(0, at - 1))
   }
+  if (inGit) nested.push(...(await unlistedNested(root, rels, nested)))
   const byDir = new Map<string, string[]>()
   const reviewed: string[] = []
   for (const rel of rels) {
@@ -317,6 +319,42 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     .filter((f) => f !== null)
     .sort()
   return { configs, strayReviews, shadowed }
+}
+
+/**
+ * The nested workspace roots git did not list (an ignored `.vx/`) among the
+ * directories holding `rels` and their ancestors under `root`: a run from
+ * under one takes it as its root, so the outer lock must not claim it.
+ */
+async function unlistedNested(
+  root: string,
+  rels: readonly string[],
+  listed: readonly string[],
+): Promise<string[]> {
+  const dirs = new Set<string>()
+  for (const rel of rels) {
+    for (let d = rel.slice(0, Math.max(rel.lastIndexOf('/'), 0)); d !== '';) {
+      if (dirs.has(d)) break
+      dirs.add(d)
+      d = d.slice(0, Math.max(d.lastIndexOf('/'), 0))
+    }
+  }
+  for (const n of listed) dirs.delete(n)
+  // A stat, no descriptor: most directories have no `.vx`.
+  const found = await Promise.all(
+    [...dirs].map(async (d) =>
+      (await stat(path.join(root, d, '.vx')).then(
+        (st) => st.isDirectory(),
+        (err: unknown) => {
+          if (isOutOfFds(err)) throw err
+          return false
+        },
+      )) && (await workspaceFileIn(root, d))
+        ? d
+        : null,
+    ),
+  )
+  return found.filter((d) => d !== null)
 }
 
 async function isFile(p: string): Promise<boolean> {
