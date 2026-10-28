@@ -33,7 +33,10 @@ with no config (`@vzn/vx-lockfile` adds the package manager's members).
 A project's name is its config's `name`, else the name a `discover` plugin
 gives (`@vzn/vx-lockfile` gives `package.json#name`), else its
 root-relative path (`apps/web`); the root is `//`. Two projects of one
-name are refused, naming both directories.
+name are refused, naming both directories. A config or plugin name
+`--filter` would read as an operator is refused at load: one starting in
+`!`, `...` or `tag:`, ending in `...` or `[<ref>]`, or a path (`.`,
+`./x`, `{x}`).
 
 ## Project config
 
@@ -52,7 +55,7 @@ export default defineProject({
 
 ```ts
 interface ProjectConfig {
-  name?: string // what `<name>#<task>`, filters and `dependsOn` address; no "#"
+  name?: string // what `<name>#<task>`, filters and `dependsOn` address; no "#", no filter operator
   tags?: readonly string[] // labels for `--filter tag:<name>`
   tasks?: Record<string, TaskConfig> // keyed by task name
 }
@@ -2503,6 +2506,7 @@ a user meets most:
 | `exec.timeout of <value> exceeds the maximum timer delay`                                                                             | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |
 | `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                        |
 | `tag "<tag>" <why> — --filter tag:<name> could not name it`                                                                           | A tag with surrounding whitespace or a `*`, or one ending in `...` or `[<ref>]`, which a filter reads as a pattern, a dependency walk or a git range.                                                                          |
+| `name "<name>" <why> — --filter <name> could not select it`                                                                           | A name a filter reads as an operator: starting in `!`, `...` or `tag:`, ending in `...` or `[<ref>]`, or a path (`.`, `./x`, `{x}`).                                                                                           |
 
 **Unknown fields are rejected**, not ignored, at every object level —
 the project's top level (`tasks`), the task itself, `exec`, `exec.env`,

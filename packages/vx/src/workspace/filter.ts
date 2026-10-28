@@ -220,6 +220,26 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
   }
 }
 
+/** Why `--filter <name>` would not read `name` as a project's name, or null. */
+export function nameFilterProblem(name: string): string | null {
+  // The root's own name, which `--filter //` selects.
+  if (name === '//') return null
+  let f: ParsedFilter
+  try {
+    f = parseFilter(name, '/')
+  } catch {
+    return 'is a filter operator, not a name'
+  }
+  if (f.negate) return "starts with '!', which a filter reads as an exclusion"
+  if (f.withDependents) return "starts with '...', which a filter reads as a dependents walk"
+  if (f.withDeps || f.onlyDeps) return "ends in '...', which a filter reads as a dependency walk"
+  if (f.gitSince !== undefined)
+    return `ends in "[${f.gitSince}]", which a filter reads as a git range`
+  if (f.tag === true) return "starts with 'tag:', which a filter reads as a tag"
+  if (f.isPath) return 'is a path to a filter'
+  return null
+}
+
 function matchProjects(
   filter: ParsedFilter,
   projects: ProjectMeta[],

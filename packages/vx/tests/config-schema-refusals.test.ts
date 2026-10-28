@@ -914,6 +914,39 @@ describe("a package turbo.json's and Nx project.json's keys (D-56)", () => {
   })
 })
 
+// Each loaded, and `--filter <it>` parsed as an operator: `lib...` matched
+// no project, `!core` excluded nothing.
+describe('a project name a filter reads as an operator', () => {
+  const refusal = (name: string): string | null => {
+    try {
+      validateProjectConfig({ name, tasks: {} } as never, CFG)
+    } catch (err) {
+      return (err as Error).message
+    }
+    return null
+  }
+  it.each([
+    ['!core', "starts with '!', which a filter reads as an exclusion"],
+    ['...core', "starts with '...', which a filter reads as a dependents walk"],
+    ['lib...', "ends in '...', which a filter reads as a dependency walk"],
+    ['lib^...', "ends in '...', which a filter reads as a dependency walk"],
+    ['v[2]', 'ends in "[2]", which a filter reads as a git range'],
+    ['tag:ui', "starts with 'tag:', which a filter reads as a tag"],
+    ['./web', 'is a path to a filter'],
+    ['{web}', 'is a path to a filter'],
+    ['.', 'is a path to a filter'],
+    ['...', 'is a filter operator, not a name'],
+  ])('refuses %j', (name, why) => {
+    expect(refusal(name)).toBe(
+      `${CFG}: \`name\` ${JSON.stringify(name)} ${why} — \`--filter <name>\` could not select it. Rename the project.`,
+    )
+  })
+  it('keeps every name a filter selects as itself', () => {
+    for (const name of ['@a/b', 'apps/web', 'a.b', 'lib..', 'a!b', '[x', 'x]', 'a^b', '//', 'web'])
+      expect(refusal(name)).toBeNull()
+  })
+})
+
 describe('project tags', () => {
   const refusal = (tags: unknown): string | null => {
     try {

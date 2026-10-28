@@ -20,6 +20,7 @@ import {
   UserError,
 } from '../util/index.js'
 import { gitTop, WORKSPACE_CONFIG_FILENAMES, workspaceFile, workspaceRootOf } from '../handoff.js'
+import { nameFilterProblem } from './filter.js'
 import { repoIdOf } from './repo-id.js'
 
 export interface ProjectMeta {
@@ -488,7 +489,8 @@ export async function discoveredProject(
   }
   const name = entry.name
   if (name !== undefined) {
-    const bad = nameFault(name)
+    const filtered = nameFilterProblem(name)
+    const bad = nameFault(name) ?? (filtered === null ? null : `the name ${filtered}`)
     if (bad !== null) throw new UserError(`${where} ${JSON.stringify(name)}: ${bad}`)
   }
   const dir = path.resolve(root, entry.dir)

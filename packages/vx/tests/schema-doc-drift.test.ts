@@ -436,6 +436,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     'tag "<tag>" <why> — --filter tag:<name> could not name it',
     () => validated({ tags: ['v1...'], tasks: {} }),
   ],
+  [
+    'name "<name>" <why> — --filter <name> could not select it',
+    () => validated({ name: 'lib...', tasks: {} }),
+  ],
 ]
 
 /**

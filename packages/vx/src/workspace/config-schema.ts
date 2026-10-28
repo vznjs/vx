@@ -37,7 +37,7 @@ import {
   settingEnv,
   settingRefusal,
 } from '../settings.js'
-import { compileNameGlob, parseFilter } from './filter.js'
+import { compileNameGlob, nameFilterProblem, parseFilter } from './filter.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
@@ -463,6 +463,13 @@ export function validateProjectConfig(
     if (typeof name !== 'string' || name === '' || name.trim() !== name || name.includes('#')) {
       throw new UserError(
         `${configPath}: \`name\` must be a non-empty string with no surrounding whitespace and no "#" (a task is <name>#<task>)`,
+      )
+    }
+    const why = nameFilterProblem(name)
+    if (why !== null) {
+      throw new UserError(
+        `${configPath}: \`name\` ${JSON.stringify(name)} ${why} — \`--filter <name>\` could not ` +
+          `select it. Rename the project.`,
       )
     }
   }
