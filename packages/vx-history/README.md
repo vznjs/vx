@@ -19,7 +19,7 @@ import { vxHistory } from '@vzn/vx-history'
 export default { plugins: [vxHistory()] }
 ```
 
-`vxHistory({ window?, assume?, file?, defaultBranch?, server?, issuer?, repository?, serverHeaders?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
+`vxHistory({ window?, assume?, file?, defaultBranch?, url?, issuer?, repository?, headers?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
 
 `assume` is for the run that has no history: a fresh CI runner. It names durations (task id → ms) for tasks the history has not seen, so a long leaf task — a docs build, a cross-compile — starts first instead of last:
 
@@ -33,7 +33,7 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 
 ## Timings from a history server
 
-`server` (or `VX_HISTORY_URL`), its base URL without `/v1`, names a
+`url` (or `VX_HISTORY_URL`), its base URL without `/v1`, names a
 [`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server).
 On a CI job with a token (GitHub's OIDC token, which needs
 `permissions: id-token: write`, or a GitLab `id_tokens` entry
@@ -56,7 +56,7 @@ A run with no token (off CI) reads only, from a server whose
 (`org/name` there) are required with a server: the run's one query
 names them, with its refs and every task hash, and nothing guesses
 them; `VX_HISTORY_URL` alone, with neither declared, is said and not asked.
-`serverHeaders` are sent on every request to the server, for a proxy in
+`headers` are sent on every request to the server, for a proxy in
 front of it (a Cloudflare Access service token:
 `{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID, … }`); an
 unset value is left out, and `authorization` stays the CI token's.
@@ -65,7 +65,7 @@ unset value is left out, and `authorization` stays the CI token's.
 export default {
   plugins: [
     vxHistory({
-      server: 'https://history.example.com',
+      url: 'https://history.example.com',
       issuer: 'https://token.actions.githubusercontent.com',
       repository: 'acme/app',
     }),

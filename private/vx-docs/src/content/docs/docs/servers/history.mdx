@@ -102,7 +102,7 @@ export default defineWorkspace({
   plugins: [
     github(), // on GitLab, gitlab()
     vxHistory({
-      server: 'https://history.example.com', // or VX_HISTORY_URL
+      url: 'https://history.example.com', // or VX_HISTORY_URL
       issuer: 'https://token.actions.githubusercontent.com',
       repository: 'acme/app',
     }),

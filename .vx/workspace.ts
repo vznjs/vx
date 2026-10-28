@@ -20,7 +20,7 @@ export default defineWorkspace({
     // CI jobs sign in with their OIDC token; off CI they read only, where a
     // server opens reads (READ_ACCESS=public).
     vxCache({ url: cacheUrl, ...repo }),
-    vxHistory({ server: 'https://vx-history.exelord.workers.dev', ...repo }),
+    vxHistory({ url: 'https://vx-history.exelord.workers.dev', ...repo }),
     // CI's one run over workers (ci.yml `linux`, vx-worker.yml);
     // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
     dte({

@@ -9,7 +9,11 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## vx-history-server: refuse the query body of a client before refs
+## vx-history: name the server options url and headers
+
+vxHistory({ server, serverHeaders }) is vxHistory({ url, headers }).
+
+## vx-history-server: store and send repo and refs plainly
 
 /v1/timings/query takes {issuer, repository, refs, hashes} in the body; capabilities name maxQueryRefs. Update @vzn/vx-history with the server.
 

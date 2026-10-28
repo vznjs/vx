@@ -1,4 +1,4 @@
-// vxHistory({ server }) against a real @vzn/vx-history-server, in process:
+// vxHistory({ url }) against a real @vzn/vx-history-server, in process:
 // a CI run sends its timings once at its end, and the next run orders by
 // the numbers the server answers, re-ranking without waiting for them.
 
@@ -139,7 +139,7 @@ describe('HistoryServer', () => {
   })
 
   // 2026-10-25: a proxy in front of the server (an Access service token).
-  it('sends serverHeaders on every request, never over the CI token', async () => {
+  it('sends headers on every request, never over the CI token', async () => {
     const seen: Headers[] = []
     const fake = (async (_u: string, init: RequestInit) => {
       seen.push(new Headers(init.headers))
@@ -206,10 +206,10 @@ describe('HistoryServer', () => {
   })
 
   it('refuses a workspace that names a server but no issuer or repository', () => {
-    expect(() => vxHistory({ server: 'https://h.example', repository: 'acme/app' })).toThrow(
+    expect(() => vxHistory({ url: 'https://h.example', repository: 'acme/app' })).toThrow(
       "vxHistory(): issuer must be the CI issuer's URL",
     )
-    expect(() => vxHistory({ server: 'https://h.example', issuer: NAMED.issuer })).toThrow(
+    expect(() => vxHistory({ url: 'https://h.example', issuer: NAMED.issuer })).toThrow(
       'vxHistory(): repository must be org/name, got undefined',
     )
   })
@@ -219,14 +219,14 @@ describe('HistoryServer', () => {
     expect(serverUrlOf(undefined, { VX_HISTORY_URL: 'https://h.example/' })).toBe(
       'https://h.example',
     )
-    expect(() => serverUrlOf('h.example', {})).toThrow('vxHistory(): server must be http(s)')
+    expect(() => serverUrlOf('h.example', {})).toThrow('vxHistory(): url must be http(s)')
     expect(() => serverUrlOf('https://h.example/v1/', {})).toThrow(
-      "vxHistory(): server is the server's base, without /v1: https://h.example",
+      "vxHistory(): url is the server's base, without /v1: https://h.example",
     )
   })
 })
 
-describe('vx run with vxHistory({ server })', () => {
+describe('vx run with vxHistory({ url })', () => {
   let root: string
   const saved = { ...Bun.env }
   beforeAll(async () => {
@@ -243,7 +243,7 @@ describe('vx run with vxHistory({ server })', () => {
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
       `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
-        `export default { plugins: [vxHistory({ server: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
+        `export default { plugins: [vxHistory({ url: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
     )
     Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: root })
   })
@@ -288,7 +288,7 @@ describe('vx run with vxHistory({ server })', () => {
       await Bun.write(
         path.join(other, '.vx/workspace.mjs'),
         `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
-          `export default { plugins: [vxHistory({ server: ${JSON.stringify(dead)}, ...${JSON.stringify(NAMED)} })] }\n`,
+          `export default { plugins: [vxHistory({ url: ${JSON.stringify(dead)}, ...${JSON.stringify(NAMED)} })] }\n`,
       )
       Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
       const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
@@ -327,7 +327,7 @@ describe('vx run with vxHistory({ server })', () => {
       await Bun.write(
         path.join(other, '.vx/workspace.mjs'),
         `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
-          `export default { baseBranch: 'trunk', plugins: [vxHistory({ server: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
+          `export default { baseBranch: 'trunk', plugins: [vxHistory({ url: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
       )
       Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'feat'], cwd: other })
       Bun.spawnSync({
