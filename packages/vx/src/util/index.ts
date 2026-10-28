@@ -19,6 +19,7 @@ export {
   gitSpawnRefusal,
   isExecutableMissing,
   isOutOfFds,
+  gitFailure,
   notAWorkTree,
   OUT_OF_FDS_HINT,
   wantsJson,

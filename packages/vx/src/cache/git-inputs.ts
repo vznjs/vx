@@ -24,6 +24,7 @@ import {
   checkIgnoreSync,
   executablePath,
   gitEnv,
+  gitFailure,
   gitSpawnRefusal,
   isInstalledPath,
   notAWorkTree,
@@ -697,9 +698,9 @@ export function runGitLsFiles(cwd: string): GitLsResult {
     throw gitSpawnRefusal(cwd)
   }
   if (proc.exitCode !== 0) {
-    // Exit 128 = not a git work tree; other non-zero = git failure.
-    // Either way we can't enumerate inputs reliably.
-    throw notAWorkTree(cwd, new TextDecoder().decode(proc.stderr).trim())
+    // Not a work tree, or git failing in one: either way the inputs
+    // cannot be enumerated, and the two have different fixes.
+    throw gitFailure(cwd, 'ls-files', proc.exitCode, new TextDecoder().decode(proc.stderr).trim())
   }
   const { text, undecodable } = decodeGitZ(proc.stdout)
   const parsed = parseLsFilesOutput(text.length === 0 ? [] : text.split('\0'), undecodable)
@@ -1827,13 +1828,8 @@ export async function startGitEnumeration(
   if (ls === null) {
     throw gitSpawnRefusal(workspaceRoot)
   }
-  if (parsedLs === undefined) {
-    const stderr = ls.stderr.trim()
-    throw new UserError(
-      `vx requires git: ${workspaceRoot} is not inside a git work tree. ` +
-        `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
-    )
-  }
+  if (parsedLs === undefined)
+    throw gitFailure(workspaceRoot, 'ls-files', ls.exitCode, ls.stderr.trim())
   const { files: tracked, oids, flagged, gitlinks, undecodable } = parsedLs
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
   // the `--show-prefix`) so the dirty set is keyed identically to the trusted

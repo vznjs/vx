@@ -267,6 +267,43 @@ describe('a refusal under --format json', () => {
     }
   }, 30_000)
 
+  // A broken index is git failing, not a missing repository: it read
+  // VX_E_REFUSED and told the user to `git init` (2026-10-28).
+  it('a git that fails in a work tree is VX_E_GIT, naming git and its words', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-git-' })
+    try {
+      await addProject(
+        ws,
+        'a',
+        `export default { tasks: { b: { exec: { command: 'true' }, inputs: { files: ['**'] }, cache: { outputs: { files: [] } } } } }\n`,
+      )
+      const first = await vx(['run', 'b', '--all', '--dry'], ws)
+      expect([first.code, first.stderr]).toEqual([0, ''])
+      await Bun.write(
+        path.join(ws, '.git', 'index'),
+        'not an index, but long enough to be read as one',
+      )
+      // The real bin: vx-locked.ts would re-lock over the broken index.
+      const p = Bun.spawnSync([process.execPath, REAL_BIN, 'run', 'b', '--all', '--dry=json'], {
+        cwd: ws,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const r = { code: p.exitCode, stdout: p.stdout.toString() }
+      const { code, message } = (
+        JSON.parse(r.stdout) as { error: { code: string; message: string } }
+      ).error
+      expect([r.code, code, message.includes('git init'), message]).toEqual([
+        1,
+        'VX_E_GIT',
+        false,
+        expect.stringContaining('git ls-files failed (exit 128)'),
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it('every reading verb answers its refusals with a code too', async () => {
     expect({
       showUsage: await refusal(['show', '--bogus', '--format', 'json']),
