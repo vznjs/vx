@@ -765,6 +765,17 @@ export function executorDemand(
   }
 }
 
+const EXECUTOR_FLAGS = ['remote', 'sandbox', 'servers', 'runtime', 'exclusive', 'timeouts'] as const
+const EXECUTOR_HOOKS = [
+  'accepts',
+  'demand',
+  'footer',
+  'machines',
+  'idealMs',
+  'profile',
+  'running',
+] as const
+
 /**
  * Collect every plugin's `executor`, in declaration order, with core's
  * own appended at the tail: per task, `selectExecutor` takes the first
@@ -803,6 +814,22 @@ export async function resolveExecutors(
       throw new UserError(
         `plugin '${plugin.name}' returned executor '${executor.name}' with platforms ${JSON.stringify(platforms)}: it must be a non-empty array of ${PLATFORMS.join(', ')}`,
       )
+    }
+    // Placement reads each flag as `=== true`: `remote: 'yes'` read as a
+    // local executor, offered sandboxed and `exec.remote: false` tasks.
+    for (const flag of EXECUTOR_FLAGS) {
+      const v: unknown = executor[flag]
+      if (v !== undefined && typeof v !== 'boolean')
+        throw new UserError(
+          `plugin '${plugin.name}' returned executor '${executor.name}' with ${flag} ${v === null ? 'null' : JSON.stringify(v)}: it must be true or false`,
+        )
+    }
+    for (const hook of EXECUTOR_HOOKS) {
+      const v: unknown = executor[hook]
+      if (v !== undefined && typeof v !== 'function')
+        throw new UserError(
+          `plugin '${plugin.name}' returned executor '${executor.name}' with ${hook} that is not a function`,
+        )
     }
     executorPlugin.set(executor, plugin.name)
     executors.push(executor)
