@@ -45,6 +45,8 @@ export interface ArtifactRun {
   readonly peakRssBytes?: number
   /** Its environment: a secret value in it is masked out of the stored output. */
   readonly env?: Readonly<Record<string, string | undefined>>
+  /** Its `exec.env.secret`: names in `env` whose values are masked whatever the name. */
+  readonly secret?: readonly string[]
   /** No remote held the key when the run asked: its upload asks none first. */
   readonly absent?: boolean
 }
@@ -103,7 +105,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       const mine = (f: string) => task.others?.has(f) !== true
       const files = tree.files.filter(mine)
       const ws = wsFiles.filter(mine)
-      const mask = secretMask([process.env, run.env ?? {}])
+      const mask = secretMask([process.env, run.env ?? {}], run.secret)
       const log = encodeOutputLog(run.output)
       await cache.save({
         hash: key,
