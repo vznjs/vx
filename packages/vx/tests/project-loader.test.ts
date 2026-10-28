@@ -1203,9 +1203,7 @@ export default { tasks: {} }
       (e: unknown) => e as Error,
     )
     // The line it was thrown at, in the file the user wrote.
-    expect(err?.message).toBe(
-      `Project config ${file} threw: preset out of range (at ${file}:2:13)`,
-    )
+    expect(err?.message).toBe(`Project config ${file} threw: preset out of range (at ${file}:2:13)`)
     expect((err?.cause as Error | undefined)?.stack).toContain(`${file}:2:`)
     expect((err?.cause as Error | undefined)?.stack).not.toContain('?vx-')
   })
