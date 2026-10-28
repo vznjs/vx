@@ -1149,3 +1149,19 @@ describe('exec.retries', () => {
     expect(taskRefusal({ exec: { command: 'x', retries: 2 ** 31 } })).toBeNull()
   })
 })
+
+// A file's switch is a boolean, never its string: `decompress: 'false'` is
+// refused, and `embeddings: 'false'` was taken as off.
+describe('cache.store.embeddings', () => {
+  it("refuses the string 'false', as a bool setting refuses it", () => {
+    expect(refusal({ cache: { store: { decompress: 'false' } } })).toBe(
+      `${WS}: \`cache.store.decompress\` must be true or false (got "false")`,
+    )
+    expect(refusal({ cache: { store: { embeddings: 'false' } } })).toBe(
+      `${WS}: \`cache.store.embeddings\` must be false, or a size like '32KiB' (got "false")`,
+    )
+    // Control: the boolean is off, and a size is a size.
+    expect(refusal({ cache: { store: { embeddings: false } } })).toBeNull()
+    expect(refusal({ cache: { store: { embeddings: '0' } } })).toBeNull()
+  })
+})
