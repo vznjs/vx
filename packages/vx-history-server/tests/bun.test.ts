@@ -389,3 +389,11 @@ it('reads with no token where READ_ACCESS is public, only a repository ALLOW nam
   const closed = oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson })
   await expect(closed(req, { issuer: GITHUB, repository: REPO })).rejects.toThrow('no bearer token')
 })
+
+// The image pinned jose itself (`bun add jose@…`), apart from the version
+// @vzn/vx-devtools pins: a bump there left the image on the old one.
+it('builds its image with the dependencies package.json pins, naming no version of its own', async () => {
+  const dockerfile = await Bun.file(`${import.meta.dir}/../Dockerfile`).text()
+  expect(dockerfile).not.toMatch(/bun add/)
+  expect(dockerfile).toContain('bun install --production')
+})

@@ -322,13 +322,17 @@ function fmtUsage(t: {
  * their exit stands for, the sandbox's violation count, a skip's blocker.
  * Older rows carry none and read as before.
  */
-function reasonParts(t: RunSummaryRow): string {
+function reasonParts(t: RunSummaryRow, inputMoved: string | undefined): string {
   const parts: string[] = []
   if (t.status === 'failed') {
     if (t.notReady !== null) {
       parts.push(
         `never ready: ${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}`,
       )
+    } else if (inputMoved !== undefined) {
+      // `inputStability.severity: 'error'` forced the exit; the run keeps
+      // the input with the failure's output, not in the row.
+      parts.push(`${inputMoved === '' ? 'an input' : inputMoved} changed during the run`)
     } else if (t.timedOut === true) {
       parts.push('timed out')
     } else {
@@ -379,6 +383,8 @@ function formatStepRows(steps: readonly RunStep[], c: ColorSupport): string[] {
 export function formatTaskRows(
   tasks: readonly RunSummaryRow[],
   c: ColorSupport = { enabled: false },
+  /** Task id → the input that moved under it, from the run's kept failures. */
+  inputMoved: ReadonlyMap<string, string> = new Map(),
 ): string[] {
   if (tasks.length === 0) return []
   const failed = tasks.filter((t) => t.status === 'failed')
@@ -413,7 +419,7 @@ export function formatTaskRows(
         paint(
           '',
           `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-            reasonParts(t),
+            reasonParts(t, inputMoved.get(`${t.project}#${t.task}`)),
           c,
           { dim: true },
         ),
@@ -665,7 +671,12 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       dim(`  ${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`) +
         `${inv.failedCount > 0 ? paint(ERROR, ` · ${inv.failedCount} failed`, c) : ''}`,
     )
-    lines.push(...formatTaskRows(detail?.tasks ?? [], c))
+    const moved = new Map<string, string>()
+    if (inv.failedCount > 0) {
+      for (const f of runFailures(cacheDir, db, inv.runId)?.tasks ?? [])
+        if (f.inputMoved !== undefined) moved.set(f.taskId, f.inputMoved)
+    }
+    lines.push(...formatTaskRows(detail?.tasks ?? [], c, moved))
     lines.push(...formatStepRows(runSteps(cacheDir, inv.runId), c))
     // The next command after reading a failed run, with the arguments the
     // run forwarded to the tasks that got them (a failure under `-- --shard

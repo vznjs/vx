@@ -118,7 +118,10 @@ import type { CacheKeyInput } from './layer.js'
 // v47: the local store keeps plain files (`cache.store`).
 // v48: a task glob is standard again (2026-10-18): `app/[id]/page.js` is
 // a class, and a v47 entry under its unchanged key holds the literal route.
-export const CACHE_VERSION = 'vx-cache-v48'
+// v49: the sidecar keeps the mode of an output directory that withholds a
+// permission 0755 grants, and a hit makes it so; a v48 artifact keeps none,
+// and a hit gave `chmod 700 dist/keys` back as 0755.
+export const CACHE_VERSION = 'vx-cache-v49'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its
