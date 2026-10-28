@@ -126,8 +126,10 @@ async function outerWorkspaceFile(top: string): Promise<string | null> {
   try {
     // Plain `git`, as handoff imports nothing (the hand-off runs first).
     // Exit 1: not ignored, so the outer listing holds it; 0 ignored; 128 an error.
+    // `./`: check-ignore reads `:x` as pathspec magic and refuses `:(literal)`.
+    const rel = top.slice(outer.length + (outer === '/' ? 0 : 1))
     const p = Bun.spawnSync({
-      cmd: ['git', 'check-ignore', '-q', '--', top.slice(outer.length + (outer === '/' ? 0 : 1))],
+      cmd: ['git', 'check-ignore', '-q', '--', `./${rel}`],
       cwd: outer,
       stdin: 'ignore',
       stdout: 'ignore',
