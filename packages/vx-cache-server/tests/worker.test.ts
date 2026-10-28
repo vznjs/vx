@@ -85,6 +85,26 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
   }
 })
 
+it('reads AUDIENCE without the blanks around it', async () => {
+  for (const audience of [` ${AUD}\n`, ' ']) {
+    const other = await start({ ALLOW: ALLOW_VAR, AUDIENCE: audience })
+    try {
+      // Blank, AUDIENCE is unset: the audience is the origin reached.
+      const origin = (await other.ready).origin
+      const res = await fetch(new URL('/v1/capabilities', await other.ready), {
+        headers: {
+          authorization: `Bearer ${await iss.sign(JOBS.main, audience.trim() || origin)}`,
+          'vx-issuer': scopeOf(GITHUB),
+          'vx-repository': scopeOf(REPO),
+        },
+      })
+      expect([audience, res.status]).toEqual([audience, 200])
+    } finally {
+      await other.dispose()
+    }
+  }
+})
+
 it("answers a read from the data center's cache once R2 served it, and whether it holds one from R2 alone", async () => {
   const hash = crypto.randomUUID().replaceAll('-', '')
   const url = new URL(`/v1/artifacts/${hash}`, base)
