@@ -201,11 +201,15 @@ it("answers 502 while the issuer's keys cannot be read", async () => {
   ])
 })
 
+/** What the CLI said on stderr, past the refusal line's mark. */
+const stderrOf = (cli: { stderr: Buffer }): string =>
+  Bun.stripANSI(cli.stderr.toString()).replace(/^✗ vx-history-server {2}/, '')
+
 it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {
     stderr: 'pipe',
   })
-  const [said, usage] = cli.stderr.toString().split('\n')
+  const [said, usage] = stderrOf(cli).split('\n')
   expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
     2,
     "Unknown option '--bogus'",
@@ -219,7 +223,7 @@ it('names ALLOW when it cannot be read', () => {
       ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', ':memory:'],
       { env: { ...process.env, ALLOW: allow }, stderr: 'pipe' },
     )
-    return [cli.exitCode, cli.stderr.toString()]
+    return [cli.exitCode, stderrOf(cli)]
   }
   expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
     [2, 'ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
@@ -233,7 +237,7 @@ it('names --db when it cannot be opened, and refuses an empty one', () => {
       ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', db],
       { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
     )
-    return [cli.exitCode, cli.stderr.toString().split('\n')[0]]
+    return [cli.exitCode, stderrOf(cli).split('\n')[0]]
   }
   expect([said('/proc/no/such/dir/x.db'), said('')]).toEqual([
     [2, '--db /proc/no/such/dir/x.db: unable to open database file'],
@@ -246,7 +250,7 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '', '--db', ':memory:'],
     { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
   )
-  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+  expect([cli.exitCode, stderrOf(cli)]).toEqual([2, '--port: not a port: \n'])
 })
 
 it('reads with no token where READ_ACCESS is public, only a repository ALLOW names', async () => {
