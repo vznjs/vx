@@ -196,6 +196,22 @@ describe('scoped config loading reaches every project a run can need', () => {
   )
 
   it(
+    'a `pkg#task` edge is not a package edge: `^build` does not follow it',
+    async () => {
+      // `^name` walks the package graph the run builds BEFORE configs load,
+      // so a task edge on another task cannot widen it. Folding task edges
+      // in would move keys and can close cycles; selection (`--filter`,
+      // `--affected`) and the dependency rules do read them.
+      await pkg('x', cfg(task('build', ['^build']), task('e2e', ['y#build'])))
+      await pkg('y', cfg(task('build')))
+
+      const p = await prepare({ projects: ['x'] })
+      expect([...p.nodes.keys()].sort()).toEqual(['x#build'])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a cross dep naming a project that does not exist is inert',
     async () => {
       // `consider` marks the name seen but only queues it when discovery found a
