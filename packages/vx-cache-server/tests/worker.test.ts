@@ -14,7 +14,7 @@ let mf: Miniflare
 let base: URL
 let iss: Issuer
 
-async function start(bindings: Record<string, unknown>): Promise<Miniflare> {
+async function start(bindings: Record<string, unknown>, bucket = true): Promise<Miniflare> {
   const built = await Bun.build({
     entrypoints: [path.join(import.meta.dir, '..', 'src', 'worker.ts')],
     target: 'browser',
@@ -25,7 +25,7 @@ async function start(bindings: Record<string, unknown>): Promise<Miniflare> {
       modules: true,
       script: await built.outputs[0]!.text(),
       compatibilityDate: '2026-10-01',
-      r2Buckets: ['BLOBS'],
+      r2Buckets: bucket ? ['BLOBS'] : [],
       bindings: { AUDIENCE: AUD, ...bindings },
       // The issuer's keys, served to the Worker's fetch without a network.
       outboundService: async (req: Request) =>
@@ -82,6 +82,25 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
     } finally {
       await other.dispose()
     }
+  }
+})
+
+// A deploy that bound no bucket answered the runtime's TypeError.
+it('refuses every request, naming the binding, while no R2 bucket is bound as BLOBS', async () => {
+  const other = await start({ ALLOW: ALLOW_VAR }, false)
+  try {
+    const res = await fetch(new URL('/v1/artifacts/abc', await other.ready), {
+      headers: { ...NAMED, 'vx-scope': scopeOf('refs/heads/main') },
+    })
+    expect([res.status, await res.json()]).toEqual([
+      500,
+      {
+        code: 'internal_error',
+        message: 'no R2 bucket is bound as BLOBS: bind one in wrangler.jsonc (r2_buckets)',
+      },
+    ])
+  } finally {
+    await other.dispose()
   }
 })
 

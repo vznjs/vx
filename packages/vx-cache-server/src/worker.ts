@@ -27,7 +27,7 @@ declare const FixedLengthStream: new (length: number) => {
 }
 
 export interface Env {
-  readonly BLOBS: R2Bucket
+  readonly BLOBS?: R2Bucket
   /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow` entries, space separated. */
   readonly ALLOW?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
@@ -106,6 +106,12 @@ let made: { key: string; authorize: Authorize; limits: Limits } | undefined
 
 export default {
   async fetch(req: Request, env: Env, ctx: Context): Promise<Response> {
+    // Unbound, the first read answered the runtime's TypeError.
+    if (env.BLOBS === undefined)
+      return errorJson(
+        500,
+        'no R2 bucket is bound as BLOBS: bind one in wrangler.jsonc (r2_buckets)',
+      )
     const key = [
       env.ALLOW,
       env.AUDIENCE,

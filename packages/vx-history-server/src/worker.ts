@@ -18,7 +18,7 @@ export interface D1Database {
 }
 
 export interface Env {
-  readonly DB: D1Database
+  readonly DB?: D1Database
   /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow` entries, space separated. */
   readonly ALLOW?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
@@ -53,6 +53,12 @@ let made: { key: string; handle: (req: Request) => Promise<Response> } | undefin
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
+    // Unbound, the first query answered the runtime's TypeError.
+    if (env.DB === undefined)
+      return errorJson(
+        500,
+        'no D1 database is bound as DB: bind one in wrangler.jsonc (d1_databases)',
+      )
     const key = [env.ALLOW, env.AUDIENCE, env.READ_ACCESS, env.TIMING_DAYS].join('\0')
     if (made?.key !== key) {
       let allow
