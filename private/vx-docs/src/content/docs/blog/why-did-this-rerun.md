@@ -78,6 +78,7 @@ of these exact sentences:
 | cache key unchanged — this run was served from cache, nothing re-ran                                       | it was a cache hit                                               |
 | cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit | a failure saves no entry |
 | cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read) | the run's policy read no cache |
+| cache key unchanged — re-executed because this run did not use the cache (--no-cache, or a --cache-policy without read or write) | the run used no cache |
 | cache key unchanged — neither run saved it: each ran beside a failed task (…), and a task run past a failed dependency (--continue) is never cached | both runs went past a failure under `--continue` |
 | cache key unchanged — the previous run on this key ran beside a failed task (…) and was not saved: a task run past a failed dependency (--continue) is never cached, so there was nothing to hit | the previous run went past a failure under `--continue` |
 | cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one | the entry was gone |

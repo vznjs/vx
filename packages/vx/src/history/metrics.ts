@@ -422,8 +422,12 @@ function unchangedKeyNote(
       p: string
     } | null
   )?.p
+  // `--no-cache` reads and writes nothing, `--force` writes: each named
+  // apart, or a `--no-cache` run was told it had passed `--force`.
   if (policy !== undefined && !readsCache(policy)) {
-    return 'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)'
+    return writesCache(policy)
+      ? 'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)'
+      : 'cache key unchanged — re-executed because this run did not use the cache (--no-cache, or a --cache-policy without read or write)'
   }
   // `get` answers null, not undefined, for no row.
   const createdAt = (
