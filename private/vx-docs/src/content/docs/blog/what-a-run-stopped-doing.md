@@ -33,8 +33,10 @@ $ vx cache clean --max-size 100K
 ```
 
 Cleanup at the end of every run would be seven `DELETE`s, four of them
-full scans, and it grows with history. Run `vx cache clean` from cron
-or a scheduled CI job instead. There is no `cache.retention` setting.
+full scans, and it grows with history. Run `vx cache clean` from cron or
+a scheduled CI job instead.
+
+There is no `cache.retention` setting.
 
 ## The shared store opens by its index
 

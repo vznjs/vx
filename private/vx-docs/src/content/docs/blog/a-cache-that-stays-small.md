@@ -75,9 +75,10 @@ A zero or a bare number is usually a mistake. To clear everything, run
 ## Files no index knows
 
 The cache is a SQLite index plus entry files. They can drift apart, for
-example after a crashed save. Every clean sweeps these orphans. Nothing
-younger than an hour is taken, and only file names vx writes. Your own
-`release.tar.zst` in a shared folder is never touched.
+example after a crashed save. Every clean sweeps these orphans.
+
+Nothing younger than an hour is taken, and only file names vx writes.
+Your own `release.tar.zst` in a shared folder is never touched.
 
 ## For scripts and agents
 

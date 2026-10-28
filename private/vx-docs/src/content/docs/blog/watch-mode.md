@@ -57,18 +57,22 @@ vx ignores every task's declared outputs. For everything else it checks
 task that rewrites its own files costs one extra cycle from the cache,
 then it settles.
 
-Always ignored: `node_modules`, `.git`, `.vx/cache`, the run's cache
-directory wherever `--cache-dir` put it, editor backups (a trailing
-`~`), and any untracked path git ignores (one `git check-ignore` per
-debounce window).
+Always ignored:
+
+- `node_modules`, `.git` and `.vx/cache`;
+- the run's cache directory, wherever `--cache-dir` put it;
+- editor backups (a trailing `~`);
+- any untracked path git ignores (one `git check-ignore` per debounce
+  window).
 
 ## Watchers that are really watching
 
 On macOS a watcher can start before its events are live, and an edit in
 that gap is lost. vx writes a probe file under each watcher and prints
-`watching` only after every probe is seen. A directory
-whose watcher stays silent for
-two seconds is polled instead, with a warning.
+`watching` only after every probe is seen.
+
+A directory whose watcher stays silent for two seconds is polled
+instead, with a warning.
 
 The workspace root is watched too (not recursively), so a lockfile edit
 is heard.

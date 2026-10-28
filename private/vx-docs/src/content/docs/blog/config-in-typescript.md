@@ -76,8 +76,10 @@ export default { tasks: { ...lib('src/index.ts') } } satisfies ProjectConfig
 
 The key hashes the config [after it runs](../resolved-config-hashing/).
 Edit `vx-preset.ts`, run `vx lock`, and every task that uses it gets a
-new key. No list of global dependencies to keep up to date: the import
-is the dependency.
+new key.
+
+No list of global dependencies to keep up to date: the import is the
+dependency.
 
 | JSON configs need         | In a TypeScript module      |
 | ------------------------- | --------------------------- |
@@ -100,5 +102,6 @@ config again.
 
 `bunx @vzn/vx-migrate` also reads `turbo.json` or an Nx graph. A
 `globalDependencies` list becomes a preset file and its import. Schema:
-[Configuration schema](../../schema/). More at
-[vznjs.github.io/vx](https://vznjs.github.io/vx/).
+[Configuration schema](../../schema/).
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

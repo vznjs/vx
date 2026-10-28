@@ -47,8 +47,10 @@ flowchart TB
 
 With a full cache, looking up every key first is what makes a cached run
 fast. With an empty cache every lookup would miss, so vx skips them. The
-keys come out the same. The whole build takes as long as before. You
-only wait less at the start.
+keys come out the same.
+
+The whole build takes as long as before. You only wait less at the
+start.
 
 ## Nothing to turn on
 

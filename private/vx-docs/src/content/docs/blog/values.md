@@ -60,8 +60,9 @@ without a written reason.
 
 Named inputs and global env. Guessing inputs by tracing. `NODE_OPTIONS`
 in the key. Lookahead scheduling. Our own dashboard or cloud. Turbo's
-cache protocol in core. HTTP/3. Each lost a measurement or broke a rule
-above.
+cache protocol in core. HTTP/3.
+
+Each lost a measurement or broke a rule above.
 
 ## vx builds itself under these rules
 

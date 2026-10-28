@@ -105,10 +105,13 @@ Restores run on their own lane, so they never wait behind compilers.
 
 Every archive vx uploads ends with a CRC-32 checksum and its own key.
 Tar checks only its headers, and zstd can decode a flipped byte in an
-image without error. So vx checks the sum first. A wrong sum, wrong key,
-or a file outside the declared outputs turns the hit into a miss, and
-the task runs. Local hits are vx's own files, copied out unchecked
-([A cache hit is a file copy](../a-hit-is-a-file-copy/)).
+image without error. So vx checks the sum first.
+
+A wrong sum, wrong key, or a file outside the declared outputs turns the
+hit into a miss, and the task runs.
+
+Local hits are vx's own files, copied out unchecked ([A cache hit is a
+file copy](../a-hit-is-a-file-copy/)).
 
 ## Uploads never hold the run
 

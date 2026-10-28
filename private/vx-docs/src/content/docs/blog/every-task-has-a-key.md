@@ -96,8 +96,10 @@ $ vx run packages/e#build
 
 vx reads tracked files' hashes from git. A path you name outright
 (`.env.local`), or a glob whose fixed part git ignores (`gen/**`), is
-read from disk. A broad glob like `src/**` still skips ignored files,
-and `node_modules` is never walked.
+read from disk.
+
+A broad glob like `src/**` still skips ignored files, and `node_modules`
+is never walked.
 
 `--affected` sees only what git sees, as in Nx. An ignored file never
 picks a task by itself, but the key still changes when the task runs.

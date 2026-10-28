@@ -75,12 +75,17 @@ sandbox a person does.
 
 ## Letting it run the build too
 
-Reading is half. To let an agent *run* builds safely, vx has explicit
-inputs, [strict outputs](../strict-output-ownership/), a
-[sandbox](../the-sandbox/) that blocks undeclared reads and domains,
-and a [teardown](../ctrl-c/) that leaves nothing running. An agent that
-can only run declared commands on declared paths is one you can leave
-alone with the repo.
+Reading is half.
+
+To let an agent *run* builds safely, vx has:
+
+- explicit inputs;
+- [strict outputs](../strict-output-ownership/);
+- a [sandbox](../the-sandbox/) that blocks undeclared reads and domains;
+- a [teardown](../ctrl-c/) that leaves nothing running.
+
+An agent that can only run declared commands on declared paths is one
+you can leave alone with the repo.
 
 Guide: [AI agents](../../docs/agents/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -54,8 +54,9 @@ check costs one `lstat` per input, only on a miss that saves.
 
 You save an edit mid-build, then undo it. The bytes match again, but the
 output was built from the edit. So any write after the key counts,
-whatever it holds. The check is the same on CI, where another task can
-do the same thing.
+whatever it holds.
+
+The check is the same on CI, where another task can do the same thing.
 
 ## A tool that rewrites its own input
 
@@ -80,13 +81,16 @@ build: {
 | `severity: 'error'` | fails the task instead of warning |
 
 The env vars `VX_CACHE_INPUT_STABILITY_STRATEGY` and
-`VX_CACHE_INPUT_STABILITY_SEVERITY` set the default. A failed task's line
-names the file, and `vx last --failed --format json` reports
-`inputMoved`. If the file is generated, declare it as an output.
+`VX_CACHE_INPUT_STABILITY_SEVERITY` set the default.
+
+A failed task's line names the file, and `vx last --failed --format
+json` reports `inputMoved`. If the file is generated, declare it as an
+output.
 
 ## Downstream skips the save too
 
 Every task that ran over those outputs saves nothing either. You pay one
 rebuild, and every saved entry means what its inputs say. Details:
-[Caching](../../caching/). More at
-[vznjs.github.io/vx](https://vznjs.github.io/vx/).
+[Caching](../../caching/).
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

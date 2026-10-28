@@ -31,7 +31,9 @@ pie showData title Tasks re-keyed by an astro bump
 
 Core keys no lockfile. Without a lockfile plugin, an install changes no
 key and an old build gets restored. Putting the whole lockfile in every
-key is correct but rebuilds everything on any bump. (Turborepo keys each package on the lockfile changes that reach it.)
+key is correct but rebuilds everything on any bump.
+
+(Turborepo keys each package on the lockfile changes that reach it.)
 
 ## Key each project on what it can reach
 
@@ -60,7 +62,9 @@ edit reaches. What counts:
 
 `bun()`, `npm()` and `yarn()` do the same for their layouts. Yarn
 classic has no per-workspace data, so every project gets one root hash.
-A package you import but never declared is in no list. Declare it.
+A package you import but never declared is in no list.
+
+Declare it.
 
 ## `--affected` follows the same claim
 
@@ -75,8 +79,9 @@ of the 151 tasks in `vx run ci --all`.
 
 The root's dependencies are in every key. This repo's root links seven
 of its packages as devDependencies, so bumping `protobufjs` (reached
-through `@vzn/vx-reapi`) re-keys every task, all 151. A bump costs what
-it touches.
+through `@vzn/vx-reapi`) re-keys every task, all 151.
+
+A bump costs what it touches.
 
 Lockfile parsers live in a plugin because they change when package
 managers do. Guide: [Lockfiles](../../docs/lockfiles/). More at

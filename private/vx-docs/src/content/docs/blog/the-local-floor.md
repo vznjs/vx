@@ -67,9 +67,10 @@ flowchart LR
   style C1 stroke:#c6f84e,stroke-width:2px
 ```
 
-You never declare them and can't remove them. With no plugins,
-`vx run build` still works. A save reaches every remote. The local
-artifacts live in `~/.vx/<id>/cache`, shared by every checkout
+You never declare them and can't remove them. With no plugins, `vx run
+build` still works. A save reaches every remote.
+
+The local artifacts live in `~/.vx/<id>/cache`, shared by every checkout
 ([storage](../../caching/#storage-layout)).
 
 ## A plugin may say no
@@ -86,16 +87,18 @@ without failing the run:
 | REAPI server that only offers caching        | executor declines, cache works |
 
 A remote worker has an empty tree, can't reach your laptop's ports and
-has no sandbox, so those tasks stay. `vx run --dry` prints where each
-task goes: `@vx/reapi`, `@local`, or `@noop` for an
-`exec.remote: 'only'` task no remote takes.
+has no sandbox, so those tasks stay.
+
+`vx run --dry` prints where each task goes: `@vx/reapi`, `@local`, or
+`@noop` for an `exec.remote: 'only'` task no remote takes.
 
 ## Why not a default plugin
 
-A default local plugin would leave a hole: once you add any plugin,
-the default is gone unless you remember it, and a declined task has
-nowhere to go. As part of every list, no setup can leave a task with
-nowhere to run.
+A default local plugin would leave a hole: once you add any plugin, the
+default is gone unless you remember it, and a declined task has nowhere
+to go.
+
+As part of every list, no setup can leave a task with nowhere to run.
 
 Everything else, like a remote cache, exists only if you
 name it in the workspace file.

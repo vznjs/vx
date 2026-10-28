@@ -49,8 +49,9 @@ flowchart LR
 
 Nothing is uploaded and nothing is recomputed. `memory` is the
 container's limit, not the machine's. `flaky tasks` comes from your
-local runs ([flaky](../flaky-tasks/)). `--format json` gives an agent
-the same facts.
+local runs ([flaky](../flaky-tasks/)).
+
+`--format json` gives an agent the same facts.
 
 ## Keep the cache small
 

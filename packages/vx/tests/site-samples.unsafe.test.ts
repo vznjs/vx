@@ -473,7 +473,7 @@ describe('the watch-mode post states what watch.ts does', () => {
     expect(src).toContain('const DEBOUNCE_MS = 150')
     expect(page).toContain('about 150 ms')
     expect(src).toContain('const WATCH_PROBE_TIMEOUT_MS = 2_000')
-    expect(page).toContain('silent for\ntwo seconds')
+    expect(page.replace(/\s+/g, ' ')).toContain('silent for two seconds')
   })
   it('its always-ignored list names every ignored segment and suffix', () => {
     const list = (name: string): string[] => {
@@ -1465,7 +1465,8 @@ describe('the documented glyph set is the set the renderer prints', () => {
 describe('the what-vx-is post names every plugin hook', () => {
   it('each of PLUGIN_HOOKS is a code span in its pipeline paragraph', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'what-vx-is.md'), 'utf8')
-    const para = /In plugin terms the stages are named([\s\S]*?)\n\n/.exec(page)
+    const para =
+      /In plugin terms the stages are named([\s\S]*?)\nA plugin can fill any of them\./.exec(page)
     expect(para).not.toBeNull()
     for (const hook of PLUGIN_HOOKS) expect(para![1]!).toContain('`' + hook + '`')
   })
