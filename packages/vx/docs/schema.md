@@ -788,7 +788,7 @@ Semantics:
   declaring at least one matching task; the holder receives edges to
   ALL its matches and stops the walk. Patterns are not supported in
   the `'pkg#task'` form. (Nx 19.5 `build-*` parity.)
-- **No bare wildcards or negation here.** `'*'` / `'^*'` / `'!form'`
+- **No bare wildcards or negation here.** `'*'` / `'^*'` (or `'**'`, any run of `*`) / `'!form'`
   belong in `inputs.tasks` (filtering which upstream hashes
   participate in this task's cache key), not in `dependsOn` (declaring
   graph edges). The micro-syntax parser rejects them in this position.

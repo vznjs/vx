@@ -204,17 +204,24 @@ describe('dependsOn patterns e2e', () => {
     expect((await Bun.file(path.join(app, 'ran.log')).text()).trim().split('\n')).toHaveLength(2)
   })
 
-  it('a bare wildcard in dependsOn still fails loud', async () => {
-    await addProject(
-      root,
-      'app',
-      `export default {
-        tasks: { build: { dependsOn: ['*'], exec: { command: 'echo x' } } },
-      }
-      `,
-    )
-    const r = await vx(root, ['run', 'app#build'])
-    expect(r.code).not.toBe(0)
-    expect(r.err).toContain('bare wildcards')
-  })
+  // `**` matches every name as `*` does, so it is the same bare wildcard,
+  // not a namespace pattern that adds every other task.
+  for (const dep of ['*', '^*', '**', '^**']) {
+    it(`a bare wildcard ${JSON.stringify(dep)} in dependsOn still fails loud`, async () => {
+      await addProject(
+        root,
+        'app',
+        `export default {
+          tasks: {
+            build: { dependsOn: ['${dep}'], exec: { command: 'echo x' } },
+            other: { exec: { command: 'echo y' } },
+          },
+        }
+        `,
+      )
+      const r = await vx(root, ['run', 'app#build'])
+      expect(r.code).not.toBe(0)
+      expect(r.err).toContain(`dependsOn does not accept bare wildcards (got "${dep}")`)
+    })
+  }
 })
