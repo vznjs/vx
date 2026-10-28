@@ -1169,11 +1169,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     }
 
     // A held server's answer: the dependants it found go on the restore
-    // lane, and the server is idle when they were all of them.
+    // lane, and the server is idle when they were all of them. One whose
+    // deps all settled is already on the exec queue, running, or done:
+    // pushed again it ran twice (its server skipped, the exec lane full).
     const answer = (id: string, found: readonly string[]): void => {
       if (resolved || !unanswered.delete(id)) return
       for (const d of found) {
-        if (promoted.has(d) || outcomes.has(d) || !inRestoreTier(d)) continue
+        if (promoted.has(d) || pending.get(d) === 0 || !inRestoreTier(d)) continue
         promoted.add(d)
         restoreReady.push(d)
         readyAt.set(d, Date.now())
