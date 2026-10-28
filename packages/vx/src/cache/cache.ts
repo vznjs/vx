@@ -1299,7 +1299,7 @@ export class Cache implements CacheLayer {
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
     this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
-    this.outputs = new OutputIndex(this.db)
+    this.outputs = new OutputIndex(this.db, this.writeBlocked === null && !this.inspecting)
     this.folds = new FoldMemo(this.db, this.write && !this.inspecting)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))
     this.remoteHits = new RemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
@@ -3079,6 +3079,7 @@ export class Cache implements CacheLayer {
     return this.guard(() => this.history.recordRunBundle(bundle))
   }
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void {
+    if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRemoteErrors(runId, errors))
   }
   stats(opts: CacheStatsOptions = {}): CacheStats {
