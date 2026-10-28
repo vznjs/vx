@@ -37,7 +37,9 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 [`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server).
 On a CI job with a token (GitHub's OIDC token, which needs
 `permissions: id-token: write`, or a GitLab `id_tokens` entry
-`VX_HISTORY_TOKEN` with the server's origin as `aud`), each run asks it
+`VX_HISTORY_TOKEN` with the server's origin as `aud`; a 5xx or 429 from
+GitHub's endpoint, or a 429, 502, 503 or 504 from the server, is asked
+again up to three times), each run asks it
 for its tasks' numbers, by task definition, in the refs the run reads,
 as a remote cache does: its branch's, the branch it merges into, then
 the default branch's (`baseBranch`, else git's or the CI's). `defaultBranch`

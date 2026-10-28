@@ -13,7 +13,7 @@ import {
 } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
-import { bytes, homeOf, needOf, pace } from '../src/plugin.js'
+import { bytes, changedSinceParent, homeOf, needOf, pace } from '../src/plugin.js'
 import type { Platform } from '@vzn/vx'
 import {
   type CacheFacts,
@@ -3152,6 +3152,72 @@ it('refuses options it does not read and workers it cannot start', () => {
   )
 })
 
+// A run from a git hook inherits the hook's GIT_INDEX_FILE / GIT_DIR. The
+// worktree add then wrote the new tree's index over the one being
+// committed (the staged change was gone), and every worker in its own
+// worktree read the hook's index and repository, not its own.
+// A hook in the main worktree sets a relative GIT_INDEX_FILE alone; one in
+// a linked worktree sets both, absolute.
+for (const hook of ['main', 'linked'] as const)
+  it(`local() makes its worktrees and workers under no git hook index or repository (${hook} worktree hook)`, async () => {
+    const repo = await realpath(await tmp())
+    const git = (...args: string[]) => {
+      const p = Bun.spawnSync(['git', '-c', 'commit.gpgsign=false', ...args], {
+        cwd: repo,
+        env: { ...process.env, GIT_INDEX_FILE: undefined, GIT_DIR: undefined },
+      })
+      if (p.exitCode !== 0) throw new Error(p.stderr.toString())
+      return p.stdout.toString().trim()
+    }
+    git('init', '-q')
+    git('config', 'user.email', 't@vx.local')
+    git('config', 'user.name', 't')
+    await writeFile(path.join(repo, 'a.txt'), 'a')
+    git('add', 'a.txt')
+    git('commit', '-qm', 'init')
+    await writeFile(path.join(repo, 'staged.txt'), 's')
+    git('add', 'staged.txt')
+    const commit = git('rev-parse', 'HEAD')
+    const seen = path.join(await tmp(), 'env.txt')
+    const saved = { index: process.env['GIT_INDEX_FILE'], dir: process.env['GIT_DIR'] }
+    if (hook === 'main') process.env['GIT_INDEX_FILE'] = '.git/index'
+    else {
+      process.env['GIT_INDEX_FILE'] = path.join(repo, '.git', 'index')
+      process.env['GIT_DIR'] = path.join(repo, '.git')
+    }
+    // The prepare records the worker's env and fails, so no worker starts.
+    const adapter = local({ prepare: `env > ${JSON.stringify(seen)}; exit 1` })
+    let failed = ''
+    try {
+      await adapter.spawn({
+        run: R,
+        relay: 'http://127.0.0.1:9',
+        size: 's',
+        max: 1,
+        cpu: 1,
+        memory: 1e9,
+        index: 1,
+        id: 's#1',
+        workspaceRoot: repo,
+        commit,
+        env: {},
+        exited: () => {},
+      })
+    } catch (err) {
+      failed = (err as Error).message
+    } finally {
+      if (saved.index === undefined) delete process.env['GIT_INDEX_FILE']
+      else process.env['GIT_INDEX_FILE'] = saved.index
+      if (saved.dir === undefined) delete process.env['GIT_DIR']
+      else process.env['GIT_DIR'] = saved.dir
+      await adapter.close?.()
+    }
+    expect(failed).toStartWith('prepare exited 1')
+    expect(git('diff', '--cached', '--name-only')).toBe('staged.txt')
+    const env = await readFile(seen, 'utf8')
+    expect(env).not.toMatch(/^GIT_(INDEX_FILE|DIR)=/m)
+  }, 20_000)
+
 it('a run that is not distributed loads none of it', async () => {
   // Every run evaluates `.vx/workspace.ts`: importing the plugin may not
   // load the orchestrator, the worker or the relay.
@@ -3896,6 +3962,37 @@ it('names a tracked file a task changed as the workspace does, in a repository s
   const outputs = { files: ['gen/**'], workspaceFiles: [] }
   const m = { project: 'a', nested: [], outputs } as unknown as RunOrder
   expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
+})
+
+// git quotes a path with a quote, a non-ASCII byte or a newline unless
+// asked for NUL-separated names: `"a/\303\251.ts"` started with no
+// project's directory, and the forecast missed the task it changed.
+it('names a changed path as it is, whatever bytes it holds', async () => {
+  const ws = await tmp()
+  await mkdir(path.join(ws, 'a'), { recursive: true })
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  git('init', '-q')
+  await writeFile(path.join(ws, 'a/x.ts'), '1\n')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  const odd = ['a/é.ts', 'a/q"uote.ts', 'a/new\nline.ts']
+  for (const f of odd) await writeFile(path.join(ws, f), '1\n')
+  git('add', '-A')
+  git('commit', '-qm', 'ii')
+  expect((await changedSinceParent(ws)).toSorted()).toEqual(odd.toSorted())
 })
 
 // A worker checkout whose prepare rewrote a tracked file joined on HEAD's

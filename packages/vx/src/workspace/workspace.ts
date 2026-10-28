@@ -15,6 +15,7 @@ import {
   gitSpawnRefusal,
   isExecutableMissing,
   isOutOfFds,
+  realPath,
   refusal,
   relPosix,
   UserError,
@@ -192,7 +193,11 @@ export function linkDiscoveredEdges(
         // one that does not), so a target naming one needs no other check:
         // a plugin hands project dirs as they are, absolute, and resolving
         // and judging each of 5,000 edges was ~15 ms at 1,000 projects.
-        const name = byDir.get(target) ?? byDir.get(path.resolve(root, target))
+        let name = byDir.get(target) ?? byDir.get(path.resolve(root, target))
+        if (name === undefined) {
+          const real = canonicalDir(root, path.resolve(root, target))
+          if (real !== null) name = byDir.get(real)
+        }
         if (name === undefined) {
           const rel = relPosix(root, path.resolve(root, target))
           const where = `plugin '${edge.by}' gave project "${edge.meta.name}" an edge to ${target}`
@@ -209,6 +214,37 @@ export function linkDiscoveredEdges(
   }
   for (const [meta, names] of deps) meta.deps = [...names].sort()
   for (const [meta, names] of reach) meta.reach = [...names].sort()
+}
+
+const realRoots = new Map<string, string>()
+
+/**
+ * `dir` at the directory it leads to, spelled under `root` as given (a
+ * root reached through a link, as macOS's temp dir is, keeps its
+ * spelling); `dir` itself when that directory lies outside the root; null
+ * when `dir` is not there. A workspace glob over linked packages (pnpm's
+ * `widgets/**`, `widgets/a -> ../submodules/a`) names the link, and git
+ * lists the config at the real directory: matched by spelling, one
+ * directory was two projects, the config-less twin at the link taking
+ * every edge.
+ */
+export function canonicalDir(root: string, dir: string): string | null {
+  const real = realOrNull(dir)
+  if (real === null) return null
+  let realRoot = realRoots.get(root)
+  if (realRoot === undefined) realRoots.set(root, (realRoot = realOrNull(root) ?? root))
+  const rel = path.relative(realRoot, real)
+  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return dir
+  return path.join(root, rel)
+}
+
+function realOrNull(p: string): string | null {
+  try {
+    return realPath(p)
+  } catch (err) {
+    if (isOutOfFds(err)) throw err
+    return null
+  }
 }
 
 /** The root project's name when nothing names it: Turbo's spelling, and the root alias in filters and `dependsOn`. */
@@ -243,8 +279,8 @@ export interface ProjectConfigs {
 /**
  * Every project directory under `root`, for `vx lock` (a run reads the
  * lock and never walks). In git: `git ls-files` over the config names,
- * tracked and untracked, git's ignore rules applied, and each nested
- * repository's own listing. Outside git: a walk
+ * tracked and untracked, git's ignore rules applied, none under
+ * `node_modules`, and each nested repository's own listing. Outside git: a walk
  * that skips dot-directories and `node_modules`. A config at or under a
  * nested `.vx/workspace.*` belongs to that workspace and is left out.
  * Where a directory holds several, `PROJECT_CONFIG_FILENAMES` order picks
@@ -338,10 +374,11 @@ async function gitConfigs(root: string): Promise<string[]> {
       ':(glob)**/vx.config.*',
       ':(glob)**/.vx/workspace.*',
       `:(glob)**/${REVIEW_FILE}`,
+      NOT_INSTALLS,
     ]),
-    gitZ(root, ['ls-files', '-z', '--stage']),
+    gitZ(root, ['ls-files', '-z', '--stage', '--', NOT_INSTALLS]),
     // An embedded repository is the one untracked entry git lists as `dir/`.
-    gitZ(root, ['ls-files', '-z', '--others', '--exclude-standard']),
+    gitZ(root, ['ls-files', '-z', '--others', '--exclude-standard', '--', NOT_INSTALLS]),
   ])
   // A submodule's `.git` is a file, an embedded repository's a directory.
   const isRepo = (rel: string): Promise<boolean> =>
@@ -364,6 +401,13 @@ async function gitConfigs(root: string): Promise<string[]> {
   const prefixed = inner.flatMap((files, i) => files.map((f) => `${nested[i]}/${f}`))
   return [...configs, ...prefixed]
 }
+
+/**
+ * An install is no project, tracked or not, as the walk outside git skips
+ * it: a repo whose .gitignore does not name `node_modules` listed each
+ * installed package's vx.config as one.
+ */
+const NOT_INSTALLS = ':(exclude,glob)**/node_modules/**'
 
 /** `git <args>`'s NUL-separated output at `cwd`. */
 async function gitZ(cwd: string, args: string[]): Promise<string[]> {
@@ -491,14 +535,20 @@ export async function discoveredProject(
     const bad = nameFault(name)
     if (bad !== null) throw new UserError(`${where} ${JSON.stringify(name)}: ${bad}`)
   }
-  const dir = path.resolve(root, entry.dir)
+  let dir = path.resolve(root, entry.dir)
   const rel = relPosix(root, dir)
   const named = name === undefined ? '' : ` "${name}"`
   if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
     throw new UserError(`${where}${named} at ${dir}: outside the workspace root`)
   }
   const shown = rel === '' ? '.' : rel
-  const meta = known.get(dir)
+  let meta = known.get(dir)
+  if (meta === undefined) {
+    // Only a directory no project holds is resolved: a locked one is
+    // already real, and a realpath per entry is a syscall per project.
+    dir = canonicalDir(root, dir) ?? dir
+    meta = known.get(dir)
+  }
   if (meta !== undefined) {
     const from = namedBy.get(meta)
     if (name === undefined || name === meta.name || from === 'config') return { meta, added: false }
