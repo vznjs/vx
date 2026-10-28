@@ -818,8 +818,9 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of
   one workflow, one dispatch per size and demand. `GithubOptions` is
-  `{ workflow?, env? }`: `workflow` defaults to `vx-worker.yml`, a file
-  name in `.github/workflows` other than `ci.yml`, the run's own; `env`
+  `{ workflow?, runsOn?, env? }`: `workflow` defaults to `vx-worker.yml`, a file
+  name in `.github/workflows` other than `ci.yml`, the run's own; `runsOn`
+  is each size's runner label, which `vx dte init` writes; `env`
   is variables every worker gets (one-line strings), sent as the
   dispatch's `env` input only when set, which `vx dte init`'s workflow
   exports. Its workers are `keyless`. It
