@@ -25,6 +25,9 @@ option.
   `public`, `named` when ALLOW names it, or `undefined` when none is named.
 - `hashPart(text)` is what a server stores in place of an issuer, a repository name or a scope: the first
   128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
+- `statusLine(tone, name, text)` is the line a server prints when it starts (`'ok'`) or refuses to
+  (`'err'`): `✓ vx-cache-server  listening on …`, painted as vx's own status lines (NO_COLOR, then
+  FORCE_COLOR, then a terminal), with any lines after the first dim.
 
 ```ts
 export class Refusal extends Error {

@@ -78,6 +78,7 @@ export {
   braceAlternatives,
   braceRange,
   BRACE_RANGE_LIMIT,
+  writableUnder,
 } from './paths.js'
 export {
   claimExitForSignal,

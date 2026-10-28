@@ -13,7 +13,7 @@ import {
 } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
-import { bytes, homeOf, needOf, pace } from '../src/plugin.js'
+import { bytes, changedSinceParent, homeOf, needOf, pace } from '../src/plugin.js'
 import type { Platform } from '@vzn/vx'
 import {
   type CacheFacts,
@@ -3896,6 +3896,37 @@ it('names a tracked file a task changed as the workspace does, in a repository s
   const outputs = { files: ['gen/**'], workspaceFiles: [] }
   const m = { project: 'a', nested: [], outputs } as unknown as RunOrder
   expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
+})
+
+// git quotes a path with a quote, a non-ASCII byte or a newline unless
+// asked for NUL-separated names: `"a/\303\251.ts"` started with no
+// project's directory, and the forecast missed the task it changed.
+it('names a changed path as it is, whatever bytes it holds', async () => {
+  const ws = await tmp()
+  await mkdir(path.join(ws, 'a'), { recursive: true })
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  git('init', '-q')
+  await writeFile(path.join(ws, 'a/x.ts'), '1\n')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  const odd = ['a/é.ts', 'a/q"uote.ts', 'a/new\nline.ts']
+  for (const f of odd) await writeFile(path.join(ws, f), '1\n')
+  git('add', '-A')
+  git('commit', '-qm', 'ii')
+  expect((await changedSinceParent(ws)).toSorted()).toEqual(odd.toSorted())
 })
 
 // A worker checkout whose prepare rewrote a tracked file joined on HEAD's

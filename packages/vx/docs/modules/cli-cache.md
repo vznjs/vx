@@ -39,7 +39,7 @@ export { parseDuration, parseSize } from '../util/index.js'
 vx cache clean --older-than <duration>
 vx cache clean --max-size <size>
 vx cache clean --older-than 7d --max-size 500M   # both
-vx cache clean --max-size 1G --dry-run           # say what the policy would reap; delete nothing
+vx cache clean --max-size 1G --dry               # say what the policy would reap; delete nothing
 vx cache clean --max-size 1G --format json       # schemas/cache.json
 vx cache clean --older-than 30d --cache-dir <path>
 vx cache clean                                   # no bound: clear the cache
@@ -82,7 +82,7 @@ directory other than `.vx/cache` is the user's: only `vxCacheEntries`
 `lockfile-claims/`, `compiled/`, an unchanged `*` `.gitignore`) go, then the
 directory if empty (item 968). The size is
 summed before the delete (links not followed); the delete takes the run
-lock, as a prune does. `--dry-run` deletes nothing and takes no lock.
+lock, as a prune does. `--dry` deletes nothing and takes no lock.
 `--global` adds every `~/.vx/*/cache` and is refused with a bound or
 `--cache-dir`. The output says the store is shared by the repo's
 checkouts and that run history goes.

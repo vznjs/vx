@@ -292,7 +292,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     commands: {
       history: {
         description:
-          'what this plugin learned per task — p50, peak RSS, CPU parallelism — and the reservation it packs',
+          'What vx-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.',
         run: (argv, ctx) => historyCmd(argv, ctx, options),
       },
     },

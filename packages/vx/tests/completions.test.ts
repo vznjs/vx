@@ -19,7 +19,7 @@ describe('verbFlags', () => {
     const runFlags = verbFlags('run')
     for (const f of documentedFlags('run')) expect(runFlags).toContain(f)
     expect(verbFlags('cache')).toEqual(
-      expect.arrayContaining(['--older-than', '--max-size', '--dry-run', '--cache-dir']),
+      expect.arrayContaining(['--older-than', '--max-size', '--dry', '--cache-dir']),
     )
     expect(verbFlags('last')).toEqual(expect.arrayContaining(['--list', '--format', '--cache-dir']))
     expect(verbFlags('cache')).not.toContain('--concurrency')
@@ -56,7 +56,6 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--profile': [],
   '--older-than': ['1d'],
   '--max-size': ['1G'],
-  '--dry-run': [],
   '--global': [],
   '--check': [],
   '--mjs': [],

@@ -278,6 +278,22 @@ describe('plugin commands', () => {
     ).toEqual(['  vx hello             says hi (org/hello)'])
   })
 
+  it("vx help wraps a plugin verb's description under its column, as core's own lines", async () => {
+    const LONG = pluginSource(
+      'org/long',
+      `{ commands: { long: { description: '${'word '.repeat(30).trim()}', run() { return 0 } } } }`,
+    )
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([LONG]))
+    expect(await cli(['help'])).toBe(0)
+    const text = out.join('')
+    const section = text.slice(text.indexOf('Plugin commands:\n')).split('\n').slice(1, -1)
+    expect(section[0]).toStartWith('  vx long              word word')
+    expect(section.length).toBeGreaterThan(1)
+    for (const line of section) expect(line.length).toBeLessThanOrEqual(88)
+    for (const line of section.slice(1)) expect(line).toMatch(/^ {23}\S/)
+    expect(section.join(' ').replace(/\s+/g, ' ')).toContain('word word (org/long)')
+  })
+
   it('an unknown verb is still unknown, and says where help is', async () => {
     await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['nope'])).toBe(1)
@@ -324,11 +340,12 @@ describe('plugin commands', () => {
     expect(text).toContain('Plugin commands:')
     expect(text).toContain('vx hello')
     expect(text).toContain('says hi (org/hello)')
-    // A plugin verb is a verb here: `vx help hello` is the reference that
-    // lists it, and `vx help helloo` guesses it.
+    // A plugin verb is a verb here: `vx help hello` is `vx hello --help`,
+    // as `vx help run` is `vx run --help`, and `vx help helloo` guesses it.
     out.length = 0
-    expect(await cli(['help', 'hello'])).toBe(0)
-    expect(out.join('')).toBe(text)
+    expect(await cli(['help', 'hello'])).toBe(7)
+    expect((globalThis as { __vxCmd?: { argv: string[] } }).__vxCmd?.argv).toEqual(['--help'])
+    expect(out.join('')).not.toContain('Plugin commands:')
     err.length = 0
     expect(await cli(['help', 'helloo'])).toBe(1)
     expect(err.join('')).toBe(

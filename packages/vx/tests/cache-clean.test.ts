@@ -65,7 +65,7 @@ describe('vx cache clean with no bound clears the cache', () => {
       expect(readdirSync(store()).length).toBeGreaterThan(0)
       const st = store()
 
-      const dry = await vx(['cache', 'clean', '--dry-run', '--format', 'json'])
+      const dry = await vx(['cache', 'clean', '--dry', '--format', 'json'])
       expect({ code: dry.code, err: dry.err }).toEqual({ code: 0, err: '' })
       const plan = JSON.parse(dry.out) as { dryRun: boolean; cleared: string[]; bytesFreed: number }
       expect([plan.dryRun, plan.cleared, plan.bytesFreed > 0]).toEqual([

@@ -548,7 +548,7 @@ asks `artifacts` only then. Its own version is `artifacts_meta.layout`
 where the schema was not this vx's (a reset, a new index or store, a
 store moved), so a warm open spends no statement on it and a layout
 change bumps `SCHEMA_VERSION` too. A reading open over an index or store
-of another schema (`vx cache clean --dry-run` after an upgrade) reads
+of another schema (`vx cache clean --dry` after an upgrade) reads
 them through a TEMP view over the file, so it names the row-less ones
 the real prune reaps. A workspace index whose entries move to a store
 drops its own `artifacts`, which an unqualified name would otherwise
@@ -655,6 +655,10 @@ Reads via `get()` are non-blocking thanks to WAL.
   its target directory is created first, decided on where the link
   resolves (`resolveThrough`), and only when a `mkdir` has failed, so a
   clean tree pays nothing. A cycle of links is a `UserError` by name.
+  A path that resolves into a `.git` under the anchor (any case) is
+  refused as a link out is, and an artifact's link into one is an
+  `ArchiveSecurityError` (`writableUnder` in util, the rule the output
+  clean holds a glob root's link and a recorded row to as well).
   A path holding a backslash is resolved link by link (`realOf`): Bun's
   `realpath` answers ENOENT for any such path.
   On any throw, nothing was renamed into place.

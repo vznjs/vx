@@ -64,7 +64,7 @@ rules (a plugin may not shadow a core verb; a verb has one owner, a package).
   `Object.prototype` nor `null` and is not an array — and
   `validateProjectConfig` refuses the first one before the schema,
   after the file's path: "tasks.build.description is a function — a
-  config must be JSON data, because the cache key folds its JSON". An `undefined`
+  config must be JSON data, because the cache key is built from its JSON". An `undefined`
   PROPERTY is allowed (JSON drops it, the schema reads it as absent, conditional
   spreads write it). The config worker (config-eval.ts) runs the same
   function, embedded by its source text

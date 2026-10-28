@@ -2,7 +2,7 @@
   "verbs": {
     "cache": [
       "--cache-dir",
-      "--dry-run",
+      "--dry",
       "--format",
       "--global",
       "--help",

@@ -1481,7 +1481,7 @@ describe('runGraph — continueMode', () => {
     })
     expect(out.get('p#a')!.status).toBe('failed')
     // b executed (not skipped) and saw the failed upstream outcome —
-    // its key folds the upstream's INPUT hash, which failed outcomes
+    // its key includes the upstream's INPUT hash, which failed outcomes
     // carry (computed before exec), so caching stays sound.
     expect(out.get('p#b')!.status).toBe('success')
     expect(seenUpstream[0]![0]!.status).toBe('failed')
