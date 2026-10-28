@@ -24,3 +24,21 @@ export function workspaceSettings(text: string): string | undefined {
   for (const [k, v] of Object.entries(map)) if (!PER_PROJECT.has(k)) rest[k] = v
   return `pnpm-workspace\0${stable(rest)}`
 }
+
+/**
+ * pnpm's `shared-workspace-lockfile`, true unless set: pnpm-workspace.yaml's
+ * `sharedWorkspaceLockfile` when a boolean (pnpm 10.8+ reads it first; a
+ * quoted "false" installs shared), else `.npmrc`'s.
+ */
+export function sharedWorkspaceLockfile(
+  workspaceYaml: string | null,
+  npmrc: string | null,
+): boolean {
+  if (workspaceYaml !== null) {
+    try {
+      const set = record(Bun.YAML.parse(workspaceYaml))?.['sharedWorkspaceLockfile']
+      if (typeof set === 'boolean') return set
+    } catch {}
+  }
+  return npmrc?.match(/^[ \t]*shared-workspace-lockfile[ \t]*=[ \t]*(\S*)/m)?.[1] !== 'false'
+}
