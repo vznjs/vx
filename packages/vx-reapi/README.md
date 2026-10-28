@@ -115,7 +115,7 @@ the call's 30 s deadline; 65535 stalled in none, and costs ~51% on a 32 MiB
 upload (390 → 590 ms on loopback). A larger `chunkBytes` is still accepted:
 
 ```ts
-reapi({ endpoint: '…', chunkBytes: 128 * 1024 })
+reapi({ endpoint: 'grpcs://cache.example.com:443', chunkBytes: 128 * 1024 })
 ```
 
 The stall is a RACE, not a boundary. So above the safe size the client
