@@ -450,10 +450,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   /** The lock as the last cycle found it: a config edit with no re-lock since changes no command. */
   let lockSeen = lockStamp()
   // Every cycle's configs are the lock's, so a config edit alone ran a cycle
-  // that printed `changed` and nothing else, read as the edit applied.
+  // that printed `changed` and nothing else, read as the edit applied. A
+  // config gone is the run's own refusal to name.
   const sayUnlocked = (paths: readonly string[]): void => {
     for (const abs of paths)
-      if (isProjectConfigFile(abs) || configImportFiles.includes(abs))
+      if ((isProjectConfigFile(abs) || configImportFiles.includes(abs)) && fs.existsSync(abs))
         sayNotice(
           'warn',
           'vx watch',
