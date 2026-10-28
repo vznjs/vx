@@ -332,7 +332,8 @@ export async function acquireRunLock(
   const lockDir = runLockPath(workspaceRoot, opts.dir)
   // A task's own process (`vx cache clean` in a task) would wait for the
   // run that started it, which holds the lock until that task ends.
-  const outer = process.env[VX_RUN_WORKSPACE_ENV]
+  // Empty is unset: resolved, '' named the cwd.
+  const outer = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outer !== undefined && runLockPath(outer, opts.dir) === lockDir) {
     throw new UserError(
       `this vx runs inside task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} of a vx run on this workspace, which holds its run lock until it ends — run it before or after that run, not from one of its tasks`,
