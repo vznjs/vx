@@ -2774,7 +2774,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   `output`, `setup`, `commands`), or `none`. It reads the declarations: a plugin
   that declines a task at run time still lists its seam here.
 - `workers` is the count a run defaults to and where it comes from:
-  `.vx/workspace.ts`'s `run.concurrency` when set, else the cores this
+  `VX_RUN_CONCURRENCY` when set, else `.vx/workspace.ts`'s `run.concurrency`, else the cores this
   process may use — the CPU count, capped by the cgroup CPU quota a
   container runs under (`8 — the CPU count`, `2 — cgroup CPU quota 2 of
 8 cores`). `memory` is what a memory-packing policy budgets
@@ -2831,7 +2831,7 @@ below Bun 1.4.4), `git` (null when not
 found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
 git could not answer), `workspaceRoot`, `projects`, `tasks`,
 `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
-cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
+cpuQuota }`, the source one of `env` / `workspace` / `cgroup` / `cores`,
 `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes`
 (on disk: the index and run history), `cacheStore` (null when the cache
