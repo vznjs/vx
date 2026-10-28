@@ -145,7 +145,7 @@ The micro-syntax parser is shared with `inputs.tasks`; the
 builder enforces the dependsOn-specific rejections.
 
 **The default `build` on a package cycle** (X-100). Every project the
-loader gives the default `build` (the one keyed group, `isKeyedGroup`)
+loader gives the default `build` (a keyed group, `isChainGroup`)
 holds `build`, so on a package cycle (`directDeps`' strongly connected
 components, found on the first ask) `^build` closed a task cycle no
 config declares. A default `build` on a cycle walks last, once the rest
@@ -158,7 +158,12 @@ a cycle — a `^build` walk, or one by name (`build`, `pkg#build`) —
 is added and goes on past it, so the builds it cannot depend on still
 come first (X-120: by name it stopped there, and `a#test` on `build`,
 with `a` and `b` on the default build depending on each other, folded
-nothing of `b`). Off a cycle it is a holder like any other.
+nothing of `b`). Off a cycle it is a holder like any other. A config's
+keyed group of the same shape (`inputs`, no `exec`, `dependsOn` exactly
+`['^name']` of its own name; `isChainGroup`) is treated the same; any
+other keyed group on a cycle expands its own `dependsOn` like a task
+(a `ci` keyed on `lint` was deferred as a default build, lost its edge
+and ran nothing).
 
 **`requested: true`** marks the user-requested set. A node added via
 dependsOn expansion is `requested: false`. If a node is later named

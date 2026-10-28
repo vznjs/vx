@@ -1385,6 +1385,34 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
     })
   })
 
+  it("a config's keyed group on a cycle expands its own dependsOn, not ^ its name", () => {
+    // Only the `^name` shape walks last and passes through. `ci` keyed on
+    // `lint` was deferred as one: it lost its edge and `vx run ci` ran
+    // nothing, green; `deploy` walked `^deploy`, not its `^build`.
+    const tasks = {
+      ci: { dependsOn: ['lint'], inputs: { files: ['ci/**'] } } as TaskConfig,
+      lint: cmd('eslint'),
+      fixtures: { inputs: { files: ['fixtures/**'] } } as TaskConfig,
+      deploy: { dependsOn: ['^build'], inputs: { files: ['deploy/**'] } } as TaskConfig,
+    }
+    const nodes = buildTaskGraph({
+      projects: projects(project('a', tasks), project('b', { ...tasks, ...defaultBuild })),
+      packageGraph: packageGraph({ a: ['b'], b: ['a'] }),
+      requested: [
+        { project: 'a', task: 'ci' },
+        { project: 'a', task: 'fixtures' },
+        { project: 'a', task: 'deploy' },
+      ],
+    })
+    expect(depsOf(nodes)).toEqual({
+      'a#ci': ['a#lint'],
+      'a#lint': [],
+      'a#fixtures': [],
+      'a#deploy': ['b#build'],
+      'b#build': [],
+    })
+  })
+
   it('a same-project cycle through two tasks is refused', () => {
     expect(() =>
       buildTaskGraph({
