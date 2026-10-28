@@ -78,9 +78,15 @@ export function parseAllow(list: string): Allowed[] {
       // Loopback over plain HTTP too: a server's own tests (its container's)
       // run an issuer beside it, and no one else reaches that address.
       const https = /^(https:\/\/|http:\/\/127\.0\.0\.1[:/])/.test(issuer)
-      if (r < 0 || !https || !repository.includes('/') || workflow === '') {
+      // An entry missing a part splits elsewhere: its issuer is then no URL.
+      const url = /^[a-z][a-z0-9+.-]*:\/\/[^/]/i.test(issuer)
+      if (r < 0 || !url || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
+      if (!https)
+        throw new Error(
+          `${e}: the issuer is https://, not ${issuer} (plain http only on 127.0.0.1)`,
+        )
       return { issuer, repository, workflow }
     })
 }

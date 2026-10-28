@@ -19,8 +19,13 @@ describe('parseAllow', () => {
       `${GITHUB}:acme/app`,
       `${GITHUB}:acme:ci.yml`,
       `${GITHUB}:acme/app:`,
-      'http://x.example:acme/app:ci.yml',
     ])
-      expect(() => parseAllow(bad)).toThrow(`${bad} is not issuer:owner/repo:workflow`)
+      expect(() => parseAllow(bad)).toThrow(new Error(`${bad} is not issuer:owner/repo:workflow`))
+    // Well formed, so "is not issuer:owner/repo:workflow" sent its author to the wrong part.
+    expect(() => parseAllow('http://x.example:acme/app:ci.yml')).toThrow(
+      new Error(
+        'http://x.example:acme/app:ci.yml: the issuer is https://, not http://x.example (plain http only on 127.0.0.1)',
+      ),
+    )
   })
 })

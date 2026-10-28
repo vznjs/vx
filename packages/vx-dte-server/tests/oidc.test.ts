@@ -137,6 +137,10 @@ describe('a CI OIDC token', () => {
       'vznjs/vx:ci.yml is not issuer:owner/repo:workflow',
     )
     expect(() => parseAllow('https://x.dev:vx:ci.yml')).toThrow('is not issuer:owner/repo:workflow')
+    // Well formed, so "is not issuer:owner/repo:workflow" sent its author to the wrong part.
+    expect(() => parseAllow('http://x.dev:o/r:ci.yml')).toThrow(
+      new Error('http://x.dev:o/r:ci.yml: the issuer is https://, not http://x.dev'),
+    )
   })
 
   it('is refused for what is wrong with it', async () => {
