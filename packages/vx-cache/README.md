@@ -47,8 +47,8 @@ export default {
 
 ## Tokens
 
-A CI job's requests carry its own OIDC token, and the server's `TRUST`
-decides whether the job writes its own ref or only reads.
+A CI job's requests carry its own OIDC token, and the server's `ALLOW`
+decides whether the job gets in; it writes its own branch.
 
 - On GitHub Actions the job's token is asked for the server's origin,
   and asked again before it ends. The job needs

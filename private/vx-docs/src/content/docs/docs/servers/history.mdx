@@ -39,12 +39,12 @@ bun add @vzn/vx-history-server
   "name": "vx-history-server",
   "main": "node_modules/@vzn/vx-history-server/src/worker.ts",
   "compatibility_date": "2026-10-01",
-  "vars": { "TRUST": [] },
+  "vars": { "ALLOW": "" },
   "d1_databases": [{ "binding": "DB", "database_name": "vx-history" }]
 }
 ```
 
-Fill `TRUST` ([`TRUST`](../#trust-who-reads-and-who-writes)), then:
+Fill `ALLOW` ([`ALLOW`](../#allow-who-takes-part)), then:
 
 ```sh
 bunx wrangler login
@@ -59,7 +59,7 @@ The first deploy creates the D1 database `vx-history`.
 The numbers go in one SQLite file:
 
 ```sh
-TRUST='[{"iss":"https://token.actions.githubusercontent.com","repository":"acme/app","event_name":"push","ref":"refs/heads/main"}]' \
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' \
 bunx @vzn/vx-history-server --db vx-history.sqlite --port 8080
 ```
 
@@ -74,7 +74,7 @@ vx-history-server on http://0.0.0.0:8080/
 <TabItem label="Docker">
 
 ```sh
-docker run -p 8080:8080 -v vx-history:/data -e TRUST='[…]' ghcr.io/vznjs/vx-history-server
+docker run -p 8080:8080 -v vx-history:/data -e ALLOW='…' ghcr.io/vznjs/vx-history-server
 ```
 
 The database is `/data/vx-history.sqlite`, on the volume. Or run it
@@ -110,7 +110,7 @@ export default defineWorkspace({
 })
 ```
 
-`issuer` and `repository` must match your `TRUST` rule. Run `vx lock`
+`issuer` and `repository` must match your `ALLOW` entry. Run `vx lock`
 and commit.
 
 ### 3. Let CI jobs prove who they are
@@ -168,8 +168,8 @@ and `assume` for tasks it has never seen, are on its
 
 | Setting | Default | What it sets |
 | --- | --- | --- |
-| `TRUST` | empty: refuse every request | the repositories it serves, and which runs write their protected branches ([`TRUST`](../#trust-who-reads-and-who-writes)) |
-| `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token reads a repository `TRUST` names, and writes nothing |
+| `ALLOW` | empty: refuse every request | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
+| `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token reads a repository `ALLOW` names, and writes nothing |
 | `AUDIENCE` | the URL it is reached at | the `aud` a CI token must name |
 | `TIMING_DAYS` | 30 | days a task's row is kept after its last report |
 

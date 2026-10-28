@@ -3,16 +3,16 @@
 // else, so any number of nodes share one bucket (PROTOCOL.md, README.md).
 
 import { parseArgs } from 'node:util'
-import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
+import { oidcAuth, parseAllow } from '@vzn/vx-devtools'
 import { Refusal } from './protocol.js'
 import { createCacheServer, DEFAULT_LIMITS, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
 const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
-  TRUST           the CI repositories it serves and the jobs it trusts, a JSON list
-                  (README.md § CI tokens); only their OIDC tokens are taken
+  ALLOW           who may take part, space separated, each issuer:owner/repo:workflow
+                  (README.md § CI tokens); only their jobs' OIDC tokens are taken
   AUDIENCE        the aud a CI token names (default: the origin it was sent to)
-  READ_ACCESS     public: a request with no token reads a repository TRUST names
+  READ_ACCESS     public: a request with no token reads a repository ALLOW names
   S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
                   S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
   MAX_CHECK_HASHES       keys one check names (default ${DEFAULT_LIMITS.maxCheckHashes})
@@ -88,13 +88,12 @@ function main(argv: string[]): void {
   const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
-  let trust
+  let allow
   let limits
   try {
-    trust = parseTrust(env.TRUST ?? '')
+    allow = parseAllow(env.ALLOW ?? '')
   } catch (err) {
-    // A bare JSON parse error named no variable (the Worker's says TRUST).
-    fail(`TRUST: ${(err as Error).message}`)
+    fail(`ALLOW: ${(err as Error).message}`)
   }
   try {
     limits = { ...DEFAULT_LIMITS, ...limitsFrom(env) }
@@ -104,7 +103,7 @@ function main(argv: string[]): void {
   const handle = createCacheServer({
     blobs: s3Blobs(new Bun.S3Client({ bucket: env.S3_BUCKET })),
     authorize: oidcAuth({
-      trust,
+      allow,
       readAccess: env.READ_ACCESS,
       ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
     }),

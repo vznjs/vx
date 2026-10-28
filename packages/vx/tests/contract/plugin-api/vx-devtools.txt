@@ -13,31 +13,37 @@ export function oidcAuth(opts: OidcOptions): Authorize
 export function oidcTokenAuth(
   opts: OidcOptions,
 ): (req: Request, named?: Repo) => Promise<Access | undefined>
-== function parseTrust (src/oidc.ts)
-export function parseTrust(json: string): TrustRule[]
+== function parseAllow (src/oidc.ts)
+export function parseAllow(list: string): Allowed[]
 == type Access (src/oidc.ts)
 export interface Access {
   readonly issuer: string
   readonly repository: string
   readonly write?: string
 }
+== type Allowed (src/oidc.ts)
+export interface Allowed {
+  readonly issuer: string
+  readonly repository: string
+  readonly workflow: string
+}
 == type Authorize (src/oidc.ts)
 export type Authorize = (req: Request) => Promise<Access>
 == type OidcOptions (src/oidc.ts)
 export interface OidcOptions {
-  readonly trust: readonly TrustRule[]
+  /** `ALLOW` (`parseAllow`): who may take part. */
+  readonly allow: readonly Allowed[]
+  /** The `aud` a token must name; unset, the origin the server is reached at. */
   readonly audience?: string
+  /** Reads a URL as JSON; tests serve keys without a network. */
   readonly fetchJson?: (url: string) => Promise<unknown>
+  /** Seconds since the epoch; tests move the clock. */
   readonly now?: () => number
+  /** `READ_ACCESS`: `public` lets a request with no token read a repository ALLOW names. */
   readonly readAccess?: string | undefined
 }
 == type Repo (src/oidc.ts)
 export interface Repo {
   readonly issuer: string
   readonly repository: string
-}
-== type TrustRule (src/oidc.ts)
-export interface TrustRule {
-  readonly iss: string
-  readonly [claim: string]: string | readonly string[]
 }

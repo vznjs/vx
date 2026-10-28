@@ -7,7 +7,7 @@ import { blobName } from '../src/store.js'
 import { createCacheServer, limitsFrom } from '../src/server.js'
 import { conformance, scopeOf } from './conformance.js'
 import { fakeS3, type FakeS3 } from './fake-s3.js'
-import { GITHUB, type Issuer, issuer, JOBS, MAIN_JOB, NAMED, REPO, TRUST } from './issuer.js'
+import { ALLOW, GITHUB, type Issuer, issuer, JOBS, MAIN_JOB, NAMED, REPO } from './issuer.js'
 
 const LIMITS = { maxCheckHashes: 50, maxUploadBytes: 7 * 1024 * 1024 }
 
@@ -23,7 +23,7 @@ beforeAll(async () => {
     blobs: s3Blobs(
       new Bun.S3Client({ endpoint: s3.url, bucket: 'b', accessKeyId: 'a', secretAccessKey: 's' }),
     ),
-    authorize: oidcAuth({ trust: TRUST, fetchJson: iss.fetchJson }),
+    authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
     limits: LIMITS,
   })
   server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: handle })
@@ -95,7 +95,7 @@ it('refuses a body of another length than its Content-Length, and stores nothing
       blobs: s3Blobs(
         new Bun.S3Client({ endpoint: s3.url, bucket: 'b', accessKeyId: 'a', secretAccessKey: 's' }),
       ),
-      authorize: oidcAuth({ trust: TRUST, fetchJson: iss.fetchJson }),
+      authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
     })(
       new Request(`http://x.test/v1/artifacts/fe${length}`, {
         method: 'PUT',
@@ -154,23 +154,23 @@ it('answers a flag it does not know with its usage', () => {
   ])
 })
 
-it('names TRUST when it cannot be read', () => {
-  const said = (trust: string) => {
+it('names ALLOW when it cannot be read', () => {
+  const said = (allow: string) => {
     const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
-      env: { ...process.env, S3_BUCKET: 'b', TRUST: trust },
+      env: { ...process.env, S3_BUCKET: 'b', ALLOW: allow },
       stderr: 'pipe',
     })
     return [cli.exitCode, cli.stderr.toString()]
   }
-  expect([said('notjson'), said('{}')]).toEqual([
-    [2, 'TRUST: JSON Parse error: Unexpected identifier "notjson"\n'],
-    [2, 'TRUST: not a JSON list of rules\n'],
+  expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
+    [2, 'ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
+    [2, 'ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
   ])
 })
 
 it('refuses an empty --port: Number of it is 0, a random port', () => {
   const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', ''], {
-    env: { ...process.env, S3_BUCKET: 'b', TRUST: '[]' },
+    env: { ...process.env, S3_BUCKET: 'b', ALLOW: '' },
     stderr: 'pipe',
   })
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])

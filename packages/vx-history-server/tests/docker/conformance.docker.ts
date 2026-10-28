@@ -11,16 +11,24 @@ function env(name: string): string {
 }
 
 const key = importPKCS8(await Bun.file(path.join(import.meta.dir, '.key')).text(), 'RS256')
+const workflow = (repo: string, ref: string) =>
+  `${env('VX_HISTORY_ISSUER').replace(/^https?:\/\//, '')}/${repo}//.gitlab-ci.yml@${ref}`
+const jobOf = (ref: string, repo = 'acme/app') => ({
+  project_path: repo,
+  ci_config_ref_uri: workflow(repo, ref),
+  ref_path: ref,
+})
 const claims = {
-  main: { ref_path: 'refs/heads/main', pipeline_source: 'push' },
-  branch: { ref_path: 'refs/heads/feature', pipeline_source: 'push' },
-  read: { ref_path: 'refs/heads/main', pipeline_source: 'web' },
+  main: jobOf('refs/heads/main'),
+  branch: jobOf('refs/heads/feature'),
+  // A token naming no ref writes nothing.
+  read: { ...jobOf('refs/heads/main'), ref_path: 'main' },
 }
 
 conformance('the Docker image', {
   base: () => env('VX_HISTORY_SMOKE'),
   sign: async (job) =>
-    new SignJWT({ project_path: 'acme/app', ...claims[job] })
+    new SignJWT(claims[job])
       .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
       .setIssuer(env('VX_HISTORY_ISSUER'))
       .setAudience(new URL(env('VX_HISTORY_SMOKE')).origin)

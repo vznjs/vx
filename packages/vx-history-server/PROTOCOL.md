@@ -18,14 +18,14 @@ the repository (`org/name` there, lowercased), the ref
 (`refs/heads/main`) and the task's definition hash, each stored plainly.
 
 A request's `Authorization: Bearer <token>` is a CI job's OIDC token,
-checked as `@vzn/vx-devtools` checks it (the same rules as
-vx-cache-server's `TRUST`): a repository `TRUST` does not name is `403`.
-A token writes its own ref (`refs/heads/<branch>`; a merge queue's run,
-`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, its base branch);
-one on a ref a rule protects that matches no rule reads only. A query
-names its repository; a token of another is `403`. A server whose
-`READ_ACCESS` is `public` takes a query with no token for a repository
-`TRUST` names; an upload with none is `403`.
+checked as `@vzn/vx-devtools` checks it (the same `ALLOW` as
+vx-cache-server's): a repository, or a workflow, `ALLOW` does not name
+is `403`. A token writes its own branch (`refs/heads/<branch>`; a merge
+queue's run, `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, its
+base branch); a `pull_request_target` run reads only. A query names its
+repository; a token of another is `403`. A server whose `READ_ACCESS`
+is `public` takes a query with no token for a repository `ALLOW` names;
+an upload with none is `403`.
 
 ## Upload
 

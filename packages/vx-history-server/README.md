@@ -19,9 +19,9 @@ points vx at it.
 ## CI tokens
 
 Every request carries a CI job's own OIDC token, checked by `@vzn/vx-devtools`,
-under `TRUST` rules as [`@vzn/vx-cache-server`'s](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#ci-tokens):
-a job writes its own ref, a ref a rule protects only a job matching the
-rule, and another repository is refused. A row is the issuer,
+under the same `ALLOW` as [`@vzn/vx-cache-server`'s](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#ci-tokens)
+(`issuer:owner/repo:workflow` entries): a job of a workflow it names
+writes its own branch, and any other job is refused. A row is the issuer,
 repository, ref and task hash, stored plainly, and its numbers. A run
 sends one query: its repository, the refs it reads (its branch, then the
 branch it merges into, then the default branch) and every task hash;
@@ -29,12 +29,12 @@ the server answers each from the first ref that holds it. A token of
 another repository than the query names is refused. `AUDIENCE` is the
 `aud` a token must name, by default the origin the server is reached at.
 `READ_ACCESS=public` lets a query with no token read a repository
-`TRUST` names; it uploads nothing.
+`ALLOW` names; it uploads nothing.
 
 ## On Bun
 
 ```sh
-TRUST='[…]' bun packages/vx-history-server/src/bun.ts --db /var/lib/vx-history.sqlite --port 8080
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' bun packages/vx-history-server/src/bun.ts --db /var/lib/vx-history.sqlite --port 8080
 ```
 
 `TIMING_DAYS` (default 30) is how long a task's row outlives its last
@@ -46,7 +46,7 @@ From the repo root:
 
 ```sh
 docker build -f packages/vx-history-server/Dockerfile -t vx-history-server .
-docker run -p 8080:8080 -v vx-history:/data -e TRUST='[…]' vx-history-server
+docker run -p 8080:8080 -v vx-history:/data -e ALLOW='…' vx-history-server
 ```
 
 The database is `/data/vx-history.sqlite`.
@@ -56,7 +56,7 @@ builds and runs all three (`docker compose up -d`).
 
 ## On Cloudflare Workers
 
-From this directory, with `TRUST` filled in `wrangler.jsonc`:
+From this directory, with `ALLOW` filled in `wrangler.jsonc`:
 
 ```sh
 bun install

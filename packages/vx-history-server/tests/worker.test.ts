@@ -4,7 +4,7 @@ import { afterAll, beforeAll, expect, it } from 'bun:test'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { conformance } from './conformance.js'
-import { GITHUB, type Issuer, issuer, REPO, trustOf } from './issuer.js'
+import { allowVarOf, GITHUB, type Issuer, issuer, REPO } from './issuer.js'
 
 /** The Worker's own origin, its tokens' audience. */
 const AUD = 'https://history.example.com'
@@ -37,7 +37,7 @@ async function start(bindings: Record<string, unknown>): Promise<Miniflare> {
 
 beforeAll(async () => {
   iss = await issuer()
-  mf = await start({ TRUST: JSON.stringify(trustOf()) })
+  mf = await start({ ALLOW: allowVarOf() })
   base = await mf.ready
 })
 
@@ -50,24 +50,16 @@ conformance('Workers with D1', {
   repository: REPO,
 })
 
-it('refuses every request, saying why, while TRUST, TIMING_DAYS or READ_ACCESS is unset or wrong', async () => {
+it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS is unset or wrong', async () => {
   for (const [bindings, status, message] of [
-    [{ TRUST: '' }, 401, 'the server trusts no CI: set TRUST'],
+    [{ ALLOW: '' }, 401, 'the server admits no CI: set ALLOW'],
     [
-      { TRUST: '[{"iss":"https://gitlab.com"}]' },
+      { ALLOW: 'https://gitlab.com:group/app' },
       500,
-      'rule 0: names no project_path (one repository, no *)',
+      'ALLOW: https://gitlab.com:group/app is not issuer:owner/repo:workflow',
     ],
-    [
-      { TRUST: JSON.stringify(trustOf()), TIMING_DAYS: '0' },
-      500,
-      'TIMING_DAYS: a whole number of days, got 0',
-    ],
-    [
-      { TRUST: JSON.stringify(trustOf()), READ_ACCESS: 'yes' },
-      500,
-      'READ_ACCESS: public, or unset, not yes',
-    ],
+    [{ ALLOW: allowVarOf(), TIMING_DAYS: '0' }, 500, 'TIMING_DAYS: a whole number of days, got 0'],
+    [{ ALLOW: allowVarOf(), READ_ACCESS: 'yes' }, 500, 'READ_ACCESS: public, or unset, not yes'],
   ] as const) {
     const other = await start(bindings)
     try {
@@ -83,21 +75,5 @@ it('refuses every request, saying why, while TRUST, TIMING_DAYS or READ_ACCESS i
     } finally {
       await other.dispose()
     }
-  }
-})
-
-// wrangler hands a var written as a JSON list in wrangler.jsonc to the
-// Worker as that list: TRUST.trim threw, and every request was a 500.
-it('takes TRUST written as a list in wrangler.jsonc', async () => {
-  const other = await start({ TRUST: JSON.parse(JSON.stringify(trustOf())) as unknown })
-  try {
-    const res = await other.dispatchFetch(new URL('/v1/capabilities', await other.ready), {
-      headers: {
-        authorization: `Bearer ${await iss.sign('read', AUD)}`,
-      },
-    })
-    expect(res.status).toBe(200)
-  } finally {
-    await other.dispose()
   }
 })

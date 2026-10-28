@@ -4,16 +4,16 @@
 
 import { Database } from 'bun:sqlite'
 import { parseArgs } from 'node:util'
-import { oidcTokenAuth, parseTrust } from '@vzn/vx-devtools'
+import { oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
 import { createHistoryServer } from './server.js'
 import { type Db, sqliteStore } from './store.js'
 
 const USAGE = `usage: vx-history-server [--db vx-history.sqlite] [--port 8080] [--host 0.0.0.0]
-  TRUST        the CI repositories it serves and the jobs it trusts, a JSON list
-               (README.md § CI tokens); only their OIDC tokens are taken
+  ALLOW        who may take part, space separated, each issuer:owner/repo:workflow
+               (README.md § CI tokens); only their jobs' OIDC tokens are taken
   AUDIENCE     the aud a CI token names (default: the origin it was sent to)
-  READ_ACCESS  public: a request with no token reads a repository TRUST names
+  READ_ACCESS  public: a request with no token reads a repository ALLOW names
   TIMING_DAYS  days a task's timings outlive its last report (default 30)`
 
 /** A SQLite file through bun:sqlite. */
@@ -47,13 +47,12 @@ function main(argv: string[]): void {
   const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
-  let trust
+  let allow
   let timingDays
   try {
-    trust = parseTrust(env.TRUST ?? '')
+    allow = parseAllow(env.ALLOW ?? '')
   } catch (err) {
-    // A bare JSON parse error named no variable (the Worker's says TRUST).
-    fail(`TRUST: ${(err as Error).message}`)
+    fail(`ALLOW: ${(err as Error).message}`)
   }
   try {
     timingDays = timingDaysOf(env.TIMING_DAYS)
@@ -73,7 +72,7 @@ function main(argv: string[]): void {
   const handle = createHistoryServer({
     store: sqliteStore(db),
     authorize: oidcTokenAuth({
-      trust,
+      allow,
       readAccess: env.READ_ACCESS,
       ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
     }),

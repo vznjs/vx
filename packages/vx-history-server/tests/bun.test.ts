@@ -9,7 +9,7 @@ import { sqliteDb } from '../src/bun.js'
 import { createHistoryServer } from '../src/server.js'
 import { sqliteStore } from '../src/store.js'
 import { conformance } from './conformance.js'
-import { GITHUB, type Issuer, issuer, REPO, trustOf } from './issuer.js'
+import { allowOf, GITHUB, type Issuer, issuer, REPO } from './issuer.js'
 
 let server: Bun.Server<undefined>
 let iss: Issuer
@@ -19,7 +19,7 @@ beforeAll(async () => {
   iss = await issuer()
   const handle = createHistoryServer({
     store: sqliteStore(sqliteDb(path.join(dir, 'db.sqlite'))),
-    authorize: oidcTokenAuth({ trust: trustOf(), fetchJson: iss.fetchJson }),
+    authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson }),
   })
   server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: handle })
 })
@@ -97,7 +97,7 @@ it('answers an upload it folded even when the sweep after it fails, and sweeps o
         return store.sweep(before)
       },
     },
-    authorize: oidcTokenAuth({ trust: trustOf(), fetchJson: iss.fetchJson }),
+    authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson }),
   })
   const upload = async () =>
     handle(
@@ -155,7 +155,7 @@ it("answers 502 while the issuer's keys cannot be read", async () => {
   const handle = createHistoryServer({
     store: sqliteStore(sqliteDb(path.join(dir, 'keys.sqlite'))),
     authorize: oidcTokenAuth({
-      trust: trustOf(),
+      allow: allowOf(),
       fetchJson: async (url) => {
         throw new Error(`${url}: 503`)
       },
@@ -186,17 +186,17 @@ it('answers a flag it does not know with its usage', () => {
   ])
 })
 
-it('names TRUST when it cannot be read', () => {
-  const said = (trust: string) => {
+it('names ALLOW when it cannot be read', () => {
+  const said = (allow: string) => {
     const cli = Bun.spawnSync(
       ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', ':memory:'],
-      { env: { ...process.env, TRUST: trust }, stderr: 'pipe' },
+      { env: { ...process.env, ALLOW: allow }, stderr: 'pipe' },
     )
     return [cli.exitCode, cli.stderr.toString()]
   }
-  expect([said('notjson'), said('{}')]).toEqual([
-    [2, 'TRUST: JSON Parse error: Unexpected identifier "notjson"\n'],
-    [2, 'TRUST: not a JSON list of rules\n'],
+  expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
+    [2, 'ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
+    [2, 'ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
   ])
 })
 
@@ -204,7 +204,7 @@ it('names --db when it cannot be opened, and refuses an empty one', () => {
   const said = (db: string) => {
     const cli = Bun.spawnSync(
       ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', db],
-      { env: { ...process.env, TRUST: '[]' }, stderr: 'pipe' },
+      { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
     )
     return [cli.exitCode, cli.stderr.toString().split('\n')[0]]
   }
@@ -217,22 +217,22 @@ it('names --db when it cannot be opened, and refuses an empty one', () => {
 it('refuses an empty --port: Number of it is 0, a random port', () => {
   const cli = Bun.spawnSync(
     ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '', '--db', ':memory:'],
-    { env: { ...process.env, TRUST: '[]' }, stderr: 'pipe' },
+    { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
   )
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
 })
 
-it('reads with no token where READ_ACCESS is public, only a repository TRUST names', async () => {
-  const auth = oidcTokenAuth({ trust: trustOf(), readAccess: 'public', fetchJson: iss.fetchJson })
+it('reads with no token where READ_ACCESS is public, only a repository ALLOW names', async () => {
+  const auth = oidcTokenAuth({ allow: allowOf(), readAccess: 'public', fetchJson: iss.fetchJson })
   const req = new Request('http://127.0.0.1/v1/timings/query')
   expect(await auth(req, { issuer: `${GITHUB}/`, repository: REPO.toUpperCase() })).toEqual({
     issuer: GITHUB,
     repository: REPO,
   })
   await expect(auth(req, { issuer: GITHUB, repository: 'acme/other' })).rejects.toThrow(
-    "acme/other is not in this server's TRUST",
+    "acme/other is not in this server's ALLOW",
   )
   expect(await auth(req)).toBeUndefined()
-  const closed = oidcTokenAuth({ trust: trustOf(), fetchJson: iss.fetchJson })
+  const closed = oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson })
   await expect(closed(req, { issuer: GITHUB, repository: REPO })).rejects.toThrow('no bearer token')
 })

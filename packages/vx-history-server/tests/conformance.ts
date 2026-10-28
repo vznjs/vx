@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, it } from 'bun:test'
 export interface Target {
   /** The server's URL. */
   base(): string
-  /** A token for the server: of main (the ref TRUST protects), of `feature`, or reading only. */
+  /** A token for the server: of main, of `feature`, or reading only. */
   sign(job: 'main' | 'branch' | 'read'): Promise<string>
   /** The issuer and repository its tokens name, which every query names. */
   readonly issuer: string

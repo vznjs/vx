@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it, setSystemTime } from 'bun:te
 import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
-import { type Issuer, issuer, NAMED, trustOf } from './issuer.js'
+import { allowOf, type Issuer, issuer, NAMED } from './issuer.js'
 import { HistoryServer, proxyHeaders, serverUrlOf, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
 
@@ -28,7 +28,7 @@ beforeAll(async () => {
         db.query(sql).all(...(p as never[])) as T[],
       run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
     }),
-    authorize: oidcTokenAuth({ trust: trustOf(), fetchJson: (u) => iss.fetchJson(u) }),
+    authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: (u) => iss.fetchJson(u) }),
   })
   seen = []
   srv = Bun.serve({
@@ -179,7 +179,7 @@ describe('HistoryServer', () => {
     const handle = createHistoryServer({
       store,
       authorize: oidcTokenAuth({
-        trust: trustOf(),
+        allow: allowOf(),
         readAccess: 'public',
         fetchJson: (u) => iss.fetchJson(u),
       }),

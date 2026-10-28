@@ -21,6 +21,10 @@ vxHistory({ server, serverHeaders }) is vxHistory({ url, headers }).
 
 /v1/timings/query takes {issuer, repository, refs, hashes} in the body; capabilities name maxQueryRefs. Update @vzn/vx-history with the server.
 
+## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
+
+the cache and history servers read ALLOW (space separated issuer:owner/repo:workflow entries) in place of TRUST; @vzn/vx-devtools exports parseAllow and Allowed in place of parseTrust and TrustRule, and oidcAuth takes allow, not trust. Protected refs are gone: any run of a named workflow writes its branch. Set ALLOW to each repository's CI workflow.
+
 ## vx-dte-server: answer 502 when the issuer's keys cannot be read
 
 TokenError's status may now be 502 (the issuer's keys could not be read), besides 401 and 403. Treat 502 as a retry, not a refusal.

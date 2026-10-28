@@ -11,17 +11,25 @@ function env(name: string): string {
 }
 
 const key = importPKCS8(await Bun.file(path.join(import.meta.dir, '.key')).text(), 'RS256')
+const workflow = (repo: string, ref: string) =>
+  `${env('VX_CACHE_ISSUER').replace(/^https?:\/\//, '')}/${repo}//.gitlab-ci.yml@${ref}`
+const jobOf = (ref: string, repo = 'acme/app') => ({
+  project_path: repo,
+  ci_config_ref_uri: workflow(repo, ref),
+  ref_path: ref,
+})
 const claims = {
-  main: { ref_path: 'refs/heads/main', pipeline_source: 'push' },
-  branch: { ref_path: 'refs/heads/feature', pipeline_source: 'push' },
-  read: { ref_path: 'refs/heads/main', pipeline_source: 'web' },
-  stranger: { ref_path: 'refs/heads/main', pipeline_source: 'push', project_path: '7' },
+  main: jobOf('refs/heads/main'),
+  branch: jobOf('refs/heads/feature'),
+  // A token naming no ref writes nothing.
+  read: { ...jobOf('refs/heads/main'), ref_path: 'main' },
+  stranger: jobOf('refs/heads/main', 'acme/other'),
 }
 
 conformance('the Docker image', {
   base: () => env('VX_CACHE_SMOKE'),
   sign: async (job) =>
-    new SignJWT({ project_path: '42', ...claims[job] })
+    new SignJWT(claims[job])
       .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
       .setIssuer(env('VX_CACHE_ISSUER'))
       .setAudience(new URL(env('VX_CACHE_SMOKE')).origin)
@@ -29,7 +37,7 @@ conformance('the Docker image', {
       .setExpirationTime('1h')
       .sign(await key),
   issuer: env('VX_CACHE_ISSUER'),
-  repository: '42',
+  repository: 'acme/app',
   maxCheckHashes: 500,
   maxUploadBytes: 7 * 1024 * 1024,
 })
