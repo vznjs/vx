@@ -550,10 +550,14 @@ export function planOfTree(dir: string, stdout: string): ArtifactPlan {
   const out = new TextEncoder().encode(stdout)
   const inputs: TarInput[] = [{ name: STDOUT_ENTRY, size: out.byteLength, body: out }]
   for (const [name, [mode, mtimeMs]] of Object.entries(meta.files)) {
+    // Bun.file reads through a link: only a regular file is packed as one.
+    const st = lstatSync(path.join(dir, name))
+    if (!st.isFile())
+      throw new ArchiveSecurityError(`kept tree entry ${name} is not a regular file`)
     const file = Bun.file(path.join(dir, name))
     inputs.push({
       name,
-      size: statSync(path.join(dir, name)).size,
+      size: st.size,
       mode,
       mtime: Math.min(USTAR_MTIME_MAX, Math.max(0, Math.floor(mtimeMs / 1000))),
       body: file,
@@ -851,6 +855,11 @@ export async function extractArtifactStream(
       if (dest !== null && dest.rel.length > 0) linked.set(path.join(dest.base, dest.rel), name)
     }
     for (const [name, to] of links) {
+      // Renamed over an entry just written, the link would stand where the
+      // sidecar says a file is, and a re-pack of the tree reads through it.
+      if (provided.has(name) || [...provided].some((p) => p.startsWith(`${name}/`))) {
+        throw new ArchiveSecurityError(`archive link ${name} is also a file or directory entry`)
+      }
       if (accept !== undefined && !accept(name)) {
         throw new ArchiveSecurityError(
           `archive link is not one of the task's declared outputs: ${name}`,
