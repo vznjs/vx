@@ -132,6 +132,102 @@ describe('vx why names what moved the key', () => {
   )
 })
 
+// An upstream row's advice named the task to ask next even where asking
+// leads nowhere: a group records no run (`vx why app#all` read "no
+// recorded runs"), and a dependency added or removed did not move a key,
+// it joined or left the graph.
+describe('vx why advice for an upstream row leads somewhere', () => {
+  const LIB = `export default { tasks: {
+    build: { exec: { command: 'cat src.txt > out.txt' }, inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['out.txt'] } } },
+  } }`
+  const todo = (out: string): string[] =>
+    out
+      .split('\n')
+      .filter((l) => /^ {4}upstream {2}/.test(l))
+      .map((l) => l.trim())
+  let root = ''
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'a group upstream names the member whose key moved',
+    async () => {
+      root = await makeWorkspace({ prefix: 'vx-why-group-', edges: { app: ['lib'] } })
+      for (const [name, config] of [
+        ['lib', LIB],
+        [
+          'app',
+          `export default { tasks: {
+            all: { dependsOn: ['^build'] },
+            pack: { exec: { command: 'cat ../lib/out.txt > packed.txt' }, dependsOn: ['all'], inputs: { files: ['vx.config.mjs'], tasks: ['all'] }, cache: { outputs: { files: ['packed.txt'] } } },
+          } }`,
+        ],
+      ] as const) {
+        const dir = path.join(root, 'packages', name)
+        await mkdir(dir, { recursive: true })
+        await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+        await writeFile(path.join(dir, 'vx.config.mjs'), config)
+      }
+      await writeFile(path.join(root, 'packages', 'lib', 'src.txt'), 'v1\n')
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'init')
+      await vx(root, ['run', 'app#pack'])
+      await writeFile(path.join(root, 'packages', 'lib', 'src.txt'), 'v2\n')
+      await vx(root, ['run', 'app#pack'])
+      const why = await vx(root, ['why', 'app#pack'])
+      expect(why.code).toBe(0)
+      expect(why.out).toContain('lib#build')
+      expect(why.out).not.toContain('`vx why app#all`')
+      expect(why.out).toContain('app#pack ← app#all ← lib#build ← file packages/lib/src.txt')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an added or removed upstream says the graph changed, not that a key moved',
+    async () => {
+      const ws = await makeWorkspace({ prefix: 'vx-why-edge-', edges: { app: ['lib'] } })
+      try {
+        for (const [name, config] of [
+          ['lib', LIB],
+          ['lib2', LIB],
+          [
+            'app',
+            `export default { tasks: {
+              build: { exec: { command: 'echo x > packed.txt' }, dependsOn: ['^build'], inputs: { files: ['vx.config.mjs'] }, cache: { outputs: { files: ['packed.txt'] } } },
+            } }`,
+          ],
+        ] as const) {
+          const dir = path.join(ws, 'packages', name)
+          await mkdir(dir, { recursive: true })
+          await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+          await writeFile(path.join(dir, 'vx.config.mjs'), config)
+          await writeFile(path.join(dir, 'src.txt'), `${name}\n`)
+        }
+        const git = gitIn(ws)
+        git('add', '-A')
+        git('commit', '-q', '-m', 'init')
+        await vx(ws, ['run', 'app#build'])
+        const file = path.join(ws, '.vx', 'workspace.mjs')
+        const src = await Bun.file(file).text()
+        expect(src).toContain('{"app":["lib"]}')
+        await writeFile(file, src.replace('{"app":["lib"]}', '{"app":["lib2"]}'))
+        await vx(ws, ['run', 'app#build'])
+        const why = await vx(ws, ['why', 'app#build'])
+        expect(why.code).toBe(0)
+        expect(todo(why.out)).toEqual([
+          'upstream  a dependency joined or left the graph (lib#build removed, lib2#build added): its `dependsOn` or a project edge changed, which re-keys the task by design',
+        ])
+      } finally {
+        await rm(ws, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 // A key that folds a task with no `inputs` is new every run, so the task
 // never hits; the verdict read "inputs differ" over a detail blaming a
 // prune, and named neither the cause nor the task to fix.

@@ -18,7 +18,7 @@ export default defineWorkspace({
   plugins: [
     reapi({
       endpoint: 'grpcs://cache.example.com:443',
-      execute: true, // or VX_REAPI_EXECUTE=1
+      execute: true,
       platform: { OSFamily: 'Linux', 'container-image': 'docker://node:22' },
       capacity: 64, // remote tasks at once, apart from your cores
     }),

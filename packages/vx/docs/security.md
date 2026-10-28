@@ -261,3 +261,10 @@ full commit SHA; and a workflow hands an event's or a dispatcher's value
 to a script through `env`, never pasted in (a release tag is checked as a
 version first); every workflow names its token's permissions, and CI's
 is read-only. A test holds each rule.
+
+The publishing workflows build a release tag only: `release.yml` checks
+out `refs/tags/<tag>`, and `npm.yml` a dispatch's `ref` as a tag, so a
+dispatch naming a branch or a commit builds nothing. npm's trusted
+publisher takes a token only from a job of the `npm` environment, whose
+branch rule admits `main` and the release tags
+(`tests/auto-release.unsafe.test.ts`).
