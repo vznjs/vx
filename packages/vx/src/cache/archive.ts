@@ -708,6 +708,15 @@ function linksOf(meta: MetaFile): Array<[string, string]> {
 }
 
 /** `p` is `root` or under it, lexically. */
+/** A file this user cannot read is not the same bytes: the rename replaces it. */
+function sameBytes(file: string, body: Uint8Array): boolean {
+  try {
+    return readFileSync(file).equals(body)
+  } catch {
+    return false
+  }
+}
+
 /** The deepest directory holding both `a` and `b`. */
 function commonDir(a: string, b: string): string {
   let dir = a
@@ -1238,7 +1247,7 @@ class Extractor {
         st.isFile() &&
         st.nlink === 1 &&
         st.size === body.byteLength &&
-        readFileSync(target).equals(body)
+        sameBytes(target, body)
       ) {
         this.staged.push({
           staged: false,
