@@ -15,8 +15,8 @@ import { type BranchFacts, branchCacheScope } from '@vzn/vx'
  * `workflow_run` a PR started) is the PR's, whatever `GITHUB_REF` says: a
  * workflow that checks out the PR's head there would otherwise share main's
  * scope. `issue_comment` names no branch, so it writes `pr-<n>`.
- * A merge queue's run (`merge_group`) is trusted (2026-10-18): no
- * scope, compared with `merge_group.base_sha`.
+ * A merge queue's run (`merge_group`, or any event on a queue branch)
+ * is trusted (2026-10-18): no scope, compared with `merge_group.base_sha`.
  * `base`: a pull request's base commit (`pull_request.base.sha`), what its
  * merge checkout is compared with, no git call needed. `refs`: what a
  * remote reads (`githubRefs`).
@@ -49,7 +49,7 @@ function githubRefs(
 ): string[] {
   const head = (b: string | undefined) => (b === undefined ? undefined : `refs/heads/${b}`)
   const ref = stringOf(env['GITHUB_REF'])
-  if (env['GITHUB_EVENT_NAME'] === 'merge_group') {
+  if (queued(env)) {
     const base = stringOf(event?.merge_group?.base_ref) ?? head(QUEUE.exec(ref ?? '')?.[1])
     return base === undefined ? [] : [base]
   }
@@ -59,12 +59,21 @@ function githubRefs(
   return [...new Set([own, into, trunk].filter((r): r is string => r !== undefined))]
 }
 
+/**
+ * A merge queue's run: a `merge_group` event, or any other on a queue
+ * branch (a `push` workflow with no branch filter runs on each). The
+ * cache server writes either's entries to the queue's base, so both read
+ * only that base.
+ */
+const queued = (env: Readonly<Record<string, string | undefined>>): boolean =>
+  env['GITHUB_EVENT_NAME'] === 'merge_group' || QUEUE.test(env['GITHUB_REF'] ?? '')
+
 function scopeOf(
   env: Readonly<Record<string, string | undefined>>,
   event: ActionsEvent | undefined,
 ): BranchFacts {
   const ref = env['GITHUB_REF'] ?? ''
-  if (env['GITHUB_EVENT_NAME'] === 'merge_group') {
+  if (queued(env)) {
     const base = stringOf(event?.merge_group?.base_sha)
     return { trusted: true, ...(base !== undefined ? { base } : {}) }
   }
