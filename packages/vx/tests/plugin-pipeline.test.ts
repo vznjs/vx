@@ -1768,5 +1768,28 @@ describe('plugin-host, called directly', () => {
         said: ["[vx] plugin 'org/boom' failed in admit: boom; admitting every task from here on"],
       })
     })
+
+    it('an answer that is not true, false or undefined is named once and admits from then on', () => {
+      // `0` admitted beside a running task and `42` too, with no word: a
+      // policy that answered a count enforced nothing.
+      const said: string[] = []
+      const admit = buildAdmission(
+        [
+          testPlugin('org/count', { admit: (_t, ctx) => ctx.running.length as never }),
+          testPlugin('org/forty', { admit: () => 42 as never }),
+        ],
+        graph,
+        2,
+        (m) => said.push(m),
+      )!
+      expect({ first: admit('b', busy), next: admit('b', busy), said }).toEqual({
+        first: true,
+        next: true,
+        said: [
+          "[vx] plugin 'org/count' failed in admit: returned a number, not true or false; admitting every task from here on",
+          "[vx] plugin 'org/forty' failed in admit: returned a number, not true or false; admitting every task from here on",
+        ],
+      })
+    })
   })
 })

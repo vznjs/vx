@@ -564,6 +564,11 @@ export function buildAdmission(
           verdict.catch(() => {})
           throw new Error('returned a Promise; admit is synchronous')
         }
+        // `0` or `42` admitted beside a running task with no word: a policy
+        // answering a count enforced nothing.
+        if (verdict !== undefined && typeof verdict !== 'boolean') {
+          throw new Error(`returned ${describeValue(verdict)}, not true or false`)
+        }
         if (verdict !== false) continue
         if (running.size > 0) return false
         if (!overridden.has(plugin)) {

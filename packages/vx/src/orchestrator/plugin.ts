@@ -154,7 +154,7 @@ export interface VxPlugin {
    * on this machine, with the tasks running here right now. Return `false`
    * to hold it until something finishes (it is asked again then). Asked
    * many times per run, so it must be cheap and synchronous; a throw, or
-   * an answer that is a Promise, is reported once and the plugin admits
+   * an answer that is a Promise or not a boolean or undefined, is reported once and the plugin admits
    * from then on — a policy never
    * breaks a run. Restore-tier hits, tasks on an executor pool and groups
    * hold no local resources: never asked, never in `ctx.running`. When
