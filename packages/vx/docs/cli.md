@@ -1367,7 +1367,8 @@ watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** A cycle opens with a blank line and
    `changed <project> <relpath>`, plus ` (+N more)` when more paths
    changed, then its task rows as `vx run` prints them, with no footer.
-   The named path is the first changed one that still exists, so an
+   The named path is the first changed file that still exists (a
+   directory only when no file changed), so an
    editor's temporary file renamed away names nothing; a deletion names
    the cycle when nothing else changed. The `watching` line is said
    once: a cycle that re-reads the watched set (a member came or went,
