@@ -479,9 +479,10 @@ export async function resolveFilters(
     }
     // One line, not a warning per pattern and then an error saying the same:
     // the patterns are in the error, and the nearest project name is the
-    // hint a typo needs.
+    // hint a typo needs. Only the ones that matched nothing: `app !app apq` named
+    // app, and `--affected` a `...[<base>]` nobody typed.
     return {
-      error: `no projects matched filter(s): ${raw.join(', ')}${didYouMean(unmatched, projects, tags)}`,
+      error: `no projects matched filter(s): ${unmatched.join(', ')}${didYouMean(unmatched, projects, tags)}`,
     }
   }
   // Something matched, so the run proceeds; a pattern that matched nothing
