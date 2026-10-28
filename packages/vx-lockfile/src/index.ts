@@ -163,7 +163,9 @@ const MANAGERS = {
       for (const [dir, id] of lock.workspaces) out.set(dir, lock.entries.get(id)!.deps)
       return out
     },
-    settings: ['.yarnrc.yml'],
+    // `.yarnrc` is Yarn 1's: `ignore-scripts true` there changes the install
+    // under an unchanged yarn.lock (probed, yarn 1.22).
+    settings: ['.yarnrc.yml', '.yarnrc'],
     async manifestImporters(t, root, manifest) {
       const lock = yarnParse(t)
       if (lock.generation !== 'classic') return undefined
