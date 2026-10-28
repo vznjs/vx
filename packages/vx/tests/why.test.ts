@@ -989,3 +989,32 @@ describe('vx why — an input another task rewrites', () => {
     TIMEOUT,
   )
 })
+
+describe('vx why — a task that never records a key', () => {
+  it(
+    'a second run of a persistent task is not called its first, and says why nothing compares',
+    async () => {
+      const root = await makeWorkspace()
+      try {
+        await writeFile(
+          path.join(root, 'packages', 'app', 'vx.config.mjs'),
+          `export default { tasks: { dev: { exec: { command: 'true', persistent: {} } } } }`,
+        )
+        await vx(root, ['run', 'app#dev'])
+        await vx(root, ['run', 'app#dev'])
+        const r = await vx(root, ['why', 'app#dev'])
+        expect(r.code).toBe(0)
+        const lines = r.out.split('\n')
+        expect(lines[1]).toMatch(/^ {2}this run {3}\S+ · success · executed · no key$/)
+        expect(lines.slice(2)).toEqual([
+          '  previous   (none with a cache key)',
+          '  verdict    this task recorded no cache key (skipped, or a persistent task) — nothing to compare',
+          '',
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})

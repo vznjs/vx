@@ -303,7 +303,12 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const t = why.thisRun!
     lines.push(`${ui.inline(ui.id(taskId), c)}${dim(` — run ${runId}`)}`)
     lines.push(`  ${dim('this run')}   ${runFacts(t)}`)
-    if (why.previousRun == null) {
+    if (why.previousRun == null && t.hash === '') {
+      // Only keyed runs are compared: a persistent task's tenth run read
+      // as its first, and the note saying why went unprinted.
+      lines.push(`  ${dim('previous')}   (none with a cache key)`)
+      lines.push(`  ${dim('verdict')}    ${why.note}`)
+    } else if (why.previousRun == null) {
       lines.push(`  ${dim('previous')}   (none — first recorded run of this task)`)
     } else {
       const p = why.previousRun
