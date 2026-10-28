@@ -256,6 +256,12 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
         return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
       out.verbosity = n
     } else if (a === '--dry') {
+      // As `--continue`'s mode: `--dry json` read `json` as a task, and the
+      // run said no project declares it.
+      const next = before[i + 1]
+      if (next === 'text' || next === 'json') {
+        return { ...out, error: `--dry takes its format with '=': --dry=${next}` }
+      }
       out.dry = 'text'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)

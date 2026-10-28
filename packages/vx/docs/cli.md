@@ -565,7 +565,9 @@ so a following word is read as a task name — `vx run --affected build`
 means "run `build`, affected scope", and there is no way to tell that
 apart from "`build` is the git base". Write `--affected=origin/main`. Getting it wrong is loud, not silent: the value
 becomes a positional that matches no project, so the run refuses to
-start (see "Every requested name must resolve" above).
+start (see "Every requested name must resolve" above). A word from a
+closed set says so first: `--dry json` and `--continue never` are refused
+with their `=` form.
 
 `--exclude-dependencies=` with an EMPTY value is rejected rather than
 guessed — "drop every edge" and "drop none" are both plausible readings.
