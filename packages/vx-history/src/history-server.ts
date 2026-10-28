@@ -46,10 +46,15 @@ const hasToken = (env: Record<string, string | undefined>): boolean =>
 /** A task the run ran and that succeeded, as the server takes its timing; else undefined. */
 export function timingOf(o: TaskOutcome): ServerTiming | undefined {
   if (o.status !== 'success') return undefined
-  const cores =
+  // Core's need (history.ts NEED_SQL): at most the machine's cores, and no
+  // reading where the share is 0. Uncapped, a crowded 4-core worker sent 8
+  // and a DTE plan booked that; an Infinity went as null and the server
+  // refused the whole upload.
+  const need =
     o.cpuMs === undefined || o.durationMs <= 0
       ? undefined
-      : o.cpuMs / (o.durationMs * (o.cpuShare ?? 1))
+      : Math.min(o.cpuMs / (o.durationMs * (o.cpuShare ?? 1)), o.whereCores ?? Infinity)
+  const cores = need !== undefined && Number.isFinite(need) ? need : undefined
   return {
     durationMs: Math.max(0, aloneMs(o)),
     ...(cores === undefined ? {} : { cores }),

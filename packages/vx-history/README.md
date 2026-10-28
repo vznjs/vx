@@ -46,8 +46,8 @@ The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,
 with each worker's measurements. A task that shared a crowded worker's
-cores is sent as long as it would have taken alone, as local history
-keeps it. A refusal is said with the server's
+cores is sent as long as it would have taken alone, and its cores at
+most its machine's, as local history keeps them. A refusal is said with the server's
 words, and a CI job with no token says so once (on GitHub Actions,
 `GITHUB_ACTIONS`, naming the permission).
 A run with no token (off CI) reads only, from a server whose
