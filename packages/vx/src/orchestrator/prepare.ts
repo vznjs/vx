@@ -431,6 +431,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const requested = expandRequested(tasks, candidateProjects, projects, isDefaultBuild)
   let unresolvedTasks = unresolvedRequests(tasks, candidateProjects, projects, isDefaultBuild)
   refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
+  if (options.projects !== undefined && options.selectedByDiff !== true)
+    refuseUnlockedScope(unresolvedTasks, candidateProjects, projects, projectMetas, workspaceRoot)
   if (options.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
     // A name a loaded project declares is no typo, whether or not the load
     // was whole: an unaffected dependency loaded for the closure declared
@@ -988,14 +990,50 @@ function refuseUnlockedConfig(
     const name = spec.slice(0, at)
     const entry = projects.get(name)
     if (entry === undefined || !isDefaultBuild(entry.config.tasks?.[spec.slice(at + 1)])) continue
-    const locked = metas.find((m) => m.name === name)?.configPath
-    if (typeof locked === 'string' && locked !== '') continue
-    const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(entry.dir, n)))
+    const config = unlockedConfig(name, projects, metas)
     if (config === undefined) continue
     throw new UserError(
-      `${spec}: ${relPosix(workspaceRoot, path.join(entry.dir, config))} is not in the lock yet — run \`vx lock\``,
+      `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
     )
   }
+}
+
+/**
+ * The same for a bare name the selection (the cwd's project, `--filter`)
+ * left unresolved: run from a member whose config came after the lock, it
+ * said only projects outside the selection declare the task — pass
+ * `--all`, which skips that member too.
+ */
+function refuseUnlockedScope(
+  unresolved: readonly string[],
+  candidates: readonly string[],
+  projects: ReadonlyMap<string, ProjectEntry>,
+  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+  workspaceRoot: string,
+): void {
+  const spec = unresolved.find((t) => !t.includes('#'))
+  if (spec === undefined) return
+  for (const name of candidates) {
+    const config = unlockedConfig(name, projects, metas)
+    if (config === undefined) continue
+    throw new UserError(
+      `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
+    )
+  }
+}
+
+/** The config file in a project's directory the lock holds none for. */
+function unlockedConfig(
+  name: string,
+  projects: ReadonlyMap<string, ProjectEntry>,
+  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+): string | undefined {
+  const entry = projects.get(name)
+  if (entry === undefined) return undefined
+  const locked = metas.find((m) => m.name === name)?.configPath
+  if (typeof locked === 'string' && locked !== '') return undefined
+  const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(entry.dir, n)))
+  return config === undefined ? undefined : path.join(entry.dir, config)
 }
 
 /**
