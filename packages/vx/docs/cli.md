@@ -2187,7 +2187,7 @@ $ vx init --dry
 ### Install
 
 `vx init` first installs `@vzn/vx` globally (the package manager that
-ran it, else npm; skipped when the `vx` on `PATH` is already that
+ran it, else Bun; skipped when the `vx` on `PATH` is already that
 version) and, under the topmost `package.json`, as a root
 devDependency with that repo's own manager (2026-10-20). The latest
 version is read from the registry that manager is configured for
