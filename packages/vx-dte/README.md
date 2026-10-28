@@ -237,8 +237,9 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       # One commit: --affected fetches its base itself.
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile --filter './'
       - run: bun vx lock --check
       # Name the tasks to run, as 'bun vx run build test --affected': with
@@ -298,12 +299,12 @@ jobs:
       VX_DTE_RELAY: ${{ inputs.relay }}
       VX_DTE_WORKER: ${{ matrix.worker }}
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: '${{ inputs.sha }}' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: '${{ inputs.sha }}', persist-credentials: false }
       - env: { HANDED: '${{ inputs.env }}' }
         run: |
           jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\r\n]") | not) then "\(.key)=\(.value)" else error("env \(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       # Every project: only pnpm selects by a git diff, as
       # `pnpm install --frozen-lockfile --filter "...[origin/main]"`
       # (fetch origin/main first: the checkout is one commit).
