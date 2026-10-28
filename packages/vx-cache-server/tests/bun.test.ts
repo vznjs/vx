@@ -175,3 +175,57 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
   })
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
 })
+
+// The bucket's outage is not the server's fault nor the client's: every
+// route answers it 502, as an upload's already did, and never a bare 500.
+it('answers 502 naming the bucket on every route while the bucket fails', async () => {
+  const down = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: () => new Response('<Error><Code>InternalError</Code></Error>', { status: 500 }),
+  })
+  try {
+    const handle = createCacheServer({
+      blobs: s3Blobs(
+        new Bun.S3Client({
+          endpoint: down.url.href,
+          bucket: 'b',
+          accessKeyId: 'a',
+          secretAccessKey: 's',
+        }),
+      ),
+      authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
+    })
+    const headers = {
+      ...NAMED,
+      authorization: `Bearer ${await iss.sign(MAIN_JOB, 'http://x.test')}`,
+      'vx-scope': scopeOf('refs/heads/main'),
+      'content-type': 'application/json',
+    }
+    const ask = (method: string, path: string, body?: string) =>
+      handle(
+        new Request(`http://x.test${path}`, {
+          method,
+          headers: { ...headers, 'content-length': String(body?.length ?? 0) },
+          body,
+        }),
+      )
+    const answers = [
+      await ask('GET', '/v1/artifacts/ab'),
+      await ask('PUT', '/v1/artifacts/ab', 'x'),
+      await ask(
+        'POST',
+        '/v1/artifacts',
+        JSON.stringify({ hashes: ['ab'], scopes: [scopeOf('x')] }),
+      ),
+    ]
+    expect(await Promise.all(answers.map(async (r) => [r.status, await r.json()]))).toEqual([
+      [502, { code: 'bad_gateway', message: 'the bucket answered GET 500' }],
+      [502, { code: 'bad_gateway', message: 'the bucket answered HEAD 500' }],
+      [502, { code: 'bad_gateway', message: 'the bucket answered HEAD 500' }],
+    ])
+    expect((await ask('HEAD', '/v1/artifacts/ab')).status).toBe(502)
+  } finally {
+    await down.stop(true)
+  }
+})

@@ -52,7 +52,8 @@ const IMMUTABLE = 'private, max-age=31536000, immutable'
 const SCOPE = /^[0-9a-f]{32}$/
 
 export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response> {
-  const { blobs, authorize } = opts
+  const { authorize } = opts
+  const blobs = bucketOf(opts.blobs)
   const limits: Limits = { ...DEFAULT_LIMITS, ...opts.limits }
   const limitHeaders = Object.fromEntries(
     Object.entries(LIMIT_HEADERS).map(([k, h]) => [h, String(limits[k as keyof Limits])]),
@@ -160,12 +161,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       await req.body?.cancel()
       return new Response(null, { status: 204 })
     }
-    try {
-      await blobs.put(name, req.body ?? new Blob([]).stream(), length)
-    } catch (err) {
-      if (err instanceof Refusal) throw err
-      throw new Refusal(502, `the bucket refused the artifact: ${message(err)}`)
-    }
+    await blobs.put(name, req.body ?? new Blob([]).stream(), length)
     return new Response(null, { status: 204 })
   }
 
@@ -198,6 +194,25 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       console.error(err)
       return errorJson(500, message(err))
     }
+  }
+}
+
+/**
+ * The bucket, its failures answered 502 and logged: its outage is neither
+ * the server's fault nor the client's, and a bare 500 said the server's.
+ * A `Refusal` (a body of another length) is the client's, as thrown.
+ */
+function bucketOf(blobs: Blobs): Blobs {
+  const failed = (err: unknown, said: string): never => {
+    if (err instanceof Refusal) throw err
+    console.error(err)
+    throw new Refusal(502, `${said}${message(err)}`)
+  }
+  return {
+    put: (name, body, size) =>
+      blobs.put(name, body, size).catch((err) => failed(err, 'the bucket refused the artifact: ')),
+    get: (name) => blobs.get(name).catch((err) => failed(err, '')),
+    size: (name) => blobs.size(name).catch((err) => failed(err, '')),
   }
 }
 

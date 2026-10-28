@@ -3,7 +3,7 @@
 // it (README.md § On Cloudflare Workers).
 
 import { type Authorize, oidcAuth, parseAllow } from '@vzn/vx-devtools'
-import { errorJson, Refusal } from './protocol.js'
+import { errorJson } from './protocol.js'
 import { createCacheServer, DEFAULT_LIMITS, type Limits, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
@@ -51,14 +51,12 @@ const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${n
 function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
   return {
     async put(name, body, size) {
-      // R2 takes a stream of known length; this one errors at any other.
+      // R2 takes a stream of known length; this one errors at any other, so
+      // R2 never keeps a short body. The runtime holds a request's body to
+      // its Content-Length, so a failure here is R2's (or a client gone):
+      // it was answered 400, "the body is not N bytes", for a whole body.
       const fixed = new FixedLengthStream(size)
-      const piped = body.pipeTo(fixed.writable)
-      try {
-        await Promise.all([bucket.put(name, fixed.readable), piped])
-      } catch (err) {
-        throw new Refusal(400, `the body is not ${size} bytes: ${String(err)}`)
-      }
+      await Promise.all([bucket.put(name, fixed.readable), body.pipeTo(fixed.writable)])
     },
     get: async (name) => {
       const key = keyOf(name)
