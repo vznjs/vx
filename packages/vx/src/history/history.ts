@@ -601,10 +601,13 @@ export class LocalHistoryProvider implements HistoryProvider {
   private floor(): number {
     const row = this.db
       .query(
-        `SELECT MIN(id) AS id FROM runs WHERE run_id =
-           (SELECT run_id FROM invocations ORDER BY rowid DESC LIMIT 1 OFFSET ?)`,
+        // Over the whole window, not its oldest invocation alone: a run of
+        // groups or aborted tasks writes a header and no row, and as the
+        // oldest it had no MIN, so the window became the whole table.
+        `SELECT MIN(id) AS id FROM runs WHERE run_id IN
+           (SELECT run_id FROM invocations ORDER BY rowid DESC LIMIT ?)`,
       )
-      .get(this.recent - 1) as { id: number | null }
+      .get(this.recent) as { id: number | null }
     // Fewer invocations than the window (or none): the whole table is the window.
     return row.id ?? 0
   }
