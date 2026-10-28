@@ -2998,7 +2998,9 @@ read it, `failed (exit 137)`, with the signal an exit above 128 stands
 for at the row's end (`128 + SIGKILL`; the shell's convention, so a
 command that exits 137 on its own reads the same). Where the run's
 footer gave a reason, the row ends with it instead: `timed out`,
-`never ready: exited`, `2 sandbox violations`, and for a skipped task
+`never ready: exited`, `src/a.ts changed during the run` (an
+`inputStability.severity: 'error'` failure, read from its kept output),
+`2 sandbox violations`, and for a skipped task
 `after lib#build failed` (the v27 columns; rows older than them read
 as before). A task whose key met a remote failure ends with it, read or
 write alike: `remote ✗ download: connection refused; upload: 503` (the
