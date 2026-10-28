@@ -1508,7 +1508,8 @@ it), every wire ships the bytes verbatim, and an artifact without it
 reads as before. The ingest side takes the numbers only as plain
 non-negative numbers; anything else in a foreign sidecar is dropped.
 `dirs` (v44) names the empty directories the output globs matched at
-save (`outputs/dist/empty`): a tar of regular files cannot hold them, and
+save (`outputs/dist/empty`, `workspace-outputs/gen/empty` under
+`outputs.workspaceFiles`): a tar of regular files cannot hold them, and
 a hit makes each one, so the tree a hit leaves is the one the miss left.
 Each name is held to a file entry's rules and to the declared outputs,
 and is reached only through directories that stay in the project. Its
