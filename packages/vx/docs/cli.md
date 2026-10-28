@@ -2219,16 +2219,16 @@ else at the topmost `package.json`, else there:
 
 ```ts
 // .vx/workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import type { WorkspaceConfig } from '@vzn/vx/config'
 
-export default defineWorkspace({ plugins: [] })
+export default { plugins: [] } satisfies WorkspaceConfig
 ```
 
 ```ts
 // vx.config.ts
-import { defineProject } from '@vzn/vx'
+import type { ProjectConfig } from '@vzn/vx/config'
 
-export default defineProject({ tasks: {} })
+export default { tasks: {} } satisfies ProjectConfig
 ```
 
 Beside a lockfile at that `package.json` (`pnpm-lock.yaml`, `bun.lock`,

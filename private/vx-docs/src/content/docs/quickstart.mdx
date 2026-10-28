@@ -32,9 +32,9 @@ Cache your first task in two minutes, in a repo you already have.
    package script in between.
 
    ```ts title="vx.config.ts" ins={5-9}
-   import { defineProject } from '@vzn/vx'
+   import type { ProjectConfig } from '@vzn/vx/config'
 
-   export default defineProject({
+   export default {
      tasks: {
        build: {
          exec: { command: 'tsc' },
@@ -42,7 +42,7 @@ Cache your first task in two minutes, in a repo you already have.
          cache: { outputs: { files: ['dist/**'] } },
        },
      },
-   })
+   } satisfies ProjectConfig
    ```
 
    In a monorepo, give each package its own `vx.config.ts` beside its

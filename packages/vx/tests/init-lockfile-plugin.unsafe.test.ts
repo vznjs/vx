@@ -75,12 +75,12 @@ describe('vx init in a JS workspace', () => {
     const r = await vx(root, ['init'])
     expect([r.code, r.err]).toEqual([0, ''])
     expect(await readFile(path.join(root, '.vx', 'workspace.ts'), 'utf8')).toBe(
-      "import { defineWorkspace } from '@vzn/vx'\nimport { bun } from '@vzn/vx-lockfile'\n\nexport default defineWorkspace({ plugins: [bun()] })\n",
+      "import type { WorkspaceConfig } from '@vzn/vx/config'\nimport { bun } from '@vzn/vx-lockfile'\n\nexport default { plugins: [bun()] } satisfies WorkspaceConfig\n",
     )
     for (const name of ['lib', 'app'])
       await writeFile(
         path.join(root, 'packages', name, 'vx.config.ts'),
-        "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: { build: { exec: { command: 'true' }, dependsOn: ['^build'], inputs: { files: ['package.json'] } } } })\n",
+        "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default { tasks: { build: { exec: { command: 'true' }, dependsOn: ['^build'], inputs: { files: ['package.json'] } } } } satisfies ProjectConfig\n",
       )
     const lock = await vx(root, ['lock'])
     expect([lock.code, lock.err]).toEqual([0, ''])

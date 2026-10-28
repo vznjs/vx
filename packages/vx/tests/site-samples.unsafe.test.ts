@@ -1547,19 +1547,10 @@ describe('a config sample imports the schema from @vzn/vx/config', () => {
   // `@vzn/vx` is core's own src/index.ts: a user's tsc over a package that
   // includes its vx.config.ts walked core's Bun-only sources and printed
   // 527 errors, where `@vzn/vx/config` checked clean (J-94).
-  // The exception: cli.md shows the starter `vx init` writes where there is
-  // no package.json, so nothing installed; only `@vzn/vx` resolves there,
-  // served by the running vx (core-alias.ts), and no tsc walks it.
-  // init.ts writes the workspace file; migration.ts holds the project starter.
-  const init = ['cli/init.ts', 'workspace/migration.ts']
-    .map((f) => readFileSync(path.resolve(import.meta.dir, '..', 'src', f), 'utf8'))
-    .join('\n')
-  const STARTER = [
-    "import { defineWorkspace } from '@vzn/vx'",
-    "import { defineProject } from '@vzn/vx'",
-  ].filter((line) => init.includes(line))
+  // `vx init` writes the same type-only form (J-94 held there too: its
+  // starter imported `@vzn/vx`). A sample indented under a list item, as
+  // the quickstart's are, is a sample too.
   it('no page, README or example imports only config.ts exports from @vzn/vx', async () => {
-    expect(STARTER).toHaveLength(2)
     const schema = new Set(Object.keys(await import('../src/config.js')))
     for (const t of ['ProjectConfig', 'WorkspaceConfig', 'TaskConfig']) schema.add(t)
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
@@ -1579,13 +1570,12 @@ describe('a config sample imports the schema from @vzn/vx/config', () => {
     let schemaImports = 0
     for (const f of files) {
       for (const m of readFileSync(f, 'utf8').matchAll(
-        /^import (?:type )?\{([^}]+)\} from '(@vzn\/vx(?:\/config)?)'/gm,
+        /^[ \t]*import (?:type )?\{([^}]+)\} from '(@vzn\/vx(?:\/config)?)'/gm,
       )) {
         const names = m[1]!.split(',').map((n) => n.trim().replace(/^type /, ''))
         if (!names.every((n) => schema.has(n))) continue
         schemaImports++
-        const starter = f.endsWith(path.join('vx', 'docs', 'cli.md')) && STARTER.includes(m[0])
-        if (m[2] === '@vzn/vx' && !starter) offenders.push(`${path.relative(repo, f)}: ${m[0]}`)
+        if (m[2] === '@vzn/vx') offenders.push(`${path.relative(repo, f)}: ${m[0].trim()}`)
       }
     }
     expect(offenders).toEqual([])

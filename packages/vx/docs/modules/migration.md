@@ -63,9 +63,11 @@ export interface ApplyMigrationArgs {
   plugins?: readonly WorkspacePlugin[] // { pkg, factory }: what the written workspace file declares
 }
 export function applyMigration(args: ApplyMigrationArgs): Promise<number>
-// The root config `vx init` writes outside a Turbo or Nx repo, and whether
-// a file is it, untouched: a migration maps over it (its write is no conflict).
-export const STARTER_PROJECT: string
+// The files `vx init` writes outside a Turbo or Nx repo (type-only import,
+// so a user's tsc checks them against config.ts alone), and whether a file
+// is that root config, untouched: a migration maps over it (no conflict).
+export function starterProject(format: MigrationFormat): string
+export function renderWorkspace(format: MigrationFormat, plugins: readonly WorkspacePlugin[]): string
 export function isStarterConfig(file: string): boolean
 export function quoteTsLiteral(s: string): string
 export const PERSISTENT_TODO: string
