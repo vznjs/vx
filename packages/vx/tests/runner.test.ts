@@ -1523,6 +1523,28 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     }
   })
 
+  // stdin too: a server's is a pipe vx holds open (schema.md), and Bun's
+  // socketpair refused `/dev/stdin` by path, so a server that read it
+  // failed at once instead of blocking until vx ends.
+  it('runPersistent: a server reading /dev/stdin by path blocks on it', async () => {
+    const live: string[] = []
+    const spawn = runPersistent({
+      command: 'echo up; timeout 1 cat /dev/stdin; echo rc=$?; exec sleep 30',
+      cwd,
+      env,
+      readyWhen: 'rc=',
+      onStdout: (c) => live.push(c),
+      onStderr: (c) => live.push(c),
+    })
+    try {
+      await spawn.ready
+      expect(live.join('')).toBe('up\nrc=124\n')
+    } finally {
+      spawn.child.kill('SIGKILL')
+      await spawn.child.exited
+    }
+  })
+
   // The guard (kill-tree.ts) is spawned between a first task's pipes and
   // its own spawn, and lives as long as vx: a write end it inherited held
   // that task's stdout open, and its reader waited out the drain bound.

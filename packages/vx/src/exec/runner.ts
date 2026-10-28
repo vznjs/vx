@@ -107,12 +107,8 @@ export interface RunOptions {
 type Fd = 'inherit' | 'ignore' | 'pipe' | number
 
 /** A child's descriptors 0–2: vx's own for a task that holds the terminal. */
-function taskStdio(
-  terminal: boolean | undefined,
-  stdin: 'ignore' | 'pipe',
-  pipes: TaskPipes,
-): [Fd, Fd, Fd] {
-  return terminal === true ? ['inherit', 'inherit', 'inherit'] : [stdin, ...pipes.stdio]
+function taskStdio(terminal: boolean | undefined, pipes: TaskPipes): [Fd, Fd, Fd] {
+  return terminal === true ? ['inherit', 'inherit', 'inherit'] : [pipes.stdin, ...pipes.stdio]
 }
 
 const O_NONBLOCK = 0o4000
@@ -181,6 +177,14 @@ function realPipes(): Int32Array | undefined {
   return fds
 }
 
+/** One pipe, `[read, write]`, both close-on-exec, or undefined as {@link realPipes}. */
+function heldPipe(): Int32Array | undefined {
+  const calls = linuxPipeCalls()
+  if (calls === null) return undefined
+  const fds = new Int32Array(2)
+  return calls.pipe2(calls.ptr(fds), O_CLOEXEC) === 0 ? fds : undefined
+}
+
 /**
  * A task's stdout and stderr. Bun's `'pipe'` is a socketpair, and Linux
  * opens `/dev/stdout` through `/proc/self/fd/1`, which a socket refuses
@@ -189,25 +193,35 @@ function realPipes(): Int32Array | undefined {
  * Linux vx makes the pipes (`pipe2` through `bun:ffi`) and hands the child
  * the write ends. macOS opens `/dev/fd/N` as a dup of the descriptor,
  * which a socket allows, so Bun's pipe stays there.
+ *
+ * `held`: stdin is a pipe vx keeps open and never writes (a persistent
+ * task's, schema.md), for the same reason: `cat /dev/stdin` on Bun's
+ * socketpair failed with ENXIO instead of blocking. Otherwise `'ignore'`.
  */
 export class TaskPipes {
+  /** Descriptor 0 for `Bun.spawn`'s `stdio`. */
+  readonly stdin: number | 'pipe' | 'ignore'
   /** Descriptors 1 and 2 for `Bun.spawn`'s `stdio`. */
   readonly stdio: readonly [number | 'pipe', number | 'pipe']
   readonly #read: readonly number[]
+  readonly #stdinWrite: number | undefined
 
-  constructor(terminal?: boolean) {
+  constructor(terminal?: boolean, held?: boolean) {
     const fds = terminal === true ? undefined : realPipes()
     this.stdio = fds === undefined ? ['pipe', 'pipe'] : [fds[1]!, fds[3]!]
     this.#read = fds === undefined ? [] : [fds[0]!, fds[2]!]
+    const inFds = held === true && terminal !== true ? heldPipe() : undefined
+    this.stdin = held !== true ? 'ignore' : inFds === undefined ? 'pipe' : inFds[0]!
+    this.#stdinWrite = inFds?.[1]
   }
 
   /**
-   * Close vx's copies of the write ends once the spawn has returned or
-   * thrown: the child holds its own, and one left here is a writer the
-   * reader's EOF would wait for.
+   * Close vx's copies of the child's ends once the spawn has returned or
+   * thrown: the child holds its own, and a write end left here is a writer
+   * the reader's EOF would wait for.
    */
   spawned(): void {
-    for (const fd of this.stdio) if (typeof fd === 'number') closeSync(fd)
+    for (const fd of [this.stdin, ...this.stdio]) if (typeof fd === 'number') closeSync(fd)
   }
 
   /** The child's stdout and stderr. */
@@ -227,10 +241,12 @@ export class TaskPipes {
    * Close the read ends, once both streams have ended or been cancelled.
    * Bun reads a dup of each, but takes it on the stream's first pull: a
    * number closed before then was reused by the next spawn's pipe, and
-   * the stream read THAT (probed, Bun 1.4.2).
+   * the stream read THAT (probed, Bun 1.4.2). The held stdin's write end
+   * goes with them: its reader has exited by then.
    */
   close(): void {
     for (const fd of this.#read) closeSync(fd)
+    if (this.#stdinWrite !== undefined) closeSync(this.#stdinWrite)
   }
 }
 
@@ -729,7 +745,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const readyRe = opts.readyWhen !== undefined ? new RegExp(opts.readyWhen) : undefined
 
   let child: ReturnType<typeof Bun.spawn>
-  const pipes = new TaskPipes(opts.terminal)
+  const pipes = new TaskPipes(opts.terminal, true)
   const restoreModes = opts.terminal === true ? keepTerminalModes() : undefined
   try {
     const signalFd = opts.signalChannel === true
@@ -751,7 +767,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
           // The one-shot spawn below keeps 'ignore', so a task that reads
           // stdin can never hang CI.
           stdio: [
-            ...taskStdio(opts.terminal, 'pipe', pipes),
+            ...taskStdio(opts.terminal, pipes),
             ...(signalFd ? ['pipe' as const] : []),
             ...(guard === undefined ? [] : [guard]),
           ],
@@ -992,10 +1008,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
         ...SH_ARGV0,
         cwd: opts.cwd,
         env: opts.env as Record<string, string>,
-        stdio: [
-          ...taskStdio(opts.terminal, 'ignore', pipes),
-          ...(guard === undefined ? [] : [guard]),
-        ],
+        stdio: [...taskStdio(opts.terminal, pipes), ...(guard === undefined ? [] : [guard])],
         // Its own session and process group, so a kill reaches what it
         // forked (kill-tree.ts). A terminal handed over is not this
         // session's controlling one, so no read stops the group.
