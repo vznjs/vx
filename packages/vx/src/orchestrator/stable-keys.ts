@@ -57,6 +57,8 @@ export interface DeriveStableKeysArgs {
    * execute-task reuses the key when the live upstream matches.
    */
   groupKeys?: Map<string, UpfrontGroupKey>
+  /** Filled with every key the walk makes, in the order it makes them (`RunDerivation`). */
+  keys?: Map<string, string>
 }
 
 export interface StableKey {
@@ -79,7 +81,7 @@ export interface StableKey {
 export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<StableKey[]> {
   const order = topoOrder(args.nodes)
   const late = probesAfterWrites(args.nodes, args.workspaceRoot)
-  const keyById = new Map<string, string>()
+  const keyById = args.keys ?? new Map<string, string>()
   const unstableById = new Set<string>()
   // Transitive-upstream output producers, accumulated in topo order — the
   // inputs to the stability gate. A task's key is preliminary if an upstream
@@ -336,6 +338,42 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       args.uncachedKeys?.set(id, hash)
   }
   return stableKeys
+}
+
+/**
+ * The keys `deriveStableKeys` would make, from a derivation under the same
+ * graph, configs and ignored outputs (`readRunDelta`): every task's key
+ * is the one remembered unless it is `dirty`, and a dirty task's is derived
+ * as the walk derives it, over its deps' keys, in the walk's order. Which
+ * tasks are stable and which uncached keys are kept are the remembered
+ * verdicts: they read only what the global token names. `keys` is updated
+ * in place.
+ */
+export async function rederiveKeys(
+  args: Omit<DeriveStableKeysArgs, 'keys' | 'groupKeys'>,
+  keys: Map<string, string>,
+  dirty: ReadonlySet<string>,
+): Promise<void> {
+  for (const [id] of keys) {
+    if (!dirty.has(id)) continue
+    const node = args.nodes.get(id)!
+    const upstream = synthUpstream(node, args.nodes, keys)
+    keys.set(
+      id,
+      isGroupTask(node) && node.config.inputs === undefined
+        ? computeGroupHash(upstream)
+        : await computeTaskHash({
+            node,
+            upstream,
+            workspaceRoot: args.workspaceRoot,
+            cache: args.cache,
+            forwardArgs: args.forwardArgs,
+            nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
+            gitFilesCache: args.gitFilesCache,
+            hashCache: args.hashCache,
+          }),
+    )
+  }
 }
 
 /**
