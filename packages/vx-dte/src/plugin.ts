@@ -906,16 +906,16 @@ function givenRun(): string | undefined {
  * working tree's changes included: none when git cannot say (no parent, a
  * shallow clone), and the run waits for its misses as before.
  */
-async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
+export async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
   try {
     const proc = Bun.spawn({
-      cmd: ['git', 'diff', '--name-only', '--relative', '--no-renames', 'HEAD^', '--'],
+      cmd: ['git', 'diff', '--name-only', '-z', '--relative', '--no-renames', 'HEAD^', '--'],
       cwd: workspaceRoot,
       stdout: 'pipe',
       stderr: 'ignore',
     })
     const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-    return exit === 0 ? out.split('\n').filter((l) => l !== '') : []
+    return exit === 0 ? out.split('\0').filter((l) => l !== '') : []
     // quiet: a local git read; no files is the answer
   } catch {
     return []
