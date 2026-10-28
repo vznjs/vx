@@ -131,6 +131,29 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     expect(await Bun.file(heard).text()).toBe('INT\n')
   })
 
+  // A shell running `vx run` in a script stops on Ctrl-C only when its
+  // child DIED of SIGINT; the launcher exited 130 instead, and the script
+  // ran its next line (cli.md § Exit codes: vx dies of the signal).
+  it('dies of the signal its child died of, not with the code', async () => {
+    await launcherReady()
+    const fakeBun = path.join(binDir, 'bun')
+    writeFileSync(
+      fakeBun,
+      '#!/bin/sh\nif [ "$1" = "--version" ]; then echo 1.4.0; exit 0; fi\nkill -s "$4" $$\nexit 9\n',
+    )
+    chmodSync(fakeBun, 0o755)
+    mkdirSync(path.join(pkgDir, 'src'))
+    writeFileSync(path.join(pkgDir, 'src', 'bin.ts'), '')
+    for (const sig of ['INT', 'TERM'] as const) {
+      const p = Bun.spawnSync({
+        cmd: [NODE!, path.join(pkgDir, 'launcher.cjs'), sig],
+        cwd: root,
+        env: { PATH: [binDir, '/usr/bin', '/bin'].join(':'), HOME: root },
+      })
+      expect(`${p.exitCode} ${p.signalCode}`).toBe(`null SIG${sig}`)
+    }
+  })
+
   it('with no platform package and no bun, fails with the actionable message', async () => {
     await launcherReady()
     const r = run(['--version'], ['/usr/bin', '/bin'])

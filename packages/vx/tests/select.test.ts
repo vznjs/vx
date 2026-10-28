@@ -104,6 +104,25 @@ describe('findCwdProject', () => {
 })
 
 describe('resolveFilters', () => {
+  it('a ./dir filter naming a config the lock lacks says to lock it', async () => {
+    // "Projects: app, lib" read as a typo of a path that holds a config
+    // written after `vx lock`.
+    const fresh = path.join(root, 'packages', 'fresh')
+    await Bun.write(path.join(fresh, 'vx.config.mjs'), 'export default {}\n')
+    try {
+      const { value } = await quiet(() => resolveFilters(root, ['./packages/fresh']))
+      expect(value).toEqual({
+        error:
+          'no projects matched filter(s): ./packages/fresh. packages/fresh/vx.config.mjs is not in the lock yet — run `vx lock`',
+      })
+      // CONTROL: beside a filter that matched, the line is a warning.
+      const { stderr } = await quiet(() => resolveFilters(root, ['app', './packages/fresh']))
+      expect(stderr).toContain('packages/fresh/vx.config.mjs is not in the lock yet')
+    } finally {
+      await rm(fresh, { recursive: true, force: true })
+    }
+  })
+
   it('a name that matches nothing beside a diff that matched nothing is a typo, not "nothing affected"', async () => {
     // With `some` for `every`, the git filter's empty answer spoke for both
     // and the typo exited 0 as "nothing affected since HEAD".
@@ -122,11 +141,34 @@ describe('resolveFilters', () => {
     })
   })
 
+  it('names a ref two empty diffs share once', async () => {
+    // `--affected=HEAD --filter '[HEAD]'` said "nothing affected since HEAD, HEAD".
+    const { value } = await quiet(() => resolveFilters(root, ['...[HEAD]', '[HEAD]']))
+    expect((value as { empty: string }).empty).toStartWith('nothing affected since HEAD — ')
+  })
+
   it('the refusal names only the filters that matched nothing', async () => {
     // It listed every filter: `app` and `!app` matched app, and an
     // `--affected` base appeared as a `...[<base>]` nobody typed.
     const { value } = await quiet(() => resolveFilters(root, ['app', '!app', 'apq']))
     expect(value).toEqual({ error: 'no projects matched filter(s): apq. Did you mean app?' })
+  })
+
+  it('a comma list is named as one pattern per --filter, not a typo of its first name', async () => {
+    // Nx's `--projects=app,lib` habit: the hint said "Did you mean app?" and dropped lib.
+    const { value } = await quiet(() => resolveFilters(root, ['app,lib']))
+    expect(value).toEqual({
+      error:
+        'no projects matched filter(s): app,lib. A filter is one pattern: --filter app --filter lib',
+    })
+    // CONTROL: beside a filter that matched, the warning says the same.
+    const beside = await quiet(() => resolveFilters(root, ['app', 'app,lib']))
+    expect(beside.stderr).toBe(
+      noticed(
+        'vx run: filter "app,lib" matched no projects. A filter is one pattern: --filter app --filter lib\n',
+        'warn',
+      ),
+    )
   })
 
   it("the hint reads a pattern's name through its graph operators", async () => {
