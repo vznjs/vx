@@ -38,6 +38,8 @@ const BLOCK = 512
  * numbers; a MiB is far past any writer's.
  */
 const MAX_EXTENDED_HEADER = 1024 * 1024
+/** The largest millisecond count a Date holds (ECMA-262 §21.4.1.1). */
+const DATE_MAX_MS = 8.64e15
 // `ignoreBOM`: a default decoder drops a leading U+FEFF, and a name or
 // prefix field that began with one read back without it.
 const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
@@ -232,6 +234,9 @@ class TarDecoder {
     const type = h[156] === 0 ? '0' : String.fromCharCode(h[156]!)
     const size = this.pendingSize ?? octal(h, 124, 12)
     const mtimeMs = octal(h, 136, 12) * 1000
+    // Only GNU base-256 reaches past it, and a restore's utimes threw on
+    // such a Date after the renames before it had landed.
+    if (mtimeMs > DATE_MAX_MS) throw new TarFormatError(`header mtime past what a Date holds`)
     const padded = Math.ceil(size / BLOCK) * BLOCK
     // POSIX `ustar\0` only: old GNU's `ustar  ` keeps atime and ctime at
     // 345, and `-G` fills them, so a prefix read there named every entry

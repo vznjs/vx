@@ -186,6 +186,28 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
     ]).toEqual([PROJECT, true, false])
   })
 
+  it('names the root it writes at when that is not the working directory', async () => {
+    // From a directory below the root the report listed `vx.config.ts`
+    // with no word that it lands in a parent (a stray ~/package.json too).
+    const root = await tmp('vx-init-where-')
+    await writeFile(path.join(root, 'package.json'), '{"name":"r"}\n')
+    const sub = path.join(root, 'src')
+    await mkdir(sub, { recursive: true })
+    const rootRow = (out: string): string | undefined =>
+      out
+        .split('\n')
+        .find((l) => l.trimStart().startsWith('root '))
+        ?.trim()
+    const below = await vx(sub, ['init', '--dry'])
+    const here = await vx(root, ['init', '--dry'])
+    expect([below.code, rootRow(below.out), here.code, rootRow(here.out)]).toEqual([
+      0,
+      `root      ${root}`,
+      0,
+      undefined,
+    ])
+  })
+
   // A Bun workspace with scripts got an empty root project and a `next`
   // that never named the tool that makes scripts tasks (2026-10-26).
   it('names vx-migrate in next when there are scripts to map', async () => {

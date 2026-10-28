@@ -952,9 +952,11 @@ function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>
   const stack = [...roots]
   while (stack.length > 0) {
     const id = stack.pop()!
-    if (keep.has(id)) continue
+    // A `pkg#task` the user named is kept, though a hook may have dropped it.
+    const node = nodes.get(id)
+    if (node === undefined || keep.has(id)) continue
     keep.add(id)
-    stack.push(...nodes.get(id)!.deps)
+    stack.push(...node.deps)
   }
   for (const [id, n] of nodes) {
     if (!keep.has(id)) nodes.delete(id)
