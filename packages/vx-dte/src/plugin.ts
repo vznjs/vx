@@ -848,7 +848,7 @@ function unmeasuredOf(u: DteOptions['unmeasured']): Need {
   if (u === undefined) return FRESH
   refuseUnknownOptions('dte(): unmeasured', u, UNMEASURED_KEYS)
   const memory = bytes(u.memory)
-  if (!(typeof u.cpu === 'number' && u.cpu > 0) || memory === undefined)
+  if (!(Number.isFinite(u.cpu) && u.cpu > 0) || memory === undefined)
     throw new UserError("dte(): unmeasured needs cpu > 0 and memory such as '4GB'")
   return { cores: u.cpu, memory }
 }

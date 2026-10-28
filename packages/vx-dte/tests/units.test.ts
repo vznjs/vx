@@ -3085,6 +3085,10 @@ it('places an unmeasured task on any free core, and sizes the run by 2 cores and
   expect(
     refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } })),
   ).toContain('unmeasured needs cpu > 0')
+  // Infinity is no count of cores, as workers.<size>.cpu has it.
+  expect(
+    refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: Infinity, memory: '1GB' } })),
+  ).toContain('unmeasured needs cpu > 0')
 })
 
 it('reads memory as bytes or with a unit', () => {
