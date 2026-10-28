@@ -67,7 +67,12 @@ export interface ParsedFilter {
   dirFallback?: ParsedFilter
 }
 
-export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
+export function parseFilter(
+  raw: string,
+  workspaceRoot: string,
+  /** The filter as typed, when `raw` is the `./` reading of a name (`dirFallback`). */
+  typed = raw,
+): ParsedFilter {
   let s = raw
   const negate = s.startsWith('!')
   if (negate) s = s.slice(1)
@@ -182,6 +187,13 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
   if (pathForm !== undefined) {
     isPath = true
     matcher = path.resolve(workspaceRoot, pathForm)
+    // `../` (pnpm's cwd-relative sibling) climbed out of the root, and
+    // every project sat under the directory it named: all of them ran.
+    const up = path.relative(workspaceRoot, matcher)
+    if (up === '..' || up.startsWith(`..${path.sep}`))
+      throw new UserError(
+        `filter "${typed}" names a directory outside the workspace root: a path filter is relative to the root`,
+      )
     // `./packages/*` — pnpm's and Turbo's spelling for "every package under
     // packages": a glob over the root-relative project dir. Resolved
     // against the workspace root like the literal form.
@@ -200,7 +212,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
   // 23.2.1), and `-p 'apps/*'` matched nothing here.
   const dirFallback =
     !isPath && s.includes('/') && !s.startsWith('@')
-      ? parseFilter(`./${s}`, workspaceRoot)
+      ? parseFilter(`./${s}`, workspaceRoot, raw)
       : undefined
 
   return {
