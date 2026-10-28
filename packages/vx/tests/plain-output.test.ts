@@ -65,6 +65,13 @@ describe('plainOutput', () => {
     expect(calls).toEqual(['out a#build "tail"', 'done a#build'])
   })
 
+  it('holds a charset pick cut after its intermediate (`tput sgr0` writes ESC ( B)', () => {
+    const { calls, log } = recorder()
+    log.taskStdout(A, 'ok\x1b(')
+    log.taskStdout(A, 'B\x1b[mnext\n')
+    expect(calls).toEqual(['out a#build "ok"', 'out a#build "next\\n"'])
+  })
+
   it('a lone ESC that can complete nothing is stripped, not held', () => {
     const { calls, log } = recorder()
     log.taskStdout(A, 'a\x1bxyz\n')
