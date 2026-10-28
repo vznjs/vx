@@ -4,7 +4,7 @@
 
 import { parseArgs } from 'node:util'
 import { oidcAuth, parseAllow, statusLine } from '@vzn/vx-devtools'
-import { Refusal } from './protocol.js'
+import { isCount, Refusal } from './protocol.js'
 import { createCacheServer, DEFAULT_LIMITS, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
@@ -26,7 +26,12 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
  */
 export function s3Blobs(client: Bun.S3Client): Blobs {
   const ask = async (name: string, method: 'GET' | 'HEAD'): Promise<Response | null> => {
-    const res = await fetch(client.presign(name, { method }), { method })
+    // Identity: Bun's fetch asks for gzip and inflates it, and a
+    // compressed answer's Content-Length is not the artifact's size.
+    const res = await fetch(client.presign(name, { method }), {
+      method,
+      headers: { 'accept-encoding': 'identity' },
+    })
     if (res.status === 404) {
       await res.body?.cancel()
       return null
@@ -64,7 +69,12 @@ export function s3Blobs(client: Bun.S3Client): Blobs {
     },
     async size(name) {
       const res = await ask(name, 'HEAD')
-      return res === null ? null : Number(res.headers.get('content-length'))
+      if (res === null) return null
+      // Number(null) is 0: a HEAD naming no length is no size, not an empty artifact.
+      const length = res.headers.get('content-length')
+      const size = length === null || length.trim() === '' ? Number.NaN : Number(length)
+      if (!isCount(size)) throw new Error('the bucket answered HEAD with no Content-Length')
+      return size
     },
   }
 }
@@ -100,8 +110,15 @@ function main(argv: string[]): void {
   } catch (err) {
     fail((err as Error).message)
   }
+  const client = new Bun.S3Client({ bucket: env.S3_BUCKET })
+  try {
+    // Signs offline: refuses missing credentials now, not every request 502.
+    client.presign('vx-cache-server')
+  } catch (err) {
+    fail(`S3: ${(err as Error).message}`)
+  }
   const handle = createCacheServer({
-    blobs: s3Blobs(new Bun.S3Client({ bucket: env.S3_BUCKET })),
+    blobs: s3Blobs(client),
     authorize: oidcAuth({
       allow,
       readAccess: env.READ_ACCESS,
