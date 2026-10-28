@@ -86,7 +86,7 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
 
 // The running-tasks guide merged into the CI page (the short site).
 describe('the CI guide shows what --dry prints', () => {
-  it('its `would run:` block is formatPlanText on three local hits', () => {
+  it('its `would run:` block is formatPlanText on two local hits', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'running-tasks.mdx'), 'utf8')
     const task = (id: string, hash: string) => ({
       node: {
@@ -101,12 +101,15 @@ describe('the CI guide shows what --dry prints', () => {
     })
     const plan: RunPlan = {
       tasks: [
-        task('@acme/api#build', '8625b6031a2b3c4d'),
-        task('@acme/ui#build', '71e5d9a05e6f7a8b'),
-        task('@acme/web#build', '42e9b39d9c0d1e2f'),
+        task('@demo/ui#build', 'e04649970f18ba23'),
+        task('@demo/web#build', 'b421f74f0107bb20'),
       ],
     }
-    expect(fencedBlock(page, 'text', 'would run:')).toBe(formatPlanText(plan))
+    // The page shows vx's colours (an `ansi` block); its text is the plain plan.
+    const start = page.indexOf('```ansi\n', page.indexOf('`--dry` prints'))
+    const block = page.slice(start + '```ansi\n'.length, page.indexOf('\n```', start))
+    const plain = block.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
+    expect(plain).toBe(formatPlanText(plan).replace(/ +$/gm, '').replace(/\n+$/, ''))
   })
 })
 
