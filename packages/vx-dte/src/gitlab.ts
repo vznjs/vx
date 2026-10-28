@@ -91,10 +91,17 @@ async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
     body: form,
     signal: AbortSignal.timeout(10_000),
   })
-  if (!res.ok)
+  if (!res.ok) {
+    const text = (await res.text()).slice(0, 200)
+    // GitLab.com's new projects let no one set pipeline variables (17.7),
+    // and GitLab's words name no setting.
+    const fix = text.includes('Insufficient permissions to set pipeline variables')
+      ? ": the workers take the run's variables; in the project's Settings > CI/CD > Variables, let the vx job's role use pipeline variables"
+      : ''
     throw new Error(
-      `gitlab(): triggering ${workers.map((w) => w.id).join(', ')}: ${res.status} ${(await res.text()).slice(0, 200)}`,
+      `gitlab(): triggering ${workers.map((w) => w.id).join(', ')}: ${res.status} ${text}${fix}`,
     )
+  }
 }
 
 /**
