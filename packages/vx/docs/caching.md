@@ -1550,7 +1550,11 @@ followed). An output directory that is a symlink (`dist -> real-out`) is
 followed by the clean as by the save and restore, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5). The clean prunes the directories it emptied (before a miss it keeps
+nothing is deleted through it (X-5). So does one, in either scope, that
+resolves into a `.git` (any case) or the root's `.vx`: for the root
+project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
+under `dist/**` had the clean delete the repository. A recorded row
+reached through such a link is never removed either. The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
 task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the

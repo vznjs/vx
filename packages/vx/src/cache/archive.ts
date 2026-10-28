@@ -74,7 +74,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
-import { UserError } from '../util/index.js'
+import { UserError, writableUnder } from '../util/index.js'
 import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
 import {
   TarFormatError,
@@ -707,21 +707,6 @@ function linksOf(meta: MetaFile): Array<[string, string]> {
   })
 }
 
-/**
- * Whether a restore may write at `real`: under `realBase` and in no `.git`
- * there, in any case (a case-insensitive disk reads `.GIT` as `.git`). The
- * entry names are held to this lexically; this holds the path a link on
- * the way resolves to (vercel/turborepo#14808).
- */
-function writable(real: string, realBase: string): boolean {
-  if (real === realBase) return true
-  if (!real.startsWith(realBase + path.sep)) return false
-  return !real
-    .slice(realBase.length + 1)
-    .split(path.sep)
-    .some((part) => part.toLowerCase() === '.git')
-}
-
 /** `p` is `root` or under it, lexically. */
 const inside = (p: string, root: string): boolean => {
   const r = path.resolve(root)
@@ -843,7 +828,7 @@ export async function extractArtifactStream(
       }
       // Lexical: a write through a link is judged where it resolves, so an
       // alias chain into .git gets no further than this link would.
-      if (!writable(at, path.resolve(bound))) {
+      if (!writableUnder(at, path.resolve(bound))) {
         throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)
       }
       await x.stageLink(name, dest.base, target, to)
@@ -1082,7 +1067,7 @@ class Extractor {
       )
       if (real !== null) {
         const realBase = await this.realBaseOf(base)
-        if (!writable(real, realBase)) {
+        if (!writableUnder(real, realBase)) {
           throw await linkOutError(baseResolved, probe, realBase)
         }
         return
@@ -1111,7 +1096,7 @@ class Extractor {
     if (err.code !== 'EEXIST' && err.code !== 'ENOENT' && err.code !== 'ELOOP') throw err
     const real = await resolveThrough(dir)
     const realBase = await this.realBaseOf(base)
-    if (!writable(real, realBase)) {
+    if (!writableUnder(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
     // What stands there without a link on the way (a file named like the
@@ -1585,7 +1570,7 @@ class Extractor {
     checked.add(dir)
     const realBase = await this.realBaseOf(base)
     const real = await realOf(dir, true)
-    if (!writable(real, realBase)) {
+    if (!writableUnder(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
   }
@@ -1611,7 +1596,7 @@ class Extractor {
     for (const [dir, { base, placed }] of landed) {
       const realBase = await this.realBaseOf(base)
       const real = await realOf(dir, true).catch(() => null)
-      if (real === null || writable(real, realBase)) continue
+      if (real === null || writableUnder(real, realBase)) continue
       await Promise.allSettled(placed.map((p) => rm(p, { recursive: true, force: true })))
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
@@ -1756,7 +1741,7 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
   for (const part of path.relative(base, probe).split(path.sep)) {
     dir = path.join(dir, part)
     real = await resolveThrough(dir)
-    if (!writable(real, realBase)) break
+    if (!writableUnder(real, realBase)) break
   }
   if (real.startsWith(realBase + path.sep)) {
     return new UserError(
