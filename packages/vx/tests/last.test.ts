@@ -511,6 +511,10 @@ describe('parseLastArgs', () => {
           `--list must be a whole number from 1 to 500 (got ${v}) (see \`vx last --help\`)`,
         )
     expect(parseLastArgs(['--list=007']).list).toBe(7)
+    // It said `(got )`; `--dry=` names its bare form the same way.
+    expect(parseLastArgs(['--list=']).error).toBe(
+      '--list= requires a count from 1 to 500; bare --list lists 10 (see `vx last --help`)',
+    )
   })
 
   it('an empty word is no run id, task or log, as vx why reads one', () => {

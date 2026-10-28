@@ -86,6 +86,12 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
           (!RUN_ID_SHAPE.test(next) && (!next.startsWith('-') || /^-\d/.test(next))))
       const lv = a === '--list' ? (spaced ? next : '10') : a.slice(7)
       if (spaced) i++
+      if (lv === '') {
+        return {
+          ...out,
+          error: `--list= requires a count from 1 to 500; bare --list lists 10${seeHelp('last')}`,
+        }
+      }
       const n = parseDecimalInt(lv)
       if (n === null || n < 1 || n > 500) {
         return {
