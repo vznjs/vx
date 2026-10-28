@@ -141,7 +141,7 @@ export interface ExecuteRequest {
   readonly remoteOnly?: boolean
   /**
    * The platform to run it on, one of the task's `exec.platforms` and the
-   * executor's `platforms`: its key folds it. Absent when the task names none.
+   * executor's `platforms`: its key includes it. Absent when the task names none.
    */
   readonly platform?: string
   /**

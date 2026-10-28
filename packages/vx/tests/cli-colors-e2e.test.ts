@@ -105,7 +105,7 @@ describe('vx paints only a run, and only as the env asks', () => {
       expect(painted(['help'], { FORCE_COLOR: '1' })).toBe(false)
       // A verb drawn with the ui components paints as a run does: on when
       // forced, plain into a pipe (log-design).
-      const clean = ['cache', 'clean', '--max-size', '1G', '--dry-run']
+      const clean = ['cache', 'clean', '--max-size', '1G', '--dry']
       expect([painted(clean, {}), painted(clean, { FORCE_COLOR: '1' })]).toEqual([false, true])
       for (const verb of [['show'], ['show', 'app#build']])
         expect([painted(verb, {}), painted(verb, { FORCE_COLOR: '1' })]).toEqual([false, true])

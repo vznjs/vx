@@ -231,11 +231,11 @@ describe('vx cache clean value parsing', () => {
     expect(parsePruneArgs(['--older-than', '30D']).error).toBeUndefined()
   })
 
-  it('--dry-run rides along either policy flag and alone is a clear', () => {
-    expect(parsePruneArgs(['--older-than=30d', '--dry-run']).dryRun).toBe(true)
-    expect(parsePruneArgs(['--dry-run', '--max-size', '1G']).dryRun).toBe(true)
+  it('--dry rides along either policy flag and alone is a clear', () => {
+    expect(parsePruneArgs(['--older-than=30d', '--dry']).dryRun).toBe(true)
+    expect(parsePruneArgs(['--dry', '--max-size', '1G']).dryRun).toBe(true)
     expect(parsePruneArgs(['--older-than=30d']).dryRun).toBeUndefined()
-    expect(parsePruneArgs(['--dry-run']).error).toBeUndefined()
+    expect(parsePruneArgs(['--dry']).error).toBeUndefined()
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--cache-dir=x', '--max-size=1G']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir']).error).toMatch(/requires a path/)

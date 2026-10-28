@@ -89,9 +89,8 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       await printHelp(await (await plugins()).pluginCommandHelp())
       return 0
     case 'help': {
-      // `vx help run` is the same question as `vx run --help`. A plugin verb
-      // owns its own help, so anything but a core verb gets the whole
-      // reference, which lists the plugin verbs.
+      // `vx help run` is the same question as `vx run --help`, and so is
+      // `vx help <plugin verb>`: a plugin verb owns its own help.
       const verb = rest[0]
       const core = verb !== undefined && (CORE_VERBS as readonly string[]).includes(verb)
       if (verb !== undefined && !core) {
@@ -116,6 +115,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
           )
           return 1
         }
+        if (resolved !== null && !('loadError' in resolved)) return dispatch(verb, ['--help'])
       }
       await printHelp(await (await plugins()).pluginCommandHelp(), core ? verb : undefined)
       return 0

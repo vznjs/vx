@@ -28,7 +28,7 @@ measurements.
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
-vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]
+vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
@@ -96,6 +96,7 @@ There is no `-V`; use `vx --version`, as in Turbo.
 `vx <verb> --help` (also `-h` and `vx help <verb>`) prints this
 reference for that verb: its usage lines and sections, then
 `Full reference: vx help`. Every argument error points at it.
+`vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
 
 `vx help <name>` for a name that is no verb is refused like
 `vx <name>`: one line, a guess when one is close, exit 1.
@@ -1050,10 +1051,11 @@ Status legend:
 | `−`    | not started — a server you did not request whose every dependant restores a local hit      |
 | `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
-`--dry=json` emits the same data as a structured object, alone on stdout
+`--dry=json` emits the same data as one JSON object on one line, alone on stdout
 (a stage's warnings go to stderr), and with nothing to run (nothing
 affected) an empty `tasks` list, the note on stderr; `schemas/plan.json`
-is its JSON Schema, held like the read verbs' (see Machine-readable output):
+is its JSON Schema, held like the read verbs' (see Machine-readable output).
+Indented here to read:
 
 ```json
 {
@@ -1190,7 +1192,7 @@ The grants are the task's whole permission surface — nothing is derived
 from `cache`, and the only thing core adds is `node_modules` plus the
 workspace packages linked there, never a link back to the task's own
 project (npm and Yarn link that too). For a task that declares `cache`
-a linked package is granted only when its key folds a task of that
+a linked package is granted only when its key includes a task of that
 package; declaring `cache` narrows core's grant and widens nothing.
 Enforcement anchors at the workspace root (a task never leaves its
 project); only denials inside the project, or under a withheld linked
@@ -1507,7 +1509,7 @@ bound clears the cache. It operates on the entries and
 ```
 vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
-vx cache clean ... --dry-run                # Say what either policy would reap; delete nothing.
+vx cache clean ... --dry                    # Say what either policy would reap; delete nothing.
 vx cache clean ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
 vx cache clean ... --cache-dir <path>       # The cache a run with the same flag uses.
 vx cache clean                              # No bound: clear the whole cache (below).
@@ -1527,7 +1529,7 @@ $ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
 
   42 orphaned artifacts
 
-$ vx cache clean --older-than 30d --dry-run
+$ vx cache clean --older-than 30d --dry
 › vx cache clean  would free 1.3 GB (dry run)
 
   42 entries · 3 orphaned artifacts
@@ -1539,7 +1541,7 @@ $ vx cache clean --older-than 30d --dry-run
 | ------------------------- | -------------------------------------------------------- |
 | `--older-than <duration>` | drop entries last used before now minus the duration     |
 | `--max-size <size>`       | then evict the least recently used until under the size  |
-| `--dry-run`               | say what would go; delete nothing                        |
+| `--dry`                   | say what would go; delete nothing                        |
 | `--global`                | with no bound, also clear every other repository's store |
 | `--format json`           | the result as one object                                 |
 | `--cache-dir <path>`      | the cache a run with the same flag uses                  |
@@ -1591,9 +1593,9 @@ is kept until a later prune, but its bytes are left out all the same
 (item 1081). The sweep runs on every prune, under
 either flag, and reports separately from the policy's evictions.
 
-### `--dry-run`
+### `--dry`
 
-`--dry-run` picks the victims under the same policy and counts the
+`--dry` picks the victims under the same policy and counts the
 orphans the sweep would take, then returns without touching the index
 or the directory; the real prune with the same flags reaps exactly what
 it named (an in-flight save aside). On an index an earlier vx wrote,
@@ -1658,7 +1660,7 @@ $ vx cache clean
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
 
-$ vx cache clean --global --dry-run
+$ vx cache clean --global --dry
 › vx cache clean  would free 3.1 GB (dry run)
 
   .vx/cache
@@ -2561,7 +2563,7 @@ it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
-task does not set are not printed; a value that spans lines (a
+task does not set are not printed, an empty list prints `none`; a value that spans lines (a
 multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
 narrows to one task (`{ name, dir, task, config }` in JSON). A bare
@@ -2785,7 +2787,7 @@ vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path
 $ vx why app#build
 app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
   this run   2026-10-08T01:57:05.486Z · success · executed · key 9ef9806a9c69209e
-  previous   2026-10-08T01:57:05.325Z · success · key e240348b20e79fd6
+  previous   2026-10-08T01:57:05.325Z · success · executed · key e240348b20e79fd6
   verdict    cache key changed: file packages/app/src/input.txt
 
   what changed (1 component, 6 unchanged):
@@ -2828,7 +2830,7 @@ task with no `inputs` is new every run, so the task never hits; the
 verdict names that task:
 
 ```
-  verdict    never cached: its key folds app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate
+  verdict    never cached: its key includes app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate
 ```
 
 An **unchanged** key has three endings, and the verdict distinguishes

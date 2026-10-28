@@ -501,7 +501,7 @@ export function latestRunId(db: Database, taskId: string): string | null {
 function keylessNote(taskId: string, keylessBy: string): string {
   return keylessBy === taskId
     ? 'never cached: this task declares no `inputs`, so each run derives a new key; declare its `inputs`'
-    : `never cached: its key folds ${keylessBy}, which declares no \`inputs\`, so each run derives a new key; declare inputs on ${keylessBy}`
+    : `never cached: its key includes ${keylessBy}, which declares no \`inputs\`, so each run derives a new key; declare inputs on ${keylessBy}`
 }
 
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun {
@@ -588,7 +588,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
           ? 'this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only'
           : this_.keylessBy === taskId
             ? 'this task declares no `cache` block — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs`'
-            : `this task declares no \`cache\` block — it runs on every invocation; its key folds ${this_.keylessBy}, which declares no \`inputs\`, so each run derives a new key and every task that depends on it misses; declare inputs on ${this_.keylessBy}`
+            : `this task declares no \`cache\` block — it runs on every invocation; its key includes ${this_.keylessBy}, which declares no \`inputs\`, so each run derives a new key and every task that depends on it misses; declare inputs on ${this_.keylessBy}`
         : this_.keylessBy !== null
           ? keylessNote(taskId, this_.keylessBy)
           : prev && prev.hash !== this_.hash

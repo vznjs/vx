@@ -111,7 +111,7 @@ const check = Bun.spawnSync({
   stderr: 'pipe',
 })
 const refusal =
-  'tasks.build.description is a function — a config must be JSON data, because the cache key folds its JSON'
+  'tasks.build.description is a function — a config must be JSON data, because the cache key is built from its JSON'
 const said = text(check.stderr)
 rmSync(ws, { recursive: true, force: true })
 if (check.exitCode === 0 || !said.includes(refusal) || said.includes('evaluates differently')) {

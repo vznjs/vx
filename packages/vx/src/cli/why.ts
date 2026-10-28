@@ -59,7 +59,7 @@ export const WHAT_TO_DO: Readonly<Record<string, string>> = {
   config:
     "the task's evaluated config changed (its vx.config or a file it imports); `vx show <that task>` prints it as it is now",
   upstream: "a dependency's key moved; `vx why <that task>` says why",
-  plugin: "a key plugin's material changed; that plugin decides what it folds",
+  plugin: "a key plugin's material changed; that plugin decides what goes into the key",
   platform: 'it ran on another platform; each of its `exec.platforms` keeps its own entry',
   format:
     'vx keys tasks differently since an upgrade; every cached task misses once, nothing to fix',
@@ -209,6 +209,27 @@ function restoredWord(r: { restored: boolean | null }): string {
   return r.restored === null ? '' : r.restored ? ' · restored' : ' · up-to-date'
 }
 
+/**
+ * One run of the task, the same for `this run` and `previous`. A hit's
+ * status (`cache-hit`, `cache-hit-remote`) already names it and its tier,
+ * and `up-to-date` / `restored` says what it did to the disk; only an
+ * executed run needs the word. A skipped task never ran and has no key: it
+ * read `skipped · executed · key ` (item 898).
+ */
+function runFacts(r: {
+  startedAt: number
+  status: string
+  cacheHit: boolean | null
+  restored: boolean | null
+  hash: string
+}): string {
+  const ran = r.cacheHit === false && r.status !== 'skipped'
+  return (
+    `${fmtWhen(r.startedAt)} · ${r.status}${restoredWord(r)}${ran ? ' · executed' : ''}` +
+    (r.hash === '' ? ' · no key' : ` · key ${r.hash}`)
+  )
+}
+
 export async function whyCmd(args: readonly string[]): Promise<number> {
   const parsed = parseWhyArgs(args)
   if (parsed.error !== undefined) throw new UserError(`vx why: ${parsed.error}`, 'VX_E_USAGE')
@@ -281,22 +302,12 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const head = (text: string): string => paint('', text, c, { bold: true })
     const t = why.thisRun!
     lines.push(`${ui.inline(ui.id(taskId), c)}${dim(` — run ${runId}`)}`)
-    // A hit's status (`cache-hit`, `cache-hit-remote`) already names it and
-    // its tier, and `up-to-date` / `restored` says what it did to the disk;
-    // only an executed run needs the word. A skipped task never ran and has
-    // no key: it read `skipped · executed · key ` (item 898).
-    const ran = t.cacheHit === false && t.status !== 'skipped'
-    lines.push(
-      `  ${dim('this run')}   ${fmtWhen(t.startedAt)} · ${t.status}${restoredWord(t)}` +
-        `${ran ? ' · executed' : ''}${t.hash === '' ? ' · no key' : ` · key ${t.hash}`}`,
-    )
+    lines.push(`  ${dim('this run')}   ${runFacts(t)}`)
     if (why.previousRun == null) {
       lines.push(`  ${dim('previous')}   (none — first recorded run of this task)`)
     } else {
       const p = why.previousRun
-      lines.push(
-        `  ${dim('previous')}   ${fmtWhen(p.startedAt)} · ${p.status}${restoredWord(p)} · key ${p.hash}`,
-      )
+      lines.push(`  ${dim('previous')}   ${runFacts(p)}`)
       // The key moved and the diff says by what: the verdict names it, so
       // an env-only change reads as one line, not "inputs differ" above a
       // table to scan.

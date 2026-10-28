@@ -114,7 +114,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Usage:',
     '  vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]',
     '  vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]',
-    '  vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]',
+    '  vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]',
     '  vx lock [--check] [--format pretty|json]',
     '  vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]',
     '  vx upgrade [TAG] [-g|--global]',
@@ -217,7 +217,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx cache clean --max-size 1G        Keep total cache under 1 GB (LRU eviction).',
     "  vx cache clean                      Clear .vx/cache and this repo's store ~/.vx/<id>/cache.",
     "      --global                        Clear every repo's store under ~/.vx.",
-    '      --dry-run                       Say what the policy would reap; delete nothing.',
+    '      --dry                           Say what the policy would reap; delete nothing.',
     '      --format <fmt>                  pretty (default) | json.',
     '      --cache-dir <path>              The cache a run with the same flag uses (why, last, info too).',
     '',
@@ -354,9 +354,8 @@ export function flagHint(verb: string, arg: string): string {
   // from `--format`: a run with its cache reads turned off.
   if ((name === '--format' || name === '--json') && flags.includes('--dry'))
     return ' (the run as JSON is `vx last --format json` after it; the plan is --dry=json)'
-  // A flag cut short at a word (`--dry` for prune's `--dry-run`, which
-  // `vx run` spells `--dry`) is too many edits away for either budget, and
-  // so is one a word too long (`vx run --dry-run`).
+  // A flag one word too long (`--dry-run` for `--dry`) is too many edits
+  // away for either budget, and so is one cut short at a word.
   const cut = flags.filter((f) => f.startsWith(`${name}-`) || name.startsWith(`${f}-`))
   const best =
     nearest(name, flags) ??

@@ -3,7 +3,7 @@
 // else, so any number of nodes share one bucket (PROTOCOL.md, README.md).
 
 import { parseArgs } from 'node:util'
-import { oidcAuth, parseAllow } from '@vzn/vx-devtools'
+import { oidcAuth, parseAllow, statusLine } from '@vzn/vx-devtools'
 import { Refusal } from './protocol.js'
 import { createCacheServer, DEFAULT_LIMITS, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
@@ -115,14 +115,14 @@ function main(argv: string[]): void {
     maxRequestBodySize: limits.maxUploadBytes,
     fetch: handle,
   })
-  console.log(`vx-cache-server on ${server.url.href}`)
+  process.stdout.write(statusLine('ok', 'vx-cache-server', `listening on ${server.url.href}`))
   const stop = (): void => void server.stop().then(() => process.exit(0))
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
 }
 
 function fail(message: string): never {
-  process.stderr.write(`${message}\n`)
+  process.stderr.write(statusLine('err', 'vx-cache-server', message))
   process.exit(2)
 }
 

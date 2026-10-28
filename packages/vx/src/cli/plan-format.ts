@@ -171,39 +171,35 @@ export function formatPlanJson(
   affectedBase?: string,
 ): string {
   return (
-    JSON.stringify(
-      {
-        ...(affectedBase !== undefined ? { affectedBase } : {}),
-        tasks: plan.tasks.map((t): PlanTaskJson => {
-          const description = shownDescription(t)
-          return {
-            id: t.node.id,
-            project: t.node.projectName,
-            task: t.node.taskName,
-            hash: t.hash,
-            cacheStatus: t.cacheStatus,
-            deps: t.deps,
-            ...(t.p50Ms !== undefined ? { p50Ms: t.p50Ms } : {}),
-            ...(t.executor !== undefined ? { executor: t.executor } : {}),
-            ...(t.download !== undefined ? { download: t.download } : {}),
-            ...(description !== undefined ? { description } : {}),
-            ...(t.affected !== undefined ? { affected: t.affected } : {}),
-          }
-        }),
-        ...(plan.predicted !== undefined ? { predicted: plan.predicted } : {}),
-        // The gate's refusals belong on the SCRIPTING surface too: a CI job
-        // asking "did --cache-download=none actually defer anything, and if not
-        // why" reads this, not the human table. (This object enumerates its
-        // fields deliberately — the plan's internal shape is not the wire —
-        // which is exactly why a new PlannedTask field does not appear here
-        // for free, and why `download` above had to be added by hand.)
-        ...(plan.downloadDowngrades !== undefined
-          ? { downloadDowngrades: plan.downloadDowngrades }
-          : {}),
-      },
-      null,
-      2,
-    ) + '\n'
+    JSON.stringify({
+      ...(affectedBase !== undefined ? { affectedBase } : {}),
+      tasks: plan.tasks.map((t): PlanTaskJson => {
+        const description = shownDescription(t)
+        return {
+          id: t.node.id,
+          project: t.node.projectName,
+          task: t.node.taskName,
+          hash: t.hash,
+          cacheStatus: t.cacheStatus,
+          deps: t.deps,
+          ...(t.p50Ms !== undefined ? { p50Ms: t.p50Ms } : {}),
+          ...(t.executor !== undefined ? { executor: t.executor } : {}),
+          ...(t.download !== undefined ? { download: t.download } : {}),
+          ...(description !== undefined ? { description } : {}),
+          ...(t.affected !== undefined ? { affected: t.affected } : {}),
+        }
+      }),
+      ...(plan.predicted !== undefined ? { predicted: plan.predicted } : {}),
+      // The gate's refusals belong on the SCRIPTING surface too: a CI job
+      // asking "did --cache-download=none actually defer anything, and if not
+      // why" reads this, not the human table. (This object enumerates its
+      // fields deliberately — the plan's internal shape is not the wire —
+      // which is exactly why a new PlannedTask field does not appear here
+      // for free, and why `download` above had to be added by hand.)
+      ...(plan.downloadDowngrades !== undefined
+        ? { downloadDowngrades: plan.downloadDowngrades }
+        : {}),
+    }) + '\n'
   )
 }
 

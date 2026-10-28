@@ -55,7 +55,7 @@ export class FingerprintWatch {
   withholds (below).
 
 ```text
-[vx] a task rewrote `pnpm-lock.yaml` during the run, which a plugin folds into every key: nothing keyed before it is restored or saved from here on
+[vx] a task rewrote `pnpm-lock.yaml` during the run, which a plugin puts into every key: nothing keyed before it is restored or saved from here on
 ```
 
 ## Where it is read

@@ -300,8 +300,30 @@ export async function pluginCommandHelp(cwd = process.cwd()): Promise<string[]> 
     for (const [verb, command] of Object.entries(plugin.commands ?? {})) {
       if (seen.has(verb)) continue
       seen.add(verb)
-      lines.push(`  vx ${verb.padEnd(17)} ${command.description} (${plugin.name})`)
+      lines.push(
+        ...helpLines(`  vx ${verb.padEnd(17)} `, `${command.description} (${plugin.name})`),
+      )
     }
   }
+  return lines
+}
+
+/**
+ * One help entry: `head` then `text` wrapped at word breaks under the
+ * column `head` ends at, at core's reference width, so a plugin's long
+ * description reads as core's own entries do.
+ */
+function helpLines(head: string, text: string, width = 88): string[] {
+  const indent = ' '.repeat(head.length)
+  const lines: string[] = []
+  let line = head
+  for (const word of text.split(/\s+/)) {
+    const fresh = line === head || line === indent
+    if (!fresh && line.length + 1 + word.length > width) {
+      lines.push(line)
+      line = indent + word
+    } else line += fresh ? word : ` ${word}`
+  }
+  lines.push(line)
   return lines
 }

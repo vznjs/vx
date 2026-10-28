@@ -811,7 +811,7 @@ build: {
 inputs?: InputsConfig
 ```
 
-What the task reads, and so what its key folds. A task is keyed on its
+What the task reads, and so what its key includes. A task is keyed on its
 inputs whether it caches or not, as Turbo and Nx hash every task: a
 dependant folds that key, so an edit to an uncached generator's inputs
 re-runs the cached task behind it. A group with `inputs` is a keyed
@@ -2460,7 +2460,7 @@ a user meets most:
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `did not export a default object`                                                                                                     | Forgot `export default`, or exported a non-object; a function (Vite's `defineConfig(() => …)` shape) adds that it is one and to export what it returns (D-110).                                                                |
 | `tasks must be an object keyed by task name`                                                                                          | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                  |
-| `<path> is <what> — a config must be JSON data, because the cache key folds its JSON`                                                 | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
+| `<path> is <what> — a config must be JSON data, because the cache key is built from its JSON`                                                 | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
 | `<level> has unknown field "<key>"`                                                                                                   | Typo'd / unsupported key (see below).                                                                                                                                                                                          |
 | `<level> must be an object (fields: <fields>), not an array`                                                                          | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                       |
 | `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first`                     | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above). |

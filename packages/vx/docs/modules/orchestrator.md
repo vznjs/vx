@@ -349,7 +349,7 @@ and releasing costs five calls — the mkdir, the entry's write, the
 rename, the unlink and the rmdir — with nothing read back: the unlink of
 its own entry is the release's proof that no later run reclaimed the
 lock (`tests/syscall-repeats.unsafe.test.ts`). `vx cache clean` (not
-`--dry-run`) takes the same lock before it evicts: a prune beside a run
+`--dry`) takes the same lock before it evicts: a prune beside a run
 removed the artifacts the run had just probed as hits, whose
 `accessed_at` bumps were not flushed yet (nx#36688). The run survives
 that now (a vanished artifact is a miss), but only by re-running the
