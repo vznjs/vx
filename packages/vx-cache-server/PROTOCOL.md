@@ -62,7 +62,8 @@ alone decides what it reads and where it writes, by the server's
   `head_ref` a fork names, and its `ref` is the base.
 
 A bad token is `401`. A server with `ALLOW` empty refuses every
-request: `401`, `the server admits no CI: set ALLOW`. A server that
+request: `401`, `ALLOW is empty: set it to the CI workflows this server
+serves`. A server that
 cannot fetch the issuer's keys answers `502`: the token is not refused,
 so a client keeps the remote for its next request.
 
