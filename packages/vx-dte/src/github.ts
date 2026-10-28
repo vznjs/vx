@@ -100,7 +100,10 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const letGo = (run: string, workers: ReadonlyMap<string, WorkerSpawn>): void => {
     if (![...workers.keys()].every((id) => cancelled.has(id))) return
     watched.delete(run)
-    runs.splice(runs.indexOf(run), 1)
+    // Let go already (a cancel while its dispatch wrote RUNNER_TEMP).
+    const i = runs.indexOf(run)
+    if (i < 0) return
+    runs.splice(i, 1)
     const p = cancelOf(run).finally(() => pending.delete(p))
     pending.add(p)
   }

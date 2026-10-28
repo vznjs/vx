@@ -486,6 +486,53 @@ it('says each poll and cancel GitHub refused, by status and body, once', async (
   }
 }, 15_000)
 
+// A run let go while its dispatch wrote RUNNER_TEMP was let go twice: the
+// second dropped another run from the list close() cancels.
+it('keeps every other run to cancel when one is let go twice', async () => {
+  const calls: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      calls.push(`${req.method} ${path}`)
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: 1 })
+      if (path.endsWith('/jobs')) return Response.json({ jobs: [] })
+      return new Response(null, { status: 202 })
+    },
+  })
+  const temp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
+  await Bun.write(path.join(temp, 'vx-dte-started'), '/repos/o/r/actions/runs/9 small#9\n')
+  // Its append waits for a reader: the dispatch is held between its run and its letGo.
+  const fifo = path.join(temp, 'vx-dte-runs')
+  expect(Bun.spawnSync(['mkfifo', fifo]).exitCode).toBe(0)
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+    RUNNER_TEMP: temp,
+  })
+  try {
+    const adapter = github()
+    adapter.adopt?.((id, size) => spawn(id, size))
+    void adapter.spawn(spawn('small#1', 'small'))
+    for (let i = 0; i < 50 && !calls.some((c) => c.endsWith('/dispatches')); i++)
+      await Bun.sleep(10)
+    await Bun.sleep(50)
+    adapter.cancel?.(['small#1'])
+    expect(readFileSync(fifo, 'utf8')).toBe('/repos/o/r/actions/runs/1\n')
+    await Bun.sleep(50)
+    await adapter.close?.()
+    expect(calls.filter((c) => c.endsWith('/cancel')).toSorted()).toEqual([
+      'POST /repos/o/r/actions/runs/1/cancel',
+      'POST /repos/o/r/actions/runs/9/cancel',
+    ])
+  } finally {
+    await server.stop(true)
+    await rm(temp, { recursive: true, force: true })
+  }
+})
+
 // A matrix makes at most 256 jobs a workflow run: a wave of more was one
 // dispatch GitHub could not run, every worker of it never joining.
 it('dispatches a wave of more than 256 workers as runs of at most 256', async () => {
