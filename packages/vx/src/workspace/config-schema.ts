@@ -82,16 +82,16 @@ export function cacheScopeError(source = 'VX_CACHE_SCOPE'): string {
   return `${source} ${CACHE_SCOPE_RULE}`
 }
 
-/** Why `VX_CACHE_SCOPE` is refused, as the run's error. */
-export function cacheScopeEnvError(): UserError {
-  return new UserError(cacheScopeError())
+/** Why `VX_CACHE_SCOPE` (`got`) is refused, as the run's error: usage, as every `VX_*` value is. */
+export function cacheScopeEnvError(got: string): UserError {
+  return new UserError(`${cacheScopeError()} (got ${got})`, 'VX_E_USAGE')
 }
 
 /** `baseBranch`: `VX_BASE_BRANCH`, else the workspace's; undefined lets git name it. */
 export function configuredBaseBranch(workspace: WorkspaceConfig | null): string | undefined {
   const env = settingEnv('baseBranch')
   if (env !== undefined && !isBaseBranch(env)) {
-    throw new UserError(`VX_BASE_BRANCH ${BASE_BRANCH_RULE}`, 'VX_E_USAGE')
+    throw new UserError(`VX_BASE_BRANCH ${BASE_BRANCH_RULE} (got ${env as string})`, 'VX_E_USAGE')
   }
   return (env as string | undefined) ?? workspace?.baseBranch
 }
