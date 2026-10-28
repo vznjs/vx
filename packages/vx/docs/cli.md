@@ -318,7 +318,9 @@ git: <root> is not inside a git work tree`. A repository with no commit
 - `<base>...HEAD`, Turbo's CI spelling, reads as `<base>`. Two-dot
   `<base>..HEAD` diffs from `<base>` itself, not the merge base; a shallow
   clone fetches that commit as it fetches the merge base.
-- A ref that does not exist is `git ref "<ref>" did not resolve`. In a
+- A ref that does not exist is `git ref "<ref>" did not resolve`, with
+  git's reason when it gives one (`main@{9}`: `log for 'main' only has 2
+entries`). In a
   shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`).
 - A project whose directory is a symlink inside the workspace
   (`packages/b -> ../ext/b`) is selected by a change at the real place
