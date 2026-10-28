@@ -217,6 +217,9 @@ export function conformance(name: string, target: Target): void {
       })
       h.ws.send(`{"n":4,"sends":[{"to":"x","body":"${'a'.repeat(1 << 20)}"}]}`)
       expect(await h.next()).toEqual({ n: 4, status: 413, error: 'body over 1 MiB' })
+      // Bytes, not characters: this is 1.5 MiB.
+      h.ws.send(`{"n":5,"sends":[{"to":"x","body":"${'€'.repeat(1 << 19)}"}]}`)
+      expect(await h.next()).toEqual({ n: 5, status: 413, error: 'body over 1 MiB' })
     })
   })
 }
