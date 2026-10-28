@@ -309,8 +309,8 @@ async function clear(
   storeRoot: string | null,
   parsed: PruneArgs,
 ): Promise<number> {
-  // The store the index recorded wins over today's (a changed HOME), as a
-  // run reads it; a directory with no index is not a vx cache to delete.
+  // The store the index recorded and today's (a changed HOME, an origin
+  // added) both go; a directory with no index is not a vx cache to delete.
   const targets: string[] = []
   if (existsSync(path.join(dir, 'cache.db'))) {
     // An index SQLite cannot read is what its own refusal sends here to
@@ -327,6 +327,9 @@ async function clear(
     // The index is a file in the checkout (committed, or restored from a CI
     // cache): the store it names is deleted only when it is one.
     if (store !== undefined && isStore(store)) targets.push(store)
+    // Today's store too: the next run reads it, whichever store the index
+    // last recorded (a moved HOME, an origin added).
+    if (storeRoot !== null) targets.push(storeRoot)
   } else if (storeRoot !== null) targets.push(storeRoot)
   if (parsed.global === true) {
     const vxHome = path.join(process.env['HOME'] || homedir(), '.vx')

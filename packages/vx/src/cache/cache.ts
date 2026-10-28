@@ -1181,8 +1181,10 @@ export class Cache implements CacheLayer {
           } | null
         )?.value,
     )
+    // A dry prune names what the real one takes, so it reads the store a
+    // run opens (today's), not the one the index last recorded.
     let storeDir =
-      mode !== 'open'
+      mode === 'inspect'
         ? (recorded ?? (typeof storeRoot === 'string' ? storeRoot : undefined))
         : storeRoot === undefined
           ? recorded

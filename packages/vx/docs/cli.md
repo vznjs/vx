@@ -1497,7 +1497,7 @@ watch`.
 
 `vx cache clean` evicts old or oversized cache entries, or with no
 bound clears the cache. It operates on the entries and
-`<hash>.tar.zst` artifacts of the store the workspace's index records
+`<hash>.tar.zst` artifacts of the store a run opens
 (`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
@@ -1634,7 +1634,8 @@ are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `vx cache clean` with neither `--older-than` nor `--max-size` clears
 the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
 `--cache-dir`: the index and this workspace's run history, so `vx last`
-and `vx why` start over) and the store its index names, where the
+and `vx why` start over), the store a run opens and the one its index
+last named, if another (a changed HOME, an origin added), where the
 entries live (`~/.vx/<id>/cache`, shared by this repository's
 checkouts, so their entries go too). `--global` also clears every other
 repository's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
