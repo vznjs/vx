@@ -139,6 +139,40 @@ importers:
   packages/other: {}
 `,
   },
+  // Bun links a `link:` directory and records only its path, root-relative
+  // (bun 1.4.4).
+  'bun link:': {
+    file: 'bun.lock',
+    spec: 'link:../../vendor/dep',
+    text: `{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "r",
+    },
+    "packages/lib": {
+      "name": "lib",
+      "version": "1.0.0",
+      "dependencies": {
+        "dep": "link:../../vendor/dep",
+      },
+    },
+    "packages/other": {
+      "name": "other",
+      "version": "1.0.0",
+    },
+  },
+  "packages": {
+    "dep": ["dep@link:./vendor/dep", {}],
+
+    "lib": ["lib@workspace:packages/lib"],
+
+    "other": ["other@workspace:packages/other"],
+  }
+}
+`,
+  },
   // Yarn berry links a `portal:` directory; its entry records no hash.
   'yarn portal:': {
     file: 'yarn.lock',
@@ -211,6 +245,7 @@ for (const row of [
   'bun',
   'npm',
   'pnpm link:',
+  'bun link:',
   'yarn portal:',
   'yarn link:',
   'yarn',
