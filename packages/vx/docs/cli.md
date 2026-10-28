@@ -2372,8 +2372,8 @@ the task once (`vx run <task>`); history is this checkout's own.
 
 A `vx.config.*` or `.vx/workspace.*` that does not load or is refused. The
 message names the file and the field; fix that field
-(`vx docs <field>` prints its reference). `vx info --format json` lists
-every config error at once. A project config's refusal is `vx lock`'s,
+(`vx docs <field>` prints its reference). `vx lock` lists every config
+that does not load at once. A project config's refusal is `vx lock`'s,
 not a run's: a run never evaluates one.
 
 #### `VX_E_CYCLE`
@@ -2618,8 +2618,9 @@ on stderr (`no projects`) and names `vx init`.
 machine, for bug reports and sanity checks. The task count and the
 sandbox row's declared count come from the same load a run uses: the
 lock, plugin stages included. `vx info` evaluates no config; with no
-lock, or one a run would refuse, both counts are zero and
-`projects lock` says `no` — a broken config is `vx lock`'s to report.
+lock both counts are zero and `projects lock` says `no`; with one a
+run would refuse, they are zero and `projects lock` says `refused:` and
+why (`lockError` in JSON). A broken config is `vx lock`'s to report.
 
 ### Usage
 
