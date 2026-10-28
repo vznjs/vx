@@ -91,6 +91,20 @@ it('an embedded repository walks on to the workspace that lists it, unless git i
   ]).toEqual(['outer', 'VX_E_NO_WORKSPACE', 'VX_E_NO_WORKSPACE'])
 })
 
+// The directory reached `git check-ignore` as a pathspec: `:kept` is
+// pathspec magic, so git asked about `kept`, and an ignored repository
+// walked on into the workspace that ignores it.
+it('an ignored embedded repository named like pathspec magic stops the walk', async () => {
+  const git = (cwd: string, ...args: string[]) =>
+    expect(Bun.spawnSync(['git', '-C', path.join(shared, cwd), ...args]).exitCode).toBe(0)
+  git('.', 'init', '-q', 'outer')
+  await file('outer/.vx/workspace.ts')
+  await mkdir(path.join(shared, 'outer/:kept/src'), { recursive: true })
+  git('outer', 'init', '-q', ':kept')
+  await file('outer/.gitignore', '/:kept/\n')
+  expect(await found('outer/:kept/src')).toBe('VX_E_NO_WORKSPACE')
+})
+
 it('outside git the walk reaches the file above', async () => {
   expect(await found('repo/pkgs/a')).toBe('.')
 })
