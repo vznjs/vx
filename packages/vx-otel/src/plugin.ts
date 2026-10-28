@@ -14,6 +14,7 @@ import {
   definePlugin,
   type TelemetryContext,
   type TelemetrySink,
+  UserError,
   type VxPlugin,
 } from '@vzn/vx'
 import { readFileSync } from 'node:fs'
@@ -458,6 +459,11 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('otel()', opts, OTEL_PLUGIN_KEYS)
+  // A string passes the kind check: `'zstd'` warned on every run instead.
+  if (opts.compression !== undefined && opts.compression !== 'gzip' && opts.compression !== 'none')
+    throw new UserError(
+      `otel() option "compression" must be 'gzip' or 'none', got ${JSON.stringify(opts.compression)}`,
+    )
   return definePlugin(import.meta, {
     telemetry(ctx: TelemetryContext): Promise<TelemetrySink> | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))
