@@ -220,7 +220,9 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       for (const name of names) byKey.set(readKey(name, scoped), name)
       const keys = [...byKey.keys()]
       const found = new Set<string>()
-      for (const key of localHas(names.map((n) => entryKey(plugin, n)))) found.add(byKey.get(key)!)
+      // The local store keys entries unscoped (`entryKey`), not by `readKey`.
+      const byLocal = new Map(names.map((n) => [entryKey(plugin, n), n]))
+      for (const key of localHas([...byLocal.keys()])) found.add(byLocal.get(key)!)
       for (const r of readers) {
         const ask = keys.filter((k) => !found.has(byKey.get(k)!))
         if (ask.length === 0) break

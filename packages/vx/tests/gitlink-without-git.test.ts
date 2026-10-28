@@ -101,3 +101,30 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  'a gitlink whose .git names a repository that is gone is listed by a walk, not refused',
+  async () => {
+    // `.git/modules` lost (a copy of the checkout without it): the
+    // submodule's `.git` file points nowhere, git refuses to list it, and
+    // the whole run was refused as "not inside a git work tree".
+    git(root, 'init', '-q')
+    const a = path.join(root, 'packages/a')
+    await write(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
+    const lib = path.join(a, 'vendor/lib')
+    await write(path.join(lib, 'x.txt'), 'one')
+    git(lib, 'init', '-q')
+    git(lib, 'add', '-A')
+    git(lib, 'commit', '-qm', 'init')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'init')
+    await rm(path.join(lib, '.git'), { recursive: true, force: true })
+    await writeFile(path.join(lib, '.git'), 'gitdir: ../../../.git/modules/lib\n')
+
+    const memo = new GitFilesCache()
+    await populateGitFilesCache(root, [a], memo)
+    expect(memo.get(a)).toEqual(['package.json', 'vendor/lib/x.txt'])
+    expect(memo.oidsFor(a)?.has(path.join(lib, 'x.txt'))).toBe(false)
+  },
+  TIMEOUT,
+)

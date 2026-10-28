@@ -115,6 +115,14 @@ describe('vx init with no package.json', () => {
     ]).toEqual([0, false, PROJECT])
   })
 
+  it('a lock that is not written fails init, as vx-migrate fails', async () => {
+    // A kept config that does not load printed `lock  not written` and exited 0.
+    const root = await tmp('vx-init-bare-badlock-')
+    await writeFile(path.join(root, 'vx.config.mjs'), 'export default { tasks: { b: 5 } }\n')
+    const r = await vx(root, ['init'])
+    expect([r.code, r.out.includes('  lock      not written\n')]).toEqual([1, true])
+  })
+
   it('--native and --keep answer a Turbo or Nx question, and are refused here', async () => {
     const root = await tmp('vx-init-bare-keep-')
     const r = await vx(root, ['init', '--keep'])
@@ -184,6 +192,28 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
       existsSync(path.join(root, '.vx', 'workspace.ts')),
       existsSync(path.join(sub, 'vx.config.ts')),
     ]).toEqual([PROJECT, true, false])
+  })
+
+  it('names the root it writes at when that is not the working directory', async () => {
+    // From a directory below the root the report listed `vx.config.ts`
+    // with no word that it lands in a parent (a stray ~/package.json too).
+    const root = await tmp('vx-init-where-')
+    await writeFile(path.join(root, 'package.json'), '{"name":"r"}\n')
+    const sub = path.join(root, 'src')
+    await mkdir(sub, { recursive: true })
+    const rootRow = (out: string): string | undefined =>
+      out
+        .split('\n')
+        .find((l) => l.trimStart().startsWith('root '))
+        ?.trim()
+    const below = await vx(sub, ['init', '--dry'])
+    const here = await vx(root, ['init', '--dry'])
+    expect([below.code, rootRow(below.out), here.code, rootRow(here.out)]).toEqual([
+      0,
+      `root      ${root}`,
+      0,
+      undefined,
+    ])
   })
 
   // A Bun workspace with scripts got an empty root project and a `next`

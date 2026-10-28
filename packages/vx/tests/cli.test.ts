@@ -889,6 +889,20 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     ])
   })
 
+  it('an exclusion alone that takes back every project names no other filter', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['run', '--filter', '!*', 'hello'])
+    expect([code, stderr.trim()]).toEqual([
+      1,
+      noticed('vx run: no projects selected: !* excluded every project').trimEnd(),
+    ])
+  })
+
   it('a filter that matches nothing warns, even when another one matched', async () => {
     let stdout = ''
     let stderr = ''
@@ -1795,6 +1809,21 @@ describe('parseRunArgs', () => {
   it('parses --exclude-dependencies=name1,name2 as a name list', () => {
     expect(parseRunArgs(['build', '--exclude-dependencies=lint,test']).excludeDependencies).toEqual(
       ['lint', 'test'],
+    )
+  })
+
+  it('repeated --exclude-dependencies flags add up, and the bare one drops every edge', () => {
+    const of = (...a: string[]) => parseRunArgs(['build', ...a]).excludeDependencies
+    expect([
+      of('--exclude-dependencies=gen', '--exclude-dependencies=lint,gen'),
+      of('--exclude-dependencies', '--exclude-dependencies=gen'),
+      of('--exclude-dependencies=gen', '--exclude-dependencies'),
+    ]).toEqual([['gen', 'lint'], 'all', 'all'])
+  })
+
+  it('--exclude-dependencies= with only commas is rejected like an empty value', () => {
+    expect(parseRunArgs(['build', '--exclude-dependencies=,']).error).toMatch(
+      /^--exclude-dependencies= needs a value/,
     )
   })
 

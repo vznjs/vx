@@ -123,6 +123,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
   const resolved = new Map<string, ProjectConfig>()
   const out: GraphCheck = {
     broken: null,
+    loaded: false,
     fresh: { version: LOCKFILE_VERSION, projects: {} },
     all: [],
     tasked,
@@ -167,6 +168,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       lock: true,
     })
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
+    out.loaded = true
     const names = new Set<string>()
     for (const entry of projects.values()) {
       const tasks = Object.entries(entry.config.tasks ?? {})
@@ -215,6 +217,8 @@ interface GraphCheck {
   /** A graph rule's refusal, or a config that does not load; null when sound. */
   broken: string | null
   brokenParts?: RefusalParts
+  /** Every config loaded and resolved: `broken`, if set, is a graph rule's refusal. */
+  loaded: boolean
   /** The other configs that do not load, past `broken`. */
   alsoBroken?: readonly UserError[]
   /** The lock the configs evaluate to here. */
@@ -463,7 +467,16 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     }
     return problems.length === 0 ? 0 : 1
   }
-  const lock = await readLockfile(root)
+  // A lock that does not read is drift `vx lock` fixes, as a missing one
+  // is: the audit answers it in its own shape, not as a refusal.
+  let lock: Lockfile | null
+  try {
+    lock = await readLockfile(root)
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    if (!json) sayNotice('error', 'vx lock --check', err.message)
+    return answer([err.message])
+  }
   if (!lock) {
     const problem = `no ${LOCKFILE_NAME} at ${root} — run \`vx lock\` first`
     if (!json) sayNotice('error', 'vx lock --check', problem)
@@ -488,7 +501,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     drifted.add(dir)
   }
   if (broken !== null) failures.push(broken)
-  if (check.reviewFiles && broken === null) {
+  if (check.reviewFiles && check.loaded) {
     // A project the lock already fails is named once.
     const stale = await Promise.all(
       reviewsOf(
@@ -511,7 +524,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   }
   // A config that does not load evaluated none: every locked project
   // read as gone, the healthy ones too.
-  for (const dir of broken === null ? Object.keys(lock.projects) : []) {
+  for (const dir of check.loaded ? Object.keys(lock.projects) : []) {
     if (!Object.hasOwn(check.fresh.projects, dir)) {
       failures.push(`the lock holds ${dir}, which has no vx.config now — run 'vx lock'`)
     }
