@@ -161,9 +161,10 @@ vxCache({
 ```
 
 An unset value is left out. The `authorization` header stays the CI
-token's. The workers of a
-[distributed task execution](../../distributed-task-execution/) run send
-the headers too, so give their job the same secrets.
+token's.
+
+The workers of a [distributed task execution](../../distributed-task-execution/)
+run send the headers too, so give their job the same secrets.
 
 ### Tokens
 
@@ -253,6 +254,7 @@ SHA-256 as 32 lowercase hex characters (`refs/heads/main` is
 Any server that speaks the protocol can stand in for this one.
 
 To mount it in a server of your own, `createCacheServer({ blobs, authorize, limits? })`
-returns a `fetch` handler over your bucket. The
-[README](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#api)
+returns a `fetch` handler over your bucket.
+
+The [README](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#api)
 lists the whole API.

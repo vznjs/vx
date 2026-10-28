@@ -22,8 +22,10 @@ plugins work locally.
 ## `ALLOW`: who takes part
 
 The cache and history servers read one setting, `ALLOW`: who may take
-part, space separated, each `issuer:owner/repo:workflow`. This lets
-every run of `acme/app`'s `ci.yml` workflow on GitHub Actions in:
+part, space separated, each `issuer:owner/repo:workflow`.
+
+This one lets in every run of `acme/app`'s `ci.yml` workflow on GitHub
+Actions:
 
 ```sh
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml'
@@ -62,8 +64,9 @@ Every request names its issuer and repository, as
 declare them. A token of another repository is refused.
 
 The cache server gets each of them, and each branch, as the first 128
-bits of its SHA-256 in hex, so it never sees a name. The history server
-gets them as they are ([What it keeps](history/#what-it-keeps)).
+bits of its SHA-256 in hex, so it never sees a name.
+
+The history server gets them as they are ([What it keeps](history/#what-it-keeps)).
 
 A renamed repository starts with an empty cache.
 
@@ -116,5 +119,6 @@ docker compose up -d cache history   # only the ones you need
 | `history` | 8082 (`HISTORY_PORT`) | `ALLOW`, `AUDIENCE`, `READ_ACCESS`, `TIMING_DAYS` |
 
 Settings come from your shell or a `.env` file next to `compose.yaml`.
-The history server keeps its SQLite file in the `history` volume. Put
-HTTPS in front of each server: a CI token is a bearer token.
+The history server keeps its SQLite file in the `history` volume.
+
+Put HTTPS in front of each server: a CI token is a bearer token.
