@@ -153,7 +153,7 @@ measured `vx.task.cpu_time` (ms) and `vx.task.peak_memory` (bytes), on a
 hit `vx.task.time_saved` (ms), `vx.task.admission_held` (ms) when an
 `admit` policy held it, `vx.task.queued` (ms) when it waited for a
 worker, `vx.task.artifact_size` (bytes), `vx.task.cache_save` and
-`vx.task.cache_fetch` (ms); a skipped task sends none. While a task runs, its process tree is sampled
+`vx.task.cache_fetch` (ms); a skipped task, or one a stop aborted, sends none. While a task runs, its process tree is sampled
 each second: `vx.task.cpu_usage` (cores busy since the last sample, 1 =
 one core) and `vx.task.memory` (resident bytes). Sampling runs only while
 metrics export; a remote task, or a task under 1 s, has no samples.
