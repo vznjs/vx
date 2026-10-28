@@ -79,8 +79,11 @@ export function topBetween(
   n = 5,
 ): { name: string; ms: number }[] {
   const mine = (pid: number): boolean => {
-    for (let p: number | undefined = pid, hops = 0; p !== undefined && p > 1 && hops < 64; hops++) {
+    // `self` asked before the stop at pid 1: docker() execs the worker as
+    // its container's init.
+    for (let p: number | undefined = pid, hops = 0; p !== undefined && hops < 64; hops++) {
       if (p === self) return true
+      if (p <= 1) break
       p = after.parents.get(p)
     }
     return false
