@@ -103,6 +103,10 @@ function expiryOf(jwt: string): number {
   }
 }
 
+/** A whole count a server keeps (its own check): a sum of thousands stays finite. */
+const isCount = (n: unknown): n is number =>
+  typeof n === 'number' && Number.isSafeInteger(n) && n >= 0
+
 interface Limits {
   readonly maxUploadTimings: number
   readonly maxQueryHashes: number
@@ -234,13 +238,18 @@ export class HistoryServer {
         return Object.entries(body.timings as Record<string, ServerTiming | null>)
       }),
     )
+    // Only numbers a server folds (PROTOCOL.md): `1e309` parses to Infinity,
+    // and kept as a forecast it made a NaN weight that failed every later
+    // run of the cache in `schedule`.
     const out = new Map<string, ServerTiming>()
     for (const [hash, t] of parts.flat()) {
-      if (typeof t?.durationMs !== 'number' || !(t.durationMs >= 0)) continue
+      if (!isCount(t?.durationMs)) continue
       out.set(hash, {
         durationMs: t.durationMs,
-        ...(typeof t.cores === 'number' ? { cores: t.cores } : {}),
-        ...(typeof t.rssBytes === 'number' ? { rssBytes: t.rssBytes } : {}),
+        ...(typeof t.cores === 'number' && Number.isFinite(t.cores) && t.cores >= 0
+          ? { cores: t.cores }
+          : {}),
+        ...(isCount(t.rssBytes) ? { rssBytes: t.rssBytes } : {}),
       })
     }
     return out
