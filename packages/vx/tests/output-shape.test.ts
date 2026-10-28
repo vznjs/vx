@@ -448,7 +448,9 @@ describe('a restore beside a sibling writing into its directory (e2e)', () => {
           await writeFile(path.join(app, 'seed.txt'), '2')
           await Bun.write(path.join(app, dir, 'a.txt'), 'stray')
 
-          const r = await summarized(root, ['app#after', 'app#other'])
+          // Two slots: gate and other wait on each other's markers, and a
+          // one-core runner's default of one slot ran one forever.
+          const r = await summarized(root, ['app#after', 'app#other', '--concurrency', '2'])
           const status = Object.fromEntries(
             ['app#build', 'app#other'].map((id) => [id, r.tasks.get(id)?.['status']]),
           )
