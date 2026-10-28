@@ -14,7 +14,7 @@ import {
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, homeOf, needOf, pace } from '../src/plugin.js'
-import type { Platform } from '@vzn/vx'
+import { hostPlatform, type Platform } from '@vzn/vx'
 import {
   type CacheFacts,
   type CapturedChunk,
@@ -27,7 +27,7 @@ import { nestedIn, Orchestrator, runKey } from '../src/orchestrator.js'
 import { assign, fits, type Need } from '../src/dispatch.js'
 import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
-import { planTasks, tailsMs } from '../src/planner.js'
+import { plan, planTasks, tailsMs } from '../src/planner.js'
 import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder, ToWorker, WiredResult } from '../src/messages.js'
@@ -1213,6 +1213,27 @@ it('a task naming no platform goes only to a worker of the run’s home platform
     void h.o.execute(h.req('t1'))
     expect(await linux.batches()).toEqual([['t1']])
     expect(h.o.planState(() => undefined, 0).workers.find((w) => w.id === mac.id)?.idle).toBe(true)
+  } finally {
+    await h.stop()
+  }
+})
+
+// A size that names no platform is planned as this machine's (plugin.ts),
+// but its workers still starting were planned on none: in a run over two
+// platforms every task names one, so none fit them, and each plan
+// cancelled the Linux workers the one before had asked.
+it('plans a worker still starting, of a size naming no platform, as this machine’s', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    home: hostPlatform(),
+  })
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 4, memory: 1e9 })
+    const { workers } = h.o.planState(() => undefined, 20_000)
+    expect(workers.map((w) => w.platform)).toEqual([hostPlatform()])
+    const t1 = { id: 't1', cores: 1, memory: 1, ms: 10_000, deps: [], platform: hostPlatform() }
+    const small = { name: 'small', max: 2, cpu: 4, memory: 1e9, platform: hostPlatform() }
+    const p = plan([t1], workers, [small], 20_000)
+    expect([p.release, p.start]).toEqual([[], []])
   } finally {
     await h.stop()
   }
@@ -3650,6 +3671,26 @@ it('gives an unmeasured task a whole worker, and one that filled its worker a bi
     await Bun.sleep(50)
     const big = await h.worker(8)
     expect(await big.batches()).toEqual([['heavy']])
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
+
+// A bigger worker of another platform cannot take it: a Mac task that
+// filled its Mac waited for a Linux worker to join, and then ran on the Mac.
+it('a task that filled its worker waits for no bigger one of another platform', async () => {
+  const h = await harness(new Map([node('heavy')]), () => ({
+    cores: Infinity,
+    memory: Infinity,
+    above: { cores: 2, memory: 100 },
+  }))
+  try {
+    const mac = await h.worker(2, undefined, 'darwin-arm64')
+    h.o.spawned('big#1', { size: 'big', cpu: 8, memory: 1000, platform: 'linux-x64' })
+    await Bun.sleep(50)
+    void h.o.execute({ ...h.req('heavy'), platform: 'darwin-arm64' })
+    const sent = await Promise.race([mac.batches(), Bun.sleep(2_000).then(() => 'none')])
+    expect(sent).toEqual([['heavy']])
   } finally {
     await h.stop()
   }
