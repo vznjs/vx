@@ -1108,7 +1108,16 @@ function segmentMeet(x: string, y: string): string | null {
  * back its own stale copy of the narrow one's output under a green run
  * (item 941).
  */
+const WHOLE_ROOT = new Set(['**', '**/*'])
+
 function covers(tree: string, glob: string): boolean {
+  // The root's own tree has no directory to name: `**` beside a `!` that
+  // spared the config cleaned every source under it, and the refusal of
+  // a task's own sources as outputs never fired.
+  if (WHOLE_ROOT.has(normalizeGlob(tree))) {
+    const g = normalizeGlob(glob)
+    return !g.startsWith('!') && !g.startsWith('/') && !g.split('/').includes('..')
+  }
   const dir = wholeSubtreePrefixes([tree])?.[0]
   if (dir === undefined) return false
   const prefix = staticPrefix(glob)
