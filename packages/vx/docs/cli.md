@@ -318,7 +318,9 @@ git: <root> is not inside a git work tree`. A repository with no commit
 - `<base>...HEAD`, Turbo's CI spelling, reads as `<base>`. Two-dot
   `<base>..HEAD` diffs from `<base>` itself, not the merge base; a shallow
   clone fetches that commit as it fetches the merge base.
-- A ref that does not exist is `git ref "<ref>" did not resolve`. In a
+- A ref that does not exist is `git ref "<ref>" did not resolve`, with
+  git's reason when it gives one (`main@{9}`: `log for 'main' only has 2
+entries`). In a
   shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`).
 - A project whose directory is a symlink inside the workspace
   (`packages/b -> ../ext/b`) is selected by a change at the real place
@@ -393,8 +395,8 @@ What counts as a change:
 - A gitignored file a task names (`.env.local`, `dist/**`) never
   selects it, as in Nx. The key still hashes it, so the task misses when
   it changed.
-- `.vx/projects.lock.json` is left out, so `vx lock` never marks every
-  project affected.
+- `.vx/projects.lock.json` and each project's `vx.lock.json` review
+  copy are left out, so `vx lock` never marks a project affected.
 
 **A lockfile change selects everything.** These root files are in
 every task's key (the [workspace fingerprint](./caching.md)), so a
@@ -2010,7 +2012,8 @@ never hands off.
 ## `vx upgrade`
 
 `vx upgrade` brings vx to a newer release (`vx upgrade TAG` pins one, `v0.4.0` or
-`0.4.0`; default latest; a second tag is refused, not dropped), the way
+`0.4.0`; default latest; a second tag, or one that is no version, is
+refused first, not dropped), the way
 it was installed. Named `upgrade` per CLI convention (`bun upgrade`,
 `deno upgrade`). Refuses when running from source: use `git pull`.
 
@@ -2874,7 +2877,8 @@ cache (nothing re-ran), it re-executed on the same key, or it recorded
 no cache outcome at all, in which case vx says so instead of guessing.
 A re-execution names its cause when the index shows one: the previous
 run on the key failed and saved nothing, the run did not read the cache
-(`--force`, or a `--cache-policy` without read), no entry for the key was
+(`--force`, or a `--cache-policy` without read) or did not use it at all
+(`--no-cache`, or a `--cache-policy` without read or write), no entry for the key was
 there when it ran (pruned or evicted), the previous run was not saved
 because it ran beside a failed task (a task run past a failed dependency
 under `--continue` is never cached; said ahead of a prune, and as

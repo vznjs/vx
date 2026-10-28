@@ -5,6 +5,7 @@
 import { rm } from 'node:fs/promises'
 import { expect, it } from 'bun:test'
 import { defaultLogger } from '../src/report/logger.js'
+import type { TaskNode } from '../src/graph/index.js'
 import type { StatusStream } from '../src/report/status-line.js'
 import { addProject, makeWorkspace, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import { run } from './helpers/orchestrator.js'
@@ -65,3 +66,35 @@ it(
   },
   TIMEOUT,
 )
+
+it('a row printed while a live task sits mid-line starts its own line', () => {
+  const chunks: string[] = []
+  const tty: StatusStream = {
+    isTTY: true,
+    columns: 200,
+    rows: 50,
+    write(c: string) {
+      chunks.push(String(c))
+      return true
+    },
+  }
+  const log = defaultLogger({ enabled: false }, { mode: 'focused' }, tty, { env: {} })
+  const node = {
+    id: 'app#dev',
+    projectName: 'app',
+    taskName: 'dev',
+    projectDir: '/x',
+    requested: true,
+    deps: [],
+    config: { exec: { command: 'dev' } },
+  } as unknown as TaskNode
+  log.runStart?.({ total: 1, concurrency: 1, requestedCount: 1 })
+  log.taskStart?.(node)
+  log.taskStdout(node, 'building...')
+  // A step the run did not wait on (`vx:prefetch`) ends while it streams.
+  log.stepStart?.('vx:prefetch')
+  log.stepEnd?.('vx:prefetch', { durationMs: 500, ok: true })
+  log.runDone?.()
+  const text = Bun.stripANSI(chunks.join(''))
+  expect(text).toContain('building...\n')
+})
