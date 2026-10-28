@@ -64,6 +64,9 @@ scheduler's as they are:
 ## Limits and errors
 
 `GET /v1/capabilities`: `{ "maxUploadTimings": 10000, "maxQueryHashes": 10000, "maxQueryRefs": 8 }`.
+A server takes both at their limits, each hash 512 characters: an
+upload body up to 7 120 000 bytes, a query's up to 6 010 000. Past
+that, `413`.
 
 Every refusal is `{ code, message }`, the message saying what to fix. A
 JSON body without `Content-Type: application/json` is `400`, an unknown

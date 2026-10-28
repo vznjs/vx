@@ -11,6 +11,8 @@ export const MAX_QUERY_HASHES = 10_000
 /** Refs one query names, read in order. */
 export const MAX_QUERY_REFS = 8
 const MAX_STRING = 512
+/** A report's bytes at most: its hash at `MAX_STRING`, its numbers at their longest. */
+const MAX_REPORT_BYTES = MAX_STRING + 200
 const DAY_MS = 86_400_000
 
 export interface ServerOptions {
@@ -45,7 +47,7 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
   async function upload(req: Request): Promise<Response> {
     const access = await authorize(req)
     if (access?.write === undefined) throw new Refusal(403, 'this request reads only')
-    const reports = parseReports(await readJson(req, MAX_UPLOAD_TIMINGS * 200))
+    const reports = parseReports(await readJson(req, MAX_UPLOAD_TIMINGS * MAX_REPORT_BYTES))
     await schema()
     await store.fold(access, access.write, now(), reports)
     return new Response(null, { status: 204 })
