@@ -254,6 +254,54 @@ it('loses a worker whose body the relay spliced from two, each part sealed', asy
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
 })
 
+// Every part of a body is sealed to the same first nonce and count, so
+// a relay that sent one part twice in place of another got a body through:
+// its zstd still decoded, to other bytes in the same JSON string.
+it('loses a worker whose body the relay reordered, its parts each sealed', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome', name: 'worker#1' })
+  await until(a)
+  r.tamperNext((b) => {
+    const send = JSON.parse(b) as Envelope
+    const s = send.body.body.seal
+    expect(s).toHaveLength(4)
+    send.body.body.seal = [s[0]!, s[1]!, s[1]!, s[3]!]
+    return JSON.stringify(send)
+  })
+  await a.send('orchestrator', { type: 'ran', task: noise(300_000) })
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+})
+
+// The wire's numbers are outside the seal: a relay that held a body back
+// and sent it after a later one got both through, out of order.
+it('loses a worker whose body the relay held back past a later one', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome', name: 'worker#1' })
+  await until(a)
+  await a.send('orchestrator', { type: 'start', task: 't' })
+  const old = sealOf(r.bodies.at(-1)!)
+  await until(o)
+  // Held back: a replay goes in its place, which the orchestrator drops.
+  r.tamperNext((b) => {
+    const send = JSON.parse(b) as Envelope
+    send.body.body.seal = old
+    return JSON.stringify(send)
+  })
+  await a.send('orchestrator', { type: 'ran', task: 'a' })
+  const held = sealOf(r.bodies.at(-1)!)
+  await a.send('orchestrator', { type: 'end', task: 'a' })
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'end', task: 'a' }])
+  r.tamperNext((b) => {
+    const send = JSON.parse(b) as Envelope
+    send.body.body.seal = held
+    return JSON.stringify(send)
+  })
+  await a.send('orchestrator', { type: 'start', task: 'u' })
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+})
+
 it('on GitHub, admits by OIDC tokens of this repository whose audience is the key, with no secret', async () => {
   const pairKey = (await crypto.subtle.generateKey(
     {
