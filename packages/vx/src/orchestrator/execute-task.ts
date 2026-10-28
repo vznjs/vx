@@ -44,7 +44,7 @@ import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '..
 import {
   killGraceMs,
   MASKED,
-  maskedEmitter,
+  maskedStreams,
   outputMatcher,
   printable,
   relPosix,
@@ -1238,12 +1238,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       kept.push(t, true)
       log.taskStderr(node, t)
     }
-    const out = secrets && maskedEmitter(secrets, toOut)
-    const err = secrets && maskedEmitter(secrets, toErr)
-    flushMasked = () => {
-      out?.end()
-      err?.end()
-    }
+    const masked = secrets && maskedStreams(secrets, toOut, toErr)
+    flushMasked = () => masked?.end()
     const base: ExecuteRequest = {
       taskId: node.id,
       workspaceRoot: args.workspaceRoot,
@@ -1253,8 +1249,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       env,
       envDefine: step.env?.define ?? {},
       capture,
-      onStdout: out ? (chunk) => out.push(chunk) : toOut,
-      onStderr: err ? (chunk) => err.push(chunk) : toErr,
+      onStdout: masked ? masked.out : toOut,
+      onStderr: masked ? masked.err : toErr,
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       ...(args.track !== undefined
         ? {

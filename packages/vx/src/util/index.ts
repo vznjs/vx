@@ -116,7 +116,7 @@ export {
 export { realPath, realpathOf } from './real-path.js'
 export {
   maskedCommand,
-  maskedEmitter,
+  maskedStreams,
   maskedLine,
   MASKED,
   secretMask,
