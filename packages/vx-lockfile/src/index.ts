@@ -535,9 +535,12 @@ async function workspaceGlobs(
  */
 async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<string[]> {
   const strip = (p: string): string => p.replace(/^\.\//, '').replace(/\/+$/, '')
+  // Matched as `<glob>/package.json`, as pnpm, npm and bun match it: a
+  // directory's own `**` tail is empty, and Bun.Glob's `**/test/**` takes
+  // no empty tail, so it kept packages/test.
   const excluded = globs
     .filter((p): p is string => typeof p === 'string' && p.startsWith('!'))
-    .map((p) => new Bun.Glob(strip(p.slice(1))))
+    .map((p) => new Bun.Glob(`${strip(p.slice(1))}/package.json`))
   const dirs = new Set<string>()
   for (const pattern of globs) {
     if (typeof pattern !== 'string' || pattern.startsWith('!')) continue
@@ -545,7 +548,7 @@ async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<s
     for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
       const dir = path.dirname(file).split(path.sep).join('/')
       if (dir === '.' || dir.split('/').includes('node_modules')) continue
-      if (!excluded.some((g) => g.match(dir))) dirs.add(dir)
+      if (!excluded.some((g) => g.match(`${dir}/package.json`))) dirs.add(dir)
     }
   }
   return [...dirs].sort()
