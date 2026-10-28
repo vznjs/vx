@@ -49,6 +49,8 @@ it('each vx init outcome exits as tests/contract/exit-codes-init.json records', 
   live['init: files written: vx init'] = vx(root, 'init')
   live['init: files exist: vx init'] = vx(root, 'init')
   live['init: files exist, --force: vx init --force'] = vx(root, 'init', '--force')
+  writeFileSync(path.join(root, 'vx.config.ts'), 'export default { tasks: { b: 5 } }\n')
+  live['init: the lock not written: vx init'] = vx(root, 'init')
   const text = JSON.stringify(live, null, 2) + '\n'
   if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
     writeFileSync(RECORD, text)
