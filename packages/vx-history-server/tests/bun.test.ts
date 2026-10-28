@@ -54,7 +54,46 @@ it('folds a thousand tasks in one statement, and sweeps what was not reported', 
     rssBytes: null,
     runs: 1,
   })
-  expect(await store.sweep(5)).toBe(990)
+  // A row is kept a day past its last write: a report it skipped may be that recent.
+  expect(await store.sweep(86_400_005)).toBe(990)
+})
+
+// A report that does not move its row is not written for up to a day, so
+// the row's write time lags its last report: the sweep deleted a task
+// reported hours before, every row of a TIMING_DAYS=1 server.
+it('keeps a row reported within TIMING_DAYS, though that report was not written', async () => {
+  const day = 86_400_000
+  let t = 10 * day
+  const handle = createHistoryServer({
+    store: sqliteStore(sqliteDb(path.join(dir, 'lag.sqlite'))),
+    authorize: async () => ({ issuer: GITHUB, repository: REPO, write: 'refs/heads/main' }),
+    timingDays: 1,
+    now: () => t,
+  })
+  const post = (route: string, body: unknown) =>
+    handle(
+      new Request(`http://127.0.0.1/v1/timings/${route}`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  await post('upload', { timings: [{ hash: 'kept', durationMs: 100 }] })
+  t += 0.9 * day
+  // The same numbers: no write, the row's time stays.
+  await post('upload', { timings: [{ hash: 'kept', durationMs: 100 }] })
+  t += 0.2 * day
+  // Another task's upload: the day's sweep.
+  await post('upload', { timings: [{ hash: 'other', durationMs: 5 }] })
+  const res = await post('query', {
+    issuer: GITHUB,
+    repository: REPO,
+    refs: ['refs/heads/main'],
+    hashes: ['kept'],
+  })
+  expect(((await res.json()) as { timings: object }).timings).toEqual({
+    kept: { durationMs: 100, cores: null, rssBytes: null, runs: 1 },
+  })
 })
 
 // 2026-10-27: rows held hashes of these, which only hid them from whoever runs the server.

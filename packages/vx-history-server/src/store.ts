@@ -120,6 +120,8 @@ export function sqliteStore(db: Db): Store {
         ]),
       )
     },
-    sweep: (before) => db.run('DELETE FROM timings WHERE updated_at < ?1', [before]),
+    // A report that would not move its row is not written for up to a
+    // day (FOLD): a row's write time lags its last report by up to that.
+    sweep: (before) => db.run('DELETE FROM timings WHERE updated_at < ?1', [before - DAY_MS]),
   }
 }
