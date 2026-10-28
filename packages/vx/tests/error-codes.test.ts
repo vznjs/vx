@@ -216,6 +216,7 @@ describe('a refusal under --format json', () => {
         thrownValue: await codeOf('throw 5\n'),
         rejected: await codeOf("await Promise.reject(new Error('x'))\nexport default {}\n"),
         exits: await codeOf('process.exit(0)\nexport default {}\n'),
+        rejectedDefault: await codeOf("export default Promise.reject(new Error('x'))\n"),
       }).toEqual({
         syntax: 'VX_E_CONFIG',
         notObject: 'VX_E_CONFIG',
@@ -223,6 +224,7 @@ describe('a refusal under --format json', () => {
         thrownValue: 'VX_E_CONFIG',
         rejected: 'VX_E_CONFIG',
         exits: 'VX_E_CONFIG',
+        rejectedDefault: 'VX_E_CONFIG',
       })
     } finally {
       await rm(ws, { recursive: true, force: true })

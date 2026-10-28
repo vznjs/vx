@@ -178,7 +178,10 @@ async function loadDefaultExport(
     // the user sees is the source's.
     compiled =
       literal || compiledRoot === undefined ? null : tryCompiled(compiledRoot, configPath, bytes)
-    if (compiled) return defaultOf(compiled, kind, configPath)
+    // Awaited here: a default that is a rejected Promise is the config's
+    // throw too, and passed out unawaited it reached bin.ts as a vx
+    // defect (2026-10-28).
+    if (compiled) return await defaultOf(compiled, kind, configPath)
     if (compiled === undefined) loaded = loadedModules(compiledRoot!)
     // The worker's budget, here too: a top-level await that never settled
     // while a timer kept the loop alive hung `vx run` for good, silently
@@ -213,7 +216,11 @@ async function loadDefaultExport(
   if (compiledRoot !== undefined && loaded !== undefined) {
     await buildCompiled(compiledRoot, configPath, bytes, loaded, ns)
   }
-  return mod
+  try {
+    return await mod
+  } catch (err) {
+    throw loadFailure(err, configPath, kind)
+  }
 }
 
 function defaultOf(ns: { default?: unknown }, kind: string, configPath: string): unknown {
