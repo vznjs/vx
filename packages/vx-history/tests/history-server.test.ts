@@ -59,6 +59,20 @@ describe('HistoryServer', () => {
     expect(got).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
   })
 
+  // A run of groups alone has no hash to ask for: it still asked the
+  // server's limits, and warned when the server was down.
+  it('asks nothing for no hashes, as it sends nothing for no timings', async () => {
+    const asked: string[] = []
+    const none = (async (u: string) => {
+      asked.push(u)
+      throw new Error('connection refused')
+    }) as unknown as typeof fetch
+    const client = new HistoryServer(url, NAMED, {}, none)
+    expect(await client.query(['refs/heads/main'], [])).toEqual(new Map())
+    await client.upload(new Map())
+    expect(asked).toEqual([])
+  })
+
   // A blip on the run's first call, the query, kept the run's upload
   // from ever asking again: the run's timings were lost.
   it('asks for the limits again after a failed ask', async () => {
