@@ -1049,13 +1049,19 @@ function parentsOf(workspaceRoot: string, sha: string): string[] {
 /**
  * What to ask origin for a base: a commit id as it is (GitHub serves any
  * commit a ref reaches), `origin/<branch>` as that branch into its
- * remote-tracking ref. Anything else is a name only this clone knows.
+ * remote-tracking ref, any other plain name as origin's tag of that name
+ * (a release base, `v1`; `--no-tags` fetched none). An expression (`v1~2`)
+ * is a name only this clone knows.
  */
 function originSpec(ref: string): string | undefined {
   if (/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(ref)) return ref
   const branch = /^(?:refs\/remotes\/)?origin\/(.+)$/s.exec(ref)?.[1]
-  if (branch === undefined || branch === 'HEAD') return undefined
-  return `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  if (branch !== undefined) {
+    return branch === 'HEAD' ? undefined : `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  }
+  const tag = /^(?:refs\/tags\/)?([^\s~^:?*[\\@{]+)$/.exec(ref)?.[1]
+  if (tag === undefined || tag === 'HEAD' || tag.startsWith('refs/')) return undefined
+  return `+refs/tags/${tag}:refs/tags/${tag}`
 }
 
 /**
@@ -1134,6 +1140,25 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   if (proc.exitCode !== 1) {
     const noHistory = noHistoryRefusal(workspaceRoot)
     if (noHistory !== undefined) throw noHistory
+    // `--quiet` also silences a ref git refused in its own words (a reflog
+    // entry the log lacks, `main@{9}`: exit 128): ask again to say why.
+    if (stderr.length === 0) {
+      const loud = spawnGitSync(
+        ['rev-parse', '--verify', '--end-of-options', ref],
+        workspaceRoot,
+        'pipe',
+      )
+      const why = new TextDecoder()
+        .decode(loud.stderr)
+        .trim()
+        .replace(/^fatal: /, '')
+      if (loud.exitCode !== 0 && why.length > 0) {
+        throw new UserError(
+          `git ref "${ref}" did not resolve: ${why.replace(/\.?$/, '.')}`,
+          'VX_E_AFFECTED_BASE',
+        )
+      }
+    }
     throw new UserError(
       `git rev-parse failed (exit ${proc.exitCode}) in ${workspaceRoot}` +
         (stderr.length > 0 ? `: ${stderr}` : ''),

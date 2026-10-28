@@ -42,6 +42,19 @@ describe('run.branch in the workspace config', () => {
   })
 })
 
+// JSON writes a non-finite number as null: `concurrency: 1e400` was
+// refused as "(got null)", a value the file never held.
+describe('a non-finite number in the workspace config', () => {
+  it('is quoted as written', () => {
+    const rule = "must be a positive integer, or a share of the cores like '50%'"
+    expect([Infinity, -Infinity, NaN].map((n) => refusal({ run: { concurrency: n } }))).toEqual([
+      `${WS}: \`run.concurrency\` ${rule} (got Infinity)`,
+      `${WS}: \`run.concurrency\` ${rule} (got -Infinity)`,
+      `${WS}: \`run.concurrency\` ${rule} (got NaN)`,
+    ])
+  })
+})
+
 // Item 1099: a command of whitespace alone passed as non-empty and ran as
 // a no-op success, cached.
 describe('an empty command in any spelling', () => {
@@ -386,6 +399,15 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       `${CFG}: \`name\` "a\\u001b]0;x\\u0007" holds a control character — rename the project`,
     )
     expect(named('@acme/ui')).toBeNull()
+  })
+
+  // `run.retries` refused what no attempt count can be; a task's own took
+  // 1e20 and retried a failing task without end.
+  it("a task's retries are held to run.retries' rule", () => {
+    expect(taskRefusal({ exec: { command: 'x', retries: 1e20 } })).toBe(
+      `${CFG}: tasks.t.exec.retries must be a non-negative integer (got 100000000000000000000)`,
+    )
+    expect(taskRefusal({ exec: { command: 'x', retries: 3 } })).toBeNull()
   })
 
   // `vx show` printed a tag raw: `ESC ]0;` retitled the terminal.
