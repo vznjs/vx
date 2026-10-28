@@ -246,9 +246,24 @@ export class TaskPipes {
 function keepTerminalModes(): (() => void) | undefined {
   const saved = stty('-g')
   if (saved === undefined) return undefined
-  return () => {
+  const restore = (): void => {
+    if (!owed.delete(restore)) return
     if (stty('-g') !== saved) stty(saved)
   }
+  owed.add(restore)
+  return restore
+}
+
+/** The modes of every task still holding the terminal, owed back on its exit. */
+const owed = new Set<() => void>()
+
+/**
+ * Put the terminal back now for every task still holding it: vx is
+ * exiting without waiting for them (a second signal, signals.ts), so the
+ * restore on each task's exit never runs.
+ */
+export function restoreTerminalModes(): void {
+  for (const restore of [...owed]) restore()
 }
 
 function stty(arg: string): string | undefined {
