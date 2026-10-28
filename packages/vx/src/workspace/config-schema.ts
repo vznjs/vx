@@ -1282,7 +1282,25 @@ function assertNoForeignToken(glob: string, where: string): void {
         `files it names. Write ${rewrite} instead.`,
     )
   }
+  assertNoBareGroup(glob, body, where)
   assertNoBraceRange(glob, where)
+}
+
+/** `(a|b)` with no extglob sigil: `Bun.Glob` reads parens and `|` as literal text. */
+const BARE_GROUP = /(?<!\\)\(([^()|]*(?:\|[^()|]*)+)\)/
+
+function assertNoBareGroup(glob: string, body: string, where: string): void {
+  const group = BARE_GROUP.exec(body)
+  if (group === null) return
+  const names = group[1]!.split('|')
+  const rewrite = BUN_GLOB_WILDCARDS.test(group[1]!)
+    ? 'braces ("{a,b}") or one entry per alternative'
+    : `"${glob.replace(group[0], `{${names.join(',')}}`)}"`
+  throw new UserError(
+    `${where}: "${glob}" holds a bare (…|…) group, which vx's glob engine reads as literal ` +
+      `text, never as the alternatives it lists, so the cache key would miss the files it ` +
+      `names. Write ${rewrite} instead.`,
+  )
 }
 
 const BRACE_RANGE = /(?<!\\)\{(-?\d+|[a-zA-Z])\.\.(-?\d+|[a-zA-Z])(\.\.-?\d+)?\}/g
