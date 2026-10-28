@@ -259,8 +259,12 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       // plugin's setting nor anything to do about it. Core turns a throwing
       // factory into a UserError and ABORTS — deliberately, an executor is
       // load-bearing — so this is the message a user acts on.
+      // Both asks: a failed second one escaped as the raw status, naming
+      // neither the server nor the setting.
+      let caps: Awaited<ReturnType<ReapiClient['capabilities']>>
       try {
         await executorClient.negotiate()
+        caps = await executorClient.capabilities()
       } catch (err) {
         executorClient.close()
         executorClient = undefined
@@ -280,7 +284,6 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       // A cache-only deployment (bazel-remote) advertises no execution
       // capability. Offering it work would hang the run on a server that will
       // never answer, so DECLINE loudly and let the local executor take over.
-      const caps = await executorClient.capabilities()
       if (!caps.execEnabled) {
         ctx.warn(
           `vx/reapi: ${conn.endpoint} does not advertise remote execution (cache only) — tasks will run locally`,
