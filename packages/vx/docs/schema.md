@@ -754,8 +754,9 @@ Semantics:
   from this project's direct deps: the edges a plugin's `discover`
   returns as `deps` (the lockfile plugins `bun()` / `pnpm()` / `npm()` /
   `yarn()` return what the package manager installed; core reads no
-  edge from a `package.json`) and the cross-project `pkg#task` edges.
-  With no plugin returning `deps` the workspace has no edge source and
+  edge from a `package.json`). A cross-project `pkg#task` edge is not
+  one: it widens `--filter '...pkg'` and `--affected`, never a `'^name'`
+  walk. With no plugin returning `deps` the workspace has no edge source and
   a `'^name'` is refused (`VX_E_DEPENDS_ON`: "`^build` needs project
   edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile
   exists, or a plugin that returns `deps`"): it would resolve to nothing and fold no upstream into the
