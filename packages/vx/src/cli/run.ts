@@ -418,6 +418,17 @@ export async function resolveRunOptions(
         }
       }
     }
+    // No config can declare such a name (taskNameProblem): `''` reached the
+    // orchestrator's own `RunOptions.tasks` refusal, and `'build '` was
+    // reported as "no projects declare task(s): build", its space unseen.
+    const task = idx >= 0 ? t.slice(idx + 1) : t
+    if (task.trim() === '')
+      return { error: `a task name is empty: "${t}" (vx show lists the tasks)` }
+    if (task.trim() !== task) {
+      return {
+        error: `task name ${JSON.stringify(task)} has surrounding whitespace (vx show lists the tasks)`,
+      }
+    }
   }
 
   const scope = await scopeFilters(parsed, cwd)

@@ -81,6 +81,10 @@ A name declared by only some projects is fine; the check fires only when
 a name matches nowhere. So `vx run lint test typecheck` fails on CI the
 day `typecheck` is renamed, instead of running two of three.
 
+A name no config can declare is refused before the lookup: an empty one
+(`vx run ''`) and one with surrounding whitespace (`vx run 'build '`),
+which the refusal quotes so the space shows.
+
 Under `--affected` or a `[ref]` filter, a bare name is checked against
 the whole workspace, since what changed decides the projects:
 
