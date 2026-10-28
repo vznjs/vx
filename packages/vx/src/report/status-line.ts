@@ -453,6 +453,8 @@ export function formatStatusRegion(
         '',
         paintPinnedId(id, colors),
         colors,
+        // A blank `blocked` cell, so the id sits under the header's `task`.
+        '',
       ),
     )
   }
@@ -546,6 +548,7 @@ export function formatStatusRegion(
         '',
         paintPinnedId(step.id, colors),
         colors,
+        '',
       ),
     )
   }
