@@ -399,10 +399,10 @@ What counts as a change:
 lockfile and no install setting: without a lockfile plugin, the root
 `bun.lock` or `pnpm-lock.yaml` is a root file like any other, and a
 change to it selects the root project (when the workspace has one), not
-every project.
+every project. One inside a package selects only that package.
 
 A lockfile a plugin claims (`VxPlugin.fingerprint`, such as
-`pnpm-lock.yaml` under `@vzn/vx-lockfile`) is different. The key holds
+`pnpm-lock.yaml` under `@vzn/vx-lockfile`) is in the key: the key holds
 what the plugin says per project, so `--affected` gives the plugin the
 lockfile at the base and now, and selects the projects it names.
 
