@@ -88,4 +88,34 @@ describe('plainOutput', () => {
     expect(seen).toEqual(['mine s', 'mine end'])
     expect(log.taskStart).toBeUndefined()
   })
+
+  // Wrapped in the plain path (a pipe, CI, NO_COLOR), a warning lost its
+  // own method and reached stdout as a status line: `vx run > log` and a
+  // watch's `vx: app#dev exited with code 3` printed it among the rows.
+  it('passes every optional hook through, a warning as a warning', () => {
+    const calls: string[] = []
+    const log = plainOutput({
+      status: (l) => calls.push(`status ${l}`),
+      warn: (l) => calls.push(`warn ${l}`),
+      taskStdout: () => {},
+      taskStderr: () => {},
+      taskComplete: () => {},
+      stepStart: (id) => calls.push(`stepStart ${id}`),
+      stepEnd: (id) => calls.push(`stepEnd ${id}`),
+      runStop: () => calls.push('runStop'),
+      runDone: () => calls.push('runDone'),
+    })
+    log.warn?.('careful')
+    log.stepStart?.('vx:load')
+    log.stepEnd?.('vx:load', { durationMs: 1, ok: true })
+    log.runStop?.()
+    log.runDone?.()
+    expect(calls).toEqual([
+      'warn careful',
+      'stepStart vx:load',
+      'stepEnd vx:load',
+      'runStop',
+      'runDone',
+    ])
+  })
 })
