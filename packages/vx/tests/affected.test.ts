@@ -999,7 +999,12 @@ describe('affectedProjects', () => {
       // one its docblock names outright.
       describe('claimedAffected — what a real plugin is allowed to answer', () => {
         const change = { file: 'pnpm-lock.yaml', before: null, after: null }
-        const ctx = { projects: [] } as unknown as FingerprintContext
+        const ctx = {
+          projects: [
+            { name: 'a', dir: '/ws/a' },
+            { name: 'b', dir: '/ws/b' },
+          ],
+        } as unknown as FingerprintContext
         const answering = (answer: unknown): VxPlugin =>
           testPlugin('org/pm', {
             fingerprint: {
@@ -1045,6 +1050,12 @@ describe('affectedProjects', () => {
         it('a name that is not a string is refused, rather than added as one', async () => {
           expect(await refusal([1])).toBe(
             "plugin 'org/pm' failed in fingerprint: affected project a number is not a name",
+          )
+        })
+
+        it('a name that is no project is refused: it selected nothing, and its tests did not run', async () => {
+          expect(await refusal(['a', 'pkg-a'])).toBe(
+            'plugin \'org/pm\' failed in fingerprint: affected project "pkg-a" is not a project in this workspace',
           )
         })
 

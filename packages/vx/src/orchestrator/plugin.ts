@@ -467,7 +467,7 @@ export interface FingerprintClaim {
    * by `--affected` with the file's bytes at the base ref and in the
    * working tree (`null` where it does not exist). Return `undefined` to
    * select every project — the answer a claimant gives when it cannot
-   * tell.
+   * tell. A name that is not one of `ctx.projects` is refused.
    */
   affected(
     change: FingerprintChange,

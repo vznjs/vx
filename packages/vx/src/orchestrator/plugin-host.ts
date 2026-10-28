@@ -376,10 +376,18 @@ export async function claimedAffected(
     )
   }
   const names = new Set<string>()
+  // A name no project carries selected nothing, and the tasks it meant to
+  // select did not run, with no word said.
+  const known = new Set(ctx.projects.map((p) => p.name))
   for (const name of answer as Iterable<unknown>) {
     if (typeof name !== 'string') {
       throw new UserError(
         `plugin '${plugin.name}' failed in fingerprint: affected project ${describeValue(name)} is not a name`,
+      )
+    }
+    if (!known.has(name)) {
+      throw new UserError(
+        `plugin '${plugin.name}' failed in fingerprint: affected project ${JSON.stringify(name)} is not a project in this workspace`,
       )
     }
     names.add(name)
