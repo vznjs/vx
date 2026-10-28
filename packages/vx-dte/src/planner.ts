@@ -722,23 +722,51 @@ function backlog(
   const running = new Set<string>()
   for (const w of workers) for (const r of w.running) if (r.id !== undefined) running.add(r.id)
   const widest = Math.max(1, ...workers.map((w) => w.cores), ...candidates.map((c) => c.cpu))
+  // Cores asked and had, all told and of each platform a task names: only
+  // a worker of it runs such a task, so spare Linux cores left a Mac task
+  // waiting for a Mac worker never started.
   let asked = 0
-  for (const t of tasks)
-    if (t.deps.every((d) => !ids.has(d) && !running.has(d))) asked += Math.min(t.cores, widest)
-  for (const w of workers) for (const r of w.running) asked += r.cores
   let have = 0
-  for (const w of workers) have += w.cores
+  const askedOf = new Map<string, number>()
+  const haveOf = new Map<string, number>()
+  const add = (m: Map<string, number>, p: string | undefined, n: number): void => {
+    if (p !== undefined) m.set(p, (m.get(p) ?? 0) + n)
+  }
+  for (const t of tasks)
+    if (t.deps.every((d) => !ids.has(d) && !running.has(d))) {
+      const cores = Math.min(t.cores, widest)
+      asked += cores
+      add(askedOf, t.platform, cores)
+    }
+  for (const w of workers)
+    for (const r of w.running) {
+      asked += r.cores
+      add(askedOf, w.platform, r.cores)
+    }
+  for (const w of workers) {
+    have += w.cores
+    add(haveOf, w.platform, w.cores)
+  }
+  const short = (p: string | undefined): boolean =>
+    p !== undefined && (haveOf.get(p) ?? 0) < (askedOf.get(p) ?? 0) - 1e-9
   const start: Size[] = []
   for (const c of candidates) {
-    if (have >= asked - 1e-9) break
+    if (have >= asked - 1e-9 && !short(c.platform)) continue
     start.push(c)
     have += c.cpu
+    add(haveOf, c.platform, c.cpu)
   }
   const release: string[] = []
   for (const w of workers)
-    if (w.idle && have - w.cores >= asked - 1e-9) {
+    if (
+      w.idle &&
+      have - w.cores >= asked - 1e-9 &&
+      (w.platform === undefined ||
+        (haveOf.get(w.platform) ?? 0) - w.cores >= (askedOf.get(w.platform) ?? 0) - 1e-9)
+    ) {
       release.push(w.id)
       have -= w.cores
+      add(haveOf, w.platform, -w.cores)
     }
   const kept = [
     ...workers.filter((w) => !release.includes(w.id)),
