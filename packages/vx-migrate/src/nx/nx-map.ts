@@ -387,7 +387,7 @@ export async function mapNxWorkspace(
     nodeNameOf.set(synthetic, nodeName)
   }
 
-  const upstream = planNxUpstream(nodeMap, g.dependencies, namedInputs, metaByNode)
+  const upstream = planNxUpstream(nodeMap, g.dependencies, namedInputs, metaByNode, opts.tracked)
 
   const taskNameFor: TaskNameFor = (project, target, configuration) => {
     const t = nodeMap[project]?.data?.targets?.[target]
@@ -837,6 +837,7 @@ function buildTask(
     rel: projectRel,
     name: projectName,
     outputs: nxProjectOutputs(nodeMap[nodeName]?.data?.targets, projectRel, projectName),
+    ...(opts.tracked === undefined ? {} : { tracked: opts.tracked }),
     rootDeps: opts.rootDeps,
   }
   expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
