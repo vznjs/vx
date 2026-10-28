@@ -36,7 +36,7 @@ on:
         description: 'Version to build/publish (e.g. 1.2.3). Defaults to the release tag.'
         required: false
       ref:
-        description: 'Git ref to build (e.g. v0.0.20). Defaults to the release tag, or this branch.'
+        description: 'Release tag to build (e.g. v0.0.20). Defaults to the release tag, or this branch.'
         required: false
       dry_run:
         description: 'Build the tree but do not publish.'
@@ -62,6 +62,9 @@ jobs:
     name: build, sign & publish darwin packages
     runs-on: macos-latest
     timeout-minutes: 25
+    # npm's trusted publisher names this environment, whose branch rule
+    # admits main and the release tags only.
+    environment: npm
     permissions:
       contents: read
       id-token: write
@@ -70,7 +73,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.inputs.ref || '' }}
+          # A tag only: any token with actions: write can dispatch this.
+          ref: ${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -100,6 +104,7 @@ jobs:
     needs: darwin
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    environment: npm
     permissions:
       contents: read
       id-token: write # OIDC token for npm Trusted Publishing + provenance
@@ -109,7 +114,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.inputs.ref || '' }}
+          # A tag only: any token with actions: write can dispatch this.
+          ref: ${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
