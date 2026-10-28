@@ -388,6 +388,31 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(named('@acme/ui')).toBeNull()
   })
 
+  // `run.retries` refused what no attempt count can be; a task's own took
+  // 1e20 and retried a failing task without end.
+  it("a task's retries are held to run.retries' rule", () => {
+    expect(taskRefusal({ exec: { command: 'x', retries: 1e20 } })).toBe(
+      `${CFG}: tasks.t.exec.retries must be a non-negative integer (got 100000000000000000000)`,
+    )
+    expect(taskRefusal({ exec: { command: 'x', retries: 3 } })).toBeNull()
+  })
+
+  // `vx show` printed a tag raw: `ESC ]0;` retitled the terminal.
+  it('a tag holding a control character is refused', () => {
+    const tagged = (tag: string): string | null => {
+      try {
+        validateProjectConfig({ tags: [tag] } as never, CFG)
+        return null
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect(tagged('t\x1b]0;x\x07')).toBe(
+      `${CFG}: tag "t\\u001b]0;x\\u0007" holds a control character — rename the tag`,
+    )
+    expect(tagged('team-ui')).toBeNull()
+  })
+
   // A project output under `workspace-outputs/` read back as a workspace
   // output: every hit was a corrupt artifact, dropped and run again.
   it('an output glob under the reserved workspace-outputs/ is refused (X-30)', () => {

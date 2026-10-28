@@ -1,3 +1,5 @@
+import { readFileSync, realpathSync } from 'node:fs'
+import path from 'node:path'
 import { ESSENTIAL_ENV } from './essential-env.js'
 
 const PR_SET_DUMPABLE = 4
@@ -103,5 +105,41 @@ export function gitEnv(): Record<string, string> {
     )
       env[name] = value
   }
+  if (env['GIT_DIR'] !== undefined && env['GIT_WORK_TREE'] === undefined) {
+    if (rediscovers(env['GIT_DIR'])) delete env['GIT_DIR']
+  }
   return env
+}
+
+const rediscovered = new Map<string, boolean>()
+
+/**
+ * Whether a plain `git` where vx started finds the repository `gitDir`
+ * names anyway. A linked worktree's hook exports its gitdir as GIT_DIR and
+ * no GIT_WORK_TREE, and git then takes ITS cwd as the work tree's top: vx
+ * runs git in the workspace root, a subfolder there, and git read every
+ * file as untracked. Without the variable git finds the top itself. A
+ * GIT_DIR naming any other repository (a bare one, dotfiles) is kept.
+ */
+function rediscovers(gitDir: string): boolean {
+  const cwd = process.cwd()
+  const key = `${cwd}\0${gitDir}`
+  let hit = rediscovered.get(key)
+  if (hit === undefined) {
+    hit = false
+    try {
+      const abs = path.resolve(cwd, gitDir)
+      let dotGit = abs
+      // A linked worktree's admin dir names its checkout's `.git` file.
+      try {
+        dotGit = path.resolve(abs, readFileSync(path.join(abs, 'gitdir'), 'utf8').trim())
+      } catch {}
+      if (path.basename(dotGit) === '.git') {
+        const rel = path.relative(realpathSync(path.dirname(dotGit)), realpathSync(cwd))
+        hit = !rel.startsWith('..') && !path.isAbsolute(rel)
+      }
+    } catch {}
+    rediscovered.set(key, hit)
+  }
+  return hit
 }

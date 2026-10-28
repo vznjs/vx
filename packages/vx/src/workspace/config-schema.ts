@@ -488,6 +488,12 @@ export function validateProjectConfig(
           `name it. Rename the tag.`,
       )
     }
+    // Printed raw by `vx show`, as a name is.
+    if (hasControl(tag)) {
+      throw new UserError(
+        `${configPath}: tag ${JSON.stringify(tag)} holds a control character — rename the tag`,
+      )
+    }
   }
   const tasks = config.tasks
   if (tasks === undefined) return
@@ -538,9 +544,7 @@ export function validateProjectConfig(
       }
       const retries = (exec as { retries?: unknown }).retries
       if (retries !== undefined) {
-        if (typeof retries !== 'number' || !Number.isInteger(retries) || retries < 0) {
-          throw new UserError(`${where}.exec.retries must be a non-negative integer`)
-        }
+        validateSettingValue(retries, 'run.retries', `${where}.exec.retries`)
       }
       const remote = (exec as { remote?: unknown }).remote
       if (remote !== undefined && typeof remote !== 'boolean' && remote !== 'only') {

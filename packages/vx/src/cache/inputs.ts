@@ -1831,7 +1831,9 @@ function throughLinks(
   isPositive: (rel: string) => boolean,
 ): (rel: string) => boolean {
   const through = new Set<string>()
-  for (const g of positive) {
+  // Each brace alternative by its own prefix: whole, `{lib,src}/**` has
+  // none, and a file behind `lib -> ../shared` was no input.
+  for (const g of positive.flatMap(braceAlternatives)) {
     const prefix = staticPrefix(g)
     if (prefix === '.' || prefix === '' || path.isAbsolute(prefix)) continue
     const parts = prefix.split('/')

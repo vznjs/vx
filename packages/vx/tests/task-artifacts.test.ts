@@ -3,7 +3,7 @@
 // key, the one that needs them restores them, and a restored key saved
 // again is not uploaded twice.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -232,6 +232,31 @@ it('output resolves the output alone and lays no file', async () => {
   const here = await machine('here', remote.layer)
   expect(await here.artifacts.output(KEY)).toEqual([{ text: 'installed\n', err: false }])
   expect(await Bun.file(path.join(here.root, 'app', 'node_modules', 'x.js')).exists()).toBe(false)
+})
+
+it('restores the empty directories under both output namespaces, as a miss save does', async () => {
+  // A worker's save under the order's key is the entry every machine hits:
+  // it kept a workspace output's empty directory out, so the hit left a
+  // tree the miss had not.
+  const remote = memoryRemote()
+  const agent = await machine('agent', remote.layer)
+  const task = (root: string) => ({
+    id: 'app#build',
+    projectDir: path.join(root, 'app'),
+    command: 'build',
+    outputs: { files: ['dist/**'], workspaceFiles: ['out/**'] },
+  })
+  await mkdir(path.join(agent.root, 'app', 'dist', 'empty'), { recursive: true })
+  await writeFile(path.join(agent.root, 'app', 'dist', 'a.js'), 'a')
+  await mkdir(path.join(agent.root, 'out', 'empty'), { recursive: true })
+  await writeFile(path.join(agent.root, 'out', 'b.js'), 'b')
+  await agent.artifacts.save(KEY, task(agent.root), { output: [], durationMs: 1 })
+
+  const here = await machine('here', remote.layer)
+  expect(await here.artifacts.restore(KEY, task(here.root))).toEqual([])
+  expect((await stat(path.join(here.root, 'app', 'dist', 'empty'))).isDirectory()).toBe(true)
+  expect(await readFile(path.join(here.root, 'out', 'b.js'), 'utf8')).toBe('b')
+  expect((await stat(path.join(here.root, 'out', 'empty'))).isDirectory()).toBe(true)
 })
 
 it('leaves the files a task names as others out of its entry', async () => {
