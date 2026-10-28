@@ -46,7 +46,7 @@ import {
 
 export interface TurboCacheOptions {
   /** Base URL of the cache server (`https://cache.example.com`), or `TURBO_API`; with a token and neither, Vercel's hosted cache, as for `turbo`. */
-  apiUrl?: string
+  url?: string
   /** Bearer token every request carries, or `TURBO_TOKEN`, OIDC, `.turbo/config.json`, then the OS keychain. */
   token?: string
   /**
@@ -115,7 +115,7 @@ export interface TurboLocalConfig {
 }
 
 export interface TurboCacheConfig {
-  apiUrl: string
+  url: string
   /** Undefined: the layer's `open` exchanges OIDC or asks the OS keychain. */
   token?: string
   /** The job's OIDC exchange, when `oidc` is set and GitHub hands the job a token. */
@@ -249,7 +249,7 @@ function tagsEqual(expected: string, actual: string): boolean {
   return diff === 0
 }
 
-/** Where `turbo` itself sends a token with no `apiUrl`: Vercel's hosted Remote Cache. */
+/** Where `turbo` itself sends a token with no `url`: Vercel's hosted Remote Cache. */
 export const VERCEL_API = 'https://vercel.com/api'
 
 /** Resolve options over Turbo's environment; `undefined` = not configured. */
@@ -262,7 +262,7 @@ export function resolveTurboCacheConfig(
 ): TurboCacheConfig | undefined {
   // `enabled: false` turns Turbo's remote cache off whatever the env says;
   // options name a cache for vx alone, and win.
-  if (file.enabled === false && options.apiUrl === undefined && options.token === undefined)
+  if (file.enabled === false && options.url === undefined && options.token === undefined)
     return undefined
   const fromFile = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
   // A Vercel build hands Turbo its cache as VERCEL_ARTIFACTS_TOKEN and
@@ -296,28 +296,27 @@ export function resolveTurboCacheConfig(
   // Vercel's hosted Remote Cache. A token alone is a configured cache, as it
   // is for `turbo`; a URL or a team without one asks the OS keychain at
   // `open`; none of them is the declined, local run.
-  const apiUrl = (
-    options.apiUrl ??
+  const url = (
+    options.url ??
     env['TURBO_API'] ??
     fromFile(local.apiUrl) ??
     fromFile(file.apiUrl) ??
     (token || teamId || teamSlug ? VERCEL_API : undefined)
   )?.replace(/\/+$/, '')
-  if (!apiUrl) return undefined
+  if (!url) return undefined
   // With no scheme every request failed on its own, as a bare "Invalid URL".
-  if (!/^https?:\/\//.test(apiUrl))
-    throw new Error(`vx/turbo-cache: apiUrl must be http(s), got ${apiUrl}`)
+  if (!/^https?:\/\//.test(url)) throw new Error(`vx/turbo-cache: url must be http(s), got ${url}`)
   const oidc =
     options.oidc === undefined
       ? undefined
-      : oidcSettings(options.oidc, apiUrl === VERCEL_API, teamId ?? teamSlug)
+      : oidcSettings(options.oidc, url === VERCEL_API, teamId ?? teamSlug)
   // The URL is printed in every refusal line, so a `user:pass@` in it would
   // leak to the log. Credentials go in the token.
-  if (URL.canParse(apiUrl)) {
-    const u = new URL(apiUrl)
+  if (URL.canParse(url)) {
+    const u = new URL(url)
     if (u.username !== '' || u.password !== '')
       throw new Error(
-        'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead',
+        'vx/turbo-cache: url carries credentials (user:pass@); pass them as the token instead',
       )
   }
   const fault = token === undefined ? null : headerValueFault(token)
@@ -358,7 +357,7 @@ export function resolveTurboCacheConfig(
       throw new Error(`vx/turbo-cache: ${name} must be ms ≥ 0 (0: none), got ${JSON.stringify(ms)}`)
   }
   return {
-    apiUrl,
+    url,
     ...(token !== undefined ? { token } : {}),
     ...(oidc !== undefined && exchanges
       ? { oidc: { ...oidc, idTokenUrl: idTokenUrl!, idTokenBearer: idTokenBearer! } }
@@ -506,12 +505,12 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     private readonly maxSignedBody: number = MAX_SIGNED_BODY,
   ) {
     this.key = config.signatureKey === undefined ? undefined : Buffer.from(config.signatureKey)
-    this.endpoint = `${config.apiUrl}/v8/artifacts`
+    this.endpoint = `${config.url}/v8/artifacts`
     this.token = config.token
     const team = config.teamId ?? config.teamSlug
     this.keychainRemote = {
       key: team === undefined ? this.endpoint : `${this.endpoint}#${team}`,
-      label: remoteLabel(config.apiUrl, team),
+      label: remoteLabel(config.url, team),
       env: 'TURBO_TOKEN',
     }
   }
@@ -571,7 +570,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   }
 
   private url(pathname: string): string {
-    const u = new URL(`${this.config.apiUrl}/v8/artifacts${pathname}`)
+    const u = new URL(`${this.config.url}/v8/artifacts${pathname}`)
     // Turbo sends a team id only in Vercel's `team_` form (its API client's
     // `add_team_params`); a personal account's owner id is not one, and the
     // signature, which folds the id as given, is unaffected.
@@ -590,7 +589,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 
   /**
    * Turbo's preflight: an `OPTIONS` to the request's URL names the method
-   * and headers to come; the answer's `Location` (relative to `apiUrl`) is
+   * and headers to come; the answer's `Location` (relative to `url`) is
    * where the request goes, as given — a signed storage URL signs its own
    * query, so nothing is appended — and the token goes along only when
    * `Access-Control-Allow-Headers` admits `Authorization` (or `*`), so it
@@ -620,7 +619,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const location = res.headers.get('location')
     const allowed = res.headers.get('access-control-allow-headers') ?? ''
     return {
-      url: location === null ? url : new URL(location, this.config.apiUrl).toString(),
+      url: location === null ? url : new URL(location, this.config.url).toString(),
       auth:
         allowed.trim() === '*' ||
         allowed.split(',').some((h) => h.trim().toLowerCase() === 'authorization'),
@@ -923,7 +922,7 @@ function remoteCacheOf(root: string): TurboJsonRemoteCache {
 
 /** Each option `TurboCacheOptions` names, with its kind: derived from the type, so the two cannot drift. */
 const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
-  apiUrl: 'string',
+  url: 'string',
   token: 'string',
   teamId: 'string',
   teamSlug: 'string',
@@ -940,7 +939,7 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
  * Declare in `.vx/workspace.ts`; the local store stays the floor beneath it:
  *
  * ```ts
- * plugins: [turboCache({ apiUrl: 'https://cache.example.com', token: process.env.CACHE_TOKEN })]
+ * plugins: [turboCache({ url: 'https://cache.example.com', token: process.env.CACHE_TOKEN })]
  * ```
  *
  * Declines with no URL, team or token, so it is safe to leave declared.

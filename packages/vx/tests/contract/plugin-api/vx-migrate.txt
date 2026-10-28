@@ -8,8 +8,8 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin
 == type NxCacheOptions (src/nx-cache/index.ts)
 export interface NxCacheOptions {
-  server?: string
-  accessToken?: string
+  url?: string
+  token?: string
   timeoutMs?: number
   retries?: number
 }
@@ -42,7 +42,7 @@ export interface NxPluginOptions {
 export type RemoteScope = 'header' | 'key'
 == type TurboCacheOptions (src/turbo-cache/index.ts)
 export interface TurboCacheOptions {
-  apiUrl?: string
+  url?: string
   token?: string
   oidc?: true | TurboOidcOptions
   teamId?: string

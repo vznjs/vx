@@ -36,7 +36,7 @@ it('a signed download is checked in the cache directory, not the shared temp dir
   const cacheDir = await mkdtemp(path.join(tmpdir(), 'vx-turbo-temp-'))
   dirs.push(cacheDir)
   const remote = turboCache({
-    apiUrl: `http://127.0.0.1:${srv.port}`,
+    url: `http://127.0.0.1:${srv.port}`,
     token: 't',
     teamId: 'team_1',
     signatureKey: KEY,

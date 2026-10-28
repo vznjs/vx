@@ -209,9 +209,9 @@ describe('the retries option', () => {
   // A NaN never reaches the bound: the request would be resent forever.
   it('is a whole number ≥ 0 on both wires', () => {
     const turbo = (retries: number) =>
-      refusal(() => resolveTurboCacheConfig({ apiUrl: 'http://t', token: 't', retries }, {}))
+      refusal(() => resolveTurboCacheConfig({ url: 'http://t', token: 't', retries }, {}))
     const nx = (retries: number) =>
-      refusal(() => resolveNxCacheConfig({ server: 'http://n', retries }, {}))
+      refusal(() => resolveNxCacheConfig({ url: 'http://n', retries }, {}))
     expect([NaN, -1, 1.5, 0, 3].map(turbo)).toEqual([
       'vx/turbo-cache: retries must be a whole number ≥ 0, got NaN',
       'vx/turbo-cache: retries must be a whole number ≥ 0, got -1',

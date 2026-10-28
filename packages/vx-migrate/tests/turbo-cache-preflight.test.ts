@@ -95,7 +95,7 @@ afterAll(() => {
 
 function cache(preflight: boolean): TurboRemoteCache {
   const config = resolveTurboCacheConfig(
-    { apiUrl: `${api.url.origin}/api`, token: TOKEN, teamSlug: 'team', retries: 0, preflight },
+    { url: `${api.url.origin}/api`, token: TOKEN, teamSlug: 'team', retries: 0, preflight },
     {},
   )!
   return new TurboRemoteCache(config)
@@ -124,7 +124,7 @@ describe('resolveTurboCacheConfig: preflight', () => {
 })
 
 describe('TurboRemoteCache with preflight', () => {
-  it('follows a relative Location, resolved against apiUrl, with the token it admits', async () => {
+  it('follows a relative Location, resolved against url, with the token it admits', async () => {
     toBucket = false
     apiSeen.length = 0
     const c = cache(true)

@@ -8,7 +8,7 @@ import path from 'node:path'
 import { artifactTag, resolveTurboCacheConfig, TurboRemoteCache } from '../src/turbo-cache/index.js'
 
 const TOKEN = 't'
-const BASE = { apiUrl: 'http://turbo.invalid', token: TOKEN, retries: 0 }
+const BASE = { url: 'http://turbo.invalid', token: TOKEN, retries: 0 }
 
 interface Call {
   method: string
@@ -79,7 +79,7 @@ describe('resolveTurboCacheConfig, exactly', () => {
   })
 
   it('every trailing slash of the URL is stripped', () => {
-    expect(resolveTurboCacheConfig({ ...BASE, apiUrl: 'http://c.invalid//' }, {})?.apiUrl).toBe(
+    expect(resolveTurboCacheConfig({ ...BASE, url: 'http://c.invalid//' }, {})?.url).toBe(
       'http://c.invalid',
     )
   })

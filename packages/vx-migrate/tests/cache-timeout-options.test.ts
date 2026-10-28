@@ -14,9 +14,9 @@ const said = (make: () => { timeoutMs: number } | undefined): string => {
   }
 }
 const turbo = (o: Record<string, unknown>) => () =>
-  resolveTurboCacheConfig({ apiUrl: 'https://cache.example.com', token: 't', ...o } as never, {})
+  resolveTurboCacheConfig({ url: 'https://cache.example.com', token: 't', ...o } as never, {})
 const nx = (o: Record<string, unknown>) => () =>
-  resolveNxCacheConfig({ server: 'https://cache.example.com', ...o } as never, {})
+  resolveNxCacheConfig({ url: 'https://cache.example.com', ...o } as never, {})
 
 it('turboCache refuses a negative or non-number timeout, and takes 0', () => {
   expect(said(turbo({ timeoutMs: -1 }))).toBe(
