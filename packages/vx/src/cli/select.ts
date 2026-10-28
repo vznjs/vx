@@ -309,6 +309,8 @@ export async function resolveFilters(
   load: CliLoadOptions = {},
   /** The raw filter `--affected` became: its diff is kept per path for the run. */
   affected?: string,
+  /** The verb a warning names: `vx show` and `vx watch` select as a run does. */
+  verb: 'run' | 'show' | 'watch' = 'run',
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
   const projects = await loadWorkspaceProjects(cwd)
@@ -486,7 +488,7 @@ export async function resolveFilters(
   for (const f of unmatched)
     sayNotice(
       'warn',
-      'vx run',
+      `vx ${verb}`,
       `filter "${f}" matched no projects${didYouMean([f], projects, tags)}`,
     )
   // Each include is a union: what `--filter other` selected runs its tasks

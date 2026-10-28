@@ -63,6 +63,16 @@ describe('BoundedCapture bounds', () => {
       [true, 56 * 1024],
     ])
     expect(text[1]!.text.endsWith('mEND')).toBe(true)
+    // What the entry's own bound already dropped is counted too: the line
+    // named only what the re-bound cut, short of what was lost.
+    const huge = new BoundedCapture()
+    huge.push('h'.repeat(8 * 1024 * 1024))
+    huge.push('m'.repeat(9 * 1024 * 1024), true)
+    huge.push('END', true)
+    const lines = decodeOutputLog(failedOutputLog(huge, true))
+    expect(lines[0]!.text.slice(8 * 1024)).toBe(
+      droppedOutputLine(17 * 1024 * 1024 + 3 - 64 * 1024, 8 * 1024, 56 * 1024),
+    )
     // Already a failure's size: kept as is.
     const small = new BoundedCapture(8 * 1024, 56 * 1024)
     small.push('out')
