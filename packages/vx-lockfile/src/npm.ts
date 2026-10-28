@@ -22,7 +22,7 @@ export interface Lockfile {
 
 export interface Entry {
   readonly deps: ReadonlyMap<string, string>
-  /** version + resolved + integrity — whatever pins the bytes; '' for a link */
+  /** version + resolved + integrity — whatever pins the bytes; '' for a link, the root, a workspace */
   readonly resolution: string
   /** the path a `link: true` entry points at */
   readonly link: string | undefined
@@ -62,18 +62,22 @@ export function parseLockfile(text: string): Lockfile {
       typeof e['integrity'] !== 'string'
         ? resolved.slice('file:'.length)
         : undefined
+    const isWorkspace =
+      p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/') && isMember(p)
     packages.set(p, {
       deps: depsOf(e),
+      // The root's and a workspace's `version` is their own package.json's,
+      // not what npm installed: a release bump of the root re-keyed every
+      // task with node_modules unchanged.
       resolution:
-        link === undefined
+        link === undefined && p !== '' && !isWorkspace
           ? [e['version'], e['resolved'], e['integrity']]
               .map((v) => (typeof v === 'string' ? v : ''))
               .join('\0')
           : '',
       link,
       copyOf,
-      isWorkspace:
-        p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/') && isMember(p),
+      isWorkspace,
       peers: peerOnly(e),
     })
   }
