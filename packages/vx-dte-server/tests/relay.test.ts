@@ -796,26 +796,31 @@ beforeAll(() => {
 afterAll(() => served?.stop())
 conformance('the Bun relay', { base: () => served!.url, headers: () => ({}) })
 
-it('names the flags it lacks', () => {
-  const said = (...args: string[]) =>
+it('reads ALLOW and AUDIENCE from the environment, as the other servers do, and names what it lacks', () => {
+  const said = (env: Record<string, string>, ...args: string[]) =>
     Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), ...args], {
+      env: { PATH: process.env.PATH ?? '', ...env },
       stderr: 'pipe',
     })
       .stderr.toString()
       .split('\n')[0]
-  const allow = ['--allow', 'https://token.actions.githubusercontent.com:acme/app:ci.yml']
+  const ALLOW = 'https://token.actions.githubusercontent.com:acme/app:ci.yml'
   expect([
-    said(),
-    said(...allow),
-    said('--audience', 'x'),
-    said('--allow', '', '--audience', ''),
-    said(...allow, '--audience', ' '),
+    said({}),
+    said({ ALLOW }),
+    said({ AUDIENCE: 'x' }),
+    said({ ALLOW: '', AUDIENCE: '' }),
+    said({ ALLOW, AUDIENCE: ' ' }),
+    said({ ALLOW: 'acme/app', AUDIENCE: 'x' }),
+    said({ ALLOW, AUDIENCE: 'x' }, '--allow', ALLOW),
   ]).toEqual([
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
-    'missing --allow (or --no-auth)',
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
+    'missing ALLOW and AUDIENCE (or --no-auth)',
+    'missing AUDIENCE (or --no-auth)',
+    'missing ALLOW (or --no-auth)',
+    'missing ALLOW and AUDIENCE (or --no-auth)',
+    'missing AUDIENCE (or --no-auth)',
+    'ALLOW: acme/app is not issuer:owner/repo:workflow',
+    "Unknown option '--allow'",
   ])
 })
 
