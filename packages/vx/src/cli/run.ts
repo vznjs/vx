@@ -308,6 +308,13 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       const v = a === name ? before[++i] : a.slice(name.length + 1)
       if (v === undefined || v === '')
         return { ...out, error: `${name} requires a value (${kindHint(set.kind)})` }
+      // A string's shape rejects nothing, so the space form would swallow
+      // the next flag as the value, as `--cache-dir` would above.
+      if (set.kind.type === 'string' && a === name && v.startsWith('-'))
+        return {
+          ...out,
+          error: `${name} requires a value (got flag ${v}; a value that starts with - needs ${name}=${v})`,
+        }
       const value = parseSettingValue(set.kind, v)
       if (value === null) return { ...out, error: settingRefusal(set.path, name, v) }
       out.settings[set.path] = value

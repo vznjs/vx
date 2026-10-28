@@ -588,7 +588,7 @@ edge.
 Value flags (`--filter`, `--concurrency`, `--output-logs`,
 `--verbosity`, `--cache-dir`, …)
 accept both `--flag value` and `--flag=value`. In the space form,
-`--cache-dir` rejects a value
+`--cache-dir` and `--branch` reject a value
 starting with `-`: that is always a swallowed flag (an unquoted empty
 shell variable), never a path or task id. Use the `=` form for a literal
 leading dash.
