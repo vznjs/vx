@@ -235,11 +235,13 @@ function validateSettingsExtra(config: WorkspaceConfig, configPath: string): voi
 /**
  * A refused value as a message quotes it. A workspace file is evaluated
  * in-process and no JSON rule precedes its schema, so a value here may be
- * one `JSON.stringify` throws on (`30n`) or drops (a symbol): the refusal
- * became a TypeError with a stack.
+ * one `JSON.stringify` throws on (`30n`), drops (a symbol) or misnames
+ * (`Infinity` as null): the refusal became a TypeError with a stack.
  */
 function shown(v: unknown): string {
-  return typeof v === 'bigint' ? `${v}n` : (JSON.stringify(v) ?? String(v))
+  if (typeof v === 'bigint') return `${v}n`
+  if (typeof v === 'number' && !Number.isFinite(v)) return String(v)
+  return JSON.stringify(v) ?? String(v)
 }
 
 /** A `plugins` entry that stands for no plugin: `undefined`, `null` or `false`. */

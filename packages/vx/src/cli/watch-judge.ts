@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { filesBehind } from '../cache/index.js'
-import { xxh3 } from '../util/index.js'
+import { printable, xxh3 } from '../util/index.js'
 import { gitIgnored, gitSpeller } from './watch-filter.js'
 import { modifiedBefore } from './watch-fs.js'
 
@@ -278,6 +278,9 @@ export class ChangeJudge {
       firstIsFile = !isDirectory(p)
     }
     if (first === undefined && gone !== undefined) [first, firstAbs] = gone
+    // A path is anyone's bytes, and a file named `ESC ]0;…` printed raw
+    // in `changed …` retitled the terminal.
+    if (first !== undefined) first = printable(first)
     this.pending.clear()
     this.changed = changed
     const more = (live > 0 ? live : goneCount) - 1
