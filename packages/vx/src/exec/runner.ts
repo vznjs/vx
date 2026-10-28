@@ -331,9 +331,17 @@ function shellShape(command: string): { comment: number; body: boolean[] } {
       continue
     }
     if (c === '<' && command[i - 1] !== '<') {
-      const m = /^<<(-?)[ \t]*\\?(['"]?)([A-Za-z_]\w*)\2/.exec(command.slice(i, i + 256))
-      if (m !== null) {
-        pending.push({ delim: m[3]!, tabs: m[1] === '-' })
+      // The delimiter is a whole word, quotes removed: `<<END-OF` and
+      // `<<'a b'` end at `END-OF` and `a b`. One opening with a digit is
+      // left alone, for `$((x<<2))`.
+      const m = /^<<(-?)[ \t]*((?:[^\s;&|()<>'"\\]|\\.|'[^']*'|"(?:[^"\\]|\\.)*")+)/.exec(
+        command.slice(i, i + 256),
+      )
+      if (m !== null && !/^\d/.test(m[2]!)) {
+        const delim = m[2]!.replace(/'([^']*)'|"((?:[^"\\]|\\.)*)"|\\(.)/g, (_, s, d, e) =>
+          s !== undefined ? s : d !== undefined ? d.replace(/\\(.)/g, '$1') : e,
+        )
+        pending.push({ delim, tabs: m[1] === '-' })
         i += m[0].length - 1
         atWordStart = false
         continue
