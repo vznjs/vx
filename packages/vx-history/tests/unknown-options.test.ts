@@ -40,3 +40,14 @@ it('an empty file is refused: it named the workspace root', () => {
   )
   expect(refusal(() => vxHistory({ file: '.vx/timings.json' }))).toBe('taken')
 })
+
+// `''` read `refs/heads/`, a name with a space was refused by the server
+// on every run, and `refs/heads/main` read `refs/heads/refs/heads/main`:
+// each run read no trunk's numbers.
+it('a defaultBranch that is no branch name is refused', () => {
+  for (const bad of ['', ' ', 'main dev', 'refs/heads/main'])
+    expect(refusal(() => vxHistory({ defaultBranch: bad }))).toBe(
+      `vxHistory() option "defaultBranch" must be a branch name (main), got ${JSON.stringify(bad)}`,
+    )
+  expect(refusal(() => vxHistory({ defaultBranch: 'release/1.x' }))).toBe('taken')
+})

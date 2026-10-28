@@ -42,8 +42,8 @@ GitHub's endpoint, or a 429, 502, 503 or 504 from the server, is asked
 again up to three times), each run asks it
 for its tasks' numbers, by task definition, in the refs the run reads,
 as a remote cache does: its branch's, the branch it merges into, then
-the default branch's (`baseBranch`, else git's or the CI's). `defaultBranch`
-instead reads its branch's, then that branch's.
+the default branch's (`baseBranch`, else git's or the CI's). `defaultBranch`, a
+branch name (`main`, not `refs/heads/main`), instead reads its branch's, then that one's.
 The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,

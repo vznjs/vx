@@ -315,6 +315,14 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   }
   // `''` resolved to the workspace root: each run warned it could not read
   // a directory and failed in teardown renaming its timings over it.
+  // Read as `refs/heads/<name>`: `''`, a space or a full ref read
+  // nothing on every run, or the server refused the query.
+  const { defaultBranch } = options
+  if (defaultBranch !== undefined && !/^(?!refs\/)[^\s]+$/.test(defaultBranch)) {
+    throw new UserError(
+      `vxHistory() option "defaultBranch" must be a branch name (main), got ${JSON.stringify(defaultBranch)}`,
+    )
+  }
   // Checked here, not in a run's `setup`: `vx show` and a `--dry` plan
   // took a url or header no request can carry, and every run failed on it.
   if (options.url !== undefined) serverUrlOf(options.url)
