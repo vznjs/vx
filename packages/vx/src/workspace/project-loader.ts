@@ -1,7 +1,7 @@
-import { existsSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { isUserError, UserError, xxh3hex } from '../util/index.js'
+import { configThrow, isUserError, UserError, xxh3hex } from '../util/index.js'
 import { isSkippedPlugin, validateProjectConfig, validateWorkspace } from './config-schema.js'
 import {
   beginEvalRound,
@@ -92,19 +92,72 @@ function serveHeldSources(): void {
         contents: heldSources.get(HELD_QUERY.exec(args.path)![1]!)!.source,
         loader: /\.[cm]?ts\?/.test(args.path) ? 'ts' : 'js',
       }))
+      build.onLoad({ filter: PLAIN_CONFIG }, (args) => {
+        const loader = /\.[cm]?ts$/.test(args.path) ? 'ts' : 'js'
+        const held = heldPaths.get(args.path) ?? heldByRealPath(args.path)
+        if (held !== undefined) {
+          held.served = true
+          return { contents: heldSources.get(held.hash)!.source, loader }
+        }
+        // A config no load holds now, imported by another module. `onLoad`
+        // cannot decline it, so it is served as Bun reads it, and what
+        // `onLoad` cannot carry (CommonJS, not UTF-8) is Bun's own load.
+        const bytes = readFileSync(args.path)
+        const source = servableSource(bytes, loader)
+        if (source !== null) return { contents: source, loader }
+        const native = JSON.stringify(`${args.path}?vx-bust=${xxh3hex(bytes)}`)
+        return {
+          contents: `import * as m from ${native}\nexport * from ${native}\nexport default m.default\n`,
+          loader: 'js',
+        }
+      })
     },
   })
 }
 
-function holdSource(hash: string, source: string): void {
+function holdSource(hash: string, source: string, plain: Held | null, configPath: string): void {
   const held = heldSources.get(hash)
   if (held === undefined) heldSources.set(hash, { source, uses: 1 })
   else held.uses++
+  if (plain !== null) heldPaths.set(configPath, plain)
 }
 
-function releaseSource(hash: string): void {
+function releaseSource(hash: string, plain: Held | null, configPath: string): void {
   const held = heldSources.get(hash)!
   if (--held.uses === 0) heldSources.delete(hash)
+  if (plain !== null) heldPaths.delete(configPath)
+}
+
+// Served under `?vx-held=`, a config was a second module beside the plain
+// path an import cycle reaches back to, and its `import.meta.url` carried
+// the query, unlike the worker's. So it is imported under its own path,
+// and `served` says whether this load's bytes were what Bun evaluated:
+// unset, the registry held the path already (a config another imported,
+// maybe older bytes), and only a query evaluates afresh.
+interface Held {
+  hash: string
+  served: boolean
+  /** Learned only when `onLoad` misses: Bun hands it the real path. */
+  real?: string | null
+}
+const heldPaths = new Map<string, Held>()
+
+const PLAIN_CONFIG = /[\\/]vx\.config\.[cm]?[jt]s$/
+
+// A realpath for every config was 7–10 ms on 1,000 (2026-10-28); only a
+// path reached through a link misses, so only a miss pays it.
+function heldByRealPath(real: string): Held | undefined {
+  for (const [configPath, held] of heldPaths) {
+    if (held.real === undefined) {
+      try {
+        held.real = realpathSync(configPath)
+      } catch {
+        held.real = null
+      }
+    }
+    if (held.real === real) return held
+  }
+  return undefined
 }
 
 const utf8 = new TextDecoder('utf-8', { fatal: true })
@@ -166,10 +219,12 @@ async function loadDefaultExport(
     )
   }
   const hash = xxh3hex(bytes)
+  const plain: Held | null =
+    source !== null && !literal && PLAIN_CONFIG.test(configPath) ? { hash, served: false } : null
   const specifier = `${configPath}?vx-${literal ? 'literal' : source !== null ? 'held' : 'bust'}=${hash}`
   if (source !== null) {
     serveHeldSources()
-    holdSource(hash, source)
+    holdSource(hash, source, plain, configPath)
   }
   let ns: { default?: unknown }
   let compiled: { default?: unknown } | null | undefined
@@ -189,7 +244,15 @@ async function loadDefaultExport(
     await refuseUnprovidedClosure(text, configPath, kind, reads)
     const budget = evalBudgetMs()
     ns = (await Promise.race([
-      import(specifier),
+      plain === null
+        ? import(specifier)
+        : import(configPath).then(
+            (ns: unknown) => (plain.served ? ns : import(specifier)),
+            (err: unknown) => {
+              if (plain.served) throw err
+              return import(specifier)
+            },
+          ),
       new Promise<never>((_, reject) => {
         deadline = setTimeout(
           () =>
@@ -211,7 +274,7 @@ async function loadDefaultExport(
   } finally {
     clearTimeout(deadline)
     unguard()
-    if (source !== null) releaseSource(hash)
+    if (source !== null) releaseSource(hash, plain, configPath)
   }
   const mod = defaultOf(ns, kind, configPath)
   if (compiledRoot !== undefined && loaded !== undefined) {
@@ -414,7 +477,7 @@ function loadFailure(err: unknown, configPath: string, kind: string): unknown {
   const user = configLoadError(err, configPath, kind)
   if (user !== null) return user
   if (err !== null && typeof err === 'object' && typeof (err as Error).message === 'string') {
-    return err
+    return isUserError(err) ? err : configThrow(err)
   }
   return new UserError(thrownValueMessage(kind, configPath, Bun.inspect(err, { compact: true })))
 }
