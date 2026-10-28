@@ -141,6 +141,9 @@ export function conformance(name: string, target: Target): void {
       expect((await upload([ok], tokens.read)).status).toBe(403)
       for (const [bad, message] of [
         [[{ ...ok, hash: '' }], 'timings[0].hash: a string of up to 512 characters'],
+        // A lone surrogate is stored as bytes that read back as U+FFFD: a
+        // hash no query could find again.
+        [[{ ...ok, hash: 'a\ud800' }], 'timings[0].hash: a string of up to 512 characters'],
         [[{ ...ok, durationMs: 1.5 }], 'timings[0].durationMs: whole milliseconds'],
         [[{ ...ok, cores: -1 }], 'timings[0].cores: a number of cores'],
         [[{ ...ok, rssBytes: 'x' }], 'timings[0].rssBytes: a byte count'],
@@ -163,6 +166,7 @@ export function conformance(name: string, target: Target): void {
         { ...named(), refs: ['main'], hashes: ['a'] },
         { ...named(), refs: Array(9).fill(main[0]), hashes: ['a'] },
         { ...named(), refs: main, hashes: Array.from({ length: 10_001 }, (_, i) => String(i)) },
+        { ...named(), refs: main, hashes: ['\udbff'] },
         { repository: target.repository, refs: main, hashes: ['a'] },
         { issuer: target.issuer, repository: 'nameonly', refs: main, hashes: ['a'] },
       ]) {
