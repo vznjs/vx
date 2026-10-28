@@ -573,12 +573,30 @@ function namedOf(options: VxCacheOptions): { issuer: string; repository: string 
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
+/** The largest delay a timer holds: Bun runs a longer one, like a NaN, 0 or negative one, after 1 ms. */
+const MAX_TIMER_MS = 2 ** 31 - 1
+
+/** `timeoutMs` and `uploadTimeoutMs`, each refused unless a positive number of ms a timer can hold. */
+function timeoutsOf(options: VxCacheOptions): { timeoutMs: number; uploadTimeoutMs: number } {
+  const of = (name: 'timeoutMs' | 'uploadTimeoutMs', fallback: number): number => {
+    const ms = options[name]
+    if (ms === undefined) return fallback
+    if (!(ms > 0 && ms <= MAX_TIMER_MS))
+      throw new Error(
+        `vxCache(): ${name} must be a positive number of ms up to ${MAX_TIMER_MS}, got ${String(ms)}`,
+      )
+    return ms
+  }
+  return { timeoutMs: of('timeoutMs', 30_000), uploadTimeoutMs: of('uploadTimeoutMs', 60_000) }
+}
+
 /** Options over `VX_CACHE_URL`; `undefined`: no server named. */
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
 ): ResolvedVxCacheConfig | undefined {
   const named = namedOf(options)
+  const timeouts = timeoutsOf(options)
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
   if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
@@ -588,8 +606,7 @@ export function resolveVxCacheConfig(
   return {
     url,
     ...named,
-    timeoutMs: options.timeoutMs ?? 30_000,
-    uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
+    ...timeouts,
     headers: proxyHeaders('vxCache()', options.headers),
   }
 }
@@ -623,6 +640,7 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
 export function vxCache(options: VxCacheOptions): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
   namedOf(options)
+  timeoutsOf(options)
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveVxCacheConfig(options)
