@@ -72,6 +72,28 @@ describe('searchDocs', () => {
     ])
   })
 
+  it('a repeated heading links its own id, numbered as the site numbers it', () => {
+    // cli.md repeats Usage, Options and Exit codes per verb; each link named
+    // the first, and the site's forward sent it to `vx run`'s section.
+    const page = {
+      cli: [
+        '# Commands',
+        '## Run',
+        '### Usage',
+        'run usage',
+        '##### Usage',
+        'deep',
+        '## Watch',
+        '### Usage',
+        'watch usage',
+      ].join('\n'),
+    }
+    expect(searchDocs(page, ['usage'], 5).map((h) => [h.text.split('\n')[1], h.url])).toEqual([
+      ['run usage', 'https://vznjs.github.io/vx/cli/#usage'],
+      ['watch usage', 'https://vznjs.github.io/vx/cli/#usage-2'],
+    ])
+  })
+
   it('the opening is its page, and --limit cuts', () => {
     expect(searchDocs(pages, ['intro'], 5).map((h) => [h.heading, h.url])).toEqual([
       ['', 'https://vznjs.github.io/vx/a/'],
