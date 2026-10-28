@@ -35,8 +35,8 @@ an upload with none is `403`.
 `POST /v1/timings/upload` (a token that writes) with
 `{ "timings": [{ "hash", "durationMs", "cores"?, "rssBytes"? }] }`, up to
 10 000, each task once: `204`. `hash` names the task's definition, a
-string of up to 512 characters the server never reads. Each folds into
-its row of the token's repository and ref:
+string of up to 512 characters (no lone surrogate) the server never
+reads. Each folds into its row of the token's repository and ref:
 
 - `durationMs` and `cores`: `old × 0.7 + new × 0.3`. A median needs the
   samples and a mean never forgets; this follows a task that got slower
