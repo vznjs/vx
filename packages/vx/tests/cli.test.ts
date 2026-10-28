@@ -1671,6 +1671,18 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--cache-dir=-weird']).cacheDir).toBe('-weird')
   })
 
+  it('--branch rejects a flag-shaped value in the space form', () => {
+    // `--branch $EMPTY --dry`: `--dry` became the branch name and the
+    // "dry" run executed every task. No git branch starts with `-`.
+    const r = parseRunArgs(['build', '--branch', '--dry'])
+    expect(r.error).toBe(
+      '--branch requires a value (got flag --dry; a value that starts with - needs --branch=--dry)',
+    )
+    expect(r.dry).toBeUndefined()
+    expect(parseRunArgs(['build', '--branch', 'feat/x']).settings['run.branch']).toBe('feat/x')
+    expect(parseRunArgs(['build', '--branch=-odd']).settings['run.branch']).toBe('-odd')
+  })
+
   it('--exclude-dependencies= (empty value) is rejected, not read as "exclude nothing"', () => {
     const r = parseRunArgs(['build', '--exclude-dependencies='])
     expect(r.error).toMatch(/--exclude-dependencies= needs a value/)
