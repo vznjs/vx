@@ -379,6 +379,8 @@ describe('GitHub OIDC', () => {
       fetch: async (req) => {
         asked++
         const status = answers.shift() ?? 403
+        // GitHub says why it refuses; the warning carries its words.
+        if (status === 403) return Response.json({ message: 'no id-token permission' }, { status })
         if (status !== 200) return new Response('busy', { status })
         const audience = new URL(req.url).searchParams.get('audience')!
         return Response.json({ value: await iss.sign(BRANCH_JOB, audience) })
@@ -404,7 +406,7 @@ describe('GitHub OIDC', () => {
         async () => {},
       )
       await expect(refused.put('b2', new Blob(['y']), { durationMs: 1 })).rejects.toThrow(
-        "GitHub's OIDC endpoint: HTTP 403; remote cache off for this run",
+        "GitHub's OIDC endpoint: HTTP 403: no id-token permission; remote cache off for this run",
       )
       expect(asked).toBe(4)
     } finally {

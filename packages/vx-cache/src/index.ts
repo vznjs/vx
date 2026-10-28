@@ -310,7 +310,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     let jwt: unknown
     try {
       const res = await this.askOnce(ask)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) throw await refusal(res)
       jwt = ((await res.json()) as { value?: unknown }).value
       if (typeof jwt !== 'string' || jwt === '') throw new Error('no token in its answer')
     } catch (err) {
