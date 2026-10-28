@@ -157,6 +157,15 @@ interface Session {
 /** A random (v4) UUID: no one can guess a session id to open it first or join it. */
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_BODY = 1 << 20
+let room: Uint8Array | undefined
+/** Over MAX_BODY in UTF-8: a UTF-16 unit is 1 to 3 bytes, so 1 MiB of `€` is 3. */
+function overMax(text: string): boolean {
+  if (text.length > MAX_BODY) return true
+  if (text.length * 3 <= MAX_BODY) return false
+  // No Buffer on Workers: encode into a fixed 1 MiB, which stops short of one that does not fit.
+  room ??= new Uint8Array(MAX_BODY)
+  return new TextEncoder().encodeInto(text, room).read < text.length
+}
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
@@ -459,7 +468,7 @@ export function createRelay(opts: RelayOptions): Relay {
     if (version === undefined) throw new HttpError(406, SUPPORTED)
     const asked = url.searchParams.get('join')
     if (asked !== null) {
-      if (asked.length > MAX_BODY) throw new HttpError(413, 'join over 1 MiB')
+      if (overMax(asked)) throw new HttpError(413, 'join over 1 MiB')
       const p = await enter(key, req, url, parse(asked))
       p.hello = JSON.stringify({ joined: { id: p.id, heartbeatMs } })
       return opts.upgrade(key, p.id, req, protocol)
@@ -584,7 +593,7 @@ export function createRelay(opts: RelayOptions): Relay {
     frame(key, id, text, socket) {
       let n: unknown = null
       try {
-        if (text.length > MAX_BODY) {
+        if (overMax(text)) {
           // Answered by its number, read without parsing the rest.
           const k = /^\{"n":(\d+)[,}]/.exec(text)?.[1]
           if (k !== undefined) n = Number(k)

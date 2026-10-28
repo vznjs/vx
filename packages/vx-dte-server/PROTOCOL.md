@@ -76,7 +76,7 @@ upgrade did.
 
 ## Frames
 
-Frames are JSON text, each at most 1 MiB.
+Frames are JSON text, each at most 1 MiB of UTF-8 (bytes, not characters).
 
 The relay pushes:
 
