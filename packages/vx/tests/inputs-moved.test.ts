@@ -8,7 +8,7 @@
 // before the fix.
 
 import { existsSync, lstatSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -754,6 +754,58 @@ describe('an input the user edits during the run', () => {
     },
     TIMEOUT,
   )
+})
+
+// An input that is a symlink folds the content behind it (linked-inputs.ts),
+// but the re-check looked only at the link itself, whose target string did
+// not change: an edit behind it while the command ran was saved under the
+// pre-edit key, and restoring the file replayed the edit as a hit.
+describe('an edit behind a linked input during the run', () => {
+  for (const [kind, link, target, files] of [
+    ['directory', 'lib', '../../shared', 'lib/**'],
+    ['file', 'src/l.txt', '../../../shared/a.txt', 'src/**'],
+  ] as const) {
+    it(
+      `a ${kind} link: the entry is withheld, and the restored file rebuilds`,
+      async () => {
+        const read = kind === 'directory' ? 'lib/a.txt' : 'src/l.txt'
+        const app = await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist; cat ${read} > dist/out.txt' },
+                  inputs: { files: ['${files}'] }, cache: { outputs: { files: ['dist/**'] } },
+                },
+              },
+            }
+          `,
+          files: { 'src/x.txt': 'x\n' },
+        })
+        await mkdir(path.join(root, 'shared'), { recursive: true })
+        await writeFile(path.join(root, 'shared', 'a.txt'), 'A1\n')
+        await mkdir(path.dirname(path.join(app, link)), { recursive: true })
+        await symlink(target, path.join(app, link))
+        await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n')
+        commit()
+        const pending = runTask('build')
+        await reached(path.join(app, 'started'))
+        await writeFile(path.join(root, 'shared', 'a.txt'), 'MID\n')
+        await writeFile(path.join(app, 'go'), '')
+        await pending
+        expect(status.filter((l) => MOVED.test(l))).toHaveLength(1)
+
+        await writeFile(path.join(root, 'shared', 'a.txt'), 'A1\n')
+        await rm(path.join(app, 'dist'), { recursive: true, force: true })
+        await writeFile(path.join(app, 'go'), '')
+        const r = await run({ cwd: root, tasks: ['build'], log: logger })
+        // Before the fix: a local hit restoring `MID`.
+        expect(statusOf(r, 'app#build')).toBe('success')
+        expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('A1\n')
+      },
+      TIMEOUT,
+    )
+  }
 })
 
 // The key folds the files the listing held; a file ADDED under an input glob

@@ -34,6 +34,8 @@ and key derivation logic live here.
   its target string: a file's identity, or every file under a linked
   directory (caching.md § key). `filesBehind(dir)` lists what a linked
   directory keys; `vx watch` judges a change to one by the same list.
+  `behindLink(link, hashFile)` is the digest the key folds for one; the
+  item-743 re-check follows each linked input again with it.
 - `fs-clock.ts` — how far the workspace's file system clock runs behind
   this process's, measured once a run; `racyWindowMs` adds it.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
@@ -189,6 +191,15 @@ export function setFsClockLag(lagMs: number): void
 // `.vx/cache` and `.yarn/cache` skipped. `vx watch` judges a change behind
 // a link by the same list.
 export function filesBehind(dir: string): string[]
+
+// The content behind a symlinked input as the key folds it: a file's
+// identity, or a digest of every file `filesBehind` lists. The run's
+// re-check compares it again before a miss is saved.
+export function behindLink(
+  link: string,
+  hashFile: (file: string) => Promise<string>,
+  seen?: ReadonlySet<string>,
+): Promise<string>
 
 export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the
