@@ -366,7 +366,19 @@ export class VxCacheLayer implements RemoteCacheLayer {
       },
       ...(init.body === undefined ? {} : { body: init.body }),
       signal: controller.signal,
+      // The protocol has no redirect: followed, one sent `headers` (a
+      // proxy's secrets) to another origin, and the token, dropped there,
+      // read as refused.
+      redirect: 'manual',
     })
+    if (res.status >= 300 && res.status < 400) {
+      clearTimeout(answer)
+      await res.body?.cancel()
+      const to = res.headers.get('location')
+      throw new Error(
+        `HTTP ${res.status}${to === null ? '' : `, to ${to}`}: vx-cache servers do not redirect; name the url it points to`,
+      )
+    }
     if (init.streamed === true) {
       clearTimeout(answer)
       res = streamed(res, controller, ms)
