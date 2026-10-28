@@ -512,17 +512,22 @@ export function acceptsTask(task: TaskPlacement): boolean {
   return task.cacheable && !task.pinnedLocal
 }
 
-export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
-  // A zero or non-number bound stopped every action the moment it began
-  // executing.
+/** A zero or non-number bound stopped every action the moment it began executing. */
+export function refuseDeadlines(
+  opts: Pick<ReapiExecutorOptions, 'executeTimeoutMs' | 'queueTimeoutMs'>,
+): void {
   for (const key of ['executeTimeoutMs', 'queueTimeoutMs'] as const) {
     const ms = opts[key]
     if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
-      throw new Error(
+      throw new UserError(
         `@vzn/vx-reapi: ${key} must be a positive number of ms (got ${JSON.stringify(ms)})`,
       )
     }
   }
+}
+
+export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
+  refuseDeadlines(opts)
   // No listener is no reason to say nothing.
   const warn = opts.warn ?? ((m: string) => void process.stderr.write(`[vx] ${m}\n`))
   // One Capabilities round trip per executor, not per task — the answer

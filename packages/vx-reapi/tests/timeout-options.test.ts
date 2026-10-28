@@ -3,6 +3,7 @@
 // action, the moment it began (stream F).
 import { expect, it } from 'bun:test'
 import { reapiExecutor } from '../src/executor.js'
+import { reapi } from '../src/index.js'
 import { ReapiClient } from '../src/wire.js'
 
 const said = (make: () => unknown): string => {
@@ -36,4 +37,16 @@ it('an execute deadline that is not a positive number is refused', () => {
   } finally {
     c.close()
   }
+})
+
+// Checked only by the executor, once `execute` had reached the server:
+// with execute off, a 0 was taken without a word.
+it('reapi() refuses an execute or queue deadline at the factory', () => {
+  expect(said(() => reapi({ executeTimeoutMs: 0 }))).toBe(
+    '@vzn/vx-reapi: executeTimeoutMs must be a positive number of ms (got 0)',
+  )
+  expect(said(() => reapi({ queueTimeoutMs: -1 }))).toBe(
+    '@vzn/vx-reapi: queueTimeoutMs must be a positive number of ms (got -1)',
+  )
+  expect(said(() => reapi({ executeTimeoutMs: 60_000, queueTimeoutMs: 5_000 }))).toBe('taken')
 })

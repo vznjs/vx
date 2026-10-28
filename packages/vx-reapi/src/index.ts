@@ -22,7 +22,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { ReapiRemoteCache } from './cache.js'
-import { reapiExecutor } from './executor.js'
+import { reapiExecutor, refuseDeadlines } from './executor.js'
 import { ReapiClient, type ReapiOptions, usesTls } from './wire.js'
 
 // `ReapiRemoteCache` is public for a workspace that composes cache
@@ -224,6 +224,8 @@ const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
 
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
+  // Before `execute` reaches the server, and with it off too.
+  refuseDeadlines(options)
   // Core refuses it too, but only once `execute` has reached the server,
   // and naming the executor, not this option.
   const { capacity } = options
