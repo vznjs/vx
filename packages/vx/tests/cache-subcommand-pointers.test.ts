@@ -38,6 +38,16 @@ it('list, ls, gc and purge name the verb that answers them', async () => {
   ])
 })
 
+it('a clean flag typed without clean names the whole clean command', async () => {
+  stderr = ''
+  expect([await run(['cache', '--older-than', '30d']), stderr]).toEqual([
+    1,
+    noticed(
+      'vx cache: missing subcommand before --older-than. Did you mean `vx cache clean --older-than 30d`? (see `vx cache --help`)\n',
+    ),
+  ])
+})
+
 it('a word no runner uses still names clean (control)', async () => {
   expect(await said('bogus')).toEqual([
     1,
