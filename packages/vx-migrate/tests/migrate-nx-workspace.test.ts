@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { migrateNx } from '../src/migrate-nx.js'
+import { migrateNx, nxWorkspaceFields } from '../src/migrate-nx.js'
 
 let root: string
 beforeEach(async () => {
@@ -118,4 +118,15 @@ it('names them where the workspace file is already there', async () => {
     'export default { plugins: [] }\n',
   )
   expect(await Bun.file(path.join(root, '.vx/workspace.ts')).exists()).toBe(false)
+})
+
+// A `defaultBase` with a line break (JSON allows one) was written as a
+// single-quoted literal spanning two lines: `.vx/workspace.ts` did not parse.
+it('writes a defaultBase as a literal that evaluates to it', async () => {
+  for (const [i, base] of ['a\nb', 'a\rb', "it's\\"].entries()) {
+    const field = nxWorkspaceFields({ defaultBase: base }).find((f) => f.field === 'baseBranch')!
+    const file = path.join(root, `literal-${i}.mjs`)
+    await writeFile(file, `export default ${field.source}\n`)
+    expect((await import(file)).default).toBe(base)
+  }
 })
