@@ -28,6 +28,7 @@ import {
 const plugins = () => import('./plugin-commands.js')
 
 export async function run(argv: readonly string[]): Promise<number> {
+  refuseLossyArgs(argv)
   const [command, ...rest] = argv
   await hideEnvFromTasks()
 
@@ -49,6 +50,20 @@ export async function run(argv: readonly string[]): Promise<number> {
   } catch (err) {
     throw await brokenLockNamed(err)
   }
+}
+
+/**
+ * Bun decodes argv as lossy UTF-8 and exposes no raw bytes on macOS, so
+ * `-- $'a\xfe'` and `-- $'a\xff'` both became `a` U+FFFD: the task got
+ * bytes nobody typed and the two runs shared a key (a stale hit). A real
+ * U+FFFD cannot be told from a replaced byte, so any arg holding one is refused.
+ */
+function refuseLossyArgs(argv: readonly string[]): void {
+  const at = argv.findIndex((a) => a.includes('�'))
+  if (at === -1) return
+  throw new UserError(
+    `argument ${at + 1} (${JSON.stringify(argv[at])}) is not valid UTF-8, or holds U+FFFD; vx cannot pass it on byte for byte`,
+  )
 }
 
 /**

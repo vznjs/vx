@@ -505,6 +505,11 @@ not.
 A group (a task with no command) takes none, so a request that names
 only groups is refused (`args after \`--\` reach no task`) rather
 than run with the args unheard.
+An argument that is not valid UTF-8 (`-- $'a\xff'`), here or before
+`--`, is refused, naming its position: Bun reads argv as UTF-8 and
+offers no raw bytes, so it would reach the task as U+FFFD, and two
+different args would share one key. An argument holding a real
+U+FFFD cannot be told apart and is refused too.
 
 ### Flags
 
