@@ -15,8 +15,8 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
   READ_ACCESS     public: a request with no token reads a repository ALLOW names
   S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
                   S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
-  MAX_CHECK_HASHES       keys one check names (default ${DEFAULT_LIMITS.maxCheckHashes})
-  MAX_UPLOAD_BYTES     the largest upload, one artifact (default ${DEFAULT_LIMITS.maxUploadBytes})`
+  MAX_CHECK_HASHES  lookups one check makes, hashes × scopes (default ${DEFAULT_LIMITS.maxCheckHashes})
+  MAX_UPLOAD_BYTES  the largest upload, one artifact (default ${DEFAULT_LIMITS.maxUploadBytes})`
 
 /**
  * An S3-compatible bucket through Bun's S3 client. Reads go through a
