@@ -838,3 +838,63 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
   )
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
 })
+
+// A host join whose upgrade Bun refused (no Sec-WebSocket-Key) still made
+// its session: its host had no socket and no drop time, so it never
+// lapsed, and every later join of that id was refused 4409.
+it('forgets a join whose upgrade failed: the session takes a host again', async () => {
+  const relay = serveRelay({ hostname: '127.0.0.1', port: 0 })
+  try {
+    const R2 = '00000000-0000-4000-8000-0000000000f1'
+    const signed = async () => {
+      const p = await createProver()
+      const path = `/v1/sessions/${R2}/socket?join=${encodeURIComponent(JSON.stringify({ role: 'host', key: p.key }))}`
+      return { path, proof: await p.proof('GET', path, '') }
+    }
+    const a = await signed()
+    const res = await fetch(relay.url + a.path, {
+      headers: {
+        upgrade: 'websocket',
+        'sec-websocket-protocol': 'switchboard.v1',
+        'relay-proof': a.proof,
+      },
+    })
+    expect(res.status).toBe(426)
+    const b = await signed()
+    const ws = new WebSocket(relay.url.replace('http', 'ws') + b.path, {
+      headers: { 'relay-proof': b.proof },
+      protocols: ['switchboard.v1'],
+    } as unknown as string[])
+    const first = await new Promise<any>((resolve) => {
+      ws.onmessage = (e) => resolve(JSON.parse(String(e.data)))
+    })
+    ws.close()
+    expect(Object.keys(first)).toEqual(['joined'])
+  } finally {
+    await relay.stop()
+  }
+})
+
+// A refused socket request kept its refusal until its socket attached; one
+// whose upgrade failed never attaches, so each such request, no token
+// needed, held one for good.
+it('keeps no refusal of a socket request whose upgrade failed', async () => {
+  const ids: string[] = []
+  const relay = createRelay({
+    verify: async () => ({ iss: 'x', run: [] }),
+    upgrade: (_key, id) => {
+      ids.push(id)
+      return Response.json({ error: 'not a websocket' }, { status: 426 })
+    },
+  })
+  const res = await relay.fetch(
+    new Request(`http://relay/v1/sessions/${R}/socket?id=x`, {
+      headers: { upgrade: 'websocket', 'sec-websocket-protocol': 'switchboard.v1' },
+    }),
+  )
+  expect(res.status).toBe(426)
+  const closed: (number | undefined)[] = []
+  relay.attach('', ids[0]!, { send: () => {}, close: (code) => void closed.push(code) })
+  // Its refusal gone, the id is one the relay never knew.
+  expect(closed).toEqual([GONE])
+})

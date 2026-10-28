@@ -462,7 +462,14 @@ export function createRelay(opts: RelayOptions): Relay {
       if (asked.length > MAX_BODY) throw new HttpError(413, 'join over 1 MiB')
       const p = await enter(key, req, url, parse(asked))
       p.hello = JSON.stringify({ joined: { id: p.id, heartbeatMs } })
-      return opts.upgrade(key, p.id, req, protocol)
+      const res = opts.upgrade(key, p.id, req, protocol)
+      // No socket will ever attach it, so no drop time would lapse it: a
+      // host's session kept refusing every later host 409.
+      if (res.status !== 101) {
+        const session = sessions.get(key)
+        if (session !== undefined) drop(session, p, true, true)
+      }
+      return res
     }
     const session = sessions.get(key)
     if (session !== undefined) lapse(session)
@@ -526,7 +533,10 @@ export function createRelay(opts: RelayOptions): Relay {
         if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
           const id = `refused-${crypto.randomUUID()}`
           refusals.set(id, err)
-          return opts.upgrade('', id, req, protocol)
+          const res = opts.upgrade('', id, req, protocol)
+          // Never attached, it would be held for good: one per request, no token needed.
+          if (res.status !== 101) refusals.delete(id)
+          return res
         }
         return Response.json(errorBody(err), { status: err.status })
       }
