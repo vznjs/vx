@@ -176,7 +176,9 @@ const MANAGERS = {
       const pkg = await manifest(root)
       const manifests = new Map<string, Record<string, unknown>>()
       if (pkg !== null) manifests.set('.', pkg)
-      for (const dir of await workspaceDirs(root, globsOf(pkg))) {
+      // Yarn 1 takes no `!` glob: it links the directory anyway.
+      const globs = globsOf(pkg).filter((g) => typeof g !== 'string' || !g.startsWith('!'))
+      for (const dir of await workspaceDirs(root, globs)) {
         const m = await manifest(path.join(root, dir))
         if (m !== null) manifests.set(dir, m)
       }
