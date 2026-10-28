@@ -67,7 +67,10 @@ export function applyMigration(args: ApplyMigrationArgs): Promise<number>
 // so a user's tsc checks them against config.ts alone), and whether a file
 // is that root config, untouched: a migration maps over it (no conflict).
 export function starterProject(format: MigrationFormat): string
-export function renderWorkspace(format: MigrationFormat, plugins: readonly WorkspacePlugin[]): string
+export function renderWorkspace(
+  format: MigrationFormat,
+  plugins: readonly WorkspacePlugin[],
+): string
 export function isStarterConfig(file: string): boolean
 export function quoteTsLiteral(s: string): string
 export const PERSISTENT_TODO: string
