@@ -40,6 +40,7 @@ import {
   stripTrailingSlash,
   taskGlob,
   UserError,
+  withoutWorkspaceBins,
 } from '../util/index.js'
 import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
@@ -287,6 +288,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             runtimeDecl,
             args.projectDir,
             projectBinDirs(args.projectDir, args.workspaceRoot),
+            args.workspaceRoot,
             args.runtimeCache,
             args.runtimeScope === undefined
               ? `${args.projectDir}\0`
@@ -296,6 +298,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             wsRuntimeDecl,
             args.workspaceRoot,
             [path.join(args.workspaceRoot, 'node_modules', '.bin')],
+            args.workspaceRoot,
             args.workspaceRuntimeCache,
             args.runtimeScope === undefined ? '' : `\0${args.runtimeScope}\0`,
           ),
@@ -552,9 +555,16 @@ export function answerRuntime(
         command,
         workspaceRoot,
         [path.join(workspaceRoot, 'node_modules', '.bin')],
+        workspaceRoot,
         undefined,
       )
-    : runRuntimeCommand(command, projectDir, projectBinDirs(projectDir, workspaceRoot), undefined)
+    : runRuntimeCommand(
+        command,
+        projectDir,
+        projectBinDirs(projectDir, workspaceRoot),
+        workspaceRoot,
+        undefined,
+      )
 }
 
 function resolveEnvValues(
@@ -583,9 +593,11 @@ async function runRuntimeCommand(
   command: string,
   cwd: string,
   binDirs: readonly string[],
+  workspaceRoot: string,
   owner: RuntimeMemo | undefined,
 ): Promise<string> {
-  const ambient = process.env['PATH']
+  // As a task's (exec/env.ts): no member's bin inherited from `npm run`.
+  const ambient = withoutWorkspaceBins(process.env['PATH'] ?? '', workspaceRoot)
   // As the task's PATH does (exec/env.ts): a dir holding the delimiter
   // splits into an entry relative to the probe's cwd.
   const PATH = [...binDirs.filter((dir) => !dir.includes(path.delimiter)), ambient]
@@ -734,6 +746,7 @@ async function resolveRuntimeValues(
   commands: readonly string[],
   cwd: string,
   binDirs: readonly string[],
+  workspaceRoot: string,
   memo: Map<string, Promise<string>> | undefined,
   memoKeyPrefix: string,
 ): Promise<Array<[string, string]>> {
@@ -744,7 +757,7 @@ async function resolveRuntimeValues(
       const key = `${memoKeyPrefix}${cmd}`
       let p = memo?.get(key)
       if (p === undefined) {
-        p = runRuntimeCommand(cmd, cwd, binDirs, memo)
+        p = runRuntimeCommand(cmd, cwd, binDirs, workspaceRoot, memo)
         memo?.set(key, p)
       }
       return [cmd, await p] as [string, string]

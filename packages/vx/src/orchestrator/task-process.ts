@@ -74,6 +74,7 @@ export function taskEnv(
     define: step.env?.define ?? {},
     source: process.env,
     binPaths: bins,
+    workspaceRoot,
   })
   env[VX_RUN_WORKSPACE_ENV] = workspaceRoot
   env[VX_RUN_TASK_ENV] = node.id
