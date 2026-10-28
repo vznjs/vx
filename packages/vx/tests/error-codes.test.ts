@@ -232,6 +232,38 @@ describe('a refusal under --format json', () => {
     ])
   })
 
+  // cli.md: VX_E_CONFIG is a config "that does not load or is refused". A
+  // load failure answered VX_E_REFUSED, and a config's own throw
+  // VX_E_INTERNAL, which sends the reader to file a vx bug.
+  it('a workspace config that does not load is a config refusal', async () => {
+    const sources = {
+      syntax: 'export default {\n',
+      fn: 'export default () => ({})\n',
+      missing: "import x from 'no-such-pkg'\nexport default {}\n",
+      thrownValue: "throw 'no'\n",
+      thrown: "throw new Error('no')\n",
+    }
+    const dirs: string[] = []
+    try {
+      const codes: Record<string, string> = {}
+      for (const [name, source] of Object.entries(sources)) {
+        const dir = await makeWorkspace({ prefix: `vx-error-codes-load-${name}-` })
+        dirs.push(dir)
+        await Bun.write(path.join(dir, '.vx/workspace.mjs'), source)
+        codes[name] = await refusal(['show', '--format', 'json'], dir)
+      }
+      expect(codes).toEqual({
+        syntax: 'VX_E_CONFIG',
+        fn: 'VX_E_CONFIG',
+        missing: 'VX_E_CONFIG',
+        thrownValue: 'VX_E_CONFIG',
+        thrown: 'VX_E_CONFIG',
+      })
+    } finally {
+      for (const dir of dirs) await rm(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
     const plain = await vx(['run', 'nope', '--all'])
     const forwarded = await vx(['run', 'nope', '--all', '--', '--dry=json'])
@@ -251,6 +283,18 @@ describe('errorCode', () => {
       errorCode(errno('EMFILE')),
       errorCode(errno('EACCES')),
       errorCode(new TypeError('boom')),
+      errorCode(new UserError("Project config /ws/packages/a/vx.config.ts: cannot find 'x'")),
+      errorCode(
+        new UserError('Workspace config at /ws/.vx/workspace.ts did not export a default object'),
+      ),
+      errorCode(
+        Object.assign(new Error('no'), { stack: 'Error: no\n    at /ws/vx.config.ts:1:7' }),
+      ),
+      errorCode(
+        Object.assign(new Error('no'), {
+          stack: 'Error: no\n    at f (/ws/node_modules/x/i.js:1:1)\n    at /ws/vx.config.ts:1:7',
+        }),
+      ),
     ]).toEqual([
       'VX_E_CYCLE',
       'VX_E_REFUSED',
@@ -258,6 +302,10 @@ describe('errorCode', () => {
       'VX_E_REFUSED',
       'VX_E_FDS',
       'VX_E_FS',
+      'VX_E_INTERNAL',
+      'VX_E_CONFIG',
+      'VX_E_CONFIG',
+      'VX_E_CONFIG',
       'VX_E_INTERNAL',
     ])
   })

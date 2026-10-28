@@ -56,16 +56,21 @@ export function refusal(
   return err
 }
 
+const CONFIG_FILE = String.raw`\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b`
 // A refusal that opens with the config that caused it: the schema's
-// `<file>: tasks.<name> …` and the loader's `<file> has unknown field …`.
-const CONFIG_REFUSAL = /^\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
+// `<file>: tasks.<name> …`, the loader's `<file> has unknown field …`, and
+// a load that failed, `Workspace config <file>: …` (project-loader.ts).
+const CONFIG_REFUSAL = new RegExp(`^(?:(?:Workspace|Project) config (?:at )?)?${CONFIG_FILE}`)
+// A throw whose innermost frame is a config's own line: the loader passes
+// it through for its stack, and it is the config's, not a vx defect.
+const CONFIG_FRAME = new RegExp(`^\\s+at (?:.*\\()?${CONFIG_FILE}`)
 
 /**
  * The stable code of anything `bin.ts` catches. A UserError's own, but
  * `VX_E_CONFIG` for a codeless one that names its config file; then the
- * environment's refusals; anything else is a defect, `VX_E_INTERNAL`. A
- * UserError from another copy of core has no `code` when that copy
- * predates it.
+ * environment's refusals; a config's own throw; anything else is a defect,
+ * `VX_E_INTERNAL`. A UserError from another copy of core has no `code`
+ * when that copy predates it.
  */
 export function errorCode(err: unknown): string {
   if (isUserError(err)) {
@@ -75,6 +80,12 @@ export function errorCode(err: unknown): string {
   }
   if (isOutOfFds(err)) return 'VX_E_FDS'
   if (isFsRefusal(err)) return 'VX_E_FS'
+  const frame = (err as { stack?: unknown } | null)?.stack
+  if (
+    typeof frame === 'string' &&
+    CONFIG_FRAME.test(frame.split('\n').find((l) => /^\s+at /.test(l)) ?? '')
+  )
+    return 'VX_E_CONFIG'
   return 'VX_E_INTERNAL'
 }
 
