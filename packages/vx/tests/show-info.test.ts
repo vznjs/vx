@@ -804,6 +804,7 @@ describe('vx info — the rendered rows', () => {
     restored24h: 1,
     flakyTasks: [],
     lockfile: true,
+    lockError: null,
     sandbox: { available: true, reason: '', declared: 1, untraced: null },
   }
 
