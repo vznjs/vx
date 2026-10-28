@@ -51,7 +51,8 @@ A CI job's requests carry its own OIDC token, and the server's `ALLOW`
 decides whether the job gets in; it writes its own branch.
 
 - On GitHub Actions the job's token is asked for the server's origin,
-  and asked again before it ends. The job needs
+  and asked again before it ends; a 5xx or 429 from GitHub is asked
+  again up to three times before the remote turns off. The job needs
   `permissions: id-token: write`; without it (`GITHUB_ACTIONS` is set
   but no token comes), the plugin warns and the job reads only.
 - On GitLab, name an `id_tokens` entry `VX_CACHE_TOKEN` with the

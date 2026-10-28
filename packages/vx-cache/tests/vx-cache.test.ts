@@ -365,6 +365,53 @@ describe('GitHub OIDC', () => {
       await github.stop(true)
     }
   })
+
+  // A DTE run asks GitHub again every few minutes, for itself and the
+  // token it lends: one 503 among those asks turned the remote cache off
+  // for the rest of the run, on every worker.
+  it('asks GitHub again after a 5xx or a 429, and gives up on a refusal', async () => {
+    const srv = server()
+    const answers = [503, 429, 200]
+    let asked = 0
+    const github = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: async (req) => {
+        asked++
+        const status = answers.shift() ?? 403
+        if (status !== 200) return new Response('busy', { status })
+        const audience = new URL(req.url).searchParams.get('audience')!
+        return Response.json({ value: await iss.sign(BRANCH_JOB, audience) })
+      },
+    })
+    try {
+      const env = {
+        ACTIONS_ID_TOKEN_REQUEST_URL: github.url.href,
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'gh',
+      }
+      const c = new VxCacheLayer(
+        resolveVxCacheConfig({ ...NAMED, url: srv.url }, env)!,
+        fetch,
+        env,
+        async () => {},
+      )
+      await c.put('b1', new Blob(['x']), { durationMs: 1 })
+      expect(asked).toBe(3)
+      const refused = new VxCacheLayer(
+        resolveVxCacheConfig({ ...NAMED, url: srv.url }, env)!,
+        fetch,
+        env,
+        async () => {},
+      )
+      await expect(refused.put('b2', new Blob(['y']), { durationMs: 1 })).rejects.toThrow(
+        "GitHub's OIDC endpoint: HTTP 403; remote cache off for this run",
+      )
+      expect(asked).toBe(4)
+    } finally {
+      await srv.stop()
+      await github.stop(true)
+    }
+  })
 })
 
 describe('lend', () => {
