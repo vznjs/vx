@@ -100,6 +100,40 @@ describe('a symlinked input keys what it points to', () => {
     TIMEOUT,
   )
 
+  // 2026-10-28: a link BELOW a glob's fixed prefix was missed the same way.
+  // `src/**/*.txt` over `src/v -> shared` and `**/*.txt` over `lib -> more`
+  // matched the link's name against the pattern, which it does not match,
+  // so the files the task read through it were in no key. Untracked too.
+  it(
+    'a link to a directory below a glob’s fixed prefix: an edit behind it',
+    async () => {
+      await mkdir(path.join(root, 'more'))
+      await writeFile(path.join(root, 'more', 'y.txt'), 'M1\n')
+      await mkdir(path.join(root, 'other'))
+      await writeFile(path.join(root, 'other', 'z.txt'), 'W1\n')
+      app = await addProject(root, 'a', {
+        config: `export default { tasks: { build: { exec: { command: 'cat src/v/x.txt lib/y.txt ../../ws/l/z.txt > out.txt' }, inputs: { files: ['src/**/*.txt', '**/*.txt'], workspaceFiles: ['ws/**/*.txt'] }, cache: { outputs: { files: ['out.txt'] } } } } }`,
+      })
+      await mkdir(path.join(app, 'src'))
+      await symlink('../../../shared', path.join(app, 'src', 'v'))
+      await mkdir(path.join(root, 'ws'))
+      await symlink('../other', path.join(root, 'ws', 'l'))
+      commit('fixture')
+      await symlink('../../more', path.join(app, 'lib'))
+      await rebuildsAfter(
+        () => writeFile(path.join(root, 'shared', 'x.txt'), 'V2\n'),
+        'V2\nM1\nW1\n',
+      )
+      await writeFile(path.join(root, 'more', 'y.txt'), 'M2\n')
+      expect(statusOf(await build()), said.join('')).toBe('success')
+      expect(await out()).toBe('V2\nM2\nW1\n')
+      await writeFile(path.join(root, 'other', 'z.txt'), 'W2\n')
+      expect(statusOf(await build()), said.join('')).toBe('success')
+      expect(await out()).toBe('V2\nM2\nW2\n')
+    },
+    TIMEOUT,
+  )
+
   it(
     'a file link to a tracked file outside the project',
     async () => {

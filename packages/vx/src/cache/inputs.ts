@@ -430,14 +430,18 @@ async function resolveWorkspaceFilesOver(
   excluded: (rel: string) => boolean,
 ): Promise<string[]> {
   const candidates: string[] = []
-  for (const rel of gitFiles) {
-    if (!isPositive(rel)) continue
-    if (excluded(rel)) continue
-    candidates.push(path.resolve(args.workspaceRoot, rel))
-  }
   // Same OID-trust shortcut as project files: a clean-per-status
   // tracked file necessarily exists on disk.
   const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
+  const mayHold = mayHoldMatch(positive)
+  for (const rel of gitFiles) {
+    if (isPositive(rel)) {
+      if (!excluded(rel)) candidates.push(path.resolve(args.workspaceRoot, rel))
+    } else if (mayHold(rel) && !excluded(rel)) {
+      const abs = path.resolve(args.workspaceRoot, rel)
+      if (dirLinkInput(abs, oids)) candidates.push(abs)
+    }
+  }
   return candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
 }
 
@@ -1606,6 +1610,8 @@ interface FilesPlan {
   ownOutput: (rel: string) => boolean
   positiveGlobs: Bun.Glob[]
   isPositive: (rel: string) => boolean
+  /** Whether a positive glob may match a path under `rel` (`mayHoldMatch`). */
+  mayHold: (rel: string) => boolean
   /** The literal entries, each naming one path (see `unanswered`). */
   literals: string[]
   /** The directories a positive entry reaches; see `InputListing`. */
@@ -1663,6 +1669,7 @@ function filesPlan(
           ownOutput: outputMatcher(ownOutputs),
           positiveGlobs: asTrees(positive).map(globFor),
           isPositive: throughLinks(positive, anyTaskGlob(asTrees(positive))),
+          mayHold: mayHoldMatch(positive),
           ...reachOf(positive),
           verdicts: new Map<string, boolean>(),
           ownOnly: new Map<string, boolean>(),
@@ -1690,6 +1697,49 @@ function throughLinks(
     for (let i = 1; i <= parts.length; i++) through.add(parts.slice(0, i).join('/'))
   }
   return through.size === 0 ? isPositive : (rel) => isPositive(rel) || through.has(rel)
+}
+
+/**
+ * Whether a positive glob may match a path under `rel`, by each
+ * alternative's fixed prefix and depth (a `**` reaches any depth). A link
+ * below a glob's fixed prefix is listed as one path too: `src/**\/*.txt`
+ * over `src/v -> ../shared` matched the link's name, not what the task
+ * read through it, and an edit there was a hit (2026-10-28). Such a path
+ * that is a link to a directory is an input (`dirLinkInput`). Generous on
+ * purpose: a wrong yes costs one lookup, and folds a linked directory.
+ */
+function mayHoldMatch(positive: readonly string[]): (rel: string) => boolean {
+  const reach = asTrees(positive.flatMap(braceAlternatives)).map((g) => {
+    const prefix = staticPrefix(g)
+    return {
+      prefix: prefix === '.' ? '' : `${prefix}/`,
+      deep: g.includes('**'),
+      depth: g.split('/').length,
+    }
+  })
+  return (rel) => {
+    let depth: number | undefined
+    for (const r of reach) {
+      if (!rel.startsWith(r.prefix) || rel.length === r.prefix.length) continue
+      if (r.deep || (depth ??= rel.split('/').length) < r.depth) return true
+    }
+    return false
+  }
+}
+
+/**
+ * Whether `abs`, a path a glob may reach below, is a link to a directory.
+ * A trusted index OID answers for a tracked file with no syscall: only a
+ * link's (`120000:`) or an untracked path's is looked at.
+ */
+function dirLinkInput(abs: string, oids: ReadonlyMap<string, string> | undefined): boolean {
+  const oid = oids?.get(abs)
+  if (oid !== undefined && !oid.startsWith('120000:')) return false
+  try {
+    return lstatSync(abs).isSymbolicLink() && statSync(abs).isDirectory()
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -1870,14 +1920,21 @@ async function resolveFiles(
   const candidates: string[] = []
   const verdicts = plan.verdicts
   const committed = committedFiles(args.gitFilesCache, args.projectDir)
+  const oids = args.gitFilesCache?.oidsFor(args.projectDir)
   for (const rel of gitFiles) {
     let input = verdicts.get(rel)
     if (input === undefined) {
       input = isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
       verdicts.set(rel, input)
     }
-    if ((!input && !ownOnly(plan, rel)) || nested(rel) || ownWsOutput(rel)) continue
+    if (nested(rel) || ownWsOutput(rel)) continue
     const abs = base === undefined ? path.resolve(args.projectDir, rel) : base + rel
+    if (!input && !ownOnly(plan, rel)) {
+      if (plan.mayHold(rel) && !isExcluded(rel) && !ownOutput(rel) && dirLinkInput(abs, oids)) {
+        candidates.push(abs)
+      }
+      continue
+    }
     if (!input && !committed(abs)) continue
     candidates.push(abs)
   }
@@ -1889,7 +1946,6 @@ async function resolveFiles(
   // per-file syscalls. Paths without an OID keep the probe:
   // `git ls-files -s` can surface staged entries whose working-tree
   // file is gone; the hasher would otherwise throw ENOENT.
-  const oids = args.gitFilesCache?.oidsFor(args.projectDir)
   const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs))
   // Git's slice comes sorted and a common prefix keeps it so: one pass
   // proves it instead of a sort per task.
