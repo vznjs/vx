@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "vx last --format json",
-  "description": "`vx last [RUNID] [--failed]` prints a run; `--list` prints an array of invocations, newest first; `--log <task>` prints that task's output; `--stats` prints per-task history numbers.",
+  "description": "`vx last [RUNID] [--failed]` prints a run; `--list` prints an array of invocations, newest first; `--log <task>` prints that task's output; `--stats` prints per-task history numbers; `--sql` prints the rows a read-only query over the history selects.",
   "oneOf": [
     {
       "type": "object",
@@ -14,9 +14,25 @@
     },
     { "type": "array", "items": { "$ref": "#/$defs/invocation" } },
     { "$ref": "#/$defs/log" },
-    { "$ref": "#/$defs/stats" }
+    { "$ref": "#/$defs/stats" },
+    { "$ref": "#/$defs/rows" }
   ],
   "$defs": {
+    "rows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows"],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "description": "`--sql`: one object per row, keyed by the query's column names",
+          "items": {
+            "type": "object",
+            "additionalProperties": { "type": ["string", "number", "null"] }
+          }
+        }
+      }
+    },
     "stats": {
       "type": "object",
       "additionalProperties": false,

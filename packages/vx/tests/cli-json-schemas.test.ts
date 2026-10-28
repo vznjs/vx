@@ -186,6 +186,7 @@ beforeAll(async () => {
   json('last', ['--failed'])
   json('last', ['--log', 'app#fail'])
   json('last', ['--stats'])
+  json('last', ['--sql', 'SELECT project, task, cpu_ms, remote_error FROM runs'])
   // The flaky task passes again: the replayed failure names that run (`fixedIn`).
   await writeFile(path.join(root, 'flag'), '')
   expect(vx(['run', 'lib#flaky', '--force']).code).toBe(0)

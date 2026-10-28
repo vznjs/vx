@@ -34,7 +34,7 @@ describe('vx run', () => {
     }
     expect(refused).toEqual([
       {
-        error: `missing project name before '#' in "#build" (vx run build runs it in every project)`,
+        error: `missing project name before '#' in "#build" (vx run build --all runs it in every project)`,
       },
       { error: `missing task name after '#' in "app#" (vx show app lists the tasks)` },
     ])

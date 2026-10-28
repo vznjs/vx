@@ -63,8 +63,15 @@ export async function oidcToken(url: string, bearer: string, audience: string): 
  * Keyless on GitHub Actions: a side signs by an OIDC token whose audience
  * is the digest of what it signs, and checks one as GitHub's and of this
  * repository (`GITHUB_REPOSITORY_ID`). No secret is stored anywhere.
+ * `runs`, the orchestrator's: the workflow runs it dispatched, whose jobs
+ * alone are its workers (a run's id is a dispatch input anyone who reads
+ * the repository's Actions sees); `undefined` admits any job of the
+ * repository, as workers that join on their own are.
  */
-export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proof {
+export function githubProof(
+  fetchJson?: (url: string) => Promise<unknown>,
+  runs?: () => ReadonlySet<string> | undefined,
+): Proof {
   const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer } = process.env
   const repo = process.env['GITHUB_REPOSITORY_ID']
   if (!url || !bearer || !repo)
@@ -102,7 +109,9 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
       const verify = createVerifier({
         allow: [{ issuer: GITHUB }],
         audience: aud(parts),
-        runClaims: { [GITHUB]: ['repository_id'] },
+        runClaims: {
+          [GITHUB]: runs === undefined ? ['repository_id'] : ['repository_id', 'run_id'],
+        },
         fetchJson: (u) =>
           once(u).catch((err: unknown) => {
             unread = err
@@ -110,7 +119,10 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
           }),
       })
       return verify(token).then(
-        (t) => t.run[0] === repo,
+        (t) => {
+          const mine = runs?.()
+          return t.run[0] === repo && (mine === undefined || mine.has(t.run[1]!))
+        },
         () => {
           if (unread !== undefined) throw unread
           return false
