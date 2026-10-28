@@ -443,7 +443,9 @@ failure; `--continue=always` runs dependents too
 ([`cli.md` § Failure propagation](./cli.md#failure-propagation----continue)). The
 overall exit code is 1 if any task ended in `failed`, `skipped` (a
 platform skip, and what it blocks, aside) or `aborted` status, or a
-persistent child exited before the run stopped it.
+persistent child exited before the run stopped it. A task's own
+`exitCode` agrees: a platform skip and what it blocks record 0, a skip
+behind a failure 1.
 
 ## Output capture and rendering
 

@@ -59,10 +59,13 @@ describe('exec.platforms', () => {
     expect(r.ok).toBe(true)
     expect(by.get('app#other')?.status).toBe('skipped')
     expect(by.get('app#other')?.otherPlatform).toEqual({ needs: [OTHER], host: HOST })
-    expect([by.get('app#after')?.status, by.get('app#after')?.blockedBy]).toEqual([
-      'skipped',
-      'app#other',
-    ])
+    // No failure blocked it: its exit is the platform skip's 0, not a failure's 1.
+    expect([
+      by.get('app#after')?.status,
+      by.get('app#after')?.blockedBy,
+      by.get('app#after')?.exitCode,
+      by.get('app#other')?.exitCode,
+    ]).toEqual(['skipped', 'app#other', 0, 0])
     expect(by.get('app#here')?.status).toBe('success')
     expect(await Bun.file(path.join(dir, 'other.txt')).exists()).toBe(false)
     expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
