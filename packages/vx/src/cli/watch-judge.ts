@@ -111,6 +111,8 @@ export class ChangeJudge {
   // are judged one window after the run ends, all together — an edit made
   // meanwhile still differs from what the loop last saw and re-runs.
   readonly pending = new Map<string, string>()
+  /** The paths the last judgement found changed. */
+  changed: readonly string[] = []
   /** The last cycle's window, its start on the mtime clock (`fsClockNow`); a write inside it is the run's own. */
   lastCycle: { start: number; end: number } | undefined
   // Declared outputs are ignored by PATH above. A task with no `cache`
@@ -248,9 +250,11 @@ export class ChangeJudge {
     // leaves out the editor's temporary file renamed away.
     let live = 0
     let goneCount = 0
+    const changed: string[] = []
     for (const [p, l] of this.pending) {
       if (ignored.has(p) && !editForUncached(p)) continue
       if (this.sameState(p, ignored.has(p), spell)) continue
+      changed.push(p)
       if (!fs.existsSync(p)) {
         goneCount++
         gone ??= [l, p]
@@ -263,6 +267,7 @@ export class ChangeJudge {
     }
     if (first === undefined && gone !== undefined) [first, firstAbs] = gone
     this.pending.clear()
+    this.changed = changed
     const more = (live > 0 ? live : goneCount) - 1
     const named = more > 0 ? `${first} (+${more} more)` : first
     const byServer = firstAbs !== undefined && this.ctx.held()

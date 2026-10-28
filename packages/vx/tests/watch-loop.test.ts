@@ -133,10 +133,18 @@ describe('vx watch loop (e2e)', () => {
     await until(() => w.cycles() === 1, 'the cycle the config edit starts')
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(1)
+    // Said, or the cycle read as the edit applied: it printed `changed` and
+    // no row, the same as an edit that changed nothing.
+    const hint = noticed(
+      'vx watch: packages/app/vx.config.mjs changed; runs read the lock, so run `vx lock` to apply it',
+      'warn',
+    )
+    expect(w.err()).toContain(hint)
 
     // The re-lock is the edit that changes what a cycle runs.
     lock(f.root)
     await until(async () => (await executions(f.log)) === 2, 'the re-run after a re-lock')
+    expect(w.err().split(hint).length - 1).toBe(1)
     expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a1\na1\n')
   }, 40_000)
 
@@ -223,6 +231,12 @@ describe('vx watch loop (e2e)', () => {
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(2)
     expect(await readFile(said, 'utf8')).toBe('ONE\n')
+    expect(w.err()).toContain(
+      noticed(
+        'vx watch: shared/preset.mjs changed; runs read the lock, so run `vx lock` to apply it',
+        'warn',
+      ),
+    )
 
     lock(f.root)
     await until(async () => (await executions(f.log)) === 3, 'the re-run after a re-lock')
