@@ -20,7 +20,7 @@ import { constants, existsSync, readFileSync } from 'node:fs'
 import { createPublicKey, verify } from 'node:crypto'
 import { access, chmod, chown, link, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { flagHint, seeHelp } from './help.js'
+import { flagHint, refuse, seeHelp } from './help.js'
 import { resolveRegistry, type Registry } from './registry.js'
 import { UserError, sayNotice, ui } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
@@ -773,12 +773,12 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
   const args = argv.filter((a) => a !== '-g' && a !== '--global')
   const unknown = args.find((a) => a.startsWith('-'))
   if (unknown !== undefined) {
-    sayNotice(
-      'error',
-      'vx upgrade',
+    return refuse(
+      'upgrade',
+      argv,
       `unknown flag: ${unknown}${flagHint('upgrade', unknown)}${seeHelp('upgrade')}`,
+      'VX_E_USAGE',
     )
-    return 1
   }
   // One release is installed; a second tag was dropped without a word and
   // the first one went in (`vx upgrade v0.0.22 v0.0.23`).

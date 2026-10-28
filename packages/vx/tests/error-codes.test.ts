@@ -215,19 +215,28 @@ describe('a refusal under --format json', () => {
 
   // `--format json` as the verb's own word, and the verbs that take no
   // flag: each refused with prose alone and an empty stdout.
-  it('a refusal of the JSON flag itself, or of help or version, answers a code', async () => {
+  it('a refusal of the JSON flag itself, or by a verb that prints no JSON, answers a code', async () => {
     const codes = await Promise.all([
       refusal(['--format', 'json']),
       refusal(['--format=json']),
       refusal(['help', '--bogus', '--format', 'json']),
       refusal(['help', 'bogus', '--format', 'json']),
       refusal(['version', '--format', 'json']),
+      // Verbs that print no JSON refuse the request, as a usage error.
+      refusal(['watch', 'build', '--format', 'json']),
+      refusal(['watch', 'build', '--dry=json']),
+      refusal(['upgrade', '--format', 'json']),
+      refusal(['completions', '--format', 'json']),
     ])
     expect(codes).toEqual([
       'VX_E_USAGE',
       'VX_E_USAGE',
       'VX_E_USAGE',
       'VX_E_UNKNOWN_COMMAND',
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+      'VX_E_USAGE',
       'VX_E_USAGE',
     ])
   })
