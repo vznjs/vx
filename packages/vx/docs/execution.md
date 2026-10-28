@@ -589,7 +589,10 @@ admitted against that number instead — so a 64-wide worker pool is not
 throttled by a 10-core laptop, and a `--concurrency 1` run still keeps the
 pool full. A `capacity` that is not a positive integer is refused:
 `plugin '<p>' returned executor '<e>' with capacity <v>: it must be a
-positive integer`.
+positive integer`. So is a flag (`remote`, `sandbox`, `servers`,
+`runtime`, `exclusive`, `timeouts`) that is not `true` or `false`, which
+placement read as false (`remote: 'yes'` was offered sandboxed tasks), and
+an optional hook (`accepts`, `demand`, …) that is not a function.
 
 - **Placement is decided once per task, before scheduling.** `run()` asks
   the declared executors, in order, which one takes each task (see
