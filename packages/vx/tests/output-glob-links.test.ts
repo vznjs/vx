@@ -65,3 +65,21 @@ it('the restore-temp sweep spares a committed file named like a temp', async () 
   })
   expect(existsSync(path.join(d, 'out/.vx-tmp-zzzzz-1'))).toBe(true)
 })
+
+it('a linked output head is walked the same beside a ** glob', async () => {
+  // A leading `**` turns the list into one walk that does not follow links,
+  // so `dist -> build` beside `**/*.tsbuildinfo` saved an empty entry.
+  const d = tmp()
+  mkdirSync(path.join(d, 'build'))
+  writeFileSync(path.join(d, 'build/a.js'), 'x')
+  symlinkSync('build', path.join(d, 'dist'))
+  const rel = (fs: string[]) => fs.map((f) => path.relative(d, f))
+  const one = await resolveOutputs({ projectDir: d, outputs: ['dist/**'], nestedProjectDirs: [] })
+  const two = await resolveOutputs({
+    projectDir: d,
+    outputs: ['dist/**', '**/*.tsbuildinfo'],
+    nestedProjectDirs: [],
+  })
+  expect(rel(one)).toEqual(['dist/a.js'])
+  expect(rel(two)).toEqual(rel(one))
+})

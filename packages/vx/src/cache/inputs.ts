@@ -2305,7 +2305,13 @@ async function scanUnion(
   // A leading `**` walks the whole project whatever else is listed, so the
   // list is one walk: Turbo's `dist/**`, `**/dist/**`, `**/dist` was three,
   // ~2 ms of a warm hit on solid.
-  if (patterns.length > 1 && patterns.some((p) => p.startsWith('**'))) {
+  // Not where a static head passes through a link: the one walk does not
+  // follow links, and the per-pattern scan enters them (X-88).
+  if (
+    patterns.length > 1 &&
+    patterns.some((p) => p.startsWith('**')) &&
+    !patterns.some((p) => headLinked(cwd, p))
+  ) {
     const any = anyTaskGlob(patterns)
     for (const rel of WHOLE_TREE.scanSync(opts)) if (any(rel)) take(rel)
     return matches
@@ -2320,6 +2326,19 @@ async function scanUnion(
         take(`${from.prefix}/${rel}`)
   }
   return matches
+}
+
+/** `pattern`'s static directory passes through a symlink under `cwd`. */
+function headLinked(cwd: string, pattern: string): boolean {
+  const prefix = staticPrefix(pattern)
+  if (prefix === '.' || path.isAbsolute(prefix)) return false
+  let at = cwd
+  for (const part of prefix.split('/')) {
+    at = path.join(at, part)
+    const st = lstatSync(at, { throwIfNoEntry: false })
+    if (st === undefined || !st.isDirectory()) return st?.isSymbolicLink() === true
+  }
+  return false
 }
 
 /**
