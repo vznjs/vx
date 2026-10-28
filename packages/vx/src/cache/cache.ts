@@ -3249,7 +3249,25 @@ export class Cache implements CacheLayer {
     this.files.pruneOlderThan(cutoff)
     this.folds.prune(cutoff)
     const orphans = await this.reapOrphans(picked.files)
+    // An inline artifact's deleted pages go to SQLite's free list and the
+    // file keeps its size: give them back, or the bytes said freed are not.
+    if ([...victims].some((h) => inline.has(h))) this.releaseFreePages()
     return { evicted: victims.size, bytesFreed, ...orphans }
+  }
+
+  /** VACUUM the schema holding inline artifacts; busy or no room to rewrite keeps the pages for reuse. */
+  private releaseFreePages(): void {
+    const schema = this.storeDir === undefined ? 'main' : 'store'
+    try {
+      const { freelist_count: free } = this.db.prepare(`PRAGMA ${schema}.freelist_count`).get() as {
+        freelist_count: number
+      }
+      if (free === 0) return
+      this.db.exec(`VACUUM ${schema}`)
+      this.db.exec(`PRAGMA ${schema}.wal_checkpoint(TRUNCATE)`)
+    } catch {
+      // Another process holds the database, or the disk has no room for the copy.
+    }
   }
 
   /**
