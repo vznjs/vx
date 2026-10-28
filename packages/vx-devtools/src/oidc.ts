@@ -67,7 +67,7 @@ const PART = /^[0-9a-f]{32}$/
 
 /** The claim naming a token's repository, `org/name`. */
 const repoClaimOf = (iss: string): string => (iss === GITHUB ? 'repository' : 'project_path')
-/** The claim naming the workflow a token's job is defined in, up to its `@`. */
+/** The claim naming the workflow a token's job is defined in, up to the `@` before its ref. */
 const workflowClaimOf = (iss: string): string =>
   iss === GITHUB ? 'job_workflow_ref' : 'ci_config_ref_uri'
 
@@ -97,7 +97,7 @@ export function parseAllow(list: string): Allowed[] {
     })
 }
 
-/** What `workflowClaimOf(iss)` says, up to its `@`, for a job of `workflow` in `repository`. */
+/** What `workflowClaimOf(iss)` says, up to the `@` before its ref, for a job of `workflow` in `repository`. */
 function workflowPath(iss: string, repository: string, workflow: string): string {
   return iss === GITHUB
     ? `${repository}/.github/workflows/${workflow}`
@@ -345,13 +345,11 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     const wclaim = workflowClaimOf(iss)
     const ran = claims[wclaim]
     if (typeof ran !== 'string') throw new Refusal(403, `no ${wclaim} claim`)
-    // The path is the claim up to an `@` that a ref follows: a file name may hold `@` too.
-    const ranAllowed = ofRepo.some((a) => {
-      const p = `${workflowPath(iss, a.repository, a.workflow)}@`
-      return same(ran.slice(0, p.length), p)
-    })
-    if (!ranAllowed)
-      throw new Refusal(403, `${wclaim} ${ran.replace(/@.*$/, '')} is not in this server's ALLOW`)
+    // Cut at the `@` before the ref: GitLab's CI file may itself hold one
+    // (`.gitlab-ci.yml@group/project`, a file kept in another project).
+    const workflow = ran.replace(/@(?:refs\/.*)?$/, '')
+    if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
+      throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
     const repo = { issuer: issuerOf(iss), repository }
     const branch = branchOf(iss, claims)
     return branch === undefined ? repo : { ...repo, write: branch }

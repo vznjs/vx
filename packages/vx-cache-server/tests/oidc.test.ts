@@ -456,4 +456,20 @@ describe('GitLab CI tokens', () => {
     const put = await server(`${GITLAB}/:acme/app:.gitlab-ci.yml`)
     expect((await put()).status).toBe(204)
   })
+
+  // A project's CI file may live in another project, `.gitlab-ci.yml@acme/ci`:
+  // the claim was cut at its first `@`, so no ALLOW entry could name it.
+  it('matches a CI file kept in another project, ref and all', async () => {
+    const put = await server(`${GITLAB}:acme/app:.gitlab-ci.yml@acme/ci`)
+    expect((await put('.gitlab-ci.yml@acme/ci')).status).toBe(204)
+    expect(await detail(await put())).toEqual([
+      403,
+      "ci_config_ref_uri gitlab.example.com/acme/app//.gitlab-ci.yml is not in this server's ALLOW",
+    ])
+    const own = await server(`${GITLAB}:acme/app:.gitlab-ci.yml`)
+    expect(await detail(await own('.gitlab-ci.yml@acme/ci'))).toEqual([
+      403,
+      "ci_config_ref_uri gitlab.example.com/acme/app//.gitlab-ci.yml@acme/ci is not in this server's ALLOW",
+    ])
+  })
 })

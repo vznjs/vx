@@ -75,7 +75,7 @@ export function oidcTokenAuth(
   checkout's origin names (2026-10-25). One `ALLOW` does not name is
   `403`, and so is one other than the request names.
 - The token's workflow (`job_workflow_ref` on GitHub, `ci_config_ref_uri`
-  on GitLab, up to its `@`) must be one an entry names for that
+  on GitLab, up to the `@` before its ref) must be one an entry names for that
   repository: any other is `403`.
 - With `readAccess: 'public'` (`READ_ACCESS`), a request with no token
   reads the repository it names when `ALLOW` names it (else `403`), and
