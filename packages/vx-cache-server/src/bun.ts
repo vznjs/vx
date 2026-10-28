@@ -108,8 +108,9 @@ function main(argv: string[]): void {
   }
   const env = Bun.env
   if (env.S3_BUCKET === undefined || env.S3_BUCKET === '') fail(`set S3_BUCKET\n${USAGE}`)
-  // Number('') is 0: `--port "$PORT"` with PORT unset bound a random port.
-  const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
+  // Digits only: Number('') is 0, a random port for `--port "$PORT"` with
+  // PORT unset, and Number read 0x50 as 80 and 1e1 as 10.
+  const port = /^\d+$/.test(values.port) ? Number(values.port) : Number.NaN
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
   let allow
