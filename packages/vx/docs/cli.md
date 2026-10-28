@@ -1037,6 +1037,13 @@ or returns something that is not an executor, the plan still prints —
 the plugin's name: `[vx] placement not shown — plugin 'x' … (the run
 would refuse on it)`.
 
+**Platforms.** A task whose `exec.platforms` leave this machine out is
+`skipped`, and so is every task that depends on it, as the run skips
+them: the row says why (`needs darwin-arm64, this is linux-x64`,
+`blocked by mac#build`) and the JSON carries `otherPlatform` or
+`blockedBy`. On CI, or when no executor routes such a task, `--dry`
+refuses as the run does.
+
 Status legend:
 
 | Symbol | Meaning                                                                                    |
@@ -1047,6 +1054,7 @@ Status legend:
 | `∅`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
 | `·`    | `@noop` — task would not run anywhere                                                      |
 | `−`    | not started — a server you did not request whose every dependant restores a local hit      |
+| `·`    | skipped — `exec.platforms` leave this machine out, or a task it depends on is skipped      |
 | `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
 `--dry=json` emits the same data as one JSON object on one line, alone on stdout
