@@ -20,11 +20,11 @@ it('counts the tasks and packages of a shared gap in plain plurals', () => {
         ],
       },
     ]),
-  ).toEqual(['[@vzn/vx-migrate] 2 tasks (dev, watch across 1 package): gap'])
+  ).toEqual(['[vx] vx-migrate: 2 tasks (dev, watch across 1 package): gap'])
   expect(
     said([
       { name: 'a', tasks: [{ name: 'dev', todos: ['gap'] }] },
       { name: 'b', tasks: [{ name: 'dev', todos: ['gap'] }] },
     ]),
-  ).toEqual(['[@vzn/vx-migrate] 2 tasks (dev across 2 packages): gap'])
+  ).toEqual(['[vx] vx-migrate: 2 tasks (dev across 2 packages): gap'])
 })

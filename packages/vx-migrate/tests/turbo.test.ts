@@ -228,10 +228,10 @@ describe('turbo()', () => {
       expect(text).not.toContain('outputLogs" ("new-only")')
       expect(text).not.toContain('has no vx equivalent')
       expect(text).toContain(
-        '[@vzn/vx-migrate] app#test: turbo key "outputLogs" ("hash-only") is a per-run setting in vx — run with --output-logs hash-only',
+        '[vx] vx-migrate: app#test: turbo key "outputLogs" ("hash-only") is a per-run setting in vx — run with --output-logs hash-only',
       )
       expect(text).toContain(
-        '[@vzn/vx-migrate] app#lint: turbo key "outputLogs" ("loud") is not a value vx knows — run with --output-logs full|hash-only|errors-only|none',
+        '[vx] vx-migrate: app#lint: turbo key "outputLogs" ("loud") is not a value vx knows — run with --output-logs full|hash-only|errors-only|none',
       )
     },
     TIMEOUT,
@@ -294,7 +294,7 @@ describe('turbo()', () => {
       )
       const lines = (await lockWarnings()).filter((l) => l.includes('persistent'))
       expect(lines).toEqual([
-        '[@vzn/vx-migrate] 2 tasks (dev across 2 packages): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
+        '[vx] vx-migrate: 2 tasks (dev across 2 packages): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
       ])
     },
     TIMEOUT,
@@ -340,10 +340,10 @@ describe('turbo()', () => {
       // carried one gap in 57 tasks, and a line per task was 57 identical
       // lines before the first frame (2026-09-11).
       expect(text).toContain(
-        '[@vzn/vx-migrate] 2 tasks (build across 2 packages): turbo key "foo" (1) has no vx equivalent',
+        '[vx] vx-migrate: 2 tasks (build across 2 packages): turbo key "foo" (1) has no vx equivalent',
       )
       expect(text).not.toContain('app#build: output')
-      expect(text).toContain('[@vzn/vx-migrate] note: root task //#root not migrated')
+      expect(text).toContain('[vx] vx-migrate: note: root task //#root not migrated')
       expect(text.split('root task //#root').length - 1).toBe(1)
       expect(text.split('has no vx equivalent').length - 1).toBe(1)
     },
@@ -743,7 +743,7 @@ describe('output negation', () => {
         '!package.json',
       ])
       expect(warned).toContain(
-        '[@vzn/vx-migrate] 2 tasks (build across 2 packages): output "*/**": vx cleans outputs before a run and a restore, so every untracked file this glob reaches is deleted; committed files are kept',
+        '[vx] vx-migrate: 2 tasks (build across 2 packages): output "*/**": vx cleans outputs before a run and a restore, so every untracked file this glob reaches is deleted; committed files are kept',
       )
       const result = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       expect(result.ok).toBe(true)
