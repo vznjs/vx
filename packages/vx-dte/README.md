@@ -714,7 +714,8 @@ real time in the run summary and the footer's `ideal` line, and
 ## API
 
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
-  `{ workers?, adapter?, relay?, local?, token?, scheduler?, unmeasured?, headers? }`.
+  `{ workers?, adapter?, relay?, token?, scheduler?, unmeasured?, headers? }`;
+  a key it does not take, in a size or `unmeasured` too, is refused.
   `headers` go on every dial to the relay, the orchestrator's and each
   worker's (redials too), for a proxy in front of it, such as a
   Cloudflare Access service token (`{ 'CF-Access-Client-Id':

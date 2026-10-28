@@ -3125,6 +3125,25 @@ it('refuses options it does not read and workers it cannot start', () => {
       dte({ workers: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } }, adapter }),
     ),
   ).toBe('dte(): workers.s.platform is one of linux-x64, linux-arm64, darwin-x64, darwin-arm64')
+  // A size's typo was read as nothing: `maxx: 2` started workers uncapped.
+  expect(
+    refusal(() => dte({ workers: { s: { maxx: 2, cpu: 1, memory: '1GB' } as never }, adapter })),
+  ).toBe(
+    'dte(): workers.s has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
+  )
+  expect(
+    refusal(() =>
+      dte({ relay: 'https://r', unmeasured: { cpu: 1, memory: '1GB', mem: 1 } as never }),
+    ),
+  ).toContain('dte(): unmeasured has unknown option "mem"')
+  expect(
+    refusal(() =>
+      dte({
+        workers: { s: { max: 1, cpu: 1, memory: '1GB', platform: undefined } as never },
+        adapter,
+      }),
+    ),
+  ).toBe('taken')
   expect(refusal(() => dte({ workers: W, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
     'dte(): scheduler.order is one of critical-path, graphene, fifo',
   )
