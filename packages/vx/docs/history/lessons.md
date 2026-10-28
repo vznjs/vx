@@ -301,3 +301,8 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   on tasks of four needs, and with history every task has its own
   (unrounded CPU), where it ran 25x slower than before (#4389,
   2026-10-25).
+- A `!` PR's squash message copies the breaking commit's
+  `BREAKING CHANGE:` footer word for word: guides/upgrading.md is
+  generated from the branch commit and `site-upgrading.unsafe.test.ts`
+  holds it to main's squash. #4570's squash reworded it and main went
+  red until #4571 regenerated the guide (2026-10-28).
