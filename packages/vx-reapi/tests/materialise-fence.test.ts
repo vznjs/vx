@@ -374,4 +374,56 @@ describe('materialiseOutputs writes nothing through a link into an undeclared pl
     expect(r).toBe(refused(path.join(cwd, 'dist', 'a', 'post-checkout')))
     expect(existsSync(path.join(ws, '.git', 'hooks', 'post-checkout'))).toBe(false)
   })
+
+  // A link placed through an earlier link lands where that one leads: it
+  // planted a hook or replaced another project's file (placeSymlink rm's
+  // what stands), both inside the root.
+  for (const via of ['output_symlinks', 'a Tree symlink']) {
+    it(`a link placed through a declared link, via ${via}`, async () => {
+      await mkdir(path.join(ws, '.git', 'hooks'), { recursive: true })
+      await mkdir(path.join(ws, 'other', 'src'), { recursive: true })
+      await writeFile(path.join(ws, 'other', 'src', 'index.ts'), 'user source')
+      const links = [
+        { path: 'dist/a', target: '../../.git/hooks' },
+        { path: 'dist/b', target: '../../other/src' },
+      ]
+      const into = (name: string): Directory => ({
+        files: [],
+        directories: [],
+        symlinks: [{ name, target: '../../pkg/dist/run.sh' }],
+      })
+      const result =
+        via === 'output_symlinks'
+          ? {
+              output_symlinks: [
+                ...links,
+                { path: 'dist/a/post-checkout', target: '../../pkg/dist/run.sh' },
+              ],
+            }
+          : {
+              output_symlinks: links,
+              output_directories: [{ path: 'dist/a', tree_digest: tree(into('post-checkout')) }],
+            }
+      expect(await run(result, req(['dist/**']))).toBe(
+        refused(path.join(cwd, 'dist', 'a', 'post-checkout')),
+      )
+      const other =
+        via === 'output_symlinks'
+          ? {
+              output_symlinks: [
+                ...links,
+                { path: 'dist/b/index.ts', target: '../../pkg/dist/run.sh' },
+              ],
+            }
+          : {
+              output_symlinks: links,
+              output_directories: [{ path: 'dist/b', tree_digest: tree(into('index.ts')) }],
+            }
+      expect(await run(other, req(['dist/**']))).toBe(
+        refused(path.join(cwd, 'dist', 'b', 'index.ts')),
+      )
+      expect(existsSync(path.join(ws, '.git', 'hooks', 'post-checkout'))).toBe(false)
+      expect((await lstat(path.join(ws, 'other', 'src', 'index.ts'))).isSymbolicLink()).toBe(false)
+    })
+  }
 })

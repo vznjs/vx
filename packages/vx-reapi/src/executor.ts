@@ -1642,12 +1642,17 @@ class Fence {
     this.checked.add(dir)
   }
 
-  /** A link whose target, read from where it stands, stays under the root. */
+  /**
+   * A link whose target, read from where it stands, stays under the root,
+   * placed only where a declared output lands: through an earlier link it
+   * planted a hook or replaced another project's file.
+   */
   async symlink(target: string, abs: string, created: string[] | undefined): Promise<void> {
     const to = path.resolve(path.dirname(abs), target)
     if (target.includes('\0') || (to !== this.root && !to.startsWith(this.root + path.sep))) {
       throw this.refuse(`${abs} -> ${target}`)
     }
+    await this.landing(abs)
     await placeSymlink(target, abs, created)
     this.links.push({ abs, target })
   }
