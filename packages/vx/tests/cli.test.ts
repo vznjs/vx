@@ -172,6 +172,26 @@ describe('cli run()', () => {
     })
   })
 
+  // `vx help run extra` printed run's help and exited 0, and `vx --help run`
+  // / `vx -h run` printed the whole reference: a word after the one verb was
+  // dropped, where `vx version extra` is refused.
+  it('`vx --help <verb>` is `vx help <verb>`, and a second word is refused', async () => {
+    expect(await run(['help', 'run'])).toBe(0)
+    const cut = stdout
+    for (const flag of ['--help', '-h']) {
+      stdout = ''
+      expect(await run([flag, 'run'])).toBe(0)
+      expect(stdout).toBe(cut)
+    }
+    stdout = ''
+    stderr = ''
+    expect(await run(['help', 'run', 'extra'])).toBe(1)
+    expect({ stdout, stderr }).toEqual({
+      stdout: '',
+      stderr: noticed('vx help: unexpected argument: extra (see `vx help`)\n'),
+    })
+  })
+
   // Every argument error points at the verb's own help, which is only
   // useful because `vx <verb> --help` prints something (same day). A verb
   // that grows a new parser and forgets the pointer fails here.
@@ -886,6 +906,20 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       noticed(
         'vx run: no projects selected: !one excluded every project the other filters matched',
       ).trimEnd(),
+    ])
+  })
+
+  it('an exclusion alone that takes back every project names no other filter', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['run', '--filter', '!*', 'hello'])
+    expect([code, stderr.trim()]).toEqual([
+      1,
+      noticed('vx run: no projects selected: !* excluded every project').trimEnd(),
     ])
   })
 

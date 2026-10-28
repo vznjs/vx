@@ -98,7 +98,8 @@ refused too: vx prints names raw, and one could retitle the terminal.
 `tags` label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
 Each is a non-empty string a tag filter can name, or it is refused at
-load: no surrounding whitespace, no `*` (a pattern), and no ending in
+load: no surrounding whitespace, no `*` (a pattern), no control
+character (`vx show` prints tags raw), and no ending in
 `...` (a dependency walk) or `[<ref>]` (a git range). A
 `project` plugin may set or edit them (`nx()` gives each project its Nx
 `tags` unless the vx.config has its own). A tag is in no cache key: it
@@ -1012,8 +1013,8 @@ Env var names whose host values are folded into the cache key.
 - Listing a name here does NOT forward it to the child process.
 
 To both forward AND track, list it in both places. Yes, the
-double-declaration is mild noise; a preset helper
-(`envTracked('NODE_ENV')`) can sugar it.
+double-declaration is mild noise; vx ships no helper for it, but a
+config is TypeScript, so a function of your own can return both lists.
 
 Names are exact: a wildcard (`NEXT_PUBLIC_*`) is refused, and so is
 Turbo's `!NAME` exclusion, here, in `exec.env.passThrough` and in

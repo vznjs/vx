@@ -121,6 +121,7 @@ export interface ArtifactRun {
   readonly cpuMs?: number
   readonly peakRssBytes?: number
   readonly env?: Readonly<Record<string, string | undefined>>
+  readonly secret?: readonly string[]
   readonly absent?: boolean
 }
 ```

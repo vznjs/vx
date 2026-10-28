@@ -207,6 +207,44 @@ describe('an output directory that is a symlink inside the project (e2e)', () =>
     },
     TIMEOUT,
   )
+
+  it.each([[['dist']], [['dist/', 'real-out/**']]])(
+    'a literal output naming the link (%p) saves through it and hits',
+    async (outputs: string[]) => {
+      // A literal names the path and its tree: the save held `dist` as the
+      // link and `dist/out.js` through it, refused it as a file and a
+      // directory, and the task never cached.
+      const root = await makeWorkspace({ prefix: 'vx-output-linkdir-literal-' })
+      try {
+        const dir = await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'mkdir -p real-out && ln -sfn real-out dist && cat src/in.txt > dist/out.js' },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ${JSON.stringify(outputs)} } },
+                },
+              },
+            }
+          `,
+          files: { 'src/in.txt': 'v1\n' },
+        })
+        const run = () => summarized(root, ['app#build'])
+        const first = await run()
+        expect([
+          first.tasks.get('app#build')?.['status'],
+          first.text.includes('save failed'),
+        ]).toEqual(['success', false])
+        expect((await run()).tasks.get('app#build')?.['status']).toBe('cache-hit')
+        await rm(path.join(dir, 'real-out', 'out.js'))
+        expect((await run()).tasks.get('app#build')?.['status']).toBe('cache-hit')
+        expect(await readFile(path.join(dir, 'dist', 'out.js'), 'utf8')).toBe('v1\n')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 // vx packs outputs outside the task's sandbox: following a link a task
@@ -448,7 +486,9 @@ describe('a restore beside a sibling writing into its directory (e2e)', () => {
           await writeFile(path.join(app, 'seed.txt'), '2')
           await Bun.write(path.join(app, dir, 'a.txt'), 'stray')
 
-          const r = await summarized(root, ['app#after', 'app#other'])
+          // Two slots: gate and other wait on each other's markers, and a
+          // one-core runner's default of one slot ran one forever.
+          const r = await summarized(root, ['app#after', 'app#other', '--concurrency', '2'])
           const status = Object.fromEntries(
             ['app#build', 'app#other'].map((id) => [id, r.tasks.get(id)?.['status']]),
           )
