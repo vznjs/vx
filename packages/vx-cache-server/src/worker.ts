@@ -48,7 +48,7 @@ const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${n
  * checked the token and named the object before a read reaches here.
  */
 
-function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
+export function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
   return {
     async put(name, body, size) {
       // R2 takes a stream of known length; this one errors at any other.
@@ -66,13 +66,21 @@ function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): 
       if (hit?.body) return { body: hit.body, size: Number(hit.headers.get('content-length')) }
       const o = await bucket.get(name)
       if (o === null) return null
-      const [body, copy] = o.body.tee()
-      const headers = {
-        'content-length': String(o.size),
-        'cache-control': 'public, max-age=31536000, immutable',
-      }
-      ctx.waitUntil(cache.then((c) => c.put(key, new Response(copy, { headers }))))
-      return { body, size: o.size }
+      // The copy is R2 read again, never a tee of the client's body: a tee
+      // on Workers reads at its slower branch's pace, and the cache write
+      // held a download for 19 minutes (main, 2026-10-28).
+      ctx.waitUntil(
+        (async () => {
+          const again = await bucket.get(name)
+          if (again === null) return
+          const headers = {
+            'content-length': String(again.size),
+            'cache-control': 'public, max-age=31536000, immutable',
+          }
+          await (await cache).put(key, new Response(again.body, { headers }))
+        })(),
+      )
+      return { body: o.body, size: o.size }
     },
     // R2 alone answers whether it holds an object: a check, a HEAD and a
     // PUT's skip. The data center's copy outlives R2's (expiry, a wipe), so
