@@ -457,6 +457,15 @@ export class VxCacheLayer implements RemoteCacheLayer {
     }
   }
 
+  /**
+   * Core's `open`: called only when the run's policy reads or writes this
+   * remote, so a `--no-cache` run or a plan asks the server (and GitHub)
+   * nothing.
+   */
+  async open(): Promise<void> {
+    this.start()
+  }
+
   /** Starts asking for the limits, so the first check need not wait for them. */
   start(): void {
     this.limitsNow().catch((err: unknown) => {
@@ -678,7 +687,6 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
       layer.refs = [...new Set(ctx.refs)]
       layer.lent = ctx.lent
       layer.warn = ctx.warn
-      layer.start()
       return layer
     },
   })

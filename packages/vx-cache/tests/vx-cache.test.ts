@@ -655,6 +655,31 @@ describe('config', () => {
     ])
   })
 
+  // Core opens a remote only when the run's policy reads or writes it: the
+  // factory asked the limits (and GitHub for a token) on a --no-cache run.
+  it('asks the server nothing until core opens it', async () => {
+    const saved = { ...Bun.env }
+    const names = [
+      'ACTIONS_ID_TOKEN_REQUEST_URL',
+      'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+      'VX_CACHE_TOKEN',
+    ]
+    for (const k of names) delete Bun.env[k]
+    const srv = server(1 << 20, 'public')
+    try {
+      const plugin = vxCache({ ...NAMED, url: srv.url })
+      const layer = await plugin.cache!({ refs: [MAIN], warn: () => {} } as never)
+      await Bun.sleep(50)
+      expect(srv.seen).toEqual([])
+      await layer!.open!({ ci: false, warn: () => {} } as never)
+      await Bun.sleep(50)
+      expect(srv.seen.map((r) => r.path)).toEqual(['/v1/capabilities'])
+    } finally {
+      for (const k of names) if (saved[k] !== undefined) Bun.env[k] = saved[k]
+      await srv.stop()
+    }
+  })
+
   // The second failed ask of the limits was kept: every later check threw
   // it, though the server was back (2026-10-26).
   it('asks the limits again after each failed ask, and reads once the server is back', async () => {
