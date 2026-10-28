@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: restore the modes of output directories a hit makes
+
+CACHE_VERSION is vx-cache-v49: every cached task misses once after upgrading.
+
 ## vx-devtools,vx-dte-server: read ALLOW as space separated only
 
 ALLOW no longer takes commas between entries. Separate them with spaces or newlines.
