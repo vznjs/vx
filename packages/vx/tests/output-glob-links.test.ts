@@ -36,3 +36,19 @@ it("a link at an output's head into a nested project is not this project's outpu
   await cleanOutputs({ ...args, committed: () => false })
   expect(existsSync(path.join(d, 'packages/site/dist/index.html'))).toBe(true)
 })
+
+it('the restore-temp sweep never reaches through a link out of the project', async () => {
+  // It ran before the link refusal, so a file named like a temp outside the
+  // project was gone before the clean refused the link.
+  const d = tmp()
+  const outside = tmp()
+  writeFileSync(path.join(outside, '.vx-tmp-zzzzz-1'), 'theirs')
+  symlinkSync(outside, path.join(d, 'out'))
+  await cleanOutputs({
+    projectDir: d,
+    outputs: ['out/a.txt'],
+    nestedProjectDirs: [],
+    committed: () => false,
+  }).catch(() => undefined)
+  expect(existsSync(path.join(outside, '.vx-tmp-zzzzz-1'))).toBe(true)
+})

@@ -1092,7 +1092,12 @@ export function sweepRestoreTemps(base: string, outputs: readonly string[]): voi
     if (g.startsWith('!') || !isLiteralPattern(g)) continue
     dirs.add(path.dirname(path.resolve(base, stripTrailingSlash(normalizeGlob(g)))))
   }
+  // A directory that resolves out of `base` is not the outputs': the link
+  // refusal runs after this sweep, and a delete never follows a link out.
+  let realBase: string | undefined
   for (const dir of dirs) {
+    const real = realOrNull(dir)
+    if (real === null || !isInside((realBase ??= realOrNull(base) ?? base), real)) continue
     let names: string[]
     try {
       names = readdirSync(dir)
