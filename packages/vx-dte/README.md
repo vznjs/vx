@@ -322,7 +322,10 @@ names (`VX_DTE_PICK`), at the run's commit, and each takes its name from
 `VX_DTE_IDS`. The run starts workers as its work needs them, up to each
 size's `max`, which `gitlab()` needs (at most 200, a matrix's limit).
 GitLab lets a job token trigger but not cancel, so a worker the run no
-longer needs leaves when it joins or when the run ends.
+longer needs leaves when it joins or when the run ends. The trigger sets
+pipeline variables, which GitLab.com's new projects let no one do: in
+Settings > CI/CD > Variables, let the role of the user who runs the `vx`
+job use them.
 
 ```ts
 // .vx/workspace.ts
