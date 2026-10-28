@@ -840,7 +840,8 @@ other persistent task`), and a non-zero exit makes the run exit 1
    row, forecast, flaky verdict or telemetry record holds one;
    `--profile` and `VX_DEBUG_TIMING` time vx's stages their own way.
    Steps show only beside a live region; a log (CI, a pipe) prints
-   none.
+   none. Under `--output-logs hash-only` (one line per task) and
+   `errors-only` only a step that failed leaves a row.
 5. **The live summary section** — the SAME meters the final footer
    prints (`tasks` + `cache` bars with legends, `time`), filling in as
    the run progresses, under a bare `vx` wordmark rule. A second in,
