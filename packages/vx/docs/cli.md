@@ -311,7 +311,8 @@ git: <root> is not inside a git work tree`. A repository with no commit
   - a path inside a commit (`main:packages`), naming the commit to pass.
     A root tree (`main^{tree}`) is still a base.
 - `<base>...HEAD`, Turbo's CI spelling, reads as `<base>`. Two-dot
-  `<base>..HEAD` diffs from `<base>` itself, not the merge base.
+  `<base>..HEAD` diffs from `<base>` itself, not the merge base; a shallow
+  clone fetches that commit as it fetches the merge base.
 - A ref that does not exist is `git ref "<ref>" did not resolve`. In a
   shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`).
 - A project whose directory is a symlink inside the workspace
