@@ -30,7 +30,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
 vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
-vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
+vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
@@ -2152,7 +2152,7 @@ Turborepo or Nx repo it maps their config instead.
 ### Usage
 
 ```
-vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
+vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]
 ```
 
 ### Example
@@ -2180,7 +2180,7 @@ $ vx init --dry
 | `--force`            | replace a file already there                                              |
 | `--mjs`              | write `.mjs` files instead of `.ts`                                       |
 | `--native`, `--keep` | in a Turbo or Nx repo: a `vx.config.ts` per package, or keep their config |
-| `--plugin <seam>`    | write a plugin for that seam instead, below                               |
+| `--plugin <hook>`    | write a plugin for that hook instead, below                               |
 
 ### Install
 
@@ -2254,10 +2254,10 @@ without `--dry`, or with `--plugin`, is refused (`VX_E_USAGE`).
 
 ### `--plugin`
 
-`vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
-a small runnable plugin for that seam (`executor`, `cache`,
+`vx init --plugin <hook>` writes a plugin instead: `plugins/<hook>.ts`,
+a small runnable plugin for that hook (`executor`, `cache`,
 `telemetry`, `schedule`, `admit`, `commands`, `project`, `graph`,
-`key`), and `plugins/<seam>.test.ts`, which drives it through `run()`
+`key`), and `plugins/<hook>.test.ts`, which drives it through `run()`
 (`bun test`, with `@vzn/vx` installed). It prints the line that
 declares it in the workspace file a run reads (`.vx/workspace.ts` when
 there is none). The templates are TypeScript, so `--mjs` with

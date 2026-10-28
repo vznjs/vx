@@ -3,7 +3,7 @@
 // (2026-10-20). A Turbo or Nx repo is `@vzn/vx-migrate`'s, which maps it
 // and installs what it writes (`migrate`); any other gets the workspace file
 // and an empty root project, then the lock (`starter`).
-// `vx init --plugin <seam>` writes a runnable plugin for one seam and its
+// `vx init --plugin <hook>` writes a runnable plugin for one hook and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -35,7 +35,7 @@ interface InitArgs {
   force: boolean
   /** `vx.config.mjs` instead of `.ts` — see `ApplyMigrationArgs.format`. */
   mjs: boolean
-  /** `--plugin <seam>`: scaffold that seam's plugin instead of the workspace. */
+  /** `--plugin <hook>`: scaffold that hook's plugin instead of the workspace. */
   plugin?: string
   /** `--native` / `--keep` in a Turbo or Nx repo; unset, vx-migrate asks a terminal. */
   mode?: 'native' | 'keep'
@@ -54,7 +54,7 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
       if (seam === undefined || !Object.hasOwn(PLUGIN_TEMPLATES, seam)) {
         return {
           ...out,
-          error: `--plugin takes a seam: one of ${seams}${seam === undefined || seam === '' ? '' : ` (got '${seam}')`}${seeHelp('init')}`,
+          error: `--plugin takes a hook: one of ${seams}${seam === undefined || seam === '' ? '' : ` (got '${seam}')`}${seeHelp('init')}`,
         }
       }
       out.plugin = seam
