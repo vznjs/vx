@@ -621,6 +621,13 @@ describe('formatTaskRows', () => {
     )
   })
 
+  it('one hit past sixteen folds as a hit, not hits', () => {
+    const lines = formatTaskRows(Array.from({ length: 17 }, (_, i) => hit(i, i)))
+    expect(lines.at(-1)).toBe(
+      '  … +1 more cache hit (the 16 slowest restores shown) — vx last --format json lists every row',
+    )
+  })
+
   it('sixteen hits list in full, no fold (control)', () => {
     const lines = formatTaskRows(Array.from({ length: 16 }, (_, i) => hit(i, i)))
     expect(lines.length).toBe(17)

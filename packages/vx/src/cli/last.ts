@@ -420,7 +420,7 @@ export function formatTaskRows(
     lines.push(
       paint(
         '',
-        `  … +${hits.length - HITS_SHOWN} more cache hits (the ${HITS_SHOWN} slowest restores shown) — vx last --format json lists every row`,
+        `  … +${hits.length - HITS_SHOWN} more cache hit${hits.length - HITS_SHOWN === 1 ? '' : 's'} (the ${HITS_SHOWN} slowest restores shown) — vx last --format json lists every row`,
         c,
         { dim: true },
       ),
