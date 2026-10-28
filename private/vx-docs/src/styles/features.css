@@ -439,10 +439,8 @@
 .fexample .label {
   margin: 0 0 10px;
 }
-.fexample .code {
+.fexample .example-code {
   margin: 0;
-  white-space: pre;
-  font-size: 13px;
 }
 .fmore {
   padding: 56px var(--gutter);
@@ -640,9 +638,6 @@
   }
   .fbody p {
     font-size: 16.5px;
-  }
-  .fexample .code {
-    font-size: 12.5px;
   }
   .pager {
     grid-template-columns: minmax(0, 1fr);

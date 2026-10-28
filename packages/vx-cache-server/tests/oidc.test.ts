@@ -241,7 +241,8 @@ describe('a server that admits no CI', () => {
 // A 401 tells vx-cache its token is refused, and it turned the remote cache
 // off for the run when only the issuer's keys could not be fetched.
 it("answers 502 while the issuer's keys cannot be read, never 401", async () => {
-  for (const down of ['/.well-known/openid-configuration', '/keys']) {
+  // `garbled`: the keys answered as JSON that is no key set (a proxy's error page).
+  for (const down of ['/.well-known/openid-configuration', '/keys', 'garbled']) {
     const other = createCacheServer({
       blobs: memBlobs(),
       authorize: oidcAuth({
@@ -249,7 +250,9 @@ it("answers 502 while the issuer's keys cannot be read, never 401", async () => 
         audience: AUD,
         fetchJson: async (url) => {
           if (url.endsWith(down)) throw new Error(`${url}: 503`)
-          return { jwks_uri: `${GITHUB}/keys` }
+          return url.endsWith('/keys') && down === 'garbled'
+            ? { message: 'upstream unavailable' }
+            : { jwks_uri: `${GITHUB}/keys` }
         },
       }),
     })
