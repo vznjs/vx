@@ -302,6 +302,9 @@ no base here`.
 failed to spawn 'git' … Install git and re-run`. Outside a git work tree it says `vx requires
 git: <root> is not inside a git work tree`. A repository with no commit
   yet says so.
+- In a linked worktree's git hook, which exports `GIT_DIR` and no
+  `GIT_WORK_TREE`, vx's git finds the worktree's top as a plain `git`
+  there does: a workspace in a subfolder selects only what changed.
 - `--affected=<ref>` uses the given git ref. vx refuses before git sees it:
   - an empty value, or one starting with `-` (it would be a `git diff`
     option);

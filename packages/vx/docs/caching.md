@@ -364,7 +364,8 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     whose static directory passes through a link (`lib/**` over
     `lib -> ../shared`) takes the link as an input: git lists a linked
     directory as the link alone, so the glob matched nothing and an
-    edit behind it was a hit (2026-10-25). A `**` glob does not enter
+    edit behind it was a hit (2026-10-25); each brace alternative counts
+    alone (`{lib,src}/**`). A `**` glob does not enter
     one it meets.
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
