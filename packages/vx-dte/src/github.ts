@@ -99,6 +99,12 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const etags = new Map<string, string>()
   // No jobs are asked before this (epoch ms): the API limit is spent.
   let held = 0
+  // The workflow runs whose jobs are this run's workers, by id: a run's id
+  // is a dispatch input anyone who reads the repository's Actions sees, so
+  // a job of any other run is no worker of it. A dispatch that named no
+  // run (an API that answers 204) leaves it unbound.
+  const workerRuns = new Set<string>()
+  let unbound = false
   // Workers the run no longer needs: a run of only these is cancelled.
   const cancelled = new Set<string>()
   // A poll or cancel that failed is said, each cause once (2026-10-23: no
@@ -276,27 +282,31 @@ export function github(options: GithubOptions = {}): DteAdapter {
         throw new Error(`github(): dispatching ${workflow}: ${res.status} ${text}${fix}`)
       }
     }
-    if (res.status === 200) {
-      const id = ((await res.json()) as { workflow_run_id?: number }).workflow_run_id
-      if (id !== undefined) {
-        const run = `/repos/${repo}/actions/runs/${id}`
-        runs.push(run)
-        const mine = new Map(workers.map((a) => [a.id, a]))
-        watched.set(run, mine)
-        if (watch === undefined && !closed) look(WATCH_FIRST_MS)
-        // For the job's last step, which cancels them when this process
-        // dies before close() (a kill, an OOM, the job's timeout).
-        if (env['RUNNER_TEMP'])
-          await appendFile(path.join(env['RUNNER_TEMP'], RUNS_FILE), `${run}\n`)
-        // Let go while this dispatch was in flight: cancel() knew no run.
-        if (!closed) letGo(run, mine)
-      }
+    const id =
+      res.status === 200
+        ? ((await res.json()) as { workflow_run_id?: number }).workflow_run_id
+        : undefined
+    if (id === undefined) {
+      unbound = true
+      return
     }
+    workerRuns.add(String(id))
+    const run = `/repos/${repo}/actions/runs/${id}`
+    runs.push(run)
+    const mine = new Map(workers.map((a) => [a.id, a]))
+    watched.set(run, mine)
+    if (watch === undefined && !closed) look(WATCH_FIRST_MS)
+    // For the job's last step, which cancels them when this process
+    // dies before close() (a kill, an OOM, the job's timeout).
+    if (env['RUNNER_TEMP']) await appendFile(path.join(env['RUNNER_TEMP'], RUNS_FILE), `${run}\n`)
+    // Let go while this dispatch was in flight: cancel() knew no run.
+    if (!closed) letGo(run, mine)
   }
   return {
     // Loaded only by `vx dte init`: a run never needs it.
     init: async (setup) => (await import('./init.js')).githubInit(options, setup),
     keyless: true,
+    workerRuns: () => (unbound ? undefined : workerRuns),
     report(w) {
       warn = w
     },
@@ -318,6 +328,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
           workers.set(id, worker(id, id.slice(0, id.lastIndexOf('#'))))
         runs.push(run)
         watched.set(run, workers)
+        workerRuns.add(run.slice(run.lastIndexOf('/') + 1))
       }
       if (watched.size > 0 && watch === undefined) look(WATCH_FIRST_MS)
     },

@@ -58,7 +58,10 @@ the initiator.
   `join` carries an OIDC token whose audience is
   `vx-dte:<base64url SHA-256 of "join\0<run>\0<message 1>">`; the
   orchestrator's `hello` one for `"hello\0<run>\0<handshake hash>"`. Each
-  side checks the other's as a token of the same `repository_id`.
+  side checks the other's as a token of the same `repository_id`; with
+  `github()`, the orchestrator also checks a worker's `run_id` is a
+  workflow run it dispatched, since the run's id is a dispatch input
+  anyone who reads the repository's Actions sees.
 
 | Who           | `info` / `body`                                         |
 | ------------- | ------------------------------------------------------- |
@@ -390,9 +393,10 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
 
-# The image needs Bun; a job adds git if it lacks it.
+# The image needs Bun; a job adds git if it lacks it. By digest: a tag
+# can move under the same name.
 default:
-  image: oven/bun:1.4
+  image: oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d
 
 vx:
   rules:
@@ -486,7 +490,7 @@ use your own instead.
   task, once per worker, ready before it, and stops when the worker leaves;
   the orchestrator never starts it, and a worker no dependant reaches
   never does (2026-10-22).
-- A task whose key folds a runtime probe (`inputs.runtime`, such as
+- A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path
   under the worker's checkout root reads as the same path under this
@@ -550,7 +554,7 @@ use your own instead.
   tree, or the same commit with a tracked file changed, such as by a
   prepare step) is refused. Both sides read their tracked files as they
   are, so the same change on both is the same tree.
-- A task whose key folds a file the run's commit lacks (untracked, or
+- A task whose key hashes a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
   A dependency's declared output is not one: its worker restores it first.
@@ -844,7 +848,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   `VX_DTE_WORKER` (its name). It is
   described only by the cores and memory its machine reports. It exits 0
   when the run ended before it joined.
-- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn) }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset.
+- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset; `keyless` workers prove themselves by GitHub OIDC, and `workerRuns` names the workflow runs whose jobs alone may join as them (`undefined`: any job of the repository).
   `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env }`,
   with `memory` in bytes and `max` its size's (`Infinity` uncapped),
   where `id` is the worker's name (`small#2`, numbered within its size), `commit` the
@@ -859,7 +863,8 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   `{ workflow?, env? }`: `workflow` defaults to `vx-worker.yml`; `env`
   is variables every worker gets (one-line strings), sent as the
   dispatch's `env` input only when set, which `vx dte init`'s workflow
-  exports. Its workers are `keyless`. It
+  exports. Its workers are `keyless`, and only jobs of the workflow runs
+  it dispatched join as them. It
   needs `GITHUB_TOKEN` with `actions: write`. See [On GitHub](#on-github).
 - `gitlab(options?: GitlabOptions)` triggers a pipeline of the project's
   `.gitlab-ci.yml` per wave and size, with `CI_JOB_TOKEN`. `GitlabOptions` is

@@ -236,7 +236,8 @@ it('gitlab() jobs add git to an image that lacks it, as oven/bun does', async ()
       tasks: { main: '', change: '' },
     })
   ).files['.gitlab-ci.yml']!
-  expect(ci).toContain('  image: oven/bun:1.4\n')
+  // By digest: a tag is its publisher's to move (oven/bun's moved on 2026-10-22).
+  expect(ci).toMatch(/\n {2}image: oven\/bun:1\.4\.4@sha256:[0-9a-f]{64}\n/)
   const git =
     '    - command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)\n'
   expect(ci).toContain(
