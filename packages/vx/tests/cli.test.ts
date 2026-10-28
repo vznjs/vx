@@ -2230,6 +2230,23 @@ describe('--continue parsing', () => {
   })
 })
 
+describe('--dry parsing', () => {
+  it('a format written with a space is refused with the = form, not read as a task', () => {
+    // `vx run build --dry json` ran with `json` as a second task name and
+    // failed with "no projects declare task(s): json" and a hint to re-lock.
+    for (const fmt of ['text', 'json'] as const) {
+      expect(parseRunArgs(['build', '--dry', fmt]).error).toBe(
+        `--dry takes its format with '=': --dry=${fmt}`,
+      )
+    }
+    // A task name after a bare --dry is still a task name.
+    const ok = parseRunArgs(['build', '--dry', 'test'])
+    expect(ok.error).toBeUndefined()
+    expect(ok.dry).toBe('text')
+    expect(ok.tasks).toEqual(['build', 'test'])
+  })
+})
+
 describe('--cache-download accepts exactly its three modes', () => {
   it('names each one, in both spellings', () => {
     // `none` had no row: the enum guard lists it, and dropping that member
