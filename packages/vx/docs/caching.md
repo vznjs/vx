@@ -433,10 +433,9 @@ On a hit:
    output that blocks a rename (a file where the entry needs a directory,
    or the reverse) goes before. Turbo also restores in place; Nx deletes
    and copies each file, and a reader meets a missing or short file.
-4. Captured stdout is replayed to the live terminal via the logger —
-   the framed block looks like a fresh run. (stderr is not cached —
-   only successful runs are cached and their stderr is near-always
-   empty; live runs still stream stderr normally.)
+4. The captured output is replayed to the live terminal via the
+   logger — stdout and stderr, each on its own stream, in the order the
+   task wrote them — so the framed block looks like a fresh run.
 5. The task is marked `cache-hit` (or `cache-hit-remote` when the
    `LayeredCache` hydrated from the remote layer this run);
    `durationMs` is the wallclock for the restore op, not the original
