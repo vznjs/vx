@@ -438,6 +438,14 @@ describe('parseWhyArgs', () => {
     expect(parseWhyArgs(['a', 'b']).error).toBe('unexpected argument: b (see `vx why --help`)')
   })
 
+  it('--run takes no flag as its run id', () => {
+    // `vx why build --run --format json` read `--format` as the run id
+    // and `json` as an extra positional.
+    expect(parseWhyArgs(['build', '--run', '--format', 'json']).error).toBe(
+      '--run requires a run id (`vx last --list` shows them) (see `vx why --help`)',
+    )
+  })
+
   it.each([
     ['--run', '--run requires a run id (`vx last --list` shows them) (see `vx why --help`)'],
     ['--format', '--format requires a value: pretty or json (see `vx why --help`)'],
