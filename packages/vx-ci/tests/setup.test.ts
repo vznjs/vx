@@ -68,7 +68,7 @@ it('installs from apt by sudo, keeps the packages and says it fetched them', asy
 })
 
 it('installs the kept packages with no index fetch, as root without sudo', async () => {
-  const m = machine({ bins: ['apt-get'], root: true })
+  const m = machine({ bins: ['apt-get', 'dpkg'], root: true })
   for (const p of KEPT) writeFileSync(path.join(m.debs, `${p}.deb`), '')
   expect(await m.go()).toBe(0)
   const [dpkg, ...rest] = m.ran
@@ -82,7 +82,7 @@ it('installs the kept packages with no index fetch, as root without sudo', async
 // image left no socat.deb, and on an image without it setup said the
 // sandbox runs while socat stayed missing.
 it('fetches anew when the kept packages leave a binary missing', async () => {
-  const m = machine({ bins: ['apt-get'], root: true })
+  const m = machine({ bins: ['apt-get', 'dpkg'], root: true })
   writeFileSync(path.join(m.debs, 'bubblewrap.deb'), '')
   expect(await m.go()).toBe(0)
   expect(m.ran.slice(0, 2)).toEqual([
@@ -93,7 +93,7 @@ it('fetches anew when the kept packages leave a binary missing', async () => {
 })
 
 it('fetches anew when the kept packages do not install', async () => {
-  const m = machine({ bins: ['apt-get'], dpkg: 1 })
+  const m = machine({ bins: ['apt-get', 'dpkg'], dpkg: 1 })
   writeFileSync(path.join(m.debs, 'bubblewrap.deb'), '')
   await m.go()
   expect(m.ran.slice(0, 2)).toEqual([
@@ -114,6 +114,15 @@ it('git ignores the kept packages, so no task keys them', async () => {
 it('an Alpine job installs by apk', async () => {
   const m = machine({ bins: ['apk'], root: true })
   await m.go()
+  expect(m.ran[0]).toBe('apk add --no-cache bubblewrap socat strace ripgrep')
+})
+
+// A cache a Debian job saved restores its debs on an Alpine job, which
+// has no dpkg: spawning it threw, and setup crashed before apk ran.
+it('an Alpine job skips kept debs it has no dpkg to install', async () => {
+  const m = machine({ bins: ['apk'], root: true })
+  writeFileSync(path.join(m.debs, 'bubblewrap.deb'), '')
+  expect(await m.go()).toBe(0)
   expect(m.ran[0]).toBe('apk add --no-cache bubblewrap socat strace ripgrep')
 })
 
