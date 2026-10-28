@@ -76,6 +76,7 @@ What a run that writes a remote keeps of itself (`docs/modules/plugin.md`
 § Run report and run bytes): `writesRunStore(remotes)` says whether any
 remote takes the run's writes, `runEntryName(runId, taskId, 'log' | 'outputs')`
 names an entry, `putRunEntry(remotes, scope, name, bytes)` writes it to
-each writing remote once, and `packRunOutputs(root, paths)` makes the plain
+each writing remote once (a remote that fails it is said, as a remote
+cache fault is, and the others still keep it), and `packRunOutputs(root, paths)` makes the plain
 ustar of a failed task's outputs. Keys are `xxh3('vx-run\0' + name)`,
 scoped as tasks are; `getRun` reads them. Never the local store.
