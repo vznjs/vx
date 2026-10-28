@@ -1801,6 +1801,7 @@ async function unresolvedHint(prepared: {
   hintProjects: ReadonlyMap<string, ProjectEntry>
   declaredElsewhere: readonly string[]
   anyProjectConfig: boolean
+  unlockedConfig: () => string | undefined
 }): Promise<string> {
   const elsewhere = elsewhereHint(prepared.declaredElsewhere)
   const near = didYouMean(
@@ -1818,11 +1819,17 @@ async function unresolvedHint(prepared: {
 
 /**
  * The first-run case, told apart from a typo: no project in the workspace
- * has a `vx.config.*` at all, so no name could have resolved. Reached only
- * on the error path.
+ * has a `vx.config.*` at all, so no name could have resolved. A config
+ * written after the lock is no first run: its fix is `vx lock`. Reached
+ * only on the error path.
  */
-async function initHint(prepared: { anyProjectConfig: boolean }): Promise<string> {
+async function initHint(prepared: {
+  anyProjectConfig: boolean
+  unlockedConfig: () => string | undefined
+}): Promise<string> {
   if (prepared.anyProjectConfig) return ''
+  const unlocked = prepared.unlockedConfig()
+  if (unlocked !== undefined) return ` ${unlocked} is not in the lock yet — run \`vx lock\`.`
   return ' No directory holds a vx.config — run `vx init` to write them, then `vx lock`.'
 }
 
