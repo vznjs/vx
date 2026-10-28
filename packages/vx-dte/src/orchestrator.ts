@@ -1054,14 +1054,22 @@ export class Orchestrator {
     // upload): sent again from this machine, the task runs again. Taken as
     // the task's failure, it failed every run, the remote saying it held the
     // key (2026-10-25).
-    if (head.unread !== undefined && (await this.resend(head.unread)) && a.busy.get(task) === job) {
-      a.started.delete(task)
-      const again = this.retry(a, job, `could not read ${head.unread.join(', ')}`)
-      if (again !== undefined) {
-        this.queue.unshift(again)
-        this.pumpSoon()
+    // Ended there, it is in no `held` again: a lease running on through a
+    // slow resend called its worker faulty and gave the task to another.
+    delete job.leaseUntil
+    if (head.unread !== undefined) {
+      const sent = await this.resend(head.unread)
+      // Its worker was lost meanwhile: the task went back to the queue.
+      if (a.busy.get(task) !== job) return
+      if (sent) {
+        a.started.delete(task)
+        const again = this.retry(a, job, `could not read ${head.unread.join(', ')}`)
+        if (again !== undefined) {
+          this.queue.unshift(again)
+          this.pumpSoon()
+        }
+        return
       }
-      return
     }
     const endAt = performance.now()
     this.traceTask(a, job, head, endAt)

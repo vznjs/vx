@@ -1810,6 +1810,71 @@ it('sends a dependency a worker could not read over the remotes’ copy, and the
   }
 })
 
+// A worker ended its task and held it no more while this machine sent a
+// dependency it could not read again, longer than a lease: the lease
+// ending meanwhile called the worker faulty and gave the task to another.
+for (const sent of [true, false])
+  it(`a task ended while its dependency is sent again keeps no lease (${sent ? 'sent' : 'not sent'})`, async () => {
+    const beat = 300
+    const faults: string[] = []
+    const h = await harness(new Map([node('t')]), undefined, beat, undefined, undefined, {
+      faulted: () => faults.push('faulted'),
+    })
+    // Past the lease of 3 heartbeats.
+    h.store.artifacts.resend = async () => (await Bun.sleep(4 * beat), sent)
+    try {
+      const a = await h.worker(1)
+      await Bun.sleep(50)
+      const ran = h.o.execute(h.req('t'))
+      expect(await a.batches()).toEqual([['t']])
+      await a.begin('t')
+      const b = await h.worker(1)
+      await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
+      const until = performance.now() + 6 * beat
+      const toB: string[] = []
+      while (performance.now() < until)
+        for (const m of await b.poll()) toB.push((m.body as { type: string }).type)
+      expect(toB.filter((t) => t === 'batch')).toEqual([])
+      expect(faults).toEqual([])
+      if (sent) expect(await a.batches()).toEqual([['t']])
+      else expect((await ran).exitCode).toBe(1)
+    } finally {
+      await h.stop()
+    }
+  })
+
+// Its worker lost meanwhile, the task went back to the queue, and the end
+// that waited on the resend still resolved it: it ran again on another
+// worker for a run that had moved on.
+it('a task whose worker is lost while its dependency is sent again ends once', async () => {
+  const h = await harness(new Map([node('t')]))
+  let sending!: () => void
+  const sent = new Promise<void>((r) => (sending = r))
+  h.store.artifacts.resend = async () => (await sent, false)
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    let ends = 0
+    const ran = h.o.execute(h.req('t')).then((r) => (ends++, r))
+    expect(await a.batches()).toEqual([['t']])
+    await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
+    await Bun.sleep(100)
+    await a.leave()
+    for (let i = 0; i < 50 && h.o.where('t') === undefined; i++) await Bun.sleep(20)
+    expect(h.o.where('t')).toBeNull()
+    sending()
+    await Bun.sleep(100)
+    expect(ends).toBe(0)
+    expect(h.o.where('t')).toBeNull()
+    const b = await h.worker(1)
+    expect(await b.batches()).toEqual([['t']])
+    await b.finish('t', b.orders[0]!.runKey)
+    expect((await ran).exitCode).toBe(0)
+  } finally {
+    await h.stop()
+  }
+})
+
 // `vx watch` runs again under one run id: its next run sent a task under
 // the last run's run key, which a remote holds the first bytes of
 // (2026-10-24).
