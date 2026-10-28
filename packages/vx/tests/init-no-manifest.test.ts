@@ -237,7 +237,9 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
       await next('{"name":"r","private":true,"workspaces":["packages/*"]}'),
       await next('{"name":"r"}', ['pnpm-workspace.yaml', 'packages:\n  - packages/*\n']),
       await next('{"name":"r","scripts":{}}'),
-    ]).toEqual([mapped, mapped, mapped, declare])
+      // A byte-order mark, which npm strips: JSON.parse threw on it.
+      await next('﻿{"name":"r","scripts":{"build":"tsc"}}'),
+    ]).toEqual([mapped, mapped, mapped, declare, mapped])
   })
 })
 

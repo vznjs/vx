@@ -450,7 +450,8 @@ const FIELDS = ['devDependencies', 'dependencies', 'optionalDependencies'] as co
 
 function readJson(file: string): Record<string, unknown> | null {
   try {
-    const v: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    // A byte-order mark is stripped, as npm strips it.
+    const v: unknown = JSON.parse(readFileSync(file, 'utf8').replace(/^﻿/, ''))
     return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
   } catch {
     return null

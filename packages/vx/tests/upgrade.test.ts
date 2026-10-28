@@ -644,6 +644,17 @@ describe('managedInstall', () => {
     }
   })
 
+  it('reads a package.json that opens with a byte-order mark, as npm does', async () => {
+    const root = await tree({ 'package.json': `﻿${lists('dependencies')}`, 'bun.lock': '' })
+    expect(managedInstall(path.join(root, BIN), root)).toEqual({
+      manager: 'bun',
+      scope: 'project',
+      cwd: root,
+      field: 'dependencies',
+      plugins: [],
+    } as never)
+  })
+
   it('a hoisted workspace finds the member that lists vx from cwd; the root adds with --workspace-root', async () => {
     const root = await tree({
       'package.json': '{}',

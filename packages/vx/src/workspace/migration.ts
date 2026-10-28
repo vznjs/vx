@@ -781,7 +781,10 @@ function ownConfigNamed(
 
 function readManifest(dir: string): { type?: unknown } | undefined {
   try {
-    return JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as { type?: unknown }
+    // A byte-order mark is stripped, as npm strips it.
+    return JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8').replace(/^﻿/, '')) as {
+      type?: unknown
+    }
   } catch {
     return undefined
   }

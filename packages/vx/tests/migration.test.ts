@@ -380,6 +380,15 @@ describe('a written config passes the repo’s own checks', () => {
     expect(stdout).toContain('  files     cjs/vx.config.mts\n            esm/vx.config.ts\n')
   })
 
+  it('a package.json read from disk opens with a byte-order mark: its type still counts', async () => {
+    const { packageJson: _, ...esm } = pkg('esm', {})
+    writeFileSync(path.join(esm.dir, 'package.json'), '﻿{"name":"esm","type":"module"}')
+    expect(await apply(plan([['esm', []]]), { metas: [esm] })).toBe(0)
+    expect(
+      ['esm/vx.config.ts', 'esm/vx.config.mts'].map((f) => existsSync(path.join(root, f))),
+    ).toEqual([true, false])
+  })
+
   // medusa: the mapping takes the config back as `!vx.config.ts`, and a
   // `*` output then covered the `.mts` written: `vx lock` refused 80 of
   // 84 configs (Growth, 2026-10-14).
