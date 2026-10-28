@@ -10,7 +10,8 @@ history, not a log. It speaks the [vx-history protocol](./PROTOCOL.md)
 
 - **Bun**, with a SQLite file.
 - **Cloudflare Workers**, with D1. It fits the free plan: an upload is one
-  statement, a row write per task; a query one read.
+  statement per 2 MB of reports, a row write per task; a query one read
+  per 2 MB of hashes.
 - **Docker**, the Bun server in an image.
 
 `vxHistory()` ([`@vzn/vx-history`](https://github.com/vznjs/vx/tree/main/packages/vx-history))
@@ -39,7 +40,8 @@ ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' bun packages
 ```
 
 `TIMING_DAYS` (default 30) is how long a task's row outlives its last
-report; the first upload of each day sweeps.
+report; the first upload of each day sweeps, whichever node or Workers
+isolate takes it.
 
 ## With Docker
 
