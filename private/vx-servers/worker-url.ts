@@ -54,7 +54,10 @@ export interface PreviewDeps {
   now: () => number
 }
 
-const WAIT_MS = 5 * 60_000
+// Workers Builds queues builds when many PRs push at once: one began
+// 8 min after its job asked (2026-10-28). 12 min fits that inside the
+// job's 25 min, leaving the run its time.
+const WAIT_MS = 12 * 60_000
 const POLL_MS = 5_000
 
 /**
