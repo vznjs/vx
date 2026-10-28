@@ -2480,6 +2480,7 @@ A defect in vx; stderr carries the stack. Report it with that stack at
 https://github.com/vznjs/vx/issues.
 
 A plugin can give its refusal a code: `new UserError(message, 'MY_CODE')`.
+The code holds whether a hook, `setup` or a verb of the plugin throws it.
 
 **Streams.** A verb whose stdout is a product (a `--format json`
 document, `--dry` / `--dry=json`, a completion
