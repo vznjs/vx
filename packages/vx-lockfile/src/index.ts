@@ -599,9 +599,10 @@ async function staleness(
  * (D-39). Its name is the
  * manifest's `name` when no other importer shares it (core refuses two
  * projects of one name, so a shared one names neither); its `deps` the
- * importers it installs, and its peers on importers. A peer orders a build
- * unless it would close a cycle through the order edges, then it is
- * `reach` only, in name order so the edge kept is stable.
+ * importers it installs, its peers on importers, and the importers the root
+ * installs. A peer or root-installed importer orders a build unless it
+ * would close a cycle through the order edges, then it is `reach` only, in
+ * name order so the edge kept is stable.
  */
 async function discovered(
   root: string,
@@ -633,12 +634,17 @@ async function discovered(
     const [x, y] = [label(a), label(b)]
     return x < y ? -1 : x > y ? 1 : 0
   }
+  // Installed at the root `node_modules`, so every project resolves it
+  // whatever its own manifest declares (Turbo #8364, #8465).
+  const rootLinked = Object.values(importers.get('.')?.deps ?? {}).filter(
+    (t) => t !== '.' && manifests.has(t),
+  )
   const order = new Map<string, Set<string>>()
   const peers = new Map<string, Set<string>>()
   for (const [i, links] of importers) {
     if (!manifests.has(i)) continue
     const own = new Set<string>()
-    const peer = new Set<string>()
+    const peer = new Set<string>(i === '.' ? [] : rootLinked.filter((t) => t !== i))
     const manifestPeers = peersInManifest ? manifestPeerNames(manifests.get(i)!) : undefined
     for (const [name, target] of Object.entries(links.deps)) {
       if (manifests.has(target)) (manifestPeers?.has(name) === true ? peer : own).add(target)
