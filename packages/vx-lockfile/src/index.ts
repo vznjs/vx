@@ -69,6 +69,8 @@ interface Manager {
   /** Each importer's dependency names the file records, whatever they resolve to. */
   readonly recorded: (text: string) => ReadonlyMap<string, ReadonlyMap<string, unknown>>
   readonly extraFiles?: (text: string) => readonly string[]
+  /** The manager's install skips a workspace manifest with no `name`, so no lockfile lists it. */
+  readonly namedWorkspacesOnly?: true
   /** Root files no lockfile records that lay the install out: folded whole into every task. */
   readonly settings: readonly string[]
   /**
@@ -132,6 +134,8 @@ const MANAGERS = {
     digest: (t, files) => bunLock().importerDigests(bunParse(t), files),
     importers: (t) => bunLock().importerLinks(bunParse(t)),
     recorded: (t) => bunParse(t).workspaces,
+    // Bun 1.4 skips a nameless workspace at install, saying nothing.
+    namedWorkspacesOnly: true,
     extraFiles: (t) => [...bunLock().patchFiles(t), ...bunLock().fileDeps(bunParse(t))],
     settings: ['bunfig.toml', '.npmrc'],
   },
@@ -320,9 +324,18 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     async discover(ctx) {
       const manifest = manifestReader(ctx.workspaceRoot)
       // The staleness check's walk overlaps the lockfile read.
-      const dirs = workspaceGlobs(ctx.workspaceRoot, manager.name, manifest).then((globs) =>
-        workspaceDirs(ctx.workspaceRoot, globs),
-      )
+      const dirs = workspaceGlobs(ctx.workspaceRoot, manager.name, manifest)
+        .then((globs) => workspaceDirs(ctx.workspaceRoot, globs))
+        .then(async (found) => {
+          if (manager.namedWorkspacesOnly !== true) return found
+          const named = await Promise.all(
+            found.map(
+              async (d) =>
+                typeof (await manifest(path.join(ctx.workspaceRoot, d)))?.['name'] === 'string',
+            ),
+          )
+          return found.filter((_, i) => named[i])
+        })
       dirs.catch(() => {})
       const read = await readImporters(ctx, manifest)
       if (read === undefined) {

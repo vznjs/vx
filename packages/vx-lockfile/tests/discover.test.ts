@@ -357,6 +357,18 @@ describe('discover', () => {
       expect(await discover(c.make(), ok)).toEqual(EXPECTED)
     })
 
+    if (c.name === 'bun') {
+      it('bun(): a workspace manifest with no name is no workspace', async () => {
+        // Bun skips it at install and bun.lock never lists it (probed,
+        // bun 1.4.4), so the refusal's `bun install` could never clear.
+        await writeFile(path.join(root, c.file), c.text)
+        const metas = await projects({ root: rootPkg })
+        await mkdir(path.join(root, 'packages/z'), { recursive: true })
+        await writeFile(path.join(root, 'packages/z/package.json'), '{"private":true}')
+        expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+      })
+    }
+
     it(`${c.name}(): the names the lockfile records are read once per content`, async () => {
       // Parsing them was ~2 ms of every warm run on solid; only the
       // lockfile text decides them, so they are kept under its hash.
