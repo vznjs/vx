@@ -115,6 +115,29 @@ snapshots:
       2,
     )}\n`,
   },
+  // A `!` glob in the root's workspaces matched every path, so the linked
+  // directory read as a workspace: a project, its content in no key.
+  'npm !glob': {
+    file: 'package-lock.json',
+    text: `${JSON.stringify(
+      {
+        name: 'r',
+        lockfileVersion: 3,
+        requires: true,
+        packages: {
+          '': { name: 'r', workspaces: ['packages/*', '!**/test/**'] },
+          'node_modules/dep': { resolved: 'vendor/dep', link: true },
+          'node_modules/lib': { resolved: 'packages/lib', link: true },
+          'node_modules/other': { resolved: 'packages/other', link: true },
+          'packages/lib': { version: '1.0.0', dependencies: { dep: 'file:../../vendor/dep' } },
+          'packages/other': { version: '1.0.0' },
+          'vendor/dep': { version: '1.0.0' },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  },
   // pnpm links a `link:` directory that is no importer; the lockfile
   // records only its path.
   'pnpm link:': {
@@ -210,6 +233,7 @@ for (const row of [
   'pnpm',
   'bun',
   'npm',
+  'npm !glob',
   'pnpm link:',
   'yarn portal:',
   'yarn link:',
