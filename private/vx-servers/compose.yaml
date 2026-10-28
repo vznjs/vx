@@ -16,7 +16,7 @@ services:
     build: { context: ../.., dockerfile: packages/vx-cache-server/Dockerfile }
     environment:
       - ALLOW
-      - AUDIENCE
+      - AUDIENCE=${CACHE_AUDIENCE:-}
       - READ_ACCESS
       - S3_BUCKET
       - S3_ENDPOINT
@@ -31,7 +31,7 @@ services:
     build: { context: ../.., dockerfile: packages/vx-history-server/Dockerfile }
     environment:
       - ALLOW
-      - AUDIENCE
+      - AUDIENCE=${HISTORY_AUDIENCE:-}
       - READ_ACCESS
       - TIMING_DAYS
     volumes: ['history:/data']

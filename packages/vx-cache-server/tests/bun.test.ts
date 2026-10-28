@@ -168,6 +168,19 @@ it('names ALLOW when it cannot be read', () => {
   ])
 })
 
+// Unset, the audience was the origin the request named, its Host header:
+// a token minted for another service was taken by sending its host.
+it('refuses to start without AUDIENCE', () => {
+  const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+    env: { ...process.env, S3_BUCKET: 'b', ALLOW: '', AUDIENCE: '' },
+    stderr: 'pipe',
+  })
+  expect([cli.exitCode, cli.stderr.toString().split('\n')[0]]).toEqual([
+    2,
+    'set AUDIENCE: the aud a CI token names, the URL clients reach this server at',
+  ])
+})
+
 it('refuses an empty --port: Number of it is 0, a random port', () => {
   const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', ''], {
     env: { ...process.env, S3_BUCKET: 'b', ALLOW: '' },
