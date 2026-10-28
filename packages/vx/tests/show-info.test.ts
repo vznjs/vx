@@ -807,6 +807,19 @@ describe('vx info — the rendered rows', () => {
     sandbox: { available: true, reason: '', declared: 1, untraced: null },
   }
 
+  it('one cache hit is a hit, not hits', () => {
+    const row = (f: Partial<InfoFacts>): string | undefined =>
+      renderInfo({ ...healthy, ...f })
+        .split('\n')
+        .find((l) => l.startsWith('  task runs (24h)'))
+    expect(row({ runs24h: 1, hits24h: 1, restored24h: 0 })).toBe(
+      '  task runs (24h)   1 (1 cache hit: 1 up-to-date, 0 restored)',
+    )
+    expect(row({ runs24h: 1, hits24h: 0, restored24h: 0 })).toBe(
+      '  task runs (24h)   1 (0 cache hits)',
+    )
+  })
+
   it('names each setting a variable or the workspace changed, and where', () => {
     const out = renderInfo({
       ...healthy,
