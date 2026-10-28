@@ -104,8 +104,10 @@ export async function resolvePluginCommand(
   const declaredVerbs = new Set<string>()
   for (const plugin of ws.plugins) {
     for (const declared of Object.keys(plugin.commands ?? {})) declaredVerbs.add(declared)
-    const command = plugin.commands?.[verb]
-    if (command === undefined) continue
+    // Own keys only: `vx toString` found Object.prototype's and crashed.
+    const commands = plugin.commands
+    if (commands === undefined || !Object.hasOwn(commands, verb)) continue
+    const command = commands[verb]!
     return {
       plugin,
       command,
