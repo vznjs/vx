@@ -118,8 +118,8 @@ export interface SummaryStats {
   overMs?: number
   /** A run of groups only: their names, so `0 tasks` says why. */
   emptyGroups?: readonly string[]
-  /** Each finished task's cache bucket by its key and its id (its run bytes), so its remote traffic can move it. */
-  buckets?: ReadonlyMap<string, CacheBucket>
+  /** Each finished task's id and cache bucket by its key and its id (its run bytes), so its remote traffic can move it. */
+  buckets?: ReadonlyMap<string, TaskBucket>
 }
 
 /** The cache bar segment a finished task fills before its remote traffic is weighed. */
@@ -131,6 +131,12 @@ export type CacheBucket =
   | 'restoredRemote'
   | 'saved'
   | 'notSaved'
+
+/** A finished task's id and cache bucket, as `SummaryStats.buckets` holds them. */
+export interface TaskBucket {
+  task: string
+  bucket: CacheBucket
+}
 
 /** A finished task's own cache bucket; none for a group, a skip or an abort. */
 export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
@@ -155,7 +161,9 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
   }
 }
 
-type Buckets = Record<CacheBucket | 'uploaded' | 'uploading' | 'remoteFailed', number>
+type RemoteState = 'uploaded' | 'uploading' | 'remoteFailed'
+const REMOTE_RANK: Record<RemoteState, number> = { uploaded: 0, uploading: 1, remoteFailed: 2 }
+type Buckets = Record<CacheBucket | RemoteState, number>
 
 /**
  * The cache bar's segments, each task in one (2026-10-15). With layers
@@ -182,13 +190,20 @@ function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets
     remoteFailed: 0,
   }
   if (layers?.remote !== true || stats.buckets === undefined) return b
-  for (const [hash, k] of layers.traffic.keys) {
-    const from = stats.buckets.get(hash)
+  // A task's traffic may sit under its key (its entry) and its id (its run
+  // bytes): it moves once, to the strongest state of the two.
+  const moved = new Map<string, RemoteState>()
+  for (const [key, k] of layers.traffic.keys) {
+    const from = stats.buckets.get(key)
     // Still running: it counts once it ends.
     if (from === undefined) continue
-    b[from]--
-    b[k.failures.length > 0 ? 'remoteFailed' : k.uploading > 0 ? 'uploading' : 'uploaded']++
+    const state: RemoteState =
+      k.failures.length > 0 ? 'remoteFailed' : k.uploading > 0 ? 'uploading' : 'uploaded'
+    const prior = moved.get(from.task)
+    if (prior === undefined) b[from.bucket]--
+    if (prior === undefined || REMOTE_RANK[state] > REMOTE_RANK[prior]) moved.set(from.task, state)
   }
+  for (const state of moved.values()) b[state]++
   return b
 }
 
@@ -664,13 +679,14 @@ export function formatRunSummary(
 }
 
 /** Each finished task's cache bucket by its key and by its id. */
-function bucketsOf(outcomes: readonly TaskOutcome[]): Map<string, CacheBucket> {
-  const out = new Map<string, CacheBucket>()
+function bucketsOf(outcomes: readonly TaskOutcome[]): Map<string, TaskBucket> {
+  const out = new Map<string, TaskBucket>()
   for (const o of outcomes) {
     const bucket = cacheBucketOf(o)
     if (bucket === undefined) continue
-    if (o.hash !== undefined) out.set(o.hash, bucket)
-    out.set(o.node.id, bucket)
+    const entry = { task: o.node.id, bucket }
+    if (o.hash !== undefined) out.set(o.hash, entry)
+    out.set(o.node.id, entry)
   }
   return out
 }
