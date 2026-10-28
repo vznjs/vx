@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { errorCode, errorDocument, UserError, wantsJson } from '../src/util/index.js'
+import { LOCKFILE_VERSION } from '../src/workspace/index.js'
 import { docsIn } from './helpers/docs-pages.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
@@ -150,7 +151,7 @@ describe('a refusal under --format json', () => {
     const refused = (why: string): [number, string, string] => [
       1,
       `✗ vx lock  lock not written\n\n  ${why}\n`,
-      'VX_E_REFUSED',
+      'VX_E_LOCK',
     ]
     expect(said).toEqual({
       cycle: refused('dependsOn cycle: p#x -> p#y -> p#x — remove one edge of the loop'),
@@ -167,11 +168,46 @@ describe('a refusal under --format json', () => {
         expect.stringMatching(
           /^✗ vx lock  lock not written\n\n  packages\/p\/vx\.config\.mjs:1:59\n/,
         ),
-        'VX_E_REFUSED',
+        'VX_E_LOCK',
       ],
     })
     // Two vx spawns per refused graph, one after another: a loaded CI
     // runner took past bun's 5 s default.
+  }, 30_000)
+
+  // An agent's next step for each is `vx lock`: one code says so, where
+  // VX_E_REFUSED named nothing to branch on (2026-10-28).
+  it('a missing, broken or stale lock is VX_E_LOCK', async () => {
+    const lockFile = path.join(root, '.vx', 'projects.lock.json')
+    Bun.spawnSync([process.execPath, REAL_BIN, 'lock'], { cwd: root, stderr: 'pipe' })
+    const kept = await Bun.file(lockFile).text()
+    // The real bin: vx-locked.ts would write the lock this test breaks.
+    const runWith = async (text: string | null): Promise<string> => {
+      if (text === null) await rm(lockFile, { force: true })
+      else await Bun.write(lockFile, text)
+      const p = Bun.spawnSync([process.execPath, REAL_BIN, 'run', 'build', '--all', '--dry=json'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(p.exitCode).toBe(1)
+      return (JSON.parse(p.stdout.toString()) as { error: { code: string } }).error.code
+    }
+    try {
+      expect({
+        none: await runWith(null),
+        notJson: await runWith('{'),
+        notObject: await runWith('[]'),
+        version: await runWith(JSON.stringify({ version: LOCKFILE_VERSION - 1, projects: {} })),
+      }).toEqual({
+        none: 'VX_E_LOCK',
+        notJson: 'VX_E_LOCK',
+        notObject: 'VX_E_LOCK',
+        version: 'VX_E_LOCK',
+      })
+    } finally {
+      await Bun.write(lockFile, kept)
+    }
   }, 30_000)
 
   it('every reading verb answers its refusals with a code too', async () => {
@@ -271,6 +307,15 @@ describe('every core code has a section that says what to do', () => {
   it('a heading per code the source names, and none it does not', () => {
     expect(thrown.size).toBeGreaterThan(10)
     expect(headed.toSorted()).toEqual([...thrown].toSorted())
+  })
+
+  // The schema an agent reads named 14 of 21 codes (2026-10-28).
+  it('schemas/error.json names every code', () => {
+    const schema = JSON.parse(
+      readFileSync(path.resolve(import.meta.dir, '..', 'schemas', 'error.json'), 'utf8'),
+    ) as { properties: { error: { properties: { code: { description: string } } } } }
+    const named = schema.properties.error.properties.code.description.match(/VX_E_[A-Z_]+/g)
+    expect(named?.toSorted()).toEqual(headed.toSorted())
   })
 
   it('the error document links the section; a plugin code links nothing', () => {

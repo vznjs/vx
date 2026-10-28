@@ -33,6 +33,7 @@ flowchart LR
 | `VX_E_CONFIG`       | A config that does not load                  |
 | `VX_E_CYCLE`        | The task graph has a cycle                   |
 | `VX_E_NO_WORKSPACE` | No workspace above the working directory     |
+| `VX_E_LOCK`         | No lock, or one this vx cannot read          |
 | `VX_E_REFUSED`      | Any other refusal                            |
 | `VX_E_INTERNAL`     | A bug in vx                                  |
 

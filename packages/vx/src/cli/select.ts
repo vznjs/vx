@@ -87,7 +87,7 @@ export async function workspaceGlobOwners(
   // "nothing affected" and exit 0 without ever reaching the run's own
   // refusal. The sweep reads each entry from the lock: it never evaluates.
   const lock = await readLockfile(root)
-  if (lock === null) throw new UserError(NO_LOCK)
+  if (lock === null) throw new UserError(NO_LOCK, 'VX_E_LOCK')
   const owners: string[] = []
   for (const meta of projects) {
     if (meta.configPath === null || meta.configPath === '') continue
