@@ -938,7 +938,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     try {
       next = await args.rediscover()
     } catch (err) {
-      sayCannot(`cannot re-read the workspace`, err)
+      // No lock is the cycle's own failure to say; said here too, it was two lines.
+      if (!(err instanceof Error && err.message === NO_LOCK))
+        sayCannot(`cannot re-read the workspace`, err)
       return
     }
     projectDirs = next.projects.map((p) => p.dir)
