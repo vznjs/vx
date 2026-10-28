@@ -249,7 +249,7 @@ describe('digest functions', () => {
       hash: createHash('sha1').update(data).digest('hex'),
       size_bytes: 1,
     })
-    expect(() => digestWith('VSO', data)).toThrow('@vzn/vx-reapi: unsupported digest function VSO')
+    expect(() => digestWith('VSO', data)).toThrow('unsupported digest function VSO')
     expect(hasherFor('VSO')).toBeUndefined()
   })
 

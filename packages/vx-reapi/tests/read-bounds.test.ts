@@ -100,7 +100,7 @@ const client = (compression: boolean): ReapiClient => {
   ;(c as unknown as { compression: boolean }).compression = compression
   return c
 }
-const past = `@vzn/vx-reapi: blob integrity failure for ${GOOD_DIGEST.hash.slice(0, 16)}…: served past its declared ${GOOD_DIGEST.size_bytes} bytes`
+const past = `blob integrity failure for ${GOOD_DIGEST.hash.slice(0, 16)}…: served past its declared ${GOOD_DIGEST.size_bytes} bytes`
 // Settled by hand: `expect(p).rejects` on a grpc-backed promise can sit
 // until the test's timeout (CLAUDE.md, item 827).
 const settle = (p: Promise<unknown>): Promise<string> =>

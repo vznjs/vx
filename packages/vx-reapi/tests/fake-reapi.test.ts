@@ -116,10 +116,10 @@ describe.if(CHUNKING_SUPPORTED)('the fake REAPI server, read by the real client'
         await outcome(true, '0', 13),
         await outcome(true, '', 14),
       ]).toEqual([
-        `reapi: short write for <h>: ${2 * 1024 * 1024 - 1}/${2 * 1024 * 1024}`,
-        `reapi: short write for <h>: -1/${2 * 1024 * 1024}`,
-        expect.stringMatching(/^reapi: short write for <h>: 0\/\d+$/),
-        expect.stringMatching(/^reapi: short write for <h>: 0\/\d+$/),
+        `short write for <h>: ${2 * 1024 * 1024 - 1}/${2 * 1024 * 1024}`,
+        `short write for <h>: -1/${2 * 1024 * 1024}`,
+        expect.stringMatching(/^short write for <h>: 0\/\d+$/),
+        expect.stringMatching(/^short write for <h>: 0\/\d+$/),
       ])
     } finally {
       fake.caps.compressors = []

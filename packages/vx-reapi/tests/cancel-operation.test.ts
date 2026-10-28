@@ -97,7 +97,7 @@ describe('a queue timeout cancels the operation', () => {
     const r = await queueOut(said)
     expect([r.name, r.cancelled.length]).toEqual(['ExecutorFallback', 1])
     expect(said).toHaveLength(1)
-    expect(said[0]).toStartWith("vx/reapi: cancelling pkg#gen's operation failed (")
+    expect(said[0]).toStartWith("[vx] vx-reapi: cancelling pkg#gen's operation failed (")
     expect(said[0]).toEndWith(') — it may still run on its worker')
   })
 })
