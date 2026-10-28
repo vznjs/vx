@@ -543,6 +543,24 @@ describe('config', () => {
       expect(() => vxCache(options as never)).toThrow(said)
   })
 
+  // A NaN, zero or negative deadline armed its abort at once: every request
+  // failed "no answer within NaN ms" and the cache read as a miss each time.
+  it('refuses a deadline it cannot wait on, naming the value', () => {
+    for (const [options, said] of [
+      [
+        { timeoutMs: Number.NaN },
+        'vxCache() option "timeoutMs" must be a positive number of ms, got NaN',
+      ],
+      [{ timeoutMs: 0 }, 'vxCache() option "timeoutMs" must be a positive number of ms, got 0'],
+      [
+        { uploadTimeoutMs: -1 },
+        'vxCache() option "uploadTimeoutMs" must be a positive number of ms, got -1',
+      ],
+    ] as const)
+      expect(() => vxCache({ ...NAMED, ...options })).toThrow(said)
+    expect(() => vxCache({ ...NAMED, timeoutMs: 1000, uploadTimeoutMs: 2000 })).not.toThrow()
+  })
+
   it('reads with no token from a public server, sends none, and uploads nothing', async () => {
     const srv = server(1 << 20, 'public')
     try {

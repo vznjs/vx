@@ -15,6 +15,7 @@ import {
   type PluginOptionKinds,
   refuseUnknownOptions,
   type RemoteCacheLayer,
+  UserError,
   type VxPlugin,
 } from '@vzn/vx'
 
@@ -622,6 +623,12 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
  */
 export function vxCache(options: VxCacheOptions): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
+  // A NaN, zero or negative deadline aborted every request as it began.
+  for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
+    const ms = options[name]
+    if (ms !== undefined && !(Number.isFinite(ms) && ms > 0))
+      throw new UserError(`vxCache() option "${name}" must be a positive number of ms, got ${ms}`)
+  }
   namedOf(options)
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
