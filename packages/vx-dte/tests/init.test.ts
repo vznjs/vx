@@ -344,6 +344,19 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     '✗ vx dte  unknown subcommand: bogus',
     '✗ vx dte  vx dte worker takes no arguments: --bogus',
   ])
+  // Each is a usage refusal, as core's are, for a reader of the JSON.
+  const code = (args: string[]) =>
+    JSON.parse(
+      Bun.spawnSync([process.execPath, CORE_BIN, 'dte', ...args, '--format=json'], {
+        cwd: root,
+        stderr: 'pipe',
+      }).stdout.toString(),
+    ).error.code
+  expect([code(['bogus']), code(['worker', '--bogus']), code(['init', '--x'])]).toEqual([
+    'VX_E_USAGE',
+    'VX_E_USAGE',
+    'VX_E_USAGE',
+  ])
 })
 
 it('a relay URL with no http(s) scheme is refused, named', async () => {

@@ -252,6 +252,15 @@ describe('vx-history plugin end to end', () => {
       })
       expect(bad.exitCode).not.toBe(0)
       expect(bad.stderr.toString()).toContain('unknown flag: --nope')
+      // A flag the verb does not take is a usage refusal, as core's are.
+      const badJson = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format=json', '--nope'],
+        cwd: root,
+      })
+      expect([badJson.exitCode, JSON.parse(badJson.stdout.toString()).error.code]).toEqual([
+        1,
+        'VX_E_USAGE',
+      ])
       // `vx completions` offers `--help` for every plugin verb; it was refused.
       for (const flag of ['--help', '-h']) {
         const help = Bun.spawnSync({
