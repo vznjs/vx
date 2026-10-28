@@ -34,8 +34,10 @@ class DirRemote implements RemoteCacheLayer {
 
 export function dirCache(dir: string): VxPlugin {
   return definePlugin(import.meta, {
-    cache() {
-      return new DirRemote(dir)
+    cache(ctx) {
+      // From the root, not the cwd: a run in a project's directory reads
+      // the same store as one at the root.
+      return new DirRemote(path.resolve(ctx.workspaceRoot, dir))
     },
   })
 }

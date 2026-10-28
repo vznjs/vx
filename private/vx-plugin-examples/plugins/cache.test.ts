@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { run, type Logger } from '@vzn/vx'
+import { dirCache } from './cache.ts'
 
 let root: string
 beforeEach(async () => {
@@ -83,3 +84,10 @@ it('a run on an empty local cache restores from the directory', async () => {
   expect(second.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
   expect(await Bun.file(path.join(dir, 'dist', 'out.txt')).text()).toBe('built\n')
 }, 20_000)
+
+// Read against the process's cwd, a relative directory was another store
+// for a run started in a project's directory than for one at the root.
+it('reads a relative directory from the workspace root', async () => {
+  const layer = await dirCache('remote').cache!({ workspaceRoot: root } as never)
+  expect(layer?.endpoint).toBe(path.join(root, 'remote'))
+})
