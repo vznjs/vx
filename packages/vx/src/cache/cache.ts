@@ -2426,6 +2426,11 @@ export class Cache implements CacheLayer {
     const pinned = this.tempPath(hash)
     try {
       linkSync(this.tarPath(hash), pinned)
+      // The link shares the artifact's mtime, as adopt's does: an artifact
+      // saved over an hour ago made the pin a crashed save's temp to another
+      // process's orphan sweep, which took it mid-upload.
+      const now = new Date()
+      utimesSync(pinned, now, now)
     } catch (err) {
       const tree = this.treePath(hash)
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT' || !existsSync(tree)) throw err

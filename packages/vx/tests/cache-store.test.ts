@@ -247,3 +247,23 @@ describe('a tree no row names', () => {
     cache.close()
   })
 })
+
+it("a pinned upload body survives another process's prune that keeps the entry", async () => {
+  // The pin is a hard link, so it shares the artifact's mtime: an artifact
+  // saved hours ago made it look like a crashed save's temp, and another
+  // process's orphan sweep took it mid-upload (DTE share and resend).
+  const { cache } = await saved({ embeddings: 0, decompress: false }, LARGE)
+  const dir = path.join(root, 'c')
+  const old = new Date(Date.now() - 2 * 60 * 60 * 1000)
+  await utimes(path.join(dir, `${HASH}.tar.zst`), old, old)
+  const pinned = await cache.pinArtifact(HASH)
+  const other = new Cache(dir, undefined, undefined, undefined, undefined, undefined, {
+    embeddings: 0,
+    decompress: false,
+  })
+  await other.prune({ maxBytes: 1024 ** 3 })
+  other.close()
+  expect((await pinned.body.bytes()).byteLength).toBeGreaterThan(0)
+  await pinned.release()
+  cache.close()
+})
