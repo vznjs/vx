@@ -416,6 +416,7 @@ function resolveWorkspaceFiles(args: {
       args.workspaceRoot,
       reach,
       (rel) => accept(rel) && !excludedByDeclaration(rel) && !own(rel),
+      args.gitFilesCache?.vxDirs,
     )
     return extra.length === 0 ? kept : mergeSorted(kept, extra)
   })
@@ -1514,16 +1515,21 @@ function outright(reach: { prefixes: readonly string[]; literals: readonly strin
  * a generated client (`node_modules/.prisma/client/**`) too; skipping
  * installs here folded such an entry to nothing, silently. lstat, not
  * `exists()`: that answers false for a directory. Never memoized: a
- * dependency writes these mid-run.
+ * dependency writes these mid-run. Nothing under `vxDirs` (the run's cache
+ * directory) is read: an ignored prefix over a `cache.dir` there walked the
+ * index each run writes, and the task never hit.
  */
 function ignoredInputs(
   root: string,
   reach: readonly string[],
   accept: (rel: string) => boolean,
+  vxDirs: readonly string[] = [],
 ): string[] {
   const found = new Set<string>()
+  const vxOwn = (abs: string) => vxDirs.some((d) => abs === d || abs.startsWith(d + path.sep))
   for (const entry of reach) {
     const abs = path.resolve(root, entry)
+    if (vxOwn(abs)) continue
     const st = lstatSync(abs, { throwIfNoEntry: false })
     if (st === undefined) continue
     if (!st.isDirectory()) {
@@ -1539,7 +1545,7 @@ function ignoredInputs(
       const full = `${entry}/${rel.split(path.sep).join('/')}`
       if (!accept(full)) continue
       const file = path.join(abs, rel)
-      if (isInputOnDisk(file)) found.add(file)
+      if (!vxOwn(file) && isInputOnDisk(file)) found.add(file)
     }
   }
   return [...found].sort()
@@ -1823,6 +1829,7 @@ async function resolveFiles(
           plan,
           nested,
           ownWsOutput,
+          args.gitFilesCache,
         ),
         listing: listingFor(args, gitFiles, plan, nested, ownWsOutput),
       }
@@ -1901,7 +1908,15 @@ async function resolveFiles(
   }
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
   return {
-    files: withIgnored(args.projectDir, resolved, reach, plan, nested, ownWsOutput),
+    files: withIgnored(
+      args.projectDir,
+      resolved,
+      reach,
+      plan,
+      nested,
+      ownWsOutput,
+      args.gitFilesCache,
+    ),
     listing: listingFor(args, gitFiles, plan, nested, ownWsOutput),
   }
 }
@@ -1914,12 +1929,14 @@ function withIgnored(
   plan: FilesPlan,
   nested: (rel: string) => boolean,
   ownWsOutput: (rel: string) => boolean,
+  cache: GitFilesCache | undefined,
 ): string[] {
   if (reach.length === 0) return [...resolved]
   const extra = ignoredInputs(
     projectDir,
     reach,
     (rel) => inPlan(plan, rel) && !nested(rel) && !ownWsOutput(rel),
+    cache?.vxDirs,
   )
   return extra.length === 0 ? [...resolved] : mergeSorted(resolved, extra)
 }

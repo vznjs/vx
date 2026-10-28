@@ -244,6 +244,12 @@ interface IgnoredListing {
 }
 
 export class GitFilesCache extends Map<string, readonly string[]> {
+  /**
+   * vx's own directories inside the workspace (the run's cache directory),
+   * spelled under the workspace root as the run spells it: no input, even
+   * where a glob walks an ignored prefix on disk.
+   */
+  vxDirs: readonly string[] = []
   private changed = new Map<string, string[]>()
   /**
    * Per-project trusted index OIDs: absolute path → git blob OID, for
