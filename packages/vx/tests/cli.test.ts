@@ -172,6 +172,16 @@ describe('cli run()', () => {
     })
   })
 
+  // `vx help run extra` printed run's help and exited 0: a word it takes
+  // no more of is refused, as `vx version extra` is.
+  it('`vx help <verb> <more>` refuses the extra word', async () => {
+    expect(await run(['help', 'run', 'extra'])).toBe(1)
+    expect({ stdout, stderr }).toEqual({
+      stdout: '',
+      stderr: noticed('vx help: unexpected argument: extra (see `vx help`)\n'),
+    })
+  })
+
   // Every argument error points at the verb's own help, which is only
   // useful because `vx <verb> --help` prints something (same day). A verb
   // that grows a new parser and forgets the pointer fails here.
