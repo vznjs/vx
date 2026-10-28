@@ -997,7 +997,9 @@ hands off to a Node launcher. On Node 22.15 or later that one
 replaces itself with the binary (`process.execve`) too. On older Node it runs the binary and waits for it:
 a signal sent to the launcher alone (`kill`, a process manager) is
 passed to the binary, and a terminal's Ctrl-C already reaches both, so
-the launcher does not send it twice.
+the launcher does not send it twice. Either way it dies of the signal vx
+died of, as vx does. So does a compiled vx that hands the call to the
+workspace's own.
 
 A reader that leaves does not change the code. `vx run build | head -1`
 closes the pipe after one line; the run still finishes, saves what it
@@ -1064,7 +1066,7 @@ Status legend:
 | `·`    | `@noop` — task would not run anywhere                                                      |
 | `−`    | not started — a server you did not request whose every dependant restores a local hit      |
 | `·`    | skipped — `exec.platforms` leave this machine out, or a task it depends on is skipped      |
-| `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
+| `○`    | group task (suppressed in human view; in JSON)                                             |
 
 `--dry=json` emits the same data as one JSON object on one line, alone on stdout
 (a stage's warnings go to stderr), and with nothing to run (nothing
@@ -1827,7 +1829,7 @@ may not search (EACCES, named as such), or a missing lock, is a hard error; a co
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
-around it). An entry edited by
+around it, and so does `--filter ./c`). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
 something has crashed, so a normal run pays nothing for it.
@@ -2709,8 +2711,9 @@ $ vx info
 - `git status cache`: vx runs ONE `git status` per run to find dirty
   and untracked files, and on a large tree that walk is the warm run's
   critical path. git's `core.fsmonitor` (a daemon that watches the
-  worktree) and `core.untrackedCache` make it near-free after the first
-  run; both are off by default, so `vx info` says when they are.
+  worktree, or a hook it names) and `core.untrackedCache` make it
+  near-free after the first run; both are off by default, so `vx info`
+  says when they are, reading each as git does (the last value set wins).
 - `sandbox` is the runtime probe's verdict for THIS host — one sandboxed
   `true`, memoized — and how many loaded tasks declare `exec.sandbox`. A
   declared sandbox whose runtime cannot start fails the task at run
