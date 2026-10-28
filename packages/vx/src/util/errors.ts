@@ -164,9 +164,21 @@ export function isFsRefusal(err: unknown): err is NodeJS.ErrnoException {
 
 export const DISK_FULL_HINT = 'the disk that path is on is full'
 
+/** What follows the path when the refused call only reads. */
+const READ_PERMISSION_HINT = 'a path vx must read is not readable by this user'
+
+/**
+ * Calls that only read. `open` is either, so it keeps the write hint: the
+ * reads vx opens name their own refusal (`hashFileFromDisk`).
+ */
+const READ_SYSCALLS = new Set(['scandir', 'stat', 'lstat', 'readlink', 'read', 'realpath'])
+
 /** The one-line hint after a refusal's path. */
 export function fsRefusalHint(err: NodeJS.ErrnoException): string {
-  return isDiskFull(err) ? DISK_FULL_HINT : PERMISSION_HINT
+  const { syscall } = err
+  if (isDiskFull(err)) return DISK_FULL_HINT
+  // A listing told to be a write sent the user to chmod the wrong thing.
+  return READ_SYSCALLS.has(syscall ?? '') ? READ_PERMISSION_HINT : PERMISSION_HINT
 }
 
 /**
