@@ -35,7 +35,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       pathspecs depend on which projects the task graph holds.
  │    2. Read .vx/projects.lock.json: the project directories `vx lock`
  │       found (every directory holding a vx.config.*, git's ignore
- │       rules applied) and their configs. Each locked config file is
+ │       rules applied, none under node_modules) and their configs. Each locked config file is
  │       stat'ed; one gone is refused ("run `vx lock`").
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the
  │       .vx/workspace.{ts,mts,js,mjs,cts,cjs} the root lookup found (baseBranch /
