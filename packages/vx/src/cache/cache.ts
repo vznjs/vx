@@ -1976,7 +1976,7 @@ export class Cache implements CacheLayer {
         `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(this.artifactCeiling)} artifact ceiling`,
       )
     }
-    if (await this.copyTree(tree, rows, files, projectDir, accept)) return
+    if (await this.copyTree(hash, tree, rows, files, projectDir, accept)) return
     await extractArtifactStream(
       packArtifactStream(planOfTree(tree, this.stdoutText(hash))),
       projectDir,
@@ -1996,6 +1996,7 @@ export class Cache implements CacheLayer {
    * restore through the tar extractor, ~25 ms a task (2026-10-22).
    */
   private async copyTree(
+    hash: string,
     tree: string,
     rows: readonly OutputFileRow[],
     files: readonly OutputFileRow[],
@@ -2047,6 +2048,12 @@ export class Cache implements CacheLayer {
     const roots = [...made].filter((d) => ![...made].some((o) => d.startsWith(`${o}/`)))
     readUmask()
     const plain = restoredMode(0o666)
+    // Another process's re-save of this key renames the tree aside and a
+    // new one in mid-copy: the files copied after came from another build.
+    // A changed inode is that race, a miss (the task runs), and the entry
+    // the other process saved is kept.
+    const ino = lstatSync(tree).ino
+    const swapped = (): boolean => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino
     try {
       const dirs = new Set<string>()
       for (const r of rows) {
@@ -2063,11 +2070,14 @@ export class Cache implements CacheLayer {
           await utimes(to, at, at)
         }),
       )
+      if (swapped()) throw new ArtifactVanishedError(hash)
     } catch (err) {
       await Promise.all([
         ...roots.map((d) => rm(path.join(projectDir, d), { recursive: true, force: true })),
         ...placed.map((f) => rm(path.join(projectDir, f), { force: true })),
       ])
+      if (!(err instanceof ArtifactVanishedError) && swapped())
+        throw new ArtifactVanishedError(hash)
       throw err
     }
     return true
@@ -2201,7 +2211,12 @@ export class Cache implements CacheLayer {
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
       // output directory that links out of the project).
-      if (err instanceof CorruptArtifactError || err instanceof UserError) throw err
+      if (
+        err instanceof CorruptArtifactError ||
+        err instanceof UserError ||
+        err instanceof ArtifactVanishedError
+      )
+        throw err
       // The save and the ingest proved every name safe, so one that reads
       // unsafe now is damaged or tampered bytes: a long name's pax record
       // has no header checksum, and the name is judged before the CRC at
@@ -2278,6 +2293,15 @@ export class Cache implements CacheLayer {
       // The artifact itself is gone: the read names its path (`bytes()`
       // opens it; a staged file's ENOENT names the temp below).
       if (code === 'ENOENT' && (err as NodeJS.ErrnoException).path === src) {
+        throw new ArtifactVanishedError(hash)
+      }
+      // So is a tree file: a prune or another process's re-save moved the
+      // tree aside mid-copy.
+      if (
+        code === 'ENOENT' &&
+        tree !== undefined &&
+        inTree((err as NodeJS.ErrnoException).path, tree)
+      ) {
         throw new ArtifactVanishedError(hash)
       }
       // A staged file the restore itself just wrote is gone before its
