@@ -4082,6 +4082,23 @@ it('names a tracked file a task changed as the workspace does, in a repository s
   expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
 })
 
+// A git that failed answered "nothing changed", and the task's rewrite of
+// a tracked file was saved under its clean key.
+it('a diff git cannot answer names the project as changed, never nothing', async () => {
+  const ws = await tmp()
+  await mkdir(path.join(ws, 'a'), { recursive: true })
+  await writeFile(path.join(ws, 'a/in.txt'), '1\n')
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: ws })
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  const outputs = { files: [], workspaceFiles: [] }
+  const m = { project: 'a', nested: [], outputs } as unknown as RunOrder
+  expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual([])
+  expect(await changedTracked(ws, '0'.repeat(40), m, names('a', outputs))).toEqual(['a'])
+})
+
 // A worker checkout whose prepare rewrote a tracked file joined on HEAD's
 // tree, and a task keyed on the file saved bytes built from the rewrite
 // under the clean key: a stale hit on every machine (2026-10-25).

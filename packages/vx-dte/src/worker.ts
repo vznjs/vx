@@ -893,7 +893,7 @@ export async function changedTracked(
       '--no-renames',
       base,
       '--',
-      m.project === '' ? '.' : m.project,
+      m.project === '' ? '.' : `:(literal)${m.project}`,
     ],
     {
       cwd: root,
@@ -902,8 +902,10 @@ export async function changedTracked(
       stderr: 'ignore',
     },
   )
-  const out = await new Response(p.stdout).text()
-  await p.exited
+  const [out, exit] = await Promise.all([new Response(p.stdout).text(), p.exited])
+  // A git that could not say is no proof the task changed nothing: the
+  // project itself is named, and its entry is withheld.
+  if (exit !== 0) return [m.project === '' ? '.' : m.project]
   return out
     .split('\0')
     .filter((f) => f !== '' && !output(f) && !m.nested.some((n) => f.startsWith(`${n}/`)))
