@@ -61,8 +61,9 @@ alone decides what it reads and where it writes, by the server's
 - A `pull_request_target` run writes nothing (a write is `403`): its
   `head_ref` a fork names, and its `ref` is the base.
 
-A bad token is `401`. A server with `ALLOW` empty refuses every
-request: `401`, `the server admits no CI: set ALLOW`. A server that
+A bad token is `401`. A server with `ALLOW` empty does not start; a
+Worker, which cannot refuse to, refuses every request: `401`,
+`the server admits no CI: set ALLOW`. A server that
 cannot fetch the issuer's keys answers `502`: the token is not refused,
 so a client keeps the remote for its next request.
 

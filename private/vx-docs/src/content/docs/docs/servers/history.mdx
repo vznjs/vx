@@ -168,7 +168,7 @@ and `assume` for tasks it has never seen, are on its
 
 | Setting | Default | What it sets |
 | --- | --- | --- |
-| `ALLOW` | empty: refuse every request | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
+| `ALLOW` | required (a Worker without it refuses every request) | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
 | `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token reads a repository `ALLOW` names, and writes nothing |
 | `AUDIENCE` | the URL it is reached at | the `aud` a CI token must name |
 | `TIMING_DAYS` | 30 | days a task's row is kept after its last report |

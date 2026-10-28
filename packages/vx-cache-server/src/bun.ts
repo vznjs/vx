@@ -109,6 +109,8 @@ function main(argv: string[]): void {
   } catch (err) {
     fail(`ALLOW: ${(err as Error).message}`)
   }
+  // An empty one started a server that refused every request.
+  if (allow.length === 0) fail(`set ALLOW\n${USAGE}`)
   try {
     limits = { ...DEFAULT_LIMITS, ...limitsFrom(env) }
   } catch (err) {

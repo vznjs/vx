@@ -266,11 +266,31 @@ it('names ALLOW when it cannot be read', () => {
   ])
 })
 
+it('refuses to start with ALLOW empty: it would refuse every request', () => {
+  for (const allow of [undefined, '', ' ']) {
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', ':memory:'],
+      {
+        env: { ...process.env, ...(allow === undefined ? {} : { ALLOW: allow }) },
+        stderr: 'pipe',
+        // Started, it would listen until killed.
+        timeout: 10_000,
+      },
+    )
+    const [said, usage] = cli.stderr.toString().split('\n')
+    expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+      2,
+      'set ALLOW',
+      'usage: vx-history-server',
+    ])
+  }
+})
+
 it('names --db when it cannot be opened, and refuses an empty one', () => {
   const said = (db: string) => {
     const cli = Bun.spawnSync(
       ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', db],
-      { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
+      { env: { ...process.env, ALLOW: `${GITHUB}:${REPO}:ci.yml` }, stderr: 'pipe' },
     )
     return [cli.exitCode, cli.stderr.toString().split('\n')[0]]
   }

@@ -168,6 +168,23 @@ it('names ALLOW when it cannot be read', () => {
   ])
 })
 
+it('refuses to start with ALLOW empty: it would refuse every request', () => {
+  for (const allow of [undefined, '', ' ']) {
+    const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+      env: { ...process.env, S3_BUCKET: 'b', ...(allow === undefined ? {} : { ALLOW: allow }) },
+      stderr: 'pipe',
+      // Started, it would listen until killed.
+      timeout: 10_000,
+    })
+    const [said, usage] = cli.stderr.toString().split('\n')
+    expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+      2,
+      'set ALLOW',
+      'usage: vx-cache-server',
+    ])
+  }
+})
+
 it('refuses an empty --port: Number of it is 0, a random port', () => {
   const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', ''], {
     env: { ...process.env, S3_BUCKET: 'b', ALLOW: '' },
