@@ -378,6 +378,9 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     expect((await c.call(R, 'join', { role: 'peer', info: 'x'.repeat(1 << 20) })).json).toEqual({
       error: 'join over 1 MiB',
     })
+    expect((await c.call(R, 'join', { role: 'peer', info: 'é'.repeat(600_000) })).json).toEqual({
+      error: 'join over 1 MiB',
+    })
     expect((await c.call(R, 'socket', { id: 'x' })).status).toBe(405)
     // A signature that is not base64url threw out of the relay: its host answered 500.
     const join = encodeURIComponent(
@@ -715,6 +718,16 @@ describe('a host that keeps runs and holds websockets', () => {
     })
     expect(JSON.parse(c.relay.frame(K, a, huge)!)).toEqual({
       n: 99,
+      status: 413,
+      error: 'body over 1 MiB',
+    })
+    // 1 MiB is bytes: a frame of fewer characters, each more than a byte, is over it.
+    const wide = JSON.stringify({
+      n: 98,
+      sends: [{ to: 'host', body: 'é'.repeat(600_000) }],
+    })
+    expect(JSON.parse(c.relay.frame(K, a, wide)!)).toEqual({
+      n: 98,
       status: 413,
       error: 'body over 1 MiB',
     })
