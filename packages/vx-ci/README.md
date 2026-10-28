@@ -40,7 +40,7 @@ of that with no task on it (a task counts from its send to its result,
 restore and save included), its tasks, the cores
 its tasks were expected to use (their last run's) beside the cores it used, its peak RAM of its memory, and
 its utilization, under a line
-of the expected and used share of all their core-time. Tasks the executor left to the run's own machine get a `this machine` row, and a line splits the executed count between workers and this machine. A footer line
+of the expected and used share of all their core-time (the expected share over the workers whose executor reports one). Tasks the executor left to the run's own machine get a `this machine` row, and a line splits the executed count between workers and this machine. A footer line
 names the vx version, the command (what follows `--` counted, not
 quoted), tasks passed and outputs restored.
 Anywhere else (`GITHUB_ACTIONS` not `true`: laptops, other CI)
