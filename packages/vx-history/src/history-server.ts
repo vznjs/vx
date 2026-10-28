@@ -17,8 +17,8 @@ export interface ServerTiming {
 
 /** Every request's deadline: a run never waits on history longer. */
 const DEADLINE_MS = 10_000
-/** Tries of GitHub's OIDC endpoint before the run's history goes unsent (`askGithub`). */
-const ASK_ATTEMPTS = 3
+/** Tries of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
+const ATTEMPTS = 3
 
 /** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
 export function serverUrlOf(
@@ -172,24 +172,28 @@ export class HistoryServer {
   }
 
   /**
-   * One answer from GitHub's OIDC endpoint, asked again after a 5xx, a 429
-   * or none, up to three tries, as vx-cache asks it: the upload asks once,
-   * at the run's end, and one 503 lost the run's timings. A 4xx is final.
+   * One answer, asked again while `again(status)` (`undefined`: no answer)
+   * holds, up to three tries, 1 s then 2 s apart: the upload is sent once, at the run's end,
+   * and one 503 there, or from GitHub's OIDC endpoint (as vx-cache asks
+   * it, #4571), lost the run's timings.
    */
-  private async askGithub(ask: URL): Promise<Response> {
+  private async tried(
+    send: () => Promise<Response>,
+    again: (status: number | undefined) => boolean,
+  ): Promise<Response> {
     for (let attempt = 1; ; attempt++) {
       let res: Response | undefined
       let failure: unknown
       try {
-        res = await this.fetchImpl(ask, {
-          headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
-          signal: deadline(),
-        })
+        res = await send()
       } catch (err) {
         failure = err
       }
-      if (res !== undefined && res.status !== 429 && res.status < 500) return res
-      if (attempt === ASK_ATTEMPTS) {
+      if (!again(res?.status)) {
+        if (res === undefined) throw failure
+        return res
+      }
+      if (attempt === ATTEMPTS) {
         if (res === undefined) throw failure
         return res
       }
@@ -198,18 +202,39 @@ export class HistoryServer {
     }
   }
 
+  /** GitHub's OIDC endpoint: a 4xx is final. */
+  private askGithub(ask: URL): Promise<Response> {
+    return this.tried(
+      () =>
+        this.fetchImpl(ask, {
+          headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
+          signal: deadline(),
+        }),
+      (status) => status === undefined || status === 429 || status >= 500,
+    )
+  }
+
   private async call(path: string, body?: unknown): Promise<Response> {
     const bearer = this.writes ? await this.bearer() : ''
-    const res = await this.fetchImpl(`${this.url}${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        ...this.headers,
-        ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: deadline(),
-    })
+    const json = body === undefined ? undefined : JSON.stringify(body)
+    // A 500 is the server's own failure, maybe after the fold: sent again, a
+    // run would count twice. The edge's 502, 503 and 504 and a 429 come
+    // before it. No answer is not asked again: a server down or misnamed
+    // would add seconds to every run's end.
+    const res = await this.tried(
+      () =>
+        this.fetchImpl(`${this.url}${path}`, {
+          method: json === undefined ? 'GET' : 'POST',
+          headers: {
+            ...this.headers,
+            ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
+            ...(json === undefined ? {} : { 'content-type': 'application/json' }),
+          },
+          ...(json === undefined ? {} : { body: json }),
+          signal: deadline(),
+        }),
+      (status) => status !== undefined && (status === 429 || (status >= 502 && status <= 504)),
+    )
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
       const err = await refusal(res)
