@@ -408,7 +408,7 @@ function unchangedKeyNote(
   db: Database,
   runId: string,
   this_: { hash: string; status: string; cacheHit: number | null; startedAt: number },
-  prev: { status: string; cacheHit: number | null; runId: string | null },
+  prev: { status: string; cacheHit: number | null; runId: string | null; blockedBy: string | null },
 ): string {
   if (this_.cacheHit === null) {
     return 'cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown'
@@ -477,6 +477,18 @@ function unchangedKeyNote(
     if (prevPolicy !== undefined && !writesCache(prevPolicy)) {
       return 'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit'
     }
+    // A task that passed behind a dependency its run never recorded: the
+    // one `--exclude-dependencies` left out, keyed but not run, so nothing
+    // built on it was saved (excluded-keys.ts).
+    if (
+      prev.blockedBy !== null &&
+      prev.runId !== null &&
+      db
+        .query('SELECT 1 FROM runs WHERE run_id = ? AND project = ? AND task = ?')
+        .get(prev.runId, ...splitTaskId(prev.blockedBy)) === null
+    ) {
+      return `cache key unchanged — the previous run on this key built on a dependency it left out (${prev.blockedBy}, --exclude-dependencies), so it saved nothing and there was nothing to hit`
+    }
     return 'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'
   }
   return 'cache key unchanged — re-executed on the same key though this run read the cache; vx cannot name the cause'
@@ -539,7 +551,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
   const prev = db
     .query(
       `SELECT hash, status, cache_hit AS cacheHit, restored, started_at AS startedAt,
-              run_id AS runId
+              run_id AS runId, blocked_by AS blockedBy
        FROM runs WHERE project = ? AND task = ? AND id < ? AND ${KEYED_RUNS_SQL}
        ORDER BY id DESC LIMIT 1`,
     )
@@ -551,6 +563,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
         restored: number | null
         startedAt: number
         runId: string | null
+        blockedBy: string | null
       }
     | undefined
   // …and this run must have one too, or there is nothing to compare.

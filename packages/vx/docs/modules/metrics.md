@@ -121,7 +121,9 @@ case it is.
   this run ran beside one too and saved nothing either), or
   the previous run executed and succeeded and no entry holds the key (its
   save failed or was pruned: no row records a failed save, only this
-  trace; a previous policy that wrote nothing is named instead).
+  trace; a previous policy that wrote nothing is named instead, and so
+  is a `blocked_by` that run has no row of: the dependency
+  `--exclude-dependencies` left out).
   Only when none applies does it name `--no-cache` / `--force` (item
   1009), and only with no recorded policy: a recorded one that read the
   cache rules the flags out, and the note says vx cannot name the cause
