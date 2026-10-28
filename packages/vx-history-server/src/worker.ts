@@ -79,7 +79,9 @@ export default {
         authorize = oidcTokenAuth({
           allow,
           readAccess: env.READ_ACCESS,
-          ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
+          // jose matches aud exactly: a pasted newline refused every
+          // token as the wrong audience.
+          ...(env.AUDIENCE ? { audience: env.AUDIENCE.trim() } : {}),
         })
       } catch (err) {
         return errorJson(500, (err as Error).message)

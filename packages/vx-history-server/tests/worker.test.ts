@@ -110,3 +110,17 @@ it('refuses every request, saying why, while no D1 database is bound as DB', asy
     await other.dispose()
   }
 })
+
+// jose matches aud exactly: a pasted newline refused every token as the
+// wrong audience. A blank one is refused above.
+it('reads AUDIENCE without the blanks around it', async () => {
+  const other = await start({ ALLOW: allowVarOf(), AUDIENCE: ` ${AUD}\n` })
+  try {
+    const res = await other.dispatchFetch(new URL('/v1/capabilities', await other.ready), {
+      headers: { authorization: `Bearer ${await iss.sign('read', AUD)}` },
+    })
+    expect(res.status).toBe(200)
+  } finally {
+    await other.dispose()
+  }
+})
