@@ -616,7 +616,8 @@ describe('executor capability — end-to-end via run()', () => {
   })
 
   // Isolated, a report a plugin threw on was dropped with nothing said: the
-  // summary lacked its machines and no line told why.
+  // summary lacked its machines and no line told why. The line names the
+  // plugin: `executor 'fleet'` alone named no package to look in.
   it("an executor's report that throws is left out, and said once", async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
@@ -656,8 +657,8 @@ describe('executor capability — end-to-end via run()', () => {
       const s = (globalThis as unknown as { __vxFleet: RunSummaryRecord }).__vxFleet
       expect(s.machines ?? []).toEqual([])
       expect(lines.filter((l) => l.includes('fleet'))).toEqual([
-        "[vx] executor 'fleet': machines() threw: machines broke — left out",
-        "[vx] executor 'fleet': idealMs() threw: ideal broke — left out",
+        "[vx] plugin 'org/fleet' (executor 'fleet'): machines() threw: machines broke — left out",
+        "[vx] plugin 'org/fleet' (executor 'fleet'): idealMs() threw: ideal broke — left out",
       ])
     } finally {
       cleanup()

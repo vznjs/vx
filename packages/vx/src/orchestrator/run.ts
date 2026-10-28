@@ -83,7 +83,13 @@ import {
 } from '../report/index.js'
 import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
 import { keepsFailures, reportOf, RunKeeper } from './run-report.js'
-import { buildAdmission, executorDemand, resolveExecutors, teardownPlugins } from './plugin-host.js'
+import {
+  buildAdmission,
+  executorDemand,
+  executorLabel,
+  resolveExecutors,
+  teardownPlugins,
+} from './plugin-host.js'
 import { createSteps } from './steps.js'
 import { writeRunSteps } from './run-steps.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
@@ -1989,7 +1995,7 @@ function executorFaults(warn: (line: string) => void): ExecutorFault {
     const k = `${e.name}\0${what}`
     if (said.has(k)) return
     said.add(k)
-    warn(`[vx] executor '${e.name}': ${what}() threw: ${thrownMessage(err)} — left out`)
+    warn(`[vx] ${executorLabel(e)}: ${what}() threw: ${thrownMessage(err)} — left out`)
   }
 }
 
