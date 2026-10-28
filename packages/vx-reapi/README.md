@@ -386,7 +386,8 @@ Protocol features in use, not just reachable:
   hung one.
 - **`Action.platform`** (v2.2) alongside `Command.platform` for older
   servers.
-- **`NodeProperties`** — `unix_mode` and `mtime` on tree nodes.
+- **`NodeProperties`** — `unix_mode` and `mtime` on tree nodes; a mode (and
+  `is_executable`) lands as its permission bits minus the process umask.
 - **Output directories** via the `Tree` blob an `OutputDirectory.tree_digest`
   addresses, plus **output symlinks** (a v2.0 server's
   `output_file_symlinks` / `output_directory_symlinks` when it sends only
