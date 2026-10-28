@@ -940,6 +940,36 @@ function containedIn(root: string, paths: readonly string[]): string[] {
   return lexical.filter((_p, i) => contained.has(lexDirs[i]!))
 }
 
+/**
+ * `committed`, also asked by each path's real directory: the output walk
+ * follows a link at a glob's head that stays inside `root` (X-88), so
+ * `public/logo.txt` may be `static/logo.txt`, the only name git lists.
+ * Asked by the lexical name alone, an untracked `public -> static` link
+ * let the clean delete a committed file. One realpath per directory.
+ */
+function committedPastLinks(
+  root: string,
+  committed: (abs: string) => boolean,
+): (abs: string) => boolean {
+  let realRoot: string | undefined
+  const canonical = new Map<string, string | null>()
+  return (abs) => {
+    if (committed(abs)) return true
+    const dir = path.dirname(abs)
+    let canon = canonical.get(dir)
+    if (canon === undefined) {
+      const real = realOrNull(dir)
+      realRoot ??= realOrNull(root) ?? root
+      canon =
+        real === null || !isInside(realRoot, real)
+          ? null
+          : path.join(root, path.relative(realRoot, real))
+      canonical.set(dir, canon)
+    }
+    return canon !== null && canon !== dir && committed(path.join(canon, path.basename(abs)))
+  }
+}
+
 /** Is `abs` the directory `dir` itself or something beneath it? */
 function isInside(dir: string, abs: string): boolean {
   if (abs === dir) return true
@@ -972,7 +1002,10 @@ export async function cleanOutputs(args: {
    */
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
-  const committed = args.committed ?? committedFiles(undefined, args.projectDir)
+  const committed = committedPastLinks(
+    args.projectDir,
+    args.committed ?? committedFiles(undefined, args.projectDir),
+  )
   sweepRestoreTemps(args.projectDir, args.outputs)
   const matched = args.resolved ?? (await resolveOutputs(args))
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
@@ -1386,7 +1419,10 @@ export async function cleanWorkspaceOutputs(args: {
   /** `cleanOutputs`'s `resolved`, from `resolveWorkspaceOutputs`. */
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
-  const committed = args.committed ?? committedFiles(undefined, args.workspaceRoot)
+  const committed = committedPastLinks(
+    args.workspaceRoot,
+    args.committed ?? committedFiles(undefined, args.workspaceRoot),
+  )
   sweepRestoreTemps(args.workspaceRoot, args.outputs)
   const matched = args.resolved ?? (await resolveWorkspaceOutputs(args))
   await pruneEmptiedDirs(
