@@ -635,7 +635,8 @@ async function linkedChanges(
     '--directory',
     '-z',
     '--',
-    ...(named.length === inside.length ? named : ['.']),
+    // A name is a path, never pathspec magic (`:x`, `*`).
+    ...(named.length === inside.length ? named.map((n) => `:(literal)${n}`) : ['.']),
   ])
   const changedSet = new Set(changed)
   const under = (p: string, dir: string): boolean => dir === '' || p.startsWith(`${dir}/`)
