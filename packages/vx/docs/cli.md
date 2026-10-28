@@ -2321,7 +2321,10 @@ without `--dry`, or with `--plugin`, is refused (`VX_E_USAGE`).
 a small runnable plugin for that seam (`executor`, `cache`,
 `telemetry`, `schedule`, `admit`, `commands`, `project`, `graph`,
 `key`), and `plugins/<seam>.test.ts`, which drives it through `run()`
-(`bun test`, with `@vzn/vx` installed). It prints the line that
+(`bun test`, with `@vzn/vx` installed). A plugin is named by the
+nearest `package.json`; when that one has no name (a monorepo root
+often has none), it also writes `plugins/package.json` naming the
+plugins `workspace-plugins`, or `definePlugin` would refuse them. It prints the line that
 declares it in the workspace file a run reads (`.vx/workspace.ts` when
 there is none). The templates are TypeScript, so `--mjs` with
 `--plugin` is refused, and so is a second seam. An existing file is refused without
