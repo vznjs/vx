@@ -43,8 +43,8 @@ entries or checks their folders.
 
 ## The footer shows only what it measured
 
-```txt frame="terminal"
-  time      1.86s · max 23ms · avg 5ms · min 3ms
+```ansi
+  [2mtime    [0m  63ms [2m·[0m [2mmax 8ms[0m [2m·[0m [2mavg 6ms[0m [2m·[0m [2mmin 4ms[0m
 ```
 
 That is wall time, then the slowest, average and fastest task. Adding

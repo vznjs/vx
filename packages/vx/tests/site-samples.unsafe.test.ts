@@ -371,7 +371,11 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
 
   it('its sample is the two rows of the findings it describes', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
-    const sample = fencedBlock(page, '', ' ◼\uFE0E').replace(/\n$/, '')
+    // eslint-disable-next-line no-control-regex
+    const painted = /```ansi\n( \x1b\[[^\n]*◼[\s\S]*?)\n```/.exec(page)![1]!
+    expect(painted).toContain('\x1b[')
+    // eslint-disable-next-line no-control-regex
+    const sample = painted.replace(/\x1b\[[0-9;]*m/g, '')
     expect(sample.split('\n')).toEqual([
       row('app#test', 'failed', 4210, 3, 1),
       row('api#e2e', 'success', 12840, 1, 1, 2),
