@@ -30,7 +30,8 @@ export function selectFoldedDeps(
 // The dependencies one task's key folds, as `keyUpstream` hands them to
 // the key: scheduled edges less order-only ones, plus `excludedUpstream`.
 export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate[]
-// An `inputs.tasks` spec that matches a member only through a group is refused.
+// An `inputs.tasks` spec that matches a member only through a group is refused,
+// and an exact one that names no dependency.
 export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>): void
 ```
 
@@ -39,6 +40,13 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
 - **A filter selects among the task's own dependencies, never through a
   group.** `build.*` over a group `build` selects nothing, so it is
   refused rather than decoupling the key.
+- **An exact filter names a dependency.** The load pairs a `pkg#task`
+  entry or dependency with any form whose task half matches, unable to
+  tell this project's name from another's, so `['nope#build']` over
+  `dependsOn: ['build']` (or `['build']` over `['b#build']`) selected
+  nothing and replayed a stale hit. Once the graph is built it is
+  refused unless a `^` entry or a pattern names its task, either of
+  which may match nothing in a preset's project.
 - **A group folds every dependency**; an exec task what its
   `inputs.tasks` selects (absent means all).
 - **Folded transitively counts.** `vx lock` lets a task read a
