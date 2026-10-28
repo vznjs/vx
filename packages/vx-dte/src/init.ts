@@ -117,7 +117,8 @@ export function managerOf(root: string): PackageManager {
 function installLines(manager: PackageManager): readonly string[] {
   if (manager === 'bun') return ['bun install --frozen-lockfile']
   if (manager === 'pnpm') return ['pnpm install --frozen-lockfile']
-  if (manager === 'yarn') return ['corepack enable', 'yarn install --immutable']
+  // Yarn 1 ignores --immutable; Berry takes --frozen-lockfile as its alias.
+  if (manager === 'yarn') return ['corepack enable', 'yarn install --frozen-lockfile']
   return ['npm ci']
 }
 

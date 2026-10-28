@@ -87,6 +87,20 @@ it('github({ runsOn }) names a size its runner; pnpm gets its setup step', async
   )
 })
 
+// Yarn 1, what corepack runs without a packageManager field, ignores
+// --immutable and rewrites a stale yarn.lock; both majors honour
+// --frozen-lockfile.
+it('installs a Yarn workspace frozen under Yarn 1 and Berry alike', async () => {
+  await writeFile(path.join(root, 'yarn.lock'), '')
+  expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+  for (const file of [WORKFLOW, '.github/workflows/ci.yml']) {
+    const yml = await readFile(path.join(root, file), 'utf8')
+    expect(yml).toContain(
+      '      - run: corepack enable\n      - run: yarn install --frozen-lockfile\n',
+    )
+  }
+})
+
 // A `: ` in a plain scalar made GitHub refuse the workflow (2026-10-25).
 it('writes workflows that parse as YAML', async () => {
   await writeFile(path.join(root, 'bun.lock'), '')
