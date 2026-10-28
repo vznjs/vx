@@ -325,9 +325,10 @@ export function binaryFromTarball(tgz: Uint8Array): Uint8Array {
 /**
  * The binary of `pkg@spec`, verified: the registry document's signature,
  * then the tarball's integrity, then the extraction, each refusing before
- * the next step runs. Null when the release is `current`, the version of
- * the vx being replaced; `announce` hears the version before the download
- * starts.
+ * the next step runs. A signed version other than the one asked, or as
+ * `latest` one below `current`, is refused. Null when the release is
+ * `current`, the version of the vx being replaced; `announce` hears the
+ * version before the download starts.
  */
 export async function releaseBinary(
   pkg: string,
@@ -338,7 +339,19 @@ export async function releaseBinary(
 ): Promise<Uint8Array | null> {
   const registry = resolveRegistry(pkg.split('/')[0]!)
   const release = verifiedRelease(await fetchManifest(pkg, spec, undefined, registry), pkg, key)
+  // The signature proves npm published these bytes, not that they are the
+  // release asked for: a mirror could answer with an older signed one.
+  if (spec !== 'latest' && release.version !== spec) {
+    throw new UserError(
+      `vx upgrade: asked for ${pkg}@${spec}, the registry answered ${release.version} — nothing replaced; check the registry or mirror in .npmrc or bunfig.toml`,
+    )
+  }
   if (release.version === current) return null
+  if (spec === 'latest' && Bun.semver.order(release.version, current) < 0) {
+    throw new UserError(
+      `vx upgrade: the registry's latest ${pkg} is ${release.version}, below this vx's ${current} — nothing replaced; to go back, ask for it: vx upgrade v${release.version}`,
+    )
+  }
   announce(release.version)
   return binaryFromTarball(await downloadVerified(release, registry))
 }

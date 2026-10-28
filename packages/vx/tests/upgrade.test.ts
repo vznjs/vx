@@ -427,11 +427,65 @@ describe('a release from the npm registry', () => {
         signatures: [{ keyid: TEST_KEY.id, sig: signed(`${PKG}@${VERSION}:${integrity}`) }],
       },
     }
-    const result = await withFetch({ [MANIFEST_URL]: () => Response.json(doc) }, async (asked) => [
-      await releaseBinary(PKG, '9.9.9', () => {}, TEST_KEY),
+    const latest = `https://registry.npmjs.org/${PKG}/latest`
+    const result = await withFetch({ [latest]: () => Response.json(doc) }, async (asked) => [
+      await releaseBinary(PKG, 'latest', () => {}, TEST_KEY),
       asked,
     ])
-    expect(result).toEqual([null, [MANIFEST_URL]])
+    expect(result).toEqual([null, [latest]])
+  })
+
+  // A mirror, or a registry in the middle, answers with an older release npm
+  // did sign: the signature proves the bytes, not that they are the ones asked.
+  describe('a signed release it did not ask for', () => {
+    const at = (version: string): unknown => {
+      const integrity = integrityOf(TGZ)
+      return {
+        version,
+        dist: {
+          tarball: TARBALL_URL,
+          integrity,
+          signatures: [{ keyid: TEST_KEY.id, sig: signed(`${PKG}@${version}:${integrity}`) }],
+        },
+      }
+    }
+    const LATEST_URL = `https://registry.npmjs.org/${PKG}/latest`
+    const run = (spec: string, served: string, current: string) =>
+      withFetch(
+        {
+          [`https://registry.npmjs.org/${PKG}/${spec}`]: () => Response.json(at(served)),
+          [TARBALL_URL]: () => new Response(TGZ),
+        },
+        async (asked) => ({
+          outcome: await releaseBinary(PKG, spec, () => {}, TEST_KEY, current).then(
+            (b) => (b === null ? 'current' : 'installed'),
+            (err: Error) => err.message,
+          ),
+          asked,
+        }),
+      )
+
+    it('is refused when a version was asked and another came, before the download', async () => {
+      const { outcome, asked } = await run('9.9.9', '1.0.0', '2.0.0')
+      expect(outcome).toBe(
+        `vx upgrade: asked for ${PKG}@9.9.9, the registry answered 1.0.0 — nothing replaced; check the registry or mirror in .npmrc or bunfig.toml`,
+      )
+      expect(asked).toEqual([MANIFEST_URL])
+    })
+
+    it('as latest, one below this vx is refused, naming both', async () => {
+      const { outcome, asked } = await run('latest', '1.0.0', '2.0.0')
+      expect(outcome).toBe(
+        `vx upgrade: the registry's latest ${PKG} is 1.0.0, below this vx's 2.0.0 — nothing replaced; to go back, ask for it: vx upgrade v1.0.0`,
+      )
+      expect(asked).toEqual([LATEST_URL])
+    })
+
+    it('asked for exactly, an older version installs', async () => {
+      expect((await run('1.0.0', '1.0.0', '2.0.0')).outcome).toBe('installed')
+      expect((await run('latest', '2.0.1', '2.0.0')).outcome).toBe('installed')
+      expect((await run('latest', '2.0.0', '2.0.0-rc.1')).outcome).toBe('installed')
+    })
   })
 
   it('a host it cannot reach is one line naming the host, never a stack', async () => {
