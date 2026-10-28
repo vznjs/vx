@@ -1281,6 +1281,31 @@ describe('runGraph restore-tier (local short-circuit)', () => {
       expect(out.get('web#ci')?.status).toBe('skipped')
     })
   })
+
+  // The stop reached the scheduler only through a task's completion, and a
+  // held server waiting on the remote has none: Ctrl-C waited for the
+  // remote's answer, however long its timeout.
+  it('a stop while a held server waits on the remote ends the run at once', async () => {
+    const controller = new AbortController()
+    const out = await runGraph({
+      nodes: nodes(
+        {
+          ...node('api#dev'),
+          config: { exec: { command: 'serve', persistent: {} } },
+          requested: false,
+        },
+        { ...node('web#e2e', ['api#dev']), requested: false },
+      ),
+      concurrency: 2,
+      restoreTier: new Set(),
+      heldServers: new Map([['api#dev', new Promise<readonly string[]>(() => {})]]),
+      signal: controller.signal,
+      execute: async (n) => success(n),
+      reprioritize: () => queueMicrotask(() => controller.abort()),
+    })
+    expect(out.get('api#dev')?.status).toBe('aborted')
+    expect(out.get('web#e2e')?.status).toBe('aborted')
+  })
 })
 
 describe('runGraph — priorities override', () => {
