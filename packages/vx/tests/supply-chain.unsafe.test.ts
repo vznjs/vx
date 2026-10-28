@@ -65,6 +65,33 @@ const TAINTED = /\$\{\{[^}]*\b(?:github\.event\.|inputs\.|github\.head_ref)/
 const files = yamlFiles(path.join(ROOT, '.github'))
 const rel = (p: string) => path.relative(ROOT, p)
 
+interface Step {
+  uses?: string
+  with?: Record<string, unknown>
+}
+interface Job {
+  permissions?: Record<string, string>
+  'timeout-minutes'?: number
+  steps?: Step[]
+}
+interface Workflow {
+  permissions?: Record<string, string>
+  concurrency?: { group?: string; 'cancel-in-progress'?: unknown }
+  jobs: Record<string, Job>
+}
+const workflows = files
+  .filter((f) => f.includes(`${path.sep}workflows${path.sep}`))
+  .map((f) => ({ file: rel(f), doc: Bun.YAML.parse(readFileSync(f, 'utf8')) as Workflow }))
+/** Every step of every workflow that runs `action`, as `file#job`. */
+const stepsOf = (action: string) =>
+  workflows.flatMap(({ file, doc }) =>
+    Object.entries(doc.jobs).flatMap(([id, job]) =>
+      (job.steps ?? [])
+        .filter((s) => s.uses?.split('@')[0] === action)
+        .map((step) => ({ at: `${path.basename(file)}#${id}`, step })),
+    ),
+  )
+
 describe('the supply chain', () => {
   it('runs every third-party action from a full commit SHA', () => {
     const refs = files.flatMap((f) =>
@@ -127,6 +154,22 @@ describe('the supply chain', () => {
     expect(
       workflows.filter((f) => !/^permissions:/m.test(readFileSync(f, 'utf8'))).map(rel),
     ).toEqual([])
+  })
+
+  // package.json's `packageManager` is the one Bun version: setup-bun reads
+  // it when no step names one. Five steps named 1.4.4 and three read the
+  // file, so a bump of the file moved the release builds and left CI's
+  // run and workers on the old Bun.
+  it('installs the Bun package.json names, and no step names another', () => {
+    const setups = stepsOf('oven-sh/setup-bun')
+    expect(setups.length).toBeGreaterThan(5)
+    expect(
+      setups.filter(({ step }) => step.with?.['bun-version'] !== undefined).map(({ at }) => at),
+    ).toEqual([])
+    const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as {
+      packageManager?: string
+    }
+    expect(pkg.packageManager).toMatch(/^bun@\d+\.\d+\.\d+$/)
   })
 
   // The publish is scripts/release.ts's (`release.publish.<os>`); a workflow
