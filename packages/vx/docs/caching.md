@@ -364,8 +364,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     whose static directory passes through a link (`lib/**` over
     `lib -> ../shared`) takes the link as an input: git lists a linked
     directory as the link alone, so the glob matched nothing and an
-    edit behind it was a hit (2026-10-25). A `**` glob does not enter
-    one it meets.
+    edit behind it was a hit (2026-10-25). A link to a directory below
+    a glob's fixed prefix (`src/**/*.ts` over `src/v -> ../shared`,
+    `**/*.ts` over `lib -> ../shared`) is an input the same way whenever
+    the glob could match a path under it: its name alone matched no
+    pattern, and an edit behind it was a hit (2026-10-28).
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.
