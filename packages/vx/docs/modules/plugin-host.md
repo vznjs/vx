@@ -79,7 +79,8 @@ nothing runs and caches here.
   declared order, behind `host.localCache` in one `LayeredCache`, each
   gated by `host.policy` alone, and names the plugin
   in its warnings. No remote leaves the local store unwrapped.
-  `REMOTE_CACHE_METHODS` is what a returned remote must carry.
+  `REMOTE_CACHE_METHODS` is what a returned remote must carry; an optional
+  `open`, `lend`, `hasMany` or `missing` that is there must be a function.
 - `buildAdmission(plugins, nodes, concurrency, warn)` → the scheduler's
   `admit(id, running)` predicate, or undefined when no plugin declares
   `admit` (the scheduler then tracks nothing). Every declaring plugin is

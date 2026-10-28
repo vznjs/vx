@@ -164,6 +164,37 @@ describe('the cache gate names EVERY remote method, not a count of them', () => 
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('an optional method that is not a function is refused by name', async () => {
+    // `hasMany: true` failed every batch probe, and `missing: true` every
+    // upload, each said as the remote's own fault per call.
+    const dir = mkdtempSync(path.join(tmpdir(), 'vx-cache-gate-opt-'))
+    const local = new Cache(dir, { read: true, write: true })
+    const fns = Object.fromEntries(required.map((m) => [m, () => undefined]))
+    const said = (extra: Record<string, unknown>): Promise<string> =>
+      resolveCache([testPlugin('org/odd', { cache: () => ({ ...fns, ...extra }) as never })], {
+        ...baseCtx,
+        localCache: local,
+        policy: POLICY,
+      }).then(
+        () => 'ok',
+        (e: unknown) => (e as Error).message,
+      )
+    try {
+      expect([
+        await said({ hasMany: true, missing: 'x' }),
+        await said({ open: null }),
+        await said({ hasMany: () => null, lend: undefined }),
+      ]).toEqual([
+        "plugin 'org/odd' returned from cache something that is not a remote cache layer: hasMany, missing not functions",
+        "plugin 'org/odd' returned from cache something that is not a remote cache layer: open not a function",
+        'ok',
+      ])
+    } finally {
+      local.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 // --- plugin-host unit-level consultation -------------------------------

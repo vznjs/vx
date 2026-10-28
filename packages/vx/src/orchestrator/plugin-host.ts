@@ -64,6 +64,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 /** Every method a `cache` hook's `RemoteCacheLayer` requires (`hasMany` is optional). */
 export const REMOTE_CACHE_METHODS: readonly string[] = ['has', 'get', 'put']
 
+const OPTIONAL_REMOTE_METHODS = ['open', 'lend', 'hasMany', 'missing'] as const
+
 /** What a capability hook handed back must be what the seam runs. */
 function assertShape(
   plugin: VxPlugin,
@@ -620,6 +622,17 @@ export async function resolveCache(
     const remote = await safe(plugin, 'cache', () => plugin.cache!(ctx))
     if (remote === undefined) continue
     assertShape(plugin, 'cache', remote, REMOTE_CACHE_METHODS, 'a remote cache layer')
+    // `hasMany: true` failed every batch probe, and `missing: true` every
+    // upload, each said per call as the remote's own fault.
+    const odd = OPTIONAL_REMOTE_METHODS.filter(
+      (m) => remote[m] !== undefined && typeof remote[m] !== 'function',
+    )
+    if (odd.length > 0) {
+      throw new UserError(
+        `plugin '${plugin.name}' returned from cache something that is not a remote cache layer: ` +
+          `${odd.join(', ')} ${odd.length === 1 ? 'not a function' : 'not functions'}`,
+      )
+    }
     const entry: ResolvedRemote = {
       remote,
       plugin: plugin.name,
