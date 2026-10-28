@@ -82,8 +82,9 @@ task keys never carry it, and the cache server decides from the CI OIDC
 token where a task's entry lands. `VX_CACHE_SCOPE` overrides it.
 
 It also names the refs a remote cache reads, in order (`refs`): the
-run's own branch (a pull request's head, else `GITHUB_REF`), then the
-branch it merges into (`GITHUB_BASE_REF`), then the default branch (the
+run's own branch (a pull request's head, a `workflow_run` a pull request
+started included, else `GITHUB_REF`), then the branch it merges into
+(`GITHUB_BASE_REF`, or that `workflow_run`'s pull request's base), then the default branch (the
 workspace's `baseBranch`, else the event's). A merge queue's run reads
 only its base branch (`merge_group.base_ref`, else the queue ref's
 `<base>`): it is about to become that branch, and the server writes its
