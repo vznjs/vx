@@ -192,6 +192,32 @@ describe('a CI OIDC token', () => {
     }
   })
 
+  // The keys were read once per process: a key the issuer withdrew (a leak,
+  // a rotation) still signed a token the relay took, until it restarted.
+  it('is refused once its issuer withdraws its key, read again after ten minutes', async () => {
+    let t = now
+    let served = [{ ...jwk, kid: 'k1' }]
+    const fetched: string[] = []
+    const verify = createVerifier({
+      allow: [{ issuer: ISS }],
+      audience: AUD,
+      now: () => t,
+      fetchJson: async (url) => {
+        fetched.push(url)
+        return url.endsWith('/jwks') ? { keys: served } : { jwks_uri: `${ISS}/jwks` }
+      },
+    })
+    const token = (exp: number) => sign({ ...good, exp })
+    expect(await verify(await token(t + 900))).toEqual({ iss: ISS, run: ['7'] })
+    served = []
+    t += 599
+    expect(await verify(await token(t + 300))).toEqual({ iss: ISS, run: ['7'] })
+    expect(fetched).toHaveLength(2)
+    t += 1
+    expect(await refusal(verify(await token(t + 300)))).toEqual([401, 'unknown signing key'])
+    expect(fetched).toHaveLength(4)
+  })
+
   it('is refused before any key fetch when it carries no signature or another alg', async () => {
     const fetched: string[] = []
     const verify = verifier(fetched)

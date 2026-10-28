@@ -125,22 +125,31 @@ const SIGNATURE = /^[\w-]{342,}$/
 
 /** An unknown `kid` refetches an issuer's keys at most this often. */
 const REFETCH_MS = 60_000
+/**
+ * Keys read longer ago than this are read again: a key the issuer withdrew
+ * stops signing for the relay, as jose's remote key set ages them for the
+ * cache and history servers.
+ */
+const KEYS_MAX_AGE_MS = 600_000
 
 export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken> {
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
+  const nowMs = () => now() * 1000
   type KeySet = ReturnType<typeof createLocalJWKSet>
   const keys = new Map<string, { at: number; set: Promise<KeySet> }>()
 
   const load = (iss: string, fresh: boolean): { at: number; set: Promise<KeySet> } => {
-    const entry = { at: Date.now(), set: loadKeys(iss, (url) => fetchJson(url, fresh)) }
+    const entry = { at: nowMs(), set: loadKeys(iss, (url) => fetchJson(url, fresh)) }
     keys.set(iss, entry)
     // A failed load is not kept: the next token tries again.
     entry.set.catch(() => keys.get(iss) === entry && keys.delete(iss))
     return entry
   }
   const verifyWith = async (token: string, iss: string, fresh: boolean): Promise<JWTPayload> => {
-    const entry = (fresh ? undefined : keys.get(iss)) ?? load(iss, fresh)
+    const held = fresh ? undefined : keys.get(iss)
+    const entry =
+      held !== undefined && nowMs() - held.at < KEYS_MAX_AGE_MS ? held : load(iss, fresh)
     // The issuer's outage, not the token's fault: a client ends its run on
     // a 401, and retries a 5xx.
     const set = await entry.set.catch(() => {
@@ -178,7 +187,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       // A key rotated in since the last read is fetched once a REFETCH_MS.
       claims = await verifyWith(token, iss, false).catch((err: unknown) => {
         const at = keys.get(iss)?.at ?? 0
-        if (!(err instanceof errors.JWKSNoMatchingKey) || Date.now() - at < REFETCH_MS) throw err
+        if (!(err instanceof errors.JWKSNoMatchingKey) || nowMs() - at < REFETCH_MS) throw err
         return verifyWith(token, iss, true)
       })
     } catch (err) {
