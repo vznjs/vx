@@ -154,9 +154,11 @@ describe('CI OIDC tokens', () => {
       403,
       'the token is of repository acme/app at https://token.actions.githubusercontent.com, not the repository named',
     ])
+    // Behind a proxy that ends TLS the server is reached at http://: the
+    // refusal names both, so the fix (AUDIENCE) is in the message.
     expect(await detail(await put(await sign(MAIN, 'https://elsewhere'), 'd4'))).toEqual([
       401,
-      'wrong audience',
+      `wrong audience: the token names https://elsewhere, this server takes ${AUD} (AUDIENCE)`,
     ])
     const [h, p] = (await sign(MAIN)).split('.')
     const forged = `${h}.${p}.${'A'.repeat(342)}`

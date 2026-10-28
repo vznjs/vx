@@ -306,7 +306,10 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
         })
       ).payload
     } catch (err) {
-      throw refusal(err, iss)
+      throw refusal(err, iss, () => {
+        const aud = decodeJwt(token).aud
+        return `the token names ${[aud ?? 'none'].flat().join(', ')}, this server takes ${audience} (AUDIENCE)`
+      })
     }
     const claim = repoClaimOf(iss)
     const named = claims[claim]
@@ -333,8 +336,12 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
 /** An issuer as a key names it: its URL, no trailing slash. */
 const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
 
-/** What jose's refusal of a token says. */
-function refusal(err: unknown, iss: string): Refusal {
+/**
+ * What jose's refusal of a token says. A wrong audience names both: behind
+ * a proxy that ends TLS a server is reached at `http://`, refusing every
+ * token until AUDIENCE is set, and "wrong audience" alone did not say so.
+ */
+function refusal(err: unknown, iss: string, audiences: () => string): Refusal {
   if (err instanceof Refusal) return err
   // A refetch of the keys for a kid not held failed: the network, not the token.
   if (!(err instanceof errors.JOSEError) || err instanceof errors.JWKSTimeout)
@@ -344,7 +351,7 @@ function refusal(err: unknown, iss: string): Refusal {
   if (err instanceof errors.JWSSignatureVerificationFailed) return new Refusal(401, 'bad signature')
   if (err instanceof errors.JWTExpired) return new Refusal(401, 'expired')
   if (err instanceof errors.JWTClaimValidationFailed) {
-    if (err.claim === 'aud') return new Refusal(401, 'wrong audience')
+    if (err.claim === 'aud') return new Refusal(401, `wrong audience: ${audiences()}`)
     if (err.claim === 'nbf') return new Refusal(401, 'not yet valid')
   }
   return new Refusal(401, 'not a JWT')
