@@ -96,6 +96,10 @@ export async function workerUrl(
   main = false,
 ): Promise<string | undefined> {
   if (!watched(watch, await deps.changed())) return undefined
+  // A PR's commits do not change while it waits; every poll asked again,
+  // spending the API limit every job of the repository shares.
+  const listed = deps.commits()
+  deps = { ...deps, commits: () => listed }
   const name = `Workers Builds: ${worker}`
   const end = deps.now() + WAIT_MS
   for (;;) {
@@ -112,6 +116,42 @@ export async function workerUrl(
         `${name}: ${run === undefined ? 'no build of the head' : run.status} after ${WAIT_MS / 60_000} min`,
       )
     await deps.sleep(POLL_MS)
+  }
+}
+
+interface ApiDeps {
+  fetch: (url: string, init: RequestInit) => Promise<Response>
+  sleep: (ms: number) => Promise<void>
+  now: () => number
+}
+
+/**
+ * GET `route` of `repo`'s GitHub API. Every job of the repository shares
+ * GITHUB_TOKEN's limit, which many PRs at once ran out (2026-10-28): a
+ * limited answer waits for the reset, if it comes before `end`, and asks
+ * again; any other refusal fails, naming the route.
+ */
+export function githubApi(repo: string, token: string, deps: ApiDeps, end: number) {
+  return async function api<T>(route: string): Promise<T> {
+    for (;;) {
+      const res = await deps.fetch(`https://api.github.com/repos/${repo}/${route}`, {
+        headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
+      })
+      if (res.ok) return (await res.json()) as T
+      const after = res.headers.get('retry-after')
+      const reset = res.headers.get('x-ratelimit-reset')
+      const until =
+        after !== null
+          ? deps.now() + Number(after) * 1000
+          : res.headers.get('x-ratelimit-remaining') === '0' && reset !== null
+            ? Number(reset) * 1000
+            : undefined
+      if ((res.status !== 403 && res.status !== 429) || until === undefined || Number.isNaN(until))
+        throw new Error(`${route}: HTTP ${res.status}`)
+      if (until > end)
+        throw new Error(`${route}: HTTP ${res.status}, the API limit resets after the wait ends`)
+      await deps.sleep(Math.max(0, until - deps.now()))
+    }
   }
 }
 
@@ -143,13 +183,12 @@ if (import.meta.main) {
   const wrangler = await Bun.file(path.join(dir, 'wrangler.jsonc')).text()
   const watch = watchOf(await Bun.file(path.join(dir, 'README.md')).text())
   const worker = /"name":\s*"([^"]+)"/.exec(wrangler)![1]!
-  const api = async <T>(route: string): Promise<T> => {
-    const res = await fetch(`https://api.github.com/repos/${repo}/${route}`, {
-      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
-    })
-    if (!res.ok) throw new Error(`${route}: HTTP ${res.status}`)
-    return (await res.json()) as T
-  }
+  const api = githubApi(
+    repo,
+    token,
+    { fetch, sleep: (ms) => Bun.sleep(ms), now: () => Date.now() },
+    Date.now() + WAIT_MS,
+  )
   // The checkout is the PR's merge commit, or main's pushed one, one deep:
   // its first parent is the base. One deep, the parent is not here; the
   // commit still names it.
