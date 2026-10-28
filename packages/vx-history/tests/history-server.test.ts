@@ -94,6 +94,34 @@ describe('HistoryServer', () => {
     )
   })
 
+  // fetch drops only Authorization on a cross-origin redirect: serverHeaders
+  // (a CF-Access secret) went on to the host the 307 named.
+  it('follows no redirect, naming it, and sends serverHeaders nowhere else', async () => {
+    const other: string[] = []
+    const elsewhere = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => (other.push(req.url), Response.json({})),
+    })
+    const moved = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => Response.redirect(`${elsewhere.url.origin}${new URL(req.url).pathname}`, 307),
+    })
+    try {
+      const client = new HistoryServer(moved.url.origin, NAMED, {}, fetch, {
+        'CF-Access-Client-Secret': 's',
+      })
+      await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+        `HTTP 307 to ${elsewhere.url.origin}/v1/capabilities: not followed`,
+      )
+      expect(other).toEqual([])
+    } finally {
+      await moved.stop(true)
+      await elsewhere.stop(true)
+    }
+  })
+
   it('says why a read with no token was refused, and what lets it in', async () => {
     const client = new HistoryServer(url, NAMED, {})
     await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(

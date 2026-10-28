@@ -59,7 +59,9 @@ them; `VX_HISTORY_URL` alone, with neither declared, is said and not asked.
 `headers` are sent on every request to the server, for a proxy in
 front of it (a Cloudflare Access service token:
 `{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID, … }`); an
-unset value is left out, and `authorization` stays the CI token's.
+unset value is left out, and `authorization` stays the CI token's. A
+redirect is not followed (it would carry them on): it fails the request,
+naming where it pointed.
 
 ```ts
 export default {
