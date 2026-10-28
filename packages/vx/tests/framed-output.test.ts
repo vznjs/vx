@@ -564,6 +564,24 @@ describe('formatTaskBlock', () => {
     expect(out).toContain('\x1b[1m')
     expect(out).toMatch(/\[38;2;\d+;\d+;\d+m/)
   })
+
+  // A task the stop killed mid-output gets a frame (the trap's cleanup
+  // lines). Its footer word printed bare white and its header dim, though
+  // its row is orange: both ends now paint it as the row does.
+  it('an aborted frame paints `aborted` orange at both ends, as its row', () => {
+    const orange = '\x1b[38;2;249;115;22m'
+    const out = formatTaskBlock(
+      node('app#dev', 'sleep 9'),
+      outcome('app#dev', 'aborted', { durationMs: 40, exitCode: 130 }),
+      { output: [{ text: 'cleaning up\n', err: false }] },
+      { enabled: true },
+    )
+    const lines = out.split('\n')
+    expect([
+      lines[0]!.endsWith(`${orange}aborted\x1b[0m`),
+      lines.at(-2)!.endsWith(`${orange}aborted\x1b[0m`),
+    ]).toEqual([true, true])
+  })
 })
 
 describe('persistent task framing', () => {

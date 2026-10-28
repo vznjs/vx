@@ -725,6 +725,8 @@ function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
       return paint(ERROR, word, colors, { bold: true })
     case 'skipped':
       return paint(WARN, word, colors)
+    case 'aborted':
+      return paint(ABORTED, word, colors)
     default:
       return dim(word)
   }
@@ -750,12 +752,10 @@ function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
       return paint(ERROR, word, colors, { bold: true })
     case 'skipped':
       return paint(WARN, word, colors)
-    case 'cache-hit':
-    case 'cache-hit-remote':
-    case 'success':
-      return paint('', word, colors, { dim: true })
+    case 'aborted':
+      return paint(ABORTED, word, colors)
     default:
-      return o.status
+      return paint('', word, colors, { dim: true })
   }
 }
 
