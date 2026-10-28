@@ -1100,3 +1100,37 @@ describe('a cache directory inside a project is a wall', () => {
     expect(open.sandbox.config.allowWrite).toEqual([cacheDir])
   })
 })
+
+// vx's stores outside the workspace were neither walled nor denied: a
+// sandboxed task with no grant read every project's cached outputs from
+// `~/.vx/<repo>/cache/store.db` (and every other repository's), around
+// the cross-project wall and its own key. A `cacheDir` outside the
+// workspace (`VX_CACHE_DIR=~/.cache/vx`) the same.
+describe('vx’s stores outside the workspace are denied', () => {
+  it('~/.vx and an outside cache directory are in the read deny', async () => {
+    const home = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-sandbox-home-')))
+    const saved = process.env['HOME']
+    try {
+      process.env['HOME'] = home
+      await mkdir(path.join(home, '.vx', 'repo', 'cache'), { recursive: true })
+      const outside = path.join(home, '.cache', 'vx')
+      await mkdir(outside, { recursive: true })
+      const r = await sandboxRequestFor(node(), { allow: {} }, root, undefined, [], outside)
+      expect(r.sandbox.baseDenyRead).toContain(path.join(home, '.vx'))
+      expect(r.sandbox.baseDenyRead).toContain(outside)
+      const inside = await sandboxRequestFor(
+        node(),
+        { allow: {} },
+        root,
+        undefined,
+        [],
+        path.join(root, '.vxc'),
+      )
+      expect(inside.sandbox.baseDenyRead).not.toContain(path.join(root, '.vxc'))
+    } finally {
+      if (saved === undefined) delete process.env['HOME']
+      else process.env['HOME'] = saved
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+})

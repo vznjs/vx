@@ -165,7 +165,9 @@ A task with `exec.sandbox` runs where only what it declares exists:
   (`tests/sandbox-credential-stores.unsafe.test.ts`, `tests/sandbox-fix.test.ts`);
 - vx's own cache directory, wherever `cache.dir` puts it in the
   workspace, is a wall like `.vx/cache`: a broad grant stops at it, and a write
-  grant that would bind it is refused (L-24);
+  grant that would bind it, or that lies inside it or `.git`, is refused
+  (L-24); `~/.vx`, which holds every repository's shared store, and a
+  cache directory outside the workspace are unreadable to a task;
 - a symlinked output is cached as the link, never read through: vx packs
   outputs outside the sandbox, and packing a link as its target's bytes
   carried a file the task could not read into the cache (L-23). A link

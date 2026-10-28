@@ -1613,6 +1613,10 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/Library/Application Support/doctl`, `~/.config/stripe/config.toml`,
 `~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
 `~/.codex/auth.json`.
+vx's own stores are denied the same way: `~/.vx`, where every
+repository's shared store lives, and a cache directory outside the
+workspace (`VX_CACHE_DIR=~/.cache/vx`). Read, they handed a task every
+project's cached outputs, around the cross-project wall and its key.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `inputs` says what INVALIDATES a task, `sandbox.allow`
