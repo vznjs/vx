@@ -383,6 +383,17 @@ describe('detectCi', () => {
     ])
   })
 
+  // A GitLab merge train names its merge request (CI_MERGE_REQUEST_IID);
+  // a GitHub merge queue's run named none, though its ref carries it.
+  it("names the pull request a GitHub merge queue's run is for", () => {
+    expect(
+      detectCi({
+        GITHUB_ACTIONS: 'true',
+        GITHUB_REF: `refs/heads/gh-readonly-queue/main/pr-41-${'a'.repeat(40)}`,
+      }).change,
+    ).toBe('41')
+  })
+
   it('names no pull request on a push build', () => {
     expect([
       detectCi({ GITHUB_ACTIONS: 'true', GITHUB_REF: 'refs/heads/main' }).change,
