@@ -32,6 +32,7 @@ import {
   lockKey,
   readLockfile,
   buildPackageGraph,
+  checkBracketLiterals,
   checkDependencyRules,
   writeLockfile,
   type Lockfile,
@@ -167,6 +168,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       lock: true,
     })
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
+    checkBracketLiterals(root, projects.values())
     const names = new Set<string>()
     for (const entry of projects.values()) {
       const tasks = Object.entries(entry.config.tasks ?? {})

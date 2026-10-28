@@ -868,7 +868,10 @@ The wildcards are `*`, `**`, `?`, a character class `[ab]` (`[a-z]`,
 match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`. A
 backslash escapes: a route directory (Next.js, SvelteKit, Astro) is
 `app/\[id\]/**`; bare, `app/[id]/**` is the class that matches `app/i`
-and `app/d`, never the route. An input brace of one alternative (`{b}.ts`) is refused at `vx
+and `app/d`, never the route. When the path the class spells exists
+(`app/[id]`), `vx lock` refuses the glob and names the escaped form:
+beside another glob it matched nothing with no warning, and an edit
+under the route replayed a stale hit. An input brace of one alternative (`{b}.ts`) is refused at `vx
 lock`: it would match `b.ts` and never a file named `{b}.ts`; write the
 one you mean, `\{b\}.ts` for the braces. So is an input under `.git`
 (`.git/config`): git never lists it, so it would key nothing. An extglob (`@(a|b)`, `!(x)`,
