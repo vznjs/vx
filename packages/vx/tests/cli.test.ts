@@ -448,8 +448,14 @@ describe('cli run()', () => {
       process.chdir(origCwd)
       await rm(dir, { recursive: true, force: true })
     }
-    expect(stderr).toContain('plugin')
-    expect(stderr).not.toContain('unknown command')
+    // One fact a line, each sentence whole: the message's own line breaks
+    // once cut "See the plugin" from "guide: https://…".
+    expect(stderr).toBe(
+      `✗ vx  \`${cmd}\` is not a vx core command\n\n` +
+        '  vx core runs tasks in-process\n' +
+        '  A dashboard, remote cache and distributed execution come from plugins, not core\n' +
+        '  See the plugin guide: https://vznjs.github.io/vx/docs/plugins/\n',
+    )
     // Core must not name any specific service package.
     expect(stderr).not.toContain('vx-cloud')
     expect(stderr).not.toContain('@vzn/vx-cloud')
