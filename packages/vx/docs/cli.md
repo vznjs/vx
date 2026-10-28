@@ -2957,7 +2957,7 @@ latest cache entry's key. `roots` is the root-cause walk (`chain`,
 `vx last` replays a recorded run's summary from the local history: no
 re-execution, no cache probe, no config evaluation. A run a Ctrl-C (or
 SIGTERM, SIGHUP) stopped records nothing, so `vx last` still shows the
-run before it.
+run before it; nor does a `vx watch` cycle one stopped.
 
 ### Usage
 
