@@ -214,6 +214,28 @@ describe('HistoryServer', () => {
     )
   })
 
+  // A server the workspace never asks is said, whatever its form: a
+  // malformed VX_HISTORY_URL set for every job failed every run instead.
+  it('says a VX_HISTORY_URL it does not ask, even a malformed one, and runs', async () => {
+    const was = Bun.env.VX_HISTORY_URL
+    Bun.env.VX_HISTORY_URL = 'h.example/v1'
+    try {
+      const said: string[] = []
+      await vxHistory().setup!({
+        ci: false,
+        warn: (m: string) => said.push(m),
+        on: () => {},
+        workspaceRoot: '/nowhere',
+      } as never)
+      expect(said).toEqual([
+        '[vx] vx-history: VX_HISTORY_URL names a server, but vxHistory() names no issuer and repository: the server is not asked',
+      ])
+    } finally {
+      if (was === undefined) delete Bun.env.VX_HISTORY_URL
+      else Bun.env.VX_HISTORY_URL = was
+    }
+  })
+
   it('reads the URL over VX_HISTORY_URL', () => {
     expect(serverUrlOf(undefined, {})).toBeUndefined()
     expect(serverUrlOf(undefined, { VX_HISTORY_URL: 'https://h.example/' })).toBe(
