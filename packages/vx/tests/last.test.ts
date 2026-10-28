@@ -526,6 +526,15 @@ describe('parseLastArgs', () => {
       undefined,
     ])
   })
+
+  it('an empty word is no run id, task or log, as vx why reads one', () => {
+    // '' is the start of every run id: it replayed the only run, or said
+    // it is the start of all of them.
+    expect(parseLastArgs([''])).toEqual({ format: 'pretty' })
+    expect(parseLastArgs(['--stats', ''])).toEqual({ format: 'pretty', stats: true })
+    // `--log=` was refused while `--log ''` read every task's log as ''.
+    expect(parseLastArgs(['--log', '']).error).toBe(parseLastArgs(['--log=']).error)
+  })
 })
 
 // A thousand-task warm run replayed as a thousand rows put the one failure

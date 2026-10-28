@@ -153,6 +153,9 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     if (a === '--log') {
       const v = args[i + 1]
+      if (v === '') {
+        return { ...out, error: `--log requires a task id, like app#build${seeHelp('last')}` }
+      }
       if (v === undefined || v.startsWith('-')) bareLog = true
       else {
         out.log = v
@@ -183,6 +186,8 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('last', a)}${seeHelp('last')}` }
+    // Empty is no run id: '' is the start of every one.
+    if (a === '') continue
     if (out.runId !== undefined)
       return { ...out, error: `unexpected argument: ${a}${seeHelp('last')}` }
     out.runId = a
