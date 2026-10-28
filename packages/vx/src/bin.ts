@@ -90,9 +90,10 @@ async function main(): Promise<void> {
     // on. Everything else gets the full stack so internal bugs are
     // debuggable.
     if (isUserError(err)) {
-      // A message that names its verb (`vx why: …`) is that verb's; any
-      // other is the verb typed. A config refusal shows its line.
-      const named = /^(vx [a-z][\w-]*): /.exec(err.message)
+      // A message that names its verb (`vx why: …`, a plugin's `vx dte
+      // worker: …`) is that verb's; any other is the verb typed. A config
+      // refusal shows its line.
+      const named = /^(vx [a-z][\w-]*(?: [a-z][\w-]*)?): /.exec(err.message)
       const typed = /^[a-z][\w-]*$/.test(argv[0] ?? '') ? `vx ${argv[0]}` : 'vx'
       const block = refusalNotice(
         named?.[1] ?? typed,

@@ -272,7 +272,9 @@ export function dte(options: DteOptions) {
   const init = async (args: readonly string[], ctx: CommandContext): Promise<number> => {
     const extra = args.find((a) => a !== '--dry' && a !== '--force')
     if (extra !== undefined)
-      throw new UserError(`vx dte init: unknown argument ${extra}; it takes --dry and --force`)
+      throw new UserError(
+        `vx dte init: ${extra.startsWith('-') ? 'unknown flag' : 'unexpected argument'}: ${extra} (see \`vx dte --help\`)`,
+      )
     const root = ctx.workspaceRoot
     if (adapter === undefined)
       throw new UserError(
@@ -331,7 +333,9 @@ export function dte(options: DteOptions) {
           if (argv[0] === undefined) throw new UserError(`missing subcommand\n${USAGE}`)
           if (argv[0] !== 'worker') throw new UserError(`unknown subcommand: ${argv[0]}\n${USAGE}`)
           if (argv.length > 1)
-            throw new UserError(`vx dte worker takes no arguments: ${argv.slice(1).join(' ')}`)
+            throw new UserError(
+              `vx dte worker: ${argv[1]!.startsWith('-') ? 'unknown flag' : 'unexpected argument'}: ${argv[1]} (see \`vx dte --help\`)`,
+            )
           const run = runOf()
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay
           // Only what is missing: with VX_DTE_RUN set, the old line still asked for it.
@@ -340,14 +344,14 @@ export function dte(options: DteOptions) {
               ...(run === undefined ? ['VX_DTE_RUN'] : []),
               ...(relay === undefined ? ['VX_DTE_RELAY or dte({ relay })'] : []),
             ]
-            throw new UserError(`vx dte worker needs ${missing.join(', and ')}`)
+            throw new UserError(`vx dte worker: needs ${missing.join(', and ')}`)
           }
           if (!/^https?:\/\//.test(relay))
             throw new UserError(`vx dte worker: VX_DTE_RELAY must be http(s), got ${relay}`)
           const secret = givenSecret()
           if (secret === undefined && !onGitHub()) {
             throw new UserError(
-              'vx dte worker needs VX_DTE_SECRET, the run’s, or a GitHub Actions job with id-token: write',
+              'vx dte worker: needs VX_DTE_SECRET, the run’s, or a GitHub Actions job with id-token: write',
             )
           }
           const [{ runWorker }, seal] = await Promise.all([
