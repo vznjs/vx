@@ -1706,6 +1706,13 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--cache-dir']).error).toBe('--cache-dir requires a path')
   })
 
+  it('--cache-dir refuses a path of only whitespace, as VX_CACHE_DIR and cache.dir do', () => {
+    // It made a directory named in spaces under the cwd.
+    for (const args of [['--cache-dir', '   '], ['--cache-dir=  ']]) {
+      expect(parseRunArgs(['build', ...args]).error).toBe('--cache-dir requires a path')
+    }
+  })
+
   it('--cache-dir rejects a flag-shaped value in the space form', () => {
     // `--cache-dir $EMPTY --force` with an unquoted empty var: the arg
     // vanishes and `--force` would become the cache directory.
