@@ -9,6 +9,12 @@ export function shellExecutor(): VxPlugin {
     name: 'shell',
     async execute(req) {
       const started = Date.now()
+      // A stop before the spawn is work not to start: an abort fires no
+      // listener added after it, so the command would run unstopped.
+      if (req.signal?.aborted === true) {
+        const exitCode = req.signal.reason === 'SIGINT' ? 130 : 143
+        return { exitCode, durationMs: 0, stdout: '', stderr: '', violations: [], where: 'shell' }
+      }
       // vx's own `sh`: a bare name is looked up on `req.env`'s PATH, which
       // leads with the project's node_modules/.bin, where a dependency's
       // `sh` would run every command.
