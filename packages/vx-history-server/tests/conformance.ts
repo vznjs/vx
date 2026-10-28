@@ -113,6 +113,29 @@ export function conformance(name: string, target: Target): void {
       expect(await query([hash()])).toEqual({})
     })
 
+    it('takes an upload and a query at its limits: 10 000 tasks, each hash 512 characters', async () => {
+      const hashes = Array.from({ length: 10_000 }, (_, i) =>
+        `${i}`.padStart(512, crypto.randomUUID()),
+      )
+      const timings = hashes.map((h) => ({
+        hash: h,
+        durationMs: 2_147_483_647_000,
+        cores: 1.2345678901234567,
+        rssBytes: 9_007_199_254_740_991,
+      }))
+      expect((await upload(timings)).status).toBe(204)
+      const got = await query(hashes)
+      expect([Object.keys(got).length, got[hashes[9_999]!]]).toEqual([
+        10_000,
+        {
+          durationMs: 2_147_483_647_000,
+          cores: 1.2345678901234567,
+          rssBytes: 9_007_199_254_740_991,
+          runs: 1,
+        },
+      ])
+    })
+
     it('refuses a write from a token that reads only, and reports that are not some', async () => {
       const ok = { hash: hash(), durationMs: 1 }
       expect((await upload([ok], tokens.read)).status).toBe(403)
