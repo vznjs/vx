@@ -628,6 +628,27 @@ describe('persistent task framing', () => {
     expect(close).toContain('bun(2) deny(1) file-read-data /repo')
   })
 
+  // A denied path is anyone's bytes, and the seatbelt log carries it raw:
+  // a file named `ESC ]0;…` retitled the terminal from the report.
+  it('writes a control byte of a violation or a fix path as \\xNN', () => {
+    const n = node('a#build', 'cat x')
+    const close = formatFrameClose(
+      n,
+      outcome('a#build', 'failed', {
+        exitCode: 1,
+        sandboxViolations: 1,
+        sandboxViolationLines: ['cat(1) deny(1) file-read-data /w/a/x\x1b]0;t\x07'],
+        sandboxFix: { read: ['x\x1b]0;t\x07'], inputs: ['x\r'], withheld: ['~/.ssh/\x1b'] },
+      }),
+    )
+    expect(close).toContain('/w/a/x\\x1b]0;t\\x07')
+    expect(close).toContain("read: ['x\\x1b]0;t\\x07']")
+    expect(close).toContain("inputs.files: ['x\\x0d']")
+    expect(close).toContain('~/.ssh/\\x1b')
+    // oxlint-disable-next-line no-control-regex
+    expect(close.match(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g)).toBeNull()
+  })
+
   it("vx's own notes are not counted as violations in the header", () => {
     // The header counted the `vx:` note lines: "(2)" over one denial and
     // a closing "1 sandbox violation", and "(1)" over a note alone.
