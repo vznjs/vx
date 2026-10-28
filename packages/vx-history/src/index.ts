@@ -527,7 +527,15 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     if (!wrote || done === undefined) return
     const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
     const timings = await import('./timings-file.js')
-    timings.writeTimings(done.file, done.carried, table)
+    try {
+      timings.writeTimings(done.file, done.carried, table)
+    } catch (err) {
+      // Only the file is lost: said as the read is, not as a plugin failure.
+      fileWarn?.warn(
+        `[vx] vx-history: timings file ${done.file} not written: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return
+    }
     if (fileWarn !== undefined) timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
   }
   // What the run's tasks reserve, learned in `schedule` (one history read

@@ -109,7 +109,8 @@ The file is `{ "version": 1, "tasks": { "<task id>": <ms> } }`, keys
 sorted. A p50 recorded on this machine wins over it, and it wins over
 `assume`; like `assume`, it never feeds the workspace median. A task the
 run did not see keeps its time. A file that is not one warns and is read
-as empty; `--dry` writes nothing.
+as empty, one it cannot write warns and the run goes on; `--dry` writes
+nothing.
 
 ## Reservations learned from history
 
