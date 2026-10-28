@@ -2,7 +2,7 @@ import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { Cache, vxCacheEntries } from '../cache/index.js'
-import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
+import { acceptedFlags, flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import {
   errorCode,
   nearest,
@@ -77,13 +77,20 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
         `missing subcommand. Try \`vx cache clean --older-than 30d\` to trim the cache, or \`vx cache clean\` to clear it${seeHelp('cache')}`,
         'VX_E_USAGE',
       )
-    default:
-      return refuse(
-        'cache',
-        args,
-        `unknown subcommand: ${sub}${cacheSubHint(sub)}${seeHelp('cache')}`,
-        'VX_E_USAGE',
-      )
+    default: {
+      // A flag of `clean` typed before it, and an empty word, are no
+      // unknown subcommand: each was called one.
+      const flag = sub.replace(/=.*$/, '')
+      const said =
+        sub === ''
+          ? 'empty subcommand. The subcommand is clean'
+          : sub.startsWith('-') && acceptedFlags('cache clean').includes(flag)
+            ? `${flag} follows the subcommand: vx cache clean ${args.join(' ')}`
+            : sub.startsWith('-')
+              ? `unknown flag: ${sub}. The subcommand is clean`
+              : `unknown subcommand: ${sub}${cacheSubHint(sub)}`
+      return refuse('cache', args, `${said}${seeHelp('cache')}`, 'VX_E_USAGE')
+    }
   }
 }
 

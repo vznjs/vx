@@ -46,3 +46,21 @@ it('a word no runner uses still names clean (control)', async () => {
     ),
   ])
 })
+
+// `vx cache --dry-run` said "unknown subcommand: --dry-run", a flag
+// called a subcommand; `vx cache ''` said "unknown subcommand: " of nothing.
+it('a flag before the subcommand, and an empty word, are named as such', async () => {
+  expect([await said('--dry-run'), await said('--bogus'), await said('')]).toEqual([
+    [
+      1,
+      noticed(
+        'vx cache: --dry-run follows the subcommand: vx cache clean --dry-run (see `vx cache --help`)\n',
+      ),
+    ],
+    [
+      1,
+      noticed('vx cache: unknown flag: --bogus. The subcommand is clean (see `vx cache --help`)\n'),
+    ],
+    [1, noticed('vx cache: empty subcommand. The subcommand is clean (see `vx cache --help`)\n')],
+  ])
+})
