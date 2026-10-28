@@ -265,12 +265,17 @@ function importerNode(dir: string): string {
  */
 export function fileDeps(lock: Lockfile): string[] {
   const out = new Set(lock.directories.values())
-  for (const [dir, deps] of lock.importers) {
+  const add = (dir: string, deps: ReadonlyMap<string, string>): void => {
     for (const version of deps.values()) {
       const target = linkTarget(lock, dir, version)
       if (target !== undefined && !lock.importers.has(target)) out.add(target)
     }
   }
+  for (const [dir, deps] of lock.importers) add(dir, deps)
+  // An override to a `link:` directory reaches a package's own
+  // dependencies, written root-relative in its snapshot: one no importer
+  // names was never read, so an edit in it moved no key.
+  for (const deps of lock.snapshots.values()) add('.', deps)
   return [...out].sort()
 }
 

@@ -139,6 +139,45 @@ importers:
   packages/other: {}
 `,
   },
+  // An override to a `link:` directory reached only through a package:
+  // pnpm writes the link in the snapshot, root-relative, and no importer
+  // names it, so its content was never read and an edit moved no key.
+  'pnpm link: override': {
+    file: 'pnpm-lock.yaml',
+    spec: '1.0.0',
+    text: `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+overrides:
+  inner: link:./vendor/dep
+
+importers:
+
+  .: {}
+
+  packages/lib:
+    dependencies:
+      dep:
+        specifier: 1.0.0
+        version: 1.0.0
+
+  packages/other: {}
+
+packages:
+
+  dep@1.0.0:
+    resolution: {integrity: sha512-dep}
+
+snapshots:
+
+  dep@1.0.0:
+    dependencies:
+      inner: link:vendor/dep
+`,
+  },
   // Yarn berry links a `portal:` directory; its entry records no hash.
   'yarn portal:': {
     file: 'yarn.lock',
@@ -211,6 +250,7 @@ for (const row of [
   'bun',
   'npm',
   'pnpm link:',
+  'pnpm link: override',
   'yarn portal:',
   'yarn link:',
   'yarn',

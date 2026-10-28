@@ -56,7 +56,7 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 20
+const DIGEST_VERSION = 21
 
 interface Manager {
   readonly name: string
