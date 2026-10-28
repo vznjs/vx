@@ -96,6 +96,28 @@ describe('a project under a bracketed directory', () => {
   })
 })
 
+// The runtime reports a refused touch as one line per record, so a path
+// holding a line break reached vx split: an undeclared write to the
+// project's own file was judged as outside the project, and the hint said
+// to write under $TMPDIR. A space, a quote or unicode reported right.
+describe('a project under a directory holding a line break', () => {
+  it('is refused with the directory named, before anything is created', async () => {
+    for (const name of ['a\nb', 'a\rb']) {
+      dir = path.join(root, 'packages', name, 'proj')
+      await mkdir(dir, { recursive: true })
+      const err = await requestFor(['dist/']).then(
+        () => undefined,
+        (e: unknown) => (e as Error).message,
+      )
+      expect([err, await kind(path.join(dir, 'dist'))]).toEqual([
+        `exec.sandbox: ${dir} holds a line break, which the sandbox runtime's reports cannot ` +
+          `carry, so a refused touch is misreported — rename the directory, or run the task without exec.sandbox`,
+        'none',
+      ])
+    }
+  })
+})
+
 describe('the run-wide union SRT is armed with', () => {
   // `prepareSandbox` folds every sandboxed task into ONE allowlist,
   // because SRT runs one filtering proxy per run and checks every request
