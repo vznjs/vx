@@ -65,6 +65,7 @@ export {
   outputNever,
   restorableOutput,
   printable,
+  hasControl,
   relPosix,
   DOT_VX_GITATTRIBUTES,
   DOT_VX_GITIGNORE,

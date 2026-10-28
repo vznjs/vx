@@ -42,7 +42,8 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
 { taskId; command; cwd; env; readyWhen?; timeoutMs?; sandbox? }`, in dependency
   order), so their dependants are not pinned for it; `localFloor` starts
   each once, a sandboxed one inside its `exec.sandbox` built there, shares it with every later task, and stops them on `close()`,
-  and a server that never became ready fails the task with why; `runtime: true`
+  and a server that never became ready, or crashed after it was, fails the task with why,
+  and a stop of the request ends its wait on one; `runtime: true`
   says a remote one answers a task's `inputs.runtime` / `workspaceRuntime`
   probes where it runs the task (`answerRuntime`) and fails it when one
   answers otherwise than `req.inputs` says this machine did, so a task

@@ -192,6 +192,15 @@ const LIMIT_HEADERS: Record<keyof Limits, string> = {
 const count = (n: unknown): number | undefined =>
   typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : undefined
 
+const chunks = <T>(all: readonly T[], size: number): T[][] =>
+  Array.from({ length: Math.ceil(all.length / size) }, (_, i) =>
+    all.slice(i * size, (i + 1) * size),
+  )
+
+/** The limits an answer's `vx-max-*` headers name. */
+const limitsNamed = (res: Response): Limits | undefined =>
+  limitsOf((k) => Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
+
 /** Each limit, or undefined when one is missing or bad. */
 function limitsOf(read: (k: keyof Limits) => unknown): Limits | undefined {
   const maxCheckHashes = count(read('maxCheckHashes'))
@@ -367,6 +376,9 @@ export class VxCacheLayer implements RemoteCacheLayer {
       ...(init.body === undefined ? {} : { body: init.body }),
       signal: controller.signal,
     })
+    // Any answer's, a refusal's too: one refused for its size by a server
+    // whose limits fell mid-run names them for the next check and upload.
+    this.limits = limitsNamed(res) ?? this.limits
     if (init.streamed === true) {
       clearTimeout(answer)
       res = streamed(res, controller, ms)
@@ -461,14 +473,18 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const scopes = this.refs.map(scopeOf)
     const ask = [...new Set(hashes)]
     const max = (await this.limitsNow())?.maxCheckHashes ?? scopes.length
-    const per = Math.max(1, Math.floor(max / scopes.length))
+    // More refs than one check takes: each hash's scopes span several
+    // checks, the first in order holding it answering (a check of every
+    // scope at once was refused, every time).
+    const span = Math.min(scopes.length, max)
+    const per = Math.max(1, Math.floor(max / span))
+    const spans = chunks(scopes, span)
     const parts = await Promise.all(
-      Array.from({ length: Math.ceil(ask.length / per) }, (_, i) =>
-        this.check(scopes, ask.slice(i * per, (i + 1) * per)),
-      ),
+      chunks(ask, per).flatMap((some) => spans.map((s) => this.check(s, some))),
     )
     for (const part of parts)
       for (const [hash, { size, scope }] of part) {
+        if (held.has(hash)) continue
         held.set(hash, { size })
         this.found.set(hash, scope)
       }
@@ -483,9 +499,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const res = await this.json('/v1/artifacts', { hashes, scopes })
     if (res === undefined) return new Map()
     if (res.status !== 200) throw await refusal(res)
-    const named = limitsOf((k) => Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
-    if (named === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
-    else this.limits = named
+    if (limitsNamed(res) === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
     const body = (await res.json()) as Record<string, unknown> | null
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       throw new Error('the check answered no object of hashes')

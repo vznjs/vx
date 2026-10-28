@@ -58,6 +58,12 @@ function sortedDeep(v: unknown): unknown {
   if (v === null || typeof v !== 'object') return v
   if (Array.isArray(v)) return v.map(sortedDeep)
   const out: Record<string, unknown> = {}
-  for (const k of Object.keys(v).sort()) out[k] = sortedDeep((v as Record<string, unknown>)[k])
+  for (const k of Object.keys(v).sort()) {
+    const value = sortedDeep((v as Record<string, unknown>)[k])
+    // Assigned, `__proto__` sets the copy's prototype and leaves the JSON.
+    if (k === '__proto__')
+      Object.defineProperty(out, k, { value, enumerable: true, writable: true, configurable: true })
+    else out[k] = value
+  }
   return out
 }

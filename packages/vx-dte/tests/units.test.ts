@@ -9,6 +9,7 @@ import {
   localEnv,
   runWorker,
   swapRoots,
+  trackedFiles,
   treeMeter,
 } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
@@ -3963,6 +3964,37 @@ it('names a tracked file a task changed as the workspace does, in a repository s
   const outputs = { files: ['gen/**'], workspaceFiles: [] }
   const m = { project: 'a', nested: [], outputs } as unknown as RunOrder
   expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
+})
+
+// A worker clears what an earlier task left under a task's outputs, but
+// never a tracked file. A git that could not list them (a corrupt index)
+// read as none tracked, and committed files under `gen/**` were deleted.
+it('refuses a checkout whose tracked files git cannot list', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  await mkdir(path.join(ws, 'a/gen'), { recursive: true })
+  await writeFile(path.join(ws, 'a/gen/g.txt'), '1\n')
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  expect(trackedFiles(ws)).toEqual(new Set(['a/gen/g.txt']))
+  await writeFile(path.join(ws, '.git/index'), 'not an index')
+  expect(() => trackedFiles(ws)).toThrow(/git ls-files/)
+  // Outside git nothing is tracked.
+  expect(trackedFiles(await tmp())).toEqual(new Set())
 })
 
 // A pathspec is a glob unless told otherwise: a project at `p*` named its
