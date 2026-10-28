@@ -707,7 +707,7 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs', () => {
         }),
       )
       expect(warns).toContain(
-        '[vx] vx-reapi: lib#build has 1 output(s) recorded but missing on disk — grafting is not possible for a partial set, using what is here',
+        '[vx] vx-reapi: lib#build has 1 output recorded but missing on disk — grafting is not possible for a partial set, using what is here',
       )
     })
   })
@@ -730,7 +730,7 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs', () => {
         ],
       })
       expect(await refusal(run(withUp('up-gone')))).toContain(
-        'vx-reapi: upstream lib#build outputs evicted from the remote store (1 blob(s)) and never materialised locally',
+        'vx-reapi: upstream lib#build outputs evicted from the remote store (1 blob) and never materialised locally',
       )
     })
   })

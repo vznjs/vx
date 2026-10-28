@@ -757,7 +757,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             if (present.length > 0) {
               if (present.length !== up.outputs.length) {
                 warn(
-                  `[vx] vx-reapi: ${up.taskId} has ${up.outputs.length - present.length} output(s) recorded ` +
+                  `[vx] vx-reapi: ${up.taskId} has ${up.outputs.length - present.length} output${up.outputs.length - present.length === 1 ? '' : 's'} recorded ` +
                     `but missing on disk — grafting is not possible for a partial set, using what is here`,
                 )
               }
@@ -782,7 +782,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             const gone = await client.findMissingBlobs(referenced)
             if (gone.length > 0) {
               throw new UserError(
-                `vx-reapi: upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob(s)) and never materialised locally — re-run it (e.g. --force)`,
+                `vx-reapi: upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob${gone.length === 1 ? '' : 's'}) and never materialised locally — re-run it (e.g. --force)`,
               )
             }
             const files = (record.output_files ?? []).map((f) => ({
