@@ -113,7 +113,7 @@ export function createForecast(
 ## View resolution (priority order)
 
 1. Explicit `--output-logs` → that mode.
-2. Truthy `CI` env (`CI=0` / `CI=false` excluded) → `full`.
+2. Truthy `CI` env (`CI=0` and `CI=false`, in any case, excluded) → `full`.
 3. CLI-detected flow (`RunOptions.flow`) → `focused` or `broad`.
 4. Nothing (programmatic callers) → `full`.
 

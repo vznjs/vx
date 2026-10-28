@@ -607,8 +607,40 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // (`dormant`) until a dependant is demoted, which starts it, or until
   // every dependant has finished, which settles it unspawned. Settled
   // without an outcome: it is not part of the run, as a pruned task is not.
-  const idle = idleServers(nodes, dependents, restoreTier)
+  // A group between it and its hits is idle with it.
+  const idleGroups = new Set<string>()
+  const idle = idleServers(nodes, dependents, restoreTier, idleGroups)
+  for (const g of idleGroups) idle.add(g)
   const dormant = new Set<string>()
+  // The idle tasks below `id`, through idle groups: those its outcome may
+  // let settle, and those its demotion wakes.
+  const idleBelow = (id: string, each: (p: string) => void): void => {
+    const stack = [...(nodes.get(id) as TaskNode).deps]
+    const seen = new Set<string>()
+    while (stack.length > 0) {
+      const p = stack.pop()!
+      if (seen.has(p) || !idle.has(p)) continue
+      seen.add(p)
+      each(p)
+      if (idleGroups.has(p)) stack.push(...(nodes.get(p) as TaskNode).deps)
+    }
+  }
+  // Every task above an idle one, through idle groups, has finished.
+  const settledAbove = (id: string): boolean => {
+    const stack = [id]
+    const seen = new Set<string>()
+    while (stack.length > 0) {
+      for (const d of dependents.get(stack.pop()!) ?? []) {
+        if (outcomes.has(d)) continue
+        if (!idleGroups.has(d) || !idle.has(d)) return false
+        if (!seen.has(d)) {
+          seen.add(d)
+          stack.push(d)
+        }
+      }
+    }
+    return true
+  }
   // Held servers not yet answered, and those of them that became ready.
   const unanswered = new Set(options.heldServers?.keys() ?? [])
   for (const id of idle) unanswered.delete(id)
@@ -657,6 +689,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const restoreRoom = (): boolean =>
     serial ? active + activeRestore < 1 : activeRestore < restoreConcurrency
   let resolved = false
+  let stopListening = (): void => {}
   // A refusal's text → the first task that said it. A corrupt cache index
   // reaches every lookup as one UserError; on bare stderr a repeat names the first.
   const refusedBy = new Map<string, string>()
@@ -758,7 +791,9 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // A dormant server is asked again: the dispatch settles it once its
       // last dependant is in.
       if (dormant.size > 0) {
-        for (const p of (nodes.get(id) as TaskNode).deps) if (dormant.delete(p)) execReady.push(p)
+        idleBelow(id, (p) => {
+          if (dormant.delete(p)) execReady.push(p)
+        })
       }
       // Observer hook (the logger's taskComplete). Crash-isolated: a
       // throwing observer must NOT break scheduling — it would otherwise
@@ -862,8 +897,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         return true
       }
       if (inRestoreTier(id)) return false
-      if (continueMode === 'always') return false
       const node = nodes.get(id) as TaskNode
+      // `always` runs past a FAILURE only. Under it a skipped dep is one
+      // `exec.platforms` left off this machine (or a dependant of one): no
+      // failure, and what depends on it is skipped in every mode.
+      if (continueMode === 'always')
+        return node.deps.some((d) => outcomes.get(d)?.status === 'skipped')
       return node.deps.some((d) => {
         const u = outcomes.get(d)
         // `aborted` propagates even though it is counted nowhere: the
@@ -988,10 +1027,15 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             viaSkip?.blockedBy ??
             (viaSkip?.otherPlatform !== undefined ? viaSkip.node.id : undefined) ??
             (viaRestore === undefined ? undefined : blockedRestores.get(viaRestore))
+          // Behind a platform skip is no failure: the run passes, so the exit does.
+          const notHere =
+            !aborted() &&
+            blockedBy !== undefined &&
+            outcomes.get(blockedBy)?.otherPlatform !== undefined
           finishOne(id, {
             node,
             status: aborted() ? 'aborted' : 'skipped',
-            exitCode: 1,
+            exitCode: notHere ? 0 : 1,
             durationMs: 0,
             ...(blockedBy !== undefined ? { blockedBy } : {}),
           })
@@ -999,7 +1043,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         }
         if (idle.has(id)) {
           readyAt.delete(id)
-          if (dependents.get(id)!.every((d) => outcomes.has(d))) {
+          if (settledAbove(id)) {
             settledIdle++
             release(id)
           } else dormant.add(id)
@@ -1081,12 +1125,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               leave()
               untrack()
               demoted.add(id)
-              for (const p of node.deps) {
-                if (idle.delete(p) && dormant.delete(p)) {
+              idleBelow(id, (p) => {
+                idle.delete(p)
+                if (dormant.delete(p)) {
                   execReady.push(p)
                   readyAt.set(p, Date.now())
                 }
-              }
+              })
               if (pending.get(id) === 0) {
                 execReady.push(id)
                 readyAt.set(id, Date.now())
@@ -1164,6 +1209,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // condition survived the whole core suite (item 644).
       if (outcomes.size + settledIdle === nodes.size) {
         resolved = true
+        stopListening()
         resolve(outcomes)
       }
     }
@@ -1189,23 +1235,81 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           () => answer(id, []),
         )
     }
+    // A stop reaches the scheduler through a completion, and a held server
+    // waiting on the remote has none: the run waited out the remote's answer.
+    const signal = options.signal
+    if (unanswered.size > 0 && signal !== undefined) {
+      const stop = (): void => {
+        for (const id of [...unanswered]) answer(id, [])
+      }
+      signal.addEventListener('abort', stop, { once: true })
+      stopListening = () => signal.removeEventListener('abort', stop)
+    }
 
     tick()
   })
 }
 
-/** Persistent tasks nobody asked for whose every dependant is a restore-tier hit. */
+/**
+ * Persistent tasks nobody asked for whose every dependant is a restore-tier
+ * hit, or a group nobody asked for that only such dependants stand behind:
+ * a group runs nothing, so `env: { dependsOn: ['dev'] }` between the server
+ * and its hits booted the server on every warm run. Those groups go in
+ * `groups`.
+ */
 export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
   dependents: ReadonlyMap<string, string[]>,
   restoreTier: ReadonlySet<string> | undefined,
+  groups?: Set<string>,
 ): Set<string> {
   const out = new Set<string>()
   if (restoreTier === undefined || restoreTier.size === 0) return out
+  const unasked = (n: TaskNode): boolean => !n.requested && n.surfaced !== true
+  // Per group: whether only hits stand behind it. Post-order on a stack, as
+  // groups nest as deep as the graph.
+  const spare = new Map<string, boolean>()
+  const spareGroup = (root: string): boolean => {
+    const stack = [root]
+    while (stack.length > 0) {
+      const id = stack[stack.length - 1]!
+      if (spare.has(id)) {
+        stack.pop()
+        continue
+      }
+      const n = nodes.get(id)
+      const ds = dependents.get(id)
+      if (n === undefined || !isGroupTask(n) || !unasked(n) || ds === undefined) {
+        spare.set(id, false)
+        stack.pop()
+        continue
+      }
+      const next = ds.find((d) => !restoreTier.has(d) && !spare.has(d))
+      if (next !== undefined) {
+        stack.push(next)
+        continue
+      }
+      stack.pop()
+      spare.set(
+        id,
+        ds.every((d) => restoreTier.has(d) || spare.get(d) === true),
+      )
+    }
+    return spare.get(root)!
+  }
   for (const n of nodes.values()) {
-    if (n.config.exec?.persistent === undefined || n.requested || n.surfaced === true) continue
+    if (n.config.exec?.persistent === undefined || !unasked(n)) continue
     const ds = dependents.get(n.id)
-    if (ds !== undefined && ds.every((d) => restoreTier.has(d))) out.add(n.id)
+    if (ds === undefined || !ds.every((d) => restoreTier.has(d) || spareGroup(d))) continue
+    out.add(n.id)
+    if (groups === undefined) continue
+    const stack = ds.filter((d) => !restoreTier.has(d))
+    while (stack.length > 0) {
+      const g = stack.pop()!
+      if (groups.has(g)) continue
+      groups.add(g)
+      for (const d of dependents.get(g)!) if (!restoreTier.has(d)) stack.push(d)
+    }
   }
   return out
 }

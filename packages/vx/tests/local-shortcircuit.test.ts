@@ -1397,6 +1397,9 @@ describe('local cache short-circuit', () => {
         tasks: ['build'],
         log: silentLogger(fixture),
         remoteCache: remote,
+        // A restore backfills an idle slot: a one-core runner's default
+        // of one slot held it behind lib's `sleep 2`.
+        concurrency: 2,
       }
       expect((await run(opts)).ok).toBe(true)
       await rm(path.join(appDir, 'dist'), { recursive: true, force: true })

@@ -310,6 +310,16 @@ describe('affectedProjects', () => {
       'git ref "HEAD:packages" names what is at packages, not a commit: vx diffs the whole ' +
         'workspace, so pass the commit alone ("HEAD").',
     )
+    // Turbo's two-dot form diffs from the ref itself, and selected both.
+    const ranged = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD:packages..HEAD',
+      projects,
+    }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(ranged?.message).toBe(err?.message)
     const sel = async (since: string) =>
       [...(await affectedProjects({ workspaceRoot: root, since, projects }))].sort()
     expect(await sel('HEAD^{tree}')).toEqual([])
@@ -322,6 +332,19 @@ describe('affectedProjects', () => {
 
   // `^main` is rev-list's exclusion: `git diff ^main` diffed from main itself,
   // so a change only main made selected its project too, green.
+  // `rev-parse --verify --quiet` exits 128 and prints nothing for a reflog
+  // entry the log lacks: the refusal read "git rev-parse failed (exit 128)".
+  it("names git's reason for a reflog entry the log lacks", async () => {
+    const err = await affectedProjects({ workspaceRoot: root, since: 'HEAD@{99}', projects }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err).toBeInstanceOf(UserError)
+    expect(err?.message).toMatch(
+      /^git ref "HEAD@\{99\}" did not resolve: log for 'HEAD' only has \d+ entries\.$/,
+    )
+  })
+
   it('refuses a base written as an exclusion (`^<ref>`)', async () => {
     await git(root, 'branch', '-m', 'main')
     await git(root, 'checkout', '-q', '-b', 'feature')

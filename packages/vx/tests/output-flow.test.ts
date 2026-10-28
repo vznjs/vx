@@ -1078,7 +1078,9 @@ describe('flow e2e against a real fixture workspace', () => {
     async () => {
       const path = await import('node:path')
       const BIN = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-      const ghaEnv = { ...process.env, CI: '1', GITHUB_ACTIONS: 'true' }
+      // FORCE_COLOR=0, as the gate's SUITE_ENV sets: GITHUB_ACTIONS paints
+      // a pipe, and a bare `bun test` read `┌─ one#boom` split by escapes.
+      const ghaEnv = { ...process.env, CI: '1', GITHUB_ACTIONS: 'true', FORCE_COLOR: '0' }
       const vx = async (args: string[]): Promise<{ code: number; out: string }> => {
         const proc = Bun.spawn([process.execPath, BIN, ...args], {
           cwd: workspaceRoot,
@@ -1270,6 +1272,20 @@ describe('persistent post-ready output', () => {
       )
       log.runEnd?.()
       expect(out.text().slice(before)).toEndWith('app#server │ tail without newline\n')
+    }
+  })
+
+  // `vx watch` hands its dev server to the next cycle's run, which writes
+  // the server's output from that run's start: before the run reaches the
+  // task it was buffered as a task's that has yet to run, and never shown.
+  it('a server held from an earlier run streams under its id before this run reaches it', () => {
+    for (const mode of ['broad', 'full'] as const) {
+      const out = sink()
+      const log = defaultLogger(NO_COLORS, { mode }, out)
+      const n = mkPersistent('app#server')
+      log.taskStdout(n, 'rebuilt lib\n')
+      log.taskStderr(n, 'warn: slow\n')
+      expect(out.text()).toBe('app#server │ rebuilt lib\napp#server │ warn: slow\n')
     }
   })
 
