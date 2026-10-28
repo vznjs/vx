@@ -39,7 +39,7 @@ export function wholeIgnored(
 - `wholeIgnored`: the globs whose probes git ignores and, when deep, no
   listed file matches. Undecided is not ignored.
 
-Callers: `graph/task-graph.ts` `refuseUnlessIgnored` (at `vx lock`) and
+Callers: `graph/task-graph.ts` `refuseOverlaps` (at `vx lock`) and
 `orchestrator/stable-keys.ts` `askIgnoredOutputs` (once per run).
 
 ## Tests
