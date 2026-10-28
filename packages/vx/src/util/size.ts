@@ -24,11 +24,13 @@ export function parseSize(input: string): number | null {
 /**
  * Parse `<n><unit>` where unit is ms/s/m/h/d, case-insensitively (`parseSize`
  * has always been case-insensitive; this matched only lowercase, so `30D`
- * was rejected while `1GB` and `1gb` both worked).
+ * was rejected while `1GB` and `1gb` both worked). Minutes are `m` only:
+ * `M` is a month to systemd, and `--older-than 1M` read as a minute
+ * empties the cache.
  */
 export function parseDuration(input: string): number | null {
   const m = input.match(/^(\d+)(ms|[smhd])$/i)
-  if (!m) return null
+  if (!m || m[2] === 'M') return null
   const n = parseDecimalInt(m[1]!)
   if (n === null) return null
   // Lowercase before the switch: with the /i flag an uppercase `M` would
