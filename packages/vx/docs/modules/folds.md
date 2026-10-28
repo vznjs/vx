@@ -30,8 +30,9 @@ export function selectFoldedDeps(
 // The dependencies one task's key folds, as `keyUpstream` hands them to
 // the key: scheduled edges less order-only ones, plus `excludedUpstream`.
 export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate[]
-// An `inputs.tasks` spec that matches a member only through a group is refused.
-export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>): void
+// An `inputs.tasks` spec that selects no dependency is refused when it
+// matches one only through a group, or names one in another form.
+export function refuseFiltersSelectingNothing(nodes: ReadonlyMap<string, TaskNode>): void
 ```
 
 ## Rules

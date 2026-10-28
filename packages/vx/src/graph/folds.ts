@@ -42,20 +42,38 @@ export function keyedDeps(node: TaskNode): readonly string[] {
  * nothing anywhere stays legal (a preset's pattern needn't match in every
  * project). An exact name is refused earlier, at load, unless `dependsOn`
  * names it (`assertFilterNamesDeclaredDeps`).
+ *
+ * So is an exact name in another form than the edge it names: load pairs
+ * a `pkg#task` edge with any form, as it cannot tell this project from a
+ * dependency, but `dependsOn: ['lib#gen']` with `tasks: ['gen']` (this
+ * project's) or `['app#gen']` with `['^gen']` (the dependencies') selects
+ * nothing here, and the dependency fell out of the key. A form `dependsOn`
+ * also declares that just finds no task in this project stays legal.
  */
-export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>): void {
+export function refuseFiltersSelectingNothing(nodes: ReadonlyMap<string, TaskNode>): void {
   for (const node of nodes.values()) {
     const filter = node.config.inputs?.tasks
     if (filter === undefined || filter.length === 0) continue
     const deps = keyedDeps(node).flatMap((id) => nodes.get(id) ?? [])
     const groups = deps.filter(isGroupTask)
-    if (groups.length === 0) continue
     for (const raw of filter) {
       const spec = parseSpec(raw, node.id)
       if (spec.negated) continue
       const matches = specMatcher(spec)
       const hit = (n: TaskNode): boolean => matches(n, n.projectName === node.projectName)
       if (deps.some(hit)) continue
+      if (spec.kind === 'self' || spec.kind === 'deps') {
+        const named = deps.filter((d) => d.taskName === spec.task)
+        const declared = (node.config.dependsOn ?? []).some((raw) => {
+          const d = parseDependencySpecOrNull(raw)
+          return d !== null && d.kind === spec.kind && d.task === spec.task
+        })
+        if (named.length > 0 && !declared && !isTaskPattern(spec.task)) {
+          throw new UserError(
+            `${node.id}: inputs.tasks: '${raw}' selects none of the task's dependencies (${named.map((d) => d.id).join(', ')}), so their keys fold into nothing; spell it ${named.map((d) => `'${d.id}'`).join(' or ')}`,
+          )
+        }
+      }
       for (const group of groups) {
         const member = groupMembers(group, nodes).find(hit)
         if (member === undefined) continue
@@ -75,6 +93,15 @@ function parseSpec(raw: string, selfTaskId: string): DependencySpec {
       throw new UserError(`${selfTaskId}: inputs.tasks: ${err.message}`)
     }
     throw err
+  }
+}
+
+/** A `dependsOn` entry's form, or null for one this rule does not read. */
+function parseDependencySpecOrNull(raw: string): DependencySpec | null {
+  try {
+    return parseDependencySpec(raw)
+  } catch {
+    return null
   }
 }
 

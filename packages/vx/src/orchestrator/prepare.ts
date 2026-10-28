@@ -53,7 +53,7 @@ import {
   type GraphRules,
   isDefaultBuild,
   isGroupTask,
-  refuseFiltersThroughGroups,
+  refuseFiltersSelectingNothing,
   type TaskNode,
   undeclaredDepsError,
   unresolvedRequests,
@@ -763,7 +763,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     if (hasHook(plugins, 'key')) {
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log) })
     }
-    refuseFiltersThroughGroups(nodes)
+    refuseFiltersSelectingNothing(nodes)
     const exclude = options.excludeDependencies
     // The nodes are what the graph token names only while nothing edited them.
     if (

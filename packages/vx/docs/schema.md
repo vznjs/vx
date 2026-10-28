@@ -1151,8 +1151,11 @@ entry's own `*` pattern (`dependsOn: ['build.*']` names
 `tasks: ['build.bun']`), and in a form that reaches the same task:
 `build` is this project's, `^build` only the dependencies', so
 `tasks: ['build']` against `dependsOn: ['^build']` names nothing. A
-`pkg#task` entry may be this project or a dependency, so it pairs with
-either form; two `pkg#task` entries must agree on the project. One that
+`pkg#task` entry may be this project or a dependency, so load pairs it
+with either form; when the run plans, a form that then selects none of
+the task's dependencies is refused, naming the `pkg#task` spelling that
+does (`dependsOn: ['lib#gen']` with `tasks: ['gen']`, which is this
+project's `gen`). Two `pkg#task` entries must agree on the project. One that
 is not named (`['buidl']`) is refused at load: it would match nothing at hash time and fold no upstream hash,
 decoupling the task from its dependencies with no diagnostic — a stale
 hit waiting for the next upstream change. Patterns, wildcards and

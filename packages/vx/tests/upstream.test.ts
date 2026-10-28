@@ -8,6 +8,7 @@ import {
   keyUpstream,
 } from '../src/orchestrator/upstream.js'
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
+import { makeWorkspace as makeWorkspaceAt } from './helpers/workspace.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { UserError } from '../src/util/index.js'
 
@@ -379,6 +380,69 @@ describe('inputs.tasks through a group', () => {
       expect(await runWith(['build.*'], ['build', 'build.a'])).toBe('ok')
       expect(await runWith(['*', '!build.a'])).toBe('ok')
       expect(await runWith(['lint.*'])).toBe('ok')
+    },
+    TIMEOUT,
+  )
+})
+
+// A filter spelled in another form than the `dependsOn` it names passed
+// the load check (a `pkg#task` edge pairs with any form there) and then
+// selected nothing: `dependsOn: ['lib#gen']` with `tasks: ['gen']` (this
+// project's `gen`) or `dependsOn: ['app#gen']` with `tasks: ['^gen']`
+// (the dependencies'). The dependency dropped out of the key and an edit
+// to its inputs replayed the old output. The run refuses it.
+describe('inputs.tasks in another form than its dependsOn', () => {
+  const runWith = async (dependsOn: string[], filter: string[]) => {
+    const root = await makeWorkspaceAt({ prefix: 'vx-filter-form-', edges: { app: ['lib'] } })
+    try {
+      const gen = `gen: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },`
+      await addProject(root, 'lib', {
+        files: { 'src/a.js': '1\n' },
+        config: `export default { tasks: { ${gen} } }`,
+      })
+      await addProject(root, 'app', {
+        files: { 'src/a.js': '1\n' },
+        config: `export default { tasks: {
+          ${gen}
+          build: {
+            exec: { command: 'true' },
+            dependsOn: ${JSON.stringify(dependsOn)},
+            inputs: { files: ['src/**'], tasks: ${JSON.stringify(filter)} },
+            cache: { outputs: { files: [] } },
+          },
+        } }`,
+      })
+      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      return await run({ cwd: root, tasks: ['app#build'], log: quiet }).then(
+        (r) => (r.ok ? 'ok' : 'failed'),
+        (e: Error) => e.message,
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+
+  it(
+    'is refused, naming the dependency and the spelling that selects it',
+    async () => {
+      expect(await runWith(['lib#gen'], ['gen'])).toBe(
+        "app#build: inputs.tasks: 'gen' selects none of the task's dependencies (lib#gen), so their keys fold into nothing; spell it 'lib#gen'",
+      )
+      expect(await runWith(['app#gen'], ['^gen'])).toBe(
+        "app#build: inputs.tasks: '^gen' selects none of the task's dependencies (app#gen), so their keys fold into nothing; spell it 'app#gen'",
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROLS: matching forms, a preset form with no such dependency and a negation run',
+    async () => {
+      expect(await runWith(['lib#gen'], ['^gen'])).toBe('ok')
+      expect(await runWith(['lib#gen'], ['lib#gen'])).toBe('ok')
+      expect(await runWith(['app#gen'], ['gen'])).toBe('ok')
+      expect(await runWith(['^gen', 'gen'], ['^gen', 'gen'])).toBe('ok')
+      expect(await runWith(['lib#gen'], ['*', '!gen'])).toBe('ok')
     },
     TIMEOUT,
   )

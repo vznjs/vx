@@ -45,7 +45,7 @@ the caller of `cache.key` sorts before folding, so order doesn't
 affect identity.
 
 `selectFoldedDeps` (`graph/folds.ts`, with `keyedDeps`, `foldedDeps`
-and `refuseFiltersThroughGroups`) is the selection itself, over nodes,
+and `refuseFiltersSelectingNothing`) is the selection itself, over nodes,
 split out on 2026-09-24 so the sandbox's keyed set (`keyed-projects.ts`)
 walks the graph through the SAME matcher the hash path applies, and
 moved into the graph on 2026-10-16 so `vx lock`'s input-overlap rule
