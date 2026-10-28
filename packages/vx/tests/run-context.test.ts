@@ -515,7 +515,7 @@ describe('captureWorkspaceIdentity', () => {
 })
 
 describe('detectCi — the falsy spellings, one per row', () => {
-  // `isTruthy` rejects undefined, '', '0' and 'false' — and lower-cases
+  // `envFlagOn` rejects undefined, '', '0' and 'false' — and lower-cases
   // before that last comparison. The empty and '0' cases fail rows; the
   // CASE FOLD did not (item 509). A machine exporting `CI=False` — which
   // is what a PowerShell `$false` and several CI templates write — would

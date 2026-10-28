@@ -16,6 +16,7 @@ import {
   outputWalkTakes,
   resolveOutputs,
   resolveWorkspaceOutputs,
+  resolveWorkspaceOutputTree,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
@@ -166,12 +167,11 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
           nestedProjectDirs: a.nestedProjectDirs,
         })
   const outputFiles = tree.files
-  const wsOutputFiles =
-    a.ownWsOutputFiles ??
-    (await resolveWorkspaceOutputs({
-      workspaceRoot: a.workspaceRoot,
-      outputs: a.wsOutputs,
-    }))
+  const wsTree =
+    a.ownWsOutputFiles !== undefined
+      ? { files: a.ownWsOutputFiles, emptyDirs: [] }
+      : await resolveWorkspaceOutputTree({ workspaceRoot: a.workspaceRoot, outputs: a.wsOutputs })
+  const wsOutputFiles = wsTree.files
   endResolve()
   // The mirror of the input warning: declared outputs that resolve to
   // nothing save an empty artifact, and the next hit "restores" it —
@@ -220,6 +220,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       // The root an output symlink's target must stay inside, outputs.workspaceFiles or not.
       workspaceRoot: a.workspaceRoot,
       ...(wsOutputFiles.length > 0 ? { workspaceOutputFiles: wsOutputFiles } : {}),
+      ...(wsTree.emptyDirs.length > 0 ? { workspaceOutputDirs: wsTree.emptyDirs } : {}),
       inputComponents: a.captured.map((c) => ({ entryHash: a.hash, ...c })),
       // No `exitCode`: the save only runs under `effectiveExitCode === 0`, and
       // the contract no longer accepts one — so the invariant is enforced by

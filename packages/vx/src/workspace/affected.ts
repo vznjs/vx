@@ -22,7 +22,7 @@ import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
-import { PROJECT_CONFIG_FILENAMES, type ProjectMeta } from './workspace.js'
+import { PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from './workspace.js'
 
 /**
  * Every git call here goes through these two: a git that is not on PATH
@@ -229,7 +229,7 @@ export async function affectedChanges(
   const partial = isPartialClone(args.workspaceRoot).catch(() => false)
   const base = fromMergeBase
     ? await mergeBase(args.workspaceRoot, since)
-    : (await verifyRef(args.workspaceRoot, since), since)
+    : await rangeBase(args.workspaceRoot, since)
 
   const [diffed, untracked] = await Promise.all([
     // `--no-renames` is crucial for project-affected detection: with
@@ -271,12 +271,22 @@ export async function affectedChanges(
 
   const projects = await args.projects
 
-  // .vx/projects.lock.json (workspace-root metadata) is excluded like a gitignored
-  // file: re-running `vx lock` must not mark every project affected.
+  // What vx writes under `.vx` (the lock, its git files, the cache) is
+  // excluded like a gitignored file: re-running `vx lock` must not mark
+  // every project affected, nor the root project whole.
   // An untracked file under `node_modules` is an install, which the input
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.
+  // So is each project's `vx.lock.json`, the review copy `vx lock` writes
+  // beside its config and nothing reads: a re-lock rewriting them all
+  // selected every project while no key moved.
+  const reviewCopies = new Set(projects.map((p) => path.join(p.dir, REVIEW_FILE)))
+  const rootDir = path.resolve(args.workspaceRoot)
   const changed = [...diffed.paths, ...untracked.filter((s) => !isInstalledPath(s))].filter(
-    (s) => s !== LOCKFILE_NAME,
+    (s) =>
+      !VX_OWN.has(s) &&
+      !s.startsWith('.vx/cache/') &&
+      !s.startsWith('.vx/tmp/') &&
+      (path.posix.basename(s) !== REVIEW_FILE || !reviewCopies.has(path.join(rootDir, s))),
   )
   // A symlinked input keys the content behind it (cache/linked-inputs.ts),
   // and the diff names that content's path, never the link's: a link whose
@@ -333,7 +343,6 @@ export async function affectedChanges(
     string,
     Map<string, { before: Uint8Array | null; after: Uint8Array | null }>
   >()
-  const rootDir = path.resolve(args.workspaceRoot)
   const loose = changed.filter((rel) => {
     const abs = path.join(rootDir, rel)
     return !projects.some((p) => p.dir !== rootDir && abs.startsWith(p.dir + path.sep))
@@ -428,6 +437,11 @@ export async function affectedChanges(
   const configs = changed.filter((rel) => CONFIG_NAMES.has(path.posix.basename(rel)))
   if (configs.length > 0) {
     const atBase = await gitBlobsAt(args.workspaceRoot, base, configs)
+    // A config the base had in a directory that is no project now: the
+    // project is gone, and with it the edge naming who depended on it,
+    // while their keys lost an upstream. Today's graph cannot say who.
+    const gone = await removedProjectConfig(args.workspaceRoot, atBase, projects)
+    if (gone !== undefined) return everything(gone)
     for (const name of parentsOfNewNested(args.workspaceRoot, atBase, projects)) {
       owned.add(name)
       whole.add(name)
@@ -468,6 +482,9 @@ export async function affectedChanges(
   return done()
 }
 
+/** What vx writes under `.vx`, which no key reads (cache/inputs.ts `ALWAYS_IGNORE`). */
+const VX_OWN: ReadonlySet<string> = new Set([LOCKFILE_NAME, '.vx/.gitattributes', '.vx/.gitignore'])
+
 const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 
 /**
@@ -503,6 +520,23 @@ function parentsOfNewNested(
     if (parent !== undefined) out.add(parent)
   }
   return out
+}
+
+/** The first config in `atBase` the base had whose file and project are both gone now. */
+async function removedProjectConfig(
+  workspaceRoot: string,
+  atBase: ReadonlyMap<string, Uint8Array | null>,
+  projects: readonly ProjectMeta[],
+): Promise<string | undefined> {
+  const dirs = new Set(projects.map((p) => p.dir.normalize('NFC')))
+  for (const [rel, bytes] of atBase) {
+    if (bytes === null) continue
+    const dir = path.resolve(workspaceRoot, path.posix.dirname(rel)).normalize('NFC')
+    if (dirs.has(dir)) continue
+    if (await Bun.file(path.join(workspaceRoot, rel)).exists()) continue
+    return rel
+  }
+  return undefined
 }
 
 /**
@@ -635,7 +669,8 @@ async function linkedChanges(
     '--directory',
     '-z',
     '--',
-    ...(named.length === inside.length ? named : ['.']),
+    // A name is a path, never pathspec magic (`:x`, `*`).
+    ...(named.length === inside.length ? named.map((n) => `:(literal)${n}`) : ['.']),
   ])
   const changedSet = new Set(changed)
   const under = (p: string, dir: string): boolean => dir === '' || p.startsWith(`${dir}/`)
@@ -867,11 +902,33 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
   if (sha !== undefined) return sha
   const reached = await reachMergeBase(workspaceRoot, ref)
   if (reached !== undefined) return reached
+  await verifyTreeRef(workspaceRoot, ref)
+  // The ref itself is the base only for histories that share nothing. A
+  // shallow clone may just lack the commits between them (origin gone, a
+  // fetch failed, past MAX_DEEPEN), and its tip selected what the base
+  // branch changed.
+  if (
+    revParse(workspaceRoot, ref) !== undefined &&
+    revParse(workspaceRoot, 'HEAD') !== undefined &&
+    isShallow(workspaceRoot)
+  ) {
+    throw new UserError(
+      `git ref "${ref}" has no merge base with HEAD in this shallow clone, and origin did not ` +
+        'give the history between them: fetch it (`git fetch --unshallow origin`).',
+      'VX_E_AFFECTED_BASE',
+    )
+  }
+  return ref
+}
+
+/**
+ * `verifyRef`, then refuse `<rev>:<path>`: it names the tree (or blob) at
+ * <path>, and diffed against the working tree its paths miss the <path>/
+ * prefix, so `develop:pkgs` selected projects nothing had changed, green.
+ * A root tree (`develop^{tree}`, the empty tree) diffs right and stays a base.
+ */
+async function verifyTreeRef(workspaceRoot: string, ref: string): Promise<void> {
   await verifyRef(workspaceRoot, ref)
-  // `<rev>:<path>` names the tree (or blob) at <path>: diffed against the
-  // working tree, its paths miss the <path>/ prefix, and `develop:pkgs`
-  // selected projects nothing had changed, green. A root tree
-  // (`develop^{tree}`, the empty tree) diffs right and stays a base.
   const sub = /^([^:]*):(?!\/)(.+)$/s.exec(ref)
   if (sub !== null) {
     throw new UserError(
@@ -880,7 +937,6 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
       'VX_E_AFFECTED_BASE',
     )
   }
-  return ref
 }
 
 /**
@@ -920,11 +976,7 @@ async function reachMergeBase(workspaceRoot: string, ref: string): Promise<strin
   const ancestor = HEAD_ANCESTOR.test(ref)
   let tip = ancestor ? undefined : revParse(workspaceRoot, ref)
   if (tip === undefined && !ancestor) {
-    const spec = originSpec(ref)
-    if (spec === undefined || !(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) {
-      return undefined
-    }
-    tip = revParse(workspaceRoot, ref)
+    tip = await fetchTip(workspaceRoot, ref)
     if (tip === undefined) return undefined
   }
   if (tip !== undefined && parentsOf(workspaceRoot, head).includes(tip)) return tip
@@ -942,6 +994,30 @@ async function reachMergeBase(workspaceRoot: string, ref: string): Promise<strin
     if (!isShallow(workspaceRoot)) return undefined
   }
   return undefined
+}
+
+/** `ref`'s commit fetched from origin at depth 1, or undefined when origin cannot name it. */
+async function fetchTip(workspaceRoot: string, ref: string): Promise<string | undefined> {
+  const spec = originSpec(ref)
+  if (spec === undefined || !(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) {
+    return undefined
+  }
+  return revParse(workspaceRoot, ref)
+}
+
+/**
+ * The base of a two-dot `<ref>..HEAD`: `ref` itself, which a shallow clone
+ * fetches as the three-dot form fetches its tip (CI's depth-1 checkout
+ * refused `origin/main..HEAD` while `origin/main...HEAD` worked). HEAD's
+ * own ancestor is its merge base with HEAD, reached by deepening.
+ */
+async function rangeBase(workspaceRoot: string, ref: string): Promise<string> {
+  if (HEAD_ANCESTOR.test(ref)) return mergeBase(workspaceRoot, ref)
+  if (revParse(workspaceRoot, ref) === undefined && isShallow(workspaceRoot)) {
+    await fetchTip(workspaceRoot, ref)
+  }
+  await verifyTreeRef(workspaceRoot, ref)
+  return ref
 }
 
 /** The clones `fetchOrigin` fetched into, so made partial: `isPartialClone` may have answered first. */
@@ -973,13 +1049,19 @@ function parentsOf(workspaceRoot: string, sha: string): string[] {
 /**
  * What to ask origin for a base: a commit id as it is (GitHub serves any
  * commit a ref reaches), `origin/<branch>` as that branch into its
- * remote-tracking ref. Anything else is a name only this clone knows.
+ * remote-tracking ref, any other plain name as origin's tag of that name
+ * (a release base, `v1`; `--no-tags` fetched none). An expression (`v1~2`)
+ * is a name only this clone knows.
  */
 function originSpec(ref: string): string | undefined {
   if (/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(ref)) return ref
   const branch = /^(?:refs\/remotes\/)?origin\/(.+)$/s.exec(ref)?.[1]
-  if (branch === undefined || branch === 'HEAD') return undefined
-  return `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  if (branch !== undefined) {
+    return branch === 'HEAD' ? undefined : `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  }
+  const tag = /^(?:refs\/tags\/)?([^\s~^:?*[\\@{]+)$/.exec(ref)?.[1]
+  if (tag === undefined || tag === 'HEAD' || tag.startsWith('refs/')) return undefined
+  return `+refs/tags/${tag}:refs/tags/${tag}`
 }
 
 /**
@@ -1058,6 +1140,25 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   if (proc.exitCode !== 1) {
     const noHistory = noHistoryRefusal(workspaceRoot)
     if (noHistory !== undefined) throw noHistory
+    // `--quiet` also silences a ref git refused in its own words (a reflog
+    // entry the log lacks, `main@{9}`: exit 128): ask again to say why.
+    if (stderr.length === 0) {
+      const loud = spawnGitSync(
+        ['rev-parse', '--verify', '--end-of-options', ref],
+        workspaceRoot,
+        'pipe',
+      )
+      const why = new TextDecoder()
+        .decode(loud.stderr)
+        .trim()
+        .replace(/^fatal: /, '')
+      if (loud.exitCode !== 0 && why.length > 0) {
+        throw new UserError(
+          `git ref "${ref}" did not resolve: ${why.replace(/\.?$/, '.')}`,
+          'VX_E_AFFECTED_BASE',
+        )
+      }
+    }
     throw new UserError(
       `git rev-parse failed (exit ${proc.exitCode}) in ${workspaceRoot}` +
         (stderr.length > 0 ? `: ${stderr}` : ''),

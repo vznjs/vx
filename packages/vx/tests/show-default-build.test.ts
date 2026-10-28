@@ -13,21 +13,30 @@ import { writeEdges } from './helpers/plugin.js'
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 20_000
 
-async function vx(root: string, args: string[]): Promise<{ code: number; out: string }> {
+async function vx(
+  root: string,
+  args: string[],
+): Promise<{ code: number; out: string; err: string }> {
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
     cwd: root,
     env: { ...process.env },
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  return { code, out }
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  return { code, out, err }
 }
 
 describe('vx show and the default build of a dependency', () => {
   let root: string
   beforeAll(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-default-build-'))
+    // `vx run` needs a work tree.
+    Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
     await writeFile(
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
@@ -85,6 +94,32 @@ describe('vx show and the default build of a dependency', () => {
     async () => {
       const r = await vx(root, ['show', 'build'])
       expect([r.code, r.out]).toEqual([1, ''])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '`vx show <project>` names the tasks the list does, and `vx run` agrees',
+    async () => {
+      const list = JSON.parse((await vx(root, ['show', '--format', 'json'])).out) as {
+        name: string
+        tasks: string[]
+      }[]
+      for (const name of ['lib', 'lone']) {
+        const one = JSON.parse((await vx(root, ['show', name, '--format', 'json'])).out) as {
+          config: { tasks?: Record<string, unknown> } | null
+        }
+        expect([name, Object.keys(one.config?.tasks ?? {})]).toEqual([
+          name,
+          list.find((p) => p.name === name)!.tasks,
+        ])
+      }
+      // Nothing reaches `lone`: it has no build to show or run.
+      expect((await vx(root, ['show', 'lone#build'])).code).toBe(1)
+      const run = await vx(root, ['run', 'lone#build'])
+      expect([run.code, run.err]).toEqual([1, expect.stringContaining('lone has no vx config')])
+      expect((await vx(root, ['show', 'lib#build'])).code).toBe(0)
+      expect((await vx(root, ['run', 'lib#build'])).code).toBe(0)
     },
     TIMEOUT,
   )

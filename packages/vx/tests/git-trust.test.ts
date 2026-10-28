@@ -35,6 +35,8 @@ const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 function cli(): void {
   const r = Bun.spawnSync([process.execPath, BIN, 'run', 'build', '--all'], {
     cwd: root,
+    // The preload's VX_CACHE_DIR: a spawn with no env saved into ~/.vx.
+    env: { ...process.env },
     stdout: 'pipe',
     stderr: 'pipe',
   })

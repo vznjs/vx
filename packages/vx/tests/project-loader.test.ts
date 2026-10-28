@@ -1222,10 +1222,12 @@ export default { tasks: preset }
     await symlink(real, path.join(dir, 'link'))
     await writeFile(
       path.join(real, 'vx.config.mjs'),
-      "export default { tasks: { build: { exec: { command: 'linked' } } } }",
+      "export default { tags: [import.meta.url], tasks: { build: { exec: { command: 'linked' } } } }",
     )
     const cfg = await loadProjectConfig(path.join(dir, 'link', 'vx.config.mjs'))
     expect(cfg.tasks?.build?.exec?.command).toBe('linked')
+    // Served under the path Bun resolved, not evaluated again under a query.
+    expect((cfg as { tags?: string[] }).tags?.[0]).not.toContain('?')
   })
 
   it('two configs with the same bytes load together, each from its own path', async () => {
@@ -1237,6 +1239,85 @@ export default { tasks: preset }
     }
     const cfgs = await Promise.all(files.map((f) => loadProjectConfig(f)))
     expect(cfgs.map((c) => c.tasks?.build?.exec?.command)).toEqual(['same', 'same', 'same'])
+  })
+
+  const settle = (p: Promise<unknown>) =>
+    p.then(
+      (v) => ({ ok: JSON.stringify(v) }),
+      (e: unknown) => ({ err: String((e as Error)?.message ?? e) }),
+    )
+
+  it('a config in an import cycle loads alike on a first and a repeat load', async () => {
+    // Served under `?vx-held=`, the config was a second module beside the
+    // plain path the preset imports back, read before its `task` existed.
+    const file = path.join(dir, 'vx.config.mjs')
+    await writeFile(
+      path.join(dir, 'preset.mjs'),
+      `import { name } from './vx.config.mjs'
+export const task = () => ({ exec: { command: 'echo ' + name } })
+`,
+    )
+    await writeFile(
+      file,
+      `import { task } from './preset.mjs'
+export const name = 'web'
+export default { tasks: { build: task() } }
+`,
+    )
+    const first = await settle(loadProjectConfig(file))
+    expect(first).toEqual({ ok: '{"tasks":{"build":{"exec":{"command":"echo web"}}}}' })
+    expect(await settle(loadProjectConfig(file))).toEqual(first)
+  })
+
+  it('import.meta reads the same on a first and a repeat load', async () => {
+    const file = path.join(dir, 'vx.config.mjs')
+    await writeFile(
+      file,
+      `export default {
+  tags: [import.meta.url, import.meta.path, import.meta.file, String(import.meta.main)],
+  tasks: {},
+}
+`,
+    )
+    const first = (await loadProjectConfig(file)) as { tags?: string[] }
+    const repeat = (await loadProjectConfig(file)) as { tags?: string[] }
+    expect(first.tags?.[0]).toBe(Bun.pathToFileURL(file).href)
+    expect(first.tags).toEqual(repeat.tags)
+  })
+
+  it('a config another config already imported is evaluated from the bytes vx read', async () => {
+    // Bun's registry holds the plain path from the first import; its own
+    // first load must not be handed that evaluation of older bytes.
+    const shared = path.join(dir, 'shared', 'vx.config.mjs')
+    const app = path.join(dir, 'app', 'vx.config.mjs')
+    await mkdir(path.dirname(shared))
+    await mkdir(path.dirname(app))
+    await writeFile(shared, "export default { tasks: { build: { exec: { command: 'old' } } } }")
+    await writeFile(
+      app,
+      `import shared from '../shared/vx.config.mjs'
+export default { tasks: { build: { exec: { command: shared.tasks.build.exec.command } } } }
+`,
+    )
+    expect((await loadProjectConfig(app)).tasks?.build?.exec?.command).toBe('old')
+    await writeFile(shared, "export default { tasks: { build: { exec: { command: 'new' } } } }")
+    expect((await loadProjectConfig(shared)).tasks?.build?.exec?.command).toBe('new')
+  })
+
+  it('a CommonJS config another config imports keeps its module.exports', async () => {
+    // A config's name is served by vx's onLoad, which cannot hand Bun CommonJS.
+    const lib = path.join(dir, 'lib', 'vx.config.cjs')
+    const app = path.join(dir, 'app', 'vx.config.mjs')
+    await mkdir(path.dirname(lib))
+    await mkdir(path.dirname(app))
+    await writeFile(lib, "module.exports = { tasks: { build: { exec: { command: 'cjs' } } } }\n")
+    await writeFile(
+      app,
+      `import lib from '../lib/vx.config.cjs'
+export default { tasks: { build: { exec: { command: lib.tasks.build.exec.command } } } }
+`,
+    )
+    expect((await loadProjectConfig(app)).tasks?.build?.exec?.command).toBe('cjs')
   })
 })
 

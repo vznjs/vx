@@ -129,6 +129,23 @@ describe('the supply chain', () => {
     ).toEqual([])
   })
 
+  // A tag is its publisher's to move: oven/bun:1.4.4-slim was pushed
+  // again on 2026-10-22, so the same Dockerfile built another base. Each
+  // image is a digest, its tag beside it for a reader and an updater.
+  it('builds every image from a base pinned by digest', () => {
+    const images = ['packages', 'private'].flatMap((top) =>
+      [...new Bun.Glob('*/{Dockerfile,compose.yaml}').scanSync(path.join(ROOT, top))].flatMap((f) =>
+        [
+          ...readFileSync(path.join(ROOT, top, f), 'utf8').matchAll(
+            /^\s*(?:FROM|image:)\s+(?:--platform=\S+\s+)?(\S+)/gm,
+          ),
+        ].map((m) => `${top}/${f}: ${m[1]}`),
+      ),
+    )
+    expect(images.length).toBeGreaterThan(3)
+    expect(images.filter((i) => !/:[\w.-]+@sha256:[0-9a-f]{64}$/.test(i))).toEqual([])
+  })
+
   // The publish is scripts/release.ts's (`release.publish.<os>`); a workflow
   // publishes nothing itself (workflow-runner.unsafe.test.ts).
   it('publishes every npm package with provenance', () => {

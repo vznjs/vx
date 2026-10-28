@@ -5,7 +5,7 @@
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
 
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -124,6 +124,20 @@ it('vx lock --check names a review copy left where no project is', async () => {
   expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
 })
 
+it('a committed project removed from disk leaves no stray copy to delete', async () => {
+  // `rm -rf packages/b` before `git rm`: git still lists its copy, which
+  // is already gone, and `vx lock` told the user to delete it.
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-removed-' }))
+  await addProject(r, 'a', { config: CONFIG })
+  const dir = await addProject(r, 'b', { config: CONFIG })
+  expect(vx(r, 'lock').code).toBe(0)
+  gitIn(r)('add', '-A')
+  gitIn(r)('commit', '-qm', 'locked')
+  await rm(dir, { recursive: true })
+  expect(vx(r, 'lock')).toMatchObject({ code: 0, err: '' })
+  expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
+})
+
 it('lock.reviewFiles: false writes none and checks none; an existing .gitattributes stays', async () => {
   const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-off-' }))
   const dir = await addProject(r, 'a', { config: CONFIG })
@@ -153,4 +167,38 @@ it('vx lock --check reads a review copy as JSON: a formatter may lay it out its 
   const file = path.join(dir, 'vx.lock.json')
   await Bun.write(file, JSON.stringify(JSON.parse((await text(file))!)))
   expect(vx(r, 'lock', '--check').code).toBe(0)
+})
+
+// A review copy is vx's own output, never read: a re-lock that rewrote
+// every one (a new vx, a format change) selected every project under
+// --affected, while no key moved. One inside a project's sources is a file.
+it('a changed review copy selects nothing under --affected', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-aff-', edges: {} }))
+  const cfg = `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['**'] } } } }\n`
+  const dir = await addProject(r, 'a', { config: cfg, files: { 'src/vx.lock.json': '1' } })
+  expect(vx(r, 'lock').code).toBe(0)
+  gitIn(r)('add', '-A')
+  gitIn(r)('commit', '-q', '-m', 'init')
+  await Bun.write(path.join(dir, 'vx.lock.json'), '{}\n')
+  const none = vx(r, 'show', '--affected=HEAD')
+  expect(none.err).toContain('nothing affected since HEAD')
+  await Bun.write(path.join(dir, 'src/vx.lock.json'), '2')
+  expect(vx(r, 'show', '--affected=HEAD').out).toContain('packages/a')
+})
+
+// `.vx/.gitattributes` and `.vx/.gitignore` are vx's too, and no key reads
+// them: under a root project, an edit to one selected that project whole.
+it('vx-written files under .vx select no root project under --affected', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-root-', edges: {} }))
+  await Bun.write(
+    path.join(r, 'vx.config.mjs'),
+    `export default { tasks: { check: { exec: { command: 'true' }, inputs: { files: ['**'] } } } }\n`,
+  )
+  expect(vx(r, 'lock').code).toBe(0)
+  await Bun.write(path.join(r, '.vx', '.gitignore'), '/cache\n/tmp\n')
+  gitIn(r)('add', '-A')
+  gitIn(r)('commit', '-q', '-m', 'init')
+  await Bun.write(path.join(r, '.vx', '.gitattributes'), 'x\n')
+  await Bun.write(path.join(r, '.vx', '.gitignore'), '/cache\n')
+  expect(vx(r, 'show', '--affected=HEAD').err).toContain('nothing affected since HEAD')
 })

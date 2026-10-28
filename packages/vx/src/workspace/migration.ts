@@ -330,6 +330,15 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     files.push({ relPath: '.vx/.gitignore', abs: dotVxIgnore, contents: DOT_VX_GITIGNORE })
   }
 
+  // A plan is a mapper's reading of the repo's own files (an Nx node's
+  // `root`, a workspace glob): one that names `../x` wrote outside it.
+  for (const f of files) {
+    const rel = relPosix(root, f.abs)
+    if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
+      throw new UserError(`${f.relPath}: outside the workspace root`)
+    }
+  }
+
   if (!dry && !force) {
     const conflicts = new Set<string>()
     // A discovered project with ANY existing vx config (.ts/.mjs/.js) — refuse
