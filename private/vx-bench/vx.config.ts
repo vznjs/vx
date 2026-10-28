@@ -40,6 +40,7 @@ export default defineProject({
           'quiet.ts',
           'bench-env.ts',
           'edges.ts',
+          'workspace-copy.ts',
           'package.json',
         ],
       },

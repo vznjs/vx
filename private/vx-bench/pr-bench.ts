@@ -18,6 +18,7 @@ import path from 'node:path'
 import { benchEnv } from './bench-env.js'
 import { BENCH_WORKSPACE } from './edges.js'
 import { enoughQuiet, machineBusyMs, type Pair, quietest, tracerCpuMs } from './quiet.js'
+import { copyWorkspace, outputMtimes } from './workspace-copy.js'
 
 const PROJECTS = 100
 /** The pairs of each held arm its ratio comes from: the quietest. */
@@ -112,12 +113,17 @@ try {
   must(['bun', 'build', '--compile', '--minify', '--bytecode', bin, '--outfile', vx], ws)
   // Every run reads configs only from the lock.
   must([vx, 'lock'], ws)
+  // Turbo times its own copy: it rewrites every output on a warm hit, and in
+  // one shared tree vx's next noop restored all of them.
+  const turboWs = `${ws}-turbo`
+  copyWorkspace(ws, turboWs)
+  const dirs = { vx: ws, turbo: turboWs }
 
   const runs: Record<'vx' | 'turbo', string[]> = {
     vx: [vx, 'run', 'build', 'test', '--all', `--concurrency=${CONCURRENCY}`],
     turbo: [turbo, 'run', 'build', 'test', `--concurrency=${CONCURRENCY}`, '--no-daemon'],
   }
-  const wipeOutputs = () =>
+  const wipeOutputs = (cwd: string) =>
     sh(
       [
         'git',
@@ -136,25 +142,29 @@ try {
         '-e',
         '!.vx-bin',
       ],
-      ws,
+      cwd,
     )
   // Each tool's own cache only: Turbo's cold rep must not empty vx's before vx's restore rep.
   // `.vx/cache`, not `.vx`: the lock lives there.
   const wipeCache = (tool: 'vx' | 'turbo') => {
     sh(
       ['rm', '-rf', ...(tool === 'vx' ? ['.vx/cache'] : ['.turbo', 'node_modules/.cache/turbo'])],
-      ws,
+      dirs[tool],
     )
   }
   const best = new Map<string, number>()
   const time = (tool: 'vx' | 'turbo', arm: Arm) => {
     if (arm === 'cold') {
       wipeCache(tool)
-      wipeOutputs()
-    } else if (arm === 'restore') wipeOutputs()
+      wipeOutputs(dirs[tool])
+    } else if (arm === 'restore') wipeOutputs(dirs[tool])
+    const before = tool === 'vx' && arm === 'noop' ? JSON.stringify(outputMtimes(ws)) : ''
     const t0 = Bun.nanoseconds()
-    must(runs[tool], ws)
+    must(runs[tool], dirs[tool])
     const ms = (Bun.nanoseconds() - t0) / 1e6
+    // A noop that rewrote an output timed a restore, not a noop.
+    if (before !== '' && JSON.stringify(outputMtimes(ws)) !== before)
+      throw new Error('vx noop rewrote outputs: the arm timed a restore')
     const k = `${tool} ${arm}`
     best.set(k, Math.min(best.get(k) ?? Infinity, ms))
     return ms
@@ -240,6 +250,8 @@ try {
     process.exitCode = fails.length > 0 ? 1 : 0
   }
 } finally {
-  if (!process.env.KEEP) await rm(ws, { recursive: true, force: true })
-  else console.log(ws)
+  if (!process.env.KEEP) {
+    await rm(ws, { recursive: true, force: true })
+    await rm(`${ws}-turbo`, { recursive: true, force: true })
+  } else console.log(ws)
 }
