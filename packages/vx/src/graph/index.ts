@@ -13,7 +13,7 @@ export {
   foldedDeps,
   isGroupTask,
   keyedDeps,
-  refuseFiltersThroughGroups,
+  refuseUnreachableFilters,
   selectFoldedDeps,
 } from './folds.js'
 export { DEFAULT_BUILD, isDefaultBuild } from './default-build.js'

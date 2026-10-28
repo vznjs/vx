@@ -1151,8 +1151,12 @@ entry's own `*` pattern (`dependsOn: ['build.*']` names
 `tasks: ['build.bun']`), and in a form that reaches the same task:
 `build` is this project's, `^build` only the dependencies', so
 `tasks: ['build']` against `dependsOn: ['^build']` names nothing. A
-`pkg#task` entry may be this project or a dependency, so it pairs with
-either form; two `pkg#task` entries must agree on the project. One that
+`pkg#task` entry may be this project or a dependency, so at load it
+pairs with either form; two `pkg#task` entries must agree on the
+project. When the run plans, the project is known: `tasks: ['build']`
+against `dependsOn: ['lib#build']`, or `tasks: ['^build']` against this
+project's own `app#build`, names nothing and is refused with the
+spelling that does (`'lib#build'`, `'build'`). One that
 is not named (`['buidl']`) is refused at load: it would match nothing at hash time and fold no upstream hash,
 decoupling the task from its dependencies with no diagnostic — a stale
 hit waiting for the next upstream change. Patterns, wildcards and
@@ -2487,6 +2491,7 @@ a user meets most:
 | `inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                             | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
 | `inputs.tasks must be an array of non-empty strings`                                                                                  | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                            | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
+| `inputs.tasks: '<name>' selects <what>, which dependsOn (…) does not reach`                                                           | When the run plans: an exact entry whose `pkg#task` side names this project or another so that the forms do not meet (`'build'` against `'lib#build'`).                                                                        |
 | `cache.outputs is required when cache is set`                                                                                         | Forgot `outputs`.                                                                                                                                                                                                              |
 | `cache.inputStability must be an object`                                                                                              | A bare string (`inputStability: 'mutable'`).                                                                                                                                                                                   |
 | `cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'`                                                         | Any other value (`'content'`, `false`).                                                                                                                                                                                        |

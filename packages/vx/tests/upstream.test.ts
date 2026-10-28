@@ -383,3 +383,83 @@ describe('inputs.tasks through a group', () => {
     TIMEOUT,
   )
 })
+
+// The load check pairs a `pkg#task` entry with any form: the schema cannot
+// tell this project from another. `['build']` beside `dependsOn: ['b#build']`
+// passed it, matched nothing at hash time and served a stale hit. The run,
+// which knows the project, refuses the pair.
+describe('inputs.tasks in another form than dependsOn', () => {
+  const runWith = async (dependsOn: string[], filter: string[]) => {
+    const fixture = await makeWorkspace('vx-filter-form-', { '@x/a': ['@x/b'] })
+    try {
+      const build = `build: { exec: { command: 'true' }, inputs, cache },`
+      const head = `const inputs = { files: ['src/**'] }
+        const cache = { outputs: { files: [] } }`
+      await addProject(fixture.root, '@x/b', {
+        files: { 'src/b.js': '1\n' },
+        config: `${head}
+          export default { tasks: { ${build} } }`,
+      })
+      await addProject(fixture.root, '@x/a', {
+        files: { 'src/a.js': '1\n' },
+        config: `${head}
+          export default { tasks: {
+            ${build}
+            test: {
+              exec: { command: 'true' },
+              dependsOn: ${JSON.stringify(dependsOn)},
+              inputs: { ...inputs, tasks: ${JSON.stringify(filter)} },
+              cache,
+            },
+          } }`,
+      })
+      return await run({
+        cwd: fixture.root,
+        tasks: ['@x/a#test'],
+        log: silentLogger(fixture),
+      }).then(
+        (r) => (r.ok ? 'ok' : 'failed'),
+        (e: Error) => e.message,
+      )
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  }
+
+  it(
+    'an exact entry the dependsOn edge does not reach is refused, naming the spelling that does',
+    async () => {
+      expect(await runWith(['@x/b#build'], ['build'])).toBe(
+        "@x/a#test: inputs.tasks: 'build' selects this project's build, which dependsOn ('@x/b#build') does not reach, so it folds nothing and the key stops moving with the dependency; write '@x/b#build'",
+      )
+      expect(await runWith(['@x/a#build'], ['^build'])).toContain(
+        "'^build' selects other projects' build, which dependsOn ('@x/a#build') does not reach, so it folds nothing and the key stops moving with the dependency; write 'build'",
+      )
+      expect(await runWith(['build'], ['@x/b#build'])).toContain(
+        "'@x/b#build' selects @x/b#build, which dependsOn ('build') does not reach, so it folds nothing and the key stops moving with the dependency; write 'build'",
+      )
+      expect(await runWith(['^build'], ['@x/a#build'])).toContain(
+        "'@x/a#build' selects this project's build, which dependsOn ('^build') does not reach, so it folds nothing and the key stops moving with the dependency; write '^build'",
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROLS: every spelling that reaches the edge runs',
+    async () => {
+      for (const [dependsOn, filter] of [
+        ['@x/b#build', '^build'],
+        ['@x/b#build', '@x/b#build'],
+        ['@x/b#build', '@x/*#build'],
+        ['@x/a#build', 'build'],
+        ['build', '@x/a#build'],
+        ['^build', '@x/b#build'],
+        ['build', 'build'],
+      ] as const) {
+        expect(await runWith([dependsOn], [filter]), `${dependsOn} / ${filter}`).toBe('ok')
+      }
+    },
+    TIMEOUT,
+  )
+})

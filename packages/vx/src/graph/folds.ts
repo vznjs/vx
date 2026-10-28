@@ -33,20 +33,27 @@ export function keyedDeps(node: TaskNode): readonly string[] {
 }
 
 /**
+ * An `inputs.tasks` spec that would fold nothing the task depends on is
+ * refused, once, over the graph every key site reads: the key would stop
+ * moving with that dependency's inputs, a stale hit under a green run.
+ *
  * A filter selects among the task's own dependencies, never through a
  * group: `dependsOn: ['build']` over a group `build` of `build.a` and
- * `build.b` offers the filter `build`, not its members. A pattern that
- * matches only a member (`build.*`) therefore selected nothing, and the key stopped moving
- * with that member's inputs: a stale hit under a green run. Such a spec
- * is refused, once, over the graph every key site reads. One that matches
+ * `build.b` offers the filter `build`, not its members, so a pattern that
+ * matches only a member (`build.*`) selects nothing. One that matches
  * nothing anywhere stays legal (a preset's pattern needn't match in every
- * project). An exact name is refused earlier, at load, unless `dependsOn`
- * names it (`assertFilterNamesDeclaredDeps`).
+ * project).
+ *
+ * An exact name is refused at load unless a `dependsOn` entry of its form
+ * names it (`assertFilterNamesDeclaredDeps`), but there a `pkg#task` pairs
+ * with any form: the schema cannot tell this project from another. Here
+ * the project is known (`refuseOtherForms`).
  */
-export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>): void {
+export function refuseUnreachableFilters(nodes: ReadonlyMap<string, TaskNode>): void {
   for (const node of nodes.values()) {
     const filter = node.config.inputs?.tasks
     if (filter === undefined || filter.length === 0) continue
+    refuseOtherForms(node, filter)
     const deps = keyedDeps(node).flatMap((id) => nodes.get(id) ?? [])
     const groups = deps.filter(isGroupTask)
     if (groups.length === 0) continue
@@ -65,6 +72,68 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
       }
     }
   }
+}
+
+/** An exact spec as the edge it names: a `pkg#task` naming this project is `self`, another `other`. */
+type Reach =
+  | { to: 'self'; task: string }
+  | { to: 'deps'; task: string }
+  | { to: 'other'; project: string; task: string }
+
+function reachOf(spec: DependencySpec, self: string): Reach | null {
+  switch (spec.kind) {
+    case 'self':
+      return { to: 'self', task: spec.task }
+    case 'deps':
+      return { to: 'deps', task: spec.task }
+    case 'cross':
+      if (isTaskPattern(spec.project)) return null
+      return spec.project === self
+        ? { to: 'self', task: spec.task }
+        : { to: 'other', project: spec.project, task: spec.task }
+    default:
+      return null
+  }
+}
+
+/**
+ * `build` beside `dependsOn: ['b#build']`, or `^build` beside this
+ * project's own `a#build`, passed the load check and matched nothing at
+ * hash time. Refused here naming the spelling that reaches the edge.
+ */
+function refuseOtherForms(node: TaskNode, filter: readonly string[]): void {
+  const dependsOn = node.config.dependsOn ?? []
+  const declared = dependsOn.flatMap(
+    (raw) => reachOf(parseDependencySpec(raw), node.projectName) ?? [],
+  )
+  for (const raw of filter) {
+    const spec = parseSpec(raw, node.id)
+    if (spec.negated) continue
+    const f = reachOf(spec, node.projectName)
+    if (f === null || isTaskPattern(f.task)) continue
+    const named = declared.filter((d) => nameMatcher(d.task)(f.task))
+    // None at all is the load check's refusal, or a dependsOn this check cannot read.
+    if (named.length === 0 || named.some((d) => reaches(f, d))) continue
+    const d = named[0]!
+    const want =
+      d.to === 'self' ? f.task : d.to === 'deps' ? `^${f.task}` : `${d.project}#${f.task}`
+    const what =
+      f.to === 'self'
+        ? `this project's ${f.task}`
+        : f.to === 'deps'
+          ? `other projects' ${f.task}`
+          : `${f.project}#${f.task}`
+    throw new UserError(
+      `${node.id}: inputs.tasks: '${raw}' selects ${what}, which dependsOn (${dependsOn.map((e) => `'${e}'`).join(', ')}) does not reach, so it folds nothing and the key stops moving with the dependency; write '${want}'`,
+    )
+  }
+}
+
+/** Whether filter `f` matches an edge dependsOn entry `d` makes, as `specMatcher` reads both. */
+function reaches(f: Reach, d: Reach): boolean {
+  if (f.to === 'self') return d.to === 'self'
+  if (f.to === 'deps') return d.to !== 'self'
+  return d.to === 'deps' || (d.to === 'other' && d.project === f.project)
 }
 
 function parseSpec(raw: string, selfTaskId: string): DependencySpec {
