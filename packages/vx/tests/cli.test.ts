@@ -1930,6 +1930,15 @@ describe('parseRunArgs', () => {
       )
   })
 
+  // `vx watch build --format json` was still told "did you mean --force?":
+  // watch refuses --dry, so the run's branch above never matched it.
+  it('--format and --json on a watch name where its JSON is, never --force', () => {
+    for (const flag of ['--format', '--json'])
+      expect(parseRunArgs(['build', flag, 'json'], 'watch').error).toBe(
+        `unknown flag: ${flag} (vx watch prints no JSON; each cycle's run is \`vx last --format json\` after it)`,
+      )
+  })
+
   it("another runner's flag is an unknown flag", () => {
     for (const flag of [
       '-F',
