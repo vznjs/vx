@@ -1,7 +1,7 @@
 == function github (src/index.ts)
-export function github(options?: GithubPluginOptions): VxPlugin | undefined
+export function github(options: GithubPluginOptions = {}): VxPlugin | undefined
 == function gitlab (src/index.ts)
-export function gitlab(options?: GitlabPluginOptions): VxPlugin | undefined
+export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined
 == function renderJobSummary (src/index.ts)
 export function renderJobSummary(summary: RunSummaryRecord, title?: string): string
 == type GithubPluginOptions (src/plugin.ts)
