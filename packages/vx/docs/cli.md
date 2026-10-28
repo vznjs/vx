@@ -977,7 +977,10 @@ cache entry for them, so the next run is a plain local hit.
 | `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
-and each task hears it once: from vx, as SIGINT. A stop starts no more remote
+and each task hears it once: from vx, as SIGINT. Ctrl-Z (SIGTSTP) stops
+each task's process group, then vx; `fg` or `bg` continues vx, and vx
+continues them. A Linux sandboxed task's command is not stopped, only
+held once its output pipe fills. A stop starts no more remote
 cache uploads and does not wait on one in flight, nor on a remote lookup or
 download: what was half-read is dropped and fetched again next run.
 
