@@ -223,14 +223,14 @@ describe('a credential in the export URL', () => {
     driveOneTask(sink)
     await sink.flush()
     expect(warnings).toEqual([
-      `[vx-otel] export failed for http://***:***@${authority}/v1/traces?***: HTTP 401: no`,
+      `[vx] vx-otel: export failed for http://***:***@${authority}/v1/traces?***: HTTP 401: no`,
     ])
   })
 })
 
 // Item 807's sweep: each row fails with one line of sink.ts undone.
 describe('the transport, as the vx-otel sweep found it unheld', () => {
-  const at = (path: string) => `[vx-otel] export failed for ${url}${path}: `
+  const at = (path: string) => `[vx] vx-otel: export failed for ${url}${path}: `
 
   it('an error body is folded onto one line before it is cut', async () => {
     expect(await exportWith({ status: 413, body: 'too\n  big\tbody' })).toEqual([
@@ -249,7 +249,7 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
         }),
       }),
     ).toEqual([
-      `[vx-otel] the collector at ${url}/v1/traces accepted the export and warned: attributes trimmed`,
+      `[vx] vx-otel: the collector at ${url}/v1/traces accepted the export and warned: attributes trimmed`,
     ])
   })
 
@@ -488,7 +488,7 @@ describe('a refused certificate', () => {
 
 // F-53: a mutation sweep of sink.ts found these unheld.
 describe('the sink, as its second sweep found it unheld', () => {
-  const at = (path: string) => `[vx-otel] export failed for ${url}${path}: `
+  const at = (path: string) => `[vx] vx-otel: export failed for ${url}${path}: `
 
   it('a partialSuccess reports each rejected count by its noun, message or not; null is none', async () => {
     const warned = async (partialSuccess: unknown) =>
@@ -625,7 +625,7 @@ describe('the plugin and transport, as the plugin sweep found them', () => {
       } as never)
       expect([sink !== undefined, warns]).toEqual([
         true,
-        ['[vx-otel] compression "zstd" is not gzip or none — sent uncompressed'],
+        ['[vx] vx-otel: compression "zstd" is not gzip or none — sent uncompressed'],
       ])
     } finally {
       keys.forEach((k, i) => {
