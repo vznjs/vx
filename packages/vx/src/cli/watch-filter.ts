@@ -312,6 +312,11 @@ export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: s
  */
 const PROJECT_CONFIGS: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 
+/** A project's own config file, by name: a run reads it only through the lock. */
+export function isProjectConfigFile(filename: string): boolean {
+  return PROJECT_CONFIGS.has(path.basename(filename))
+}
+
 export function shapesWatchedSet(filename: string): boolean {
   const base = path.basename(filename)
   return PROJECT_CONFIGS.has(base) || isWorkspaceConfigFile(filename.split(path.sep).join('/'))
