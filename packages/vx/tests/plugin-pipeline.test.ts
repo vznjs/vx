@@ -1699,6 +1699,12 @@ describe('plugin-host, called directly', () => {
         await said(`projectName: 'a', taskName: 'x', projectDir: 'packages/a'`),
         await said(`projectName: 'a', projectDir: dir`),
         await said(`projectName: '', taskName: 'x', projectDir: dir`),
+        // Ran in, keyed and cleaned outputs under a directory no project
+        // owns, past the hard project boundary.
+        await said(
+          `projectName: 'a', taskName: 'x', projectDir: dir.slice(0, dir.lastIndexOf('/'))`,
+        ),
+        await said(`projectName: 'zz', taskName: 'x', projectDir: dir`),
         // CONTROL: the whole node runs.
         await said(`projectName: 'a', taskName: 'x', projectDir: dir`),
       ]).toEqual([
@@ -1706,6 +1712,8 @@ describe('plugin-host, called directly', () => {
         `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectDir is "packages/a", not an absolute path`,
         `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's taskName is undefined, not a name`,
         `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectName is "", not a name`,
+        `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectDir is packages, not project a's directory packages/a`,
+        `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's project zz is not a project in this workspace`,
         'a#build success, a#x success',
       ])
     },

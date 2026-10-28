@@ -23,6 +23,9 @@ neither the task nor the field. Its `projectName` and `taskName` must be
 names and its `projectDir` an absolute path (X-94): a node a hook added
 without one failed at its run as an internal error (a TypeError from
 `path`), and a relative one keyed and ran against vx's own cwd.
+Its `projectName` must name a project of the workspace and its
+`projectDir` be that project's directory (`graph-stage.ts`): a node under
+a directory no project owns ran, keyed and cleaned its outputs there.
 
 Every capability is resolved inside `prepareRun`/`run()` from the declared
 list (`prepared.plugins`). (A whole-run `backend` capability was resolved
