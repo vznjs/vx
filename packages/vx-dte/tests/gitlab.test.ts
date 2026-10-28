@@ -133,3 +133,22 @@ it('names a run only in a GitLab job, and starts no worker outside one', async (
   expect(gitlab().spawn(worker)).rejects.toThrow('gitlab(): not in a GitLab job')
   expect(() => gitlab({ include: 'x' } as never)).toThrow('include')
 })
+
+it("triggers on the target branch once a merged request's source branch is gone", async () => {
+  // Before: a merge request merged mid-run with "delete source branch" (GitLab's
+  // default), GitLab answered 400 "Reference not found" and every worker of
+  // the wave failed; github() falls back to the base branch the same way.
+  process.env['CI_MERGE_REQUEST_TARGET_BRANCH_NAME'] = 'main'
+  reply = () =>
+    calls.at(-1)!.form['ref'] === 'fix-it'
+      ? Response.json({ message: { base: ['Reference not found'] } }, { status: 400 })
+      : Response.json({ id: 1 }, { status: 201 })
+  await gitlab().spawn(worker)
+  expect(calls.map((c) => c.form['ref'])).toEqual(['fix-it', 'main'])
+})
+
+it('says a missing ref with no target branch to fall back to', async () => {
+  reply = () => Response.json({ message: { base: ['Reference not found'] } }, { status: 400 })
+  expect(gitlab().spawn(worker)).rejects.toThrow('gitlab(): triggering small#2: 400')
+  await Bun.sleep(0)
+})
