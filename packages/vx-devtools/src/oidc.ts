@@ -11,6 +11,7 @@
 // jose's to check: signature, algorithm, audience and times.
 
 import { hashPart } from './hash-part.js'
+import { Refusal } from './refusal.js'
 import {
   createRemoteJWKSet,
   customFetch,
@@ -19,16 +20,6 @@ import {
   jwtVerify,
   type JWTPayload,
 } from 'jose'
-
-/** A request refused: its HTTP status and what to fix. */
-export class Refusal extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 /** One entry of `ALLOW`: the jobs of one workflow file of one repository at one issuer. */
 export interface Allowed {

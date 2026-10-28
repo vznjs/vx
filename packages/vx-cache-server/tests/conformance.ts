@@ -289,9 +289,17 @@ export function conformance(name: string, target: Target): void {
     })
 
     it('answers an unknown route 404 and a wrong method 405', async () => {
-      expect((await call('/v2/artifacts/abc')).status).toBe(404)
+      const nope = await call('/v2/artifacts/abc')
+      expect([nope.status, await nope.json()]).toEqual([
+        404,
+        { code: 'not_found', message: 'no such route' },
+      ])
       const res = await call('/v1/artifacts', { method: 'DELETE' })
-      expect([res.status, res.headers.get('allow')]).toEqual([405, 'POST'])
+      expect([res.status, res.headers.get('allow'), await res.json()]).toEqual([
+        405,
+        'POST',
+        { code: 'method_not_allowed', message: 'this route takes POST' },
+      ])
       const one = await call(`/v1/artifacts/${key()}`, { method: 'DELETE', token: write })
       expect([one.status, one.headers.get('allow')]).toEqual([405, 'GET, HEAD, PUT'])
     })

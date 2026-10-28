@@ -3,8 +3,15 @@
 // an artifact is one object, named by its issuer, repository name, scope and
 // hash, and a read names the exact scope it wants (2026-10-25).
 
-import { type Access, type Authorize, hashPart, Refusal } from '@vzn/vx-devtools'
-import { errorJson, isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
+import {
+  type Access,
+  type Authorize,
+  errorJson,
+  hashPart,
+  notAllowed,
+  Refusal,
+} from '@vzn/vx-devtools'
+import { isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
 import { blobName, type Blobs } from './store.js'
 
 /** What an operator may set; each defaults, and a backend may cap them. */
@@ -214,12 +221,6 @@ function bucketOf(blobs: Blobs): Blobs {
     get: (name) => blobs.get(name).catch((err) => failed(err, '')),
     size: (name) => blobs.size(name).catch((err) => failed(err, '')),
   }
-}
-
-const notAllowed = (allow: string): Response => {
-  const res = errorJson(405, `this route takes ${allow}`)
-  res.headers.set('allow', allow)
-  return res
 }
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))

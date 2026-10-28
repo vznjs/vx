@@ -1,12 +1,16 @@
-== class Refusal (src/oidc.ts)
+== class Refusal (src/refusal.ts)
 export class Refusal extends Error {
   constructor(
     readonly status: number,
     message: string,
   )
 }
+== function errorJson (src/refusal.ts)
+export function errorJson(status: number, message: string): Response
 == function hashPart (src/hash-part.ts)
 export function hashPart(text: string): Promise<string>
+== function notAllowed (src/refusal.ts)
+export function notAllowed(allow: string): Response
 == function oidcAuth (src/oidc.ts)
 export function oidcAuth(opts: OidcOptions): Authorize
 == function oidcTokenAuth (src/oidc.ts)
