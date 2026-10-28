@@ -147,6 +147,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     const entry = { at: nowMs(), set: loadKeys(iss, (url) => fetchJson(url, fresh)) }
     keys.set(iss, entry)
     // A failed load is not kept: the next token tries again.
+    // quiet: the awaited set rethrows it; this only forgets it
     entry.set.catch(() => keys.get(iss) === entry && keys.delete(iss))
     return entry
   }

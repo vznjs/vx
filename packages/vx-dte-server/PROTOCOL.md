@@ -161,18 +161,18 @@ numbered frame the relay leaves unanswered a heartbeat is a dead socket.
 A refused request is let in and its socket closed with `4000 + status`,
 said first in a `{ "close", "error" }` frame:
 
-| Code   | Why                                                                       |
-| ------ | ------------------------------------------------------------------------- |
-| `4400` | a malformed request or join                                               |
-| `4401` | no token, or an invalid one                                               |
+| Code   | Why                                                                        |
+| ------ | -------------------------------------------------------------------------- |
+| `4400` | a malformed request or join                                                |
+| `4401` | no token, or an invalid one                                                |
 | `4403` | a token the relay does not accept, or a host request not signed by its key |
-| `4404` | an unknown, left or removed participant (and every socket it let go)      |
-| `4406` | no version both speak; the reason names the relay's range                 |
-| `4409` | a second host                                                             |
-| `4410` | a closed session                                                          |
-| `4413` | a join over 1 MiB                                                         |
-| `4502` | the relay could not read the token issuer's keys; retry                   |
-| `4503` | the relay's host refused the session (a plan's limit)                     |
+| `4404` | an unknown, left or removed participant (and every socket it let go)       |
+| `4406` | no version both speak; the reason names the relay's range                  |
+| `4409` | a second host                                                              |
+| `4410` | a closed session                                                           |
+| `4413` | a join over 1 MiB                                                          |
+| `4502` | the relay could not read the token issuer's keys; retry                    |
+| `4503` | the relay's host refused the session (a plan's limit)                      |
 
 A request that is no upgrade is answered its status and `{ "error" }`.
 

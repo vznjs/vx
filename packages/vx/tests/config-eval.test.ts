@@ -343,7 +343,14 @@ describe('a config that calls process.exit (D-65)', () => {
     const [code, err] = await Promise.all([p.exited, new Response(p.stderr).text()])
     expect({ code, err }).toEqual({
       code: 3,
-      err: JSON.stringify({ got: [REFUSAL, REFUSAL], restored: true }) + '\n',
+      err:
+        JSON.stringify({
+          got: [
+            `Project config ${slow} threw: ${REFUSAL} (at ${slow}:2:9)`,
+            `Project config ${file} threw: ${REFUSAL} (at ${file}:1:9)`,
+          ],
+          restored: true,
+        }) + '\n',
     })
   }, 20_000)
 })

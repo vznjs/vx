@@ -84,7 +84,11 @@ Each timing is of the task as it was: its command and `env.define`
 (`taskDefinitions`). A task whose command changed reads none of its old
 timings; editing its inputs, outputs or deps keeps them. A forecast
 reads this branch's last five timings first, then the newest the server
-answered, then any branch's, then `assume`.
+answered, then any branch's, then `assume`. Of a timing the server
+answers vx keeps only what a server folds: a duration that is not a whole
+count of ms skips the timing, cores not finite from 0 or RSS not a whole
+byte count are dropped (`1e400` parses as Infinity: kept, it failed every
+later run's schedule); core's history store keeps no such number either.
 
 ## Timings between CI runners, without a server
 

@@ -18,7 +18,7 @@ import {
   type ResolvedRemote,
 } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
-import { maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
+import { errorCode, maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import { PLATFORMS, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import { checkGraph, type GraphRules, type TaskNode } from '../graph/index.js'
 import type {
@@ -91,10 +91,13 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
     // Masked here, not by whoever prints it: an embedder of `run()` and
     // a plugin's verb print it as they get it, and the throw quotes what the
     // plugin was told (a remote's reply, a header) (L-11).
+    // A plugin's own code survives (cli.md § Error codes): an agent
+    // branches on it.
     throw new UserError(
       maskedLine(
         `plugin '${plugin.name}' failed in ${hook}: ${err instanceof Error ? err.message : String(err)}`,
       ),
+      errorCode(err) === 'VX_E_INTERNAL' ? 'VX_E_REFUSED' : errorCode(err),
     )
   }
 }

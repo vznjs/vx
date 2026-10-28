@@ -32,6 +32,7 @@
     "restored24h",
     "flakyTasks",
     "lockfile",
+    "lockError",
     "sandbox"
   ],
   "properties": {
@@ -133,6 +134,10 @@
       }
     },
     "lockfile": { "type": "boolean" },
+    "lockError": {
+      "type": ["string", "null"],
+      "description": "Why a run refuses the lock that is there (run `vx lock`); null when a run reads it or there is none."
+    },
     "sandbox": {
       "type": "object",
       "additionalProperties": false,

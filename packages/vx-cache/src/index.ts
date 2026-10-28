@@ -15,6 +15,7 @@ import {
   type PluginOptionKinds,
   refuseUnknownOptions,
   type RemoteCacheLayer,
+  UserError,
   type VxPlugin,
 } from '@vzn/vx'
 
@@ -57,6 +58,7 @@ function expiryOf(jwt: string): number {
     ).exp
     return typeof exp === 'number' ? exp * 1000 : 0
   } catch {
+    // quiet: an unreadable exp is no known expiry; the server refuses the token
     return 0
   }
 }
@@ -98,6 +100,7 @@ async function refusal(res: Response): Promise<Error> {
       const message = (JSON.parse(text) as { message?: unknown }).message
       said = typeof message === 'string' ? message : text
     } catch {
+      // quiet: not JSON, so the text is what it said
       said = text
     }
   } catch {
@@ -454,6 +457,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     })())
     // A failed ask is asked again by the next check: kept, two failures
     // while a server restarted failed every read of the run (2026-10-26).
+    // quiet: the awaited ask rethrows it; this only forgets it
     asked.catch(() => {
       if (this.asked === asked) this.asked = undefined
     })
@@ -604,11 +608,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
 function namedOf(options: VxCacheOptions): { issuer: string; repository: string } {
   const { issuer, repository } = options as Partial<VxCacheOptions>
   if (typeof issuer !== 'string' || !/^https?:\/\/\S+$/.test(issuer))
-    throw new Error(
+    throw new UserError(
       `vxCache(): issuer must be the CI issuer's URL (https://token.actions.githubusercontent.com), got ${String(issuer)}`,
     )
   if (typeof repository !== 'string' || !/^[^/\s]+(\/[^/\s]+)+$/.test(repository))
-    throw new Error(`vxCache(): repository must be org/name, got ${String(repository)}`)
+    throw new UserError(`vxCache(): repository must be org/name, got ${String(repository)}`)
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 

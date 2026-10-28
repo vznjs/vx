@@ -101,4 +101,19 @@ describe('vx info reads the lock', () => {
       tasks: facts['tasks'],
     }).toEqual({ code: 0, err: '', lockfile: true, tasks: 4 })
   })
+
+  // A lock a run refuses read "projects lock yes" with no task, and exit 0:
+  // the one fact a reader needed, why, was swallowed (2026-10-28).
+  it('a lock a run would refuse is said, with the refusal', async () => {
+    const root = await workspace()
+    await writeFile(path.join(root, '.vx', 'projects.lock.json'), '{')
+    const r = vx(root, 'info', '--format', 'json')
+    const facts = JSON.parse(r.out) as Record<string, unknown>
+    const said = '.vx/projects.lock.json is not valid JSON — re-run `vx lock` or delete it'
+    expect([r.code, facts['lockfile'], facts['lockError']]).toEqual([0, true, said])
+    expect(vx(root, 'info').out).toContain(`  projects lock     refused: ${said}`)
+    // CONTROL: a lock a run reads has no error.
+    expect(vx(root, 'lock').code).toBe(0)
+    expect(JSON.parse(vx(root, 'info', '--format', 'json').out)['lockError']).toBe(null)
+  })
 })

@@ -278,6 +278,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
       })
       keys.set(iss, set)
       // A failed discovery is not kept: the next token tries again.
+      // quiet: the awaited set rethrows it; this only forgets it
       set.catch(() => keys.get(iss) === set && keys.delete(iss))
     }
     // The issuer's outage, not the token's fault: a 401 tells a client its

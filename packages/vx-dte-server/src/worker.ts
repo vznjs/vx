@@ -212,6 +212,7 @@ export class RelayRun {
     try {
       if (answer !== undefined) ws.send(answer)
     } catch {}
+      // quiet: a socket that cannot send has closed; its close is the answer
   }
 
   webSocketClose(ws: Socket): void {

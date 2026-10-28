@@ -7,7 +7,7 @@
 import { mkdirSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
+import { refuseUnknownOptions, type PluginOptionKinds, UserError } from '@vzn/vx'
 import { loopbackRelay, reasons } from './local.js'
 import type { DteAdapter } from './plugin.js'
 
@@ -23,7 +23,9 @@ const KEYS: PluginOptionKinds<DockerOptions> = { image: 'string', prepare: 'stri
 export function docker(options: DockerOptions): DteAdapter {
   refuseUnknownOptions('docker()', options, KEYS)
   if (typeof options.image !== 'string' || options.image === '') {
-    throw new Error("docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git")
+    throw new UserError(
+      "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
+    )
   }
   let relay: { url: string; stop(): void } | undefined
   const workers = new Map<string, ReturnType<typeof Bun.spawn>>()

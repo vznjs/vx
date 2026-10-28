@@ -139,6 +139,32 @@ it('a review copy git lists but the worktree deleted is not named', async () => 
   expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
 })
 
+// A copy that cannot be written crashed with a stack after the new lock
+// was already in place: the lock and its copies disagreed.
+it('a review copy vx lock cannot write refuses the lock and leaves it as it was', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-blocked-' }))
+  const dir = await addProject(r, 'a', { config: CONFIG })
+  expect(vx(r, 'lock').code).toBe(0)
+  const lockPath = path.join(r, '.vx', 'projects.lock.json')
+  const before = await text(lockPath)
+  await Bun.write(path.join(dir, 'vx.config.mjs'), CONFIG.replace("'true'", "'false'"))
+  await rm(path.join(dir, 'vx.lock.json'))
+  await Bun.write(path.join(dir, 'vx.lock.json', 'keep'), '')
+  const blocked = vx(r, 'lock')
+  expect([blocked.code, blocked.err]).toEqual([
+    1,
+    '✗ vx lock  lock not written\n\n' +
+      '  a review copy could not be written\n' +
+      '  EISDIR: packages/a/vx.lock.json\n\n' +
+      '  fix  remove what stands at packages/a/vx.lock.json, then run vx lock again\n',
+  ])
+  expect(await text(lockPath)).toBe(before)
+  await rm(path.join(dir, 'vx.lock.json'), { recursive: true })
+  expect(vx(r, 'lock').code).toBe(0)
+  expect(await text(lockPath)).not.toBe(before)
+  expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
+})
+
 it('lock.reviewFiles: false writes none and checks none; an existing .gitattributes stays', async () => {
   const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-off-' }))
   const dir = await addProject(r, 'a', { config: CONFIG })

@@ -3,7 +3,7 @@
 // header still keeps branches apart.
 
 import { describe, expect, it } from 'bun:test'
-import type { RemoteCacheLayer } from '@vzn/vx'
+import { type RemoteCacheLayer, UserError } from '@vzn/vx'
 import { keyedByRef, readScopes, refKey, remoteScope } from '../src/turbo-cache/scope.js'
 
 function memory(batches = true): {
@@ -83,13 +83,16 @@ describe("scope: 'key'", () => {
   })
 
   it("scope is 'header' unless set, and anything else is refused", () => {
-    expect([remoteScope('turbo-cache', undefined), remoteScope('turbo-cache', 'key')]).toEqual([
+    expect([remoteScope('turboCache', undefined), remoteScope('turboCache', 'key')]).toEqual([
       'header',
       'key',
     ])
-    expect(() => remoteScope('turbo-cache', 'branch')).toThrow(
-      `vx/turbo-cache: scope must be 'header' or 'key', got "branch"`,
+    // Named as the option's other refusals name it, and a UserError: a
+    // plain one printed a stack under VX_E_INTERNAL (2026-10-28).
+    expect(() => remoteScope('turboCache', 'branch')).toThrow(
+      new UserError(`turboCache(): scope must be 'header' or 'key', got "branch"`),
     )
+    expect(() => remoteScope('turboCache', 'branch')).toThrow(UserError)
   })
 
   it('the read header names at most 8 refs, the first ones', () => {
