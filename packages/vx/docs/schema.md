@@ -229,9 +229,9 @@ number is refused by `vx lock`. Omitted → no limit.
 build: { exec: { command: 'tsc -b', timeout: '2m' } }
 ```
 
-- For a **normal task**, `timeout` bounds the total run time, counted
-  from the spawn (a sandbox's setup, its wrap included, is vx's, not the
-  task's). A task
+- For a **normal task**, `timeout` bounds each attempt's run time,
+  counted from its spawn (a sandbox's setup, its wrap included, is vx's,
+  not the task's); a [retry](#retries-optional) gets the whole limit again. A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
   teardown, which is reported `aborted`.)
