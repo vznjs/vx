@@ -74,7 +74,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
-import { UserError } from '../util/index.js'
+import { UserError, writableUnder } from '../util/index.js'
 import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
 import {
   TarFormatError,
@@ -708,6 +708,22 @@ function linksOf(meta: MetaFile): Array<[string, string]> {
 }
 
 /** `p` is `root` or under it, lexically. */
+/** A file this user cannot read is not the same bytes: the rename replaces it. */
+function sameBytes(file: string, body: Uint8Array): boolean {
+  try {
+    return readFileSync(file).equals(body)
+  } catch {
+    return false
+  }
+}
+
+/** The deepest directory holding both `a` and `b`. */
+function commonDir(a: string, b: string): string {
+  let dir = a
+  while (!inside(b, dir) && path.dirname(dir) !== dir) dir = path.dirname(dir)
+  return dir
+}
+
 const inside = (p: string, root: string): boolean => {
   const r = path.resolve(root)
   return p === r || p.startsWith(r + path.sep)
@@ -811,7 +827,12 @@ export async function extractArtifactStream(
       provided.add(`${name}/`)
     }
     // A link may point only inside the workspace (the project, without one).
-    const bound = stageRoot ?? workspaceDest ?? destDir
+    // Unpacked into a cache tree (no stage root), `outputs/` and
+    // `workspace-outputs/` are siblings: bounded by the latter alone, a
+    // `dist/link -> big.bin` pointed "out" and the ingest failed. The tree
+    // bounds by their parent; its restore checks against the workspace.
+    const bound =
+      stageRoot ?? (workspaceDest === undefined ? destDir : commonDir(destDir, workspaceDest))
     for (const [name, to] of links) {
       if (accept !== undefined && !accept(name)) {
         throw new ArchiveSecurityError(
@@ -822,8 +843,14 @@ export async function extractArtifactStream(
       if (dest === null || dest.rel.length === 0) continue
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
-      if (!inside(path.resolve(path.dirname(target), to), bound)) {
+      const at = path.resolve(path.dirname(target), to)
+      if (!inside(at, bound)) {
         throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
+      }
+      // Lexical: a write through a link is judged where it resolves, so an
+      // alias chain into .git gets no further than this link would.
+      if (!writableUnder(at, path.resolve(bound))) {
+        throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)
       }
       await x.stageLink(name, dest.base, target, to)
       provided.add(name)
@@ -887,7 +914,8 @@ function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined)
   const fd = openSync(s.target, constants.O_RDONLY | constants.O_NOFOLLOW)
   try {
     const st = fstatSync(fd)
-    if (st.ino !== ino || st.nlink !== 1) {
+    // An in-place write since the compare keeps the inode and bumps the ctime.
+    if (st.ino !== ino || st.nlink !== 1 || st.ctimeMs !== s.sameCtimeMs) {
       throw new Error(`${s.target} changed while it was restored`)
     }
     if ((st.mode & 0o7777) !== restoredMode(mode)) fchmodSync(fd, restoredMode(mode))
@@ -915,6 +943,8 @@ interface Staged {
   base: string
   /** The target already holds the entry's bytes: nothing was written, and only its mode and mtime may change. */
   same?: number
+  /** The kept target's ctime when its bytes were compared. */
+  sameCtimeMs?: number
   /** `tmp` was copied beside `target`, which is on another filesystem than the staging (`crossOver`). */
   beside?: true
   /** A symlink to this target, made at `tmp`: no mode, no mtime. */
@@ -1061,7 +1091,7 @@ class Extractor {
       )
       if (real !== null) {
         const realBase = await this.realBaseOf(base)
-        if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+        if (!writableUnder(real, realBase)) {
           throw await linkOutError(baseResolved, probe, realBase)
         }
         return
@@ -1090,7 +1120,7 @@ class Extractor {
     if (err.code !== 'EEXIST' && err.code !== 'ENOENT' && err.code !== 'ELOOP') throw err
     const real = await resolveThrough(dir)
     const realBase = await this.realBaseOf(base)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+    if (!writableUnder(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
     // What stands there without a link on the way (a file named like the
@@ -1226,7 +1256,7 @@ class Extractor {
         st.isFile() &&
         st.nlink === 1 &&
         st.size === body.byteLength &&
-        readFileSync(target).equals(body)
+        sameBytes(target, body)
       ) {
         this.staged.push({
           staged: false,
@@ -1237,6 +1267,7 @@ class Extractor {
           streamed: false,
           base,
           same: st.ino,
+          sameCtimeMs: st.ctimeMs,
         })
         return
       }
@@ -1564,7 +1595,7 @@ class Extractor {
     checked.add(dir)
     const realBase = await this.realBaseOf(base)
     const real = await realOf(dir, true)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+    if (!writableUnder(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
   }
@@ -1590,7 +1621,7 @@ class Extractor {
     for (const [dir, { base, placed }] of landed) {
       const realBase = await this.realBaseOf(base)
       const real = await realOf(dir, true).catch(() => null)
-      if (real === null || real === realBase || real.startsWith(realBase + path.sep)) continue
+      if (real === null || writableUnder(real, realBase)) continue
       await Promise.allSettled(placed.map((p) => rm(p, { recursive: true, force: true })))
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
@@ -1735,7 +1766,13 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
   for (const part of path.relative(base, probe).split(path.sep)) {
     dir = path.join(dir, part)
     real = await resolveThrough(dir)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) break
+    if (!writableUnder(real, realBase)) break
+  }
+  if (real.startsWith(realBase + path.sep)) {
+    return new UserError(
+      `${dir} is a symbolic link to ${real}, Git's metadata — a cache restore never writes ` +
+        'into a .git directory. Remove the link and re-run, or stop declaring outputs under it.',
+    )
   }
   return new UserError(
     `${dir} is a symbolic link to ${real}, outside ${base} — a cache restore never writes ` +

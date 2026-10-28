@@ -18,7 +18,7 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
+import { envFlagOn, parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
 import { formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -667,7 +667,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   return summary.ok ? 0 : 1
 }
 
-/** CI=0 and CI=false are "not CI": several vendors set CI=true. */
+/** Whether `CI` names a CI run, as detectCi reads it. */
 export function onCI(v: string | undefined): boolean {
-  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
+  return envFlagOn(v)
 }
