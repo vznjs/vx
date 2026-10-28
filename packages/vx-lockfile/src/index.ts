@@ -76,6 +76,11 @@ interface Manager {
    * records part of what it says per project; undefined folds them whole.
    */
   readonly settingsText?: (file: string, text: string) => string | undefined
+  /**
+   * Whether the manager lists a manifest its workspace globs match;
+   * undefined lists every one.
+   */
+  readonly member?: (pkg: Record<string, unknown>) => boolean
   /** The lockfile files a peer under `dependencies`: the manifest says which entries are peers. */
   readonly peersInManifest?: true
   /**
@@ -132,6 +137,9 @@ const MANAGERS = {
     digest: (t, files) => bunLock().importerDigests(bunParse(t), files),
     importers: (t) => bunLock().importerLinks(bunParse(t)),
     recorded: (t) => bunParse(t).workspaces,
+    // Bun leaves out a manifest with no name, as build output's
+    // `{"type":"module"}` (probed on 1.4.4); no version is listed.
+    member: (pkg) => typeof pkg['name'] === 'string' && pkg['name'] !== '',
     extraFiles: (t) => [...bunLock().patchFiles(t), ...bunLock().fileDeps(bunParse(t))],
     settings: ['bunfig.toml', '.npmrc'],
   },
@@ -348,6 +356,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
           await recordedOnce(ctx.cacheDir, file, text, manager.recorded),
           await dirs,
           manifest,
+          manager.member,
         )
         if (missing.length > 0) {
           throw new UserError(
@@ -552,8 +561,8 @@ async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<s
 }
 
 /**
- * What the manifests name that the lockfile does not: each workspace it
- * lists no importer for, and each importer's dependency (any field but
+ * What the manifests name that the lockfile does not: each workspace the
+ * manager lists (`member`) that it lists no importer for, and each importer's dependency (any field but
  * peers, which a manager may leave out) on a workspace package's name that
  * it records no entry for.
  */
@@ -563,9 +572,10 @@ async function staleness(
   recorded: ReadonlyMap<string, ReadonlySet<string>>,
   dirs: readonly string[],
   manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+  member: ((pkg: Record<string, unknown>) => boolean) | undefined,
 ): Promise<string[]> {
   const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
-  const missing = dirs.filter((d) => !importers.has(d)).map((d) => `the workspace ${d}`)
+  const missing: string[] = []
   const names = new Set<string>()
   const all = new Set([...importers.keys(), ...dirs])
   // Read at once, then visited in order: the first unparsable one still
@@ -574,6 +584,11 @@ async function staleness(
   for (const d of all) {
     const n = (await manifest(dirOf(d)))?.['name']
     if (typeof n === 'string') names.add(n)
+  }
+  for (const d of dirs) {
+    if (importers.has(d)) continue
+    const pkg = await manifest(dirOf(d))
+    if (pkg === null || member?.(pkg) !== false) missing.push(`the workspace ${d}`)
   }
   for (const [importer, deps] of recorded) {
     const pkg = await manifest(dirOf(importer))
