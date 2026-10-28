@@ -678,7 +678,7 @@ unless explicitly overridden:
 - **BROAD** — the invocation used `--all`, `--filter`, or
   `--affected`. The user asked about a swath of the workspace and
   wants news, not output.
-- **CI** — the `CI` env var is truthy (`CI=0` / `CI=false` don't
+- **CI** — the `CI` env var is truthy (`CI=0` and `CI=false`, in any case, don't
   count). Wins over the flow.
 
 Reported task lines share one column grid —
