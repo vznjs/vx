@@ -985,7 +985,7 @@ export class ReapiClient {
     inline?: { stdout: boolean; files: readonly string[] },
   ): Promise<ActionResult | null> {
     try {
-      return await this.unary<ActionResult>(
+      const result = await this.unary<ActionResult>(
         this.svc.ac,
         'getActionResult',
         {
@@ -998,6 +998,7 @@ export class ReapiClient {
         this.meta(),
         this.boundedMeta(),
       )
+      return withNumericSizes(result)
     } catch (err) {
       if ((err as grpc.ServiceError).code === NOT_FOUND) return null
       throw err
@@ -1569,6 +1570,34 @@ export class ReapiClient {
    */
   close(): void {
     this.svc.cas.close()
+  }
+}
+
+/**
+ * proto-loader reads an int64 as a string (`longs: String`), and every reader
+ * of a result sums and compares `size_bytes` as a number: a record replay's
+ * batch budget concatenated `"12" + 128`, so each output file was a
+ * BatchReadBlobs round trip of its own, and an empty file grafted from a
+ * record encoded its `"0"` size where the canonical form omits it.
+ */
+function withNumericSizes(result: ActionResult): ActionResult {
+  const num = <D extends Digest | null | undefined>(d: D): D =>
+    d === null || d === undefined ? d : ({ ...d, size_bytes: Number(d.size_bytes) } as D)
+  return {
+    ...result,
+    ...(result.output_files === undefined
+      ? {}
+      : { output_files: result.output_files.map((f) => ({ ...f, digest: num(f.digest) })) }),
+    ...(result.output_directories === undefined
+      ? {}
+      : {
+          output_directories: result.output_directories.map((d) => ({
+            ...d,
+            tree_digest: num(d.tree_digest),
+          })),
+        }),
+    ...(result.stdout_digest === undefined ? {} : { stdout_digest: num(result.stdout_digest) }),
+    ...(result.stderr_digest === undefined ? {} : { stderr_digest: num(result.stderr_digest) }),
   }
 }
 
