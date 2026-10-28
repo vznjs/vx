@@ -1001,7 +1001,8 @@ a stack and exit 1 after its task had succeeded.
 ## Planning mode (`--dry`)
 
 `--dry` short-circuits execution. It builds the full task graph,
-compute every task's cache key, and probe the cache to predict the
+computes each task's cache key as the run would (none, `hash: ""`, for
+a server no task depends on), and probes the cache to predict the
 hit/miss outcome. Against a remote cache the probe is a lightweight
 existence check — planning never downloads or ingests artifacts.
 

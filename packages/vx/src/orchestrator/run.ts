@@ -63,7 +63,7 @@ import { admitTasks, taintTracker } from './admission.js'
 import { settleProbedHit, unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
 import { executeArgsOf, type RunScope } from './execute-args.js'
 import { excludedTaint } from './excluded-keys.js'
-import { keyUpstream } from './upstream.js'
+import { dependedOn, keyUpstream } from './upstream.js'
 import {
   busLogger,
   createEventBus,
@@ -1066,8 +1066,7 @@ async function runOnBus(
     const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes)
     // Each task that ran tainted, and the task at the root of it.
     const taintedRan = new Map<string, string>()
-    const dependedOn = new Set<string>()
-    for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
+    const depended = dependedOn(nodes.values())
 
     // Why a task missed, for a sink: a read of the history per miss, so only
     // when a sink exists.
@@ -1114,7 +1113,7 @@ async function runOnBus(
       nestedDirsByProject,
       downloadModeOf: download.modeOf,
       shortCircuit,
-      dependedOn,
+      dependedOn: depended,
       holders,
     })
     const buildExecuteArgs = (
