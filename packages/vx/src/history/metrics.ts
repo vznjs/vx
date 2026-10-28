@@ -883,6 +883,18 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   }
 }
 
+/**
+ * Joins a group and a task under it in an `upstream` row's name: a group
+ * records no run, so its dependant's key names its members through it.
+ */
+export const GROUP_VIA = ' \u2190 '
+
+/** The task an `upstream` row names: the last one, past any group it came through. */
+export function upstreamTask(name: string): string {
+  const i = name.lastIndexOf(GROUP_VIA)
+  return i < 0 ? name : name.slice(i + GROUP_VIA.length)
+}
+
 export interface RootCause {
   /** From the asked task down to the one whose own inputs moved. */
   chain: string[]
@@ -904,10 +916,13 @@ export function rootCauses(
   const seen = new Set([taskId])
   const walk = (chain: string[], moved: CacheKeyDiff['entries']): void => {
     for (const e of moved) {
-      if (e.kind !== 'upstream' || seen.has(e.name)) continue
-      seen.add(e.name)
-      const next = [...chain, e.name]
-      const d = cacheKeyDiff(db, runId, e.name)
+      if (e.kind !== 'upstream') continue
+      const task = upstreamTask(e.name)
+      if (seen.has(task)) continue
+      seen.add(task)
+      const next = [...chain, ...e.name.split(GROUP_VIA)]
+      const d = cacheKeyDiff(db, runId, task)
+      // A group: its members' rows carry the walk.
       if (!d.found) continue
       const own = d.entries.filter((x) => x.kind !== 'upstream')
       if (own.length > 0) roots.push({ chain: next, entries: own })
