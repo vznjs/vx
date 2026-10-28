@@ -3,15 +3,15 @@ title: Glossary
 description: One tool-neutral definition per term, with the name each tool uses for it.
 ---
 
-Every task runner solves the same handful of problems, and each one names
-them differently. This page defines each idea once, without reference to
-any tool, then gives the name vx, Turborepo, Nx and Bazel use for it. Compare
-tools by what they do, not by what they call it.
+Every task runner solves the same problems, and each one names them
+differently. This page defines each idea once, then gives the name vx,
+Turborepo, Nx and Bazel use for it.
 
 The other tools' names were checked against their own documentation on
-2026-09-24, and each is linked. A dash means that tool's documentation has
-no term for the idea. It does not mean the tool cannot do the thing some
-other way.
+2026-09-24, and each is linked.
+
+A dash means that tool's documentation has no term for the idea. It does
+not mean the tool cannot do the thing some other way.
 
 ## Workspace
 
@@ -118,17 +118,20 @@ produce the same outputs, so the second can replay the first. Everything
 that decides the key decides what the cache can be trusted with.
 
 - vx: the cache key, a 16-hex xxHash3 digest ([caching](../caching/))
-- Turborepo: the hash, or "fingerprint" ([caching](https://turborepo.com/docs/crafting-your-repository/caching#task-inputs))
+- Turborepo: the hash ([caching](https://turborepo.com/docs/crafting-your-repository/caching#task-inputs))
 - Nx: the hash of the cache inputs ([glossary](https://nx.dev/docs/reference/glossary#cache-inputs))
 - Bazel: the [action key](https://bazel.build/reference/glossary#action-key)
 
 ## Cache hit, miss and stale hit
 
 **A hit** finds the key in the cache and replays the stored outputs
-instead of running the task. **A miss** runs it. **A stale hit** is a hit
-whose stored outputs are wrong for today's inputs, because something the
-task read was never part of the key. It reports success and serves
-yesterday's result, which makes it the worst failure a cache can have.
+instead of running the task. **A miss** runs it.
+
+**A stale hit** is a hit whose stored outputs are wrong for today's
+inputs, because something the task read was never part of the key.
+
+A stale hit reports success and serves yesterday's result, which makes
+it the worst failure a cache can have.
 
 - vx: hit, miss and stale hit ([caching](../docs/caching/))
 - Turborepo: cache hit and cache miss ([caching](https://turborepo.com/docs/crafting-your-repository/caching))
@@ -140,7 +143,7 @@ yesterday's result, which makes it the worst failure a cache can have.
 **A cache shared between machines**, so CI and every developer reuse each
 other's results. It makes the cost of a stale hit shared too.
 
-- vx: a remote `CacheLayer` from a plugin, such as `@vzn/vx-reapi` or `turboCache()` ([remote caching](../docs/remote-cache/))
+- vx: the remote cache, `vxCache()` from `@vzn/vx-cache`, or a plugin such as `reapi()` or `turboCache()` ([remote cache](../docs/remote-cache/))
 - Turborepo: Remote Caching ([remote caching](https://turborepo.com/docs/core-concepts/remote-caching))
 - Nx: remote cache ([glossary](https://nx.dev/docs/reference/glossary#remote-cache)), offered as Nx Replay
 - Bazel: remote caching, with a local [disk cache](https://bazel.build/reference/glossary#disk-cache)
@@ -148,10 +151,11 @@ other's results. It makes the cost of a stale hit shared too.
 ## Hermeticity and sandboxing
 
 **A task is hermetic when it reads only its declared inputs and writes
-only its declared outputs.** A sandbox enforces that by running the task
-where undeclared files cannot be reached, and reporting what it tried.
-A sandbox is how a runner proves the key is complete, rather than
-trusting it.
+only its declared outputs.**
+
+A sandbox enforces that by running the task where undeclared files
+cannot be reached, and reporting what it tried. It is how a runner
+proves the key is complete, rather than trusting it.
 
 - vx: `exec.sandbox`, run locally on Linux and macOS ([sandboxing](../docs/sandboxing/))
 - Turborepo: —
@@ -182,7 +186,7 @@ must never be cached.
 
 ## Critical path
 
-**The longest chain of dependent work in the task graph.** No amount of
+**The longest path of dependent work in the task graph.** No amount of
 parallelism finishes a run faster than its critical path. A scheduler
 that starts the tasks on it first finishes sooner on the same machine.
 
@@ -191,14 +195,15 @@ that starts the tasks on it first finishes sooner on the same machine.
 - Nx: the critical path, named where its CI guide says what a cache cannot fix ([CI caching](https://nx.dev/docs/kb/ci-caching))
 - Bazel: the critical path, which every build reports and the profiler draws ([JSON trace profile](https://bazel.build/advanced/performance/json-trace-profile))
 
-## Seam and plugin
+## Plugin
 
-**A seam is a point in the pipeline where outside code decides.** Examples
-are where a task runs, where artifacts live, who observes the run, and how
-the graph is shaped. A plugin fills one or more seams. The width of the
-seams decides what can be built on a tool without forking it.
+**Outside code that decides part of a run**: where a task runs, where
+artifacts live, who observes the run, or how the graph is shaped.
 
-- vx: plugin stages from `config` to `telemetry` ([plugins](../docs/plugins/))
+What plugins may decide sets what can be built on a tool without forking
+it.
+
+- vx: a plugin, filling one or more stages from `config` to `telemetry` ([plugins](../docs/plugins/))
 - Turborepo: —
 - Nx: a [plugin](https://nx.dev/docs/reference/glossary#plugin), which can infer tasks and supply [executors](https://nx.dev/docs/reference/glossary#executor)
 - Bazel: [rules](https://bazel.build/reference/glossary#rule) written in [Starlark](https://bazel.build/reference/glossary#starlark)
