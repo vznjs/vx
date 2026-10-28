@@ -485,7 +485,9 @@ vx run build -- --sourcemap         # build command gets "--sourcemap"
 
 They are appended to the command's last line (trailing blank lines are
 dropped first, so a multi-line command's closing newline does not run
-them as a command of their own), or before a `#` comment still
+them as a command of their own), before a trailing `;` or `&` for the
+same reason (an escaped `\;`, as in `find … -exec … \;`, takes them
+after), or before a `#` comment still
 open there (`echo args: # show` gets them; with comment-only lines
 below a commented line, before the earliest). A heredoc's body and
 terminator are not command lines: `cat <<X … X` gets them on the
@@ -2297,10 +2299,10 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 
 ### Exit codes
 
-| Code | When                                                                                                                                                                   |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | the files written (or, with `--dry`, printed)                                                                                                                          |
-| `1`  | a refused flag, a parse error (`--mjs` with `--plugin` among them), or a plugin file already there without `--force`. Handed to `@vzn/vx-migrate`, the exit is its own |
+| Code | When                                                                                                                                                                                                          |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | the files written (or, with `--dry`, printed)                                                                                                                                                                 |
+| `1`  | a refused flag, a parse error (`--mjs` with `--plugin` among them), a plugin file already there without `--force`, or the lock not written (the files stay). Handed to `@vzn/vx-migrate`, the exit is its own |
 
 ## `bunx @vzn/vx-migrate`
 

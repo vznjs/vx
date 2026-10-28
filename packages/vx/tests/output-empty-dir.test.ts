@@ -215,3 +215,62 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  'a miss clears the empty directories an older build left, so its save does not keep them',
+  async () => {
+    // The clean took files and the directories it emptied; a directory
+    // already empty stayed, and the save stored it, so every hit made it.
+    const root = await makeWorkspace({ prefix: 'vx-empty-leftover-' })
+    made.push(root)
+    const dir = await addProject(root, 'app', {
+      config: `
+        export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist && cp src/in.txt dist/real.txt' },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+        } } }`,
+      files: { 'src/in.txt': 'v1\n' },
+    })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    mkdirSync(path.join(dir, 'dist/old/inner'), { recursive: true })
+    mkdirSync(path.join(dir, 'dist/gone'), { recursive: true })
+    await build(root)
+    expect(existsSync(path.join(dir, 'dist/old'))).toBe(false)
+    expect(existsSync(path.join(dir, 'dist/gone'))).toBe(false)
+    await rm(path.join(dir, 'dist'), { recursive: true })
+    expect(await build(root)).toContain('1↓')
+    expect(existsSync(path.join(dir, 'dist/real.txt'))).toBe(true)
+    expect(existsSync(path.join(dir, 'dist/old'))).toBe(false)
+    expect(existsSync(path.join(dir, 'dist/gone'))).toBe(false)
+  },
+  TIMEOUT,
+)
+
+it(
+  'a miss clears the empty directories an older build left under a workspaceFiles output',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-ws-empty-leftover-' })
+    made.push(root)
+    await addProject(root, 'app', {
+      config: `
+        export default { tasks: { build: {
+          exec: { command: 'cd ../.. && mkdir -p gen && echo real > gen/real.txt' },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+        } } }`,
+      files: { 'src/in.txt': 'v1\n' },
+    })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    mkdirSync(path.join(root, 'gen/old/inner'), { recursive: true })
+    await build(root)
+    expect(existsSync(path.join(root, 'gen/old'))).toBe(false)
+    await rm(path.join(root, 'gen'), { recursive: true })
+    expect(await build(root)).toContain('1↓')
+    expect(existsSync(path.join(root, 'gen/real.txt'))).toBe(true)
+    expect(existsSync(path.join(root, 'gen/old'))).toBe(false)
+  },
+  TIMEOUT,
+)
