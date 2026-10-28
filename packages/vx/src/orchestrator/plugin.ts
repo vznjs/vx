@@ -878,6 +878,11 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       bus: {
         emit: (event) => bus.emit(event),
         subscribe(subscriber) {
+          if (typeof subscriber !== 'function') {
+            throw new Error(
+              `ctx.bus.subscribe: the subscriber is ${subscriber === null ? 'null' : typeof subscriber}, not a function`,
+            )
+          }
           // Isolated like an `on` handler: the bus itself swallows a throw.
           const dispose = bus.subscribe((event) => {
             if (disabled.has(plugin)) return
@@ -900,6 +905,12 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
         if (!Object.hasOwn(HOOK_NAMES, hook)) {
           throw new Error(
             `ctx.on: unknown hook '${String(hook)}' (one of ${Object.keys(HOOK_NAMES).join(', ')})`,
+          )
+        }
+        // Taken, it threw at the first event and switched the whole plugin off.
+        if (typeof handler !== 'function') {
+          throw new Error(
+            `ctx.on: the handler for '${hook}' is ${handler === null ? 'null' : typeof handler}, not a function`,
           )
         }
         const onFail = (err: unknown): void => fail(hook, err)

@@ -136,7 +136,8 @@ a run explorer's record on this API and reads it back through a verb.
   and a throwing `admit` (or one that answers a Promise, or anything not
   `true`, `false` or `undefined`) admits from then
   on. An async hook's rejection counts as its throw. `ctx.on` with a
-  hook name it does not know fails the load (H-16).
+  hook name it does not know fails the load (H-16), as does a handler (or
+  a `ctx.bus.subscribe` subscriber) that is not a function.
 - `teardown()` and every telemetry sink's `flush()` ARE invoked at
   end-of-run, each under try/catch and a time bound — plugins may rely
   on them to drain buffers. A run a SIGINT/SIGTERM/SIGHUP stops is no
