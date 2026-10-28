@@ -528,8 +528,13 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   // One Capabilities round trip per executor, not per task — the answer
   // cannot change mid-run, and a 400-task graph would otherwise ask 400 times.
   let capsPromise: ReturnType<ReapiClient['capabilities']> | undefined
+  // A failed ask is not kept: one call past its deadline failed every later
+  // task of the run with the same error.
   const capabilitiesOnce = (): ReturnType<ReapiClient['capabilities']> =>
-    (capsPromise ??= client.capabilities())
+    (capsPromise ??= client.capabilities().catch((err: unknown) => {
+      capsPromise = undefined
+      throw err
+    }))
   const executor: TaskExecutor = {
     name: 'vx/reapi',
     remote: true,
