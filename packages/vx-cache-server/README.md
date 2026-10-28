@@ -39,8 +39,10 @@ scope, which only runs of that branch read:
 - A push writes its branch, so a run of `main` writes `main`.
 - A pull request writes its head branch: its work never reaches `main`'s
   runs.
-- A merge queue's run (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`)
-  writes its base branch, since queued code is about to land.
+- A merge queue's run (`merge_group`, on
+  `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`) writes its base
+  branch, since queued code is about to land. A pull request or push
+  whose branch is so named writes that branch.
 - A `pull_request_target` run writes nothing: it may run a fork's code.
 
 `AUDIENCE` is the `aud` a token must name, by default the origin the

@@ -98,6 +98,19 @@ describe('CI OIDC tokens', () => {
     expect(await status('e7', near.ref)).toBe(200)
   })
 
+  // A pull request's head branch is named by whoever opened it, a fork's
+  // too: one named as a queue's ref was stripped to its base, so the
+  // pull request wrote main's scope, which main's runs read.
+  it("only a merge queue's own run writes its base branch", async () => {
+    const queued = `gh-readonly-queue/main/pr-12-${'b'.repeat(40)}`
+    const pr = { event_name: 'pull_request', ref: 'refs/pull/7/merge', head_ref: queued }
+    expect((await put(await sign(pr), 'e8')).status).toBe(204)
+    const push = { event_name: 'push', ref: `refs/heads/${queued}` }
+    expect((await put(await sign(push), 'e9')).status).toBe(204)
+    expect([await status('e8'), await status('e9')]).toEqual([404, 404])
+    expect(await status('e8', `refs/heads/${queued}`)).toBe(200)
+  })
+
   // A pull_request_target run carries a fork's head_ref, named by the
   // fork: it wrote that branch's scope, so a fork poisoned a branch of the
   // same name (found 2026-10-26). Its ref is the base: a fork's code never

@@ -126,7 +126,9 @@ function branchOf(iss: string, claims: JWTPayload): string | undefined {
         : claims['ref']
       : claims['ref_path']
   if (typeof ref !== 'string' || !ref.startsWith('refs/') || ref.length > 512) return undefined
-  const queued = iss === GITHUB ? QUEUE.exec(ref) : null
+  // Only the queue's own run: a pull request's head branch, or a pushed
+  // one, may be named as a queue's ref by whoever made it, and wrote its base.
+  const queued = iss === GITHUB && claims['event_name'] === 'merge_group' ? QUEUE.exec(ref) : null
   return queued === null ? ref : `refs/heads/${queued[1]}`
 }
 
