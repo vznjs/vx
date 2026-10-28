@@ -23,7 +23,7 @@ import type { PackageMeta } from '../packages.js'
 import { withoutTakenBack } from '../glob-grammar.js'
 import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
-import { type Owner, runsScriptHooks, scriptCommand, yarnPnp } from '../script-command.js'
+import { type Owner, runsScriptHooks, scriptCommand, yarnPnp, yarnRun } from '../script-command.js'
 import {
   ownFileTakeBacks,
   takingBack,
@@ -1212,7 +1212,7 @@ function mapCommand(
       const command = scriptCommand(script, body, hookScripts, pnp)
       // `yarn run <name>` sets its own.
       const env =
-        command === `yarn run ${script}`
+        command === yarnRun(script)
           ? {}
           : npmScriptEnv(command, script, command !== body, manifest, manifestField, todos)
       return shell(command, undefined, { env, readyWhen: undefined })

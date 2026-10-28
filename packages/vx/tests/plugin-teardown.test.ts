@@ -634,6 +634,52 @@ describe('the lifecycle is reached on a run that never started', () => {
     ])
   })
 
+  // `run()` and `planRun()` read the setting variables once prepareRun
+  // has run the factories: an embedder's bad value threw past every
+  // teardown and the cache close (the CLI refuses it before any run).
+  for (const [name, value, plans] of [
+    ['VX_RUN_CONCURRENCY', 'many', true],
+    ['VX_CACHE_INPUT_STABILITY_STRATEGY', 'sometimes', false],
+  ] as const) {
+    it(`a refused ${name} tears every plugin down and closes the cache`, async () => {
+      await withPlugins('')
+      await lock(root)
+      const prev = process.env[name]
+      process.env[name] = value
+      const close = Cache.prototype.close
+      const closes = spyOn(Cache.prototype, 'close').mockImplementation(function (this: Cache) {
+        ;(globalThis as unknown as { __vxAbort: string[] }).__vxAbort.push('close')
+        close.call(this)
+      })
+      try {
+        expect(
+          await settle(
+            runFromLock({
+              cwd: root,
+              projects: ['a'],
+              tasks: ['t'],
+              log: quiet,
+              handleSignals: false,
+            }),
+          ),
+        ).toContain(value)
+        // Refused before any setup, so nothing set up runs first.
+        expect(seen()).toEqual(['a-teardown', 'b-teardown', 'close'])
+        seen().length = 0
+        if (plans) {
+          expect(
+            await settle(planFromLock({ cwd: root, projects: ['a'], tasks: ['t'], log: quiet })),
+          ).toContain(value)
+          expect(seen()).toEqual(['a-teardown', 'b-teardown', 'close'])
+        }
+      } finally {
+        closes.mockRestore()
+        if (prev === undefined) delete process.env[name]
+        else process.env[name] = prev
+      }
+    })
+  }
+
   it('a plan tears every plugin down', async () => {
     await withPlugins('')
     await planRun({ cwd: root, projects: ['a'], tasks: ['t'], log: quiet })

@@ -24,6 +24,7 @@ import {
   runFailures,
   type RunStep,
   runSteps,
+  runWarnings,
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
@@ -49,6 +50,8 @@ interface LastArgs {
   branch?: string
   /** `--cache-dir`: read the history a run with the same flag wrote. */
   cacheDir?: string
+  /** `--sql <query>`: the history's rows a read-only query selects. */
+  sql?: string
   error?: string
 }
 
@@ -96,6 +99,17 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
       out.stats = true
       continue
     }
+    if (a === '--sql' || a.startsWith('--sql=')) {
+      const v = a === '--sql' ? args[++i] : a.slice('--sql='.length)
+      if (v === undefined || v.trim() === '') {
+        return {
+          ...out,
+          error: `--sql requires a query, like 'SELECT * FROM runs'${seeHelp('last')}`,
+        }
+      }
+      out.sql = v
+      continue
+    }
     if (a === '--branch' || a.startsWith('--branch=')) {
       const v = a === '--branch' ? args[++i] : a.slice('--branch='.length)
       if (v === undefined || v === '' || (a === '--branch' && v.startsWith('-'))) {
@@ -139,6 +153,16 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     if (out.runId !== undefined)
       return { ...out, error: `unexpected argument: ${a}${seeHelp('last')}` }
     out.runId = a
+  }
+  if (out.sql !== undefined) {
+    const other = [out.runId, out.list, out.failed, out.log, out.stats, out.branch]
+    if (bareLog || other.some((v) => v !== undefined)) {
+      return {
+        ...out,
+        error: `--sql combines only with --format and --cache-dir${seeHelp('last')}`,
+      }
+    }
+    return out
   }
   if (bareLog) {
     if (out.runId === undefined) {
@@ -270,6 +294,59 @@ async function printStats(
   const lines = rows.map((r) =>
     r
       .map((cell, c) => cell.padEnd(widths[c]!))
+      .join('  ')
+      .trimEnd(),
+  )
+  process.stdout.write(`${lines.join('\n')}\n`)
+  return 0
+}
+
+/**
+ * `--sql`: one SELECT over the history (`runs`, `invocations`, and the
+ * store's `entries`, `entry_inputs`, `task_durations`, `task_outcomes`),
+ * so an agent asks what no flag answers: a task's memory trend, the
+ * flakiest project, which input moved a key. `query_only` stops a write
+ * the statement hides (`WITH … DELETE`); it does not stop ATTACH, which
+ * creates a file, hence only SELECT or WITH may lead.
+ */
+function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): number {
+  if (!/^\s*(select|with)\b/i.test(sql)) {
+    throw new UserError(
+      `vx last: --sql reads only: one SELECT (or WITH … SELECT) over the history`,
+      'VX_E_USAGE',
+    )
+  }
+  db.exec('PRAGMA query_only = ON')
+  let rows: Array<Record<string, unknown>>
+  try {
+    rows = db.query(sql).all() as Array<Record<string, unknown>>
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (/readonly|query_only/i.test(message)) {
+      throw new UserError(`vx last: --sql reads only: ${message}`, 'VX_E_USAGE')
+    }
+    throw new UserError(`vx last: --sql: ${message}`, 'VX_E_USAGE')
+  }
+  if (format === 'json') {
+    process.stdout.write(`${JSON.stringify({ rows })}\n`)
+    return 0
+  }
+  if (rows.length === 0) return 0
+  // A column's value as SQLite returns it: TEXT, a number, NULL or a BLOB.
+  const cell = (v: string | number | bigint | Uint8Array | null): string =>
+    v === null || v === undefined
+      ? '-'
+      : v instanceof Uint8Array
+        ? `<${v.length} bytes>`
+        : String(v)
+  const table = [
+    Object.keys(rows[0]!),
+    ...rows.map((r) => Object.values(r).map((v) => cell(v as Parameters<typeof cell>[0]))),
+  ]
+  const widths = table[0]!.map((_, c) => Math.max(...table.map((r) => r[c]!.length)))
+  const lines = table.map((r) =>
+    r
+      .map((v, c) => v.padEnd(widths[c]!))
       .join('  ')
       .trimEnd(),
   )
@@ -507,6 +584,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     // nothing, while `--list --failed` past green runs said there were none.
     const noRuns = (): boolean => listInvocations(db, { limit: 1 }).length === 0
 
+    if (parsed.sql !== undefined) return printQuery(db, parsed.sql, parsed.format)
+
     if (parsed.stats === true) {
       const branch = currentBranch(root, undefined, parsed.branch)
       return await printStats(db, parsed.task, parsed.format, branch)
@@ -609,8 +688,14 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
             }
       })
       const steps = runSteps(cacheDir, inv.runId)
+      const warnings = runWarnings(cacheDir, inv.runId)
       process.stdout.write(
-        `${JSON.stringify({ invocation: inv, tasks, ...(steps.length > 0 ? { steps } : {}) })}\n`,
+        `${JSON.stringify({
+          invocation: inv,
+          tasks,
+          ...(steps.length > 0 ? { steps } : {}),
+          ...(warnings.length > 0 ? { warnings } : {}),
+        })}\n`,
       )
       return 0
     }
@@ -630,6 +715,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     )
     lines.push(...formatTaskRows(detail?.tasks ?? []))
     lines.push(...formatStepRows(runSteps(cacheDir, inv.runId)))
+    const warnings = runWarnings(cacheDir, inv.runId)
+    if (warnings.length > 0) {
+      lines.push('', '  warnings', ...warnings.flatMap((w) => w.split('\n').map((l) => `    ${l}`)))
+    }
     // The next command after reading a failed run, with the arguments the
     // run forwarded to the tasks that got them (a failure under `-- --shard
     // 2` is that shard's); a dependency never got them, so its line has none.

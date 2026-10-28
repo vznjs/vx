@@ -19,6 +19,7 @@ export {
   type CaptureConfig,
   execWord,
   maskCaptured,
+  isDroppedOutputChunk,
   BoundedCapture,
   type CapturedChunk,
 } from './runner.js'

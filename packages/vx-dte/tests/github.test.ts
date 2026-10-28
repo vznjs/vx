@@ -485,3 +485,47 @@ it('says each poll and cancel GitHub refused, by status and body, once', async (
     await server.stop(true)
   }
 }, 15_000)
+
+// The workflow runs it dispatched or adopted are the only ones whose jobs
+// the orchestrator admits as its workers (seal.ts githubProof); one
+// dispatch that named no run (an older API) admits any of the repository.
+it('names the workflow runs its workers come from, none once a dispatch named no run', async () => {
+  let id = 6
+  let named = true
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      if (new URL(req.url).pathname.endsWith('/dispatches'))
+        return named
+          ? Response.json({ workflow_run_id: ++id })
+          : new Response(null, { status: 204 })
+      return Response.json({ jobs: [] })
+    },
+  })
+  const temp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
+  await Bun.write(path.join(temp, 'vx-dte-started'), '/repos/o/r/actions/runs/5 small#1\n')
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+    GITHUB_REF_NAME: 'main',
+    GITHUB_SHA: 'abc123',
+    RUNNER_TEMP: temp,
+  })
+  try {
+    const adapter = github()
+    expect([...adapter.workerRuns!()!]).toEqual([])
+    adapter.adopt?.((w, size) => spawn(w, size))
+    void adapter.spawn(spawn('small#2', 'small'))
+    for (let i = 0; i < 50 && adapter.workerRuns!()!.size < 2; i++) await Bun.sleep(20)
+    expect([...adapter.workerRuns!()!].sort()).toEqual(['5', '7'])
+    named = false
+    void adapter.spawn(spawn('big#3', 'big'))
+    for (let i = 0; i < 50 && adapter.workerRuns!() !== undefined; i++) await Bun.sleep(20)
+    expect(adapter.workerRuns!()).toBeUndefined()
+  } finally {
+    await server.stop(true)
+    await rm(temp, { recursive: true, force: true })
+  }
+})
