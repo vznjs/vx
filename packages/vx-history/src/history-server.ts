@@ -142,6 +142,8 @@ export class HistoryServer {
   private token: Promise<string> | undefined
   private held: { jwt: string; exp: number } | undefined
   private limits: Promise<Limits> | undefined
+  // A refused token is refused again: the run's later calls stay unasked and unsaid.
+  private refused = false
 
   constructor(
     readonly url: string,
@@ -232,6 +234,14 @@ export class HistoryServer {
         `${err.message}: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)`,
       )
     }
+    if (res.status === 401) {
+      // The bare "HTTP 401: wrong audience" named neither what was sent nor what to check.
+      this.refused = true
+      const err = await refusal(res)
+      throw new Error(
+        `${err.message}: the token was refused (this workspace names ${this.named.repository} at ${this.named.issuer}; the server's ALLOW must name it, and the token's audience be ${new URL(this.url).origin}); the history server is off for this run`,
+      )
+    }
     if (!res.ok) throw await refusal(res)
     return res
   }
@@ -261,6 +271,7 @@ export class HistoryServer {
     refs: readonly string[],
     hashes: readonly string[],
   ): Promise<Map<string, ServerTiming>> {
+    if (this.refused) return new Map()
     const per = (await this.limitsNow()).maxQueryHashes
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
@@ -290,7 +301,7 @@ export class HistoryServer {
 
   /** The run's timings, by task definition hash, in uploads of at most `maxUploadTimings`. */
   async upload(timings: ReadonlyMap<string, ServerTiming>): Promise<void> {
-    if (timings.size === 0) return
+    if (timings.size === 0 || this.refused) return
     const per = (await this.limitsNow()).maxUploadTimings
     const all = [...timings].map(([hash, t]) => ({ hash, ...t }))
     for (let i = 0; i < all.length; i += per) {

@@ -129,6 +129,20 @@ describe('HistoryServer', () => {
     )
   })
 
+  // A refused token said only "HTTP 401: wrong audience", and the upload
+  // at the run's end asked again and said it a second time.
+  it('says what a refused token names and what to check, then stops asking', async () => {
+    const token = await iss.sign('main', 'https://elsewhere.example')
+    const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token })
+    await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+      `HTTP 401: wrong audience: the token was refused (this workspace names ${NAMED.repository} at ${NAMED.issuer}; the server's ALLOW must name it, and the token's audience be ${new URL(url).origin}); the history server is off for this run`,
+    )
+    const before = seen.length
+    await client.upload(new Map([['p1', { durationMs: 1 }]]))
+    expect(await client.query(['refs/heads/main'], ['p1'])).toEqual(new Map())
+    expect(seen.length).toBe(before)
+  })
+
   it("asks GitHub for a new token before the job's ends, once for parallel calls", async () => {
     let asks = 0
     const t0 = Date.now()
