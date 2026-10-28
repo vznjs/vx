@@ -113,7 +113,8 @@ runs here as always (on GitHub Actions, `github()` with a relay names one
 itself). It is a random UUID, so no one can guess a run to
 open it first or join it; vx and the relay refuse any other. `local()` starts each worker as a process in its own
 git worktree of the tracked files as they are, uncommitted changes
-included (untracked files are not: a task that keys one fails), at the
+included (untracked files are not: a task that keys one fails; a run with
+an unmerged index, mid-merge, is refused), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
 saving to the run's store (a relative `cache.dir` or `--cache-dir` too). When a worker fails, its row names
 the error line and the log that holds its whole stderr and all `prepare`
