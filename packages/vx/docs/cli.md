@@ -1579,8 +1579,9 @@ history and hash memos older than 30 days; a run never does.
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
-**Duration units**: `s`, `m`, `h`, `d`, case-insensitive. Examples:
-`30d`, `24h`, `60m`, `30s`, `30D`.
+**Duration units**: `ms`, `s`, `m`, `h`, `d`, case-insensitive, except
+minutes, which are `m` only: `1M` is refused, since some tools read it
+as a month. Examples: `30d`, `24h`, `60m`, `30s`, `30D`.
 
 **Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive, with an optional `B` or `iB` (`512MB`, `32KiB`).
 Optional `B` suffix is accepted. Examples: `500M`, `1G`, `100K`, `2T`,

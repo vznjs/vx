@@ -43,6 +43,9 @@ ALLOW no longer takes commas between entries. Separate them with spaces or newli
 ## vx-reapi: read every setting from options, none from the env
 
 reapi() no longer reads VX_REAPI_ENDPOINT, VX_REAPI_INSTANCE, VX_REAPI_EXECUTE or VX_REAPI_TLS_*. Pass them as options: reapi({ endpoint: process.env.VX_REAPI_ENDPOINT, execute: true }).
+## util: refuse M as a duration unit, minutes are m
+
+a duration in `M` (`5M`) is refused; write `5m`.
 
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 
