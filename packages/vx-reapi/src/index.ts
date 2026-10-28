@@ -224,6 +224,13 @@ const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
 
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
+  // An unset variable as a value was sent as an empty one.
+  for (const key of ['platform', 'headers'] as const)
+    for (const [name, value] of Object.entries(options[key] ?? {}))
+      if (typeof value !== 'string')
+        throw new UserError(
+          `reapi() option "${key}": ${JSON.stringify(name)} must be a string, got ${String(value)}`,
+        )
   // Before `execute` reaches the server, and with it off too.
   refuseDeadlines(options)
   // Core refuses it too, but only once `execute` has reached the server,

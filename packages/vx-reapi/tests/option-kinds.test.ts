@@ -24,3 +24,15 @@ it('a capacity that is no whole number above 0 is refused at the factory', () =>
     )
   expect(() => reapi({ capacity: 4 })).not.toThrow()
 })
+
+// An unset variable (`platform: { 'container-image': process.env.IMAGE }`)
+// sent the property with an empty value on every action.
+it('a platform or header value that is no string is refused at the factory', () => {
+  expect(() => reapi({ platform: { 'container-image': undefined } } as never)).toThrow(
+    new Error('reapi() option "platform": "container-image" must be a string, got undefined'),
+  )
+  expect(() => reapi({ headers: { authorization: 5 } } as never)).toThrow(
+    new Error('reapi() option "headers": "authorization" must be a string, got 5'),
+  )
+  expect(() => reapi({ platform: { OSFamily: 'linux' }, headers: { a: 'b' } })).not.toThrow()
+})
