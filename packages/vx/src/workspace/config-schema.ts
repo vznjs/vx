@@ -264,6 +264,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     }
     const verbOwners = new Map<string, string>()
     const fileClaimants = new Map<string, { name: string; at: number }>()
+    const seenAt = new Map<object, number>()
     for (const [i, p] of (config.plugins as readonly unknown[]).entries()) {
       // A factory that declines returns nothing, and `cond && plugin()` is
       // false: both are skipped, as Vite skips them.
@@ -303,6 +304,15 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           `${configPath}: \`plugins[${i}].name\` overrides the package name ('${String(plug.name)}' over '${pkg}') — a plugin's name is its package name; drop the field`,
         )
       }
+      // One instance twice (two presets sharing it) ran its setup, its
+      // handlers and its telemetry sinks twice. Two instances stay two.
+      const first = seenAt.get(p)
+      if (first !== undefined) {
+        throw new UserError(
+          `${configPath}: \`plugins[${i}]\` is \`plugins[${first}]\` again (plugin '${pkg}') — declare a plugin once`,
+        )
+      }
+      seenAt.set(p, i)
       // A misspelled hook (`excutor`, `setUp`) was never called and never
       // said: tasks ran here with the plugin's executor unheard (X-19).
       for (const key of Object.keys(plug)) {
