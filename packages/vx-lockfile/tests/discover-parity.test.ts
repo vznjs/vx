@@ -940,6 +940,34 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
     expect((await pluginEdges(yarn(), 'yarn.lock', D_YARN, projects)).order).toEqual([])
   })
 
+  // pnpm injects a workspace package (`dependenciesMeta.<name>.injected`,
+  // or pnpm 10 `injectWorkspacePackages` with `dedupeInjectedDeps: false`)
+  // as a hard-linked copy of its directory and records `file:<dir>` where a
+  // link is `link:`. Unlike yarn's packed copy, it is the workspace package
+  // itself (pnpm re-syncs it after the package's scripts), so `^build`
+  // must wait for it (vercel/turborepo#12073 keeps the same entries).
+  for (const [gen, text] of [
+    ['v9 (pnpm 9/10)', P_INJECTED_V9],
+    ['v6 (pnpm 8)', P_INJECTED_V6],
+    ['v5 (pnpm 7)', P_INJECTED_V5],
+    // An injected package with peers is keyed per peer set: `(react@18.2.0)`, v5 `_react@18.2.0`.
+    ['v9 with peers', P_INJECTED_V9.replaceAll('file:packages/b', 'file:packages/b(react@18.2.0)')],
+    ['v5 with peers', P_INJECTED_V5.replaceAll('file:packages/b', 'file:packages/b_react@18.2.0')],
+  ] as const) {
+    it(`pnpm ${gen}: an injected workspace package (\`file:<dir>\`) is an edge`, async () => {
+      const projects = await metas({
+        'packages/a': {
+          name: 'a',
+          version: '1.0.0',
+          dependencies: { b: 'workspace:*' },
+          dependenciesMeta: { b: { injected: true } },
+        },
+        'packages/b': { name: 'b', version: '1.0.0' },
+      })
+      expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', text, projects)).order).toEqual(['a → b'])
+    })
+  }
+
   it('bun installs `dependencies` over a devDependency or an optional one of the same key', async () => {
     const projects = await metas({
       'packages/dev-met-prod-unmet': {
@@ -1165,3 +1193,91 @@ const D_NPM = `{
     }
   }
 }`
+
+// pnpm 10.28, `dedupeInjectedDeps: false`.
+const P_INJECTED_V9 = `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  packages/a:
+    dependencies:
+      b:
+        specifier: workspace:*
+        version: file:packages/b
+    dependenciesMeta:
+      b:
+        injected: true
+
+  packages/b: {}
+
+packages:
+
+  b@file:packages/b:
+    resolution: {directory: packages/b, type: directory}
+
+snapshots:
+
+  b@file:packages/b: {}
+`
+
+const P_INJECTED_V6 = `lockfileVersion: '6.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  packages/a:
+    dependencies:
+      b:
+        specifier: workspace:*
+        version: file:packages/b
+    dependenciesMeta:
+      b:
+        injected: true
+
+  packages/b: {}
+
+packages:
+
+  file:packages/b:
+    resolution: {directory: packages/b, type: directory}
+    name: b
+    dev: false
+`
+
+const P_INJECTED_V5 = `lockfileVersion: 5.4
+
+importers:
+
+  .:
+    specifiers: {}
+
+  packages/a:
+    specifiers:
+      b: workspace:*
+    dependencies:
+      b: file:packages/b
+    dependenciesMeta:
+      b:
+        injected: true
+
+  packages/b:
+    specifiers: {}
+
+packages:
+
+  file:packages/b:
+    resolution: {directory: packages/b, type: directory}
+    name: b
+    dev: false
+`
