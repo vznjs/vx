@@ -350,6 +350,23 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
           manifest,
         )
         if (missing.length > 0) {
+          // pnpm then writes a lockfile per package, and the root's lists
+          // only `.`: the install changes nothing, so it is not the fix.
+          // Core claims root files only, so a package's own is not read.
+          const workspaces = await dirs
+          if (
+            manager.name === 'pnpm' &&
+            workspaces.length > 0 &&
+            !workspaces.some((d) => importers.has(d)) &&
+            !pnpmSettings().sharedWorkspaceLockfile(
+              await textOrNull(path.join(ctx.workspaceRoot, 'pnpm-workspace.yaml')),
+              await textOrNull(path.join(ctx.workspaceRoot, '.npmrc')),
+            )
+          ) {
+            throw new UserError(
+              `${file} lists no workspace package: shared-workspace-lockfile is false, so pnpm writes a pnpm-lock.yaml per package, which pnpm() does not read — remove the setting and run \`pnpm install\``,
+            )
+          }
           throw new UserError(
             `${file} is out of date: it does not list ${listed(missing)} — run \`${manager.name} install\``,
           )
@@ -450,6 +467,14 @@ async function readSettings(
       .padStart(16, '0')
   }
   return out
+}
+
+async function textOrNull(file: string): Promise<string | null> {
+  try {
+    return await Bun.file(file).text()
+  } catch {
+    return null
+  }
 }
 
 /** The lockfile's importer path for a project directory: `.` for the root, POSIX otherwise. */
