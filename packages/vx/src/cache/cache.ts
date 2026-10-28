@@ -113,7 +113,7 @@ import {
   zstdEncoder,
 } from './zstd.js'
 import { FileHashStore } from './file-hashes.js'
-import { LINK_MODE, OutputIndex } from './output-index.js'
+import { DIR_MODE, LINK_MODE, OutputIndex } from './output-index.js'
 import { RunHistory } from './run-history.js'
 import { CACHE_VERSION, foldKey } from './key-fold.js'
 import { FoldMemo } from './fold-memo.js'
@@ -2175,6 +2175,7 @@ export class Cache implements CacheLayer {
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
     endRows()
+    const moded = absentModedDirs(rows, projectDir, workspaceRoot)
     const verify = (provided: ReadonlySet<string>): void => {
       const missing = expected.filter((name) => !provided.has(name))
       if (missing.length > 0) {
@@ -2210,6 +2211,7 @@ export class Cache implements CacheLayer {
         const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
         await extractArtifactStream(tar, projectDir, workspaceRoot, verify, accept, workspaceRoot)
       }
+      for (const [dir, mode] of moded) await chmod(dir, restoredMode(mode))
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
       // output directory that links out of the project).
@@ -2626,6 +2628,7 @@ export class Cache implements CacheLayer {
       ],
       exec: usageOfEntry(args.entry),
       root: args.workspaceRoot ?? args.projectDir,
+      projectDir: args.projectDir,
     })
     if (plan.size > this.artifactCeiling) {
       throw new Error(
@@ -2906,15 +2909,21 @@ export class Cache implements CacheLayer {
       outputFileRows.push([rowPath, e.size, e.mode & 0o777, Math.floor(e.mtimeMs)])
     }
     // An empty directory's row is its rel with a trailing slash: the hit's
-    // check asks only that a directory stands there.
-    for (const d of scanned.dirs) {
+    // check asks only that a directory stands there. So is a directory with
+    // a mode to restore, which carries it beside `DIR_MODE`.
+    const dirModes = new Map(scanned.dirModes)
+    const dirRow = (d: string): void => {
+      const mode = dirModes.get(d)
+      dirModes.delete(d)
       outputFileRows.push([
         `${d.startsWith('outputs/') ? d.slice('outputs/'.length) : d}/`,
         0,
-        0,
+        mode === undefined ? 0 : DIR_MODE | mode,
         0,
       ])
     }
+    for (const d of scanned.dirs) dirRow(d)
+    for (const d of [...dirModes.keys()]) dirRow(d)
     // A link's row: its rel, the target's length and CRC-32 where a file
     // has its size and mtime, and the link type in the mode, so the hit's
     // check compares the target and never follows it.
@@ -3514,6 +3523,32 @@ function assertArtifactNames(
       )
     }
   }
+}
+
+/**
+ * The directories with a mode to restore (`DIR_MODE` rows) that are absent
+ * before the restore, deepest first: the restore makes them with mkdir's
+ * default, and each is then given the mode the miss left, minus the umask
+ * as a file's is. One that stands is the tree's, left as it is. A mode
+ * only ever narrows mkdir's default, whatever an artifact says.
+ */
+function absentModedDirs(
+  rows: readonly OutputFileRow[],
+  projectDir: string,
+  workspaceRoot: string | undefined,
+): Array<[string, number]> {
+  const out: Array<[string, number]> = []
+  for (const r of rows) {
+    if ((r.mode & 0o170000) !== DIR_MODE || !r.path.endsWith('/')) continue
+    const rel = r.path.slice(0, -1)
+    const ws = rel.startsWith(WORKSPACE_OUTPUT_PREFIX)
+    if (ws && workspaceRoot === undefined) continue
+    const dir = ws
+      ? path.join(workspaceRoot!, rel.slice(WORKSPACE_OUTPUT_PREFIX.length))
+      : path.join(projectDir, rel)
+    if (lstatSync(dir, { throwIfNoEntry: false }) === undefined) out.push([dir, r.mode & 0o777])
+  }
+  return out.sort((a, b) => b[0].length - a[0].length)
 }
 
 /** A row's path as the tree names its file. */

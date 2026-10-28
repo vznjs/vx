@@ -1,6 +1,6 @@
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { flagHint, refuse, seeHelp } from './help.js'
+import { anchoredSpecError, flagHint, refuse, seeHelp } from './help.js'
 import {
   planRun,
   run as runOrchestrator,
@@ -420,19 +420,14 @@ export async function resolveRunOptions(
     // which refuses it in the embedder API's words.
     if (t.trim() === '')
       return { error: `empty task name ${JSON.stringify(t)} (vx show lists the tasks)` }
-    const idx = t.indexOf('#')
-    if (idx >= 0) {
-      const project = t.slice(0, idx)
-      const task = t.slice(idx + 1)
-      if (!project) {
-        return {
-          error: `missing project name before '#' in "${t}" (vx ${verb} ${task} runs it in every project)`,
-        }
-      }
-      if (!task) {
-        return {
-          error: `missing task name after '#' in "${t}" (vx show ${project} lists the tasks)`,
-        }
+    const error = anchoredSpecError(t, (task) => `vx ${verb} ${task} runs it in every project`)
+    if (error !== undefined) return { error }
+    // No config can declare a padded name (taskNameProblem): `'build '` was
+    // reported as "no projects declare task(s): build", its space unseen.
+    const task = t.slice(t.indexOf('#') + 1)
+    if (task.trim() !== task) {
+      return {
+        error: `task name ${JSON.stringify(task)} has surrounding whitespace (vx show lists the tasks)`,
       }
     }
   }
