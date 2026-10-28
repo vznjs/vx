@@ -124,3 +124,71 @@ it('a stop ends a task that waits on a server not yet ready', async () => {
     await floor.close()
   }
 }, 20_000)
+
+// A server that crashed after it became ready was handed to every later
+// task as up: the dependant ran against nothing and failed on its own
+// "connection refused", with no word that the server had died.
+it('a task after its server crashed is told the server exited', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const floor = localFloor()
+  const heard: string[] = []
+  const task = (n: number, command: string): ExecuteRequest => ({
+    taskId: `s#t${n}`,
+    workspaceRoot: dir,
+    outputs: { files: [], workspaceFiles: [] },
+    command,
+    forwardArgs: [],
+    cwd: dir,
+    env: { PATH: process.env['PATH'] },
+    envDefine: {},
+    capture: { stdout: false, stderr: false },
+    onStdout: () => {},
+    onStderr: (t) => heard.push(t),
+    servers: [
+      {
+        taskId: 's#srv',
+        command: 'echo up; while [ ! -f down ]; do sleep 0.02; done; exit 3',
+        cwd: dir,
+        env: { PATH: process.env['PATH'] },
+        readyWhen: 'up',
+      },
+    ],
+  })
+  try {
+    expect((await floor.execute(task(1, 'touch down; sleep 0.3'))).exitCode).toBe(0)
+    const r = await floor.execute(task(2, 'true'))
+    expect([r.exitCode, heard.join('')]).toEqual([
+      1,
+      's#srv, which s#t2 depends on, exited with code 3 after it was ready\n',
+    ])
+  } finally {
+    await floor.close()
+  }
+}, 20_000)
+
+it('CONTROL: a server that exited 0 (a setup step) still serves the next task', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const floor = localFloor()
+  const task = (n: number): ExecuteRequest => ({
+    taskId: `s#t${n}`,
+    workspaceRoot: dir,
+    outputs: { files: [], workspaceFiles: [] },
+    command: 'sleep 0.1',
+    forwardArgs: [],
+    cwd: dir,
+    env: { PATH: process.env['PATH'] },
+    envDefine: {},
+    capture: { stdout: false, stderr: false },
+    onStdout: () => {},
+    onStderr: () => {},
+    servers: [
+      { taskId: 's#srv', command: 'echo migrated', cwd: dir, env: { PATH: process.env['PATH'] } },
+    ],
+  })
+  try {
+    expect((await floor.execute(task(1))).exitCode).toBe(0)
+    expect((await floor.execute(task(2))).exitCode).toBe(0)
+  } finally {
+    await floor.close()
+  }
+}, 20_000)

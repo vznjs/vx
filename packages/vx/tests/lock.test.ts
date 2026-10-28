@@ -280,7 +280,7 @@ describe('vx lock (e2e)', () => {
       const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
       expect([run.code, run.err]).toEqual([1, invalid('run')])
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
-      expect([check.code, check.err]).toEqual([1, invalid('lock')])
+      expect([check.code, check.err]).toEqual([1, invalid('lock --check')])
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
       expect(await Bun.file(file).text()).toBe(ours)
       expect((await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })).code).toBe(0)
