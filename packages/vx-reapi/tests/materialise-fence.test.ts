@@ -267,6 +267,41 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
     expect((await stat(path.join(cwd, 'bin', 'tool'))).mode & 0o7777).toBe(0o755)
   })
 
+  it('modes come back minus the umask, as a local build or a core restore gives them', async () => {
+    // A server's 0777 was written world-writable under umask 022, and an
+    // executable 0755 world-readable under umask 077.
+    const d = tree({
+      files: [
+        {
+          name: 'open',
+          digest: blob('o'),
+          is_executable: false,
+          node_properties: { unixMode: 0o777 },
+        },
+      ],
+      directories: [],
+      symlinks: [],
+    })
+    const result = {
+      output_files: [{ path: 'run.sh', digest: blob('#!/bin/sh\n'), is_executable: true }],
+      output_directories: [{ path: 'bin', tree_digest: d }],
+    }
+    const modes: number[] = []
+    for (const mask of [0o022, 0o077]) {
+      const saved = process.umask(mask)
+      try {
+        expect(await run(result)).toBe('written')
+      } finally {
+        process.umask(saved)
+      }
+      modes.push((await stat(path.join(cwd, 'bin', 'open'))).mode & 0o7777)
+      modes.push((await stat(path.join(cwd, 'run.sh'))).mode & 0o7777)
+      await rm(path.join(cwd, 'bin'), { recursive: true })
+      await rm(path.join(cwd, 'run.sh'))
+    }
+    expect(modes.map((m) => m.toString(8))).toEqual(['755', '755', '700', '700'])
+  })
+
   it('CONTROL: links and files that stay inside are written', async () => {
     const lib: Directory = {
       files: [{ name: 'x.js', digest: blob('x'), is_executable: false }],

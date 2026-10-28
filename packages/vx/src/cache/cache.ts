@@ -168,6 +168,7 @@ const VX_CACHE_NAMES = new Set([
   // `.vx/cache/compiled`, so a `runs` or `compiled` here is the user's.
   'failures',
   'steps',
+  'warnings',
   'lockfile-claims',
 ])
 

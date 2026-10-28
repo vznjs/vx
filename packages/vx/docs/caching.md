@@ -1368,7 +1368,7 @@ root) and it holds everything, shared with no other workspace:
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
 ├── failures/<runId>.json                   a failed run's task output and the files it
-│                                           names (`vx last --format json`, getFailures);
+│                                           names (`vx last --format json`, runFailures);
 │                                           the newest 50 kept
 └── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
     ├── outputs/<rel>                       declared output files, project-relative (when any),
