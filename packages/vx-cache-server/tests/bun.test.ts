@@ -146,10 +146,10 @@ it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--bogus'], {
     stderr: 'pipe',
   })
-  const [said, usage] = cli.stderr.toString().split('\n')
+  const [said, usage] = Bun.stripANSI(cli.stderr.toString()).split('\n')
   expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
     2,
-    "Unknown option '--bogus'",
+    "✗ vx-cache-server  Unknown option '--bogus'",
     'usage: vx-cache-server',
   ])
 })
@@ -160,11 +160,11 @@ it('names ALLOW when it cannot be read', () => {
       env: { ...process.env, S3_BUCKET: 'b', ALLOW: allow },
       stderr: 'pipe',
     })
-    return [cli.exitCode, cli.stderr.toString()]
+    return [cli.exitCode, Bun.stripANSI(cli.stderr.toString())]
   }
   expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
-    [2, 'ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
-    [2, 'ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
+    [2, '✗ vx-cache-server  ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
+    [2, '✗ vx-cache-server  ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
   ])
 })
 
@@ -173,5 +173,8 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     env: { ...process.env, S3_BUCKET: 'b', ALLOW: '' },
     stderr: 'pipe',
   })
-  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+  expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString())]).toEqual([
+    2,
+    '✗ vx-cache-server  --port: not a port: \n',
+  ])
 })
