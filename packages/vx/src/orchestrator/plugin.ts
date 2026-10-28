@@ -20,7 +20,14 @@ import {
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
-import { maskedLine, nearest, type PluginSecrets, SecretBroker, UserError } from '../util/index.js'
+import {
+  maskedLine,
+  nearest,
+  type PluginSecrets,
+  SecretBroker,
+  ui,
+  UserError,
+} from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, Logger, RunStartInfo } from '../report/index.js'
 import type { CiContext } from './run-context.js'
@@ -787,7 +794,7 @@ export interface InstallPluginsArgs {
   cacheDir: string
   bus: EventBus
   /**
-   * Where plugin-throw warnings go. Defaults to console.error; passing
+   * Where plugin-throw warnings go. Defaults to `ui.say` on stderr; passing
    * a callback lets the orchestrator funnel into the framed-output
    * `run:status` channel.
    */
@@ -830,7 +837,7 @@ export class PluginSetupError extends UserError {
  */
 export async function installPlugins(args: InstallPluginsArgs): Promise<() => void> {
   const { plugins, bus, workspaceRoot, cacheDir } = args
-  const warn = args.warn ?? ((m) => console.error(m))
+  const warn = args.warn ?? ((m) => ui.say('warn', m))
   const secrets = args.secrets ?? new SecretBroker(args.ci ?? false, warn)
   const disposers: Array<() => void> = []
   // By object, not name: one package can export two plugins.

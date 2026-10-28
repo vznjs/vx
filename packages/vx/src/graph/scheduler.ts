@@ -4,6 +4,7 @@ import {
   isOutOfFds,
   isUserError,
   OUT_OF_FDS_HINT,
+  ui,
 } from '../util/index.js'
 import {
   computeReverseDepCount,
@@ -770,7 +771,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         onFinish?.(outcome)
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err)
-        process.stderr.write(`[vx] onFinish observer threw for ${id}: ${m}\n`)
+        ui.say('warn', `[vx] onFinish observer threw for ${id}: ${m}\n`)
       }
       // A restore-tier task runs before its deps, but its DEPENDENTS keep
       // the order `dependsOn` states: they are released once its own deps
@@ -899,7 +900,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         onStart?.(node)
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err)
-        process.stderr.write(`[vx] onStart observer threw for ${node.id}: ${m}\n`)
+        ui.say('warn', `[vx] onStart observer threw for ${node.id}: ${m}\n`)
       }
     }
 
@@ -1141,10 +1142,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               line = `[vx] internal error in ${id}: ${named}${message}${because}\n`
             }
             try {
-              if (options.onError === undefined) process.stderr.write(line)
+              if (options.onError === undefined) ui.say('error', line)
               else options.onError(node, line, err)
             } catch {
-              process.stderr.write(line)
+              ui.say('error', line)
             }
             finishOne(id, outcome)
             tick()

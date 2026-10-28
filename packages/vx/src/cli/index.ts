@@ -5,6 +5,7 @@ import { VERSION } from '../version.js'
 import { checkSettingsEnv } from '../settings.js'
 import { CORE_VERBS, flagHint, printHelp, refusedWord, seeHelp } from './help.js'
 import {
+  detectColors,
   errorDocument,
   hideEnvFromTasks,
   sayNotice,
@@ -132,7 +133,10 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         )
         return 1
       }
-      process.stdout.write(`vx ${VERSION}\n`)
+      // Painted, and the same words piped: a script reads `vx <version>`.
+      process.stdout.write(
+        `${ui.inline([ui.cmd('vx'), ' ', ui.tone('info', VERSION)], detectColors(process.stdout))}\n`,
+      )
       return 0
     }
     case 'run':

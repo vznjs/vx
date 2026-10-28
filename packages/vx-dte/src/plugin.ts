@@ -6,6 +6,7 @@ import {
   PLATFORMS,
   refuseUnknownOptions,
   taskDefinitions,
+  ui,
   UserError,
   type CommandContext,
   type Platform,
@@ -278,8 +279,10 @@ export function dte(options: DteOptions) {
         'vx dte init: dte() names no adapter, so vx starts no workers and needs no CI files',
       )
     if (adapter.init === undefined) {
-      process.stdout.write(
-        'vx dte init: this adapter starts workers on this machine; no CI files to write\n',
+      ui.say(
+        'info',
+        'vx dte init: this adapter starts workers on this machine; no CI files to write',
+        'out',
       )
       return 0
     }
@@ -304,9 +307,9 @@ export function dte(options: DteOptions) {
       tasks: askTasks(),
       ...originOf(root),
     })
-    const out = (line: string): void => void process.stdout.write(`${line}\n`)
+    const out = (line: string): void => ui.say('info', line, 'out')
     if (args.includes('--dry')) {
-      for (const [rel, text] of Object.entries(files.files)) out(`# ${rel}\n${text}`)
+      for (const [rel, text] of Object.entries(files.files)) ui.print('out', ui.excerpt(rel, text))
       for (const line of files.next) out(line)
       return 0
     }
@@ -320,7 +323,7 @@ export function dte(options: DteOptions) {
         async run(argv, ctx) {
           // Asked for, the usage is an answer: `vx dte --help` exited 1 (2026-10-26).
           if (argv.some((a) => a === '--help' || a === '-h') || argv[0] === 'help') {
-            process.stdout.write(`${USAGE}\n`)
+            ui.say('info', USAGE, 'out')
             return 0
           }
           if (argv[0] === 'init') return init(argv.slice(1), ctx)
