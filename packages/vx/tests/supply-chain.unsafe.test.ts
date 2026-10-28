@@ -169,6 +169,26 @@ describe('the supply chain', () => {
     ).toEqual([])
   })
 
+  // A second dispatch of a release workflow while the first runs races
+  // it: release.yml had no group, so two runs of one tag would upload to
+  // the same draft and either could publish it first. Each queues behind the one running,
+  // never cancelling it halfway through a publish.
+  it('runs each release workflow one at a time, never cancelled', () => {
+    expect(
+      workflows
+        .filter(({ file }) => /(?:^|\/)(?:release|npm|auto-release)\.yml$/.test(file))
+        .map(({ file, doc }) => [
+          path.basename(file),
+          doc.concurrency?.group,
+          doc.concurrency?.['cancel-in-progress'],
+        ]),
+    ).toEqual([
+      ['auto-release.yml', 'auto-release', false],
+      ['npm.yml', 'npm-publish', false],
+      ['release.yml', 'release-assets-${{ inputs.tag }}', false],
+    ])
+  })
+
   // package.json's `packageManager` is the one Bun version: setup-bun reads
   // it when no step names one. Five steps named 1.4.4 and three read the
   // file, so a bump of the file moved the release builds and left CI's

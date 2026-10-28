@@ -26,6 +26,14 @@ on:
 # `gh attestation verify vx-<target> --repo vznjs/vx`, does.
 permissions: {}
 
+# Two runs of one tag would upload to the same draft, and the first to
+# finish would publish it with the other's uploads still going: the
+# second waits. Never cancelled: a run stopped mid-upload leaves a draft
+# half attached.
+concurrency:
+  group: release-assets-${{ inputs.tag }}
+  cancel-in-progress: false
+
 jobs:
   assets:
     runs-on: ubuntu-latest
