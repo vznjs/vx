@@ -150,7 +150,7 @@ describe.skipIf(NODE === null)('npm launcher', () => {
         cwd: root,
         env: { PATH: [binDir, '/usr/bin', '/bin'].join(':'), HOME: root },
       })
-      expect([p.exitCode, p.signalCode]).toEqual([null, `SIG${sig}`])
+      expect(`${p.exitCode} ${p.signalCode}`).toBe(`null SIG${sig}`)
     }
   })
 
