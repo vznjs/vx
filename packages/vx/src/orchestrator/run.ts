@@ -555,6 +555,7 @@ async function runOnBus(
   // that lands meanwhile ends the run here, having run nothing: an aborted
   // graph printed a `not run` row and a footer above `stopped` (WD-22).
   const heldBefore = takeHeldServers(options.keep?.servers, nodes, options.forwardArgs)
+  for (const server of heldBefore.kept.values()) server.out.bus = bus
   if (heldBefore.stale.length > 0) {
     await terminateChildren(() => heldBefore.stale)
     if (options.signal?.aborted === true) {

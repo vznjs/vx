@@ -1460,7 +1460,8 @@ once and stays up across cycles; each cycle re-runs what it depends on,
 as the cache keys decide. So `vx watch dev`, with `dev` depending on
 `^build`, rebuilds only the libraries an edit reaches on the way to the
 app and leaves the server running; the dev tool's own reload picks up
-what was rebuilt. What the server writes keeps printing. It restarts
+what was rebuilt. What the server writes keeps printing, under its id
+above the rows while a cycle rebuilds. It restarts
 only when its own task config (or the args forwarded to it) changed, or
 when it died: the old one is stopped first (the kill grace, then
 SIGKILL), so the two never hold one port. One that dies while watch
