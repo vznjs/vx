@@ -17,7 +17,7 @@ shows `config`, `discover` and `fingerprint`.
 | `schedule`  | [`plugins/schedule.ts`](plugins/schedule.ts)   | named tasks start first                                                            |
 | `admit`     | [`plugins/admit.ts`](plugins/admit.ts)         | at most one task of a name runs at a time                                          |
 | `commands`  | [`plugins/commands.ts`](plugins/commands.ts)   | `vx cache-dir` prints the cache directory                                          |
-| `project`   | [`plugins/project.ts`](plugins/project.ts)     | each `package.json` script becomes a task                                          |
+| `project`   | [`plugins/project.ts`](plugins/project.ts)     | each `package.json` script a task can be named after becomes one                   |
 | `graph`     | [`plugins/graph.ts`](plugins/graph.ts)         | tasks of a name run one after another across projects                              |
 | `key`       | [`plugins/key.ts`](plugins/key.ts)             | folds environment variables into every cache key                                   |
 
