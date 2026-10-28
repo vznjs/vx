@@ -145,7 +145,8 @@ socket a push failed on with no code.
 Only `leave` ends a participant at once. One whose socket closed
 without it, the host too, may dial again by its `id` for a grace, 10 s
 on `@vzn/vx-dte-server`, and is gone when the grace passes with no socket:
-a peer as if it left, the host closing its session. The relay keeps no
+a peer as if it left, the host closing its session. One whose joining
+socket never opened is gone as that grace passes from its join. The relay keeps no
 timer and counts no heartbeat: it finds a grace passed as the session is
 next used. A client whose socket drops dials again, and says its `leave`
 again on a new socket if the first dropped under it.
