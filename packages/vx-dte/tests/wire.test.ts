@@ -925,6 +925,21 @@ it('gives up on a relay that answers nothing in 10 s in all, and names it', asyn
   expect(performance.now() - at).toBeLessThan(11_000)
 }, 25_000)
 
+// A token that could not be had was said as a relay that never answered,
+// "no answer in 10 s", with the relay up and never asked, after asking
+// the token's source, which tries again itself, three more times.
+it('says a token it could not get as that, not as a relay that did not answer', async () => {
+  const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
+  servers.push(s)
+  let asked = 0
+  const token = (): Promise<string> => (
+    asked++,
+    Promise.reject(new Error("GitHub's OIDC token: 403"))
+  )
+  const err = await join(s.url, R, 'orchestrator', null, token).catch((e: unknown) => e)
+  expect([(err as Error).message, asked]).toEqual(["GitHub's OIDC token: 403", 1])
+})
+
 // 2026-10-23: a remote fault is at least a warning. Every send the
 // orchestrator and a worker make unawaited dropped its error.
 it('a send the relay would not take is said; one to a participant it lost is not', () => {

@@ -436,12 +436,20 @@ export async function join(
   // may bill. A refusal closes it saying why (PROTOCOL.md § Sockets).
   const query = `join=${encodeURIComponent(JSON.stringify(asked))}`
   let socket: (Socket & { joined?: Joined }) | undefined
+  let dialed: { s: Socket & { joined?: Joined } } | { tokenless: unknown }
   try {
-    socket = await paced(async () => {
-      const s = await connect(base, query, await headers('GET', `${base}socket?${query}`, ''))
+    dialed = await paced(async () => {
+      let h: Record<string, string>
+      try {
+        h = await headers('GET', `${base}socket?${query}`, '')
+      } catch (tokenless) {
+        // Not the relay's fault, and its source already tried again.
+        return { tokenless }
+      }
+      const s = await connect(base, query, h)
       // A fault: dialed again within `REPLY_MS`.
       if (s === undefined) throw new Error('no socket')
-      return s
+      return { s }
     })
   } catch (err) {
     if (err instanceof RelayError) throw err
@@ -450,6 +458,10 @@ export async function join(
       `cannot connect to the relay ${new URL(base).origin}: no answer in ${REPLY_MS / 1000} s`,
     )
   }
+  // A token it cannot get is said as itself, not as a relay that never
+  // answered: the relay was not asked.
+  if ('tokenless' in dialed) throw dialed.tokenless
+  socket = dialed.s
   ;({ id, heartbeatMs } = socket.joined!)
   current = id
   joins.add(socket)
