@@ -65,7 +65,7 @@ What each claims:
 
 | Plugin   | Lockfile                                       | Install settings                                                                 |
 | -------- | ---------------------------------------------- | -------------------------------------------------------------------------------- |
-| `pnpm()` | `pnpm-lock.yaml`                               | `pnpm-workspace.yaml`, `.npmrc`                                                  |
+| `pnpm()` | `pnpm-lock.yaml`                               | `pnpm-workspace.yaml`, `.npmrc`, `package.json` (its `pnpm` field)               |
 | `bun()`  | `bun.lock` (a lone `bun.lockb` is refused)     | `bunfig.toml`, `.npmrc`                                                          |
 | `npm()`  | `npm-shrinkwrap.json` over `package-lock.json` | `.npmrc`                                                                         |
 | `yarn()` | `yarn.lock`                                    | `.yarnrc.yml`, `.yarnrc`, `package.json` (`workspaces.nohoist`, `installConfig`) |

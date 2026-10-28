@@ -162,7 +162,7 @@ bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
 | --- | --- | --- |
 | push to `main` | `main` | `main` |
 | pull request from `feat-x` | `feat-x`, then `main` | `feat-x` |
-| `pull_request_target` | `main` | nothing |
+| `pull_request_target`, `issue_comment`, `workflow_run` | `main` | nothing |
 | a laptop | nothing, unless the server sets `READ_ACCESS=public` | nothing |
 | another repository | refused | refused |
 
