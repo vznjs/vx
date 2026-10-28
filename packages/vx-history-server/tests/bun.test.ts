@@ -276,6 +276,30 @@ it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', 
   ])
 }, 20_000)
 
+it("refuses an empty --host: Bun bound '' to localhost alone", () => {
+  const cli = Bun.spawnSync(
+    [
+      'bun',
+      path.join(import.meta.dir, '..', 'src', 'bun.ts'),
+      '--port',
+      '0',
+      '--host',
+      '',
+      '--db',
+      ':memory:',
+    ],
+    {
+      env: { ...process.env, ALLOW: '', AUDIENCE: 'https://history.example' },
+      stderr: 'pipe',
+      timeout: 2000,
+    },
+  )
+  expect([cli.exitCode, cli.stderr.toString().split('\n')[0]]).toEqual([
+    2,
+    "--host: needs an address, got ''",
+  ])
+})
+
 it('reads with no token where READ_ACCESS is public, only a repository ALLOW names', async () => {
   const auth = oidcTokenAuth({ allow: allowOf(), readAccess: 'public', fetchJson: iss.fetchJson })
   const req = new Request('http://127.0.0.1/v1/timings/query')

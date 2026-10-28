@@ -193,3 +193,19 @@ it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', 
     [2, '--port: not a port: 80.0\n'],
   ])
 }, 20_000)
+
+it("refuses an empty --host: Bun bound '' to localhost alone", () => {
+  const cli = Bun.spawnSync(
+    ['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0', '--host', ''],
+    {
+      env: { ...process.env, S3_BUCKET: 'b', ALLOW: '', AUDIENCE: 'https://cache.example' },
+      stderr: 'pipe',
+      // A host it took binds and serves: end it rather than hang.
+      timeout: 2000,
+    },
+  )
+  expect([cli.exitCode, cli.stderr.toString().split('\n')[0]]).toEqual([
+    2,
+    "--host: needs an address, got ''",
+  ])
+})

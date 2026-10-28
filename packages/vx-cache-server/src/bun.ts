@@ -89,6 +89,9 @@ function main(argv: string[]): void {
   const port = /^\d+$/.test(values.port) ? Number(values.port) : Number.NaN
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
+  // Bun binds '' to localhost alone: `--host "$HOST"` with HOST unset
+  // took no request from outside, and nothing said so.
+  if (values.host === '') fail(`--host: needs an address, got ''\n${USAGE}`)
   let allow
   let limits
   try {
