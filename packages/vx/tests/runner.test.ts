@@ -841,7 +841,21 @@ describe('withForwardArgs', () => {
   })
 
   it('a # after a separator opens a comment', () => {
-    expect(withForwardArgs('echo a;# c', ['x'])).toBe('echo a; x # c')
+    expect(withForwardArgs('echo a;# c', ['x'])).toBe('echo a x; # c')
+  })
+
+  // Appended after a trailing `;` or `&`, the args ran as a command of
+  // their own (`x: not found`), as after a trailing newline.
+  it.each([
+    ['a trailing ;', 'echo args:;', 'args: --fix a b\n'],
+    ['a trailing ; and a blank', 'echo args: ; ', 'args: --fix a b\n'],
+    ['a trailing ; before a comment', 'echo args: ; # c', 'args: --fix a b\n'],
+    ['a trailing &', 'echo args: &', 'args: --fix a b\n'],
+    ['control: an escaped ;', 'echo args:\\;', 'args:; --fix a b\n'],
+    ['control: a quoted ;', "echo 'args:;'", 'args:; --fix a b\n'],
+    ['an escaped backslash before ;', 'echo a\\\\;', 'a\\ --fix a b\n'],
+  ])('%s', (_name, command, printed) => {
+    expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
   })
 
   it('leaves the command alone with no args', () => {

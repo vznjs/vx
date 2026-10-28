@@ -373,6 +373,12 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
     // ran the args as a command of their own: `--watch: not found`. Kept
     // when an odd run of backslashes ends it: that escapes what follows.
     const escaped = (/\\+$/.exec(trimmed)?.[0].length ?? 0) % 2 === 1
+    // So did one that ends in a lone `;` or `&`: the args go before it.
+    // An escaped one (find's `-exec … \;`) is a word, and takes them after.
+    if (/(?:^|[^;&|<>\\])(?:\\\\)*[;&]$/.test(trimmed)) {
+      const head = trimmed.slice(0, -1).trimEnd()
+      return `${withForwardArgs(head, args)}${trimmed.slice(head.length)}`
+    }
     return `${escaped ? command : trimmed} ${quoted}`
   }
   // A comment-only last line after a commented line: the args go before
