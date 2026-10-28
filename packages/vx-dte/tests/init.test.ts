@@ -172,7 +172,7 @@ it('gitlab() writes one pipeline file: the run, and a job per size only its trig
     'ALLOW (a plain var, no secret): https://gitlab.com:<group>/<project>:.gitlab-ci.yml',
   )
   expect(printed.join('')).toContain(
-    'The relay at https://relay.example.com must admit these workflows.',
+    'Let these workflows use the relay at https://relay.example.com: set its ALLOW.',
   )
 })
 
