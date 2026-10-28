@@ -7,7 +7,7 @@ export interface OtelPluginOptions {
   metricsEndpoint?: string
   logsEndpoint?: string
   serviceName?: string
-  headers?: Record<string, string>
+  headers?: Record<string, string | undefined>
   metrics?: boolean
   logs?: boolean
   live?: boolean

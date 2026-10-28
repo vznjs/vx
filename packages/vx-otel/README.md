@@ -56,8 +56,9 @@ request, so a large run stays under a collector's body limit. Header names are c
 `Authorization` replaces the shared `authorization`); a name no header can
 carry (`Authorization: Basic …` written curl-style, with a colon) is not
 sent, and the warning prints neither its name nor its value. A `headers`
-option value that is not a string is not sent either, with a warning
-naming the header.
+option value that is unset (`process.env.X`, X unset) is left out, as
+`vxCache({ headers })` leaves it; any other value that is not a string is
+not sent either, with a warning naming the header.
 
 With only a traces URL set, metrics and logs are not
 exported (they used to be POSTed to the traces URL, which a collector
