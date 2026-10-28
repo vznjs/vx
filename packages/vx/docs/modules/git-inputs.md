@@ -259,7 +259,8 @@ with the files `git ls-files` lists inside it, prefixed by its path,
 recursively (`expandNestedRepos`). They carry no index OID, so they hash
 by content. One spawn per nested repository per listing; a listing with
 none pays nothing. A gitlink with no `.git` behind it (a submodule never
-initialised, or one whose `.git` was removed to vendor its files) has no
+initialised, or one whose `.git` was removed to vendor its files), or
+with a `.git` git cannot open (a lost `.git/modules` entry), has no
 repository to ask, so a walk lists what is there (`walkFiles`, A-61);
 an empty one folds nothing. The nested `git ls-files` runs without the
 variables that name a repository (`GIT_DIR`, `GIT_INDEX_FILE`, …, git's
