@@ -770,7 +770,13 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     }
   } catch (err) {
     pipes.close()
-    const message = err instanceof Error ? err.message : String(err)
+    // Bun names `sh` in the ENOENT a missing directory gives too.
+    const message =
+      isExecutableMissing(err) && !existsSync(opts.cwd)
+        ? `its working directory ${opts.cwd} does not exist`
+        : err instanceof Error
+          ? err.message
+          : String(err)
     return {
       child: undefined as unknown as ReturnType<typeof Bun.spawn>,
       ready: Promise.reject(
@@ -968,11 +974,15 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
  * stderr (execute-task's capture), so a reason that only sat on the result
  * reached nobody — a box without `sh` showed "failed (exit 127)" under a
  * bare `$ <command>` and nothing else (2026-09-16). An ENOENT with the
- * working directory in place is the shell; Bun's own text names the rest.
+ * working directory in place is the shell, without it the directory; Bun's
+ * own text names the rest.
  */
 export function spawnFailureText(err: unknown, cwd: string, what = 'task'): string {
-  if (isExecutableMissing(err) && existsSync(cwd)) {
-    return `\n[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
+  if (isExecutableMissing(err)) {
+    // Bun names `sh` in the ENOENT a missing directory gives too.
+    return existsSync(cwd)
+      ? `\n[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
+      : `\n[vx] failed to spawn ${what}: its working directory ${cwd} does not exist\n`
   }
   const message = err instanceof Error ? err.message : String(err)
   const hint = isOutOfFds(err) ? ` — ${OUT_OF_FDS_HINT}` : ''

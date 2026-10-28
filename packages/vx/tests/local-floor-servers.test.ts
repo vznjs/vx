@@ -114,7 +114,7 @@ it('says why a server could not spawn, and closes after it', async () => {
   })
   expect(r.exitCode).toBe(1)
   expect(heard.join('')).toContain(
-    's#srv, which s#live depends on, did not start: failed to spawn persistent task: ',
+    `s#srv, which s#live depends on, did not start: failed to spawn persistent task: its working directory ${path.join(dir, 'gone')} does not exist`,
   )
   await floor.close()
 }, 20_000)

@@ -1415,6 +1415,11 @@ describe('runCommand — the rows its sweep asked for', () => {
       true,
     ])
     expect(r.stderr).not.toContain('Install a POSIX sh')
+    // Bun's own text blames `sh` (`posix_spawn 'sh'`): the line names the
+    // directory that is missing instead.
+    expect(r.stderr).toBe(
+      `\n[vx] failed to spawn task: its working directory ${path.join(dir, 'gone')} does not exist\n`,
+    )
   })
 
   it('a timed-out command returns only once its group is gone', async () => {
