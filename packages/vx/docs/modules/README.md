@@ -140,6 +140,7 @@ here, itself or in a brace group.
 | [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `.vx/workspace.*` evaluation.                                                          |
 | [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                                     |
 |                                            | `src/workspace/json-data.ts` — a config is JSON data: the one rule the loader and the config worker run (see config-schema.md).            |
+|                                            | `src/workspace/bracket-literal.ts` — `vx lock` refuses a bracket class that names an existing path (see config-schema.md).                 |
 | [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — project graph from plugin edges.                                                                        |
 |                                            | `src/workspace/dependency-rules.ts` — `run.rules.dependencies` held to the graph's direct deps (see package-graph.md).                     |
 | [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.                                                                    |
