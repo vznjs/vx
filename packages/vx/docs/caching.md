@@ -1550,7 +1550,8 @@ one leading out of the workspace, fails the save by name, as the config
 spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
 followed). An output directory that is a symlink (`dist -> real-out`) is
-followed by the clean as by the save and restore, so its target is the
+followed by the clean as by the save and restore, named by a glob
+(`dist/**`) or a literal (`dist`) alike, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
 nothing is deleted through it (X-5). So does one, in either scope, that

@@ -2310,12 +2310,15 @@ async function scanUnion(
   emptyDirs?: Set<string>,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
+  const links: string[] = []
   const take = (rel: string): void => {
     if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) return
     const abs = path.resolve(cwd, rel)
     const st = lstatSync(abs, { throwIfNoEntry: false })
-    if (st !== undefined && (st.isFile() || st.isSymbolicLink())) matches.add(abs)
-    else if (emptyDirs !== undefined && st?.isDirectory() === true) {
+    if (st !== undefined && (st.isFile() || st.isSymbolicLink())) {
+      matches.add(abs)
+      if (st.isSymbolicLink()) links.push(abs)
+    } else if (emptyDirs !== undefined && st?.isDirectory() === true) {
       if (readdirSync(abs).length === 0) emptyDirs.add(abs)
     } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs)
   }
@@ -2346,6 +2349,18 @@ async function scanUnion(
     else
       for (const rel of globFor(from.rest).scanSync({ ...opts, cwd: from.dir }))
         take(`${from.prefix}/${rel}`)
+  }
+  // A literal names the path and its tree (`dist`, `dist/**`), and a tree
+  // whose head is a directory link is walked through it: the link and the
+  // files under it were one artifact holding `dist` as a file and a
+  // directory, refused, so the task never cached. The walk is the output.
+  if (links.length > 0) {
+    const sorted = [...matches].sort()
+    for (const link of links) {
+      const under = `${link}/`
+      const at = sorted.findIndex((m) => m >= under)
+      if (at !== -1 && sorted[at]!.startsWith(under)) matches.delete(link)
+    }
   }
   return matches
 }
