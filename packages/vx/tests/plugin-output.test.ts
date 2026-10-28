@@ -142,3 +142,17 @@ describe('claimOutput, called directly', () => {
     }
   })
 })
+
+it('a Logger whose warn is not a function is refused at the claim, as its other optional methods are', async () => {
+  const said: string[] = []
+  const logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {}, warn: 'loud' }
+  const claimed = await claimOutput([testPlugin('org/odd', { output: () => logger as never })], {
+    warn: (m: string) => said.push(m),
+  } as never)
+  expect({ claimed, said }).toEqual({
+    claimed: undefined,
+    said: [
+      "[vx] plugin 'org/odd' output: output Logger's warn must be a function; vx renders the run",
+    ],
+  })
+})

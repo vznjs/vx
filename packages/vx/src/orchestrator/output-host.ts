@@ -9,6 +9,7 @@ import type { OutputContext, VxPlugin } from './plugin.js'
 
 const REQUIRED = ['status', 'taskStdout', 'taskStderr', 'taskComplete'] as const
 const OPTIONAL = [
+  'warn',
   'runStart',
   'taskStart',
   'runEnd',
@@ -27,7 +28,10 @@ function checkLogger(value: unknown): Logger {
   const missing = REQUIRED.filter((k) => typeof o[k] !== 'function')
   if (missing.length > 0) throw new Error(`output Logger has no ${missing.join(', ')}`)
   const wrong = OPTIONAL.filter((k) => o[k] !== undefined && typeof o[k] !== 'function')
-  if (wrong.length > 0) throw new Error(`output Logger's ${wrong.join(', ')} must be functions`)
+  if (wrong.length > 0)
+    throw new Error(
+      `output Logger's ${wrong.join(', ')} must be ${wrong.length === 1 ? 'a function' : 'functions'}`,
+    )
   return value as Logger
 }
 
