@@ -29,7 +29,7 @@ export function renderHistory(
 ): string {
   const seen = rows.filter((r) => r.runs > 0 || r.reservation !== null)
   const lines: string[] = [
-    `history: last ${window} runs · budgets ${budgets.cpus} cores (the default worker count; --concurrency changes it per run) · ${budgets.memory} MB` +
+    `history: last ${window} runs · budgets ${budgets.cpus} core${budgets.cpus === 1 ? '' : 's'} (the default worker count; --concurrency changes it per run) · ${budgets.memory} MB` +
       `${memoryDeclared ? ' (the memory option)' : ' (what this process may use)'}`,
   ]
   if (seen.length === 0) {

@@ -69,6 +69,14 @@ describe('renderHistory', () => {
     expect(cells(table([row({ id: 'a#t', maxPeakRssBytes: bytes })]), 'a#t')[3]).toBe(shown)
   })
 
+  // `concurrency: 1` printed `budgets 1 cores`, beside a column that
+  // says `1 core`.
+  it('a budget of one core says core', () => {
+    expect(renderHistory([], 20, { cpus: 1, memory: 1024 }, true)).toStartWith(
+      'history: last 20 runs · budgets 1 core (the default worker count;',
+    )
+  })
+
   it('the memory budget says where it came from', () => {
     const budgets = { cpus: 4, memory: 1024 }
     expect(renderHistory([], 20, budgets, true)).toContain(' · 1024 MB (the memory option)\n')
