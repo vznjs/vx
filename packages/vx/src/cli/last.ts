@@ -537,8 +537,11 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
           : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
       const log = taskLog(cacheDir, db, await bareTaskId(db, parsed.log), runId)
       if (log === null) {
+        // The id's form is hinted only when it lacks one: a task that
+        // never ran was told how to spell a task id.
         throw new UserError(
-          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`} (a task id is project#task)`,
+          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`}${parsed.log.includes('#') ? '' : ' (a task id is project#task)'}`,
+          'VX_E_NO_HISTORY',
         )
       }
       if (parsed.format === 'json') {

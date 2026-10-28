@@ -249,6 +249,31 @@ describe('a refusal under --format json', () => {
     // past bun's 5 s default.
   }, 30_000)
 
+  // A task that never ran is no history, not a malformed id: it read
+  // VX_E_REFUSED and told the user how to spell a task id (2026-10-28).
+  it('`vx last --log` of a task that never ran is VX_E_NO_HISTORY', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-log-' })
+    try {
+      await addProject(
+        ws,
+        'a',
+        `export default { tasks: { b: { exec: { command: 'true' } }, c: { exec: { command: 'true' } } } }\n`,
+      )
+      expect((await vx(['run', 'b', '--all'], ws)).code).toBe(0)
+      const r = await vx(['last', '--log', 'a#c', '--format', 'json'], ws)
+      expect([r.code, JSON.parse(r.stdout).error]).toEqual([
+        1,
+        {
+          code: 'VX_E_NO_HISTORY',
+          message: 'vx last: no recorded run of a#c',
+          docs: 'https://vznjs.github.io/vx/cli/#vx_e_no_history',
+        },
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
     const plain = await vx(['run', 'nope', '--all'])
     const forwarded = await vx(['run', 'nope', '--all', '--', '--dry=json'])
