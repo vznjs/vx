@@ -115,6 +115,29 @@ snapshots:
       2,
     )}\n`,
   },
+  // With `install-links=true` npm copies the directory instead and records
+  // it as `resolved: "file:vendor/dep"`, no integrity: the copy is what a
+  // task reads, and a fresh install takes the directory as it is now.
+  'npm install-links': {
+    file: 'package-lock.json',
+    text: `${JSON.stringify(
+      {
+        name: 'r',
+        lockfileVersion: 3,
+        requires: true,
+        packages: {
+          '': { name: 'r', workspaces: ['packages/*'] },
+          'node_modules/dep': { version: '1.0.0', resolved: 'file:vendor/dep' },
+          'node_modules/lib': { resolved: 'packages/lib', link: true },
+          'node_modules/other': { resolved: 'packages/other', link: true },
+          'packages/lib': { version: '1.0.0', dependencies: { dep: 'file:../../vendor/dep' } },
+          'packages/other': { version: '1.0.0' },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  },
   // pnpm links a `link:` directory that is no importer; the lockfile
   // records only its path.
   'pnpm link:': {
@@ -249,6 +272,7 @@ for (const row of [
   'pnpm',
   'bun',
   'npm',
+  'npm install-links',
   'pnpm link:',
   'pnpm link: override',
   'yarn portal:',
