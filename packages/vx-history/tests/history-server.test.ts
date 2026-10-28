@@ -320,7 +320,15 @@ describe('HistoryServer', () => {
     expect(serverUrlOf(undefined, { VX_HISTORY_URL: 'https://h.example/' })).toBe(
       'https://h.example',
     )
-    expect(() => serverUrlOf('h.example', {})).toThrow('vxHistory(): url must be http(s)')
+    expect(() => serverUrlOf('h.example', {})).toThrow(
+      'vxHistory(): url must be https (http only to 127.0.0.1, ::1 or localhost), got h.example',
+    )
+    // http:// sent the CI token in clear to any host.
+    expect(() => serverUrlOf('http://h.example', {})).toThrow(
+      'vxHistory(): url must be https (http only to 127.0.0.1, ::1 or localhost), got http://h.example',
+    )
+    for (const local of ['http://127.0.0.1:8080', 'http://[::1]:8080', 'http://localhost:8080'])
+      expect(serverUrlOf(local, {})).toBe(local)
     expect(() => serverUrlOf('https://h.example/v1/', {})).toThrow(
       "vxHistory(): url is the server's base, without /v1: https://h.example",
     )

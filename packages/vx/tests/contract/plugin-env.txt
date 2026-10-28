@@ -77,9 +77,3 @@
 @vzn/vx-otel OTEL_SDK_DISABLED
 @vzn/vx-otel OTEL_SERVICE_NAME
 @vzn/vx-otel OTEL_TRACES_EXPORTER
-@vzn/vx-reapi VX_REAPI_ENDPOINT
-@vzn/vx-reapi VX_REAPI_EXECUTE
-@vzn/vx-reapi VX_REAPI_INSTANCE
-@vzn/vx-reapi VX_REAPI_TLS_CERTIFICATE
-@vzn/vx-reapi VX_REAPI_TLS_CLIENT_CERTIFICATE
-@vzn/vx-reapi VX_REAPI_TLS_CLIENT_KEY

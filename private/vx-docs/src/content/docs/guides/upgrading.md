@@ -21,6 +21,10 @@ a project name with '*', a leading '^' or '!', 'tag:', '...', a trailing '[ref]'
 
 a baseBranch or VX_BASE_BRANCH starting with origin/ or refs/ is refused; name the branch alone ('main').
 
+## vx-cache,vx-history: refuse an http:// url to another host
+
+vxCache({ url }) / VX_CACHE_URL and vxHistory({ url }) / VX_HISTORY_URL refuse http:// unless the host is 127.0.0.1, ::1 or localhost. Serve the server over https.
+
 ## inputs: run a runtime probe with the essential env only
 
 inputs.runtime and inputs.workspaceRuntime probes see only the essential env allowlist, not vx's full environment; declare a variable a probe read as an inputs.env name.
@@ -28,6 +32,10 @@ inputs.runtime and inputs.workspaceRuntime probes see only the essential env all
 ## vx-history-server: sweep once a day across every node
 
 a Store implements sweptAt() and sweep(before, now), which records the sweep at now. sqliteStore does both.
+
+## vx-cache-server,vx-history-server: require AUDIENCE on Bun
+
+the Bun and Docker vx-cache-server and vx-history-server refuse to start without AUDIENCE; compose reads CACHE_AUDIENCE and HISTORY_AUDIENCE.
 
 ## vx-devtools: refuse writes from issue_comment and workflow_run
 
@@ -44,6 +52,12 @@ vx-dte-server no longer takes --allow or --audience; set ALLOW and AUDIENCE in i
 ## vx-devtools,vx-dte-server: read ALLOW as space separated only
 
 ALLOW no longer takes commas between entries. Separate them with spaces or newlines.
+## vx-reapi: read every setting from options, none from the env
+
+reapi() no longer reads VX_REAPI_ENDPOINT, VX_REAPI_INSTANCE, VX_REAPI_EXECUTE or VX_REAPI_TLS_*. Pass them as options: reapi({ endpoint: process.env.VX_REAPI_ENDPOINT, execute: true }).
+## util: refuse M as a duration unit, minutes are m
+
+a duration in `M` (`5M`) is refused; write `5m`.
 
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 
