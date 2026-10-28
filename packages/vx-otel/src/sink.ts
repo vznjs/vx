@@ -447,7 +447,9 @@ export class OtelSink implements TelemetrySink {
           ...(links.length > 0 ? { links } : {}),
         })
         // A skipped task never ran: a zero duration would read as a fast one.
-        if (record.status !== 'skipped') {
+        // An aborted one (a stop) never ran or ran in part: a Ctrl-C charted
+        // every pending task at 0 ms. Core keeps neither in its history.
+        if (record.status !== 'skipped' && record.status !== 'aborted') {
           this.taskPoints.push({
             kind: 'end',
             task: t,

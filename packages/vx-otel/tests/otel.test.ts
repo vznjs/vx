@@ -617,6 +617,46 @@ describe('OtelSink end-to-end', () => {
     ])
   })
 
+  it('charts no task a stop aborted: never ran, or ran in part', async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    const rec = (r: Record<string, unknown>) =>
+      sink.onRecord({ v: 3, runId: 'r', ...r } as TelemetryRecord)
+    rec({ kind: 'run.start', run: RUN, total: 3, ts: 0, startedAt: 0 })
+    const end = (taskId: string, extra: Partial<TaskTelemetry>) => ({
+      kind: 'task.end',
+      taskId,
+      project: 'a',
+      task: taskId.slice(2),
+      exitCode: 0,
+      ts: 900,
+      ...extra,
+    })
+    rec({ kind: 'task.start', taskId: 'a#build', project: 'a', task: 'build', ts: 0 })
+    rec(end('a#build', { status: 'success', cacheSource: 'miss', durationMs: 900 }))
+    // Ctrl-C: one killed mid-run, one that never started (0 ms, as core sends it).
+    rec({ kind: 'task.start', taskId: 'a#test', project: 'a', task: 'test', ts: 100 })
+    rec(end('a#test', { status: 'aborted', cacheSource: 'none', exitCode: 130, durationMs: 800 }))
+    rec(end('a#lint', { status: 'aborted', cacheSource: 'none', exitCode: 130, durationMs: 0 }))
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    type Metric = {
+      name: string
+      gauge?: { dataPoints: { attributes: { key: string; value: { stringValue?: string } }[] }[] }
+    }
+    const metrics = (
+      calls.find((c) => c.url === 'http://c/v1/metrics')!.body as {
+        resourceMetrics: { scopeMetrics: { metrics: Metric[] }[] }[]
+      }
+    ).resourceMetrics[0]!.scopeMetrics[0]!.metrics
+    const charted = metrics
+      .find((m) => m.name === 'vx.task.duration')!
+      .gauge!.dataPoints.map(
+        (p) => p.attributes.find((a) => a.key === 'cicd.pipeline.task.name')!.value.stringValue,
+      )
+    expect(charted).toEqual(['a#build'])
+  })
+
   it("splits a large run's task points across requests, the run's own metrics in the first only", async () => {
     const { cfg, calls } = mkConfig()
     const sink = new OtelSink(cfg)
