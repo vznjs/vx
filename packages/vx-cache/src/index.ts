@@ -286,6 +286,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   private asking: Promise<string> | undefined
+  /** A failed ask was said: the requests that shared it say nothing. */
+  private tokenFailed = false
 
   /**
    * One answer from GitHub's OIDC endpoint, asked again after a 5xx, a 429
@@ -367,7 +369,15 @@ export class VxCacheLayer implements RemoteCacheLayer {
       streamed?: boolean
     } = {},
   ): Promise<Response | undefined> {
-    const bearer = await this.bearer()
+    let bearer: string
+    try {
+      bearer = await this.bearer()
+    } catch (err) {
+      // The requests waiting on one ask share its failure: the first says it.
+      if (this.tokenFailed) return undefined
+      this.tokenFailed = true
+      throw err
+    }
     const ms = init.timeoutMs ?? this.config.timeoutMs
     const controller = new AbortController()
     const answer = setTimeout(() => controller.abort(new Error(`no answer within ${ms} ms`)), ms)
