@@ -1,6 +1,6 @@
 // A test for the example `cache` plugin beside it: a throwaway workspace
 // declares the plugin and vx's own run() drives it. `bun test` runs it.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -90,4 +90,20 @@ it('a run on an empty local cache restores from the directory', async () => {
 it('reads a relative directory from the workspace root', async () => {
   const layer = await dirCache('remote').cache!({ workspaceRoot: root } as never)
   expect(layer?.endpoint).toBe(path.join(root, 'remote'))
+})
+
+// Two writers of one key shared one temporary name (`.<hash>.<pid>`, and
+// containers on one volume share pids): one unlinked the other's file
+// mid-put, or linked it while the other rewrote it.
+it('two puts of one key at once both land, as one entry', async () => {
+  const store = path.join(root, 'remote')
+  const layer = (await dirCache(store).cache!({ workspaceRoot: root } as never))!
+  const bytes = new Blob(['x'.repeat(1 << 20)])
+  const puts = await Promise.allSettled([
+    layer.put('k', bytes, { durationMs: 1 }),
+    layer.put('k', bytes, { durationMs: 1 }),
+  ])
+  expect(puts.map((p) => p.status)).toEqual(['fulfilled', 'fulfilled'])
+  expect(await readdir(store)).toEqual(['k'])
+  expect((await (await layer.get('k'))!.body.arrayBuffer()).byteLength).toBe(1 << 20)
 })

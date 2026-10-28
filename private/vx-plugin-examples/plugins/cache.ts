@@ -19,8 +19,10 @@ class DirRemote implements RemoteCacheLayer {
     await mkdir(this.endpoint, { recursive: true })
     // Written aside, then linked: on a shared directory a rename can swap
     // the file under a reader, while a link never replaces an existing one.
-    // EEXIST is success: the same hash means the same bytes.
-    const tmp = path.join(this.endpoint, `.${hash}.${process.pid}`)
+    // EEXIST is success: the same hash means the same bytes. The aside
+    // name is the writer's own: a pid is not (two puts here, containers on
+    // one volume).
+    const tmp = path.join(this.endpoint, `.${hash}.${crypto.randomUUID()}`)
     await Bun.write(tmp, body)
     try {
       await link(tmp, path.join(this.endpoint, hash))
