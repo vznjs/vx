@@ -1,3 +1,5 @@
+import { statSync } from 'node:fs'
+import path from 'node:path'
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { flagHint, refuse, seeHelp } from './help.js'
@@ -545,6 +547,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
 
   const cwd = process.cwd()
+  if (parsed.profile !== undefined) {
+    const problem = profileProblem(cwd, parsed.profile)
+    if (problem !== undefined) return refuse('run', args, problem, 'VX_E_USAGE')
+  }
   let tasks = [...parsed.tasks]
   let picked: string | undefined
 
@@ -673,6 +679,17 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return refuse('run', args, summary.refused, unknown ? 'VX_E_UNKNOWN_TASK' : 'VX_E_REFUSED')
   }
   return summary.ok ? 0 : 1
+}
+
+/**
+ * Why `--profile` cannot write `target`, or undefined. Asked before the
+ * run: a directory named as the file died with EISDIR only after it. A
+ * missing parent is no fault: the write makes it (item 993).
+ */
+function profileProblem(cwd: string, target: string): string | undefined {
+  if (statSync(path.resolve(cwd, target), { throwIfNoEntry: false })?.isDirectory() === true)
+    return `--profile: ${target} is a directory — name a file, e.g. --profile=${path.join(target, 'profile.json')}`
+  return undefined
 }
 
 /** CI=0 and CI=false are "not CI": several vendors set CI=true. */

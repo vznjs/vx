@@ -1113,7 +1113,9 @@ the base reaches, a root `package.json` edit among them.
 
 `--profile` adds a side-effect after a real run completes. Errors
 writing the artifact are surfaced via `vx: failed to write …` but
-don't change the run's exit code — the run already happened.
+don't change the run's exit code — the run already happened. A path
+that is a directory is refused before the run (`VX_E_USAGE`); a missing
+parent directory is made.
 
 ### `--profile[=<path>]`
 
