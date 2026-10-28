@@ -26,7 +26,12 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
  */
 export function s3Blobs(client: Bun.S3Client): Blobs {
   const ask = async (name: string, method: 'GET' | 'HEAD'): Promise<Response | null> => {
-    const res = await fetch(client.presign(name, { method }), { method })
+    // Identity: Bun's fetch asks for gzip and inflates it, and a
+    // compressed answer's Content-Length is not the artifact's size.
+    const res = await fetch(client.presign(name, { method }), {
+      method,
+      headers: { 'accept-encoding': 'identity' },
+    })
     if (res.status === 404) {
       await res.body?.cancel()
       return null

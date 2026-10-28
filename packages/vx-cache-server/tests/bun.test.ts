@@ -178,3 +178,42 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     '✗ vx-cache-server  --port: not a port: \n',
   ])
 })
+
+// Bun's fetch asks for gzip and inflates what it is sent, so a bucket (or
+// a proxy before it) that compressed an answer named the compressed
+// Content-Length as the artifact's size: a check and a download said
+// fewer bytes than the artifact holds.
+it('reads sizes off the bytes as stored, never a compressed answer', async () => {
+  const bytes = 'vx '.repeat(10_000)
+  const gzipping = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      if (!/gzip/.test(req.headers.get('accept-encoding') ?? '')) {
+        return new Response(req.method === 'HEAD' ? null : bytes, {
+          headers: { 'content-length': String(bytes.length) },
+        })
+      }
+      const z = Bun.gzipSync(bytes)
+      return new Response(req.method === 'HEAD' ? null : z, {
+        headers: { 'content-encoding': 'gzip', 'content-length': String(z.byteLength) },
+      })
+    },
+  })
+  try {
+    const blobs = s3Blobs(
+      new Bun.S3Client({
+        endpoint: gzipping.url.href,
+        bucket: 'b',
+        accessKeyId: 'a',
+        secretAccessKey: 's',
+      }),
+    )
+    const got = (await blobs.get('x'))!
+    expect([got.size, (await new Response(got.body).text()).length, await blobs.size('x')]).toEqual(
+      [bytes.length, bytes.length, bytes.length],
+    )
+  } finally {
+    await gzipping.stop(true)
+  }
+})
