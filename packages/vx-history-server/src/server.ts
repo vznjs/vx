@@ -1,7 +1,7 @@
 // The vx-history protocol, v1 (PROTOCOL.md), as one fetch handler over a
 // `Store`: Bun and Workers serve the same one.
 
-import { type Access, Refusal } from '@vzn/vx-devtools'
+import { type Access, errorJson, notAllowed, readJson, Refusal } from '@vzn/vx-devtools'
 import type { Report, Repo, Store } from './store.js'
 
 /** Reports one upload folds in: a run's tasks. */
@@ -138,28 +138,6 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
   }
 }
 
-const CODES: Record<number, string> = {
-  400: 'bad_request',
-  401: 'unauthorized',
-  403: 'forbidden',
-  404: 'not_found',
-  405: 'method_not_allowed',
-  413: 'payload_too_large',
-  500: 'internal_error',
-  502: 'bad_gateway',
-}
-
-/** Every refusal: `{ code, message }`, the message saying what to fix. */
-export function errorJson(status: number, message: string): Response {
-  return Response.json({ code: CODES[status] ?? 'error', message }, { status })
-}
-
-function notAllowed(allow: string): Response {
-  const res = errorJson(405, `use ${allow}`)
-  res.headers.set('allow', allow)
-  return res
-}
-
 const field = (body: unknown, key: string): unknown =>
   typeof body === 'object' && body !== null ? (body as Record<string, unknown>)[key] : undefined
 
@@ -168,21 +146,6 @@ const isOpaque = (s: unknown): s is string =>
 
 const isCount = (n: unknown): n is number =>
   typeof n === 'number' && Number.isSafeInteger(n) && n >= 0
-
-async function readJson(req: Request, max: number): Promise<unknown> {
-  if (!/^application\/json\b/i.test(req.headers.get('content-type') ?? '')) {
-    throw new Refusal(400, 'the body is application/json')
-  }
-  if (Number(req.headers.get('content-length') ?? 0) > max) {
-    throw new Refusal(413, `the body is at most ${max} bytes`)
-  }
-  const text = await textUpTo(req, max)
-  try {
-    return JSON.parse(text)
-  } catch {
-    throw new Refusal(400, 'the body is not JSON')
-  }
-}
 
 /** A run's reports, as the store folds them: unknown fields are dropped. */
 function parseReports(body: unknown): Report[] {
@@ -218,21 +181,4 @@ function parseReports(body: unknown): Report[] {
       ...(rssBytes === undefined ? {} : { rssBytes: rssBytes as number }),
     }
   })
-}
-
-/**
- * The body as text, refused past `max` bytes as they arrive: a chunked body
- * names no length, and was read whole before it was measured.
- */
-async function textUpTo(req: Request, max: number): Promise<string> {
-  const decoder = new TextDecoder()
-  let text = ''
-  let seen = 0
-  // Leaving the loop by a throw cancels the stream.
-  for await (const chunk of req.body ?? []) {
-    seen += chunk.byteLength
-    if (seen > max) throw new Refusal(413, `the body is at most ${max} bytes`)
-    text += decoder.decode(chunk, { stream: true })
-  }
-  return text + decoder.decode()
 }

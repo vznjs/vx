@@ -10,8 +10,6 @@ export const RSS_DECAY = 0.9
 export const WEIGHT = 0.3
 == function createHistoryServer (src/server.ts)
 export function createHistoryServer(opts: ServerOptions): (req: Request) => Promise<Response>
-== function errorJson (src/server.ts)
-export function errorJson(status: number, message: string): Response
 == function sqliteStore (src/store.ts)
 export function sqliteStore(db: Db): Store
 == type Db (src/store.ts)

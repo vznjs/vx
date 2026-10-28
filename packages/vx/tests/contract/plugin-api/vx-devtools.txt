@@ -5,8 +5,12 @@ export class Refusal extends Error {
     message: string,
   )
 }
+== function errorJson (src/http.ts)
+export function errorJson(status: number, message: string): Response
 == function hashPart (src/hash-part.ts)
 export function hashPart(text: string): Promise<string>
+== function notAllowed (src/http.ts)
+export function notAllowed(allow: string): Response
 == function oidcAuth (src/oidc.ts)
 export function oidcAuth(opts: OidcOptions): Authorize
 == function oidcTokenAuth (src/oidc.ts)
@@ -15,6 +19,8 @@ export function oidcTokenAuth(
 ): (req: Request, named?: Repo) => Promise<Access | undefined>
 == function parseAllow (src/oidc.ts)
 export function parseAllow(list: string): Allowed[]
+== function readJson (src/http.ts)
+export async function readJson(req: Request, max: number): Promise<unknown>
 == type Access (src/oidc.ts)
 export interface Access {
   readonly issuer: string

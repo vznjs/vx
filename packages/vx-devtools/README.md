@@ -23,6 +23,10 @@ option.
   `(req, named?)`, `named` a `Repo`, answers the token's `Access`, refusing a token of
   another repository than `named`; with no token where `readAccess` is
   `public`, `named` when ALLOW names it, or `undefined` when none is named.
+- `errorJson(status, message)` answers a refusal as `{ code, message }`;
+  `notAllowed(allow)` a route's wrong method, `405` with `Allow`;
+  `readJson(req, max)` reads a JSON body of at most `max` bytes, refused
+  as it arrives, else throws a `Refusal`. Both servers answer through them.
 - `hashPart(text)` is what a server stores in place of an issuer, a repository name or a scope: the first
   128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
 
@@ -49,6 +53,9 @@ export interface OidcOptions {
   readonly readAccess?: string
 }
 export function parseAllow(list: string): Allowed[]
+export function errorJson(status: number, message: string): Response
+export function notAllowed(allow: string): Response
+export function readJson(req: Request, max: number): Promise<unknown>
 export function oidcAuth(opts: OidcOptions): Authorize
 export interface Repo {
   readonly issuer: string

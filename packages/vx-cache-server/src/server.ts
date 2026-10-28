@@ -3,7 +3,14 @@
 // an artifact is one object, named by its issuer, repository name, scope and
 // hash, and a read names the exact scope it wants (2026-10-25).
 
-import { type Access, type Authorize, hashPart, Refusal } from '@vzn/vx-devtools'
+import {
+  type Access,
+  type Authorize,
+  hashPart,
+  notAllowed,
+  readJson,
+  Refusal,
+} from '@vzn/vx-devtools'
 import { errorJson, isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
 import { blobName, type Blobs } from './store.js'
 
@@ -201,28 +208,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
 }
 
-const notAllowed = (allow: string): Response => {
-  const res = errorJson(405, `this route takes ${allow}`)
-  res.headers.set('allow', allow)
-  return res
-}
-
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
-
-async function readJson(req: Request, max: number): Promise<unknown> {
-  if (!/^application\/json\b/i.test(req.headers.get('content-type') ?? '')) {
-    throw new Refusal(400, 'the body is application/json')
-  }
-  if (Number(req.headers.get('content-length') ?? 0) > max) {
-    throw new Refusal(413, `the body is at most ${max} bytes`)
-  }
-  const text = await textUpTo(req, max)
-  try {
-    return JSON.parse(text)
-  } catch {
-    throw new Refusal(400, 'the body is not JSON')
-  }
-}
 
 function contentLength(req: Request): number {
   const length = req.headers.get('content-length')
@@ -234,20 +220,3 @@ function contentLength(req: Request): number {
 
 const field = (body: unknown, name: string): unknown =>
   typeof body === 'object' && body !== null ? (body as Record<string, unknown>)[name] : undefined
-
-/**
- * The body as text, refused past `max` bytes as they arrive: a chunked body
- * names no length, and was read whole before it was measured.
- */
-async function textUpTo(req: Request, max: number): Promise<string> {
-  const decoder = new TextDecoder()
-  let text = ''
-  let seen = 0
-  // Leaving the loop by a throw cancels the stream.
-  for await (const chunk of req.body ?? []) {
-    seen += chunk.byteLength
-    if (seen > max) throw new Refusal(413, `the body is at most ${max} bytes`)
-    text += decoder.decode(chunk, { stream: true })
-  }
-  return text + decoder.decode()
-}
