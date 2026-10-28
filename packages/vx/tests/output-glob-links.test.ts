@@ -52,3 +52,16 @@ it('the restore-temp sweep never reaches through a link out of the project', asy
   }).catch(() => undefined)
   expect(existsSync(path.join(outside, '.vx-tmp-zzzzz-1'))).toBe(true)
 })
+
+it('the restore-temp sweep spares a committed file named like a temp', async () => {
+  const d = tmp()
+  mkdirSync(path.join(d, 'out'))
+  writeFileSync(path.join(d, 'out/.vx-tmp-zzzzz-1'), 'mine')
+  await cleanOutputs({
+    projectDir: d,
+    outputs: ['out/a.txt'],
+    nestedProjectDirs: [],
+    committed: () => true,
+  })
+  expect(existsSync(path.join(d, 'out/.vx-tmp-zzzzz-1'))).toBe(true)
+})

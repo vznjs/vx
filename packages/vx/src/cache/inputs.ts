@@ -1060,7 +1060,7 @@ export async function cleanOutputs(args: {
     args.projectDir,
     args.committed ?? committedFiles(undefined, args.projectDir),
   )
-  sweepRestoreTemps(args.projectDir, args.outputs)
+  sweepRestoreTemps(args.projectDir, args.outputs, committed)
   const matched = args.resolved ?? (await resolveOutputs(args))
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
@@ -1086,7 +1086,11 @@ export async function cleanOutputs(args: {
  * whose writer is alive, this process included, is left: it may be
  * mid-restore.
  */
-export function sweepRestoreTemps(base: string, outputs: readonly string[]): void {
+export function sweepRestoreTemps(
+  base: string,
+  outputs: readonly string[],
+  committed: (abs: string) => boolean = () => false,
+): void {
   const dirs = new Set<string>()
   for (const g of outputs) {
     if (g.startsWith('!') || !isLiteralPattern(g)) continue
@@ -1109,6 +1113,8 @@ export function sweepRestoreTemps(base: string, outputs: readonly string[]): voi
       if (m === null) continue
       const pid = Number.parseInt(m[1]!, 36)
       if (pid === process.pid || writerAlive(pid)) continue
+      // vx never deletes a committed file, whatever its name.
+      if (committed(path.join(dir, name))) continue
       rmSync(path.join(dir, name), { force: true })
     }
   }
@@ -1507,7 +1513,7 @@ export async function cleanWorkspaceOutputs(args: {
     args.workspaceRoot,
     args.committed ?? committedFiles(undefined, args.workspaceRoot),
   )
-  sweepRestoreTemps(args.workspaceRoot, args.outputs)
+  sweepRestoreTemps(args.workspaceRoot, args.outputs, committed)
   const matched = args.resolved ?? (await resolveWorkspaceOutputs(args))
   await pruneEmptiedDirs(
     args.workspaceRoot,
