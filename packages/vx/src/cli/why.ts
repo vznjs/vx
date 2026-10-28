@@ -80,6 +80,13 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
       const rv = a === '--run' ? args[++i] : a.slice(6)
       if (rv === undefined || rv === '')
         return { ...out, error: '--run requires a run id (`vx last --list` shows them)' }
+      // No run id starts with `-`: `--run $EMPTY --format json` took
+      // `--format` as the id and then refused `json`.
+      if (a === '--run' && rv.startsWith('-'))
+        return {
+          ...out,
+          error: `--run requires a run id (got flag ${rv}; \`vx last --list\` shows them)`,
+        }
       out.runId = rv
       continue
     }
