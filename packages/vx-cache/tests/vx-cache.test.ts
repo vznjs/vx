@@ -283,6 +283,44 @@ describe('VxCacheLayer', () => {
       layer(srv.url, write).put('ee55', new Blob([new Uint8Array(65)]), { durationMs: 1 }),
     ).rejects.toThrow('HTTP 413: an upload is at most 64 bytes')
   })
+
+  // fetch drops only Authorization on a cross-origin redirect: `headers`
+  // (a CF-Access secret) went on to the host the 307 named.
+  it('follows no redirect, naming it, and sends its headers nowhere else', async () => {
+    const other: string[] = []
+    const elsewhere = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => (other.push(req.url), Response.json({})),
+    })
+    const moved = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => Response.redirect(`${elsewhere.url.origin}${new URL(req.url).pathname}`, 307),
+    })
+    try {
+      const c = new VxCacheLayer(
+        {
+          url: moved.url.origin,
+          timeoutMs: 5_000,
+          uploadTimeoutMs: 5_000,
+          headers: { 'CF-Access-Client-Secret': 's' },
+          issuer: GITHUB,
+          repository: REPO,
+        },
+        fetch,
+        { VX_CACHE_TOKEN: write },
+      )
+      c.refs = [MAIN]
+      await expect(c.has('aa11')).rejects.toThrow(
+        `HTTP 307 to ${elsewhere.url.origin}/v1/capabilities: not followed`,
+      )
+      expect(other).toEqual([])
+    } finally {
+      await moved.stop(true)
+      await elsewhere.stop(true)
+    }
+  })
 })
 
 describe('download deadline', () => {

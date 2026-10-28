@@ -91,6 +91,18 @@ async function refusal(res: Response): Promise<Error> {
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
+/**
+ * A redirect, never followed: fetch drops only `Authorization` on one to
+ * another origin, so `headers` (a proxy's secret) went where a 307 named.
+ */
+async function redirected(res: Response, from: string): Promise<Error> {
+  await res.body?.cancel()
+  const to = res.headers.get('location')
+  return new Error(
+    `HTTP ${res.status}${to === null ? '' : ` to ${new URL(to, from).href}`}: not followed, as it would carry the server's headers; name the server's own URL`,
+  )
+}
+
 /** A JWT's `exp` in ms; 0 when it names none. */
 function expiryOf(jwt: string): number {
   try {
@@ -200,7 +212,8 @@ export class HistoryServer {
 
   private async call(path: string, body?: unknown): Promise<Response> {
     const bearer = this.writes ? await this.bearer() : ''
-    const res = await this.fetchImpl(`${this.url}${path}`, {
+    const url = `${this.url}${path}`
+    const res = await this.fetchImpl(url, {
       method: body === undefined ? 'GET' : 'POST',
       headers: {
         ...this.headers,
@@ -209,7 +222,9 @@ export class HistoryServer {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: deadline(),
+      redirect: 'manual',
     })
+    if (res.status >= 300 && res.status < 400) throw await redirected(res, url)
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
       const err = await refusal(res)

@@ -43,7 +43,9 @@ export default {
   front of it, such as a Cloudflare Access service token:
   `headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
 'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET }`. An
-  unset value is left out; `authorization` stays the CI token's. A DTE
+  unset value is left out; `authorization` stays the CI token's. A
+  redirect is not followed (it would carry them on): it fails the
+  request, naming where it pointed. A DTE
   worker sends them too, so give its job the same secrets.
 
 ## Tokens

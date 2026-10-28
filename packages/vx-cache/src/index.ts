@@ -107,6 +107,18 @@ async function refusal(res: Response): Promise<Error> {
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
+/**
+ * A redirect, never followed: fetch drops only `Authorization` on one to
+ * another origin, so `headers` (a proxy's secret) went where a 307 named.
+ */
+async function redirected(res: Response, from: string): Promise<Error> {
+  await res.body?.cancel()
+  const to = res.headers.get('location')
+  return new Error(
+    `HTTP ${res.status}${to === null ? '' : ` to ${new URL(to, from).href}`}: not followed, as it would carry the server's headers; name the server's own URL`,
+  )
+}
+
 /** A deadline that names itself: the runtime's own abort says only "The operation timed out." */
 function deadline(ms: number): AbortSignal {
   const controller = new AbortController()
@@ -356,7 +368,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const controller = new AbortController()
     const answer = setTimeout(() => controller.abort(new Error(`no answer within ${ms} ms`)), ms)
     answer.unref()
-    let res = await this.fetchImpl(`${this.config.url}${path}`, {
+    const url = `${this.config.url}${path}`
+    let res = await this.fetchImpl(url, {
       method: init.method ?? 'POST',
       headers: {
         ...this.config.headers,
@@ -366,7 +379,12 @@ export class VxCacheLayer implements RemoteCacheLayer {
       },
       ...(init.body === undefined ? {} : { body: init.body }),
       signal: controller.signal,
+      redirect: 'manual',
     })
+    if (res.status >= 300 && res.status < 400) {
+      clearTimeout(answer)
+      throw await redirected(res, url)
+    }
     if (init.streamed === true) {
       clearTimeout(answer)
       res = streamed(res, controller, ms)
