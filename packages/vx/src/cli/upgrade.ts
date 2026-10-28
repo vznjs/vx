@@ -101,7 +101,10 @@ export function versionSpec(tag: string | undefined): string {
   if (tag === undefined) return 'latest'
   const v = tag.startsWith('v') ? tag.slice(1) : tag
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v)) {
-    throw new UserError(`vx upgrade: ${tag} is not a version (expected v<major>.<minor>.<patch>)`)
+    throw new UserError(
+      `vx upgrade: ${tag} is not a version (expected v<major>.<minor>.<patch>)`,
+      'VX_E_USAGE',
+    )
   }
   return v
 }
@@ -787,6 +790,8 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
     sayNotice('error', 'vx upgrade', `unexpected argument: ${extra}${seeHelp('upgrade')}`)
     return 1
   }
+  // A TAG no release has is refused before what it would install is asked.
+  versionSpec(tag)
   if (!isCompiledBinary()) {
     throw new UserError(
       'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull',
