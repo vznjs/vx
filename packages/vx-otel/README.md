@@ -62,6 +62,8 @@ naming the header.
 With only a traces URL set, metrics and logs are not
 exported (they used to be POSTed to the traces URL, which a collector
 refuses), and `metrics: true` or `logs: true` without a URL says so once.
+With no signal left to export (each one `none`, `false` or without a
+URL), the plugin declines, as with no endpoint.
 Both are booleans: a string (`'false'` is truthy) is refused.
 
 The package exports `otel` and its options type `OtelPluginOptions`. The
