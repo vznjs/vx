@@ -68,7 +68,7 @@
       "required": ["count", "source", "cores", "cpuQuota"],
       "properties": {
         "count": { "type": "integer" },
-        "source": { "enum": ["workspace", "cgroup", "cores"] },
+        "source": { "enum": ["env", "workspace", "cgroup", "cores"] },
         "cores": { "type": "integer" },
         "cpuQuota": { "type": ["number", "null"] }
       }

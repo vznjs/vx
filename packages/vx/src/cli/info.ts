@@ -170,6 +170,8 @@ function describeSandbox(s: InfoFacts['sandbox']): string {
 export function describeWorkers(w: InfoFacts['workers']): string {
   const quota = w.cpuQuota === null ? '' : `, cgroup CPU quota ${trimCores(w.cpuQuota)}`
   if (w.source === 'workspace') return `${w.count} — .vx/workspace.ts (${w.cores} cores${quota})`
+  if (w.source === 'env')
+    return `${w.count} — ${envName('run.concurrency')} (${w.cores} cores${quota})`
   if (w.source === 'cgroup')
     return `${w.count} — cgroup CPU quota ${trimCores(w.cpuQuota ?? w.count)} of ${w.cores} cores`
   return `${w.count} — the CPU count${quota}`

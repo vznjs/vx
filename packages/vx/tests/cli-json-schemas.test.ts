@@ -333,6 +333,15 @@ describe('read verbs hold their --format json to a checked-in schema', () => {
     expect(validate(s, { ...facts, projects: 1.5 })).toEqual(['$.projects: number is not integer'])
   })
 
+  // `VX_RUN_CONCURRENCY` set, the workers' source is `env`: the schema
+  // refused what `vx info --json` printed.
+  it('info: the workers count from the variable conforms', () => {
+    const facts = outputs['info']![0] as { workers: Record<string, unknown> }
+    expect(
+      validate(schema('info'), { ...facts, workers: { ...facts.workers, source: 'env' } }),
+    ).toEqual([])
+  })
+
   it('every object a schema declares closes its key set', () => {
     const open: string[] = []
     const walk = (node: unknown, at: string): void => {

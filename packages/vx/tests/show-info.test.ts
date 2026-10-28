@@ -997,6 +997,10 @@ describe('vx info — the workers and memory rows', () => {
     expect(describeWorkers({ count: 4, source: 'cores', cores: 4, cpuQuota: 6 })).toBe(
       '4 — the CPU count, cgroup CPU quota 6',
     )
+    // `VX_RUN_CONCURRENCY`'s count was named "the CPU count".
+    expect(describeWorkers({ count: 2, source: 'env', cores: 8, cpuQuota: null })).toBe(
+      '2 — VX_RUN_CONCURRENCY (8 cores)',
+    )
   })
 
   it('says when the cgroup, not the machine, bounds memory', () => {
