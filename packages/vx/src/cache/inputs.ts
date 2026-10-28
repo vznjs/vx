@@ -1389,19 +1389,34 @@ function inScope(dir: string, scope: PruneScope): boolean {
  * with NO project-dir exclusion: workspace outputs are the documented
  * boundary escape hatch.
  */
-export async function resolveWorkspaceOutputs(args: {
-  workspaceRoot: string
-  outputs: readonly string[]
-}): Promise<string[]> {
+export async function resolveWorkspaceOutputs(
+  args: {
+    workspaceRoot: string
+    outputs: readonly string[]
+  },
+  emptyDirs?: Set<string>,
+): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive, 'workspace'), ...asTrees(negative).map(globFor)]
-  const scanned = [...(await scanUnion(asTrees(positive), excludeGlobs, args.workspaceRoot))]
+  const scanned = [
+    ...(await scanUnion(asTrees(positive), excludeGlobs, args.workspaceRoot, undefined, emptyDirs)),
+  ]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
   // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
   // deletes what this returns.
   return containedIn(args.workspaceRoot, scanned).sort()
+}
+
+/** `resolveOutputTree` for `outputs.workspaceFiles`: the files and the empty directories. */
+export async function resolveWorkspaceOutputTree(args: {
+  workspaceRoot: string
+  outputs: readonly string[]
+}): Promise<{ files: string[]; emptyDirs: string[] }> {
+  const emptyDirs = new Set<string>()
+  const files = await resolveWorkspaceOutputs(args, emptyDirs)
+  return { files, emptyDirs: containedIn(args.workspaceRoot, [...emptyDirs]).sort() }
 }
 
 /**

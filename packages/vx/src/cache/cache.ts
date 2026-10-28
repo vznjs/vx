@@ -2360,6 +2360,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     /** See `CacheLayer.save`. */
@@ -2558,6 +2559,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
   }): Map<string, string> {
     const outputs = new Map<string, string>()
@@ -2591,6 +2593,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
   }): Promise<Uint8Array> {
     // stdout is ALWAYS present in the artifact, even if empty, so the
@@ -2613,7 +2616,12 @@ export class Cache implements CacheLayer {
       key: args.hash,
       stdout: args.entry.stdout ?? '',
       outputs: this.outputsOf(args),
-      dirs: args.outputDirs?.map((d) => `outputs/${relPosix(args.projectDir, d)}`),
+      dirs: [
+        ...(args.outputDirs ?? []).map((d) => `outputs/${relPosix(args.projectDir, d)}`),
+        ...(args.workspaceOutputDirs ?? []).map(
+          (d) => `${WORKSPACE_OUTPUT_PREFIX}${relPosix(args.workspaceRoot!, d)}`,
+        ),
+      ],
       exec: usageOfEntry(args.entry),
       root: args.workspaceRoot ?? args.projectDir,
     })
