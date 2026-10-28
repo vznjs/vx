@@ -3111,7 +3111,7 @@ a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
 elsewhere is replayed, explained, reported on and pruned there. Without
 the flag they open the workspace's cache (`defineWorkspace({ cache: { dir } })`
 or `.vx/cache`). A `--cache-dir` that is not there is refused by name
-(`--cache-dir .vx/cahce: no such directory`). In a workspace that never
+(`--cache-dir .vx/cahce: no such directory`, `VX_E_USAGE`). In a workspace that never
 ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache clean`
 (dry or not) read it as empty and create nothing (item 900, E-7, E-38).
 
