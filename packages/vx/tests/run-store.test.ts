@@ -49,4 +49,30 @@ describe('putRunEntry', () => {
     )
     expect(kept).toBe(false)
   })
+
+  it("says a remote's failed put, and the others still keep it", async () => {
+    const said: string[] = []
+    const failing: RemoteCacheLayer = {
+      has: async () => null,
+      get: async () => null,
+      put: async () => {
+        throw new Error('503 from cache.example')
+      },
+    }
+    const ok: RemoteCacheLayer = {
+      has: async () => null,
+      get: async () => null,
+      put: async () => {},
+    }
+    const kept = await putRunEntry(
+      [
+        { remote: failing, read: true, write: true, onError: (e) => said.push(e.message) },
+        { remote: ok, read: true, write: true },
+      ],
+      undefined,
+      'log',
+      new Uint8Array([1]),
+    )
+    expect([kept, said]).toEqual([true, ['503 from cache.example']])
+  })
 })
