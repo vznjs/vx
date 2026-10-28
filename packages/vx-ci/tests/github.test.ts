@@ -217,6 +217,13 @@ describe('renderJobSummary', () => {
       }),
     )
     expect(here).toContain('1 on this machine: a#\\*x\\*.')
+    // A line break in a task id ended the line: `# y` became a heading.
+    const broken = renderJobSummary(
+      summary([task({ taskId: 'a#x\n# y' }), task({ taskId: 'b#y', where: 'w' })], {
+        machines: [{ ...m, name: 'w', done: 1, onlineMs: 1, busyMs: 1, cpuAvg: 0, utilization: 0 }],
+      }),
+    )
+    expect(broken).toContain('1 on this machine: a#x # y.')
   })
 
   it('a worker with no booked cores is not read as 0% booked', () => {

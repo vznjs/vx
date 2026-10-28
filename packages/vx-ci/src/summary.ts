@@ -296,7 +296,7 @@ function renderWorkers(
     lines.push(
       `| this machine | ok |  |  |  |  |  | ${tasksCell(here.length - failed, failed)} |  |  |  |  |`,
       '',
-      `${ran.length} executed: ${ran.length - here.length} on workers, ${here.length} on this machine: ${here.map((t) => escapeInline(t.taskId)).join(', ')}.`,
+      `${ran.length} executed: ${ran.length - here.length} on workers, ${here.length} on this machine: ${here.map((t) => escapeMarkdownCell(escapeInline(t.taskId))).join(', ')}.`,
     )
   }
   if (coreMs > 0)
