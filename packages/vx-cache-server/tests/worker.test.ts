@@ -127,6 +127,20 @@ it('refuses every request, saying why, while no R2 bucket is bound as BLOBS', as
   }
 })
 
+// jose matches aud exactly: a pasted newline refused every token as the
+// wrong audience. A blank one is refused above.
+it('reads AUDIENCE without the blanks around it', async () => {
+  const other = await start({ ALLOW: ALLOW_VAR, AUDIENCE: ` ${AUD}\n` })
+  try {
+    const res = await fetch(new URL('/v1/capabilities', await other.ready), {
+      headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.main, AUD)}` },
+    })
+    expect(res.status).toBe(200)
+  } finally {
+    await other.dispose()
+  }
+})
+
 it("answers a read from the data center's cache once R2 served it, and whether it holds one from R2 alone", async () => {
   const hash = crypto.randomUUID().replaceAll('-', '')
   const url = new URL(`/v1/artifacts/${hash}`, base)
