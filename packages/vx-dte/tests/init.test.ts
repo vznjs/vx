@@ -156,7 +156,9 @@ it('writes the CI files at the repository’s root, running in the workspace’s
   const relay = 'https://relay.example.com'
   expect(await at({ relay, workers: sizes, adapter: gitlab() })).toBe(0)
   const ci = await readFile(path.join(root, '.gitlab-ci.yml'), 'utf8')
-  expect(ci).toContain("    - cd 'ws'\n    - pnpm install --frozen-lockfile\n")
+  expect(ci).toContain(
+    "    - cd 'ws'\n    - npm install -g --silent bun@1.4\n    - corepack enable\n    - pnpm install --frozen-lockfile\n",
+  )
   expect(ci).toContain("    - git checkout -q FETCH_HEAD\n    - cd 'ws'\n")
 })
 
@@ -465,4 +467,29 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RUN',
   ])
+})
+
+it('gitlab() runs a pnpm, npm or yarn workspace on an image with Node, adding Bun', async () => {
+  // Before: every job ran on oven/bun, which has no Node, npm, pnpm or
+  // corepack, so `pnpm install`, `npm ci` and `corepack enable` failed.
+  const ciOf = async (manager: 'pnpm' | 'npm' | 'yarn') =>
+    (
+      await gitlab().init!({
+        workspaceRoot: root,
+        dir: '',
+        relay: 'https://relay.example.com',
+        sizes: [{ name: 'small', max: 4 }],
+        manager,
+        tasks: { main: '', change: '' },
+      })
+    ).files['.gitlab-ci.yml']!
+  const pnpm = await ciOf('pnpm')
+  expect(pnpm).toContain('  image: node:22\n')
+  expect(pnpm).toContain(
+    '    - npm install -g --silent bun@1.4\n    - corepack enable\n    - pnpm install --frozen-lockfile\n',
+  )
+  expect(await ciOf('npm')).toContain('    - npm install -g --silent bun@1.4\n    - npm ci\n')
+  expect(await ciOf('yarn')).toContain(
+    '    - npm install -g --silent bun@1.4\n    - corepack enable\n    - yarn install --immutable\n',
+  )
 })

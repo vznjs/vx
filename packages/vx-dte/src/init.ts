@@ -340,10 +340,18 @@ export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
   const relay = setup.relay
   const vx = vxCommand(setup.manager)
   const named = setup.tasks.main !== '' && setup.tasks.change !== ''
-  const root =
+  // oven/bun has no Node, npm or corepack; another manager's jobs run on
+  // Node's image, which has git too, and add Bun, which runs vx.
+  const install =
     setup.manager === 'bun'
-      ? ["bun install --frozen-lockfile --filter './'"]
-      : installLines(setup.manager)
+      ? installLines('bun')
+      : [
+          'npm install -g --silent bun@1.4',
+          ...(setup.manager === 'pnpm' ? ['corepack enable'] : []),
+          ...installLines(setup.manager),
+        ]
+  const image = setup.manager === 'bun' ? 'oven/bun:1.4' : 'node:22'
+  const root = setup.manager === 'bun' ? ["bun install --frozen-lockfile --filter './'"] : install
   const lines = (l: readonly string[]): string => l.map((x) => `    - ${x}`).join('\n')
   // A workspace in a subdirectory: the job's commands run in it.
   const cd = setup.dir === '' ? [] : [`cd ${quoted(setup.dir)}`]
@@ -387,7 +395,7 @@ workflow:
 
 # The image needs Bun; a job adds git if it lacks it.
 default:
-  image: oven/bun:1.4
+  image: ${image}
 
 vx:
   rules:
@@ -412,7 +420,7 @@ ${lines([git, ...cd, ...root])}
 ${lines([git])}
     - git fetch -q --depth 1 origin $VX_DTE_SHA
     - git checkout -q FETCH_HEAD
-${lines([...cd, ...installLines(setup.manager)])}
+${lines([...cd, ...install])}
   script: [${vx} dte worker]
 ${workers.join('')}`.replace(/\n+$/, '\n')
   const next = nextSteps(
