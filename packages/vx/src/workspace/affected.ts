@@ -460,16 +460,20 @@ export async function affectedChanges(
   // (`../../src/index.ts`), whose target is owned.
   // Per task, a project that owns the changed file still needs to know its
   // config imported it: that re-keys every task, whatever their inputs.
-  for (const name of args.configImports === false
-    ? []
-    : await configImportOwners({
-        workspaceRoot: args.workspaceRoot,
-        projects: projects,
-        changed,
-        skip: perTask ? new Set() : owned,
-      })) {
-    owned.add(name)
-    whole.add(name)
+  // A file the workspace config imports widens as the config itself does.
+  if (args.configImports !== false) {
+    const imports = await configImportOwners({
+      workspaceRoot: args.workspaceRoot,
+      projects: projects,
+      changed,
+      skip: perTask ? new Set() : owned,
+      workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(rootDir, n)),
+    })
+    if (imports.workspace !== undefined) return everything(imports.workspace)
+    for (const name of imports.owners) {
+      owned.add(name)
+      whole.add(name)
+    }
   }
 
   const nestedDirs = [...nested].map((rel) => rel.replace(/\/$/, ''))
