@@ -24,7 +24,7 @@ name=$(docker run -d --network host -e ALLOW="$(cat tests/docker/.allow)" \
   -e MAX_UPLOAD_BYTES=7340032 "$tag" --port "$port" --host 127.0.0.1)
 ready=
 for _ in $(seq 50); do
-  if docker logs "$name" 2>&1 | grep -q "vx-cache-server on"; then ready=1; break; fi
+  if docker logs "$name" 2>&1 | grep -q "vx-cache-server  listening on"; then ready=1; break; fi
   sleep 0.2
 done
 if [ -z "$ready" ]; then
