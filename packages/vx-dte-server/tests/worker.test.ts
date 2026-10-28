@@ -237,7 +237,10 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
   expect([mine.status, other.status, await other.json(), elsewhere.status]).toEqual([
     426,
     401,
-    { error: 'wrong audience' },
+    {
+      error:
+        "the token's aud is https://other.example.com, not this relay's https://relay.example.com: ask CI for a token for https://relay.example.com, or set the relay's audience",
+    },
     426,
   ])
 })

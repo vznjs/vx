@@ -290,7 +290,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
         })
       ).payload
     } catch (err) {
-      throw refusal(err, iss)
+      throw refusal(err, iss, audience)
     }
     const claim = repoClaimOf(iss)
     const named = claims[claim]
@@ -316,7 +316,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
 const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
 
 /** What jose's refusal of a token says. */
-function refusal(err: unknown, iss: string): Refusal {
+function refusal(err: unknown, iss: string, audience: string): Refusal {
   if (err instanceof Refusal) return err
   // A refetch of the keys for a kid not held failed: the network, not the token.
   if (!(err instanceof errors.JOSEError) || err instanceof errors.JWKSTimeout)
@@ -326,11 +326,18 @@ function refusal(err: unknown, iss: string): Refusal {
   if (err instanceof errors.JWSSignatureVerificationFailed) return new Refusal(401, 'bad signature')
   if (err instanceof errors.JWTExpired) return new Refusal(401, 'expired')
   if (err instanceof errors.JWTClaimValidationFailed) {
-    if (err.claim === 'aud') return new Refusal(401, 'wrong audience')
+    if (err.claim === 'aud')
+      return new Refusal(
+        401,
+        `the token's aud is ${audOf(err.payload)}, not this server's ${audience}: ask CI for a token for ${audience}, or set the server's AUDIENCE`,
+      )
     if (err.claim === 'nbf') return new Refusal(401, 'not yet valid')
   }
   return new Refusal(401, 'not a JWT')
 }
+
+/** A token's `aud`, as a refusal names it: "wrong audience" alone left the fix to a guess. */
+const audOf = (claims: JWTPayload): string => [claims.aud ?? 'unset'].flat().join(', ')
 
 async function defaultFetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })

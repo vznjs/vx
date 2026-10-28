@@ -156,7 +156,7 @@ describe('a CI OIDC token', () => {
     ])
     expect(await refusal(verify(await sign({ ...good, aud: 'x' })))).toEqual([
       401,
-      'wrong audience',
+      `the token's aud is x, not this relay's ${AUD}: ask CI for a token for ${AUD}, or set the relay's audience`,
     ])
     expect(await refusal(verify(await sign({ ...good, exp: now - 61 })))).toEqual([401, 'expired'])
     expect(await refusal(verify(await sign({ ...good, nbf: now + 61 })))).toEqual([

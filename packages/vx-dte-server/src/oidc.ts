@@ -182,7 +182,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
         return verifyWith(token, iss, true)
       })
     } catch (err) {
-      throw refusal(err, iss)
+      throw refusal(err, iss, opts.audience)
     }
     let ofRepo = ofIssuer
     if (ofIssuer.some((a) => a.repository !== undefined)) {
@@ -218,7 +218,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
 }
 
 /** What jose's refusal of a token says, as the relay answers it. */
-function refusal(err: unknown, iss: string): TokenError {
+function refusal(err: unknown, iss: string, audience: string): TokenError {
   if (err instanceof TokenError) return err
   // A refetch of the keys for a kid not held failed: the network, not the token.
   if (!(err instanceof errors.JOSEError)) return new TokenError(`could not read ${iss}'s keys`, 502)
@@ -228,7 +228,11 @@ function refusal(err: unknown, iss: string): TokenError {
     return new TokenError('bad signature', 401)
   if (err instanceof errors.JWTExpired) return new TokenError('expired', 401)
   if (err instanceof errors.JWTClaimValidationFailed) {
-    if (err.claim === 'aud') return new TokenError('wrong audience', 401)
+    if (err.claim === 'aud')
+      return new TokenError(
+        `the token's aud is ${[err.payload.aud ?? 'unset'].flat().join(', ')}, not this relay's ${audience}: ask CI for a token for ${audience}, or set the relay's audience`,
+        401,
+      )
     if (err.claim === 'nbf') return new TokenError('not yet valid', 401)
     if (err.claim === 'exp') return new TokenError('expired', 401)
   }
