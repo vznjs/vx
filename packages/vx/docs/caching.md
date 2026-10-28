@@ -130,7 +130,7 @@ over (in order):
    `npm-shrinkwrap.json` over `package-lock.json`, as npm does; `bun()`
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
-   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`:
+   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
    `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`)
    and folds each whole into every task.
 
