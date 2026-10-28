@@ -336,7 +336,7 @@ export function dte(options: DteOptions = {}) {
           if (argv.length > 1)
             throw new UserError(`vx dte worker takes no arguments: ${argv.slice(1).join(' ')}`)
           const run = runOf()
-          const relay = process.env['VX_DTE_RELAY'] ?? options.relay
+          const relay = process.env['VX_DTE_RELAY'] || options.relay
           // Only what is missing: with VX_DTE_RUN set, the old line still asked for it.
           if (run === undefined || relay === undefined) {
             const missing = [

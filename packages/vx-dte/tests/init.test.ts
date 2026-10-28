@@ -526,10 +526,13 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     said({}),
     said({ VX_DTE_RUN: crypto.randomUUID() }),
     said({ VX_DTE_RELAY: 'http://127.0.0.1:9' }),
+    // Empty is unset, as for VX_DTE_RUN, VX_DTE_SECRET and VX_DTE_WORKER.
+    said({ VX_DTE_RUN: crypto.randomUUID(), VX_DTE_RELAY: '' }),
   ]).toEqual([
     '✗ vx dte  vx dte worker needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RUN',
+    '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
   ])
   // A job without id-token: write has no ACTIONS_ID_TOKEN_REQUEST_TOKEN.
   expect(
