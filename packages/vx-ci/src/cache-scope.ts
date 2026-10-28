@@ -28,7 +28,7 @@ export async function githubBranch(
   if (env['GITHUB_ACTIONS'] !== 'true') return {}
   const event = await eventOf(env['GITHUB_EVENT_PATH'])
   const refs = githubRefs(env, event, baseBranch)
-  const facts = scopeOf(env, event)
+  const facts = scopeOf(env, event, baseBranch)
   return refs.length === 0 ? facts : { ...facts, refs }
 }
 
@@ -62,6 +62,7 @@ function githubRefs(
 function scopeOf(
   env: Readonly<Record<string, string | undefined>>,
   event: ActionsEvent | undefined,
+  baseBranch: string | undefined,
 ): BranchFacts {
   const ref = env['GITHUB_REF'] ?? ''
   if (env['GITHUB_EVENT_NAME'] === 'merge_group') {
@@ -85,8 +86,10 @@ function scopeOf(
   if (onBehalf !== undefined) return withBase(onBehalf)
   const name = env['GITHUB_REF_NAME']
   if (ref === '' || name === undefined || name === '' || repo === undefined) return {}
-  const branch = event?.repository?.default_branch
-  if (typeof branch === 'string' && branch !== '' && ref === `refs/heads/${branch}`) return {}
+  // The workspace's `baseBranch` first, as the refs read it: a run on it
+  // has no scope even where the event names no default branch.
+  const branch = baseBranch ?? stringOf(event?.repository?.default_branch)
+  if (branch !== undefined && ref === `refs/heads/${branch}`) return {}
   return { scope: branchCacheScope(repo, name) }
 }
 

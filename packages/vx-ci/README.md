@@ -67,7 +67,8 @@ github({
 On Actions (`GITHUB_ACTIONS=true`) the plugin's `config` stage names the
 run's branch through `ctx.setBranch`, from the ref (`GITHUB_REF`,
 `GITHUB_REF_NAME`, `GITHUB_HEAD_REF`, `GITHUB_REPOSITORY`) and the
-`GITHUB_EVENT_PATH` payload. A push to the default branch names no scope.
+`GITHUB_EVENT_PATH` payload. A push to the default branch (the
+workspace's `baseBranch`, else the event's) names no scope.
 A push to, or a pull request from, a branch names
 `<owner>/<repo>:<branch>` of the repository the branch lives in, so a
 fork's pull request names the fork; so does a `pull_request_target` or
