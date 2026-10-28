@@ -160,7 +160,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '$ vx run build lnit --all\nvx run: no projects declare task(s): lnit. Tasks: build, test.',
+      code: '$ vx run build lnit --all\n✗ vx run  no projects declare task(s): lnit\n\n  Tasks: build, test\n  A run reads the lock: after editing a vx.config, run `vx lock`',
     },
     image: 'names-must-resolve.png',
     imageAlt: 'A misspelled task refused before the run.',
@@ -496,7 +496,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '$ vx run | cat\nvx run: missing task name (stdin is not a TTY, so no picker; tasks here: build, test)',
+      code: '$ vx run | cat\n✗ vx run  missing task name (stdin is not a TTY, so no picker; tasks here: build, test)\n\n  see vx run --help',
     },
     image: 'plain-off-tty.png',
     imageAlt: 'A run in a pipe listing tasks instead of opening a picker.',
@@ -1097,7 +1097,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '[vx] remote cache: upload 3f9a… failed: connection reset\n  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n            remote 3↑ 1✗\n(exit 0)',
+      code: "$ vx run build --all\n[vx] plugin '@vzn/vx-migrate': probe of 1 artifact at http://127.0.0.1:9/v8/artifacts failed: ECONNREFUSED: Unable to connect. Is the computer able to access the url?\n ⏺︎     9ms success miss     packages/api#build\n[vx] plugin '@vzn/vx-migrate': 1 more request failed the same way: ECONNREFUSED: Unable to connect. Is the computer able to access the url?\n  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n            remote 1✗\n(exit 0)",
     },
     image: 'background-uploads.png',
     imageAlt: 'Remote uploads finishing after the run, errors as warnings.',
@@ -1218,7 +1218,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: "vx: the sandbox refused writes outside the project: …/packages/shared.txt.\nIf the task needs one, grant its directory, e.g. `allow: { write: ['../'] }`.",
+      code: "vx: the sandbox refused writes outside the project, which are not reported as violations: …/packages/shared.txt. If the task needs one, grant its directory, e.g. `allow: { write: ['../'] }`.",
     },
     image: 'sandbox-grants.png',
     imageAlt: 'A sandbox refusal naming the path and the fix.',
@@ -1242,7 +1242,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '$ vx run build --timeout 1e3\nvx run: --timeout must be a positive integer in ms (got 1e3)',
+      code: "$ vx run build --timeout 1e3\n✗ vx run  --timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1e3)\n\n  see vx run --help",
     },
     image: 'strict-numbers.png',
     imageAlt: 'A numeric flag in exponent form refused.',
@@ -1338,7 +1338,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '$ vx run build --concurency 4\nvx run: unknown flag: --concurency (did you mean --concurrency?)\n\n$ vx run tset --all\nvx run: no projects declare task(s): tset. Did you mean test?',
+      code: '$ vx run build --concurency 4\n✗ vx run  unknown flag: --concurency\n\n  see vx run --help\n\n  fix  --concurrency\n\n$ vx run tset --all\n✗ vx run  no projects declare task(s): tset\n\n  fix  test',
     },
     image: 'did-you-mean.png',
     imageAlt: 'Mistyped flags and tasks answered with the nearest spelling.',
@@ -1362,7 +1362,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '$ vx build --all\nvx: `build` is a task here, not a command: vx run build --all',
+      code: '$ vx build --all\n✗ vx  `build` is a task here, not a command\n\n  fix  vx run build --all',
     },
     image: 'task-as-verb.png',
     imageAlt: 'A task typed as a verb answered with the right command.',
@@ -1530,7 +1530,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: "vx: packages/api/vx.config.ts:8:42: tasks.hang.exec.timeout must be a positive integer (milliseconds)\n> 8 |     hang: { exec: { command: 'sleep 30', timeout: '1s' } },\n    |                                          ^",
+      code: "$ vx lock\n✗ vx lock  lock not written\n\n  packages/api/vx.config.ts:4:42\n  tasks.hang.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"soon\")\n\n  > 4 |     hang: { exec: { command: 'sleep 30', timeout: 'soon' } },\n      |                                          ^",
     },
     image: 'config-errors.png',
     imageAlt: 'A config error pointing at the line and key.',

@@ -82,7 +82,7 @@ Every run records each task's CPU time and peak memory. A task starts
 only while all reservations fit in the machine's memory, or the
 container's limit.
 
-Two heavy test suites no longer start together and crash a small runner.
+Two heavy test suites do not start together and crash a small runner.
 
 A cache hit carries the numbers of the run that made it, so a runner
 knows a task's size without running it. `reservations` sets a size by

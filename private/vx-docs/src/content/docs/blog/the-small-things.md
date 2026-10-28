@@ -35,7 +35,7 @@ $ vx run tset --all
 $ vx build --all
 ✗ vx  `build` is a task here, not a command
 
-  fix  vx run build
+  fix  vx run build --all
 
 $ vx biuld
 ✗ vx  unknown command: biuld, a typo of the task `build`
