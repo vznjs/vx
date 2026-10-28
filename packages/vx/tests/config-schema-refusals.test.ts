@@ -94,6 +94,26 @@ describe('a NUL in a workspace string', () => {
   })
 })
 
+// `origin/main` passed as a branch: vx asks for `origin/origin/main`,
+// found no base, and a run on main took a branch's cache scope.
+describe('a baseBranch spelled as a ref', () => {
+  it('is refused: the branch alone, as git names it after origin/', () => {
+    expect([
+      refusal({ baseBranch: 'origin/main' }),
+      refusal({ baseBranch: 'refs/heads/main' }),
+      refusal({ baseBranch: 'refs/remotes/origin/main' }),
+      refusal({ baseBranch: 'main' }),
+      refusal({ baseBranch: 'release/origin' }),
+    ]).toEqual([
+      `${WS}: \`baseBranch\` must be a branch name like 'main'`,
+      `${WS}: \`baseBranch\` must be a branch name like 'main'`,
+      `${WS}: \`baseBranch\` must be a branch name like 'main'`,
+      null,
+      null,
+    ])
+  })
+})
+
 describe('workspace refusals the sweep found unheld (item 653)', () => {
   it('a fractional concurrency is refused — the integer arm, past the positivity one', () => {
     expect(refusal({ run: { concurrency: 1.5 } })).toBe(

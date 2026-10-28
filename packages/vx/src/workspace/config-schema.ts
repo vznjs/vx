@@ -63,13 +63,17 @@ const BASE_BRANCH_RULE = "must be a branch name like 'main'"
 
 /**
  * A branch name git takes after `origin/`: a leading '-' would reach git
- * as an option, and whitespace, `..`, `~^:?*[\\` are no ref's.
+ * as an option, and whitespace, `..`, `~^:?*[\\` are no ref's. A ref
+ * spelling (`origin/main`, `refs/heads/main`) is no branch either: vx
+ * looked for `origin/origin/main`, found no base, and a run on main took
+ * a branch's cache scope.
  */
 function isBaseBranch(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     /^[^-\s\0~^:?*[\\][^\s\0~^:?*[\\]*$/.test(value) &&
-    !value.includes('..')
+    !value.includes('..') &&
+    !/^(?:origin|refs)\//.test(value)
   )
 }
 
