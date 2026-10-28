@@ -1271,8 +1271,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 ### Lifecycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
-   same task graph, same cache behaviour. The line `vx watch: initial
-run...` precedes it.
+   same task graph, same cache behaviour, printed as its rows alone.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
@@ -1384,7 +1383,8 @@ watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** A cycle opens with a blank line and
    `changed <project> <relpath>`, plus ` (+N more)` when more paths
    changed, then its task rows as `vx run` prints them, with no footer.
-   The named path is the first changed one that still exists, so an
+   The named path is the first changed file that still exists (a
+   directory only when no file changed), so an
    editor's temporary file renamed away names nothing; a deletion names
    the cycle when nothing else changed. The `watching` line is said
    once: a cycle that re-reads the watched set (a member came or went,
@@ -1456,8 +1456,10 @@ decide which projects actually re-run: core keys no package file, so a
 lockfile edit re-keys only through its claimant
 ([cache key derivation](./caching.md#cache-key-derivation)). Every
 cycle's configs come from `.vx/projects.lock.json`, so a config edit
-alone changes no command, and a re-lock (`vx lock`) is a cycle that
-re-reads the watched set (item 971).
+alone changes no command: the cycle it starts says so on stderr,
+`vx watch: packages/app/vx.config.ts changed; runs read the lock, so run
+\`vx lock\` to apply it` (a config import's edit too). A re-lock
+(`vx lock`) is a cycle that re-reads the watched set (item 971).
 
 ### Constraints
 
@@ -1475,7 +1477,8 @@ once and stays up across cycles; each cycle re-runs what it depends on,
 as the cache keys decide. So `vx watch dev`, with `dev` depending on
 `^build`, rebuilds only the libraries an edit reaches on the way to the
 app and leaves the server running; the dev tool's own reload picks up
-what was rebuilt. What the server writes keeps printing. It restarts
+what was rebuilt. What the server writes keeps printing, under its id
+above the rows while a cycle rebuilds. It restarts
 only when its own task config (or the args forwarded to it) changed, or
 when it died: the old one is stopped first (the kill grace, then
 SIGKILL), so the two never hold one port. One that dies while watch
@@ -1502,9 +1505,10 @@ re-runs itself and what it depends on.
   same `Did you mean` hint, and watch exits rather than re-run the
   refusal on every change.
 
-A cycle that throws — a `vx.config.*` that does not parse — prints
-`vx watch: cycle failed: <reason>` and watch keeps watching, the initial
-run included, so saving the fix re-runs (item 1017).
+A cycle that throws — no `.vx/projects.lock.json`, or one that locks a
+config since removed — prints `vx watch: cycle failed: <reason>` once
+and watch keeps watching, the initial run included, so the `vx lock`
+that fixes it re-runs (item 1017).
 
 Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit
 the watch loop — a failed cycle just prints the framed FAILED block
