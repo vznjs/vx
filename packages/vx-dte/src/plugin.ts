@@ -316,7 +316,7 @@ export function dte(options: DteOptions) {
   return definePlugin(import.meta, {
     commands: {
       dte: {
-        description: 'dte init: write the CI of a DTE run; dte worker: run tasks for a DTE run',
+        description: "Write a DTE run's CI (dte init) or run its tasks (dte worker).",
         async run(argv, ctx) {
           // Asked for, the usage is an answer: `vx dte --help` exited 1 (2026-10-26).
           if (argv.some((a) => a === '--help' || a === '-h') || argv[0] === 'help') {

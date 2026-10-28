@@ -278,6 +278,22 @@ describe('plugin commands', () => {
     ).toEqual(['  vx hello             says hi (org/hello)'])
   })
 
+  it("vx help wraps a plugin verb's description under its column, as core's own lines", async () => {
+    const LONG = pluginSource(
+      'org/long',
+      `{ commands: { long: { description: '${'word '.repeat(30).trim()}', run() { return 0 } } } }`,
+    )
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([LONG]))
+    expect(await cli(['help'])).toBe(0)
+    const text = out.join('')
+    const section = text.slice(text.indexOf('Plugin commands:\n')).split('\n').slice(1, -1)
+    expect(section[0]).toStartWith('  vx long              word word')
+    expect(section.length).toBeGreaterThan(1)
+    for (const line of section) expect(line.length).toBeLessThanOrEqual(88)
+    for (const line of section.slice(1)) expect(line).toMatch(/^ {23}\S/)
+    expect(section.join(' ').replace(/\s+/g, ' ')).toContain('word word (org/long)')
+  })
+
   it('an unknown verb is still unknown, and says where help is', async () => {
     await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['nope'])).toBe(1)
