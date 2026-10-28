@@ -1042,6 +1042,21 @@ describe('affectedProjects', () => {
           )
         })
 
+        it('an object that is no list, and a list that throws as it is read, are refused by name', async () => {
+          // `typeof {} === 'object'` passed the guard, and the `for…of` threw
+          // "is not iterable": an internal error naming neither.
+          expect(await refusal({ a: true })).toBe(
+            "plugin 'org/pm' failed in fingerprint: returned an object, not a list of project names",
+          )
+          const lazy = (function* () {
+            yield 'a'
+            throw new Error('lockfile unreadable')
+          })()
+          expect(await refusal(lazy)).toBe(
+            "plugin 'org/pm' failed in fingerprint: lockfile unreadable",
+          )
+        })
+
         it('a name that is not a string is refused, rather than added as one', async () => {
           expect(await refusal([1])).toBe(
             "plugin 'org/pm' failed in fingerprint: affected project a number is not a name",

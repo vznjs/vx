@@ -364,13 +364,22 @@ export async function claimedAffected(
 ): Promise<Set<string> | undefined> {
   const answer = await safe(plugin, 'fingerprint', () => plugin.fingerprint!.affected(change, ctx))
   if (answer === undefined) return undefined
-  if (typeof answer === 'string' || typeof answer !== 'object' || answer === null) {
+  // A plain object is no list: `for…of` threw "is not iterable", naming
+  // neither the plugin nor the hook.
+  if (
+    typeof answer === 'string' ||
+    typeof answer !== 'object' ||
+    answer === null ||
+    typeof (answer as Partial<Iterable<unknown>>)[Symbol.iterator] !== 'function'
+  ) {
     throw new UserError(
       `plugin '${plugin.name}' failed in fingerprint: returned ${describeValue(answer)}, not a list of project names`,
     )
   }
   const names = new Set<string>()
-  for (const name of answer as Iterable<unknown>) {
+  // A lazy list (a generator) runs the plugin's code as it is read.
+  const read = await safe(plugin, 'fingerprint', () => [...(answer as Iterable<unknown>)])
+  for (const name of read) {
     if (typeof name !== 'string') {
       throw new UserError(
         `plugin '${plugin.name}' failed in fingerprint: affected project ${describeValue(name)} is not a name`,
