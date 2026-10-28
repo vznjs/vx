@@ -18,7 +18,7 @@ afterEach(async () => {
 
 const PNPM = "lockfileVersion: '9.0'\n\nimporters:\n\n  .: {}\n\n  packages/a: {}\n"
 
-const discover = (plugin = pnpm()): Promise<unknown> => {
+const discover = async (plugin = pnpm()): Promise<readonly unknown[]> => {
   const ctx: DiscoverContext = {
     workspaceRoot: root,
     cacheDir: path.join(root, '.vx', 'cache'),
@@ -26,7 +26,7 @@ const discover = (plugin = pnpm()): Promise<unknown> => {
     warn() {},
     worktreeChanges: async () => null,
   }
-  return plugin.discover!(ctx)
+  return await plugin.discover!(ctx)
 }
 
 it('an unparsable pnpm-workspace.yaml refuses the lock, named, not every workspace check', async () => {
