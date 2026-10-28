@@ -96,7 +96,7 @@ otel({
   span status `ERROR`;
 - a child `vx.task` span per task — `cicd.pipeline.task.name`,
   `cicd.pipeline.task.run.result` (the convention's enum: `success` for a
-  run or a hit, `failure`, `timeout`, `skip`, `cancellation`), vx's own
+  run or a hit, `failure`, `timeout` (vx's own `timeout`, or a server's readiness wait), `skip`, `cancellation`), vx's own
   status as `vx.task.status`, `vx.cache.source` (miss/local/remote, or none for a task that never ran),
   on a hit `vx.cache.restored` (`true` when it restored outputs, `false` when they were already up to date),
   `vx.task.hash`, duration, CPU ms, peak RSS, and on a skipped task its root

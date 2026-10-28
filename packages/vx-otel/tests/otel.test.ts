@@ -1155,7 +1155,7 @@ describe('OTLP losslessness', () => {
 
   // F-12: the semconv attribute is an enum; vx's status went out verbatim.
   it('maps each vx status onto the cicd.pipeline.task.run.result enum, and keeps it', () => {
-    const { timedOut: _, ...untimed } = FULL_TASK
+    const { timedOut: _, notReady: __, ...untimed } = FULL_TASK
     const got = (
       [
         ['success', false],
@@ -1183,6 +1183,21 @@ describe('OTLP losslessness', () => {
       ['timeout', 'failed'],
       ['skip', 'skipped'],
       ['cancellation', 'aborted'],
+    ])
+  })
+
+  // Core labels a server whose readiness wait ran out "timed out", as a
+  // one-shot task's deadline; the enum said failure.
+  it("maps a persistent task's readiness timeout to timeout, its other refusals to failure", () => {
+    const { timedOut: _, notReady: __, ...untimed } = FULL_TASK
+    const result = (notReady: 'timeout' | 'exited' | 'spawn') =>
+      attrMap(taskSpanAttributes({ ...untimed, status: 'failed', notReady }, TASK_RUN) as never)[
+        'cicd.pipeline.task.run.result'
+      ]
+    expect([result('timeout'), result('exited'), result('spawn')]).toEqual([
+      'timeout',
+      'failure',
+      'failure',
     ])
   })
 
