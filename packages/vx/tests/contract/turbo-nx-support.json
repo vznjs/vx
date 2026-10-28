@@ -207,7 +207,7 @@
   {
     "key": "turbo.json remoteCache.signature",
     "status": "supported",
-    "reason": "`true` signs and verifies with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, as in Turbo, and `TURBO_SIGNATURE` (1 or 0) overrides it; with signing off the env key is not read. `turboCache({ signatureKey })` signs either way."
+    "reason": "`true` signs and verifies with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, as in Turbo, and `TURBO_SIGNATURE` (1 or 0) overrides it; with signing off the env key is not read. `turboCache({ signatureKey })` signs either way. Signing with no key is no remote (a warning), as in Turbo; no team id signs as `''`."
   },
   {
     "key": "turbo.json remoteCache.teamId",
@@ -276,8 +276,8 @@
   },
   {
     "key": "turbo.json futureFlags.longerSignatureKey",
-    "status": "mapped",
-    "reason": "Not read; `turboCache()` always requires a signature key of at least 32 bytes."
+    "status": "supported",
+    "reason": "`turboCache()` refuses a `TURBO_REMOTE_CACHE_SIGNATURE_KEY` under 32 bytes, as Turbo does; without it a short key warns and signs. The `signatureKey` option needs 32 bytes either way."
   },
   {
     "key": "turbo.json futureFlags.pruneIncludesGlobalFiles",

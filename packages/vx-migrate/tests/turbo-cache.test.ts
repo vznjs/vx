@@ -267,16 +267,13 @@ describe('resolveTurboCacheConfig', () => {
     )
   })
 
-  it('a signature key must be Turbo’s minimum length and come with a team id', () => {
+  it('a signatureKey option must be at least 32 bytes', () => {
     expect(() =>
       resolveTurboCacheConfig(
         { apiUrl: 'https://u', token: 't', signatureKey: 'short', teamId: 'team_1' },
         {},
       ),
     ).toThrow(/at least 32 bytes/)
-    expect(() =>
-      resolveTurboCacheConfig({ apiUrl: 'https://u', token: 't', signatureKey: KEY }, {}),
-    ).toThrow(/needs teamId/)
     expect(MIN_SIGNATURE_KEY_LENGTH).toBe(32)
   })
 

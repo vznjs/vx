@@ -54,7 +54,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `remoteCache.enabled` | mapped, with a note | `false` turns `turboCache()` off unless its options name a cache. |
 | `remoteCache.loginUrl` | not applicable | Used only by `turbo login`; vx has no login. |
 | `remoteCache.preflight` | supported | `true` sends Turbo's `OPTIONS` preflight and follows its `Location`, below `TURBO_PREFLIGHT` (1 or 0) and `turboCache({ preflight })`. |
-| `remoteCache.signature` | supported | `true` signs and verifies with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, as in Turbo, and `TURBO_SIGNATURE` (1 or 0) overrides it; with signing off the env key is not read. `turboCache({ signatureKey })` signs either way. |
+| `remoteCache.signature` | supported | `true` signs and verifies with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, as in Turbo, and `TURBO_SIGNATURE` (1 or 0) overrides it; with signing off the env key is not read. `turboCache({ signatureKey })` signs either way. Signing with no key is no remote (a warning), as in Turbo; no team id signs as `''`. |
 | `remoteCache.teamId` | supported | Used when neither the option nor `TURBO_TEAMID` is set. |
 | `remoteCache.teamSlug` | supported | Used when neither the option nor `TURBO_TEAM` is set. |
 | `remoteCache.timeout` | supported | Whole seconds, below `TURBO_REMOTE_CACHE_TIMEOUT` and `turboCache({ timeoutMs })`; 0 is no deadline, as in Turbo. |
@@ -68,7 +68,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `futureFlags.filterUsingTasks` | not supported | Ignored; `--filter` keeps vx's semantics. |
 | `futureFlags.githubActionsRemoteBaseRefFallback` | supported | `turbo()` follows it on GitHub Actions: a pull request's base ref the checkout lacks is compared as `origin/<ref>`, as in Turbo. |
 | `futureFlags.globalConfiguration` | supported | The `global` block is read whenever present, flag or not. |
-| `futureFlags.longerSignatureKey` | mapped, with a note | Not read; `turboCache()` always requires a signature key of at least 32 bytes. |
+| `futureFlags.longerSignatureKey` | supported | `turboCache()` refuses a `TURBO_REMOTE_CACHE_SIGNATURE_KEY` under 32 bytes, as Turbo does; without it a short key warns and signs. The `signatureKey` option needs 32 bytes either way. |
 | `futureFlags.pruneIncludesGlobalFiles` | not applicable | Affects only `turbo prune`; vx has none. |
 | `futureFlags.strictTaskEntrypointSelection` | not supported | Ignored. |
 | `futureFlags.watchUsingTaskInputs` | not supported | Ignored; `vx watch` re-runs on any change in a watched project but a declared output, and the cache keys decide what executes. |

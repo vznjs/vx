@@ -56,7 +56,7 @@ export interface TurboCacheOptions {
    * its `tokenUrl`. The job needs `permissions: id-token: write`.
    */
   oidc?: true | TurboOidcOptions
-  /** `teamId` query parameter, or `TURBO_TEAMID`. Required with `signatureKey`. */
+  /** `teamId` query parameter, or `TURBO_TEAMID`; the signature folds it, `''` when unset, as Turbo's does. */
   teamId?: string
   /** `slug` query parameter (a team slug), or `TURBO_TEAM`. */
   teamSlug?: string
@@ -64,8 +64,10 @@ export interface TurboCacheOptions {
    * Sign uploads and verify downloads with Turbo's artifact signature
    * (HMAC-SHA256, `x-artifact-tag`), or `TURBO_REMOTE_CACHE_SIGNATURE_KEY`
    * where turbo.json sets `remoteCache.signature: true`, as Turbo reads it.
-   * At least 32 bytes, used raw. A download whose tag does not verify is a
-   * miss, never a restore.
+   * The option needs at least 32 bytes; the env key warns below that,
+   * refused only under turbo.json's `futureFlags.longerSignatureKey`, as
+   * in Turbo. Used raw. A download whose tag does not verify is a miss,
+   * never a restore.
    */
   signatureKey?: string
   /**
@@ -104,6 +106,8 @@ export interface TurboJsonRemoteCache {
   timeout?: unknown
   uploadTimeout?: unknown
   preflight?: unknown
+  /** turbo.json's `futureFlags.longerSignatureKey`, which `remoteCacheOf` hoists here. */
+  longerSignatureKey?: unknown
 }
 
 /** `.turbo/config.json`'s fields, under any of the spellings Turbo accepts. */
@@ -259,6 +263,7 @@ export function resolveTurboCacheConfig(
   file: TurboJsonRemoteCache = {},
   /** The repo's `.turbo/config.json` (`turbo link` writes it): below the environment, above turbo.json. */
   local: TurboLocalConfig = {},
+  warn: (message: string) => void = (m) => console.error(`[vx] plugin '@vzn/vx-migrate': ${m}`),
 ): TurboCacheConfig | undefined {
   // `enabled: false` turns Turbo's remote cache off whatever the env says;
   // options name a cache for vx alone, and win.
@@ -333,18 +338,29 @@ export function resolveTurboCacheConfig(
   // signs nothing there, and a short one here refused the whole cache.
   // `TURBO_SIGNATURE` (1/true, 0/false) sits above turbo.json, as in Turbo.
   const signing = truthy(env['TURBO_SIGNATURE'], 'TURBO_SIGNATURE') ?? file.signature === true
-  const signatureKey =
-    options.signatureKey ?? (signing ? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY'] : undefined)
+  const envKey = signing ? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY'] || undefined : undefined
+  const signatureKey = options.signatureKey ?? envKey
+  // Turbo signs with no key as it fails every request: no usable remote. Read
+  // unsigned here, the bytes a signing repo refuses were restored.
+  if (signing && signatureKey === undefined) {
+    warn(
+      'turbo.json sets remoteCache.signature but TURBO_REMOTE_CACHE_SIGNATURE_KEY is unset: remote cache off for this run, as for turbo',
+    )
+    return undefined
+  }
   if (signatureKey !== undefined) {
-    if (Buffer.byteLength(signatureKey) < MIN_SIGNATURE_KEY_LENGTH) {
-      throw new Error(
-        `vx/turbo-cache: signatureKey must be at least ${MIN_SIGNATURE_KEY_LENGTH} bytes (Turbo's minimum)`,
+    const bytes = Buffer.byteLength(signatureKey)
+    // Turbo only warns about a short key unless `futureFlags.longerSignatureKey`
+    // is set; refusing it here failed a run Turbo runs.
+    if (bytes < MIN_SIGNATURE_KEY_LENGTH) {
+      if (options.signatureKey !== undefined || file.longerSignatureKey === true)
+        throw new Error(
+          `vx/turbo-cache: signatureKey must be at least ${MIN_SIGNATURE_KEY_LENGTH} bytes`,
+        )
+      warn(
+        `TURBO_REMOTE_CACHE_SIGNATURE_KEY is ${bytes} bytes; ${MIN_SIGNATURE_KEY_LENGTH} or more is safe (Turbo enforces it under futureFlags.longerSignatureKey)`,
       )
     }
-    if (!teamId)
-      throw new Error(
-        'vx/turbo-cache: signatureKey needs teamId — the team id is part of the signed message',
-      )
   }
   const retries = options.retries ?? 1
   // A NaN never reaches the bound, and the request would be resent forever.
@@ -911,8 +927,16 @@ function remoteCacheOf(root: string): TurboJsonRemoteCache {
       continue
     }
     try {
-      const rc = (Bun.JSONC.parse(text) as { remoteCache?: unknown } | null)?.remoteCache
-      return typeof rc === 'object' && rc !== null ? (rc as TurboJsonRemoteCache) : {}
+      const json = Bun.JSONC.parse(text) as {
+        remoteCache?: unknown
+        futureFlags?: { longerSignatureKey?: unknown }
+      } | null
+      const rc = json?.remoteCache
+      const longerSignatureKey = json?.futureFlags?.longerSignatureKey
+      return {
+        ...(typeof rc === 'object' && rc !== null ? (rc as TurboJsonRemoteCache) : {}),
+        ...(longerSignatureKey === undefined ? {} : { longerSignatureKey }),
+      }
       // quiet: a local config file: none read is none declared
     } catch {
       return {}
@@ -957,6 +981,7 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
         Bun.env,
         remoteCacheOf(ctx.workspaceRoot),
         localConfigOf(ctx.workspaceRoot),
+        (m) => ctx.warn(`[vx] plugin '@vzn/vx-migrate': ${m}`),
       )
       if (config === undefined) return undefined
       // A signed download waits in a temp until its tag checks: in vx's
