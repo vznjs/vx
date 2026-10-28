@@ -536,7 +536,7 @@ describe.if(CHUNKING_SUPPORTED)('writes', () => {
       fake.fail('Write', grpc.status.DEADLINE_EXCEEDED)
       await c.writeBlob(d, large)
       expect(warns).toEqual([
-        `vx/reapi: chunked write of ${d.hash.slice(0, 12)} hit the 131072-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
+        `[vx] vx-reapi: chunked write of ${d.hash.slice(0, 12)} hit the 131072-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
       ])
       expect(fake.writes.at(-1)!.sizes.every((n) => n <= SAFE_CHUNK_BYTES)).toBe(true)
       const small = bytes('one message')

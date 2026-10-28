@@ -282,11 +282,11 @@ single 180 s deadline, every task burned three minutes on a lookup before
 failing. Now the probe gives up in 15 s and the run re-executes.
 
 What the run prints is one line per kind of failure:
-`vx/reapi: probe <key> at <endpoint> failed: 4 DEADLINE_EXCEEDED: …`.
+`[vx] plugin '@vzn/vx-reapi': probe <key> at <endpoint> failed: 4 DEADLINE_EXCEEDED: …`.
 Core's layered cache names the request, the vx key and the server (a
 gRPC status carries none of them), and a later request that fails with
 the same status is counted, not repeated: the run ends with
-`vx/reapi: N more requests failed the same way: …`.
+`[vx] plugin '@vzn/vx-reapi': N more requests failed the same way: …`.
 
 Execution streams are deliberately NOT bounded by either: queueing behind a
 busy worker pool is legitimate. A wedged server still cannot reach Execute,
@@ -297,7 +297,7 @@ Execute stream is closed, the operation is cancelled with
 that refuses it, or lacks the service, may still run the action, and its
 result lands in the action cache; that refusal is a warning) and the task is given back to vx, which
 runs it here and says so once:
-`[vx] <task>: vx/reapi: no worker started the action within queueTimeoutMs (…ms); its operation was cancelled — running it here`.
+`[vx] <task>: vx-reapi: no worker started the action within queueTimeoutMs (…ms); its operation was cancelled — running it here`.
 A task placed `exec.remote: 'only'` fails with that reason instead. Unset,
 the task's own `exec.timeout` bounds the queue as it bounds the run (the
 task fails as timed out); with neither, the wait is unbounded.

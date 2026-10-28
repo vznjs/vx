@@ -64,7 +64,7 @@ const run = (result: object, r = req()) =>
     (e: Error) => e.message,
   )
 const refused = (what: string) =>
-  `vx/reapi: the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${ws}`
+  `vx-reapi: the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${ws}`
 
 beforeEach(async () => {
   top = await realpath(await mkdtemp(path.join(tmpdir(), 'vx-fence-')))
@@ -131,7 +131,7 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
       output_directories: [{ path: 'dist', tree_digest: tree(top!, children) }],
     })
     expect(r).toMatch(
-      /^vx\/reapi: the server's Tree for .*dist expands to 3\.3e\+12 entries, more than the \d+ this file system has free — refused$/,
+      /^vx-reapi: the server's Tree for .*dist expands to 3\.3e\+12 entries, more than the \d+ this file system has free — refused$/,
     )
     expect(existsSync(path.join(cwd, 'dist'))).toBe(false)
   })

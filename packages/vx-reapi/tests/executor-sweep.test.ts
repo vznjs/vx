@@ -190,9 +190,11 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
       fake.onExecute = failingNext('Write', 'z')
       await run(request({ cacheKey: 'k-write-out' }))
       expect(warns).toEqual([
-        expect.stringMatching(/^vx\/reapi: pkg#gen's stdout probe failed \(.*\) — uploading it$/),
         expect.stringMatching(
-          /^vx\/reapi: pkg#gen's stdout upload failed \(.*\) — recorded without it$/,
+          /^\[vx\] vx-reapi: pkg#gen's stdout probe failed \(.*\) — uploading it$/,
+        ),
+        expect.stringMatching(
+          /^\[vx\] vx-reapi: pkg#gen's stdout upload failed \(.*\) — recorded without it$/,
         ),
       ])
     })
@@ -260,11 +262,13 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
       await run(request({ cacheKey: 'k-forced', refresh: true }))
       expect(executes()).toBe(before + 4)
       expect(
-        warns.some((w) => w.startsWith('vx/reapi: pkg#gen could not read its execution record (')),
+        warns.some((w) =>
+          w.startsWith('[vx] vx-reapi: pkg#gen could not read its execution record ('),
+        ),
       ).toBe(true)
       expect(
         warns.filter((w) =>
-          w.startsWith("vx/reapi: pkg#gen could not check its execution record's blobs ("),
+          w.startsWith("[vx] vx-reapi: pkg#gen could not check its execution record's blobs ("),
         ),
       ).toHaveLength(1)
     })
@@ -297,7 +301,7 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
       expect([res.exitCode, executes() - before]).toEqual([0, 1])
       expect(
         warns.filter((w) =>
-          w.startsWith('vx/reapi: pkg#gen could not replay its execution record ('),
+          w.startsWith('[vx] vx-reapi: pkg#gen could not replay its execution record ('),
         ),
       ).toHaveLength(1)
     })
@@ -320,7 +324,7 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
       expect([res, executes() - before, printed]).toEqual(['resolved', 1, ''])
       expect(
         warns.filter((w) =>
-          w.startsWith('vx/reapi: pkg#gen could not replay its execution record ('),
+          w.startsWith('[vx] vx-reapi: pkg#gen could not replay its execution record ('),
         ),
       ).toHaveLength(1)
     })
@@ -448,7 +452,7 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
         response: { status: { code: 13, message: 'boom' }, message: 'why', serverLogs: {} },
       })
       expect(await refusal(run(request()))).toContain(
-        'vx/reapi: pkg#gen execution failed: boom — why',
+        'vx-reapi: pkg#gen execution failed: boom — why',
       )
       fake.onExecute = () => ({
         response: {
@@ -459,7 +463,7 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
       expect(await refusal(run(request()))).toContain('--- server log worker ---\nworker said no')
       fake.onExecute = () => ({ response: { message: 'nothing' } })
       expect(await refusal(run(request()))).toContain(
-        'vx/reapi: pkg#gen returned no ActionResult: nothing',
+        'vx-reapi: pkg#gen returned no ActionResult: nothing',
       )
     })
   })
@@ -480,7 +484,7 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
         run(request({ onStdout: (c: string) => (out += c), onStderr: (c: string) => (err += c) })),
       )
       expect([refused, out, err]).toEqual([
-        'vx/reapi: pkg#gen execution failed: timed out',
+        'vx-reapi: pkg#gen execution failed: timed out',
         'half',
         'stuck',
       ])
@@ -500,10 +504,10 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
     ]) {
       fake.onExecute = () => ({ response: { status: { code: 4, message: 'timed out' }, result } })
       await withExecutor(async (run, warns) => {
-        expect(await refusal(run(request()))).toBe('vx/reapi: pkg#gen execution failed: timed out')
+        expect(await refusal(run(request()))).toBe('vx-reapi: pkg#gen execution failed: timed out')
         // Read in vain, and said (2026-10-23: no fault is silent).
         expect(warns).toEqual([
-          expect.stringMatching(/^vx\/reapi: pkg#gen's std(out|err) could not be read \(/),
+          expect.stringMatching(/^\[vx\] vx-reapi: pkg#gen's std(out|err) could not be read \(/),
         ])
       })
     }
@@ -519,9 +523,9 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
       },
     })
     await withExecutor(async (run, warns) => {
-      expect(await refusal(run(request()))).toBe('vx/reapi: pkg#gen execution failed: boom')
+      expect(await refusal(run(request()))).toBe('vx-reapi: pkg#gen execution failed: boom')
       expect(warns).toEqual([
-        expect.stringMatching(/^vx\/reapi: the server log worker could not be read \(/),
+        expect.stringMatching(/^\[vx\] vx-reapi: the server log worker could not be read \(/),
       ])
     })
   })
@@ -638,7 +642,7 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
     await withExecutor(async (run, warns) => {
       expect((await run(request({ cacheKey: 'k-moved' }))).exitCode).toBe(0)
       expect(warns).toEqual([
-        'vx/reapi: pkg#gen: `pkg/src/in.txt` changed after its key was taken — the execution is not recorded under it',
+        '[vx] vx-reapi: pkg#gen: `pkg/src/in.txt` changed after its key was taken — the execution is not recorded under it',
       ])
     })
     expect(fake.actions.has(execDigestFor('k-moved').hash)).toBe(false)
@@ -703,7 +707,7 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs', () => {
         }),
       )
       expect(warns).toContain(
-        'vx/reapi: lib#build has 1 output(s) recorded but missing on disk — grafting is not possible for a partial set, using what is here',
+        '[vx] vx-reapi: lib#build has 1 output(s) recorded but missing on disk — grafting is not possible for a partial set, using what is here',
       )
     })
   })
@@ -726,7 +730,7 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs', () => {
         ],
       })
       expect(await refusal(run(withUp('up-gone')))).toContain(
-        'vx/reapi: upstream lib#build outputs evicted from the remote store (1 blob(s)) and never materialised locally',
+        'vx-reapi: upstream lib#build outputs evicted from the remote store (1 blob(s)) and never materialised locally',
       )
     })
   })
@@ -915,7 +919,7 @@ describe.if(CHUNKING_SUPPORTED)('a server refusal (F-11)', () => {
     })
     expect(got).toEqual([
       true,
-      'vx/reapi: pkg#gen: the remote server failed the call — 7 PERMISSION_DENIED: injected PERMISSION_DENIED',
+      'vx-reapi: pkg#gen: the remote server failed the call — 7 PERMISSION_DENIED: injected PERMISSION_DENIED',
     ])
   })
 
@@ -929,7 +933,7 @@ describe.if(CHUNKING_SUPPORTED)('a server refusal (F-11)', () => {
     )
     expect(got).toEqual([
       false,
-      'vx/reapi: pkg#gen reached the remote executor with no described inputs',
+      'vx-reapi: pkg#gen reached the remote executor with no described inputs',
     ])
   })
 })
@@ -1125,7 +1129,7 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
   it('an operation that ends in an error refuses with its message', async () => {
     fake.onExecute = () => ({ opError: { code: 9, message: 'precondition' } })
     expect(await withExecutor((run) => refusal(run(request())))).toContain(
-      'vx/reapi: execution failed for pkg#gen: precondition',
+      'vx-reapi: execution failed for pkg#gen: precondition',
     )
   })
 })
@@ -1152,8 +1156,10 @@ describe.if(CHUNKING_SUPPORTED)('the record a success writes', () => {
       await run(request({ cacheKey: 'k-bits' }))
       fake.fail('UpdateActionResult', grpc.status.PERMISSION_DENIED)
       await run(request({ cacheKey: 'k-unwritten' }))
-      expect(warns.filter((w) => w.startsWith('vx/reapi: could not record execution'))).toEqual([
-        'vx/reapi: could not record execution for pkg#gen: 7 PERMISSION_DENIED: injected PERMISSION_DENIED',
+      expect(
+        warns.filter((w) => w.startsWith('[vx] vx-reapi: could not record execution')),
+      ).toEqual([
+        '[vx] vx-reapi: could not record execution for pkg#gen: 7 PERMISSION_DENIED: injected PERMISSION_DENIED',
       ])
     })
     const record = fake.actions.get(execDigestFor('k-bits').hash) as {
@@ -1289,7 +1295,7 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs, the edges', () => {
     })
     fake.fail('Read', 5) // NOT_FOUND
     expect(await withExecutor((run) => refusal(run(withUpstream(upstream('up-race')))))).toBe(
-      `vx/reapi: upstream lib#build tree ${tree.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
+      `vx-reapi: upstream lib#build tree ${tree.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
     )
   })
 
@@ -1303,7 +1309,7 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs, the edges', () => {
       return w
     })
     expect(warns).toEqual([
-      'vx/reapi: pkg#gen declares input files under pkg/src, which an upstream graft replaces — those files are NOT in the input tree',
+      '[vx] vx-reapi: pkg#gen declares input files under pkg/src, which an upstream graft replaces — those files are NOT in the input tree',
     ])
   })
 })

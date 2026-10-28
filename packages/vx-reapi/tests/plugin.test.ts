@@ -193,10 +193,10 @@ describe('reapi(): the endpoint is checked where it is set', () => {
       outcome(undefined, 'cache.test:99999'),
       outcome(undefined, 'a b:1'),
     ]).toEqual([
-      'vx/reapi: `reapi({ endpoint })` is "http://", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
-      'vx/reapi: `reapi({ endpoint })` is "127.0.0.1:notaport", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
-      'vx/reapi: VX_REAPI_ENDPOINT is "cache.test:99999", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
-      'vx/reapi: VX_REAPI_ENDPOINT is "a b:1", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      'vx-reapi: `reapi({ endpoint })` is "http://", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      'vx-reapi: `reapi({ endpoint })` is "127.0.0.1:notaport", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      'vx-reapi: VX_REAPI_ENDPOINT is "cache.test:99999", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      'vx-reapi: VX_REAPI_ENDPOINT is "a b:1", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
     ])
   })
 
@@ -209,9 +209,9 @@ describe('reapi(): the endpoint is checked where it is set', () => {
       outcome('grpcs://[::1]:8980'),
       outcome(undefined, 'ipv4:10.0.0.5:443'),
     ]).toEqual([
-      'vx/reapi: `reapi({ endpoint })` is "10.0.0.5:9092", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
-      'vx/reapi: `reapi({ endpoint })` is "grpcs://[::1]:8980", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
-      'vx/reapi: VX_REAPI_ENDPOINT is "ipv4:10.0.0.5:443", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
+      'vx-reapi: `reapi({ endpoint })` is "10.0.0.5:9092", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
+      'vx-reapi: `reapi({ endpoint })` is "grpcs://[::1]:8980", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
+      'vx-reapi: VX_REAPI_ENDPOINT is "ipv4:10.0.0.5:443", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
     ])
   })
 

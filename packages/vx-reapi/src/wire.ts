@@ -513,7 +513,7 @@ export class ReapiClient {
     // not silently lengthen every metadata probe too.
     this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
     // No listener is no reason to say nothing.
-    this.onWarn = opts.onWarn ?? ((m) => void process.stderr.write(`[vx] ${m}\n`))
+    this.onWarn = opts.onWarn ?? ((m) => void process.stderr.write(`${m}\n`))
     // A zero, negative or non-number deadline ended every call as it began.
     for (const [name, ms] of [
       ['callTimeoutMs', this.callTimeoutMs],
@@ -1084,7 +1084,7 @@ export class ReapiClient {
           wireBytes > chunk
         ) {
           this.onWarn(
-            `vx/reapi: chunked write of ${digest.hash.slice(0, 12)} hit the ${chunk}-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
+            `[vx] vx-reapi: chunked write of ${digest.hash.slice(0, 12)} hit the ${chunk}-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
           )
           chunk = SAFE_CHUNK_BYTES
           continue
