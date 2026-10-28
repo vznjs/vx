@@ -741,6 +741,48 @@ describe('tieredReverseDepCount', () => {
     expect(order.indexOf('e2#b')).toBeLessThan(order.indexOf('e1#b'))
   })
 
+  it('an exec task under a restore blocks what that restore holds back', () => {
+    // r1's dependents are released only once e1 has settled (item 963), so
+    // e1 blocks e2 and e3 through it; through a chain of restores too.
+    const m = nodes(
+      node('e1#b'),
+      node('r1#b', ['e1#b']),
+      node('e2#b', ['r1#b']),
+      node('e3#b', ['e2#b']),
+      node('e4#b'),
+      node('r2#b', ['e4#b']),
+      node('r3#b', ['r2#b']),
+      node('e5#b', ['r3#b']),
+    )
+    const tier = new Set(['r1#b', 'r2#b', 'r3#b'])
+    expect(Object.fromEntries(tieredReverseDepCount(m, tier))).toEqual({
+      'e1#b': 2,
+      'e2#b': 1,
+      'e3#b': 0,
+      'e4#b': 1,
+      'e5#b': 0,
+      'r1#b': 2,
+      'r2#b': 1,
+      'r3#b': 1,
+    })
+  })
+
+  it('the exec task a restore waits on starts before an idle one', async () => {
+    const order: string[] = []
+    await runGraph({
+      nodes: nodes(node('x#b'), node('e1#b'), node('r#b', ['e1#b']), node('e2#b', ['r#b'])),
+      concurrency: 1,
+      restoreTier: new Set(['r#b']),
+      execute: async (n) => {
+        order.push(n.id)
+        return n.id === 'r#b'
+          ? { node: n, status: 'cache-hit', exitCode: 0, durationMs: 0, hash: `h-${n.id}` }
+          : success(n)
+      },
+    })
+    expect(order.indexOf('e1#b')).toBeLessThan(order.indexOf('x#b'))
+  })
+
   it('CONTROL: a restore that feeds pending work restores before one that feeds none', async () => {
     const order: string[] = []
     await runGraph({
