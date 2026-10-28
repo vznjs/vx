@@ -46,6 +46,12 @@ const WATCH_MAX_MS = 10_000
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
   const workflow = options.workflow ?? 'vx-worker.yml'
+  // `vx dte init` writes it beside the run's own ci.yml, and GitHub reads
+  // no workflow in a subdirectory.
+  if (workflow === '' || workflow.includes('/') || workflow === 'ci.yml')
+    throw new UserError(
+      "github(): workflow is a file name in .github/workflows other than ci.yml, such as 'vx-worker.yml'",
+    )
   const handed = handedEnv(options.env ?? {})
   // The workers one demand starts, by size: one dispatch each.
   const waves = new Map<string, WorkerSpawn[]>()

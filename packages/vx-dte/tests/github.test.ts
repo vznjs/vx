@@ -116,6 +116,17 @@ it('hands its workers the variables env names, as the env input', async () => {
   expect(() => github({ env: { 'A-B': 'x' } })).toThrow('github(): env "A-B"')
 })
 
+// '' dispatched to /workflows//dispatches, and init wrote the file over
+// the directory; a path is no workflow GitHub reads; ci.yml is init's own
+// file for the run, which the workers' workflow replaced.
+it('refuses a workflow that is not a file of its own in .github/workflows', () => {
+  for (const workflow of ['', 'ci/w.yml', 'ci.yml'])
+    expect(() => github({ workflow })).toThrow(
+      "github(): workflow is a file name in .github/workflows other than ci.yml, such as 'vx-worker.yml'",
+    )
+  expect(() => github({ workflow: 'w.yml' })).not.toThrow()
+})
+
 it('says why for each worker of a dispatch GitHub refused', async () => {
   const server = Bun.serve({
     port: 0,
