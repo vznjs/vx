@@ -1051,14 +1051,20 @@ describe('vx watch command (parser-side validation)', () => {
     )
   })
 
-  it('rejects watch with --dry', async () => {
+  it('rejects watch with --dry, and points at its help as every refusal does', async () => {
     expect(await run(['watch', 'build', '--dry'])).toBe(1)
-    expect(stderr).toContain('--dry is not supported in watch mode')
+    expect(stderr).toBe(
+      noticed('vx watch: --dry is not supported in watch mode (see `vx watch --help`)\n'),
+    )
   })
 
   it('rejects watch with --profile', async () => {
     expect(await run(['watch', 'build', '--profile'])).toBe(1)
-    expect(stderr).toContain('--profile is not supported')
+    expect(stderr).toBe(
+      noticed(
+        'vx watch: --profile is not supported in watch mode (would overwrite per cycle) (see `vx watch --help`)\n',
+      ),
+    )
   })
 
   it('surfaces parser errors with the watch prefix', async () => {
