@@ -76,6 +76,12 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
       500,
       'MAX_CHECK_HASHES: not a whole number above 0: 0',
     ],
+    // A blank AUDIENCE was taken: every token was then "wrong audience".
+    [
+      { ALLOW: ALLOW_VAR, AUDIENCE: ' ' },
+      500,
+      'AUDIENCE: the aud CI tokens name, or unset, not blank',
+    ],
     [{ ALLOW: ALLOW_VAR, READ_ACCESS: 'yes' }, 500, 'READ_ACCESS: public, or unset, not yes'],
   ] as const) {
     const other = await start(bindings)
