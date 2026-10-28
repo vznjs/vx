@@ -116,6 +116,15 @@ it('hands its workers the variables env names, as the env input', async () => {
   expect(() => github({ env: { 'A-B': 'x' } })).toThrow('github(): env "A-B"')
 })
 
+// A dispatch's inputs are no secret: the worker job's log prints its
+// steps' env, `GITHUB_ENV`'s too, unmasked.
+it('refuses to hand its workers a secret-named variable', () => {
+  expect(() => github({ env: { NPM_TOKEN: 'npm_secret-value' } })).toThrow(
+    'github(): env "NPM_TOKEN" is a secret',
+  )
+  expect(() => github({ env: { NPM_TOKEN_FILE: '/run/npm' } })).not.toThrow()
+})
+
 it('says why for each worker of a dispatch GitHub refused', async () => {
   const server = Bun.serve({
     port: 0,
