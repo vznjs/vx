@@ -175,3 +175,11 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
   })
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
 })
+
+// The image pinned jose itself (`bun add jose@…`), apart from the version
+// @vzn/vx-devtools pins: a bump there left the image on the old one.
+it('builds its image with the dependencies package.json pins, naming no version of its own', async () => {
+  const dockerfile = await Bun.file(`${import.meta.dir}/../Dockerfile`).text()
+  expect(dockerfile).not.toMatch(/bun add/)
+  expect(dockerfile).toContain('bun install --production')
+})
