@@ -361,6 +361,9 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       ['b.*', "holds '*', which makes it a pattern"],
       ['^gen', "starts with '^', which names dependencies' tasks or negates"],
       ['!gen', "starts with '!', which names dependencies' tasks or negates"],
+      // Printed raw by the status line, `ESC ]0;` retitled the terminal.
+      ['b\x1b]0;x\x07', 'holds a control character'],
+      ['b\rc', 'holds a control character'],
     ] as const) {
       expect(named(name)).toBe(`${CFG}: task name ${JSON.stringify(name)} ${why}${tail}`)
     }
@@ -368,6 +371,21 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     for (const name of ['build:prod', 'e2e-ci--src/app.cy.ts', 'gen^2', 'a!b', 'lint.fix']) {
       expect(named(name)).toBeNull()
     }
+  })
+
+  it('a project name holding a control character is refused', () => {
+    const named = (name: string): string | null => {
+      try {
+        validateProjectConfig({ name, tasks: {} } as never, CFG)
+        return null
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect(named('a\x1b]0;x\x07')).toBe(
+      `${CFG}: \`name\` "a\\u001b]0;x\\u0007" holds a control character — rename the project`,
+    )
+    expect(named('@acme/ui')).toBeNull()
   })
 
   // A project output under `workspace-outputs/` read back as a workspace
