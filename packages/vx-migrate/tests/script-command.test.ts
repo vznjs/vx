@@ -50,6 +50,12 @@ describe('scriptCommand — a script body becomes the task command', () => {
     expect(scriptCommand('build', 'run clean && run build:code')).toBe('yarn run build')
     expect(scriptCommand('build', 'tsc -b; run copy')).toBe('yarn run build')
   })
+
+  it('quotes a script name the shell would split or expand', () => {
+    // `yarn run a b` ran script `a` with an argument; `$(…)` ran in sh.
+    expect(scriptCommand('build all', 'x', {}, true)).toBe("yarn run 'build all'")
+    expect(scriptCommand("it's$(id)", 'run x')).toBe(`yarn run 'it'\\''s$(id)'`)
+  })
 })
 
 describe("Yarn Plug'n'Play: no node_modules, so every script runs through `yarn run`", () => {

@@ -14,6 +14,20 @@
           "type": "array",
           "description": "what the run warned of, plain text; absent when it warned of nothing",
           "items": { "type": "string" }
+        },
+        "steps": {
+          "type": "array",
+          "description": "vx's own steps the run did not wait on (vx:prefetch); absent when it had none or they are no longer kept",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "durationMs", "ok"],
+            "properties": {
+              "id": { "type": "string" },
+              "durationMs": { "type": "number" },
+              "ok": { "type": "boolean" }
+            }
+          }
         }
       }
     },
@@ -249,6 +263,10 @@
           "description": "each failed remote read or write of the key, `; `-joined"
         },
         "forwarded": { "type": "boolean" },
+        "inputMoved": {
+          "type": "string",
+          "description": "on a row failed by inputStability.severity 'error': the input that changed during the run"
+        },
         "output": {
           "type": "string",
           "description": "on a failed row: its output, plain text, bounded (first 8 KiB, last 56 KiB), secrets masked; '' when none was recorded"
@@ -264,6 +282,27 @@
               "file": { "type": "string", "description": "absolute" },
               "line": { "type": "integer" },
               "col": { "type": "integer" }
+            }
+          }
+        },
+        "sandboxFix": {
+          "type": "object",
+          "description": "on a sandboxed failed row: the exec.sandbox.allow entries that would have granted its denials",
+          "additionalProperties": false,
+          "properties": {
+            "read": { "type": "array", "items": { "type": "string" } },
+            "write": { "type": "array", "items": { "type": "string" } },
+            "network": { "type": "array", "items": { "type": "string" } },
+            "systemInfo": { "type": "array", "items": { "type": "string" } },
+            "withheld": {
+              "type": "array",
+              "description": "credential paths it denied and left out of the grants",
+              "items": { "type": "string" }
+            },
+            "inputs": {
+              "type": "array",
+              "description": "a cached task's reads of its project no inputs.files glob matches",
+              "items": { "type": "string" }
             }
           }
         },

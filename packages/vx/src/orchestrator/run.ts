@@ -215,7 +215,13 @@ function invocationMask(nodes: Iterable<TaskNode>): (command: string) => string 
  * often a token (`-- --token=…`), and the line reached an OTLP span and
  * the GitHub job summary verbatim (item 1057). Local history (`vx last`) keeps the whole line, on this machine.
  */
-export function invocationCommand(argv: readonly string[]): string {
+export function invocationCommand(line: readonly string[] | string): string {
+  // A line is shell-quoted (the CLI's): its words as written, so `'a b'`
+  // counts one argument, not the two a split at blanks made.
+  const argv =
+    typeof line === 'string'
+      ? (line.match(/(?:[^\s'"\\]|\\.|'[^']*'|"(?:[^"\\]|\\.)*")+/g) ?? [])
+      : line
   const sep = argv.indexOf('--')
   if (sep === -1) return argv.join(' ')
   const rest = argv.length - sep - 1
@@ -768,9 +774,7 @@ async function runOnBus(
         // token after `--` to every sink verbatim (C-67).
         // Masked as the stored line is: a flag's secret value sits before
         // the `--` the count covers (L-44).
-        command: maskInvocation(
-          invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
-        ),
+        command: maskInvocation(invocationCommand(options.command ?? process.argv.slice(1))),
         requestedTasks: options.tasks,
         cachePolicy: formatCachePolicy(policy),
         concurrency,

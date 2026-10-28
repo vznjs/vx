@@ -109,7 +109,7 @@ describe('resolveFilters', () => {
     // and the typo exited 0 as "nothing affected since HEAD".
     const { value } = await quiet(() => resolveFilters(root, ['nosuch', '[HEAD]']))
     expect(value).toEqual({
-      error: 'no projects matched filter(s): nosuch, [HEAD]. Projects: app, lib',
+      error: 'no projects matched filter(s): nosuch. Projects: app, lib',
     })
   })
 
@@ -118,8 +118,15 @@ describe('resolveFilters', () => {
     // nothing. The empty walk's error hid the typo and its "did you mean".
     const { value } = await quiet(() => resolveFilters(root, ['apq', 'lib^...']))
     expect(value).toEqual({
-      error: 'no projects matched filter(s): apq, lib^.... Did you mean app?',
+      error: 'no projects matched filter(s): apq. Did you mean app?',
     })
+  })
+
+  it('the refusal names only the filters that matched nothing', async () => {
+    // It listed every filter: `app` and `!app` matched app, and an
+    // `--affected` base appeared as a `...[<base>]` nobody typed.
+    const { value } = await quiet(() => resolveFilters(root, ['app', '!app', 'apq']))
+    expect(value).toEqual({ error: 'no projects matched filter(s): apq. Did you mean app?' })
   })
 
   it("the hint reads a pattern's name through its graph operators", async () => {
