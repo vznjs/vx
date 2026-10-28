@@ -261,7 +261,8 @@ its platform's GitHub-hosted runner (`ubuntu-latest` for none named,
 `ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`), or on the label
 `github({ runsOn: { small: 'ubuntu-latest-16-cores' } })` names, as
 `gitlab({ tags })` does. It installs with the package manager your lockfile
-names and runs vx as `bun vx`, which runs the repo's own and never
+names and runs vx as `bun vx` (`yarn vx` under Yarn, whose Plug'n'Play
+has no `node_modules/.bin`), which runs the repo's own and never
 downloads one, as `pnpm exec` does. `--dry` prints it; a file you changed
 is kept unless `--force`. For the sizes above:
 
@@ -826,8 +827,10 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
 - `docker(options: DockerOptions)` starts workers as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of
-  one workflow, one dispatch per size and demand. `GithubOptions` is
-  `{ workflow?, env? }`: `workflow` defaults to `vx-worker.yml`; `env`
+  one workflow, one dispatch per size and demand (at most 256 workers,
+  a matrix's limit). `GithubOptions` is `{ workflow?, runsOn?, env? }`:
+  `workflow` defaults to `vx-worker.yml`; `runsOn` is the runner label
+  of each size, which `vx dte init` writes; `env`
   is variables every worker gets (one-line strings), sent as the
   dispatch's `env` input only when set, which `vx dte init`'s workflow
   exports. Its workers are `keyless`. It
