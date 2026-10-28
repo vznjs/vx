@@ -231,7 +231,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
         return errorJson(err.status, err.message)
       }
       // Never swallowed: the client warns with what the server says.
-      console.error(err)
+      console.error(`vx-cache-server: ${req.method} ${url.pathname}: ${String(err)}`)
       return errorJson(500, message(err))
     }
   }

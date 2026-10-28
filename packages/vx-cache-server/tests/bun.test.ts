@@ -347,3 +347,36 @@ it("answers a bucket that cannot be read 502, naming the bucket's answer", async
   ])
   logged.mockRestore()
 })
+
+// A failed request logged the bare error, no server name, method or route,
+// beside the history server's `vx-history-server: <method> <path>: <why>`.
+it('logs a request it failed with its name, method and path', async () => {
+  const errors: string[] = []
+  const logged = console.error
+  console.error = (...args: unknown[]) => void errors.push(args.join(' '))
+  try {
+    const res = await createCacheServer({
+      blobs: {
+        put: async () => {},
+        get: async () => null,
+        size: async () => {
+          throw new Error('the bucket is down')
+        },
+      },
+      authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
+    })(
+      new Request('http://x.test/v1/artifacts/abc', {
+        method: 'HEAD',
+        headers: {
+          ...NAMED,
+          'vx-scope': 'a'.repeat(32),
+          authorization: `Bearer ${await iss.sign(MAIN_JOB, 'http://x.test')}`,
+        },
+      }),
+    )
+    expect(res.status).toBe(500)
+  } finally {
+    console.error = logged
+  }
+  expect(errors).toEqual(['vx-cache-server: HEAD /v1/artifacts/abc: Error: the bucket is down'])
+})
