@@ -1287,13 +1287,14 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
           .join('/')}`
   const root = cdInto === '' ? `"$PWD${climb}"` : '"$PWD"'
   // Order matters: VX_ROOT is read BEFORE the cd, the project-local bin dir
-  // AFTER it, so both are right whichever mode we are in.
+  // AFTER it, so both are right whichever mode we are in. The project's
+  // first, as core's taskBinDirs: a tool the project pins beats the root's.
   // Quoted as the forwarded args are: a project directory is a name like
   // any other, and `it's` ended the quote and ran the rest as script (L-7).
   const cd = cdInto === '' ? '' : `cd '${cdInto.replaceAll("'", `'\\''`)}' || exit 1; `
   return (
     `VX_ROOT=${root}; ${cd}` +
-    `export PATH="$VX_ROOT/node_modules/.bin:$PWD/node_modules/.bin:$PATH"; ` +
+    `export PATH="$PWD/node_modules/.bin:$VX_ROOT/node_modules/.bin:$PATH"; ` +
     command
   )
 }
