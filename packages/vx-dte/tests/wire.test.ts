@@ -907,6 +907,24 @@ it('reads a refusal from the close when its frame is lost', async () => {
   }
 })
 
+// A relay's words reach the terminal: an ESC in them retitled it and
+// overwrote the line vx printed before them.
+it("writes the controls in a relay's close as escapes", async () => {
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (req, srv) => (srv.upgrade(req) ? undefined : new Response(null, { status: 400 })),
+    websocket: { open: (ws) => ws.close(4403, '\x1b]0;PWNED\x07'), message() {} },
+  })
+  try {
+    await expect(join(server.url.href, R, 'worker', null, 'token')).rejects.toThrow(
+      `cannot connect to the relay ${server.url.origin}: 403 \\x1b]0;PWNED\\x07`,
+    )
+  } finally {
+    await server.stop(true)
+  }
+})
+
 // PR #4225's run (2026-10-24): a relay that held the socket and then the
 // request took 10 s each, and the run failed after 21 s on a bare "The
 // operation timed out".

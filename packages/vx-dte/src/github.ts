@@ -9,6 +9,7 @@ import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
+import { printable } from './wire.js'
 
 export interface GithubOptions {
   /** The workers' workflow file in `.github/workflows` (default `vx-worker.yml`). */
@@ -83,7 +84,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
     if (res === undefined || res.ok || res.status === 409) return
     failed(
       `cancelling ${runOf(run)}`,
-      `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+      `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}`,
     )
   }
   /** Cancels `run` once none of its workers is still needed. */
@@ -106,7 +107,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
           if (!res.ok) {
             failed(
               `reading ${runOf(run)}'s jobs`,
-              `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+              `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}`,
             )
             return
           }
@@ -187,7 +188,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
         }),
       })
       if (res.ok) break
-      const text = (await res.text()).slice(0, 200)
+      const text = printable((await res.text()).slice(0, 200))
       if (res.status !== 422 || !text.includes('No ref found') || !refs[i + 1]) {
         // GitHub's own words named no fix for the two a first run meets (2026-10-26).
         const fix =

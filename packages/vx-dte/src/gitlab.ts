@@ -9,6 +9,7 @@
 
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
 import type { DteAdapter, WorkerSpawn } from './plugin.js'
+import { printable } from './wire.js'
 
 export interface GitlabOptions {
   /** Runner tags by worker size: the runners each size's jobs go to. */
@@ -98,7 +99,7 @@ async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
       signal: AbortSignal.timeout(10_000),
     })
     if (res.ok) return
-    const text = (await res.text()).slice(0, 200)
+    const text = printable((await res.text()).slice(0, 200))
     if (res.status !== 400 || !text.includes('Reference not found') || !refs[i + 1])
       throw new Error(
         `gitlab(): triggering ${workers.map((w) => w.id).join(', ')}: ${res.status} ${text}`,
