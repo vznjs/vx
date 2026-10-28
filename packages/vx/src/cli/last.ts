@@ -381,7 +381,7 @@ function fmtUsage(t: {
  * their exit stands for, the sandbox's violation count, a skip's blocker.
  * Older rows carry none and read as before.
  */
-function reasonParts(t: RunSummaryRow): string {
+function reasonParts(t: RunSummaryRow, skippedHere: ReadonlySet<string>): string {
   const parts: string[] = []
   if (t.status === 'failed') {
     if (t.notReady !== null) {
@@ -398,11 +398,22 @@ function reasonParts(t: RunSummaryRow): string {
       parts.push(`${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}`)
     }
   } else if (t.status === 'skipped' && t.blockedBy !== null) {
-    parts.push(`after ${t.blockedBy} failed`)
+    // A blocker that is itself a skip is a platform skip: a failure's
+    // dependants name the failure, never a skip between.
+    parts.push(
+      skippedHere.has(t.blockedBy)
+        ? `after ${t.blockedBy} skipped: ${OTHER_PLATFORM}`
+        : `after ${t.blockedBy} failed`,
+    )
+  } else if (t.status === 'skipped' && t.exitCode === 0) {
+    // Only a platform skip records exit 0; a blocked or fail-fast skip records 1.
+    parts.push(OTHER_PLATFORM)
   }
   if (t.remoteError !== null) parts.push(`remote \u2717 ${t.remoteError}`)
   return parts.map((p) => `  ${p}`).join('')
 }
+
+const OTHER_PLATFORM = 'needs another platform'
 
 /** Hit rows shown before the rest fold — the slowest restores. */
 const HITS_SHOWN = 16
@@ -445,6 +456,9 @@ export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
   const at = (t: (typeof ordered)[number]): string =>
     t.placement !== null ? `@${t.placement}` : ''
   const idW = Math.max(...ordered.map((t) => `${t.project}#${t.task}${at(t)}`.length), 4)
+  const skippedHere = new Set(
+    tasks.filter((t) => t.status === 'skipped').map((t) => `${t.project}#${t.task}`),
+  )
   const lines = ['']
   for (const t of ordered) {
     const id = `${t.project}#${t.task}${at(t)}`
@@ -463,7 +477,7 @@ export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
     lines.push(
       `  ${status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
         `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-        reasonParts(t),
+        reasonParts(t, skippedHere),
     )
   }
   if (folded) {

@@ -146,6 +146,19 @@ describe('computeTaskHash — what the config contributes', () => {
     expect(a).not.toBe(b)
   })
 
+  it('a define named __proto__ folds in, in a map whose keys need sorting', async () => {
+    // The sorted copy assigned `out['__proto__'] = 'a'`, which sets no
+    // property: the value left the key and a change to it hit stale.
+    const at = (v: string) =>
+      key({
+        node: node(
+          {},
+          { exec: { command: 'build', env: { define: { ['__proto__']: v, A: '1' } } } },
+        ),
+      })
+    expect(await at('a')).not.toBe(await at('b'))
+  })
+
   it('STABILITY: exec.remote does NOT move the key', async () => {
     // Placement, not content. `exec.remote: false` says "run this task on
     // this machine" — it never reaches the task's output, and the whole

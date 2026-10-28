@@ -33,8 +33,10 @@ export interface RunStop {
    * The process signal that stopped the run. A run a process signal
    * stopped records no history: until item 849 the handler exited before
    * any outcome landed, and a Ctrl-C'd run then read in `vx last` as
-   * FAILED with 0 tasks (item 854). An embedder's abort is its own call
-   * and keeps its record.
+   * FAILED with 0 tasks (item 854). So does an embedder's abort whose
+   * reason names one (`'SIGINT'`, `'SIGTERM'`, `'SIGHUP'`): the signal the
+   * embedder received, as the watch loop relays a Ctrl-C to its cycle. Any
+   * other abort is the embedder's own call and keeps its record.
    */
   readonly stoppedBy: StopSignal | undefined
   /**
@@ -90,10 +92,14 @@ export function runStop(args: {
     }
   })()
   const controller = new AbortController()
-  const forwardAbort = (): void => controller.abort(external?.reason)
+  let stoppedBy: StopSignal | undefined
+  const forwardAbort = (): void => {
+    const reason: unknown = external?.reason
+    if (reason === 'SIGINT' || reason === 'SIGTERM' || reason === 'SIGHUP') stoppedBy = reason
+    controller.abort(reason)
+  }
   if (external?.aborted === true) forwardAbort()
   else external?.addEventListener('abort', forwardAbort, { once: true })
-  let stoppedBy: StopSignal | undefined
   let left = (): void => {}
   const runLeft = new Promise<void>((resolve) => {
     left = resolve

@@ -61,6 +61,10 @@ export const BUN_GLOB_WILDCARDS: RegExp // /[*?[\]{}]/ — Bun.Glob's own
 export const EXTGLOB: RegExp // /[!@+*?]\(/
 // C0/C1 controls and DEL as `\xNN`, for a file name vx prints (L-31).
 export function printable(s: string): string
+// Whether `s` holds a char `printable` escapes: a project or task name may not.
+export function hasControl(s: string): boolean
+// Whether vx may write or delete at `real`, where a link landed: under `realBase`, in no `.git`.
+export function writableUnder(real: string, realBase: string): boolean
 ```
 
 **Two alphabets.** A TASK glob (`inputs.files`, `cache.outputs.files`,

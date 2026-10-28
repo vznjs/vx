@@ -150,6 +150,15 @@ describe('a shallow clone', () => {
       'git ref "HEAD~1" did not resolve. Pass a branch or commit you have locally. ' +
         'This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).',
     )
+    // The base's tip is here but not the history to its merge base: diffing
+    // the tip selected what main changed, green.
+    const cut = await clone('feat')
+    gitIn(cut)('fetch', '-q', '--depth=1', 'origin', '+refs/heads/main:refs/remotes/origin/main')
+    gitIn(cut)('remote', 'set-url', 'origin', `file://${dir}/nowhere`)
+    expect(await changed(cut, 'origin/main').catch((err: Error) => err.message)).toBe(
+      'git ref "origin/main" has no merge base with HEAD in this shallow clone, and origin ' +
+        'did not give the history between them: fetch it (`git fetch --unshallow origin`).',
+    )
     // CONTROL: the same missing ref in a full clone keeps the bare message.
     expect(await changed(origin, 'HEAD~99').catch((err: Error) => err.message)).toBe(
       'git ref "HEAD~99" did not resolve. Pass a branch or commit you have locally.',
