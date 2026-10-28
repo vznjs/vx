@@ -15,6 +15,7 @@ import {
   type PluginOptionKinds,
   refuseUnknownOptions,
   type RemoteCacheLayer,
+  UserError,
   type VxPlugin,
 } from '@vzn/vx'
 
@@ -604,11 +605,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
 function namedOf(options: VxCacheOptions): { issuer: string; repository: string } {
   const { issuer, repository } = options as Partial<VxCacheOptions>
   if (typeof issuer !== 'string' || !/^https?:\/\/\S+$/.test(issuer))
-    throw new Error(
+    throw new UserError(
       `vxCache(): issuer must be the CI issuer's URL (https://token.actions.githubusercontent.com), got ${String(issuer)}`,
     )
   if (typeof repository !== 'string' || !/^[^/\s]+(\/[^/\s]+)+$/.test(repository))
-    throw new Error(`vxCache(): repository must be org/name, got ${String(repository)}`)
+    throw new UserError(`vxCache(): repository must be org/name, got ${String(repository)}`)
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 

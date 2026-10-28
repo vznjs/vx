@@ -1,4 +1,4 @@
-import type { ArtifactInfo, RemoteCacheLayer } from '@vzn/vx'
+import { type ArtifactInfo, type RemoteCacheLayer, UserError } from '@vzn/vx'
 
 /**
  * How a remote keeps branches apart (2026-10-20). `'header'`: plain keys,
@@ -10,9 +10,10 @@ import type { ArtifactInfo, RemoteCacheLayer } from '@vzn/vx'
  */
 export type RemoteScope = 'header' | 'key'
 
-export function remoteScope(name: string, scope: unknown): RemoteScope {
+/** `factory`: the option's owner as a workspace calls it, `turboCache`. */
+export function remoteScope(factory: string, scope: unknown): RemoteScope {
   if (scope === undefined || scope === 'header' || scope === 'key') return scope ?? 'header'
-  throw new Error(`vx/${name}: scope must be 'header' or 'key', got ${JSON.stringify(scope)}`)
+  throw new UserError(`${factory}(): scope must be 'header' or 'key', got ${JSON.stringify(scope)}`)
 }
 
 /** A server caps the read header at this many refs (the server rules), so vx never sends more. */

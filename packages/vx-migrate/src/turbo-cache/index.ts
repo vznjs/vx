@@ -951,7 +951,7 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
  */
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
-  const scope = remoteScope('turbo-cache', options.scope)
+  const scope = remoteScope('turboCache', options.scope)
   // The run's layer and warn, for `teardown` to revoke an exchanged token.
   let opened: { layer: TurboRemoteCache; warn: (m: string) => void } | undefined
   return definePlugin(import.meta, {
