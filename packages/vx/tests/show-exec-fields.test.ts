@@ -40,6 +40,14 @@ export default {
       },
     },
     quiet: { exec: { command: 'true', interactive: false } },
+    pinned: {
+      exec: { command: 'tsc -b', platforms: ['linux-x64', 'darwin-arm64'] },
+      inputs: { files: ['src/**'] },
+      cache: {
+        outputs: { files: ['dist/**'], clean: false },
+        inputStability: { strategy: 'mutable', severity: 'error' },
+      },
+    },
   },
 }
 `,
@@ -51,6 +59,23 @@ export default {
         env: { ...process.env },
         stdout: 'pipe',
       }).stdout.toString()
+    // platforms, outputs.clean and inputStability change what a run does
+    // and where; the block left all three out.
+    expect(show('a#pinned')).toBe(
+      [
+        '',
+        gradientRule({ enabled: false }, 'a#pinned'),
+        '  dir                      packages/a',
+        '  command                  tsc -b',
+        '  platforms                linux-x64, darwin-arm64',
+        '  inputs.files             src/**',
+        '  outputs.files            dist/**',
+        '  outputs.clean            no',
+        '  inputStability.strategy  mutable',
+        '  inputStability.severity  error',
+        '',
+      ].join('\n'),
+    )
     expect([show('a#repl'), show('a#quiet')]).toEqual([
       [
         '',
