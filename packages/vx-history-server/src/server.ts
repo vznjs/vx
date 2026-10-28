@@ -55,6 +55,8 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
 
   // One request a run: every hash, each answered from the first ref that holds it.
   async function query(req: Request): Promise<Response> {
+    // No token, or a bad one, is refused before the body is read.
+    await authorize(req)
     const body = await readJson(req, MAX_QUERY_HASHES * 600 + 10_000)
     const issuer = field(body, 'issuer')
     const repository = field(body, 'repository')
