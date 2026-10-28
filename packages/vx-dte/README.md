@@ -364,9 +364,10 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
 
-# The image needs Bun; a job adds git if it lacks it.
+# The image needs Bun; a job adds git if it lacks it. By digest: a tag
+# can move under the same name.
 default:
-  image: oven/bun:1.4
+  image: oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d
 
 vx:
   rules:
@@ -460,7 +461,7 @@ use your own instead.
   task, once per worker, ready before it, and stops when the worker leaves;
   the orchestrator never starts it, and a worker no dependant reaches
   never does (2026-10-22).
-- A task whose key folds a runtime probe (`inputs.runtime`, such as
+- A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path
   under the worker's checkout root reads as the same path under this
@@ -524,7 +525,7 @@ use your own instead.
   tree, or the same commit with a tracked file changed, such as by a
   prepare step) is refused. Both sides read their tracked files as they
   are, so the same change on both is the same tree.
-- A task whose key folds a file the run's commit lacks (untracked, or
+- A task whose key hashes a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
   A dependency's declared output is not one: its worker restores it first.
