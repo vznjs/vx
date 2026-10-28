@@ -520,7 +520,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
     const ms = opts[key]
     if (ms !== undefined && !(typeof ms === 'number' && ms >= 1 && ms <= 2 ** 31 - 1)) {
       throw new Error(
-        `reapi(): ${key} must be a number of ms from 1 to 2147483647 (got ${JSON.stringify(ms)})`,
+        `reapi(): ${key} must be a number of ms from 1 to 2147483647 (got ${typeof ms === 'number' ? String(ms) : JSON.stringify(ms)})`,
       )
     }
   }

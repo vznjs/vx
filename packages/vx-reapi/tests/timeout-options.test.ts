@@ -23,6 +23,16 @@ it('a call or metadata deadline that is not a positive number is refused', () =>
   expect(said(client({ metaTimeoutMs: -1 }))).toBe(
     'reapi(): metaTimeoutMs must be a positive number of ms (got -1)',
   )
+  // JSON.stringify said NaN and Infinity as "null".
+  expect(said(client({ callTimeoutMs: Number.NaN }))).toBe(
+    'reapi(): callTimeoutMs must be a positive number of ms (got NaN)',
+  )
+  expect(said(client({ metaTimeoutMs: Number.POSITIVE_INFINITY }))).toBe(
+    'reapi(): metaTimeoutMs must be a positive number of ms (got Infinity)',
+  )
+  expect(said(client({ callTimeoutMs: '5000' }))).toBe(
+    'reapi(): callTimeoutMs must be a positive number of ms (got "5000")',
+  )
   expect(said(client({ callTimeoutMs: 1000, metaTimeoutMs: 500 }))).toBe('taken')
 })
 
@@ -31,6 +41,9 @@ it('an execute deadline that is not a positive number is refused', () => {
   try {
     expect(said(() => reapiExecutor(c, { executeTimeoutMs: 0 }))).toBe(
       'reapi(): executeTimeoutMs must be a number of ms from 1 to 2147483647 (got 0)',
+    )
+    expect(said(() => reapiExecutor(c, { queueTimeoutMs: Number.NaN }))).toBe(
+      'reapi(): queueTimeoutMs must be a number of ms from 1 to 2147483647 (got NaN)',
     )
     expect(said(() => reapiExecutor(c, { executeTimeoutMs: 60_000 }))).toBe('taken')
   } finally {
