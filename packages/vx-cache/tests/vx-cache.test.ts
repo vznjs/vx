@@ -205,6 +205,42 @@ describe('VxCacheLayer', () => {
     expect(await c.has('aa11')).not.toBeNull()
   })
 
+  // A refusal answered to requests already in flight was said by the first
+  // alone; the others' bodies were left unread, each holding its connection.
+  it('releases the body of every refusal it does not say', async () => {
+    const open = new Set<number>()
+    let n = 0
+    const refusing: typeof fetch = Object.assign(
+      () => {
+        const id = n++
+        open.add(id)
+        // Pulled only as it is read: unread, it stays open.
+        const body = new ReadableStream(
+          {
+            pull(c) {
+              c.enqueue(new TextEncoder().encode('{"message":"no"}'))
+              c.close()
+              open.delete(id)
+            },
+            cancel: () => void open.delete(id),
+          },
+          { highWaterMark: 0 },
+        )
+        return Promise.resolve(new Response(body, { status: 403 }))
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const c = layer(srv.url, write, [MAIN], refusing)
+    const puts = ['a1', 'a2', 'a3'].map((h) => c.put(h, new Blob(['x']), { durationMs: 1 }))
+    expect((await Promise.allSettled(puts)).map((p) => p.status).sort()).toEqual([
+      'fulfilled',
+      'fulfilled',
+      'rejected',
+    ])
+    expect(await Promise.allSettled([c.has('b1'), c.get('b2')])).toHaveLength(2)
+    expect([n, open.size]).toEqual([5, 0])
+  })
+
   // #4439: git takes any UTF-8 in a branch name, a header only bytes; the
   // old header of every read ref refused the whole run's reads.
   it('reads and writes under a UTF-8 branch name', async () => {
