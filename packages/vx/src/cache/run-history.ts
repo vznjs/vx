@@ -6,6 +6,7 @@
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
 import { lazyStatement } from './schema.js'
 import type { InvocationRecord, RunRecord } from './layer.js'
+import { isMeasure } from '../util/index.js'
 
 const INSERT_RUNS = `
       INSERT INTO runs(
@@ -123,7 +124,9 @@ export class RunHistory {
 
   /** One `task_durations` row per executed success, as if run alone: what a forecast reads. */
   private insertDurations(runs: readonly RunRecord[], source: string, sha: string | null): void {
-    const done = runs.filter((r) => r.status === 'success' && r.cacheHit !== true)
+    const done = runs.filter(
+      (r) => r.status === 'success' && r.cacheHit !== true && isMeasure(aloneMs(r)),
+    )
     for (let i = 0; i < done.length; i += DURATIONS_PER_INSERT) {
       const block = done.slice(i, i + DURATIONS_PER_INSERT)
       const params: SQLQueryBindings[] = []
