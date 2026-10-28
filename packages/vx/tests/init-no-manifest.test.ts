@@ -44,10 +44,13 @@ async function vx(cwd: string, args: string[]) {
   return { out, err, code }
 }
 
+// Type-only: Bun erases the import, so the files load with nothing
+// installed, and a user's tsc checks them against config.ts alone, never
+// core's Bun-only sources (J-94).
 const WORKSPACE =
-  "import { defineWorkspace } from '@vzn/vx'\n\nexport default defineWorkspace({ plugins: [] })\n"
+  "import type { WorkspaceConfig } from '@vzn/vx/config'\n\nexport default { plugins: [] } satisfies WorkspaceConfig\n"
 const PROJECT =
-  "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: {} })\n"
+  "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default { tasks: {} } satisfies ProjectConfig\n"
 
 describe('vx init with no package.json', () => {
   it('writes the workspace file and an empty root project, then the lock', async () => {
@@ -87,8 +90,8 @@ describe('vx init with no package.json', () => {
     const root = await tmp('vx-init-bare-dry-')
     const r = await vx(root, ['init', '--dry', '--mjs'])
     expect([r.code, r.err, existsSync(path.join(root, '.vx'))]).toEqual([0, '', false])
-    expect(r.out).toContain(`── .vx/workspace.mjs ──\n${WORKSPACE}`)
-    expect(r.out).toContain(`── vx.config.mjs ──\n${PROJECT}`)
+    expect(r.out).toContain('── .vx/workspace.mjs ──\nexport default { plugins: [] }\n\n')
+    expect(r.out).toContain('── vx.config.mjs ──\nexport default { tasks: {} }\n\n')
     expect(r.out).toContain(
       '  dry run   nothing written\n' +
         '  files     .vx/workspace.mjs\n' +

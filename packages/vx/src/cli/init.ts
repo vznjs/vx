@@ -26,7 +26,8 @@ import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError, sayNotice } from
 import {
   findWorkspaceRoot,
   PROJECT_CONFIG_FILENAMES,
-  STARTER_PROJECT,
+  renderWorkspace,
+  starterProject,
   WORKSPACE_CONFIG_FILENAMES,
 } from '../workspace/index.js'
 
@@ -286,12 +287,6 @@ function lockfilePlugin(pkgRoot: string | null): 'pnpm' | 'bun' | 'yarn' | 'npm'
   return null
 }
 
-function workspaceSource(plugin: string | null): string {
-  if (plugin === null)
-    return "import { defineWorkspace } from '@vzn/vx'\n\nexport default defineWorkspace({ plugins: [] })\n"
-  return `import { defineWorkspace } from '@vzn/vx'\nimport { ${plugin} } from '@vzn/vx-lockfile'\n\nexport default defineWorkspace({ plugins: [${plugin}()] })\n`
-}
-
 /**
  * Whether `pkgRoot` has package.json scripts to map: its own, or a
  * workspace's members (`workspaces`, `pnpm-workspace.yaml`). Core maps none
@@ -347,8 +342,12 @@ async function starter(
   const kept: string[] = []
   const replaced: string[] = []
   for (const [names, name, contents] of [
-    [WORKSPACE_CONFIG_FILENAMES, `.vx/workspace.${ext}`, workspaceSource(plugin)],
-    [PROJECT_CONFIG_FILENAMES, config, STARTER_PROJECT],
+    [
+      WORKSPACE_CONFIG_FILENAMES,
+      `.vx/workspace.${ext}`,
+      renderWorkspace(ext, plugin === null ? [] : [{ pkg: '@vzn/vx-lockfile', factory: plugin }]),
+    ],
+    [PROJECT_CONFIG_FILENAMES, config, starterProject(ext)],
   ] as const) {
     const existing = names.find((n) => existsSync(path.join(root, n)))
     if (existing !== undefined && !args.force) kept.push(existing)
