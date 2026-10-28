@@ -94,10 +94,6 @@ export function foldScriptHooks(
 // Why `name` cannot be a task's (the schema's rule), or null: a mapper
 // leaves such a script out with a TODO.
 export function taskNameProblem(name: string): string | null
-
-// Core-internal (src/workspace/index.ts): how the user runs vx, for a
-// `next` row — the runner in `npm_config_user_agent`, else `vx`.
-export function vxInvocation(userAgent: string | undefined, installed: boolean): string
 ```
 
 ## Rules

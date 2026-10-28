@@ -140,6 +140,35 @@ describe('every camelCase name a module page quotes is in the source', () => {
   })
 })
 
+// migration.md's contract block declared `vxInvocation` for months after
+// the function was deleted: a page's `ts` block is read as the API.
+describe("every declaration a module page's ts block shows is in src/", () => {
+  it('each function, class, interface, type and const it declares exists', () => {
+    const declared = new Set<string>()
+    for (const f of walk(path.join(pkg, 'src'), '.ts')) {
+      for (const m of readFileSync(f, 'utf8').matchAll(
+        /\b(?:function|class|interface|type|const|let)\s+([A-Za-z_]\w*)/g,
+      )) {
+        declared.add(m[1]!)
+      }
+    }
+    const missing: string[] = []
+    let shown = 0
+    for (const page of walk(path.join(pkg, 'docs', 'modules'), '.md')) {
+      for (const block of readFileSync(page, 'utf8').matchAll(/```ts\n([\s\S]*?)```/g)) {
+        for (const m of block[1]!.matchAll(
+          /\b(?:function|class|interface|type|const)\s+([A-Za-z_]\w*)/g,
+        )) {
+          shown++
+          if (!declared.has(m[1]!)) missing.push(`${path.relative(pkg, page)}: ${m[1]}`)
+        }
+      }
+    }
+    expect(shown).toBeGreaterThan(100)
+    expect(missing).toEqual([])
+  })
+})
+
 describe('docs/README.md § Repository layout follows src/', () => {
   it('tabulates exactly the module directories, and states their count', () => {
     const readme = readFileSync(path.join(pkg, 'docs', 'README.md'), 'utf8')
