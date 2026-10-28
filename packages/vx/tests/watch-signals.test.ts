@@ -81,6 +81,46 @@ describe('vx watch under a signal (e2e)', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 20_000)
 
+  // A stopped cycle is not a run `vx last` lists, as a stopped `vx run`
+  // is not (item 854): it read as FAILED with 0 tasks, and `vx last
+  // --failed` replayed it in place of the run the user wanted.
+  it('a cycle the signal stopped leaves `vx last` as it was', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            quick: { exec: { command: 'true' } },
+            slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } },
+          },
+        }
+      `,
+    )
+    const list = (): string[] =>
+      Bun.spawnSync([process.execPath, BIN, 'last', '--list'], { cwd: root })
+        .stdout.toString()
+        .trim()
+        .split('\n')
+        .map((l) => l.split(/\s+/)[0]!)
+    const quick = Bun.spawnSync([process.execPath, BIN, 'run', 'quick', '--all'], { cwd: root })
+    expect(quick.exitCode).toBe(0)
+    expect(list()).toEqual(['ok'])
+    for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+      await rm(path.join(dir, 'pid.txt'), { force: true })
+      const proc = Bun.spawn([process.execPath, BIN, 'watch', 'slow', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+      })
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      proc.kill(signal)
+      expect(await proc.exited).toBe(0)
+      expect({ signal, list: list() }).toEqual({ signal, list: ['ok'] })
+    }
+  }, 30_000)
+
   // The handler replaced nohup's SIG_IGN, so the hang-up stopped the loop.
   // Without the fix vx exits inside the 200 ms grace; the second is slack.
   it('a watch started with SIGHUP ignored (nohup) keeps its cycle through a hang-up', async () => {

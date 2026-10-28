@@ -138,6 +138,110 @@ describe('HistoryServer', () => {
     }
   })
 
+  // One 503 from GitHub's OIDC endpoint lost the run's timings: the upload
+  // asks for the token at the run's end, once (vx-cache asks again, #4571).
+  it("asks GitHub's OIDC endpoint again after a 5xx or 429, never after a 4xx", async () => {
+    const exp = Math.floor(Date.now() / 1000) + 3600
+    const jwt = `h.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.s`
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.example/token',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 't',
+    }
+    const clientOf = (answers: (number | 'reset')[]) => {
+      const asked: string[] = []
+      const fake = (async (input: string | URL) => {
+        const u = new URL(String(input))
+        if (u.hostname === 'oidc.example') {
+          const a = answers.shift() ?? 200
+          asked.push(String(a))
+          if (a === 'reset') throw new Error('connection reset')
+          return a === 200 ? Response.json({ value: jwt }) : new Response('no', { status: a })
+        }
+        if (u.pathname === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+        return new Response(null, { status: 204 })
+      }) as typeof fetch
+      const waits: number[] = []
+      const client = new HistoryServer('https://h.example', NAMED, env, fake, {}, async (ms) => {
+        waits.push(ms)
+      })
+      return { client, asked, waits }
+    }
+    const blips = clientOf([503, 'reset', 200])
+    await blips.client.upload(new Map([['a', { durationMs: 1 }]]))
+    expect([blips.asked, blips.waits]).toEqual([
+      ['503', 'reset', '200'],
+      [1000, 2000],
+    ])
+    const busy = clientOf([429, 502, 500])
+    await expect(busy.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      "GitHub's OIDC endpoint: HTTP 500: no",
+    )
+    expect(busy.asked).toEqual(['429', '502', '500'])
+    const refused = clientOf([403])
+    await expect(refused.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      "GitHub's OIDC endpoint: HTTP 403: no",
+    )
+    expect(refused.asked).toEqual(['403'])
+  })
+
+  // One 503 from the server's edge at the run's end lost every timing the
+  // run measured. A 500 is the server's own failure, maybe after the fold:
+  // sent again, a run would count twice.
+  it('sends a request again after a 429, 502, 503 or 504, never after a 500 or no answer', async () => {
+    const clientOf = (answers: (number | 'reset')[]) => {
+      const sent: string[] = []
+      const fake = (async (input: string | URL) => {
+        const u = new URL(String(input))
+        if (u.pathname === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+        const a = answers.shift() ?? 200
+        sent.push(`${u.pathname} ${a}`)
+        if (a === 'reset') throw new Error('connection reset')
+        if (a !== 200) return new Response('busy', { status: a })
+        return u.pathname === '/v1/timings/query'
+          ? Response.json({ timings: { a: { durationMs: 5 } } })
+          : new Response(null, { status: 204 })
+      }) as typeof fetch
+      const waits: number[] = []
+      const client = new HistoryServer(
+        'https://h.example',
+        NAMED,
+        { VX_HISTORY_TOKEN: 'jwt' },
+        fake,
+        {},
+        async (ms) => {
+          waits.push(ms)
+        },
+      )
+      return { client, sent, waits }
+    }
+    const up = clientOf([503, 504, 200])
+    await up.client.upload(new Map([['a', { durationMs: 1 }]]))
+    expect([up.sent, up.waits]).toEqual([
+      ['/v1/timings/upload 503', '/v1/timings/upload 504', '/v1/timings/upload 200'],
+      [1000, 2000],
+    ])
+    const gone = clientOf(['reset'])
+    await expect(gone.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      'connection reset',
+    )
+    expect(gone.sent).toEqual(['/v1/timings/upload reset'])
+    const read = clientOf([429, 502, 200])
+    expect(await read.client.query(['refs/heads/main'], ['a'])).toEqual(
+      new Map([['a', { durationMs: 5 }]]),
+    )
+    const down = clientOf([504, 504, 504])
+    await expect(down.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      'HTTP 504: busy',
+    )
+    const failed = clientOf([500])
+    await expect(failed.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      'HTTP 500: busy',
+    )
+    expect(failed.sent).toEqual(['/v1/timings/upload 500'])
+  })
+
   // 2026-10-25: a proxy in front of the server (an Access service token).
   it('sends headers on every request, never over the CI token', async () => {
     const seen: Headers[] = []

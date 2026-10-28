@@ -102,6 +102,17 @@ describe('parseInitArgs', () => {
     ])
   })
 
+  it('a second --plugin is refused, not dropped', () => {
+    // `--plugin executor --plugin cache` wrote the cache plugin alone.
+    expect([
+      parseInitArgs(['--plugin', 'executor', '--plugin=cache']).error,
+      parseInitArgs(['--plugin', 'cache', '--plugin', 'cache']).plugin,
+    ]).toEqual([
+      '--plugin takes one seam; run vx init --plugin once per seam (see `vx init --help`)',
+      'cache',
+    ])
+  })
+
   // One argv shape per refusal, each named for the branch it takes. The two
   // rows above use `toContain` on the argument itself, which every branch
   // satisfies — `--dryrun` reads as `--dry` under a prefix match, and a

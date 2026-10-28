@@ -138,7 +138,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
         return [hash, at < 0 ? null : { size: sizes[i]![at], scope: scopes[at] }]
       }),
     )
-    return Response.json(held, { headers: limitHeaders })
+    return Response.json(held)
   }
 
   /**
@@ -170,6 +170,16 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
 
   return async (req) => {
+    const res = await answer(req)
+    // Every /v1/artifacts answer, a refusal too: a client holding older
+    // limits (a restart with new ones, a Worker's rollout) learns them from
+    // the answer that refused it, or it was refused every check of the run.
+    if (/^\/v1\/artifacts(\/|$)/.test(new URL(req.url).pathname))
+      for (const [h, v] of Object.entries(limitHeaders)) res.headers.set(h, v)
+    return res
+  }
+
+  async function answer(req: Request): Promise<Response> {
     const url = new URL(req.url)
     try {
       const path = url.pathname

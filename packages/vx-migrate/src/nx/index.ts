@@ -574,10 +574,14 @@ async function graphInputKey(
   // stray write at the root (a report, a log) is not, and counting it
   // re-exported the graph on every run after it.
   // A `project.json` anywhere: a new one is a project no root lists yet.
+  // A `.gitignore` anywhere too: Nx's project walk honours each one, so an
+  // edit between project roots hides or shows a project.
   const roots = dirs.map((d) => relPosix(root, d))
   const graphFile = (p: string): boolean =>
     p === 'project.json' ||
     p.endsWith('/project.json') ||
+    p === '.gitignore' ||
+    p.endsWith('/.gitignore') ||
     roots.some((r) => r === '' || p.startsWith(`${r}/`)) ||
     (!p.includes('/') && ROOT_GRAPH_FILE.test(p))
   const listed = [

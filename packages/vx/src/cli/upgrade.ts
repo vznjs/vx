@@ -541,7 +541,11 @@ export function managedInstall(execPath: string, cwd: string): ManagedInstall | 
     const plugins = pluginsBeside(root, field)
     return { manager: projectManager(root, execPath), scope: 'project', cwd: root, field, plugins }
   }
-  for (let d = path.resolve(cwd); d.startsWith(root); d = path.dirname(d)) {
+  for (
+    let d = path.resolve(cwd);
+    d === root || d.startsWith(`${root}${path.sep}`);
+    d = path.dirname(d)
+  ) {
     const f = listingField(d)
     if (f !== undefined) {
       const plugins = pluginsBeside(d, f)
@@ -825,11 +829,15 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
 }
 
 /**
- * The vx an upgrade just installed: the replaced binary, or the project's
+ * The vx an upgrade just installed: the replaced binary, or the tree's
  * `node_modules/.bin/vx` (a manager's store path names the old version).
+ * npm's global tree has no `.bin` there; its platform binary keeps its path.
  */
-const newVx = (install: ManagedInstall | null, dest: string): string =>
-  install === null ? dest : path.join(install.cwd, 'node_modules', '.bin', 'vx')
+function newVx(install: ManagedInstall | null, dest: string): string {
+  if (install === null) return dest
+  const bin = path.join(install.cwd, 'node_modules', '.bin', 'vx')
+  return existsSync(bin) ? bin : dest
+}
 
 /**
  * Lock the workspace with the vx just installed at `bin` (2026-10-18):
@@ -839,12 +847,17 @@ const newVx = (install: ManagedInstall | null, dest: string): string =>
 export async function relock(bin: string, cwd = process.cwd()): Promise<void> {
   const root = await findWorkspaceRoot(cwd).catch(() => null)
   if (root === null) return
-  const proc = Bun.spawnSync({
-    cmd: [bin, 'lock'],
-    cwd: root,
-    stdio: ['inherit', 'inherit', 'inherit'],
-  })
-  if (proc.exitCode !== 0) sayNotice('warn', 'vx upgrade', 'vx lock failed: run vx lock')
+  let code: number | null
+  try {
+    code = Bun.spawnSync({
+      cmd: [bin, 'lock'],
+      cwd: root,
+      stdio: ['inherit', 'inherit', 'inherit'],
+    }).exitCode
+  } catch {
+    code = null
+  }
+  if (code !== 0) sayNotice('warn', 'vx upgrade', 'vx lock failed: run vx lock')
 }
 
 /**
