@@ -2036,7 +2036,12 @@ integrity npm signed … nothing replaced`. A release signed with a key
 id vx does not pin says so: `… is signed with an npm key this vx does
 not know (…) — if npm rotated its signing key, this vx's installer
 needs updating`. A release with no signature or no integrity is refused
-before the download. Every refusal comes before anything is written.
+before the download. A signature proves the bytes, not that they are the
+release asked for, so an older signed release served in its place is
+refused too: `vx upgrade TAG` takes only that version (`asked for …@0.4.0,
+the registry answered 0.3.0`), and `latest` below the running vx is refused
+(`… is 0.3.0, below this vx's 0.4.0`); go back by naming the version.
+Every refusal comes before anything is written.
 There is no fallback to GitHub's release digest: when the registry is
 unreachable, the upgrade is refused.
 

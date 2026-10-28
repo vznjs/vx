@@ -243,7 +243,9 @@ in vx, and the tarball matches that integrity: the host that serves the
 bytes cannot make the signature, so a swapped tarball is refused before
 anything is written, and a key id vx does not pin is refused with a hint
 that the installer needs updating (2026-10-13; pnpm's installer
-checks the same). The new binary is staged in a fresh directory, never a
+checks the same). The signed version must be the one asked for, and
+`latest` below the running vx is refused, so a mirror cannot downgrade
+vx to an older signed release. The new binary is staged in a fresh directory, never a
 name another user could plant a link at. A vx a package manager
 installed is upgraded by that manager, which checks its own integrity.
 npm packages
