@@ -894,13 +894,16 @@ export interface RootCause {
 /**
  * The tasks under `taskId`'s moved upstreams whose OWN key components
  * moved in the same run, each with the chain that carried it up. A task
- * visited once is not walked again (a diamond names its root once).
+ * visited once is not walked again (a diamond names its root once). A
+ * group records no run, so `groups` (group id → the tasks it gathers)
+ * carries the walk through it.
  */
 export function rootCauses(
   db: Database,
   runId: string,
   taskId: string,
   entries: CacheKeyDiff['entries'],
+  groups: ReadonlyMap<string, readonly string[]> = new Map(),
 ): RootCause[] {
   const roots: RootCause[] = []
   const seen = new Set([taskId])
@@ -910,7 +913,14 @@ export function rootCauses(
       seen.add(e.name)
       const next = [...chain, e.name]
       const d = cacheKeyDiff(db, runId, e.name)
-      if (!d.found) continue
+      if (!d.found) {
+        const members = groups.get(e.name) ?? []
+        walk(
+          next,
+          members.map((name) => ({ ...e, name })),
+        )
+        continue
+      }
       const own = d.entries.filter((x) => x.kind !== 'upstream')
       if (own.length > 0) roots.push({ chain: next, entries: own })
       walk(next, d.entries)
