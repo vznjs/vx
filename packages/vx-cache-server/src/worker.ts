@@ -47,17 +47,18 @@ const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${n
  * checked the token and named the object before a read reaches here.
  */
 
-function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
+export function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
   return {
     async put(name, body, size) {
       // R2 takes a stream of known length; this one errors at any other.
       const fixed = new FixedLengthStream(size)
       const piped = body.pipeTo(fixed.writable)
-      try {
-        await Promise.all([bucket.put(name, fixed.readable), piped])
-      } catch (err) {
-        throw new Refusal(400, `the body is not ${size} bytes: ${String(err)}`)
-      }
+      const [stored, read] = await Promise.allSettled([bucket.put(name, fixed.readable), piped])
+      // A body of another length fails the pipe; R2 failing alone is the
+      // bucket's fault (a 502), never the client's 400.
+      if (read.status === 'rejected')
+        throw new Refusal(400, `the body is not ${size} bytes: ${String(read.reason)}`)
+      if (stored.status === 'rejected') throw stored.reason
     },
     get: async (name) => {
       const key = keyOf(name)
