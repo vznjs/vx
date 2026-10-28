@@ -73,6 +73,19 @@ describe('HistoryServer', () => {
     expect(asked).toEqual([])
   })
 
+  it('takes no duration that a chain of them could sum past a number', async () => {
+    const answer = (async (u: string) =>
+      String(u).endsWith('/v1/capabilities')
+        ? Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+        : Response.json({
+            timings: { big: { durationMs: 1e308 }, ok: { durationMs: 5 } },
+          })) as unknown as typeof fetch
+    const client = new HistoryServer(url, NAMED, {}, answer)
+    expect(await client.query(['refs/heads/main'], ['big', 'ok'])).toEqual(
+      new Map([['ok', { durationMs: 5 }]]),
+    )
+  })
+
   // A blip on the run's first call, the query, kept the run's upload
   // from ever asking again: the run's timings were lost.
   it('asks for the limits again after a failed ask', async () => {
@@ -386,7 +399,7 @@ describe('HistoryServer', () => {
       expect(refined).toHaveLength(1)
       expect(await refined[0]).toBeInstanceOf(Map)
       expect(warned).toEqual([
-        '[vx] vx-history: assume ignores "a#build" — each must be a finite number of ms',
+        '[vx] vx-history: assume ignores "a#build" — each must be a number of ms from 0 to 2^53',
       ])
     } finally {
       fake.mockRestore()

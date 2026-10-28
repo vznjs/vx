@@ -261,7 +261,11 @@ export class HistoryServer {
     )
     const out = new Map<string, ServerTiming>()
     for (const [hash, t] of parts.flat()) {
-      if (typeof t?.durationMs !== 'number' || !(t.durationMs >= 0)) continue
+      if (
+        typeof t?.durationMs !== 'number' ||
+        !(t.durationMs >= 0 && t.durationMs <= Number.MAX_SAFE_INTEGER)
+      )
+        continue
       out.set(hash, {
         durationMs: t.durationMs,
         ...(typeof t.cores === 'number' ? { cores: t.cores } : {}),

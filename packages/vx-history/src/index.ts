@@ -215,7 +215,8 @@ const memoryBudgetMb = (options: VxHistoryOptions): number =>
   usable(options.memory) ? options.memory : Math.floor(machineMemoryBytes() / MB)
 
 /**
- * The `assume` durations that are finite non-negative numbers. A NaN
+ * The `assume` durations that are numbers from 0 to 2^53: a larger one
+ * summed along a chain to Infinity, which core refuses too. A NaN
  * (`Number(process.env.X)` with X unset) became a NaN weight and a string
  * (an untyped `.mjs` config) string weights, and core refused both as a
  * UserError: an ordering hint failed the run (item 930). The rest are
@@ -228,12 +229,12 @@ function assumptions(
   const ok: Record<string, number> = {}
   const bad: string[] = []
   for (const [id, ms] of Object.entries(options.assume ?? {})) {
-    if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) ok[id] = ms
+    if (typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER) ok[id] = ms
     else bad.push(id)
   }
   if (bad.length > 0) {
     warn(
-      `[vx] vx-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a finite number of ms`,
+      `[vx] vx-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a number of ms from 0 to 2^53`,
     )
   }
   return ok

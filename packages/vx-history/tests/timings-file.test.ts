@@ -210,6 +210,43 @@ describe('the file between machines', () => {
   )
 })
 
+// Two hand-edited 1e308s on one chain summed to Infinity, and core
+// refuses a weight that is not finite: an ordering hint failed the run.
+it(
+  'durations whose chain sums past a number are dropped, not a failed run',
+  async () => {
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    await mkdir(path.join(root, 'a'), { recursive: true })
+    await writeFile(
+      path.join(root, 'a', 'vx.config.mjs'),
+      "export default { name: 'a', tasks: { build: { exec: { command: 'true' } }, test: { dependsOn: ['build'], exec: { command: 'true' } } } }\n",
+    )
+    await writeFile(
+      path.join(root, 'timings.json'),
+      '{"version":1,"tasks":{"a#build":1e308,"a#test":1e308}}',
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 'timings.json', assume: { 'a#build': Number.MAX_VALUE } })] }\n",
+    )
+    const said: string[] = []
+    const summary = await run({
+      cwd: root,
+      tasks: ['test'],
+      handleSignals: false,
+      log: silent(said),
+    })
+    expect([summary.ok, said.filter((m) => m.includes('schedule'))]).toEqual([true, []])
+    expect(readTimings(path.join(root, 'timings.json'), () => {})).toEqual({
+      'a#build': expect.any(Number),
+      'a#test': expect.any(Number),
+    })
+  },
+  TIMEOUT,
+)
+
 // A failed rewrite (a read-only cache mount, a path through a file)
 // surfaced as core's bare `failed in teardown: EEXIST: mkdir …`, naming
 // neither the timings file nor that only the file was lost.
