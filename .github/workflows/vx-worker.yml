@@ -75,8 +75,11 @@ jobs:
       - name: Set up the sandbox
         id: setup
         run: bun packages/vx/src/bin.ts setup github
+      # `dpkg -i` checks no signature, and a restore takes the newest key
+      # of the prefix: only main's own code saves what every later worker
+      # installs as root. A worker runs whatever sha it was handed.
       - name: Save the sandbox packages
-        if: steps.setup.outputs.fetched == 'true'
+        if: steps.setup.outputs.fetched == 'true' && github.ref == 'refs/heads/main' && inputs.sha == github.sha
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/vx/setup-debs

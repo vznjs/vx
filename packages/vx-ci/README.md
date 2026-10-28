@@ -155,7 +155,10 @@ read it (on GitLab it sits in the checkout). On Actions the step's outputs, writ
 `GITHUB_OUTPUT`, are `fetched` and `key`
 (`vx-setup-debs-<RUNNER_OS>-<RUNNER_ARCH>-<image>-<version>`, the
 runner image's, which the restore prefix below finds), so a cache step
-saves only what it fetched:
+saves only what it fetched. Save only from the default branch's own
+runs: the restored debs install as root with `dpkg -i`, which checks no
+signature, and a restore takes the newest key of the prefix, so a
+pull request's code saving there would reach every later job:
 
 ```yaml
 - uses: actions/cache/restore@v5
@@ -165,7 +168,7 @@ saves only what it fetched:
     restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
 - id: setup
   run: vx setup github
-- if: steps.setup.outputs.fetched == 'true'
+- if: steps.setup.outputs.fetched == 'true' && github.ref == 'refs/heads/main'
   uses: actions/cache/save@v5
   with:
     path: ~/.cache/vx/setup-debs
