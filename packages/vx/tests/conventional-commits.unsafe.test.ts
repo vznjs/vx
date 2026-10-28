@@ -8,7 +8,7 @@
 // `.unsafe`: it asks git for the PR's commits, and a sandboxed shard has no git.
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { conventionalError, squashBreakingError } from '../scripts/conventional.js'
+import { conventionalError, landsByMerge, squashBreakingError } from '../scripts/conventional.js'
 import { commitsBetween } from '../scripts/release-notes.js'
 import { fetchHistory } from './helpers/history.js'
 
@@ -42,6 +42,7 @@ it('every commit the PR adds has a Conventional Commits subject', () => {
 
 it('the squash lands as many breaking commits as the branch holds', () => {
   if (title === '' || base === '' || head === '') return
+  if (landsByMerge(base, head, path.resolve(import.meta.dir, '..'))) return
   const commits = commitsBetween(base, head, path.resolve(import.meta.dir, '..'))
   expect(squashBreakingError(title, commits)).toBeNull()
 })

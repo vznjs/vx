@@ -41,7 +41,8 @@ scope, which only runs of that branch read:
   runs.
 - A merge queue's run (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`)
   writes its base branch, since queued code is about to land.
-- A `pull_request_target` run writes nothing: it may run a fork's code.
+- A `pull_request_target`, `issue_comment` or `workflow_run` run writes
+  nothing: it may run a fork's code.
 
 `AUDIENCE` is the `aud` a token must name: the origin clients reach the
 server at (`https://cache.example.com`), which is what `vxCache()` asks

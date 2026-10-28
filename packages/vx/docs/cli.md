@@ -399,10 +399,10 @@ What counts as a change:
 lockfile and no install setting: without a lockfile plugin, the root
 `bun.lock` or `pnpm-lock.yaml` is a root file like any other, and a
 change to it selects the root project (when the workspace has one), not
-every project.
+every project. One inside a package selects only that package.
 
 A lockfile a plugin claims (`VxPlugin.fingerprint`, such as
-`pnpm-lock.yaml` under `@vzn/vx-lockfile`) is different. The key holds
+`pnpm-lock.yaml` under `@vzn/vx-lockfile`) is in the key: the key holds
 what the plugin says per project, so `--affected` gives the plugin the
 lockfile at the base and now, and selects the projects it names.
 
@@ -994,7 +994,10 @@ cache entry for them, so the next run is a plain local hit.
 | `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
-and each task hears it once: from vx, as SIGINT. A stop starts no more remote
+and each task hears it once: from vx, as SIGINT. Ctrl-Z (SIGTSTP) stops
+each task's process group, then vx; `fg` or `bg` continues vx, and vx
+continues them. A Linux sandboxed task's command is not stopped, only
+held once its output pipe fills. A stop starts no more remote
 cache uploads and does not wait on one in flight, nor on a remote lookup or
 download: what was half-read is dropped and fetched again next run.
 
@@ -1483,7 +1486,8 @@ idles is said (`vx: app#dev exited with code 3`); the next change
 starts it again. A cycle in which a task the server depends on fails
 stops it. An edit while a cycle waits only on a server that has not
 printed its `readyWhen` line stops that cycle and starts the next, so a
-fix reaches a server stuck before ready, in the initial run too.
+fix reaches a server stuck before ready, in the initial run too; the
+servers already up stay up through it.
 Stopping watch stops the server too. A one-shot task (`vx watch build`)
 re-runs itself and what it depends on.
 
@@ -1515,7 +1519,7 @@ watch`.
 
 `vx cache clean` evicts old or oversized cache entries, or with no
 bound clears the cache. It operates on the entries and
-`<hash>.tar.zst` artifacts of the store the workspace's index records
+`<hash>.tar.zst` artifacts of the store a run opens
 (`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
@@ -1652,7 +1656,8 @@ are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `vx cache clean` with neither `--older-than` nor `--max-size` clears
 the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
 `--cache-dir`: the index and this workspace's run history, so `vx last`
-and `vx why` start over) and the store its index names, where the
+and `vx why` start over), the store a run opens and the one its index
+last named, if another (a changed HOME, an origin added), where the
 entries live (`~/.vx/<id>/cache`, shared by this repository's
 checkouts, so their entries go too). `--global` also clears every other
 repository's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
@@ -1668,6 +1673,10 @@ index is a file in the checkout, which a commit or a restored CI cache
 could point at any directory. A workspace that never ran says
 `› vx cache clean  nothing to free`. The next run misses every task once
 and saves again.
+
+A `.vx/cache` linked to another directory (a CI cache volume) is
+emptied through the link, and the link stays. An index SQLite cannot
+read is cleared like any other.
 
 ```
 $ vx cache clean
