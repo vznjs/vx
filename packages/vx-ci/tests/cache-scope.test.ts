@@ -191,6 +191,21 @@ it("a merge queue's run is trusted: no scope, compared with the queue's base, re
   })
 })
 
+// A workflow on `push` with no branch filter also runs on each queue
+// branch GitHub creates. The cache server writes such a run's entries to
+// the queue's base, so it reads only that base too, as a `merge_group`
+// run does. Before: it named `vznjs/vx:gh-readonly-queue/...` and read the
+// queue ref, then main, never the `release` base its entries went to.
+it("a push to a merge queue's branch is the queue's run: trusted, reading only its base", async () => {
+  const name = `gh-readonly-queue/release/pr-7-${'a'.repeat(40)}`
+  expect(
+    await branchOf({
+      ...actions(`refs/heads/${name}`, name),
+      GITHUB_EVENT_NAME: 'push',
+    }),
+  ).toEqual({ trusted: true, refs: ['refs/heads/release'] })
+})
+
 it('an unknown default branch gets its own scope', async () => {
   expect(
     await scopeOf({
