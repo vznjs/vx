@@ -764,7 +764,16 @@ function expandNestedRepos(
       for (const f of walkFiles(abs)) out.push(`${nested}/${f}`)
       continue
     }
-    const inner = runGitLsFiles(abs, nestedRepoEnv())
+    let inner
+    try {
+      inner = runGitLsFiles(abs, nestedRepoEnv())
+    } catch {
+      // A `.git` git cannot open (a submodule's file naming a lost
+      // `.git/modules` entry) answers as no `.git` does: by a walk. It
+      // refused the whole run as "not inside a git work tree".
+      for (const f of walkFiles(abs)) out.push(`${nested}/${f}`)
+      continue
+    }
     for (const f of inner.files) out.push(`${nested}/${f}`)
     for (const f of inner.undecodable) undecodable.push(`${nested}/${f}`)
   }
