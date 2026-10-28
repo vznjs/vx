@@ -68,17 +68,17 @@ workspace gets a clean `UserError` telling the user to `git init`.)
 The string DSL is verbatim Turbo (Nx supports the same forms plus a
 richer object form).
 
-| Form         | Meaning                             | Source                             | vx source                                                                                        |
-| ------------ | ----------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `'lint'`     | Same project, other task            | Turbo + Nx                         | `src/graph/dependency-spec.ts` ("Turbo/Nx-style")                                                |
-| `'^lint'`    | Same task in workspace dependencies | Turbo + Nx                         | `src/graph/dependency-spec.ts`                                                                   |
-| `'pkg#lint'` | Arbitrary other package's task      | Turbo + Nx                         | `src/graph/dependency-spec.ts`                                                                   |
-| `'*' / '^*'` | Wildcard upstream (filter-only)     | Turbo's `$TURBO_DEFAULT$`-adjacent | `src/graph/dependency-spec.ts` ("filter-only"), `src/orchestrator/upstream.ts` ("like Turbo/Nx") |
-| `'!<form>'`  | Negation (filter-only)              | Turbo `inputs` exclusion           | `src/graph/dependency-spec.ts` ("filter-only")                                                   |
+| Form         | Meaning                             | Source                             | vx source                                                                                       |
+| ------------ | ----------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `'lint'`     | Same project, other task            | Turbo + Nx                         | `src/util/dependency-spec.ts` ("Turbo/Nx-style")                                                |
+| `'^lint'`    | Same task in workspace dependencies | Turbo + Nx                         | `src/util/dependency-spec.ts`                                                                   |
+| `'pkg#lint'` | Arbitrary other package's task      | Turbo + Nx                         | `src/util/dependency-spec.ts`                                                                   |
+| `'*' / '^*'` | Wildcard upstream (filter-only)     | Turbo's `$TURBO_DEFAULT$`-adjacent | `src/util/dependency-spec.ts` ("filter-only"), `src/orchestrator/upstream.ts` ("like Turbo/Nx") |
+| `'!<form>'`  | Negation (filter-only)              | Turbo `inputs` exclusion           | `src/util/dependency-spec.ts` ("filter-only")                                                   |
 
 Graph construction rejects bare wildcards / negation in `dependsOn`
 itself (`src/graph/task-graph.ts`) — they're filter-only, as the
-parser's docblock marks them (`src/graph/dependency-spec.ts`).
+parser's docblock marks them (`src/util/dependency-spec.ts`).
 
 ### Filter DSL + selection
 

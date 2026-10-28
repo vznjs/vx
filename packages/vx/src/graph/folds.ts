@@ -2,14 +2,14 @@
 // alone: the hash path, the sandbox's keyed set and `vx lock`'s
 // input-overlap rule read this one selection, so they cannot drift.
 
-import { UserError } from '../util/index.js'
 import {
+  UserError,
   DependencySpecError,
   compileTaskPattern,
   isTaskPattern,
   parseDependencySpec,
   type DependencySpec,
-} from './dependency-spec.js'
+} from '../util/index.js'
 import type { TaskNode } from './task-graph.js'
 
 /**
@@ -91,7 +91,7 @@ function namesNoDependency(spec: DependencySpec, dependsOn: readonly string[]): 
   return !dependsOn.some((raw) => {
     let d: DependencySpec
     try {
-      d = parseDependencySpec(raw)
+      d = parseDependencySpec(raw, 'dependsOn')
     } catch {
       return false
     }
@@ -102,10 +102,10 @@ function namesNoDependency(spec: DependencySpec, dependsOn: readonly string[]): 
 
 function parseSpec(raw: string, selfTaskId: string): DependencySpec {
   try {
-    return parseDependencySpec(raw)
+    return parseDependencySpec(raw, 'inputs.tasks')
   } catch (err) {
     if (err instanceof DependencySpecError) {
-      throw new UserError(`${selfTaskId}: inputs.tasks: ${err.message}`)
+      throw new UserError(`${selfTaskId}: ${err.message}`)
     }
     throw err
   }

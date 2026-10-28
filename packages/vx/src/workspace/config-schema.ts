@@ -28,6 +28,8 @@ import {
   anyTaskGlob,
   asTrees,
   isLiteralPattern,
+  parseDependencySpec,
+  DependencySpecError,
 } from '../util/index.js'
 import {
   parseSettingValue,
@@ -827,9 +829,9 @@ export function validateProjectConfig(
       // The only InputsConfig field that reached the run unvalidated: a
       // non-string entry crashes deep in `filterUpstreamHashes` /
       // `parseDependencySpec` with a raw TypeError naming neither the task
-      // nor the config. Entry SYNTAX is already checked downstream (a
-      // `DependencySpecError` becomes a UserError naming the task) — this
-      // only pins the shape.
+      // nor the config. Each entry's syntax too: a malformed one (`^`,
+      // `a#`) passed `vx lock` and failed the task at hash time, after its
+      // upstream ran.
       const taskFilters = (inputs as { tasks?: unknown }).tasks
       if (taskFilters !== undefined) {
         if (
@@ -840,6 +842,14 @@ export function validateProjectConfig(
             `${where}.inputs.tasks must be an array of non-empty strings ` +
               `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name', '*', '^*', '!name')`,
           )
+        }
+        for (const raw of taskFilters as string[]) {
+          try {
+            parseDependencySpec(raw, 'inputs.tasks')
+          } catch (err) {
+            if (err instanceof DependencySpecError) throw new UserError(`${where}: ${err.message}`)
+            throw err
+          }
         }
         assertFilterNamesDeclaredDeps(taskFilters, task.dependsOn, where)
       }
@@ -1513,7 +1523,7 @@ function assertFilterNamesDeclaredDeps(
     // the wildcard skip below takes (item 678).
     if (raw.startsWith('!')) continue
     const f = specForm(raw)
-    if (f.task.length === 0 || f.task.includes('*') || named(f)) continue
+    if (f.task.includes('*') || named(f)) continue
     // `where` opens with the config's path; the message names it once.
     const task = where.slice(where.lastIndexOf(': tasks.') + 2)
     throw new UserError(

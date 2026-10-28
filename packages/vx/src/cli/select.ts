@@ -236,7 +236,7 @@ export function taskEdgesFrom(staged: ReadonlyMap<string, ProjectEntry>): Map<st
       for (const raw of task.dependsOn ?? []) {
         let spec
         try {
-          spec = parseDependencySpec(raw)
+          spec = parseDependencySpec(raw, 'dependsOn')
         } catch {
           continue
         }
