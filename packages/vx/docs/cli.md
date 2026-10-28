@@ -96,6 +96,7 @@ There is no `-V`; use `vx --version`, as in Turbo.
 `vx <verb> --help` (also `-h` and `vx help <verb>`) prints this
 reference for that verb: its usage lines and sections, then
 `Full reference: vx help`. Every argument error points at it.
+`vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
 
 `vx help <name>` for a name that is no verb is refused like
 `vx <name>`: one line, a guess when one is close, exit 1.

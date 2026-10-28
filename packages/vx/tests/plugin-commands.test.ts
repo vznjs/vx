@@ -324,11 +324,12 @@ describe('plugin commands', () => {
     expect(text).toContain('Plugin commands:')
     expect(text).toContain('vx hello')
     expect(text).toContain('says hi (org/hello)')
-    // A plugin verb is a verb here: `vx help hello` is the reference that
-    // lists it, and `vx help helloo` guesses it.
+    // A plugin verb is a verb here: `vx help hello` is `vx hello --help`,
+    // as `vx help run` is `vx run --help`, and `vx help helloo` guesses it.
     out.length = 0
-    expect(await cli(['help', 'hello'])).toBe(0)
-    expect(out.join('')).toBe(text)
+    expect(await cli(['help', 'hello'])).toBe(7)
+    expect((globalThis as { __vxCmd?: { argv: string[] } }).__vxCmd?.argv).toEqual(['--help'])
+    expect(out.join('')).not.toContain('Plugin commands:')
     err.length = 0
     expect(await cli(['help', 'helloo'])).toBe(1)
     expect(err.join('')).toBe(
