@@ -90,7 +90,8 @@ export function parseAllow(list: string): Allowed[] {
       if (r < 0 || !https || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
-      return { issuer, repository, workflow }
+      // A token's `iss` has no trailing slash: one written in ALLOW matched none.
+      return { issuer: issuerOf(issuer), repository, workflow }
     })
 }
 
@@ -283,7 +284,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     } catch {
       throw new Refusal(401, 'not a JWT')
     }
-    if (typeof iss !== 'string' || !opts.allow.some((a) => a.issuer === iss)) {
+    if (typeof iss !== 'string' || !opts.allow.some((a) => a.issuer === issuerOf(iss))) {
       throw new Refusal(401, "an issuer this server's ALLOW does not name")
     }
     const audience = opts.audience ?? new URL(req.url).origin
@@ -306,7 +307,9 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     if (typeof named !== 'string') throw new Refusal(403, `no ${claim} claim`)
     // GitHub and GitLab names ignore case; a checkout's origin may spell it either way.
     const repository = named.toLowerCase()
-    const ofRepo = opts.allow.filter((a) => a.issuer === iss && same(a.repository, repository))
+    const ofRepo = opts.allow.filter(
+      (a) => a.issuer === issuerOf(iss) && same(a.repository, repository),
+    )
     if (ofRepo.length === 0)
       throw new Refusal(403, `${claim} ${repository} is not in this server's ALLOW`)
     const wclaim = workflowClaimOf(iss)

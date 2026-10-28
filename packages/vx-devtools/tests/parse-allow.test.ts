@@ -14,6 +14,9 @@ describe('parseAllow', () => {
       { issuer: GITHUB, repository: 'acme/app', workflow: 'ci.yml' },
       { issuer: 'https://gitlab.com', repository: 'group/sub/app', workflow: '.gitlab-ci.yml' },
     ])
+    expect(parseAllow('https://gitlab.com/:group/app:.gitlab-ci.yml')[0]?.issuer).toBe(
+      'https://gitlab.com',
+    )
     for (const bad of [
       'acme/app',
       `${GITHUB}:acme/app`,
