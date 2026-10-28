@@ -639,6 +639,34 @@ describe('graph stage', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a named task a plugin drops is gone from an --affected run too, not a TypeError',
+    async () => {
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([pluginSource('org/drop', `{ graph(nodes) { nodes.delete('a#build') } }`)])
+      const changes = {
+        projects: new Set(['b']),
+        changed: ['packages/b/x'],
+        paths: new Map([['b', ['x']]]),
+        whole: new Set<string>(),
+      }
+      const ids = async (affected?: typeof changes): Promise<string[]> =>
+        (
+          await planRun({
+            cwd: root,
+            tasks: ['a#build', 'b#build'],
+            ...(affected !== undefined ? { affected } : {}),
+            log: silent(),
+          })
+        ).tasks.map((t) => t.node.id)
+      // CONTROL: the run without the diff plans what the hook left.
+      expect(await ids()).toEqual(['b#build'])
+      expect(await ids(changes)).toEqual(['b#build'])
+    },
+    TIMEOUT,
+  )
 })
 
 describe('key stage', () => {

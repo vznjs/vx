@@ -114,7 +114,8 @@ A merge train's pipeline (`CI_MERGE_REQUEST_EVENT_TYPE=merge_train`)
 builds what lands on the target, so it is trusted: no scope. As on
 Actions, the scope keys only plugin entries. A remote reads the tag, else
 the merge request's source branch, else `CI_COMMIT_REF_NAME`, then the
-target (`CI_MERGE_REQUEST_TARGET_BRANCH_NAME`), then the default branch
+target (`CI_MERGE_REQUEST_TARGET_BRANCH_NAME`, an external pull
+request's `CI_EXTERNAL_PULL_REQUEST_TARGET_BRANCH_NAME`), then the default branch
 (`baseBranch`, else `CI_DEFAULT_BRANCH`); a merge train reads only its
 target. `gitlab({ cacheScope: false })` (`GitlabPluginOptions`) turns it off;
 `VX_CACHE_SCOPE` overrides it. Anywhere else `gitlab()` returns

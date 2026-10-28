@@ -39,6 +39,7 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry> // the loaded projects: the workspace, or a scoped run's closure
   hintProjects: ReadonlyMap<string, ProjectEntry> // a typo's measure: every project when a `pkg#task` named none loaded
   anyProjectConfig: boolean // some package has a vx.config.* at all, whatever the scope
+  taskless: (name: string) => boolean // a workspace project that declares no task
   fingerprintWatch: FingerprintWatch // the claimed root files: has a task rewritten one? (fingerprint-watch.md)
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache // per-run memo of `git ls-files`, by project dir

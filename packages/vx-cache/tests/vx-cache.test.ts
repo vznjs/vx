@@ -32,13 +32,13 @@ beforeAll(async () => {
 })
 
 /** The server over a Map bucket: what the wire sees is the server's own. */
-function server(maxUploadBytes = 1 << 20, readAccess?: string) {
+function server(maxUploadBytes = 1 << 20, readAccess?: string, maxCheckHashes?: number) {
   const blobs = new Map<string, Uint8Array>()
   const seen: { method: string; path: string; body: string; scope: string | null }[] = []
   const handle = createCacheServer({
     blobs: memBlobs(blobs),
     authorize: oidcAuth({ allow: ALLOW, readAccess, fetchJson: (u) => iss.fetchJson(u) }),
-    limits: { maxUploadBytes },
+    limits: { maxUploadBytes, ...(maxCheckHashes === undefined ? {} : { maxCheckHashes }) },
   })
   const srv = Bun.serve({
     port: 0,
@@ -246,6 +246,78 @@ describe('VxCacheLayer', () => {
     expect(
       layer(srv.url, write).put('ee55', new Blob([new Uint8Array(65)]), { durationMs: 1 }),
     ).rejects.toThrow('HTTP 413: an upload is at most 64 bytes')
+  })
+})
+
+describe("the server's limits", () => {
+  // Each check of one hash named every scope: a run reading more refs than
+  // the server's maxCheckHashes sent more lookups than it takes, and every
+  // check was refused.
+  it('checks a run that reads more refs than one check takes, scopes in order', async () => {
+    const srv = server(1 << 20, undefined, 2)
+    try {
+      const [write, read] = await Promise.all([srv.token(MAIN_JOB), srv.token(READ_JOB)])
+      await layer(srv.url, write).put('ab12', new Blob(['held']), { durationMs: 1 })
+      const refs = ['refs/heads/a', 'refs/heads/b', 'refs/heads/c', 'refs/heads/d', MAIN]
+      const c = layer(srv.url, read, refs)
+      const before = srv.seen.length
+      expect(await c.hasMany(['ab12', 'cd34'])).toEqual(new Map([['ab12', { size: 4 }]]))
+      const checks = srv.seen.slice(before).filter((r) => r.path === '/v1/artifacts')
+      for (const r of checks) {
+        const { hashes, scopes } = JSON.parse(r.body) as { hashes: string[]; scopes: string[] }
+        expect(hashes.length * scopes.length).toBeLessThanOrEqual(2)
+      }
+      expect(await (await c.get('ab12'))!.body.text()).toBe('held')
+      expect(srv.seen.at(-1)!.scope).toBe(await hashPart(MAIN))
+    } finally {
+      await srv.stop()
+    }
+  })
+
+  // A server restarted with lower limits refused each check and upload for
+  // its size, and the run kept the old ones: every check of the run failed.
+  it('keeps to the limits a refusal names, from the next check and upload', async () => {
+    const blobs = new Map<string, Uint8Array>()
+    const made = (maxCheckHashes: number, maxUploadBytes: number) =>
+      createCacheServer({
+        blobs: memBlobs(blobs),
+        authorize: oidcAuth({ allow: ALLOW, fetchJson: (u) => iss.fetchJson(u) }),
+        limits: { maxCheckHashes, maxUploadBytes },
+      })
+    let handle = made(500, 1 << 20)
+    const lookups: number[] = []
+    const srv = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: async (req) => {
+        if (new URL(req.url).pathname === '/v1/artifacts') {
+          const { hashes, scopes } = (await req.clone().json()) as Record<string, string[]>
+          lookups.push(hashes!.length * scopes!.length)
+        }
+        return handle(req as never)
+      },
+    })
+    try {
+      const url = srv.url.href.replace(/\/$/, '')
+      const c = layer(url, await iss.sign(MAIN_JOB, new URL(url).origin))
+      const said: string[] = []
+      c.warn = (m) => said.push(m)
+      const keys = ['a1', 'a2', 'a3']
+      expect((await c.hasMany(keys)).size).toBe(0)
+      handle = made(2, 1 << 20)
+      await expect(c.hasMany(keys)).rejects.toThrow('HTTP 400')
+      handle = made(2, 4)
+      await expect(c.put('b1', new Blob(['12345']), { durationMs: 1 })).rejects.toThrow('HTTP 413')
+      lookups.length = 0
+      expect((await c.hasMany(keys)).size).toBe(0)
+      expect(lookups.sort((a, b) => a - b)).toEqual([1, 2])
+      expect(await c.put('b2', new Blob(['12345']), { durationMs: 1 })).toBe(false)
+      expect(said).toEqual([
+        "[vx] vx-cache: b2 is 5 bytes, over the server's upload limit of 4: not uploaded",
+      ])
+    } finally {
+      await srv.stop(true)
+    }
   })
 })
 

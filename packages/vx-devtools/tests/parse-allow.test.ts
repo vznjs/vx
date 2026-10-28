@@ -20,6 +20,9 @@ describe('parseAllow', () => {
       `${GITHUB}:acme:ci.yml`,
       `${GITHUB}:acme/app:`,
       'http://x.example:acme/app:ci.yml',
+      // Plain HTTP to another host, behind loopback's spelling.
+      'http://127.0.0.1:80@x.example:acme/app:ci.yml',
+      'http://127.0.0.1.x.example:acme/app:ci.yml',
     ])
       expect(() => parseAllow(bad)).toThrow(`${bad} is not issuer:owner/repo:workflow`)
   })
