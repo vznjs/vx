@@ -50,7 +50,10 @@ export function parsePs(text: string): Ps {
     if (m === null) continue
     const ms = psTime(m[3]!)
     if (ms === undefined) continue
-    table.set(Number(m[1]), { name: m[4]!.split('/').pop()!, ms })
+    // macOS prints the path it ran; Linux a name, a kernel thread's with a
+    // slash in it (`kworker/0:1`).
+    const name = /^[./]/.test(m[4]!) ? m[4]!.split('/').pop()! : m[4]!
+    table.set(Number(m[1]), { name, ms })
     parents.set(Number(m[1]), Number(m[2]))
   }
   return { table, parents }
