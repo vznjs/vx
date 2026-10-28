@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v48'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v49'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -2133,6 +2133,11 @@ breaking footer).
 
 ### History
 
+- **v48 → v49**: stored bytes wrong under a key the change does not move
+  (2026-10-28). Each brace alternative is read alone: `{dist,lib}` is the
+  two trees, and `{./dist,lib}/**` drops the `./`. An output glob folds
+  as its text, so a v48 entry for `outputs: ['{dist,lib}']` holds an empty
+  artifact under the unchanged key and would restore nothing.
 - **v47 → v48**: stored bytes wrong under a key the change does not move
   (2026-10-18). A task glob is a standard glob again: `[...]` is a
   character class and `\[id\]` names a route directory, which reverts

@@ -865,7 +865,10 @@ is taken as one and only warns when it matches nothing.
 
 The wildcards are `*`, `**`, `?`, a character class `[ab]` (`[a-z]`,
 `[!a]`) and a brace set `{a,b}`, which matches what its alternatives
-match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`. A
+match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`, and
+`{src,lib}` is the two directory trees, as `['src', 'lib']` is; the
+spellings fold per alternative (`{./src,lib}/**` is `src/**` plus
+`lib/**`), in inputs and outputs alike. A
 backslash escapes: a route directory (Next.js, SvelteKit, Astro) is
 `app/\[id\]/**`; bare, `app/[id]/**` is the class that matches `app/i`
 and `app/d`, never the route. An input brace of one alternative (`{b}.ts`) is refused at `vx
