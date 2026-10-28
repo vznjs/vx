@@ -14,7 +14,7 @@ import {
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, homeOf, needOf, pace } from '../src/plugin.js'
-import { hostPlatform, type Platform } from '@vzn/vx'
+import { hostPlatform, type Platform, UserError } from '@vzn/vx'
 import {
   type CacheFacts,
   type CapturedChunk,
@@ -3317,6 +3317,8 @@ it('refuses options it does not read and workers it cannot start', () => {
   expect(refusal(() => docker({} as never))).toBe(
     "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
   )
+  // A plain Error printed a stack under VX_E_INTERNAL (2026-10-28).
+  expect(() => docker({} as never)).toThrow(UserError)
 })
 
 it('a run that is not distributed loads none of it', async () => {

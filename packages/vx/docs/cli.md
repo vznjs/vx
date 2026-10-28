@@ -2426,9 +2426,11 @@ type more of it.
 #### `VX_E_CONFIG`
 
 A `vx.config.*` or `.vx/workspace.*` that does not load or is refused. The
-message names the file and the field; fix that field
-(`vx docs <field>` prints its reference). `vx lock` names every
-project config's error at once. A project config's refusal is `vx lock`'s,
+message names the file and the field, or what the config (or a plugin it
+called, such as a factory refusing an option) threw and the line it threw
+at; fix that field
+(`vx docs <field>` prints its reference). `vx lock` lists every config
+that does not load at once. A project config's refusal is `vx lock`'s,
 not a run's: a run never evaluates one.
 
 #### `VX_E_CYCLE`
@@ -2466,9 +2468,10 @@ message is that plugin's or check's: do what it says.
 
 #### `VX_E_FS`
 
-The file system refused a write: permissions, a full disk. The message
+The file system refused a write, or the cache index could not be opened:
+permissions, a full disk, a directory where `cache.db` goes. The message
 names the path. Free space (`vx cache clean --max-size <size>` trims the
-cache) or grant the write, then re-run.
+cache), grant the write, or move the path away, then re-run.
 
 #### `VX_E_FDS`
 
@@ -2486,8 +2489,8 @@ itself; with no origin, fetch it (`git fetch --depth=1 origin <base>`).
 
 #### `VX_E_GIT`
 
-A git command vx runs to read the diff failed; the message carries
-git's exit and its own words. Run that command in the workspace to see
+A git command vx runs to read the diff or list a run's inputs failed;
+the message carries git's exit and its own words. Run that command in the workspace to see
 why (a broken index, a missing object in a partial clone).
 
 #### `VX_E_NETWORK`
@@ -2545,6 +2548,7 @@ defect with that stack at
 https://github.com/vznjs/vx/issues.
 
 A plugin can give its refusal a code: `new UserError(message, 'MY_CODE')`.
+The code holds whether a hook, `setup` or a verb of the plugin throws it.
 
 **Streams.** A verb whose stdout is a product (a `--format json`
 document, `--dry` / `--dry=json`, a completion
@@ -2684,8 +2688,9 @@ on stderr (`no projects`) and names `vx init`.
 machine, for bug reports and sanity checks. The task count and the
 sandbox row's declared count come from the same load a run uses: the
 lock, plugin stages included. `vx info` evaluates no config; with no
-lock, or one a run would refuse, both counts are zero and
-`projects lock` says `no` — a broken config is `vx lock`'s to report.
+lock both counts are zero and `projects lock` says `no`; with one a
+run would refuse, they are zero and `projects lock` says `refused:` and
+why (`lockError` in JSON). A broken config is `vx lock`'s to report.
 
 ### Usage
 

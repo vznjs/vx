@@ -13,7 +13,7 @@
 
 import type { Database } from 'bun:sqlite'
 import { branchSource, EXECUTED_RUNS_SQL } from '../cache/index.js'
-import { splitTaskId } from '../util/index.js'
+import { isMeasure, splitTaskId } from '../util/index.js'
 import { failureModeOf, mixedOutcomeKeysSql } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
 import { isPassStatus, TASK_STATUSES } from '../graph/index.js'
@@ -323,8 +323,15 @@ export class LocalHistoryProvider implements HistoryProvider {
     this.db
       .transaction(() => {
         for (const [id, ms] of timings) {
-          const [project, task] = splitTaskId(id)
           const n = needs.get(id)
+          // A plugin's Infinity or negative, kept, made every later forecast
+          // NaN or below zero: the row is never written again to correct it.
+          if (
+            !isMeasure(ms) ||
+            (n !== undefined && !Object.values(n).every((v) => v === undefined || isMeasure(v)))
+          )
+            continue
+          const [project, task] = splitTaskId(id)
           insert.run(
             project,
             task,

@@ -17,6 +17,7 @@ import {
   isFsRefusal,
   isOutOfFds,
   isUserError,
+  maskedLine,
   relPosix,
   type RefusalParts,
   type UserError,
@@ -272,9 +273,17 @@ function notWritten(
   parts: RefusalParts | undefined,
   also: readonly UserError[] = [],
 ): void {
-  ui.print('err', refusalNotice('vx lock', message, parts, { headline: 'lock not written' }))
+  // Masked: a config's own throw is its author's text, and quotes what
+  // it read (L-11). bin.ts masks what reaches it; this is printed here.
+  ui.print(
+    'err',
+    refusalNotice('vx lock', maskedLine(message), parts, { headline: 'lock not written' }),
+  )
   for (const e of also.slice(0, ALSO_SHOWN))
-    ui.print('err', refusalNotice('vx lock', e.message, e.parts, { headline: 'also refused' }))
+    ui.print(
+      'err',
+      refusalNotice('vx lock', maskedLine(e.message), e.parts, { headline: 'also refused' }),
+    )
   const more = also.length - ALSO_SHOWN
   if (more > 0)
     sayNotice('error', 'vx lock', `${more} more configs refused; fix these, then run vx lock again`)
