@@ -867,11 +867,18 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
   if (sha !== undefined) return sha
   const reached = await reachMergeBase(workspaceRoot, ref)
   if (reached !== undefined) return reached
+  await verifyTreeRef(workspaceRoot, ref)
+  return ref
+}
+
+/**
+ * `verifyRef`, then refuse `<rev>:<path>`: it names the tree (or blob) at
+ * <path>, and diffed against the working tree its paths miss the <path>/
+ * prefix, so `develop:pkgs` selected projects nothing had changed, green.
+ * A root tree (`develop^{tree}`, the empty tree) diffs right and stays a base.
+ */
+async function verifyTreeRef(workspaceRoot: string, ref: string): Promise<void> {
   await verifyRef(workspaceRoot, ref)
-  // `<rev>:<path>` names the tree (or blob) at <path>: diffed against the
-  // working tree, its paths miss the <path>/ prefix, and `develop:pkgs`
-  // selected projects nothing had changed, green. A root tree
-  // (`develop^{tree}`, the empty tree) diffs right and stays a base.
   const sub = /^([^:]*):(?!\/)(.+)$/s.exec(ref)
   if (sub !== null) {
     throw new UserError(
@@ -880,7 +887,6 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
       'VX_E_AFFECTED_BASE',
     )
   }
-  return ref
 }
 
 /**
@@ -960,7 +966,7 @@ async function rangeBase(workspaceRoot: string, ref: string): Promise<string> {
   if (revParse(workspaceRoot, ref) === undefined && isShallow(workspaceRoot)) {
     await fetchTip(workspaceRoot, ref)
   }
-  await verifyRef(workspaceRoot, ref)
+  await verifyTreeRef(workspaceRoot, ref)
   return ref
 }
 
