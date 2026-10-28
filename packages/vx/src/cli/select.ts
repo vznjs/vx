@@ -453,7 +453,7 @@ export async function resolveFilters(
     const excluded = `${negations.join(', ')} excluded every project${includes.length > 0 ? ' the other filters matched' : ''}`
     if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
       if (includes.every((f) => emptyDiffs.has(f))) {
-        const refs = includes.map((f) => f.gitSince).join(', ')
+        const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
         // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
         // the branch under test) can never mark anything affected, and this
         // exit-0 note was the only sign (CI persona, 2026-09-16). Say so.
