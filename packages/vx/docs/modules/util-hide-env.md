@@ -13,7 +13,7 @@ check still works, and vx still reads its own `/proc/self`. A child is
 dumpable again after `exec`, so tasks are unaffected. About 0.8 ms per
 command, the `bun:ffi` load.
 
-`VX_DEBUG_DUMPABLE` (non-empty) skips it: strace cannot read a non-dumpable
+`VX_DEBUG_DUMPABLE=1` (or `true`) skips it: strace cannot read a non-dumpable
 tracee's memory, so it prints no paths, and a debugger cannot list
 `/proc/<pid>/fd`. The strace tests, `vx-bench`'s `strace-vx.ts` and
 `sandbox-session-guard.unsafe.test.ts` set it.

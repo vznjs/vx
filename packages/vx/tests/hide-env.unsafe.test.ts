@@ -78,3 +78,44 @@ describe.skipIf(
     expect(ms).toBeLessThan(50)
   })
 })
+
+// `debug.dumpable` is a bool setting: `0` and `false` are off, as for every
+// other bool, and only a true value keeps vx dumpable. Root may still call
+// prctl, so this needs no non-root gate.
+describe.skipIf(process.platform !== 'linux')('VX_DEBUG_DUMPABLE', () => {
+  function hides(value: string | undefined): string {
+    const r = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        '-e',
+        `const { hideEnvFromTasks } = await import(${JSON.stringify(HIDE)}); console.log(String(await hideEnvFromTasks()))`,
+      ],
+      env: {
+        PATH: process.env['PATH'],
+        ...(value === undefined ? {} : { VX_DEBUG_DUMPABLE: value }),
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(r.exitCode, r.stderr.toString()).toBe(0)
+    return r.stdout.toString().trim()
+  }
+
+  it('hides unless the setting is true', () => {
+    expect({
+      unset: hides(undefined),
+      empty: hides(''),
+      zero: hides('0'),
+      false: hides('false'),
+      one: hides('1'),
+      true: hides('true'),
+    }).toEqual({
+      unset: 'true',
+      empty: 'true',
+      zero: 'true',
+      false: 'true',
+      one: 'false',
+      true: 'false',
+    })
+  })
+})
