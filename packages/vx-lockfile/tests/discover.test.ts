@@ -403,6 +403,33 @@ describe('discover', () => {
         await writeFile(path.join(root, 'packages/a/test/package.json'), '{"name":"a-test"}')
         expect(await discover(c.make(), metas)).toEqual(EXPECTED)
       })
+
+      it(`${c.name}(): a directory a negated globstar names is no workspace, itself included`, async () => {
+        // `!**/test/**` drops packages/test itself for pnpm 10, npm 10 and
+        // bun 1.4 (each probed: no importer for it), but Bun.Glob's `**`
+        // takes no empty tail, so the staleness check named it a workspace
+        // the lockfile lacked and refused every run.
+        await writeFile(path.join(root, c.file), c.text)
+        const globs = ['packages/*', '!**/test/**', '!packages/skip']
+        if (c.name === 'pnpm') {
+          await writeFile(
+            path.join(root, 'pnpm-workspace.yaml'),
+            `packages:\n${globs.map((g) => `  - '${g}'\n`).join('')}`,
+          )
+        }
+        const metas = await projects({ root: { ...rootPkg, workspaces: globs } })
+        for (const dir of ['packages/test', 'packages/skip']) {
+          await mkdir(path.join(root, dir), { recursive: true })
+          await writeFile(path.join(root, dir, 'package.json'), JSON.stringify({ name: 'x' }))
+        }
+        expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+        // CONTROL: a directory no negation names is still a workspace it lacks.
+        await mkdir(path.join(root, 'packages/tested'), { recursive: true })
+        await writeFile(path.join(root, 'packages/tested/package.json'), '{"name":"y"}')
+        await expect(discover(c.make(), metas)).rejects.toThrow(
+          `${c.file} is out of date: it does not list the workspace packages/tested`,
+        )
+      })
     }
 
     if (c.name === 'pnpm') {
