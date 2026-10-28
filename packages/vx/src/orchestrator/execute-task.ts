@@ -984,7 +984,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           } else if (args.executor.exclusive === true) {
             raw = new UserError(`${why}, and ${args.executor.name} runs no task on this machine`)
           } else {
-            warnOf(log)(`[vx] ${node.id}: ${why} — running it here`)
+            warnOf(log)(
+              `[vx] ${node.id}: ${executorLabel(args.executor)} gave it back: ${why} — running it here`,
+            )
             const local = await localExecutor().execute(await buildRequest(true))
             assertExecuteResult('local', node.id, local)
             return local

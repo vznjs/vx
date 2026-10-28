@@ -295,7 +295,7 @@ Execute stream is closed, the operation is cancelled with
 that refuses it, or lacks the service, may still run the action, and its
 result lands in the action cache; that refusal is a warning) and the task is given back to vx, which
 runs it here and says so once:
-`[vx] <task>: vx/reapi: no worker started the action within queueTimeoutMs (…ms); its operation was cancelled — running it here`.
+`[vx] <task>: plugin '@vzn/vx-reapi' (executor 'vx/reapi') gave it back: no worker started the action within queueTimeoutMs (…ms); its operation was cancelled — running it here`.
 A task placed `exec.remote: 'only'` fails with that reason instead. Unset,
 the task's own `exec.timeout` bounds the queue as it bounds the run (the
 task fails as timed out); with neither, the wait is unbounded.

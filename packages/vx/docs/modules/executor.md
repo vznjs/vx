@@ -187,7 +187,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   executor's own throw is vx's and is not renamed.
 - `executorFallback(reason)` (on the façade) is how a `remote` executor
   gives a task back: its `execute` rejects with it, core says
-  `[vx] <task>: <reason> — running it here` once and runs a fresh request
+  `[vx] <task>: plugin '<p>' (executor '<e>') gave it back: <reason> — running it here` once and runs a fresh request
   (its own timeout) on the local executor. A task placed
   `remote: 'only'` fails naming `reason` instead, as does one an
   `exclusive` executor took. A non-remote executor's
