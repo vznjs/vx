@@ -149,10 +149,15 @@ export async function cleanOutputs(args: {
 // The same pair for `outputs.workspaceFiles`, anchored at the root with
 // no project-dir exclusion; the clean returns the root-relative paths
 // it removed, for `GitFilesCache.markWorkspaceOutputsChanged`.
-export async function resolveWorkspaceOutputs(args: {
+export async function resolveWorkspaceOutputs(
+  args: { workspaceRoot: string; outputs: readonly string[] },
+  emptyDirs?: Set<string>, // filled with the empty directories the globs match
+): Promise<string[]>
+// `resolveOutputTree` for `outputs.workspaceFiles`: the files and the empty directories.
+export async function resolveWorkspaceOutputTree(args: {
   workspaceRoot: string
   outputs: readonly string[]
-}): Promise<string[]>
+}): Promise<{ files: string[]; emptyDirs: string[] }>
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
@@ -205,7 +210,7 @@ export async function cleanOutputPaths(args: {
 }): Promise<void>
 // Remove the `.vx-tmp-*` restore temps a killed run left beside the
 // exact-file outputs; a temp whose writer is alive stays.
-export function sweepRestoreTemps(base: string, outputs: readonly string[]): void
+export function sweepRestoreTemps(base: string, outputs: readonly string[], committed?: (abs: string) => boolean): void
 // Remove the `.vx/tmp/<pid>-0` staging a killed run left; a live run's
 // stays. Once per run.
 export function sweepStaging(workspaceRoot: string): void
