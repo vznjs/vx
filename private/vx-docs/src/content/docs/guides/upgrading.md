@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-devtools: match a GitLab CI file kept in another project
+
+An ALLOW entry for a GitLab project whose CI file is kept in another project names that file as GitLab does, `.gitlab-ci.yml@group/ci`; a plain `.gitlab-ci.yml` entry no longer admits its jobs.
+
 ## cache: read each brace alternative of a glob alone
 
 a brace of directories (`{src,lib}`) or of `./` spellings (`{./src,lib}/**`) in inputs or outputs now means what each alternative means alone; CACHE_VERSION is vx-cache-v49, so every cached task misses once.
