@@ -180,6 +180,23 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
   ])
 })
 
+// With no S3 credentials the server listened, said so, and answered every
+// request 502: a deploy looked up while it could serve nothing.
+it('refuses to start with no S3 credentials', () => {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(S3|AWS)_/.test(k)))
+  const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+    env: { ...env, S3_BUCKET: 'b', ALLOW: '' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: 3000,
+  })
+  expect([cli.exitCode, cli.stdout.toString(), cli.stderr.toString()]).toEqual([
+    2,
+    '',
+    expect.stringMatching(/^✗ vx-cache-server {2}S3: Missing S3 credentials\./),
+  ])
+})
+
 // Bun's fetch asks for gzip and inflates what it is sent, so a bucket (or
 // a proxy before it) that compressed an answer named the compressed
 // Content-Length as the artifact's size: a check and a download said

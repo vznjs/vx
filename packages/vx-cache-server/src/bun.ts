@@ -110,8 +110,15 @@ function main(argv: string[]): void {
   } catch (err) {
     fail((err as Error).message)
   }
+  const client = new Bun.S3Client({ bucket: env.S3_BUCKET })
+  try {
+    // Signs offline: refuses missing credentials now, not every request 502.
+    client.presign('vx-cache-server')
+  } catch (err) {
+    fail(`S3: ${(err as Error).message}`)
+  }
   const handle = createCacheServer({
-    blobs: s3Blobs(new Bun.S3Client({ bucket: env.S3_BUCKET })),
+    blobs: s3Blobs(client),
     authorize: oidcAuth({
       allow,
       readAccess: env.READ_ACCESS,
