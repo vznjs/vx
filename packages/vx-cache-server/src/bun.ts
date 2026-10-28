@@ -4,7 +4,7 @@
 
 import { parseArgs } from 'node:util'
 import { oidcAuth, parseAllow } from '@vzn/vx-devtools'
-import { Refusal } from './protocol.js'
+import { Refusal } from '@vzn/vx-devtools'
 import { createCacheServer, DEFAULT_LIMITS, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 

@@ -2,9 +2,9 @@
 // `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and TIMING_DAYS are vars in
 // it.
 
-import { oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
+import { errorJson, oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
-import { createHistoryServer, errorJson } from './server.js'
+import { createHistoryServer } from './server.js'
 import { type Db, sqliteStore } from './store.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */

@@ -1,7 +1,7 @@
 // The vx-history protocol, v1 (PROTOCOL.md), as one fetch handler over a
 // `Store`: Bun and Workers serve the same one.
 
-import { type Access, Refusal } from '@vzn/vx-devtools'
+import { type Access, errorJson, notAllowed, Refusal } from '@vzn/vx-devtools'
 import type { Report, Repo, Store } from './store.js'
 
 /** Reports one upload folds in: a run's tasks. */
@@ -130,32 +130,11 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
       return errorJson(404, 'no such route')
     } catch (err) {
       if (err instanceof Refusal) return errorJson(err.status, err.message)
+      // Never swallowed: the client warns with what the server says.
       console.error(`vx-history-server: ${req.method} ${path}: ${String(err)}`)
-      return errorJson(500, 'internal error')
+      return errorJson(500, err instanceof Error ? err.message : String(err))
     }
   }
-}
-
-const CODES: Record<number, string> = {
-  400: 'bad_request',
-  401: 'unauthorized',
-  403: 'forbidden',
-  404: 'not_found',
-  405: 'method_not_allowed',
-  413: 'payload_too_large',
-  500: 'internal_error',
-  502: 'bad_gateway',
-}
-
-/** Every refusal: `{ code, message }`, the message saying what to fix. */
-export function errorJson(status: number, message: string): Response {
-  return Response.json({ code: CODES[status] ?? 'error', message }, { status })
-}
-
-function notAllowed(allow: string): Response {
-  const res = errorJson(405, `use ${allow}`)
-  res.headers.set('allow', allow)
-  return res
 }
 
 const field = (body: unknown, key: string): unknown =>
