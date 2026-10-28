@@ -1568,7 +1568,6 @@ async function runOnBus(
         persistent: holdServers(keepAlive, {
           forwardArgs: options.forwardArgs,
           outOf: (id) => serverOuts.get(id) ?? { bus },
-          warn: warnOf(log),
         }),
       }
     }
