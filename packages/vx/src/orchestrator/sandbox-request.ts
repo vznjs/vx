@@ -209,6 +209,15 @@ export async function sandboxRequestFor(
         `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
     )
   }
+  // The runtime reports a refused touch one line per record: a path holding
+  // a line break arrived split, and an undeclared write to the project's own
+  // file was judged as outside it, with the wrong hint.
+  if (/[\n\r]/.test(home)) {
+    throw new UserError(
+      `exec.sandbox: ${home} holds a line break, which the sandbox runtime's reports cannot ` +
+        `carry, so a refused touch is misreported — rename the directory, or run the task without exec.sandbox`,
+    )
+  }
   // Bun's realpath throws ENOENT on a path holding a backslash, and SRT
   // mounts no path it cannot resolve: the task saw no project and ran in
   // $HOME.

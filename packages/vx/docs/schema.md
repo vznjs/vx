@@ -1709,7 +1709,9 @@ as a pattern too. So a sandboxed task in a project under such a directory
 (`~/[old]/repo`, `~/w*s/repo`) is refused, naming it: rename the
 directory or drop `exec.sandbox`. On Linux so is a project under a
 directory holding a backslash, which the runtime cannot mount at all (its
-task saw no project and ran in `$HOME`).
+task saw no project and ran in `$HOME`). On every platform so is one
+under a directory holding a line break: the runtime reports a refused
+touch one line per record, so it arrived split and was misreported.
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
