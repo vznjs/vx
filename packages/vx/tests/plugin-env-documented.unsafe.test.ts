@@ -24,7 +24,7 @@ const RECORD = path.join(import.meta.dir, 'contract', 'plugin-env.txt')
  * one-word name (`TERM`) in a code span: bare, it could be any capital word.
  */
 function named(readme: string): string[] {
-  const words = readme.match(/[A-Z][A-Z0-9]*(?:_(?:[A-Z0-9]+|<[A-Z]+>))+/g) ?? []
+  const words: string[] = [...(readme.match(/[A-Z][A-Z0-9]*(?:_(?:[A-Z0-9]+|<[A-Z]+>))+/g) ?? [])]
   for (const m of readme.matchAll(/`([A-Z][A-Z0-9]+)`/g)) words.push(m[1]!)
   return words
 }
