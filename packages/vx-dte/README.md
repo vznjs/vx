@@ -209,13 +209,14 @@ export default defineWorkspace({
 
 ```yaml
 # .github/workflows/ci.yml
-# Written by vx dte init: the run. main runs every task and fills the cache;
+# Written by vx dte init: the run. main and a merge queue run every task;
 # a pull request runs what it changed and its dependents. This job only
 # orchestrates: every task runs on a worker (vx-worker.yml).
 name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 
