@@ -62,19 +62,35 @@ export function guardedOutput(
   claimed: { logger: Logger; owner: string },
   fallback: RunEventSubscriber,
 ): RunEventSubscriber {
-  const render = terminalSubscriber(claimed.logger)
   let failed = false
+  const fail = (err: unknown): void => {
+    if (failed) return
+    failed = true
+    fallback({
+      kind: 'run:status',
+      warn: true,
+      line: `[vx] plugin '${claimed.owner}' output failed: ${err instanceof Error ? err.message : String(err)}; vx renders the rest of the run`,
+    })
+  }
+  // An `async` method's rejection reached no one: an unhandled rejection
+  // ended the run with a stack, exit 1, after its tasks had passed. It
+  // fails the Logger as a throw does; the event it was handed stays its.
+  const logger = Object.create(claimed.logger) as Logger
+  for (const k of [...REQUIRED, ...OPTIONAL, 'warn'] as const) {
+    const method = claimed.logger[k] as ((...args: unknown[]) => unknown) | undefined
+    if (typeof method !== 'function') continue
+    ;(logger as unknown as Record<string, unknown>)[k] = (...args: unknown[]): void => {
+      const ret = method.apply(claimed.logger, args)
+      if (ret instanceof Promise) ret.catch(fail)
+    }
+  }
+  const render = terminalSubscriber(logger)
   return (event) => {
     if (failed) return fallback(event)
     try {
       render(event)
     } catch (err) {
-      failed = true
-      fallback({
-        kind: 'run:status',
-        warn: true,
-        line: `[vx] plugin '${claimed.owner}' output failed: ${err instanceof Error ? err.message : String(err)}; vx renders the rest of the run`,
-      })
+      fail(err)
       fallback(event)
     }
   }

@@ -223,8 +223,8 @@ export interface VxPlugin {
    * (the contract `run({ log })` takes), or `undefined` to leave core's
    * renderer in place. The first plugin, in declaration order, that
    * returns one renders the run; the rest are not asked. Not consulted
-   * when an embedder passed its own `log`. A logger that throws hands the
-   * rest of the run back to core's renderer with one warning.
+   * when an embedder passed its own `log`. A logger that throws or rejects
+   * hands the rest of the run back to core's renderer with one warning.
    */
   output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
 
