@@ -261,7 +261,7 @@ describe('the compiled binary hands off', () => {
       })
     for (const sig of ['INT', 'TERM', 'HUP']) {
       const p = handed(sig)
-      expect([p.exitCode, p.signalCode]).toEqual([null, `SIG${sig}`])
+      expect(`${p.exitCode} ${p.signalCode}`).toBe(`null SIG${sig}`)
     }
     // Any other signal keeps the shell's code.
     expect(handed('USR1').exitCode).toBe(128 + os.constants.signals.SIGUSR1)
