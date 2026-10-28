@@ -97,8 +97,12 @@ export function localFloor(
       ...(spec.timeoutMs === undefined ? {} : { timeoutMs: spec.timeoutMs }),
       ...(signalChannel ? { signalChannel } : {}),
     })
-    children.push(spawn.child)
-    void spawn.child.exited.then(gone, gone)
+    // A spawn that threw hands back no child, only a rejected `ready`.
+    if (spawn.child === undefined) void gone()
+    else {
+      children.push(spawn.child)
+      void spawn.child.exited.then(gone, gone)
+    }
     try {
       await spawn.ready
     } catch (err) {
