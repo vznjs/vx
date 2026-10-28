@@ -25,7 +25,9 @@ export default defineWorkspace({
 Off CI a run reads the remote and does not write it unless its policy names
 the remote. Give the write credential only to the default branch's CI and a
 read-only one to laptops and pull request jobs: the server's token is the
-boundary (`docs/security.md` § Cache poisoning).
+boundary (`docs/security.md` § Cache poisoning). A server that refuses a
+save's `UpdateActionResult` (`PERMISSION_DENIED`, `UNIMPLEMENTED`) is taken
+at its word for the run: later saves fail the same way without uploading.
 
 `ReapiRemoteCache` is the layer class behind `reapi()`, for a workspace that
 composes cache layers by hand. The package exports `reapi`, `ReapiPluginOptions`,
