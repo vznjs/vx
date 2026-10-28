@@ -869,6 +869,21 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
   const reached = await reachMergeBase(workspaceRoot, ref)
   if (reached !== undefined) return reached
   await verifyTreeRef(workspaceRoot, ref)
+  // The ref itself is the base only for histories that share nothing. A
+  // shallow clone may just lack the commits between them (origin gone, a
+  // fetch failed, past MAX_DEEPEN), and its tip selected what the base
+  // branch changed.
+  if (
+    revParse(workspaceRoot, ref) !== undefined &&
+    revParse(workspaceRoot, 'HEAD') !== undefined &&
+    isShallow(workspaceRoot)
+  ) {
+    throw new UserError(
+      `git ref "${ref}" has no merge base with HEAD in this shallow clone, and origin did not ` +
+        'give the history between them: fetch it (`git fetch --unshallow origin`).',
+      'VX_E_AFFECTED_BASE',
+    )
+  }
   return ref
 }
 

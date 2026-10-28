@@ -86,7 +86,10 @@ export function parseAllow(list: string): Allowed[] {
       const [issuer, repository, workflow] = [e.slice(0, r), e.slice(r + 1, w), e.slice(w + 1)]
       // Loopback over plain HTTP too: a server's own tests (its container's)
       // run an issuer beside it, and no one else reaches that address.
-      const https = /^(https:\/\/|http:\/\/127\.0\.0\.1[:/])/.test(issuer)
+      // Its host, not its spelling: `http://127.0.0.1:80@x.example` is x.example.
+      const https =
+        issuer.startsWith('https://') ||
+        (issuer.startsWith('http://') && URL.parse(issuer)?.hostname === '127.0.0.1')
       if (r < 0 || !https || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
@@ -109,8 +112,8 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
 /**
  * The scope a token writes: its branch. A GitHub pull request's run writes
  * its head branch (its `ref` is the merge ref the run's own reads never
- * name); a merge queue's run its base branch, which its code is about to
- * become (2026-10-25: "just strip it"); any other run its `ref`,
+ * name); a merge queue's (`merge_group`) run its base branch, which its
+ * code is about to become (2026-10-25: "just strip it"); any other run its `ref`,
  * GitLab's its `ref_path`. Only a `pull_request` run takes its head
  * branch. A `pull_request_target` run writes nothing: its `head_ref` is a
  * fork's branch name, chosen by the fork, and its `ref` is the base branch,
@@ -126,7 +129,8 @@ function branchOf(iss: string, claims: JWTPayload): string | undefined {
         : claims['ref']
       : claims['ref_path']
   if (typeof ref !== 'string' || !ref.startsWith('refs/') || ref.length > 512) return undefined
-  const queued = iss === GITHUB ? QUEUE.exec(ref) : null
+  // Only a merge_group run's: elsewhere any pusher may name a branch so.
+  const queued = iss === GITHUB && claims['event_name'] === 'merge_group' ? QUEUE.exec(ref) : null
   return queued === null ? ref : `refs/heads/${queued[1]}`
 }
 
@@ -320,9 +324,13 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     const wclaim = workflowClaimOf(iss)
     const ran = claims[wclaim]
     if (typeof ran !== 'string') throw new Refusal(403, `no ${wclaim} claim`)
-    const workflow = ran.replace(/@.*$/, '')
-    if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
-      throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
+    // The path is the claim up to an `@` that a ref follows: a file name may hold `@` too.
+    const ranAllowed = ofRepo.some((a) => {
+      const p = `${workflowPath(iss, a.repository, a.workflow)}@`
+      return same(ran.slice(0, p.length), p)
+    })
+    if (!ranAllowed)
+      throw new Refusal(403, `${wclaim} ${ran.replace(/@.*$/, '')} is not in this server's ALLOW`)
     const repo = { issuer: issuerOf(iss), repository }
     const branch = branchOf(iss, claims)
     return branch === undefined ? repo : { ...repo, write: branch }
@@ -350,6 +358,7 @@ function refusal(err: unknown, iss: string): Refusal {
   if (err instanceof errors.JWTClaimValidationFailed) {
     if (err.claim === 'aud') return new Refusal(401, 'wrong audience')
     if (err.claim === 'nbf') return new Refusal(401, 'not yet valid')
+    if (err.reason === 'missing') return new Refusal(401, `no ${err.claim} claim`)
   }
   return new Refusal(401, 'not a JWT')
 }

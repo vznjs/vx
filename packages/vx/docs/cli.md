@@ -291,7 +291,8 @@ change), or name the last good commit, --affected=<sha>`. `HEAD~1`
 - A shallow clone needs no more history. vx fetches what the merge base
   needs: commits and trees only, no file contents, deepening 1, 2, 4…
   commits until git finds it. A pull request's merge checkout needs one
-  fetch.
+  fetch. When origin cannot give that history, vx refuses (`has no merge
+base with HEAD in this shallow clone`) rather than diff from the base's tip.
 - With no base branch and no origin to fetch from, vx says `--affected has
 no base here`.
 - When the base you name is the commit you are on, the
@@ -2957,7 +2958,7 @@ latest cache entry's key. `roots` is the root-cause walk (`chain`,
 `vx last` replays a recorded run's summary from the local history: no
 re-execution, no cache probe, no config evaluation. A run a Ctrl-C (or
 SIGTERM, SIGHUP) stopped records nothing, so `vx last` still shows the
-run before it.
+run before it; nor does a `vx watch` cycle one stopped.
 
 ### Usage
 
