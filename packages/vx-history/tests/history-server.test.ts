@@ -6,7 +6,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
-import { afterAll, beforeAll, describe, expect, it, setSystemTime } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, setSystemTime, spyOn } from 'bun:test'
+import { Cache, taskDefinitions, type TaskNode } from '@vzn/vx'
 import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
@@ -317,6 +318,54 @@ describe('HistoryServer', () => {
     expect(() => vxHistory({ url: 'https://h.example', issuer: NAMED.issuer })).toThrow(
       'vxHistory(): repository must be org/name, got undefined',
     )
+  })
+
+  // The ordering was computed twice, on the local history and again when
+  // the server's numbers landed, and each pass named the bad assumption.
+  it('names an assumption it drops once a run, with the server re-ranking', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-history-assume-'))
+    const cache = new Cache(dir)
+    const fake = spyOn(globalThis, 'fetch').mockImplementation((async (u: string) => {
+      if (String(u).endsWith('/v1/capabilities'))
+        return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+      const hash = [...taskDefinitions([node]).values()][0]!
+      return Response.json({ timings: { [hash]: { durationMs: 50 } } })
+    }) as never)
+    const node = {
+      id: 'a#build',
+      projectName: 'a',
+      projectDir: dir,
+      taskName: 'build',
+      config: { exec: { command: 'true' } },
+      deps: [],
+      requested: true,
+    } as unknown as TaskNode
+    try {
+      const warned: string[] = []
+      const refined: Promise<unknown>[] = []
+      const plugin = vxHistory({
+        url: 'https://h.example',
+        ...NAMED,
+        assume: { 'a#build': Number(undefined) },
+      })
+      await plugin.schedule!(new Map([['a#build', node]]), {
+        warn: (m: string) => warned.push(m),
+        workspaceRoot: dir,
+        localCache: cache,
+        branch: 'main',
+        refs: [],
+        refine: (p: Promise<unknown>) => refined.push(p),
+      } as never)
+      expect(refined).toHaveLength(1)
+      expect(await refined[0]).toBeInstanceOf(Map)
+      expect(warned).toEqual([
+        '[vx] vx-history: assume ignores "a#build" — each must be a finite number of ms',
+      ])
+    } finally {
+      fake.mockRestore()
+      cache.close()
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   it('reads the URL over VX_HISTORY_URL, refusing one no request can carry', async () => {

@@ -373,8 +373,10 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         return undefined
       }
       reservations = reservationsFor(nodes.keys(), table, options)
+      // Once a run: the server's numbers order it a second time.
+      const assumed = { ...assumptions(options, ctx.warn), ...carried }
       const order = (t: ReadonlyMap<string, TaskResources>): ReadonlyMap<string, number> =>
-        criticalPath([...nodes.values()], t, { ...assumptions(options, ctx.warn), ...carried })
+        criticalPath([...nodes.values()], t, assumed)
       // With a history server, its numbers re-rank what has not started
       // when they land; the run never waits on them.
       remote ??= await serverOf()
