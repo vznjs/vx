@@ -201,6 +201,14 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   const code = await child.exited
   const signal = child.signalCode
   if (signal === null) process.exit(code)
+  // Die of a stop signal the local vx died of, as vx itself does: a shell
+  // running vx in a script stops on Ctrl-C only when its child died of
+  // SIGINT, and an exit 130 ran the script's next line. The code below is
+  // the rest, and the fallback should the signal not land.
+  if (signal === 'SIGINT' || signal === 'SIGTERM' || signal === 'SIGHUP') {
+    process.removeAllListeners(signal)
+    process.kill(process.pid, signal)
+  }
   if (typeof signal === 'number') process.exit(128 + signal)
   const { constants } = await import('node:os')
   process.exit(128 + (constants.signals[signal] ?? 1))
