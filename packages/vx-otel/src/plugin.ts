@@ -31,8 +31,12 @@ export interface OtelPluginOptions {
   logsEndpoint?: string
   /** Service name. Falls back to `OTEL_SERVICE_NAME`, then `OTEL_RESOURCE_ATTRIBUTES`' `service.name`, else `'vx'`. */
   serviceName?: string
-  /** Extra OTLP headers, merged over `OTEL_EXPORTER_OTLP_HEADERS` and each signal's own. */
-  headers?: Record<string, string>
+  /**
+   * Extra OTLP headers, merged over `OTEL_EXPORTER_OTLP_HEADERS` and each
+   * signal's own. An unset value (`process.env.X`, X unset) is left out,
+   * as `vxCache({ headers })` leaves it.
+   */
+  headers?: Record<string, string | undefined>
   /** Emit run/task metrics in addition to traces. Default: true. */
   metrics?: boolean
   /**
@@ -302,6 +306,8 @@ export function resolveOtelConfig(
   // `OTEL_RESOURCE_ATTRIBUTES` (deployment.environment, team, …) was not
   // read, so a pipeline's resource identity never reached vx's telemetry.
   const resource = parseResourceAttributes(env['OTEL_RESOURCE_ATTRIBUTES'], warn)
+  const optionHeaders: Record<string, string> = {}
+  for (const [k, v] of Object.entries(opts.headers ?? {})) if (v !== undefined) optionHeaders[k] = v
   // vx speaks OTLP/HTTP JSON only; a signal the env sends over gRPC most
   // likely points at a gRPC port, and its failure warning says so.
   const grpc = (['traces', 'metrics', 'logs'] as const).filter(
@@ -378,20 +384,23 @@ export function resolveOtelConfig(
     grpc,
     gzip,
     ...(Object.keys(tls).length > 0 ? { tls } : {}),
-    headers: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...opts.headers }),
+    headers: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...optionHeaders }),
     // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` wins over the
     // shared ones, as the spec orders them; they were not read (item 923).
     // The plugin's `headers` option stays on top of both.
     signalHeaders: {
       traces: clean({
         ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_TRACES_HEADERS']),
-        ...opts.headers,
+        ...optionHeaders,
       }),
       metrics: clean({
         ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_METRICS_HEADERS']),
-        ...opts.headers,
+        ...optionHeaders,
       }),
-      logs: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_LOGS_HEADERS']), ...opts.headers }),
+      logs: clean({
+        ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_LOGS_HEADERS']),
+        ...optionHeaders,
+      }),
     },
     ...(tracesOn ? {} : { tracesEnabled: false }),
     metricsEnabled: metricsOn,
