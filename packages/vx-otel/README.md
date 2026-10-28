@@ -210,7 +210,9 @@ Swallowed, but not silent: an export that does not land warns once per
 signal URL, naming what happened — a collector that cannot be reached, one
 that refuses the request (`HTTP 401`, `404`, `500`, with the collector's own
 message), or one that accepts it and reports part of the data dropped
-(OTLP's `partialSuccess`). A collector that answers with a redirect
+(OTLP's `partialSuccess`). One that accepts it all with a message (a
+`partialSuccess` that rejected nothing, the spec's warning) is said once
+per signal as that warning, not as a failure. A collector that answers with a redirect
 is refused too, naming where it points: like the OTel SDK exporters,
 vx-otel follows none, since a header such as `x-honeycomb-team` would
 reach the new origin with it. The URL in that line is printed with any

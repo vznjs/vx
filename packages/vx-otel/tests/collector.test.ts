@@ -238,14 +238,18 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
     ])
   })
 
-  it('a partialSuccess that rejected nothing but says why is reported', async () => {
+  // The spec's warning: rejected counts of 0 with a message is an export
+  // accepted whole. It was said as a failed one that "dropped some of it".
+  it('a partialSuccess that rejected nothing but says why is reported as a warning', async () => {
     expect(
       await exportWith({
         status: 200,
-        body: JSON.stringify({ partialSuccess: { errorMessage: 'attributes trimmed' } }),
+        body: JSON.stringify({
+          partialSuccess: { rejectedSpans: '0', errorMessage: 'attributes trimmed' },
+        }),
       }),
     ).toEqual([
-      `${at('/v1/traces')}the collector dropped part of the export: some of it: attributes trimmed`,
+      `[vx-otel] the collector at ${url}/v1/traces accepted the export and warned: attributes trimmed`,
     ])
   })
 
