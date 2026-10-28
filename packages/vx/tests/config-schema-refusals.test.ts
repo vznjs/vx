@@ -361,6 +361,8 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       ['b.*', "holds '*', which makes it a pattern"],
       ['^gen', "starts with '^', which names dependencies' tasks or negates"],
       ['!gen', "starts with '!', which names dependencies' tasks or negates"],
+      ['a\nb', 'holds a control character'],
+      ['a\x7fb', 'holds a control character'],
     ] as const) {
       expect(named(name)).toBe(`${CFG}: task name ${JSON.stringify(name)} ${why}${tail}`)
     }

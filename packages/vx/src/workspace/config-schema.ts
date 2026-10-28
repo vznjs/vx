@@ -1558,8 +1558,13 @@ export function taskNameProblem(name: string): string | null {
           ? "holds '*', which makes it a pattern"
           : name.startsWith('^') || name.startsWith('!')
             ? `starts with '${name[0]}', which names dependencies' tasks or negates`
-            : null
+            : CONTROL_CHAR.test(name)
+              ? 'holds a control character'
+              : null
 }
+
+// oxlint-disable-next-line no-control-regex
+const CONTROL_CHAR = /[\x00-\x1f\x7f]/
 
 /**
  * Why `--filter tag:<tag>` cannot name `tag`, or null. Asked of the filter

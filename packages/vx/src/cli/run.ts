@@ -291,6 +291,14 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}` }
     } else if (a !== undefined) {
+      // A config may not declare such a name (`taskNameProblem`); a pasted
+      // newline was refused as an unknown task, printed raw.
+      // oxlint-disable-next-line no-control-regex
+      if (/[\x00-\x1f\x7f]/.test(a))
+        return {
+          ...out,
+          error: `task ${JSON.stringify(a)} holds a control character, which no task name may hold — retype it`,
+        }
       out.tasks.push(a)
     }
   }

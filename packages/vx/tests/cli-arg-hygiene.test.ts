@@ -372,3 +372,28 @@ describe('a refused value says what the flag takes (E-36)', () => {
     ])
   })
 })
+
+describe('a task argument with a control character is refused by name', () => {
+  // `vx run $'build\n'` said "no projects declare task(s): build" with the
+  // newline printed raw, then "Did you mean build?": the one fault, a
+  // byte no task name holds, went unsaid.
+  it('names the byte escaped, in a bare and an anchored task', () => {
+    expect(parseRunArgs(['build\n']).error).toBe(
+      'task "build\\n" holds a control character, which no task name may hold — retype it',
+    )
+    expect(parseRunArgs(['app#lint\x01']).error).toBe(
+      'task "app#lint\\u0001" holds a control character, which no task name may hold — retype it',
+    )
+    expect(parseRunArgs(['watch\t'], 'watch').error).toBe(
+      'task "watch\\t" holds a control character, which no task name may hold — retype it',
+    )
+  })
+
+  it('a forwarded argument may hold one (control)', () => {
+    expect(parseRunArgs(['build', '--', 'a\nb'])).toMatchObject({
+      tasks: ['build'],
+      forwardArgs: ['a\nb'],
+    })
+    expect(parseRunArgs(['build:prod', 'app#e2e']).error).toBeUndefined()
+  })
+})
