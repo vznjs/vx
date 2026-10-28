@@ -285,6 +285,13 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       const v = a === name ? before[++i] : a.slice(name.length + 1)
       if (v === undefined || v === '')
         return { ...out, error: `${name} requires a value (${kindHint(set.kind)})` }
+      // A string takes any word, so `--branch $EMPTY --dry` named the branch
+      // `--dry` and the "dry" run executed; every other kind refuses it.
+      if (a === name && set.kind.type === 'string' && v.startsWith('-'))
+        return {
+          ...out,
+          error: `${name} requires a value (got flag ${v}; a value that starts with - needs ${name}=${v})`,
+        }
       const value = parseSettingValue(set.kind, v)
       if (value === null) return { ...out, error: settingRefusal(set.path, name, v) }
       out.settings[set.path] = value
