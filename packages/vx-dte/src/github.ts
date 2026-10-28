@@ -51,6 +51,13 @@ const WATCH_MAX_MS = 30_000
 /** A dispatch the API limit refused waits for its reset only this long: the worker is `starting` meanwhile. */
 const DISPATCH_WAIT_MS = 5 * 60_000
 
+/**
+ * A cancel the API limit refused waits for its reset only this long: a
+ * worker run left queued starts for no one, then reads its run is over
+ * and cancels itself (the workflow's first step, `parent`).
+ */
+const CANCEL_WAIT_MS = 60_000
+
 /** When a refused answer's API limit resets (epoch ms), or undefined for a refusal that is no limit. */
 function limitReset(res: Response): number | undefined {
   if (res.status !== 403 && res.status !== 429) return undefined
@@ -105,17 +112,31 @@ export function github(options: GithubOptions = {}): DteAdapter {
     said.add(m)
     warn(m)
   }
-  /** A cancel's answer: 202, or 409 for a run already finished; anything else is said. */
+  /**
+   * A cancel's answer: 202, or 409 for a run already finished; anything
+   * else is said. One the spent API limit refused is asked again at its
+   * reset, when that comes within `CANCEL_WAIT_MS`.
+   */
   const cancelOf = async (run: string): Promise<void> => {
-    const res = await call(`${run}/cancel`, { method: 'POST' }).catch((err: unknown) => {
-      failed(`cancelling ${runOf(run)}`, err instanceof Error ? err.message : String(err))
-      return undefined
-    })
-    if (res === undefined || res.ok || res.status === 409) return
-    failed(
-      `cancelling ${runOf(run)}`,
-      `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
-    )
+    const end = Date.now() + CANCEL_WAIT_MS
+    for (;;) {
+      const res = await call(`${run}/cancel`, { method: 'POST' }).catch((err: unknown) => {
+        failed(`cancelling ${runOf(run)}`, err instanceof Error ? err.message : String(err))
+        return undefined
+      })
+      if (res === undefined || res.ok || res.status === 409) return
+      const text = (await res.text().catch(() => '')).slice(0, 200)
+      const reset = limitReset(res)
+      if (reset !== undefined && reset <= end) {
+        await Bun.sleep(Math.max(0, reset - Date.now()))
+        continue
+      }
+      failed(
+        `cancelling ${runOf(run)}`,
+        `${res.status} ${text}${reset === undefined ? '' : resetsAt(reset)}`,
+      )
+      return
+    }
   }
   /** Cancels `run` once none of its workers is still needed. */
   const letGo = (run: string, workers: ReadonlyMap<string, WorkerSpawn>): void => {
@@ -224,6 +245,11 @@ export function github(options: GithubOptions = {}): DteAdapter {
             sha,
             size,
             workers: JSON.stringify(workers.map((a) => a.id)),
+            // This run's attempt: a worker that starts after it ended
+            // cancels its own workflow run instead of working for no one.
+            ...(env['GITHUB_RUN_ID'] === undefined
+              ? {}
+              : { parent: `${env['GITHUB_RUN_ID']}/attempts/${env['GITHUB_RUN_ATTEMPT'] ?? '1'}` }),
             ...(options.env === undefined ? {} : { env: handed }),
           },
         }),

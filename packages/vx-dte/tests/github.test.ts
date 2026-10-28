@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, expect, it } from 'bun:test'
+import { afterEach, beforeEach, expect, it } from 'bun:test'
 import type { WorkerSpawn } from '../src/index.js'
 import { github as make } from '../src/index.js'
 
@@ -18,6 +18,11 @@ const github = (...args: Parameters<typeof make>): ReturnType<typeof make> => {
   adapters.push(a)
   return a
 }
+// The job these tests run in has its own run: a dispatch names it.
+beforeEach(() => {
+  delete process.env['GITHUB_RUN_ID']
+  delete process.env['GITHUB_RUN_ATTEMPT']
+})
 afterEach(async () => {
   await Promise.all(adapters.splice(0).map((a) => a.close?.()))
   process.env = { ...saved }
@@ -282,7 +287,7 @@ it('cancels a run whose workers were all let go while it was dispatched', async 
   }
 })
 
-// A killed orchestrator never closes: the job's `if: always()` step cancels
+// A killed orchestrator never closes: the job's `if: cancelled()` step cancels
 // what this file lists, or the queued workers hold macOS runners.
 it('lists each run it dispatched in RUNNER_TEMP for the job to cancel', async () => {
   let id = 0
@@ -637,3 +642,110 @@ it('names the spent API limit, not a permission, when its reset is too far', asy
     await server.stop(true)
   }
 }, 10_000)
+
+// An orchestrator that died where it could not cancel (the API limit spent,
+// a SIGKILL) left its queued workers to start for no one, each holding a
+// runner (2026-10-28): each worker reads its run's attempt first.
+it("names the run's own attempt to the workers it dispatches", async () => {
+  const bodies: { inputs: Record<string, string> }[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    async fetch(req) {
+      bodies.push((await req.json()) as { inputs: Record<string, string> })
+      return new Response(null, { status: 204 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+    GITHUB_RUN_ID: '55',
+    GITHUB_RUN_ATTEMPT: '2',
+  })
+  try {
+    void github().spawn(spawn('small#1', 'small'))
+    for (let i = 0; i < 50 && bodies.length === 0; i++) await Bun.sleep(10)
+    expect(bodies[0]?.inputs['parent']).toBe('55/attempts/2')
+  } finally {
+    await server.stop(true)
+  }
+})
+
+// A cancel the spent API limit refused left the run's workers queued for
+// runners after it ended (2026-10-28): closing, it asks again at the reset.
+it('cancels again once a spent API limit resets, as the run closes', async () => {
+  let cancels = 0
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: 8 })
+      if (path.endsWith('/cancel') && ++cancels === 1)
+        return new Response('API rate limit exceeded for installation', {
+          status: 403,
+          headers: { 'retry-after': '1' },
+        })
+      if (path.endsWith('/jobs')) return Response.json({ jobs: [] })
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const said: string[] = []
+    const adapter = github()
+    adapter.report?.((m) => said.push(m))
+    void adapter.spawn(spawn('small#1', 'small'))
+    await Bun.sleep(100)
+    await adapter.close?.()
+    expect(cancels).toBe(2)
+    expect(said).toEqual([])
+  } finally {
+    await server.stop(true)
+  }
+}, 10_000)
+
+it('says a cancel the spent API limit refuses past its wait, with the reset', async () => {
+  const reset = Math.ceil(Date.now() / 1000) + 3600
+  let cancels = 0
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: 8 })
+      if (path.endsWith('/cancel')) {
+        cancels++
+        return new Response('API rate limit exceeded for installation', {
+          status: 403,
+          headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(reset) },
+        })
+      }
+      return Response.json({ jobs: [] })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const said: string[] = []
+    const adapter = github()
+    adapter.report?.((m) => said.push(m))
+    void adapter.spawn(spawn('small#1', 'small'))
+    await Bun.sleep(100)
+    await adapter.close?.()
+    expect(cancels).toBe(1)
+    expect(said).toEqual([
+      `github(): cancelling workflow run 8 failed: 403 API rate limit exceeded for installation; the repository's API limit resets at ${new Date(reset * 1000).toISOString()}`,
+    ])
+  } finally {
+    await server.stop(true)
+  }
+})
