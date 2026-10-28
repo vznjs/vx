@@ -71,3 +71,13 @@ describe("each usage flag is explained in the verb's own help", () => {
     })
   }
 })
+
+// The reference wraps at 88 columns, as plugin verbs' lines do; only a
+// usage line runs on, since it is the verb's synopsis word for word.
+it('every help line past the usage block fits 88 columns', () => {
+  const body = helpText()
+    .split('\n\n')
+    .filter((b) => !b.startsWith('Usage:'))
+    .join('\n')
+  expect(body.split('\n').filter((l) => l.length > 88)).toEqual([])
+})
