@@ -4,6 +4,7 @@ import {
   isOutOfFds,
   isUserError,
   OUT_OF_FDS_HINT,
+  thrownMessage,
 } from '../util/index.js'
 import {
   computeReverseDepCount,
@@ -769,7 +770,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       try {
         onFinish?.(outcome)
       } catch (err) {
-        const m = err instanceof Error ? err.message : String(err)
+        const m = thrownMessage(err)
         process.stderr.write(`[vx] onFinish observer threw for ${id}: ${m}\n`)
       }
       // A restore-tier task runs before its deps, but its DEPENDENTS keep
@@ -898,7 +899,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       try {
         onStart?.(node)
       } catch (err) {
-        const m = err instanceof Error ? err.message : String(err)
+        const m = thrownMessage(err)
         process.stderr.write(`[vx] onStart observer threw for ${node.id}: ${m}\n`)
       }
     }
@@ -1094,7 +1095,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               tick()
               return
             }
-            const message = err instanceof Error ? err.message : String(err)
+            const message = thrownMessage(err)
             // After the run's stop a rejection is the stop's doing (a probe
             // it killed, C-65): aborted, as any task it kills, and unsaid.
             const stopped = aborted()

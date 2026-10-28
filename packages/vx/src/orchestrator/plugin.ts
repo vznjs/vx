@@ -20,7 +20,14 @@ import {
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
-import { maskedLine, nearest, type PluginSecrets, SecretBroker, UserError } from '../util/index.js'
+import {
+  maskedLine,
+  nearest,
+  type PluginSecrets,
+  SecretBroker,
+  thrownMessage,
+  UserError,
+} from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, Logger, RunStartInfo } from '../report/index.js'
 import type { CiContext } from './run-context.js'
@@ -852,7 +859,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       if (disabled.has(plugin)) return
       disabled.add(plugin)
       warn(
-        `[vx] plugin '${plugin.name}' threw in ${where}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx] plugin '${plugin.name}' threw in ${where}; disabled for this run: ${thrownMessage(err)}`,
       )
     }
     const ctx: PluginContext = {
@@ -949,9 +956,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       throw new PluginSetupError(
         plugin,
         // Masked at the source, as plugin-host.ts's `safe()` does (L-11).
-        maskedLine(
-          `plugin '${plugin.name}' failed in setup: ${err instanceof Error ? err.message : String(err)}`,
-        ),
+        maskedLine(`plugin '${plugin.name}' failed in setup: ${thrownMessage(err)}`),
       )
     }
   }

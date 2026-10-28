@@ -20,7 +20,7 @@ import type {
   TelemetrySink,
   TreeLoad,
 } from './telemetry.js'
-import { settleWithin, teardownTimeoutMs } from '../util/index.js'
+import { settleWithin, teardownTimeoutMs, thrownMessage } from '../util/index.js'
 import { createTelemetrySource } from './telemetry.js'
 import type { VxPlugin } from './plugin.js'
 
@@ -102,7 +102,7 @@ export async function subscribeTelemetry(
       accepted = list.map((sink) => checkSink(sink))
     } catch (err) {
       ctx.warn(
-        `[vx] plugin '${plugin.name}' telemetry failed to initialize; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx] plugin '${plugin.name}' telemetry failed to initialize; disabled for this run: ${thrownMessage(err)}`,
       )
       continue
     }

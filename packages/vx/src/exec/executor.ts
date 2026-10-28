@@ -16,7 +16,7 @@
 import type { SandboxConfig } from '../config.js'
 import type { CaptureConfig, RunResult } from './runner.js'
 import type { ResolvedSandboxConfig, SandboxViolation } from './sandbox-runtime.js'
-import { UserError, type ui } from '../util/index.js'
+import { thrownMessage, UserError, type ui } from '../util/index.js'
 
 /** Sandbox baselines + the user's resolved sandbox block, when the task is sandboxed. */
 export interface ExecuteSandbox {
@@ -521,7 +521,7 @@ export function selectExecutor(
         throw new Error('returned a Promise; accepts is synchronous')
       }
     } catch (err) {
-      const m = err instanceof Error ? err.message : String(err)
+      const m = thrownMessage(err)
       throw new UserError(`${label(executor)} failed in accepts for ${task.taskId}: ${m}`)
     }
     if (taken) return executor

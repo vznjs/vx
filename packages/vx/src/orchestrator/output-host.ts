@@ -4,6 +4,7 @@
 
 import { terminalSubscriber, type RunEventSubscriber } from '../report/index.js'
 import type { Logger } from '../report/index.js'
+import { thrownMessage } from '../util/index.js'
 import type { OutputContext, VxPlugin } from './plugin.js'
 
 const REQUIRED = ['status', 'taskStdout', 'taskStderr', 'taskComplete'] as const
@@ -45,9 +46,7 @@ export async function claimOutput(
       const logger = await plugin.output(ctx)
       if (logger !== undefined) return { logger: checkLogger(logger), owner: plugin.name }
     } catch (err) {
-      ctx.warn(
-        `[vx] plugin '${plugin.name}' output: ${err instanceof Error ? err.message : String(err)}; vx renders the run`,
-      )
+      ctx.warn(`[vx] plugin '${plugin.name}' output: ${thrownMessage(err)}; vx renders the run`)
     }
   }
   return undefined
@@ -73,7 +72,7 @@ export function guardedOutput(
       fallback({
         kind: 'run:status',
         warn: true,
-        line: `[vx] plugin '${claimed.owner}' output failed: ${err instanceof Error ? err.message : String(err)}; vx renders the rest of the run`,
+        line: `[vx] plugin '${claimed.owner}' output failed: ${thrownMessage(err)}; vx renders the rest of the run`,
       })
       fallback(event)
     }

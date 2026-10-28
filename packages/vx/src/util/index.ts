@@ -21,6 +21,7 @@ export {
   isOutOfFds,
   notAWorkTree,
   OUT_OF_FDS_HINT,
+  thrownMessage,
   wantsJson,
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'

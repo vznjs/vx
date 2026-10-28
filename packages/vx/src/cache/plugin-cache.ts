@@ -7,7 +7,7 @@
 // warnings): what a plugin keeps here is a hint.
 
 import type { Database } from 'bun:sqlite'
-import { xxh3hex } from '../util/index.js'
+import { thrownMessage, xxh3hex } from '../util/index.js'
 import type { CachePolicy } from './policy.js'
 import { sayRemoteFault, type ResolvedRemote } from './remote-lane.js'
 import { scopedKey } from './scoped-cache.js'
@@ -108,7 +108,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
   // planning on no timings and no line said why.
   const said = new Map<ResolvedRemote, Set<string>>()
   const fault = (r: ResolvedRemote, op: string, what: string, err: unknown): void => {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = thrownMessage(err)
     const seen = said.get(r) ?? new Set<string>()
     said.set(r, seen)
     if (seen.has(`${op}\0${message}`)) return

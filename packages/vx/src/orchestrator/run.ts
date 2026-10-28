@@ -53,6 +53,7 @@ import {
   detectColors,
   type ColorSupport,
   SecretBroker,
+  thrownMessage,
   type ui,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
@@ -1988,9 +1989,7 @@ function executorFaults(warn: (line: string) => void): ExecutorFault {
     const k = `${e.name}\0${what}`
     if (said.has(k)) return
     said.add(k)
-    warn(
-      `[vx] executor '${e.name}': ${what}() threw: ${err instanceof Error ? err.message : String(err)} — left out`,
-    )
+    warn(`[vx] executor '${e.name}': ${what}() threw: ${thrownMessage(err)} — left out`)
   }
 }
 

@@ -18,7 +18,13 @@ import {
   type ResolvedRemote,
 } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
-import { maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
+import {
+  maskedLine,
+  settleWithin,
+  teardownTimeoutMs,
+  thrownMessage,
+  UserError,
+} from '../util/index.js'
 import { PLATFORMS, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import { checkGraph, type GraphRules, type TaskNode } from '../graph/index.js'
 import type {
@@ -92,9 +98,7 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
     // a plugin's verb print it as they get it, and the throw quotes what the
     // plugin was told (a remote's reply, a header) (L-11).
     throw new UserError(
-      maskedLine(
-        `plugin '${plugin.name}' failed in ${hook}: ${err instanceof Error ? err.message : String(err)}`,
-      ),
+      maskedLine(`plugin '${plugin.name}' failed in ${hook}: ${thrownMessage(err)}`),
     )
   }
 }
@@ -398,9 +402,7 @@ export function claimedExtraFiles(
     names = read.call(plugin.fingerprint, file, bytes)
   } catch (err) {
     throw new UserError(
-      maskedLine(
-        `plugin '${plugin.name}' failed in fingerprint: ${err instanceof Error ? err.message : String(err)}`,
-      ),
+      maskedLine(`plugin '${plugin.name}' failed in fingerprint: ${thrownMessage(err)}`),
     )
   }
   if (!Array.isArray(names) || names.some((n) => typeof n !== 'string')) {
@@ -454,9 +456,7 @@ export async function applyScheduleHooks(
               if (w !== undefined) refine(w)
             },
             (err: unknown) =>
-              ctx.warn(
-                `[vx] plugin '${plugin.name}' failed to refine: ${err instanceof Error ? err.message : String(err)}`,
-              ),
+              ctx.warn(`[vx] plugin '${plugin.name}' failed to refine: ${thrownMessage(err)}`),
           )
           .finally(() => promised.delete(p))
         promised.add(p)
@@ -466,7 +466,7 @@ export async function applyScheduleHooks(
       try {
         sets[i] = scheduleWeights(plugin, weights, nodes)
       } catch (err) {
-        ctx.warn(`[vx] ${err instanceof Error ? err.message : String(err)}; refine ignored`)
+        ctx.warn(`[vx] ${thrownMessage(err)}; refine ignored`)
         return
       }
       run.refined(merged())
@@ -475,9 +475,7 @@ export async function applyScheduleHooks(
         try {
           l.listener()
         } catch (err) {
-          ctx.warn(
-            `[vx] plugin '${l.plugin.name}' failed in onRefine: ${err instanceof Error ? err.message : String(err)}`,
-          )
+          ctx.warn(`[vx] plugin '${l.plugin.name}' failed in onRefine: ${thrownMessage(err)}`)
         }
       }
     }
@@ -579,7 +577,7 @@ export function buildAdmission(
         }
       } catch (err) {
         broken.add(plugin)
-        const m = err instanceof Error ? err.message : String(err)
+        const m = thrownMessage(err)
         warn(
           `[vx] plugin '${plugin.name}' failed in admit: ${m}; admitting every task from here on`,
         )
@@ -652,9 +650,7 @@ const executorPlugin = new WeakMap<TaskExecutor, string>()
  */
 export function nameExecutorFailure(executor: TaskExecutor, err: unknown): unknown {
   if (!executorPlugin.has(executor)) return err
-  const named = new UserError(
-    `${executorLabel(executor)} failed in execute: ${err instanceof Error ? err.message : String(err)}`,
-  )
+  const named = new UserError(`${executorLabel(executor)} failed in execute: ${thrownMessage(err)}`)
   named.cause = err
   return named
 }
@@ -721,7 +717,7 @@ export function executorDemand(
   const tell = (executor: TaskExecutor, remaining: ReadonlySet<string>): void => {
     const failed = (err: unknown): void => {
       if (!demandOf.delete(executor)) return
-      const m = err instanceof Error ? err.message : String(err)
+      const m = thrownMessage(err)
       warn(`[vx] ${executorLabel(executor)} failed in demand: ${m}; not asked again this run`)
     }
     try {
@@ -860,9 +856,7 @@ export async function teardownPlugins(
         warn(`[vx] plugin '${plugin.name}' teardown timed out after ${ms}ms; it did not complete`)
       }
     } catch (err) {
-      warn(
-        `[vx] plugin '${plugin.name}' failed in teardown: ${err instanceof Error ? err.message : String(err)}`,
-      )
+      warn(`[vx] plugin '${plugin.name}' failed in teardown: ${thrownMessage(err)}`)
     }
   }
 }
