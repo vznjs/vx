@@ -283,7 +283,8 @@ export interface ProjectConfigs {
  * lock and never walks). In git: `git ls-files` over the config names,
  * tracked and untracked, git's ignore rules applied, none under
  * `node_modules`, and each nested repository's own listing. Outside git: a walk
- * that skips dot-directories and `node_modules`. A config at or under a
+ * that skips `node_modules` and vx's own `.vx`, and enters every other
+ * dot-directory, as git lists `.github/actions/x`. A config at or under a
  * nested `.vx/workspace.*` belongs to that workspace and is left out.
  * Where a directory holds several, `PROJECT_CONFIG_FILENAMES` order picks
  * the first that is a file.
@@ -439,7 +440,7 @@ async function gitZ(cwd: string, args: string[]): Promise<string[]> {
     .filter((p) => p !== '')
 }
 
-/** The config paths under `root` outside git, root-relative: no dot-directory, no `node_modules`. */
+/** The config paths under `root` outside git, root-relative: none under `node_modules`, `.git` or `.vx`. */
 async function scanConfigs(root: string): Promise<string[]> {
   const out: string[] = []
   const walk = async (rel: string): Promise<void> => {
@@ -457,14 +458,16 @@ async function scanConfigs(root: string): Promise<string[]> {
     for (const e of entries) {
       const child = rel === '' ? e.name : `${rel}/${e.name}`
       if (CONFIG_RANK.has(e.name) || e.name === REVIEW_FILE) out.push(child)
-      else if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
-        below.push(child)
+      else if (e.isDirectory() && !SCAN_SKIPS.has(e.name)) below.push(child)
     }
     await Promise.all(below.map(walk))
   }
   await walk('')
   return out
 }
+
+// `.vx` holds vx's state (the cache), which a checkout ignores.
+const SCAN_SKIPS = new Set(['node_modules', '.git', '.vx'])
 
 async function workspaceFileIn(root: string, rel: string): Promise<boolean> {
   const names = await readdir(path.join(root, rel, '.vx')).catch(() => [] as string[])
