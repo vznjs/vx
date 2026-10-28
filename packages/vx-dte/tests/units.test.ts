@@ -31,6 +31,7 @@ import { planTasks, tailsMs } from '../src/planner.js'
 import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder, ToWorker, WiredResult } from '../src/messages.js'
+import { snapshot } from '../src/tree.js'
 import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -3964,6 +3965,37 @@ it('names a tracked file a task changed as the workspace does, in a repository s
   expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
 })
 
+// A pathspec is a glob unless told otherwise: a project at `p*` named its
+// sibling `pa`'s changed files as its own, and its entry was withheld.
+it('names only the tracked files under a project whose directory has glob characters', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  for (const d of ['p*', 'pa']) {
+    await mkdir(path.join(ws, d), { recursive: true })
+    await writeFile(path.join(ws, d, 'in.txt'), '1\n')
+  }
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  await writeFile(path.join(ws, 'pa/in.txt'), '2\n')
+  const outputs = { files: [], workspaceFiles: [] }
+  const m = { project: 'p*', nested: [], outputs } as unknown as RunOrder
+  expect(await changedTracked(ws, 'HEAD', m, names('p*', outputs))).toEqual([])
+})
+
 // git quotes a path with a quote, a non-ASCII byte or a newline unless
 // asked for NUL-separated names: `"a/\303\251.ts"` started with no
 // project's directory, and the forecast missed the task it changed.
@@ -3993,6 +4025,27 @@ it('names a changed path as it is, whatever bytes it holds', async () => {
   git('add', '-A')
   git('commit', '-qm', 'ii')
   expect((await changedSinceParent(ws)).toSorted()).toEqual(odd.toSorted())
+})
+
+// `git stash create` writes a commit, and git refuses one with no identity
+// (a CI runner with none configured): the snapshot fell back to HEAD, and
+// the run's workers checked out a tree without its uncommitted changes.
+it('snapshots the uncommitted changes in a checkout with no git identity', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'commit.gpgsign=false', ...a], { cwd: ws })
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  await writeFile(path.join(ws, 'f.txt'), '1\n')
+  git('add', '-A')
+  git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
+  git('config', 'user.name', '')
+  git('config', 'user.email', '')
+  await writeFile(path.join(ws, 'f.txt'), '2\n')
+  const { tree } = await snapshot(ws)
+  expect(tree).not.toBe('')
+  expect(git('rev-parse', `${tree}:f.txt`)).toBe(git('hash-object', 'f.txt'))
 })
 
 // A worker checkout whose prepare rewrote a tracked file joined on HEAD's

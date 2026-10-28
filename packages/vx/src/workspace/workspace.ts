@@ -290,9 +290,8 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
   const rels = (await gitTop(root)) === null ? await scanConfigs(root) : await gitConfigs(root)
   const nested: string[] = []
   for (const rel of rels) {
-    const at = rel.lastIndexOf('.vx/workspace.')
-    if (at > 0 && rel[at - 1] === '/' && rel.lastIndexOf('/') === at + 3)
-      nested.push(rel.slice(0, at - 1))
+    const at = rel.lastIndexOf('/.vx/')
+    if (at > 0 && WORKSPACE_RANK.has(rel.slice(at + 1))) nested.push(rel.slice(0, at))
   }
   const byDir = new Map<string, string[]>()
   const reviewed: string[] = []
@@ -467,7 +466,7 @@ async function scanConfigs(root: string): Promise<string[]> {
 
 async function workspaceFileIn(root: string, rel: string): Promise<boolean> {
   const names = await readdir(path.join(root, rel, '.vx')).catch(() => [] as string[])
-  return names.some((n) => n.startsWith('workspace.'))
+  return names.some((n) => WORKSPACE_RANK.has(`.vx/${n}`))
 }
 
 /** How each project got its name, when not by its path: `config`, or the plugin's name. */

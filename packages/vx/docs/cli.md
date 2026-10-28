@@ -1500,7 +1500,7 @@ watch`.
 
 `vx cache clean` evicts old or oversized cache entries, or with no
 bound clears the cache. It operates on the entries and
-`<hash>.tar.zst` artifacts of the store the workspace's index records
+`<hash>.tar.zst` artifacts of the store a run opens
 (`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
@@ -1631,13 +1631,16 @@ put under a `cache` verb — the directory, the entry count, the size —
 are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `gc` and their neighbours say so (`list` also names `vx last --list`;
 `clear`, `purge`, `reset` and `wipe` name a bare `vx cache clean`) rather than printing a bare "unknown subcommand".
+Clean's flags typed without the verb (`vx cache --older-than 30d`)
+name the whole command they make: `vx cache clean --older-than 30d`.
 
 ### With no bound: clear the cache
 
 `vx cache clean` with neither `--older-than` nor `--max-size` clears
 the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
 `--cache-dir`: the index and this workspace's run history, so `vx last`
-and `vx why` start over) and the store its index names, where the
+and `vx why` start over), the store a run opens and the one its index
+last named, if another (a changed HOME, an origin added), where the
 entries live (`~/.vx/<id>/cache`, shared by this repository's
 checkouts, so their entries go too). `--global` also clears every other
 repository's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
@@ -1653,6 +1656,10 @@ index is a file in the checkout, which a commit or a restored CI cache
 could point at any directory. A workspace that never ran says
 `› vx cache clean  nothing to free`. The next run misses every task once
 and saves again.
+
+A `.vx/cache` linked to another directory (a CI cache volume) is
+emptied through the link, and the link stays. An index SQLite cannot
+read is cleared like any other.
 
 ```
 $ vx cache clean
@@ -3112,7 +3119,7 @@ a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
 elsewhere is replayed, explained, reported on and pruned there. Without
 the flag they open the workspace's cache (`defineWorkspace({ cache: { dir } })`
 or `.vx/cache`). A `--cache-dir` that is not there is refused by name
-(`--cache-dir .vx/cahce: no such directory`). In a workspace that never
+(`--cache-dir .vx/cahce: no such directory`, `VX_E_USAGE`). In a workspace that never
 ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache clean`
 (dry or not) read it as empty and create nothing (item 900, E-7, E-38).
 

@@ -162,6 +162,12 @@ export async function writeInit(
   return 0
 }
 
+// Each action at a commit, never a tag its maintainer (or whoever takes
+// their account) can move; the comment is the release, for an updater.
+const CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1'
+const SETUP_BUN = 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0'
+const SETUP_PNPM = 'pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0'
+
 /** GitHub's hosted runner of each platform; a size naming none runs on Linux x64. */
 const RUNNERS: Record<Platform, string> = {
   'linux-x64': 'ubuntu-latest',
@@ -228,12 +234,12 @@ ${inDir}    strategy:
       VX_DTE_RELAY: \${{ inputs.relay }}
       VX_DTE_WORKER: \${{ matrix.worker }}
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: '\${{ inputs.sha }}' }
+      - uses: ${CHECKOUT}
+        with: { ref: '\${{ inputs.sha }}', persist-credentials: false }
       - env: { HANDED: '\${{ inputs.env }}' }
         run: |
           jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\\r\\n]") | not) then "\\(.key)=\\(.value)" else error("env \\(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
-      - uses: oven-sh/setup-bun@v2
+      - uses: ${SETUP_BUN}
 ${install.join('\n')}
       - run: ${vxCommand(setup.manager)} dte worker
 `
@@ -268,8 +274,9 @@ ${inDir}    permissions:
       GITHUB_TOKEN: \${{ github.token }}
     steps:
       # One commit: --affected fetches its base itself.
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: ${CHECKOUT}
+        with: { persist-credentials: false }
+      - uses: ${SETUP_BUN}
 ${rootInstall(setup.manager, setup.dir).join('\n')}
       - run: ${vx} lock --check
 ${
@@ -316,8 +323,8 @@ function rootInstall(manager: DteSetup['manager'], dir: string): string[] {
 /** pnpm's setup step, which reads the pnpm version from the workspace's `package.json`. */
 function pnpmAction(dir: string): string {
   return dir === ''
-    ? '      - uses: pnpm/action-setup@v4'
-    : `      - uses: pnpm/action-setup@v4\n        with: { package_json_file: ${dir}/package.json }`
+    ? `      - uses: ${SETUP_PNPM}`
+    : `      - uses: ${SETUP_PNPM}\n        with: { package_json_file: ${dir}/package.json }`
 }
 
 /**
