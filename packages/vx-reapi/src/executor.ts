@@ -977,7 +977,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // the operation, still has the task given back.
           if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           throw executorFallback(
-            `vx/reapi: no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its operation was cancelled`,
+            `no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its operation was cancelled`,
           )
         }
         if (stall.signal.aborted) {

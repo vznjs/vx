@@ -448,14 +448,27 @@ export interface ManagedInstall {
 
 const FIELDS = ['devDependencies', 'dependencies', 'optionalDependencies'] as const
 
+/** `file` as a JSON object, or null where there is none; one that is not JSON is refused. */
 function readJson(file: string): Record<string, unknown> | null {
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR') return null
+    throw new UserError(`vx upgrade: could not read ${file} (${(err as Error).message})`)
+  }
+  let v: unknown
   try {
     // A byte-order mark is stripped, as npm strips it.
-    const v: unknown = JSON.parse(readFileSync(file, 'utf8').replace(/^﻿/, ''))
-    return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
-  } catch {
-    return null
+    v = JSON.parse(text.replace(/^\uFEFF/, ''))
+  } catch (err) {
+    // Read as absent, it sent the user to "no package.json lists vx".
+    throw new UserError(
+      `vx upgrade: ${file} is not JSON (${(err as Error).message}) — fix it, then run vx upgrade again`,
+    )
   }
+  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
 }
 
 function lockText(file: string): string {
