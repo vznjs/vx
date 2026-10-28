@@ -25,7 +25,7 @@ re-exported from `@vzn/vx`.
 **A project is a directory holding a `vx.config.*`**, in any language;
 core reads no `package.json` and no package-manager member list. `vx lock`
 finds them (git's tracked and unignored files; a config at or under a
-nested `.vx/workspace.*` is that workspace's) and records each by
+nested `.vx/workspace.*`, ignored or not, is that workspace's) and records each by
 directory; a run takes its projects from the lock, so a config added since
 runs once `vx lock` records it. A `discover` plugin may add directories
 with no config (`@vzn/vx-lockfile` adds the package manager's members).
