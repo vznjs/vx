@@ -145,6 +145,11 @@ describe('vx watch loop (e2e)', () => {
     lock(f.root)
     await until(async () => (await executions(f.log)) === 2, 'the re-run after a re-lock')
     expect(w.err().split(hint).length - 1).toBe(1)
+
+    // A config gone is the run's own refusal to say, not a second line.
+    await rm(config)
+    await until(() => w.err().includes('but its vx.config.mjs is gone'), 'the refusal')
+    expect(w.err().split(hint).length - 1).toBe(1)
     expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a1\na1\n')
   }, 40_000)
 
