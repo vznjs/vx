@@ -213,6 +213,32 @@ describe('a refusal under --format json', () => {
     // past bun's 5 s default.
   }, 30_000)
 
+  // The loader's own refusals open with `Workspace config …`, not the path,
+  // and answered VX_E_REFUSED; a config's own throw answered VX_E_INTERNAL.
+  it('a workspace file that does not load is VX_E_CONFIG', async () => {
+    const codes: Record<string, string> = {}
+    for (const [name, body] of Object.entries({
+      syntax: 'export default {\n',
+      notObject: 'export default 42\n',
+      thrownValue: "throw 'no'\n",
+      thrownError: "throw new Error('no')\n",
+    })) {
+      const ws = await makeWorkspace({ prefix: `vx-error-codes-ws-${name}-`, workspaceFile: false })
+      try {
+        await Bun.write(path.join(ws, '.vx/workspace.mjs'), body)
+        codes[name] = await refusal(['show', '--format', 'json'], ws)
+      } finally {
+        await rm(ws, { recursive: true, force: true })
+      }
+    }
+    expect(codes).toEqual({
+      syntax: 'VX_E_CONFIG',
+      notObject: 'VX_E_CONFIG',
+      thrownValue: 'VX_E_CONFIG',
+      thrownError: 'VX_E_CONFIG',
+    })
+  }, 30_000)
+
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
     const plain = await vx(['run', 'nope', '--all'])
     const forwarded = await vx(['run', 'nope', '--all', '--', '--dry=json'])
