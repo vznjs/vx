@@ -572,7 +572,7 @@ export async function mapNxWorkspace(
         )
         followNxGraph(t.task, nodeName, meta.name, nxEdges, metaByNode, emittedIds, reached)
       }
-      dropUnheldDeps(t, emitted, emittedIds)
+      dropUnheldDeps(t, meta.name, emitted, emittedIds)
       const reader = dependentReaders.get(t)
       if (reader !== undefined && !reachesProducer(t, meta.name, emittedIds, reached)) {
         delete t.task!['cache']
@@ -754,6 +754,7 @@ export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
 
 function dropUnheldDeps(
   t: GeneratedTask,
+  owner: string,
   emitted: ReadonlySet<string>,
   emittedIds: ReadonlySet<string>,
 ): void {
@@ -767,7 +768,9 @@ function dropUnheldDeps(
     if (d.startsWith('^')) return emitted.has(d.slice(1))
     // `pkg#task` on a project no package holds (the root project with no
     // vx.config) refused the whole run as "no such project".
-    if (!d.includes('#') || emittedIds.has(d)) return true
+    // A same-project target written as no task (an `nx:noop` with nothing
+    // to chain) is nothing Nx runs; kept, `vx lock` refused the project.
+    if (emittedIds.has(d.includes('#') ? d : `${owner}#${d}`)) return true
     t.todos.push(
       `dependsOn ${JSON.stringify(d)}: no vx project runs it — edge dropped, and the key misses it`,
     )
