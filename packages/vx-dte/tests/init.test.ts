@@ -148,9 +148,9 @@ it('writes the CI files at the repository’s root, running in the workspace’s
   expect(await at({ workers: sizes, adapter: github() })).toBe(0)
   for (const file of [WORKFLOW, '.github/workflows/ci.yml']) {
     const yml = await readFile(path.join(root, file), 'utf8')
-    expect(yml).toContain('    defaults:\n      run:\n        working-directory: ws\n')
+    expect(yml).toContain("    defaults:\n      run:\n        working-directory: 'ws'\n")
     expect(yml).toContain(
-      '      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0\n        with: { package_json_file: ws/package.json }\n',
+      "      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0\n        with: { package_json_file: 'ws/package.json' }\n",
     )
   }
   const relay = 'https://relay.example.com'
@@ -160,6 +160,32 @@ it('writes the CI files at the repository’s root, running in the workspace’s
     "    - cd 'ws'\n    - npm install -g --silent bun@1.4\n    - corepack enable\n    - pnpm install --frozen-lockfile\n",
   )
   expect(ci).toContain("    - git checkout -q FETCH_HEAD\n    - cd 'ws'\n")
+})
+
+// Written bare, ' #' began a YAML comment: the jobs ran in 'my app', and
+// pnpm's step was no YAML at all.
+it("quotes the workspace's directory in the GitHub workflows", async () => {
+  const dir = "my app #1's"
+  for (const manager of ['pnpm', 'bun'] as const) {
+    const { files } = await github().init!({
+      workspaceRoot: root,
+      dir,
+      sizes: [{ name: 'small' }],
+      manager,
+      tasks: { main: '', change: '' },
+    })
+    for (const text of Object.values(files)) {
+      const job = Object.values(
+        (Bun.YAML.parse(text) as { jobs: Record<string, Record<string, unknown>> }).jobs,
+      )[0]!
+      expect(job['defaults']).toEqual({ run: { 'working-directory': dir } })
+      const steps = job['steps'] as { uses?: string; with?: unknown }[]
+      if (manager === 'pnpm')
+        expect(steps.find((s) => s.uses?.startsWith('pnpm/action-setup@'))?.with).toEqual({
+          package_json_file: `${dir}/package.json`,
+        })
+    }
+  }
 })
 
 it('keeps a workflow its owner changed unless --force, and says when it is up to date', async () => {

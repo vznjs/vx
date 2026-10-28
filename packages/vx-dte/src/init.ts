@@ -188,7 +188,9 @@ export function githubInit(options: GithubOptions, setup: DteSetup): DteInit {
   // A workspace in a subdirectory: CI files live at the repository's root,
   // and their commands run in the workspace.
   const inDir =
-    setup.dir === '' ? '' : `    defaults:\n      run:\n        working-directory: ${setup.dir}\n`
+    setup.dir === ''
+      ? ''
+      : `    defaults:\n      run:\n        working-directory: ${quoted(setup.dir)}\n`
   const install = [
     ...(setup.manager === 'pnpm'
       ? [pnpmAction(setup.dir)]
@@ -324,7 +326,7 @@ function rootInstall(manager: DteSetup['manager'], dir: string): string[] {
 function pnpmAction(dir: string): string {
   return dir === ''
     ? `      - uses: ${SETUP_PNPM}`
-    : `      - uses: ${SETUP_PNPM}\n        with: { package_json_file: ${dir}/package.json }`
+    : `      - uses: ${SETUP_PNPM}\n        with: { package_json_file: ${quoted(`${dir}/package.json`)} }`
 }
 
 /**
