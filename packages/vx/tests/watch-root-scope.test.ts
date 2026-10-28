@@ -118,6 +118,12 @@ describe('vx watch //#task', () => {
     })
     expect(lock.exitCode).toBe(0)
     await until(async () => (await runs(log)) === 1, 'the locked run')
+    await Bun.sleep(SETTLE_MS)
+    // The cache's own `.vx/.gitignore` write starts no cycle: the lock's is the one.
+    expect({ runs: await runs(log), cycles: out.split('\nchanged ').length - 1 }).toEqual({
+      runs: 1,
+      cycles: 1,
+    })
     await writeFile(path.join(root, 'tools', 't.txt'), '2\n')
     await until(async () => (await runs(log)) === 2, 'the re-run')
   }, 30_000)
