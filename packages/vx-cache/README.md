@@ -42,7 +42,8 @@ export default {
   front of it, such as a Cloudflare Access service token:
   `headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
 'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET }`. An
-  unset value is left out; `authorization` stays the CI token's. A DTE
+  unset value is left out; `authorization`, `content-type`, `content-length`
+  and the `vx-*` names stay the request's own (setting one is refused). A DTE
   worker sends them too, so give its job the same secrets.
 
 ## Tokens

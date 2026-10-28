@@ -609,7 +609,18 @@ describe('config', () => {
         h.get('vx-issuer'),
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', await hashPart(GITHUB), await hashPart(REPO)])
-    for (const bad of [{ authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
+    // A name the wire sets, in any case, joined its value ("x, application/json"):
+    // every request was a 400.
+    for (const bad of [
+      { authorization: 'x' },
+      { 'a b': 'x' },
+      { a: 'x\ny' },
+      { 'Content-Type': 'text/plain' },
+      { 'Content-Length': '1' },
+      { 'VX-Issuer': 'x' },
+      { 'vx-repository': 'x' },
+      { 'Vx-Scope': 'x' },
+    ])
       expect(() =>
         resolveVxCacheConfig({ ...NAMED, url: 'https://c.example', headers: bad }, {}),
       ).toThrow('vxCache(): header')

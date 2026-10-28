@@ -33,7 +33,8 @@ export interface VxCacheOptions {
    * Headers every request to the server carries, for a proxy in front of
    * it (`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an
    * Access service token, 2026-10-25). An unset value is left out;
-   * `authorization` stays the CI token's.
+   * `authorization`, `content-type`, `content-length` and the `vx-*` names
+   * the request sets are refused.
    */
   headers?: Record<string, string | undefined>
 }
@@ -68,7 +69,20 @@ const ASK_ATTEMPTS = 3
 /** Uploads open at once; more wait. */
 const IN_FLIGHT = 4
 
-/** `headers` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
+/**
+ * The names a request sets itself: one of them in `headers`, in another
+ * case, was joined to the request's own value, and the server refused it.
+ */
+const WIRE_HEADERS = new Set([
+  'authorization',
+  'content-type',
+  'content-length',
+  'vx-issuer',
+  'vx-repository',
+  'vx-scope',
+])
+
+/** `headers` with unset values left out; a name or value no header can carry, or one the wire sets, refused. */
 function proxyHeaders(
   factory: string,
   headers: Record<string, string | undefined> | undefined,
@@ -76,7 +90,7 @@ function proxyHeaders(
   const out: Record<string, string> = {}
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || WIRE_HEADERS.has(name.toLowerCase()))
       throw new Error(`${factory}: headers cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
       throw new Error(`${factory}: header "${name}" must be one line of text`)
