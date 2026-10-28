@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-ci,vx-otel: drop the test transports from the options
+
+github({ append, sizeOf }) and otel({ post }) are removed; @vzn/vx-otel no longer exports PostFn or OtlpTls.
+
 ## vx-history: name the server options url and headers
 
 vxHistory({ server, serverHeaders }) is vxHistory({ url, headers }).
