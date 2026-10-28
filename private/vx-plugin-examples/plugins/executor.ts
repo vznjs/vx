@@ -29,12 +29,19 @@ export function shellExecutor(): VxPlugin {
         stderr: 'pipe',
         detached: true,
       })
-      const stop = (): void => {
+      const kill = (signal: NodeJS.Signals): void => {
         try {
-          process.kill(-child.pid, 'SIGTERM')
+          process.kill(-child.pid, signal)
         } catch {
           // already gone
         }
+      }
+      // Core abandons an executor 2 s after the abort: a group that ignores
+      // SIGTERM is killed before then, or it would run on unreached.
+      let killTimer: ReturnType<typeof setTimeout> | undefined
+      const stop = (): void => {
+        kill('SIGTERM')
+        killTimer = setTimeout(() => kill('SIGKILL'), 1_000)
       }
       req.signal?.addEventListener('abort', stop, { once: true })
       const drain = async (stream: ReadableStream<Uint8Array>, on: (s: string) => void) => {
@@ -53,6 +60,7 @@ export function shellExecutor(): VxPlugin {
         child.exited,
       ])
       req.signal?.removeEventListener('abort', stop)
+      clearTimeout(killTimer)
       return {
         exitCode,
         durationMs: Date.now() - started,

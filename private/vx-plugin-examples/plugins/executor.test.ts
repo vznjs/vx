@@ -144,3 +144,22 @@ it('starts nothing for a request already aborted', async () => {
   await Bun.sleep(600)
   expect([r.exitCode, await Bun.file(path.join(root, 'ran.txt')).exists()]).toEqual([143, false])
 })
+
+// Core abandons an executor 2 s after its abort: a group that ignored
+// SIGTERM ran on, unreached, after the run had ended.
+it('kills a group that ignores SIGTERM after a grace', async () => {
+  const executor = (await shellExecutor().executor!({} as never))!
+  const stop = new AbortController()
+  const started = Date.now()
+  setTimeout(() => stop.abort('SIGTERM'), 200)
+  const r = await executor.execute({
+    command: "trap '' TERM; sleep 30",
+    cwd: root,
+    env: { PATH: process.env['PATH'] ?? '' },
+    forwardArgs: [],
+    onStdout() {},
+    onStderr() {},
+    signal: stop.signal,
+  } as never)
+  expect([r.exitCode, Date.now() - started < 10_000]).toEqual([137, true])
+}, 40_000)
