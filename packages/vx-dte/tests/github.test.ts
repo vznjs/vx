@@ -116,6 +116,19 @@ it('hands its workers the variables env names, as the env input', async () => {
   expect(() => github({ env: { 'A-B': 'x' } })).toThrow('github(): env "A-B"')
 })
 
+// An empty or pathed workflow dispatched to a URL GitHub answers 404, and
+// the run said to commit a workflow file that was there all along.
+it('refuses a workflow that is not a file name in .github/workflows', () => {
+  for (const [workflow, got] of [
+    ['', '""'],
+    ['.github/workflows/w.yml', '".github/workflows/w.yml"'],
+  ] as const)
+    expect(() => github({ workflow })).toThrow(
+      `github() option "workflow" must be a file name in .github/workflows, such as vx-worker.yml, got ${got}`,
+    )
+  expect(() => github({ workflow: 'workers.yml' })).not.toThrow()
+})
+
 it('says why for each worker of a dispatch GitHub refused', async () => {
   const server = Bun.serve({
     port: 0,
