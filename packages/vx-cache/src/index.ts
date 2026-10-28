@@ -15,6 +15,7 @@ import {
   type PluginOptionKinds,
   refuseUnknownOptions,
   type RemoteCacheLayer,
+  UserError,
   type VxPlugin,
 } from '@vzn/vx'
 
@@ -77,9 +78,9 @@ function proxyHeaders(
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`${factory}: headers cannot set "${name}"`)
+      throw new UserError(`${factory}: headers cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`${factory}: header "${name}" must be one line of text`)
+      throw new UserError(`${factory}: header "${name}" must be one line of text`)
     out[name] = value
   }
   return out
@@ -565,11 +566,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
 function namedOf(options: VxCacheOptions): { issuer: string; repository: string } {
   const { issuer, repository } = options as Partial<VxCacheOptions>
   if (typeof issuer !== 'string' || !/^https?:\/\/\S+$/.test(issuer))
-    throw new Error(
+    throw new UserError(
       `vxCache(): issuer must be the CI issuer's URL (https://token.actions.githubusercontent.com), got ${String(issuer)}`,
     )
   if (typeof repository !== 'string' || !/^[^/\s]+(\/[^/\s]+)+$/.test(repository))
-    throw new Error(`vxCache(): repository must be org/name, got ${String(repository)}`)
+    throw new UserError(`vxCache(): repository must be org/name, got ${String(repository)}`)
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
@@ -582,7 +583,7 @@ function timeoutsOf(options: VxCacheOptions): { timeoutMs: number; uploadTimeout
     const ms = options[name]
     if (ms === undefined) return fallback
     if (!(ms > 0 && ms <= MAX_TIMER_MS))
-      throw new Error(
+      throw new UserError(
         `vxCache(): ${name} must be a positive number of ms up to ${MAX_TIMER_MS}, got ${String(ms)}`,
       )
     return ms
@@ -599,10 +600,10 @@ export function resolveVxCacheConfig(
   const timeouts = timeoutsOf(options)
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
-  if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
+  if (!/^https?:\/\//.test(url)) throw new UserError(`vxCache(): url must be http(s), got ${url}`)
   // Each route is the url's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
-    throw new Error(`vxCache(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
+    throw new UserError(`vxCache(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
   return {
     url,
     ...named,
