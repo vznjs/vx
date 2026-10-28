@@ -3,7 +3,7 @@
 // so the layers can be swapped without touching the others.
 
 import type { ProjectEntry } from '../workspace/index.js'
-import { inputStabilityEnv, LOCK_INVALID, lockEntryBroken } from '../workspace/index.js'
+import { EMPTY_LOCK, inputStabilityEnv, LOCK_INVALID, lockEntryBroken } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -1823,13 +1823,14 @@ async function unresolvedHint(prepared: {
 }
 
 /**
- * The first-run case, told apart from a typo: no project in the workspace
- * has a `vx.config.*` at all, so no name could have resolved. Reached only
- * on the error path.
+ * The first-run case, told apart from a typo: the lock holds no project,
+ * so no name could have resolved. Said of the lock, the only thing a run
+ * reads: "no directory holds a vx.config" was false beside configs never
+ * locked. Reached only on the error path.
  */
 async function initHint(prepared: { anyProjectConfig: boolean }): Promise<string> {
   if (prepared.anyProjectConfig) return ''
-  return ' No directory holds a vx.config — run `vx init` to write them, then `vx lock`.'
+  return ` ${EMPTY_LOCK}.`
 }
 
 /**
