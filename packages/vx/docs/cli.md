@@ -496,6 +496,11 @@ terminator are not command lines: `cat <<X … X` gets them on the
 heredoc, and a quote in a body opens no string (X-110). A persistent task gets
 them too, with or without a `readyWhen`.
 
+The command, with its forwarded args, is one argument to `sh -c`, and
+Linux caps one argument at 128 KiB. Past that the task fails to spawn
+(`E2BIG`), and the frame says how long the command was: pass a long
+file list through a file the tool reads instead.
+
 Forwarded args are folded into the cache key — different args produce
 different cache entries. They scope to user-requested tasks only;
 dependsOn-pulled deps don't see them (so upstream cache identity

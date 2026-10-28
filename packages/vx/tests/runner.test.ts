@@ -1417,6 +1417,20 @@ describe('runCommand — the rows its sweep asked for', () => {
     expect(r.stderr).not.toContain('Install a POSIX sh')
   })
 
+  // A command (its forwarded args folded in) is ONE argument to `sh -c`,
+  // capped at 128 KiB on Linux, far below the argv total: the frame said
+  // only E2BIG, which reads as "too many files" and names no fix.
+  it('a command too long to spawn says what the limit is and how to get under it', async () => {
+    const r = await runCommand({
+      command: `true ${'x'.repeat(3_000_000)}`,
+      cwd: dir,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect([r.exitCode, r.spawnFailed]).toEqual([127, true])
+    expect(r.stderr).toContain('E2BIG')
+    expect(r.stderr).toContain('the command, with the args after --, is 2930 KiB')
+  })
+
   it('a timed-out command returns only once its group is gone', async () => {
     // The shell dies on the timeout's TERM; its child ignores it. runCommand
     // waits out the grace for the group, then SIGKILLs what is left. The
