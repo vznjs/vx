@@ -23,6 +23,13 @@ export interface GithubOptions {
   readonly env?: Readonly<Record<string, string | undefined>>
 }
 
+interface Job {
+  readonly name: string
+  readonly status: string
+  readonly conclusion: string | null
+  readonly steps?: readonly { name: string; conclusion: string | null }[]
+}
+
 const KEYS: PluginOptionKinds<GithubOptions> = {
   workflow: 'string',
   runsOn: 'object',
@@ -94,36 +101,41 @@ export function github(options: GithubOptions = {}): DteAdapter {
     const p = cancelOf(run).finally(() => pending.delete(p))
     pending.add(p)
   }
+  /** Every page of `run`'s jobs: a wave of more than 100 workers is a run of more than 100 jobs. */
+  const jobsOf = async (run: string): Promise<Job[] | undefined> => {
+    const all: Job[] = []
+    for (let page = 1; ; page++) {
+      const res = await call(`${run}/jobs?per_page=100&page=${page}`).catch((err: unknown) => {
+        failed(`reading ${runOf(run)}'s jobs`, err instanceof Error ? err.message : String(err))
+        return undefined
+      })
+      if (res === undefined) return undefined
+      if (!res.ok) {
+        failed(
+          `reading ${runOf(run)}'s jobs`,
+          `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+        )
+        return undefined
+      }
+      const body = (await res.json().catch((err: unknown) => {
+        failed(
+          `reading ${runOf(run)}'s jobs`,
+          `no JSON: ${err instanceof Error ? err.message : String(err)}`,
+        )
+        return undefined
+      })) as { jobs?: Job[] } | null | undefined
+      if (body === undefined) return undefined
+      const jobs = body?.jobs ?? []
+      all.push(...jobs)
+      if (jobs.length < 100) return all
+    }
+  }
   const look = (ms: number): void => {
     watch = setTimeout(() => {
       void Promise.all(
         [...watched].map(async ([run, workers]) => {
-          const res = await call(`${run}/jobs?per_page=100`).catch((err: unknown) => {
-            failed(`reading ${runOf(run)}'s jobs`, err instanceof Error ? err.message : String(err))
-            return undefined
-          })
-          if (res === undefined) return
-          if (!res.ok) {
-            failed(
-              `reading ${runOf(run)}'s jobs`,
-              `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
-            )
-            return
-          }
-          const { jobs = [] } = ((await res.json().catch((err: unknown) => {
-            failed(
-              `reading ${runOf(run)}'s jobs`,
-              `no JSON: ${err instanceof Error ? err.message : String(err)}`,
-            )
-            return null
-          })) ?? {}) as {
-            jobs?: {
-              name: string
-              status: string
-              conclusion: string | null
-              steps?: { name: string; conclusion: string | null }[]
-            }[]
-          }
+          const jobs = await jobsOf(run)
+          if (jobs === undefined) return
           for (const j of jobs) {
             const a = workers.get(j.name)
             if (a === undefined || j.status !== 'completed') continue
