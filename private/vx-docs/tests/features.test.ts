@@ -92,6 +92,22 @@ describe('the feature data', () => {
 
   // Every `vx <verb> …` a page shows is a verb vx has, with flags it takes:
   // core's help text decides.
+  // What vx prints is shown as the terminal shows it: an `ansi` block from a
+  // real run, coloured wherever vx colours that output.
+  it('shows vx output as ansi, in colour where vx colours it', () => {
+    const output = /^(?:\$ vx\b|✗ vx\b|\[vx\]|vx: | [⏺◼⊘◌✗►⇢⇣▸]|┌─|└─|::group::|would run:)/m
+    const painted = /^(?:✗ vx\b| [⏺◼⊘]|┌─|└─)/m
+    const bad: string[] = []
+    for (const f of FEATURES) {
+      // eslint-disable-next-line no-control-regex
+      const plain = f.example.code.replace(/\x1b\[[0-9;]*m/g, '')
+      if (f.example.lang !== 'ansi' && output.test(plain)) bad.push(`${f.slug}: ${f.example.lang}`)
+      if (f.example.lang === 'ansi' && painted.test(plain) && !f.example.code.includes('\x1b['))
+        bad.push(`${f.slug}: no colour`)
+    }
+    expect(bad).toEqual([])
+  })
+
   it('shows only verbs and flags core accepts', () => {
     const bad: string[] = []
     let seen = 0
