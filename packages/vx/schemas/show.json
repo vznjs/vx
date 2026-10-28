@@ -6,7 +6,12 @@
     { "type": "array", "items": { "$ref": "#/$defs/listRow" } },
     { "$ref": "#/$defs/project" },
     { "$ref": "#/$defs/task" },
-    { "type": "array", "items": { "$ref": "#/$defs/task" } }
+    {
+      "type": "array",
+      "minItems": 1,
+      "description": "`vx show <task>`; when no project in scope declares it, `[]`, which the list branch holds",
+      "items": { "$ref": "#/$defs/task" }
+    }
   ],
   "$defs": {
     "listRow": {

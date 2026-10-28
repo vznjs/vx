@@ -177,7 +177,17 @@ beforeAll(async () => {
   await unlink(path.join(root, 'flag'))
   expect(vx(['run', 'lib#flaky', '--force']).code).toBe(1)
 
-  for (const a of [[], ['kitchen'], ['bare'], ['kitchen#all'], ['build']]) json('show', a)
+  // A task no selected project declares lists none: `[]`, which both the
+  // list and the task-list branch held, so it matched two `oneOf` branches.
+  for (const a of [
+    [],
+    ['kitchen'],
+    ['bare'],
+    ['kitchen#all'],
+    ['build'],
+    ['build', '--filter', 'bare'],
+  ])
+    json('show', a)
   json('info', [])
   json('why', ['app#build'])
   json('why', ['app#fail'])

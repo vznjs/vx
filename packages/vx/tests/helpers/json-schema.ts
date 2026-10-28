@@ -1,6 +1,7 @@
 // The JSON Schema subset `packages/vx/schemas/*.json` is written in:
 // `$ref` into `$defs`, `oneOf`, `type` (a name or a list), `enum`,
-// `const`, `properties`, `required`, `additionalProperties`, `items`. A
+// `const`, `properties`, `required`, `additionalProperties`, `items`,
+// `minItems`. A
 // keyword outside it is an error, never ignored: a schema that says more
 // than the checker reads would pass output it does not hold. No
 // dependency: the subset is a hundred lines, a validator package is not.
@@ -22,6 +23,7 @@ const KEYWORDS = new Set([
   'required',
   'additionalProperties',
   'items',
+  'minItems',
 ])
 
 function typeOf(v: unknown): string {
@@ -108,6 +110,9 @@ function walkValue(
         walk(schema['additionalProperties'] as Schema, child, `${at}.${k}`, `${owner}.*`)
       }
     }
+  }
+  if (Array.isArray(v) && typeof schema['minItems'] === 'number' && v.length < schema['minItems']) {
+    errors.push(`${at}: ${v.length} items, fewer than ${schema['minItems']}`)
   }
   if (Array.isArray(v) && schema['items'] !== undefined) {
     v.forEach((item, i) => walk(schema['items'] as Schema, item, `${at}[${i}]`, `${owner}[]`))
