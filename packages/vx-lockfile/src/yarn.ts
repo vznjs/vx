@@ -14,6 +14,7 @@
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { depsOf, record, stable } from './json.js'
 import { joinPosix } from './posix.js'
+import { parseSyml } from './syml.js'
 
 export interface Lockfile {
   readonly generation: 'berry' | 'classic'
@@ -57,9 +58,9 @@ export function parseLockfile(text: string): Lockfile {
 }
 
 function parseBerry(text: string): Lockfile {
-  let doc: unknown
+  let doc: unknown = parseSyml(text)
   try {
-    doc = Bun.YAML.parse(text)
+    doc ??= Bun.YAML.parse(text)
   } catch (err) {
     throw new Error(`yarn.lock: ${err instanceof Error ? err.message : String(err)}`)
   }
