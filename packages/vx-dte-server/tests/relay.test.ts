@@ -759,6 +759,32 @@ describe('a host that keeps runs and holds websockets', () => {
     const a = await c.join(R, 'peer')
     expect((await c.call(R, 'socket', undefined, `?id=${a}`)).status).toBe(426)
   })
+
+  // Bun's upgrade fails on a request with no websocket key: the refusal it
+  // was let in to say waited for a socket that never came, one kept per
+  // request, with no token needed.
+  it('keeps no refusal whose upgrade failed', async () => {
+    const ids: string[] = []
+    const relay = createRelay({
+      verify: async () => ({ iss: 'i', run: ['1'] }),
+      upgrade: (_key, id) => {
+        ids.push(id)
+        return Response.json({ error: 'not a websocket' }, { status: 426 })
+      },
+    })
+    const res = await relay.fetch(
+      new Request(`http://relay/v1/sessions/${R}/socket`, {
+        headers: { upgrade: 'websocket', 'sec-websocket-protocol': 'switchboard.v1' },
+      }),
+    )
+    expect(res.status).toBe(426)
+    const closes: (number | undefined)[] = []
+    const socket = { send() {}, close: (code?: number) => void closes.push(code) }
+    // Kept, the id would still close as the 401 it was refused with.
+    expect(relay.attach('', ids[0]!, socket)).toBe(false)
+    expect(closes).toEqual([GONE])
+  })
+
 })
 
 it('the Bun entry serves the protocol, without auth on loopback only', async () => {
