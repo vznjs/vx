@@ -392,6 +392,9 @@ export function createRelay(opts: RelayOptions): Relay {
       // No one reads the host's.
       info: role === 'peer' ? (body.info ?? null) : null,
       queue: [],
+      // Its socket has yet to attach: one that never does (its upgrade
+      // failed, its client went) is gone a grace on, as a dropped one.
+      droppedAt: Date.now(),
     }
     session.byId.set(p.id, p)
     if (p.role === 'host') {
@@ -526,7 +529,11 @@ export function createRelay(opts: RelayOptions): Relay {
         if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
           const id = `refused-${crypto.randomUUID()}`
           refusals.set(id, err)
-          return opts.upgrade('', id, req, protocol)
+          const res = opts.upgrade('', id, req, protocol)
+          // No socket will attach to take it (Bun's upgrade fails on a
+          // request with no websocket key): kept, one leaked per request.
+          if (res.status !== 101) refusals.delete(id)
+          return res
         }
         return Response.json(errorBody(err), { status: err.status })
       }
