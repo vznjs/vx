@@ -1153,8 +1153,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               // A coarse capture is split into the paths its glob really names
               // before it is recorded — see decomposeOutputDir.
               const declaredGlobs = [
-                ...req.outputs.workspaceFiles,
-                ...req.outputs.files.map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
+                ...req.outputs.workspaceFiles.filter(isOutputGlob),
+                ...req.outputs.files
+                  .filter(isOutputGlob)
+                  .map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
               ].map((g) => normalizeGlob(g))
               const recorded: DecomposedOutputs = {
                 directories: [],
@@ -1334,6 +1336,13 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
  * would return no outputs with no error anywhere. An escaped segment
  * (`\[id\]`, a route directory) is literal: the path names it unescaped.
  */
+/**
+ * A `!` take-back names what is NOT an output (core's restore gate reads
+ * it): requested, `!dist/cache/**` was the path `!dist/cache`, and as a
+ * matcher `Bun.Glob('!x')` matches every path but `x`.
+ */
+const isOutputGlob = (glob: string): boolean => !glob.startsWith('!')
+
 export function globToOutputPath(glob: string): string {
   return literalHead(glob).path
 }
@@ -1405,9 +1414,10 @@ export function outputPathSets(
   const prefix = (p: string): string =>
     workingDirectory === '' && projectRel !== '' ? `${projectRel}/${p}` : p
   // `app/\[id\]/x` names the file `app/[id]/x`: `literalHead` unescapes.
-  const globs = [...req.outputs.files.map(prefix), ...req.outputs.workspaceFiles.map(rebase)].map(
-    (g) => normalizeGlob(g),
-  )
+  const globs = [
+    ...req.outputs.files.filter(isOutputGlob).map(prefix),
+    ...req.outputs.workspaceFiles.filter(isOutputGlob).map(rebase),
+  ].map((g) => normalizeGlob(g))
   const paths = new Set<string>()
   const files = new Set<string>()
   const dirs = new Set<string>()
@@ -1465,7 +1475,7 @@ export async function materialiseOutputs(
   const wholeTreeCapture = [
     ...(req.outputs?.files ?? []),
     ...(req.outputs?.workspaceFiles ?? []),
-  ].some((g) => globToOutputPath(g) === '')
+  ].some((g) => isOutputGlob(g) && globToOutputPath(g) === '')
   // `abs` names a file a declared glob matches: missing, it is a hole in a
   // declared output under either capture, and warning let `save` cache the
   // short tree under the key (F-8).
@@ -1485,8 +1495,10 @@ export async function materialiseOutputs(
   // the task (item 1038). A directory a LITERAL glob names is written whole.
   const projectRel = req.projectRel ?? toPosix(path.relative(req.workspaceRoot, req.cwd))
   const declared = [
-    ...(req.outputs?.files ?? []).map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
-    ...(req.outputs?.workspaceFiles ?? []),
+    ...(req.outputs?.files ?? [])
+      .filter(isOutputGlob)
+      .map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
+    ...(req.outputs?.workspaceFiles ?? []).filter(isOutputGlob),
   ].map((g) => normalizeGlob(g))
   const matchers = declared.map((g) => new Bun.Glob(g))
   // Core's restore gate: a `!` take-back, vx's own files and a
