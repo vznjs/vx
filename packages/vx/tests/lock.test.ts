@@ -119,6 +119,28 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
+    'locks a task named __proto__ and runs it',
+    async () => {
+      // vx init writes `['__proto__']` for such a script; the lock's
+      // sorted copy assigned it into a plain object and lost it.
+      await addProject(
+        root,
+        'app',
+        `export default { tasks: { ['__proto__']: { exec: { command: 'echo proto-ran' } } } }\n`,
+      )
+      expect((await vx(root, ['lock'], {})).code).toBe(0)
+      const lockJson = JSON.parse(
+        await Bun.file(path.join(root, '.vx/projects.lock.json')).text(),
+      ) as { projects: Record<string, { config: { tasks: object } }> }
+      expect(Object.keys(lockJson.projects['packages/app']!.config.tasks)).toEqual(['__proto__'])
+      const run = await vx(root, ['run', 'app#__proto__', '--output-logs', 'full'], {})
+      expect(run.code).toBe(0)
+      expect(run.out).toContain('proto-ran')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'freezes env-dependent configs: a run trusts the lock; --check audits',
     async () => {
       await addProject(root, 'app', ENV_CONFIG)

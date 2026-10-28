@@ -379,6 +379,8 @@ async function starter(
     return 0
   }
   const rows: ui.FieldRow[] = [['from', 'no turbo.json or nx.json: one project, the root']]
+  // The files are root-relative: a root above the cwd is named, or they read as written here.
+  if (root !== process.cwd()) rows.push(['root', root])
   if (args.dry) rows.push(['dry run', 'nothing written'])
   if (installs.length > 0) rows.push(['install', ...installs])
   if (files.length > 0) rows.push(['files', ...files.map((f) => f.path)])
