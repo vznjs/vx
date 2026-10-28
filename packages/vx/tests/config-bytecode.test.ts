@@ -42,8 +42,8 @@ async function writeProbe(value: string, extra = ''): Promise<void> {
     path.join(plugin, 'index.ts'),
     `import { definePlugin } from '@vzn/vx'\n${extra}\n` +
       `const value: string = ${value}\n` +
-      `export default () => definePlugin(import.meta, { commands: { probe: { description: 'probe', run() {\n` +
-      `  console.log(JSON.stringify({ value, dir: import.meta.dir, dirname: __dirname, url: import.meta.url,\n` +
+      `export default (preset?: string) => definePlugin(import.meta, { commands: { probe: { description: 'probe', run() {\n` +
+      `  console.log(JSON.stringify({ value: preset ?? value, dir: import.meta.dir, dirname: __dirname, url: import.meta.url,\n` +
       `    bundled: (new Error().stack ?? '').includes('/compiled/workspace-') }))\n  return 0\n` +
       `} } } })\n`,
   )
@@ -116,6 +116,32 @@ describe('workspace config bytecode', () => {
     },
     TIMEOUT,
   )
+
+  // The source load is Bun resolving each specifier anew: a file added where
+  // it now looks first is what runs, though every bundled file is unchanged.
+  for (const [spec, bundled, added] of [
+    ['./preset', 'preset.js', 'preset.ts'],
+    ['./preset.js', 'preset.ts', 'preset.js'],
+    ['./preset', 'preset/index.js', 'preset/index.ts'],
+  ] as const) {
+    it(
+      `a relative '${spec}' that now resolves to ${added}, not ${bundled}, loads the source`,
+      async () => {
+        await mkdir(path.dirname(path.join(root, '.vx', bundled)), { recursive: true })
+        await writeFile(path.join(root, '.vx', bundled), "export default 'old'\n")
+        await writeFile(
+          path.join(root, '.vx', 'workspace.ts'),
+          `import probe from 'vx-probe'\nimport preset from '${spec}'\nexport default { plugins: [probe(preset)] }\n`,
+        )
+        probe()
+        expect(probe()).toMatchObject({ value: 'old', bundled: true })
+        await writeFile(path.join(root, '.vx', added), "export default 'new'\n")
+        expect(probe()).toMatchObject({ value: 'new', bundled: false })
+        expect(probe()).toMatchObject({ value: 'new', bundled: true })
+      },
+      TIMEOUT,
+    )
+  }
 
   for (const [what, extra] of [
     ['top-level await', 'await Promise.resolve()'],
