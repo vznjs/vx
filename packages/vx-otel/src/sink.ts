@@ -493,7 +493,9 @@ export class OtelSink implements TelemetrySink {
   }
 
   private liveEvent(event: LiveEvent): void {
-    if (this.cfg.live && this.cfg.logsEnabled) this.liveEvents.push(event)
+    if (!this.cfg.live || !this.cfg.logsEnabled) return
+    this.liveEvents.push(event)
+    this.kick()
   }
 
   /**

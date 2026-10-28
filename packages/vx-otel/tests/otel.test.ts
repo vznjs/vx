@@ -2720,6 +2720,32 @@ describe('live mode', () => {
     ])
   })
 
+  // A start queued its record and sent nothing: with no task ended and no
+  // sample taken, a long first task showed the run as not started.
+  it('a start is sent while the task still runs', async () => {
+    const { cfg, calls } = mkConfig({ live: true, liveBatchMs: 20, metricsEnabled: false })
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 3,
+      kind: 'task.start',
+      runId: 'run-1',
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      ts: 1001,
+    } as TelemetryRecord)
+    await Bun.sleep(80)
+    expect(eventNames(calls)).toEqual(['vx.run.start', 'vx.task.start'])
+  })
+
   it('without it, nothing leaves before the run ends', async () => {
     const { cfg, calls } = mkConfig()
     const sink = new OtelSink(cfg)
