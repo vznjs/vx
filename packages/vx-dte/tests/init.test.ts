@@ -52,7 +52,7 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
   )
   expect(yml).toContain('name: ${{ matrix.worker }}')
   expect(yml).toContain('VX_DTE_WORKER: ${{ matrix.worker }}')
-  expect(yml).toContain("with: { ref: '${{ inputs.sha }}' }")
+  expect(yml).toContain("with: { ref: '${{ inputs.sha }}', persist-credentials: false }")
   expect(yml).toContain(
     '      - run: bun install --frozen-lockfile\n      - run: bun vx dte worker\n',
   )
@@ -83,7 +83,7 @@ it('github({ runsOn }) names a size its runner; pnpm gets its setup step', async
   const yml = await readFile(path.join(root, '.github/workflows/w.yml'), 'utf8')
   expect(yml).toContain(`'{"small":"ubuntu-latest-16-cores","mac":"macos-latest"}'`)
   expect(yml).toContain(
-    '      - uses: pnpm/action-setup@v4\n      - run: pnpm install --frozen-lockfile\n',
+    '      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0\n      - run: pnpm install --frozen-lockfile\n',
   )
 })
 
@@ -103,6 +103,37 @@ it('writes workflows that parse as YAML', async () => {
   expect(steps.some((s) => s.run?.startsWith('jq -r'))).toBe(true)
 })
 
+// A tag is its maintainer's to move (or whoever takes their account), and
+// checkout writes the job's token (actions: write on the run) into
+// .git/config for every later step: the rules this repo's own workflows
+// keep (supply-chain.unsafe.test.ts).
+it('pins every action it writes to a commit SHA and keeps the token out of checkout', async () => {
+  for (const lock of ['bun.lock', 'pnpm-lock.yaml']) {
+    await rm(root, { recursive: true, force: true })
+    await mkdir(root, { recursive: true })
+    await writeFile(path.join(root, lock), '')
+    expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+    for (const file of [WORKFLOW, '.github/workflows/ci.yml']) {
+      const yml = await readFile(path.join(root, file), 'utf8')
+      const uses = [...yml.matchAll(/^\s*(?:-\s*)?uses:\s*(\S+)(.*)$/gm)]
+      expect(uses.length).toBeGreaterThan(1)
+      expect(
+        uses
+          .filter((m) => !/@[0-9a-f]{40}$/.test(m[1]!) || !/^\s*# v\d+\.\d+\.\d+$/.test(m[2]!))
+          .map((m) => m[0].trim()),
+      ).toEqual([])
+      const doc = Bun.YAML.parse(yml) as {
+        jobs: Record<string, { steps: { uses?: string; with?: Record<string, unknown> }[] }>
+      }
+      const checkouts = Object.values(doc.jobs)
+        .flatMap((j) => j.steps)
+        .filter((s) => s.uses?.startsWith('actions/checkout@'))
+      expect(checkouts.length).toBe(1)
+      for (const c of checkouts) expect(c.with?.['persist-credentials']).toBe(false)
+    }
+  }
+})
+
 // CI reads its files at the repository's root: a workspace in a
 // subdirectory got them in its own, which no CI reads (2026-10-25).
 it('writes the CI files at the repository’s root, running in the workspace’s directory', async () => {
@@ -119,7 +150,7 @@ it('writes the CI files at the repository’s root, running in the workspace’s
     const yml = await readFile(path.join(root, file), 'utf8')
     expect(yml).toContain('    defaults:\n      run:\n        working-directory: ws\n')
     expect(yml).toContain(
-      '      - uses: pnpm/action-setup@v4\n        with: { package_json_file: ws/package.json }\n',
+      '      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0\n        with: { package_json_file: ws/package.json }\n',
     )
   }
   const relay = 'https://relay.example.com'

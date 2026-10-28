@@ -229,7 +229,7 @@ export async function affectedChanges(
   const partial = isPartialClone(args.workspaceRoot).catch(() => false)
   const base = fromMergeBase
     ? await mergeBase(args.workspaceRoot, since)
-    : (await verifyRef(args.workspaceRoot, since), since)
+    : await rangeBase(args.workspaceRoot, since)
 
   const [diffed, untracked] = await Promise.all([
     // `--no-renames` is crucial for project-affected detection: with
@@ -920,11 +920,7 @@ async function reachMergeBase(workspaceRoot: string, ref: string): Promise<strin
   const ancestor = HEAD_ANCESTOR.test(ref)
   let tip = ancestor ? undefined : revParse(workspaceRoot, ref)
   if (tip === undefined && !ancestor) {
-    const spec = originSpec(ref)
-    if (spec === undefined || !(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) {
-      return undefined
-    }
-    tip = revParse(workspaceRoot, ref)
+    tip = await fetchTip(workspaceRoot, ref)
     if (tip === undefined) return undefined
   }
   if (tip !== undefined && parentsOf(workspaceRoot, head).includes(tip)) return tip
@@ -942,6 +938,30 @@ async function reachMergeBase(workspaceRoot: string, ref: string): Promise<strin
     if (!isShallow(workspaceRoot)) return undefined
   }
   return undefined
+}
+
+/** `ref`'s commit fetched from origin at depth 1, or undefined when origin cannot name it. */
+async function fetchTip(workspaceRoot: string, ref: string): Promise<string | undefined> {
+  const spec = originSpec(ref)
+  if (spec === undefined || !(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) {
+    return undefined
+  }
+  return revParse(workspaceRoot, ref)
+}
+
+/**
+ * The base of a two-dot `<ref>..HEAD`: `ref` itself, which a shallow clone
+ * fetches as the three-dot form fetches its tip (CI's depth-1 checkout
+ * refused `origin/main..HEAD` while `origin/main...HEAD` worked). HEAD's
+ * own ancestor is its merge base with HEAD, reached by deepening.
+ */
+async function rangeBase(workspaceRoot: string, ref: string): Promise<string> {
+  if (HEAD_ANCESTOR.test(ref)) return mergeBase(workspaceRoot, ref)
+  if (revParse(workspaceRoot, ref) === undefined && isShallow(workspaceRoot)) {
+    await fetchTip(workspaceRoot, ref)
+  }
+  await verifyRef(workspaceRoot, ref)
+  return ref
 }
 
 /** The clones `fetchOrigin` fetched into, so made partial: `isPartialClone` may have answered first. */
