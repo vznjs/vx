@@ -272,6 +272,17 @@ describe('vx-worker.yml', () => {
     expect(step?.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
   })
 
+  // setup installs the restored debs with `dpkg -i`, which checks no
+  // signature, and a restore takes the newest key of the prefix. A worker
+  // runs the code of whatever sha it was handed, so only main's own code
+  // may save what every later worker installs as root.
+  it('saves the setup packages only from main at main', () => {
+    const save = worker.steps!.find((s) => s.uses?.startsWith('actions/cache/save'))!
+    expect(save.if).toBe(
+      "steps.setup.outputs.fetched == 'true' && github.ref == 'refs/heads/main' && inputs.sha == github.sha",
+    )
+  })
+
   // The worker is what a developer would write (2026-10-23: "why vx
   // runner runs twice?"): the runtime set up by the CI plugin before the
   // worker starts (owner: "vx setup github", "we should do before"), its
