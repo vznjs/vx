@@ -159,7 +159,11 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     const raw = [...parsed.filters]
     let affected: string | undefined
     if (parsed.affected !== undefined) {
-      const f = await affectedFilterFor(process.cwd(), parsed.affected)
+      const f = await affectedFilterFor(
+        process.cwd(),
+        parsed.affected,
+        'drop --affected to list them all',
+      )
       if (typeof f === 'object') throw new UserError(`vx show: ${f.error}`, f.code ?? 'VX_E_USAGE')
       affected = f
       raw.unshift(f)

@@ -116,6 +116,15 @@ describe('vx show <task> --affected', () => {
     ])
   })
 
+  // `vx show` takes no --all: the run's way out named a flag show refuses.
+  it('on the base branch, names the way out show has', () => {
+    const r = vx(noEdge, 'show', '--affected')
+    expect(r.code).toBe(1)
+    expect(r.err).toContain(
+      '--affected has no default on the base branch (master): drop --affected to list them all, or name the last good commit, --affected=<sha>',
+    )
+  })
+
   // An empty list printed nothing at all, exit 0: no sign the change
   // reached no project's task.
   it('says so when the change reaches no project declaring the task', async () => {
