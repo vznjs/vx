@@ -243,4 +243,27 @@ describe('the compiled binary hands off', () => {
       `local [${process.execPath}] run a b`,
     ])
   })
+
+  // A shell running `vx run` in a script stops on Ctrl-C only when its
+  // child DIED of SIGINT; handed off, vx exited 130 and the script ran
+  // its next line (cli.md § Exit codes: vx dies of the signal).
+  it('dies of the stop signal the local vx died of', () => {
+    const bin = path.join(root, 'dies', 'vx')
+    exe(bin, 'kill -s "$1" $$\nexit 9')
+    const handed = (sig: string) =>
+      Bun.spawnSync({
+        cmd: [
+          process.execPath,
+          '-e',
+          `const { handOff } = await import(${JSON.stringify(HANDOFF)}); await handOff(${JSON.stringify(bin)}, [${JSON.stringify(sig)}])`,
+        ],
+        env: { PATH: process.env['PATH'] ?? '' },
+      })
+    for (const sig of ['INT', 'TERM', 'HUP']) {
+      const p = handed(sig)
+      expect([p.exitCode, p.signalCode]).toEqual([null, `SIG${sig}`])
+    }
+    // Any other signal keeps the shell's code.
+    expect(handed('USR1').exitCode).toBe(128 + os.constants.signals.SIGUSR1)
+  })
 })
