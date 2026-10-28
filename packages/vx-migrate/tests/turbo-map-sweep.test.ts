@@ -718,6 +718,29 @@ describe('turbo-map: Turbo’s glob grammar', () => {
     expect(cacheOf(t)!.outputs!.files).toEqual(['dist/**/*.[cm]js', 'out/*.{js,map}'])
   })
 
+  // vercel/turborepo#5431: Turbo reads `**x` as `**/*x` and `x**` as
+  // `x*/**`; core refuses both spellings, so copied verbatim they failed the load.
+  it('a ** glued to text reads as Turbo reads it, in inputs, outputs and globals', async () => {
+    const m = await map(
+      {
+        globalDependencies: ['config/**.json'],
+        tasks: { build: { inputs: ['src/**.ts', '!src/gen**'], outputs: ['dist/**.js'] } },
+      },
+      { a: { scripts: { build: 'b' } } },
+    )
+    const t = m.projects[0]!.tasks[0]!
+    const inputs = t.task!['inputs'] as { files: string[]; workspaceFiles: string[] }
+    expect({
+      files: inputs.files,
+      ws: inputs.workspaceFiles,
+      out: cacheOf(t)!.outputs!.files,
+    }).toEqual({
+      files: ['src/**/*.ts', '!src/gen*/**', '!src/gen*'],
+      ws: ['config/**/*.json'],
+      out: ['dist/**/*.js'],
+    })
+  })
+
   it.each([['**/*.d.ts'], ['*.tsbuildinfo'], ['[ab]/**']])(
     'an output whose first segment is a wildcard (%s) runs the task uncached',
     async (wild) => {

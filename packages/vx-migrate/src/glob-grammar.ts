@@ -48,6 +48,30 @@ export function nxBareGroups(glob: string): string | null {
   return unsafe ? null : out
 }
 
+/** A segment (or brace arm) holding `**` and other text: `**.ts`, `a**`. */
+const glued = (seg: string): boolean => seg.includes('**') && /[^*]/.test(seg)
+
+/** Does `glob` glue `**` to other text, which core refuses? */
+export const hasGluedGlobstar = (glob: string): boolean =>
+  glob
+    .replace(/^!/, '')
+    .split(/[/{},]/)
+    .some(glued)
+
+/**
+ * A glued `**` as minimatch and Nx's matcher (globset, literal separator)
+ * read it: `*`, one level.
+ */
+export function gluedGlobstarAsStar(glob: string): string {
+  const neg = glob.startsWith('!') ? '!' : ''
+  return (
+    neg +
+    glob
+      .slice(neg.length)
+      .replace(/[^/{},]+/g, (seg) => (glued(seg) ? seg.replace(/\*{2,}/g, '*') : seg))
+  )
+}
+
 /**
  * `list` without a literal that one of its `!` entries takes back, and
  * without a repeat. Turbo, Nx and vx all subtract an exclusion wherever it

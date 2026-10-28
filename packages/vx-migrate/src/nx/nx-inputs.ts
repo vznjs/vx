@@ -8,7 +8,7 @@
 // so. Extracted from `buildTask` in item 606.
 
 import { nxWorkspacePath, underProject, withProjectDir } from './nx-outputs.js'
-import { minimatchToVx, nxBareGroups } from '../glob-grammar.js'
+import { gluedGlobstarAsStar, minimatchToVx, nxBareGroups } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 
 export interface NxInputs {
@@ -102,7 +102,7 @@ export function expandNxInputs(
         const lit = withProjectDir(p, at.rel, false)
         if (neg === '' && at.outputs?.some((o) => lit === o || lit.startsWith(`${o}/`))) return
         const bare = nxBareGroups(p)
-        const g = bare === null ? null : minimatchToVx(bare, neg !== '')
+        const g = bare === null ? null : minimatchToVx(gluedGlobstarAsStar(bare), neg !== '')
         if (g === null) {
           todos.push(`input ${JSON.stringify(entry)}: glob syntax vx cannot take — map manually`)
           return

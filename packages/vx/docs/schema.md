@@ -886,7 +886,10 @@ literal text or a plain wildcard, so the key would miss the files it
 names; write `{a,b}`. So is a bare group holding a `|` (`src/*.(js|ts)`):
 `Bun.Glob` reads its parens and bar as literal text; write `src/*.{js,ts}`.
 Parens with no `|` (`app/(marketing)/**`) are filename characters and
-stay. A brace range is `Bun.Glob`'s (Bun 1.4.4):
+stay. So is `**` glued to other text in one segment (`src/**.ts`, `a**`):
+the engine reads it as one `*`, a single level, so deeper inputs would
+leave the key and deeper outputs go unsaved; write `src/**/*.ts` for every
+depth or `src/*.ts` for one. A brace range is `Bun.Glob`'s (Bun 1.4.4):
 `{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
 a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
 names is refused wherever it sits in the glob. A leading `!` is still the negation, so `!(group)/**`
