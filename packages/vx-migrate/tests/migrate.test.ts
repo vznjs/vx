@@ -1316,8 +1316,24 @@ describe('parseMigrateArgs', () => {
     expect(parseMigrateArgs(['--from', 'scripts']).from).toBe('scripts')
     for (const v of ['lage', 'wireit', 'package.json'])
       expect(parseMigrateArgs(['--from', v]).error).toBe(
-        '--from must be turbo, nx, vite-task or scripts',
+        `--from must be turbo, nx, vite-task or scripts (got ${v})`,
       )
+  })
+  // Worded as core's value flags: a missing value is no "(got nothing)".
+  it('a value flag with no value says it requires one', () => {
+    expect([
+      parseMigrateArgs(['--from']).error,
+      parseMigrateArgs(['--from=']).error,
+      parseMigrateArgs(['--format']).error,
+      parseMigrateArgs(['--format=']).error,
+      parseMigrateArgs(['--format', 'xml']).error,
+    ]).toEqual([
+      '--from requires a value: turbo, nx, vite-task or scripts',
+      '--from requires a value: turbo, nx, vite-task or scripts',
+      '--format requires a value: pretty or json',
+      '--format requires a value: pretty or json',
+      '--format must be pretty or json (got xml)',
+    ])
   })
 })
 
