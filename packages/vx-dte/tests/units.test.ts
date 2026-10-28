@@ -1771,12 +1771,15 @@ it('a task whose command ended keeps its lease while its worker holds it, and a 
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
-    await a.say({ type: 'ran', task: 't1' })
-    const b = await h.worker(1)
-    // Saving, it still holds t1: past a run's lease (0.6 s here), t1 stays.
+    // Held each beat from the batch on, as a worker says it. Begun after
+    // `ran` and `b`'s join, a runner's 400 ms stall there ended the lease
+    // before the first `held` (CI, 2026-10-28).
     const alive = setInterval(() => void a.say({ type: 'held', running: ['t1'] }), beat)
     try {
+      await a.begin('t1')
+      await a.say({ type: 'ran', task: 't1' })
+      const b = await h.worker(1)
+      // Saving, it still holds t1: past a run's lease (0.6 s here), t1 stays.
       expect(await b.batches()).toEqual([])
       expect(await b.batches()).toEqual([])
     } finally {
