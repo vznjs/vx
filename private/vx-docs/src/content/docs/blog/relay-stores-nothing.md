@@ -74,7 +74,8 @@ more.
 
 ```sh frame="terminal"
 docker build -t vx-dte-server packages/vx-dte-server
-docker run -p 8080:8080 vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
+docker run -p 8080:8080 -e ALLOW=https://gitlab.com:group/app:.gitlab-ci.yml \
+  -e AUDIENCE=https://relay.example.com vx-dte-server
 ```
 
 The container is the same relay on Bun. CI builds the image and carries

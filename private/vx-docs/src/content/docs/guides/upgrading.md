@@ -12,6 +12,9 @@ first; its text is that footer: what changed and what to do.
 ## vx-devtools,vx-dte-server: read ALLOW as space separated only
 
 ALLOW no longer takes commas between entries. Separate them with spaces or newlines.
+## vx-dte-server: read ALLOW and AUDIENCE from the environment
+
+vx-dte-server no longer takes --allow or --audience; set ALLOW and AUDIENCE in its environment. In compose.yaml set CACHE_ALLOW, CACHE_AUDIENCE, CACHE_READ_ACCESS and HISTORY_ALLOW, HISTORY_AUDIENCE, HISTORY_READ_ACCESS in place of ALLOW, AUDIENCE and READ_ACCESS.
 
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 

@@ -57,26 +57,25 @@ bunx wrangler deploy
 <TabItem label="Bun">
 
 ```sh
-bunx @vzn/vx-dte-server \
-  --allow https://token.actions.githubusercontent.com:acme/app:ci.yml \
-  --allow https://token.actions.githubusercontent.com:acme/app:vx-worker.yml \
-  --audience https://relay.example.com --port 8080
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml' \
+AUDIENCE=https://relay.example.com \
+bunx @vzn/vx-dte-server --port 8080
 ```
 
 ```text
 vx-dte-server on http://0.0.0.0:8080
 ```
 
-`--audience` is the relay's public URL. Put it behind HTTPS.
+`AUDIENCE` is the relay's public URL. Put it behind HTTPS.
 
 </TabItem>
 <TabItem label="Docker">
 
 ```sh
-docker run -p 8080:8080 ghcr.io/vznjs/vx-dte-server \
-  --allow https://token.actions.githubusercontent.com:acme/app:ci.yml \
-  --allow https://token.actions.githubusercontent.com:acme/app:vx-worker.yml \
-  --audience https://relay.example.com
+docker run -p 8080:8080 \
+  -e ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml' \
+  -e AUDIENCE=https://relay.example.com \
+  ghcr.io/vznjs/vx-dte-server
 ```
 
 Or run it beside the other two servers with
@@ -104,8 +103,8 @@ prints the line for you. Every other job is refused.
 | GitHub Actions | `https://token.actions.githubusercontent.com:acme/app:ci.yml` |
 | GitLab CI | `https://gitlab.com:group/project:.gitlab-ci.yml` |
 
-On Bun and Docker, each entry is one `--allow`. GitLab names a project
-by its full path, `group/subgroup/project`.
+On Bun and Docker, `ALLOW` is an environment variable of the same
+form. GitLab names a project by its full path, `group/subgroup/project`.
 
 <Aside type="caution" title="A plain var, not a secret">
   `ALLOW` names repositories, nothing secret. Keep it in your
@@ -158,8 +157,8 @@ vx:
 
 | Setting | Cloudflare | Bun and Docker | What it sets |
 | --- | --- | --- | --- |
-| who may take part | `ALLOW` var | `--allow`, repeated | `issuer:owner/repo:workflow` entries |
-| audience | `AUDIENCE` var, unset: the relay's URL | `--audience` | the `aud` every token must name |
+| who may take part | `ALLOW` var | `ALLOW` | `issuer:owner/repo:workflow` entries |
+| audience | `AUDIENCE` var, unset: the relay's URL | `AUDIENCE` | the `aud` every token must name |
 | listen | | `--port` (8080), `--host` (`0.0.0.0`) | where it listens |
 
 Set `AUDIENCE` only when your tokens name a URL other than the one the
