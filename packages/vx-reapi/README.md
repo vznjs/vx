@@ -138,7 +138,8 @@ entirely: the outputs are already in the CAS, and stdout replays from
 the record. `--force` bypasses it.
 
 The input tree is read after the key was taken, so each file's bytes are
-held to the git blob id the key hashed for it. A file edited or removed
+held to the git blob id the key hashed for it. A file edited, removed or
+replaced by a directory
 in between (an edit mid-run under `vx watch`) still runs, but the
 execution is not recorded under a key that no longer describes it; the
 record once replayed the edited outputs on every machine after the file
