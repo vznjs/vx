@@ -43,8 +43,10 @@ scope, which only runs of that branch read:
   writes its base branch, since queued code is about to land.
 - A `pull_request_target` run writes nothing: it may run a fork's code.
 
-`AUDIENCE` is the `aud` a token must name, by default the origin the
-server is reached at, which is what `vxCache()` asks GitHub for.
+`AUDIENCE` is the `aud` a token must name: the URL `vxCache()` names,
+which is what it asks the CI for. On Workers it defaults to the Worker's
+own URL; on Bun and Docker it is required, since behind TLS the server
+cannot see its public URL.
 `READ_ACCESS=public` lets a request with no token read a repository
 `ALLOW` names (a developer's laptop): it writes nothing. Unset, a
 request with no token is `401`.
@@ -53,13 +55,13 @@ request with no token is `401`.
 
 ```sh
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' \
+AUDIENCE=https://cache.example.com \
 S3_BUCKET=vx-cache S3_ENDPOINT=https://s3.example.com \
 S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
 bun packages/vx-cache-server/src/bun.ts --port 8080
 ```
 
-S3 settings are those Bun's S3 client reads (`S3_REGION` too). `AUDIENCE`
-is read from the environment too. A node keeps no state of its own, so
+S3 settings are those Bun's S3 client reads (`S3_REGION` too). A node keeps no state of its own, so
 any number of them serve one bucket behind a balancer.
 
 ## With Docker
@@ -68,7 +70,7 @@ From the repo root:
 
 ```sh
 docker build -f packages/vx-cache-server/Dockerfile -t vx-cache-server .
-docker run -p 8080:8080 -e ALLOW='…' -e S3_BUCKET=… -e S3_ENDPOINT=… \
+docker run -p 8080:8080 -e ALLOW='…' -e AUDIENCE=… -e S3_BUCKET=… -e S3_ENDPOINT=… \
   -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… vx-cache-server
 ```
 

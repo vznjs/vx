@@ -190,7 +190,10 @@ it('names ALLOW when it cannot be read', () => {
   const said = (allow: string) => {
     const cli = Bun.spawnSync(
       ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', ':memory:'],
-      { env: { ...process.env, ALLOW: allow }, stderr: 'pipe' },
+      {
+        env: { ...process.env, ALLOW: allow, AUDIENCE: 'https://history.example' },
+        stderr: 'pipe',
+      },
     )
     return [cli.exitCode, cli.stderr.toString()]
   }
@@ -204,13 +207,42 @@ it('names --db when it cannot be opened, and refuses an empty one', () => {
   const said = (db: string) => {
     const cli = Bun.spawnSync(
       ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', db],
-      { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
+      {
+        env: {
+          ...process.env,
+          ALLOW: 'https://token.actions.githubusercontent.com:acme/app:ci.yml',
+          AUDIENCE: 'https://history.example',
+        },
+        stderr: 'pipe',
+      },
     )
     return [cli.exitCode, cli.stderr.toString().split('\n')[0]]
   }
   expect([said('/proc/no/such/dir/x.db'), said('')]).toEqual([
     [2, '--db /proc/no/such/dir/x.db: unable to open database file'],
     [2, "--db: needs a file path, got ''"],
+  ])
+})
+
+it('names ALLOW and AUDIENCE when either is missing: behind TLS no origin it sees is its URL', () => {
+  const said = (env: Record<string, string>) => {
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', ':memory:'],
+      { env: { PATH: process.env.PATH ?? '', ...env }, stderr: 'pipe' },
+    )
+    return [cli.exitCode, cli.stderr.toString().split('\n')[0]]
+  }
+  const ALLOW = 'https://token.actions.githubusercontent.com:acme/app:ci.yml'
+  expect([
+    said({}),
+    said({ ALLOW }),
+    said({ AUDIENCE: 'x' }),
+    said({ ALLOW, AUDIENCE: ' ' }),
+  ]).toEqual([
+    [2, 'missing ALLOW and AUDIENCE'],
+    [2, 'missing AUDIENCE'],
+    [2, 'missing ALLOW'],
+    [2, 'missing AUDIENCE'],
   ])
 })
 

@@ -60,8 +60,9 @@ hashed. A token of another repository is refused. A branch travels as
 the first 128 bits of its SHA-256 in hex, so the server never sees a
 branch name. A renamed repository starts with an empty cache.
 
-`AUDIENCE` is the `aud` a token must name. By default it is the URL the
-server is reached at, which is what the plugins ask the CI for.
+`AUDIENCE` is the `aud` a token must name: the server's public URL.
+Workers default to it. Bun and Docker require it: behind TLS, the
+server cannot see it.
 
 `READ_ACCESS=public` lets a request with no token, such as a laptop's,
 read a repository `ALLOW` names. It writes nothing.

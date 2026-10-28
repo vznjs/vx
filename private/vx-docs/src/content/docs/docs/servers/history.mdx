@@ -60,6 +60,7 @@ The numbers go in one SQLite file:
 
 ```sh
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' \
+AUDIENCE=https://history.example.com \
 bunx @vzn/vx-history-server --db vx-history.sqlite --port 8080
 ```
 
@@ -74,7 +75,7 @@ vx-history-server on http://0.0.0.0:8080/
 <TabItem label="Docker">
 
 ```sh
-docker run -p 8080:8080 -v vx-history:/data -e ALLOW='…' ghcr.io/vznjs/vx-history-server
+docker run -p 8080:8080 -v vx-history:/data -e ALLOW='…' -e AUDIENCE=… ghcr.io/vznjs/vx-history-server
 ```
 
 The database is `/data/vx-history.sqlite`, on the volume. Or run it
@@ -168,9 +169,9 @@ and `assume` for tasks it has never seen, are on its
 
 | Setting | Default | What it sets |
 | --- | --- | --- |
-| `ALLOW` | empty: refuse every request | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
+| `ALLOW` | Workers: empty refuses every request. Bun and Docker: required | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
 | `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token reads a repository `ALLOW` names, and writes nothing |
-| `AUDIENCE` | the URL it is reached at | the `aud` a CI token must name |
+| `AUDIENCE` | Workers: its URL. Bun and Docker: required | the `aud` a CI token must name: the server's public URL |
 | `TIMING_DAYS` | 30 | days a task's row is kept after its last report |
 
 On Workers, each setting is a var in `wrangler.jsonc`.

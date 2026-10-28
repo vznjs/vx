@@ -53,6 +53,7 @@ Results go in any S3-compatible bucket:
 
 ```sh
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' \
+AUDIENCE=https://cache.example.com \
 S3_BUCKET=vx-cache S3_ENDPOINT=https://s3.example.com \
 S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
 bunx @vzn/vx-cache-server --port 8080
@@ -70,7 +71,7 @@ you like over one bucket, behind a load balancer.
 <TabItem label="Docker">
 
 ```sh
-docker run -p 8080:8080 -e ALLOW='…' -e S3_BUCKET=… -e S3_ENDPOINT=… \
+docker run -p 8080:8080 -e ALLOW='…' -e AUDIENCE=… -e S3_BUCKET=… -e S3_ENDPOINT=… \
   -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… ghcr.io/vznjs/vx-cache-server
 ```
 
@@ -100,9 +101,9 @@ says `the server admits no CI: set ALLOW` instead.
 
 | Setting | Default | What it sets |
 | --- | --- | --- |
-| `ALLOW` | empty: refuse every request | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
+| `ALLOW` | Workers: empty refuses every request. Bun and Docker: required | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
 | `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token, such as a laptop's, reads a repository `ALLOW` names, and writes nothing |
-| `AUDIENCE` | the URL it is reached at | the `aud` a CI token must name |
+| `AUDIENCE` | Workers: its URL. Bun and Docker: required | the `aud` a CI token must name: the server's public URL |
 | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | | the bucket (Bun and Docker), as Bun's S3 client reads them |
 | `MAX_CHECK_HASHES` | 500 (6 on Workers) | how many lookups one check may make |
 | `MAX_UPLOAD_BYTES` | 100 MB | the largest result it takes |

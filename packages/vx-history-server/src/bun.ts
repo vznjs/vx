@@ -12,7 +12,7 @@ import { type Db, sqliteStore } from './store.js'
 const USAGE = `usage: vx-history-server [--db vx-history.sqlite] [--port 8080] [--host 0.0.0.0]
   ALLOW        who may take part, space separated, each issuer:owner/repo:workflow
                (README.md § CI tokens); only their jobs' OIDC tokens are taken
-  AUDIENCE     the aud a CI token names (default: the origin it was sent to)
+  AUDIENCE     the aud a CI token names: the URL CI reaches this server at
   READ_ACCESS  public: a request with no token reads a repository ALLOW names
   TIMING_DAYS  days a task's timings outlive its last report (default 30)`
 
@@ -47,6 +47,15 @@ function main(argv: string[]): void {
   const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
+  // Required both, as on the relay: behind the TLS proxy every deploy
+  // needs, the origin a request names is not the URL CI asks tokens for,
+  // so a guessed audience refused every token as "wrong audience".
+  const audience = env.AUDIENCE?.trim() ?? ''
+  const missing = [
+    ...((env.ALLOW ?? '').trim() === '' ? ['ALLOW'] : []),
+    ...(audience === '' ? ['AUDIENCE'] : []),
+  ]
+  if (missing.length > 0) fail(`missing ${missing.join(' and ')}\n${USAGE}`)
   let allow
   let timingDays
   try {
@@ -74,7 +83,7 @@ function main(argv: string[]): void {
     authorize: oidcTokenAuth({
       allow,
       readAccess: env.READ_ACCESS,
-      ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
+      audience,
     }),
     ...(timingDays === undefined ? {} : { timingDays }),
   })

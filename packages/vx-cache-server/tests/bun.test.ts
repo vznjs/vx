@@ -157,7 +157,7 @@ it('answers a flag it does not know with its usage', () => {
 it('names ALLOW when it cannot be read', () => {
   const said = (allow: string) => {
     const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
-      env: { ...process.env, S3_BUCKET: 'b', ALLOW: allow },
+      env: { ...process.env, S3_BUCKET: 'b', ALLOW: allow, AUDIENCE: 'https://cache.example' },
       stderr: 'pipe',
     })
     return [cli.exitCode, cli.stderr.toString()]
@@ -165,6 +165,28 @@ it('names ALLOW when it cannot be read', () => {
   expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
     [2, 'ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
     [2, 'ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
+  ])
+})
+
+it('names ALLOW and AUDIENCE when either is missing: behind TLS no origin it sees is its URL', () => {
+  const said = (env: Record<string, string>) => {
+    const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+      env: { PATH: process.env.PATH ?? '', S3_BUCKET: 'b', ...env },
+      stderr: 'pipe',
+    })
+    return [cli.exitCode, cli.stderr.toString().split('\n')[0]]
+  }
+  const ALLOW = 'https://token.actions.githubusercontent.com:acme/app:ci.yml'
+  expect([
+    said({}),
+    said({ ALLOW }),
+    said({ AUDIENCE: 'x' }),
+    said({ ALLOW, AUDIENCE: ' ' }),
+  ]).toEqual([
+    [2, 'missing ALLOW and AUDIENCE'],
+    [2, 'missing AUDIENCE'],
+    [2, 'missing ALLOW'],
+    [2, 'missing AUDIENCE'],
   ])
 })
 

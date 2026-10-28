@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## servers: require AUDIENCE on Bun and Docker, as the relay does
+
+vx-cache-server and vx-history-server on Bun and Docker refuse to start without ALLOW and AUDIENCE. Set AUDIENCE to the URL the plugin names.
+
 ## vx-dte-server: read ALLOW and AUDIENCE from the environment
 
 vx-dte-server no longer takes --allow or --audience; set ALLOW and AUDIENCE in its environment. In compose.yaml set CACHE_ALLOW, CACHE_AUDIENCE, CACHE_READ_ACCESS and HISTORY_ALLOW, HISTORY_AUDIENCE, HISTORY_READ_ACCESS in place of ALLOW, AUDIENCE and READ_ACCESS.
