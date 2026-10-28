@@ -493,6 +493,13 @@ export class TurboRemoteCache implements RemoteCacheLayer {
    * entry is immutable, so any other key is asked first.
    */
   private readonly absent = new Set<string>()
+  /**
+   * Keys whose GET this process answered 200. Core saves a key after its
+   * hit only when that hit did not restore (bad bytes, a tag that does not
+   * verify), so `put` sends it over the stored one: its HEAD saw 200 and
+   * kept the bad entry for every later run.
+   */
+  private readonly served = new Set<string>()
   private readonly key: Uint8Array | undefined
   readonly endpoint: string
   /** Undefined until `open` reads the keychain; a layer never opened (a plan) asks the server nothing. */
@@ -806,6 +813,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       }
       throw await refusal(res)
     }
+    this.served.add(hash)
     const duration = Number(res.headers.get('x-artifact-duration'))
     const durationMs = Number.isFinite(duration) && duration > 0 ? duration : undefined
     if (this.key === undefined) return { body: res, durationMs }
@@ -860,7 +868,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false> {
     // Nothing sent, so no upload is counted.
     if (this.disabled || this.writesRefused) return false
-    if (!this.absent.has(hash)) {
+    if (!this.absent.has(hash) && !this.served.has(hash)) {
       // Part of the upload, so under its deadline. Any answer but 200 or 404
       // uploads: a lost store costs more. A server the HEAD cannot reach
       // fails the put, as the PUT would.
@@ -890,6 +898,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     // 204 stored the artifact and was counted a failed upload.
     if (!res.ok) throw await refusal(res)
     this.absent.delete(hash)
+    this.served.delete(hash)
   }
 }
 
