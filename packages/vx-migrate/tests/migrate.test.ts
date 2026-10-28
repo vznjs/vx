@@ -1310,8 +1310,8 @@ describe('parseMigrateArgs', () => {
   it('positionals error', () => {
     expect(parseMigrateArgs(['turbo']).error).toContain('turbo')
   })
-  // Turbo and Nx (owner, 2026-10-01), Vite Task (YA-1), the scripts `vx init`
-  // mapped (M, 2026-10-14): lage and wireit are refused.
+  // Turbo and Nx (2026-10-01), Vite Task (YA-1), the scripts `vx init`
+  // mapped (2026-10-14): lage and wireit are refused.
   it('--from takes turbo, nx, vite-task or scripts; any other name is refused', () => {
     expect(parseMigrateArgs(['--from', 'scripts']).from).toBe('scripts')
     for (const v of ['lage', 'wireit', 'package.json'])
@@ -1629,7 +1629,7 @@ describe('the preset, exactly', () => {
     }
   }
 
-  // Generated files carry no explanatory comments (owner, 2026-10-07).
+  // Generated files carry no explanatory comments (2026-10-07).
   it('a preset is its exports alone, one per line, ending in a newline', async () => {
     const plan = await preset({
       globalDependencies: ['x.json'],

@@ -1,6 +1,6 @@
 // A remote cache the repo shows is declared in the workspace file a
 // migration writes, native or keep, whether `vx init` handed over or the
-// user ran `bunx @vzn/vx-migrate` (M, 2026-10-14). Nx Cloud is a wire vx
+// user ran `bunx @vzn/vx-migrate` (2026-10-14). Nx Cloud is a wire vx
 // does not speak: said, not declared.
 
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'

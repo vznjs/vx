@@ -2,7 +2,7 @@
 // the vx-cache protocol (`@vzn/vx-cache-server`, its PROTOCOL.md, /v1).
 // Nothing is on by default: declare it in `.vx/workspace.ts` with the
 // server's URL, the CI issuer and the repository, which every request
-// names by their hashes (M, 2026-10-25: the user names them, nothing
+// names by their hashes (2026-10-25: the user names them, nothing
 // guesses). A CI job's requests carry its OIDC token and write; with no
 // token it reads only, from a server with `READ_ACCESS=public`. Every read
 // names exact scopes: the run's branch, then the branches it reads after it.
@@ -32,7 +32,7 @@ export interface VxCacheOptions {
   /**
    * Headers every request to the server carries, for a proxy in front of
    * it (`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an
-   * Access service token, M 2026-10-25). An unset value is left out;
+   * Access service token, 2026-10-25). An unset value is left out;
    * `authorization` stays the CI token's.
    */
   headers?: Record<string, string | undefined>
@@ -63,6 +63,8 @@ function expiryOf(jwt: string): number {
 
 /** A lent token ending sooner than this is asked again first, so a request never carries a spent one. */
 const LEND_MARGIN_MS = 5 * 60_000
+/** Tries of GitHub's OIDC endpoint before the remote turns off (`askOnce`). */
+const ASK_ATTEMPTS = 3
 /** Uploads open at once; more wait. */
 const IN_FLIGHT = 4
 
@@ -83,7 +85,7 @@ function proxyHeaders(
   return out
 }
 
-/** A ref's scope, an issuer or a repository on the wire: its SHA-256's first 128 bits in hex, never the value (M, 2026-10-25). */
+/** A ref's scope, an issuer or a repository on the wire: its SHA-256's first 128 bits in hex, never the value (2026-10-25). */
 const scopeOf = (ref: string): string =>
   new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
 
@@ -145,7 +147,7 @@ function streamed(res: Response, controller: AbortController, ms: number): Respo
 
 /**
  * Uploads: up to `IN_FLIGHT` at once, each one artifact by `PUT`, whose
- * bytes reach the bucket untouched (M, 2026-10-25: no batch upload; a
+ * bytes reach the bucket untouched (2026-10-25: no batch upload; a
  * batch passes through the server's code, which on Workers costs CPU by the
  * byte, and a 40 MB one ran out of it).
  */
@@ -233,6 +235,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     private readonly config: ResolvedVxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly env: Record<string, string | undefined> = Bun.env,
+    private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
   ) {
     this.endpoint = config.url
     this.named = {
@@ -272,15 +275,40 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   private asking: Promise<string> | undefined
 
+  /**
+   * One answer from GitHub's OIDC endpoint, asked again after a 5xx, a 429
+   * or none, up to three tries: a DTE run asks every few minutes for the
+   * token it lends, and one 503 turned the remote off for the rest of the
+   * run on every worker. A refusal (a 4xx) is final.
+   */
+  private async askOnce(ask: URL): Promise<Response> {
+    for (let attempt = 1; ; attempt++) {
+      let res: Response | undefined
+      let failure: unknown
+      try {
+        res = await this.fetchImpl(ask, {
+          headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN!}` },
+          signal: deadline(this.config.timeoutMs),
+        })
+      } catch (err) {
+        failure = err
+      }
+      if (res !== undefined && res.status !== 429 && res.status < 500) return res
+      if (attempt === ASK_ATTEMPTS) {
+        if (res === undefined) throw failure
+        return res
+      }
+      await res?.body?.cancel()
+      await this.wait(1000 * attempt)
+    }
+  }
+
   private async askGithub(): Promise<string> {
     const ask = new URL(this.env.ACTIONS_ID_TOKEN_REQUEST_URL!)
     ask.searchParams.set('audience', new URL(this.config.url).origin)
     let jwt: unknown
     try {
-      const res = await this.fetchImpl(ask, {
-        headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN!}` },
-        signal: deadline(this.config.timeoutMs),
-      })
+      const res = await this.askOnce(ask)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       jwt = ((await res.json()) as { value?: unknown }).value
       if (typeof jwt !== 'string' || jwt === '') throw new Error('no token in its answer')

@@ -626,7 +626,7 @@ describe('what must NOT be refused — a false positive breaks a working build',
       ['dist/**/*.js', 'dist/sth/**'],
       ['**/*.d.ts', 'dist/**'],
       // A segment inside a glob: solid's `**/dist/**` beside a task over
-      // every file (M, 2026-10-15) was no overlap.
+      // every file (2026-10-15) was no overlap.
       ['**/*', '**/dist/**'],
       ['src/**/*.ts', 'src/**/gen/*.ts'],
     ]) {

@@ -1,6 +1,6 @@
 // Package-manager workspaces: the members `package.json#workspaces` or
 // `pnpm-workspace.yaml` list, and the root a migration writes
-// `.vx/workspace.ts` at. Core reads neither (M, 2026-10-14): a project is a
+// `.vx/workspace.ts` at. Core reads neither (2026-10-14): a project is a
 // directory holding a vx.config.
 import { constants, existsSync, type Dirent } from 'node:fs'
 import { access, readdir, realpath, stat } from 'node:fs/promises'
@@ -75,7 +75,7 @@ const decoder = new TextDecoder()
  * Inside git the walk never goes above the git top-level ({@link gitTop}),
  * so a manifest above the checkout is never even read: a `package.json`
  * planted in a shared directory above it claimed it, and its workspace
- * config ran as you (owner, 2026-10-13: "find the root based on git").
+ * config ran as you (2026-10-13: "find the root based on git").
  *
  * Outside git the walk stops above `start` at a manifest another user
  * owns (root aside), the same case without a top-level to stop at

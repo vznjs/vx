@@ -1,9 +1,9 @@
 // The client of a vx-history server (`@vzn/vx-history-server`, its
 // PROTOCOL.md): each task's numbers asked once a run, and the run's own
-// timings sent once at its end. Every request names the issuer and
-// repository the workspace declares, by their hashes; a CI job's carries
-// its OIDC token, and with no token a run only reads (a server with
-// `READ_ACCESS=public`). A refusal is never swallowed: it is said with the
+// timings sent once at its end. A query names the issuer, repository and
+// refs the workspace reads, plainly; a CI job's request carries its OIDC
+// token, which writes its own ref, and with no token a run only reads (a
+// server with `READ_ACCESS=public`). A refusal is never swallowed: it is said with the
 // server's status and words.
 
 import type { TaskOutcome } from '@vzn/vx'
@@ -25,22 +25,18 @@ export function serverUrlOf(
 ): string | undefined {
   const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
-  if (!/^https?:\/\//.test(url)) throw new Error(`vxHistory(): server must be http(s), got ${url}`)
+  if (!/^https?:\/\//.test(url)) throw new Error(`vxHistory(): url must be http(s), got ${url}`)
   // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
-    throw new Error(`vxHistory(): server is the server's base, without /v1: ${url.slice(0, -3)}`)
+    throw new Error(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
   return url
 }
 
-/** The issuer and repository a workspace names, as a key names them: the issuer's URL with no trailing slash, `org/name` lowercased. */
+/** The issuer and repository a workspace names, as a key holds them: the issuer's URL with no trailing slash, `org/name` lowercased. */
 export interface Named {
   readonly issuer: string
   readonly repository: string
 }
-
-/** A value on the wire: its SHA-256's first 128 bits in hex, never the value (M, 2026-10-25). */
-const hashOf = (text: string): string =>
-  new Bun.CryptoHasher('sha256').update(text).digest('hex').slice(0, 32)
 
 /** Whether this job has a token: GitHub's OIDC endpoint, or GitLab's `VX_HISTORY_TOKEN`. */
 const hasToken = (env: Record<string, string | undefined>): boolean =>
@@ -112,7 +108,7 @@ interface Limits {
   readonly maxQueryHashes: number
 }
 
-/** `vxHistory({ serverHeaders })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
+/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
 export function proxyHeaders(
   headers: Record<string, string | undefined> | undefined,
 ): Record<string, string> {
@@ -120,7 +116,7 @@ export function proxyHeaders(
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`vxHistory(): serverHeaders cannot set "${name}"`)
+      throw new Error(`vxHistory(): headers cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
       throw new Error(`vxHistory(): header "${name}" must be one line of text`)
     out[name] = value
@@ -133,21 +129,13 @@ export class HistoryServer {
   private held: { jwt: string; exp: number } | undefined
   private limits: Promise<Limits> | undefined
 
-  private readonly headers: Readonly<Record<string, string>>
-
   constructor(
     readonly url: string,
     private readonly named: Named,
     private readonly env: Record<string, string | undefined> = Bun.env,
     private readonly fetchImpl: typeof fetch = fetch,
-    headers: Readonly<Record<string, string>> = {},
-  ) {
-    this.headers = {
-      ...headers,
-      'vx-issuer': hashOf(named.issuer),
-      'vx-repository': hashOf(named.repository),
-    }
-  }
+    private readonly headers: Readonly<Record<string, string>> = {},
+  ) {}
 
   /** Whether the run has a token to send: with none it reads only. */
   get writes(): boolean {
@@ -202,13 +190,6 @@ export class HistoryServer {
         `${err.message}: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)`,
       )
     }
-    // The server sees the names hashed: only here can a refusal say which were sent.
-    if (res.status === 403 && bearer !== '') {
-      const err = await refusal(res)
-      throw new Error(
-        `${err.message} (this workspace names ${this.named.repository} at ${this.named.issuer})`,
-      )
-    }
     if (!res.ok) throw await refusal(res)
     return res
   }
@@ -233,16 +214,17 @@ export class HistoryServer {
     return asked
   }
 
-  /** Each held hash's numbers in the first of `scopes` (refs' hashes) holding it. */
+  /** Each held hash's numbers under the first of `refs` that holds them: one request a run. */
   async query(
-    scopes: readonly string[],
+    refs: readonly string[],
     hashes: readonly string[],
   ): Promise<Map<string, ServerTiming>> {
     const per = (await this.limitsNow()).maxQueryHashes
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
         const res = await this.call('/v1/timings/query', {
-          scopes,
+          ...this.named,
+          refs,
           hashes: hashes.slice(i * per, (i + 1) * per),
         })
         const body = (await res.json()) as { timings?: unknown } | null

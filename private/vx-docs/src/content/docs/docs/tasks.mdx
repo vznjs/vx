@@ -122,9 +122,9 @@ Drop `plan.json` below, or paste it, then type a task. Nothing is uploaded.
 | `exec.platforms`  | the machines it runs on, such as `['darwin-arm64']`; elsewhere skipped, on CI refused |
 | `exec.remote`     | `false` keeps it here; `'only'` for a remote pool ([Remote execution](../../docs/remote-execution/)) |
 
-`exec.remote` is the one `exec` field stripped from the key: where a task
-ran says nothing about what it made. The rest is in the key, `description`
-included, so editing a description costs one re-run.
+`exec.remote` is the one `exec` field left out of the key: where a task
+ran says nothing about what it made. Every other field is in the key, so
+editing even `description` re-runs the task once.
 
 </details>
 

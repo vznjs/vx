@@ -54,7 +54,7 @@ export async function run(argv: readonly string[]): Promise<number> {
 
 /**
  * A crash from a hand-broken lock entry is that entry's fault: runs validate
- * no entry, so it surfaced as a raw TypeError (M, 2026-10-14). The lock is
+ * no entry, so it surfaced as a raw TypeError (2026-10-14). The lock is
  * read only on the crash path, so a normal run pays nothing.
  */
 async function brokenLockNamed(err: unknown): Promise<unknown> {

@@ -291,7 +291,7 @@ rule on today's tag (v0.0.100) would have cut it on the next merge. The workflow
 
 ## H-23: CI holds PR titles and commits to Conventional Commits
 
-The convention (owner, 2026-09-27) held only while someone watched. The
+The convention (2026-09-27) held only while someone watched. The
 repo rebase-merges, so each commit subject lands on main as written, and
 the release notes and version (H-15, H-22) read them.
 `scripts/conventional.ts` is the rule (`type(scope)!: summary`, a known

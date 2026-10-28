@@ -922,7 +922,7 @@ smaller close is a signed checksum file (ed25519 or minisign) with the
 public key compiled in, which needs a signing key held as a release
 secret: an owner decision, not made here.
 
-M-73. M-72's decision (owner, 2026-10-03): no release signing key for
+M-73. M-72's decision (2026-10-03): no release signing key for
 now; `vx upgrade` keeps the checksum, and the docs say what it proves.
 `cli.md` and `modules/upgrade.md` already did (item 1096); `security.md`'s
 Releases paragraph said only that the SHA-256 is checked, and now says it

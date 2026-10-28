@@ -20,6 +20,6 @@ caching on this machine (entries in `~/.vx/<id>/cache`, shared by every
 checkout of the repo) are its floor, so a workspace with no
 `.vx/workspace.ts` runs. Scheduling by learned critical path:
 `@vzn/vx-history`. One run spread over your own CI's workers:
-`@vzn/vx-dte` (not on npm yet). Remote caching and execution over Bazel's
+`@vzn/vx-dte`. Remote caching and execution over Bazel's
 REAPI: `@vzn/vx-reapi`. Telemetry: `@vzn/vx-otel`, `@vzn/vx-ci`. AI agents:
 the skill in `skills/vx/` (`bunx skills add vznjs/vx`).

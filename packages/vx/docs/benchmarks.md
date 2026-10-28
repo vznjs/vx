@@ -11,7 +11,7 @@ evaluating every config per run, except rows marked `(lock)`; the
 2026-09-03 stress run measured both, and its lock row is now the
 headline `vx`. The harness never re-locks: a config edited after the
 lock is re-locked by running `vx lock` again, and `vx lock --check` is
-what fails loudly on a stale lock (a run trusts it, owner 2026-06-13,
+what fails loudly on a stale lock (a run trusts it, 2026-06-13,
 `docs/design/config-lock-2026-06.md`); only a project the lock lacks
 fails the run itself.
 
@@ -19,7 +19,7 @@ Only the native-config runs (each runner on the same graph from its own
 config: the stress run, the head-to-heads, the scaling table) measure
 vx. The real-repo runs went through `turbo()` or `nx()` on the repo's
 own `turbo.json` or Nx graph, a migration bridge rather than a claim
-(owner, 2026-10-02), and are removed (§ Real repos). Those repos are to
+(2026-10-02), and are removed (§ Real repos). Those repos are to
 be rerun on the native config `bunx @vzn/vx-migrate` writes.
 
 ## Warm-run overhead (2026-09-02)
@@ -175,7 +175,7 @@ measured with its own core.
 
 `private/vx-bench/perf-guard.ts` runs in every PR's gate as
 `@vzn/vx-bench#check.perf`, in CI's `Perf` job: a runner of its own
-beside the distributed run, whose workers are packed for the run's wall
+beside the DTE run, whose workers are packed for the run's wall
 time, not a task's (ci.yml `perf`). It builds a 25- and a 100-package workspace
 and drives core in-process through five phases, each from a `vx lock`
 taken first: cold run, up-to-date run, restore run, plan, one-edit run. Two kinds of number, against
@@ -257,7 +257,7 @@ milliseconds of each other on a fully-cached run, and neither keeps a
 process between runs: Turbo 2.10 uses no daemon for `turbo run` (its docs
 say so from 2.9), so both work out what changed on every invocation. vx wins
 the restore case and Nx's warm run. Cold build times are
-not compared on this page (owner, 2026-10-09): the runner's overhead is,
+not compared on this page (2026-10-09): the runner's overhead is,
 in § Head to head. The remaining
 fixed cost at this size is process start + git, not the pipeline.
 
@@ -435,7 +435,7 @@ typecheck 150 ms, lint 75 ms, publish 30 ms, long enough that the tasks, not
 any tool's own per-task work, set the pace. `build` writes 200 KB of seeded
 incompressible bytes plus a file that folds its dependencies' outputs.
 The bench times what CI runs: a cold build, a run with nothing changed, and a
-restore from cache (owner, 2026-10-09: an edit needs Nx's daemon, which CI
+restore from cache (2026-10-09: an edit needs Nx's daemon, which CI
 does not run, so no edit row compares fairly).
 
 Same repo, same hardware, same commands, every tool at concurrency 10, each in its own native
@@ -683,7 +683,7 @@ tasks each, 5 workers. vx 0.0.633, Nx 23.2.1, pnpm 12.4.2, linux x64,
 | Nothing new | 0.22 s | 1.43 s |
 
 Cold is the total wall time of the build: a real repo has no ideal
-schedule to subtract, so its total is shown (owner, 2026-10-09). Restore
+schedule to subtract, so its total is shown (2026-10-09). Restore
 and nothing new are runner overhead: every task is a cache hit. Each
 rep in order: vx cold 40.16 / 34.99 / 34.61 s, Nx 40.95 / 39.38 /
 39.71 s; vx restore 0.39 / 0.50 / 0.50 s, Nx 1.26 / 1.49 / 1.57 s; vx

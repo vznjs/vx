@@ -16,23 +16,29 @@ setting, and how it stores results.
 
 ## Deploy
 
-All three ways start from a checkout of the vx repository:
-
-```sh
-git clone https://github.com/vznjs/vx
-cd vx
-bun install
-```
-
 <Tabs syncKey="server-host">
 <TabItem label="Cloudflare Workers">
 
-Results go in R2. Fill `TRUST` in
-`packages/vx-cache-server/wrangler.jsonc`
-([`TRUST`](../#trust-who-reads-and-who-writes)), then:
+Results go in R2.
 
 ```sh
-cd packages/vx-cache-server
+mkdir vx-cache-server && cd vx-cache-server
+bun add @vzn/vx-cache-server
+```
+
+```jsonc title="wrangler.jsonc"
+{
+  "name": "vx-cache-server",
+  "main": "node_modules/@vzn/vx-cache-server/src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "vars": { "ALLOW": "" },
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }]
+}
+```
+
+Fill `ALLOW` ([`ALLOW`](../#allow-who-takes-part)), then:
+
+```sh
 bunx wrangler login
 bunx wrangler deploy
 ```
@@ -46,10 +52,10 @@ is a var in `wrangler.jsonc`.
 Results go in any S3-compatible bucket:
 
 ```sh
-TRUST='[{"iss":"https://token.actions.githubusercontent.com","repository":"acme/app","event_name":"push","ref":"refs/heads/main"}]' \
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' \
 S3_BUCKET=vx-cache S3_ENDPOINT=https://s3.example.com \
 S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
-bun packages/vx-cache-server/src/bun.ts --port 8080
+bunx @vzn/vx-cache-server --port 8080
 ```
 
 ```text
@@ -63,12 +69,9 @@ you like over one bucket, behind a load balancer.
 </TabItem>
 <TabItem label="Docker">
 
-From the root of the checkout:
-
 ```sh
-docker build -f packages/vx-cache-server/Dockerfile -t vx-cache-server .
-docker run -p 8080:8080 -e TRUST='[…]' -e S3_BUCKET=… -e S3_ENDPOINT=… \
-  -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… vx-cache-server
+docker run -p 8080:8080 -e ALLOW='…' -e S3_BUCKET=… -e S3_ENDPOINT=… \
+  -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… ghcr.io/vznjs/vx-cache-server
 ```
 
 Or run it beside the other two servers with
@@ -90,15 +93,15 @@ curl https://cache.example.com/v1/capabilities
 {"code":"bad_request","message":"vx-issuer and vx-repository: the issuer's and the repository's hashes (PROTOCOL.md § Keys)"}
 ```
 
-That refusal means it is up and has a `TRUST`. With `TRUST` empty it
-says `the server trusts no CI: set TRUST` instead.
+That refusal means it is up and has an `ALLOW`. With `ALLOW` empty it
+says `the server admits no CI: set ALLOW` instead.
 
 ## Settings
 
 | Setting | Default | What it sets |
 | --- | --- | --- |
-| `TRUST` | empty: refuse every request | the repositories it serves, and which runs write their protected branches ([`TRUST`](../#trust-who-reads-and-who-writes)) |
-| `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token, such as a laptop's, reads a repository `TRUST` names, and writes nothing |
+| `ALLOW` | empty: refuse every request | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
+| `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token, such as a laptop's, reads a repository `ALLOW` names, and writes nothing |
 | `AUDIENCE` | the URL it is reached at | the `aud` a CI token must name |
 | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | | the bucket (Bun and Docker), as Bun's S3 client reads them |
 | `MAX_CHECK_HASHES` | 500 (6 on Workers) | how many lookups one check may make |
@@ -113,22 +116,6 @@ On Workers each lookup is one subrequest, so a higher
 ```sh
 bun add -d @vzn/vx-cache @vzn/vx-ci
 ```
-
-<Aside title="Not on npm yet">
-
-`@vzn/vx-cache` ships to npm with the next release. Until then, link it from a
-checkout of the vx repository. The vx you run must come from the same
-checkout:
-
-```sh
-git clone https://github.com/vznjs/vx ~/vx
-cd ~/vx && bun install
-(cd packages/vx && bun link) && (cd packages/vx-cache && bun link)
-cd ~/your-repo
-bun link --save @vzn/vx @vzn/vx-cache
-```
-
-</Aside>
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
@@ -151,7 +138,7 @@ export default defineWorkspace({
 | --- | --- | --- |
 | `url` | `VX_CACHE_URL` | the server's URL |
 | `issuer` | required | your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL |
-| `repository` | required | the repository, `org/name`, as `TRUST` names it |
+| `repository` | required | the repository, `org/name`, as `ALLOW` names it |
 | `timeoutMs` | 30 000 | how long one read or check may take |
 | `uploadTimeoutMs` | 60 000 | how long one upload may take |
 | `headers` | none | headers sent on every request, for a proxy in front of the server |
@@ -211,7 +198,7 @@ Off CI there is no token. A run then reads from a server with
 `READ_ACCESS=public` and uploads nothing. Any other server refuses the
 first read, vx says so once, and the run goes on with its local cache.
 A refused write turns off uploads only. In a
-[distributed run](../../distributed-runs/), the run lends its token to
+[DTE run](../../distributed-task-execution/), the run lends its token to
 its workers, so they read and write where the run does.
 
 ## Expiry
@@ -241,6 +228,8 @@ keeps the first bytes.
 
 A download through Workers goes through Cloudflare's cache: after R2
 serves a result once, that data center answers it without R2.
+
+Whether a result exists is asked of R2 alone, so every data center agrees.
 
 ## API
 

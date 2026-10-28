@@ -38,11 +38,25 @@ function trackedCode(): string[] {
     .filter((f) => CODE.test(f) && !f.includes('node_modules/'))
 }
 
+// A name read in a comment is not a use: `STAGING` in cache/archive.ts
+// passed on a comment in inputs.ts that names it. So other files are read
+// as Bun transpiles them, comments and types gone. A class stays matched
+// on the raw text: another file may name it only as a type
+// (`CipherState` in vx-dte's seal.ts).
+const TS = new Bun.Transpiler({ loader: 'ts', trimUnusedImports: false })
+const JS = new Bun.Transpiler({ loader: 'js', trimUnusedImports: false })
+const code = (f: string, s: string): string =>
+  f.endsWith('.astro') ? s : (/\.[cm]?js$/.test(f) ? JS : TS).transformSync(s)
+
 describe('every exported value is used by another file', () => {
   const files = trackedCode()
   const text = new Map(files.map((f) => [f, readFileSync(path.join(repo, f), 'utf8')]))
+  const raw = new Map<string, Set<string>>()
   const idents = new Map<string, Set<string>>()
-  for (const [f, s] of text) idents.set(f, new Set(s.match(IDENT) ?? []))
+  for (const [f, s] of text) {
+    raw.set(f, new Set(s.match(IDENT) ?? []))
+    idents.set(f, new Set(code(f, s).match(IDENT) ?? []))
+  }
 
   it('scans the whole repo — hundreds of files, every package', () => {
     expect(files.length).toBeGreaterThan(400)
@@ -57,7 +71,7 @@ describe('every exported value is used by another file', () => {
         const name = m[1]!
         if (FRAMEWORK_READ(f, name)) continue
         let used = false
-        for (const [g, ids] of idents) {
+        for (const [g, ids] of m[0].includes('class ') ? raw : idents) {
           if (g !== f && ids.has(name)) {
             used = true
             break

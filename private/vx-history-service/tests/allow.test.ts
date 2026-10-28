@@ -1,24 +1,25 @@
-// wrangler.jsonc's TRUST, as GitHub's tokens meet it: only ci.yml's runs
-// of main write main's scope, and a branch writes its own.
+// wrangler.jsonc's ALLOW, as GitHub's tokens meet it: ci.yml's runs of
+// main write main's scope, a branch its own, and no other workflow's job
+// gets in.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { beforeAll, expect, it } from 'bun:test'
-import { hashPart, oidcAuth, parseTrust } from '@vzn/vx-devtools'
+import { oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
-const AUD = 'https://vx-cache.exelord.workers.dev'
+const AUD = 'https://vx-history.exelord.workers.dev'
 const config = Bun.JSONC.parse(
   readFileSync(path.join(import.meta.dir, '..', 'wrangler.jsonc'), 'utf8'),
-) as { vars: { TRUST: string } }
+) as { vars: { ALLOW: string } }
 
-let access: (claims: JWTPayload) => Promise<string | undefined>
+let access: (claims: JWTPayload) => Promise<string | undefined | number>
 
 beforeAll(async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
   const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
-  const auth = oidcAuth({
-    trust: parseTrust(config.vars.TRUST),
+  const auth = oidcTokenAuth({
+    allow: parseAllow(config.vars.ALLOW),
     audience: AUD,
     fetchJson: async (url) =>
       url.endsWith('/.well-known/openid-configuration')
@@ -28,7 +29,6 @@ beforeAll(async () => {
   access = async (claims) => {
     const token = await new SignJWT({
       repository: 'vznjs/vx',
-      ref_protected: 'false',
       ...claims,
     })
       .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
@@ -37,39 +37,39 @@ beforeAll(async () => {
       .setIssuedAt()
       .setExpirationTime('5m')
       .sign(privateKey)
-    const req = new Request(`${AUD}/v1/artifacts`, {
+    const req = new Request(`${AUD}/v1/timings/query`, {
       headers: {
         authorization: `Bearer ${token}`,
-        // What .vx/workspace.ts names: our repository at GitHub, hashed.
-        'vx-issuer': await hashPart(GITHUB),
-        'vx-repository': await hashPart('vznjs/vx'),
       },
     })
-    return (await auth(req)).write
+    return auth(req, { issuer: GITHUB, repository: 'vznjs/vx' }).then(
+      (a) => a?.write,
+      (err: { status: number }) => err.status,
+    )
   }
 })
 
 const CI = 'vznjs/vx/.github/workflows/ci.yml@refs/heads/main'
 
 it("writes main from ci.yml's push to main, and a branch's own scope from its PR", async () => {
-  const main = { workflow_ref: CI, ref: 'refs/heads/main', ref_protected: 'true' }
+  const main = { job_workflow_ref: CI, ref: 'refs/heads/main' }
   expect(await access({ ...main, event_name: 'push' })).toBe('refs/heads/main')
-  // A dispatched run of main (a cold run) runs main's code, and its
-  // workers hand their outputs back through the cache, so it writes too.
+  // A dispatched run of main (a cold run) runs main's code: it writes too.
   expect(await access({ ...main, event_name: 'workflow_dispatch' })).toBe('refs/heads/main')
   expect(
     await access({
-      workflow_ref: 'vznjs/vx/.github/workflows/ci.yml@refs/pull/7/merge',
+      job_workflow_ref: 'vznjs/vx/.github/workflows/ci.yml@refs/pull/7/merge',
       event_name: 'pull_request',
       ref: 'refs/pull/7/merge',
       head_ref: 'feat',
     }),
   ).toBe('refs/heads/feat')
-  // A worker dispatched on main may run a fork PR's code: it reads only.
+  // A worker dispatched on main may run a fork PR's code: its own token
+  // is refused, and it writes only with the token its run lends it.
   const worker = {
     ...main,
-    workflow_ref: 'vznjs/vx/.github/workflows/vx-worker.yml@refs/heads/main',
+    job_workflow_ref: 'vznjs/vx/.github/workflows/vx-worker.yml@refs/heads/main',
   }
-  expect(await access({ ...worker, event_name: 'workflow_dispatch' })).toBeUndefined()
+  expect(await access({ ...worker, event_name: 'workflow_dispatch' })).toBe(403)
   expect(await access({ ...main, event_name: 'pull_request_target' })).toBeUndefined()
 })

@@ -1,6 +1,6 @@
 # vx-history-server as a container, built from the repo root:
 #   docker build -f packages/vx-history-server/Dockerfile -t vx-history-server .
-#   docker run -p 8080:8080 -v vx-history:/data -e TRUST='[…]' vx-history-server
+#   docker run -p 8080:8080 -v vx-history:/data -e ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' vx-history-server
 # One bundled file: the server and the CI token check it shares with
 # vx's other servers (@vzn/vx-devtools), with jose.
 FROM oven/bun:1.4.4-slim AS build

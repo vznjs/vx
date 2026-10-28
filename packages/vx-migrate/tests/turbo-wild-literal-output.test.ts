@@ -75,7 +75,7 @@ describe('turbo-map: a wildcard-first output with a literal rest', () => {
   const stubs = (n: number) =>
     Array.from({ length: n }, (_, i) => `s${String(i).padStart(2, '0')}/package.json`)
 
-  // Core never cleans a committed match (owner, 2026-10-14), however many.
+  // Core never cleans a committed match (2026-10-14), however many.
   it('stays cached as written, committed matches or not', async () => {
     expect({
       none: await map('*/package.json', ['package.json', 'src/index.ts', 'src/a/package.json']),

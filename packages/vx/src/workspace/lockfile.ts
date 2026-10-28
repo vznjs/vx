@@ -3,7 +3,7 @@
 // `vx lock` finds every project's vx.config.*, evaluates each in the
 // CURRENT environment and freezes the resolved objects, by directory, into
 // `.vx/projects.lock.json` at the workspace root. Every run loads configs from
-// it and never evaluates one (owner, 2026-10-14); only `vx lock` writes
+// it and never evaluates one (2026-10-14); only `vx lock` writes
 // it. See docs/design/config-lock-2026-06.md.
 //
 // Verification asymmetry (deliberate):
@@ -46,7 +46,7 @@ export function lockfilePath(root: string): string {
   return path.join(root, LOCKFILE_NAME)
 }
 
-/** What a run says when a crash came from a hand-broken lock entry (M, 2026-10-14). */
+/** What a run says when a crash came from a hand-broken lock entry (2026-10-14). */
 export const LOCK_INVALID = `${LOCKFILE_NAME} is invalid, run \`vx lock\``
 
 /**

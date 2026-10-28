@@ -18,71 +18,36 @@ job's own OIDC token, which GitHub Actions or GitLab CI hands the job,
 and the server checks it. A laptop has no such token, so off CI the
 plugins work locally.
 
-## `TRUST`: who reads and who writes
+## `ALLOW`: who takes part
 
-The cache and history servers read one setting, `TRUST`: a list of
-rules. A rule names a repository and says which CI runs may write its
-protected branches. This rule lets every GitHub Actions run of
-`acme/app` in, and lets only a push to `main` write `main`:
+The cache and history servers read one setting, `ALLOW`: who may take
+part, space separated, each `issuer:owner/repo:workflow`. This lets
+every run of `acme/app`'s `ci.yml` workflow on GitHub Actions in:
 
-```json
-[
-  {
-    "iss": "https://token.actions.githubusercontent.com",
-    "repository": "acme/app",
-    "event_name": "push",
-    "ref": "refs/heads/main"
-  }
-]
+```sh
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml'
 ```
 
-What that gives each run:
+What that gives each run of `ci.yml`:
 
 - **A run of `acme/app`** reads its own branch, then the branch it merges
   into, then `main`.
-- **A run on another branch**, such as a pull request from `feat-x`,
-  writes `feat-x` only.
-- **A run on `main` that does not match the rule**, such as a manual
-  run, reads `main` and writes nothing.
-- **A run of any other repository** is refused. With `TRUST` empty,
-  every request is refused: `the server trusts no CI: set TRUST`.
+- **A push to a branch**, such as `main`, writes that branch.
+- **A pull request from `feat-x`** writes `feat-x` only.
+- **A `pull_request_target` run** reads and writes nothing: it runs on
+  the base branch for a fork's code.
+- **A run of another workflow or repository** is refused. With `ALLOW`
+  empty, every request is refused: `the server admits no CI: set ALLOW`.
 
-Each field of a rule is a claim of the CI token. A value is a string,
-where `*` matches anything, or a list of strings:
-
-| Field | GitHub Actions | GitLab CI |
-| --- | --- | --- |
-| issuer | `"iss": "https://token.actions.githubusercontent.com"` | `"iss": "https://gitlab.com"`, or your GitLab's URL |
-| repository | `"repository": "acme/app"` | `"project_path": "acme/web"` |
-| protected branches | `"ref": "refs/heads/main"` | `"ref_path": "refs/heads/main"` |
-| which runs | `"event_name": "push"` | `"pipeline_source": "push"` |
-
-Add any other claim the writing run must hold, such as
-`"ref_protected": "true"`. A GitLab rule:
-
-```json
-[
-  {
-    "iss": "https://gitlab.com",
-    "project_path": "acme/web",
-    "ref_path": "refs/heads/main",
-    "ref_protected": "true",
-    "pipeline_source": ["push", "schedule"]
-  }
-]
-```
+On GitLab, the workflow is the CI file:
+`https://gitlab.com:acme/web:.gitlab-ci.yml`.
 
 <details>
-<summary>Why name `event_name`, and what a merge queue writes</summary>
-
-`pull_request_target` and `issue_comment` runs carry `main`'s `ref`
-while they run a pull request's code. A rule without `event_name` would
-let them write `main`.
+<summary>What a merge queue writes</summary>
 
 A GitHub merge queue run, on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
-writes `main` before its code lands, when its rule lists `merge_group`
-and the queue's ref. Code you queue is code you trust, so run security
-checks on the pull request, before it is queued.
+writes `main` before its code lands. Code you queue is code you trust,
+so run security checks on the pull request, before it is queued.
 
 </details>
 
@@ -99,7 +64,7 @@ branch name. A renamed repository starts with an empty cache.
 server is reached at, which is what the plugins ask the CI for.
 
 `READ_ACCESS=public` lets a request with no token, such as a laptop's,
-read a repository `TRUST` names. It writes nothing.
+read a repository `ALLOW` names. It writes nothing.
 
 </details>
 
@@ -108,12 +73,31 @@ The DTE server has its own, shorter list, `ALLOW`
 
 ## All three with Docker Compose
 
-[`private/vx-servers/compose.yaml`](https://github.com/vznjs/vx/blob/main/private/vx-servers/compose.yaml)
-builds and runs the three from a checkout of the vx repository:
+Run the three side by side with this `compose.yaml`:
+
+```yaml title="compose.yaml"
+services:
+  dte:
+    image: ghcr.io/vznjs/vx-dte-server
+    command: [--allow, '${DTE_ALLOW:-}', --audience, '${DTE_AUDIENCE:-}']
+    ports: ['${DTE_PORT:-8080}:8080']
+    restart: unless-stopped
+  cache:
+    image: ghcr.io/vznjs/vx-cache-server
+    environment: [ALLOW, AUDIENCE, READ_ACCESS, S3_BUCKET, S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, MAX_CHECK_HASHES, MAX_UPLOAD_BYTES]
+    ports: ['${CACHE_PORT:-8081}:8080']
+    restart: unless-stopped
+  history:
+    image: ghcr.io/vznjs/vx-history-server
+    environment: [ALLOW, AUDIENCE, READ_ACCESS, TIMING_DAYS]
+    volumes: ['history:/data']
+    ports: ['${HISTORY_PORT:-8082}:8080']
+    restart: unless-stopped
+volumes:
+  history:
+```
 
 ```sh
-git clone https://github.com/vznjs/vx
-cd vx/private/vx-servers
 docker compose up -d                 # all three
 docker compose up -d cache history   # only the ones you need
 ```
@@ -121,8 +105,8 @@ docker compose up -d cache history   # only the ones you need
 | Service | Port | Settings it reads |
 | --- | --- | --- |
 | `dte` | 8080 (`DTE_PORT`) | `DTE_ALLOW`, `DTE_AUDIENCE` |
-| `cache` | 8081 (`CACHE_PORT`) | `TRUST`, `AUDIENCE`, `READ_ACCESS`, `S3_*`, `MAX_*` |
-| `history` | 8082 (`HISTORY_PORT`) | `TRUST`, `AUDIENCE`, `READ_ACCESS`, `TIMING_DAYS` |
+| `cache` | 8081 (`CACHE_PORT`) | `ALLOW`, `AUDIENCE`, `READ_ACCESS`, `S3_*`, `MAX_*` |
+| `history` | 8082 (`HISTORY_PORT`) | `ALLOW`, `AUDIENCE`, `READ_ACCESS`, `TIMING_DAYS` |
 
 Settings come from your shell or a `.env` file next to `compose.yaml`.
 The history server keeps its SQLite file in the `history` volume. Put

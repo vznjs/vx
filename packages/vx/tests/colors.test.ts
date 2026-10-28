@@ -62,7 +62,7 @@ describe('detectColors', () => {
     expect(detectColors({ isTTY: false } as NodeJS.WriteStream).enabled).toBe(true)
   })
 
-  // GitHub Actions and GitLab render ANSI in a piped log, which read plain (M, 2026-10-22).
+  // GitHub Actions and GitLab render ANSI in a piped log, which read plain (2026-10-22).
   it('paints a piped log on a CI that renders colour, unless NO_COLOR or FORCE_COLOR=0', () => {
     const piped = { isTTY: false } as NodeJS.WriteStream
     expect(

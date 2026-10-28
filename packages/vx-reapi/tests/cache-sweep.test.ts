@@ -187,7 +187,7 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
     expect(await restored('k-refused')).toEqual([String.fromCharCode(2048 % 251).repeat(2048), 1])
   })
 
-  // M, 2026-10-15: an entry is immutable and core asks no `has` before a
+  // 2026-10-15: an entry is immutable and core asks no `has` before a
   // put, so the wire keeps a stored result: UpdateActionResult replaces one.
   it('a put of a stored key keeps its result', async () => {
     entry('k-kept', 'first')

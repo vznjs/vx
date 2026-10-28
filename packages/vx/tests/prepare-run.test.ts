@@ -243,7 +243,7 @@ describe('scoped config loading reaches every project a run can need', () => {
     'a BROKEN config anywhere fails the lock, so no run starts, scoped or not',
     async () => {
       // `vx lock` evaluates every config and writes nothing when one fails, and
-      // a run reads configs only from the lock (owner, 2026-10-14): a broken
+      // a run reads configs only from the lock (2026-10-14): a broken
       // config out of a run's scope stops the run too, until it is fixed.
       await pkg('app', cfg(task('build')))
       await pkg('broken', 'export default { tasks: 42 }')

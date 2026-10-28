@@ -170,7 +170,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     -- worktree size git recorded (A-60). Fixed for its OID, so a warm
     -- run asks git for none; swept with file_hashes by seen_at, the
     -- time the row was written. v38: in the store, so a worktree reads
-    -- what another learned (owner, 2026-10-14).
+    -- what another learned (2026-10-14).
     CREATE TABLE IF NOT EXISTS ${store}.blob_sizes (
       oid     TEXT PRIMARY KEY,
       size    INTEGER NOT NULL,
@@ -287,7 +287,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     );
     -- What a duration forecast reads (orchestrator/history.ts), one row per
     -- executed success, shared by every worktree of the repo so a new one
-    -- forecasts on its first run (owner, 2026-10-14). Append-only: never
+    -- forecasts on its first run (2026-10-14). Append-only: never
     -- updated, pruned by age with the run history. \`source\` tags a local
     -- run 'branch:<name>' ('branch:' detached or outside git); \`sha\` is its
     -- commit. A forecast reads a task's newest rows of one source.
@@ -318,7 +318,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     -- v38: the flaky record (orchestrator/failure-mode.ts): each keyed,
     -- cached, unblocked outcome that observed its key, shared by every
     -- worktree so a key that passed in one and failed in another is flaky
-    -- in both (owner, 2026-10-14). Every executed success or failure, and
+    -- in both (2026-10-14). Every executed success or failure, and
     -- a key's first hit (run-history.ts): a later hit replays a pass the
     -- record holds, so a warm run on keys that passed writes no row.
     -- Append-only, ordered by id, pruned by age with the run history.

@@ -3,7 +3,7 @@
 // Builds makes a Preview of a Worker for a branch whose push touches its
 // watch paths (its README), from that commit's code: such a PR's run must
 // use it, since its client and the deployed Worker may speak different
-// protocols. Any other PR keeps the deployed one (owner, 2026-10-25: only
+// protocols. Any other PR keeps the deployed one (2026-10-25: only
 // when the PR affects it). A push to main that changes it waits for its
 // deploy; any other push returns at once. CI runs it before the run; it
 // outputs `url` when the run is to use the Preview.

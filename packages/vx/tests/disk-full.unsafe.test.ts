@@ -1,7 +1,7 @@
 // The disk-full persona: a 2 MiB tmpfs that fills. Bubblewrap mounts one
 // with no privilege (`--size` + `--tmpfs`), and this file runs itself again
 // inside it with `VX_SMALL_DISK` naming it; CI's runners needed a sudo mount
-// step before (owner, 2026-10-23: "can we do this test without this
+// step before (2026-10-23: "can we do this test without this
 // mount?"). Unsafe, i.e. outside the sandboxed shards: a sandboxed task
 // sees a mount it did not make as read-only (EROFS on the first CI run,
 // 2026-09-16). Root is subject to ENOSPC like any user. Without bwrap the

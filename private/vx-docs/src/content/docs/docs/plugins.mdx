@@ -35,12 +35,14 @@ machine. A plugin that declines a task hands it back to this machine.
 | [`@vzn/vx-reapi`](../../plugins/vx-reapi/)             | `cache`, `executor` ([Remote cache](../remote-cache/), [Remote execution](../remote-execution/)) |
 | [`@vzn/vx-migrate`](../../plugins/vx-migrate/)           | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../../guides/migrate/)) |
 | [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/)          | `discover`, `project`, `fingerprint`, `key` ([Lockfiles](../lockfiles/)) |
-| [`@vzn/vx-history`](../../plugins/vx-history/)  | `schedule`, `admit`, `commands`            |
+| [`@vzn/vx-dte`](../distributed-task-execution/) | `executor`, `commands` |
+| [`@vzn/vx-history`](../../plugins/vx-history/)  | `schedule`, `admit`, `commands` ([History server](../servers/history/)) |
 | [`@vzn/vx-otel`](../../plugins/vx-otel/)              | `telemetry` ([below](#opentelemetry))      |
 | [`@vzn/vx-ci`](../../plugins/vx-ci/)            | `config`, `telemetry`, `commands` ([GitHub Actions](../ci/#github-actions), [GitLab CI](../ci/#gitlab-ci)) |
 | [`@vzn/vx-cache`](../../plugins/vx-cache/) | `cache`, on a [`@vzn/vx-cache-server`](../../plugins/vx-cache-server/) |
 | [`@vzn/vx-cache-server`](../../plugins/vx-cache-server/) | none: the cache server you host |
 | [`@vzn/vx-history-server`](../../plugins/vx-history-server/) | none: the timings server `vxHistory()` reads |
+| [`@vzn/vx-dte-server`](../servers/dte/) | none: the relay `dte()` meets its workers at |
 | [`@vzn/vx-devtools`](../../plugins/vx-devtools/) | none: the CI token check the servers share |
 
 One plugin can fill several: `@vzn/vx-history` fills three at once.
@@ -53,11 +55,16 @@ One plugin can fill several: `@vzn/vx-history` fills three at once.
 
 ## OpenTelemetry
 
-`@vzn/vx-otel` exports every run as OTLP traces, metrics and logs, with no
-OpenTelemetry SDK: one trace per run, one span per task. Install it
-(`bun add -d @vzn/vx-otel`) and point it at your collector
-(`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`). Without any
-endpoint it declines; a signal's own endpoint alone exports that signal.
+`@vzn/vx-otel` sends every run to your OpenTelemetry collector as traces,
+metrics and logs: one trace per run, one span per task.
+
+```sh
+bun add -d @vzn/vx-otel
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+With no endpoint set, it sends nothing. A signal's own endpoint, such as
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, sends only that signal.
 
 ```ts
 // .vx/workspace.ts
@@ -93,9 +100,10 @@ export default defineWorkspace({
 | a log per task    | the task's output at its end, linked to its span; `vx.log.chars_full` says when it was cut               |
 | every resource    | `service.instance.id` (the run id), `host.name`, `host.arch`, `os.type`, `vcs.ref.head.*`, `vcs.repository.*`, `vx.workspace.path` (the workspace root in its repository), and on CI `cicd.pipeline.run.url.full`, `cicd.pipeline.name`, `vcs.change.id` (the pull request), `vx.ci.job`, `vx.ci.attempt`: one key joins a run's traces, metrics and logs |
 
-Each task is sent as it ends, so a dashboard follows a CI run live;
+Each task is sent as it ends, so a dashboard follows a CI run live.
 `live: false` sends it all at the end. A failed task's span is `ERROR`.
-A failed or slow export warns, and the run still exits green.
+
+A failed or slow export prints a warning, and the run still passes.
 
 To see it locally, run
 [otel-desktop-viewer](https://github.com/CtrlSpice/otel-desktop-viewer):

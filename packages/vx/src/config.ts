@@ -334,7 +334,7 @@ export interface TaskConfig {
  * INVALIDATES a task, `allow` says what it may TOUCH, and deriving one
  * from the other coupled them both ways — a declaration added for
  * caching silently widened the sandbox, and a path the task needed had
- * to be laundered through the cache key to get it (owner, 2026-09-05).
+ * to be laundered through the cache key to get it (2026-09-05).
  * A declared `cache.outputs` is NOT a write grant; the request
  * `sandbox-request.ts` builds carries no write of its own and binds
  * `allow.write` alone. This comment claimed the opposite — here and on

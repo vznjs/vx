@@ -377,6 +377,11 @@ async function runOnBus(
   takeOutput?: (claimed: { logger: Logger; owner: string }) => void,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
+  // What the run warned of, no task's: the footer repeats it (`warn`).
+  const warned: string[] = []
+  bus.subscribe((e) => {
+    if (e.kind === 'run:status' && 'warn' in e) warned.push(e.line)
+  })
   const steps = createSteps(log, showsSteps)
   const { step, stepSync } = steps
   // A server's output goes through a cell of its own: a later watch cycle
@@ -798,7 +803,7 @@ async function runOnBus(
       !(policy.localRead || policy.remoteRead)
     // Only what runs here arms this machine's sandbox: a `sandbox` executor
     // enforces it where it runs the task, so a distributed run's
-    // orchestrator needs none (owner, 2026-10-22).
+    // orchestrator needs none (2026-10-22).
     const sandboxed =
       sandboxArmer === null
         ? []
@@ -889,8 +894,9 @@ async function runOnBus(
       },
       concurrency,
       workspaceProjectCount,
-      // Live too: a long run is read while it runs (M, 2026-10-21).
+      // Live too: a long run is read while it runs (2026-10-21).
       runId,
+      warnings: () => warned,
     }
 
     // Asked only when a plugin declares `output`: a plain run pays nothing.
@@ -1438,7 +1444,7 @@ async function runOnBus(
       })
     } else if (stop.stoppedBy !== undefined) {
       // Stopped: not a run `vx last` lists (item 854), but what finished is
-      // measured, or the next run knows none of it (M, 2026-10-21).
+      // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () =>
         recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs)),
@@ -1529,7 +1535,7 @@ async function runOnBus(
       }
     })
 
-    // The footer is the run's last word (owner, 2026-10-06): it prints once
+    // The footer is the run's last word (2026-10-06): it prints once
     // the run's own work is done, history, uploads, plugin teardown and the
     // sandbox reset included, so any warning they raise lands above it. A
     // task's own facts (flaky, blocked) ride its row. Only a kept server's

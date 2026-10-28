@@ -26,6 +26,13 @@ function restoreEnv(saved: Readonly<Record<string, string | undefined>>): void {
   }
 }
 
+/** A path in a fresh directory, nothing written there yet. */
+async function fresh(name = 'sumfile.md'): Promise<string> {
+  return path.join(await mkdtemp(path.join(tmpdir(), 'vx-gh-sum-')), name)
+}
+const written = (file: string): Promise<string | undefined> =>
+  readFile(file, 'utf8').catch(() => undefined)
+
 const GITHUB_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 
 const RUN: RunContextRecord = {
@@ -98,7 +105,7 @@ describe('renderJobSummary', () => {
     expect(md).not.toContain('| Verify |')
   })
 
-  // M, 2026-10-23: "Sort summary by status and then time".
+  // 2026-10-23: "Sort summary by status and then time".
   it('lists tasks by status, failures first, then the longest first', () => {
     const md = renderJobSummary(
       summary([
@@ -168,10 +175,10 @@ describe('renderJobSummary', () => {
       ),
     )
     expect(md).toContain('### Workers')
-    // Not a 0 ms run: its time is its dependants' (M, 2026-10-23).
+    // Not a 0 ms run: its time is its dependants' (2026-10-23).
     expect(md).toContain('| c#services | 🔗 served |  |')
     // A carried server ran in its dependants; a task that ran on the run's
-    // own machine is named, and the counts add up (owner, 2026-10-23).
+    // own machine is named, and the counts add up (2026-10-23).
     expect(md).toContain('| this machine | ok |  |  |  |  |  | 1 |  |  |  |  |')
     expect(md).toContain('3 executed: 2 on workers, 1 on this machine: e#gen.')
     expect(md).toContain(
@@ -184,7 +191,7 @@ describe('renderJobSummary', () => {
       "Over their online time, tasks booked 78% of the workers' cores and used 40%.",
     )
     expect(renderJobSummary(summary([task({})]))).not.toContain('### Workers')
-    // "13 (1 failed)" read as 13 in all (owner, 2026-10-23).
+    // "13 (1 failed)" read as 13 in all (2026-10-23).
     const one = renderJobSummary(
       summary([task({ where: 'small#1' })], {
         machines: [
@@ -309,18 +316,13 @@ describe('github() activation', () => {
   })
 
   it('activates on the env var and writes via flush, not onRunSummary', async () => {
-    const writes: Array<[string, string]> = []
-    const sink = github({
-      summaryFile: '/tmp/sumfile.md',
-      append: async (f, md) => void writes.push([f, md]),
-    })!.telemetry!(ctx) as GithubSummarySink
+    const file = await fresh()
+    const sink = github({ summaryFile: file })!.telemetry!(ctx) as GithubSummarySink
     expect(sink).toBeInstanceOf(GithubSummarySink)
     sink.onRunSummary!(summary([task({})]))
-    expect(writes.length).toBe(0) // prompt-return contract: no I/O here
+    expect(await written(file)).toBeUndefined() // prompt-return contract: no I/O here
     await sink.flush!()
-    expect(writes.length).toBe(1)
-    expect(writes[0]![0]).toBe('/tmp/sumfile.md')
-    expect(writes[0]![1]).toContain('a#build')
+    expect(await written(file)).toContain('a#build')
   })
 
   it('what it appends is bounded by GitHub’s 1 MiB job-summary cap', async () => {
@@ -329,24 +331,20 @@ describe('github() activation', () => {
     // ~55 bytes a row that is ~19 000 tasks, which this repo's own bench
     // generates (5 000 projects × four tasks), so it is reachable
     // (2026-09-20).
-    const writes: string[] = []
-    const sink = github({
-      summaryFile: '/tmp/sumfile.md',
-      append: async (_f, md) => void writes.push(md),
-    })!.telemetry!(ctx) as GithubSummarySink
+    const file = await fresh()
+    const sink = github({ summaryFile: file })!.telemetry!(ctx) as GithubSummarySink
     const many = Array.from({ length: 25_000 }, (_, i) =>
       task({ taskId: `project-with-a-long-name-${i}#build` }),
     )
     sink.onRunSummary!(summary(many))
     await sink.flush!()
-    expect(writes.length).toBe(1)
-    const written = writes[0]!
-    expect({ overCap: written.length > MAX_JOB_SUMMARY_BYTES }).toEqual({ overCap: false })
-    expect(written).toContain('truncated by @vzn/vx-ci')
+    const text = (await written(file))!
+    expect({ overCap: text.length > MAX_JOB_SUMMARY_BYTES }).toEqual({ overCap: false })
+    expect(text).toContain('truncated by @vzn/vx-ci')
     // The head survives: the verdict and the stats line are what a reader
     // needs, and they are rendered before the table.
-    expect(written.startsWith('## ')).toBe(true)
-    expect(written).toContain('**25000** tasks')
+    expect(text.startsWith('## ')).toBe(true)
+    expect(text).toContain('**25000** tasks')
   })
 
   it('the cap is the step file’s: what other writers left is the room (F-42)', async () => {
@@ -405,25 +403,19 @@ describe('github() activation', () => {
   })
 
   it('CONTROL: an ordinary summary is appended whole, with no truncation tell', async () => {
-    const writes: string[] = []
-    const sink = github({
-      summaryFile: '/tmp/sumfile.md',
-      append: async (_f, md) => void writes.push(md),
-    })!.telemetry!(ctx) as GithubSummarySink
+    const file = await fresh()
+    const sink = github({ summaryFile: file })!.telemetry!(ctx) as GithubSummarySink
     sink.onRunSummary!(summary([task({}), task({ taskId: 'b#build' })]))
     await sink.flush!()
-    expect(writes[0]).not.toContain('truncated by @vzn/vx-ci')
-    expect(writes[0]).toContain('b#build')
+    expect(await written(file)).not.toContain('truncated by @vzn/vx-ci')
+    expect(await written(file)).toContain('b#build')
   })
 
   it('a run with no summary emitted flushes to nothing', async () => {
-    const writes: string[] = []
-    const sink = github({
-      summaryFile: '/tmp/sumfile.md',
-      append: async (_f, md) => void writes.push(md),
-    })!.telemetry!(ctx) as GithubSummarySink
+    const file = await fresh()
+    const sink = github({ summaryFile: file })!.telemetry!(ctx) as GithubSummarySink
     await sink.flush!()
-    expect(writes.length).toBe(0)
+    expect(await written(file)).toBeUndefined()
   })
 })
 
@@ -546,7 +538,7 @@ describe('every output the vx-ci sweep found unheld', () => {
     )
     const one = renderJobSummary(summary([task({})]))
     expect(one.split('\n')[2]).toBe('**1** task · **1** executed · **0** cache hits · 4.3s')
-    // M, 2026-10-23: the ideal time of a distributed run, beside the real one.
+    // 2026-10-23: the ideal time of a distributed run, beside the real one.
     const ideal = renderJobSummary(summary([task({})], { idealMs: 3_000 }))
     expect(ideal.split('\n')[2]).toBe(
       '**1** task · **1** executed · **0** cache hits · 4.3s (ideal 3.0s)',
@@ -652,18 +644,16 @@ describe('what the F-6 sweep found unheld', () => {
 
   it('GITHUB_STEP_SUMMARY alone activates it, and is where the summary goes', async () => {
     const prev = { ...process.env }
-    process.env['GITHUB_STEP_SUMMARY'] = '/tmp/from-env.md'
-    const writes: string[] = []
+    const file = await fresh('from-env.md')
+    process.env['GITHUB_STEP_SUMMARY'] = file
     try {
-      const sink = github({
-        append: async (f) => void writes.push(f),
-      })!.telemetry!(ctx) as GithubSummarySink
+      const sink = github()!.telemetry!(ctx) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       await sink.flush!()
     } finally {
       restoreEnv(prev)
     }
-    expect(writes).toEqual(['/tmp/from-env.md'])
+    expect(await written(file)).toContain('a#build')
   })
 })
 
@@ -751,16 +741,15 @@ describe('the summary, as its second sweep found it unheld', () => {
 
   it('the summaryFile option wins over GITHUB_STEP_SUMMARY', async () => {
     const prev = process.env['GITHUB_STEP_SUMMARY']
-    process.env['GITHUB_STEP_SUMMARY'] = '/tmp/from-env.md'
+    const fromEnv = await fresh('from-env.md')
+    const fromOption = await fresh('from-option.md')
+    process.env['GITHUB_STEP_SUMMARY'] = fromEnv
     try {
-      const files: string[] = []
-      const sink = github({
-        summaryFile: '/tmp/from-option.md',
-        append: async (f) => void files.push(f),
-      })!.telemetry!(ctx) as GithubSummarySink
+      const sink = github({ summaryFile: fromOption })!.telemetry!(ctx) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       await sink.flush!()
-      expect(files).toEqual(['/tmp/from-option.md'])
+      expect(await written(fromOption)).toContain('a#build')
+      expect(await written(fromEnv)).toBeUndefined()
     } finally {
       if (prev === undefined) delete process.env['GITHUB_STEP_SUMMARY']
       else process.env['GITHUB_STEP_SUMMARY'] = prev

@@ -48,7 +48,8 @@ export function formatTaskSkippedLine(node, colors?, blockedBy?): string
 // ` ✗ <time> aborted <id>` — killed by a shutdown signal;
 // ` ◌ <blank> not run <id>` — the stop reached it before it ran
 export function formatTaskAbortedLine(node, outcome, colors?): string
-// the grid they all share: `<glyph> <time> <status> <cache> <id>`
+// the grid they all share: `<glyph> <time> <status> <cache> <id>`;
+// the live list adds `blocked` (right-aligned, before the id)
 export function formatTaskRow(
   glyph,
   ms,
@@ -58,6 +59,7 @@ export function formatTaskRow(
   cacheColor,
   paintedId,
   colors?,
+  blocked?,
 ): string
 export const TIME_COL = 7 // the time cell's width
 // `project#task` halves in identity hues, hashed from `hueSource`

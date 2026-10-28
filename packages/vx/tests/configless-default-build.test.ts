@@ -1,5 +1,5 @@
 // A package with no vx config is a source a dependant may bundle: its
-// default `build` (owner, 2026-10-04) keys its files behind `^build`. It
+// default `build` (2026-10-04) keys its files behind `^build`. It
 // was loaded only when some `project` plugin existed, so with none an edit
 // to it replayed the dependant's stale output as a hit (X-9).
 

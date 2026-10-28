@@ -43,8 +43,7 @@ the same `VX_DTE_SECRET` on the run and each worker. A message the relay
 changes loses its worker; one it replays is dropped. The key never
 encrypts a message, so a leaked one opens no past run.
 
-It is not on npm yet: it is being built in this repo. It runs workers with
-`local()`, `docker()`, `github()` and `gitlab()`.
+It runs workers with `local()`, `docker()`, `github()` and `gitlab()`.
 
 ### Bodies
 
@@ -86,16 +85,8 @@ end to end, and a quiet peer probed (Switchboard § Delivery, § Liveness).
 
 ## Try it
 
-Until it is on npm, link it from a checkout of this repo. The vx you run
-must come from the same checkout: the published one lacks exports this
-package needs.
-
 ```sh
-git clone https://github.com/vznjs/vx ~/vx
-cd ~/vx && bun install
-(cd packages/vx && bun link) && (cd packages/vx-dte && bun link)
-cd ~/your-repo
-bun link --save @vzn/vx @vzn/vx-dte
+bun add -d @vzn/vx-dte
 ```
 
 ```ts
@@ -273,7 +264,7 @@ is kept unless `--force`. For the sizes above:
 ```yaml
 # .github/workflows/vx-worker.yml
 # Written by vx dte init from dte() in .vx/workspace.ts: the workers of a
-# distributed run, which github() dispatches once per size. Run vx dte init
+# DTE run, which github() dispatches once per size. Run vx dte init
 # again after changing the sizes.
 name: vx-worker
 
@@ -456,14 +447,14 @@ use your own instead.
 - A persistent task a task depends on starts on the worker that runs the
   task, once per worker, ready before it, and stops when the worker leaves;
   the orchestrator never starts it, and a worker no dependant reaches
-  never does (owner, 2026-10-22).
+  never does (2026-10-22).
 - A task whose key folds a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path
   under the worker's checkout root reads as the same path under this
   machine's, as the task's environment does.
 - No task runs on the orchestrator, only cache hits restore there
-  (owner, 2026-10-24): a task with `exec.remote: false`, an interactive
+  (2026-10-24): a task with `exec.remote: false`, an interactive
   one and their dependants run on workers too (the executor is
   `exclusive`). A task no worker can take refuses the run before any
   starts, naming it: one whose `exec.platforms` no size offers, or a
@@ -561,7 +552,7 @@ use your own instead.
   one asked then would queue behind it. When none is online
   or starting and this machine has no share, the remaining tasks fail
   with `no worker could start`.
-- Only `leave` ends a participant at once (owner, 2026-10-25): the
+- Only `leave` ends a participant at once (2026-10-25): the
   orchestrator's at its run's end is the final call that closes the run,
   and a worker's when it is done. Either whose socket drops without it
   dials again, 3 times within 10 s, and the relay keeps it, and its run,
@@ -841,4 +832,4 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   each worktree runs before its worker starts.
 
 `@vzn/vx-dte-server` is a dependency for `local()`'s and `docker()`'s relay, loaded only
-when a distributed run starts.
+when a DTE run starts.

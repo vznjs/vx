@@ -164,7 +164,7 @@ describe('vx init hands a repo with a package.json to @vzn/vx-migrate', () => {
       const bin = path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'src', 'bin.ts')
       await mkdir(path.dirname(bin), { recursive: true })
       await writeFile(bin, '')
-      // M, 2026-10-16: an installed 0.0.637 ran under vx 0.0.639 and pinned
+      // 2026-10-16: an installed 0.0.637 ran under vx 0.0.639 and pinned
       // core back to 0.0.637. "vx init should always install latest and upgrade all".
       expect([
         before,

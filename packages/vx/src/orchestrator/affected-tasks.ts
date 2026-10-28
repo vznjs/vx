@@ -1,4 +1,4 @@
-// `--affected` per task (owner, 2026-10-04). The diff seeds the tasks it
+// `--affected` per task (2026-10-04). The diff seeds the tasks it
 // reaches; a requested task runs when its `dependsOn` closure holds one.
 // So a change reaches another project only along a task edge: `web#test`
 // behind `^build` runs when `ui#build` (or what it depends on) is reached,

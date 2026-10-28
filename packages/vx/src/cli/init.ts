@@ -1,6 +1,6 @@
 // `vx init [--dry [--format json]] [--force] [--mjs] [--native|--keep]` — a workspace from nowhere.
 // It installs vx globally and, where a package.json is, as its devDependency
-// (M, 2026-10-20). A Turbo or Nx repo is `@vzn/vx-migrate`'s, which maps it
+// (2026-10-20). A Turbo or Nx repo is `@vzn/vx-migrate`'s, which maps it
 // and installs what it writes (`migrate`); any other gets the workspace file
 // and an empty root project, then the lock (`starter`).
 // `vx init --plugin <seam>` writes a runnable plugin for one seam and its
@@ -135,7 +135,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
 const TOOL_CONFIGS = ['turbo.json', 'turbo.jsonc', 'nx.json']
 
 /**
- * The installs `vx init` runs (M, 2026-10-20): vx at `version` globally,
+ * The installs `vx init` runs (2026-10-20): vx at `version` globally,
  * with the manager that started init, so a bare `vx` is on PATH, unless
  * the global vx already answers `version`; and, where `pkgRoot` has a
  * package.json, as its devDependency with the repo's own manager.
@@ -307,7 +307,7 @@ function workspaceSource(plugin: string | null): string {
 /**
  * Whether `pkgRoot` has package.json scripts to map: its own, or a
  * workspace's members (`workspaces`, `pnpm-workspace.yaml`). Core maps none
- * (M, 2026-10-20), so `next` names the tool that does.
+ * (2026-10-20), so `next` names the tool that does.
  */
 function hasScripts(pkgRoot: string | null): boolean {
   if (pkgRoot === null) return false
@@ -414,7 +414,7 @@ async function starter(
  * A Turbo or Nx repo is `@vzn/vx-migrate`'s, after the global install, at the latest
  * release: it installs @vzn/vx and every @vzn/vx-* plugin the root lists
  * at its own version, so init always lands on latest with all of them
- * together, as `vx upgrade` moves them (M, 2026-10-16: an installed 0.0.637
+ * together, as `vx upgrade` moves them (2026-10-16: an installed 0.0.637
  * pinned core back from 0.0.639). It finds the root itself, asks a
  * terminal native or keep in a Turbo or Nx repo, and installs what it writes.
  */

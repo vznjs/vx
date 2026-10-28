@@ -1640,9 +1640,9 @@ describe('a signal ships only to its own url (item 807)', () => {
     // metrics or logs endpoint declined whole and exported nothing.
     const posted = async (env: Record<string, string>): Promise<string[] | undefined> => {
       const urls: string[] = []
-      const cfg = resolveOtelConfig({ post: async (url) => void urls.push(url) }, env)
+      const cfg = resolveOtelConfig({}, env)
       if (cfg === undefined) return undefined
-      const sink = new OtelSink(cfg)
+      const sink = new OtelSink({ ...cfg, post: async (url) => void urls.push(url) })
       sink.onRecord({ v: 1, kind: 'run.start', run: RUN, total: 0, ts: 1000 } as TelemetryRecord)
       sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
       sink.onRunSummary(summaryFor(RUN, []))
@@ -1730,10 +1730,9 @@ describe('what the vx-otel sweep found unheld (item 807)', () => {
     )
   })
 
-  it('metrics: false, timeoutMs and post reach the config', () => {
-    const post = async () => undefined
-    const c = resolveOtelConfig({ metrics: false, timeoutMs: 1234, post }, BASE)!
-    expect([c.metricsEnabled, c.timeoutMs, c.post]).toEqual([false, 1234, post])
+  it('metrics: false and timeoutMs reach the config', () => {
+    const c = resolveOtelConfig({ metrics: false, timeoutMs: 1234 }, BASE)!
+    expect([c.metricsEnabled, c.timeoutMs]).toEqual([false, 1234])
   })
 })
 
@@ -1895,7 +1894,6 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
       {
         logs: false,
         headers: { 'x-top': 'opt' },
-        post: async (url, _b, headers) => void (seen[url] = headers),
       },
       {
         OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
@@ -1903,7 +1901,10 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
         OTEL_EXPORTER_OTLP_TRACES_HEADERS: 'a=traces%20only',
       },
     )!
-    const sink = new OtelSink(cfg)
+    const sink = new OtelSink({
+      ...cfg,
+      post: async (url, _b, headers) => void (seen[url] = headers),
+    })
     start(sink, 1000)
     end(sink, 1050, 40)
     await sink.flush()
@@ -2018,19 +2019,20 @@ describe('the standard OTLP env a pipeline already sets', () => {
   it('OTEL_RESOURCE_ATTRIBUTES reaches every signal’s resource, under vx’s identity', async () => {
     const bodies: Record<string, { resource: { attributes: unknown[] } }> = {}
     const cfg = resolveOtelConfig(
-      {
-        post: async (url, body) => {
-          const b = JSON.parse(body) as Record<string, { resource: { attributes: unknown[] } }[]>
-          bodies[url] = Object.values(b)[0]![0]!
-        },
-      },
+      {},
       {
         ...base,
         OTEL_RESOURCE_ATTRIBUTES:
           'deployment.environment=ci,team=a%20b,service.version=9,host.name=mine',
       },
     )!
-    const sink = new OtelSink(cfg)
+    const sink = new OtelSink({
+      ...cfg,
+      post: async (url, body) => {
+        const b = JSON.parse(body) as Record<string, { resource: { attributes: unknown[] } }[]>
+        bodies[url] = Object.values(b)[0]![0]!
+      },
+    })
     const t: TaskTelemetry = {
       taskId: 'a#build',
       project: 'a',
@@ -2229,9 +2231,6 @@ describe('the standard OTLP env a pipeline already sets', () => {
     const cfg = resolveOtelConfig(
       {
         logs: false,
-        post: async () => {
-          throw new Error('socket closed')
-        },
       },
       {
         ...base,
@@ -2240,7 +2239,12 @@ describe('the standard OTLP env a pipeline already sets', () => {
       },
       (m) => warns.push(m),
     )!
-    const sink = new OtelSink(cfg)
+    const sink = new OtelSink({
+      ...cfg,
+      post: async () => {
+        throw new Error('socket closed')
+      },
+    })
     sink.onRecord({ v: 1, kind: 'run.start', run: RUN, total: 0, ts: 1000 } as TelemetryRecord)
     sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
     sink.onRunSummary(summaryFor(RUN, []))

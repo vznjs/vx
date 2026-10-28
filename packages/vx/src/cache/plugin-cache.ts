@@ -1,5 +1,5 @@
 // A plugin's own entries in the cache the workspace declares (`ctx.cache`,
-// owner 2026-10-14): the local store first, then each remote in declared
+// 2026-10-14): the local store first, then each remote in declared
 // order, under the run's policy and scope. The plugin speaks names; core
 // derives the key, so no plugin reaches another's entries or a task's. An
 // entry is written once and never replaced (the cache is immutable). Every
@@ -91,9 +91,9 @@ async function capped(body: unknown, max = PLUGIN_ENTRY_MAX_BYTES): Promise<Uint
 
 /**
  * `plugin`'s view of the cache. The local store never knows a scope
- * (owner, 2026-10-17): it keeps every entry under its name's key. A scoped
+ * (2026-10-17): it keeps every entry under its name's key. A scoped
  * run writes a remote only under the scope's key, and reads one key: the
- * scope's, or with `scoped` false the default (M, 2026-10-18: no request
+ * scope's, or with `scoped` false the default (2026-10-18: no request
  * twice).
  */
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache {

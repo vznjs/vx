@@ -140,7 +140,7 @@ export async function related(self: Post): Promise<Post[]> {
 }
 
 /** Whether the cover prints the title: a drawn cover and a release's PNG
- *  do, so a card shows it once (owner, 2026-10-09); a picture does not. */
+ *  do, so a card shows it once (2026-10-09); a picture does not. */
 export function coverShowsTitle(p: Post): boolean {
   return p.entry.data.cover === undefined || p.kind === 'releases'
 }

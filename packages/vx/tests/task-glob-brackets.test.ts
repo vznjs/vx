@@ -1,4 +1,4 @@
-// A task glob is a standard glob (M, 2026-10-18): `[ab]` is a character
+// A task glob is a standard glob (2026-10-18): `[ab]` is a character
 // class, and a route directory named `[id]` (Next.js, SvelteKit, Astro) is
 // spelled `app/\[id\]`. The escaped route must key and restore exactly the
 // route: read as the class, it matched `app/i/…` and never the route, so an

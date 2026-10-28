@@ -46,24 +46,23 @@ request with no token `401`.
 A request's `Authorization: Bearer <token>` is a CI job's OIDC token
 (GitHub Actions, GitLab CI): there is no other. Its signature,
 `RS256`, `exp` and `aud` (the server's own) are checked, and the token
-alone decides what it reads and where it writes, by the server's trust
-rules:
+alone decides what it reads and where it writes, by the server's
+`ALLOW` (`issuer:owner/repo:workflow` entries):
 
 - Its issuer and repository name (`repository` on GitHub, `project_path`
-  on GitLab, `org/name`, any case) are the repository it reads and writes; one no rule names
-  is `403`. A repository's artifacts are never another's.
+  on GitLab, `org/name`, any case) are the repository it reads and writes; one `ALLOW`
+  does not name is `403`, and so is a job of a workflow it does not name
+  (`job_workflow_ref`, GitLab's `ci_config_ref_uri`). A repository's artifacts are never another's.
 - It writes its branch's scope: on GitHub a `pull_request` run's head
-  branch (`refs/heads/<head_ref>`; a `pull_request_target` run's
-  `head_ref` names a fork's branch, so it writes its `ref`), a merge queue's run
+  branch (`refs/heads/<head_ref>`), a merge queue's run
   (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, that exact form)
   its base branch (`refs/heads/<base>`), which its code is about to
   become, else its `ref`; on GitLab its `ref_path`.
-- A ref a rule names (`refs/heads/main`) is protected: a token on it that
-  matches no rule reads only (a write is `403`), so main's runs never
-  read a write they did not make.
+- A `pull_request_target` run writes nothing (a write is `403`): its
+  `head_ref` a fork names, and its `ref` is the base.
 
-A bad token is `401`. A server with no rules refuses every
-request: `401`, `the server trusts no CI: set TRUST`. A server that
+A bad token is `401`. A server with `ALLOW` empty refuses every
+request: `401`, `the server admits no CI: set ALLOW`. A server that
 cannot fetch the issuer's keys answers `502`: the token is not refused,
 so a client keeps the remote for its next request.
 
@@ -110,7 +109,7 @@ holds keeps its bytes, answered before they are read. `204`; past
 held.
 
 Downloads and uploads go one artifact at a time, many at once: there is
-no batch of either (M, 2026-10-25: "use the put and get"). A batch's
+no batch of either (2026-10-25: "use the put and get"). A batch's
 bytes pass through the server's code, which on Workers costs CPU by the
 byte (a 40 MB one ran out of it), and its artifacts arrive one after
 another; a `GET`'s and a `PUT`'s bytes pass untouched, in parallel.

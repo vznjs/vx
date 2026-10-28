@@ -201,7 +201,7 @@ it('cancels the workflow runs it dispatched when the run closes', async () => {
   }
 })
 
-// M, 2026-10-23: workers joined only to be let go; one not needed is
+// 2026-10-23: workers joined only to be let go; one not needed is
 // stopped before its setup, when its run holds no worker still needed.
 it('cancels a dispatched run once every worker in it is not needed', async () => {
   const calls: string[] = []
@@ -414,7 +414,7 @@ it('adopts the workers a step started, watching and stopping them as its own', a
   }
 }, 10_000)
 
-// M, 2026-10-23: a remote fault is at least a warning. A jobs poll or a
+// 2026-10-23: a remote fault is at least a warning. A jobs poll or a
 // cancel GitHub refused went unsaid: a dead worker unseen, a run left to
 // hold runners until its timeout.
 it('says each poll and cancel GitHub refused, by status and body, once', async () => {

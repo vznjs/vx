@@ -1,5 +1,5 @@
 // A bare --affected compares with the merge base with `origin/<baseBranch>`
-// and has no default on that branch (owner, 2026-10-17). The pages that
+// and has no default on that branch (2026-10-17). The pages that
 // state the default name it, and the fallback branches affected.ts tries,
 // read from its list; none still falls back to HEAD~1.
 import { readFileSync } from 'node:fs'

@@ -113,6 +113,8 @@ export interface SummaryStats {
   held?: { count: number; sumMs: number }
   /** Live section only: the forecast of what is left, from history. */
   etaMs?: number
+  /** Live section only: how long the run has gone past that forecast. */
+  overMs?: number
   /** A run of groups only: their names, so `0 tasks` says why. */
   emptyGroups?: readonly string[]
   /** Each finished task's cache bucket by its key and its id (its run bytes), so its remote traffic can move it. */
@@ -155,7 +157,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
 type Buckets = Record<CacheBucket | 'uploaded' | 'uploading' | 'remoteFailed', number>
 
 /**
- * The cache bar's segments, each task in one (M, 2026-10-15). With layers
+ * The cache bar's segments, each task in one (2026-10-15). With layers
  * named, a saved task leaves the misses, and a task with remote traffic
  * leaves its own bucket for its strongest remote state: a failed read or
  * write, then an upload still running, then one that landed. Without, the
@@ -164,7 +166,7 @@ type Buckets = Record<CacheBucket | 'uploaded' | 'uploading' | 'remoteFailed', n
 function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets {
   const saved = layers === undefined ? 0 : (stats.saved ?? 0)
   // Its own yellow segment, as its legend count is: in the misses' red it
-  // was a cell with no count under it (M, 2026-10-21).
+  // was a cell with no count under it (2026-10-21).
   const notSaved = layers === undefined ? 0 : (stats.notSaved ?? 0)
   const b: Buckets = {
     miss: stats.miss - saved - notSaved,
@@ -234,6 +236,8 @@ export interface RunContext {
   }
   /** Total projects discovery found — the bar's denominator. */
   workspaceProjectCount?: number
+  /** The run's warnings no task owns, as they were said: the footer's `warn` row. */
+  warnings?: () => readonly string[]
 }
 
 export function formatSummarySection(
@@ -264,7 +268,7 @@ export function formatSummarySection(
 
   // Tasks meter + numbers, fixed order: failed · success · skipped ·
   // aborted · not run, then a dim total, last on its line. Every task in
-  // the run counts, each state its own segment (M, 2026-10-14).
+  // the run counts, each state its own segment (2026-10-14).
   const runTotal = stats.total + aborted + notRun
   const taskParts: string[] = []
   if (stats.failed > 0)
@@ -276,6 +280,8 @@ export function formatSummarySection(
   if (running > 0) taskParts.push(paint(RUNNING, `${running} running`, colors))
   if (scheduled > 0) taskParts.push(dim(`${scheduled} scheduled`))
   if (blocked > 0) taskParts.push(dim(`${blocked} blocked`))
+  // What is not done yet, running included: the count the bar's unfilled part shows.
+  if (left > 0) taskParts.push(dim(`${left} left`))
   if (runTotal > 0) taskParts.push(dim(`${runTotal} total`))
   const taskBar = segmentBar(
     [
@@ -362,7 +368,7 @@ export function formatSummarySection(
     )
     const cacheParts: string[] = []
     if (layers !== undefined) {
-      // Per layer (M, 2026-10-15): `✓` fresh (outputs already on disk, from
+      // Per layer (2026-10-15): `✓` fresh (outputs already on disk, from
       // either layer) and `∅` no cache, both local; `↓` restored from a
       // layer, `↑` saved to it; `✗` a remote read or write failed, `⇡` still
       // uploading. Each count is its bar segment's, glyph and number in its colour.
@@ -374,7 +380,7 @@ export function formatSummarySection(
         ...(layers.local ? n(b.restoredLocal, '\u2193', LOCAL) : []),
         ...(layers.localWrite ? n(b.saved, '\u2191', LOCAL) : []),
       ]
-      // The layer words are dim; only the counts carry colour (M, 2026-10-15).
+      // The layer words are dim; only the counts carry colour (2026-10-15).
       if (local.length > 0) cacheParts.push(`${dim('local')} ${local.join(' ')}`)
       // Each transfer count is followed by its bytes, dim: what the
       // remote moved is the cost a hit or an upload paid.
@@ -408,7 +414,7 @@ export function formatSummarySection(
     }
     // Skipped tasks ride the bar, yellow like the tasks meter, so the two
     // bars fill alike; their count is the tasks legend's alone (the footer
-    // never says a fact twice, M, 2026-10-14).
+    // never says a fact twice, 2026-10-14).
     lines.push(row('cache', cacheBar))
     if (cacheParts.length > 0) lines.push(legend(cacheParts))
   }
@@ -416,7 +422,7 @@ export function formatSummarySection(
   // Cache-miss duration spread (owner: hits' restore times polluted
   // it — only tasks that actually executed count). Dim: context.
   // A value already on the row is not said again: one executed task read
-  // as its own max, avg and min (M, 2026-10-14). Tasks that all took the
+  // as its own max, avg and min (2026-10-14). Tasks that all took the
   // same time have no spread to show.
   const total = formatElapsed(totalMs)
   const said = new Set([total])
@@ -442,6 +448,8 @@ export function formatSummarySection(
   // that is about the future.
   if (stats.etaMs !== undefined)
     timeParts.push(paint(ACCENT, `${formatEta(stats.etaMs)} left`, colors))
+  else if (stats.overMs !== undefined)
+    timeParts.push(paint(ACCENT, `${formatOver(stats.overMs)} over`, colors))
   for (const p of spreadParts) timeParts.push(dim(p))
   const timeRow = row('time', join(timeParts))
   // Run-shape footer (final summary only): worker pool + cache mode,
@@ -480,11 +488,31 @@ export function formatSummarySection(
       )
     }
     if (context.runId !== undefined) info.push(`run ${context.runId}`)
-    lines.push('', row('info', join(info)), timeRow)
+    lines.push('', ...warnRows(context.warnings?.() ?? [], row, colors))
+    lines.push(row('info', join(info)), timeRow)
   } else {
     lines.push('', timeRow)
   }
   return lines
+}
+
+/**
+ * A long run scrolls its warnings (a remote cache's 403, a plugin's
+ * failed flush) out of sight, and the footer read as a clean run
+ * (2026-10-27). The footer counts the distinct ones; it does not repeat
+ * them, so a warning stays one line in a log (a refused token costs
+ * ONE line, tests/remote-cache-degrade.test.ts in @vzn/vx-migrate).
+ */
+function warnRows(
+  warnings: readonly string[],
+  row: (label: string, value: string) => string,
+  colors: ColorSupport,
+): string[] {
+  const n = new Set(
+    warnings.map((w) => Bun.stripANSI(w).split('\n')[0]!.trim()).filter((w) => w !== ''),
+  ).size
+  if (n === 0) return []
+  return [row('warn', paint(WARN, `${n} ${n === 1 ? 'warning' : 'warnings'} above`, colors))]
 }
 
 /**
@@ -496,6 +524,11 @@ function formatEta(ms: number): string {
   const s = Math.ceil(ms / 1000)
   if (s < 60) return `~${s}s`
   return `~${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+}
+
+function formatOver(ms: number): string {
+  const s = Math.max(1, Math.ceil(ms / 1000))
+  return s < 60 ? `+${s}s` : `+${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
 }
 
 /**

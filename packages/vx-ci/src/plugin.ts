@@ -38,13 +38,6 @@ export interface GithubPluginOptions {
    * `false` opts out.
    */
   cacheScope?: boolean
-  /** Test seam — inject the append. Defaults to fs appendFile. */
-  append?: (file: string, markdown: string) => Promise<void>
-  /**
-   * Test seam — bytes the summary file already holds. Defaults to its size
-   * on disk; with `append` injected, 0 (that writer owns the file).
-   */
-  sizeOf?: (file: string) => Promise<number>
 }
 
 /** Each option `GithubPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
@@ -52,8 +45,6 @@ const GITHUB_PLUGIN_KEYS: PluginOptionKinds<GithubPluginOptions> = {
   summaryFile: 'string',
   title: 'string',
   cacheScope: 'boolean',
-  append: 'function',
-  sizeOf: 'function',
 }
 
 export function github(options: GithubPluginOptions = {}): VxPlugin | undefined {
@@ -87,21 +78,17 @@ export function github(options: GithubPluginOptions = {}): VxPlugin | undefined 
     telemetry(ctx) {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']
       if (file === undefined || file === '') return undefined
-      const append = options.append ?? (async (f: string, md: string) => appendFile(f, md, 'utf8'))
       const { GithubSummarySink } = loadSink()
       return new GithubSummarySink(
         file,
         options.title ?? 'vx run',
-        append,
+        (f, md) => appendFile(f, md, 'utf8'),
         (m) => ctx.warn(m),
-        options.sizeOf ??
-          (options.append !== undefined
-            ? async () => 0
-            : (f: string) =>
-                stat(f).then(
-                  (st) => st.size,
-                  () => 0,
-                )),
+        (f) =>
+          stat(f).then(
+            (st) => st.size,
+            () => 0,
+          ),
       )
     },
   })

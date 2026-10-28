@@ -1,7 +1,7 @@
 // A project's directory is watched from its parent too, to hear it removed
 // and made again. On macOS that arm also hears the directory's own mtime
 // move whenever an entry in it is written, so a cycle whose task wrote at
-// the project's top level (solid's `types`, M 2026-10-15) started a second
+// the project's top level (solid's `types`, 2026-10-15) started a second
 // cycle named after the directory. The project's own arm judges its
 // contents; the parent's judges only the directory being another one.
 // `touch .` is the same event on Linux: an attribute change on the entry.

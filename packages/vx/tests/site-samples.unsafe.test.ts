@@ -175,7 +175,10 @@ describe('no page says a task sees only what it declares, past the allowlist', (
 describe('the configure guide names the essential allowlist', () => {
   it('its "always gets a small essential allowlist" sentence names every name in ESSENTIAL_ENV', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'environment-variables.mdx'), 'utf8')
-    const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)\. vx sets/.exec(page)
+    const m =
+      /Every task gets these variables, so everyday CLI tools work:([\s\S]*?)vx also sets/.exec(
+        page,
+      )
     expect(m).not.toBeNull()
     const named = new Set([...m![1]!.matchAll(/`([A-Z_]+)`/g)].map((x) => x[1]!))
     expect([...named]).toEqual([...ESSENTIAL_ENV])
@@ -337,7 +340,7 @@ describe("troubleshooting's known limits are still limits", () => {
 
 describe('the flaky-tasks post shows the rows a run prints', () => {
   // A flaky verdict rides the task's row (nothing prints below the footer,
-  // owner 2026-10-06): a failure as the ◼ row, a pass as the executed row.
+  // 2026-10-06): a failure as the ◼ row, a pass as the executed row.
   const row = (
     id: string,
     status: 'success' | 'failed',
@@ -375,10 +378,12 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
     ])
   })
 
-  it("the CI guide's copy is the same row", () => {
+  it("the CI guide's copy is the same row, in its colours", () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'ci.mdx'), 'utf8')
-    const sample = fencedBlock(page, '', ' ◼\uFE0E').replace(/\n$/, '')
-    expect(sample.split('\n')).toEqual([row('web#test', 'failed', 4210, 3, 1)])
+    const sample = /```ansi\n(.*flaky.*)\n```/.exec(page)![1]!
+    // eslint-disable-next-line no-control-regex
+    expect(sample.replace(/\x1b\[[0-9;]*m/g, '')).toBe(row('@demo/web#test', 'failed', 3, 3, 1))
+    expect(sample).toContain('\x1b[')
   })
 })
 
@@ -747,7 +752,7 @@ describe('the from-nx post says how executors run, and names the servers', () =>
     expect(page.replace(/\s+/g, ' ')).toContain('executor target is written as its `nx-exec` line')
     expect(guide).toContain('An executor target is written as an `nx-exec` line')
     // The mapper agrees: one executor line, `nxExecCommand`'s (its `.env`
-    // files appended), and no translator beside it (owner, 2026-10-03).
+    // files appended), and no translator beside it (2026-10-03).
     expect(src).toContain(
       'line(nxExecCommand(executor, projectName, targetName, configuration, options, files))',
     )
@@ -1110,9 +1115,9 @@ describe('the plugins guide names the remote seam core defines', () => {
       readFileSync(path.join(DOCS, 'docs', 'writing-plugins.mdx'), 'utf8'),
       'Your own cache',
     )
-    for (const m of methods) expect(page).toContain('`' + m.name + '`')
+    for (const m of methods) expect(page).toMatch(new RegExp('`' + m.name + '[`(]'))
     expect(methods.find((m) => m.name === 'hasMany')!.optional).toBe(true)
-    expect(page.replace(/\s+/g, ' ')).toContain('an optional `hasMany`')
+    expect(page).toMatch(/`hasMany\([^`]*\)` \| optional/)
   })
 })
 
@@ -1179,7 +1184,7 @@ describe('the tasks guide names every exec field a task can declare', () => {
     )
     expect(hash).toContain('const { remote: _remote, ...execRest } = cfg.exec')
     const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
-    expect(page).toContain('the one `exec` field stripped from the key')
+    expect(page).toContain('the one `exec` field left out of the key')
   })
 
   it('it says a `description` reaches the key, as the contract page does', () => {
@@ -1195,7 +1200,7 @@ describe('the tasks guide names every exec field a task can declare', () => {
     ).replace(/\s+/g, ' ')
     expect(contract).toContain('Editing a description therefore costs one re-run')
     const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
-    expect(page).toContain('editing a description costs one re-run')
+    expect(page).toContain('editing even `description` re-runs the task once')
   })
 })
 
@@ -1235,8 +1240,7 @@ describe('the dev-tasks guide bounds the teardown the way signals.ts does', () =
       /\s+/g,
       ' ',
     )
-    expect(page).toContain(`${Number(m![1]) / 1000}-second grace`)
-    expect(page).toContain('`SIGKILL`ed')
+    expect(page).toContain(`still alive ${Number(m![1]) / 1000} seconds later gets \`SIGKILL\``)
   })
 })
 
@@ -1311,8 +1315,10 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
     const shipped = readdirSync(packagesDir)
       .map((d) => path.join(packagesDir, d, 'package.json'))
       .filter((f) => existsSync(f))
-      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
-      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      // A package still marked private ships too: the docs describe the
+      // released product (2026-10-26).
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string })
+      .filter((m) => m.name !== '@vzn/vx')
       .map((m) => m.name)
       .sort()
     const page = readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8')
@@ -1491,9 +1497,10 @@ describe('the README and the Docs say which packages npm has', () => {
   // Both once told readers to install plugins npm answered 404 for (J-93),
   // under a note that said so; every plugin has been published since 0.0.484,
   // and a note left behind would send a reader away from a working install.
-  // A private package (vx-dte, private until npm has it) is listed too, its
-  // row saying so (owner, 2026-10-25: "vx-dte is missing in readme").
-  it("the README's plugin table is every package but @vzn/vx, each private one marked", () => {
+  // A private package is listed too (2026-10-25: "vx-dte is missing
+  // in readme"), unmarked: the docs describe the published product, and
+  // publishing is the owner's to do (2026-10-26: "Remove all this bs").
+  it("the README's plugin table is every package but @vzn/vx", () => {
     const packagesDir = path.resolve(import.meta.dir, '..', '..')
     const all = readdirSync(packagesDir)
       .map((d) => path.join(packagesDir, d, 'package.json'))
@@ -1505,13 +1512,7 @@ describe('the README and the Docs say which packages npm has', () => {
       [...readme.matchAll(/^\| \[`(@vzn\/[\w-]+)`\].*$/gm)].map((m) => [m[1]!, m[0]]),
     )
     expect([...rows.keys()].sort()).toEqual(all.map((m) => m.name).sort())
-    const marked = [...rows].filter(([, row]) => row.includes('not on npm yet')).map(([n]) => n)
-    expect(marked.sort()).toEqual(
-      all
-        .filter((m) => m.private === true)
-        .map((m) => m.name)
-        .sort(),
-    )
+    expect([...rows].filter(([, row]) => row.includes('not on npm yet'))).toEqual([])
   })
   // Found, not listed: a page that installs, runs or imports a plugin is
   // where a stale "not on npm yet" would sit (J2-25 found two unlisted).
@@ -1520,8 +1521,10 @@ describe('the README and the Docs say which packages npm has', () => {
     const plugins = readdirSync(packagesDir)
       .map((d) => path.join(packagesDir, d, 'package.json'))
       .filter((f) => existsSync(f))
-      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
-      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      // A package still marked private ships too: the docs describe the
+      // released product (2026-10-26).
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string })
+      .filter((m) => m.name !== '@vzn/vx')
       .map((m) => m.name.replace('/', '\\/'))
     const use = new RegExp(
       `(?:bunx|npx|add(?: -[dDW])*|install(?: -[DgW])*|from) '?(?:${plugins.join('|')})\\b`,
@@ -2277,8 +2280,8 @@ describe('the pages say where an entry stdout lives', () => {
 })
 
 // The headline Nx column once paid npm and a Node fork per task
-// (item 735); the harness now gives Nx `nx:run-commands` targets (owner,
-// 2026-10-04), and benchmarks.md keeps the measured why.
+// (item 735); the harness now gives Nx `nx:run-commands` targets
+// (2026-10-04), and benchmarks.md keeps the measured why.
 describe('the headline Nx column runs nx:run-commands', () => {
   it('the harness writes them, and benchmarks.md keeps the run-script read', () => {
     const root = path.resolve(import.meta.dir, '..', '..', '..')
@@ -2329,7 +2332,7 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
       "or, for a path under the host's shared temp directory",
     )
     expect(flat(path.join(DOCS, 'docs', 'sandboxing.mdx'))).toContain(
-      "under the host's temp directory it names `$TMPDIR` instead",
+      "Under the host's temp directory, it names `$TMPDIR` instead",
     )
   })
 })

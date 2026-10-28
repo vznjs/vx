@@ -140,7 +140,7 @@ it('a worker with other tracked files than the run is refused', async () => {
   }
 })
 
-// M, 2026-10-23: a fault is at least a warning. The orchestrator dropped
+// 2026-10-23: a fault is at least a warning. The orchestrator dropped
 // every send the relay would not take; a refusal lost left the worker idle.
 it('a send to a worker the relay would not take is said', async () => {
   const served = servedRelay()
@@ -233,7 +233,7 @@ it('a worker the relay lost exits 0', async () => {
 
 // The relay restarts, storing nothing, while a worker runs a task, and the
 // orchestrator is back only a heartbeat later: the task's end still
-// arrives, and the run never noticed (owner, 2026-10-25: "offline
+// arrives, and the run never noticed (2026-10-25: "offline
 // orchestrator or relay does not matter to the system").
 it('a task a worker runs across a relay restart and its orchestrator’s absence ends as if neither happened', async () => {
   const root = await tmp()
@@ -384,7 +384,7 @@ it('gives failed worker starts three more workers, then fails the run', async ()
 
 // small#4's join timed out on the relay and its job's end never reached
 // the run: it counted as starting for good, and main's run sat 18 min
-// (ee3fc6e, 2026-10-23). With no join deadline (owner, 2026-10-23: "no
+// (ee3fc6e, 2026-10-23). With no join deadline (2026-10-23: "no
 // timeouts at all"), a job that ends, a success too, is what says so.
 it('starts another for a worker whose job ended before it joined, a success too', async () => {
   const served = servedRelay()
@@ -698,7 +698,7 @@ it('pumps a long queue in time that does not grow with its upstreams', async () 
   }
 })
 
-// M, 2026-10-23: "we should not send tasks in batches unless we are 100%
+// 2026-10-23: "we should not send tasks in batches unless we are 100%
 // sure ... they can fit". Main bf77a58: small#3's load read low while 38
 // test shards began, so it took them all on 4 cores, 28 failed, and the 5
 // workers started for them got none. Load only ever adds to the booking.
@@ -894,7 +894,7 @@ it('says a worker that never joined did not, once the run is over', async () => 
   expect(row()).toContain('not joined  the run ended first')
 })
 
-// M, 2026-10-23: "a generated Chrome profile with all workers and tasks
+// 2026-10-23: "a generated Chrome profile with all workers and tasks
 // they executed in time so you could debug better".
 it('profiles the run: each worker’s tasks on their own lanes, the run’s waits and restores', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
@@ -1029,7 +1029,7 @@ it('a task’s tail is its duration and its longest chain of dependants', () => 
   ])
 })
 
-// M, 2026-10-21: check.bun, ahead of 8 shards, sat in a busy worker's
+// 2026-10-21: check.bun, ahead of 8 shards, sat in a busy worker's
 // queue as its prefetch while workers that joined later stood idle. None
 // waits in a worker's queue now: it waits here for the first that is free.
 it('a task no worker fits waits here, and goes to the first one free', async () => {
@@ -1072,7 +1072,7 @@ it('a task that runs alone holds the worker it waits for; none after it takes it
   }
 })
 
-// M, 2026-10-23: "If workers joined and nothing is queued anymore orch
+// 2026-10-23: "If workers joined and nothing is queued anymore orch
 // should ... close them": one started and not needed is cancelled, and
 // told to exit should it join anyway.
 it('a worker cancelled before it joined is told to exit when it joins, and never counted', async () => {
@@ -1094,7 +1094,7 @@ it('a worker cancelled before it joined is told to exit when it joins, and never
   }
 })
 
-// exec.platforms (M, 2026-10-23): a task core placed on a platform goes
+// exec.platforms (2026-10-23): a task core placed on a platform goes
 // only to a worker of it, and a worker whose size says another is refused.
 it('a task on a platform goes only to a worker of it', async () => {
   const h = await harness(new Map([node('t1')]))
@@ -1194,7 +1194,7 @@ it('a worker of a declared size is sent work for that size, not its machine', as
   }
 })
 
-// M, 2026-10-21: 16 rows said running while 4 workers ran 4 of them; and
+// 2026-10-21: 16 rows said running while 4 workers ran 4 of them; and
 // a worker's cores and memory belong to the final summary only.
 it('a task waits until a worker begins it; the live rows leave out its machine', async () => {
   const h = await harness(new Map([node('t1'), node('t2'), node('t3'), node('t4')]))
@@ -1253,7 +1253,7 @@ it('a worker that left is not failed or replaced when its job then ends', async 
   }
 })
 
-// M, 2026-10-23: "we need the ideal time possible taking into account actual run numbers".
+// 2026-10-23: "we need the ideal time possible taking into account actual run numbers".
 it('replays what each task took on every worker the sizes allow: the ideal end', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
   try {
@@ -1302,7 +1302,7 @@ it('replays a crowded task with the cores it used, never above the real run', as
   }
 })
 
-// M, 2026-10-21: a worker the run's end stopped still read `online`, and
+// 2026-10-21: a worker the run's end stopped still read `online`, and
 // a size's machines were a `!` line apart from its workers.
 it('the final summary says how each worker ended, its size and machine under it', async () => {
   const h = await harness(new Map([node('t1')]))
@@ -1461,7 +1461,7 @@ it('reports a worker still there at the summary online until then', async () => 
     expect((await t1).exitCode).toBe(0)
     const [m] = h.o.machines()
     expect(m!.status).toBe('ok')
-    // A failed task is the task's, not its worker's (M, 2026-10-23).
+    // A failed task is the task's, not its worker's (2026-10-23).
     const t2 = h.o.execute(h.req('t2'))
     expect(await a.batches()).toEqual([['t2']])
     h.store.saved.set('k-t2', [])
@@ -1553,7 +1553,7 @@ it('a task a worker stops saying it holds goes back when its lease ends', async 
 
 // The relay restarts while a worker runs t1, and the orchestrator is away
 // most of two heartbeats: past t1's lease, which no `held` renewed. It
-// stays the worker's, not run again elsewhere (owner, 2026-10-25: "make
+// stays the worker's, not run again elsewhere (2026-10-25: "make
 // sure on rejoin we don't repeat work").
 it('a task held across a relay restart stays its worker’s: its lease waits for both to be back', async () => {
   const beat = 300
@@ -1575,6 +1575,46 @@ it('a task held across a relay restart stays its worker’s: its lease waits for
     while (performance.now() < until)
       for (const m of await b.poll()) got.push((m.body as { type: string }).type)
     expect(got.filter((t) => t === 'batch')).toEqual([])
+  } finally {
+    await h.stop()
+  }
+})
+
+// The loop expired leases before it read the batch it polled: a `held`
+// read late came too late, and the task ran again on
+// another worker (main CI, 2026-10-27).
+it('a held read late renews its lease before the lease is judged', async () => {
+  const beat = 300
+  const h = await harness(new Map([node('t1')]), undefined, beat)
+  // The poll in flight when `lag` is set returns its batch late.
+  let lag = 0
+  const me = (h.o as unknown as { o: { me: { poll: (s: AbortSignal) => Promise<unknown[]> } } }).o
+    .me
+  const poll = me.poll.bind(me)
+  me.poll = async (signal) => {
+    const got = await poll(signal)
+    if (lag > 0) await Bun.sleep(lag)
+    lag = 0
+    return got
+  }
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.begin('t1')
+    const b = await h.worker(1)
+    await a.say({ type: 'held', running: ['t1'], queued: [] })
+    await Bun.sleep(beat * 2.3)
+    // Said within the lease (3 beats), read after it: the loop was busy.
+    lag = beat
+    await a.say({ type: 'held', running: ['t1'], queued: [] })
+    const until = performance.now() + beat * 2
+    const got: string[] = []
+    while (performance.now() < until)
+      for (const m of await b.poll()) got.push((m.body as { type: string }).type)
+    expect(got.filter((t) => t === 'batch')).toEqual([])
+    expect(h.o.where('t1')).toBe('worker#1')
   } finally {
     await h.stop()
   }
@@ -1643,7 +1683,7 @@ it('an order lists each dependency after its own dependencies', async () => {
   }
 })
 
-// M, 2026-10-21: files go through the cache, the relay carries only
+// 2026-10-21: files go through the cache, the relay carries only
 // orders and status.
 it('an order names its key and each dependency’s; the result comes back by the key its worker saved', async () => {
   const cached = (id: string, deps: string[] = []) =>
@@ -1855,7 +1895,7 @@ it('an order names every dependency, held by its worker or not', async () => {
 // An uncached task declares no outputs, so no cache carries its files:
 // two generators ran on two workers and their dependant, on one, did not
 // find the other's file (#4407). Its dependants go where its files are;
-// with them on two workers, one runs again beside the other (M, 2026-10-25).
+// with them on two workers, one runs again beside the other (2026-10-25).
 it('an uncached task’s dependant goes to the worker holding its files, made again there when split', async () => {
   const h = await harness(new Map([node('g1'), node('g2'), node('u', ['g1', 'g2'])]))
   try {
@@ -2020,7 +2060,7 @@ it('a cached task’s dependant goes wherever it fits: a cache carries its outpu
 })
 
 // A worker whose upload no remote took (too big, a 429) said it was saved,
-// and the run failed restoring it (M, 2026-10-25): its files stay there,
+// and the run failed restoring it (2026-10-25): its files stay there,
 // its dependants go there, and its output comes with its `end`.
 it('a task no remote took the upload of: its output comes with it, its dependant follows it', async () => {
   const cached = (id: string, deps: string[] = []) =>
@@ -2063,7 +2103,7 @@ it('a task no remote took the upload of: its output comes with it, its dependant
 
 // A worker asked the remote before each upload (a HEAD per task on
 // turboCache()), though the run's probe had found the key in no cache:
-// requests the Vercel free tier's 300 a minute refused (M, 2026-10-25).
+// requests the Vercel free tier's 300 a minute refused (2026-10-25).
 it('a worker uploads a key the run found missing, and its run key, asking the remote nothing first', async () => {
   const h = await harness(new Map([node('t'), node('u')]))
   try {
@@ -2968,7 +3008,7 @@ it('a worker begins its next task while the last one saves', async () => {
   }
 })
 
-// M, 2026-10-22: workers at 30-50% CPU; "close to 100%". A task books the
+// 2026-10-22: workers at 30-50% CPU; "close to 100%". A task books the
 // cores it keeps busy on average, so a 4-core worker takes five at 0.7.
 it('books the cores a task keeps busy on average, unrounded, a quarter at least', () => {
   expect(
@@ -2979,7 +3019,7 @@ it('books the cores a task keeps busy on average, unrounded, a quarter at least'
 
 // Main cc5a276, 2026-10-23: check.bun, vx-docs#import and release.sync end
 // before the Linux sandbox's first look, so none has a CPU measure; each
-// booked a whole worker and small#1 ran at 13%. M: "we can't waste whole
+// booked a whole worker and small#1 ran at 13%. Wasted: "we can't waste whole
 // worker for one task", "pack them where we have free capability".
 it('places an unmeasured task on any free core, and sizes the run by 2 cores and 4GB or what is set', () => {
   const fresh = needOf({ p50DurationMs: 143 })
@@ -3131,7 +3171,7 @@ it('docker() starts each worker as a container of its size, on a fresh clone', a
   const sha = git('rev-parse', 'HEAD').stdout.toString().trim()
   await mkdir(path.join(ws, 'sub'))
   // The root through a link, as macOS's /tmp is: git names the real path,
-  // and the worker's `cd` climbed out of the clone (M's Mac, 2026-10-21).
+  // and the worker's `cd` climbed out of the clone (a developer Mac, 2026-10-21).
   const link = path.join(await tmp(), 'ws')
   await symlink(ws, link)
   const bin = await tmp()
@@ -3231,7 +3271,7 @@ it('a machine’s usage: peaks of tasks at once, averages over its time online',
 })
 
 // A worker restoring and saving between commands read 10 s idle on main
-// (M, 2026-10-24): a task holds it from its send to its result.
+// (2026-10-24): a task holds it from its send to its result.
 it('a machine’s busy time: each task from its send, restore and save included', () => {
   const u = new Usage(0)
   const now = performance.now
@@ -3628,6 +3668,9 @@ it('sends a result too long for one relay frame in parts, all of it arriving', a
     expect(await code).toBe(0)
   } finally {
     await served.stop()
+    // Here, under the test's minute: 24 000 files outlast the 5 s hook
+    // below on a loaded runner, which failed the test after it passed.
+    await rm(root, { recursive: true, force: true })
   }
 }, 60_000)
 

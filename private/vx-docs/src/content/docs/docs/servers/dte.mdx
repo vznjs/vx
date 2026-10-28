@@ -1,11 +1,11 @@
 ---
 title: DTE server
-description: Host @vzn/vx-dte-server, the relay a distributed run's workers meet at, on Workers, Bun or Docker, and point dte() at it.
+description: Host @vzn/vx-dte-server, the relay a DTE run's workers meet at, on Workers, Bun or Docker, and point dte() at it.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components'
 
-A [distributed run](../../distributed-runs/) needs a relay. CI runners
+A [DTE run](../../distributed-task-execution/) needs a relay. CI runners
 accept no incoming connection, so the run and its workers all connect
 out to the relay, and it passes their messages on. `@vzn/vx-dte-server`
 is that relay. You host your own, on Cloudflare, Bun or Docker.
@@ -28,15 +28,25 @@ Worker's, such as `https://vx-dte-server.acme.workers.dev`.
 </TabItem>
 <TabItem label="Cloudflare (wrangler)">
 
-From a checkout of the vx repository:
-
 ```sh
-git clone https://github.com/vznjs/vx
-cd vx/packages/vx-dte-server
-bun install
+mkdir vx-dte-server && cd vx-dte-server
+bun add @vzn/vx-dte-server
 ```
 
-Fill `ALLOW` in `wrangler.jsonc` (step 2), then:
+```jsonc title="wrangler.jsonc"
+{
+  "name": "vx-dte-server",
+  "main": "node_modules/@vzn/vx-dte-server/src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "vars": { "ALLOW": "" },
+  "durable_objects": {
+    "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayRun"] }]
+}
+```
+
+Fill `ALLOW` (step 2), then:
 
 ```sh
 bunx wrangler login
@@ -46,10 +56,8 @@ bunx wrangler deploy
 </TabItem>
 <TabItem label="Bun">
 
-From a checkout of the vx repository, after `bun install`:
-
 ```sh
-bun packages/vx-dte-server/src/bun.ts \
+bunx @vzn/vx-dte-server \
   --allow https://token.actions.githubusercontent.com:acme/app:ci.yml \
   --allow https://token.actions.githubusercontent.com:acme/app:vx-worker.yml \
   --audience https://relay.example.com --port 8080
@@ -64,11 +72,8 @@ vx-dte-server on http://0.0.0.0:8080
 </TabItem>
 <TabItem label="Docker">
 
-From a checkout of the vx repository:
-
 ```sh
-docker build -t vx-dte-server packages/vx-dte-server
-docker run -p 8080:8080 vx-dte-server \
+docker run -p 8080:8080 ghcr.io/vznjs/vx-dte-server \
   --allow https://token.actions.githubusercontent.com:acme/app:ci.yml \
   --allow https://token.actions.githubusercontent.com:acme/app:vx-worker.yml \
   --audience https://relay.example.com
@@ -103,7 +108,7 @@ On Bun and Docker, each entry is one `--allow`. GitLab names a project
 by its full path, `group/subgroup/project`.
 
 <Aside type="caution" title="A plain var, not a secret">
-  `ALLOW` names repositories, nothing secret. Keep it in your copy's
+  `ALLOW` names repositories, nothing secret. Keep it in your
   `wrangler.jsonc`: each deploy sets vars from that file, so a var set
   only in the Cloudflare dashboard is lost on the next deploy.
 </Aside>
@@ -145,7 +150,7 @@ vx:
       aud: https://relay.example.com
 ```
 
-[Distributed runs](../../distributed-runs/) walks through the rest.
+[Distributed task execution](../../distributed-task-execution/) walks through the rest.
 
 ---
 

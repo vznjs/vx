@@ -3,10 +3,12 @@ title: Remote execution
 description: Send tasks to a Bazel REAPI worker pool you already run, while the graph stays on your machine.
 ---
 
-To spread a run over your own CI's machines, use
-[Distributed runs](../distributed-runs/). If you already run a Bazel REAPI
-worker pool, `reapi()` from `@vzn/vx-reapi` can send tasks there instead;
-the graph and the scheduling stay here:
+To run tasks on your own CI's machines, use
+[Distributed task execution](../distributed-task-execution/).
+
+If you already run a Bazel REAPI worker pool, `reapi()` from
+`@vzn/vx-reapi` sends tasks there instead. Planning and ordering stay on
+this machine:
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'

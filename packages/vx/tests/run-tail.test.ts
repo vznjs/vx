@@ -1,4 +1,4 @@
-// M, 2026-10-15: the region stays up through the run's tail and the footer
+// 2026-10-15: the region stays up through the run's tail and the footer
 // replaces it in place; uploads still running show as `⇡`, last in the
 // remote part. vx's own steps render as tasks: a live row once one passes
 // 150 ms, below the worker rows and bounded by no worker slot, then a list

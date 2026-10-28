@@ -6,8 +6,10 @@ description: A task runner and cache for JavaScript monorepos, built on Bun.
 import { CardGrid, LinkCard } from '@astrojs/starlight/components'
 
 vx is a task runner and cache for JavaScript monorepos. Each project
-declares its tasks in a `vx.config.ts`; `vx run` runs them in dependency
-order, in parallel, and skips any task whose inputs did not change.
+declares its tasks in a `vx.config.ts`.
+
+`vx run` runs them in dependency order, in parallel, and skips any task
+whose inputs did not change.
 
 ```sh
 bunx @vzn/vx init
@@ -43,7 +45,7 @@ vx runs on [Bun](https://bun.com), on macOS and Linux (glibc). On Windows, use W
 | run only what a branch touched      | `vx run test --affected` ([Running tasks](./running-tasks/))                   |
 | prove a task's inputs are complete  | `exec.sandbox` fails a read outside them ([Sandboxing](./sandboxing/))         |
 | share the cache with CI             | a remote cache plugin ([Remote cache](./remote-cache/))                        |
-| spread a run over CI machines       | `dte()` hands tasks to workers your CI starts ([Distributed runs](./distributed-runs/)) |
+| spread a run over CI machines       | `dte()` hands tasks to workers your CI starts ([Distributed task execution](./distributed-task-execution/)) |
 | keep a Turborepo or Nx config       | `@vzn/vx-migrate` runs it unchanged ([Migrate](../guides/migrate/))            |
 
 Nothing is inferred. A task is cached only when it says what it reads

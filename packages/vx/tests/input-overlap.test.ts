@@ -1,5 +1,5 @@
 // X-54: a task whose input globs can match another task's declared outputs
-// is refused at graph build, with no opt-out (owner, 2026-10-16), unless the
+// is refused at graph build, with no opt-out (2026-10-16), unless the
 // producer is a dependency its key does not fold. Such a key reads bytes a
 // producer writes this run, so it cannot be derived until the producer ran;
 // refused, every key is known before anything runs. Proven overlaps only, as

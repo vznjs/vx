@@ -34,7 +34,7 @@ const isUnsafe = (f: string): boolean => f.endsWith('.unsafe.test.ts')
  * The files whose outcome is the platform's: tar and archives, restore and
  * links, the sandbox, signals and process trees, file watching, SQLite,
  * umask, clocks and procfs. The macOS run takes only these: the rest is
- * the same code on the same Bun (owner, 2026-10-22).
+ * the same code on the same Bun (2026-10-22).
  */
 const PLATFORM_TESTS =
   /^(archive|artifact|restore|builtins-restore|tar|scan-tar|zstd|sandbox|seatbelt|kill-tree|task-tree-kill|signal|stop-signal|watch|sqlite|config-umask|fs-clock|cache-(close|disk-full|open-busy|out-of-fds|store|unreadable)|disk-full|committed-case|tmpdir|util-procfs|proc-sample|runner|linked-inputs|output-(links|empty-dir)|file-url-paths)[-.]/

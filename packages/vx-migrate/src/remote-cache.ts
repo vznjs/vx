@@ -1,6 +1,6 @@
 // The remote cache a Turbo or Nx repo already uses, as the repo shows it,
 // so the workspace file a migration writes keeps sharing it: native or
-// keep, from `vx init` or `bunx @vzn/vx-migrate` (M, 2026-10-14). Nx
+// keep, from `vx init` or `bunx @vzn/vx-migrate` (2026-10-14). Nx
 // Cloud's wire is Nx's own, so it is named, never declared.
 
 import { readFileSync } from 'node:fs'

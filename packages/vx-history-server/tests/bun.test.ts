@@ -4,14 +4,13 @@ import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { hashPart, oidcAuth } from '@vzn/vx-devtools'
+import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { sqliteDb } from '../src/bun.js'
 import { createHistoryServer } from '../src/server.js'
 import { sqliteStore } from '../src/store.js'
-import { conformance, scopeOf } from './conformance.js'
-import { GITHUB, type Issuer, issuer, REPO, trustOf } from './issuer.js'
+import { conformance } from './conformance.js'
+import { allowOf, GITHUB, type Issuer, issuer, REPO } from './issuer.js'
 
-const MAIN = scopeOf('refs/heads/main')
 let server: Bun.Server<undefined>
 let iss: Issuer
 const dir = mkdtempSync(path.join(tmpdir(), 'vx-history-server-'))
@@ -20,7 +19,7 @@ beforeAll(async () => {
   iss = await issuer()
   const handle = createHistoryServer({
     store: sqliteStore(sqliteDb(path.join(dir, 'db.sqlite'))),
-    authorize: oidcAuth({ trust: trustOf(), fetchJson: iss.fetchJson }),
+    authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson }),
   })
   server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: handle })
 })
@@ -42,13 +41,14 @@ it('folds a thousand tasks in one statement, and sweeps what was not reported', 
   await store.init()
   const reports = Array.from({ length: 1000 }, (_, i) => ({ hash: `t${i}`, durationMs: i }))
   const repo = { issuer: 'i', repository: '42' }
-  await store.fold(repo, MAIN, 1, reports)
+  const main = 'refs/heads/main'
+  await store.fold(repo, main, 1, reports)
   // The same numbers a day later: written again only for the sweep's sake.
-  await store.fold(repo, MAIN, 5, reports.slice(0, 10))
-  await store.fold(repo, MAIN, 86_400_001, reports.slice(0, 10))
+  await store.fold(repo, main, 5, reports.slice(0, 10))
+  await store.fold(repo, main, 86_400_001, reports.slice(0, 10))
   const other = { issuer: 'j', repository: '42' }
-  expect((await store.read(other, [MAIN], ['t999'])).size).toBe(0)
-  expect((await store.read(repo, [MAIN], ['t999'])).get('t999')).toEqual({
+  expect((await store.read(other, [main], ['t999'])).size).toBe(0)
+  expect((await store.read(repo, [main], ['t999'])).get('t999')).toEqual({
     durationMs: 999,
     cores: null,
     rssBytes: null,
@@ -57,21 +57,30 @@ it('folds a thousand tasks in one statement, and sweeps what was not reported', 
   expect(await store.sweep(5)).toBe(990)
 })
 
-it('stores the issuer, repository id and scope hashed, never plain', async () => {
-  const file = path.join(dir, 'hashed.sqlite')
-  const db = sqliteDb(file)
+// 2026-10-27: rows held hashes of these, which only hid them from whoever runs the server.
+it('stores the issuer, repository and ref plainly, as a person reading the table would ask', async () => {
+  const db = sqliteDb(path.join(dir, 'plain.sqlite'))
   const store = sqliteStore(db)
   await store.init()
-  const repo = { issuer: 'token.actions.githubusercontent.com', repository: '42' }
-  await store.fold(repo, MAIN, 1, [{ hash: 't', durationMs: 5 }])
-  const rows = await db.all<Record<string, unknown>>('SELECT * FROM task_timings', [])
-  expect(rows.map(({ issuer, repo_id, scope }) => [issuer, repo_id, scope])).toEqual([
-    [await hashPart(repo.issuer), await hashPart('42'), MAIN],
+  await store.fold({ issuer: GITHUB, repository: 'vznjs/vx' }, 'refs/heads/main', 1, [
+    { hash: 't', durationMs: 5 },
   ])
-  expect(JSON.stringify(rows)).not.toMatch(/githubusercontent|refs\/heads|"42"/)
+  const rows = await db.all<Record<string, unknown>>(
+    'SELECT issuer, repository, ref, hash, duration_ms FROM timings',
+    [],
+  )
+  expect(rows).toEqual([
+    { issuer: GITHUB, repository: 'vznjs/vx', ref: 'refs/heads/main', hash: 't', duration_ms: 5 },
+  ])
+})
+
+it('drops the table rows were keyed by four columns in', async () => {
+  const db = sqliteDb(path.join(dir, 'old.sqlite'))
+  await db.run('CREATE TABLE task_timings (issuer TEXT)', [])
+  await sqliteStore(db).init()
   expect(
-    (await store.read(repo, [scopeOf('refs/heads/a'), MAIN], ['t'])).get('t')?.durationMs,
-  ).toBe(5)
+    await db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'", []),
+  ).toEqual([{ name: 'timings' }])
 })
 
 it('answers an upload it folded even when the sweep after it fails, and sweeps on the next', async () => {
@@ -88,7 +97,7 @@ it('answers an upload it folded even when the sweep after it fails, and sweeps o
         return store.sweep(before)
       },
     },
-    authorize: oidcAuth({ trust: trustOf(), fetchJson: iss.fetchJson }),
+    authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson }),
   })
   const upload = async () =>
     handle(
@@ -98,8 +107,6 @@ it('answers an upload it folded even when the sweep after it fails, and sweeps o
         headers: {
           authorization: `Bearer ${await iss.sign('main', 'http://127.0.0.1')}`,
           'content-type': 'application/json',
-          'vx-issuer': scopeOf(GITHUB),
-          'vx-repository': scopeOf(REPO),
         },
       }),
     )
@@ -137,7 +144,7 @@ it('refuses a query body past its limit as it arrives', async () => {
   )
   expect([res.status, ((await res.json()) as { message: string }).message]).toEqual([
     413,
-    'the body is at most 6001000 bytes',
+    'the body is at most 6010000 bytes',
   ])
   expect(pulled).toBeLessThan(100)
 })
@@ -147,8 +154,8 @@ it('refuses a query body past its limit as it arrives', async () => {
 it("answers 502 while the issuer's keys cannot be read", async () => {
   const handle = createHistoryServer({
     store: sqliteStore(sqliteDb(path.join(dir, 'keys.sqlite'))),
-    authorize: oidcAuth({
-      trust: trustOf(),
+    authorize: oidcTokenAuth({
+      allow: allowOf(),
       fetchJson: async (url) => {
         throw new Error(`${url}: 503`)
       },
@@ -158,8 +165,6 @@ it("answers 502 while the issuer's keys cannot be read", async () => {
     new Request('http://127.0.0.1/v1/capabilities', {
       headers: {
         authorization: `Bearer ${await iss.sign('main', 'http://127.0.0.1')}`,
-        'vx-issuer': scopeOf(GITHUB),
-        'vx-repository': scopeOf(REPO),
       },
     }),
   )
@@ -181,17 +186,17 @@ it('answers a flag it does not know with its usage', () => {
   ])
 })
 
-it('names TRUST when it cannot be read', () => {
-  const said = (trust: string) => {
+it('names ALLOW when it cannot be read', () => {
+  const said = (allow: string) => {
     const cli = Bun.spawnSync(
       ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', ':memory:'],
-      { env: { ...process.env, TRUST: trust }, stderr: 'pipe' },
+      { env: { ...process.env, ALLOW: allow }, stderr: 'pipe' },
     )
     return [cli.exitCode, cli.stderr.toString()]
   }
-  expect([said('notjson'), said('{}')]).toEqual([
-    [2, 'TRUST: JSON Parse error: Unexpected identifier "notjson"\n'],
-    [2, 'TRUST: not a JSON list of rules\n'],
+  expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
+    [2, 'ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
+    [2, 'ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
   ])
 })
 
@@ -199,7 +204,7 @@ it('names --db when it cannot be opened, and refuses an empty one', () => {
   const said = (db: string) => {
     const cli = Bun.spawnSync(
       ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', db],
-      { env: { ...process.env, TRUST: '[]' }, stderr: 'pipe' },
+      { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
     )
     return [cli.exitCode, cli.stderr.toString().split('\n')[0]]
   }
@@ -212,7 +217,22 @@ it('names --db when it cannot be opened, and refuses an empty one', () => {
 it('refuses an empty --port: Number of it is 0, a random port', () => {
   const cli = Bun.spawnSync(
     ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '', '--db', ':memory:'],
-    { env: { ...process.env, TRUST: '[]' }, stderr: 'pipe' },
+    { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
   )
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+})
+
+it('reads with no token where READ_ACCESS is public, only a repository ALLOW names', async () => {
+  const auth = oidcTokenAuth({ allow: allowOf(), readAccess: 'public', fetchJson: iss.fetchJson })
+  const req = new Request('http://127.0.0.1/v1/timings/query')
+  expect(await auth(req, { issuer: `${GITHUB}/`, repository: REPO.toUpperCase() })).toEqual({
+    issuer: GITHUB,
+    repository: REPO,
+  })
+  await expect(auth(req, { issuer: GITHUB, repository: 'acme/other' })).rejects.toThrow(
+    "acme/other is not in this server's ALLOW",
+  )
+  expect(await auth(req)).toBeUndefined()
+  const closed = oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson })
+  await expect(closed(req, { issuer: GITHUB, repository: REPO })).rejects.toThrow('no bearer token')
 })

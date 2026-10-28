@@ -121,8 +121,8 @@ task is almost always a config mistake. `dependsOn: []` is the deliberate form: 
 explicit empty group, for a package that wants a task by that name to
 exist and do nothing.
 
-A project whose config and plugins declare no `build` gets one (owner,
-2026-10-04): a group with `dependsOn: ['^build']` keyed on every file of
+A project whose config and plugins declare no `build` gets one
+(2026-10-04): a group with `dependsOn: ['^build']` keyed on every file of
 the project (`inputs.files: ['**']`, no outputs). It runs nothing,
 but a dependant behind `^build` folds its key, so a package consumed as
 source moves its dependants' keys and reaches them under `--affected`.
@@ -410,7 +410,7 @@ export default defineProject({
 - **On CI** (`CI` or a provider's variable set) every task runs or the run
   fails: one whose platforms leave the machine out refuses the run before
   any task starts. Run a target that holds only this platform's tasks, or
-  one distributed run with a worker of each platform.
+  one DTE run with a worker of each platform.
 - **With an executor that routes by platform** (`@vzn/vx-dte`, whose
   worker sizes each name a `platform`), the task
   runs on a worker of one of its platforms: this machine's if the

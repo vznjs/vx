@@ -1,4 +1,4 @@
-// The features the hub gained after the first 37 (owner, 2026-10-09: every
+// The features the hub gained after the first 37 (2026-10-09: every
 // feature in features.md a card and a page of its own, value first). Same
 // shape as features.ts; images are 1600×900 cards in the campaign's style.
 
@@ -901,7 +901,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Main writes the shared cache; a branch reads it and writes only its own, as the server decides.',
     body: [
       'A shared cache is only as trustworthy as the runs that write to it. A pull request should never be able to plant an artifact that main will replay.',
-      "So the client never picks where a write lands. The CI OIDC token, checked against the cache server’s trust policy, does: main writes the trusted cache, a branch writes its own, a fork writes nothing. `turboCache()` only steers reads: every request names the run’s refs in `x-artifact-read-scopes` (`refs/heads/feat-x, refs/heads/main`), and the server answers from the first that holds the key. For a server that ignores the header, `scope: 'key'` folds the ref into each key and asks every ref’s key in one batch. The local cache never knows a branch.",
+      "So the client never picks where a write lands. The CI OIDC token, checked against the workflows the cache server’s `ALLOW` names, does: main writes main’s scope, a branch writes its own, a fork writes nothing. `turboCache()` only steers reads: every request names the run’s refs in `x-artifact-read-scopes` (`refs/heads/feat-x, refs/heads/main`), and the server answers from the first that holds the key. For a server that ignores the header, `scope: 'key'` folds the ref into each key and asks every ref’s key in one batch. The local cache never knows a branch.",
     ],
     example: {
       lang: 'text',

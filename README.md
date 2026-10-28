@@ -101,20 +101,20 @@ More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 
 What vx can do, not what it is limited to. Declared in `.vx/workspace.ts`; without any, vx runs and caches locally.
 
-| Package                                                | What it adds                                                                    |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| [`@vzn/vx-migrate`](packages/vx-migrate)               | Migrate from Turbo or Nx: write native configs, keep its remote cache           |
-| [`@vzn/vx-reapi`](packages/vx-reapi)                   | Remote cache and remote execution over Bazel's REAPI (NativeLink, BuildBuddy)   |
-| [`@vzn/vx-lockfile`](packages/vx-lockfile)             | Key each project on its own lockfile slice: pnpm, bun, npm, yarn                |
-| [`@vzn/vx-otel`](packages/vx-otel)                     | OpenTelemetry traces, metrics and logs, no SDK                                  |
-| [`@vzn/vx-ci`](packages/vx-ci)                         | GitHub Actions job summary                                                      |
-| [`@vzn/vx-history`](packages/vx-history)               | Schedule by the critical path learned from past runs                            |
-| [`@vzn/vx-cache`](packages/vx-cache)                   | Remote cache for CI jobs, on a vx cache server                                  |
-| [`@vzn/vx-cache-server`](packages/vx-cache-server)     | The cache server you host: Bun or Docker with S3, or Workers with R2            |
-| [`@vzn/vx-history-server`](packages/vx-history-server) | The task timings server `vxHistory()` reads: Bun, Docker or Workers             |
-| [`@vzn/vx-devtools`](packages/vx-devtools)             | Code the servers and plugins share: the CI OIDC token check                     |
-| [`@vzn/vx-dte`](packages/vx-dte)                       | Spread one run over workers your own CI starts (not on npm yet)                 |
-| [`@vzn/vx-dte-server`](packages/vx-dte-server)         | The relay `dte()` meets its workers at: Workers, Bun or Docker (not on npm yet) |
+| Package                                                | What it adds                                                                  |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| [`@vzn/vx-migrate`](packages/vx-migrate)               | Migrate from Turbo or Nx: write native configs, keep its remote cache         |
+| [`@vzn/vx-reapi`](packages/vx-reapi)                   | Remote cache and remote execution over Bazel's REAPI (NativeLink, BuildBuddy) |
+| [`@vzn/vx-lockfile`](packages/vx-lockfile)             | Key each project on its own lockfile slice: pnpm, bun, npm, yarn              |
+| [`@vzn/vx-otel`](packages/vx-otel)                     | OpenTelemetry traces, metrics and logs, no SDK                                |
+| [`@vzn/vx-ci`](packages/vx-ci)                         | GitHub Actions job summary                                                    |
+| [`@vzn/vx-history`](packages/vx-history)               | Schedule by the critical path learned from past runs                          |
+| [`@vzn/vx-cache`](packages/vx-cache)                   | Remote cache for CI jobs, on a vx cache server                                |
+| [`@vzn/vx-cache-server`](packages/vx-cache-server)     | The cache server you host: Bun or Docker with S3, or Workers with R2          |
+| [`@vzn/vx-history-server`](packages/vx-history-server) | The task timings server `vxHistory()` reads: Bun, Docker or Workers           |
+| [`@vzn/vx-devtools`](packages/vx-devtools)             | Code the servers and plugins share: the CI OIDC token check                   |
+| [`@vzn/vx-dte`](packages/vx-dte)                       | Spread one run over workers your own CI starts                                |
+| [`@vzn/vx-dte-server`](packages/vx-dte-server)         | The relay `dte()` meets its workers at: Workers, Bun or Docker                |
 
 Hosting the three servers: [servers docs](https://vznjs.github.io/vx/docs/servers/).
 

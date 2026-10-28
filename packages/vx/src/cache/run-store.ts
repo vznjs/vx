@@ -1,4 +1,4 @@
-// What core keeps of a run that writes a remote (owner 2026-10-15): a failed
+// What core keeps of a run that writes a remote (2026-10-15): a failed
 // task's log and the files its outputs left, an uncached task's log. Names
 // come from the run id and task (`run/<id>/<task>/log`); each key is derived
 // in a namespace no task key or plugin entry shares. Remote only: locally

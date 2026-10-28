@@ -15,7 +15,7 @@ const DOC = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 
 
 /** The Top-level shape block's lines for `verb`, comments dropped. */
 function synopsis(verb: string, doc = DOC): string[] {
-  const marker = '## Top-level shape\n\n```\n'
+  const marker = '## Top-level shape\n\n```sh\n'
   const body = doc.slice(doc.indexOf(marker) + marker.length)
   return body
     .slice(0, body.indexOf('\n```\n'))
@@ -36,7 +36,7 @@ function usage(verb: string, text = helpText()): string[] {
 
 describe("each verb's help usage is its cli.md synopsis", () => {
   it('reads a line by its verb, a comment dropped, a longer verb not matched', () => {
-    const doc = '## Top-level shape\n\n```\n# Core\nvx up [tag]   # note\nvx upgrade x\n```\n'
+    const doc = '## Top-level shape\n\n```sh\n# Core\nvx up [tag]   # note\nvx upgrade x\n```\n'
     expect(synopsis('up', doc)).toEqual(['vx up [tag]'])
     expect(usage('up', 'title\n\nUsage:\n  vx up [tag]\n  vx upgrade x\n\nMore')).toEqual([
       'vx up [tag]',

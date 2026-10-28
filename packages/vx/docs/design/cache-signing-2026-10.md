@@ -1,6 +1,6 @@
 # Cache integrity: the cache server's job (2026-10)
 
-**Status:** decided, nothing to build in vx. M, 2026-10-15 10:03 (via
+**Status:** decided, nothing to build in vx. 2026-10-15 10:03 (via
 EA): "Ok so signing is up to cache server to implement." This replaces
 the per-run signing design merged earlier the same day (#3594). That
 design is kept below, marked superseded.

@@ -54,13 +54,15 @@ describe('createForecast', () => {
     const f = createForecast(nodes, p50s, 8)
     // b ran 1,500 of its 2,000: 500 left, then c.
     expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 1500).etaMs).toBe(1000)
-    // b at 2,400 (within the overrun slack): 0 left, then c.
+    // b at 2,400: 0 left, then c.
     expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2400).etaMs).toBe(500)
   })
 
-  it('gives up once a running task is well past its p50', () => {
+  // 2026-10-27: it used to give up 25% past a p50, so the estimate came and went.
+  it('keeps forecasting once a running task is well past its p50', () => {
     const f = createForecast(nodes, p50s, 8)
-    expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2600).etaMs).toBeUndefined()
+    expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 9000).etaMs).toBe(500)
+    expect(f(new Set(['p#a', 'p#b', 'p#d']), new Map([['p#c', 0]]), 9000).etaMs).toBe(0)
   })
 
   it('names the running task the longest chain waits on, and counts what waits', () => {
@@ -99,9 +101,9 @@ describe('createForecast', () => {
     )
     expect(later.critical).toBe('p#b')
     expect(later.waiting).toBe(1)
-    // Past its p50 the time is unknown, and so is the path; what waits is not.
+    // Past its p50 it still heads the path, and what waits still waits.
     const over = f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2600)
-    expect(over.critical).toBeUndefined()
+    expect(over.critical).toBe('p#b')
     expect(over.waiting).toBe(1)
   })
 
@@ -189,9 +191,19 @@ describe('the live time row', () => {
     expect(time(3001)).toBe('  time      1.50s · ~4s left')
     expect(time(125_000)).toBe('  time      1.50s · ~2m 05s left')
   })
+
+  it('counts up past the forecast', () => {
+    const over = (overMs: number): string | undefined =>
+      formatSummarySection({ ...stats, overMs }, 1500, { enabled: false }).find((l) =>
+        l.startsWith('  time'),
+      )
+    expect(over(0)).toBe('  time      1.50s · +1s over')
+    expect(over(4200)).toBe('  time      1.50s · +5s over')
+    expect(over(65_000)).toBe('  time      1.50s · +1m 05s over')
+  })
 })
 
-// M, 2026-10-21: blocked tasks are a number on the tasks line, a dim
+// 2026-10-21: blocked tasks are a number on the tasks line, a dim
 // segment of its bar; rows carry none of it.
 describe('the tasks line counts what is blocked', () => {
   const stats = {
@@ -215,8 +227,18 @@ describe('the tasks line counts what is blocked', () => {
     )
 
   it('between scheduled and the total, and not when nothing is', () => {
-    expect(legend({})?.trim()).toBe('30 success · 4 running · 12 scheduled · 16 blocked · 62 total')
+    expect(legend({})?.trim()).toBe(
+      '30 success · 4 running · 12 scheduled · 16 blocked · 32 left · 62 total',
+    )
     expect(legend({ blocked: 0 })).not.toContain('blocked')
+  })
+
+  // 2026-10-27: done and total were there, what remains was not.
+  it('says how many tasks are left, running included, until none is', () => {
+    expect(legend({ blocked: 0, scheduled: 0, running: 0, left: 5 })?.trim()).toBe(
+      '30 success · 5 left · 62 total',
+    )
+    expect(legend({ blocked: 0, scheduled: 0, running: 0, left: 0 })).not.toContain('left')
   })
 
   it('takes its share of the bar from what is left', () => {
@@ -238,15 +260,16 @@ describe('the tasks line counts what is blocked', () => {
   })
 })
 
-// M, 2026-10-21: in DTE the list is what runs; a task on the critical
-// path says so on its finished row too; the lists have a dim header.
+// In DTE the list is what runs; a task on the critical path says so on
+// its finished row too; the lists have a header.
 describe('rows under an executor that places tasks', () => {
-  it('no idle or blocked rows, only running ones', () => {
+  it('no blank or nested rows, only running ones', () => {
     const lines = formatStatusRegion(
       {
         pinnedPersistent: [],
         slots: [{ id: 'p#a', startedMs: 0 }, null, null],
-        blocked: [null, { id: 'p#c', by: 'p#a' }, null],
+        size: 3,
+        next: [{ id: 'p#c', by: 'p#a' }],
         nowMs: 500,
         summaryLines: [],
         where: () => 'small#2',
@@ -255,8 +278,8 @@ describe('rows under an executor that places tasks', () => {
     )
     expect(lines).toEqual([
       '',
-      '      time status  cache    task · worker',
-      '     500ms running          p#a · small#2',
+      '      time status  cache    blocked task · worker',
+      '     500ms running                0 p#a · small#2',
     ])
   })
 
@@ -275,7 +298,7 @@ describe('rows under an executor that places tasks', () => {
       },
       { enabled: false },
     )
-    expect(lines[2]).toBe('     500ms running          p#a  critical path · small#2')
+    expect(lines[2]).toBe('     500ms running                0 p#a  critical path · small#2')
   })
 
   it('a task the region showed on the critical path says so on its finished row', () => {
@@ -286,8 +309,8 @@ describe('rows under an executor that places tasks', () => {
     })
     log.runStart?.({ total: 3, concurrency: 3 })
     log.forecast(
-      () => () => ({ waiting: 0, critical: 'p#a' }),
-      async () => () => ({ waiting: 0, critical: 'p#a' }),
+      () => () => ({ blockedBy: new Map(), waiting: 0, critical: 'p#a' }),
+      async () => () => ({ blockedBy: new Map(), waiting: 0, critical: 'p#a' }),
     )
     const [a, d, x] = [node('p#a'), node('p#d'), node('p#x')]
     for (const t of [a, d, x]) log.taskStart?.(t)
@@ -318,16 +341,16 @@ function tty(): StatusStream & { text(): string } {
 }
 
 describe('the logger asks for a forecast only a second in', () => {
-  const run = async (lastsMs: number, env: Record<string, string>) => {
+  const run = async (lastsMs: number, env: Record<string, string>, etaMs = 4000) => {
     const out = tty()
     const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, { env })
     let asked = 0
     log.runStart?.({ total: 1, concurrency: 1 })
     log.forecast(
-      () => () => ({ waiting: 0 }),
+      () => () => ({ blockedBy: new Map(), waiting: 0 }),
       async () => {
         asked++
-        return () => ({ etaMs: 4000, waiting: 0 })
+        return () => ({ etaMs, blockedBy: new Map(), waiting: 0 })
       },
     )
     const a = node('p#a')
@@ -342,7 +365,7 @@ describe('the logger asks for a forecast only a second in', () => {
   it('a run that ends sooner never loads history', async () => {
     const r = await run(300, { TERM_PROGRAM: 'ghostty' })
     expect(r.asked).toBe(0)
-    expect(r.region).not.toContain('left')
+    expect(r.region).not.toMatch(/s left/)
     // CONTROL past the gate: the progress escape did go out, and was cleared.
     expect(r.all).toContain('\x1b]9;4;1;0\x07')
     expect(r.all.lastIndexOf(PROGRESS_CLEAR)).toBeGreaterThan(r.all.lastIndexOf('\x1b]9;4;1;'))
@@ -354,6 +377,12 @@ describe('the logger asks for a forecast only a second in', () => {
     expect(r.region).toContain('~4s left')
     // No terminal named: no escape at all.
     expect(r.all).not.toContain('\x1b]9;')
+  })
+
+  it('a run past its forecast counts up instead of going blank', async () => {
+    const r = await run(1300, {}, 0)
+    expect(r.region).toContain('+1s over')
+    expect(r.region).not.toMatch(/s left/)
   })
 })
 
@@ -399,9 +428,8 @@ describe('a long run ends with a desktop notification', () => {
   })
 })
 
-// M, 2026-10-21: `blocks N` said nothing worth a column; the critical path stays.
 describe('a worker row says when it holds the critical path', () => {
-  it('critical path on its row alone, and no count of what it blocks', () => {
+  it('critical path on its row, after the count of what it holds back', () => {
     const lines = formatStatusRegion(
       {
         pinnedPersistent: [],
@@ -415,15 +443,72 @@ describe('a worker row says when it holds the critical path', () => {
       },
       { enabled: false },
     )
-    expect(lines[2]).toEndWith('p#a  critical path')
-    expect(lines[3]).toEndWith('p#d')
+    expect(lines[2]).toEndWith(' 0 p#a  critical path')
+    expect(lines[3]).toEndWith(' 0 p#d')
+  })
+
+  // 2026-10-27: the count was every task whose longest chain waits on the
+  // row, so a root read as blocking the whole graph.
+  it('the forecast counts what waits directly on each running task', () => {
+    // a runs, b and c wait on it, d on c; e runs, f waits on it; x is ready.
+    const f = createForecast(
+      graph(
+        node('p#a'),
+        node('p#b', ['p#a']),
+        node('p#c', ['p#a']),
+        node('p#d', ['p#c']),
+        node('p#e'),
+        node('p#f', ['p#e']),
+        node('p#x'),
+      ),
+      new Map(),
+      4,
+    )
+    const r = f(
+      new Set(),
+      new Map([
+        ['p#a', 0],
+        ['p#e', 0],
+      ]),
+      0,
+    )
+    expect([...r.blockedBy].sort(([x], [y]) => x.localeCompare(y))).toEqual([
+      ['p#a', 2],
+      ['p#e', 1],
+    ])
+    expect(r.waiting).toBe(4)
+  })
+
+  it('a task waiting on two running tasks counts under both, a group looked through', () => {
+    // g is a group over a and e; h waits on g and on e.
+    const f = createForecast(
+      graph(
+        node('p#a'),
+        node('p#e'),
+        node('p#g', ['p#a', 'p#e'], true),
+        node('p#h', ['p#g', 'p#e']),
+      ),
+      new Map(),
+      4,
+    )
+    const r = f(
+      new Set(),
+      new Map([
+        ['p#a', 0],
+        ['p#e', 0],
+      ]),
+      0,
+    )
+    expect([...r.blockedBy].sort(([x], [y]) => x.localeCompare(y))).toEqual([
+      ['p#a', 1],
+      ['p#e', 1],
+    ])
   })
 })
 
-// M, 2026-10-15: an idle worker row holds a task an unfinished dependency
-// blocks, in the order the scheduler would start it; a row with none left
-// to hold leaves the region.
-describe('idle worker rows hold blocked tasks', () => {
+// A free worker row holds a task the scheduler has picked next, nested
+// under the running task it waits on; nothing further ahead.
+describe('free worker rows hold the planned tasks', () => {
   // a runs; b and c wait on it, d waits on c; x is ready, so not blocked.
   const nodes = graph(
     node('p#a'),
@@ -449,78 +534,62 @@ describe('idle worker rows hold blocked tasks', () => {
     expect(f(new Set(['p#a', 'p#c']), new Map([['p#b', 0]]), 0).blocked).toEqual([])
   })
 
-  it('an idle row reads blocked, the id, then what holds it, on the running grid', () => {
-    const lines = formatStatusRegion(
-      {
-        pinnedPersistent: [],
-        slots: [{ id: 'p#a', startedMs: 0 }, null, null],
-        blocked: [null, { id: 'p#c', by: 'p#a' }, null],
-        nowMs: 500,
-        summaryLines: [],
-      },
-      { enabled: false },
-    )
-    expect(lines[3]).toBe('           blocked          p#c  by p#a')
-    expect(lines[3]!.indexOf('blocked')).toBe(lines[2]!.indexOf('running'))
-    // A row the list leaves empty reads idle; the live logger never draws one.
-    expect(lines[4]).toContain('idle')
-  })
-
-  const live = async (list: { id: string; by: string }[]) => {
+  const live = (list: { id: string; by: string }[]) => {
     const out = tty()
     const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, {
       env: {},
       forceFloorMs: 0,
     })
     log.runStart?.({ total: 6, concurrency: 3 })
+    const answer = () => ({
+      blockedBy: new Map([['p#a', list.length]]),
+      waiting: list.length,
+      blocked: list,
+    })
     log.forecast(
-      () => () => ({ waiting: list.length, blocked: list }),
-      async () => () => ({ waiting: list.length, blocked: list }),
+      () => answer,
+      async () => answer,
     )
-    // Three rows shown; x and y finish, so two workers sit idle beside a.
+    // Three workers; x and y finish, so two rows are free beside a.
     const [a, x, y] = [node('p#a'), node('p#x'), node('p#y')]
     for (const n of [a, x, y]) log.taskStart?.(n)
     for (const n of [x, y])
       log.taskComplete(n, { node: n, status: 'success', exitCode: 0, durationMs: 1 } as TaskOutcome)
-    await Bun.sleep(1200)
     const frame = (): string[] => {
       const lines = out.text().split('\n')
-      const i = lines.findLastIndex((l) => l.includes('running') && l.endsWith('p#a'))
-      return lines.slice(i + 1, i + 3).map((l) => l.trimEnd())
+      const i = lines.findLastIndex((l) => l.includes('blocked task'))
+      return lines.slice(i + 1, i + 4).map((l) => l.trimEnd())
     }
     return { log, frame }
   }
 
-  it('a blocked task that starts runs in the row that held it', async () => {
-    const { log, frame } = await live([
+  it('the free rows hold the planned tasks, nested under what they wait on', () => {
+    const { log, frame } = live([
       { id: 'p#c', by: 'p#a' },
       { id: 'p#b', by: 'p#a' },
+      { id: 'p#d', by: 'p#a' },
     ])
     expect(frame()).toEqual([
-      '           blocked          p#c  by p#a',
-      '           blocked          p#b  by p#a',
+      expect.stringMatching(/running +3 p#a$/),
+      '           blocked                  └ p#c',
+      '           blocked                  └ p#b',
     ])
-    log.taskStart?.(node('p#b'))
-    const [second, third] = frame()
-    expect(second).toContain('blocked          p#c')
-    expect(third).toContain('running          p#b')
     log.runEnd?.()
   })
 
-  it('a worker with nothing left to hold leaves the region', async () => {
-    const { log, frame } = await live([{ id: 'p#c', by: 'p#a' }])
-    const [second, third] = frame()
-    expect(second).toBe('           blocked          p#c  by p#a')
-    expect(third).not.toContain('idle')
-    expect(third).not.toContain('blocked')
+  it('a free row with nothing planned stays blank, so the list keeps its height', () => {
+    const { log, frame } = live([{ id: 'p#c', by: 'p#a' }])
+    expect(frame()).toEqual([
+      expect.stringMatching(/running +1 p#a$/),
+      '           blocked                  └ p#c',
+      '',
+    ])
     log.runEnd?.()
   })
 })
 
-// What a free worker row shows is the graph's to say, not history's (M,
-// 2026-10-17: "core should already know that"): from the first frame, an
-// idle row holds a blocked task, and one with nothing to hold never draws.
-// History only times the run.
+// What a free worker row shows is the graph's to say, not history's: from
+// the first frame a free row holds a planned task. History only times the run.
 describe('the live view knows blocked tasks from the graph, from the first frame', () => {
   const nodes = graph(
     node('p#a'),
@@ -550,24 +619,23 @@ describe('the live view knows blocked tasks from the graph, from the first frame
     for (const n of [x, y])
       log.taskComplete(n, { node: n, status: 'success', exitCode: 0, durationMs: 1 } as TaskOutcome)
     const lines = out.text().split('\n')
-    const i = lines.findLastIndex((l) => /running {10}p#a\b/.test(l))
+    const i = lines.findLastIndex((l) => /running +\d+ p#a\b/.test(l))
     const rows = lines.slice(i + 1, i + 3).map((l) => l.trimEnd())
     log.runEnd?.()
     return { rows, asked }
   }
 
-  it('an idle row holds a blocked task before history is read', () => {
+  it('a free row holds a planned task before history is read', () => {
     const r = live(['p#a', 'p#x', 'p#y', 'p#b', 'p#c'])
     expect(r.asked).toBe(0)
     expect(r.rows).toEqual([
-      '           blocked          p#b  by p#a',
-      '           blocked          p#c  by p#a',
+      '           blocked                  └ p#b',
+      '           blocked                  └ p#c',
     ])
   })
 
-  it('a free row with nothing to hold never draws idle', () => {
+  it('a free row with nothing planned is blank', () => {
     const r = live(['p#a', 'p#x', 'p#y'])
-    expect(r.rows.join('\n')).not.toContain('idle')
-    expect(r.rows.join('\n')).not.toContain('blocked')
+    expect(r.rows).toEqual(['', ''])
   })
 })

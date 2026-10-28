@@ -142,7 +142,7 @@ it('plays tasks out in their dependencies’ order, packed while a core is free'
   expect(simulate([task('a', 1_000)], [worker('w', { at: 5_000 })])).toBe(6_000)
 })
 
-// M, 2026-10-23: five workers joined to nothing queued and were let go at once.
+// 2026-10-23: five workers joined to nothing queued and were let go at once.
 it('cancels a worker still starting that the plan ends as well without', () => {
   const tasks = [task('a', 30_000), task('b', 30_000)]
   const online = worker('one', { idle: false, running: [{ cores: 1, memory: 1e8, endsIn: 1_000 }] })

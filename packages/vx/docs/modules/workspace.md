@@ -4,7 +4,7 @@
 
 Find the workspace root, find its projects, name them, and resolve the
 cache directory. **A project is a directory holding a `vx.config.*`**, in
-any language (owner, 2026-10-14): core reads no `package.json` and no
+any language (2026-10-14): core reads no `package.json` and no
 package-manager member list. `vx lock` finds the directories
 (`findProjectConfigs`) and records each by directory; a run takes its
 projects from the lock (`lockedProjects`), then the plugin `discover`
@@ -121,7 +121,7 @@ The root is the directory holding the nearest `.vx/workspace.*` from
 `start` up to the git top-level, inclusive (a worktree's `.git` file is a
 top-level; a submodule goes on to its superproject), or up to `/` outside
 git. Nothing else decides it: not a `package.json`, `pnpm-workspace.yaml`
-or a lockfile (owner, 2026-10-13: "Workspace file is the ultimate",
+or a lockfile (2026-10-13: "Workspace file is the ultimate",
 "never go out of git root"). A file above the checkout is never read.
 Outside git, a file another user owns above `start` is refused (root
 aside): it is code that would run as you. Without one the error is

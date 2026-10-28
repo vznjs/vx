@@ -17,10 +17,10 @@ starts at the [quickstart](../../quickstart/).
    bunx @vzn/vx init
    ```
 
-   Beside `turbo.json` or `nx.json` it runs `@vzn/vx-migrate`: one
-   `vx.config.ts` per package, a `.vx/workspace.ts` declaring your lockfile's
-   plugin, and `.vx/projects.lock.json`. It never overwrites a file without
-   `--force`.
+   Beside `turbo.json` or `nx.json`, it runs `@vzn/vx-migrate`, which
+   writes one `vx.config.ts` per package, `.vx/workspace.ts` and the lock.
+
+   It never overwrites a file without `--force`.
 
 2. **Review the TODOs**
 
@@ -47,12 +47,15 @@ starts at the [quickstart](../../quickstart/).
 
 ## What init does
 
-`vx init` installs `@vzn/vx` globally and in the repo, then declares what
-the repo needs in `.vx/workspace.ts`: its lockfile plugin,
+`vx init` installs `@vzn/vx` globally and in the repo. Then it declares
+what the repo needs in `.vx/workspace.ts`: its lockfile plugin,
 `vxHistory()`, and `github()` when `.github/workflows` exists.
-`--native` (the default without a terminal) writes configs; `--keep` maps
-the old config live instead ([check the mapping first](#check-the-mapping-first)).
-`--no-install` leaves `package.json` alone.
+
+| Flag | Does |
+| --- | --- |
+| `--native` | writes vx configs (the default without a terminal) |
+| `--keep` | runs the old config as it is ([check the mapping first](#check-the-mapping-first)) |
+| `--no-install` | leaves `package.json` alone |
 
 ## Turborepo
 
@@ -63,9 +66,10 @@ package, plus a `vx-preset.ts` when turbo.json has global fields or a task
 ### Check the mapping first
 
 `bunx @vzn/vx init --keep` writes only this `.vx/workspace.ts`, installs
-what it imports and writes the lock. Its `next:` line builds once through
-`turbo()`: a check that the mapping holds, not a way to keep running the
-repo.
+what it imports, and writes the lock.
+
+Its `next:` line builds once through `turbo()`. That checks the mapping
+holds; it is not a way to keep running the repo.
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -186,7 +190,7 @@ vx run test --all      # local 3✓
 | `interruptible` | nothing: `vx watch` keeps a persistent task up and restarts it only when its config changes or it dies |
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
 | `outputLogs` (Turbo 1: `outputMode`)                        | `"new-only"` is the default; other values are the run's `--output-logs` |
-| `dotEnv` (Turbo 1), a `.env` input                          | `inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (written configs name it from the preset: `dotenvFiles`, `dotenvFilesDeep`, and `dotenvRootFiles` for the root globs); a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `inputs.workspaceRuntime`, a probe of just the files its globs name |
+| `dotEnv` (Turbo 1), a `.env` input                          | `inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (written configs name it from the preset: `dotenvFiles`, `dotenvFilesDeep`, and `dotenvRootFiles` for the root globs); a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `inputs.workspaceRuntime`, a probe of only the files its globs name |
 | an input or `globalDependencies` path git ignores (`config.local.json`) | `inputs.workspaceRuntime`: a probe that prints the file's name and bytes, since core refuses a file input git ignores; a gitignored file a glob matches is not keyed |
 | `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |
 | `description` | `description` |
@@ -209,10 +213,11 @@ The command itself comes from your `package.json` script, with its
 
 ## Nx
 
-Beside `nx.json` init writes one `vx.config.ts` per project from the
-resolved graph (`nx graph`), so Nx must be installed. A Lerna 6+ repo
-maps the same way. `bunx @vzn/vx init --keep` writes only this
-`.vx/workspace.ts`, and `bunx @vzn/vx-migrate` then writes the configs:
+Beside `nx.json`, init writes one `vx.config.ts` per project from
+`nx graph`, so Nx must be installed. A Lerna 6+ repo maps the same way.
+
+`bunx @vzn/vx init --keep` writes only this `.vx/workspace.ts`. Then
+`bunx @vzn/vx-migrate` writes the configs:
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -314,12 +319,16 @@ keep Nx for those.
 
 ## Vite Task
 
-`bunx @vzn/vx-migrate` in a repo whose root `package.json` lists
-`vite-plus` writes a `vx.config.ts` per package from each `vite.config`
-`run.tasks` and its `package.json` scripts (`--from vite-task` when
-turbo.json or Nx is there too). Vite Task traces the files a task reads
-and writes; vx declares them, so a task without explicit `cache.input`
-and `cache.output` runs uncached until its `TODO(vx-migrate)` is filled.
+When the root `package.json` lists `vite-plus`, `bunx @vzn/vx-migrate`
+writes a `vx.config.ts` per package. It reads each `vite.config`
+`run.tasks` and the package's scripts.
+
+Add `--from vite-task` when `turbo.json` or Nx is there too.
+
+Vite Task traces the files a task reads and writes; vx needs them
+declared. A task with no `cache.input` and `cache.output` runs uncached
+until you fill its `TODO(vx-migrate)`.
+
 The field-by-field mapping is in the `@vzn/vx-migrate` README.
 
 ## Common problems

@@ -1,7 +1,7 @@
 // A server the run's local store cannot settle: some dependant missed here
 // but may be a hit the remote holds. The scheduler holds such a server
 // until the remote answers; when every dependant hit, the server never
-// starts (M 2026-10-22), as it never starts behind local hits.
+// starts (2026-10-22), as it never starts behind local hits.
 
 import type { TaskNode } from '../graph/index.js'
 import type { CacheEntry, CacheLayer } from '../cache/index.js'

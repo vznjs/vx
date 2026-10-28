@@ -1,4 +1,4 @@
-// Whether git ignores everything an output glob can write (M, 2026-10-15):
+// Whether git ignores everything an output glob can write (2026-10-15):
 // a key reads only what git lists, so such an output never reaches a
 // reader's key. Asked of git, never read from a `.gitignore`: git alone
 // knows every rule source (nested files, `info/exclude`, `core.excludesFile`)

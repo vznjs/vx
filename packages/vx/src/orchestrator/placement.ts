@@ -480,7 +480,7 @@ export function poolOfPlacement(
 /**
  * What a run says of its `otherPlatform` tasks: a refusal when an executor
  * that routes by platform could not take one, or the run is on CI (each
- * task runs there or the run fails, owner 2026-10-23), else the warning a
+ * task runs there or the run fails, 2026-10-23), else the warning a
  * local run prints as it skips them and what depends on them.
  */
 export function platformVerdict(
@@ -506,7 +506,7 @@ export function platformVerdict(
       refuse:
         `on CI every task runs or the run fails, and ${skipped.size === 1 ? 'this task' : 'these tasks'} cannot run on ${host}:\n` +
         [...skipped.keys()].map((id) => `  ${needs(id)}`).join('\n') +
-        `\nrun a target that holds only ${host} tasks, or one distributed run with a worker of each platform`,
+        `\nrun a target that holds only ${host} tasks, or one DTE run with a worker of each platform`,
     }
   }
   return {

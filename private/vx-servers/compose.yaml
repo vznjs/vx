@@ -15,7 +15,7 @@ services:
   cache:
     build: { context: ../.., dockerfile: packages/vx-cache-server/Dockerfile }
     environment:
-      - TRUST
+      - ALLOW
       - AUDIENCE
       - READ_ACCESS
       - S3_BUCKET
@@ -30,7 +30,7 @@ services:
   history:
     build: { context: ../.., dockerfile: packages/vx-history-server/Dockerfile }
     environment:
-      - TRUST
+      - ALLOW
       - AUDIENCE
       - READ_ACCESS
       - TIMING_DAYS

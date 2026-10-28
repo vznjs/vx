@@ -196,7 +196,7 @@ export async function workerOf(
 
 /**
  * The pids under `pid`, by `pgrep -P`: macOS's `ps` is setuid, which the
- * sandbox will not spawn (EPERM on M's Mac, 2026-10-21).
+ * sandbox will not spawn (EPERM on a developer Mac, 2026-10-21).
  */
 export function descendants(pid: number): number[] {
   const kids = (p: number): number[] =>

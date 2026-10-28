@@ -12,7 +12,6 @@ import {
   paintIdParts,
   pathNote,
   placeNote,
-  TIME_COL,
 } from './framed-output.js'
 import type { BlockedTask } from './forecast.js'
 
@@ -313,8 +312,6 @@ export function createOutputWriter(
   }
 }
 
-const IDLE = '#6b7280'
-
 export interface WorkerSlot {
   id: string
   startedMs: number
@@ -323,8 +320,6 @@ export interface WorkerSlot {
 }
 
 export interface StatusRegionState {
-  /** The terminal's height: a region taller folds its rows, never its summary. */
-  rows?: number
   /** The running task at the head of the longest unfinished chain. */
   critical?: string
   /** Where a running task runs, when not here (`TaskExecutor.running`); its row shows it. */
@@ -338,15 +333,23 @@ export interface StatusRegionState {
    * the honest end of their life.
    */
   pinnedPersistent: readonly string[]
-  /** Fixed-size slot array; null = idle worker. Index = display row. */
+  /** The running tasks by slot, null for a free one; a task past the slots follows them. */
   slots: readonly (WorkerSlot | null)[]
-  /** The blocked task an idle slot's row holds instead of `idle`, by the same index. */
-  blocked?: readonly (BlockedTask | null)[]
+  /** The list's height: one row per worker, whatever runs, so it never jumps. */
+  size?: number
+  /**
+   * The tasks the scheduler has picked for the next free workers, each
+   * nested under the running task it waits on, in the rows no running task
+   * takes; nothing further ahead.
+   */
+  next?: readonly BlockedTask[]
+  /** Each running task's count of the tasks it holds back: its `blocked` cell. */
+  blockedBy?: ReadonlyMap<string, number>
   /** The run was stopped: running rows say `aborting`, idle rows leave. */
   stopping?: boolean
   /**
    * vx's own steps still running, shown below the worker rows: no worker
-   * slot or `--concurrency` bounds them (M, 2026-10-15).
+   * slot or `--concurrency` bounds them (2026-10-15).
    */
   steps?: readonly WorkerSlot[]
   /** Clock value used for per-slot elapsed (injectable for tests). */
@@ -401,7 +404,7 @@ const INTERNAL = 'internal'
 /**
  * The list row of one of vx's own steps (`vx:uploads`), on the task grid
  * with `internal` in the cache column: a step is no task and caches
- * nothing (M, 2026-10-16: `4.60s success internal vx:keep-run`).
+ * nothing (2026-10-16: `4.60s success internal vx:keep-run`).
  */
 export function formatStepLine(
   id: string,
@@ -454,27 +457,33 @@ export function formatStatusRegion(
     )
   }
 
-  // Worker rows: NO glyph — the live elapsed time leads (no spinner;
-  // the ticking time IS the motion), then `running`, full id (never
-  // truncated — name is the last column). Idle rows hold their slot's
-  // place, dim, aligned under the status column: the blocked task the row
-  // holds and what holds it back, else `idle`.
-  // One task running has no path to compare against.
-  const busy = s.slots.filter((x) => x !== null && x.waiting !== true).length
-  for (const [row, slot] of s.slots.entries()) {
-    // Placed by an executor (DTE), the list is what runs: blocked tasks are
-    // the tasks line's count alone (M, 2026-10-21).
-    if (slot === null && (s.stopping === true || s.where !== undefined)) continue
-    if (slot === null) {
-      const w = s.blocked?.[row]
-      lines.push(
-        w == null
-          ? `${' '.repeat(3 + TIME_COL + 1)}${paint(IDLE, 'idle', colors, { dim: true })}`
-          : formatTaskRow(' ', null, 'blocked', '', '', '', paintPinnedId(w.id, colors), colors) +
-              `  ${dim(`by ${w.by}`)}`,
-      )
-      continue
+  // Running rows: NO glyph — the live elapsed time leads (no spinner;
+  // the ticking time IS the motion), then `running`, the usual duration,
+  // how many tasks wait on it, and the full id (never truncated — name is
+  // the last column). The rows no task runs in hold the tasks planned
+  // next, each nested under what it waits on; the rest stay blank, so the
+  // list keeps its height.
+  const running = s.slots.filter((x): x is WorkerSlot => x !== null && x.waiting !== true)
+  // Placed by an executor (DTE), the list is what runs: blocked tasks are
+  // the tasks line's count alone, and its size is no machine's.
+  const placed = s.where !== undefined
+  const free = Math.max(0, (s.size ?? 0) - running.length)
+  const nested = new Map<string, BlockedTask[]>()
+  if (!placed && s.stopping !== true) {
+    const ids = new Set(running.map((x) => x.id))
+    let n = 0
+    for (const b of s.next ?? []) {
+      if (n === free) break
+      if (!ids.has(b.by)) continue
+      let list = nested.get(b.by)
+      if (list === undefined) nested.set(b.by, (list = []))
+      list.push(b)
+      n++
     }
+  }
+  let rows = 0
+  for (const slot of running) {
+    rows++
     if (s.stopping === true) {
       lines.push(
         formatTaskRow(
@@ -486,15 +495,12 @@ export function formatStatusRegion(
           '',
           paintPinnedId(slot.id, colors),
           colors,
+          '',
         ),
       )
       continue
     }
-    // Handed to an executor that has no machine on it yet: no row, only
-    // the tasks line's `scheduled` (M, 2026-10-21).
-    if (slot.waiting === true) continue
     const at = s.where?.(slot.id)
-    const critical = s.critical === slot.id && busy > 1
     const usual = s.expected?.get(slot.id)
     lines.push(
       formatTaskRow(
@@ -506,11 +512,29 @@ export function formatStatusRegion(
         '',
         paintPinnedId(slot.id, colors),
         colors,
+        String(s.blockedBy?.get(slot.id) ?? 0),
       ) +
-        (critical ? pathNote(colors) : '') +
+        (s.critical === slot.id ? pathNote(colors) : '') +
         (at != null ? placeNote(at, colors) : ''),
     )
+    for (const b of nested.get(slot.id) ?? []) {
+      rows++
+      lines.push(
+        formatTaskRow(
+          ' ',
+          null,
+          'blocked',
+          '',
+          '',
+          '',
+          `${dim('\u2514')} ${paintPinnedId(b.id, colors)}`,
+          colors,
+          '',
+        ),
+      )
+    }
   }
+  if (!placed) for (; rows < (s.size ?? 0); rows++) lines.push('')
   for (const step of s.steps ?? []) {
     lines.push(
       formatTaskRow(
@@ -525,17 +549,7 @@ export function formatStatusRegion(
       ),
     )
   }
-  if (lines.length > 1) lines.splice(1, 0, formatListHeader(s.where !== undefined, colors))
-  // A region taller than the terminal (a row spared) folds the rows past
-  // what fits into one line: the writer would cut the summary at its
-  // foot, and lines never printed cannot be scrolled to (M, 2026-10-21).
-  const room = s.rows === undefined ? Infinity : s.rows - 1 - s.summaryLines.length
-  if (lines.length > room && room >= 3) {
-    const kept = room - 1
-    const more = lines.length - kept
-    lines.length = kept
-    lines.push(`${' '.repeat(3 + TIME_COL + 1)}${dim(`+${more} more`)}`)
-  }
+  if (lines.length > 1) lines.splice(1, 0, formatListHeader(placed, colors, true))
   // The live summary section — identical shape to the final printout,
   // so the region visually BECOMES the summary when the run ends.
   lines.push(...s.summaryLines)
@@ -544,7 +558,7 @@ export function formatStatusRegion(
 
 /**
  * A running task's usual duration, fixed while the elapsed time counts up
- * toward it (M, 2026-10-14): `~5.2s`, `~42s`, `~2m 05s`. Fits the cache
+ * toward it (2026-10-14): `~5.2s`, `~42s`, `~2m 05s`. Fits the cache
  * column below 100 minutes.
  */
 function formatExpected(ms: number): string {

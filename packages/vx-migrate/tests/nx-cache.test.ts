@@ -66,7 +66,7 @@ describe('resolveNxCacheConfig', () => {
   it('reads options over Nx’s environment, strips a trailing slash, declines without a server', () => {
     expect(resolveNxCacheConfig({}, {})).toBeUndefined()
     // Nx's off switches are not read: core's cache.policy alone decides
-    // reads and writes (M, 2026-10-16).
+    // reads and writes (2026-10-16).
     const server = { NX_SELF_HOSTED_REMOTE_CACHE_SERVER: 'https://c.example' }
     expect(
       [{ NX_SKIP_REMOTE_CACHE: 'true' }, { NX_DISABLE_REMOTE_CACHE: 'true' }].map(

@@ -9,7 +9,7 @@ const relay = process.env['VX_DTE_RELAY']
 // A PR that changes the cache server runs on its Preview (ci.yml), and
 // hands it to the workers.
 const cacheUrl = process.env['VX_CACHE_URL'] || 'https://vx-cache.exelord.workers.dev'
-// What our servers' TRUST names: every request names it, hashed.
+// What our servers' ALLOW names: every request names it, hashed.
 const repo = { issuer: 'https://token.actions.githubusercontent.com', repository: 'vznjs/vx' }
 
 export default defineWorkspace({
@@ -20,12 +20,12 @@ export default defineWorkspace({
     // CI jobs sign in with their OIDC token; off CI they read only, where a
     // server opens reads (READ_ACCESS=public).
     vxCache({ url: cacheUrl, ...repo }),
-    vxHistory({ server: 'https://vx-history.exelord.workers.dev', ...repo }),
+    vxHistory({ url: 'https://vx-history.exelord.workers.dev', ...repo }),
     // CI's one run over workers (ci.yml `linux`, vx-worker.yml);
     // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
     dte({
       ...(relay ? { relay } : {}),
-      // One run, every platform (owner, 2026-10-23): ubuntu-latest on a
+      // One run, every platform (2026-10-23): ubuntu-latest on a
       // public repo for the Linux work; ubuntu-24.04-arm for the arm64
       // binary; macos-latest, whose account cap is 5, for the Mac tasks. A
       // platform's worker starts only when a task of it is in the graph.

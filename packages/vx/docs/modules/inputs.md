@@ -159,7 +159,7 @@ export async function cleanWorkspaceOutputs(args: {
   committed?: (abs: string) => boolean
 }): Promise<string[]>
 
-// No clean removes a file git tracks (owner, 2026-10-14); `committedFiles`
+// No clean removes a file git tracks (2026-10-14); `committedFiles`
 // answers from the run's enumeration, listing a dir it did not cover once.
 export function committedFiles(
   cache: GitFilesCache | undefined,
@@ -257,7 +257,7 @@ other walker: a project outside a git work tree is a `UserError`
    every `.gitignore`. An entry git answers nothing for — a literal, or
    a glob's fixed prefix (`dist` of `dist/**`), with no listed path at
    or under it — is read from disk (`ignoredReach`, `ignoredInputs`):
-   gitignored, named outright, so an input (owner, 2026-10-16). Outside
+   gitignored, named outright, so an input (2026-10-16). Outside
    the per-run memo, since a dependency writes there mid-run. One that
    does not exist stays silent until it does.
 3. **Negative globs** — entries starting with `!`. The `!` is
@@ -279,7 +279,7 @@ other walker: a project outside a git work tree is a `UserError`
    a tracked one is a source. By
    path, a committed fixture under `tests/fixtures/node_modules/` left
    the key and an edit to it replayed the old output (X-4). Nor is a
-   tool's temp file (owner, 2026-10-16): Bun's `.bun-build` intermediate
+   tool's temp file (2026-10-16): Bun's `.bun-build` intermediate
    and cross-compile extraction directory are the compile task's to
    exclude in its own `inputs`.
 5. **Boundary ignores** — a path under a nested project's directory

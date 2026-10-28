@@ -1,5 +1,5 @@
 // The CI issuer the container trusts, on the host's loopback: it serves
-// its keys and prints the TRUST naming it; conformance.docker.ts signs
+// its keys and prints the ALLOW naming it; conformance.docker.ts signs
 // with the same key (the key pair is written beside it for that).
 import { exportJWK, exportPKCS8, generateKeyPair } from 'jose'
 import path from 'node:path'
@@ -16,8 +16,4 @@ Bun.serve({
       ? Response.json({ jwks_uri: `${iss}/keys` })
       : Response.json(jwks),
 })
-console.log(
-  JSON.stringify([
-    { iss, project_path: '42', pipeline_source: 'push', ref_path: 'refs/heads/main' },
-  ]),
-)
+console.log(`${iss}:acme/app:.gitlab-ci.yml`)

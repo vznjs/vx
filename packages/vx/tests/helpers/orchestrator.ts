@@ -1,5 +1,5 @@
 // The orchestrator as a caller drives it since a run reads configs only from
-// the lock (owner, 2026-10-14): `run`, `planRun` and `prepareRun` here lock the workspace
+// the lock (2026-10-14): `run`, `planRun` and `prepareRun` here lock the workspace
 // first, in process and silently, as `vx lock` would. Everything else is
 // the module's own.
 import { lockWorkspace } from '../../src/cli/lock.js'

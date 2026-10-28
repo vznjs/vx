@@ -122,7 +122,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
             workers.delete(j.name)
             if (closed || cancelled.has(j.name)) continue
             // A success too: a worker that found no live run left at once,
-            // and the run must not wait on it (owner, 2026-10-23).
+            // and the run must not wait on it (2026-10-23).
             const step = j.steps?.find((x) => x.conclusion === 'failure')?.name
             a.exited(`job ${j.conclusion}${step === undefined ? '' : ` at ${step}`}`)
           }
@@ -253,7 +253,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
       })
     },
     // Before a worker's setup when its job has yet to run: its runner is
-    // free for others (M, 2026-10-23). A run with a worker still needed
+    // free for others (2026-10-23). A run with a worker still needed
     // goes on; that worker's fellows are told to exit when they join.
     cancel(ids) {
       for (const id of ids) cancelled.add(id)

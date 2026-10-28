@@ -277,7 +277,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     glob never reaches a gitignored file. An entry that names one
     outright does: a literal (`.env.local`, `gen`), or a glob whose fixed
     prefix git ignores (`dist/**`), walked on disk under that prefix
-    only (owner, 2026-10-16). Such a file is hashed from disk with the
+    only (2026-10-16). Such a file is hashed from disk with the
     blob formula an untracked file gets, and is never stored or
     restored. `--affected` reflects only what git sees, so an edit to
     one never selects a task on its own (as in Nx); `vx watch` re-runs
@@ -626,7 +626,7 @@ Hard invariants of the remote prefetch:
   hits before its own probe answers. Only hits are kept. A plain run
   waits on the remote for nothing; an executor that plans its machines
   (`demand`, vx-dte) plans after the batch probe answers, since a key
-  with no row may still be held (M, 2026-10-23: "We wait for remote
+  with no row may still be held (2026-10-23: "We wait for remote
   before we plan. We need data to plan. We don't wait for remote without
   dte"; `remote-prefetch.test.ts` › "a kept hit is pulled before the
   probe answers…"). When a remote's batch gives no answer (Vercel's on
@@ -834,7 +834,7 @@ different bytes still withhold the entry, and so does a write made while
 another command that may write the file ran (`command-windows.ts`: one
 in the same project, or one with a write grant elsewhere in the
 workspace), named on the line as `while <task> ran`. `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`
-makes that the default (owner, 2026-10-12); `'unchecked'` skips the
+makes that the default (2026-10-12); `'unchecked'` skips the
 check, and `severity: 'error'` fails the task instead of warning
 (`docs/schema.md`). A file ADDED under an
 input glob since the listing the key filtered (`addedInput`) withholds
@@ -937,7 +937,7 @@ hit restored stale while `.vx/cache` alone was listed). `node_modules` is
 off it too unless a glob names it (`node_modules/**`, an install task's
 legitimate output); until 2026-09-27 (A-13) `**/*.js` cleaned every
 installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
-No clean deletes a file git tracks (owner, 2026-10-14). Under an output
+No clean deletes a file git tracks (2026-10-14). Under an output
 glob it is still an output: the task may rewrite it (TanStack Router's
 committed `routeTree.gen.ts`), the artifact saves the bytes the run left,
 and a restore writes them. It also stays in the task's key, even under its
@@ -1589,8 +1589,8 @@ when small, else one file, so eviction is one delete in the rows'
 transaction or a single unlink; no per-entry manifest, no separate
 `logs/` tree; and local + remote layers transport the exact same
 tar.zst bytes end-to-end, wherever the local copy lives.
-The artifact is the record and the index its inventory (owner,
-2026-10-06): a lookup reads the row first, and a key with no row whose
+The artifact is the record and the index its inventory
+(2026-10-06): a lookup reads the row first, and a key with no row whose
 `<hash>.tar.zst` is on disk (a `SCHEMA_VERSION` drop, a deleted
 `cache.db` or `store.db`) has the artifact indexed again from its own
 bytes, checked as a remote's are (its recorded key, its names against
@@ -1614,7 +1614,7 @@ artifact's mtime before it links its temp, so the sweep sees that one
 fresh too.
 
 A row's `accessed_at` is renewed the same way: a hit renews it only once
-it is over an hour old (owner, 2026-10-08). Renewing every hit rewrote
+it is over an hour old (2026-10-08). Renewing every hit rewrote
 2,180 rows at a warm 1,090-package run's close, ~30 ms. So the policy
 reads a row's last use as `accessed_at` plus an hour too: an entry used
 within `olderThan` is never pruned, and one may stay up to an hour past
@@ -1628,7 +1628,7 @@ hit replays it with pure SQL, never decompressing the artifact).
 
 `schema_meta.version` is the gate: an index written by any other
 `SCHEMA_VERSION`, earlier or newer, is reset by the first run that opens
-it (pre-alpha: no migrations; the index is an inventory, owner
+it (pre-alpha: no migrations; the index is an inventory,
 2026-10-06): every table but `schema_meta` is dropped and recreated,
 so each comes back in its current shape (A-54: `output_dirs` kept an
 earlier vx's columns). The check, drop, re-create
@@ -1638,7 +1638,7 @@ without the lock.
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
 says why (item 896; `vx cache clean --dry-run` previews the reset
 instead, item 1083).
-That open prints nothing (owner, 2026-10-06: the cache is vx's to
+That open prints nothing (2026-10-06: the cache is vx's to
 keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
@@ -2075,7 +2075,7 @@ moat.
 
 The cache records the version it was written under
 (`schema_meta.cache_version`). After an upgrade every cached task
-misses once and re-saves, with nothing printed (owner, 2026-10-06: the
+misses once and re-saves, with nothing printed (2026-10-06: the
 cache is vx's to keep). The index survives, so the old entries stay
 until they age out under `vx cache clean --older-than`; no key derives to them again.
 
@@ -2139,7 +2139,7 @@ breaking footer).
 - **v44 → v45**: the container changes. The sidecar lists the symlinks
   under the outputs (`links`) and a hit makes them; a v44 artifact holds
   a link to a file as a copy of its target, and a link to a directory
-  never cached (M's call: keep links, as Turbo and Nx do).
+  never cached (keep links, as Turbo and Nx do).
 - **v43 → v44**: the container changes. The sidecar lists the empty
   directories under the outputs (`dirs`) and a hit makes them; a v43
   artifact lists none, and its hit left `dist/empty/` out where the miss

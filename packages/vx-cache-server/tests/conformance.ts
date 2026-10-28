@@ -2,7 +2,7 @@
 // speaks it answers. Each backend this package ships runs it: Bun with an
 // S3 bucket (bun.test.ts), workerd with R2 (worker.test.ts) and the Docker
 // image (docker/smoke.sh). Every request carries a CI
-// OIDC token from tests/issuer.ts, whose TRUST the target serves.
+// OIDC token from tests/issuer.ts, whose ALLOW the target serves.
 
 import { beforeAll, describe, expect, it } from 'bun:test'
 
@@ -12,8 +12,8 @@ export interface Target {
   /** The server's URL. */
   base(): string
   /**
-   * A token for the server of a job that writes main (a ref a trust rule
-   * protects), one on main that only reads, one that writes its branch
+   * A token for the server of a job that writes main, one on main that
+   * only reads, one that writes its branch
    * (`refs/heads/feature`), or a main job of a repository the server
    * does not serve.
    */

@@ -376,11 +376,11 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     '.gitignore',
     '.vxrc',
     'my_node_modules/x.js',
-    // A language's build state is no special case in core (M, 2026-10-15):
+    // A language's build state is no special case in core (2026-10-15):
     // gitignored it is out by the gitignore filter; tracked, it is an input.
     'tsconfig.tsbuildinfo',
     'a/b/tsconfig.tsbuildinfo',
-    // Nor are a tool's temp files (M, 2026-10-16): Bun's compile
+    // Nor are a tool's temp files (2026-10-16): Bun's compile
     // intermediate and its cross-compile extraction directory.
     '.18bf7d9ff3ffeffe-00000001.bun-build',
     '.cd5e87e3246b0795-00000000.tmp/bun',
@@ -1385,8 +1385,8 @@ describe('a declared literal settles on its own tree, and only its own', () => {
   it('a gitignored DIRECTORY named as a literal reads every file under it', async () => {
     // Item 565's shape: `Bun.file(<a directory>).exists()` is false, so a
     // check by it skipped every literal naming a directory. Existence is
-    // lstat (item 576); naming the directory is asking for it (owner,
-    // 2026-10-16).
+    // lstat (item 576); naming the directory is asking for it
+    // (2026-10-16).
     await write(path.join(root, '.gitignore'), 'gen/\n')
     await write(path.join(projectDir, 'gen', 'out.js'), 'built')
     await write(path.join(projectDir, 'keep.ts'), 'k')
@@ -1668,7 +1668,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
   it('a gitignored file NAMED explicitly in inputs.files is read from disk', async () => {
     // The candidate set is `git ls-files` output and the globs filter it, so a
     // path git never reported cannot be filtered back in. A literal naming it
-    // is read from disk instead (owner, 2026-10-16), where it once folded
+    // is read from disk instead (2026-10-16), where it once folded
     // nothing and the task reported up-to-date while the file changed.
     await write(path.join(root, '.gitignore'), 'generated.ts\n')
     await write(path.join(projectDir, 'generated.ts'), 'v1')

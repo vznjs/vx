@@ -236,9 +236,15 @@ describe('the published plugin packages', async () => {
   // import a package names one this release publishes. The set is the
   // emitter's own output plus @vzn/vx, not a list kept beside it. Design
   // notes and the shipped history quote packages that never shipped
-  // (`@vzn/cache`) and are not instructions.
+  // (`@vzn/cache`) and are not instructions. A package under packages/
+  // still marked private ships too: the docs describe the released product
+  // (2026-10-26: "docs describe perfect experience").
   it('are the only @vzn packages the docs tell a user to install, run or import', () => {
-    const published = new Set([...emitted.map((e) => e.name), '@vzn/vx'])
+    const shipping = readdirSync(path.join(REPO, 'packages'))
+      .map((d) => path.join(REPO, 'packages', d, 'package.json'))
+      .filter((f) => existsSync(f))
+      .map((f) => (JSON.parse(readFileSync(f, 'utf8')) as { name: string }).name)
+    const published = new Set([...emitted.map((e) => e.name), ...shipping, '@vzn/vx'])
     const walkMd = (dir: string, out: string[] = []): string[] => {
       for (const name of readdirSync(dir)) {
         const p = path.join(dir, name)

@@ -144,7 +144,7 @@ const FOLD_MEMO_VERSION = 'fold-memo-v1'
 /**
  * A task that runs a command and declares no `inputs`: nothing says what
  * it read, so no key can stand for its outputs, and a key that folds it
- * would replay a stale entry (owner, 2026-10-16).
+ * would replay a stale entry (2026-10-16).
  */
 export function isKeyless(task: TaskConfig): boolean {
   return task.exec !== undefined && task.inputs === undefined

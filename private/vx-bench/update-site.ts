@@ -61,7 +61,7 @@ function disp(ms: number): string {
   return `${Math.round(ms)} ms`
 }
 // What a runner adds over the theoretical best case (compare.ts's ideal):
-// the headline, total times never (owner, 2026-10-09: "the overhead is what
+// the headline, total times never (2026-10-09: "the overhead is what
 // matters"). Never below zero: a runner cannot beat the ideal, and a
 // measurement under it is noise.
 const over = (r: Row, s: State): number => Math.max(0, r[s] - B[s])
@@ -75,7 +75,7 @@ const table: ReadonlyArray<readonly [string, (r: Row) => number]> = [
   ['Cold build: CPU the runner burns', cpu],
 ]
 // Cells carry each tool's figure only, never a "vx N× faster" aside: copy
-// never states how much faster vx is, the numbers speak (owner, 2026-10-12).
+// never states how much faster vx is, the numbers speak (2026-10-12).
 const FORMULA = 'Time each tool adds over the ideal run; lower is better.'
 const vxCommit = / @ (\w+)$/.exec(vx.version)?.[1]
 const RUN = `Run ${d.date.slice(0, 10)} on ${d.machine}: vx ${vxCommit ? `at commit ${vxCommit}` : 'from source'}, Turborepo ${turbo.version}, Nx ${nx.version}, Vite Task (vite-plus) ${vt.version}.`
@@ -191,7 +191,7 @@ typecheck ${s(d.buildMs / 2)}, lint ${s(d.buildMs / 4)}, publish ${s(d.buildMs /
 any tool's own per-task work, set the pace. \`build\` writes 200 KB of seeded
 incompressible bytes plus a file that folds its dependencies' outputs.
 The bench times what CI runs: a cold build, a run with nothing changed, and a
-restore from cache (owner, 2026-10-09: an edit needs Nx's daemon, which CI
+restore from cache (2026-10-09: an edit needs Nx's daemon, which CI
 does not run, so no edit row compares fairly).
 
 Same repo, same hardware, same commands, every tool at concurrency ${d.concurrency}, each in its own native

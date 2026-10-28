@@ -366,7 +366,7 @@ describe('docs/cli.md documents every verb the dispatcher answers', () => {
   /** The fenced block under `## Top-level shape`, Core and Meta together. */
   async function synopsis(): Promise<string> {
     const cli = await read('../docs/cli.md')
-    const marker = '## Top-level shape\n\n```\n'
+    const marker = '## Top-level shape\n\n```sh\n'
     const start = cli.indexOf(marker)
     expect(start).toBeGreaterThan(-1)
     const body = cli.slice(start + marker.length)
@@ -420,7 +420,7 @@ describe("`vx help`'s usage lines are cli.md's", () => {
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
     const at = doc.indexOf('## Top-level shape')
     expect(at).toBeGreaterThan(-1)
-    const open = doc.indexOf('```\n', at) + 4
+    const open = doc.indexOf('```sh\n', at) + 6
     const block = doc.slice(open, doc.indexOf('\n```', open))
     const documented = block
       .split('\n')

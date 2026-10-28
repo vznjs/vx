@@ -393,8 +393,8 @@ Items 1–64 are in `2026-09-review-arc.md`, items 65–104 in
       `cache.outputs.files`", and said it again on `read` ("beyond the
       resolved `cache.inputs.files`") and on `write` ("beyond the
       `cache.outputs.files` prefixes").
-      The code derives NOTHING from `cache`, deliberately (owner,
-      2026-09-05; pinned by 433). Read at the source rather than
+      The code derives NOTHING from `cache`, deliberately
+      (2026-09-05; pinned by 433). Read at the source rather than
       inferred: `sandboxRequestFor` builds the request with
       `baseAllowRead: depDirs` — project `node_modules`, workspace-root
       `node_modules`, and the real paths of the workspace symlinks

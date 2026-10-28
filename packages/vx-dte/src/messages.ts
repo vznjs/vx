@@ -6,7 +6,7 @@ import type { CacheFacts, CapturedChunk, ExecuteResult, SandboxConfig } from '@v
 
 /**
  * A worker says what it holds every this many heartbeats, and a task's
- * lease is three of them. Every heartbeat (M, 2026-10-25: the fastest, not
+ * lease is three of them. Every heartbeat (2026-10-25: the fastest, not
  * a free plan's message count): a task its worker dropped while alive
  * goes back in 15 s, not 90.
  */
@@ -130,7 +130,7 @@ export type ToWorker =
 /**
  * What its machine uses now: cores busy over the last second and bytes of
  * memory in use. Each frame a worker sends carries it, so the run places
- * by what is free, not only by what history booked (M, 2026-10-23: "you
+ * by what is free, not only by what history booked (2026-10-23: "you
  * watch instruments and play most efficient as they go").
  */
 export interface Load {
@@ -192,21 +192,6 @@ export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout
   unshared?: true
   /** Its output, both streams in the order written, when `unshared`. */
   output?: CapturedChunk[]
-}
-
-/**
- * Whether a task asking `need` begins beside the work holding `used` of
- * a worker's `of`: while a core is free and its memory fits. Packed only
- * to whole needs, a worker kept the cores no queued task fit: main's
- * booked 3.2 of 4 and used 2.6 (2026-10-23). A task asking the whole
- * worker waits for an idle one.
- */
-export function shares(
-  used: { readonly cores: number; readonly memory: number },
-  need: { readonly cores: number; readonly memory: number },
-  of: { readonly cores: number; readonly memory: number },
-): boolean {
-  return need.cores < of.cores && used.cores < of.cores && used.memory + need.memory <= of.memory
 }
 
 /**
