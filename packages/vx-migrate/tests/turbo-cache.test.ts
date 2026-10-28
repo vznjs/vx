@@ -94,6 +94,22 @@ function turboServer(opts: { token?: string; verifyTag?: boolean } = {}) {
 }
 
 describe('resolveTurboCacheConfig', () => {
+  it('reads an empty TURBO_API, TURBO_TEAM, TURBO_TEAMID or VERCEL_ARTIFACTS_OWNER as unset, as Turbo does', () => {
+    // CI hands `''` for a missing secret or variable (vercel/turborepo#6929).
+    expect(
+      resolveTurboCacheConfig({}, { TURBO_TOKEN: 't', TURBO_TEAM: 'acme', TURBO_API: '' })?.apiUrl,
+    ).toBe('https://vercel.com/api')
+    const local = { apiUrl: 'https://c.example', teamId: 'team_x', teamSlug: 'linked' }
+    expect(
+      resolveTurboCacheConfig(
+        {},
+        { TURBO_TOKEN: 't', TURBO_TEAM: '', TURBO_TEAMID: '', VERCEL_ARTIFACTS_OWNER: '' },
+        {},
+        local,
+      ),
+    ).toMatchObject({ apiUrl: 'https://c.example', teamId: 'team_x', teamSlug: 'linked' })
+  })
+
   it('reads options over Turbo’s environment, strips a trailing slash, declines without url, team or token', () => {
     expect(resolveTurboCacheConfig({}, {})).toBeUndefined()
     // A URL with no token is kept: the layer's `open` asks the OS keychain.

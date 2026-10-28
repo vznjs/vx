@@ -265,6 +265,8 @@ export function resolveTurboCacheConfig(
   if (file.enabled === false && options.apiUrl === undefined && options.token === undefined)
     return undefined
   const fromFile = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+  // Empty is unset, as Turbo reads it: a fork's pull request gets `''` for a secret.
+  const fromEnv = (name: string): string | undefined => env[name] || undefined
   // A Vercel build hands Turbo its cache as VERCEL_ARTIFACTS_TOKEN and
   // _OWNER (the team id), taken where TURBO_TOKEN with a team is not set
   // (Turbo's `override_env.rs`); unread, turboCache() declined on Vercel.
@@ -272,12 +274,11 @@ export function resolveTurboCacheConfig(
   const vercel =
     !turboPair && env['VERCEL_ARTIFACTS_TOKEN'] && env['VERCEL_ARTIFACTS_OWNER']
       ? { token: env['VERCEL_ARTIFACTS_TOKEN'], teamId: env['VERCEL_ARTIFACTS_OWNER'] }
-      : { token: undefined, teamId: turboPair ? undefined : env['VERCEL_ARTIFACTS_OWNER'] }
-  // Empty is unset, as Turbo reads it: a fork's pull request gets `''` for a secret.
-  const given = (options.token ?? env['TURBO_TOKEN'] ?? vercel.token) || undefined
+      : { token: undefined, teamId: turboPair ? undefined : fromEnv('VERCEL_ARTIFACTS_OWNER') }
+  const given = (options.token ?? fromEnv('TURBO_TOKEN') ?? vercel.token) || undefined
   // OIDC sits under the variables and over the config files.
-  const idTokenUrl = env['ACTIONS_ID_TOKEN_REQUEST_URL'] || undefined
-  const idTokenBearer = env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] || undefined
+  const idTokenUrl = fromEnv('ACTIONS_ID_TOKEN_REQUEST_URL')
+  const idTokenBearer = fromEnv('ACTIONS_ID_TOKEN_REQUEST_TOKEN')
   const exchanges =
     options.oidc !== undefined &&
     given === undefined &&
@@ -286,19 +287,19 @@ export function resolveTurboCacheConfig(
   const token = given ?? (exchanges ? undefined : fromFile(local.token) || undefined)
   const teamId =
     options.teamId ??
-    env['TURBO_TEAMID'] ??
+    fromEnv('TURBO_TEAMID') ??
     vercel.teamId ??
     fromFile(local.teamId) ??
     fromFile(file.teamId)
   const teamSlug =
-    options.teamSlug ?? env['TURBO_TEAM'] ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
+    options.teamSlug ?? fromEnv('TURBO_TEAM') ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
   // Turbo's own default when a token or a team is set and no `apiUrl` is:
   // Vercel's hosted Remote Cache. A token alone is a configured cache, as it
   // is for `turbo`; a URL or a team without one asks the OS keychain at
   // `open`; none of them is the declined, local run.
   const apiUrl = (
     options.apiUrl ??
-    env['TURBO_API'] ??
+    fromEnv('TURBO_API') ??
     fromFile(local.apiUrl) ??
     fromFile(file.apiUrl) ??
     (token || teamId || teamSlug ? VERCEL_API : undefined)
