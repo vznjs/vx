@@ -3154,7 +3154,8 @@ change with `SCHEMA_VERSION`; read `sqlite_schema` rather than assume.
 ### JSON
 
 `--format json`
-emits `{ invocation, tasks }` for scripting; `--list --format json`
+emits `{ invocation, tasks, steps }` for scripting (`steps` only when the
+run kept some, above); `--list --format json`
 an array of the same `invocation` objects, newest first. A failed task's row adds
 `output` (its output as plain text, the first 8 KiB and last 56 KiB,
 secrets masked) and `locations` (the existing files it names,
