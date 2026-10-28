@@ -932,6 +932,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
       args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
     }
+    // What the attempt before this one left, put back if this one is
+    // withdrawn: it stands, with its output and its refusals.
+    const standing = { output, violations, flushMasked }
     violations = []
     const endReq = span('miss: build request')
     const req = await buildRequest(isLocalExecutor(args.executor))
@@ -940,6 +943,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // cleans or builds its request, after the loop's own check: the retry
     // is withdrawn and the attempt before it stands.
     if (attempt > 1 && args.failFast?.aborted === true) {
+      output = standing.output
+      violations = standing.violations
+      flushMasked = standing.flushMasked
       clearTimeout(timeoutTimer)
       unlistenStop?.()
       unlistenStop = undefined

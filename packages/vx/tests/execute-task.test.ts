@@ -944,6 +944,45 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
       await closeBench(b)
     }
   })
+  // The withdrawn retry had already swapped in its own empty capture, so
+  // the attempt that stands reported none of its output: `vx last` and
+  // the failure frame's log read empty for it.
+  it("a withdrawn retry keeps the standing attempt's output", async () => {
+    const b = await bench()
+    try {
+      const n = node(
+        b,
+        {
+          exec: { command: 'true', retries: 2 },
+          inputs: { files: ['package.json'] },
+          cache: { outputs: { files: ['dist/**'] } },
+        },
+        'proj#flaky',
+      )
+      const failFast = new AbortController()
+      const log: Logger = {
+        ...capturingLogger({ root: '', out: [], err: [] }),
+        taskStderr(_n, chunk) {
+          if (chunk.startsWith('vx: retrying')) failFast.abort()
+        },
+      }
+      const failing = {
+        name: 'org/failing',
+        execute: async (req: { onStdout: (t: string) => void }) => {
+          req.onStdout('FIRST-ATTEMPT\n')
+          return { exitCode: 1, durationMs: 1, stdout: '', stderr: '', violations: [] }
+        },
+      } as never
+      const o = await executeTask({
+        ...baseArgs(b, n, log),
+        executor: failing,
+        failFast: failFast.signal,
+      })
+      expect([o.status, o.failedOutput]).toEqual(['failed', 'FIRST-ATTEMPT\n'])
+    } finally {
+      await closeBench(b)
+    }
+  })
 })
 
 describe('execute-task — what one attempt may hand the next', () => {
