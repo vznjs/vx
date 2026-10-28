@@ -180,6 +180,9 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
         ? s.slice(1, -1)
         : undefined
   if (pathForm !== undefined) {
+    // `{}` resolved to the root, every project under it: an unset
+    // variable in `--filter "{$PKG}"` ran the whole workspace.
+    if (pathForm.trim() === '') throw new UserError(`filter "${raw}" names no project`)
     isPath = true
     matcher = path.resolve(workspaceRoot, pathForm)
     // `./packages/*` — pnpm's and Turbo's spelling for "every package under
