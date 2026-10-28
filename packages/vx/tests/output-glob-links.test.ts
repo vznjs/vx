@@ -83,3 +83,22 @@ it('a linked output head is walked the same beside a ** glob', async () => {
   expect(rel(one)).toEqual(['dist/a.js'])
   expect(rel(two)).toEqual(rel(one))
 })
+
+it('an escaped literal output directory is pruned like a plain one', async () => {
+  // `out/\[x\]` names one path (a Next.js route dir), but the prune scope
+  // read the `\` as a wildcard and left the emptied directory, which then
+  // blocks a restore that holds a file there.
+  const d = tmp()
+  for (const n of ['x', '[x]']) {
+    mkdirSync(path.join(d, 'out', n), { recursive: true })
+    writeFileSync(path.join(d, 'out', n, 'f'), '1')
+  }
+  await cleanOutputs({
+    projectDir: d,
+    outputs: ['out/x', 'out/\\[x\\]'],
+    nestedProjectDirs: [],
+    committed: () => false,
+  })
+  expect(existsSync(path.join(d, 'out/x'))).toBe(false)
+  expect(existsSync(path.join(d, 'out/[x]'))).toBe(false)
+})

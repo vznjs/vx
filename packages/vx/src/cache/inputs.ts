@@ -21,6 +21,7 @@ import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync } fro
 import { rm, rmdir } from 'node:fs/promises'
 import type { InputsConfig, TaskConfig } from '../config.js'
 import {
+  literalPath,
   anyTaskGlob,
   asTrees,
   isExecutableMissing,
@@ -1438,8 +1439,10 @@ function pruneScope(base: string, outputs: readonly string[]): PruneScope {
   const scope: PruneScope = { below: [], atOrBelow: [] }
   for (const g of outputs) {
     if (g.startsWith('!')) continue
-    if (isLiteralPattern(g)) {
-      scope.atOrBelow.push(path.resolve(base, stripTrailingSlash(normalizeGlob(g))))
+    // `literalPath`, as `asTrees` reads it: an escaped `out/\[x\]` is one path.
+    const lit = literalPath(normalizeGlob(g))
+    if (lit !== null) {
+      scope.atOrBelow.push(path.resolve(base, stripTrailingSlash(lit)))
       continue
     }
     const prefix = staticPrefix(g)
