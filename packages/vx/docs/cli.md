@@ -292,7 +292,8 @@ change), or name the last good commit, --affected=<sha>`. `HEAD~1`
 - A shallow clone needs no more history. vx fetches what the merge base
   needs: commits and trees only, no file contents, deepening 1, 2, 4…
   commits until git finds it. A pull request's merge checkout needs one
-  fetch. When origin cannot give that history, vx refuses (`has no merge
+  fetch. A base it lacks is fetched as named: a commit id, `origin/<branch>`,
+  or a tag (`v1`, `refs/tags/v1`). When origin cannot give that history, vx refuses (`has no merge
 base with HEAD in this shallow clone`) rather than diff from the base's tip.
 - With no base branch and no origin to fetch from, vx says `--affected has
 no base here`.
