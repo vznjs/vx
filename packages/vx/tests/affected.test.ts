@@ -518,6 +518,32 @@ describe('affectedProjects', () => {
     expect(await select()).toEqual(['a', 'sub'])
   })
 
+  it('a manifest a discover plugin makes a project of selects the project above it', async () => {
+    // No config: the plugin reads `packages/a/sub/package.json`, so that
+    // file is what made `sub` a project, and `a` lost `sub`'s files.
+    await mkdir(path.join(root, 'packages/a/sub'), { recursive: true })
+    await writeFile(path.join(root, 'packages/a/sub/data.txt'), 'data')
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'sub')
+    const sub: ProjectMeta = {
+      name: 'sub',
+      dir: path.join(root, 'packages/a/sub'),
+      configPath: null,
+    }
+    const select = () =>
+      affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: [...projects, sub] }).then(
+        (s) => [...s].sort(),
+      )
+    const manifest = path.join(root, 'packages/a/sub/package.json')
+    await writeFile(manifest, JSON.stringify({ name: 'sub' }))
+    expect(await select()).toEqual(['a', 'sub'])
+    // A manifest the base had already: an edit is sub's alone.
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'sub manifest')
+    await writeFile(manifest, JSON.stringify({ name: 'sub', version: '1.0.0' }))
+    expect(await select()).toEqual(['sub'])
+  })
+
   it('ignores changes outside any project directory', async () => {
     await writeFile(path.join(root, 'README.md'), 'top-level edit')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })

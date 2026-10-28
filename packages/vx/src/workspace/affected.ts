@@ -441,11 +441,11 @@ export async function affectedChanges(
   )
   for (const name of claimedOwned.keys()) owned.add(name)
 
-  // A config that makes an existing directory a project took files from
-  // the project above it.
-  const configs = changed.filter((rel) => CONFIG_NAMES.has(path.posix.basename(rel)))
-  if (configs.length > 0) {
-    const atBase = await gitBlobsAt(args.workspaceRoot, base, configs)
+  // A config or manifest that makes an existing directory a project took
+  // files from the project above it.
+  const markers = changed.filter((rel) => PROJECT_MARKERS.has(path.posix.basename(rel)))
+  if (markers.length > 0) {
+    const atBase = await gitBlobsAt(args.workspaceRoot, base, markers)
     for (const name of parentsOfNewNested(args.workspaceRoot, atBase, projects)) {
       owned.add(name)
       whole.add(name)
@@ -490,16 +490,21 @@ export async function affectedChanges(
   return done()
 }
 
-const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
+/**
+ * The files that make a directory a project: core's configs, and the
+ * `package.json` a `discover` plugin reads (core keys every project's own).
+ * Discovery names no file it read, so these stand for the base's project set.
+ */
+const PROJECT_MARKERS: ReadonlySet<string> = new Set([...PROJECT_CONFIG_FILENAMES, 'package.json'])
 
 /**
  * The projects a NEW nested project took files from. A project's inputs
- * stop at every project below it, so a config that makes an existing
+ * stop at every project below it, so a marker that makes an existing
  * directory a project re-keys the project above it — its `**` lost the
  * directory's files — while containment maps the change to the new
  * project alone, and `--affected` left the re-keyed parent out. "New" is
- * judged at the base: none of the changed configs in its directory was
- * there. `atBase` holds each changed config there.
+ * judged at the base: none of the changed markers in its directory was
+ * there. `atBase` holds each changed marker there.
  */
 function parentsOfNewNested(
   workspaceRoot: string,
