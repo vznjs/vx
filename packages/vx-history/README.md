@@ -146,7 +146,8 @@ plugins: [
 
 `vx history [--format pretty|json]` (a verb this plugin adds; `--help`
 prints its usage) shows what it learned per task and the reservation it
-will pack, with the budgets it packs into:
+will pack, with the budgets it packs into. It reads each task as a run
+does: one whose command changed shows none of its old runs.
 
 ```
 $ vx history
