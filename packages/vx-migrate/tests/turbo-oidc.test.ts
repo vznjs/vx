@@ -240,7 +240,7 @@ describe('another server', () => {
   it('needs its tokenUrl, and revokes only where revokeUrl names it', async () => {
     expect(() =>
       resolveTurboCacheConfig({ apiUrl: 'https://cache.example', oidc: true }, GH_ENV),
-    ).toThrow("vx/turbo-cache: oidc needs tokenUrl for a cache that is not Vercel's")
+    ).toThrow("turboCache(): oidc needs tokenUrl for a cache that is not Vercel's")
     const w = world()
     const c = cache(
       {
@@ -269,7 +269,7 @@ describe('another server', () => {
     await c.revoke()
     expect(w.seen.some((s) => s.url.endsWith('/revoke'))).toBe(false)
     expect(() => resolveTurboCacheConfig({ token: 't', oidc: true }, GH_ENV)).toThrow(
-      'vx/turbo-cache: oidc on Vercel needs teamId or teamSlug (TURBO_TEAM)',
+      'turboCache(): oidc on Vercel needs teamId or teamSlug (TURBO_TEAM)',
     )
   })
 
