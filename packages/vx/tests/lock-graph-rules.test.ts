@@ -16,8 +16,9 @@ afterAll(async () => {
   for (const r of roots) await rm(r, { recursive: true, force: true })
 })
 
+// The command writes `dist/x`: an output glob that matched nothing warns on stderr.
 const task = (outputs: string[], inputs: string[] = ['src/**']) =>
-  `{ exec: { command: 'true' }, inputs: { files: ${JSON.stringify(inputs)} }, cache: { outputs: { files: ${JSON.stringify(outputs)} } } }`
+  `{ exec: { command: 'mkdir -p dist && touch dist/x' }, inputs: { files: ${JSON.stringify(inputs)} }, cache: { outputs: { files: ${JSON.stringify(outputs)} } } }`
 
 /** A git workspace with one project `a` whose tasks are `tasks` (source text). */
 async function workspace(tasks: string): Promise<string> {
