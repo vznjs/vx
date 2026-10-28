@@ -1155,7 +1155,13 @@ entry's own `*` pattern (`dependsOn: ['build.*']` names
 either form; two `pkg#task` entries must agree on the project. One that
 is not named (`['buidl']`) is refused at load: it would match nothing at hash time and fold no upstream hash,
 decoupling the task from its dependencies with no diagnostic — a stale
-hit waiting for the next upstream change. Patterns, wildcards and
+hit waiting for the next upstream change. An exact entry is held again once the
+graph is built, when the run plans: one that names none of the task's
+dependencies is refused (`['nope#build']`, or `['a#build']` for a
+project named `packages/a`, over `dependsOn: ['build']`; `['build']`
+over another project's `['b#build']`; `['^build']` over this project's
+own), unless a `^` entry or a pattern in `dependsOn` names its task,
+which a preset's project may legally lack. Patterns, wildcards and
 negations stay silent (a preset-spread pattern legitimately matches
 nothing in some projects); `[]` is the explicit way to decouple.
 
