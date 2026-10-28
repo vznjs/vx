@@ -282,6 +282,9 @@ const bearerOf = (req: Request): string | undefined =>
 
 /** A token checked: jose's checks, then ALLOW's repository and workflow, and the branch it may write. */
 function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Promise<Access> {
+  // A blank one is no origin a token names: every token was "wrong audience".
+  if (opts.audience !== undefined && opts.audience.trim() === '')
+    throw new Error('AUDIENCE: the aud CI tokens name, or unset, not blank')
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
   // jose keeps each issuer's keys, and refetches them for a key it lacks.
