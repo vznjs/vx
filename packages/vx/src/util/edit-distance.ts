@@ -23,7 +23,8 @@ export function editDistance(a: string, b: string, cap = 3): number {
 
 /**
  * The ONE near-miss rule every "did you mean" hint applies: the closest
- * candidate within two edits of `name`, or undefined — an exact match is
+ * candidate within two edits of `name` (for a name of four letters or
+ * fewer, one or a swap of two), or undefined — an exact match is
  * not a hint, and anything further would guess rather than help. Task
  * names, `pkg#task` halves, project names, flags and verbs all go through
  * here so a typo is hinted the same way wherever it is typed.
@@ -33,6 +34,9 @@ export function nearest(
   candidates: Iterable<string>,
   maxEdits = 2,
 ): string | undefined {
+  // Two edits rewrite half of a word of four letters or fewer (`--poll`
+  // read as `--all`, `vx test` as `last`), unless they swap two letters.
+  const short = maxEdits === 2 && name.replace(/^-+/, '').length <= 4
   let best: string | undefined
   let bestD = maxEdits + 1
   for (const c of candidates) {
@@ -43,12 +47,17 @@ export function nearest(
     // Edits that rewrite the whole of both leave nothing in common:
     // `--filter=x9` offered the root, `//`.
     if (d >= Math.max(name.length, c.length)) continue
+    if (short && d === 2 && !sameLetters(name, c)) continue
     if (d < bestD) {
       bestD = d
       best = c
     }
   }
   return best === name ? undefined : best
+}
+
+function sameLetters(a: string, b: string): boolean {
+  return a.length === b.length && a.split('').sort().join('') === b.split('').sort().join('')
 }
 
 /**

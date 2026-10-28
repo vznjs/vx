@@ -539,7 +539,9 @@ Mutual exclusion:
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest flag the verb accepts when one is within two edits
-(`unknown flag: --concurency (did you mean --concurrency?)`). Every verb
+(`unknown flag: --concurency (did you mean --concurrency?)`); a name of
+four letters or fewer gets one edit or a swap of two letters, so
+`--poll` is not hinted `--all` nor `vx test` `last`. Every verb
 does this against its own usage line and `--help`: `vx info --formt`
 hints `--format`, `vx lock --chek` hints `--check`, `vx upgrade --hlp`
 hints `--help`, and `--json` on a verb that takes `--format` hints
