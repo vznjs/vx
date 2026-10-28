@@ -201,6 +201,27 @@ it("answers 502 while the issuer's keys cannot be read", async () => {
   ])
 })
 
+// Behind a proxy that ends TLS, the server is reached at http://, while
+// vxHistory() asks GitHub for https://'s: every token was refused with a
+// bare "wrong audience", naming neither origin nor AUDIENCE.
+it('names both audiences and AUDIENCE when a token names another', async () => {
+  const handle = createHistoryServer({
+    store: sqliteStore(sqliteDb(path.join(dir, 'aud.sqlite'))),
+    authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson }),
+  })
+  const res = await handle(
+    new Request('http://history.example.com/v1/capabilities', {
+      headers: {
+        authorization: `Bearer ${await iss.sign('main', 'https://history.example.com')}`,
+      },
+    }),
+  )
+  expect([res.status, ((await res.json()) as { message: string }).message]).toEqual([
+    401,
+    'wrong audience: the token names https://history.example.com, this server takes http://history.example.com (set AUDIENCE to the origin clients reach)',
+  ])
+})
+
 it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {
     stderr: 'pipe',

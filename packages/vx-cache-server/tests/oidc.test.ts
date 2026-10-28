@@ -156,7 +156,7 @@ describe('CI OIDC tokens', () => {
     ])
     expect(await detail(await put(await sign(MAIN, 'https://elsewhere'), 'd4'))).toEqual([
       401,
-      'wrong audience',
+      'wrong audience: the token names https://elsewhere, this server takes https://cache.example.com (set AUDIENCE to the origin clients reach)',
     ])
     const [h, p] = (await sign(MAIN)).split('.')
     const forged = `${h}.${p}.${'A'.repeat(342)}`
