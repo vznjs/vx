@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { pluginSource } from './helpers/plugin.js'
+import { pluginSource, testPlugin } from './helpers/plugin.js'
+import { claimOutput } from '../src/orchestrator/output-host.js'
 import { gitInitCommit } from './helpers/workspace.js'
 
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -116,5 +117,28 @@ describe('the output stage', () => {
     )
     expect(r.stdout).not.toContain('done pkg-a#hello')
     expect(r.stdout).toContain('hi')
+  })
+})
+
+describe('claimOutput, called directly', () => {
+  it('an output hook that never settles is passed over within the bound, with a word', async () => {
+    // Unbounded, it held the run before its first task for good, as the
+    // telemetry hook did until item 921.
+    const prev = process.env['VX_TEST_TEARDOWN_TIMEOUT']
+    process.env['VX_TEST_TEARDOWN_TIMEOUT'] = '50ms'
+    try {
+      const said: string[] = []
+      const claimed = await claimOutput(
+        [testPlugin('org/hung', { output: () => new Promise<never>(() => {}) })],
+        { warn: (m: string) => said.push(m) } as never,
+      )
+      expect({ claimed, said }).toEqual({
+        claimed: undefined,
+        said: ["[vx] plugin 'org/hung' output: did not answer within 50 ms; vx renders the run"],
+      })
+    } finally {
+      if (prev === undefined) delete process.env['VX_TEST_TEARDOWN_TIMEOUT']
+      else process.env['VX_TEST_TEARDOWN_TIMEOUT'] = prev
+    }
   })
 })

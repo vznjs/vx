@@ -4,7 +4,7 @@
 
 import { terminalSubscriber, type RunEventSubscriber } from '../report/index.js'
 import type { Logger } from '../report/index.js'
-import { thrownMessage } from '../util/index.js'
+import { settleWithin, teardownTimeoutMs, thrownMessage } from '../util/index.js'
 import type { OutputContext, VxPlugin } from './plugin.js'
 
 const REQUIRED = ['status', 'taskStdout', 'taskStderr', 'taskComplete'] as const
@@ -43,7 +43,17 @@ export async function claimOutput(
   for (const plugin of plugins) {
     if (plugin.output === undefined) continue
     try {
-      const logger = await plugin.output(ctx)
+      // Bounded as the telemetry hook is: one that never settled held the
+      // run before its first task, for good.
+      let logger: Logger | undefined
+      const ms = teardownTimeoutMs()
+      const arrived = await settleWithin(
+        Promise.resolve(plugin.output(ctx)).then((l) => {
+          logger = l
+        }),
+        ms,
+      )
+      if (!arrived) throw new Error(`did not answer within ${ms} ms`)
       if (logger !== undefined) return { logger: checkLogger(logger), owner: plugin.name }
     } catch (err) {
       ctx.warn(`[vx] plugin '${plugin.name}' output: ${thrownMessage(err)}; vx renders the run`)
