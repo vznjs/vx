@@ -93,6 +93,13 @@ could not spell is refused at load: an empty one, one with surrounding
 whitespace, one holding `#` (the project separator) or `*` (a pattern),
 and one starting with `^` (dependencies' tasks) or `!` (a negation).
 
+`name` is refused at load when `dependsOn` or `--filter` could not
+spell it: surrounding whitespace, a `#`, a `*` (a pattern), a leading
+`^` (dependencies' tasks) or `!` (an exclusion), a leading `tag:`, a
+leading or trailing `...` (a dependency walk), a trailing `[<ref>]` (a
+git range), or a directory form (`./x`, `{x}`). A name a plugin gives
+and a project's path name are held to the same rule.
+
 `tags` label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
 Each is a non-empty string a tag filter can name, or it is refused at
