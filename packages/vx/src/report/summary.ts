@@ -546,7 +546,8 @@ export function formatOutcomeTable(
     .filter((o) => !isGroupTask(o.node))
     .map((o) => {
       const v = projectOutcome(o)
-      return { o, task: v.taskId, status: outcomeLabel(v), duration: `${v.durationMs}ms` }
+      const status = neverStarted(o) ? 'not run' : outcomeLabel(v)
+      return { o, task: v.taskId, status, duration: `${v.durationMs}ms` }
     })
   if (rows.length === 0) return []
   const widths = {

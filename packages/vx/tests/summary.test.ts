@@ -824,4 +824,10 @@ describe('formatOutcomeTable', () => {
     expect(formatOutcomeTable(rows, { enabled: true }).map((l) => Bun.stripANSI(l))).toEqual(plain)
     expect(plain.join('\n')).not.toContain('\x1b')
   })
+
+  it('names a task the stop reached before it ran `not run`, as its row and the footer do', () => {
+    const killed: TaskOutcome = { ...outcome('a#x', 'aborted', 130), wallclockStartNs: 1n }
+    const lines = formatOutcomeTable([killed, outcome('b#x', 'aborted', 1)])
+    expect(lines.slice(3).map((l) => l.split(/\s{2,}/)[1])).toEqual(['aborted', 'not run'])
+  })
 })
