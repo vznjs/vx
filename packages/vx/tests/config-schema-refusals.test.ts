@@ -862,6 +862,10 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
     )
     // CONTROL: any other non-object keeps the plain refusal.
     expect(refusal([42])).toBe('.vx/workspace.ts: `plugins[0]` must be an object')
+    // `plugins: [otel]`, the factory itself, was told only that it is no object.
+    expect(refusal([function otel() {}])).toBe(
+      ".vx/workspace.ts: `plugins[0]` must be an object — it is the function 'otel'; call it: otel()",
+    )
   })
 
   it('one plugin object listed twice is refused', async () => {

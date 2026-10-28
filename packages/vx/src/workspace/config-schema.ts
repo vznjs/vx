@@ -271,12 +271,17 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       if (isSkippedPlugin(p)) continue
       if (p === null || typeof p !== 'object') {
         // Nx's nx.json lists plugins by module name (`'@nx/vite/plugin'`);
-        // a vx plugin is the value its package's function returns.
+        // a vx plugin is the value its package's function returns, and
+        // `plugins: [otel]` is that function, not called.
         throw new UserError(
           `${configPath}: \`plugins[${i}]\` must be an object` +
             (typeof p === 'string'
               ? ` — a plugin is what its package's function returns (\`nx()\` from \`@vzn/vx-migrate\`), not a module name`
-              : ''),
+              : typeof p === 'function'
+                ? p.name === ''
+                  ? ' — it is a function; call the factory that returns the plugin'
+                  : ` — it is the function '${p.name}'; call it: ${p.name}()`
+                : ''),
         )
       }
       // The loose schema's shape (unknown-typed hooks) plus the one retired
