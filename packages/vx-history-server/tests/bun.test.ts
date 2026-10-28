@@ -55,7 +55,8 @@ it('folds a thousand tasks in one statement, and sweeps what was not reported', 
     runs: 1,
   })
   // A row is kept a day past its last write: a report it skipped may be that recent.
-  expect(await store.sweep(86_400_005)).toBe(990)
+  expect(await store.sweep(86_400_005, 86_400_006)).toBe(990)
+  expect(await store.sweptAt()).toBe(86_400_006)
 })
 
 // A report that does not move its row is not written for up to a day, so
@@ -146,7 +147,7 @@ it('drops the table rows were keyed by four columns in', async () => {
   await sqliteStore(db).init()
   expect(
     await db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'", []),
-  ).toEqual([{ name: 'timings' }])
+  ).toEqual([{ name: 'timings' }, { name: 'sweeps' }])
 })
 
 it('answers an upload it folded even when the sweep after it fails, and sweeps on the next', async () => {
@@ -158,9 +159,9 @@ it('answers an upload it folded even when the sweep after it fails, and sweeps o
   const handle = createHistoryServer({
     store: {
       ...store,
-      sweep: async (before) => {
+      sweep: async (before, now) => {
         if (++sweeps === 1) throw new Error('the database is busy')
-        return store.sweep(before)
+        return store.sweep(before, now)
       },
     },
     authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson }),
@@ -223,6 +224,40 @@ it('answers a failure it did not expect with what failed, and logs it', async ()
     { code: 'internal_error', message: 'the database is busy' },
     ['vx-history-server: POST /v1/timings/query: Error: the database is busy'],
   ])
+})
+
+// Workers run many isolates, each its own node, and start new ones all
+// day: each swept on its first upload, a scan of the whole table each time.
+it('sweeps once a day across every node that serves the database', async () => {
+  const sqlite = sqliteDb(path.join(dir, 'nodes.sqlite'))
+  let sweeps = 0
+  const db = {
+    all: sqlite.all,
+    run: (sql: string, params: readonly unknown[]) => {
+      if (sql.startsWith('DELETE FROM timings')) sweeps++
+      return sqlite.run(sql, params)
+    },
+  }
+  let t = 100 * 86_400_000
+  const node = () =>
+    createHistoryServer({
+      store: sqliteStore(db),
+      authorize: async () => ({ issuer: GITHUB, repository: REPO, write: 'refs/heads/main' }),
+      now: () => t,
+    })
+  const upload = (handle: (req: Request) => Promise<Response>) =>
+    handle(
+      new Request('https://history.example.com/v1/timings/upload', {
+        method: 'POST',
+        body: JSON.stringify({ timings: [{ hash: 'a', durationMs: 1 }] }),
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  for (let i = 0; i < 3; i++) expect((await upload(node())).status).toBe(204)
+  expect(sweeps).toBe(1)
+  t += 86_400_000
+  for (let i = 0; i < 3; i++) expect((await upload(node())).status).toBe(204)
+  expect(sweeps).toBe(2)
 })
 
 // A chunked body names no length: it was read whole, however large,

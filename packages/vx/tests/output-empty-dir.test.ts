@@ -150,3 +150,68 @@ it('a sidecar directory under a link out of the destination is refused', async (
   expect(existsSync(path.join(outside, 'made'))).toBe(false)
   expect(existsSync(path.join(dest, 'dist/a.txt'))).toBe(false)
 })
+
+it(
+  'a hit restores the empty directories under a workspaceFiles output, as under files',
+  async () => {
+    // The save kept empty directories for project outputs only, though the
+    // restore and the index already read `workspace-outputs/` ones.
+    const root = await makeWorkspace({ prefix: 'vx-ws-empty-dir-' })
+    made.push(root)
+    await addProject(root, 'app', {
+      config: `
+        export default { tasks: { build: {
+          exec: { command: 'cd ../.. && rm -rf gen && mkdir -p gen/empty && echo real > gen/real.txt' },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+        } } }`,
+      files: { 'src/in.txt': 'v1\n' },
+    })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const build = async (): Promise<string> => {
+      const r = await vx(root, ['run', 'build', '--all', '--cache-dir', path.join(root, '.cache')])
+      expect(`${r.code}\n${r.err}`).toStartWith('0\n')
+      return r.out
+    }
+    await build()
+    expect(statSync(path.join(root, 'gen/empty')).isDirectory()).toBe(true)
+    await rm(path.join(root, 'gen'), { recursive: true })
+    expect(await build()).toContain('1↓')
+    expect(existsSync(path.join(root, 'gen/real.txt'))).toBe(true)
+    expect(statSync(path.join(root, 'gen/empty')).isDirectory()).toBe(true)
+    expect(await build()).toContain('1✓')
+  },
+  TIMEOUT,
+)
+
+it(
+  'a stale file in a workspace output directory the entry holds empty goes, and the directory stays',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-ws-empty-stale-' })
+    made.push(root)
+    await addProject(root, 'app', {
+      config: `
+        export default { tasks: { build: {
+          exec: { command: 'cd ../.. && rm -rf gen && mkdir -p gen/empty && echo real > gen/real.txt' },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+        } } }`,
+      files: { 'src/in.txt': 'v1\n' },
+    })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const build = async (): Promise<string> => {
+      const r = await vx(root, ['run', 'build', '--all', '--cache-dir', path.join(root, '.cache')])
+      expect(`${r.code}\n${r.err}`).toStartWith('0\n')
+      return r.out
+    }
+    await build()
+    writeFileSync(path.join(root, 'gen/empty/stale.txt'), 'stale\n')
+    expect(await build()).toContain('1↓')
+    expect(existsSync(path.join(root, 'gen/empty/stale.txt'))).toBe(false)
+    expect(statSync(path.join(root, 'gen/empty')).isDirectory()).toBe(true)
+    expect(existsSync(path.join(root, 'gen/real.txt'))).toBe(true)
+  },
+  TIMEOUT,
+)
