@@ -923,6 +923,33 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     })
   }
 
+  it('a 50,000-deep chain of hits held behind its root is released without a stack overflow', async () => {
+    // Every hit restores before the root's exec ends, so each is held
+    // (item 963) and the root's finish releases the whole chain at once.
+    // Released by recursion, the walk threw RangeError at 30,000 hits and the
+    // run never resolved. The builder takes a 50,000-deep chain (item 737).
+    const DEPTH = 50_000
+    const chain = [node('p#t0')]
+    for (let i = 1; i < DEPTH; i++) chain.push(node(`p#t${i}`, [`p#t${i - 1}`]))
+    let restores = 0
+    let releaseRoot!: () => void
+    const rootHeld = new Promise<void>((r) => (releaseRoot = r))
+    const out = await runGraph({
+      nodes: nodes(...chain),
+      concurrency: 4,
+      restoreTier: new Set(chain.slice(1).map((n) => n.id)),
+      execute: async (n) => {
+        if (n.id === 'p#t0') {
+          await rootHeld
+          return success(n)
+        }
+        if (++restores === DEPTH - 1) releaseRoot()
+        return hit(n)
+      },
+    })
+    expect([out.size, out.get(`p#t${DEPTH - 1}`)?.status]).toEqual([DEPTH, 'cache-hit'])
+  })
+
   it("a failed dep of a restore-tier task skips the task's dependents, naming the root (item 963)", async () => {
     // The hit stays a hit (its key is its deps' inputs, not their outcome);
     // deploy ran green after check failed.
