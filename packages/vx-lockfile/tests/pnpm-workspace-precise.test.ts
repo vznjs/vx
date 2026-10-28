@@ -51,6 +51,20 @@ it('a patch or an override in pnpm-workspace.yaml keys no task by itself', async
   expect(await affected(BASE, OVERRIDDEN)).toEqual([])
 })
 
+// A catalog is how a range was written; pnpm-lock.yaml records what it
+// resolved to, per project (`catalogs`, and each importer's version), as
+// bun.lock's catalogs key through the entry they install (D-141). Folded
+// whole, one catalog bump re-keyed and selected every project.
+it('a catalog in pnpm-workspace.yaml keys no task by itself', async () => {
+  const catalogs = (react: string) =>
+    `${BASE}catalog:\n  react: ${react}\ncatalogs:\n  legacy:\n    react: ^17.0.0\n`
+  await write(BASE)
+  const base = await key()
+  await write(catalogs('^18.0.0'))
+  expect(await key()).toBe(base)
+  expect(await affected(catalogs('^18.0.0'), catalogs('^19.0.0'))).toEqual([])
+})
+
 it('any other pnpm-workspace.yaml setting keys every task, and a file that does not parse folds whole', async () => {
   await write(BASE)
   const base = await key()
