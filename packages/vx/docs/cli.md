@@ -3042,7 +3042,9 @@ command that exits 137 on its own reads the same). Where the run's
 footer gave a reason, the row ends with it instead: `timed out`,
 `never ready: exited`, `2 sandbox violations`, and for a skipped task
 `after lib#build failed` (the v27 columns; rows older than them read
-as before). A task whose key met a remote failure ends with it, read or
+as before). A task that retried ends with its attempts, `2 attempts`,
+passed or failed (`attempts` in `--format json`, null for a task run
+once). A task whose key met a remote failure ends with it, read or
 write alike: `remote ✗ download: connection refused; upload: 503` (the
 v40 column, `remoteError` in `--format json`). A task an executor
 plugin ran elsewhere carries where after its id: `app#build@small#1` (v44, `placement`).

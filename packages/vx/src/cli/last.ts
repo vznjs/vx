@@ -341,6 +341,9 @@ function reasonParts(t: RunSummaryRow): string {
   } else if (t.status === 'skipped' && t.blockedBy !== null) {
     parts.push(`after ${t.blockedBy} failed`)
   }
+  // The run's own row said `flaky - 2 attempts`: a pass that needed a
+  // retry is the one sign of a flaky task a replay can give.
+  if (t.attempts !== null && t.attempts > 1) parts.push(`${t.attempts} attempts`)
   if (t.remoteError !== null) parts.push(`remote \u2717 ${t.remoteError}`)
   return parts.map((p) => `  ${p}`).join('')
 }
