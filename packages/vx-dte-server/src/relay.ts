@@ -445,7 +445,11 @@ export function createRelay(opts: RelayOptions): Relay {
     sweep()
     const url = new URL(req.url)
     const m = /^\/v1\/sessions\/([^/]+)\/socket$/.exec(url.pathname)
-    if (m === null) throw new HttpError(404, 'no such route')
+    if (m === null)
+      throw new HttpError(
+        404,
+        `no route ${req.method} ${url.pathname.slice(0, 200)}: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`,
+      )
     const sessionId = m[1]!
     if (!SESSION_ID.test(sessionId)) throw new HttpError(400, 'session id is not a random UUID')
     if (req.method !== 'GET') throw new HttpError(405, 'this route takes GET')

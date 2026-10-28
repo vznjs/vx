@@ -210,7 +210,19 @@ export function conformance(name: string, target: Target): void {
       const nope = await call('/v1/nope')
       expect([nope.status, await nope.json()]).toEqual([
         404,
-        { code: 'not_found', message: 'no such route' },
+        {
+          code: 'not_found',
+          message: `no route GET /v1/nope: name the server's base URL; it serves /v1/ (PROTOCOL.md)`,
+        },
+      ])
+      const text = await call('/v1/timings/query', {
+        method: 'POST',
+        body: '{}',
+        headers: { 'content-type': 'text/plain' },
+      })
+      expect([text.status, await text.json()]).toEqual([
+        400,
+        { code: 'bad_request', message: 'send the body as Content-Type: application/json' },
       ])
     })
   })

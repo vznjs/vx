@@ -72,7 +72,10 @@ it('routes each run to its own object, which checks tokens', async () => {
   expect((await join(env, B)).status).toBe(401)
   expect(ns.made).toEqual([await sessionKey(A, undefined), await sessionKey(B, undefined)])
   const res = await worker.fetch(new Request('https://relay.example.com/health'), env)
-  expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
+  expect([res.status, await res.json()]).toEqual([
+    404,
+    { error: 'no route GET /health: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)' },
+  ])
 })
 
 it('gives the same run id of two repositories two objects', async () => {

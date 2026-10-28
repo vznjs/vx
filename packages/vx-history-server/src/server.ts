@@ -129,7 +129,10 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
         await authorize(req)
         return Response.json(capabilities)
       }
-      return errorJson(404, 'no such route')
+      return errorJson(
+        404,
+        `no route ${req.method} ${path.slice(0, 200)}: name the server's base URL; it serves /v1/ (PROTOCOL.md)`,
+      )
     } catch (err) {
       if (err instanceof Refusal) return errorJson(err.status, err.message)
       // Never swallowed: the client warns with what the server says.
@@ -150,7 +153,7 @@ const isCount = (n: unknown): n is number =>
 
 async function readJson(req: Request, max: number): Promise<unknown> {
   if (!/^application\/json\b/i.test(req.headers.get('content-type') ?? '')) {
-    throw new Refusal(400, 'the body is application/json')
+    throw new Refusal(400, 'send the body as Content-Type: application/json')
   }
   if (Number(req.headers.get('content-length') ?? 0) > max) {
     throw new Refusal(413, `the body is at most ${max} bytes`)

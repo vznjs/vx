@@ -401,7 +401,12 @@ describe('the relay carries one run between its orchestrator and workers', () =>
       const res = await c.relay.fetch(
         new Request(`http://relay/v1/sessions/${R}/${verb}`, { method: 'POST', body: '{}' }),
       )
-      expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
+      expect([res.status, await res.json()]).toEqual([
+        404,
+        {
+          error: `no route POST /v1/sessions/${R}/${verb}: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`,
+        },
+      ])
     }
   })
 

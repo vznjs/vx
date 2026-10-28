@@ -206,7 +206,10 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
         if (req.method === 'HEAD') return await exists(req, hash)
         return req.method === 'PUT' ? await put(req, hash) : notAllowed('GET, HEAD, PUT')
       }
-      return errorJson(404, 'no such route')
+      return errorJson(
+        404,
+        `no route ${req.method} ${path.slice(0, 200)}: name the server's base URL; it serves /v1/ (PROTOCOL.md)`,
+      )
     } catch (err) {
       if (err instanceof Refusal) {
         // The bucket's or the issuer's fault is the operator's to see too.
@@ -225,7 +228,7 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
 
 async function readJson(req: Request, max: number): Promise<unknown> {
   if (!/^application\/json\b/i.test(req.headers.get('content-type') ?? '')) {
-    throw new Refusal(400, 'the body is application/json')
+    throw new Refusal(400, 'send the body as Content-Type: application/json')
   }
   if (Number(req.headers.get('content-length') ?? 0) > max) {
     throw new Refusal(413, `the body is at most ${max} bytes`)
