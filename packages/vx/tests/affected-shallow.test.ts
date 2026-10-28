@@ -104,6 +104,14 @@ describe('a shallow clone', () => {
     expect(await changed(await clone('feat'), 'HEAD~1..HEAD')).toEqual(['c.txt'])
   })
 
+  it('fetches a tag base as it fetches a branch', async () => {
+    og('tag', '-f', 'light', 'main')
+    og('tag', '-f', '-a', '-m', 'annotated', 'ann', 'main')
+    expect(await changed(await clone('feat'), 'light')).toEqual(['b.txt', 'c.txt'])
+    expect(await changed(await clone('feat'), 'refs/tags/ann')).toEqual(['b.txt', 'c.txt'])
+    expect(await changed(await clone('feat'), 'light..HEAD')).toEqual(['a.txt', 'b.txt', 'c.txt'])
+  })
+
   it("a bare --affected with no base branch fetches origin's default", async () => {
     const root = await clone('feat')
     expect(gitIn(root)('branch', '-r').trim()).toBe('origin/feat')
