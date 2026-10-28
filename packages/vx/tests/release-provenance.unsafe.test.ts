@@ -55,11 +55,20 @@ describe('release.yml attests what it ships (L-12)', () => {
   })
 
   it('holds the permissions an attestation needs, the action pinned by commit', () => {
-    const perms = wf.permissions ?? {}
-    expect({ id: perms['id-token'], attestations: perms['attestations'] }).toEqual({
-      id: 'write',
-      attestations: 'write',
-    })
+    // Each attesting job holds them itself: the workflow grants nothing.
+    const attesting = Object.entries(wf.jobs).filter(([, j]) =>
+      (j.steps ?? []).some((s) => action(s) === 'actions/attest-build-provenance'),
+    )
+    expect(
+      attesting.map(([id, j]) => [
+        id,
+        j.permissions?.['id-token'],
+        j.permissions?.['attestations'],
+      ]),
+    ).toEqual([
+      ['assets', 'write', 'write'],
+      ['sign-darwin', 'write', 'write'],
+    ])
     const pins = Object.values(wf.jobs)
       .flatMap((j) => j.steps ?? [])
       .filter((s) => action(s) === 'actions/attest-build-provenance')
