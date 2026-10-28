@@ -769,7 +769,8 @@ export function refuseUnknownOptions<T>(
   const known = kinds as Readonly<Record<string, string>>
   const names = Object.keys(known)
   for (const [key, value] of Object.entries(options)) {
-    const kind = known[key]
+    // Own keys only: the record's prototype answers `constructor`.
+    const kind = Object.hasOwn(known, key) ? known[key] : undefined
     if (kind === undefined) {
       const near = nearest(key, names)
       throw new UserError(

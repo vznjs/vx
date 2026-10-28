@@ -26,6 +26,15 @@ it('a key the factory does not read is refused, with the nearest spelling', () =
   )
 })
 
+it('a key named like an Object member is unknown, not a kind', () => {
+  // The kinds record's prototype answered `constructor` and `toString`:
+  // "must be a function Object() { [native code] }, got 1".
+  expect([refusal({ constructor: 1 }), refusal(JSON.parse('{"toString":"x"}'))]).toEqual([
+    'demo() has unknown option "constructor" (allowed: endpoint, timeoutMs)',
+    'demo() has unknown option "toString" (allowed: endpoint, timeoutMs)',
+  ])
+})
+
 it('options that are not an object are refused', () => {
   expect(refusal('grpc://x')).toBe('demo(): options must be an object')
   expect(refusal(null)).toBe('demo(): options must be an object')
