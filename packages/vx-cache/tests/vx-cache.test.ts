@@ -543,6 +543,25 @@ describe('config', () => {
       expect(() => vxCache(options as never)).toThrow(said)
   })
 
+  // A deadline a timer cannot wait on ended every request at once: Bun
+  // fires a zero, NaN, Infinity or past-2^31 one after 1 ms.
+  it('refuses a deadline a timer cannot wait on', () => {
+    for (const [key, ms] of [
+      ['timeoutMs', 0],
+      ['timeoutMs', -1],
+      ['timeoutMs', Number.NaN],
+      ['uploadTimeoutMs', Number.POSITIVE_INFINITY],
+      ['uploadTimeoutMs', 2 ** 31],
+    ] as const)
+      expect(() => vxCache({ ...NAMED, url: 'https://c.example', [key]: ms })).toThrow(
+        `vxCache(): ${key} must be a number of ms from 1 to 2147483647, got ${ms}`,
+      )
+    expect(
+      resolveVxCacheConfig({ ...NAMED, url: 'https://c.example', timeoutMs: 2 ** 31 - 1 }, {})
+        ?.timeoutMs,
+    ).toBe(2 ** 31 - 1)
+  })
+
   it('reads with no token from a public server, sends none, and uploads nothing', async () => {
     const srv = server(1 << 20, 'public')
     try {

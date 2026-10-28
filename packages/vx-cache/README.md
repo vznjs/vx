@@ -35,7 +35,8 @@ export default {
   names both by their hashes (`vx-issuer`, `vx-repository`), and the
   server refuses a token of another repository.
 - `timeoutMs` (default 30 000) bounds each read and query, and
-  `uploadTimeoutMs` (default 60 000) each upload. A download is bounded
+  `uploadTimeoutMs` (default 60 000) each upload, each from 1 to
+  2 147 483 647 ms (a timer fires any other at once). A download is bounded
   the same way until its answer, then only while no bytes arrive: a big
   artifact still coming in is not cut off.
 - `headers` are sent on every request to the server, for a proxy in
