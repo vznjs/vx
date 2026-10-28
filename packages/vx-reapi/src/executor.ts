@@ -519,7 +519,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
     const ms = opts[key]
     if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
       throw new Error(
-        `@vzn/vx-reapi: ${key} must be a positive number of ms (got ${JSON.stringify(ms)})`,
+        `@vzn/vx-reapi: ${key} must be a positive number of ms (got ${typeof ms === 'number' ? String(ms) : JSON.stringify(ms)})`,
       )
     }
   }

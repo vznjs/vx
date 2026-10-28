@@ -521,7 +521,7 @@ export class ReapiClient {
     ] as const) {
       if (!(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
         throw new Error(
-          `@vzn/vx-reapi: ${name} must be a positive number of ms (got ${JSON.stringify(ms)})`,
+          `@vzn/vx-reapi: ${name} must be a positive number of ms (got ${typeof ms === 'number' ? String(ms) : JSON.stringify(ms)})`,
         )
       }
     }

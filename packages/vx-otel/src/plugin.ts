@@ -347,7 +347,7 @@ export function resolveOtelConfig(
     !(typeof opts.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0)
   ) {
     throw new Error(
-      `[vx-otel] timeoutMs must be a positive number of ms, got ${JSON.stringify(opts.timeoutMs)}`,
+      `[vx-otel] timeoutMs must be a positive number of ms, got ${typeof opts.timeoutMs === 'number' ? String(opts.timeoutMs) : JSON.stringify(opts.timeoutMs)}`,
     )
   }
   const timeoutMs = opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000
