@@ -84,7 +84,7 @@ describe('ci.yml', () => {
   // The run fetches a merge-base itself when it needs one (--affected,
   // reachMergeBase), so the checkout is one commit.
   it('checks the run out at one commit: the run fetches its merge-base', () => {
-    expect(checkout(doc.jobs['linux'])?.with).toBeUndefined()
+    expect(checkout(doc.jobs['linux'])?.with).toEqual({ 'persist-credentials': false })
   })
 
   // The run's report is the job summary; github() posts no check run
@@ -260,7 +260,10 @@ describe('vx-worker.yml', () => {
   // The laws that read history fetch it on the worker that runs them
   // (tests/helpers/history.ts): a full clone was 5-7 s of each warm-up.
   it('checks out one commit', () => {
-    expect(checkout(worker)?.with).toEqual({ ref: '${{ inputs.sha }}' })
+    expect(checkout(worker)?.with).toEqual({
+      ref: '${{ inputs.sha }}',
+      'persist-credentials': false,
+    })
   })
 
   // A worker saving to ~/.vx while a shard runs failed the shard's home

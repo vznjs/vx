@@ -169,6 +169,21 @@ describe('the supply chain', () => {
     ).toEqual([])
   })
 
+  // actions/checkout writes the job's token into .git/config unless told
+  // not to, where every later step and every unsandboxed task reads it:
+  // ci.yml's run holds contents, actions and pages write. Nothing here
+  // pushes with git (tags and releases go through the API with GH_TOKEN)
+  // and the repo is public, so a fetch needs no credential.
+  it('leaves the job token out of every checkout', () => {
+    const checkouts = stepsOf('actions/checkout')
+    expect(checkouts.length).toBeGreaterThan(5)
+    expect(
+      checkouts
+        .filter(({ step }) => step.with?.['persist-credentials'] !== false)
+        .map(({ at }) => at),
+    ).toEqual([])
+  })
+
   // A second dispatch of a release workflow while the first runs races
   // it: release.yml had no group, so two runs of one tag would upload to
   // the same draft and either could publish it first. Each queues behind the one running,
