@@ -1368,6 +1368,30 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
     })
   })
 
+  it('an edge by pattern to a default build on a cycle goes on past it, as by name', () => {
+    // `bui*` and `^bui*` reach a#build as `build` and `^build` do, and
+    // stopped there: a#test and c#test folded nothing of b and hit after
+    // b changed.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('a', { ...defaultBuild, test: { ...cmd('t'), dependsOn: ['bui*'] } }),
+        project('b', defaultBuild),
+        project('c', { test: { ...cmd('t'), dependsOn: ['^bui*'] } }),
+      ),
+      packageGraph: packageGraph({ a: ['b'], b: ['a'], c: ['a'] }),
+      requested: [
+        { project: 'a', task: 'test' },
+        { project: 'c', task: 'test' },
+      ],
+    })
+    expect(depsOf(nodes)).toEqual({
+      'a#test': ['a#build', 'b#build'],
+      'a#build': [],
+      'b#build': [],
+      'c#test': ['a#build', 'b#build'],
+    })
+  })
+
   it('a default build on no cycle stops the walk as any holder does (control)', () => {
     const nodes = buildTaskGraph({
       projects: projects(

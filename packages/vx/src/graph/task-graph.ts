@@ -499,10 +499,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     return held
   }
 
-  // An edge by name (`build`, `pkg#build`) to a default build on a package
-  // cycle goes on past it as a `^build` walk does: that build folds nothing
-  // of the builds on its cycle, so `a#test` on `build` with `a` ↔ `b` both
-  // on the default build folded none of `b` and hit after `b` changed.
+  // An edge by name (`build`, `pkg#build`) or pattern (`bui*`, `^bui*`) to
+  // a default build on a package cycle goes on past it as a `^build` walk
+  // does: that build folds nothing of the builds on its cycle, so `a#test`
+  // on `build` with `a` ↔ `b` both on the default build folded none of `b`
+  // and hit after `b` changed.
   function goPast(frame: Frame, project: string, name: string, visited: Set<string>): void {
     const task = declaredTask(projects.get(project)!.config, name)!
     if (isChainGroup(task, name) && onCycle(project)) walkHolders(frame, name, visited, project)
@@ -555,6 +556,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         for (const name of Object.keys(projects.get(projectName)!.config.tasks ?? {})) {
           if (name === taskName || !re.test(name)) continue
           visit(frame, projectName, name, false)
+          goPast(frame, projectName, name, new Set([projectName]))
         }
       } else {
         // Missing target is a hard error — the user typed a name that
@@ -631,7 +633,10 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
           re.test(n),
         )
         if (names.length > 0) {
-          for (const name of names) visit(frame, target, name, false)
+          for (const name of names) {
+            visit(frame, target, name, false)
+            goPast(frame, target, name, new Set([projectName, target]))
+          }
         } else {
           frontier.push(...packageGraph.directDeps(target))
         }
