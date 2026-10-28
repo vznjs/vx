@@ -5,6 +5,7 @@
 import { expect, it } from 'bun:test'
 import { resolveNxCacheConfig } from '../src/nx-cache/index.js'
 import { resolveTurboCacheConfig } from '../src/turbo-cache/index.js'
+import { deadline } from '../src/remote-deadline.js'
 
 const said = (make: () => { timeoutMs: number } | undefined): string => {
   try {
@@ -37,4 +38,13 @@ it('nxCache refuses a timeout that is not a positive number', () => {
     'vx/nx-cache: timeoutMs must be a positive number of ms, got null',
   )
   expect(said(nx({ timeoutMs: 5000 }))).toBe('timeout 5000')
+})
+
+// A timer past 2^31-1 ms fires after 1 ms: TURBO_REMOTE_CACHE_TIMEOUT=2592000
+// (30 days) or nxCache({ timeoutMs: 3e9 }) aborted every request at once.
+it('a deadline past the longest timer still waits', async () => {
+  const long = deadline(3e9)
+  const short = deadline(5)
+  await Bun.sleep(40)
+  expect([long.aborted, short.aborted]).toEqual([false, true])
 })
