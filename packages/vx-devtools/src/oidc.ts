@@ -328,7 +328,12 @@ const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
 function refusal(err: unknown, iss: string): Refusal {
   if (err instanceof Refusal) return err
   // A refetch of the keys for a kid not held failed: the network, not the token.
-  if (!(err instanceof errors.JOSEError) || err instanceof errors.JWKSTimeout)
+  // Keys answered as JSON that is no key set (a proxy's error page) are the issuer's fault too.
+  if (
+    !(err instanceof errors.JOSEError) ||
+    err instanceof errors.JWKSTimeout ||
+    err instanceof errors.JWKSInvalid
+  )
     return new Refusal(502, `could not read ${iss}'s keys`)
   if (err instanceof errors.JOSEAlgNotAllowed) return new Refusal(401, 'alg is not RS256')
   if (err instanceof errors.JWKSNoMatchingKey) return new Refusal(401, 'unknown signing key')
