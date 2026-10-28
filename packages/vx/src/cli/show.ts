@@ -472,6 +472,7 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
   )
   add('env.secret', list(exec?.env?.secret))
   add('remote', exec?.remote === undefined ? undefined : String(exec.remote))
+  add('platforms', list(exec?.platforms))
   add('sandbox', exec?.sandbox === undefined ? undefined : JSON.stringify(exec.sandbox))
   const persistent = exec?.persistent
   if (persistent !== undefined) {
@@ -494,6 +495,9 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
   if (cache !== undefined) {
     add('outputs.files', list(cache.outputs.files))
     add('outputs.workspaceFiles', list(cache.outputs.workspaceFiles))
+    add('outputs.clean', cache.outputs.clean)
+    add('inputStability.strategy', cache.inputStability?.strategy)
+    add('inputStability.severity', cache.inputStability?.severity)
   }
   return rows
 }
