@@ -31,14 +31,18 @@ export function compileTaskPattern(pattern: string): RegExp {
   return new RegExp(`^${escaped}$`)
 }
 
+// `*` is the matcher's only metacharacter, so a run of them (`**`) matches
+// every name: the bare wildcard, not a pattern that names a namespace.
+const ALL_STARS = /^\*+$/
+
 /**
  * Parse one `dependsOn` / `inputs.tasks` entry.
  *
  *   `name`       → self.name
  *   `^name`      → every dep workspace's `name` task
  *   `pkg#name`   → specific package's `name` task (cross-edge)
- *   `*`          → all same-project upstream (filter-only)
- *   `^*`         → all dep upstream (filter-only)
+ *   `*`          → all same-project upstream (filter-only; `**` too)
+ *   `^*`         → all dep upstream (filter-only; `^**` too)
  *   `!<form>`    → negation of any of the above (filter-only)
  *
  * Wildcards and negation are accepted everywhere — callers (the graph
@@ -59,14 +63,14 @@ export function parseDependencySpec(raw: string): DependencySpec {
   if (s.startsWith('^')) {
     const rest = s.slice(1)
     if (rest.length === 0) throw new DependencySpecError(raw, '"^" with no task name')
-    if (rest === '*') return { kind: 'wildcardDeps', negated }
+    if (ALL_STARS.test(rest)) return { kind: 'wildcardDeps', negated }
     if (rest.includes('#')) {
       throw new DependencySpecError(raw, '"^" cannot combine with "pkg#task" — pick one')
     }
     return { kind: 'deps', task: rest, negated }
   }
 
-  if (s === '*') return { kind: 'wildcardSelf', negated }
+  if (ALL_STARS.test(s)) return { kind: 'wildcardSelf', negated }
 
   const hashIdx = s.indexOf('#')
   if (hashIdx >= 0) {
