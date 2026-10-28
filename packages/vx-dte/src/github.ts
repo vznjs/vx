@@ -39,9 +39,35 @@ const RUNS_FILE = 'vx-dte-runs'
  */
 const STARTED_FILE = 'vx-dte-started'
 
-/** A dispatched run's jobs are first read this soon, then twice as late each time, up to `WATCH_MAX_MS`. */
+/**
+ * A dispatched run's jobs are first read this soon, then twice as late each
+ * time, up to `WATCH_MAX_MS`. Every job of a repository shares
+ * GITHUB_TOKEN's API limit (1000 an hour): at 10 s, a dozen runs at once
+ * spent it, and dispatches and cancels were refused (2026-10-28).
+ */
 const WATCH_FIRST_MS = 2_000
-const WATCH_MAX_MS = 10_000
+const WATCH_MAX_MS = 30_000
+
+/** A dispatch the API limit refused waits for its reset only this long: the worker is `starting` meanwhile. */
+const DISPATCH_WAIT_MS = 5 * 60_000
+
+/** When a refused answer's API limit resets (epoch ms), or undefined for a refusal that is no limit. */
+function limitReset(res: Response): number | undefined {
+  if (res.status !== 403 && res.status !== 429) return undefined
+  const after = res.headers.get('retry-after')
+  if (after !== null && Number.isFinite(Number(after))) return Date.now() + Number(after) * 1000
+  const reset = res.headers.get('x-ratelimit-reset')
+  if (
+    res.headers.get('x-ratelimit-remaining') === '0' &&
+    reset !== null &&
+    Number.isFinite(Number(reset))
+  )
+    return Number(reset) * 1000
+  return undefined
+}
+
+const resetsAt = (at: number): string =>
+  `; the repository's API limit resets at ${new Date(at).toISOString()}`
 
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
@@ -61,6 +87,11 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const watched = new Map<string, Map<string, WorkerSpawn>>()
   let watch: ReturnType<typeof setTimeout> | undefined
   let closed = false
+  // Each run's jobs answer's ETag: asked with it, an unchanged answer is a
+  // 304, which the API limit does not count.
+  const etags = new Map<string, string>()
+  // No jobs are asked before this (epoch ms): the API limit is spent.
+  let held = 0
   // Workers the run no longer needs: a run of only these is cancelled.
   const cancelled = new Set<string>()
   // A poll or cancel that failed is said, each cause once (2026-10-23: no
@@ -98,18 +129,26 @@ export function github(options: GithubOptions = {}): DteAdapter {
     watch = setTimeout(() => {
       void Promise.all(
         [...watched].map(async ([run, workers]) => {
-          const res = await call(`${run}/jobs?per_page=100`).catch((err: unknown) => {
+          const tag = etags.get(run)
+          const res = await call(
+            `${run}/jobs?per_page=100`,
+            tag === undefined ? {} : { headers: { 'if-none-match': tag } },
+          ).catch((err: unknown) => {
             failed(`reading ${runOf(run)}'s jobs`, err instanceof Error ? err.message : String(err))
             return undefined
           })
-          if (res === undefined) return
+          if (res === undefined || res.status === 304) return
           if (!res.ok) {
+            const reset = limitReset(res)
+            if (reset !== undefined) held = Math.max(held, reset)
             failed(
               `reading ${runOf(run)}'s jobs`,
-              `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+              `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}${reset === undefined ? '' : resetsAt(reset)}`,
             )
             return
           }
+          const etag = res.headers.get('etag')
+          if (etag !== null) etags.set(run, etag)
           const { jobs = [] } = ((await res.json().catch((err: unknown) => {
             failed(
               `reading ${runOf(run)}'s jobs`,
@@ -137,7 +176,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
           if (workers.size === 0) watched.delete(run)
         }),
       ).then(() => {
-        if (!closed && watched.size > 0) look(Math.min(2 * ms, WATCH_MAX_MS))
+        const next = Math.min(2 * ms, WATCH_MAX_MS)
+        if (!closed && watched.size > 0) look(Math.max(next, held - Date.now()))
         else watch = undefined
       })
     }, ms)
@@ -148,6 +188,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
     return fetch(`${api}${path}`, {
       ...init,
       headers: {
+        ...(init.headers as Record<string, string> | undefined),
         authorization: `Bearer ${token}`,
         accept: 'application/vnd.github+json',
         'content-type': 'application/json',
@@ -171,7 +212,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
     // check out `sha` either way.
     const refs = [env['GITHUB_HEAD_REF'] || env['GITHUB_REF_NAME'], env['GITHUB_BASE_REF']]
     let res: Response
-    for (let i = 0; ; i++) {
+    const end = Date.now() + DISPATCH_WAIT_MS
+    for (let i = 0; ;) {
       res = await call(`/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
         method: 'POST',
         body: JSON.stringify({
@@ -188,7 +230,16 @@ export function github(options: GithubOptions = {}): DteAdapter {
       })
       if (res.ok) break
       const text = (await res.text()).slice(0, 200)
-      if (res.status !== 422 || !text.includes('No ref found') || !refs[i + 1]) {
+      const reset = limitReset(res)
+      if (reset !== undefined) {
+        if (reset > end || closed)
+          throw new Error(
+            `github(): dispatching ${workflow}: ${res.status} ${text}${resetsAt(reset)}`,
+          )
+        await Bun.sleep(Math.max(0, reset - Date.now()))
+        continue
+      }
+      if (res.status !== 422 || !text.includes('No ref found') || !refs[++i]) {
         // GitHub's own words named no fix for the two a first run meets (2026-10-26).
         const fix =
           res.status === 404

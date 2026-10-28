@@ -3,7 +3,14 @@
 // 2026-10-25): its client and the deployed relay may speak different
 // protocols (Switchboard v1, #4333).
 import { describe, expect, it } from 'bun:test'
-import { previewUrl, workerUrl, watched, watchOf, type PreviewDeps } from '../worker-url.ts'
+import {
+  githubApi,
+  previewUrl,
+  workerUrl,
+  watched,
+  watchOf,
+  type PreviewDeps,
+} from '../worker-url.ts'
 
 type CheckRun = Awaited<ReturnType<PreviewDeps['checks']>>[number]
 
@@ -23,13 +30,17 @@ function deps(
   changed: string[],
   runs: (() => Promise<CheckRun[]>)[],
   older: Record<string, { runs: CheckRun[]; since: string[] }> = {},
-): PreviewDeps & { slept: number } {
+): PreviewDeps & { slept: number; asked: number } {
   let t = 0
   let i = 0
   const d = {
     slept: 0,
+    asked: 0,
     changed: async () => changed,
-    commits: async () => ['head', ...Object.keys(older)],
+    commits: async () => {
+      d.asked++
+      return ['head', ...Object.keys(older)]
+    },
     checks: async (sha: string) =>
       sha === 'head' ? runs[Math.min(i++, runs.length - 1)]!() : older[sha]!.runs,
     since: async (sha: string) => older[sha]!.since,
@@ -79,8 +90,24 @@ describe('the relay a PR’s run uses', () => {
     )
     const none = deps(['private/vx-dte-service/wrangler.jsonc'], [async () => []])
     await expect(workerUrl('vx-dte', WATCH, DEPLOYED, none)).rejects.toThrow(
-      'Workers Builds: vx-dte: no build of the head after 5 min',
+      'Workers Builds: vx-dte: no build of the head after 12 min',
     )
+  })
+
+  // With many PRs pushed at once, Workers Builds queues: #4578's build
+  // began 8 min after its job asked (2026-10-28), past a 5 min wait.
+  it('waits out a busy Workers Builds queue, its build arriving 8 min late', async () => {
+    const late = Array.from({ length: 8 * 2 }, () => async () => [] as CheckRun[])
+    const d = deps(['bun.lock'], [...late, check('completed', 'success')])
+    expect(await workerUrl('vx-dte', WATCH, DEPLOYED, d)).toBe(
+      'https://feat-relay-vx-dte.exelord.workers.dev',
+    )
+    // Every CI job shares the repository's API limit: a PR's commits do
+    // not change while it waits, so they are asked once, and the checks
+    // every 30 s, not every 5 s (2026-10-28: a dozen jobs at 5 s spent it).
+    expect(d.asked).toBe(1)
+    expect(d.slept).toBe(16)
+    expect(d.now()).toBe(16 * 30_000)
   })
 
   // Workers Builds skips a push that changes no watch path, so a head
@@ -140,5 +167,52 @@ describe('the relay a PR’s run uses', () => {
     expect(WATCH).toEqual(['packages/vx-dte-server/', 'private/vx-dte-service/', 'bun.lock'])
     expect(watched(WATCH, ['packages/vx-dte-server-x/a'])).toBe(false)
     expect(() => watchOf('# no line')).toThrow('the README names no `- Watch paths:`')
+  })
+})
+
+// Every job of the repository shares GITHUB_TOKEN's API limit: with many
+// PRs at once it ran out, and the job failed `compare/…: HTTP 403`
+// (2026-10-28) where waiting for the reset would have passed.
+describe('the GitHub API a job asks', () => {
+  const at = (t: number) => {
+    let now = t
+    const slept: number[] = []
+    return {
+      slept,
+      sleep: async (ms: number) => {
+        slept.push(ms)
+        now += ms
+      },
+      now: () => now,
+    }
+  }
+  const limited = (reset: number) =>
+    new Response('rate limited', {
+      status: 403,
+      headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(reset) },
+    })
+
+  it('waits for the limit to reset, then asks again', async () => {
+    const clock = at(1_000_000)
+    const answers = [limited(1_030), Response.json({ ok: 1 })]
+    const api = githubApi('o/r', 't', { fetch: async () => answers.shift()!, ...clock }, 1_100_000)
+    expect(await api<{ ok: number }>('commits/x')).toEqual({ ok: 1 })
+    expect(clock.slept).toEqual([30_000])
+  })
+
+  it('fails on a refusal that is no limit, and on a reset past the wait, naming it', async () => {
+    const clock = at(1_000_000)
+    const denied = githubApi(
+      'o/r',
+      't',
+      { fetch: async () => new Response('', { status: 403 }), ...clock },
+      1_100_000,
+    )
+    await expect(denied('commits/x')).rejects.toThrow('commits/x: HTTP 403')
+    const late = githubApi('o/r', 't', { fetch: async () => limited(2_000), ...clock }, 1_100_000)
+    await expect(late('commits/x')).rejects.toThrow(
+      'commits/x: HTTP 403, the API limit resets after the wait ends',
+    )
+    expect(clock.slept).toEqual([])
   })
 })
