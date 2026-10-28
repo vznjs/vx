@@ -3111,6 +3111,17 @@ const refusal = (make: () => unknown): string => {
   }
 }
 
+// Worded as vxCache() and vxHistory() word the same refusal; a value is never printed.
+it('refuses a header it cannot send, never printing a value', () => {
+  const relay = 'https://r'
+  expect(refusal(() => dte({ relay, headers: { authorization: 'x' } }))).toBe(
+    'dte() option "headers" cannot set "authorization"',
+  )
+  expect(refusal(() => dte({ relay, headers: { a: 'x\ny' } }))).toBe(
+    'dte() option "headers.a" must be one line of text (its value is not printed)',
+  )
+})
+
 it('refuses options it does not read and workers it cannot start', () => {
   const adapter = local()
   const W = { s: { cpu: 1, memory: '1GB' } }

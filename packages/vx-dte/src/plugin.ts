@@ -133,9 +133,11 @@ function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new UserError(`dte(): headers cannot set "${name}"`)
+      throw new UserError(`dte() option "headers" cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new UserError(`dte(): header "${name}" must be one line of text`)
+      throw new UserError(
+        `dte() option "headers.${name}" must be one line of text (its value is not printed)`,
+      )
     out[name] = value
   }
   return out
@@ -207,7 +209,9 @@ export function dte(options: DteOptions) {
   }
   // With no scheme the run failed in the executor as a bare "Invalid URL".
   if (options.relay !== undefined && !/^https?:\/\//.test(options.relay)) {
-    throw new UserError(`dte(): relay must be http(s), got ${options.relay}`)
+    throw new UserError(
+      `dte() option "relay" must be an http(s) URL, got ${JSON.stringify(options.relay)}`,
+    )
   }
   // On GitHub Actions with none given, one for the relay's URL.
   const token = async (relay: string): Promise<string | undefined> =>
