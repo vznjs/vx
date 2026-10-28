@@ -410,3 +410,50 @@ describe('GitLab merge request pipelines', () => {
     expect(await held(own, 'b3', 'refs/heads/feature')).toBe(200)
   })
 })
+
+describe('GitLab CI tokens', () => {
+  const GITLAB = 'https://gitlab.example.com'
+  const named = { 'vx-issuer': scopeOf(GITLAB), 'vx-repository': scopeOf('acme/app') }
+  const server = async (allowVar: string) => {
+    const { privateKey, publicKey } = await generateKeyPair('RS256')
+    const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
+    const h = createCacheServer({
+      blobs: memBlobs(),
+      authorize: oidcAuth({
+        allow: parseAllow(allowVar),
+        audience: AUD,
+        fetchJson: async (url) =>
+          url.endsWith('/.well-known/openid-configuration')
+            ? { jwks_uri: `${GITLAB}/oauth/discovery/keys` }
+            : { keys: [jwk] },
+      }),
+    })
+    return async (config = '.gitlab-ci.yml') => {
+      const token = await new SignJWT({
+        project_path: 'acme/app',
+        ci_config_ref_uri: `gitlab.example.com/acme/app//${config}@refs/heads/main`,
+        ref_path: 'refs/heads/main',
+      })
+        .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
+        .setIssuer(GITLAB)
+        .setAudience(AUD)
+        .setIssuedAt()
+        .setExpirationTime('5m')
+        .sign(privateKey)
+      return h(
+        new Request(`${AUD}/v1/artifacts/ab`, {
+          method: 'PUT',
+          body: 'x',
+          headers: { ...named, authorization: `Bearer ${token}`, 'content-length': '1' },
+        }),
+      )
+    }
+  }
+
+  // An issuer written with a trailing slash admitted public reads, but
+  // refused every token: its `iss` names none.
+  it('admits a token of an issuer ALLOW names with a trailing slash', async () => {
+    const put = await server(`${GITLAB}/:acme/app:.gitlab-ci.yml`)
+    expect((await put()).status).toBe(204)
+  })
+})
