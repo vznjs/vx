@@ -113,6 +113,19 @@ describe('CI OIDC tokens', () => {
     expect(await status('f8', 'refs/heads/feature')).toBe(404)
   })
 
+  // An issue_comment run (a "/test" comment on a pull request) or a
+  // workflow_run a pull request started carries main's ref while it may
+  // check out the pull request's code: it wrote main's scope, so a fork's
+  // code reached main's entries (#4570 dropped the event filter that
+  // kept it out).
+  it('an issue_comment or workflow_run token writes nothing', async () => {
+    for (const event_name of ['issue_comment', 'workflow_run']) {
+      const token = await sign({ event_name, ref: 'refs/heads/main' })
+      expect(await detail(await put(token, 'f9'))).toEqual([403, 'this request reads only'])
+      expect(await status('f9')).toBe(404)
+    }
+  })
+
   it('refuses a job of a workflow ALLOW does not name', async () => {
     const other = await sign({
       ...MAIN,

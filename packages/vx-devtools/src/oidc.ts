@@ -107,17 +107,25 @@ const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCas
 const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /**
+ * GitHub events that run in the base branch's context on a pull request's
+ * behalf (design cache-signing-2026-10.md, "Events"): the token carries the
+ * base's `ref` while the job may run the pull request's code, a fork's
+ * included, which must never write the base. A `pull_request_target`
+ * run's `head_ref` is also a branch name the fork chose, and the token
+ * cannot tell a `workflow_run` a pull request started from one a push did.
+ */
+const ON_BEHALF = new Set(['pull_request_target', 'issue_comment', 'workflow_run'])
+
+/**
  * The scope a token writes: its branch. A GitHub pull request's run writes
  * its head branch (its `ref` is the merge ref the run's own reads never
  * name); a merge queue's run its base branch, which its code is about to
  * become (2026-10-25: "just strip it"); any other run its `ref`,
  * GitLab's its `ref_path`. Only a `pull_request` run takes its head
- * branch. A `pull_request_target` run writes nothing: its `head_ref` is a
- * fork's branch name, chosen by the fork, and its `ref` is the base branch,
- * which a fork's code must never write.
+ * branch. A run of an event in `ON_BEHALF` writes nothing.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
-  if (claims['event_name'] === 'pull_request_target') return undefined
+  if (ON_BEHALF.has(claims['event_name'] as string)) return undefined
   const head = claims['event_name'] === 'pull_request' ? claims['head_ref'] : undefined
   const ref =
     iss === GITHUB

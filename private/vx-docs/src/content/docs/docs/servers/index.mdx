@@ -34,8 +34,8 @@ What that gives each run of `ci.yml`:
   into, then `main`.
 - **A push to a branch**, such as `main`, writes that branch.
 - **A pull request from `feat-x`** writes `feat-x` only.
-- **A `pull_request_target` run** reads and writes nothing: it runs on
-  the base branch for a fork's code.
+- **A `pull_request_target`, `issue_comment` or `workflow_run` run**
+  writes nothing: it runs on the base branch, maybe for a fork's code.
 - **A run of another workflow or repository** is refused. With `ALLOW`
   empty, every request is refused: `the server admits no CI: set ALLOW`.
 
