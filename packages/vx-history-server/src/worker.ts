@@ -1,6 +1,6 @@
 // `vx-history-server` on Cloudflare Workers, the timings in D1.
-// `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and TIMING_DAYS are vars in
-// it.
+// `wrangler.jsonc` deploys it; ALLOW, AUDIENCE, READ_ACCESS and TIMING_DAYS
+// are vars in it.
 
 import { oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
@@ -56,6 +56,13 @@ export default {
     const key = [env.ALLOW, env.AUDIENCE, env.READ_ACCESS, env.TIMING_DAYS].join('\0')
     if (made?.key !== key) {
       let allow
+      // wrangler.jsonc may write a var as JSON: a list reached parseAllow.
+      if (env.ALLOW !== undefined && typeof env.ALLOW !== 'string') {
+        return errorJson(
+          500,
+          'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
+        )
+      }
       try {
         allow = parseAllow(env.ALLOW ?? '')
       } catch (err) {

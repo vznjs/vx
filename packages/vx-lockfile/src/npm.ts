@@ -45,7 +45,7 @@ export function parseLockfile(text: string): Lockfile {
     )
   }
   const raws = record(d!['packages']) ?? {}
-  const globs = workspaceGlobs(raws[''])
+  const isMember = workspaceMatcher(raws[''])
   const packages = new Map<string, Entry>()
   for (const [p, raw] of Object.entries(raws)) {
     const e = record(raw) ?? {}
@@ -60,11 +60,7 @@ export function parseLockfile(text: string): Lockfile {
           : '',
       link,
       isWorkspace:
-        p !== '' &&
-        !p.startsWith('node_modules/') &&
-        !p.includes('/node_modules/') &&
-        globs !== undefined &&
-        globs.some((g) => g.match(p)),
+        p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/') && isMember(p),
       peers: peerOnly(e),
     })
   }
@@ -81,20 +77,24 @@ export function parseLockfile(text: string): Lockfile {
 }
 
 /**
- * The root's `workspaces` globs: what tells a workspace from a `file:`
- * directory, both entries outside node_modules that a link resolves to.
- * Taking every such entry for a workspace made `vendor/dep` a project, so
- * an edit under it selected nothing. `undefined` when the root names none:
- * then there is no workspace, and every such entry is a `file:` directory
- * (taken for workspaces, their content was never hashed).
+ * Whether a path is a member by the root's `workspaces` globs: what tells
+ * a workspace from a `file:` directory, both entries outside node_modules
+ * that a link resolves to. Taking every such entry for a workspace made
+ * `vendor/dep` a project, so an edit under it selected nothing. A root
+ * that names none has no workspace, and every such entry is a `file:`
+ * directory (taken for workspaces, their content was never hashed). A
+ * `!` glob excludes, as npm reads it: as a glob of its own it matched
+ * every other path.
  */
-function workspaceGlobs(root: unknown): Bun.Glob[] | undefined {
+function workspaceMatcher(root: unknown): (p: string) => boolean {
   const ws = record(root)?.['workspaces']
   const list = Array.isArray(ws) ? ws : record(ws)?.['packages']
-  if (!Array.isArray(list)) return undefined
-  return list
-    .filter((g): g is string => typeof g === 'string')
-    .map((g) => new Bun.Glob(g.replace(/^\.\//, '').replace(/\/+$/, '')))
+  if (!Array.isArray(list)) return () => false
+  const glob = (g: string) => new Bun.Glob(g.replace(/^\.\//, '').replace(/\/+$/, ''))
+  const strings = list.filter((g): g is string => typeof g === 'string')
+  const include = strings.filter((g) => !g.startsWith('!')).map(glob)
+  const exclude = strings.filter((g) => g.startsWith('!')).map((g) => glob(g.slice(1)))
+  return (p) => include.some((g) => g.match(p)) && !exclude.some((g) => g.match(p))
 }
 
 /**
