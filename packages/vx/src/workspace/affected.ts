@@ -6,6 +6,7 @@
 // index + unstaged — so it captures everything you touched and nothing
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
+import { lstatSync } from 'node:fs'
 import { realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -653,11 +654,9 @@ async function flaggedChanges(
   for (const rel of flagged) {
     const entry = byPath.get(rel)
     if (entry === undefined || seen.has(rel)) continue
-    const present = await stat(path.join(workspaceRoot, rel)).then(
-      () => true,
-      () => false,
-    )
-    if (!present) {
+    // Synchronous: a sparse checkout flags its every absent file, and one
+    // awaited stat each was 7 s per 100,000 (a loop of these, 0.15 s).
+    if (lstatSync(path.join(workspaceRoot, rel), { throwIfNoEntry: false }) === undefined) {
       if (!entry.skipWorktree) out.push(rel)
     } else if (entry.mode === '120000' || rel.includes('\n')) out.push(rel)
     else hash.push(entry)
