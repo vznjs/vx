@@ -115,7 +115,7 @@ export function expandNxInputs(
             ? null
             : underProject(g, at.rel)
         if (own === null) into.wsFiles.push(neg + withProjectDir(g, at.rel, true))
-        else into.files.push(neg + withProjectDir(own, at.rel, true))
+        else into.files.push(neg + (own === '' ? '**/*' : withProjectDir(own, at.rel, true)))
         return
       }
       // Bare string = named-input reference.
