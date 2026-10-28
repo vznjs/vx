@@ -80,6 +80,35 @@ async function queueOut(
   }
 }
 
+// The stall bound (`executeTimeoutMs`) closed the stream and left the
+// action running on its worker, which nothing would ever read.
+describe('a stall past executeTimeoutMs cancels the operation', () => {
+  it('names the operation Execute was given, and the task still fails', async () => {
+    fake.onExecute = () => ({ stages: ['EXECUTING'], hold: new Promise<void>(() => undefined) })
+    const client = new ReapiClient({ endpoint: fake.endpoint })
+    const from = fake.calls.length
+    try {
+      const name = await Promise.race([
+        reapiExecutor(client, { executeTimeoutMs: 200, warn: () => undefined })
+          .execute(request())
+          .then(
+            () => 'resolved',
+            (e: Error) => e.name,
+          ),
+        Bun.sleep(5000).then(() => 'unbounded'),
+      ])
+      const cancelled = fake.calls
+        .slice(from)
+        .filter((c) => c.method === 'CancelOperation')
+        .map((c) => c.request['name'] as string)
+      expect([name, cancelled.length]).toEqual(['UserError', 1])
+      expect(cancelled[0]).toMatch(/^operations\/\d+$/)
+    } finally {
+      client.close()
+    }
+  })
+})
+
 describe('a queue timeout cancels the operation', () => {
   it('names the operation Execute was given', async () => {
     const r = await queueOut()

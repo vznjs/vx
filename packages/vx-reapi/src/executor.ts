@@ -1011,6 +1011,8 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           )
         }
         if (stall.signal.aborted) {
+          // Closing the stream alone left the action on its worker.
+          if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           throw new UserError(
             `vx/reapi: ${req.taskId} was still executing ${stallAfter}ms after the worker ` +
               `started it and the server never reported a result — giving up on the remote ` +

@@ -311,7 +311,8 @@ executed again on the same budget.
 Once a worker reports EXECUTING, the task's `exec.timeout` (or
 `executeTimeoutMs`) bounds the wait, and the bound holds across a
 re-attach: firing during the backoff between a dropped stream and its
-`WaitExecution`, it ends the task there rather than being lost.
+`WaitExecution`, it ends the task there rather than being lost. Past it
+the operation is cancelled too (a refused cancel is a warning).
 The run stopping (Ctrl-C, an embedder's abort) or the task's `exec.timeout`
 closes the stream and cancels the operation with `CancelOperation`, and an
 action not yet submitted is not sent. The task then ends as a killed local
