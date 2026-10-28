@@ -1674,6 +1674,10 @@ describe('parseRunArgs', () => {
   it('--exclude-dependencies= (empty value) is rejected, not read as "exclude nothing"', () => {
     const r = parseRunArgs(['build', '--exclude-dependencies='])
     expect(r.error).toMatch(/--exclude-dependencies= needs a value/)
+    // A list of only commas or spaces names no task either: it parsed to
+    // [] and kept every edge.
+    for (const v of [',', ' ', ' , '])
+      expect(parseRunArgs(['build', `--exclude-dependencies=${v}`]).error).toBe(r.error)
     // Both unambiguous forms keep working.
     expect(parseRunArgs(['build', '--exclude-dependencies']).excludeDependencies).toBe('all')
     expect(parseRunArgs(['build', '--exclude-dependencies=a,b']).excludeDependencies).toEqual([

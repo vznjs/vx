@@ -567,7 +567,7 @@ apart from "`build` is the git base". Write `--affected=origin/main`. Getting it
 becomes a positional that matches no project, so the run refuses to
 start (see "Every requested name must resolve" above).
 
-`--exclude-dependencies=` with an EMPTY value is rejected rather than
+`--exclude-dependencies=` with an EMPTY value (or only commas) is rejected rather than
 guessed — "drop every edge" and "drop none" are both plausible readings.
 Pass bare `--exclude-dependencies` for the first, omit the flag for the
 second.
