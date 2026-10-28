@@ -834,6 +834,29 @@ describe('withForwardArgs', () => {
     )
   })
 
+  // A delimiter scanned as `[A-Za-z_]\w*` ended `<<END-OF` at `END`, so no
+  // line closed it and the args went on the `cat` line; a quoted one with
+  // a blank or a dash opened no heredoc, and a quote in its body hid the rest.
+  it.each([
+    ['a delimiter with a dash', 'cat <<END-OF\nhi\nEND-OF\necho done'],
+    ['a delimiter with a dot', 'cat <<E.1\nhi\nE.1\necho done'],
+    ['a partly quoted delimiter', 'cat <<E"N-D"\nit\'s\nEN-D\necho done'],
+  ])('%s', (_name, command) => {
+    expect(withForwardArgs(command, ['--fix'])).toBe(`${command} --fix`)
+  })
+
+  it('a quoted delimiter with a blank', () => {
+    expect(withForwardArgs("cat <<'END OF'\nit's\nEND OF\necho done # c", ['--fix'])).toBe(
+      "cat <<'END OF'\nit's\nEND OF\necho done --fix # c",
+    )
+  })
+
+  it('control: a shift by a digit opens no heredoc', () => {
+    expect(withForwardArgs('echo $((1<<2))\necho done', ['--fix'])).toBe(
+      'echo $((1<<2))\necho done --fix',
+    )
+  })
+
   it('control: a here-string opens no heredoc', () => {
     expect(withForwardArgs('cat <<<word\necho done', ['--fix'])).toBe(
       'cat <<<word\necho done --fix',
@@ -841,7 +864,21 @@ describe('withForwardArgs', () => {
   })
 
   it('a # after a separator opens a comment', () => {
-    expect(withForwardArgs('echo a;# c', ['x'])).toBe('echo a; x # c')
+    expect(withForwardArgs('echo a;# c', ['x'])).toBe('echo a x; # c')
+  })
+
+  // Appended after a trailing `;` or `&`, the args ran as a command of
+  // their own (`x: not found`), as after a trailing newline.
+  it.each([
+    ['a trailing ;', 'echo args:;', 'args: --fix a b\n'],
+    ['a trailing ; and a blank', 'echo args: ; ', 'args: --fix a b\n'],
+    ['a trailing ; before a comment', 'echo args: ; # c', 'args: --fix a b\n'],
+    ['a trailing &', 'echo args: &', 'args: --fix a b\n'],
+    ['control: an escaped ;', 'echo args:\\;', 'args:; --fix a b\n'],
+    ['control: a quoted ;', "echo 'args:;'", 'args:; --fix a b\n'],
+    ['an escaped backslash before ;', 'echo a\\\\;', 'a\\ --fix a b\n'],
+  ])('%s', (_name, command, printed) => {
+    expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
   })
 
   it('leaves the command alone with no args', () => {
