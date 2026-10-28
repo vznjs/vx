@@ -1542,7 +1542,8 @@ async function runOnBus(
     // own output follows.
     // The footer replaces the live region in place.
     log.runDone?.()
-    if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
+    if (options.summaryTable === true)
+      for (const line of formatOutcomeTable(list, colors)) log.status(line)
     if (options.footer !== false)
       for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
