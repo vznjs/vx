@@ -50,6 +50,9 @@ const STARTED_FILE = 'vx-dte-started'
 const WATCH_FIRST_MS = 2_000
 const WATCH_MAX_MS = 10_000
 
+/** The jobs a matrix makes in one workflow run at most: one dispatch's workers. */
+const MATRIX_MAX = 256
+
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
   const workflow = options.workflow ?? 'vx-worker.yml'
@@ -258,14 +261,15 @@ export function github(options: GithubOptions = {}): DteAdapter {
     },
     spawn(a) {
       const wave = waves.get(a.size)
-      if (wave !== undefined) {
+      // A full wave dispatches as it is; the next worker starts another.
+      if (wave !== undefined && wave.length < MATRIX_MAX) {
         wave.push(a)
         return
       }
       const workers = [a]
       waves.set(a.size, workers)
       queueMicrotask(() => {
-        waves.delete(a.size)
+        if (waves.get(a.size) === workers) waves.delete(a.size)
         const p = dispatch(a.size, workers)
           .catch((err: unknown) => {
             const why = err instanceof Error ? err.message : String(err)

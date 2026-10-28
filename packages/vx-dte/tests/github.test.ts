@@ -486,6 +486,34 @@ it('says each poll and cancel GitHub refused, by status and body, once', async (
   }
 }, 15_000)
 
+// A matrix makes at most 256 jobs a workflow run: a wave of more was one
+// dispatch GitHub could not run, every worker of it never joining.
+it('dispatches a wave of more than 256 workers as runs of at most 256', async () => {
+  const waves: number[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    async fetch(req) {
+      const { inputs } = (await req.json()) as { inputs: { workers: string } }
+      waves.push((JSON.parse(inputs.workers) as string[]).length)
+      return new Response(null, { status: 204 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const adapter = github()
+    for (let i = 1; i <= 600; i++) void adapter.spawn(spawn(`small#${i}`, 'small'))
+    await Bun.sleep(100)
+    expect(waves.toSorted((a, b) => b - a)).toEqual([256, 256, 88])
+  } finally {
+    await server.stop(true)
+  }
+})
+
 // A wave of more than 100 workers is one run of more than 100 jobs: only
 // the first page was read, so a job past it that failed went unseen.
 it('reads every page of a run of more than 100 jobs', async () => {
