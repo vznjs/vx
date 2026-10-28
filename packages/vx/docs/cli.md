@@ -2010,7 +2010,8 @@ never hands off.
 ## `vx upgrade`
 
 `vx upgrade` brings vx to a newer release (`vx upgrade TAG` pins one, `v0.4.0` or
-`0.4.0`; default latest; a second tag is refused, not dropped), the way
+`0.4.0`; default latest; a second tag, or one that is no version, is
+refused first, not dropped), the way
 it was installed. Named `upgrade` per CLI convention (`bun upgrade`,
 `deno upgrade`). Refuses when running from source: use `git pull`.
 

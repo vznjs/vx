@@ -995,6 +995,26 @@ describe('vx upgrade (CLI)', () => {
   })
 })
 
+describe('vx upgrade (CLI), a tag that is no version', () => {
+  it('is refused as such, before the compiled-binary guard', async () => {
+    // `vx upgrade lastest` said "runs from source" (or, from npx, "runs from a
+    // package-manager cache"), never that the tag was the mistake.
+    const runtime = path.join(dir, 'bun-copy-3')
+    await copyFile(process.execPath, runtime)
+    await chmod(runtime, 0o755)
+    const proc = Bun.spawn({
+      cmd: [runtime, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'upgrade', 'lastest'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const code = await proc.exited
+    expect([code, await new Response(proc.stderr).text()]).toEqual([
+      1,
+      noticed('vx upgrade: lastest is not a version (expected v<major>.<minor>.<patch>)\n'),
+    ])
+  })
+})
+
 describe('relock', () => {
   // 2026-10-18: an upgrade locks with the new vx; a failed lock says to run it.
   const workspace = async (name: string, lock: string): Promise<{ root: string; bin: string }> => {
