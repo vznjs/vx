@@ -30,8 +30,12 @@ interface CliWorkspace {
   /** What a plugin's `config` stage said of the branch: its cache scope and base commit. */
   branch: BranchFacts
   cacheDir: string
-  /** The shared store a run opens `cacheDir` with (`resolveStoreRoot`), asked on load. */
-  storeRoot: Promise<string | null>
+  /**
+   * The shared store a run opens `cacheDir` with (`resolveStoreRoot`), asked
+   * on first call: with no remote, the answer is a git spawn, and a verb that
+   * never opens the store (help, show, last) paid it.
+   */
+  storeRoot: () => Promise<string | null>
 }
 
 export const warnToStderr = (message: string): void => {
@@ -48,7 +52,7 @@ export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorksp
     plugins,
     branch,
     cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig),
-    storeRoot: resolveStoreRoot(workspaceRoot, workspaceConfig),
+    storeRoot: () => resolveStoreRoot(workspaceRoot, workspaceConfig),
   }
 }
 
