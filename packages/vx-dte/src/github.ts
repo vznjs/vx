@@ -43,6 +43,14 @@ const STARTED_FILE = 'vx-dte-started'
 const WATCH_FIRST_MS = 2_000
 const WATCH_MAX_MS = 10_000
 
+/** A workflow run's job, as its jobs list says it. */
+interface Job {
+  name: string
+  status: string
+  conclusion: string | null
+  steps?: { name: string; conclusion: string | null }[]
+}
+
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
   const workflow = options.workflow ?? 'vx-worker.yml'
@@ -98,31 +106,38 @@ export function github(options: GithubOptions = {}): DteAdapter {
     watch = setTimeout(() => {
       void Promise.all(
         [...watched].map(async ([run, workers]) => {
-          const res = await call(`${run}/jobs?per_page=100`).catch((err: unknown) => {
-            failed(`reading ${runOf(run)}'s jobs`, err instanceof Error ? err.message : String(err))
-            return undefined
-          })
-          if (res === undefined) return
-          if (!res.ok) {
-            failed(
-              `reading ${runOf(run)}'s jobs`,
-              `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+          // Paged at 100, and a matrix holds 256: a job on a later page that
+          // failed went unseen.
+          const jobs: Job[] = []
+          for (let page = 1; ; page++) {
+            const res = await call(`${run}/jobs?per_page=100&page=${page}`).catch(
+              (err: unknown) => {
+                failed(
+                  `reading ${runOf(run)}'s jobs`,
+                  err instanceof Error ? err.message : String(err),
+                )
+                return undefined
+              },
             )
-            return
-          }
-          const { jobs = [] } = ((await res.json().catch((err: unknown) => {
-            failed(
-              `reading ${runOf(run)}'s jobs`,
-              `no JSON: ${err instanceof Error ? err.message : String(err)}`,
-            )
-            return null
-          })) ?? {}) as {
-            jobs?: {
-              name: string
-              status: string
-              conclusion: string | null
-              steps?: { name: string; conclusion: string | null }[]
-            }[]
+            if (res === undefined) return
+            if (!res.ok) {
+              failed(
+                `reading ${runOf(run)}'s jobs`,
+                `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+              )
+              return
+            }
+            const { jobs: some = [], total_count: total = 0 } = ((await res
+              .json()
+              .catch((err: unknown) => {
+                failed(
+                  `reading ${runOf(run)}'s jobs`,
+                  `no JSON: ${err instanceof Error ? err.message : String(err)}`,
+                )
+                return null
+              })) ?? {}) as { jobs?: Job[]; total_count?: number }
+            jobs.push(...some)
+            if (some.length < 100 || jobs.length >= total) break
           }
           for (const j of jobs) {
             const a = workers.get(j.name)
