@@ -1490,8 +1490,30 @@ it('a task whose entry reached no cache this machine reads names the upload firs
         (e: Error) => e.message,
       ),
     ).toBe(
-      "t1: worker#1 ran it, and no cache this machine reads holds its entry: worker#1's upload failed (its log says why), or the workers and this machine share no remote cache the workers write",
+      "t1: worker#1 ran it, and no cache this machine reads gave its entry, asked twice: a download failed (warned above), worker#1's upload failed (its log says why), or the workers and this machine share no remote cache the workers write",
     )
+    expect(h.store.restored).toEqual(['k-t1', 'k-t1'])
+  } finally {
+    await h.stop()
+  }
+})
+
+// One download from the cache Worker that stalled ("no bytes for 30000
+// ms") failed a whole CI run, though the worker's upload had landed
+// (main, 2026-10-28): a failed download reads as a miss here.
+it('asks the caches again once for a task whose entry it could not read', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    let asked = 0
+    const restore = h.store.artifacts.restore
+    h.store.artifacts.restore = async (key, task) => (asked++ === 0 ? null : restore(key, task))
+    h.store.saved.set('k-t1', [{ text: 'built\n', err: false }])
+    const a = await h.worker(1)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.say({ type: 'end', task: 't1', key: 'k-t1', result: { exitCode: 0, durationMs: 1 } })
+    expect((await t1).exitCode).toBe(0)
+    expect(asked).toBe(2)
   } finally {
     await h.stop()
   }

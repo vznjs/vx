@@ -71,9 +71,14 @@ async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
     throw new Error('gitlab(): not in a GitLab job (CI_API_V4_URL, CI_JOB_TOKEN)')
   const first = workers[0]!
   const slots = workers.map((w) => [slotOf(w), w.id] as const)
-  // A merge request's pipeline is of its source branch; any other, of its ref.
-  const ref =
-    process.env['CI_MERGE_REQUEST_SOURCE_BRANCH_NAME'] || process.env['CI_COMMIT_REF_NAME']!
+  // A merge request's pipeline is of its source branch; any other, of its
+  // ref. Once a merged request's source branch is deleted mid-run
+  // (GitLab's default), GitLab answers 400 "Reference not found": its
+  // target's file then, as github() does; the workers check out `sha` either way.
+  const refs = [
+    process.env['CI_MERGE_REQUEST_SOURCE_BRANCH_NAME'] || process.env['CI_COMMIT_REF_NAME']!,
+    process.env['CI_MERGE_REQUEST_TARGET_BRANCH_NAME'],
+  ]
   const { VX_DTE_WORKER: _, ...env } = first.env
   const vars: Record<string, string> = {
     ...env,
@@ -82,19 +87,23 @@ async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
     VX_DTE_PICK: `/^(${slots.map(([s]) => s).join('|')})$/`,
     VX_DTE_IDS: slots.map(([s, id]) => `${s}=${id}`).join(' '),
   }
-  const form = new FormData()
-  form.set('token', token)
-  form.set('ref', ref)
-  for (const [k, v] of Object.entries(vars)) form.set(`variables[${k}]`, v)
-  const res = await fetch(`${base}/projects/${project}/trigger/pipeline`, {
-    method: 'POST',
-    body: form,
-    signal: AbortSignal.timeout(10_000),
-  })
-  if (!res.ok)
-    throw new Error(
-      `gitlab(): triggering ${workers.map((w) => w.id).join(', ')}: ${res.status} ${(await res.text()).slice(0, 200)}`,
-    )
+  for (let i = 0; ; i++) {
+    const form = new FormData()
+    form.set('token', token)
+    form.set('ref', refs[i]!)
+    for (const [k, v] of Object.entries(vars)) form.set(`variables[${k}]`, v)
+    const res = await fetch(`${base}/projects/${project}/trigger/pipeline`, {
+      method: 'POST',
+      body: form,
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (res.ok) return
+    const text = (await res.text()).slice(0, 200)
+    if (res.status !== 400 || !text.includes('Reference not found') || !refs[i + 1])
+      throw new Error(
+        `gitlab(): triggering ${workers.map((w) => w.id).join(', ')}: ${res.status} ${text}`,
+      )
+  }
 }
 
 /**
