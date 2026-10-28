@@ -10,13 +10,15 @@ import { UserError } from '../util/index.js'
  * is refused with those runs, since picking one would replay the wrong run.
  */
 export function resolveRunId(db: Database, raw: string, verb: string): string | null {
-  const exact = db.query('SELECT 1 FROM invocations WHERE run_id = ?').get(raw)
-  if (exact !== null) return raw
+  // Run ids are lower-case UUIDs; one typed or pasted in upper case is the same id.
+  const id = raw.toLowerCase()
+  const exact = db.query('SELECT 1 FROM invocations WHERE run_id = ?').get(id)
+  if (exact !== null) return id
   const rows = db
     .query(
       'SELECT run_id FROM invocations WHERE substr(run_id, 1, ?) = ? ORDER BY run_id DESC LIMIT 6',
     )
-    .all(raw.length, raw) as Array<{ run_id: string }>
+    .all(id.length, id) as Array<{ run_id: string }>
   if (rows.length === 0) return null
   if (rows.length === 1) return rows[0]!.run_id
   const shown = rows.slice(0, 5).map((r) => `  ${r.run_id}`)
