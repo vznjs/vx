@@ -17,6 +17,7 @@ import {
   type RemoteOpenContext,
   type VxPlugin,
   refuseUnknownOptions,
+  UserError,
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
@@ -79,15 +80,6 @@ export function resolveNxCacheConfig(
       `vx/nx-cache: the access token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
     )
   const retries = options.retries ?? 1
-  // A NaN never reaches the bound, and the request would be resent forever.
-  if (!Number.isInteger(retries) || retries < 0)
-    throw new Error(`vx/nx-cache: retries must be a whole number ≥ 0, got ${retries}`)
-  // A zero timeout aborted every request as it started.
-  const ms = options.timeoutMs
-  if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0))
-    throw new Error(
-      `vx/nx-cache: timeoutMs must be a positive number of ms, got ${JSON.stringify(ms)}`,
-    )
   return {
     server,
     ...(accessToken !== undefined ? { accessToken } : {}),
@@ -274,6 +266,15 @@ const NX_CACHE_KEYS: PluginOptionKinds<NxCacheOptions> = {
  */
 export function nxCache(options: NxCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('nxCache()', options, NX_CACHE_KEYS)
+  // At the call: in the `cache` hook a laptop with no server named passed
+  // what failed the first CI run. A NaN never reaches the bound, and the
+  // request would be resent forever; a zero timeout aborted every request
+  // as it started.
+  const { retries, timeoutMs: ms } = options
+  if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
+    throw new UserError(`nxCache() option "retries" must be a whole number ≥ 0, got ${retries}`)
+  if (ms !== undefined && !(Number.isFinite(ms) && ms > 0))
+    throw new UserError(`nxCache() option "timeoutMs" must be a positive number of ms, got ${ms}`)
   return definePlugin(import.meta, {
     cache(): RemoteCacheLayer | undefined {
       const config = resolveNxCacheConfig(options)
