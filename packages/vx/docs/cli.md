@@ -1651,6 +1651,10 @@ could point at any directory. A workspace that never ran says
 `› vx cache clean  nothing to free`. The next run misses every task once
 and saves again.
 
+A `.vx/cache` linked to another directory (a CI cache volume) is
+emptied through the link, and the link stays. An index SQLite cannot
+read is cleared like any other.
+
 ```
 $ vx cache clean
 ✓ vx cache clean  freed 1.4 GB

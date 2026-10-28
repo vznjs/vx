@@ -163,11 +163,12 @@ const VX_CACHE_NAMES = new Set([
   'cache.db-wal',
   'cache.db-shm',
   'cache.db-journal',
-  'runs',
+  // run-failures.ts, run-steps.ts, orchestrator/lockfile-claim.ts. Run
+  // history lives in cache.db and the config bundle always in
+  // `.vx/cache/compiled`, so a `runs` or `compiled` here is the user's.
   'failures',
+  'steps',
   'lockfile-claims',
-  // The workspace config's bytecode bundle (workspace/config-bytecode.ts).
-  'compiled',
 ])
 
 /**
