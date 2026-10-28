@@ -3,7 +3,7 @@
 // `reapi({ endpont })` reached the factory, read as unset, and the plugin
 // declined with no word (stream F).
 import { expect, it } from 'bun:test'
-import { refuseUnknownOptions } from '../src/index.js'
+import { refuseUnknownOptions, type PluginOptionKinds } from '../src/index.js'
 
 const refusal = (options: unknown): string => {
   try {
@@ -47,4 +47,31 @@ it('a value of the wrong kind is refused, naming the kind', () => {
     'demo() option "timeoutMs" must be a number, got "5000"',
   )
   expect(refusal({ timeoutMs: null })).toBe('demo() option "timeoutMs" must be a number, got null')
+})
+
+// `PluginOptionKinds` gave a list option the kind `'object'`, the one the
+// type checker accepted, and the check refuses every array as no object:
+// such an option could be declared and never be given.
+it('a list option has the kind array', () => {
+  const kinds: PluginOptionKinds<{ refs?: readonly string[]; env?: Record<string, string> }> = {
+    refs: 'array',
+    env: 'object',
+  }
+  const said = (options: unknown): string => {
+    try {
+      refuseUnknownOptions('demo()', options, kinds)
+      return 'taken'
+    } catch (err) {
+      return (err as Error).message
+    }
+  }
+  expect([
+    said({ refs: ['refs/heads/main'], env: {} }),
+    said({ refs: {} }),
+    said({ env: [] }),
+  ]).toEqual([
+    'taken',
+    'demo() option "refs" must be an array, got {}',
+    'demo() option "env" must be an object, got []',
+  ])
 })

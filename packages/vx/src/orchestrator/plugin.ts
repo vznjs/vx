@@ -733,9 +733,11 @@ type OptionKind<V> = [V] extends [string]
       ? 'boolean'
       : [V] extends [(...args: never[]) => unknown]
         ? 'function'
-        : [V] extends [object]
-          ? 'object'
-          : 'any'
+        : [V] extends [readonly unknown[]]
+          ? 'array'
+          : [V] extends [object]
+            ? 'object'
+            : 'any'
 
 /**
  * Every option a factory takes, each with the one kind its type allows
@@ -779,12 +781,14 @@ export function refuseUnknownOptions<T>(
     const ok =
       kind === 'object'
         ? value !== null && typeof value === 'object' && !Array.isArray(value)
-        : typeof value === kind
+        : kind === 'array'
+          ? Array.isArray(value)
+          : typeof value === kind
     if (!ok) {
       const got =
         typeof value === 'function' ? 'a function' : (JSON.stringify(value) ?? String(value))
       throw new UserError(
-        `${factory} option "${key}" must be ${kind === 'object' ? 'an' : 'a'} ${kind}, got ${got}`,
+        `${factory} option "${key}" must be ${kind === 'object' || kind === 'array' ? 'an' : 'a'} ${kind}, got ${got}`,
       )
     }
   }
