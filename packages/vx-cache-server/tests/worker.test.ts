@@ -159,3 +159,51 @@ it('checks 6 lookups by default: one round of the calls a request has waiting', 
     await other.dispose()
   }
 })
+
+// R2's failure is not the client's: an upload it refused answered 400,
+// "the body is not N bytes", for a body that was whole.
+it('answers 502 naming R2 when R2 refuses an upload', async () => {
+  const g = globalThis as Record<string, unknown>
+  g.caches = { open: async () => ({ match: async () => undefined, put: async () => {} }) }
+  g.FixedLengthStream = class extends TransformStream {
+    constructor(_length: number) {
+      super()
+    }
+  }
+  const realFetch = globalThis.fetch
+  // The issuer's keys, without a network, as the Worker's fetch reads them.
+  g.fetch = async (url: string) => Response.json(await iss.fetchJson(String(url)))
+  try {
+    const worker = (await import('../src/worker.js')).default
+    const BLOBS = {
+      head: async () => null,
+      get: async () => null,
+      put: async (_: string, body: ReadableStream) => {
+        await body.cancel()
+        throw new Error('R2 is down')
+      },
+    }
+    const url = `${AUD}/v1/artifacts/abcd`
+    const res = await worker.fetch(
+      new Request(url, {
+        method: 'PUT',
+        body: 'whole',
+        headers: {
+          ...NAMED,
+          authorization: `Bearer ${await iss.sign(JOBS.main, AUD)}`,
+          'content-length': '5',
+        },
+      }),
+      { BLOBS, ALLOW: ALLOW_VAR, AUDIENCE: AUD },
+      { waitUntil: () => {} },
+    )
+    expect([res.status, await res.json()]).toEqual([
+      502,
+      { code: 'bad_gateway', message: 'the bucket refused the artifact: R2 is down' },
+    ])
+  } finally {
+    g.fetch = realFetch
+    delete g.caches
+    delete g.FixedLengthStream
+  }
+})
