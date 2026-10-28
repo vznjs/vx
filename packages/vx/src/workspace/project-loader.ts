@@ -710,6 +710,7 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'Glob',
   'JSONC',
   'Subprocess',
+  'TOML',
   'Transpiler',
   'build',
   'color',

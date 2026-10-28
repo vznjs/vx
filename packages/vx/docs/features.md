@@ -114,7 +114,7 @@ config key or an environment variable is missing here.
 - **Artifact integrity checks** — a CRC-32, a key match and an outputs-only check on every artifact; damage is a miss. [page](https://vznjs.github.io/vx/features/artifact-integrity/) · post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Sandbox names what to grant** — a refused write is named beside the failed task with the path to allow. [page](https://vznjs.github.io/vx/features/sandbox-grants/) · post: [Guard rails that tell you the fix](https://vznjs.github.io/vx/blog/guard-rails/)
 - **Strict numeric flags** — `0x10`, `1e3` and `2.7` are refused, never reinterpreted. [page](https://vznjs.github.io/vx/features/strict-numbers/) · post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
-- **Verified releases** — binaries carry provenance, `vx upgrade` checks npm's registry signature and the SHA-512, npm publishes with provenance. [page](https://vznjs.github.io/vx/features/verified-releases/) · post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
+- **Verified releases** — binaries carry provenance, `vx upgrade` checks npm's registry signature and the SHA-512, read from the registry your `.npmrc` or bunfig names, npm publishes with provenance. [page](https://vznjs.github.io/vx/features/verified-releases/) · post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
 
 ## Daily work
 

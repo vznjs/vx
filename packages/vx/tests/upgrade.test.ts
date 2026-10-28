@@ -45,7 +45,13 @@ const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-upgrade-'))
 const FAKE = '#!/bin/sh\necho fake-vx\n'
 const fake = (): Promise<Uint8Array> => Promise.resolve(new TextEncoder().encode(FAKE))
 
+// The stubs answer npmjs.org; a developer's own .npmrc must not move them.
+const ownRegistry = process.env['npm_config_registry']
+process.env['npm_config_registry'] = 'https://registry.npmjs.org/'
+
 afterAll(async () => {
+  if (ownRegistry === undefined) delete process.env['npm_config_registry']
+  else process.env['npm_config_registry'] = ownRegistry
   await rm(dir, { recursive: true, force: true })
 })
 
@@ -295,6 +301,53 @@ describe('a release from the npm registry', () => {
     })
   })
 
+  it('a configured mirror serves the release with its token; another host gets none', async () => {
+    const mirror = 'https://npm.corp.example/api/npm/'
+    const rc = path.join(mkdtempSync(path.join(dir, 'rc-')), '.npmrc')
+    await writeFile(rc, `//npm.corp.example/api/npm/:_authToken=\${CORP_TOKEN}\n`)
+    const tarballs = { mirror: `${mirror}${PKG}/-/vx-linux-x64-9.9.9.tgz`, other: TARBALL_URL }
+    const env = {
+      npm_config_registry: process.env['npm_config_registry'],
+      npm_config_userconfig: process.env['npm_config_userconfig'],
+      CORP_TOKEN: process.env['CORP_TOKEN'],
+    }
+    process.env['npm_config_registry'] = mirror
+    process.env['npm_config_userconfig'] = rc
+    process.env['CORP_TOKEN'] = 's3cret'
+    const real = globalThis.fetch
+    try {
+      for (const tarballAt of Object.values(tarballs)) {
+        const asked: [string, string | null][] = []
+        const integrity = integrityOf(TGZ)
+        const doc = {
+          version: '9.9.9',
+          dist: {
+            tarball: tarballAt,
+            integrity,
+            signatures: [{ keyid: TEST_KEY.id, sig: signed(`${PKG}@9.9.9:${integrity}`) }],
+          },
+        }
+        globalThis.fetch = ((input: string, init?: RequestInit) => {
+          asked.push([input, new Headers(init?.headers).get('authorization')])
+          if (input === `${mirror}${PKG}/9.9.9`) return Promise.resolve(Response.json(doc))
+          if (input === tarballAt) return Promise.resolve(new Response(TGZ))
+          return Promise.resolve(new Response('nope', { status: 404 }))
+        }) as unknown as typeof fetch
+        await releaseBinary(PKG, '9.9.9', () => {}, TEST_KEY)
+        expect(asked).toEqual([
+          [`${mirror}${PKG}/9.9.9`, 'Bearer s3cret'],
+          [tarballAt, tarballAt === tarballs.mirror ? 'Bearer s3cret' : null],
+        ])
+      }
+    } finally {
+      globalThis.fetch = real
+      for (const [k, v] of Object.entries(env)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  })
+
   it('a forged signature is refused before the tarball is fetched', async () => {
     // Signed by a key that is not npm's, under npm's key id.
     const r = await upgradeAgainst(manifest({ keyid: NPM_SIGNING_KEY.id }), NPM_SIGNING_KEY)
@@ -422,7 +475,7 @@ describe('a release from the npm registry', () => {
       ),
     )
     expect(message).toBe(
-      `vx upgrade: could not read ${PKG}@9.9.8 from the npm registry (404) — is 9.9.8 a published version?`,
+      `vx upgrade: could not read ${PKG}@9.9.8 from registry.npmjs.org (404) — is 9.9.8 a published version?`,
     )
   })
 

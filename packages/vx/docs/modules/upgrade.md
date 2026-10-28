@@ -4,7 +4,9 @@
 
 `vx upgrade [TAG]` brings vx to a release the way it was installed. A
 compiled binary installed by hand reads its platform package
-(`@vzn/vx-<os>-<arch>`) from the npm registry, verifies npm's registry
+(`@vzn/vx-<os>-<arch>`) from the npm registry the user configured
+(`cli/registry.ts`: `.npmrc`, bunfig, npmjs.org last, with that
+registry's credential sent under it only), verifies npm's registry
 signature over `name@version:integrity` against npm's key pinned here,
 verifies the tarball's SHA-512 against that integrity, extracts
 `package/vx` and renames it over the current executable. The signature
@@ -33,7 +35,12 @@ export function isBunfsPath(p: string): boolean // a path inside the compiled bi
 export function isCompiledBinary(): boolean
 export function npmOwnedBinary(execPath: string): string | null // the package that owns this file, or null
 export function versionSpec(tag: string | undefined): string // `latest`, or the version a tag names
-export async function fetchManifest(pkg: string, spec: string, verb?: string): Promise<unknown> // the registry's document
+export async function fetchManifest(
+  pkg: string,
+  spec: string,
+  verb?: string,
+  registry?: Registry,
+): Promise<unknown> // the registry's document
 export interface SignedRelease {
   version: string
   tarball: string

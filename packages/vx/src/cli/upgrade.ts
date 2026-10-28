@@ -1,6 +1,7 @@
 // `vx upgrade [TAG]` — bring this vx to a newer release, the way it was
 // installed. A compiled binary installed by hand replaces itself: it reads
-// its platform package (`@vzn/vx-<os>-<arch>`) from the npm registry,
+// its platform package (`@vzn/vx-<os>-<arch>`) from the npm registry the
+// user configured (`resolveRegistry`: .npmrc, bunfig, npmjs.org last),
 // checks npm's registry signature over `name@version:integrity` against
 // the key pinned below, checks the tarball's SHA-512 against that signed
 // integrity, and only then extracts the binary, stages it beside the old
@@ -20,11 +21,11 @@ import { createPublicKey, verify } from 'node:crypto'
 import { access, chmod, chown, link, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { flagHint, seeHelp } from './help.js'
+import { resolveRegistry, type Registry } from './registry.js'
 import { UserError, sayNotice, ui } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { VERSION } from '../version.js'
 
-const REGISTRY = 'https://registry.npmjs.org'
 const PACKAGE = '@vzn/vx'
 
 /**
@@ -156,22 +157,35 @@ export async function fetchManifest(
   pkg: string,
   spec: string,
   verb = 'vx upgrade',
+  registry: Registry = resolveRegistry(pkg.split('/')[0]!),
 ): Promise<unknown> {
-  const url = `${REGISTRY}/${pkg}/${spec}`
+  const url = `${registry.url}${pkg}/${spec}`
   const res = await fetchOrRefuse(
     url,
-    { redirect: 'follow', headers: { Accept: 'application/json', 'User-Agent': `vx/${VERSION}` } },
+    {
+      redirect: 'follow',
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': `vx/${VERSION}`,
+        ...authHeader(registry, url),
+      },
+    },
     'read the release',
     verb,
   )
   if (!res.ok) {
     throw new UserError(
-      `${verb}: could not read ${pkg}@${spec} from the npm registry (${res.status})${res.status === 404 && spec !== 'latest' ? ` — is ${spec} a published version?` : ''}`,
+      `${verb}: could not read ${pkg}@${spec} from ${new URL(url).host} (${res.status})${res.status === 404 && spec !== 'latest' ? ` — is ${spec} a published version?` : ''}${res.status === 401 || res.status === 403 ? ' — check the registry credentials in .npmrc or bunfig.toml' : ''}`,
     )
   }
   // A body that is not JSON (a captive portal's page, a proxy's error
   // page served with a 200) is the same refusal as a cut one.
   return await readOrRefuse(() => res.json(), url, 'read the release', verb)
+}
+
+function authHeader(registry: Registry, url: string): Record<string, string> {
+  const auth = registry.auth(url)
+  return auth === undefined ? {} : { Authorization: auth }
 }
 
 /** What a verified registry document names: the version, its tarball and the signed integrity. */
@@ -252,9 +266,13 @@ export function verifiedRelease(
 }
 
 /** Download `release.tarball` and check its bytes against the signed SHA-512. */
-async function downloadVerified(release: SignedRelease): Promise<Uint8Array> {
+async function downloadVerified(release: SignedRelease, registry: Registry): Promise<Uint8Array> {
   const url = release.tarball
-  const res = await fetchOrRefuse(url, { redirect: 'follow' }, 'download the release')
+  const res = await fetchOrRefuse(
+    url,
+    { redirect: 'follow', headers: authHeader(registry, url) },
+    'download the release',
+  )
   if (!res.ok) {
     throw new UserError(
       `vx upgrade: download failed (${res.status}) — ${url} — nothing replaced; re-run`,
@@ -318,10 +336,11 @@ export async function releaseBinary(
   key: SigningKey = NPM_SIGNING_KEY,
   current = VERSION,
 ): Promise<Uint8Array | null> {
-  const release = verifiedRelease(await fetchManifest(pkg, spec), pkg, key)
+  const registry = resolveRegistry(pkg.split('/')[0]!)
+  const release = verifiedRelease(await fetchManifest(pkg, spec, undefined, registry), pkg, key)
   if (release.version === current) return null
   announce(release.version)
-  return binaryFromTarball(await downloadVerified(release))
+  return binaryFromTarball(await downloadVerified(release, registry))
 }
 
 /**
