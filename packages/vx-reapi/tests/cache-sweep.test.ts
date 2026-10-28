@@ -70,7 +70,7 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
     await restored('k-warn-junk')
     await restored('k-warn-junk2')
     expect(said).toEqual([
-      expect.stringMatching(/^vx\/reapi: reading a task duration at .* failed: 15 DATA_LOSS/),
+      expect.stringMatching(/^\[vx\] vx-reapi: reading a task duration at .* failed: 15 DATA_LOSS/),
     ])
   })
 

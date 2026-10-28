@@ -87,7 +87,7 @@ async function decomposeOutputDir(
 
   const blob = await client.readBlob(entry.tree_digest)
   if (blob === null) {
-    warn(`vx/reapi: could not read the Tree for ${entry.path} — recording it whole`)
+    warn(`[vx] vx-reapi: could not read the Tree for ${entry.path} — recording it whole`)
     return whole
   }
   // Keyed by the WORKER's own bytes, not by re-encoding our parse of them —
@@ -158,7 +158,7 @@ async function decomposeOutputDir(
   }))
   await client.uploadBlobs(blobs).catch(async (err: unknown) => {
     warn(
-      `vx/reapi: uploading ${entry.path}'s Tree blobs together failed (${errText(err)}) — writing each`,
+      `[vx] vx-reapi: uploading ${entry.path}'s Tree blobs together failed (${errText(err)}) — writing each`,
     )
     for (const b of blobs) await client.writeBlob(b.digest, b.data)
   })
@@ -518,13 +518,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   for (const key of ['executeTimeoutMs', 'queueTimeoutMs'] as const) {
     const ms = opts[key]
     if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
-      throw new Error(
-        `@vzn/vx-reapi: ${key} must be a positive number of ms (got ${JSON.stringify(ms)})`,
-      )
+      throw new Error(`reapi(): ${key} must be a positive number of ms (got ${JSON.stringify(ms)})`)
     }
   }
   // No listener is no reason to say nothing.
-  const warn = opts.warn ?? ((m: string) => void process.stderr.write(`[vx] ${m}\n`))
+  const warn = opts.warn ?? ((m: string) => void process.stderr.write(`${m}\n`))
   // One Capabilities round trip per executor, not per task — the answer
   // cannot change mid-run, and a 400-task graph would otherwise ask 400 times.
   let capsPromise: ReturnType<ReapiClient['capabilities']> | undefined
@@ -546,9 +544,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // status is turned into one by `namedRefusal`), so the scheduler
       // prints it plainly instead of "internal error in <task>".
       if (req.inputs === undefined) {
-        throw new Error(
-          `vx/reapi: ${req.taskId} reached the remote executor with no described inputs`,
-        )
+        throw new Error(`${req.taskId} reached the remote executor with no described inputs`)
       }
 
       // A key that already has an execution record needs no worker at all:
@@ -578,7 +574,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           .getActionResult(execDigestFor(req.cacheKey), { stdout: true, files: [] })
           .catch((err) => {
             warn(
-              `vx/reapi: ${req.taskId} could not read its execution record (${errText(err)}) — executing`,
+              `[vx] vx-reapi: ${req.taskId} could not read its execution record (${errText(err)}) — executing`,
             )
             return null
           })
@@ -597,7 +593,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             referenced.length > 0
               ? await client.findMissingBlobs(referenced).catch((err: unknown) => {
                   warn(
-                    `vx/reapi: ${req.taskId} could not check its execution record's blobs (${errText(err)}) — executing`,
+                    `[vx] vx-reapi: ${req.taskId} could not check its execution record's blobs (${errText(err)}) — executing`,
                   )
                   return referenced
                 })
@@ -642,7 +638,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               : await replay().catch(async (err: unknown) => {
                   for (const p of created.reverse()) await rm(p, { recursive: true, force: true })
                   warn(
-                    `vx/reapi: ${req.taskId} could not replay its execution record (${errText(err)}) — executing`,
+                    `[vx] vx-reapi: ${req.taskId} could not replay its execution record (${errText(err)}) — executing`,
                   )
                   return null
                 })
@@ -740,7 +736,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             if (present.length > 0) {
               if (present.length !== up.outputs.length) {
                 warn(
-                  `vx/reapi: ${up.taskId} has ${up.outputs.length - present.length} output(s) recorded ` +
+                  `[vx] vx-reapi: ${up.taskId} has ${up.outputs.length - present.length} output(s) recorded ` +
                     `but missing on disk — grafting is not possible for a partial set, using what is here`,
                 )
               }
@@ -765,7 +761,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             const gone = await client.findMissingBlobs(referenced)
             if (gone.length > 0) {
               throw new UserError(
-                `vx/reapi: upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob(s)) and never materialised locally — re-run it (e.g. --force)`,
+                `upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob(s)) and never materialised locally — re-run it (e.g. --force)`,
               )
             }
             const files = (record.output_files ?? []).map((f) => ({
@@ -789,7 +785,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                   // real and silently dropping the graft is the same wrong-result
                   // hazard as an evicted file.
                   throw new UserError(
-                    `vx/reapi: upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
+                    `upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
                   )
                 }
                 const decodedTree = decodeTreeWithBytes(treeBlob)
@@ -838,12 +834,12 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // next run anywhere replayed the edited outputs (item 1037).
       if (tree.moved.length > 0) {
         warn(
-          `vx/reapi: ${req.taskId}: \`${tree.moved[0]}\` changed after its key was taken — the execution is not recorded under it`,
+          `[vx] vx-reapi: ${req.taskId}: \`${tree.moved[0]}\` changed after its key was taken — the execution is not recorded under it`,
         )
       }
       for (const shadowedPath of tree.shadowed) {
         warn(
-          `vx/reapi: ${req.taskId} declares input files under ${shadowedPath}, which an upstream graft replaces — those files are NOT in the input tree`,
+          `[vx] vx-reapi: ${req.taskId} declares input files under ${shadowedPath}, which an upstream graft replaces — those files are NOT in the input tree`,
         )
       }
 
@@ -929,7 +925,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // A cancel the server refused leaves the action running on its worker.
       const cancelFailed = (err: unknown): void =>
         warn(
-          `vx/reapi: cancelling ${req.taskId}'s operation failed (${errText(err)}) — it may still run on its worker`,
+          `[vx] vx-reapi: cancelling ${req.taskId}'s operation failed (${errText(err)}) — it may still run on its worker`,
         )
       let op: Operation
       try {
@@ -971,12 +967,12 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // the operation, still has the task given back.
           if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           throw executorFallback(
-            `vx/reapi: no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its operation was cancelled`,
+            `vx-reapi: no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its operation was cancelled`,
           )
         }
         if (stall.signal.aborted) {
           throw new UserError(
-            `vx/reapi: ${req.taskId} was still executing ${stallAfter}ms after the worker ` +
+            `${req.taskId} was still executing ${stallAfter}ms after the worker ` +
               `started it and the server never reported a result — giving up on the remote ` +
               `operation. Raise exec.timeout (or the plugin's executeTimeoutMs) if the task ` +
               `is legitimately this slow; otherwise the remote is not making progress.`,
@@ -989,7 +985,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       }
       if (op.error !== undefined && (op.error.code ?? 0) !== 0) {
         throw new UserError(
-          `vx/reapi: execution failed for ${req.taskId}: ${op.error.message ?? `code ${op.error.code}`}`,
+          `execution failed for ${req.taskId}: ${op.error.message ?? `code ${op.error.code}`}`,
         )
       }
       const decoded = decodeExecuteResponse(op)
@@ -1003,7 +999,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         // is delivered before the refusal, best effort (F-48).
         if (result !== undefined) {
           const unread = (stream: string) => (e: unknown) => {
-            warn(`vx/reapi: ${req.taskId}'s ${stream} could not be read (${errText(e)})`)
+            warn(`[vx] vx-reapi: ${req.taskId}'s ${stream} could not be read (${errText(e)})`)
             return ''
           }
           const [out, err] = await Promise.all([
@@ -1019,14 +1015,14 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         }
         const logs = await fetchServerLogs(client, decoded.serverLogs, warn)
         throw new UserError(
-          `vx/reapi: ${req.taskId} execution failed: ${decoded.status.message || `code ${decoded.status.code}`}` +
+          `${req.taskId} execution failed: ${decoded.status.message || `code ${decoded.status.code}`}` +
             (decoded.message === undefined ? '' : ` — ${decoded.message}`) +
             logs,
         )
       }
       if (result === undefined) {
         throw new UserError(
-          `vx/reapi: ${req.taskId} returned no ActionResult${decoded.message === undefined ? '' : `: ${decoded.message}`}`,
+          `${req.taskId} returned no ActionResult${decoded.message === undefined ? '' : `: ${decoded.message}`}`,
         )
       }
       // The worker id is REPORTED, not logged: it rides `ExecuteResult.where`
@@ -1108,7 +1104,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 const d = sha256(stdoutBytes)
                 const missing = await client.findMissingBlobs([d]).catch((err: unknown) => {
                   warn(
-                    `vx/reapi: ${req.taskId}'s stdout probe failed (${errText(err)}) — uploading it`,
+                    `[vx] vx-reapi: ${req.taskId}'s stdout probe failed (${errText(err)}) — uploading it`,
                   )
                   return [d]
                 })
@@ -1119,7 +1115,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                         () => true,
                         (err: unknown) => {
                           warn(
-                            `vx/reapi: ${req.taskId}'s stdout upload failed (${errText(err)}) — recorded without it`,
+                            `[vx] vx-reapi: ${req.taskId}'s stdout upload failed (${errText(err)}) — recorded without it`,
                           )
                           return false
                         },
@@ -1151,7 +1147,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 const split = await decomposeOutputDir(client, rebased, declaredGlobs, warn).catch(
                   (err: unknown) => {
                     warn(
-                      `vx/reapi: could not read the Tree for ${rebased.path} (${errText(err)}) — recording it whole`,
+                      `[vx] vx-reapi: could not read the Tree for ${rebased.path} (${errText(err)}) — recording it whole`,
                     )
                     return { directories: [rebased], files: [], symlinks: [] }
                   },
@@ -1170,7 +1166,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                   output_symlinks: recorded.symlinks,
                 })
                 .catch((err: Error) =>
-                  warn(`vx/reapi: could not record execution for ${req.taskId}: ${err.message}`),
+                  warn(
+                    `[vx] vx-reapi: could not record execution for ${req.taskId}: ${err.message}`,
+                  ),
                 )
             })(req.cacheKey!)
           : Promise.resolve()
@@ -1215,7 +1213,7 @@ function namedRefusal(taskId: string, err: unknown): unknown {
   if (isUserError(err) || !(err instanceof Error)) return err
   const status = err as Error & { code?: unknown; details?: unknown }
   if (typeof status.code !== 'number' || typeof status.details !== 'string') return err
-  return new UserError(`vx/reapi: ${taskId}: the remote server failed the call — ${err.message}`)
+  return new UserError(`${taskId}: the remote server failed the call — ${err.message}`)
 }
 
 /**
@@ -1232,7 +1230,7 @@ async function fetchServerLogs(
   const parts: string[] = []
   for (const log of readable) {
     const bytes = await client.readBlob(log.digest).catch((err: unknown) => {
-      warn(`vx/reapi: the server log ${log.name} could not be read (${errText(err)})`)
+      warn(`[vx] vx-reapi: the server log ${log.name} could not be read (${errText(err)})`)
       return null
     })
     if (bytes !== null)
@@ -1447,10 +1445,10 @@ export async function materialiseOutputs(
   const missing = (what: string, hash: string, abs?: string): void => {
     if (!wholeTreeCapture || req.replay === true || (abs !== undefined && isDeclared(abs))) {
       throw new UserError(
-        `vx/reapi: ${req.taskId} declared output ${what} is missing from the CAS (${hash.slice(0, 12)}) — re-run it (e.g. --force)`,
+        `${req.taskId} declared output ${what} is missing from the CAS (${hash.slice(0, 12)}) — re-run it (e.g. --force)`,
       )
     }
-    warn(`vx/reapi: output ${what} missing from CAS (${hash.slice(0, 12)})`)
+    warn(`[vx] vx-reapi: output ${what} missing from CAS (${hash.slice(0, 12)})`)
   }
   // A glob cut at its wildcard captured a directory that holds more than
   // the outputs — `src/*.gen.js` returns all of `src`, inputs included.
@@ -1675,7 +1673,7 @@ class Fence {
 
   private refuse(what: string): UserError {
     return new UserError(
-      `vx/reapi: the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${this.root}`,
+      `the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${this.root}`,
     )
   }
 }

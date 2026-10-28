@@ -241,7 +241,9 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     executeReturning('mods', unstored)
     const warns: string[] = []
     await refusal(run('k-unread', ['mods/*/gen'], warns))
-    expect(warns).toContain('vx/reapi: could not read the Tree for pkg/mods — recording it whole')
+    expect(warns).toContain(
+      '[vx] vx-reapi: could not read the Tree for pkg/mods — recording it whole',
+    )
     expect(recordOf('k-unread').map((d) => d.path)).toEqual(['pkg/mods'])
     executeReturning('mods', fake.put(new Uint8Array()))
     await refusal(run('k-rootless', ['mods/*/gen']))
@@ -279,7 +281,7 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     expect(await refusal(runOne(readFail, warns))).toBe('resolved')
     expect(recordOf('k-readfail').map((d) => d.path)).toEqual(['pkg/mods'])
     expect(warns.filter((w) => w.includes('recording it whole'))).toEqual([
-      'vx/reapi: could not read the Tree for pkg/mods (15 DATA_LOSS: injected DATA_LOSS) — recording it whole',
+      '[vx] vx-reapi: could not read the Tree for pkg/mods (15 DATA_LOSS: injected DATA_LOSS) — recording it whole',
     ])
   })
 
@@ -301,7 +303,7 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     expect(await refusal(runOne(split, warns))).toBe('resolved')
     expect(recordOf('k-batchfail').map((d) => d.path)).toEqual(['pkg/mods/gen'])
     expect(warns).toEqual([
-      "vx/reapi: uploading pkg/mods's Tree blobs together failed (15 DATA_LOSS: injected DATA_LOSS) — writing each",
+      "[vx] vx-reapi: uploading pkg/mods's Tree blobs together failed (15 DATA_LOSS: injected DATA_LOSS) — writing each",
     ])
   })
 
@@ -470,9 +472,7 @@ describe.if(CHUNKING_SUPPORTED)('server logs on a failed execution', () => {
       return { response: { status: { code: 13, message: 'boom' }, server_logs: logs } }
     }
     const message = await refusal(runOne(request()))
-    expect(message.startsWith('vx/reapi: pkg#gen execution failed: boom\n--- server log ')).toBe(
-      true,
-    )
+    expect(message.startsWith('pkg#gen execution failed: boom\n--- server log ')).toBe(true)
     expect(message.match(/--- server log/g)?.length).toBe(1)
     expect(message).not.toMatch(/not for people|xxxx/)
   })
@@ -570,7 +570,7 @@ describe.if(CHUNKING_SUPPORTED)('materialising outputs', () => {
         await refusal(
           materialise({ output_directories: [{ path: 'dist', tree_digest: digest }] }, ['dist/**']),
         ),
-      ).toStartWith(`vx/reapi: pkg#gen declared output ${what} is missing from the CAS (`)
+      ).toStartWith(`pkg#gen declared output ${what} is missing from the CAS (`)
     }
   })
 })

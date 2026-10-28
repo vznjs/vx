@@ -81,7 +81,7 @@ describe.if(CHUNKING_SUPPORTED)('what every call carries', () => {
       }
     }
     const refused = (k: string) =>
-      `reapi: header ${JSON.stringify(k)} holds a character gRPC metadata cannot carry (printable ASCII only) — check it (its value is not printed)`
+      `reapi(): header ${JSON.stringify(k)} holds a character gRPC metadata cannot carry (printable ASCII only) — check it (its value is not printed)`
     expect([
       refusal({ authorization: 'Bearer SECRET\nline2' }),
       refusal({ 'x-token': 'SECRET€' }),
@@ -152,7 +152,7 @@ describe.if(CHUNKING_SUPPORTED)('capabilities and negotiation', () => {
     fake.caps.compressors = ['ZSTD']
     await using({}, async (c) => {
       await expect(c.negotiate({ digestFunction: 'SHA512' })).rejects.toThrow(
-        '@vzn/vx-reapi: server does not support digest function SHA512 (has SHA256)',
+        'server does not support digest function SHA512 (has SHA256)',
       )
       await c.negotiate({ compression: false })
       expect(c.compressionEnabled).toBe(false)
@@ -215,7 +215,7 @@ describe.if(CHUNKING_SUPPORTED)('batches', () => {
       const d = c.digestOf(data)
       fake.rejectBatch.add(d.hash)
       await expect(c.batchUpdateBlobs([{ digest: d, data }])).rejects.toThrow(
-        `reapi: BatchUpdateBlobs rejected ${d.hash}: code 3 rejected`,
+        `BatchUpdateBlobs rejected ${d.hash}: code 3 rejected`,
       )
     })
   })
@@ -536,7 +536,7 @@ describe.if(CHUNKING_SUPPORTED)('writes', () => {
       fake.fail('Write', grpc.status.DEADLINE_EXCEEDED)
       await c.writeBlob(d, large)
       expect(warns).toEqual([
-        `vx/reapi: chunked write of ${d.hash.slice(0, 12)} hit the 131072-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
+        `[vx] vx-reapi: chunked write of ${d.hash.slice(0, 12)} hit the 131072-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
       ])
       expect(fake.writes.at(-1)!.sizes.every((n) => n <= SAFE_CHUNK_BYTES)).toBe(true)
       const small = bytes('one message')
