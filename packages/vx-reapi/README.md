@@ -400,7 +400,8 @@ Protocol features in use, not just reachable:
   `output_file_symlinks` / `output_directory_symlinks` when it sends only
   those). A tree's small files are fetched
   together across its directories (`BatchReadBlobs`, 64 MiB at a time),
-  not one call per directory.
+  not one call per directory; the result's own output files, 64 MiB at a
+  time too.
 - **Upload minimality** — `FindMissingBlobs` first (split so no request
   passes a 4 MiB message), then batched blobs while they fit the server's
   budget and ByteStream beyond it.

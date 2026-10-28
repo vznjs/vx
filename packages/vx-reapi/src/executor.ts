@@ -1546,39 +1546,43 @@ export async function materialiseOutputs(
   )
   // Batch the small ones into one round trip; anything larger goes over
   // ByteStream, which is also the only path that can be compressed.
-  const small = files.filter((f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024)
-  const batched = await client.batchReadBlobs(small.map((f) => f.digest))
-
-  await mapBounded(files, WRITE_CONCURRENCY, async (f) => {
-    const abs = fence.lexical(req.cwd, f.path)
-    await fence.dir(path.dirname(abs))
-    await makeDir(path.dirname(abs), created)
-    await fence.landing(abs)
-    // Inlined only when it has bytes: an ActionResult read back through
-    // proto-loader (the execution-record replay) carries `contents` as an
-    // EMPTY Buffer on every file, and taking that as inline wrote each
-    // replayed output empty (item 827). An empty file is the next branch.
-    // Inline bytes are held to the digest they ride with, as fetched ones
-    // are in wire.ts: a server's wrong inline copy was written as the output
-    // and cached under the key (F-8). A mismatch fetches the blob instead.
-    const inline =
-      f.contents !== undefined &&
-      f.contents.length > 0 &&
-      digestWith(client.digest, f.contents).hash === f.digest.hash
-    const bytes = inline
-      ? f.contents! // inlined by the server (`inline_output_files`): zero fetches
-      : Number(f.digest.size_bytes) === 0
-        ? new Uint8Array()
-        : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
-    if (bytes === null) {
-      missing(f.path, f.digest.hash, abs)
-      return
-    }
-    await writeOutput(abs, bytes, created)
-    // REAPI carries the executable bit per output; a build that produces a
-    // script and a later task that runs it depends on it surviving.
-    if (f.is_executable === true) await chmod(abs, masked(0o755))
-  })
+  // A window at a time, as a Tree's files are: one batch read of every
+  // small output held them all in memory at once.
+  for (const window of fetchWindows(files, (f) => f.digest)) {
+    const batched = await client.batchReadBlobs(
+      window.filter((f) => isSmallBlob(f.digest)).map((f) => f.digest),
+    )
+    await mapBounded(window, WRITE_CONCURRENCY, async (f) => {
+      const abs = fence.lexical(req.cwd, f.path)
+      await fence.dir(path.dirname(abs))
+      await makeDir(path.dirname(abs), created)
+      await fence.landing(abs)
+      // Inlined only when it has bytes: an ActionResult read back through
+      // proto-loader (the execution-record replay) carries `contents` as an
+      // EMPTY Buffer on every file, and taking that as inline wrote each
+      // replayed output empty (item 827). An empty file is the next branch.
+      // Inline bytes are held to the digest they ride with, as fetched ones
+      // are in wire.ts: a server's wrong inline copy was written as the output
+      // and cached under the key (F-8). A mismatch fetches the blob instead.
+      const inline =
+        f.contents !== undefined &&
+        f.contents.length > 0 &&
+        digestWith(client.digest, f.contents).hash === f.digest.hash
+      const bytes = inline
+        ? f.contents! // inlined by the server (`inline_output_files`): zero fetches
+        : Number(f.digest.size_bytes) === 0
+          ? new Uint8Array()
+          : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
+      if (bytes === null) {
+        missing(f.path, f.digest.hash, abs)
+        return
+      }
+      await writeOutput(abs, bytes, created)
+      // REAPI carries the executable bit per output; a build that produces a
+      // script and a later task that runs it depends on it surviving.
+      if (f.is_executable === true) await chmod(abs, masked(0o755))
+    })
+  }
 
   // `OutputSymlink` — a declared output that is a link, not a file. Restoring
   // it as a copy would silently change what the next task sees.
@@ -1817,7 +1821,7 @@ async function placeSymlink(
 /** Stdout up to this size is recorded inline (`stdout_raw`) rather than as a CAS blob. */
 const INLINE_STDOUT_BYTES = 64 * 1024
 
-/** Small blobs a tree restore holds in memory at once, fetched batched. */
+/** Small blobs a restore holds in memory at once, fetched batched. */
 const TREE_FETCH_WINDOW_BYTES = 64 * 1024 * 1024
 
 /**
@@ -1916,18 +1920,9 @@ async function materialiseTree(
   }
   await walk(tree.root, destDir, declared === null)
 
-  const isSmall = (f: { digest: Digest }): boolean =>
-    f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024
-  for (let i = 0; i < files.length;) {
-    let held = 0
-    let j = i
-    while (j < files.length && (j === i || held < TREE_FETCH_WINDOW_BYTES)) {
-      if (isSmall(files[j]!.f)) held += Number(files[j]!.f.digest.size_bytes)
-      j++
-    }
-    const window = files.slice(i, j)
+  for (const window of fetchWindows(files, (w) => w.f.digest)) {
     const batched = await client.batchReadBlobs(
-      window.filter((w) => isSmall(w.f)).map((w) => w.f.digest),
+      window.filter((w) => isSmallBlob(w.f.digest)).map((w) => w.f.digest),
     )
     await mapBounded(window, WRITE_CONCURRENCY, async ({ abs, f }) => {
       const bytes =
@@ -1946,8 +1941,28 @@ async function materialiseTree(
       // Permission bits only: a server's setuid or setgid bit is not a build output's.
       if (mode !== undefined) await chmod(abs, masked(mode))
     })
+  }
+}
+
+/** A blob fetched in a batch read, and so held in memory with its window. */
+const isSmallBlob = (d: Digest): boolean =>
+  Number(d.size_bytes) > 0 && Number(d.size_bytes) <= 1024 * 1024
+
+/** `items` cut where their small blobs reach `TREE_FETCH_WINDOW_BYTES`. */
+function fetchWindows<T>(items: readonly T[], digestOf: (item: T) => Digest): T[][] {
+  const windows: T[][] = []
+  for (let i = 0; i < items.length;) {
+    let held = 0
+    let j = i
+    while (j < items.length && (j === i || held < TREE_FETCH_WINDOW_BYTES)) {
+      const d = digestOf(items[j]!)
+      if (isSmallBlob(d)) held += Number(d.size_bytes)
+      j++
+    }
+    windows.push(items.slice(i, j))
     i = j
   }
+  return windows
 }
 
 /**
