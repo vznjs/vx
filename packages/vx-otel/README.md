@@ -74,7 +74,7 @@ Options override env, the `endpoint` option included over a signal's own variabl
 otel({
   endpoint: 'https://collector.example.com',
   serviceName: 'my-monorepo',
-  headers: { authorization: 'Bearer …' },
+  headers: { authorization: `Bearer ${process.env.OTLP_TOKEN}` },
   metrics: true, // default
   logs: true, // default: each executed task's output tail
   timeoutMs: 15_000, // default: per request
