@@ -751,6 +751,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     // too: its edit can add an output or a `workspaceFiles` input.
     if (shapesWatchedSet(filename) || configImportFiles.includes(abs) || linkChanged(abs))
       reread = true
+    // Inside a project (any repo whose root is one) no import arm hears it.
+    if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
     trigger(`${proj.name} ${filename}`, abs)
   }
   const armProject = (proj: ProjectMeta): void => {
@@ -816,6 +818,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               configImportFiles.includes(abs)
             )
               reread = true
+            if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
             const owner = ownerOf(abs)
             trigger(
               owner === undefined
@@ -876,6 +879,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const importArms = new Map<string, WatchHandle>()
   let importNames = new Map<string, Set<string>>()
   const staleNamed = new Map<string, number>()
+  const sayStaleImport = (abs: string): void => {
+    // One line per save, not per event: a save is often two.
+    const now = Date.now()
+    if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
+    staleNamed.set(abs, now)
+    process.stdout.write(
+      `vx watch: ${printable(path.relative(workspaceRoot, abs))} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
+    )
+  }
   const armImports = (): void => {
     const inProject = (f: string): boolean => projectDirs.some((d) => f.startsWith(d + path.sep))
     const want = new Map<string, Set<string>>()
@@ -907,13 +919,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               trigger(`config import ${rel}`, abs)
               return
             }
-            // One line per save, not per event: a save is often two.
-            const now = Date.now()
-            if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
-            staleNamed.set(abs, now)
-            process.stdout.write(
-              `vx watch: ${printable(rel)} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
-            )
+            sayStaleImport(abs)
           }),
         )
         armedAs.set(dir, inodeOf(dir) ?? '')
