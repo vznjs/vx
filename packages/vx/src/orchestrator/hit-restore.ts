@@ -184,7 +184,16 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           dirPrefixes !== null &&
           hit.outputDirRows?.some((r) => r.mtimeMs === OUTPUT_DIRS_OVER_CAP) !== true
         ) {
-          await args.cache.recordOutputDirs?.(hash, node.projectDir, dirPrefixes)
+          // Held to the rows like the run-end snapshot (item 1087): a stray
+          // written since the walk listed its directory, more than a racy
+          // window before this, is not the entry's.
+          const holds = entryHolds(
+            node,
+            outputWalkTakes(node.projectDir, outputs, args.nestedProjectDirs),
+          )
+          await args.cache.recordOutputDirs?.(hash, node.projectDir, dirPrefixes, (files) =>
+            holds(files, expected),
+          )
         }
       }
     }
