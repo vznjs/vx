@@ -277,13 +277,16 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
   }
 
   return async (token, req) => {
-    let iss: unknown
+    let said: unknown
     try {
-      iss = decodeJwt(token).iss
+      said = decodeJwt(token).iss
     } catch {
       throw new Refusal(401, 'not a JWT')
     }
-    if (typeof iss !== 'string' || !opts.allow.some((a) => a.issuer === iss)) {
+    // A trailing slash is no other issuer, as a key and a tokenless read
+    // name it: one in ALLOW or in the token refused every token.
+    const iss = typeof said === 'string' ? issuerOf(said) : undefined
+    if (iss === undefined || !opts.allow.some((a) => issuerOf(a.issuer) === iss)) {
       throw new Refusal(401, "an issuer this server's ALLOW does not name")
     }
     const audience = opts.audience ?? new URL(req.url).origin
@@ -306,7 +309,9 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     if (typeof named !== 'string') throw new Refusal(403, `no ${claim} claim`)
     // GitHub and GitLab names ignore case; a checkout's origin may spell it either way.
     const repository = named.toLowerCase()
-    const ofRepo = opts.allow.filter((a) => a.issuer === iss && same(a.repository, repository))
+    const ofRepo = opts.allow.filter(
+      (a) => issuerOf(a.issuer) === iss && same(a.repository, repository),
+    )
     if (ofRepo.length === 0)
       throw new Refusal(403, `${claim} ${repository} is not in this server's ALLOW`)
     const wclaim = workflowClaimOf(iss)
@@ -315,7 +320,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     const workflow = ran.replace(/@.*$/, '')
     if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
       throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
-    const repo = { issuer: issuerOf(iss), repository }
+    const repo = { issuer: iss, repository }
     const branch = branchOf(iss, claims)
     return branch === undefined ? repo : { ...repo, write: branch }
   }
