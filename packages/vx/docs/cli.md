@@ -2372,8 +2372,8 @@ the task once (`vx run <task>`); history is this checkout's own.
 
 A `vx.config.*` or `.vx/workspace.*` that does not load or is refused. The
 message names the file and the field; fix that field
-(`vx docs <field>` prints its reference). `vx info --format json` lists
-every config error at once. A project config's refusal is `vx lock`'s,
+(`vx docs <field>` prints its reference). `vx lock` names every
+project config's error at once. A project config's refusal is `vx lock`'s,
 not a run's: a run never evaluates one.
 
 #### `VX_E_CYCLE`
@@ -2718,11 +2718,12 @@ unreported`: the sandbox still enforces, but a task that tolerates a
 - `cache entries` counts the entries and their size.
   Paths under the home directory print as `~/…`; the JSON keeps them
   absolute.
-- `cache policy` is the policy a `vx run` takes when no flag names one,
-  and where it comes from (`VX_CACHE_POLICY`, `.vx/workspace`'s `cache.policy`,
-  or the default, every layer on, remote writes off off CI); `cache scope`
-  is `VX_CACHE_SCOPE`'s, or none: a run then takes a plugin's
-  (`github()`), else the branch's from git.
+- `settings` appears only when a variable or `.vx/workspace` changed a
+  setting: each such one by path, its value and where it came from
+  (`cache.policy local:r (VX_CACHE_POLICY), run.timeout 30m (.vx/workspace)`).
+  A setting not named runs at its default (`cache.policy`: every layer
+  on, remote writes off off CI; `cache.scope`: a plugin's, else the
+  branch's from git). The JSON `settings` holds every one.
 - `cache versions` are the two constants a bug report needs and the
   reset notice names: the key prefix (`CACHE_VERSION`; a bump orphans
   every entry) and the index schema (`SCHEMA_VERSION`; a mismatch drops
