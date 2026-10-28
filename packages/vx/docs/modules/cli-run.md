@@ -87,12 +87,12 @@ refusal points at: `vx watch` reads the same flags, M-58):
 
 After parsing, `resolveRunOptions` builds the orchestrator's `projects` field:
 
-| Condition                                  | `projects`                       |
-| ------------------------------------------ | -------------------------------- |
-| Every positional is anchored (`pkg#task`)  | `undefined` (no scope needed)    |
-| Any bare positional + `filters.length > 0` | `resolveFilters(...)` result     |
-| Any bare positional + `--all`              | `undefined` (every project)      |
-| Any bare positional + default              | `[findCwdProject(cwd)]` or error |
+| Condition                                  | `projects`                                                                                                                |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Every positional is anchored (`pkg#task`)  | `undefined` (no scope needed)                                                                                             |
+| Any bare positional + `filters.length > 0` | `resolveFilters(...)` result                                                                                              |
+| Any bare positional + `--all`              | `undefined` (every project)                                                                                               |
+| Any bare positional + default              | `[findCwdProject(cwd)]` or error; a config between cwd and that project the lock lacks is refused ("not in the lock yet") |
 
 `--affected[=<base>]` adds a `...[<base>]` filter — the changed
 projects and their dependents, the candidates (#446) — put first in

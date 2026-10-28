@@ -59,7 +59,8 @@ const WS_CONFIG = (v: number): string => `export default { run: { concurrency: $
 
 it('each discovery case answers as tests/contract/discovery.json records', async () => {
   const live: Record<string, unknown> = {}
-  // Outside git: every directory but a dot-directory or node_modules.
+  // Outside git: every directory but node_modules and vx's own `.vx`, a
+  // dot-directory too, as git lists one (`.github/actions/x`).
   live['projects: a vx.config in any directory'] = await projects(
     fixture({
       'vx.config.ts': CONFIG(0),
@@ -69,6 +70,7 @@ it('each discovery case answers as tests/contract/discovery.json records', async
       'tools/gen/vx.config.js': CONFIG(3),
       '.hidden/vx.config.ts': CONFIG(4),
       'node_modules/dep/vx.config.ts': CONFIG(5),
+      '.vx/cache/x/vx.config.ts': CONFIG(8),
       'inner/.vx/workspace.ts': WS_CONFIG(1),
       'inner/vx.config.ts': CONFIG(6),
       'inner/p/vx.config.ts': CONFIG(7),

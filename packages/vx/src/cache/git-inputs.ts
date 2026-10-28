@@ -764,7 +764,16 @@ function expandNestedRepos(
       for (const f of walkFiles(abs)) out.push(`${nested}/${f}`)
       continue
     }
-    const inner = runGitLsFiles(abs, nestedRepoEnv())
+    let inner
+    try {
+      inner = runGitLsFiles(abs, nestedRepoEnv())
+    } catch {
+      // A `.git` git cannot open (a submodule's file naming a lost
+      // `.git/modules` entry) answers as no `.git` does: by a walk. It
+      // refused the whole run as "not inside a git work tree".
+      for (const f of walkFiles(abs)) out.push(`${nested}/${f}`)
+      continue
+    }
     for (const f of inner.files) out.push(`${nested}/${f}`)
     for (const f of inner.undecodable) undecodable.push(`${nested}/${f}`)
   }
@@ -799,6 +808,21 @@ function nestedRepoEnv(): Record<string, string> {
   const env = gitEnv()
   for (const name of LOCAL_REPO_ENV) delete env[name]
   return env
+}
+
+/**
+ * The environment a listing of `dir` runs in: `nestedRepoEnv` when a
+ * location variable is set and `dir` sits in a repository nested below
+ * `workspaceRoot` (a `.git` at it or between), whose git must not read the
+ * workspace repository's index; git's own environment otherwise.
+ */
+export function listingEnv(dir: string, workspaceRoot: string): Record<string, string> {
+  if (![...LOCAL_REPO_ENV].some((name) => process.env[name] !== undefined)) return gitEnv()
+  for (let at = dir; at !== workspaceRoot && at.startsWith(workspaceRoot); at = path.dirname(at)) {
+    if (existsSync(path.join(at, '.git'))) return nestedRepoEnv()
+    if (path.dirname(at) === at) break
+  }
+  return gitEnv()
 }
 
 /** Every file and symlink under `dir`, relative and `/`-separated; a `.git` is skipped, a link not followed. */

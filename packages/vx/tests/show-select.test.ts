@@ -92,6 +92,15 @@ describe('vx show --filter / --affected', () => {
     ])
   })
 
+  it('names vx show, not vx run, when one filter of several matched nothing', () => {
+    const r = names('--filter', 'lib', '--filter', 'tol')
+    expect([r.code, r.names, r.err]).toEqual([
+      0,
+      ['lib'],
+      '! vx show  filter "tol" matched no projects\n\n  fix  tool\n',
+    ])
+  })
+
   it('refuses them beside one project', () => {
     const r = names('lib', '--affected')
     expect([r.code, r.err]).toEqual([
