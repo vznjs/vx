@@ -294,6 +294,18 @@ describe('HistoryServer', () => {
     expect(timingOf(ran as never)?.durationMs).toBe(75_000)
   })
 
+  it('sends the cores a task needs as local history keeps them: at most its machine, none on no share', () => {
+    const ran = { status: 'success', durationMs: 10_000, cpuMs: 40_000 } as const
+    // Four cores' work at half a core each reads as eight; the machine had four.
+    expect(timingOf({ ...ran, cpuShare: 0.5, whereCores: 4 } as never)?.cores).toBe(4)
+    expect(timingOf({ ...ran, cpuShare: 0.5 } as never)?.cores).toBe(8)
+    // No share is no reading: an Infinity went on the wire as null, and the
+    // server refused the whole upload.
+    const none = timingOf({ ...ran, cpuShare: 0 } as never)
+    expect(none?.cores).toBeUndefined()
+    expect(JSON.stringify(none)).not.toContain('null')
+  })
+
   it('refuses a workspace that names a server but no issuer or repository', () => {
     expect(() => vxHistory({ url: 'https://h.example', repository: 'acme/app' })).toThrow(
       "vxHistory(): issuer must be the CI issuer's URL",
