@@ -361,7 +361,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
 
-# The image needs Bun and git.
+# The image needs Bun; a job adds git if it lacks it.
 default:
   image: oven/bun:1.4
 
@@ -375,6 +375,7 @@ vx:
       variables: { VX_TASKS: '--all' }
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
   before_script:
+    - command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)
     - bun install --frozen-lockfile --filter './'
   script:
     - bun vx lock --check
@@ -385,6 +386,7 @@ vx:
   variables: { GIT_DEPTH: 1 }
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
   before_script:
+    - command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)
     - git fetch -q --depth 1 origin $VX_DTE_SHA
     - git checkout -q FETCH_HEAD
     - bun install --frozen-lockfile
