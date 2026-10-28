@@ -58,6 +58,7 @@ function expiryOf(jwt: string): number {
     ).exp
     return typeof exp === 'number' ? exp * 1000 : 0
   } catch {
+    // quiet: an unreadable exp is no known expiry; the server refuses the token
     return 0
   }
 }
@@ -99,6 +100,7 @@ async function refusal(res: Response): Promise<Error> {
       const message = (JSON.parse(text) as { message?: unknown }).message
       said = typeof message === 'string' ? message : text
     } catch {
+      // quiet: not JSON, so the text is what it said
       said = text
     }
   } catch {
@@ -455,6 +457,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     })())
     // A failed ask is asked again by the next check: kept, two failures
     // while a server restarted failed every read of the run (2026-10-26).
+    // quiet: the awaited ask rethrows it; this only forgets it
     asked.catch(() => {
       if (this.asked === asked) this.asked = undefined
     })

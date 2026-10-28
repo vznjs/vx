@@ -84,13 +84,14 @@ const deadline = (): AbortSignal => {
 
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
+  // quiet: with the body unread, the status alone names the refusal
   const text = (await res.text().catch(() => '')).slice(0, 2048)
   let said = text
   try {
     const m = (JSON.parse(text) as { message?: unknown }).message
     if (typeof m === 'string') said = m
   } catch {
-    // not JSON: the text is what it said
+    // quiet: not JSON, so the text is what it said
   }
   said = said.replace(/\s+/g, ' ').trim().slice(0, 200)
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
@@ -118,6 +119,7 @@ function expiryOf(jwt: string): number {
     ).exp
     return typeof exp === 'number' ? exp * 1000 : 0
   } catch {
+    // quiet: an unreadable exp is no known expiry; the server refuses the token
     return 0
   }
 }
@@ -269,6 +271,7 @@ export class HistoryServer {
       }
       return limits
     })())
+    // quiet: the awaited ask rethrows it; this only forgets it
     asked.catch(() => {
       if (this.limits === asked) this.limits = undefined
     })
