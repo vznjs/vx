@@ -1567,8 +1567,11 @@ async function runOnBus(
     log.runDone?.()
     if (options.summaryTable === true)
       for (const line of formatOutcomeTable(list, colors)) log.status(line)
+    // A run a signal stopped records nothing `vx last` opens: no id to copy.
+    const footerContext =
+      stop.stoppedBy === undefined ? runContext : { ...runContext, runId: undefined }
     if (options.footer !== false)
-      for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
+      for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
 
     // Edge case the summary already reported: the user requested a
     // persistent task (dev server / watcher). The run is "done" in every

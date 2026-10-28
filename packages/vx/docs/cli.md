@@ -3506,7 +3506,8 @@ plugin's failed flush) gets a yellow `warn` row above `info`,
 `N warnings above`, counting each distinct warning once; the
 warnings themselves are said once, where they happened. The
 `info` row ends with `run <id>`: the
-run's whole id, as `vx last <id>` takes it. The
+run's whole id, as `vx last <id>` takes it; a run a Ctrl-C (or
+SIGTERM, SIGHUP) stopped records nothing, so its footer names no id. The
 `time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a
 fact twice: a spread value already on the row is left out, so one
