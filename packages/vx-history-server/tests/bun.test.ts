@@ -253,6 +253,16 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
   expect([cli.exitCode, stderrOf(cli)]).toEqual([2, '--port: not a port: \n'])
 })
 
+// Bun.serve reads '' as localhost: `--host "$HOST"` with HOST unset
+// listened where no other host or container could reach it.
+it('refuses an empty --host', () => {
+  const cli = Bun.spawnSync(
+    ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--host', '', '--db', ':memory:'],
+    { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
+  )
+  expect([cli.exitCode, stderrOf(cli)]).toEqual([2, "--host: needs an address, got ''\n"])
+})
+
 it('reads with no token where READ_ACCESS is public, only a repository ALLOW names', async () => {
   const auth = oidcTokenAuth({ allow: allowOf(), readAccess: 'public', fetchJson: iss.fetchJson })
   const req = new Request('http://127.0.0.1/v1/timings/query')
