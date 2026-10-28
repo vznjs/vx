@@ -785,6 +785,25 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(closes).toEqual([GONE])
   })
 
+  // A join whose socket never opened (its upgrade failed, its client went)
+  // had no socket to drop, so no grace ran out: its orchestrator held the
+  // run for good, each rejoin refused 409, and its worker never left.
+  it('loses a participant whose join’s socket never opened once its grace passes', async () => {
+    const c = client({ graceMs: 20 })
+    const [host] = await c.request(R, 'join', { role: 'host' })
+    expect((await c.relay.fetch(host)).status).toBe(101)
+    expect((await c.call(R, 'join', { role: 'host' })).status).toBe(409)
+    await Bun.sleep(30)
+    const again = await c.call(R, 'join', { role: 'host' })
+    expect(again.status).toBe(200)
+    const o = again.json.id
+    const [peer] = await c.request(R, 'join', { role: 'peer' })
+    expect((await c.relay.fetch(peer)).status).toBe(101)
+    const [{ body }] = await c.poll(R, o)
+    await Bun.sleep(30)
+    await c.frame(R, o, { sends: [] })
+    expect(await c.poll(R, o)).toEqual([{ from: 'relay', body: { type: 'left', id: body.id } }])
+  })
 })
 
 it('the Bun entry serves the protocol, without auth on loopback only', async () => {
