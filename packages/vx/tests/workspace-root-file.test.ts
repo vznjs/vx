@@ -56,6 +56,12 @@ it('a worktree, whose .git is a file, is its own top-level', async () => {
   expect(await found('repo')).toBe('VX_E_NO_WORKSPACE')
 })
 
+it("a submodule's worktree, its gitdir under .git/modules, is its own top-level too", async () => {
+  await file('repo/.git', `gitdir: ${shared}/super/.git/modules/sub/worktrees/repo\n`)
+  await file('super/.git/modules/sub/worktrees/repo/commondir', '../..\n')
+  expect(await found('repo')).toBe('VX_E_NO_WORKSPACE')
+})
+
 it('a submodule walks on to its superproject, and no further', async () => {
   await file('super/.git/HEAD', 'ref: refs/heads/main\n')
   await file('super/.vx/workspace.ts')
