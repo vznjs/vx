@@ -14,10 +14,15 @@ export function barWidth(colors: ColorSupport): number {
   return columns === undefined ? 50 : Math.max(10, Math.min(50, columns - LABEL))
 }
 
+/** A rule's width, flush with the bars: the footer's and a task frame's section rules. */
+export function ruleWidth(colors: ColorSupport): number {
+  return LABEL + barWidth(colors)
+}
+
 /** `─ <mark> ` + dashes, flush with the bars. Shared by the run summary and every report. */
 export function gradientRule(colors: ColorSupport, mark = 'vx'): string {
   const head = `─ `
-  const width = LABEL + barWidth(colors)
+  const width = ruleWidth(colors)
   const dashes = '─'.repeat(Math.max(8, width - 3 - mark.length))
   if (!colors.enabled) return `${head}${mark} ${dashes}`
   const chunks = 8

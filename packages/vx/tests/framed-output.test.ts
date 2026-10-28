@@ -261,7 +261,7 @@ describe('formatTaskBlock', () => {
         '\n' +
         '$ oxlint .\n' +
         '\n' +
-        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ────────────────────────────────────────────────────\n' +
         '\n' +
         'Found 0 warnings and 0 errors.\n' +
         'Finished in 327ms.\n' +
@@ -353,7 +353,7 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > restored-local • abcdef01\n' +
-        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ────────────────────────────────────────────────────\n' +
         '\n' +
         'Found 0 warnings and 0 errors.\n' +
         '\n' +
@@ -406,7 +406,7 @@ describe('formatTaskBlock', () => {
         '\n' +
         '$ tsc\n' +
         '\n' +
-        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ────────────────────────────────────────────────────\n' +
         '\n' +
         'error TS1234: oops\n' +
         '\n' +
@@ -433,11 +433,11 @@ describe('formatTaskBlock', () => {
         '\n' +
         '$ sleep 3 && mkdir -p dist && touch dist/index.js\n' +
         '\n' +
-        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ────────────────────────────────────────────────────\n' +
         '\n' +
         'touch: dist/index.js: Operation not permitted\n' +
         '\n' +
-        '├─ SANDBOX VIOLATIONS (2) ──────────────────────────────────\n' +
+        '├─ SANDBOX VIOLATIONS (2) ────────────────────────────────────\n' +
         '\n' +
         'touch(32784) deny(1) sysctl-read kern.iossupportversion\n' +
         'touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js\n' +
@@ -694,7 +694,7 @@ describe('persistent task framing', () => {
       }),
     )
     expect(noted).toBe(
-      '├─ SANDBOX ─────────────────────────────────────────────────\n' +
+      '├─ SANDBOX ───────────────────────────────────────────────────\n' +
         '\n' +
         `${note}\n` +
         '\n' +
@@ -717,7 +717,7 @@ describe('persistent task framing', () => {
       }),
     )
     expect(close).toBe(
-      '├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────\n' +
+      '├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────\n' +
         '\n' +
         'bun(49255) deny(1) file-read-data /repo/packages/vx\n' +
         '\n' +

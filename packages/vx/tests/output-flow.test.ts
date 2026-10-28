@@ -1207,7 +1207,7 @@ describe('persistent post-ready output', () => {
         mode === 'none'
           ? ''
           : '┌─ ▸ app#server > $ sh ./server.sh\n' +
-              '├─ STDERR (since ready) ────────────────────────────────────\n' +
+              '├─ STDERR (since ready) ──────────────────────────────────────\n' +
               '\n' +
               'EADDRINUSE\n' +
               '\n' +

@@ -26,7 +26,7 @@ $ vx run build test --filter packages/a --filter packages/b --filter packages/c 
 
 $ bun test
 
-├─ OUTPUT ──────────────────────────────────────────────────
+├─ OUTPUT ────────────────────────────────────────────────────
 
 src/sum.test.ts:
 2 | test('adds', () => { expect(2 + 2).toBe(5) })

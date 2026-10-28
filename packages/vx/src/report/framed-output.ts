@@ -33,6 +33,7 @@ import {
   maskedCommand,
   paint,
   printable,
+  ruleWidth,
   ui,
   type ColorSupport,
 } from '../util/index.js'
@@ -47,8 +48,6 @@ const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
 // red / yellow / cyan) so a task id can never read as an outcome. Each
 // half of an id hashes its own name: same project, same hue; same target,
 // same hue, in every run, list and region row.
-// Section rules + the summary rule share one frame width.
-const FRAME_WIDTH = 60
 
 const SUCCESS = '#22c55e' // green-500 — success / fresh
 const WARN = '#eab308' // yellow-500 — skipped
@@ -211,8 +210,8 @@ function pushOutputSection(
 function sectionLine(title: string, color: string, colors: ColorSupport): string {
   const corner = (s: string) => paint('', s, colors, { dim: true })
   const label = paint(color, title, colors, { bold: true })
-  const width = Math.min(FRAME_WIDTH, colors.columns ?? FRAME_WIDTH)
-  const rule = corner('─'.repeat(Math.max(1, width - 4 - title.length)))
+  // As wide as the footer's rule, so the frames and the footer line up.
+  const rule = corner('─'.repeat(Math.max(1, ruleWidth(colors) - 4 - title.length)))
   return `${corner('├─')} ${label} ${rule}`
 }
 
