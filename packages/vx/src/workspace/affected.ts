@@ -747,6 +747,12 @@ export async function defaultAffectedBase(
       'VX_E_AFFECTED_BASE',
     )
   }
+  // A detached HEAD (a CI checkout of a pushed commit) is on the base
+  // branch when the branch holds it: the base was HEAD, or a commit after
+  // it, and nothing ran, green.
+  if (!found.onIt && found.detached && (await isAncestor(workspaceRoot, 'HEAD', found.ref))) {
+    found.onIt = true
+  }
   if (found.onIt) {
     throw new UserError(
       `--affected has no default on the base branch (${found.branch}): run --all (the cache skips what did not change), or name the last good commit, --affected=<sha>`,
@@ -784,7 +790,7 @@ function noHistoryRefusal(workspaceRoot: string): UserError | undefined {
 async function baseBranchRef(
   workspaceRoot: string,
   configured: string | undefined,
-): Promise<{ ref: string; branch: string; onIt: boolean } | undefined> {
+): Promise<{ ref: string; branch: string; onIt: boolean; detached: boolean } | undefined> {
   const text = async (args: string[]): Promise<string> => {
     const proc = spawnGit(args, workspaceRoot)
     const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
@@ -807,7 +813,12 @@ async function baseBranchRef(
     text(['symbolic-ref', '--short', '-q', 'HEAD']),
   ])
   const have = new Set(refs.split('\n'))
-  const at = (branch: string, ref: string) => ({ ref, branch, onIt: head === branch })
+  const at = (branch: string, ref: string) => ({
+    ref,
+    branch,
+    onIt: head === branch,
+    detached: head === '',
+  })
   if (remoteHead.startsWith('origin/') && have.has(remoteHead)) {
     return at(remoteHead.slice('origin/'.length), remoteHead)
   }
@@ -894,6 +905,15 @@ export async function mergeBaseWith(
   ref: string,
 ): Promise<string | undefined> {
   return (await gitMergeBase(workspaceRoot, ref)) ?? (await reachMergeBase(workspaceRoot, ref))
+}
+
+/** Whether `commit` is `ref` or one of its ancestors. */
+async function isAncestor(workspaceRoot: string, commit: string, ref: string): Promise<boolean> {
+  const proc = spawnGit(
+    ['merge-base', '--is-ancestor', '--end-of-options', commit, ref],
+    workspaceRoot,
+  )
+  return (await proc.exited) === 0
 }
 
 async function gitMergeBase(workspaceRoot: string, ref: string): Promise<string | undefined> {
@@ -990,7 +1010,7 @@ function originSpec(ref: string): string | undefined {
 async function fetchBaseBranch(
   workspaceRoot: string,
   configured: string | undefined,
-): Promise<{ ref: string; branch: string; onIt: boolean } | undefined> {
+): Promise<{ ref: string; branch: string; onIt: boolean; detached: boolean } | undefined> {
   if (!isShallow(workspaceRoot)) return undefined
   const branch = configured ?? (await originDefaultBranch(workspaceRoot))
   if (branch === undefined) return undefined
@@ -998,7 +1018,7 @@ async function fetchBaseBranch(
   if (!(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) return undefined
   const proc = spawnGitSync(['symbolic-ref', '--short', '-q', 'HEAD'], workspaceRoot, 'ignore')
   const head = new TextDecoder().decode(proc.stdout).trim()
-  return { ref: `origin/${branch}`, branch, onIt: head === branch }
+  return { ref: `origin/${branch}`, branch, onIt: head === branch, detached: head === '' }
 }
 
 /** The branch origin's HEAD names, asked of origin (a one-commit checkout has no `origin/HEAD`). */

@@ -281,7 +281,9 @@ Run the task only in projects whose files changed since `<base>`.
   3. the merge base of HEAD and `origin/<baseBranch>`. `baseBranch` is
      `origin/HEAD`'s branch, then `main`, then `master`
      ([schema](schema.md)); in a clone with no remote, the local branch.
-- On the base branch itself there is no default, so vx refuses: `--affected has no default
+- On the base branch itself there is no default, so vx refuses. A
+  detached HEAD the base branch holds (a CI checkout of a pushed
+  commit) is on it too: `--affected has no default
 on the base branch (main): run --all (the cache skips what did not
 change), or name the last good commit, --affected=<sha>`. `HEAD~1`
   would see only one commit of a multi-commit push.
