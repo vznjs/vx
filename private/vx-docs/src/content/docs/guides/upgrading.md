@@ -16,6 +16,10 @@ ALLOW no longer takes commas between entries. Separate them with spaces or newli
 
 vx-dte-server no longer takes --allow or --audience; set ALLOW and AUDIENCE in its environment. In compose.yaml set CACHE_ALLOW, CACHE_AUDIENCE, CACHE_READ_ACCESS and HISTORY_ALLOW, HISTORY_AUDIENCE, HISTORY_READ_ACCESS in place of ALLOW, AUDIENCE and READ_ACCESS.
 
+## inputs: run a runtime probe with the essential env only
+
+inputs.runtime and inputs.workspaceRuntime probes see only the essential env allowlist, not vx's full environment; declare a variable a probe read as an inputs.env name.
+
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 
 the cache and history servers read ALLOW (space separated issuer:owner/repo:workflow entries) in place of TRUST; @vzn/vx-devtools exports parseAllow and Allowed in place of parseTrust and TrustRule, and oidcAuth and oidcTokenAuth take allow, not trust. Protected refs are gone: any run of a named workflow writes its branch. Set ALLOW to each repository's CI workflow.

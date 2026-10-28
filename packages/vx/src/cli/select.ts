@@ -389,10 +389,10 @@ export async function resolveFilters(
     ...(tags !== undefined ? { tags } : {}),
     // A `[<since>]` selector matching nothing is the ordinary "nothing
     // changed" outcome, reported below; only a name/path pattern that
-    // matched nothing is worth flagging as a probable typo.
-    onNoMatch: (f) => {
-      if (f.gitSince === undefined) unmatched.push(f.raw)
-      else emptyDiffs.add(f)
+    // matched no project in the workspace, ref or not, is a probable typo.
+    onNoMatch: (f, emptyDiff) => {
+      if (emptyDiff) emptyDiffs.add(f)
+      else unmatched.push(f.raw)
     },
     // A pattern that matched, with nothing on the walk it asked for: the
     // fact to say, where "no projects matched" read as a typo (item 1030).
@@ -415,7 +415,11 @@ export async function resolveFilters(
     // projects matched filter(s): one, !one" read as a typo of `one`.
     const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
     const excluded = `${negations.join(', ')} excluded every project the other filters matched`
-    if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
+    if (
+      unmatched.length === 0 &&
+      includes.length > 0 &&
+      includes.every((f) => f.gitSince !== undefined)
+    ) {
       if (includes.every((f) => emptyDiffs.has(f))) {
         const refs = includes.map((f) => f.gitSince).join(', ')
         // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
@@ -639,7 +643,7 @@ function didYouMeanProject(
     if (bare !== n) byBare.set(bare, [...(byBare.get(bare) ?? []), n])
   }
   for (const pattern of unmatched) {
-    const typed = typedName(pattern)
+    const typed = typedName(pattern.replace(/\[[^\]]*\]$/, ''))
     // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
     if (typed === '//') {
       return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'

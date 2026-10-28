@@ -1258,6 +1258,25 @@ describe('resolveInputs — runtime values', () => {
     expect(r.workspaceRuntimeValues).toEqual([['echo real', 'real']])
   })
 
+  // The probe ran with vx's whole environment, and a child is dumpable
+  // after its exec: an unsandboxed task read every secret vx holds from the
+  // probe's `/proc/<pid>/environ`, the hole `hideEnvFromTasks` closes for
+  // vx itself. The probe now sees what every task sees: `ESSENTIAL_ENV`.
+  it('runs its command with the essential env only, never a secret vx holds', async () => {
+    const saved = process.env['VX_PROBE_SECRET']
+    process.env['VX_PROBE_SECRET'] = 'hunter2'
+    try {
+      const cmd = 'printf "%s|%s" "$VX_PROBE_SECRET" "$HOME"'
+      const r = await resolveInputs(args({ runtime: [cmd], workspaceRuntime: [cmd] }))
+      const home = process.env['HOME'] ?? ''
+      expect(r.runtimeValues).toEqual([[cmd, `|${home}`]])
+      expect(r.workspaceRuntimeValues).toEqual([[cmd, `|${home}`]])
+    } finally {
+      if (saved === undefined) delete process.env['VX_PROBE_SECRET']
+      else process.env['VX_PROBE_SECRET'] = saved
+    }
+  })
+
   it('resolves runtime in the project dir', async () => {
     const r = await resolveInputs(args({ runtime: ['pwd'] }))
     expect(r.runtimeValues[0]![1]).toBe(await realpath(projectDir))

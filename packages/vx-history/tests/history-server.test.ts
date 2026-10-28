@@ -135,7 +135,7 @@ describe('HistoryServer', () => {
     const token = await iss.sign('main', 'https://elsewhere.example')
     const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token })
     await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
-      `HTTP 401: wrong audience: the token was refused (this workspace names ${NAMED.repository} at ${NAMED.issuer}; the server's ALLOW must name it, and the token's audience be ${new URL(url).origin}); the history server is off for this run`,
+      `HTTP 401: wrong audience: the token names https://elsewhere.example, this server takes ${new URL(url).origin} (AUDIENCE): the token was refused (this workspace names ${NAMED.repository} at ${NAMED.issuer}; the server's ALLOW must name it, and the token's audience be ${new URL(url).origin}); the history server is off for this run`,
     )
     const before = seen.length
     await client.upload(new Map([['p1', { durationMs: 1 }]]))
@@ -292,6 +292,18 @@ describe('HistoryServer', () => {
     // One core's work at a third of a core: two thirds of 20 s was waiting.
     expect(timingOf({ ...ran, cpuShare: 1 / 3 } as never)?.durationMs).toBe(35_000)
     expect(timingOf(ran as never)?.durationMs).toBe(75_000)
+  })
+
+  it('sends the cores a task needs as local history keeps them: at most its machine, none on no share', () => {
+    const ran = { status: 'success', durationMs: 10_000, cpuMs: 40_000 } as const
+    // Four cores' work at half a core each reads as eight; the machine had four.
+    expect(timingOf({ ...ran, cpuShare: 0.5, whereCores: 4 } as never)?.cores).toBe(4)
+    expect(timingOf({ ...ran, cpuShare: 0.5 } as never)?.cores).toBe(8)
+    // No share is no reading: an Infinity went on the wire as null, and the
+    // server refused the whole upload.
+    const none = timingOf({ ...ran, cpuShare: 0 } as never)
+    expect(none?.cores).toBeUndefined()
+    expect(JSON.stringify(none)).not.toContain('null')
   })
 
   it('refuses a workspace that names a server but no issuer or repository', () => {
