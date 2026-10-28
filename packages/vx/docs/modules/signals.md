@@ -62,7 +62,11 @@ SIGKILLed, exactly as it would outlive a Ctrl-C in a plain terminal;
 give it a SIGINT trap, or `exec` it. `forwardedSignal` is the rule, and
 `RunOptions.signal` follows it through its abort reason: aborted with
 the reason `'SIGINT'` (the watch loop's Ctrl-C) the children get
-SIGINT; any other reason, SIGHUP's included, sends SIGTERM.
+SIGINT; any other reason, SIGHUP's included, sends SIGTERM. A reason
+naming a signal (`'SIGINT'`, `'SIGTERM'`, `'SIGHUP'`) is also a stop as
+the handler's is, so the run records no history (item 854): a watch
+cycle a Ctrl-C stopped read in `vx last` as FAILED with 0 tasks
+(2026-10-28).
 
 `terminateChildren` is that teardown on its own, minus the exit: the
 process handler, `RunOptions.signal` (an embedder aborting a run — the
