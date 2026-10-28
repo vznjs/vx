@@ -471,7 +471,9 @@ TODO naming that part: the graph runs that member's task once, so name it
 under `dependsOn` and drop it from the command (pinia). A directory inside
 the member or the root is no other member.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
-<other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
+<other>`, `bun run <other>`, `npm test`, `npm start`, `npm stop`, and the
+aliases `npm run-script` / `rum` / `urn`, `npm t` / `tst`, `pnpm
+run-script`, `pnpm t` / `tst`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and
 caches the target instead of a package-manager subprocess it cannot
 see. When `build` is such a group, the task it reaches that runs a
