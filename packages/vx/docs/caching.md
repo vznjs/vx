@@ -344,7 +344,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     string, kept the key that `git status` and `--affected` saw move.
     Under `core.fileMode=false` (WSL's DrvFs) git reports no chmod, so
     there a clean file's mode comes from an lstat too, and its OID
-    from the index (item 1076).
+    from the index (item 1076). Each of these settings is read as git
+    reads a boolean: `false`, `no`, `off`, the empty value or a zero
+    integer (`0`, `00`) is false, and a bare key is true.
 
     A **symlink** folds as git folds it, the blob of its target
     _string_ (its mode-120000 index OID), and then the content behind

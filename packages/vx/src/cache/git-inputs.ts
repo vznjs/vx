@@ -304,7 +304,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     this.foldCase ??=
       this.vars === null
         ? process.platform === 'darwin'
-        : this.vars.get('core.ignorecase')?.trim().toLowerCase() === 'true'
+        : gitBool(this.vars.get('core.ignorecase')) === true
     return this.foldCase ? abs.toLowerCase() : abs
   }
 
@@ -1238,8 +1238,28 @@ function gitVarList(listing: string): Map<string, string> {
   for (const line of listing.split('\n')) {
     const eq = line.indexOf('=')
     if (eq > 0) vars.set(line.slice(0, eq), line.slice(eq + 1))
+    // A bare key (`[core] fileMode` with no `=`) is listed without one, and
+    // git reads it as true.
+    else if (eq === -1 && /^[a-z]+\./i.test(line)) vars.set(line, 'true')
   }
   return vars
+}
+
+/**
+ * A boolean config value as git reads it: `true`/`yes`/`on`, `false`/
+ * `no`/`off` and the empty value, or an integer (`k`/`m`/`g` suffix
+ * allowed) that is true when nonzero. Only `false`/`no`/`off`/`0` were
+ * taken, so `trustctime =` or `fileMode = 00` kept index OIDs trusted
+ * while git judged by the weaker stat. Undefined when unset or not a
+ * boolean git takes.
+ */
+function gitBool(v: string | undefined): boolean | undefined {
+  if (v === undefined) return undefined
+  const t = v.trim().toLowerCase()
+  if (t === 'true' || t === 'yes' || t === 'on') return true
+  if (t === 'false' || t === 'no' || t === 'off' || t === '') return false
+  const n = /^([-+]?\d+)[kmg]?$/.exec(t)
+  return n === null ? undefined : Number(n[1]) !== 0
 }
 
 /**
@@ -1249,8 +1269,7 @@ function gitVarList(listing: string): Map<string, string> {
  * says nothing about the worktree.
  */
 function fileModeIgnored(gitVars: string): boolean {
-  const v = gitVarList(gitVars).get('core.filemode')?.trim().toLowerCase()
-  return v === 'false' || v === 'no' || v === 'off' || v === '0'
+  return gitBool(gitVarList(gitVars).get('core.filemode')) === false
 }
 
 /**
@@ -1287,21 +1306,14 @@ function restampModes(trusted: Map<string, string>, workspaceRoot: string): void
  */
 export function gitStatWeakened(gitVars: string): boolean {
   const vars = gitVarList(gitVars)
-  const trustctime = vars.get('core.trustctime')?.trim().toLowerCase()
   const checkStat = vars.get('core.checkstat')?.trim().toLowerCase()
-  return (
-    trustctime === 'false' ||
-    trustctime === 'no' ||
-    trustctime === 'off' ||
-    trustctime === '0' ||
-    checkStat === 'minimal'
-  )
+  return gitBool(vars.get('core.trustctime')) === false || checkStat === 'minimal'
 }
 
 /** `true` when git may rewrite bytes for EVERY auto-detected text file. */
 export function autocrlfConverts(gitVars: string): boolean {
-  const v = gitVarList(gitVars).get('core.autocrlf')?.trim().toLowerCase()
-  return v === 'true' || v === 'input'
+  const v = gitVarList(gitVars).get('core.autocrlf')
+  return v?.trim().toLowerCase() === 'input' || gitBool(v) === true
 }
 
 /**
