@@ -14,7 +14,10 @@ const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
 let root: string
 let printed: string[]
 const write = process.stdout.write.bind(process.stdout)
+const noColor = process.env['NO_COLOR']
 beforeEach(async () => {
+  // The words, as a pipe reads them: a CI's env paints what is captured here.
+  process.env['NO_COLOR'] = '1'
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-init-'))
   printed = []
   process.stdout.write = ((chunk: string) => {
@@ -24,6 +27,8 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   process.stdout.write = write
+  if (noColor === undefined) delete process.env['NO_COLOR']
+  else process.env['NO_COLOR'] = noColor
   await rm(root, { recursive: true, force: true })
 })
 
@@ -139,7 +144,7 @@ it('keeps a workflow its owner changed unless --force, and says when it is up to
   expect(await readFile(path.join(root, WORKFLOW), 'utf8')).toBe('mine\n')
   expect(await init({ workers: sizes, adapter: github() }, '--dry')).toBe(0)
   expect(await readFile(path.join(root, WORKFLOW), 'utf8')).toBe('mine\n')
-  expect(printed.join('')).toContain('# .github/workflows/vx-worker.yml\n')
+  expect(printed.join('')).toContain('── .github/workflows/vx-worker.yml ──\n')
   expect(await init({ workers: sizes, adapter: github() }, '--force')).toBe(0)
   printed = []
   expect(await init({ workers: sizes, adapter: github() })).toBe(0)

@@ -18,7 +18,7 @@ import type {
   TaskArtifacts,
 } from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
-import { machineParallelism, maskedLine, SecretBroker } from '../util/index.js'
+import { machineParallelism, maskedLine, SecretBroker, ui } from '../util/index.js'
 import { resolveSetting } from '../settings.js'
 
 export interface ResolvedPluginCommand {
@@ -127,7 +127,7 @@ export async function resolvePluginCommand(
 }
 
 const warn = (m: string): void => {
-  process.stderr.write(`${maskedLine(m)}\n`)
+  ui.say('warn', maskedLine(m))
 }
 
 /** Read-only: a verb reads what runs stored, and only a run's policy may write. */

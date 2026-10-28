@@ -14,6 +14,7 @@ import {
   unique,
 } from './sandbox-paths.js'
 import type { SandboxedRunArgs } from './sandbox-runtime.js'
+import { ui } from '../util/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 
@@ -200,7 +201,8 @@ export function punchWritePaths(readPath: string, writePaths: readonly string[])
   }
   if (linked.length > 0 && !warnedSymlinkPunch.has(readPath)) {
     warnedSymlinkPunch.add(readPath)
-    process.stderr.write(
+    ui.say(
+      'warn',
       `[vx] sandbox: a write grant under ${readPath} makes its ${linked.length} symlinked ` +
         `entr${linked.length === 1 ? 'y' : 'ies'} (${linked
           .slice(0, 3)
@@ -232,7 +234,8 @@ function holdsGlobChar(grant: string): boolean {
   if (at === -1) return false
   if (!warnedGlob.has(grant)) {
     warnedGlob.add(grant)
-    process.stderr.write(
+    ui.say(
+      'warn',
       `[vx] sandbox: the write grant ${grant} holds ${globChar(grant[at]!)}, and the Linux ` +
         `sandbox mounts no write path that does, so a write under it is refused. Grant the ` +
         `directory above it instead: ${grant.slice(0, grant.lastIndexOf(path.sep, at) + 1)}\n`,
@@ -264,7 +267,8 @@ export function bindableReads(paths: readonly string[]): string[] {
     if (at === -1) return true
     if (!warnedGlob.has(grant)) {
       warnedGlob.add(grant)
-      process.stderr.write(
+      ui.say(
+        'warn',
         `[vx] sandbox: the read grant ${grant} holds ${globChar(grant[at]!)}, which the Linux ` +
           `sandbox ${grant[at] === '\\' ? 'cannot resolve' : 'reads as a pattern that also matches its siblings'}, so it is not granted. ` +
           `Rename it, or grant the directory above it: ` +
