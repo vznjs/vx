@@ -98,7 +98,8 @@ refused too: vx prints names raw, and one could retitle the terminal.
 `tags` label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
 Each is a non-empty string a tag filter can name, or it is refused at
-load: no surrounding whitespace, no `*` (a pattern), and no ending in
+load: no surrounding whitespace, no `*` (a pattern), no control
+character (`vx show` prints tags raw), and no ending in
 `...` (a dependency walk) or `[<ref>]` (a git range). A
 `project` plugin may set or edit them (`nx()` gives each project its Nx
 `tags` unless the vx.config has its own). A tag is in no cache key: it
