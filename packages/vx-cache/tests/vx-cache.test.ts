@@ -547,6 +547,40 @@ describe('lend', () => {
   })
 })
 
+// Core lends while its remote reads, and the layer turns itself off: a
+// refused token was lent to every worker, each of which said the refusal
+// again, and a failed OIDC ask was asked again at each lend.
+it('lends nothing once the remote is off', async () => {
+  const srv = server()
+  let asked = 0
+  const github = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: () => {
+      asked++
+      return new Response('no', { status: 403 })
+    },
+  })
+  try {
+    const refused = layer(srv.url, 'nope')
+    await expect(refused.has('aa11')).rejects.toThrow('remote cache off for this run')
+    expect(await refused.lend()).toBeUndefined()
+
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: github.url.href,
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'gh',
+    }
+    const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, env)!, fetch, env)
+    c.refs = [MAIN]
+    await expect(c.has('aa11')).rejects.toThrow("GitHub's OIDC endpoint: HTTP 403")
+    expect(await c.lend()).toBeUndefined()
+    expect(asked).toBe(1)
+  } finally {
+    await srv.stop()
+    await github.stop(true)
+  }
+})
+
 describe('config', () => {
   // 2026-10-25: a proxy in front of the server (an Access service token).
   it('sends its headers on every request to the server, never over the CI token', async () => {

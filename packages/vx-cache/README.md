@@ -66,7 +66,8 @@ first read, said once, and the run stays local.
 A run that hands tasks to other jobs lends them its token (core's
 `lend()`), and they read and write with it: a job started from another
 workflow would carry a token that writes nowhere the run reads. A job
-uses a lent token over its own and never lends one on.
+uses a lent token over its own and never lends one on, nor any once
+its remote is off for the run.
 
 A refused token is said once and turns the remote off for the run; a
 refused write (a job that reads only) turns off writes alone. Any other

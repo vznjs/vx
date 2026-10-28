@@ -335,10 +335,12 @@ export class VxCacheLayer implements RemoteCacheLayer {
    * This job's token, for a job that runs this run's tasks
    * (`RemoteCacheLayer.lend`): its writes land where this run reads them.
    * GitHub's is asked again when it ends within five minutes. A token lent
-   * to this job is never lent on.
+   * to this job is never lent on, nor one once the remote is off: core
+   * lends while its policy reads, and a refused token lent was refused on
+   * every worker.
    */
   async lend(): Promise<LentAccess | undefined> {
-    if (this.lent?.() !== undefined) return undefined
+    if (this.disabled || this.lent?.() !== undefined) return undefined
     const jwt = await this.bearer(LEND_MARGIN_MS)
     if (jwt === '') return undefined
     const exp = this.github ? this.idToken!.exp : expiryOf(jwt)
