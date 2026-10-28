@@ -346,6 +346,10 @@ export async function resolveFilters(
                 for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
                 return out
               },
+              flagged: async () => {
+                const g = await git.start()
+                return g.scopes.includes('.') ? g.flagged : null
+              },
             }
           : {}),
       }
