@@ -11,11 +11,12 @@ Workers, Bun or Docker. You need only the ones you use.
 | --- | --- | --- |
 | [Cache server](cache/) | every machine reuses what another one built | `vxCache()` from `@vzn/vx-cache` |
 | [History server](history/) | a fresh CI runner knows how long each task takes, so it starts the long ones first | `vxHistory()` from `@vzn/vx-history` |
-| [DTE server](dte/) | one run spread over many CI runners | `dte()` from `@vzn/vx-dte` |
+| [DTE server](dte/) | [Distributed task execution](../distributed-task-execution/): one run split across several CI machines | `dte()` from `@vzn/vx-dte` |
 
 None of them stores a password or a token. Each request carries the CI
-job's own OIDC token, which GitHub Actions or GitLab CI hands the job,
-and the server checks it. A laptop has no such token, so off CI the
+job's own OIDC token, which GitHub Actions or GitLab CI hands the job.
+
+The server checks that token. A laptop has no such token, so off CI the
 plugins work locally.
 
 ## `ALLOW`: who takes part
@@ -46,19 +47,25 @@ On GitLab, the workflow is the CI file:
 <summary>What a merge queue writes</summary>
 
 A GitHub merge queue run, on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
-writes `main` before its code lands. Code you queue is code you trust,
-so run security checks on the pull request, before it is queued.
+writes `main` before its code lands.
+
+Code you queue is code you trust, so run security checks on the pull
+request, before it is queued.
 
 </details>
 
 <details>
 <summary>What the server sees</summary>
 
-Every request names its issuer and repository, as `vxCache({ issuer,
-repository })` and `vxHistory({ issuer, repository })` declare them,
-hashed. A token of another repository is refused. A branch travels as
-the first 128 bits of its SHA-256 in hex, so the server never sees a
-branch name. A renamed repository starts with an empty cache.
+Every request names its issuer and repository, as
+`vxCache({ issuer, repository })` and `vxHistory({ issuer, repository })`
+declare them. A token of another repository is refused.
+
+The cache server gets each of them, and each branch, as the first 128
+bits of its SHA-256 in hex, so it never sees a name. The history server
+gets them as they are ([What it keeps](history/#what-it-keeps)).
+
+A renamed repository starts with an empty cache.
 
 `AUDIENCE` is the `aud` a token must name. By default it is the URL the
 server is reached at, which is what the plugins ask the CI for.
