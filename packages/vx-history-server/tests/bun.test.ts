@@ -176,6 +176,35 @@ it('refuses a query body past its limit as it arrives', async () => {
   expect(pulled).toBeLessThan(100)
 })
 
+// A query names its repository in its body, which was read whole before
+// the token was looked at: anyone could make the server hold a body open.
+it('refuses a query with no token, or a bad one, before reading its body', async () => {
+  const handle = createHistoryServer({
+    store: sqliteStore(sqliteDb(path.join(dir, 'early.sqlite'))),
+    authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson }),
+  })
+  for (const token of [null, 'not.a.jwt']) {
+    let pulled = 0
+    const endless = new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (++pulled > 1) return new Promise<void>(() => {})
+        c.enqueue(new TextEncoder().encode('{'))
+      },
+    })
+    const res = await handle(
+      new Request('http://127.0.0.1/v1/timings/query', {
+        method: 'POST',
+        body: endless,
+        headers: {
+          'content-type': 'application/json',
+          ...(token === null ? {} : { authorization: `Bearer ${token}` }),
+        },
+      }),
+    )
+    expect(res.status).toBe(401)
+  }
+})
+
 // A 401 tells a client its token is refused; the issuer's keys being out
 // of reach is not that (2026-10-26).
 it("answers 502 while the issuer's keys cannot be read", async () => {

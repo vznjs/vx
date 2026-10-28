@@ -1798,6 +1798,21 @@ describe('parseRunArgs', () => {
     )
   })
 
+  it('repeated --exclude-dependencies flags add up, and the bare one drops every edge', () => {
+    const of = (...a: string[]) => parseRunArgs(['build', ...a]).excludeDependencies
+    expect([
+      of('--exclude-dependencies=gen', '--exclude-dependencies=lint,gen'),
+      of('--exclude-dependencies', '--exclude-dependencies=gen'),
+      of('--exclude-dependencies=gen', '--exclude-dependencies'),
+    ]).toEqual([['gen', 'lint'], 'all', 'all'])
+  })
+
+  it('--exclude-dependencies= with only commas is rejected like an empty value', () => {
+    expect(parseRunArgs(['build', '--exclude-dependencies=,']).error).toMatch(
+      /^--exclude-dependencies= needs a value/,
+    )
+  })
+
   it('parses --affected (no value) and --affected=<ref>', () => {
     expect(parseRunArgs(['build', '--affected']).affected).toBe('')
     expect(parseRunArgs(['build', '--affected=origin/main']).affected).toBe('origin/main')

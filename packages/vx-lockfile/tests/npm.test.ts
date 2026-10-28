@@ -145,7 +145,10 @@ describe('workspace digests (npm)', () => {
 // an input the digest does not read is a stale hit on every run changing it.
 describe('every input the npm digest must read', () => {
   const doc = (packages: Record<string, unknown>) =>
-    JSON.stringify({ lockfileVersion: 3, packages: { '': { name: 'ws' }, ...packages } })
+    JSON.stringify({
+      lockfileVersion: 3,
+      packages: { '': { name: 'ws', workspaces: ['packages/*'] }, ...packages },
+    })
   const movedDirs = (before: string, after: string): string[] => {
     const b = digests(before)
     const a = digests(after)
@@ -206,6 +209,28 @@ describe('every input the npm digest must read', () => {
         'node_modules/l': { link: true, resolved: to },
       })
     expect(movedDirs(link('packages/gone-1'), link('packages/gone-2'))).toEqual(['packages/a'])
+  })
+  // A root that names no `workspaces` has none: every entry outside
+  // node_modules is a `file:` directory npm links. Each was taken for a
+  // workspace, so its content was never hashed and an edit in it replayed
+  // the root's stale output.
+  it('with no workspaces, a `file:` directory is content, not a workspace', () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        '': { name: 'r', version: '1.0.0', dependencies: { dep: 'file:vendor/dep' } },
+        'node_modules/dep': { resolved: 'vendor/dep', link: true },
+        'vendor/dep': { version: '1.0.0' },
+      },
+    })
+    const lock = parseLockfile(text)
+    const one = importerDigests(lock, new Map([['vendor/dep', 'v1']]))
+    const two = importerDigests(lock, new Map([['vendor/dep', 'v2']]))
+    expect({
+      fileDirs: lock.fileDirs,
+      importers: [...one.keys()],
+      moved: one.get('.') !== two.get('.'),
+    }).toEqual({ fileDirs: ['vendor/dep'], importers: ['.'], moved: true })
   })
   // Item 1073's class, npm's side: two workspaces that link each other,
   // each on its own is-number. Swapping which one reaches 7.0.0 gives
