@@ -105,7 +105,7 @@ function budgetCost(chars: number, chunkCount: number): number {
 
 /**
  * Bounded per-run capture. `append` keeps a chunk LIST + running char count per
- * task, evicting whole chunks from the head past `TASK_LOG_TAIL_CHARS` — no
+ * task, evicting from the head past `TASK_LOG_TAIL_CHARS` — no
  * string concatenation until `drain`, so a cache-hit replay (one big chunk) is
  * one array push, zero copies. `finish` decides retention; `drain` emits the
  * bundle, failures first.
@@ -126,24 +126,27 @@ export class TaskLogBuffer {
     acc.chunks.push(chunk)
     acc.chars += chunk.length
     acc.charsFull += chunk.length
-    // Evict whole chunks from the head until under the per-task tail cap. A
-    // single over-cap chunk is sliced to its tail (the only place we copy).
-    while (acc.chars > TASK_LOG_TAIL_CHARS && acc.chunks.length > 1) {
-      const dropped = acc.chunks.shift()!
-      acc.chars -= dropped.length
-      acc.truncatedHeadChars += dropped.length
-    }
-    if (acc.chars > TASK_LOG_TAIL_CHARS && acc.chunks.length === 1) {
-      const only = acc.chunks[0]!
-      let start = only.length - TASK_LOG_TAIL_CHARS
+    // Evict whole chunks from the head until under the per-task tail cap;
+    // the one that straddles the cap is sliced to what still fits (the only
+    // place we copy). Dropped whole, a 128 KiB chunk and a 7-char one after
+    // it kept the 7 chars alone.
+    while (acc.chars > TASK_LOG_TAIL_CHARS) {
+      const head = acc.chunks[0]!
+      const excess = acc.chars - TASK_LOG_TAIL_CHARS
+      if (head.length <= excess) {
+        acc.chunks.shift()
+        acc.chars -= head.length
+        acc.truncatedHeadChars += head.length
+        continue
+      }
+      let start = excess
       // A cut between a surrogate pair would open the tail on a lone low
       // surrogate, which a sink's UTF-8 encode turns into U+FFFD.
-      const first = only.charCodeAt(start)
+      const first = head.charCodeAt(start)
       if (first >= 0xdc00 && first <= 0xdfff) start++
-      const keep = only.slice(start)
-      acc.truncatedHeadChars += only.length - keep.length
-      acc.chunks[0] = keep
-      acc.chars = keep.length
+      acc.chunks[0] = head.slice(start)
+      acc.chars -= start
+      acc.truncatedHeadChars += start
     }
   }
 
