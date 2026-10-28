@@ -280,7 +280,10 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       out.affected = ''
     } else if (a?.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
-    } else if (verb === 'watch' && a === '--poll') {
+    } else if (a === '--poll') {
+      // The edit-distance hint offered vx run `--all`, a different flag.
+      if (verb === 'run')
+        return { ...out, error: `unknown flag: --poll (a vx watch flag: vx watch --poll <task>)` }
       out.poll = true
     } else if (a !== undefined && settingFlagOf(a) !== undefined) {
       const { s: set, name } = settingFlagOf(a)!
