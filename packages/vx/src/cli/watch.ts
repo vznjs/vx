@@ -559,6 +559,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             process.stdout.write(`\nchanged ${label}\n`)
             if (!relocked) sayUnlocked(changes.changed)
             if (stop.aborted) break
+            // A file a `.gitignore` edit stops ignoring is an input from this
+            // cycle on, and was not on the arm's inventory: its deletion read
+            // as a file born and gone since, and ran nothing.
+            if (
+              atArm !== undefined &&
+              changes.changed.some((p) => path.basename(p) === '.gitignore')
+            )
+              for (const p of gitFiles(workspaceRoot)?.listed ?? []) atArm.listed.add(p)
             restartTimings()
             // On the mtime clock, as the arm is: from `Date.now()` a write the
             // run made within a tick of it carried an earlier mtime and read as

@@ -1346,7 +1346,8 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    with an old mtime by `mv`, `cp -p` or `tar x` still counts, and a
    symlink's own times are read, never its target's), and a
    path git did not list at the arm that is gone again (vim's `4913`
-   write probe, a lock file) is no edit; and
+   write probe, a lock file) is no edit (a `.gitignore` edit lists
+   again, so a file it stops ignoring is one); and
    nothing is judged while a cycle runs — its
    own writes are mid-flight, a `dist` deleted and not yet rebuilt is
    a state the tree will not keep — so paths that land mid-run are
