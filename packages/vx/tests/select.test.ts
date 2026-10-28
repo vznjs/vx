@@ -141,6 +141,12 @@ describe('resolveFilters', () => {
     })
   })
 
+  it('names a ref two empty diffs share once', async () => {
+    // `--affected=HEAD --filter '[HEAD]'` said "nothing affected since HEAD, HEAD".
+    const { value } = await quiet(() => resolveFilters(root, ['...[HEAD]', '[HEAD]']))
+    expect((value as { empty: string }).empty).toStartWith('nothing affected since HEAD — ')
+  })
+
   it('the refusal names only the filters that matched nothing', async () => {
     // It listed every filter: `app` and `!app` matched app, and an
     // `--affected` base appeared as a `...[<base>]` nobody typed.

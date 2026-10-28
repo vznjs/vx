@@ -65,6 +65,12 @@ it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS i
       'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
     ],
     [{ ALLOW: allowVarOf(), TIMING_DAYS: '0' }, 500, 'TIMING_DAYS: a whole number of days, got 0'],
+    // A blank AUDIENCE was taken: every token was then "wrong audience".
+    [
+      { ALLOW: allowVarOf(), AUDIENCE: ' ' },
+      500,
+      'AUDIENCE: the aud CI tokens name, or unset, not blank',
+    ],
     [{ ALLOW: allowVarOf(), READ_ACCESS: 'yes' }, 500, 'READ_ACCESS: public, or unset, not yes'],
   ] as const) {
     const other = await start(bindings)

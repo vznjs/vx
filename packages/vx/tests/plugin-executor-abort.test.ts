@@ -258,3 +258,30 @@ describe('an executor that ignores the signal', () => {
     expect(r.outcomes.map((o) => [o.node.id, o.status])).toEqual([['app#slow', 'aborted']])
   }, 20_000)
 })
+
+// The scheduler prints a thrown executor's line into the task's stream: after
+// a partial line it read `partial[vx] internal error in app#t: …`.
+it('the line naming a thrown executor starts its own line', async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/thrower',
+        `{ executor() { return { name: 'thrower', async execute(req) {
+            req.onStdout('partial')
+            throw new Error('boom')
+          } } } }`,
+      ),
+    ]),
+  )
+  await addProject(root, 'app', `export default { tasks: { t: { exec: { command: 'true' } } } }`)
+  const seq: string[] = []
+  await run({
+    cwd: root,
+    tasks: ['t'],
+    projects: ['app'],
+    log: { ...silent, taskStdout: (_n, c) => seq.push(c), taskStderr: (_n, c) => seq.push(c) },
+    handleSignals: false,
+  })
+  expect(seq.join('')).toStartWith('partial\n[vx] ')
+}, 20_000)
