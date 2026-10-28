@@ -364,9 +364,10 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
 
-# The image needs Bun; a job adds git if it lacks it.
+# The image needs Bun; a job adds git if it lacks it. By digest: a tag
+# can move under the same name.
 default:
-  image: oven/bun:1.4
+  image: oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d
 
 vx:
   rules:
