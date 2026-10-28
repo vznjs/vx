@@ -92,6 +92,16 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       // owns its own help, so anything but a core verb gets the whole
       // reference, which lists the plugin verbs.
       const verb = rest[0]
+      // `vx help run extra` printed run's help and dropped the word.
+      const extra = rest[1]
+      if (extra !== undefined) {
+        sayNotice(
+          'error',
+          'vx help',
+          `${refusedWord(extra)}: ${extra}${flagHint('help', extra)} (see \`vx help\`)`,
+        )
+        return 1
+      }
       const core = verb !== undefined && (CORE_VERBS as readonly string[]).includes(verb)
       if (verb !== undefined && !core) {
         // A name that is no verb here is the typo `vx rnu` is, not a request
