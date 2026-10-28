@@ -125,6 +125,18 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   headers: 'object',
 }
 
+// A typo in a size or in `unmeasured` (`maxx`) was dropped, and the size ran uncapped.
+const SIZE_KEYS: PluginOptionKinds<WorkerSize> = {
+  max: 'number',
+  cpu: 'number',
+  memory: 'any',
+  platform: 'string',
+}
+const UNMEASURED_KEYS: PluginOptionKinds<NonNullable<DteOptions['unmeasured']>> = {
+  cpu: 'number',
+  memory: 'any',
+}
+
 const USAGE = 'Usage: vx dte worker | vx dte init [--dry] [--force]'
 
 /** `headers` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
@@ -154,6 +166,7 @@ export function dte(options: DteOptions) {
     ;(how as unknown as Record<string, unknown>)[layer] = choice
   }
   const sizes = Object.entries(options.workers ?? {}).map(([name, s]) => {
+    refuseUnknownOptions(`dte(): workers.${name}`, s, SIZE_KEYS)
     const memory = bytes(s?.memory)
     if (
       !(
@@ -833,6 +846,7 @@ const PLACED = { cores: 1, memory: 0 }
 
 function unmeasuredOf(u: DteOptions['unmeasured']): Need {
   if (u === undefined) return FRESH
+  refuseUnknownOptions('dte(): unmeasured', u, UNMEASURED_KEYS)
   const memory = bytes(u.memory)
   if (!(typeof u.cpu === 'number' && u.cpu > 0) || memory === undefined)
     throw new UserError("dte(): unmeasured needs cpu > 0 and memory such as '4GB'")

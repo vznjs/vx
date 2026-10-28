@@ -3152,6 +3152,21 @@ it('refuses options it does not read and workers it cannot start', () => {
   )
 })
 
+it('a worker size or unmeasured with a key dte() does not read is refused', () => {
+  // A typo of max left the size uncapped, without a word.
+  const adapter = local()
+  expect(
+    refusal(() => dte({ workers: { s: { cpu: 1, memory: '1GB', maxx: 2 } as never }, adapter })),
+  ).toBe(
+    'dte(): workers.s has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
+  )
+  expect(
+    refusal(() =>
+      dte({ relay: 'https://r', unmeasured: { cpu: 1, memory: '1GB', cpus: 2 } as never }),
+    ),
+  ).toBe('dte(): unmeasured has unknown option "cpus" (allowed: cpu, memory) — did you mean cpu?')
+})
+
 it('docker() with no options says what it needs, as a user error', () => {
   // A bare docker() threw a TypeError reading options.image: a crash, not a setting to fix.
   for (const options of [undefined, {}, { image: '' }]) {
