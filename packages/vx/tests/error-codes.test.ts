@@ -174,6 +174,61 @@ describe('a refusal under --format json', () => {
     // runner took past bun's 5 s default.
   }, 30_000)
 
+  // A config's own throw (or a plugin factory's, run as the config loads)
+  // read as a vx defect: VX_E_INTERNAL, whose fix is to file a vx bug
+  // (2026-10-28).
+  it("a config that throws is VX_E_CONFIG, naming the file and the throw's line", async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-throws-', workspaceFile: false })
+    try {
+      await Bun.write(
+        path.join(ws, '.vx/workspace.mjs'),
+        `const plugin = () => { throw new Error('plugin(): issuer must be a URL') }\nexport default { plugins: [plugin()] }\n`,
+      )
+      const r = await vx(['show', '--format', 'json'], ws)
+      const doc = JSON.parse(r.stdout) as { error: { code: string; message: string } }
+      expect([r.code, doc.error.code, r.stderr.replaceAll(ws, '<root>')]).toEqual([
+        1,
+        'VX_E_CONFIG',
+        expect.stringContaining(
+          'Workspace config <root>/.vx/workspace.mjs threw: plugin(): issuer must be a URL',
+        ),
+      ])
+      expect(r.stderr).toContain('.vx/workspace.mjs:1:')
+      expect(r.stderr).not.toContain('    at ')
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
+
+  it('a workspace config that does not load is VX_E_CONFIG, however it fails', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-load-', workspaceFile: false })
+    const codeOf = async (source: string): Promise<string> => {
+      await Bun.write(path.join(ws, '.vx/workspace.mjs'), source)
+      const r = await vx(['show', '--format', 'json'], ws)
+      expect(r.code).toBe(1)
+      return (JSON.parse(r.stdout) as { error: { code: string } }).error.code
+    }
+    try {
+      expect({
+        syntax: await codeOf('syntax error here(\n'),
+        notObject: await codeOf('export default 5\n'),
+        missingImport: await codeOf("import x from './nope.mjs'\nexport default {}\n"),
+        thrownValue: await codeOf('throw 5\n'),
+        rejected: await codeOf("await Promise.reject(new Error('x'))\nexport default {}\n"),
+        exits: await codeOf('process.exit(0)\nexport default {}\n'),
+      }).toEqual({
+        syntax: 'VX_E_CONFIG',
+        notObject: 'VX_E_CONFIG',
+        missingImport: 'VX_E_CONFIG',
+        thrownValue: 'VX_E_CONFIG',
+        rejected: 'VX_E_CONFIG',
+        exits: 'VX_E_CONFIG',
+      })
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it('every reading verb answers its refusals with a code too', async () => {
     expect({
       showUsage: await refusal(['show', '--bogus', '--format', 'json']),
