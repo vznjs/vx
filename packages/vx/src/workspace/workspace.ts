@@ -340,10 +340,19 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     .filter((f): f is ConfigDir => f !== null)
     .sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0))
   const configured = new Set(configs.map((c) => c.dir))
-  const strayReviews = reviewed
-    .map((rel) => (rel === '' ? root : path.join(root, rel)))
-    .filter((dir) => !configured.has(dir))
-    .map((dir) => path.join(dir, REVIEW_FILE))
+  // On disk only: git lists a tracked copy deleted with its project.
+  const strayReviews = (
+    await Promise.all(
+      reviewed
+        .map((rel) => (rel === '' ? root : path.join(root, rel)))
+        .filter((dir) => !configured.has(dir))
+        .map(async (dir) => {
+          const file = path.join(dir, REVIEW_FILE)
+          return (await isFile(file)) ? file : null
+        }),
+    )
+  )
+    .filter((f) => f !== null)
     .sort()
   return { configs, strayReviews, shadowed }
 }
