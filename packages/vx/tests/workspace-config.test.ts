@@ -4,6 +4,7 @@
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { cliCacheDir, parseCacheDirFlag } from '../src/cli/workspace-config.js'
+import type { UserError } from '../src/util/index.js'
 
 describe('parseCacheDirFlag', () => {
   it('the = form takes a value that starts with a dash; the space form refuses one', () => {
@@ -22,12 +23,15 @@ describe('cliCacheDir', () => {
   })
 
   it('refuses a --cache-dir that is not there, by name (item 900)', async () => {
-    let threw = ''
-    await cliCacheDir('/nowhere', 'rel/cache').catch((err: Error) => {
-      threw = err.message
+    let threw = {}
+    await cliCacheDir('/nowhere', 'rel/cache').catch((err: UserError) => {
+      threw = { message: err.message, code: err.code }
     })
-    expect(threw).toBe(
-      `--cache-dir rel/cache: no such directory (${path.resolve(process.cwd(), 'rel/cache')})`,
-    )
+    // A mistyped flag value is an argument mistake: VX_E_USAGE, as every
+    // other flag error is, not the catch-all VX_E_REFUSED.
+    expect(threw).toEqual({
+      message: `--cache-dir rel/cache: no such directory (${path.resolve(process.cwd(), 'rel/cache')})`,
+      code: 'VX_E_USAGE',
+    })
   })
 })

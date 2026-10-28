@@ -63,7 +63,8 @@ export function parseLockfile(text: string): Lockfile {
         p !== '' &&
         !p.startsWith('node_modules/') &&
         !p.includes('/node_modules/') &&
-        (globs === undefined || globs.some((g) => g.match(p))),
+        globs !== undefined &&
+        globs.some((g) => g.match(p)),
       peers: peerOnly(e),
     })
   }
@@ -83,7 +84,9 @@ export function parseLockfile(text: string): Lockfile {
  * The root's `workspaces` globs: what tells a workspace from a `file:`
  * directory, both entries outside node_modules that a link resolves to.
  * Taking every such entry for a workspace made `vendor/dep` a project, so
- * an edit under it selected nothing. `undefined` when the root names none.
+ * an edit under it selected nothing. `undefined` when the root names none:
+ * then there is no workspace, and every such entry is a `file:` directory
+ * (taken for workspaces, their content was never hashed).
  */
 function workspaceGlobs(root: unknown): Bun.Glob[] | undefined {
   const ws = record(root)?.['workspaces']
