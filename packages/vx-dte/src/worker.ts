@@ -871,7 +871,8 @@ export async function changedTracked(
       '--no-renames',
       base,
       '--',
-      m.project === '' ? '.' : m.project,
+      // Literal: a project at `p*` named its sibling `pa`'s files.
+      m.project === '' ? '.' : `:(literal)${m.project}`,
     ],
     {
       cwd: root,

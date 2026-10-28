@@ -3965,6 +3965,37 @@ it('names a tracked file a task changed as the workspace does, in a repository s
   expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
 })
 
+// A pathspec is a glob unless told otherwise: a project at `p*` named its
+// sibling `pa`'s changed files as its own, and its entry was withheld.
+it('names only the tracked files under a project whose directory has glob characters', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  for (const d of ['p*', 'pa']) {
+    await mkdir(path.join(ws, d), { recursive: true })
+    await writeFile(path.join(ws, d, 'in.txt'), '1\n')
+  }
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  await writeFile(path.join(ws, 'pa/in.txt'), '2\n')
+  const outputs = { files: [], workspaceFiles: [] }
+  const m = { project: 'p*', nested: [], outputs } as unknown as RunOrder
+  expect(await changedTracked(ws, 'HEAD', m, names('p*', outputs))).toEqual([])
+})
+
 // git quotes a path with a quote, a non-ASCII byte or a newline unless
 // asked for NUL-separated names: `"a/\303\251.ts"` started with no
 // project's directory, and the forecast missed the task it changed.
