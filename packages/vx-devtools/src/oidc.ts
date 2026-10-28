@@ -86,7 +86,10 @@ export function parseAllow(list: string): Allowed[] {
       const [issuer, repository, workflow] = [e.slice(0, r), e.slice(r + 1, w), e.slice(w + 1)]
       // Loopback over plain HTTP too: a server's own tests (its container's)
       // run an issuer beside it, and no one else reaches that address.
-      const https = /^(https:\/\/|http:\/\/127\.0\.0\.1[:/])/.test(issuer)
+      // Its host, not its spelling: `http://127.0.0.1:80@x.example` is x.example.
+      const https =
+        issuer.startsWith('https://') ||
+        (issuer.startsWith('http://') && URL.parse(issuer)?.hostname === '127.0.0.1')
       if (r < 0 || !https || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
