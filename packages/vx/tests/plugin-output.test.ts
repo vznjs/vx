@@ -117,4 +117,23 @@ describe('the output stage', () => {
     expect(r.stdout).not.toContain('done pkg-a#hello')
     expect(r.stdout).toContain('hi')
   })
+
+  it('a Logger method that rejects hands the rest of the run to core, as a throw does', async () => {
+    // An `async` method's rejection reached no one: an unhandled
+    // rejection, a stack, exit 1 after the task had passed.
+    const root = await fixture([
+      pluginSource(
+        'org/crash',
+        `{ output() { return { ...${PRINTER}, async taskStdout() { throw new Error('boom') } } } }`,
+      ),
+    ])
+    const r = vx(root)
+    expect(r.stderr).not.toContain('error: boom')
+    expect(r.code).toBe(0)
+    expect(r.stdout).toContain(
+      "[vx] plugin 'org/crash' output failed: boom; vx renders the rest of the run",
+    )
+    expect(r.stdout).not.toContain('done pkg-a#hello')
+    expect(r.stdout).toContain('pkg-a#hello')
+  })
 })
