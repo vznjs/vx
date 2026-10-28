@@ -374,7 +374,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (init.write === true && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
-      if (!first) return undefined
+      // The first says it; an unread body would hold its connection.
+      if (!first) {
+        await res.body?.cancel()
+        return undefined
+      }
       throw new Error(
         `${(await refusal(res)).message}: the write was refused (this job reads only); writes off for this run, reads go on`,
       )
@@ -382,7 +386,10 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
-      if (!first) return undefined
+      if (!first) {
+        await res.body?.cancel()
+        return undefined
+      }
       throw new Error(
         `${(await refusal(res)).message}: ${bearer === '' ? 'a read with no token was refused' : `the token was refused (this workspace names ${this.config.repository} at ${this.config.issuer})`}; remote cache off for this run`,
       )
