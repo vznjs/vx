@@ -6,7 +6,7 @@
 // the cache is free). Plugins read them by name (`ctx.cache.getRun`).
 
 import { xxh3hex } from '../util/index.js'
-import type { ResolvedRemote } from './remote-lane.js'
+import { sayRemoteFault, type ResolvedRemote } from './remote-lane.js'
 import { scopedKey } from './scoped-cache.js'
 import { tarPackInto, tarSize } from './tar-stream.js'
 
@@ -30,8 +30,8 @@ export function writesRunStore(remotes: readonly ResolvedRemote[]): boolean {
 
 /**
  * Store `bytes` under `name` in every remote the policy writes. An entry is
- * written once; a remote's failure leaves the others theirs, silently: what
- * a run keeps here is a record, never its verdict.
+ * written once; a remote's failure is said and leaves the others theirs:
+ * what a run keeps here is a record, never its verdict.
  */
 export async function putRunEntry(
   remotes: readonly ResolvedRemote[],
@@ -41,17 +41,17 @@ export async function putRunEntry(
 ): Promise<boolean> {
   const key = scope === undefined ? runKey(name) : scopedKey(scope, runKey(name))
   let kept = false
-  for (const { remote, write } of remotes) {
-    if (!write) continue
+  for (const r of remotes) {
+    if (!r.write) continue
     try {
-      const put = await remote.put(key, new Blob([bytes]), {
+      const put = await r.remote.put(key, new Blob([bytes]), {
         durationMs: 0,
         ...(scope === undefined ? {} : { scope }),
       })
       // `false`: the remote sent nothing, so nothing is kept there.
       if (put !== false) kept = true
-    } catch {
-      // the other remotes still keep it
+    } catch (err) {
+      sayRemoteFault(r, err instanceof Error ? err : new Error(String(err)))
     }
   }
   return kept
