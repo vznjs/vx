@@ -69,6 +69,25 @@ it('a submodule walks on to its superproject, and no further', async () => {
   expect(await found('super/mods/sub')).toBe('super')
 })
 
+it('an embedded repository walks on to the workspace that lists it, unless git ignores it', async () => {
+  // `vx lock` lists an embedded repository's configs as the outer
+  // workspace's (findProjectConfigs), so a run from inside one must find
+  // that workspace: its own `.git` stopped the walk, "no .vx/workspace.ts".
+  const git = (cwd: string, ...args: string[]) =>
+    expect(Bun.spawnSync(['git', '-C', path.join(shared, cwd), ...args]).exitCode).toBe(0)
+  git('.', 'init', '-q', 'outer')
+  await file('outer/.vx/workspace.ts')
+  await mkdir(path.join(shared, 'outer/vendor/lib/src'), { recursive: true })
+  await mkdir(path.join(shared, 'outer/vendor/kept/src'), { recursive: true })
+  git('outer/vendor', 'init', '-q', 'lib')
+  git('outer/vendor', 'init', '-q', 'kept')
+  await file('outer/.gitignore', '/vendor/kept/\n')
+  expect([await found('outer/vendor/lib/src'), await found('outer/vendor/kept/src')]).toEqual([
+    'outer',
+    'VX_E_NO_WORKSPACE',
+  ])
+})
+
 it('outside git the walk reaches the file above', async () => {
   expect(await found('repo/pkgs/a')).toBe('.')
 })
