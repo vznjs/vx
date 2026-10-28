@@ -342,9 +342,10 @@ export interface ApplyFiltersOptions {
   /**
    * Called once per filter that matched zero projects, before expansion.
    * Only the TOTAL empty selection is an error, so without this a typo among
-   * several filters silently under-selects.
+   * several filters silently under-selects. `emptyDiff`: a `[<since>]`
+   * filter whose name or dir part names projects, none of them changed.
    */
-  onNoMatch?: (filter: ParsedFilter) => void
+  onNoMatch?: (filter: ParsedFilter, emptyDiff: boolean) => void
   /**
    * Called once per filter whose pattern matched projects but whose walk
    * selected none (`...^c` for a `c` nothing depends on), with what it
@@ -365,7 +366,12 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
   const excludes: Set<string>[] = []
   for (const f of opts.filters) {
     const matched = matchProjects(f, opts.projects, opts.affectedByFilter, opts.graph, opts.tags)
-    if (matched.length === 0) opts.onNoMatch?.(f)
+    if (matched.length === 0)
+      opts.onNoMatch?.(
+        f,
+        f.gitSince !== undefined &&
+          (f.matcher === '' || matchSelector(f, opts.projects, opts.tags).length > 0),
+      )
     const expanded = new Set<string>()
     for (const name of matched) {
       if (!f.onlyDeps && !f.onlyDependents) expanded.add(name)
