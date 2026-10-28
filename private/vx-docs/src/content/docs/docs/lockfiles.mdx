@@ -74,7 +74,7 @@ key, and adds a package's `package.json` to its tasks' inputs:
 | `pnpm()` | `pnpm-workspace.yaml` except `patchedDependencies`, `overrides` and the catalogs (the lockfile records their effect per package), `.npmrc`, the root `package.json`'s `pnpm` field |
 | `bun()` | `bunfig.toml`, `.npmrc` |
 | `npm()` | `.npmrc` |
-| `yarn()` | `.yarnrc.yml`, `.yarnrc` (yarn 1) |
+| `yarn()` | `.yarnrc.yml`, `.yarnrc` and `.npmrc` (yarn 1) |
 
 A yarn 1 lockfile records no workspaces, so `yarn()` reads which package
 depends on which from the workspaces' `package.json` files.

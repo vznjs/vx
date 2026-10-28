@@ -170,8 +170,10 @@ const MANAGERS = {
       return out
     },
     // `.yarnrc` is Yarn 1's: `ignore-scripts true` there changes the install
-    // under an unchanged yarn.lock (probed, yarn 1.22).
-    settings: ['.yarnrc.yml', '.yarnrc'],
+    // under an unchanged yarn.lock (probed, yarn 1.22). Yarn 1 reads an
+    // option `.yarnrc` leaves unset from `.npmrc`: `production=true` there
+    // dropped every devDependency (probed, yarn 1.22).
+    settings: ['.yarnrc.yml', '.yarnrc', '.npmrc'],
     async manifestImporters(t, root, manifest) {
       const lock = yarnParse(t)
       if (lock.generation !== 'classic') return undefined
