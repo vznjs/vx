@@ -209,6 +209,9 @@ class Session {
       const [n, c] = p.split('.')
       const seq = Number(n)
       if (!Number.isSafeInteger(seq) || seq < 0 || c === undefined) return undefined
+      // A body's parts take consecutive nonces: every part shares one ad, so
+      // only this keeps a relay from repeating or reordering them.
+      if (parts.length > 0 && seq !== parts[0]!.n + parts.length) return undefined
       parts.push({ n: seq, c })
     }
     if (this.seen.has(parts[0]!.n)) return REPLAY

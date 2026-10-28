@@ -73,7 +73,8 @@ worker's info (JSON), encrypted under the psk. After the handshake every
 body is Noise transport messages, base64, each at most 65535 bytes and
 naming its nonce `n` (Noise §11.4, since a relay may reorder); each is
 sealed with associated data `<first n>.<parts>` of its body, so no part
-opens in another body. A body whose first nonce was seen before is a
+opens in another body, and a body's parts take consecutive nonces, so
+none is repeated or reordered in it. A body whose first nonce was seen before is a
 replay and is dropped; one that does not open loses its sender. The
 plaintext is JSON, or over 256 bytes and smaller so, a `0` byte, the
 zstd frame's length (4 bytes, big-endian) and the frame: compressed
