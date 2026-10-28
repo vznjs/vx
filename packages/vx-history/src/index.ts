@@ -774,7 +774,7 @@ async function historyCmd(
     return 0
   }
   // The table's module loads with the verb, off every run's path.
-  const { renderHistory } = await import('./history-view.js')
-  process.stdout.write(renderHistory(rows, window, budgets, usable(options.memory)))
+  const { historyBlock } = await import('./history-view.js')
+  ui.print('out', historyBlock(rows, window, budgets, usable(options.memory)))
   return 0
 }
