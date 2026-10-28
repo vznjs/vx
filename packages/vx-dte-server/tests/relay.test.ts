@@ -838,3 +838,18 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
   )
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
 })
+
+// A 405 with no Allow named no method to use.
+it('answers a wrong method 405 naming GET, in Allow too', async () => {
+  const relay = createRelay({ upgrade: () => new Response(null, { status: 101 }) })
+  const res = await relay.fetch(
+    new Request('http://relay/v1/sessions/00000000-0000-4000-8000-000000000001/socket', {
+      method: 'POST',
+    }),
+  )
+  expect([res.status, res.headers.get('allow'), await res.json()]).toEqual([
+    405,
+    'GET',
+    { error: 'this route takes GET' },
+  ])
+})
