@@ -103,4 +103,18 @@ describe('resolveRegistry', () => {
     const w = world({ 'work/bunfig.toml': '[install\n' })
     expect(() => resolve(w)).toThrow(`${path.join(w.home, 'work', 'bunfig.toml')}: not valid TOML`)
   })
+  it('a registry that is no http(s) URL is one refusal naming where it was set', () => {
+    // `registry=npm.corp.example` crashed `vx upgrade` with a TypeError stack.
+    const w = world({ 'work/.npmrc': 'registry=npm.corp.example\n' })
+    expect(() => resolve(w)).toThrow(
+      `registry "npm.corp.example" in ${path.join(w.home, 'work', '.npmrc')} is not an http(s) URL`,
+    )
+    expect(() => resolve(world({}), { npm_config_registry: 'ftp://x' })).toThrow(
+      'registry "ftp://x" in npm_config_registry is not an http(s) URL',
+    )
+    const b = world({ '.bunfig.toml': '[install]\nregistry = "bun.example"\n' })
+    expect(() => resolve(b)).toThrow(
+      `registry "bun.example" in ${path.join(b.home, '.bunfig.toml')} is not an http(s) URL`,
+    )
+  })
 })
