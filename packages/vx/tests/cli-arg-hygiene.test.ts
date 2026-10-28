@@ -368,7 +368,7 @@ describe('a refused value says what the flag takes (E-36)', () => {
     ).toEqual([
       "--concurrency must be a positive integer, or a share of the cores like '50%' (got 0)",
       '--verbosity must be a non-negative integer (got high)',
-      '--dry must be text or json (got yaml)',
+      '--dry must be pretty or json (got yaml)',
     ])
   })
 })

@@ -32,7 +32,7 @@ export interface RunArgs {
   poll?: true // vx watch --poll (watch.poll)
   forwardArgs: string[] // everything after `--`
   verbosity: number
-  dry: 'text' | 'json' | undefined
+  dry: 'pretty' | 'json' | undefined
   profile: string | undefined // 'profile.json' default
   affected: string | undefined // '' = default base; else ref
   error?: string // parser-error message
@@ -131,7 +131,7 @@ If `--dry` is set:
    scheduler.
 2. Pick a formatter from `cli/plan-format.ts`:
    - `--dry=json` → `formatPlanJson(plan, affectedBase)` → stdout.
-   - `--dry=text` (default) → `formatPlanText(plan)` → stdout.
+   - `--dry=pretty` (default) → `formatPlanText(plan)` → stdout.
 3. A requested name that matched no project (`plan.unresolvedTasks`),
    or an empty plan → exits 1 with `no projects declare task(s): …`
    (plus `Did you mean <task>?` when a declared task, or for `pkg#task`

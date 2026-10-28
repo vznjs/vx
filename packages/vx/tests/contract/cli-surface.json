@@ -232,7 +232,7 @@
     ],
     "run --dry": [
       "json",
-      "text"
+      "pretty"
     ],
     "run --exclude-dependencies": [
       "*"
