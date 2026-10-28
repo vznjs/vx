@@ -1216,6 +1216,58 @@ describe.if(CHUNKING_SUPPORTED)('the record a success writes', () => {
       'pkg/mods/b/gen',
     ])
   })
+
+  // A first-segment wildcard at the workspace root captures `''`, and its
+  // matches were recorded as `/a/gen`: a consumer grafted them under a
+  // directory with an empty name, and the replay refused them as absolute.
+  it('a root glob whose first segment is the wildcard records root-relative paths', async () => {
+    const gen = (file: string): Directory => ({
+      files: [{ name: file, digest: put(file), is_executable: false }],
+      directories: [],
+      symlinks: [],
+    })
+    const via = (dir: Directory): Directory => ({
+      files: [{ name: 'f', digest: put('f'), is_executable: false }],
+      directories: [{ name: 'gen', digest: sha256(encodeDirectory(dir)) }],
+      symlinks: [],
+    })
+    const [ga, gb] = [gen('ga'), gen('gb')]
+    const [a, b] = [via(ga), via(gb)]
+    const treeRoot: Directory = {
+      files: [],
+      directories: [
+        { name: 'a', digest: sha256(encodeDirectory(a)) },
+        { name: 'b', digest: sha256(encodeDirectory(b)) },
+      ],
+      symlinks: [],
+    }
+    const tree = fake.put(encodeTree(treeRoot, [a, b, ga, gb]))
+    fake.onExecute = () => ({
+      response: {
+        result: { exit_code: 0, output_directories: [{ path: '', tree_digest: D(tree) }] },
+      },
+    })
+    await withExecutor((run) =>
+      run(
+        request({
+          cacheKey: 'k-root-split',
+          cwd: root,
+          outputs: { files: ['*/gen', '*/f'], workspaceFiles: [] },
+        }),
+      ),
+    )
+    const record = fake.actions.get(execDigestFor('k-root-split').hash) as {
+      output_directories: { path: string }[]
+      output_files: { path: string }[]
+    }
+    expect([
+      record.output_directories.map((d) => d.path),
+      record.output_files.map((f) => f.path),
+    ]).toEqual([
+      ['a/gen', 'b/gen'],
+      ['a/f', 'b/f'],
+    ])
+  })
 })
 
 describe.if(CHUNKING_SUPPORTED)('an output tree restores in few round trips', () => {

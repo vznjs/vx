@@ -130,6 +130,10 @@ async function decomposeOutputDir(
     return acc
   }
 
+  // The whole working directory's capture is `''`: `/name` was recorded
+  // under it, and a consumer grafted a directory with an empty name.
+  const join = (prefix: string, name: string): string =>
+    prefix === '' ? name : `${prefix}/${name}`
   const walk = (dir: Directory, segments: readonly string[], prefix: string): void => {
     if (segments.length === 0) {
       if (seen.has(prefix)) return
@@ -142,13 +146,13 @@ async function decomposeOutputDir(
     const matches = (name: string): boolean => head === '*' || name === head
     if (rest.length === 0) {
       for (const f of dir.files) {
-        const at = `${prefix}/${f.name}`
+        const at = join(prefix, f.name)
         if (!matches(f.name) || seen.has(at)) continue
         seen.add(at)
         files.push({ path: at, digest: f.digest, is_executable: f.is_executable })
       }
       for (const sl of dir.symlinks) {
-        const at = `${prefix}/${sl.name}`
+        const at = join(prefix, sl.name)
         if (!matches(sl.name) || seen.has(at)) continue
         seen.add(at)
         symlinks.push({ path: at, target: sl.target })
@@ -158,7 +162,7 @@ async function decomposeOutputDir(
       if (!matches(d.name)) continue
       const child = byDigest.get(d.digest.hash)
       if (child === undefined) continue
-      walk(child, rest, `${prefix}/${d.name}`)
+      walk(child, rest, join(prefix, d.name))
     }
   }
 
