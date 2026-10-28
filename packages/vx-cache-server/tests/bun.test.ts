@@ -1,6 +1,6 @@
 // The Bun server: an S3-compatible bucket, and nothing else.
 
-import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test'
 import { oidcAuth } from '@vzn/vx-devtools'
 import { s3Blobs } from '../src/bun.js'
 import { blobName } from '../src/store.js'
@@ -174,4 +174,54 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     stderr: 'pipe',
   })
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+})
+
+// The bucket's fault is not the server's: a 500 said the server broke,
+// where the bucket an operator runs is what to look at.
+it("answers a bucket that cannot be read 502, naming the bucket's answer", async () => {
+  const down = async (): Promise<never> => {
+    throw new Error('the bucket answered HEAD 503')
+  }
+  const handle = createCacheServer({
+    blobs: { get: down, size: down, put: down },
+    authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
+  })
+  const headers = {
+    ...NAMED,
+    authorization: `Bearer ${await iss.sign(MAIN_JOB, 'http://x.test')}`,
+    'vx-scope': scopeOf('refs/heads/main'),
+  }
+  const said = async (path: string, init: RequestInit = {}) => {
+    const res = await handle(new Request(`http://x.test${path}`, { headers, ...init }))
+    return [res.status, await res.json()]
+  }
+  const logged = spyOn(console, 'error').mockImplementation(() => {})
+  const bucket = {
+    code: 'bad_gateway',
+    message: 'the bucket could not be read: the bucket answered HEAD 503',
+  }
+  expect([
+    await said('/v1/artifacts/ab'),
+    await said('/v1/artifacts', {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ hashes: ['ab'], scopes: [scopeOf('refs/heads/main')] }),
+    }),
+    await said('/v1/artifacts/ab', {
+      method: 'PUT',
+      headers: { ...headers, 'content-length': '1' },
+      body: 'x',
+    }),
+  ]).toEqual([
+    [502, bucket],
+    [502, bucket],
+    [502, bucket],
+  ])
+  // The operator sees it too: a 502 is no client's to fix.
+  expect(logged.mock.calls.map(([line]) => line)).toEqual([
+    `vx-cache-server: GET /v1/artifacts/ab: ${bucket.message}`,
+    `vx-cache-server: POST /v1/artifacts: ${bucket.message}`,
+    `vx-cache-server: PUT /v1/artifacts/ab: ${bucket.message}`,
+  ])
+  logged.mockRestore()
 })

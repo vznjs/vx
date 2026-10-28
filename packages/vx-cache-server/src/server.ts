@@ -74,6 +74,14 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
   const nameOf = (access: Access, scope: string, hash: string): Promise<string> =>
     blobName(access.issuer, access.repository, scope, hash)
+  /** A read of the bucket: one it fails is its fault, `502`, never the server's `500`. */
+  const read = async <T>(ask: Promise<T>): Promise<T> => {
+    try {
+      return await ask
+    } catch (err) {
+      throw new Refusal(502, `the bucket could not be read: ${message(err)}`)
+    }
+  }
 
   /** The token's own scope, the one place it writes. */
   const writeScope = (access: Access): Promise<string> => {
@@ -105,7 +113,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
     const scope = scopeOf(req.headers.get(SCOPE_HEADER))
-    const blob = await blobs.get(await nameOf(access, scope, hash))
+    const blob = await read(blobs.get(await nameOf(access, scope, hash)))
     if (blob === null) return errorJson(404, 'no artifact under this key')
     return new Response(blob.body, {
       headers: {
@@ -122,7 +130,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
     const scope = scopeOf(req.headers.get(SCOPE_HEADER))
-    const size = await blobs.size(await nameOf(access, scope, hash))
+    const size = await read(blobs.size(await nameOf(access, scope, hash)))
     if (size === null) return new Response(null, { status: 404 })
     return new Response(null, {
       headers: { 'content-length': String(size), 'cache-control': IMMUTABLE },
@@ -136,7 +144,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const { hashes, scopes } = await queryOf(req, limits.maxCheckHashes)
     const sizes = await Promise.all(
       hashes.map((hash) =>
-        Promise.all(scopes.map(async (s) => blobs.size(await nameOf(access, s, hash)))),
+        Promise.all(scopes.map(async (s) => read(blobs.size(await nameOf(access, s, hash))))),
       ),
     )
     const held = Object.fromEntries(
@@ -163,7 +171,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (length > limits.maxUploadBytes) {
       throw new Refusal(413, `an upload is at most ${limits.maxUploadBytes} bytes`)
     }
-    if ((await blobs.size(name)) !== null) {
+    if ((await read(blobs.size(name))) !== null) {
       await req.body?.cancel()
       return new Response(null, { status: 204 })
     }
@@ -200,7 +208,12 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       }
       return errorJson(404, 'no such route')
     } catch (err) {
-      if (err instanceof Refusal) return errorJson(err.status, err.message)
+      if (err instanceof Refusal) {
+        // The bucket's or the issuer's fault is the operator's to see too.
+        if (err.status >= 500)
+          console.error(`vx-cache-server: ${req.method} ${url.pathname}: ${err.message}`)
+        return errorJson(err.status, err.message)
+      }
       // Never swallowed: the client warns with what the server says.
       console.error(err)
       return errorJson(500, message(err))

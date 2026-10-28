@@ -134,6 +134,7 @@ saying what to fix:
 ```
 
 A JSON body without `Content-Type: application/json` is `400`; an unknown
-route `404`; a route's wrong method `405` with `Allow`; a failure the
-server did not expect `500`, its `message` what failed. Turbo's `teamId`
+route `404`; a route's wrong method `405` with `Allow`; a bucket that
+cannot be read or written `502`, and a failure the server did not
+expect `500`, each `message` what failed. Turbo's `teamId`
 and `slug` query parameters are `400`: the token names the repository.
