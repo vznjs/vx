@@ -541,7 +541,11 @@ export function managedInstall(execPath: string, cwd: string): ManagedInstall | 
     const plugins = pluginsBeside(root, field)
     return { manager: projectManager(root, execPath), scope: 'project', cwd: root, field, plugins }
   }
-  for (let d = path.resolve(cwd); d.startsWith(root); d = path.dirname(d)) {
+  for (
+    let d = path.resolve(cwd);
+    d === root || d.startsWith(`${root}${path.sep}`);
+    d = path.dirname(d)
+  ) {
     const f = listingField(d)
     if (f !== undefined) {
       const plugins = pluginsBeside(d, f)
