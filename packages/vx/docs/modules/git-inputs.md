@@ -263,8 +263,9 @@ initialised, or one whose `.git` was removed to vendor its files) has no
 repository to ask, so a walk lists what is there (`walkFiles`, A-61);
 an empty one folds nothing. The nested `git ls-files` runs without the
 variables that name a repository (`GIT_DIR`, `GIT_INDEX_FILE`, …, git's
-own list for a submodule): a pre-commit hook sets them for the outer
-repository, and the nested listing read the outer index, dropping a file
+own list for a submodule), and so does the per-project listing of a
+project inside a nested repository (`listingEnv`): a pre-commit hook sets
+them for the outer repository, and the nested listing read the outer index, dropping a file
 the nested repository tracks under an ignore rule. Until 2026-09-27 (A-1) the
 entry was dropped as a directory, the files never reached the key, and
 an edit inside the nested repository was a hit on the old output while

@@ -83,3 +83,44 @@ it('says why a server did not start through the stream a worker ships', async ()
     await floor.close()
   }
 }, 20_000)
+
+// A worker's stop (a cancel, its shutdown) aborts the request: a task still
+// waiting on a server that never prints its `readyWhen` line, with no
+// timeout, waited for good, and the worker's shutdown waited on the task
+// before it closed the floor that would have stopped the server.
+it('a stop ends a task that waits on a server not yet ready', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const floor = localFloor()
+  const stop = new AbortController()
+  try {
+    const pending = floor.execute({
+      taskId: 's#e2e',
+      workspaceRoot: dir,
+      outputs: { files: [], workspaceFiles: [] },
+      command: 'true',
+      forwardArgs: [],
+      cwd: dir,
+      env: { PATH: process.env['PATH'] },
+      envDefine: {},
+      capture: { stdout: false, stderr: false },
+      onStdout: () => {},
+      onStderr: () => {},
+      signal: stop.signal,
+      servers: [
+        {
+          taskId: 's#srv',
+          command: 'echo booting; exec sleep 60',
+          cwd: dir,
+          env: { PATH: process.env['PATH'] },
+          readyWhen: 'never',
+        },
+      ],
+    })
+    await Bun.sleep(100)
+    stop.abort('SIGTERM')
+    const r = await Promise.race([pending, Bun.sleep(3000).then(() => 'hung' as const)])
+    expect(r === 'hung' ? r : r.exitCode).toBe(143)
+  } finally {
+    await floor.close()
+  }
+}, 20_000)

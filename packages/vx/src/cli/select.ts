@@ -15,11 +15,13 @@ import {
   buildPackageGraph,
   configuredBaseBranch,
   defaultAffectedBase,
+  findProjectConfigs,
   findWorkspaceRoot,
   type FingerprintClaims,
   lockKey,
   NO_LOCK,
   parseFilter,
+  PROJECT_CONFIG_FILENAMES,
   type ProjectMeta,
   readLockfile,
 } from '../workspace/index.js'
@@ -33,6 +35,7 @@ import {
   maskedCommand,
   maskedLine,
   nearest,
+  relPosix,
   UserError,
   sayNotice,
 } from '../util/index.js'
@@ -147,15 +150,12 @@ export async function findCwdSelection(
   const root = await findWorkspaceRoot(cwd)
   const projects = await discoverCliProjects(root)
   const abs = path.resolve(cwd)
-  const within = (dirOf: (p: ProjectMeta) => string): string | null => {
-    let best: string | null = null
-    let bestLength = -1
+  const within = (dirOf: (p: ProjectMeta) => string): { name: string; dir: string } | null => {
+    let best: { name: string; dir: string } | null = null
     for (const p of projects) {
       const dir = dirOf(p)
-      if ((abs === dir || abs.startsWith(dir + path.sep)) && dir.length > bestLength) {
-        best = p.name
-        bestLength = dir.length
-      }
+      if ((abs === dir || abs.startsWith(dir + path.sep)) && dir.length > (best?.dir.length ?? -1))
+        best = { name: p.name, dir }
     }
     return best
   }
@@ -164,7 +164,7 @@ export async function findCwdSelection(
   // so inside such a member nothing matched and a run from there was "not
   // inside a project" (item 1025). Only then are the members realpathed:
   // one syscall each, paid only by a run no plain match could place.
-  const name =
+  const found =
     within((p) => p.dir) ??
     within((p) => {
       try {
@@ -173,7 +173,45 @@ export async function findCwdSelection(
         return p.dir
       }
     })
-  return name === null ? null : { name, discovered: { root, projects } }
+  await refuseUnlockedConfig(root, abs, found?.dir ?? null)
+  return found === null ? null : { name: found.name, discovered: { root, projects } }
+}
+
+/**
+ * A config `vx lock` would find between the cwd and the project placing it
+ * (the root, when none does): a config written after the lock is no project
+ * yet, so a run from its directory ran the locked project above it (the
+ * root's `build` for a new member) or said "not inside a project". One
+ * readdir per directory between them, none from a project's own; the
+ * listing that judges a config found is paid only when one is.
+ */
+async function refuseUnlockedConfig(
+  root: string,
+  abs: string,
+  placed: string | null,
+): Promise<void> {
+  const top = placed ?? root
+  if (abs !== top && !abs.startsWith(top + path.sep)) return
+  for (let dir = abs; ; dir = path.dirname(dir)) {
+    if (dir === placed) return
+    let names: string[]
+    try {
+      names = fs.readdirSync(dir)
+    } catch {
+      names = []
+    }
+    const file = PROJECT_CONFIG_FILENAMES.find((n) => names.includes(n))
+    if (file !== undefined) {
+      const { configs } = await findProjectConfigs(root)
+      const config = configs.find((c) => c.dir === dir)
+      if (config !== undefined) {
+        throw new UserError(
+          `${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``,
+        )
+      }
+    }
+    if (dir === root || dir === path.dirname(dir)) return
+  }
 }
 
 export type FilterResolution =
