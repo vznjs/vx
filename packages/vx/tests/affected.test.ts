@@ -1333,6 +1333,33 @@ describe('defaultAffectedBase', () => {
     }
   })
 
+  // A CI checkout of a pushed commit is detached (GitLab, Buildkite, a sha
+  // checkout): the base branch was HEAD itself, nothing ran, exit 0.
+  it('a detached HEAD the base branch holds is on it: no default', async () => {
+    const root = await repo('vx-affected-detached-', 'main')
+    try {
+      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      await writeFile(path.join(root, 'a'), 'y')
+      await git(root, 'commit', '-q', '-am', 'two')
+      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      await git(root, 'checkout', '-q', '--detach')
+      await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
+        'no default on the base branch (main)',
+      )
+      // A rerun of an older commit of it.
+      await git(root, 'checkout', '-q', '--detach', 'HEAD~1')
+      await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
+        'no default on the base branch (main)',
+      )
+      // CONTROL: a detached commit of its own (a PR's merge checkout) has the default.
+      await writeFile(path.join(root, 'a'), 'z')
+      await git(root, 'commit', '-q', '-am', 'three')
+      expect(await defaultAffectedBase(root, undefined)).toBe('origin/main')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it("the remote's HEAD branch names the base branch when origin/HEAD is set", async () => {
     const root = await repo('vx-affected-symref-', 'feat')
     try {
