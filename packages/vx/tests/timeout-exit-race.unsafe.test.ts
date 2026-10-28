@@ -84,7 +84,7 @@ describe.skipIf(process.platform !== 'linux')('a deadline seen after the child e
       expect(err).toBeInstanceOf(PersistentReadyError)
       const ready = err as PersistentReadyError
       seen.push({ reason: ready.reason, exitCode: ready.exitCode })
-      await spawn.child.exited
+      await spawn.child!.exited
     }
     expect(seen).toEqual(Array(TRIES).fill({ reason: 'exited', exitCode: 3 }))
   })
