@@ -101,6 +101,29 @@ it('installs a Yarn workspace frozen under Yarn 1 and Berry alike', async () => 
   }
 })
 
+// `yarn vx` under Berry runs a bin with node, whatever its shebang: vx's
+// bin.ts failed at its first import. Bun reads no Plug'n'Play either, so
+// Bun's own .bin lookup is the one that runs vx under every Yarn.
+it('runs vx with Bun in a Yarn workspace', async () => {
+  await writeFile(path.join(root, 'yarn.lock'), '')
+  expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+  const worker = await readFile(path.join(root, WORKFLOW), 'utf8')
+  expect(worker).toContain('      - run: bun vx dte worker\n')
+  const run = await readFile(path.join(root, '.github/workflows/ci.yml'), 'utf8')
+  expect(run).toContain('      - run: bun vx lock --check\n')
+  expect(run).not.toContain('yarn vx')
+  const { files } = await gitlab().init!({
+    workspaceRoot: root,
+    dir: '',
+    relay: 'https://r',
+    sizes: [{ name: 'small', max: 1 }],
+    manager: 'yarn',
+    tasks: { main: '', change: '' },
+  })
+  expect(files['.gitlab-ci.yml']).toContain('  script: [bun vx dte worker]\n')
+  expect(files['.gitlab-ci.yml']).not.toContain('yarn vx')
+})
+
 // A `: ` in a plain scalar made GitHub refuse the workflow (2026-10-25).
 it('writes workflows that parse as YAML', async () => {
   await writeFile(path.join(root, 'bun.lock'), '')
@@ -530,6 +553,6 @@ it('gitlab() runs a pnpm, npm or yarn workspace on an image with Node, adding Bu
   )
   expect(await ciOf('npm')).toContain('    - npm install -g --silent bun@1.4\n    - npm ci\n')
   expect(await ciOf('yarn')).toContain(
-    '    - npm install -g --silent bun@1.4\n    - corepack enable\n    - yarn install --immutable\n',
+    '    - npm install -g --silent bun@1.4\n    - corepack enable\n    - yarn install --frozen-lockfile\n',
   )
 })

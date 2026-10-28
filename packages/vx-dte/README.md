@@ -261,9 +261,9 @@ its platform's GitHub-hosted runner (`ubuntu-latest` for none named,
 `ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`), or on the label
 `github({ runsOn: { small: 'ubuntu-latest-16-cores' } })` names, as
 `gitlab({ tags })` does. It installs with the package manager your lockfile
-names and runs vx as `bun vx` (`yarn vx` under Yarn, whose Plug'n'Play
-has no `node_modules/.bin`), which runs the repo's own and never
-downloads one, as `pnpm exec` does. `--dry` prints it; a file you changed
+names and runs vx as `bun vx`, which runs the repo's own and never
+downloads one, as `pnpm exec` does (Yarn too: Bun reads no Plug'n'Play,
+so a Yarn workspace sets `nodeLinker: node-modules`). `--dry` prints it; a file you changed
 is kept unless `--force`. For the sizes above:
 
 ```yaml

@@ -122,10 +122,12 @@ function installLines(manager: PackageManager): readonly string[] {
   return ['npm ci']
 }
 
-/** How a runner calls the workspace's own vx: Yarn's PnP has no `node_modules/.bin`. */
-function vxCommand(manager: PackageManager): string {
-  return manager === 'yarn' ? 'yarn vx' : 'bun vx'
-}
+/**
+ * How a runner calls the workspace's own vx, under every manager: Yarn
+ * Berry's `yarn vx` runs a bin with node whatever its shebang, and Bun
+ * reads no Plug'n'Play, so a Yarn workspace needs `node_modules` anyway.
+ */
+const VX = 'bun vx'
 
 /**
  * Writes what `init` returned. A file that exists with other bytes is kept
@@ -244,9 +246,8 @@ ${inDir}    strategy:
           jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\\r\\n]") | not) then "\\(.key)=\\(.value)" else error("env \\(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
       - uses: ${SETUP_BUN}
 ${install.join('\n')}
-      - run: ${vxCommand(setup.manager)} dte worker
+      - run: ${VX} dte worker
 `
-  const vx = vxCommand(setup.manager)
   const named = setup.tasks.main !== '' && setup.tasks.change !== ''
   const run = `# Written by vx dte init: the run. main runs every task and fills the cache;
 # a pull request runs what it changed and its dependents. This job only
@@ -281,14 +282,14 @@ ${inDir}    permissions:
         with: { persist-credentials: false }
       - uses: ${SETUP_BUN}
 ${rootInstall(setup.manager, setup.dir).join('\n')}
-      - run: ${vx} lock --check
+      - run: ${VX} lock --check
 ${
   named
     ? ''
-    : `      # Name the tasks to run, as '${vx} run build test --affected': with
+    : `      # Name the tasks to run, as '${VX} run build test --affected': with
       # none named, vx fails, listing the workspace's tasks.
 `
-}      - run: ${vx} run \${{ github.event_name == 'pull_request' && '${both(setup.tasks.change, '--affected')}' || '${both(setup.tasks.main, '--all')}' }}
+}      - run: ${VX} run \${{ github.event_name == 'pull_request' && '${both(setup.tasks.change, '--affected')}' || '${both(setup.tasks.main, '--all')}' }}
 `
   const repo = setup.repository ?? '<owner>/<repo>'
   const files = { '.github/workflows/ci.yml': run, [`.github/workflows/${workflow}`]: text }
@@ -341,7 +342,6 @@ export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
       'vx dte init: gitlab() needs dte({ relay }) first, since each job asks its ID token for the relay: deploy one (https://vznjs.github.io/vx/docs/relay/) and name it',
     )
   const relay = setup.relay
-  const vx = vxCommand(setup.manager)
   const named = setup.tasks.main !== '' && setup.tasks.change !== ''
   // oven/bun has no Node, npm or corepack; another manager's jobs run on
   // Node's image, which has git too, and add Bun, which runs vx.
@@ -412,8 +412,8 @@ vx:
   before_script:
 ${lines([git, ...cd, ...root])}
   script:
-    - ${vx} lock --check
-    - ${vx} run $VX_TASKS
+    - ${VX} lock --check
+    - ${VX} run $VX_TASKS
 
 # A worker runs at the run's commit, which its branch may have moved past.
 .vx-worker:
@@ -424,7 +424,7 @@ ${lines([git])}
     - git fetch -q --depth 1 origin $VX_DTE_SHA
     - git checkout -q FETCH_HEAD
 ${lines([...cd, ...install])}
-  script: [${vx} dte worker]
+  script: [${VX} dte worker]
 ${workers.join('')}`.replace(/\n+$/, '\n')
   const next = nextSteps(
     relay,
