@@ -235,8 +235,10 @@ export async function sandboxRequestFor(
   // Pre-create what the task said it will write — after the grants are
   // resolved, which refuses one that leaves the project through a link
   // before anything is created along it (item 1003).
-  const walls = [
-    ...nested,
+  // The repository's and vx's own walls are sealed: no write grant may
+  // reach inside them either. A nested project is not: a grant into it is
+  // as explicit as one into a sibling.
+  const sealed = [
     path.join(workspaceRoot, '.git'),
     path.join(workspaceRoot, '.vx', 'cache'),
     ...(cacheDir !== undefined &&
@@ -244,6 +246,7 @@ export async function sandboxRequestFor(
       ? [cacheDir]
       : []),
   ].map(toRealPath)
+  const walls = [...nested.map(toRealPath), ...sealed]
   const resolved = resolveSandboxConfig(sandbox, node.projectDir, walls)
   // Made before the walls judge the binds: a directory grant naming nothing
   // yet (`dist/`, `dist/**`) was judged as a file, its bind its parent, and
@@ -251,7 +254,7 @@ export async function sandboxRequestFor(
   const placeholders = await prepareOutputsForBind(node.projectDir, sandbox.allow?.write ?? [])
   let config: ResolvedSandboxConfig
   try {
-    config = wallOff(resolved, workspaceRoot, walls)
+    config = wallOff(resolved, workspaceRoot, walls, sealed)
   } catch (err) {
     await sweepPlaceholders(placeholders)
     throw err
@@ -540,20 +543,23 @@ async function fileOnPath(from: string, to: string): Promise<string> {
  * punched (`punchWalls`); a write grant whose bind would hold one — a file
  * grant binds its directory on Linux, so `write: ['out.txt']` in a root
  * project bound the whole workspace writable, `.git` included — is
- * refused, as there is no writable bind that leaves a wall out. A glob's
+ * refused, as there is no writable bind that leaves a wall out. One
+ * inside a sealed wall (`.git/hooks/`, vx's store) is refused too: a
+ * hook planted there runs unsandboxed at the next commit. A glob's
  * hits already stop at the walls (`resolveSandboxConfig` takes them).
  */
 function wallOff(
   config: ResolvedSandboxConfig,
   workspaceRoot: string,
   walls: readonly string[],
+  sealed: readonly string[],
 ): ResolvedSandboxConfig {
   const home = toRealPath(workspaceRoot)
   for (const bind of bindableWrites(config.allowWrite)) {
     // A bind outside the workspace is the user's own path (`/tmp/x`,
     // `~/.cache/y`), spelled there on purpose; only one inside is judged.
     if (!atOrUnder(bind, home)) continue
-    const wall = walls.find((w) => atOrUnder(w, bind))
+    const wall = walls.find((w) => atOrUnder(w, bind)) ?? sealed.find((w) => atOrUnder(bind, w))
     if (wall === undefined) continue
     throw new UserError(
       `exec.sandbox.allow.write: the grant binding ${bind} would make ${wall} writable — another ` +
