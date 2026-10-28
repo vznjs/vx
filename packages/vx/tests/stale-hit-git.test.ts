@@ -1131,18 +1131,31 @@ describe('autocrlfConverts', () => {
     // The last value wins, as it does in git.
     expect(autocrlfConverts('core.autocrlf=true\ncore.autocrlf=false')).toBe(false)
   })
+
+  // Git reads `yes`, `on`, a nonzero integer and a bare key as true; only
+  // `true` was taken, so `autocrlf = 1` read as no conversion.
+  it('takes every spelling git reads as true', () => {
+    for (const v of ['yes', 'on', '1', '2k', 'On']) {
+      expect(autocrlfConverts(`core.autocrlf=${v}`)).toBe(true)
+    }
+    expect(autocrlfConverts('core.autocrlf=false\ncore.autocrlf')).toBe(true)
+  })
 })
 
 describe('gitStatWeakened', () => {
   it('is true for a ctime git does not trust or a minimal stat, and only then', () => {
-    for (const v of ['false', 'no', 'off', '0', 'FALSE']) {
+    // Git reads an empty value and any zero integer (`00`, `-0`, `0k`) as
+    // false too: `trustctime =` kept index OIDs trusted, and a same-size
+    // rewrite with its mtime kept replayed the old output.
+    for (const v of ['false', 'no', 'off', '0', 'FALSE', '', '00', '-0', '0k', ' 0 ']) {
       expect(gitStatWeakened(`core.trustctime=${v}`)).toBe(true)
     }
+    // A bare key is true, and the last value wins.
+    expect(gitStatWeakened('core.trustctime=false\ncore.trustctime')).toBe(false)
     expect(gitStatWeakened('core.checkstat=minimal')).toBe(true)
     for (const vars of [
       '',
       'core.trustctime=true',
-      'core.trustctime=',
       'core.checkstat=default',
       'core.trustctime=false\ncore.trustctime=true',
     ]) {
