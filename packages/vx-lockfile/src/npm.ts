@@ -60,10 +60,7 @@ export function parseLockfile(text: string): Lockfile {
           : '',
       link,
       isWorkspace:
-        p !== '' &&
-        !p.startsWith('node_modules/') &&
-        !p.includes('/node_modules/') &&
-        (globs === undefined || globs(p)),
+        p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/') && globs(p),
       peers: peerOnly(e),
     })
   }
@@ -85,12 +82,13 @@ export function parseLockfile(text: string): Lockfile {
  * resolves to. Taking every such entry for a workspace made `vendor/dep` a
  * project, so an edit under it selected nothing. A `!` glob excludes, as
  * npm reads it: compiled as one, it matched every path it did not name, so
- * `vendor/dep` was a workspace again. `undefined` when the root names none.
+ * `vendor/dep` was a workspace again. A root that names none has none: read
+ * as "any", a one-package repo's `file:` directory was a project too.
  */
-function workspaceGlobs(root: unknown): ((p: string) => boolean) | undefined {
+function workspaceGlobs(root: unknown): (p: string) => boolean {
   const ws = record(root)?.['workspaces']
   const list = Array.isArray(ws) ? ws : record(ws)?.['packages']
-  if (!Array.isArray(list)) return undefined
+  if (!Array.isArray(list)) return () => false
   // Matched against the manifest's path, as npm globs `<pattern>/package.json`.
   const glob = (g: string): Bun.Glob =>
     new Bun.Glob(`${g.replace(/^\.\//, '').replace(/\/+$/, '')}/package.json`)
