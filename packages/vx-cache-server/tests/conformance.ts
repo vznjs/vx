@@ -12,8 +12,8 @@ export interface Target {
   /** The server's URL. */
   base(): string
   /**
-   * A token for the server of a job that writes main (a ref a trust rule
-   * protects), one on main that only reads, one that writes its branch
+   * A token for the server of a job that writes main, one on main that
+   * only reads, one that writes its branch
    * (`refs/heads/feature`), or a main job of a repository the server
    * does not serve.
    */

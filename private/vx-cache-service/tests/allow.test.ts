@@ -29,7 +29,6 @@ beforeAll(async () => {
   access = async (claims) => {
     const token = await new SignJWT({
       repository: 'vznjs/vx',
-      ref_protected: 'false',
       ...claims,
     })
       .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
@@ -56,7 +55,7 @@ beforeAll(async () => {
 const CI = 'vznjs/vx/.github/workflows/ci.yml@refs/heads/main'
 
 it("writes main from ci.yml's push to main, and a branch's own scope from its PR", async () => {
-  const main = { job_workflow_ref: CI, ref: 'refs/heads/main', ref_protected: 'true' }
+  const main = { job_workflow_ref: CI, ref: 'refs/heads/main' }
   expect(await access({ ...main, event_name: 'push' })).toBe('refs/heads/main')
   // A dispatched run of main (a cold run) runs main's code, and its
   // workers hand their outputs back through the cache, so it writes too.
