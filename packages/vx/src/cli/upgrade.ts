@@ -823,7 +823,7 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
     )
   }
   const dest = process.execPath
-  const handedOffFrom = process.env['VX_HANDED_OFF']
+  const handedOffFrom = process.env['VX_HANDED_OFF'] || undefined
   if (global) {
     // A launcher from before -g handed the call over: the global is the one that did.
     const version = await targetVersion(tag)
