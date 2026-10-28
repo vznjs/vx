@@ -1122,6 +1122,25 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   if (proc.exitCode !== 1) {
     const noHistory = noHistoryRefusal(workspaceRoot)
     if (noHistory !== undefined) throw noHistory
+    // `--quiet` also silences a ref git refused in its own words (a reflog
+    // entry the log lacks, `main@{9}`: exit 128): ask again to say why.
+    if (stderr.length === 0) {
+      const loud = spawnGitSync(
+        ['rev-parse', '--verify', '--end-of-options', ref],
+        workspaceRoot,
+        'pipe',
+      )
+      const why = new TextDecoder()
+        .decode(loud.stderr)
+        .trim()
+        .replace(/^fatal: /, '')
+      if (loud.exitCode !== 0 && why.length > 0) {
+        throw new UserError(
+          `git ref "${ref}" did not resolve: ${why.replace(/\.?$/, '.')}`,
+          'VX_E_AFFECTED_BASE',
+        )
+      }
+    }
     throw new UserError(
       `git rev-parse failed (exit ${proc.exitCode}) in ${workspaceRoot}` +
         (stderr.length > 0 ? `: ${stderr}` : ''),
