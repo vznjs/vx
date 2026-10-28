@@ -184,7 +184,9 @@ tokens: their signature by the issuer's published keys
 and `nbf`, an issuer it trusts, an `aud` naming its audience, and a
 repository and workflow it allows (`403` else). Keys it cannot read
 are the issuer's outage, not the token's fault: `502`, which a client
-retries. A session is its id
+retries. Keys are read again once ten minutes old, so a key the issuer
+withdraws stops admitting tokens, and for a key the relay does not hold
+at most once a minute. A session is its id
 within its token's issuer and repository claims (`repository_id` on
 GitHub Actions, `project_id` on GitLab), so a tenant that learns another's
 session id cannot open or join it.
