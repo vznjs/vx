@@ -1078,7 +1078,9 @@ describe('flow e2e against a real fixture workspace', () => {
     async () => {
       const path = await import('node:path')
       const BIN = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-      const ghaEnv = { ...process.env, CI: '1', GITHUB_ACTIONS: 'true' }
+      // FORCE_COLOR=0, as the gate's SUITE_ENV sets: GITHUB_ACTIONS paints
+      // a pipe, and a bare `bun test` read `┌─ one#boom` split by escapes.
+      const ghaEnv = { ...process.env, CI: '1', GITHUB_ACTIONS: 'true', FORCE_COLOR: '0' }
       const vx = async (args: string[]): Promise<{ code: number; out: string }> => {
         const proc = Bun.spawn([process.execPath, BIN, ...args], {
           cwd: workspaceRoot,

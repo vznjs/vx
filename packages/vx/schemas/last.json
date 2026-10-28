@@ -10,9 +10,14 @@
       "properties": {
         "invocation": { "$ref": "#/$defs/invocation" },
         "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+        "warnings": {
+          "type": "array",
+          "description": "what the run warned of, plain text; absent when it warned of nothing",
+          "items": { "type": "string" }
+        },
         "steps": {
           "type": "array",
-          "description": "the steps the run did not wait on (vx:prefetch), timed; absent when it kept none",
+          "description": "vx's own steps the run did not wait on (vx:prefetch); absent when it had none or they are no longer kept",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -213,7 +218,10 @@
         "project": { "type": "string" },
         "task": { "type": "string" },
         "status": { "type": "string" },
-        "exitCode": { "type": "integer" },
+        "exitCode": {
+          "type": "integer",
+          "description": "a skipped task records 0 when an exec.platforms skip is its root, 1 behind a failure or fail-fast"
+        },
         "durationMs": { "type": "number" },
         "startedAt": { "type": "integer", "description": "epoch ms" },
         "endedAt": { "type": "integer", "description": "epoch ms" },
@@ -258,6 +266,10 @@
           "description": "each failed remote read or write of the key, `; `-joined"
         },
         "forwarded": { "type": "boolean" },
+        "inputMoved": {
+          "type": "string",
+          "description": "on a row failed by inputStability.severity 'error': the input that changed during the run"
+        },
         "output": {
           "type": "string",
           "description": "on a failed row: its output, plain text, bounded (first 8 KiB, last 56 KiB), secrets masked; '' when none was recorded"
@@ -276,50 +288,30 @@
             }
           }
         },
-        "fixedIn": {
-          "type": "string",
-          "description": "on a failed row: the first later run where this task passed (ran or hit); absent while it has not"
-        },
-        "inputMoved": {
-          "type": "string",
-          "description": "on a failed row: the input that changed while the command ran"
-        },
         "sandboxFix": {
           "type": "object",
+          "description": "on a sandboxed failed row: the exec.sandbox.allow entries that would have granted its denials",
           "additionalProperties": false,
-          "description": "on a failed row: the exec.sandbox.allow entries that would have granted its denials",
           "properties": {
-            "read": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "paths to allow reading"
-            },
-            "write": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "paths to allow writing"
-            },
-            "network": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "hosts to allow"
-            },
-            "systemInfo": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "system facts to allow reading"
-            },
+            "read": { "type": "array", "items": { "type": "string" } },
+            "write": { "type": "array", "items": { "type": "string" } },
+            "network": { "type": "array", "items": { "type": "string" } },
+            "systemInfo": { "type": "array", "items": { "type": "string" } },
             "withheld": {
               "type": "array",
-              "items": { "type": "string" },
-              "description": "credential paths denied and left out of the grants"
+              "description": "credential paths it denied and left out of the grants",
+              "items": { "type": "string" }
             },
             "inputs": {
               "type": "array",
-              "items": { "type": "string" },
-              "description": "project reads inputs.files does not match: add them there too when the output depends on them"
+              "description": "a cached task's reads of its project no inputs.files glob matches",
+              "items": { "type": "string" }
             }
           }
+        },
+        "fixedIn": {
+          "type": "string",
+          "description": "on a failed row: the first later run where this task passed (ran or hit); absent while it has not"
         }
       }
     }
