@@ -59,7 +59,7 @@ export interface Repo {
 const DROP_OLD = 'DROP TABLE IF EXISTS task_timings'
 const SCHEMA = `CREATE TABLE IF NOT EXISTS timings (issuer TEXT NOT NULL, repository TEXT NOT NULL, ref TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (issuer, repository, ref, hash)) WITHOUT ROWID`
 
-// One statement for a whole report, its rows passed as one JSON parameter:
+// One statement per 2 MB of a report's rows, passed as one JSON parameter:
 // D1 binds at most 100 parameters, and a free plan's Worker runs at most
 // 50 queries a request.
 const FOLD = `INSERT INTO timings (issuer, repository, ref, hash, duration_ms, cores, rss_bytes, runs, updated_at)
@@ -92,6 +92,32 @@ export interface Store {
   sweep(before: number): Promise<number>
 }
 
+/**
+ * D1's limit on a bound string (developers.cloudflare.com/d1/platform/limits):
+ * a report's rows, or a query's hashes, past it failed the statement, so a
+ * server took less than its PROTOCOL.md limits name.
+ */
+const MAX_PARAM_BYTES = 2_000_000
+
+/** `items` as JSON arrays each within `MAX_PARAM_BYTES`: a UTF-16 unit is at most 3 UTF-8 bytes. */
+function jsonParams(items: readonly unknown[]): string[] {
+  const out: string[] = []
+  let part: string[] = []
+  let units = 2
+  for (const item of items) {
+    const json = JSON.stringify(item)
+    if (part.length > 0 && (units + json.length + 1) * 3 > MAX_PARAM_BYTES) {
+      out.push(`[${part.join(',')}]`)
+      part = []
+      units = 2
+    }
+    part.push(json)
+    units += json.length + 1
+  }
+  if (part.length > 0) out.push(`[${part.join(',')}]`)
+  return out
+}
+
 export function sqliteStore(db: Db): Store {
   return {
     async init() {
@@ -99,18 +125,24 @@ export function sqliteStore(db: Db): Store {
       await db.run(SCHEMA, [])
     },
     async fold(repo, ref, now, reports) {
-      if (reports.length > 0)
-        await db.run(FOLD, [repo.issuer, repo.repository, ref, now, JSON.stringify(reports)])
+      for (const part of jsonParams(reports))
+        await db.run(FOLD, [repo.issuer, repo.repository, ref, now, part])
     },
     async read(repo, refs, hashes) {
-      const rows = await db.all<{
-        hash: string
-        ref: string
-        duration_ms: number
-        cores: number | null
-        rss_bytes: number | null
-        runs: number
-      }>(READ, [repo.issuer, repo.repository, JSON.stringify(refs), JSON.stringify(hashes)])
+      const rows = (
+        await Promise.all(
+          jsonParams(hashes).map((part) =>
+            db.all<{
+              hash: string
+              ref: string
+              duration_ms: number
+              cores: number | null
+              rss_bytes: number | null
+              runs: number
+            }>(READ, [repo.issuer, repo.repository, JSON.stringify(refs), part]),
+          ),
+        )
+      ).flat()
       // A hash's row in the earliest ref asked wins.
       rows.sort((a, b) => refs.indexOf(b.ref) - refs.indexOf(a.ref))
       return new Map(

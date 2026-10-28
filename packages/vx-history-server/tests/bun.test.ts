@@ -57,6 +57,33 @@ it('folds a thousand tasks in one statement, and sweeps what was not reported', 
   expect(await store.sweep(5)).toBe(990)
 })
 
+it("folds and reads within D1's 2 MB a bound string may be", async () => {
+  const sqlite = sqliteDb(path.join(dir, 'd1-limits.sqlite'))
+  // D1's limit (developers.cloudflare.com/d1/platform/limits): a string past it fails the statement.
+  const within = (params: readonly unknown[]) => {
+    for (const p of params)
+      if (typeof p === 'string' && Buffer.byteLength(p) > 2_000_000)
+        throw new Error('SQLITE_TOOBIG')
+  }
+  const store = sqliteStore({
+    all: (sql, params) => (within(params), sqlite.all(sql, params)),
+    run: (sql, params) => (within(params), sqlite.run(sql, params)),
+  })
+  await store.init()
+  const reports = Array.from({ length: 10_000 }, (_, i) => ({
+    hash: `${i}`.padStart(512, 'h'),
+    durationMs: i,
+  }))
+  const repo = { issuer: 'i', repository: 'acme/app' }
+  await store.fold(repo, 'refs/heads/main', 1, reports)
+  const got = await store.read(
+    repo,
+    ['refs/heads/main'],
+    reports.map((r) => r.hash),
+  )
+  expect([got.size, got.get(reports[9_999]!.hash)?.durationMs]).toEqual([10_000, 9_999])
+})
+
 // 2026-10-27: rows held hashes of these, which only hid them from whoever runs the server.
 it('stores the issuer, repository and ref plainly, as a person reading the table would ask', async () => {
   const db = sqliteDb(path.join(dir, 'plain.sqlite'))
