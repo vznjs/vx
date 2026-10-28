@@ -85,12 +85,21 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
     }
     case '--help':
     case '-h':
+      if (rest.length > 0) return dispatch('help', rest)
       await printHelp(await (await plugins()).pluginCommandHelp())
       return 0
     case 'help': {
       // `vx help run` is the same question as `vx run --help`, and so is
       // `vx help <plugin verb>`: a plugin verb owns its own help.
-      const verb = rest[0]
+      const [verb, extra] = rest
+      if (extra !== undefined) {
+        sayNotice(
+          'error',
+          'vx help',
+          `${refusedWord(extra)}: ${extra}${flagHint('help', extra)} (see \`vx help\`)`,
+        )
+        return 1
+      }
       const core = verb !== undefined && (CORE_VERBS as readonly string[]).includes(verb)
       if (verb !== undefined && !core) {
         // A name that is no verb here is the typo `vx rnu` is, not a request
