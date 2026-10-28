@@ -6,7 +6,7 @@ import {
   formatTaskAbortedLine,
   formatTaskExecutedLine,
 } from '../src/report/framed-output.js'
-import { formatRunSummary } from '../src/report/summary.js'
+import { formatOutcomeTable, formatRunSummary } from '../src/report/summary.js'
 import { formatElapsed } from '../src/util/index.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
@@ -796,5 +796,32 @@ describe('a total is the last word on its line', () => {
     expect(withTotal).toHaveLength(2)
     for (const l of withTotal) expect(l).toMatch(/· \d+ total$/)
     expect(withTotal[0]).toBe('            2 affected · 5 total')
+  })
+})
+
+describe('formatOutcomeTable', () => {
+  const node = (id: string) => {
+    const [projectName, taskName] = id.split('#') as [string, string]
+    return { id, projectName, taskName, config: { exec: { command: 'noop' } } } as TaskNode
+  }
+  const rows: TaskOutcome[] = [
+    { node: node('a#build'), status: 'success', exitCode: 0, durationMs: 12 },
+    { node: node('a#test'), status: 'failed', exitCode: 3, durationMs: 40 },
+    { node: node('b#test'), status: 'skipped', exitCode: 0, durationMs: 0, blockedBy: 'a#test' },
+  ]
+
+  it('paints on a colour terminal: no line of it is plain text', () => {
+    const lines = formatOutcomeTable(rows, { enabled: true })
+    for (const l of lines.filter((x) => x !== '')) expect(l).toContain('\x1b[')
+    const failed = lines.find((l) => Bun.stripANSI(l).startsWith('a#test'))!
+    expect(failed).toContain(Bun.color('#ef4444', 'ansi-16m')!)
+    const skipped = lines.find((l) => Bun.stripANSI(l).startsWith('b#test'))!
+    expect(skipped).toContain(Bun.color('#eab308', 'ansi-16m')!)
+  })
+
+  it('keeps its columns: painted and plain read the same once stripped', () => {
+    const plain = formatOutcomeTable(rows)
+    expect(formatOutcomeTable(rows, { enabled: true }).map((l) => Bun.stripANSI(l))).toEqual(plain)
+    expect(plain.join('\n')).not.toContain('\x1b')
   })
 })
