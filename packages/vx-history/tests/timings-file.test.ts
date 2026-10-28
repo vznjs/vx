@@ -271,3 +271,39 @@ it(
   },
   TIMEOUT,
 )
+
+// The rewrite was of the file as the run read it before ordering: a time
+// another writer (a run in another worktree sharing the file) put there
+// while this run ran was lost, though a task this run did not see keeps
+// its time.
+it(
+  'the rewrite keeps a time written to the file while the run ran',
+  async () => {
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await writeFile(path.join(root, '.gitignore'), 't.json\n')
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
+    // The task is the other writer.
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `export default { name: 'a', tasks: { build: { exec: { command: ${JSON.stringify(`printf '{"version":1,"tasks":{"b#build":42}}' > ../../t.json`)} } } } }\n`,
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 't.json' })] }\n",
+    )
+    await writeFile(path.join(root, 't.json'), '{"version":1,"tasks":{"c#build":7}}')
+    const summary = await run({ cwd: root, tasks: ['build'], handleSignals: false, log: silent() })
+    expect(summary.ok).toBe(true)
+    expect(Object.keys(readTimings(path.join(root, 't.json'), () => {}))).toEqual([
+      'a#build',
+      'b#build',
+      'c#build',
+    ])
+  },
+  TIMEOUT,
+)

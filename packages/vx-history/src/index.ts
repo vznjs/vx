@@ -528,7 +528,11 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     if (!wrote || done === undefined) return
     const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
     const timings = await import('./timings-file.js')
-    timings.writeTimings(done.file, done.carried, table)
+    // Over the file as it is now: a time another writer (a run in another
+    // worktree sharing it) put there since `schedule` read it is kept. Its
+    // fault, if any, was said when the run read it.
+    const now = timings.readTimings(done.file, () => {})
+    timings.writeTimings(done.file, { ...done.carried, ...now }, table)
     if (fileWarn !== undefined) timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
