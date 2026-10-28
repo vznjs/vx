@@ -699,6 +699,27 @@ describe('config', () => {
     }
   })
 
+  // A check that started while the start's ask was still out shared its
+  // refusal, threw it, and the next check threw it again.
+  it('says a refusal met while it starts once, though a check waited on the same ask', async () => {
+    const srv = server()
+    try {
+      const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, {})!, fetch, {})
+      c.refs = [MAIN]
+      c.start()
+      const said: string[] = []
+      for (let i = 0; i < 3; i++)
+        await c.has('ab12').catch((err: Error) => {
+          said.push(err.message)
+        })
+      expect(said).toEqual([
+        'HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run',
+      ])
+    } finally {
+      await srv.stop()
+    }
+  })
+
   it('says once that a server refuses a read with no token, then asks nothing', async () => {
     const srv = server()
     try {

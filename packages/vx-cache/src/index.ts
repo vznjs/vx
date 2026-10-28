@@ -444,12 +444,17 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   /** A refusal met while starting, which no call could throw: the next check or download does. */
   private unsaid: Error | undefined
+  /** Refusals a call threw: a check that waited on the start's ask threw it too. */
+  private readonly said = new WeakSet<object>()
 
   /** Throws the refusal met while starting, once. */
   private sayUnsaid(): void {
     const err = this.unsaid
     this.unsaid = undefined
-    if (err !== undefined) throw err
+    if (err !== undefined && !this.said.has(err)) {
+      this.said.add(err)
+      throw err
+    }
   }
 
   /** Starts asking for the limits, so the first check need not wait for them. */
@@ -472,7 +477,18 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (this.disabled || this.refs.length === 0) return held
     const scopes = this.refs.map(scopeOf)
     const ask = [...new Set(hashes)]
-    const max = (await this.limitsNow())?.maxCheckHashes ?? scopes.length
+    let limits: Limits | undefined
+    try {
+      limits = await this.limitsNow()
+    } catch (err) {
+      // A refusal turned the layer off: each waiter shares it, the first says it.
+      if (this.disabled && err instanceof Error) {
+        if (this.said.has(err)) return held
+        this.said.add(err)
+      }
+      throw err
+    }
+    const max = limits?.maxCheckHashes ?? scopes.length
     // More refs than one check takes: each hash's scopes span several
     // checks, the first in order holding it answering (a check of every
     // scope at once was refused, every time).
