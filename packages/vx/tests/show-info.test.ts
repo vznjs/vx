@@ -1006,6 +1006,10 @@ describe('vx info — the workers and memory rows', () => {
     expect(describeWorkers({ count: 8, source: 'workspace', cores: 4, cpuQuota: 2 })).toBe(
       '8 — .vx/workspace.ts (4 cores, cgroup CPU quota 2)',
     )
+    // A one-core machine has a core, not cores.
+    expect(describeWorkers({ count: 2, source: 'workspace', cores: 1, cpuQuota: null })).toBe(
+      '2 — .vx/workspace.ts (1 core)',
+    )
     // A quota that does not bind (wider than the cores) is still named.
     expect(describeWorkers({ count: 4, source: 'cores', cores: 4, cpuQuota: 6 })).toBe(
       '4 — the CPU count, cgroup CPU quota 6',

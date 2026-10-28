@@ -169,9 +169,10 @@ function describeSandbox(s: InfoFacts['sandbox']): string {
 /** `4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 — .vx/workspace.ts (4 cores)`. */
 export function describeWorkers(w: InfoFacts['workers']): string {
   const quota = w.cpuQuota === null ? '' : `, cgroup CPU quota ${trimCores(w.cpuQuota)}`
-  if (w.source === 'workspace') return `${w.count} — .vx/workspace.ts (${w.cores} cores${quota})`
+  const cores = `${w.cores} core${w.cores === 1 ? '' : 's'}`
+  if (w.source === 'workspace') return `${w.count} — .vx/workspace.ts (${cores}${quota})`
   if (w.source === 'cgroup')
-    return `${w.count} — cgroup CPU quota ${trimCores(w.cpuQuota ?? w.count)} of ${w.cores} cores`
+    return `${w.count} — cgroup CPU quota ${trimCores(w.cpuQuota ?? w.count)} of ${cores}`
   return `${w.count} — the CPU count${quota}`
 }
 
