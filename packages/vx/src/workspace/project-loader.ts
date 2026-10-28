@@ -145,8 +145,11 @@ async function loadDefaultExport(
   bytes: Uint8Array,
   /** The workspace root, where the load may run the config's bytecode bundle (config-bytecode.ts). */
   compiledRoot?: string,
+  /** File texts read for the refusal, kept across one load's configs. */
+  reads = new Map<string, Promise<string>>(),
 ): Promise<unknown> {
-  refuseUnprovidedImports(bytes, configPath, kind)
+  const text = new TextDecoder().decode(bytes)
+  refuseUnprovided(text, configPath, configPath, kind)
   // No random bust for `vx lock`: a project config reaches this import
   // only on its FIRST load in the process, so nothing is cached under the
   // URL yet, and a repeat load (the one that could replay an evaluation
@@ -183,6 +186,7 @@ async function loadDefaultExport(
     // The worker's budget, here too: a top-level await that never settled
     // while a timer kept the loop alive hung `vx run` for good, silently
     // (D-66).
+    await refuseUnprovidedClosure(text, configPath, kind, reads)
     const budget = evalBudgetMs()
     ns = (await Promise.race([
       import(specifier),
@@ -272,25 +276,56 @@ function pnpAbove(dir: string): boolean {
  * and a config must never download. The message keeps the shape Bun's own
  * refusal has, with the remedy.
  */
-function refuseUnprovidedImports(bytes: Uint8Array, configPath: string, kind: string): void {
-  const loader = /\.[cm]?ts$/.test(configPath) ? 'ts' : 'js'
-  const missing = unprovidedBareImports(
-    new TextDecoder().decode(bytes),
-    path.dirname(configPath),
-    loader,
-  )
+/** `source` is `file`'s: the config's own, or one it reaches. */
+function refuseUnprovided(source: string, file: string, configPath: string, kind: string): void {
+  const loader = /\.[cm]?tsx?$/.test(file) ? 'ts' : 'js'
+  const missing = unprovidedBareImports(source, path.dirname(file), loader)
   if (missing.length === 0) return
+  const own = file === configPath
+  const what = own
+    ? `cannot find '${missing[0]}'`
+    : `${file} imports '${missing[0]}', which no node_modules above it provides`
   // Under Yarn Plug'n'Play the dependencies ARE installed, into a
   // `.pnp.cjs` Bun does not read: "install them first" sent the user to a
   // `yarn install` that changed nothing (D-109).
-  if (pnpAbove(path.dirname(configPath))) {
+  if (pnpAbove(path.dirname(file))) {
     throw new UserError(
-      `${kind} config ${configPath}: cannot find '${missing[0]}' — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set \`nodeLinker: node-modules\` in .yarnrc.yml and run \`yarn install\``,
+      `${kind} config ${configPath}: ${what} — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set \`nodeLinker: node-modules\` in .yarnrc.yml and run \`yarn install\``,
     )
   }
   throw new UserError(
-    `${kind} config ${configPath}: cannot find '${missing[0]}' — no node_modules above the config provides it; install the workspace's dependencies first`,
+    `${kind} config ${configPath}: ${what}${own ? ' — no node_modules above the config provides it' : ''}; install the workspace's dependencies first`,
   )
+}
+
+const RELATIVE_IMPORT = /["']\.\.?\//
+const SCRIPT = /\.[cm]?[jt]sx?$/
+
+/**
+ * The same refusal for each script the config reaches by relative import:
+ * a preset's bare import was installed and run where the config's own was
+ * refused (L-22; `--no-install` holds only the shebang, not `bun src/bin.ts`
+ * or an embedder). Only a source evaluation pays: a fresh bundle resolved
+ * every import it holds. `reads` keeps each file's text for the load's other
+ * configs: a preset a thousand configs share is read once.
+ */
+async function refuseUnprovidedClosure(
+  source: string,
+  configPath: string,
+  kind: string,
+  reads: Map<string, Promise<string>>,
+): Promise<void> {
+  if (!RELATIVE_IMPORT.test(source)) return
+  const read = (file: string): Promise<string> => {
+    let text = reads.get(file)
+    if (text === undefined) reads.set(file, (text = Bun.file(file).text()))
+    return text
+  }
+  for (const file of await configImports(configPath, source, read)) {
+    if (!SCRIPT.test(file)) continue
+    const text = await read(file).catch(() => null)
+    if (text !== null) refuseUnprovided(text, file, configPath, kind)
+  }
 }
 
 /**
@@ -421,6 +456,7 @@ export async function loadProjectConfigs(configPaths: readonly string[]): Promis
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
+  const reads = new Map<string, Promise<string>>()
   const loadOne = async (entry: (typeof prepared)[number]): Promise<ProjectConfig> => {
     const { configPath, bytes } = entry
     // A REPEAT load in this process re-evaluates in a worker, because the
@@ -428,12 +464,16 @@ export async function loadProjectConfigs(configPaths: readonly string[]): Promis
     // config-eval.ts. A FIRST load keeps the in-process import.
     const repeat = loadedConfigs.has(configPath)
     loadedConfigs.add(configPath)
-    if (repeat) refuseUnprovidedImports(bytes, configPath, 'Project')
+    if (repeat) {
+      const text = new TextDecoder().decode(bytes)
+      refuseUnprovided(text, configPath, configPath, 'Project')
+      await refuseUnprovidedClosure(text, configPath, 'Project', reads)
+    }
     const mod = repeat
       ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
           throw loadFailure(err, configPath, 'Project')
         })
-      : await loadDefaultExport(configPath, 'Project', bytes)
+      : await loadDefaultExport(configPath, 'Project', bytes, undefined, reads)
     // Before anything reads through them: a replaced `Array.prototype.includes`
     // turned the JSON-data walk's own check into "a cyclic reference".
     const changed = repeat
