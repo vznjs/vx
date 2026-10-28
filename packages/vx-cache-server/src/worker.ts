@@ -121,6 +121,13 @@ export default {
     if (made?.key !== key) {
       let allow
       let limits
+      // wrangler.jsonc may write a var as JSON: a list reached parseAllow.
+      if (env.ALLOW !== undefined && typeof env.ALLOW !== 'string') {
+        return errorJson(
+          500,
+          'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
+        )
+      }
       try {
         allow = parseAllow(env.ALLOW ?? '')
       } catch (err) {

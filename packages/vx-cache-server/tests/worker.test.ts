@@ -65,6 +65,12 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
       500,
       'ALLOW: https://gitlab.com:group/app is not issuer:owner/repo:workflow',
     ],
+    // wrangler.jsonc may write a var as a JSON list: "list.split is not a function".
+    [
+      { ALLOW: [ALLOW_VAR] },
+      500,
+      'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
+    ],
     [
       { ALLOW: ALLOW_VAR, MAX_CHECK_HASHES: '0' },
       500,
