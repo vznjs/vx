@@ -40,13 +40,17 @@ What that gives each run of `ci.yml`:
   empty, every request is refused: `the server admits no CI: set ALLOW`.
 
 On GitLab, the workflow is the CI file:
-`https://gitlab.com:acme/web:.gitlab-ci.yml`.
+`https://gitlab.com:acme/web:.gitlab-ci.yml`. A merge request pipeline
+writes its source branch only when the token's `source_project_path`
+(GitLab 19.5+) names the project itself: a fork's merge request, run in
+your project, writes nothing.
 
 <details>
 <summary>What a merge queue writes</summary>
 
-A GitHub merge queue run, on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
-writes `main` before its code lands. Code you queue is code you trust,
+A GitHub merge queue run (`merge_group`), on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
+writes `main` before its code lands. A push to a branch of that name
+writes only that branch. Code you queue is code you trust,
 so run security checks on the pull request, before it is queued.
 
 </details>

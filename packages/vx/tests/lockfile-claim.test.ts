@@ -143,6 +143,24 @@ describe('key', () => {
     expect(base).not.toBe('a1')
   })
 
+  // A project with no manifest of its own inside a listed one
+  // (`packages/a/e2e`) resolves its modules from `packages/a/node_modules`
+  // before the root's. Folding the root's digest alone, a bump only `a`
+  // reaches moved no key of it, and its task replayed the old output.
+  it("a project inside a listed one folds the nearest listed ancestor's digest", async () => {
+    const hooks = claim()
+    const key = async (text: string, dir: string) => {
+      await lock(text)
+      return (await hooks.key(task(dir), ctx()))!['deps']!
+    }
+    const base = await key('.=root1\npackages/a=a1\npackages/b=b1\n', 'packages/a/e2e')
+    expect(base).toBe(await key('.=root1\npackages/a=a1\npackages/b=b1\n', 'packages/a'))
+    expect(await key('.=root1\npackages/a=a2\npackages/b=b1\n', 'packages/a/e2e')).not.toBe(base)
+    // CONTROL: a sibling's closure is not its; a dir that only shares a prefix is not inside.
+    expect(await key('.=root1\npackages/a=a1\npackages/b=b2\n', 'packages/a/e2e')).toBe(base)
+    expect(await key('.=root1\npackages/a=a1\n', 'packages/ab')).toBe('root1')
+  })
+
   it('parses once per content: the memo serves the next process, the context the next task', async () => {
     // No root importer: these rows are about the memo, so a's key is its own digest.
     await lock('packages/a=a1\n')
@@ -324,6 +342,20 @@ describe('affected', () => {
       'tools',
     ])
     expect([...(await ask(claim(), base, base))!]).toEqual([])
+  })
+
+  it("a project inside a listed one moves with that one's digest", async () => {
+    const base = '.=r1\npackages/a=a1\npackages/b=b1\n'
+    const nested = [...projects(), { name: 'e2e', dir: path.join(root, 'packages/a/e2e') }]
+    const moved = await claim().fingerprint.affected(
+      {
+        file: 'bun.lock',
+        before: bytes(base),
+        after: bytes('.=r1\npackages/a=a2\npackages/b=b1\n'),
+      },
+      { ...ctx(), projects: nested },
+    )
+    expect([...moved!]).toEqual(['a', 'e2e'])
   })
 
   it('a side that cannot be parsed is refused, and the refusal names WHICH side', async () => {
