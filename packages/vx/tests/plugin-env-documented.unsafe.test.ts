@@ -19,9 +19,15 @@ import path from 'node:path'
 const PACKAGES = path.resolve(import.meta.dir, '..', '..')
 const RECORD = path.join(import.meta.dir, 'contract', 'plugin-env.txt')
 
-/** Each variable-shaped word, `<PLACEHOLDER>` segments included. */
+/**
+ * Each variable-shaped word, `<PLACEHOLDER>` segments included, and each
+ * one-word name in backticks: a server reads `ALLOW` and `AUDIENCE`.
+ */
 function named(readme: string): string[] {
-  return readme.match(/[A-Z][A-Z0-9]*(?:_(?:[A-Z0-9]+|<[A-Z]+>))+/g) ?? []
+  return [
+    ...(readme.match(/[A-Z][A-Z0-9]*(?:_(?:[A-Z0-9]+|<[A-Z]+>))+/g) ?? []),
+    ...(readme.match(/(?<=`)[A-Z][A-Z0-9]+(?=`)/g) ?? []),
+  ]
 }
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -62,6 +68,8 @@ describe('every plugin env read is named in its README', () => {
     )
     expect(documented('`OTEL_EXPORTER_OTLP_PROTOCOL`', 'OTEL_EXPORTER_OTLP_*_PROTOCOL')).toBe(false)
     expect(documented('`OTEL_EXPORTER_OTLP_CERTIFICATE`', 'OTEL_EXPORTER_OTLP_*')).toBe(true)
+    expect(documented('`ALLOW` names who', 'ALLOW')).toBe(true)
+    expect(documented('ALLOW names who', 'ALLOW')).toBe(false)
   })
 
   it('names none that its README leaves out', () => {

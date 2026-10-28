@@ -44,7 +44,7 @@ function envReads(source: string): Set<string> {
     .join('\n')
   const names = new Set<string>()
   const read =
-    /(?:(?:process|Bun)\.env\.([A-Z][A-Z0-9_]*)(?![A-Z0-9_])|\benv\[['"]([A-Z][A-Z0-9_]*)['"]\])(?!\s*=[^=])/g
+    /\benv(?:\.([A-Z][A-Z0-9_]*)(?![A-Z0-9_])|\[['"]([A-Z][A-Z0-9_]*)['"]\])(?!\s*=[^=])/g
   for (const m of code.matchAll(read)) names.add(m[1] ?? m[2]!)
   // A read through a variable (`env[name]`, `process.env[envName]`) reads
   // the names the file hands it: a literal passed to a helper
@@ -86,10 +86,18 @@ it('the reader finds reads, and skips writes and comments', () => {
     const a = process.env.A_ONE ?? Bun.env['B_TWO']
     if (env['C_THREE'] === 'x') env['D_FOUR'] = '1'
     process.env.G_SEVEN = 'x'
+    const t = this.env.M_THIRTEEN ?? env.N_FOURTEEN
+    env.O_FIFTEEN = 'x'
     // process.env.E_FIVE
     /** env['F_SIX'] */
   `
-  expect([...envReads(src)].sort()).toEqual(['A_ONE', 'B_TWO', 'C_THREE'])
+  expect([...envReads(src)].sort()).toEqual([
+    'A_ONE',
+    'B_TWO',
+    'C_THREE',
+    'M_THIRTEEN',
+    'N_FOURTEEN',
+  ])
   const indirect = `
     const off = (name) => env[name] === 'none'
     off('H_EIGHT')
