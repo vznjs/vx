@@ -1230,6 +1230,19 @@ export class BoundedCapture {
     }
   }
 
+  /**
+   * The same output under tighter bounds. What this capture already
+   * dropped is counted in the new one's dropped line: pushed through
+   * `chunks()`, the old line fell into the new middle with its count.
+   */
+  rebound(headChars: number, tailChars: number): BoundedCapture {
+    const to = new BoundedCapture(headChars, tailChars)
+    for (const c of this.head) to.push(c.text, c.err)
+    for (const c of this.tail) to.push(c.text, c.err)
+    to.dropped += this.dropped
+    return to
+  }
+
   /** The kept chunks in arrival order, the dropped middle named on stdout. */
   chunks(): CapturedChunk[] {
     return this.dropped === 0

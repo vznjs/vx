@@ -71,6 +71,23 @@ describe('BoundedCapture bounds', () => {
   })
 })
 
+describe('failedOutputLog — what it says was dropped', () => {
+  // Re-bounded by pushing the entry's chunks through, the entry's own
+  // dropped line fell into the new middle and its count went with it: a
+  // 50 MB failure said `16 MB of output not kept`.
+  it('counts what the entry had already dropped', () => {
+    const big = new BoundedCapture()
+    big.push('h'.repeat(9 * 1024 * 1024))
+    big.push('t'.repeat(9 * 1024 * 1024), true)
+    const total = 18 * 1024 * 1024
+    const [head, tail] = decodeOutputLog(failedOutputLog(big, true))
+    expect([head!.text.slice(8 * 1024), tail!.text.length]).toEqual([
+      droppedOutputLine(total - 64 * 1024, 8 * 1024, 56 * 1024),
+      56 * 1024,
+    ])
+  })
+})
+
 describe('fileLocations', () => {
   it('lists the existing files the text names with line and column, unique, in order', () => {
     const dir = '/w/app'
