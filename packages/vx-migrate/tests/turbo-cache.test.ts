@@ -256,15 +256,13 @@ describe('resolveTurboCacheConfig', () => {
       resolveTurboCacheConfig({ teamId: 'team_1', signatureKey: 'o'.repeat(32) }, env, {})
         ?.signatureKey,
     ]).toEqual([undefined, undefined, 'k'.repeat(32), undefined, 'o'.repeat(32)])
-    // TURBO_SIGNATURE sits above turbo.json either way.
+    // Turbo maps no TURBO_SIGNATURE (`turborepo-config/src/env.rs`): read here,
+    // `0` skipped the verify turbo.json asks for and `yes` failed the run.
     expect([
       key({}, { ...env, TURBO_SIGNATURE: '1' }),
       key({ signature: true }, { ...env, TURBO_SIGNATURE: 'false' }),
-      key({ signature: true }, { ...env, TURBO_SIGNATURE: '' }),
-    ]).toEqual(['k'.repeat(32), undefined, 'k'.repeat(32)])
-    expect(() => key({}, { ...env, TURBO_SIGNATURE: 'yes' })).toThrow(
-      'vx/turbo-cache: TURBO_SIGNATURE should be 1 or 0, got "yes"',
-    )
+      key({}, { ...env, TURBO_SIGNATURE: 'yes' }),
+    ]).toEqual([undefined, 'k'.repeat(32), undefined])
   })
 
   it('a signatureKey option must be at least 32 bytes', () => {

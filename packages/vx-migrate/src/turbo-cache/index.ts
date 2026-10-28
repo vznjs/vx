@@ -336,8 +336,7 @@ export function resolveTurboCacheConfig(
     file.preflight === true
   // Turbo signs only under `remoteCache.signature: true`; the env key alone
   // signs nothing there, and a short one here refused the whole cache.
-  // `TURBO_SIGNATURE` (1/true, 0/false) sits above turbo.json, as in Turbo.
-  const signing = truthy(env['TURBO_SIGNATURE'], 'TURBO_SIGNATURE') ?? file.signature === true
+  const signing = file.signature === true
   const envKey = signing ? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY'] || undefined : undefined
   const signatureKey = options.signatureKey ?? envKey
   // Turbo signs with no key as it fails every request: no usable remote. Read
