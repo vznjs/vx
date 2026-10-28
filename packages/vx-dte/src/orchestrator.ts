@@ -1118,12 +1118,15 @@ export class Orchestrator {
     // deferred one's land only if a task here needs them: under
     // `--cache-download=none` every file of the run came home (2026-10-24).
     const deferred = job.req.remoteOnly !== true && job.req.download === 'deferred'
+    const read = () =>
+      job.req.remoteOnly === true || deferred ? this.o.artifacts.output(key) : restore()
     const log = await (
       unshared
         ? Promise.resolve(wiredLog(head.output))
-        : job.req.remoteOnly === true || deferred
-          ? this.o.artifacts.output(key)
-          : restore()
+        : // A failed download reads as a miss: asked once more, since one
+          // stalled download failed a CI run whose upload had landed
+          // (main, 2026-10-28).
+          read().then((got) => got ?? read())
     ).catch((err: unknown) => {
       job.reject(err)
       return undefined
@@ -1139,7 +1142,7 @@ export class Orchestrator {
     if (log === null) {
       job.reject(
         new Error(
-          `${task}: ${a.label} ran it, and no cache this machine reads holds its entry: ${a.label}'s upload failed (its log says why), or the workers and this machine share no remote cache the workers write`,
+          `${task}: ${a.label} ran it, and no cache this machine reads gave its entry, asked twice: a download failed (warned above), ${a.label}'s upload failed (its log says why), or the workers and this machine share no remote cache the workers write`,
         ),
       )
       return
