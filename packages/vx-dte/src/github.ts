@@ -86,6 +86,14 @@ export function github(options: GithubOptions = {}): DteAdapter {
       `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
     )
   }
+  /** Cancels `run` once none of its workers is still needed. */
+  const letGo = (run: string, workers: ReadonlyMap<string, WorkerSpawn>): void => {
+    if (![...workers.keys()].every((id) => cancelled.has(id))) return
+    watched.delete(run)
+    runs.splice(runs.indexOf(run), 1)
+    const p = cancelOf(run).finally(() => pending.delete(p))
+    pending.add(p)
+  }
   const look = (ms: number): void => {
     watch = setTimeout(() => {
       void Promise.all(
@@ -196,12 +204,15 @@ export function github(options: GithubOptions = {}): DteAdapter {
       if (id !== undefined) {
         const run = `/repos/${repo}/actions/runs/${id}`
         runs.push(run)
-        watched.set(run, new Map(workers.map((a) => [a.id, a])))
+        const mine = new Map(workers.map((a) => [a.id, a]))
+        watched.set(run, mine)
         if (watch === undefined && !closed) look(WATCH_FIRST_MS)
         // For the job's last step, which cancels them when this process
         // dies before close() (a kill, an OOM, the job's timeout).
         if (env['RUNNER_TEMP'])
           await appendFile(path.join(env['RUNNER_TEMP'], RUNS_FILE), `${run}\n`)
+        // Let go while this dispatch was in flight: cancel() knew no run.
+        if (!closed) letGo(run, mine)
       }
     }
   }
@@ -257,13 +268,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
     // goes on; that worker's fellows are told to exit when they join.
     cancel(ids) {
       for (const id of ids) cancelled.add(id)
-      for (const [run, workers] of watched) {
-        if (![...workers.keys()].every((id) => cancelled.has(id))) continue
-        watched.delete(run)
-        runs.splice(runs.indexOf(run), 1)
-        const p = cancelOf(run).finally(() => pending.delete(p))
-        pending.add(p)
-      }
+      for (const [run, workers] of watched) letGo(run, workers)
     },
     // A finished run answers 409; one still queued or running is the
     // run's no more: its results are in, or the run failed without them.

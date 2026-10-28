@@ -131,7 +131,7 @@ over (in order):
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
    settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`:
-   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`)
+   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`)
    and folds each whole into every task.
 
    The run reads each claimed root file once, before any task. A task
@@ -1040,7 +1040,7 @@ A task's cache becomes invalid when any of these change:
 | Edit a file in the task's `inputs.files` set                                                                                             | step 11 of key derivation                                                                                                                                                                               |
 | Edit a file in the task's `inputs.workspaceFiles` set (root-anchored; may live in ANY project's dir — the documented boundary exception) | step 11 — resolved workspace files join the same input-file list                                                                                                                                        |
 | Any package manager updates a lockfile (`pnpm`, `npm`, `yarn`, `bun`)                                                                    | step 9 — the `key` material of the plugin that claims it (`@vzn/vx-lockfile`: only the projects whose dependency closure moved); **NOT a trigger** with no such plugin, since core keys no package file |
-| Edit an install setting (`.npmrc`, `bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`)                                                  | step 9 — the claiming lockfile plugin folds it whole into every task; **NOT a trigger** without one                                                                                                     |
+| Edit an install setting (`.npmrc`, `bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`, `.yarnrc`)                                       | step 9 — the claiming lockfile plugin folds it whole into every task; **NOT a trigger** without one                                                                                                     |
 | Edit `package.json`'s `workspaces` field                                                                                                 | membership: a project that joins or leaves changes which projects exist and which nested dirs its parent's globs exclude (step 11)                                                                      |
 | Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 11 — an input file of every cached task when `@vzn/vx-lockfile` is declared (it adds `package.json` to `inputs.files`), or when a task lists it; **NOT a trigger** otherwise                       |
 | Edit the task's `vx.config.ts`                                                                                                           | step 3 (task config hash)                                                                                                                                                                               |
