@@ -411,6 +411,11 @@ Drop in any function that takes an absolute config path and returns
 
 Before either evaluation path (the first in-process import, the repeat
 load's worker), a bare import nothing above the config provides is refused
-with the install named (`refuseUnprovidedImports`, item 239): left to Bun, a
+with the install named (`refuseUnprovided`, item 239): left to Bun, a
 workspace with no `node_modules` would auto-install it from the registry
-first, and a config must never download.
+first, and a config must never download. Each script the config reaches
+by relative import (`configImports`) is held to the same rule, naming the
+file that holds the import: a preset's import was installed and run where
+the config's own was refused (`--no-install` holds only the shebang). A
+config with no relative specifier skips the walk; a fresh bytecode bundle
+skips it too, every import it holds already resolved.

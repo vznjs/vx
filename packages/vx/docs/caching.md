@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v48'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v49'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -130,7 +130,7 @@ over (in order):
    `npm-shrinkwrap.json` over `package-lock.json`, as npm does; `bun()`
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
-   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`:
+   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
    `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`)
    and folds each whole into every task.
 
@@ -1508,7 +1508,8 @@ it), every wire ships the bytes verbatim, and an artifact without it
 reads as before. The ingest side takes the numbers only as plain
 non-negative numbers; anything else in a foreign sidecar is dropped.
 `dirs` (v44) names the empty directories the output globs matched at
-save (`outputs/dist/empty`): a tar of regular files cannot hold them, and
+save (`outputs/dist/empty`, `workspace-outputs/gen/empty` under
+`outputs.workspaceFiles`): a tar of regular files cannot hold them, and
 a hit makes each one, so the tree a hit leaves is the one the miss left.
 Each name is held to a file entry's rules and to the declared outputs,
 and is reached only through directories that stay in the project. Its
@@ -2133,6 +2134,11 @@ breaking footer).
 
 ### History
 
+- **v48 → v49**: stored bytes wrong under a key the change does not move
+  (2026-10-28). Each brace alternative is read alone: `{dist,lib}` is the
+  two trees, and `{./dist,lib}/**` drops the `./`. An output glob folds
+  as its text, so a v48 entry for `outputs: ['{dist,lib}']` holds an empty
+  artifact under the unchanged key and would restore nothing.
 - **v47 → v48**: stored bytes wrong under a key the change does not move
   (2026-10-18). A task glob is a standard glob again: `[...]` is a
   character class and `\[id\]` names a route directory, which reverts
