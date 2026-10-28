@@ -2514,7 +2514,9 @@ each indented line under it names both projects and the rule. Drop the dependenc
 
 #### `VX_E_INTERNAL`
 
-A defect in vx; stderr carries the stack. Report it with that stack at
+A defect in vx, or a config's own throw; stderr carries the stack, then
+each `cause` under it as a `Caused by:` line with its stack. Report a
+defect with that stack at
 https://github.com/vznjs/vx/issues.
 
 A plugin can give its refusal a code: `new UserError(message, 'MY_CODE')`.
