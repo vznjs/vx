@@ -1654,6 +1654,13 @@ class Fence {
     }
     await this.landing(abs)
     await placeSymlink(target, abs, created)
+    // A link re-placed at `abs` moves every directory under it: a memo
+    // judged through the old one let the next write land through the new.
+    for (const memo of [this.realDirs, this.checked]) {
+      for (const dir of memo.keys()) {
+        if (dir === abs || dir.startsWith(abs + path.sep)) memo.delete(dir)
+      }
+    }
     this.links.push({ abs, target })
   }
 

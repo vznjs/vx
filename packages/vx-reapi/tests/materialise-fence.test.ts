@@ -426,4 +426,25 @@ describe('materialiseOutputs writes nothing through a link into an undeclared pl
       expect((await lstat(path.join(ws, 'other', 'src', 'index.ts'))).isSymbolicLink()).toBe(false)
     })
   }
+
+  it('a link re-placed after a landing through it was judged', async () => {
+    await mkdir(path.join(ws, '.git', 'hooks'), { recursive: true })
+    const r = await run(
+      {
+        output_files: [
+          { path: 'dist/x/f', digest: blob('f') },
+          { path: 'dist/run.sh', digest: blob('#!/bin/sh\npwned\n'), is_executable: true },
+        ],
+        output_symlinks: [
+          { path: 'dist/a', target: 'x' },
+          { path: 'dist/a/l', target: 'f' },
+          { path: 'dist/a', target: '../../.git/hooks' },
+          { path: 'dist/a/post-checkout', target: '../../pkg/dist/run.sh' },
+        ],
+      },
+      req(['dist/**']),
+    )
+    expect(r).toBe(refused(path.join(cwd, 'dist', 'a', 'post-checkout')))
+    expect(existsSync(path.join(ws, '.git', 'hooks', 'post-checkout'))).toBe(false)
+  })
 })
