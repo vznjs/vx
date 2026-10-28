@@ -39,14 +39,14 @@ export class GithubSummarySink implements TelemetrySink {
       const page = clampJobSummary(markdown, MAX_JOB_SUMMARY_BYTES - used - lead.length)
       if (page === '') {
         this.warn(
-          `vx-ci: ${this.file} already holds ${used} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
+          `[vx] vx-ci: ${this.file} already holds ${used} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
         )
       } else {
         await this.append(this.file, lead + page)
       }
     } catch (err) {
       this.warn(
-        `vx-ci: could not write the job summary to ${this.file}: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx] vx-ci: could not write the job summary to ${this.file}: ${err instanceof Error ? err.message : String(err)}`,
       )
     }
   }
