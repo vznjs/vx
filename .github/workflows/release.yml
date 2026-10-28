@@ -19,19 +19,21 @@ on:
         description: 'Tag of the draft release to build, attach binaries to and publish (e.g. v0.0.22).'
         required: true
 
-permissions:
-  contents: write
-  # Build provenance for every binary the release carries: `vx upgrade`'s
-  # SHA-256 comes from the same API as the asset, so it proves the transfer,
-  # not who built it. A Sigstore-signed attestation, verified with
-  # `gh attestation verify vx-<target> --repo vznjs/vx`, does.
-  id-token: write
-  attestations: write
+# Default-deny; each job grants what it needs. Both upload to the release
+# (contents) and attest what they upload: `vx upgrade`'s SHA-256 comes
+# from the same API as the asset, so it proves the transfer, not who
+# built it. A Sigstore-signed attestation, verified with
+# `gh attestation verify vx-<target> --repo vznjs/vx`, does.
+permissions: {}
 
 jobs:
   assets:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       VX_RELEASE_VERSION: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}
@@ -83,6 +85,10 @@ jobs:
     needs: assets
     runs-on: macos-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       VX_RELEASE_VERSION: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}

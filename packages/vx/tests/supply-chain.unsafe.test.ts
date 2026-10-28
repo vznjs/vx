@@ -156,6 +156,19 @@ describe('the supply chain', () => {
     ).toEqual([])
   })
 
+  // A write the workflow grants reaches every job, one added later
+  // included; each job names the writes it needs, as npm.yml and
+  // auto-release.yml do. An OIDC token writes nothing of the repo's.
+  it('grants a write to a job, never to the whole workflow', () => {
+    expect(
+      workflows.flatMap(({ file, doc }) =>
+        Object.entries(doc.permissions ?? {})
+          .filter(([scope, level]) => level === 'write' && scope !== 'id-token')
+          .map(([scope]) => `${path.basename(file)}: ${scope}`),
+      ),
+    ).toEqual([])
+  })
+
   // package.json's `packageManager` is the one Bun version: setup-bun reads
   // it when no step names one. Five steps named 1.4.4 and three read the
   // file, so a bump of the file moved the release builds and left CI's
