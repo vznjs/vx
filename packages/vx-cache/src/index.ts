@@ -78,9 +78,11 @@ function proxyHeaders(
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`${factory}: headers cannot set "${name}"`)
+      throw new UserError(`${factory} option "headers" cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`${factory}: header "${name}" must be one line of text`)
+      throw new UserError(
+        `${factory} option "headers.${name}" must be one line of text (its value is not printed)`,
+      )
     out[name] = value
   }
   return out
@@ -629,6 +631,7 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
     if (ms !== undefined && !(Number.isFinite(ms) && ms > 0))
       throw new UserError(`vxCache() option "${name}" must be a positive number of ms, got ${ms}`)
   }
+  proxyHeaders('vxCache()', options.headers)
   namedOf(options)
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {

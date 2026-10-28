@@ -505,10 +505,17 @@ describe('config', () => {
         h.get('vx-issuer'),
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', await hashPart(GITHUB), await hashPart(REPO)])
-    for (const bad of [{ authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
-      expect(() =>
-        resolveVxCacheConfig({ ...NAMED, url: 'https://c.example', headers: bad }, {}),
-      ).toThrow('vxCache(): header')
+    // Refused at the call, with no url named: in the hook a laptop passed
+    // what failed the first CI run. A value is never printed.
+    for (const [bad, said] of [
+      [{ authorization: 'x' }, 'vxCache() option "headers" cannot set "authorization"'],
+      [{ 'a b': 'x' }, 'vxCache() option "headers" cannot set "a b"'],
+      [
+        { a: 'x\ny' },
+        'vxCache() option "headers.a" must be one line of text (its value is not printed)',
+      ],
+    ] as const)
+      expect(() => vxCache({ ...NAMED, headers: bad })).toThrow(said)
   })
 
   it('reads the URL over VX_CACHE_URL, and a CI token from GitHub, GitLab or a lending run', () => {
