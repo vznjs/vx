@@ -2376,7 +2376,9 @@ the task once (`vx run <task>`); history is this checkout's own.
 #### `VX_E_AMBIGUOUS`
 
 `vx why <task>` matches the task in several projects. Name one:
-`vx why <project>#<task>`.
+`vx why <project>#<task>`. A run id that is the start of several
+recorded runs (`vx last <id>`, `--run <id>`) is refused the same way:
+type more of it.
 
 #### `VX_E_CONFIG`
 

@@ -280,6 +280,26 @@ describe('a refusal under --format json', () => {
     expect([plain.code, plain.stdout, forwarded.code, forwarded.stdout]).toEqual([1, '', 1, ''])
     expect(plain.stderr).toContain('no projects declare task(s): nope')
   })
+
+  // A run-id prefix two runs share answered VX_E_REFUSED, a plugin's or a
+  // check's code: an agent could not tell it from either.
+  it('a run-id prefix several runs share is VX_E_AMBIGUOUS', async () => {
+    const ran = await makeWorkspace({ prefix: 'vx-error-codes-prefix-' })
+    try {
+      await addProject(
+        ran,
+        'a',
+        `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+      )
+      for (let i = 0; i < 2; i++) expect((await vx(['run', 'a#build'], ran)).code).toBe(0)
+      expect({
+        last: await refusal(['last', '0', '--format', 'json'], ran),
+        why: await refusal(['why', 'a#build', '--run', '0', '--format', 'json'], ran),
+      }).toEqual({ last: 'VX_E_AMBIGUOUS', why: 'VX_E_AMBIGUOUS' })
+    } finally {
+      await rm(ran, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
 
 describe('errorCode', () => {
