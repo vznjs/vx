@@ -352,3 +352,30 @@ describe('a tree restore while another process re-saves the key', () => {
     writer.close()
   })
 })
+
+it('an ingested tree counts the bytes it holds, as a saved tree does', async () => {
+  // A remote hit unpacked into a tree recorded the zstd archive's size, so
+  // `--max-size` and stats undercounted it by the compression ratio.
+  const proj = path.join(root, 'p')
+  await mkdir(path.join(proj, 'out'), { recursive: true })
+  const hex = Buffer.from(crypto.getRandomValues(new Uint8Array(512 * 1024))).toString('hex')
+  await writeFile(path.join(proj, 'out/a.bin'), hex)
+  const a = new Cache(path.join(root, 'a'))
+  await a.save({
+    hash: HASH,
+    entry: { taskId: 'p#build', command: 'build', durationMs: 1, stdout: '' },
+    projectDir: proj,
+    outputFiles: [path.join(proj, 'out/a.bin')],
+  })
+  const pinned = await a.pinArtifact(HASH)
+  const b = new Cache(path.join(root, 'b'))
+  await b.ingest(HASH, pinned.body, { taskId: 'p#build', command: 'build', durationMs: 1 })
+  await pinned.release()
+  const size = (c: Cache): number =>
+    (c.dbHandle().query('SELECT size_bytes FROM entries').get() as { size_bytes: number })
+      .size_bytes
+  expect(size(b)).toBe(size(a))
+  expect(size(b)).toBeGreaterThanOrEqual(hex.length)
+  a.close()
+  b.close()
+})

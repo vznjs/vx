@@ -2839,7 +2839,7 @@ export class Cache implements CacheLayer {
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     }
     const { entries } = scanned
-    const totalBytes =
+    let totalBytes =
       saved !== undefined
         ? saved.bytes
         : compressed instanceof Uint8Array
@@ -2872,6 +2872,12 @@ export class Cache implements CacheLayer {
       if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
       tmpPath = undefined
       tree = dir
+    }
+    // A tree keeps its files as they are: counted as a saved tree counts
+    // them, not as the archive it was unpacked from (`--max-size`, stats).
+    if (tree !== undefined && saved === undefined) {
+      totalBytes = 0
+      for (const e of entries) totalBytes += e.size
     }
     const outputFileRows: Array<[string, number, number, number]> = []
     // Per-output-file fingerprint rows feed the skip-restore check.
