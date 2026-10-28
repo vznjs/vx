@@ -617,6 +617,17 @@ describe('managedInstall', () => {
     ])
   })
 
+  it("a sibling directory whose name extends the tree's is not the tree", async () => {
+    // `/w/app-old` starts with `/w/app`: its package.json was taken for the
+    // install, and the upgrade ran in a project that does not own this vx.
+    const parent = await tree({ 'app-old/package.json': lists('devDependencies') })
+    const root = path.join(parent, 'app')
+    await mkdir(root, { recursive: true })
+    expect(() => managedInstall(path.join(root, BIN), path.join(parent, 'app-old'))).toThrow(
+      /no package\.json from .* up lists @vzn\/vx/,
+    )
+  })
+
   it('moves every @vzn/vx-* plugin the manifest lists to the same release, in one install', async () => {
     // 2026-10-16: core and a plugin on different releases is a broken
     // workspace; one `add` installs them all or none. Platform packages and
@@ -1009,6 +1020,19 @@ describe('relock', () => {
     const err = spyOn(process.stderr, 'write').mockImplementation(() => true)
     try {
       await relock(bin, root)
+      expect(err.mock.calls.map((c) => String(c[0])).join('')).toContain('run vx lock')
+    } finally {
+      err.mockRestore()
+    }
+  })
+
+  it('a new vx that is not there says to run vx lock, and the upgrade stands', async () => {
+    // An npm global install has no `<prefix>/lib/node_modules/.bin/vx`: the
+    // spawn's ENOENT reached the user as a crash after a finished upgrade.
+    const { root } = await workspace('relock-missing', 'exit 0')
+    const err = spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      await relock(path.join(root, 'node_modules', '.bin', 'vx'), root)
       expect(err.mock.calls.map((c) => String(c[0])).join('')).toContain('run vx lock')
     } finally {
       err.mockRestore()

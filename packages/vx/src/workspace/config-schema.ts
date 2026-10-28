@@ -28,6 +28,7 @@ import {
   anyTaskGlob,
   asTrees,
   isLiteralPattern,
+  hasControl,
 } from '../util/index.js'
 import {
   parseSettingValue,
@@ -463,6 +464,12 @@ export function validateProjectConfig(
     if (typeof name !== 'string' || name === '' || name.trim() !== name || name.includes('#')) {
       throw new UserError(
         `${configPath}: \`name\` must be a non-empty string with no surrounding whitespace and no "#" (a task is <name>#<task>)`,
+      )
+    }
+    // Printed raw by the status line and summary: `ESC ]0;` retitled the terminal.
+    if (hasControl(name)) {
+      throw new UserError(
+        `${configPath}: \`name\` ${JSON.stringify(name)} holds a control character — rename the project`,
       )
     }
   }
@@ -1558,7 +1565,9 @@ export function taskNameProblem(name: string): string | null {
           ? "holds '*', which makes it a pattern"
           : name.startsWith('^') || name.startsWith('!')
             ? `starts with '${name[0]}', which names dependencies' tasks or negates`
-            : null
+            : hasControl(name)
+              ? 'holds a control character'
+              : null
 }
 
 /**

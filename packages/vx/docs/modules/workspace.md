@@ -140,7 +140,8 @@ config git ignores is no project. A nested repository is one entry to the
 outer git (a submodule's gitlink, an embedded repository's untracked
 `dir/`): its own git lists its configs, or a walk when it has no `.git`,
 as the input enumeration expands one. Outside git: a walk that skips
-dot-directories and `node_modules`. A config at or under a nested
+`node_modules`, `.git` and `.vx`, and enters every other dot-directory,
+as git lists `.github/actions/x`. A config at or under a nested
 `.vx/workspace.*` is that workspace's and is left out. Where a directory
 holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
 file (a directory may carry a config's name; git lists a tracked config
