@@ -104,7 +104,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       const files = tree.files.filter(mine)
       const ws = wsFiles.filter(mine)
       const mask = secretMask([process.env, run.env ?? {}])
-      const log = encodeOutputLog(run.output)
+      const log = encodeOutputLog(run.output, mask === null ? undefined : (t) => mask.mask(t))
       await cache.save({
         hash: key,
         projectDir: task.projectDir,
@@ -117,7 +117,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
           taskId: task.id,
           command: mask?.mask(task.command) ?? task.command,
           durationMs: run.durationMs,
-          stdout: mask?.mask(log) ?? log,
+          stdout: log,
           ...(run.cpuMs !== undefined ? { cpuMs: run.cpuMs } : {}),
           ...(run.peakRssBytes !== undefined ? { peakRssBytes: run.peakRssBytes } : {}),
         },
