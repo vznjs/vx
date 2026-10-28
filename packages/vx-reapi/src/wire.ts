@@ -5,6 +5,7 @@
 
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import path from 'node:path'
 import {
   canDigest,
@@ -337,6 +338,13 @@ function abortableSleep(ms: number, signal: AbortSignal | undefined): Promise<vo
 
 const NOT_FOUND = grpc.status.NOT_FOUND
 
+/**
+ * The action a call is made for, per async context: one client serves every
+ * task of a run at once, and a field on it named, on each action's uploads,
+ * whichever action had set it last.
+ */
+const currentAction = new AsyncLocalStorage<{ id: string }>()
+
 export interface ReapiOptions {
   /** `host:port` of the REAPI server; TLS unless `grpc://`, `http://` or a socket. */
   endpoint: string
@@ -472,7 +480,7 @@ export class ReapiClient {
   private readonly correlatedInvocationsId: string
   /** Set when a call spent its retries on UNAVAILABLE; cleared by any answer. */
   private unreachable = false
-  /** Set per action so the server can group its RPCs under one action. */
+  /** The action last named (`nameAction`); a call outside any `inAction` carries it. */
   actionId = ''
   toolInvocationId = ''
 
@@ -622,10 +630,22 @@ export class ReapiClient {
     const tool = concat([strField(1, this.toolName), strField(2, this.toolVersion)])
     return concat([
       tool.length === 0 ? tool : lenField(1, tool),
-      strField(2, this.actionId),
+      strField(2, currentAction.getStore()?.id ?? this.actionId),
       strField(3, this.toolInvocationId),
       strField(4, this.correlatedInvocationsId),
     ])
+  }
+
+  /** Runs `fn` as one action's calls: each carries the id `nameAction` gives it there. */
+  inAction<T>(fn: () => Promise<T>): Promise<T> {
+    return currentAction.run({ id: '' }, fn)
+  }
+
+  /** Names the action of the `inAction` this runs in, so the server groups its RPCs under it. */
+  nameAction(id: string): void {
+    const scope = currentAction.getStore()
+    if (scope !== undefined) scope.id = id
+    this.actionId = id
   }
 
   /**
