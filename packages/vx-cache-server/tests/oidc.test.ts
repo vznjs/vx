@@ -17,10 +17,11 @@ const allow = parseAllow(`${GITHUB}:Acme/App:ci.yml`)
 let sign: (claims: JWTPayload, aud?: string) => Promise<string>
 let handle: (req: Request) => Promise<Response>
 let read: string
+let jwk: Record<string, unknown>
 
 beforeAll(async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
-  const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
+  jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
   sign = (claims, aud = AUD) =>
     new SignJWT({
       repository: 'acme/app',
@@ -132,6 +133,34 @@ describe('CI OIDC tokens', () => {
       "job_workflow_ref acme/app/.github/workflows/release.yml is not in this server's ALLOW",
     ])
     expect(await status('c3')).toBe(404)
+  })
+
+  // The claim was cut at its first `@`, so a workflow file with one in its
+  // name (`ci@x.yml`) was refused whatever ALLOW said.
+  it('admits a job of a workflow file whose name holds an @', async () => {
+    const at = createCacheServer({
+      blobs: memBlobs(),
+      authorize: oidcAuth({
+        allow: parseAllow(`${GITHUB}:acme/app:ci@x.yml`),
+        audience: AUD,
+        fetchJson: async (url) =>
+          url.endsWith('/.well-known/openid-configuration')
+            ? { jwks_uri: `${GITHUB}/keys` }
+            : { keys: [jwk] },
+      }),
+    })
+    const token = await sign({
+      ...MAIN,
+      job_workflow_ref: 'acme/app/.github/workflows/ci@x.yml@refs/heads/main',
+    })
+    const res = await at(
+      new Request(`${AUD}/v1/artifacts/e2`, {
+        method: 'PUT',
+        body: 'x',
+        headers: { ...NAMED, authorization: `Bearer ${token}`, 'content-length': '1' },
+      }),
+    )
+    expect(res.status).toBe(204)
   })
 
   // A missing claim read as the text "undefined": the refusal named a

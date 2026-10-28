@@ -321,9 +321,13 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     const wclaim = workflowClaimOf(iss)
     const ran = claims[wclaim]
     if (typeof ran !== 'string') throw new Refusal(403, `no ${wclaim} claim`)
-    const workflow = ran.replace(/@.*$/, '')
-    if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
-      throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
+    // The path is the claim up to an `@` that a ref follows: a file name may hold `@` too.
+    const ranAllowed = ofRepo.some((a) => {
+      const p = `${workflowPath(iss, a.repository, a.workflow)}@`
+      return same(ran.slice(0, p.length), p)
+    })
+    if (!ranAllowed)
+      throw new Refusal(403, `${wclaim} ${ran.replace(/@.*$/, '')} is not in this server's ALLOW`)
     const repo = { issuer: issuerOf(iss), repository }
     const branch = branchOf(iss, claims)
     return branch === undefined ? repo : { ...repo, write: branch }
