@@ -43,7 +43,7 @@ import {
   UserError,
   writableUnder,
 } from '../util/index.js'
-import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
+import { GitFilesCache, listingEnv, runGitLsFiles } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
@@ -1967,7 +1967,7 @@ async function resolveFiles(
     // tree just changed); set() drops the project's OID slot and these
     // files fall back to Cache.hashFile, which computes the identical
     // blob OID from disk.
-    const ls = runGitLsFiles(args.projectDir)
+    const ls = runGitLsFiles(args.projectDir, listingEnv(args.projectDir, args.workspaceRoot))
     gitFiles = ls.files
     // set() also clears the project's pending-changed bookkeeping.
     args.gitFilesCache?.set(args.projectDir, gitFiles)

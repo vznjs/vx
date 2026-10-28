@@ -623,7 +623,8 @@ body:has(.vx-landing) {
 }
 
 /* ---- try it ---- */
-.code {
+/* pre: Expressive Code names its own line boxes .code too. */
+pre.code {
   margin: 0 0 14px;
   padding: 18px 20px;
   overflow-x: auto;
