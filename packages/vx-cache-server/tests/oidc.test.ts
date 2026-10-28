@@ -98,6 +98,15 @@ describe('CI OIDC tokens', () => {
     expect(await status('e7', near.ref)).toBe(200)
   })
 
+  // Any branch may be named gh-readonly-queue/main/pr-1-<sha> where no
+  // merge queue claims the prefix: a push to it wrote main's scope.
+  it('a push to a branch named like a merge queue ref writes that branch', async () => {
+    const ref = `refs/heads/gh-readonly-queue/main/pr-12-${'b'.repeat(40)}`
+    expect((await put(await sign({ event_name: 'push', ref }), 'c9')).status).toBe(204)
+    expect(await status('c9')).toBe(404)
+    expect(await status('c9', ref)).toBe(200)
+  })
+
   // A pull_request_target run carries a fork's head_ref, named by the
   // fork: it wrote that branch's scope, so a fork poisoned a branch of the
   // same name (found 2026-10-26). Its ref is the base: a fork's code never

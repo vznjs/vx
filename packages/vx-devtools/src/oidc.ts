@@ -109,8 +109,8 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
 /**
  * The scope a token writes: its branch. A GitHub pull request's run writes
  * its head branch (its `ref` is the merge ref the run's own reads never
- * name); a merge queue's run its base branch, which its code is about to
- * become (2026-10-25: "just strip it"); any other run its `ref`,
+ * name); a merge queue's (`merge_group`) run its base branch, which its
+ * code is about to become (2026-10-25: "just strip it"); any other run its `ref`,
  * GitLab's its `ref_path`. Only a `pull_request` run takes its head
  * branch. A `pull_request_target` run writes nothing: its `head_ref` is a
  * fork's branch name, chosen by the fork, and its `ref` is the base branch,
@@ -126,7 +126,8 @@ function branchOf(iss: string, claims: JWTPayload): string | undefined {
         : claims['ref']
       : claims['ref_path']
   if (typeof ref !== 'string' || !ref.startsWith('refs/') || ref.length > 512) return undefined
-  const queued = iss === GITHUB ? QUEUE.exec(ref) : null
+  // Only a merge_group run's: elsewhere any pusher may name a branch so.
+  const queued = iss === GITHUB && claims['event_name'] === 'merge_group' ? QUEUE.exec(ref) : null
   return queued === null ? ref : `refs/heads/${queued[1]}`
 }
 
