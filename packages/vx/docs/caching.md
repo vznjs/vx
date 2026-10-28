@@ -811,7 +811,9 @@ has moved whatever it holds (a whole-second stamp counts as any moment
 of its second, an even one of two, in both checks): an input changed and changed BACK while the
 command ran matched its digest again, and its output, built from the
 edit, was filed under the key and restored over the original (item
-1015). When one moved, the task's result stands but no entry is saved,
+1015). A symlinked input is also followed again: the key folds the
+content behind it, which an edit changes without touching the link, and
+a different digest there has moved. When one moved, the task's result stands but no entry is saved,
 one status line names the file (``[vx] app#format: `packages/app/a.ts`
 changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
