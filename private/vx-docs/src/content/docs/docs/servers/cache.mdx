@@ -137,7 +137,7 @@ export default defineWorkspace({
 
 | Option | Default | What it sets |
 | --- | --- | --- |
-| `url` | `VX_CACHE_URL` | the server's URL; a redirect is not followed |
+| `url` | `VX_CACHE_URL` | the server's URL: https, http only to `127.0.0.1`, `::1` or `localhost`; a redirect is not followed |
 | `issuer` | required | your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL |
 | `repository` | required | the repository, `org/name`, as `ALLOW` names it |
 | `timeoutMs` | 30 000 | how long one read or check may take |

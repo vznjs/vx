@@ -34,7 +34,9 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 ## Timings from a history server
 
 `url` (or `VX_HISTORY_URL`), its base URL without `/v1`, names a
-[`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server).
+[`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server),
+over `https://` (`http://` only to `127.0.0.1`, `::1` or `localhost`: every
+request carries the CI token).
 On a CI job with a token (GitHub's OIDC token, which needs
 `permissions: id-token: write`, or a GitLab `id_tokens` entry
 `VX_HISTORY_TOKEN` with the server's origin as `aud`; a 5xx or 429 from

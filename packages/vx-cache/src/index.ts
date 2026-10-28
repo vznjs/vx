@@ -19,7 +19,7 @@ import {
 } from '@vzn/vx'
 
 export interface VxCacheOptions {
-  /** The server's base URL (`https://cache.example.com`), or `VX_CACHE_URL`. */
+  /** The server's base URL (`https://cache.example.com`; http only to this machine), or `VX_CACHE_URL`. */
   url?: string
   /** The CI issuer whose tokens the server takes, as they name it (`https://token.actions.githubusercontent.com`). */
   issuer: string
@@ -624,6 +624,17 @@ function deadlinesOf(options: VxCacheOptions): { timeoutMs: number; uploadTimeou
   return out
 }
 
+/**
+ * https, or http to this machine: every request carries the CI token, and
+ * http:// to another host sent it in clear.
+ */
+function secure(url: string): boolean {
+  if (/^https:\/\/\S/.test(url)) return true
+  if (!/^http:\/\/\S/.test(url)) return false
+  const host = URL.parse(url)?.hostname
+  return host === '127.0.0.1' || host === '[::1]' || host === 'localhost'
+}
+
 /** Options over `VX_CACHE_URL`; `undefined`: no server named. */
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
@@ -633,7 +644,10 @@ export function resolveVxCacheConfig(
   const deadlines = deadlinesOf(options)
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
-  if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
+  if (!secure(url))
+    throw new Error(
+      `vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got ${url}`,
+    )
   // Each route is the url's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
     throw new Error(`vxCache(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
