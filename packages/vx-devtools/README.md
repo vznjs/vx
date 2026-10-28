@@ -67,8 +67,8 @@ export function oidcTokenAuth(
 - With `oidcAuth`, every request names its repository: `vx-issuer` and `vx-repository`,
   the `hashPart`s of the issuer's URL (no trailing slash) and of its
   `org/name` lowercased; one missing or not a hash is `400`.
-- The token's repository is its issuer and its name, `org/name`
-  lowercased: `repository` (GitHub) or `project_path` (GitLab), what a
+- The token's repository is its issuer (a trailing slash, in `ALLOW` or
+  the token, is the same issuer) and its name, `org/name` lowercased: `repository` (GitHub) or `project_path` (GitLab), what a
   checkout's origin names (2026-10-25). One `ALLOW` does not name is
   `403`, and so is one other than the request names.
 - The token's workflow (`job_workflow_ref` on GitHub, `ci_config_ref_uri`
