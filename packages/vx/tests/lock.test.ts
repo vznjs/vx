@@ -119,6 +119,29 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
+    'locks a task named __proto__ as its own task',
+    async () => {
+      // vx-migrate writes one as a computed key (item 1033); the lock's
+      // key sort assigned it into a plain object, which set the prototype:
+      // the task left the lock, and --check said drift right after vx lock.
+      await addProject(
+        root,
+        'app',
+        `export default { tasks: { ['__proto__']: { exec: { command: 'echo proto' } } } }`,
+      )
+      expect((await vx(root, ['lock'], {})).code).toBe(0)
+      const lockJson = JSON.parse(
+        await Bun.file(path.join(root, '.vx/projects.lock.json')).text(),
+      ) as { projects: Record<string, { config: { tasks: object } }> }
+      expect(Object.keys(lockJson.projects['packages/app']!.config.tasks)).toEqual(['__proto__'])
+      expect((await vx(root, ['lock', '--check'], {})).out).toBe(
+        '✓ vx lock --check  up to date (1 project)\n',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'freezes env-dependent configs: a run trusts the lock; --check audits',
     async () => {
       await addProject(root, 'app', ENV_CONFIG)

@@ -160,9 +160,8 @@ function validatedDigest(body: string): string {
 function taskKeysSorted(key: string, value: unknown): unknown {
   if (key !== 'tasks' || value === null || typeof value !== 'object' || Array.isArray(value))
     return value
-  const tasks: Record<string, unknown> = {}
-  for (const [name, task] of Object.entries(value)) tasks[name] = keysSorted(task)
-  return tasks
+  // Entries, not assignment: a task named `__proto__` is a key of its own.
+  return Object.fromEntries(Object.entries(value).map(([name, task]) => [name, keysSorted(task)]))
 }
 
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {
