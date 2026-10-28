@@ -318,7 +318,9 @@ git: <root> is not inside a git work tree`. A repository with no commit
 - `<base>...HEAD`, Turbo's CI spelling, reads as `<base>`. Two-dot
   `<base>..HEAD` diffs from `<base>` itself, not the merge base; a shallow
   clone fetches that commit as it fetches the merge base.
-- A ref that does not exist is `git ref "<ref>" did not resolve`. In a
+- A ref that does not exist is `git ref "<ref>" did not resolve`, with
+  git's reason when it gives one (`main@{9}`: `log for 'main' only has 2
+entries`). In a
   shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`).
 - A project whose directory is a symlink inside the workspace
   (`packages/b -> ../ext/b`) is selected by a change at the real place
@@ -1836,7 +1838,9 @@ environment and `Bun.deepEquals`-compares it with the frozen object. A
 project that differs gets one message, whether its config, a file it
 imports or the environment it reads changed. A lock an earlier vx wrote,
 or one that is not valid JSON, is a problem the audit names (a
-`problems` entry under `--format json`, not a refusal) and asks for `vx lock`. It also checks the graph rules over the configs as they
+`problems` entry under `--format json`, not a refusal) and asks for `vx lock`. Every config that does
+not load is named, as `vx lock` names them: each with its line and frame,
+and root-relative under `--format json`. It also checks the graph rules over the configs as they
 evaluate now, and that each `vx.lock.json` is what its project resolves to
 here, and that none is left where a `vx.config` was deleted, the
 directory still a project or not (delete that one yourself: vx never
@@ -2010,7 +2014,8 @@ never hands off.
 ## `vx upgrade`
 
 `vx upgrade` brings vx to a newer release (`vx upgrade TAG` pins one, `v0.4.0` or
-`0.4.0`; default latest; a second tag is refused, not dropped), the way
+`0.4.0`; default latest; a second tag, or one that is no version, is
+refused first, not dropped), the way
 it was installed. Named `upgrade` per CLI convention (`bun upgrade`,
 `deno upgrade`). Refuses when running from source: use `git pull`.
 
@@ -2874,7 +2879,8 @@ cache (nothing re-ran), it re-executed on the same key, or it recorded
 no cache outcome at all, in which case vx says so instead of guessing.
 A re-execution names its cause when the index shows one: the previous
 run on the key failed and saved nothing, the run did not read the cache
-(`--force`, or a `--cache-policy` without read), no entry for the key was
+(`--force`, or a `--cache-policy` without read) or did not use it at all
+(`--no-cache`, or a `--cache-policy` without read or write), no entry for the key was
 there when it ran (pruned or evicted), the previous run was not saved
 because it ran beside a failed task (a task run past a failed dependency
 under `--continue` is never cached; said ahead of a prune, and as
@@ -3062,6 +3068,13 @@ remote's downloads beside the tasks), which its own output never shows:
 newest 50, in `<cache dir>/steps/<run id>.json`, written only by a run
 that had one; `--format json` adds them as `steps`.
 
+**Warnings.** Below the steps, what the run warned of (a glob that
+matched no files, a remote's 403, a plugin's notice), each as it said
+it, colour stripped, under `warnings`: on a terminal they scroll past,
+and the footer keeps only their count. Kept per run like the steps, the
+newest 50, in `<cache dir>/warnings/<run id>.json`, written only by a
+run that warned.
+
 **Re-run what failed.** A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
 vx run app#test -- …`, with the arguments the run forwarded to the
@@ -3156,8 +3169,8 @@ change with `SCHEMA_VERSION`; read `sqlite_schema` rather than assume.
 ### JSON
 
 `--format json`
-emits `{ invocation, tasks, steps }` for scripting (`steps` only when the
-run kept some, above); `--list --format json`
+emits `{ invocation, tasks, steps, warnings }` for scripting (`steps`
+and `warnings` only when the run kept some, above); `--list --format json`
 an array of the same `invocation` objects, newest first. A failed task's row adds
 `output` (its output as plain text, the first 8 KiB and last 56 KiB,
 secrets masked) and `locations` (the existing files it names,

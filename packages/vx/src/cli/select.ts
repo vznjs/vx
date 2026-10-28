@@ -453,7 +453,7 @@ export async function resolveFilters(
     const excluded = `${negations.join(', ')} excluded every project${includes.length > 0 ? ' the other filters matched' : ''}`
     if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
       if (includes.every((f) => emptyDiffs.has(f))) {
-        const refs = includes.map((f) => f.gitSince).join(', ')
+        const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
         // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
         // the branch under test) can never mark anything affected, and this
         // exit-0 note was the only sign (CI persona, 2026-09-16). Say so.
@@ -479,9 +479,10 @@ export async function resolveFilters(
     }
     // One line, not a warning per pattern and then an error saying the same:
     // the patterns are in the error, and the nearest project name is the
-    // hint a typo needs.
+    // hint a typo needs. Only the ones that matched nothing: `app !app apq` named
+    // app, and `--affected` a `...[<base>]` nobody typed.
     return {
-      error: `no projects matched filter(s): ${raw.join(', ')}${didYouMean(unmatched, projects, tags)}`,
+      error: `no projects matched filter(s): ${unmatched.join(', ')}${didYouMean(unmatched, projects, tags)}`,
     }
   }
   // Something matched, so the run proceeds; a pattern that matched nothing
