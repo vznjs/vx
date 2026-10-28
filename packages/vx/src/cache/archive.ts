@@ -74,7 +74,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
-import { UserError } from '../util/index.js'
+import { UserError, writableUnder } from '../util/index.js'
 import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
 import {
   TarFormatError,
@@ -822,8 +822,14 @@ export async function extractArtifactStream(
       if (dest === null || dest.rel.length === 0) continue
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
-      if (!inside(path.resolve(path.dirname(target), to), bound)) {
+      const at = path.resolve(path.dirname(target), to)
+      if (!inside(at, bound)) {
         throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
+      }
+      // Lexical: a write through a link is judged where it resolves, so an
+      // alias chain into .git gets no further than this link would.
+      if (!writableUnder(at, path.resolve(bound))) {
+        throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)
       }
       await x.stageLink(name, dest.base, target, to)
       provided.add(name)
@@ -1061,7 +1067,7 @@ class Extractor {
       )
       if (real !== null) {
         const realBase = await this.realBaseOf(base)
-        if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+        if (!writableUnder(real, realBase)) {
           throw await linkOutError(baseResolved, probe, realBase)
         }
         return
@@ -1090,7 +1096,7 @@ class Extractor {
     if (err.code !== 'EEXIST' && err.code !== 'ENOENT' && err.code !== 'ELOOP') throw err
     const real = await resolveThrough(dir)
     const realBase = await this.realBaseOf(base)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+    if (!writableUnder(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
     // What stands there without a link on the way (a file named like the
@@ -1564,7 +1570,7 @@ class Extractor {
     checked.add(dir)
     const realBase = await this.realBaseOf(base)
     const real = await realOf(dir, true)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+    if (!writableUnder(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
   }
@@ -1590,7 +1596,7 @@ class Extractor {
     for (const [dir, { base, placed }] of landed) {
       const realBase = await this.realBaseOf(base)
       const real = await realOf(dir, true).catch(() => null)
-      if (real === null || real === realBase || real.startsWith(realBase + path.sep)) continue
+      if (real === null || writableUnder(real, realBase)) continue
       await Promise.allSettled(placed.map((p) => rm(p, { recursive: true, force: true })))
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
@@ -1735,7 +1741,13 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
   for (const part of path.relative(base, probe).split(path.sep)) {
     dir = path.join(dir, part)
     real = await resolveThrough(dir)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) break
+    if (!writableUnder(real, realBase)) break
+  }
+  if (real.startsWith(realBase + path.sep)) {
+    return new UserError(
+      `${dir} is a symbolic link to ${real}, Git's metadata — a cache restore never writes ` +
+        'into a .git directory. Remove the link and re-run, or stop declaring outputs under it.',
+    )
   }
   return new UserError(
     `${dir} is a symbolic link to ${real}, outside ${base} — a cache restore never writes ` +

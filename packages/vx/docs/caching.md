@@ -130,7 +130,7 @@ over (in order):
    `npm-shrinkwrap.json` over `package-lock.json`, as npm does; `bun()`
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
-   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`:
+   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
    `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`)
    and folds each whole into every task.
 
@@ -1550,7 +1550,11 @@ followed). An output directory that is a symlink (`dist -> real-out`) is
 followed by the clean as by the save and restore, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5). The clean prunes the directories it emptied (before a miss it keeps
+nothing is deleted through it (X-5). So does one, in either scope, that
+resolves into a `.git` (any case) or the root's `.vx`: for the root
+project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
+under `dist/**` had the clean delete the repository. A recorded row
+reached through such a link is never removed either. The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
 task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
@@ -1575,7 +1579,12 @@ following a chain of links to its end — and writes through it, the
 link kept. Whether a link stays inside is decided on where it resolves,
 so a dangling link to `../elsewhere` or to an absolute path out of the
 project is the same refusal, nothing created outside, and a cycle of
-links is refused by name. (A link the output globs themselves cover,
+links is refused by name. Nor is a link written through into Git's
+metadata: a path that resolves into a `.git` directory under the
+project (or the workspace, for `outputs.workspaceFiles`), in any case,
+is refused naming the link (`dist/g -> ../.git` carried
+`dist/g/hooks/pre-commit` into `.git/hooks`), and an artifact's own link
+into `.git` fails its restore (vercel/turborepo#14808). (A link the output globs themselves cover,
 `dist/sub` under `dist/**`, is an output: the clean unlinks it.) Entry NAMES are
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps
