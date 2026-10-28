@@ -93,7 +93,7 @@ export interface VxPlugin {
    * applied on top of it live. A project with NO config file (a
    * `discover` plugin added it) is loaded too, as `{ tasks: {} }`, so a
    * plugin can give it tasks; with no `project` plugin such a project is
-   * never visited.
+   * never visited. Its `name` is fixed by then: a change is refused.
    */
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
 
