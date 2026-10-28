@@ -20,20 +20,6 @@ const DEADLINE_MS = 10_000
 /** Tries of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
 const ATTEMPTS = 3
 
-/** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
-export function serverUrlOf(
-  option: string | undefined,
-  env: Record<string, string | undefined> = Bun.env,
-): string | undefined {
-  const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
-  if (url === undefined || url === '') return undefined
-  if (!/^https?:\/\//.test(url)) throw new Error(`vxHistory(): url must be http(s), got ${url}`)
-  // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
-  if (url.endsWith('/v1'))
-    throw new Error(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
-  return url
-}
-
 /** The issuer and repository a workspace names, as a key holds them: the issuer's URL with no trailing slash, `org/name` lowercased. */
 export interface Named {
   readonly issuer: string
@@ -108,22 +94,6 @@ function expiryOf(jwt: string): number {
 interface Limits {
   readonly maxUploadTimings: number
   readonly maxQueryHashes: number
-}
-
-/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
-export function proxyHeaders(
-  headers: Record<string, string | undefined> | undefined,
-): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [name, value] of Object.entries(headers ?? {})) {
-    if (value === undefined) continue
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`vxHistory(): headers cannot set "${name}"`)
-    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`vxHistory(): header "${name}" must be one line of text`)
-    out[name] = value
-  }
-  return out
 }
 
 export class HistoryServer {

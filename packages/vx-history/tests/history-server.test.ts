@@ -11,7 +11,7 @@ import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { allowOf, type Issuer, issuer, NAMED } from './issuer.js'
-import { HistoryServer, proxyHeaders, serverUrlOf, timingOf } from '../src/history-server.js'
+import { HistoryServer, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
 
 let iss: Issuer
@@ -249,8 +249,7 @@ describe('HistoryServer', () => {
       seen.push(new Headers(init.headers))
       return new Response(JSON.stringify({ maxUploadTimings: 10, maxQueryHashes: 10, rows: [] }))
     }) as unknown as typeof fetch
-    const headers = proxyHeaders({ 'CF-Access-Client-Id': 'id', 'X-Unset': undefined })
-    expect(headers).toEqual({ 'CF-Access-Client-Id': 'id' })
+    const headers = { 'CF-Access-Client-Id': 'id' }
     const client = new HistoryServer(
       'https://h.example',
       NAMED,
@@ -268,7 +267,9 @@ describe('HistoryServer', () => {
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', null, null])
     for (const bad of [{ Authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
-      expect(() => proxyHeaders(bad)).toThrow('vxHistory(): ')
+      expect(() => vxHistory({ url: 'https://h.example', ...NAMED, headers: bad })).toThrow(
+        'vxHistory(): ',
+      )
   })
 
   it('reads with no token from a public server, sending none', async () => {
@@ -318,14 +319,51 @@ describe('HistoryServer', () => {
     )
   })
 
-  it('reads the URL over VX_HISTORY_URL', () => {
-    expect(serverUrlOf(undefined, {})).toBeUndefined()
-    expect(serverUrlOf(undefined, { VX_HISTORY_URL: 'https://h.example/' })).toBe(
-      'https://h.example',
-    )
-    expect(() => serverUrlOf('h.example', {})).toThrow('vxHistory(): url must be http(s)')
-    expect(() => serverUrlOf('https://h.example/v1/', {})).toThrow(
+  it('reads the URL over VX_HISTORY_URL, refusing one no request can carry', async () => {
+    const saved = Bun.env.VX_HISTORY_URL
+    const warned: string[] = []
+    const setup = (o: Parameters<typeof vxHistory>[0]) =>
+      vxHistory(o).setup!({ ci: false, warn: (m: string) => warned.push(m) } as never)
+    try {
+      Bun.env.VX_HISTORY_URL = 'h.example'
+      await expect(setup({ ...NAMED }) as Promise<unknown>).rejects.toThrow(
+        'vxHistory(): url must be http(s), got h.example',
+      )
+      await setup({ ...NAMED, url: 'https://h.example/' })
+      Bun.env.VX_HISTORY_URL = 'https://h.example/'
+      await setup({})
+      expect(warned).toEqual([
+        '[vx] vx-history: VX_HISTORY_URL names a server, but vxHistory() names no issuer and repository: the server is not asked',
+      ])
+    } finally {
+      if (saved === undefined) delete Bun.env.VX_HISTORY_URL
+      else Bun.env.VX_HISTORY_URL = saved
+    }
+  })
+
+  // Both were checked only in a run's `setup`: `vx show`, `vx info` and a
+  // `--dry` plan took the config, and every run then failed on it.
+  it('refuses a url or headers no request can carry when the config is evaluated', () => {
+    const refusal = (o: Parameters<typeof vxHistory>[0]): string => {
+      try {
+        vxHistory({ ...NAMED, ...o })
+        return 'taken'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect(refusal({ url: 'h.example' })).toBe('vxHistory(): url must be http(s), got h.example')
+    expect(refusal({ url: 'https://h.example/v1' })).toBe(
       "vxHistory(): url is the server's base, without /v1: https://h.example",
+    )
+    expect(refusal({ url: 'https://h.example', headers: { 'a b': 'x' } })).toBe(
+      'vxHistory(): headers cannot set "a b"',
+    )
+    expect(refusal({ url: 'https://h.example', headers: { 'x-a': 5 as never } })).toBe(
+      'vxHistory(): header "x-a" must be one line of text',
+    )
+    expect(refusal({ url: 'https://h.example', headers: { 'x-a': 'v', 'x-b': undefined } })).toBe(
+      'taken',
     )
   })
 })

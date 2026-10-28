@@ -263,6 +263,36 @@ function namedOf(issuer: unknown, repository: unknown): Named {
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
+/** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
+function serverUrlOf(
+  option: string | undefined,
+  env: Record<string, string | undefined> = Bun.env,
+): string | undefined {
+  const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
+  if (url === undefined || url === '') return undefined
+  if (!/^https?:\/\//.test(url)) throw new UserError(`vxHistory(): url must be http(s), got ${url}`)
+  // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
+  if (url.endsWith('/v1'))
+    throw new UserError(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
+  return url
+}
+
+/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
+function proxyHeaders(
+  headers: Record<string, string | undefined> | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (value === undefined) continue
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
+      throw new UserError(`vxHistory(): headers cannot set "${name}"`)
+    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
+      throw new UserError(`vxHistory(): header "${name}" must be one line of text`)
+    out[name] = value
+  }
+  return out
+}
+
 export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   refuseUnknownOptions('vxHistory()', options, VX_HISTORY_KEYS)
   const named =
@@ -283,6 +313,10 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   }
   // `''` resolved to the workspace root: each run warned it could not read
   // a directory and failed in teardown renaming its timings over it.
+  // Checked here, not in a run's `setup`: `vx show` and a `--dry` plan
+  // took a url or header no request can carry, and every run failed on it.
+  if (options.url !== undefined) serverUrlOf(options.url)
+  const headers = proxyHeaders(options.headers)
   if (options.file !== undefined && options.file.trim() === '') {
     throw new UserError(
       `vxHistory() option "file" must be a path, got ${JSON.stringify(options.file)}`,
@@ -398,11 +432,11 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   const serverOf = async (): Promise<HistoryServer | undefined> => {
     if ((options.url ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
     const m = await import('./history-server.js')
-    const url = m.serverUrlOf(options.url)
+    const url = serverUrlOf(options.url)
     if (url === undefined) return undefined
     // VX_HISTORY_URL alone: the workspace names no repository to ask for.
     if (named === undefined) return undefined
-    return new m.HistoryServer(url, named, Bun.env, fetch, m.proxyHeaders(options.headers))
+    return new m.HistoryServer(url, named, Bun.env, fetch, headers)
   }
   // What the run sends the history server at its end, by task definition.
   let reported: { timings: Map<string, ServerTiming>; warn: (m: string) => void } | undefined
