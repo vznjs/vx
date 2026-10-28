@@ -15,7 +15,15 @@ const refusal = (make: () => unknown): string => {
 
 it('a misspelt option is refused, naming the nearest one', () => {
   expect(refusal(() => vxHistory({ windw: 5 } as never))).toBe(
-    'vxHistory() has unknown option "windw" (allowed: assume, defaultBranch, file, headers, issuer, memory, repository, reservations, resources, url, window) \u2014 did you mean window?',
+    'vxHistory() has unknown option "windw" (allowed: assume, file, headers, issuer, memory, repository, reservations, resources, url, window) \u2014 did you mean window?',
+  )
+})
+
+// The default branch is the workspace's `baseBranch`, which every
+// remote reads: a second name for it here could only disagree.
+it('defaultBranch is refused: baseBranch names the default branch', () => {
+  expect(refusal(() => vxHistory({ defaultBranch: 'trunk' } as never))).toContain(
+    'unknown option "defaultBranch"',
   )
 })
 

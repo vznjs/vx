@@ -36,7 +36,6 @@ export interface VxHistoryOptions {
   readonly reservations?: Readonly<Record<string, ResourceEstimate>>
   readonly assume?: Readonly<Record<string, number>>
   readonly file?: string
-  readonly defaultBranch?: string
   readonly url?: string
   readonly headers?: Record<string, string | undefined>
   readonly issuer?: string
