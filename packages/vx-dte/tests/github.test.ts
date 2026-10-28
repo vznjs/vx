@@ -245,6 +245,43 @@ it('cancels a dispatched run once every worker in it is not needed', async () =>
   }
 })
 
+// A worker let go while its dispatch was in flight: its run was never
+// cancelled until the run closed, holding a runner it would never use.
+it('cancels a run whose workers were all let go while it was dispatched', async () => {
+  const calls: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    async fetch(req) {
+      const path = new URL(req.url).pathname
+      calls.push(`${req.method} ${path}`)
+      if (path.endsWith('/dispatches')) {
+        await Bun.sleep(150)
+        return Response.json({ workflow_run_id: 4 })
+      }
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const adapter = github()
+    void adapter.spawn(spawn('small#1', 'small'))
+    await Bun.sleep(30)
+    adapter.cancel?.(['small#1'])
+    for (let i = 0; i < 50 && !calls.some((c) => c.endsWith('/cancel')); i++) await Bun.sleep(20)
+    expect(calls).toEqual([
+      'POST /repos/o/r/actions/workflows/vx-worker.yml/dispatches',
+      'POST /repos/o/r/actions/runs/4/cancel',
+    ])
+  } finally {
+    await server.stop(true)
+  }
+})
+
 // A killed orchestrator never closes: the job's `if: always()` step cancels
 // what this file lists, or the queued workers hold macOS runners.
 it('lists each run it dispatched in RUNNER_TEMP for the job to cancel', async () => {
