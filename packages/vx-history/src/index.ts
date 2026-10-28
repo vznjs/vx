@@ -29,6 +29,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import type { HistoryRow } from './history-view.js'
 import type { HistoryServer, Named, ServerTiming } from './history-server.js'
@@ -269,6 +270,12 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     options.url === undefined && options.issuer === undefined && options.repository === undefined
       ? undefined
       : namedOf(options.issuer, options.repository)
+  // Here, not only when a run asks the server: with no URL set (a laptop)
+  // a bad header was never said, and the first CI run naming one failed.
+  if (options.headers !== undefined)
+    (
+      createRequire(import.meta.url)('./history-server.js') as typeof import('./history-server.js')
+    ).proxyHeaders(options.headers)
   // `'any'` above lets `null` through, and every run then failed in
   // `schedule` reading `null.headroom`.
   const { resources } = options

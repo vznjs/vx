@@ -6,7 +6,7 @@
 // server with `READ_ACCESS=public`). A refusal is never swallowed: it is said with the
 // server's status and words.
 
-import type { TaskOutcome } from '@vzn/vx'
+import { type TaskOutcome, UserError } from '@vzn/vx'
 
 /** One task's numbers, as the server folds and answers them. */
 export interface ServerTiming {
@@ -118,9 +118,9 @@ export function proxyHeaders(
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`vxHistory(): headers cannot set "${name}"`)
+      throw new UserError(`vxHistory(): headers cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`vxHistory(): header "${name}" must be one line of text`)
+      throw new UserError(`vxHistory(): header "${name}" must be one line of text`)
     out[name] = value
   }
   return out
