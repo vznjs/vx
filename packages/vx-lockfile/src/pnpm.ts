@@ -333,7 +333,28 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
 }
 
 /**
- * Each importer's `link:` dependencies on other importers. pnpm records
+ * The root-relative directory a `file:` version installs from: v9 and v6
+ * append resolved peers as `(peer@1)`, v5 as `_peer@1`.
+ */
+function fileTarget(lock: Lockfile, version: string): string | undefined {
+  let rel = version.slice('file:'.length)
+  const paren = rel.indexOf('(')
+  if (paren !== -1) rel = rel.slice(0, paren)
+  else if (Number.parseInt(lock.version, 10) < 6) {
+    const underscore = rel.indexOf('_', rel.lastIndexOf('/') + 1)
+    if (underscore !== -1 && rel.includes('@', underscore)) rel = rel.slice(0, underscore)
+  }
+  return joinPosix('.', rel)
+}
+
+/**
+ * Each importer's `link:` dependencies on other importers, and its
+ * `file:` ones that install an importer's directory: an injected
+ * workspace package (`dependenciesMeta.<name>.injected`, or pnpm 10
+ * `injectWorkspacePackages` with `dedupeInjectedDeps: false`). pnpm
+ * hard-links that copy and re-syncs it after the package's own scripts,
+ * so it is the workspace package and `^build` waits for it; yarn's
+ * packed `file:` copy is not. pnpm records
  * an auto-installed peer (`autoInstallPeers`, the default) under
  * `dependencies` like any other, so `peers` is empty here: the plugin
  * asks the importer's manifest which of these are peers.
@@ -343,8 +364,11 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
   for (const [dir, deps] of lock.importers) {
     const links: Record<string, string> = {}
     for (const [name, version] of deps) {
-      if (!version.startsWith('link:')) continue
-      const target = joinPosix(dir, version.slice('link:'.length))
+      const target = version.startsWith('link:')
+        ? joinPosix(dir, version.slice('link:'.length))
+        : version.startsWith('file:')
+          ? fileTarget(lock, version)
+          : undefined
       if (target !== undefined && target !== dir && lock.importers.has(target)) {
         links[name] = target
       }
