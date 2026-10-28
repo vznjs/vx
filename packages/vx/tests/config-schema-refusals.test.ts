@@ -1133,3 +1133,19 @@ describe('a backslash separator or a drive letter in a task glob', () => {
     expect(taskRefusal(task({ files: ['src/C:/x', 'ab:/x', 'src/**'] }))).toBeNull()
   })
 })
+
+// `exec.retries` overrides `run.retries` and is the same setting kind: a
+// count past 2^53 is no count either names (run.retries refused it, a
+// task's took it).
+describe('exec.retries', () => {
+  it('is refused past the safe integers, as run.retries is', () => {
+    expect(refusal({ run: { retries: 2 ** 60 } })).toBe(
+      `${WS}: \`run.retries\` must be a non-negative integer (got ${2 ** 60})`,
+    )
+    expect(taskRefusal({ exec: { command: 'x', retries: 2 ** 60 } })).toBe(
+      `${CFG}: tasks.t.exec.retries must be a non-negative integer (got ${2 ** 60})`,
+    )
+    // Control: a large safe count is taken.
+    expect(taskRefusal({ exec: { command: 'x', retries: 2 ** 31 } })).toBeNull()
+  })
+})
