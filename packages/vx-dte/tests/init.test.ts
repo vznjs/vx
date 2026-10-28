@@ -62,6 +62,9 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
   expect(run).toContain('      id-token: write\n')
   expect(run).toContain('      actions: write\n')
   expect(run).toContain('GITHUB_TOKEN: ${{ github.token }}')
+  // A merge queue's run, as .gitlab-ci.yml runs a merge train's: without
+  // the trigger a queue that requires ci waited on a check never started.
+  expect(run).toContain('on:\n  pull_request:\n  merge_group:\n  push:\n')
   // No task runs on the orchestrator: vx and the plugins only.
   expect(run).toContain("      - run: bun install --frozen-lockfile --filter './'\n")
   // The tasks are the user's: none written, so the run fails until named.
