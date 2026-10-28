@@ -43,7 +43,7 @@ import {
 } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
-import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
+import { cliCacheDir, parseCacheDirFlag, rootSpelled } from './workspace-config.js'
 
 interface LastArgs {
   runId?: string
@@ -530,7 +530,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
 
     if (parsed.stats === true) {
       const branch = currentBranch(root, undefined, parsed.branch)
-      return await printStats(db, parsed.task, parsed.format, branch)
+      const task = parsed.task === undefined ? undefined : await rootSpelled(root, parsed.task)
+      return await printStats(db, task, parsed.format, branch)
     }
 
     if (parsed.log !== undefined) {
@@ -538,7 +539,12 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         parsed.runId === undefined
           ? undefined
           : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
-      const log = taskLog(cacheDir, db, await bareTaskId(db, parsed.log), runId)
+      const log = taskLog(
+        cacheDir,
+        db,
+        await bareTaskId(db, await rootSpelled(root, parsed.log)),
+        runId,
+      )
       if (log === null) {
         // The id's form is hinted only when it lacks one: a task that
         // never ran was told how to spell a task id.
