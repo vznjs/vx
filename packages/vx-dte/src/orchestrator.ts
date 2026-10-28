@@ -898,6 +898,7 @@ export class Orchestrator {
     )
     const sandboxes = sandboxed && !a.sandboxes ? sandboxConfigs(nodes) : undefined
     if (sandboxed) a.sandboxes = true
+    const pending = new Set(jobs)
     a.chain = a.chain
       .then(async () => {
         for (const [i, part] of parts(orders, BATCH_BYTES).entries()) {
@@ -927,14 +928,24 @@ export class Orchestrator {
           await this.o.me.send(a.id, batch)
           a.usage.messagesIn++
           a.usage.bytesIn += bytesOf(batch)
-          for (const { job } of part) this.lease(job)
+          for (const { job } of part) {
+            this.lease(job)
+            pending.delete(job)
+          }
         }
       })
       .catch((err: unknown) => {
         // The relay refused the send (the worker is gone): the loss notice
         // puts the tasks back.
         if (err instanceof RelayError && err.status === 404) return
-        for (const { job } of orders) job.reject(err)
+        // One its worker never got leaves its booking there: held with no
+        // lease to end it, the worker's cores were gone for the run. One
+        // sent before runs there, and ends as any; one its worker's loss
+        // put back is the queue's.
+        for (const job of pending)
+          if (a.busy.get(job.req.taskId) === job && this.retry(a, job, 'not sent') !== undefined)
+            job.reject(err)
+        this.pumpSoon()
       })
   }
 

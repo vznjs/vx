@@ -1875,6 +1875,74 @@ it('a task whose worker is lost while its dependency is sent again ends once', a
   }
 })
 
+// A batch the relay refused failed its task and left it booked on its
+// worker, with no lease to end it: the worker's cores were gone for the
+// run, and the next task waited on them for good.
+it('a task whose batch the relay refused leaves its worker’s cores free', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  const me = (h.o as unknown as { o: { me: { send: (to: string, b: unknown) => Promise<void> } } })
+    .o.me
+  const send = me.send.bind(me)
+  let refuse = true
+  me.send = async (to, body) => {
+    if (refuse && (body as { type: string }).type === 'batch') {
+      refuse = false
+      throw new RelayError(413, 'relay send: 413 too large')
+    }
+    return send(to, body)
+  }
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(
+      await t1.then(
+        () => '',
+        (e: Error) => e.message,
+      ),
+    ).toBe('relay send: 413 too large')
+    expect(h.o.where('t1')).toBeUndefined()
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t2']])
+  } finally {
+    await h.stop()
+  }
+})
+
+it('a refused batch fails only its own tasks, not those of a part sent before it', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  const me = (h.o as unknown as { o: { me: { send: (to: string, b: unknown) => Promise<void> } } })
+    .o.me
+  const send = me.send.bind(me)
+  let batches = 0
+  me.send = async (to, body) => {
+    if ((body as { type: string }).type === 'batch' && ++batches === 2)
+      throw new RelayError(413, 'relay send: 413 too large')
+    return send(to, body)
+  }
+  // Each order past half the batch limit: two parts.
+  const big = (id: string) => ({ ...h.req(id), env: { BIG: 'x'.repeat(300 * 1024) } })
+  try {
+    const a = await h.worker(2)
+    await Bun.sleep(50)
+    let first = 'pending'
+    void h.o.execute(big('t1')).then(
+      () => (first = 'ended'),
+      (e: Error) => (first = e.message),
+    )
+    const t2 = h.o.execute(big('t2')).then(
+      () => '',
+      (e: Error) => e.message,
+    )
+    expect(await a.batches()).toEqual([['t1']])
+    expect(await t2).toBe('relay send: 413 too large')
+    expect(first).toBe('pending')
+    expect(h.o.where('t1')).toBeNull()
+  } finally {
+    await h.stop()
+  }
+})
+
 // `vx watch` runs again under one run id: its next run sent a task under
 // the last run's run key, which a remote holds the first bytes of
 // (2026-10-24).
