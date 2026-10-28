@@ -404,7 +404,7 @@ The same goes for a file the lockfile names but does not pin: a patch
 `bun.lock` names, a `file:` directory dependency, or a linked
 directory. Only a plugin that cannot tell selects everything, as
 `@vzn/vx-lockfile` does for the install settings it claims (`.npmrc`,
-`bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`).
+`bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`, `.yarnrc`).
 
 **A dropped dependency selects its dependent.** Two changes remove a
 dependency today's graph cannot show:
