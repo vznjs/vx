@@ -9,7 +9,21 @@
       "required": ["invocation", "tasks"],
       "properties": {
         "invocation": { "$ref": "#/$defs/invocation" },
-        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } }
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+        "steps": {
+          "type": "array",
+          "description": "the steps the run did not wait on (vx:prefetch), timed; absent when it kept none",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "durationMs", "ok"],
+            "properties": {
+              "id": { "type": "string" },
+              "durationMs": { "type": "number" },
+              "ok": { "type": "boolean" }
+            }
+          }
+        }
       }
     },
     { "type": "array", "items": { "$ref": "#/$defs/invocation" } },
@@ -265,6 +279,47 @@
         "fixedIn": {
           "type": "string",
           "description": "on a failed row: the first later run where this task passed (ran or hit); absent while it has not"
+        },
+        "inputMoved": {
+          "type": "string",
+          "description": "on a failed row: the input that changed while the command ran"
+        },
+        "sandboxFix": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "on a failed row: the exec.sandbox.allow entries that would have granted its denials",
+          "properties": {
+            "read": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "paths to allow reading"
+            },
+            "write": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "paths to allow writing"
+            },
+            "network": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "hosts to allow"
+            },
+            "systemInfo": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "system facts to allow reading"
+            },
+            "withheld": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "credential paths denied and left out of the grants"
+            },
+            "inputs": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "project reads inputs.files does not match: add them there too when the output depends on them"
+            }
+          }
         }
       }
     }

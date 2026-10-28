@@ -45,6 +45,7 @@ import type {
 import type { PruneResult } from '../src/cache/layer.js'
 import type { ClearResult } from '../src/cli/cache.js'
 import type { TaskNode } from '../src/graph/index.js'
+import { writeRunSteps } from '../src/orchestrator/run-steps.js'
 import { formatPlanJson, type PlanTaskJson } from '../src/cli/plan-format.js'
 import type { TaskStats } from '../src/cli/last.js'
 import { docsIn } from './helpers/docs-pages.js'
@@ -190,6 +191,26 @@ beforeAll(async () => {
   // The flaky task passes again: the replayed failure names that run (`fixedIn`).
   await writeFile(path.join(root, 'flag'), '')
   expect(vx(['run', 'lib#flaky', '--force']).code).toBe(0)
+  json('last', ['--failed'])
+  // What only a moved input, a sandbox denial and a background step print,
+  // written into that run's kept files as a run would.
+  const failedRun = (outputs['last']!.at(-1) as { invocation: { runId: string } }).invocation.runId
+  const cacheDir = path.join(root, '.vx', 'cache')
+  const kept = path.join(cacheDir, 'failures', `${failedRun}.json`)
+  const stored = JSON.parse(readFileSync(kept, 'utf8')) as { tasks: Record<string, unknown>[] }
+  Object.assign(stored.tasks[0]!, {
+    inputMoved: 'src/a.txt',
+    sandboxFix: {
+      read: ['/r'],
+      write: ['/w'],
+      network: ['example.com'],
+      systemInfo: ['cpu'],
+      withheld: ['~/.ssh'],
+      inputs: ['src/b.txt'],
+    },
+  })
+  await writeFile(kept, JSON.stringify(stored))
+  writeRunSteps(cacheDir, failedRun, [{ id: 'vx:prefetch', durationMs: 3, ok: true }], () => {})
   json('last', ['--failed'])
   const dry = vx(['run', 'build', '--filter', 'app...', '--dry=json'])
   expect(dry.code).toBe(0)
@@ -477,7 +498,10 @@ describe('each schema object is its source type', () => {
       keys<TaskLog>({ runId: true, taskId: true, status: true, source: true, output: true }),
     )
     expect(def('last', 'task')).toEqual(
-      keys<RunSummaryRow & Pick<TaskFailure, 'output' | 'locations' | 'fixedIn'>>({
+      keys<
+        RunSummaryRow &
+          Pick<TaskFailure, 'output' | 'locations' | 'fixedIn' | 'inputMoved' | 'sandboxFix'>
+      >({
         runId: true,
         project: true,
         task: true,
@@ -506,6 +530,19 @@ describe('each schema object is its source type', () => {
         output: true,
         locations: true,
         fixedIn: true,
+        inputMoved: true,
+        sandboxFix: true,
+      }),
+    )
+    expect(props('last', 'oneOf', '0')).toEqual(['invocation', 'steps', 'tasks'])
+    expect(def('last', 'task', 'properties', 'sandboxFix')).toEqual(
+      keys<NonNullable<TaskFailure['sandboxFix']>>({
+        read: true,
+        write: true,
+        network: true,
+        systemInfo: true,
+        withheld: true,
+        inputs: true,
       }),
     )
   })
