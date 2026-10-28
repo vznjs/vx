@@ -657,6 +657,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const restoreRoom = (): boolean =>
     serial ? active + activeRestore < 1 : activeRestore < restoreConcurrency
   let resolved = false
+  let stopListening = (): void => {}
   // A refusal's text → the first task that said it. A corrupt cache index
   // reaches every lookup as one UserError; on bare stderr a repeat names the first.
   const refusedBy = new Map<string, string>()
@@ -992,10 +993,15 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             viaSkip?.blockedBy ??
             (viaSkip?.otherPlatform !== undefined ? viaSkip.node.id : undefined) ??
             (viaRestore === undefined ? undefined : blockedRestores.get(viaRestore))
+          // Behind a platform skip is no failure: the run passes, so the exit does.
+          const notHere =
+            !aborted() &&
+            blockedBy !== undefined &&
+            outcomes.get(blockedBy)?.otherPlatform !== undefined
           finishOne(id, {
             node,
             status: aborted() ? 'aborted' : 'skipped',
-            exitCode: 1,
+            exitCode: notHere ? 0 : 1,
             durationMs: 0,
             ...(blockedBy !== undefined ? { blockedBy } : {}),
           })
@@ -1168,6 +1174,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // condition survived the whole core suite (item 644).
       if (outcomes.size + settledIdle === nodes.size) {
         resolved = true
+        stopListening()
         resolve(outcomes)
       }
     }
@@ -1192,6 +1199,16 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           (ids) => answer(id, ids),
           () => answer(id, []),
         )
+    }
+    // A stop reaches the scheduler through a completion, and a held server
+    // waiting on the remote has none: the run waited out the remote's answer.
+    const signal = options.signal
+    if (unanswered.size > 0 && signal !== undefined) {
+      const stop = (): void => {
+        for (const id of [...unanswered]) answer(id, [])
+      }
+      signal.addEventListener('abort', stop, { once: true })
+      stopListening = () => signal.removeEventListener('abort', stop)
     }
 
     tick()

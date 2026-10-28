@@ -77,7 +77,14 @@ vx last --stats --format json            # per task: p50 (the live estimate's), 
 vx last --stats --branch main --format json  # p50 from main's timings
 vx last --stats app#build --format json  # one task; a task name covers every project
 vx last --list --format json             # recent runs, newest first
+vx last --sql "SELECT name, sql FROM sqlite_schema" --format json  # the history's tables
 ```
+
+Any other question (one task's memory trend, failures per project, which
+inputs a key folded) is one read-only query: `vx last --sql "<SELECT>"
+--format json` prints `{ rows }`. `runs` holds one row per task per run
+(duration, cache hit, cpu, memory, attempts, failure reasons),
+`invocations` one per run; join on `run_id`. Times are epoch ms.
 
 ## Workspace health
 

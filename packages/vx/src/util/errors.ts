@@ -57,8 +57,25 @@ export function refusal(
 }
 
 // A refusal that opens with the config that caused it: the schema's
-// `<file>: tasks.<name> …` and the loader's `<file> has unknown field …`.
-const CONFIG_REFUSAL = /^\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
+// `<file>: tasks.<name> …`, and the loader's `Project config <file>: …` and
+// `Workspace config at <file> did not …`, which answered VX_E_REFUSED.
+const CONFIG_REFUSAL =
+  /^(?:(?:Project|Workspace) config (?:at )?)?\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
+
+const CONFIG_THROW = Symbol('vx.configThrow')
+
+/**
+ * A config's own throw, shown as thrown (its stack names its line), and
+ * answered as the config's refusal rather than a defect of vx.
+ */
+export function configThrow(err: object): object {
+  try {
+    Object.defineProperty(err, CONFIG_THROW, { value: true })
+  } catch {
+    // A frozen error stays VX_E_INTERNAL.
+  }
+  return err
+}
 
 /**
  * The stable code of anything `bin.ts` catches. A UserError's own, but
@@ -68,6 +85,7 @@ const CONFIG_REFUSAL = /^\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
  * predates it.
  */
 export function errorCode(err: unknown): string {
+  if (typeof err === 'object' && err !== null && CONFIG_THROW in err) return 'VX_E_CONFIG'
   if (isUserError(err)) {
     const code = (err as { code?: unknown }).code
     if (typeof code === 'string' && code !== 'VX_E_REFUSED') return code
