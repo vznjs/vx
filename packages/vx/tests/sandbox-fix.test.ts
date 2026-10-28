@@ -150,6 +150,37 @@ describe('sandboxFix', () => {
     expect(sandboxFix(reads, dir)?.read).toBeUndefined()
   })
 
+  // A task sees $XDG_CONFIG_HOME and $XDG_DATA_HOME, so a CLI reads its
+  // login there, not under ~/.config or ~/.local/share.
+  it('withholds a store where XDG moved it', () => {
+    const saved = { c: process.env['XDG_CONFIG_HOME'], d: process.env['XDG_DATA_HOME'] }
+    process.env['XDG_CONFIG_HOME'] = '/xdg/config'
+    process.env['XDG_DATA_HOME'] = '/xdg/data'
+    try {
+      const read = (p: string) => v('deny(1) file-read-data', ['read'], p)
+      expect(
+        sandboxFix(
+          [
+            read('/xdg/config/gh/hosts.yml'),
+            read('/xdg/data/com.vercel.cli/auth.json'),
+            read('/xdg/config/ghx'),
+          ],
+          dir,
+        ),
+      ).toEqual({
+        read: ['/xdg/config/ghx'],
+        withheld: ['/xdg/config/gh/hosts.yml', '/xdg/data/com.vercel.cli/auth.json'],
+      })
+    } finally {
+      for (const [k, val] of [
+        ['XDG_CONFIG_HOME', saved.c],
+        ['XDG_DATA_HOME', saved.d],
+      ] as const)
+        if (val === undefined) delete process.env[k]
+        else process.env[k] = val
+    }
+  })
+
   it('is undefined when nothing maps, and masks what it names', () => {
     expect(sandboxFix([v('x', undefined, 'x')], dir)).toBeUndefined()
     const fix = sandboxFix(

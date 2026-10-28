@@ -158,7 +158,7 @@ describe.if(CHUNKING_SUPPORTED)(
         const { value, closes } = await countingCloses(async () => p.executor!(ctx(warns)))
         expect([value, closes]).toEqual([undefined, 1])
         expect(warns).toEqual([
-          `vx/reapi: ${endpoint} does not advertise remote execution (cache only) — tasks will run locally`,
+          `[vx] vx-reapi: ${endpoint} does not advertise remote execution (cache only) — tasks will run locally`,
         ])
         await p.teardown?.()
       })
@@ -212,7 +212,7 @@ describe('reapi(): execute off', () => {
           (err: Error) => err.message,
         )
       expect(refusal).toBe(
-        'vx/reapi: `reapi({ tlsCertificate })` names /nonexistent/vx-reapi-ca.pem, which cannot be read (ENOENT)',
+        '`reapi({ tlsCertificate })` names /nonexistent/vx-reapi-ca.pem, which cannot be read (ENOENT)',
       )
       await on.teardown?.()
     })

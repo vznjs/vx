@@ -310,7 +310,35 @@ it("answers 502 while the issuer's keys cannot be read", async () => {
   )
   expect([res.status, await res.json()]).toEqual([
     502,
-    { code: 'bad_gateway', message: `could not read ${GITHUB}'s keys` },
+    {
+      code: 'bad_gateway',
+      message: `could not read ${GITHUB}'s keys: ${GITHUB}/.well-known/openid-configuration: 503`,
+    },
+  ])
+})
+
+// A JWKS the issuer serves broken is its fault, not the token's: it was
+// answered 401 "not a JWT", which turns a client's remote off for the run.
+it("answers 502, saying why, while the issuer's keys are not a key set", async () => {
+  const said = async (jwks: unknown) => {
+    const handle = createHistoryServer({
+      store: sqliteStore(sqliteDb(':memory:')),
+      authorize: oidcTokenAuth({
+        allow: allowOf(),
+        fetchJson: async (url) =>
+          url.endsWith('/.well-known/openid-configuration') ? { jwks_uri: `${GITHUB}/keys` } : jwks,
+      }),
+    })
+    const res = await handle(
+      new Request('http://127.0.0.1/v1/capabilities', {
+        headers: { authorization: `Bearer ${await iss.sign('main', 'http://127.0.0.1')}` },
+      }),
+    )
+    return [res.status, ((await res.json()) as { message: string }).message]
+  }
+  expect(await said({ keys: 'x' })).toEqual([
+    502,
+    `could not read ${GITHUB}'s keys: JSON Web Key Set malformed`,
   ])
 })
 

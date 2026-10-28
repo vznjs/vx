@@ -290,10 +290,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A task glob is a **standard glob**: `[ab]` is a character class, as
     in `Bun.Glob`, Turbo and Nx, and a route directory is escaped:
     `app/\[id\]/**` folds `app/[id]`. Bare, `app/[id]/**` is the class
-    and folds `app/i/…` and `app/d/…`, never the route. When an
-    input or output glob matches no files and, read as a literal path,
-    names one that exists, the "matched no files" warning says so and
-    gives the escaped spelling.
+    and folds `app/i/…` and `app/d/…`, never the route; `vx lock`
+    refuses it when `app/[id]` exists. When an input or output glob
+    matches no files and, read as a literal path, names one that exists,
+    the "matched no files" warning says so and gives the escaped spelling.
 
     An index OID is only trusted where git stores the worktree bytes
     **verbatim**, so the enumeration prunes it three ways:
@@ -1591,7 +1591,12 @@ following a chain of links to its end — and writes through it, the
 link kept. Whether a link stays inside is decided on where it resolves,
 so a dangling link to `../elsewhere` or to an absolute path out of the
 project is the same refusal, nothing created outside, and a cycle of
-links is refused by name. (A link the output globs themselves cover,
+links is refused by name. Nor is a link written through into Git's
+metadata: a path that resolves into a `.git` directory under the
+project (or the workspace, for `outputs.workspaceFiles`), in any case,
+is refused naming the link (`dist/g -> ../.git` carried
+`dist/g/hooks/pre-commit` into `.git/hooks`), and an artifact's own link
+into `.git` fails its restore (vercel/turborepo#14808). (A link the output globs themselves cover,
 `dist/sub` under `dist/**`, is an output: the clean unlinks it.) Entry NAMES are
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps

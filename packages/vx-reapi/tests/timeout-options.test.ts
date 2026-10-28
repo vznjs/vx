@@ -18,10 +18,20 @@ const client = (o: Record<string, unknown>) => () =>
 
 it('a call or metadata deadline that is not a positive number is refused', () => {
   expect(said(client({ callTimeoutMs: 0 }))).toBe(
-    '@vzn/vx-reapi: callTimeoutMs must be a positive number of ms (got 0)',
+    'reapi(): callTimeoutMs must be a positive number of ms (got 0)',
   )
   expect(said(client({ metaTimeoutMs: -1 }))).toBe(
-    '@vzn/vx-reapi: metaTimeoutMs must be a positive number of ms (got -1)',
+    'reapi(): metaTimeoutMs must be a positive number of ms (got -1)',
+  )
+  // JSON.stringify said NaN and Infinity as "null".
+  expect(said(client({ callTimeoutMs: Number.NaN }))).toBe(
+    'reapi(): callTimeoutMs must be a positive number of ms (got NaN)',
+  )
+  expect(said(client({ metaTimeoutMs: Number.POSITIVE_INFINITY }))).toBe(
+    'reapi(): metaTimeoutMs must be a positive number of ms (got Infinity)',
+  )
+  expect(said(client({ callTimeoutMs: '5000' }))).toBe(
+    'reapi(): callTimeoutMs must be a positive number of ms (got "5000")',
   )
   expect(said(client({ callTimeoutMs: 1000, metaTimeoutMs: 500 }))).toBe('taken')
 })
@@ -30,7 +40,10 @@ it('an execute deadline that is not a positive number is refused', () => {
   const c = new ReapiClient({ endpoint: 'grpc://127.0.0.1:1' })
   try {
     expect(said(() => reapiExecutor(c, { executeTimeoutMs: 0 }))).toBe(
-      '@vzn/vx-reapi: executeTimeoutMs must be a number of ms from 1 to 2147483647 (got 0)',
+      'reapi(): executeTimeoutMs must be a number of ms from 1 to 2147483647 (got 0)',
+    )
+    expect(said(() => reapiExecutor(c, { queueTimeoutMs: Number.NaN }))).toBe(
+      'reapi(): queueTimeoutMs must be a number of ms from 1 to 2147483647 (got NaN)',
     )
     expect(said(() => reapiExecutor(c, { executeTimeoutMs: 60_000 }))).toBe('taken')
   } finally {
@@ -44,10 +57,10 @@ it('an execute or queue deadline past what a timer can wait is refused', () => {
   const c = new ReapiClient({ endpoint: 'grpc://127.0.0.1:1' })
   try {
     expect(said(() => reapiExecutor(c, { executeTimeoutMs: 2 ** 31 }))).toBe(
-      '@vzn/vx-reapi: executeTimeoutMs must be a number of ms from 1 to 2147483647 (got 2147483648)',
+      'reapi(): executeTimeoutMs must be a number of ms from 1 to 2147483647 (got 2147483648)',
     )
     expect(said(() => reapiExecutor(c, { queueTimeoutMs: 1e10 }))).toBe(
-      '@vzn/vx-reapi: queueTimeoutMs must be a number of ms from 1 to 2147483647 (got 10000000000)',
+      'reapi(): queueTimeoutMs must be a number of ms from 1 to 2147483647 (got 10000000000)',
     )
     expect(said(() => reapiExecutor(c, { queueTimeoutMs: 2 ** 31 - 1 }))).toBe('taken')
   } finally {

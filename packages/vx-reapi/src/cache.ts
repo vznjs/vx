@@ -96,7 +96,7 @@ export class ReapiRemoteCache {
   constructor(opts: ReapiOptions) {
     this.client = new ReapiClient(opts)
     this.endpoint = opts.endpoint
-    this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', `[vx] ${m}`))
+    this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', m))
   }
 
   /** A fault the cache works around, said once per kind (2026-10-23: none is silent). */
@@ -104,7 +104,7 @@ export class ReapiRemoteCache {
     if (this.said.has(kind)) return
     this.said.add(kind)
     this.onWarn(
-      `vx/reapi: ${kind} at ${this.endpoint} failed: ${err instanceof Error ? err.message : String(err)}`,
+      `[vx] vx-reapi: ${kind} at ${this.endpoint} failed: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
 

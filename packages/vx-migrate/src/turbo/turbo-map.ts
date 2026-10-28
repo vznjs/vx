@@ -299,6 +299,14 @@ function covers(globs: readonly string[], rel: string): boolean {
   )
 }
 
+/**
+ * Turbo reads `**` glued to text as the deep glob: `**x` as `**\/*x`, `x**`
+ * as `x*\/**` (vercel/turborepo#5431). Core refuses the glued spelling, so
+ * copied verbatim it failed the load.
+ */
+const turboGlobstar = (glob: string): string =>
+  glob.replace(/\*\*([^*/]+)/g, '**/*$1').replace(/(?!^!)([^*/]+)\*\*/g, '$1*/**')
+
 /** No glob syntax: one path, which git may ignore. */
 const isLiteral = (glob: string): boolean => !/[*?[\]{}()!]/.test(glob)
 
@@ -821,7 +829,7 @@ export async function mapTurboWorkspace(
   // 1032).
   const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
   const globalFiles = [
-    ...globalDeps.filter((d) => envDependency(d) === null),
+    ...globalDeps.filter((d) => envDependency(d) === null).map(turboGlobstar),
     ...(rootCfg.globalDotEnv ?? []),
     // Turbo 2 added the root's dependencies to its global hash; 1.13.4's
     // leaves them out (trigger.dev: a Prisma migration re-keyed only the
@@ -1857,7 +1865,7 @@ function buildTask(
     // in the package and an edit replayed a stale build (item 936).
     files.push('**/*')
   } else {
-    for (const i of def.inputs) {
+    for (const i of def.inputs.map(turboGlobstar)) {
       if (i === '$TURBO_DEFAULT$') {
         files.push('**/*')
         continue
@@ -1945,7 +1953,7 @@ function buildTask(
   for (const raw of def.outputs ?? []) {
     // Turbo's grammar: an extglob in `dist/**/*.@(js|mjs)` matched
     // nothing, so a hit restored nothing (item 1031).
-    const mapped = minimatchToVx(raw, raw.startsWith('!'))
+    const mapped = minimatchToVx(turboGlobstar(raw), raw.startsWith('!'))
     if (mapped === null) {
       todos.push(
         `output ${JSON.stringify(raw)}: glob syntax vx cannot take — task runs uncached; ` +

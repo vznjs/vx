@@ -7,7 +7,7 @@
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
 import { lstatSync } from 'node:fs'
-import { realpath, stat } from 'node:fs/promises'
+import { readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   executablePath,
@@ -782,7 +782,10 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
   const stderr = await new Response(proc.stderr).text()
   const exit = await proc.exited
   if (exit !== 0) {
-    throw new UserError(`git ${cmd[0]} failed (exit ${exit}): ${stderr.trim()}`, 'VX_E_GIT')
+    throw new UserError(
+      `git ${cmd[cmd[0] === '-c' ? 2 : 0]} failed (exit ${exit}): ${stderr.trim()}`,
+      'VX_E_GIT',
+    )
   }
   return stdout.split('\0').filter((s) => s.length > 0)
 }
@@ -792,6 +795,12 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
  * either side: one the change removed took its files with it. Each record
  * is `:<mode> <mode> <oid> <oid> <status>` then its path (one path:
  * `--no-renames`).
+ *
+ * `diff.autoRefreshIndex=false`: a porcelain `diff` that meets a
+ * stat-dirty file rewrites the index under `index.lock`, and ignores
+ * `--no-optional-locks`, so a user's `git commit` beside a run failed on
+ * that lock. Without the refresh a stat-only change is listed as a
+ * modification (`statOnly` drops it).
  */
 async function gitDiffPaths(
   workspaceRoot: string,
@@ -800,11 +809,14 @@ async function gitDiffPaths(
 ): Promise<{ paths: string[]; gitlinks: string[] }> {
   const diff = (...revs: string[]) =>
     gitPaths(workspaceRoot, [
+      '-c',
+      'diff.autoRefreshIndex=false',
       'diff',
       '--no-renames',
       '--ignore-submodules=none',
       '--relative',
       '--raw',
+      '--no-abbrev',
       '-z',
       '--end-of-options',
       ...revs,
@@ -822,6 +834,7 @@ async function gitDiffPaths(
   const paths: string[] = []
   const gitlinks: string[] = []
   const seen = new Set<string>()
+  const unread: { rel: string; oid: string; link: boolean }[] = []
   for (const fields of lists) {
     for (let i = 0; i + 1 < fields.length; i += 2) {
       const rel = fields[i + 1]!
@@ -830,9 +843,57 @@ async function gitDiffPaths(
       paths.push(rel)
       const head = fields[i]!
       if (head.startsWith('160000 ', 1) || head.startsWith('160000 ', 8)) gitlinks.push(rel)
+      const [src, dst, oid, worktree, status] = head.slice(1).split(' ')
+      if (status === 'M' && src === dst && /^0+$/.test(worktree!) && src !== '160000')
+        unread.push({ rel, oid: oid!, link: src === '120000' })
     }
   }
-  return { paths, gitlinks }
+  if (unread.length === 0) return { paths, gitlinks }
+  const same = await statOnly(workspaceRoot, unread)
+  return { paths: paths.filter((p) => !same.has(p)), gitlinks }
+}
+
+/**
+ * Of the paths the diff listed as modified in the working tree, those
+ * whose content is still the base's blob: the working-tree side is hashed
+ * as `git add` would (filters, a link's target), so only a stat changed.
+ */
+async function statOnly(
+  workspaceRoot: string,
+  unread: readonly { rel: string; oid: string; link: boolean }[],
+): Promise<Set<string>> {
+  const same = new Set<string>()
+  const files: { rel: string; oid: string }[] = []
+  for (const u of unread) {
+    if (!u.link) {
+      // `--stdin-paths` reads a line and unquotes a leading `"`; the
+      // decoder replaced a byte that was not UTF-8. Such a path stays listed.
+      if (!/[\n\uFFFD]/.test(u.rel) && !u.rel.startsWith('"')) files.push(u)
+      continue
+    }
+    try {
+      const target = await readlink(path.join(workspaceRoot, u.rel), 'buffer')
+      const hasher = new Bun.CryptoHasher(u.oid.length === 64 ? 'sha256' : 'sha1')
+      hasher.update(`blob ${target.length}\0`)
+      hasher.update(target)
+      if (hasher.digest('hex') === u.oid) same.add(u.rel)
+    } catch {
+      // not a link any more: a change
+    }
+  }
+  if (files.length === 0) return same
+  const proc = spawnGit(
+    ['hash-object', '--stdin-paths'],
+    workspaceRoot,
+    new TextEncoder().encode(files.map((f) => `${f.rel}\n`).join('')),
+  )
+  const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  if (exit !== 0) return same
+  const oids = out.split('\n')
+  files.forEach((f, i) => {
+    if (oids[i] === f.oid) same.add(f.rel)
+  })
+  return same
 }
 
 /** A remote that serves missing objects on demand: `--filter` on a clone or a fetch. */

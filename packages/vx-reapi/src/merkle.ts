@@ -544,7 +544,7 @@ const HASH_ALGO: Partial<Record<DigestFunctionName, string>> = {
  */
 export function digestWith(fn: DigestFunctionName, data: Uint8Array): Digest {
   const algo = HASH_ALGO[fn]
-  if (algo === undefined) throw new Error(`@vzn/vx-reapi: unsupported digest function ${fn}`)
+  if (algo === undefined) throw new Error(`unsupported digest function ${fn}`)
   return { hash: createHash(algo).update(data).digest('hex'), size_bytes: data.length }
 }
 

@@ -1792,7 +1792,9 @@ add directories (X-143). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
 included, and checks the graph rules (`run.rules`), which no run
 checks, `dependencies` (which projects a project may depend on,
-`VX_E_DEPENDENCY_RULE`) among them: a broken one prints `✗ vx lock  lock not written`
+`VX_E_DEPENDENCY_RULE`) among them, and refuses a task glob whose
+bracket class spells a path that exists (`app/[id]/**` beside the
+directory `app/[id]`; write `app/\[id\]/**`): a broken one prints `✗ vx lock  lock not written`
 with the rule's refusal under it and writes nothing.
 
 `.vx/projects.lock.json` is minified: it is the one file vx reads, and it loads

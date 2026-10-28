@@ -62,13 +62,15 @@ async function project(
 const glob = (p: string): string => p.replace(/[[\]]/g, '\\$&')
 
 describe('a bracket is a character class in a task glob', () => {
-  it('app/[ab]/*.js keys app/a and app/b, and not a directory named [ab]', async () => {
+  // With a directory named `[ab]` beside them, `vx lock` refuses the glob
+  // (lock-bracket-literal.test.ts).
+  it('app/[ab]/*.js keys app/a and app/b', async () => {
     const { dir, statuses } = await project(
       { command: 'echo ok > out.txt', inputs: ['app/[ab]/*.js'], outputs: ['out.txt'] },
-      { 'app/a/x.js': 'a', 'app/b/x.js': 'b', 'app/[ab]/x.js': 'lit' },
+      { 'app/a/x.js': 'a', 'app/b/x.js': 'b', 'app/c/x.js': 'c' },
     )
     expect(await statuses()).toEqual(['success'])
-    await writeFile(path.join(dir, 'app/[ab]/x.js'), 'lit2')
+    await writeFile(path.join(dir, 'app/c/x.js'), 'c2')
     expect(await statuses()).toEqual(['cache-hit'])
     await writeFile(path.join(dir, 'app/b/x.js'), 'b2')
     expect(await statuses()).toEqual(['success'])

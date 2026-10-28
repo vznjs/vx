@@ -650,6 +650,22 @@ describe('Nx glob grammar in inputs', () => {
       ],
     ])
   })
+
+  // Nx's matcher (globset, literal separator) reads `**` glued to text as
+  // `*`, one level; core refuses the glued spelling, so copied verbatim it
+  // failed the load.
+  it('a ** glued to text is one level, as Nx reads it, in inputs and outputs', () => {
+    const got = inputs(['{projectRoot}/src/**.ts', '!{projectRoot}/gen**', '{workspaceRoot}/**x/a'])
+    const todos: string[] = []
+    const out = mapNxOutputs(['{projectRoot}/dist/**.js'], {}, 'packages/a', 'a', todos)
+    expect([got.files, got.wsFiles, got.todos, out.outFiles, todos]).toEqual([
+      ['src/*.ts', '!gen*'],
+      ['*x/a'],
+      [],
+      ['dist/*.js'],
+      [],
+    ])
+  })
 })
 
 describe('matchNxProjects', () => {

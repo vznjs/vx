@@ -285,11 +285,11 @@ single 180 s deadline, every task burned three minutes on a lookup before
 failing. Now the probe gives up in 15 s and the run re-executes.
 
 What the run prints is one line per kind of failure:
-`vx/reapi: probe <key> at <endpoint> failed: 4 DEADLINE_EXCEEDED: …`.
+`[vx] plugin '@vzn/vx-reapi': probe <key> at <endpoint> failed: 4 DEADLINE_EXCEEDED: …`.
 Core's layered cache names the request, the vx key and the server (a
 gRPC status carries none of them), and a later request that fails with
 the same status is counted, not repeated: the run ends with
-`vx/reapi: N more requests failed the same way: …`.
+`[vx] plugin '@vzn/vx-reapi': N more requests failed the same way: …`.
 
 Execution streams are deliberately NOT bounded by either: queueing behind a
 busy worker pool is legitimate. A wedged server still cannot reach Execute,

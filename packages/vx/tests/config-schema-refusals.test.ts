@@ -1175,3 +1175,49 @@ describe('a backslash separator or a drive letter in a task glob', () => {
     expect(taskRefusal(task({ files: ['src/C:/x', 'ab:/x', 'src/**'] }))).toBeNull()
   })
 })
+
+// Turbo sweep, vercel/turborepo#5431: `Bun.Glob` reads `**` glued to text as
+// `*`, so `src/**.ts` keyed only src/*.ts (a deeper edit replayed a stale hit)
+// and `dist/**.js` saved only dist/*.js.
+describe('a ** glued to text in a task glob', () => {
+  const task = (inputs: object, outputs: object = { files: ['dist/**'] }) => ({
+    exec: { command: 'x' },
+    inputs,
+    cache: { outputs },
+  })
+  const glued = (field: string, g: string, deep: string, one: string) =>
+    `${CFG}: tasks.t.${field}: "${g}" glues ** to other text in one path segment, which ` +
+    `vx's glob engine reads as one *, a single directory level. Write "${deep}" for every ` +
+    `depth, or "${one}" for one level.`
+
+  it('is refused in every task glob field, naming both readings', () => {
+    expect(taskRefusal(task({ files: ['src/**.ts'] }))).toBe(
+      glued('inputs.files', 'src/**.ts', 'src/**/*.ts', 'src/*.ts'),
+    )
+    expect(taskRefusal(task({ files: ['src/a**'] }))).toBe(
+      glued('inputs.files', 'src/a**', 'src/a*/**', 'src/a*'),
+    )
+    expect(taskRefusal(task({ files: ['**x/y'] }))).toBe(
+      glued('inputs.files', '**x/y', '**/*x/y', '*x/y'),
+    )
+    expect(taskRefusal(task({ files: ['src/**', '!src/**.test.ts'] }))).toBe(
+      glued('inputs.files', '!src/**.test.ts', '!src/**/*.test.ts', '!src/*.test.ts'),
+    )
+    expect(taskRefusal(task({ files: ['**'], workspaceFiles: ['{**.json,x}'] }))).toBe(
+      glued('inputs.workspaceFiles', '{**.json,x}', '{**/*.json,x}', '{*.json,x}'),
+    )
+    expect(taskRefusal(task({ files: ['**'] }, { files: ['dist/**.js'] }))).toBe(
+      glued('cache.outputs.files', 'dist/**.js', 'dist/**/*.js', 'dist/*.js'),
+    )
+    expect(
+      taskRefusal(task({ files: ['**'] }, { files: ['dist/**'], workspaceFiles: ['out/**.map'] })),
+    ).toBe(glued('cache.outputs.workspaceFiles', 'out/**.map', 'out/**/*.map', 'out/*.map'))
+  })
+
+  it('leaves a whole-segment ** alone', () => {
+    // CONTROL: `**` alone in its segment, or a brace arm, is the globstar.
+    expect(
+      taskRefusal(task({ files: ['**', 'src/**/*.ts', '{src,lib}/**', '{**,x}/a'] })),
+    ).toBeNull()
+  })
+})

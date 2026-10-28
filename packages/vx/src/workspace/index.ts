@@ -12,6 +12,7 @@ export {
 } from './affected.js'
 export { applyFilters, parseFilter } from './filter.js'
 export { readClaimedFiles } from './fingerprint.js'
+export { checkBracketLiterals } from './bracket-literal.js'
 export { checkDependencyRules } from './dependency-rules.js'
 export { computeNestedProjectDirs } from './nested-dirs.js'
 export { buildPackageGraph, type PackageGraph } from './package-graph.js'

@@ -131,10 +131,10 @@ it('the plugin reads the PEM files its options name, never VX_REAPI_TLS_*; an un
   }
   expect(await cacheOf({ tlsCertificate: file('ca.pem') })).toBe('ok')
   expect(await cacheOf({ tlsClientCertificate: file('client.pem') })).toBe(
-    'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey, or neither',
+    'reapi(): a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey, or neither',
   )
   expect(await cacheOf({ tlsCertificate: file('nope.pem') })).toBe(
-    `vx/reapi: \`reapi({ tlsCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
+    `\`reapi({ tlsCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
   )
   const prev = process.env['VX_REAPI_TLS_CLIENT_KEY']
   process.env['VX_REAPI_TLS_CLIENT_KEY'] = file('missing.key')
@@ -234,8 +234,8 @@ it('a TLS option is read and its env var never; a path is trimmed and an empty o
       'ok',
       'ok',
       'ok',
-      `vx/reapi: \`reapi({ tlsClientCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
-      'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey, or neither',
+      `\`reapi({ tlsClientCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
+      'reapi(): a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey, or neither',
     ])
   } finally {
     keys.forEach((k, i) => {

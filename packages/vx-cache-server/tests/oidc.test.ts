@@ -331,6 +331,9 @@ it("answers 502 while the issuer's keys cannot be read, never 401", async () => 
         },
       }),
     )
-    expect(await detail(res)).toEqual([502, `could not read ${GITHUB}'s keys`])
+    expect(await detail(res)).toEqual([
+      502,
+      `could not read ${GITHUB}'s keys: ${GITHUB}${down}: 503`,
+    ])
   }
 })
