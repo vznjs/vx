@@ -34,7 +34,7 @@ vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--pl
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
-vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [TAG] [-g|--global]
 vx docs <query> [--limit N] [--format pretty|json]
 vx completions bash|zsh|fish
@@ -303,6 +303,9 @@ no base here`.
 failed to spawn 'git' … Install git and re-run`. Outside a git work tree it says `vx requires
 git: <root> is not inside a git work tree`. A repository with no commit
   yet says so.
+- In a linked worktree's git hook, which exports `GIT_DIR` and no
+  `GIT_WORK_TREE`, vx's git finds the worktree's top as a plain `git`
+  there does: a workspace in a subfolder selects only what changed.
 - `--affected=<ref>` uses the given git ref. vx refuses before git sees it:
   - an empty value, or one starting with `-` (it would be a `git diff`
     option);
@@ -1837,7 +1840,8 @@ or one that is not valid JSON, is a problem the audit names (a
 evaluate now, and that each `vx.lock.json` is what its project resolves to
 here, and that none is left where a `vx.config` was deleted, the
 directory still a project or not (delete that one yourself: vx never
-deletes a committed file; `vx lock` names it too, as a warning), unless `lock.reviewFiles` is off. The CI recipe is `vx lock --check && vx run …`.
+deletes a committed file; `vx lock` names it too, as a warning; one
+already gone from disk, that git still lists, is not named), unless `lock.reviewFiles` is off. The CI recipe is `vx lock --check && vx run …`.
 `vx lock` and `--check` also warn of a config file another one beside
 it hides (`vx.config.ts` and `vx.config.mjs` in one directory, or two
 `.vx/workspace.*`): precedence reads the first, and an edit to the
@@ -2970,7 +2974,7 @@ run before it; nor does a `vx watch` cycle one stopped.
 ### Usage
 
 ```
-vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--format pretty|json] [--cache-dir <path>]
 ```
 
 ### Examples
@@ -2997,6 +3001,7 @@ ok     2026-10-24T12:34:05.367Z  01a16de7-6bb3  3 tasks · 0 hits  52ms  $ vx ru
 vx last --failed          # the latest run that failed
 vx last --log app#test    # one task's output
 vx last --stats app#test  # p50, p99, pass and hit rate over the last 50 runs
+vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 ```
 
 ### Arguments
@@ -3014,6 +3019,7 @@ vx last --stats app#test  # p50, p99, pass and hit rate over the last 50 runs
 | `--log <task>`          | one task's output instead of the summary                                              |
 | `--stats [<task>]`      | per-task numbers over the last 50 runs                                                |
 | `--branch <name>`       | the branch `--stats` forecasts from                                                   |
+| `--sql <query>`         | the rows one read-only `SELECT` over the history selects                              |
 | `--format pretty\|json` | `json` for scripts and agents, below                                                  |
 | `--cache-dir <path>`    | read the cache a run with the same flag uses                                          |
 
@@ -3113,10 +3119,44 @@ p50DurationMs, p99DurationMs, successRate, hitRate, failureMode,
 maxPeakRssBytes, maxCpuParallelism }`, `null` where nothing was
 measured.
 
+### `--sql`
+
+`--sql <query>` runs one `SELECT` (or `WITH … SELECT`) over the run
+history and prints its rows: a table with a header, or with
+`--format json` `{ rows }`, one object per row keyed by column. It answers what no
+flag does: filter by task or project, group, trend.
+
+```sh
+# a task's memory and cpu, run by run
+vx last --sql "SELECT started_at, duration_ms, cpu_ms, peak_rss_bytes FROM runs
+  WHERE project = 'app' AND task = 'build' ORDER BY started_at"
+# failures per day
+vx last --sql "SELECT date(started_at / 1000, 'unixepoch') AS day, SUM(exit_ok = 0) AS failed
+  FROM invocations GROUP BY day"
+# the input files a key folded
+vx last --sql "SELECT components FROM entry_inputs WHERE entry_hash = 'd6e223ce81dfdb2c'"
+```
+
+The tables: `invocations` (one row per run), `runs` (one row per task
+per run, joined on `run_id`: status, duration, cache hit, cpu, peak and
+mean memory, attempts, timeout, skip and remote reasons, where it ran),
+`entries` (the cached keys), `entry_inputs` (each key's input
+components), `task_durations` and `task_outcomes` (what forecasts and
+flakiness read). `SELECT name, sql FROM sqlite_schema` lists them all.
+Times are epoch milliseconds. The history keeps 30 days.
+
+A write is refused (`--sql reads only`, exit 1), and the query runs
+with SQLite's `query_only` on, so a `WITH` that hides one fails too;
+nothing else may lead the statement, since `ATTACH` would make a file.
+A query SQLite cannot run is refused with its reason. `--sql` combines
+only with `--format` and `--cache-dir`. The tables are vx's own and
+change with `SCHEMA_VERSION`; read `sqlite_schema` rather than assume.
+
 ### JSON
 
 `--format json`
-emits `{ invocation, tasks }` for scripting; `--list --format json`
+emits `{ invocation, tasks, steps }` for scripting (`steps` only when the
+run kept some, above); `--list --format json`
 an array of the same `invocation` objects, newest first. A failed task's row adds
 `output` (its output as plain text, the first 8 KiB and last 56 KiB,
 secrets masked) and `locations` (the existing files it names,
