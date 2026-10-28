@@ -364,20 +364,29 @@ export function stripTrailingSlash(p: string): string {
  * may not import `cache`, and a second copy is how the two would
  * disagree — which is exactly what item 441 measured about
  * `staticPrefix`.
+ *
+ * A brace is expanded first and each alternative read alone: as one
+ * pattern, `{src,lib}` never became the two trees and `{./src,lib}/**`
+ * kept a `./` no git path holds, so an edit under either was a stale hit
+ * and the same output glob saved an empty artifact.
  */
 export function asTrees(patterns: readonly string[]): string[] {
   const out: string[] = []
   for (const raw of patterns) {
-    const p = normalizeGlob(raw)
-    if (!namesOnePath(p)) {
-      out.push(p)
-      continue
+    const alternatives = raw.includes('{') ? braceAlternatives(raw) : [raw]
+    for (const alt of alternatives) {
+      const p = normalizeGlob(alt)
+      if (!namesOnePath(p)) {
+        out.push(p)
+        continue
+      }
+      const lit = stripTrailingSlash(p)
+      if (lit.length === 0) continue
+      out.push(lit, `${lit}/**`)
     }
-    const lit = stripTrailingSlash(p)
-    if (lit.length === 0) continue
-    out.push(lit, `${lit}/**`)
   }
-  return out
+  // Two alternatives can fold to one entry (`{./src,src}`).
+  return [...new Set(out)]
 }
 
 /**

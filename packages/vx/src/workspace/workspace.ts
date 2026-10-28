@@ -279,8 +279,8 @@ export interface ProjectConfigs {
 /**
  * Every project directory under `root`, for `vx lock` (a run reads the
  * lock and never walks). In git: `git ls-files` over the config names,
- * tracked and untracked, git's ignore rules applied, and each nested
- * repository's own listing. Outside git: a walk
+ * tracked and untracked, git's ignore rules applied, none under
+ * `node_modules`, and each nested repository's own listing. Outside git: a walk
  * that skips dot-directories and `node_modules`. A config at or under a
  * nested `.vx/workspace.*` belongs to that workspace and is left out.
  * Where a directory holds several, `PROJECT_CONFIG_FILENAMES` order picks
@@ -290,9 +290,8 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
   const rels = (await gitTop(root)) === null ? await scanConfigs(root) : await gitConfigs(root)
   const nested: string[] = []
   for (const rel of rels) {
-    const at = rel.lastIndexOf('.vx/workspace.')
-    if (at > 0 && rel[at - 1] === '/' && rel.lastIndexOf('/') === at + 3)
-      nested.push(rel.slice(0, at - 1))
+    const at = rel.lastIndexOf('/.vx/')
+    if (at > 0 && WORKSPACE_RANK.has(rel.slice(at + 1))) nested.push(rel.slice(0, at))
   }
   const byDir = new Map<string, string[]>()
   const reviewed: string[] = []
@@ -374,10 +373,11 @@ async function gitConfigs(root: string): Promise<string[]> {
       ':(glob)**/vx.config.*',
       ':(glob)**/.vx/workspace.*',
       `:(glob)**/${REVIEW_FILE}`,
+      NOT_INSTALLS,
     ]),
-    gitZ(root, ['ls-files', '-z', '--stage']),
+    gitZ(root, ['ls-files', '-z', '--stage', '--', NOT_INSTALLS]),
     // An embedded repository is the one untracked entry git lists as `dir/`.
-    gitZ(root, ['ls-files', '-z', '--others', '--exclude-standard']),
+    gitZ(root, ['ls-files', '-z', '--others', '--exclude-standard', '--', NOT_INSTALLS]),
   ])
   // A submodule's `.git` is a file, an embedded repository's a directory.
   const isRepo = (rel: string): Promise<boolean> =>
@@ -400,6 +400,13 @@ async function gitConfigs(root: string): Promise<string[]> {
   const prefixed = inner.flatMap((files, i) => files.map((f) => `${nested[i]}/${f}`))
   return [...configs, ...prefixed]
 }
+
+/**
+ * An install is no project, tracked or not, as the walk outside git skips
+ * it: a repo whose .gitignore does not name `node_modules` listed each
+ * installed package's vx.config as one.
+ */
+const NOT_INSTALLS = ':(exclude,glob)**/node_modules/**'
 
 /** `git <args>`'s NUL-separated output at `cwd`. */
 async function gitZ(cwd: string, args: string[]): Promise<string[]> {
@@ -459,7 +466,7 @@ async function scanConfigs(root: string): Promise<string[]> {
 
 async function workspaceFileIn(root: string, rel: string): Promise<boolean> {
   const names = await readdir(path.join(root, rel, '.vx')).catch(() => [] as string[])
-  return names.some((n) => n.startsWith('workspace.'))
+  return names.some((n) => WORKSPACE_RANK.has(`.vx/${n}`))
 }
 
 /** How each project got its name, when not by its path: `config`, or the plugin's name. */

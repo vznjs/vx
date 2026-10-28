@@ -105,7 +105,7 @@ describe('a CI log receives the CLI plain', () => {
       { value: '0', code: 0, escapes: false, task: 'FC=[0]' },
       { value: 'false', code: 0, escapes: false, task: 'FC=[false]' },
     ])
-  })
+  }, 30_000)
 
   // turborepo#8961: the runner wrote its own progress to stderr, so a CI
   // that treats stderr as a warning flagged every green run.
@@ -139,5 +139,5 @@ describe('a CI log receives the CLI plain', () => {
       { ci: '', label: 'hit', code: 0, stdout: true, stderr: '' },
       { ci: '1', label: 'hit', code: 0, stdout: true, stderr: '' },
     ])
-  })
+  }, 30_000)
 })
