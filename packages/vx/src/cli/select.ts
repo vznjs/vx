@@ -480,9 +480,9 @@ export async function resolveFilters(
     // One line, not a warning per pattern and then an error saying the same:
     // the patterns are in the error, and the nearest project name is the
     // hint a typo needs.
-    return {
-      error: `no projects matched filter(s): ${raw.join(', ')}${didYouMean(unmatched, projects, tags)}`,
-    }
+    const hint =
+      (await unlockedHint(root, parsed, unmatched)) ?? didYouMean(unmatched, projects, tags)
+    return { error: `no projects matched filter(s): ${raw.join(', ')}${hint}` }
   }
   // Something matched, so the run proceeds; a pattern that matched nothing
   // alongside it is still worth a line — it is probably a typo.
@@ -490,7 +490,7 @@ export async function resolveFilters(
     sayNotice(
       'warn',
       `vx ${verb}`,
-      `filter "${f}" matched no projects${didYouMean([f], projects, tags)}`,
+      `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f])) ?? didYouMean([f], projects, tags)}`,
     )
   // Each include is a union: what `--filter other` selected runs its tasks
   // whether or not the `--affected` diff reaches them, and an exclude
@@ -637,6 +637,27 @@ export async function pickTask(
   } finally {
     rl.close()
   }
+}
+
+/**
+ * `. packages/c/vx.config.ts is not in the lock yet — run \`vx lock\``
+ * for an unmatched `./dir` filter naming a directory `vx lock` would make
+ * a project: a config written after the lock is none yet, and "Projects:
+ * …" without it read as a typo of the path. Asked on the refusal's path only.
+ */
+async function unlockedHint(
+  root: string,
+  parsed: readonly ReturnType<typeof parseFilter>[],
+  unmatched: readonly string[],
+): Promise<string | undefined> {
+  const dirs = parsed
+    .filter((f) => f.isPath && f.pathGlob === undefined && unmatched.includes(f.raw))
+    .map((f) => f.matcher)
+  if (dirs.length === 0) return undefined
+  const { configs } = await findProjectConfigs(root)
+  const config = configs.find((c) => dirs.includes(c.dir))
+  if (config === undefined) return undefined
+  return `. ${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``
 }
 
 /** The hint for the first unmatched pattern: a near tag for a `tag:` one, else a near project name. */

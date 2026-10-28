@@ -104,6 +104,25 @@ describe('findCwdProject', () => {
 })
 
 describe('resolveFilters', () => {
+  it('a ./dir filter naming a config the lock lacks says to lock it', async () => {
+    // "Projects: app, lib" read as a typo of a path that holds a config
+    // written after `vx lock`.
+    const fresh = path.join(root, 'packages', 'fresh')
+    await Bun.write(path.join(fresh, 'vx.config.mjs'), 'export default {}\n')
+    try {
+      const { value } = await quiet(() => resolveFilters(root, ['./packages/fresh']))
+      expect(value).toEqual({
+        error:
+          'no projects matched filter(s): ./packages/fresh. packages/fresh/vx.config.mjs is not in the lock yet — run `vx lock`',
+      })
+      // CONTROL: beside a filter that matched, the line is a warning.
+      const { stderr } = await quiet(() => resolveFilters(root, ['app', './packages/fresh']))
+      expect(stderr).toContain('packages/fresh/vx.config.mjs is not in the lock yet')
+    } finally {
+      await rm(fresh, { recursive: true, force: true })
+    }
+  })
+
   it('a name that matches nothing beside a diff that matched nothing is a typo, not "nothing affected"', async () => {
     // With `some` for `every`, the git filter's empty answer spoke for both
     // and the typo exited 0 as "nothing affected since HEAD".
