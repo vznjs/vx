@@ -221,10 +221,10 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         text: string,
         code = 'VX_E_UNKNOWN_COMMAND',
         tone: 'error' | 'info' = 'error',
+        json = text.split('\n')[0]!,
       ): number => {
         sayNotice(tone, 'vx', text.replace(/^vx: /, '').trimEnd())
-        if (wantsJson(rest))
-          process.stdout.write(errorDocument(code, maskedLine(text.split('\n')[0]!)))
+        if (wantsJson(rest)) process.stdout.write(errorDocument(code, maskedLine(json)))
         return 1
       }
       const loadNote =
@@ -279,9 +279,19 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
           'VX_E_USAGE',
         )
       }
+      // A workspace that does not load is the refusal to fix first: the
+      // verb may be its own plugin's.
+      if (resolved !== null && 'loadError' in resolved) {
+        return unknown(
+          `vx: unknown command: ${command}${guess}${loadNote} (see \`vx help\`)\n`,
+          'VX_E_CONFIG',
+          'error',
+          `vx: unknown command: ${command}; .vx/workspace failed to load: ${resolved.loadError}`,
+        )
+      }
       return unknown(
-        `vx: unknown command: ${command}${guess}${loadNote} (see \`vx help\`)\n` +
-          (guess === '' && loadNote === '' ? verbSourceNote(resolved, declaredVerbs) : ''),
+        `vx: unknown command: ${command}${guess} (see \`vx help\`)\n` +
+          (guess === '' ? verbSourceNote(resolved, declaredVerbs) : ''),
       )
     }
   }

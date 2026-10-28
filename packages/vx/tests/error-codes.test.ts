@@ -236,6 +236,29 @@ describe('a refusal under --format json', () => {
     }
   })
 
+  // The verb may be the broken workspace's own: the JSON said only
+  // VX_E_UNKNOWN_COMMAND, and the line naming the load failure was cut
+  // (2026-10-28).
+  it('an unknown verb under a workspace that does not load is VX_E_CONFIG, saying why', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-verb-', workspaceFile: false })
+    try {
+      await Bun.write(path.join(ws, '.vx/workspace.mjs'), 'export default { plugins: 5 }\n')
+      const r = await vx(['boom', '--format', 'json'], ws)
+      const { code, message } = (
+        JSON.parse(r.stdout) as { error: { code: string; message: string } }
+      ).error
+      expect([r.code, code, message.replaceAll(ws, '<root>')]).toEqual([
+        1,
+        'VX_E_CONFIG',
+        expect.stringContaining(
+          'unknown command: boom; .vx/workspace failed to load: <root>/.vx/workspace.mjs',
+        ),
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
+
   it('a workspace config that does not load is VX_E_CONFIG, however it fails', async () => {
     const ws = await makeWorkspace({ prefix: 'vx-error-codes-load-', workspaceFile: false })
     const codeOf = async (source: string): Promise<string> => {
