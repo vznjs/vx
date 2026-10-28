@@ -83,4 +83,7 @@ export function oidcTokenAuth(
 - A token writes its branch (a `pull_request` run's head branch on GitHub;
   a `merge_group` run's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
   ref, else `ref`; GitLab's `ref_path`). A `pull_request_target` run writes
-  nothing: its `head_ref` a fork names, and its `ref` is the base.
+  nothing: its `head_ref` a fork names, and its `ref` is the base. Nor does
+  a `pull_request` run whose head branch has its base branch's name, nor
+  a GitLab merge request pipeline unless `source_project_path` (GitLab
+  19.5+) names its own project: a fork's runs in the parent project.
