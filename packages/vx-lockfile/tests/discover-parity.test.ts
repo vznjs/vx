@@ -572,7 +572,7 @@ __metadata:
 `
 
 /** The order edges and the transitive reach of `combined`, as core's manifest graph read them. */
-const COMBINED = {
+const MANIFEST_GRAPH = {
   order: [
     'app → lib',
     'app → opt',
@@ -603,6 +603,16 @@ const COMBINED = {
     'y → x',
     'y → y',
   ],
+}
+
+// The root installs lib at the root `node_modules`: every other project
+// resolves it, and builds after it (Turbo #8364, #8465).
+const ROOT_LINKED = ['core', 'devtools', 'opt', 'peer', 'ring-a', 'ring-b', 'tool', 'x', 'y'].map(
+  (n) => `${n} → lib`,
+)
+const COMBINED = {
+  order: [...MANIFEST_GRAPH.order, ...ROOT_LINKED].sort(),
+  reach: [...MANIFEST_GRAPH.reach, ...ROOT_LINKED].sort(),
 }
 
 describe('plugin edges are the recorded graph over the installed manifests', () => {

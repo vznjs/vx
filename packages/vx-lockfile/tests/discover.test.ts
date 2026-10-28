@@ -3,7 +3,8 @@
 // the edges are the lockfile's. `.` → b; a → b, and a peer on c that
 // closes no cycle (an order edge); c → d; d peers on a, which would close
 // a → c → d → a, so it is reach only; b → e, an importer that is no
-// project, is dropped. Shapes as each manager writes them (pnpm 10,
+// project, is dropped. The root installs b, so c and d build after it too.
+// Shapes as each manager writes them (pnpm 10,
 // bun 1.4, npm 10, yarn 4), probed against a real install.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -223,8 +224,8 @@ async function discover(plugin: VxPlugin, metas?: ProjectMeta[], warnings: strin
 const EXPECTED = [
   { dir: 'packages/a', name: 'a', deps: ['packages/b', 'packages/c'], reach: [] },
   { dir: 'packages/b', name: 'b', deps: [], reach: [] },
-  { dir: 'packages/c', name: 'c', deps: ['packages/d'], reach: [] },
-  { dir: 'packages/d', name: 'd', deps: [], reach: ['packages/a'] },
+  { dir: 'packages/c', name: 'c', deps: ['packages/b', 'packages/d'], reach: [] },
+  { dir: 'packages/d', name: 'd', deps: ['packages/b'], reach: ['packages/a'] },
   { dir: '.', name: 'root', deps: ['packages/b'], reach: [] },
 ]
 
@@ -285,7 +286,7 @@ describe('discover', () => {
     await writeFile(path.join(root, 'pnpm-lock.yaml'), PNPM)
     const metas = await projects({ a: { name: 'a' }, d: { name: 'd' } })
     const got = await discover(pnpm(), metas)
-    expect(got.find((e) => e.dir === 'packages/d')?.deps).toEqual(['packages/a'])
+    expect(got.find((e) => e.dir === 'packages/d')?.deps).toEqual(['packages/a', 'packages/b'])
     expect(await discover(pnpm())).toEqual(EXPECTED)
   })
 
@@ -317,13 +318,14 @@ describe('discover', () => {
     const warnings: string[] = []
     const got = await discover(yarn(), metas, warnings)
     expect(warnings).toEqual([])
-    // As every manager's, and b → e, which the root's glob makes a workspace.
+    // As every manager's, and b → e, which the root's glob makes a workspace:
+    // e → b, the root's, would close a cycle.
     expect(got).toEqual([
       EXPECTED[0]!,
       { ...EXPECTED[1]!, deps: ['packages/e'] },
       EXPECTED[2]!,
       EXPECTED[3]!,
-      { dir: 'packages/e', name: 'e', deps: [], reach: [] },
+      { dir: 'packages/e', name: 'e', deps: [], reach: ['packages/b'] },
       EXPECTED[4]!,
     ])
   })
@@ -570,9 +572,10 @@ describe('vx run with bun() declared', () => {
     const tasks = new Map((await plan()).tasks.map((t) => [t.node.id, t.node]))
     expect([...tasks.get('a#build')!.deps].sort()).toEqual(['b#build', 'c#build'])
     expect(tasks.get('b#build')!.deps).toEqual(['e#build'])
-    expect(tasks.get('c#build')!.deps).toEqual(['d#build'])
+    // The root installs b, so every project builds after it.
+    expect([...tasks.get('c#build')!.deps].sort()).toEqual(['b#build', 'd#build'])
     // d's peer on a would close a cycle: reach, no order.
-    expect(tasks.get('d#build')!.deps).toEqual([])
+    expect(tasks.get('d#build')!.deps).toEqual(['b#build'])
   })
 
   it("adds each importer's package.json to its cached tasks' inputs, once", async () => {
@@ -610,8 +613,9 @@ describe('vx run with bun() declared', () => {
     const moved = Object.keys(after).filter(
       (id) => after[id] !== before[id] && id.endsWith('#build'),
     )
-    // a builds after b, so its key folds b's: the cascade, not the input.
-    expect(moved.sort()).toEqual(['a#build', 'b#build'])
+    // a, c and d build after b, so their keys fold b's: the cascade, not
+    // the input. The root installs b, so c and d reach it too.
+    expect(moved.sort()).toEqual(['a#build', 'b#build', 'c#build', 'd#build'])
   })
 
   // Core reads no manifest edge and diffs no manifest: the dependency an

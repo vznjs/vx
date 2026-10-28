@@ -59,7 +59,8 @@ project:
 - **reach** (`transitiveDeps` / `transitiveDependents`, what
   `--filter pkg...` and `--affected` read): order plus a plugin's
   `reach`, which never orders a build (the lockfile plugins put a
-  workspace peer there when it would close an order cycle).
+  workspace peer, or a workspace package the root installs, there when
+  it would close an order cycle).
 
 **The edge source.** `edgeSource` is true when any project carries
 `deps`, even an empty list: a `discover` entry with `deps` makes the
