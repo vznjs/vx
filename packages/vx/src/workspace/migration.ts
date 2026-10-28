@@ -9,7 +9,16 @@ import { existsSync, readFileSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
-import { DOT_VX_GITIGNORE, executablePath, gitEnv, relPosix, UserError, ui } from '../util/index.js'
+import {
+  DOT_VX_GITIGNORE,
+  executablePath,
+  gitEnv,
+  refuseSymlink,
+  relPosix,
+  UserError,
+  ui,
+  writeNoFollow,
+} from '../util/index.js'
 import { VERSION } from '../version.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
@@ -367,7 +376,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       process.stdout.write(`── ${f.relPath} ──\n${f.contents}\n`)
     }
   } else if (!dry) {
-    for (const f of files) await Bun.write(f.abs, f.contents)
+    for (const f of files) refuseSymlink(f.abs)
+    for (const f of files) await writeNoFollow(f.abs, f.contents)
     for (const f of replaced) await unlink(f)
     // The lock that follows loads its plugins from the file just written.
     workspaceFileWritten()

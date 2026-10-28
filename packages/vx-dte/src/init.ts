@@ -3,8 +3,8 @@
 // Each adapter writes its own (`DteAdapter.init`); one that starts workers
 // on this machine (`local()`, `docker()`) needs none.
 
-import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { existsSync, lstatSync, readlinkSync } from 'node:fs'
+import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError, type Platform } from '@vzn/vx'
 import type { GithubOptions } from './github.js'
@@ -137,6 +137,16 @@ export async function writeInit(
   out: (line: string) => void,
 ): Promise<number> {
   const kept: string[] = []
+  // A repo can carry `ci.yml -> /anywhere`: refused before any write, as
+  // core's own writers do (`writeNoFollow`).
+  for (const rel of Object.keys(init.files)) {
+    const link = linkOf(path.join(root, rel))
+    if (link !== undefined) {
+      throw new UserError(
+        `vx dte init: refusing to write ${rel}: it is a symlink to ${link}; remove the link and run again`,
+      )
+    }
+  }
   for (const [rel, text] of Object.entries(init.files)) {
     const at = path.join(root, rel)
     // quiet: a file that cannot be read is one to write
@@ -150,7 +160,7 @@ export async function writeInit(
       continue
     }
     await mkdir(path.dirname(at), { recursive: true })
-    await writeFile(at, text)
+    await replace(at, text)
     out(`vx dte init: wrote ${rel}`)
   }
   if (kept.length > 0) {
@@ -160,6 +170,33 @@ export async function writeInit(
   }
   for (const line of init.next) out(line)
   return 0
+}
+
+/** Where `file` links to, or undefined for a file or nothing. */
+function linkOf(file: string): string | undefined {
+  try {
+    return lstatSync(file).isSymbolicLink() ? readlinkSync(file) : undefined
+  } catch {
+    // quiet: nothing there to write through
+    return undefined
+  }
+}
+
+/** A temp beside `file`, made with O_EXCL and renamed over it: never written through a link. */
+async function replace(file: string, text: string): Promise<void> {
+  const tmp = `${file}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
+  try {
+    const fh = await open(tmp, 'wx')
+    try {
+      await fh.writeFile(text)
+    } finally {
+      await fh.close()
+    }
+    await rename(tmp, file)
+  } catch (err) {
+    await rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
 }
 
 /** GitHub's hosted runner of each platform; a size naming none runs on Linux x64. */

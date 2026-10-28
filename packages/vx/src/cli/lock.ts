@@ -20,6 +20,8 @@ import {
   secretMask,
   ui,
   sayNotice,
+  refuseSymlink,
+  writeNoFollow,
 } from '../util/index.js'
 import {
   ConfigsRefused,
@@ -356,9 +358,10 @@ async function writeLock(
     })
     return 1
   }
+  for (const r of reviews) refuseSymlink(r.file)
   await writeLockfile(root, check.fresh)
   await Promise.all([
-    ...reviews.map((r) => Bun.write(r.file, r.text)),
+    ...reviews.map((r) => writeNoFollow(r.file, r.text)),
     writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES),
   ])
   const n = metas.length

@@ -22,7 +22,15 @@ import {
   type ManagedInstall,
 } from './upgrade.js'
 import { VERSION } from '../version.js'
-import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError, sayNotice } from '../util/index.js'
+import {
+  DOT_VX_GITATTRIBUTES,
+  DOT_VX_GITIGNORE,
+  refuseSymlink,
+  sayNotice,
+  ui,
+  UserError,
+  writeNoFollow,
+} from '../util/index.js'
 import {
   findWorkspaceRoot,
   PROJECT_CONFIG_FILENAMES,
@@ -383,9 +391,10 @@ async function starter(
     ui.print('out', ui.report(`vx init ${VERSION}`, [...rows, null, ['next', next]]))
     return 0
   }
+  for (const f of files) refuseSymlink(path.join(root, f.path))
   const ran = await install(pkgRoot, false, plugins)
   if (ran.length > 0) rows.push(['installed', ...ran])
-  for (const f of files) await Bun.write(path.join(root, f.path), f.contents)
+  for (const f of files) await writeNoFollow(path.join(root, f.path), f.contents)
   for (const f of replaced) await unlink(path.join(root, f))
   // The lock that follows loads the workspace file just written.
   workspaceFileWritten()

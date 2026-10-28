@@ -39,7 +39,10 @@ vulnerability), never in a public issue.
 - **Your lockfile and your repo.** vx parses a lockfile (and
   `turbo.json` or an Nx graph when migrating) into keys and refuses one
   it cannot read, naming the file. A lockfile that names another
-  install is a different key, never a code path.
+  install is a different key, never a code path. A file vx generates
+  (`vx init`, `vx lock`'s review copies, `@vzn/vx-migrate`,
+  `vx dte init`) is never written through a symlink the repo carries:
+  vx refuses it, naming where it points.
 - **Whoever can write your remote cache.** A cache key names the
   inputs, not the bytes, so a store that answers a key with bytes of its
   choosing is trusted as a writer, as it is in every action cache. Use a
