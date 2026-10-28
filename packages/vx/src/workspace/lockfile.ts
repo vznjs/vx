@@ -73,6 +73,10 @@ export function lockEntryBroken(root: string): boolean {
   return false
 }
 
+/** What a run or `vx show` says when the lock holds no project. */
+export const EMPTY_LOCK =
+  'The lock holds no project — write a vx.config (`vx init`), then run `vx lock`'
+
 /** What a run says when there is no lock to read. */
 export const NO_LOCK = 'no lock: run `vx lock`'
 

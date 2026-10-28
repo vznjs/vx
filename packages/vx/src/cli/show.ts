@@ -33,6 +33,7 @@ import {
 import {
   type AffectedChanges,
   buildPackageGraph,
+  EMPTY_LOCK,
   findWorkspaceRoot,
   type ProjectEntry,
   type ProjectMeta,
@@ -180,7 +181,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       sayNotice(
         'info',
         'vx show',
-        'no projects: no directory holds a vx.config — run `vx init` to write them, then `vx lock`',
+        `no projects: ${EMPTY_LOCK.charAt(0).toLowerCase()}${EMPTY_LOCK.slice(1)}`,
       )
     const shown = metas.filter((m) => inSelection(m.name))
     process.stdout.write(renderList(root, shown, projects, parsed.format, colorsOut()))

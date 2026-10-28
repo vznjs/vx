@@ -192,8 +192,35 @@ describe('vx run with no vx config', () => {
       const r = await vx(root, ['run', 'build', '--all'])
       expect(r.code).not.toBe(0)
       expect(`${r.out}${r.err}`).toContain(
-        'No directory holds a vx.config — run `vx init` to write them, then `vx lock`',
+        'The lock holds no project — write a vx.config (`vx init`), then run `vx lock`',
       )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  // A run reads only the lock: with configs on disk and none locked, "no
+  // directory holds a vx.config" was false, and sent the user to `vx init`.
+  it('a lock that holds no project, beside a vx.config, does not deny the config', async () => {
+    const root = await makeRoot('vx-init-empty-lock-')
+    await addPackage(root, 'w', { build: 'echo hi' })
+    await Bun.write(
+      path.join(root, 'packages/w/vx.config.mjs'),
+      "export default { tasks: { build: { command: 'echo hi' } } }\n",
+    )
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"version":4,"projects":{}}\n')
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    const said = (args: string[]): string => {
+      const r = Bun.spawnSync([process.execPath, bin, ...args], { cwd: root })
+      return `${r.stdout.toString()}${r.stderr.toString()}`
+    }
+    try {
+      for (const out of [said(['run', 'build', '--all']), said(['show'])]) {
+        expect(out).not.toContain('o directory holds a vx.config')
+        expect(out).toContain('run `vx lock`')
+      }
     } finally {
       await rm(root, { recursive: true, force: true })
     }
