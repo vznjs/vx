@@ -1057,7 +1057,7 @@ Status legend:
 | `·`    | `@noop` — task would not run anywhere                                                      |
 | `−`    | not started — a server you did not request whose every dependant restores a local hit      |
 | `·`    | skipped — `exec.platforms` leave this machine out, or a task it depends on is skipped      |
-| `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
+| `○`    | group task (suppressed in human view; in JSON)                                             |
 
 `--dry=json` emits the same data as one JSON object on one line, alone on stdout
 (a stage's warnings go to stderr), and with nothing to run (nothing

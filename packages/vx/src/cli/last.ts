@@ -330,7 +330,7 @@ function reasonParts(t: RunSummaryRow, skippedHere: ReadonlySet<string>): string
         : `after ${t.blockedBy} failed`,
     )
   } else if (t.status === 'skipped' && t.exitCode === 0) {
-    // Only a platform skip records exit 0; a blocked or fail-fast skip records 1.
+    // Exit 0 with no blocker is a platform skip; a fail-fast skip records 1.
     parts.push(OTHER_PLATFORM)
   }
   if (t.remoteError !== null) parts.push(`remote \u2717 ${t.remoteError}`)
