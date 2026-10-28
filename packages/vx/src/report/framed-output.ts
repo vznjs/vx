@@ -32,6 +32,7 @@ import {
   identityColor,
   maskedCommand,
   paint,
+  printable,
   ui,
   type ColorSupport,
 } from '../util/index.js'
@@ -567,7 +568,9 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // VERBATIM: a violation is evidence, and evidence that has been rewritten
   // for display is not the thing the sandbox reported. The outcome keeps
   // every record for telemetry.
-  const body = [...new Set(vlines)]
+  // Verbatim but for control bytes: a denied path is anyone's bytes, and
+  // one named `ESC ]0;…` retitled the terminal (the `\xNN` is still exact).
+  const body = [...new Set(vlines)].map(printable)
   // Red, not amber: a violation fails the task, so it reads as a failure.
   // vx's note, after the evidence: the grants that would have allowed it.
   // A read the output depends on is a key input too; the sandbox never
@@ -584,12 +587,16 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
           ...(fix.inputs !== undefined
             ? [
                 dim(
-                  `and, if the output depends on them, inputs.files: [${fix.inputs.map((p) => `'${p}'`).join(', ')}]`,
+                  `and, if the output depends on them, inputs.files: [${fix.inputs.map((p) => `'${printable(p)}'`).join(', ')}]`,
                 ),
               ]
             : []),
           ...(fix.withheld !== undefined
-            ? [dim(`credential path, grant it only on purpose: ${fix.withheld.join(', ')}`)]
+            ? [
+                dim(
+                  `credential path, grant it only on purpose: ${fix.withheld.map(printable).join(', ')}`,
+                ),
+              ]
             : []),
           '',
         ]
@@ -755,7 +762,7 @@ function sandboxFixLine(f: NonNullable<TaskOutcome['sandboxFix']>): string | und
   const fix = Object.entries(f).filter(([k]) => k !== 'withheld' && k !== 'inputs')
   if (fix.length === 0) return undefined
   const parts = fix.map(
-    ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${p}'`).join(', ')}]`,
+    ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${printable(p)}'`).join(', ')}]`,
   )
   return `exec.sandbox.allow: { ${parts.join(', ')} }`
 }

@@ -595,6 +595,28 @@ describe('formatTaskRows', () => {
     expect(formatTaskRows([row('t')])[1]).not.toContain('remote')
   })
 
+  // A platform skip and what it blocked are no failure (the run exits 0),
+  // and the replay read `after p#mac failed` under an `ok` header.
+  it('a skip behind another platform says so, not that its blocker failed', () => {
+    const lines = formatTaskRows([
+      row('mac', { status: 'skipped', exitCode: 0, cached: false, hash: '' }),
+      row('macdep', { status: 'skipped', exitCode: 1, blockedBy: 'p#mac', hash: '' }),
+      row('boom', { status: 'failed', exitCode: 3 }),
+      row('after', { status: 'skipped', exitCode: 1, blockedBy: 'p#boom', hash: '' }),
+      row('fast', { status: 'skipped', exitCode: 1, hash: '' }),
+    ])
+    const reason = (task: string): string => {
+      const line = lines.find((l) => l.includes(`p#${task} `))!
+      return line.slice(line.indexOf('ms') + 2).trim()
+    }
+    expect([reason('mac'), reason('macdep'), reason('after'), reason('fast')]).toEqual([
+      'no-cache  needs another platform',
+      'after p#mac skipped: needs another platform',
+      'after p#boom failed',
+      '',
+    ])
+  })
+
   it('names where an executor ran a task, and nothing for one run here', () => {
     expect(formatTaskRows([row('t', { placement: 'small#1' })])[1]).toMatch(/#t@small#1 /)
     expect(formatTaskRows([row('t')])[1]).not.toContain('@')
