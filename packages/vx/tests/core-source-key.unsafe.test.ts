@@ -41,6 +41,7 @@ function workspaceEdges(): Map<string, string[]> {
 }
 
 describe('a dependant re-keys on the source of every package it imports (item 687)', () => {
+  // A cold dry run loads every config in the repo: past 5 s on a slow host.
   it("every dependant's test and type-check reach each dependency's #source in the task graph", () => {
     // A cache of its own: the suite runs as a user who cannot write the
     // checkout's `.vx/cache`, and a dry run still opens one.
@@ -88,5 +89,5 @@ describe('a dependant re-keys on the source of every package it imports (item 68
     // checked at least one edge per plugin package.
     expect(checked).toBeGreaterThanOrEqual(edges.size - 1)
     expect(missing).toEqual([])
-  })
+  }, 60_000)
 })

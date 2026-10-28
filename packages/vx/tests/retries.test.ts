@@ -318,6 +318,9 @@ describe('exec.retries — e2e', () => {
           tasks: ['flaky', 'other'],
           projects: ['p'],
           log: capturingLogger(fixture),
+          // Two slots: the tasks wait on each other's markers, and a
+          // one-core runner's default of one slot ran one forever.
+          concurrency: 2,
         })
         const status = Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
         expect(status).toEqual({ 'p#flaky': 'failed', 'p#other': 'success' })
