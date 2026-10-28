@@ -57,6 +57,12 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
           error: `--plugin takes a seam: one of ${seams}${seam === undefined || seam === '' ? '' : ` (got '${seam}')`}${seeHelp('init')}`,
         }
       }
+      if (out.plugin !== undefined && out.plugin !== seam) {
+        return {
+          ...out,
+          error: `--plugin takes one seam; run vx init --plugin once per seam${seeHelp('init')}`,
+        }
+      }
       out.plugin = seam
     } else if (a === '--format' || a.startsWith('--format=')) {
       const fv = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'init')

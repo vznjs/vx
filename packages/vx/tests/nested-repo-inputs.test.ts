@@ -132,6 +132,52 @@ describe('a project inside a nested repository', () => {
   )
 
   it(
+    "is listed by its own index when a hook's GIT_INDEX_FILE or GIT_DIR names the workspace's",
+    async () => {
+      // The project's own listing inherited a pre-commit hook's location
+      // variables and read the workspace repository's index: a file its own
+      // repository tracks under an ignore rule left the inputs (a stale hit).
+      const dirs = await fixture(root)
+      for (const sub of ['vendor/sub', 'vendor/nested']) {
+        const repo = path.join(root, sub)
+        await write(path.join(repo, '.gitignore'), '*.gen\n')
+        const project = sub === 'vendor/sub' ? 'b' : 'c'
+        await write(path.join(repo, project, 'src/keep.gen'), 'one')
+        git(repo, 'add', '-f', '.gitignore', `${project}/src/keep.gen`)
+        git(repo, 'commit', '-qm', 'gen')
+      }
+      for (const [name, value] of [
+        ['GIT_INDEX_FILE', path.join(root, '.git', 'index')],
+        ['GIT_DIR', path.join(root, '.git')],
+      ] as const) {
+        process.env[name] = value
+        try {
+          const memo = new GitFilesCache()
+          await populateGitFilesCache(root, [dirs.a, dirs.b, dirs.c], memo)
+          for (const dir of [dirs.b, dirs.c]) {
+            const resolved = await resolveInputs({
+              projectDir: dir,
+              workspaceRoot: root,
+              inputs: { files: ['src/**'] },
+              ownOutputs: ['dist/**'],
+              nestedProjectDirs: [],
+              gitFilesCache: memo,
+              envSource: {},
+            })
+            expect(resolved.files).toEqual([
+              path.join(dir, 'src/keep.gen'),
+              path.join(dir, 'src/x.txt'),
+            ])
+          }
+        } finally {
+          delete process.env[name]
+        }
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a change to its source is a miss, not a stale hit',
     async () => {
       const dirs = await fixture(root)

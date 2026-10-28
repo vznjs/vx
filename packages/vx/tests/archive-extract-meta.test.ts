@@ -16,11 +16,17 @@ import {
   utimesSync,
   writeFileSync,
   chmodSync,
+  existsSync,
 } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { extractArtifactStream, packArtifact, scanArtifact } from '../src/cache/archive.js'
+import {
+  ArchiveSecurityError,
+  extractArtifactStream,
+  packArtifact,
+  scanArtifact,
+} from '../src/cache/archive.js'
 import { tarPack, type TarInput } from '../src/cache/tar-stream.js'
 import { streamOf } from './helpers/stream.js'
 import { withSum } from './helpers/artifact-sum.js'
@@ -187,5 +193,43 @@ describe("the sidecar's order", () => {
     }
     expect(Object.keys(parsed.files)).toEqual(['outputs/z.txt', 'outputs/plain.txt'])
     expect(parsed.links).toEqual({ 'outputs/link.txt': 'target.txt' })
+  })
+})
+
+describe('a sidecar that lies about its stat', () => {
+  // The sidecar is as attacker-reachable as the tar, and its pair was taken
+  // as is: an mtime no Date holds passed the scan into the index and threw
+  // a TypeError out of the restore's commit, after renames had begun.
+  const lies: Array<[string, unknown]> = [
+    ['an mtime past what a Date holds', [0o644, 1e300]],
+    ['an mtime as a string', [0o644, 'soon']],
+    ['a fractional mode', [0.5, 1_700_000_000_000]],
+    ['a mode as a string', ['755', 1_700_000_000_000]],
+    ['a negative mode', [-1, 1_700_000_000_000]],
+    ['a pair that is not a pair', 'ab'],
+  ]
+  for (const [label, pair] of lies) {
+    it(`refuses ${label} at scan and at restore, writing nothing`, async () => {
+      const meta = JSON.stringify({ version: 1, files: { 'outputs/a.txt': pair } })
+      const tar = await bareTar([
+        { name: 'outputs/a.txt', size: 1, body: 'a', mtime: 1_700_000_000 },
+        { name: '.vx-meta.json', size: Buffer.byteLength(meta), body: meta },
+      ])
+      await expect(scanArtifact(streamOf(tar))).rejects.toBeInstanceOf(ArchiveSecurityError)
+      const dest = fresh()
+      await expect(extractArtifactStream(streamOf(tar), dest, undefined)).rejects.toBeInstanceOf(
+        ArchiveSecurityError,
+      )
+      expect(existsSync(path.join(dest, 'a.txt'))).toBe(false)
+    })
+  }
+
+  it('refuses a files map that is not a map', async () => {
+    const meta = JSON.stringify({ version: 1, files: ['outputs/a.txt'] })
+    const tar = await bareTar([
+      { name: 'outputs/a.txt', size: 1, body: 'a' },
+      { name: '.vx-meta.json', size: Buffer.byteLength(meta), body: meta },
+    ])
+    await expect(scanArtifact(streamOf(tar))).rejects.toBeInstanceOf(ArchiveSecurityError)
   })
 })
