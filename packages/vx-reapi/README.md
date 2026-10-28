@@ -37,7 +37,7 @@ and `onWarn` for a degraded-but-recovered call; `reapi()` refuses those four,
 reading files and warning through vx. With no endpoint configured (or a blank
 one) the plugin **declines** and costs nothing, so it is
 safe to leave declared. An endpoint that is not `host[:port]`, with an
-optional `grpc(s)://` or `http(s)://` scheme, or a gRPC resolver target
+optional `grpc(s)://` or `http(s)://` scheme (a trailing `/` is dropped), or a gRPC resolver target
 (`unix:`, `unix-abstract:`, `dns:`, `ipv4:`, `ipv6:`), is refused at startup
 with a line naming the setting. So is a TLS endpoint at an IP address:
 Bun's TLS refuses an IP as the server name, so name the server by host
