@@ -367,6 +367,19 @@ describe('turbo-map: what the sweep found unheld', () => {
     ])
   })
 
+  // vercel/turborepo#2712: no `outputs` means none, as `[]` does; Turbo 1
+  // once read it as `dist/**` and `build/**`.
+  it('a task with no outputs caches none, as one with `[]`', async () => {
+    const t = await map(
+      { tasks: { build: {}, lint: { outputs: [] } } },
+      { a: { scripts: { build: 'b', lint: 'l' } } },
+    )
+    expect(t.projects[0]!.tasks.map((x) => [x.name, x.task!['cache']])).toEqual([
+      ['build', { outputs: { files: [] } }],
+      ['lint', { outputs: { files: [] } }],
+    ])
+  })
+
   // vercel/turborepo#1472: a plain `turbo.json` takes comments too, line
   // and block, between entries and before a string in an array.
   it('reads comments in a plain `turbo.json`', async () => {
