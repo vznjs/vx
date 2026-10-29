@@ -452,6 +452,20 @@ describe('every input the digest must read', () => {
     expect(movedDirs(text('n1', 't1'), text('n1', 't2'))).toEqual(['packages/b'])
   })
 
+  it("a GitHub dependency's 3-tuple is read: its commit and its dependencies key the workspace (vercel/turborepo#11268)", () => {
+    // `[id, info, ref]`: no registry slot, the info object second.
+    const text = (ref: string, store: string) =>
+      doc(
+        `"": { "name": "ws" }, "packages/a": { "name": "a", "dependencies": { "@t/react-store": "github:t/store#${ref}" } },
+    "packages/b": { "name": "b" }`,
+        `"a": ["a@workspace:packages/a"], "b": ["b@workspace:packages/b"],
+    "@t/react-store": ["@t/react-store@github:t/store#${ref}", { "dependencies": { "@t/store": "0.7.0" } }, "t-store-${ref}"],
+    "@t/store": ["@t/store@0.7.0", "", {}, "sha512-${store}"]`,
+      )
+    expect(movedDirs(text('24a971c', 's1'), text('9f00d1e', 's1'))).toEqual(['packages/a'])
+    expect(movedDirs(text('24a971c', 's1'), text('24a971c', 's2'))).toEqual(['packages/a'])
+  })
+
   it('an entry that is not a package tuple is passed over, not a crash', () => {
     const text = doc(`"": { "name": "ws" }`, `"odd": 5, "also": [7]`)
     expect([...digests(text).keys()]).toEqual(['.'])
