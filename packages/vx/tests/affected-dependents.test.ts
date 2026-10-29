@@ -182,6 +182,20 @@ describe('--affected follows task edges (2026-10-04)', () => {
   )
 
   it(
+    'an edit to app keeps the unchanged upstream lib#build its ^build needs (vercel/turborepo#12516)',
+    async () => {
+      await commitEdit('pkgs/app/src/index.ts', 'export const x = 3')
+      expect(planned(['build'], '--affected=HEAD~1')).toEqual(['app#build', 'lib#build'])
+      // A cold cache: the upstream runs before app, so app finds its inputs.
+      const r = vx(root, 'run', 'build', '--affected=HEAD~1')
+      expect(r.exitCode).toBe(0)
+      expect(r.stdout).toContain('lib#build')
+      expect(r.stdout).not.toContain('tool#build')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a change no requested task reaches is a clean "nothing affected"',
     async () => {
       await commitEdit('pkgs/lib/src/index.test.ts', 'test 2')
