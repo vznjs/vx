@@ -101,6 +101,7 @@ export const POST_EXIT_CUT_LINE: string
 export function lineEnds(onStdout?, onStderr?): { onStdout?; onStderr?; own(text: string): string }
 export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<boolean>
 export function spawnFailureText(err: unknown, cwd: string, what?: string, command?: string): string // E2BIG with `command`: its size and the 128 KiB limit
+export const SANDBOXED_TASK = 'sandboxed task' // `what` for runSandboxed, whose `command` is the wrap: the hint says the wrap counts
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
 export function droppedOutputLine(dropped: number, headChars?: number, tailChars?: number): string

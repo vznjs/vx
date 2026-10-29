@@ -1064,6 +1064,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
  * working directory in place is the shell, without it the directory; Bun's
  * own text names the rest.
  */
+/** `spawnFailureText`'s `what` for a sandboxed task: its command is the sandbox's wrap of the task's. */
+export const SANDBOXED_TASK = 'sandboxed task'
+
 export function spawnFailureText(
   err: unknown,
   cwd: string,
@@ -1080,7 +1083,7 @@ export function spawnFailureText(
   const hint = isOutOfFds(err)
     ? ` — ${OUT_OF_FDS_HINT}`
     : command !== undefined && (err as NodeJS.ErrnoException | undefined)?.code === 'E2BIG'
-      ? ` — ${argTooLongHint(command)}`
+      ? ` — ${argTooLongHint(command, what === SANDBOXED_TASK)}`
       : ''
   return `[vx] failed to spawn ${what}: ${message}${hint}\n`
 }
@@ -1091,10 +1094,11 @@ export function spawnFailureText(
  * below the argv total: a file list forwarded to a linter failed with a
  * bare E2BIG, which reads as "too many files" and names no way out.
  */
-function argTooLongHint(command: string): string {
+function argTooLongHint(command: string, wrapped: boolean): string {
   const kib = Math.ceil(Buffer.byteLength(command) / 1024)
+  const what = wrapped ? "with the args after -- and the sandbox's wrap" : 'with the args after --'
   return (
-    `the command, with the args after --, is ${kib} KiB, and one argument to sh -c may hold at ` +
+    `the command, ${what}, is ${kib} KiB, and one argument to sh -c may hold at ` +
     `most 128 KiB on Linux: pass a long list through a file the tool reads (xargs, a response file)`
   )
 }
