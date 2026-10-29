@@ -69,8 +69,13 @@ export interface DteAdapter {
   spawn(worker: WorkerSpawn): void | Promise<void>
   /** At run end: stop what it started. */
   close?(): void | Promise<void>
-  /** Workers `ids` it started are not needed: stop each that has not joined, if it can. */
-  cancel?(ids: readonly string[]): void
+  /**
+   * Workers `ids` it started are not needed: stop each that has not joined,
+   * if it can. Answers with those it left running (`github()`: its job had a
+   * runner already), which the run takes when they join. `late`: given up
+   * on joining, stuck or queued, so stopped whatever its job holds.
+   */
+  cancel?(ids: readonly string[], late?: boolean): void | Promise<readonly string[]>
   /** The CI files that start its workers, which `vx dte init` writes; none for an adapter that starts them on this machine. */
   init?(setup: DteSetup): Promise<DteInit>
   /** Where it says a fault it works around (a status poll or a cancel that failed); called as the run starts. */
@@ -541,7 +546,7 @@ export function dte(options: DteOptions = {}) {
         },
         joined: () => onChange(),
         // A worker given up on joining: its job, still queued or stuck, is stopped.
-        overdue: (id) => adapter?.cancel?.([id]),
+        overdue: (id) => void adapter?.cancel?.([id], true),
         // Before the run counts what is left to start: a worker that let a
         // task's lease end failed main's macOS run with another to start
         // (2026-10-23).
@@ -673,13 +678,35 @@ export function dte(options: DteOptions = {}) {
         // At the end the relay closing ends them all.
         if (p.release.length > 0 && remaining.size > 0) {
           const cancelled = o.release(p.release)
+          const sized = new Map<string, Size>()
           for (const id of cancelled) {
             const s = sizeOf.get(id)
             if (s === undefined) continue
+            sized.set(id, s)
             sizeOf.delete(id)
             started.set(s.name, started.get(s.name)! - 1)
           }
-          if (cancelled.length > 0) adapter?.cancel?.(cancelled)
+          // One its adapter cannot stop joins all the same: the run counts
+          // it again, and takes it.
+          if (cancelled.length > 0)
+            void Promise.resolve(
+              adapter?.cancel === undefined ? cancelled : adapter.cancel(cancelled),
+            )
+              .then((left) => {
+                const back = o.leftRunning(left ?? [])
+                for (const id of back) {
+                  const s = sized.get(id)
+                  if (s === undefined) continue
+                  sizeOf.set(id, s)
+                  started.set(s.name, (started.get(s.name) ?? 0) + 1)
+                }
+                if (back.length > 0) onChange()
+              })
+              .catch((err: unknown) =>
+                ctx.warn(
+                  `[vx] dte(): stopping ${cancelled.join(', ')} failed: ${err instanceof Error ? err.message : String(err)}`,
+                ),
+              )
         }
         if (again !== undefined) clearTimeout(again)
         again = undefined

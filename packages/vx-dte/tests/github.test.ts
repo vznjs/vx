@@ -281,12 +281,12 @@ it('cancels a dispatched run once every worker in it is not needed', async () =>
     void adapter.spawn(spawn('mac#3', 'mac'))
     await Bun.sleep(50)
     // small#2 shares its run with small#1, still needed: that run goes on.
-    adapter.cancel?.(['small#2', 'mac#3'])
+    void adapter.cancel?.(['small#2', 'mac#3'])
     await Bun.sleep(50)
     expect(calls.filter((c) => c.endsWith('/cancel'))).toEqual([
       'POST /repos/o/r/actions/runs/2/cancel',
     ])
-    adapter.cancel?.(['small#1'])
+    void adapter.cancel?.(['small#1'])
     await adapter.close?.()
     expect(calls.filter((c) => c.endsWith('/cancel'))).toEqual([
       'POST /repos/o/r/actions/runs/2/cancel',
@@ -323,12 +323,134 @@ it('cancels a run whose workers were all let go while it was dispatched', async 
     const adapter = github()
     void adapter.spawn(spawn('small#1', 'small'))
     await Bun.sleep(30)
-    adapter.cancel?.(['small#1'])
+    void adapter.cancel?.(['small#1'])
     for (let i = 0; i < 50 && !calls.some((c) => c.endsWith('/cancel')); i++) await Bun.sleep(20)
     expect(calls).toEqual([
       'POST /repos/o/r/actions/workflows/vx-worker.yml/dispatches',
+      'GET /repos/o/r/actions/runs/4/jobs',
       'POST /repos/o/r/actions/runs/4/cancel',
     ])
+  } finally {
+    await server.stop(true)
+  }
+})
+
+// A cancel saves a runner only while its job is queued. Once the job has
+// one, the worker's setup is paid and the cancel can land late (seconds,
+// or after an API limit's reset): the plan let small#3 go 5 s after
+// asking, its job already running, and it joined 10 s later to be told to
+// exit while two tasks waited for a core (2026-10-29). Such a run goes on,
+// and the workers in it are said to be left running, for the run to take.
+it('leaves a run whose job has a runner, and says which workers it left', async () => {
+  const calls: string[] = []
+  let status = 'in_progress'
+  let id = 0
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      calls.push(`${req.method} ${path}`)
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: ++id })
+      if (path.endsWith('/jobs'))
+        return Response.json({
+          jobs: [{ name: `small#${id}`, status, conclusion: null, steps: [] }],
+        })
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const adapter = github()
+    void adapter.spawn(spawn('small#1', 'small'))
+    await Bun.sleep(50)
+    expect(await adapter.cancel?.(['small#1'])).toEqual(['small#1'])
+    expect(calls).toEqual([
+      'POST /repos/o/r/actions/workflows/vx-worker.yml/dispatches',
+      'GET /repos/o/r/actions/runs/1/jobs',
+    ])
+    // CONTROL: a job still queued is cancelled with its run.
+    status = 'queued'
+    calls.length = 0
+    void adapter.spawn(spawn('small#2', 'small'))
+    await Bun.sleep(50)
+    expect(await adapter.cancel?.(['small#2'])).toEqual([])
+    for (let i = 0; i < 50 && !calls.some((c) => c.endsWith('/cancel')); i++) await Bun.sleep(20)
+    expect(calls).toEqual([
+      'POST /repos/o/r/actions/workflows/vx-worker.yml/dispatches',
+      'GET /repos/o/r/actions/runs/2/jobs',
+      'POST /repos/o/r/actions/runs/2/cancel',
+    ])
+  } finally {
+    await server.stop(true)
+  }
+})
+
+// CONTROL: one given up on joining is stuck in its setup (a stalled
+// install held the run's one arm worker 322 s, 2026-10-28) or queued:
+// its run is cancelled whatever its job holds.
+it('cancels the run of a worker given up as late, though its job has a runner', async () => {
+  const calls: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      calls.push(`${req.method} ${path}`)
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: 3 })
+      if (path.endsWith('/jobs'))
+        return Response.json({ jobs: [{ name: 'arm#1', status: 'in_progress', conclusion: null }] })
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const adapter = github()
+    void adapter.spawn(spawn('arm#1', 'arm'))
+    await Bun.sleep(50)
+    expect(await adapter.cancel?.(['arm#1'], true)).toEqual([])
+    for (let i = 0; i < 50 && !calls.some((c) => c.endsWith('/cancel')); i++) await Bun.sleep(20)
+    expect(calls).toEqual([
+      'POST /repos/o/r/actions/workflows/vx-worker.yml/dispatches',
+      'POST /repos/o/r/actions/runs/3/cancel',
+    ])
+  } finally {
+    await server.stop(true)
+  }
+})
+
+// A run that holds a worker still needed goes on, so a fellow let go in
+// it is no worker stopped either: it joins, and the run takes it.
+it('says a worker let go in a run that goes on is left running', async () => {
+  let id = 0
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: ++id })
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const adapter = github()
+    void adapter.spawn(spawn('small#1', 'small'))
+    void adapter.spawn(spawn('small#2', 'small'))
+    await Bun.sleep(50)
+    expect(await adapter.cancel?.(['small#2'])).toEqual(['small#2'])
   } finally {
     await server.stop(true)
   }
@@ -915,7 +1037,7 @@ it('keeps every other run to cancel when one is let go twice', async () => {
     for (let i = 0; i < 50 && !calls.some((c) => c.endsWith('/dispatches')); i++)
       await Bun.sleep(10)
     await Bun.sleep(50)
-    adapter.cancel?.(['small#1'])
+    void adapter.cancel?.(['small#1'])
     expect(readFileSync(fifo, 'utf8')).toBe('/repos/o/r/actions/runs/1\n')
     await Bun.sleep(50)
     await adapter.close?.()

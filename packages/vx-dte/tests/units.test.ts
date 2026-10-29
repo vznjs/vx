@@ -1253,6 +1253,36 @@ it('a worker cancelled before it joined is told to exit when it joins, and never
   }
 })
 
+// Let go before it joined, but its adapter could not stop it (github():
+// its job had a runner): told to exit, small#3 left two tasks waiting on
+// a core (2026-10-29). Kept, it counts as starting again and takes what
+// waits when it joins. One that already joined and was told to exit is
+// gone, and stays so.
+it('a worker let go that its adapter left running is taken when it joins', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    h.o.spawned('small#2', { size: 'big', cpu: 1, memory: 100 })
+    h.o.spawned('small#3', { size: 'big', cpu: 1, memory: 100 })
+    const a = await h.worker(1, 'small#1')
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    void h.o.execute(h.req('t2'))
+    expect(h.o.release(['small#2', 'small#3'])).toEqual(['small#2', 'small#3'])
+    const c = await h.worker(1, 'small#3')
+    expect(await c.types()).toEqual(['exit'])
+    expect(h.o.leftRunning(['small#2', 'small#3'])).toEqual(['small#2'])
+    expect(h.o.planState(() => undefined, 0).workers.map((w) => w.id)).toEqual([a.id, 'small#2'])
+    // No plan lets it go again: it joins whatever the plan says.
+    expect(h.o.release(['small#2'])).toEqual([])
+    const b = await h.worker(1, 'small#2')
+    expect(await b.batches()).toEqual([['t2']])
+  } finally {
+    await h.stop()
+  }
+})
+
 // exec.platforms (2026-10-23): a task core placed on a platform goes
 // only to a worker of it, and a worker whose size says another is refused.
 it('a task on a platform goes only to a worker of it', async () => {

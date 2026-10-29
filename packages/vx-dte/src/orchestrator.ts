@@ -287,6 +287,10 @@ export class Orchestrator {
   private readonly cancelled = new Set<string>()
   /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
   private readonly late = new Set<string>()
+  /** Of `cancelled`, those that joined anyway and were told to exit. */
+  private readonly turnedAway = new Set<string>()
+  /** Let go before they joined, and left running by their adapter (`leftRunning`): no plan lets them go again. */
+  private readonly unstoppable = new Set<string>()
   /** A failed start was given another worker (`failed`). */
   private restarts = 0
   /**
@@ -1372,6 +1376,7 @@ export class Orchestrator {
         this.unstarted.delete(info.id)
       }
       if (info.id !== undefined && this.cancelled.has(info.id)) {
+        this.turnedAway.add(info.id)
         void this.o.me
           .send(id, { type: 'exit' } satisfies ToWorker)
           .catch(this.unsent('exit', info.id))
@@ -1746,7 +1751,8 @@ export class Orchestrator {
           ),
           idle: false,
           running: [],
-          starting: true,
+          // One its adapter could not stop joins whatever the plan says.
+          ...(this.unstoppable.has(id) ? {} : { starting: true as const }),
         })
     return { workers, running }
   }
@@ -1789,13 +1795,34 @@ export class Orchestrator {
       const a = this.workers.get(id)
       if (a !== undefined) {
         if (a.busy.size === 0) this.letGo(a)
-      } else if (this.spawnedAt.has(id) && !joined.has(id) && !this.unstarted.has(id)) {
+      } else if (
+        this.spawnedAt.has(id) &&
+        !joined.has(id) &&
+        !this.unstarted.has(id) &&
+        !this.unstoppable.has(id)
+      ) {
         this.cancelled.add(id)
         cancelled.push(id)
         this.trace.unstarted(id, this.spawnedAt.get(id)!.at, 'cancelled: not needed')
       }
     }
     return cancelled
+  }
+
+  /**
+   * Of `ids`, let go before they joined, those its adapter could not stop
+   * (`DteAdapter.cancel`): each counts as starting again and is taken when
+   * it joins. The ones returned; one told to exit already is gone.
+   */
+  leftRunning(ids: Iterable<string>): string[] {
+    const out: string[] = []
+    for (const id of ids)
+      if (this.cancelled.has(id) && !this.late.has(id) && !this.turnedAway.has(id)) {
+        this.cancelled.delete(id)
+        this.unstoppable.add(id)
+        out.push(id)
+      }
+    return out
   }
 
   private letGo(a: Worker): void {
