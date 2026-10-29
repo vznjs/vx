@@ -529,6 +529,13 @@ export function acceptsTask(task: TaskPlacement): boolean {
   return task.cacheable && !task.pinnedLocal
 }
 
+/**
+ * The longest a timer waits: one past 2^31-1 ms fires after 1 ms, so a
+ * month's `executeTimeoutMs` or `queueTimeoutMs` gave up on every action
+ * at once. A bound held to it waits about 24 days.
+ */
+const MAX_TIMER_MS = 2 ** 31 - 1
+
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
   // A zero or non-number bound stopped every action the moment it began
   // executing.
@@ -929,11 +936,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       const queueTimer =
         opts.queueTimeoutMs === undefined
           ? undefined
-          : setTimeout(() => queued.abort(), opts.queueTimeoutMs)
+          : setTimeout(() => queued.abort(), Math.min(opts.queueTimeoutMs, MAX_TIMER_MS))
       const armStall = (): void => {
         clearTimeout(queueTimer)
         if (stallTimer !== undefined) return
-        stallTimer = setTimeout(() => stall.abort(), stallAfter)
+        stallTimer = setTimeout(() => stall.abort(), Math.min(stallAfter, MAX_TIMER_MS))
       }
       // The run's stop (Ctrl-C, an embedder's abort) cancels the operation
       // stream as the stall does; unheard, vx waited on the remote for as
