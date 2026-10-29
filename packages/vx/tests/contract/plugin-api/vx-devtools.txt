@@ -19,6 +19,13 @@ export function oidcTokenAuth(
 ): (req: Request, named?: Repo) => Promise<Access | undefined>
 == function parseAllow (src/oidc.ts)
 export function parseAllow(list: string): Allowed[]
+== function statusLine (src/terminal.ts)
+export function statusLine(
+  tone: 'ok' | 'err',
+  name: string,
+  text: string,
+  stream: { isTTY?: boolean } = tone === 'ok' ? process.stdout : process.stderr,
+): string
 == type Access (src/oidc.ts)
 export interface Access {
   readonly issuer: string
