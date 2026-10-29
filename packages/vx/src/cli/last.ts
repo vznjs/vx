@@ -373,20 +373,37 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
     )
   }
   db.exec('PRAGMA query_only = ON')
-  // Read by position: a join's `SELECT *` names `run_id` twice, and rows
-  // keyed by name kept one value per name.
-  let columns: string[]
-  let values: unknown[][]
-  try {
-    const stmt = db.query(sql)
-    columns = stmt.columnNames
-    values = stmt.values() as unknown[][]
-  } catch (err) {
+  const refused = (err: unknown): never => {
     const message = err instanceof Error ? err.message : String(err)
     if (/readonly|query_only/i.test(message)) {
       throw new UserError(`vx last: --sql reads only: ${message}`, 'VX_E_USAGE')
     }
     throw new UserError(`vx last: --sql: ${message}`, 'VX_E_USAGE')
+  }
+  let stmt: ReturnType<Database['query']>
+  try {
+    stmt = db.query(sql)
+  } catch (err) {
+    return refused(err)
+  }
+  // SQLite prepares the first statement and drops the rest unread. Its
+  // text is the statement's own (a bound `?` expanded, hence the guard).
+  const own = stmt.toString()
+  const tail = sql.startsWith(own) ? sql.slice(own.length) : ''
+  if (tail.replace(/--[^\n]*|\/\*[^]*?\*\/|[\s;]/g, '') !== '') {
+    throw new UserError(
+      `vx last: --sql takes one statement, and ${JSON.stringify(tail.replace(/^[\s;]+/, '').trimEnd())} follows the first: run each in its own --sql`,
+      'VX_E_USAGE',
+    )
+  }
+  // Read by position: a join's `SELECT *` names `run_id` twice, and rows
+  // keyed by name kept one value per name.
+  const columns = stmt.columnNames
+  let values: unknown[][]
+  try {
+    values = stmt.values() as unknown[][]
+  } catch (err) {
+    return refused(err)
   }
   if (format === 'json') {
     const twice = columns.find((c, i) => columns.indexOf(c) !== i)
