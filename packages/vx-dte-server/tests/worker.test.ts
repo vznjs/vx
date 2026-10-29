@@ -127,6 +127,16 @@ it('refuses every join with a 403 while ALLOW admits no one, waking no object', 
   }
 })
 
+// No object bound: each join threw "Cannot read properties of
+// undefined", a 500 a client retries until its deadline.
+it('refuses every join with a 403, saying why, while RELAY is unbound', async () => {
+  const res = await join({ ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml' } as Env, A)
+  expect([res.status, await res.json()]).toEqual([
+    403,
+    { error: 'RELAY: bind the RelayRun Durable Object as RELAY (wrangler.jsonc durable_objects)' },
+  ])
+})
+
 // Hibernated, an object is built again from its sockets: it writes no storage.
 it('rebuilds a run from its sockets’ attachments when it wakes', () => {
   const pushed = new Map<string, unknown[]>()

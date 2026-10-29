@@ -127,8 +127,9 @@ export interface PlanArgs {
   executorOf?: (id: string) => string | undefined
   /**
    * The tasks the run's short-circuit would restore ahead of their deps on
-   * a local hit (stable key, no workspace-output reach). A server whose
-   * every dependant is one of those and a local hit is never spawned.
+   * a hit (stable key, no workspace-output reach). A server whose every
+   * dependant is one of those and a hit, local or remote, is never spawned:
+   * the run holds it for the remote's answer (`held-servers.ts`).
    */
   restorable?: ReadonlySet<string>
   /** Tasks whose `exec.platforms` leave this machine out (`placement.ts`), each → its platforms. */
@@ -216,7 +217,10 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
 
   if (args.restorable !== undefined) {
     const restoreTier = new Set(
-      [...args.restorable].filter((id) => cacheStatusById.get(id) === 'hit-local'),
+      [...args.restorable].filter((id) => {
+        const status = cacheStatusById.get(id)
+        return status === 'hit-local' || status === 'hit-remote'
+      }),
     )
     const dependents = new Map<string, string[]>()
     for (const node of args.nodes.values())
