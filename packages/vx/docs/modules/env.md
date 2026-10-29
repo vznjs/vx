@@ -57,7 +57,11 @@ Layers, lowest to highest priority:
    project isolation holds; the root is not a sibling. With `workspaceRoot`
    set (the orchestrator sets it), the `PATH` taken from `source` first
    drops each `node_modules/.bin` inside that root: `npm run` in a member
-   puts that member's bins on the PATH vx inherits. A defined `PATH` is
+   puts that member's bins on the PATH vx inherits. Inside by spelling, or,
+   for an existing directory, by canonical path: one spelled through a
+   symlink (macOS's `/tmp`, a linked home, a shell's `$PWD`) beside the
+   canonical root kept a sibling's bin. Asked per call, not memoized: a
+   task can create the directory or the link. A defined `PATH` is
    kept whole. An `inputs.runtime` probe's PATH drops them too. An entry whose path
    holds `path.delimiter` (`:`) is left out: PATH cannot name it, and split
    it became two entries, the second relative to the task's cwd.

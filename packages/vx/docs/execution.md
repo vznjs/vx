@@ -388,7 +388,8 @@ The child process gets, in priority order (lowest first):
    tools (`oxlint`, `vite`, etc.) run by name. Never a sibling
    project's bin; those stay invisible, even when vx itself runs from
    `npm run` in a sibling: the PATH vx inherits loses each
-   `node_modules/.bin` inside the workspace first, and so does an
+   `node_modules/.bin` inside the workspace first (by spelling, or by
+   canonical path for one spelled through a symlink), and so does an
    `inputs.runtime` probe's. A bin directory whose path holds
    PATH's delimiter (`:`) is left out: PATH cannot name it, and split it
    became two entries, one relative to the task's cwd. A task whose shell exits 127 or 126 gets one more frame line
