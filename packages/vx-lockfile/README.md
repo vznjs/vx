@@ -47,14 +47,16 @@ A lockfile the parser cannot read **refuses the run**, naming the file, the reas
 
 Files no lockfile records lay `node_modules` out anew under a byte-identical lockfile (pnpm's `node-linker`, bun's `linker = "isolated"`, a registry in `.npmrc`, Yarn 4's catalogs). Each plugin owns its manager's and hashes each present file whole into every task; a change to one selects every project under `--affected`:
 
-| Plugin   | Settings                                                                                                           |
-| -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `pnpm()` | `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field                                            |
-| `bun()`  | `bunfig.toml`, `.npmrc`                                                                                            |
-| `npm()`  | `.npmrc`                                                                                                           |
-| `yarn()` | `.yarnrc.yml`, `.yarnrc` and `.npmrc` (yarn 1), the root `package.json`'s `workspaces.nohoist` and `installConfig` |
+| Plugin   | Settings                                                                                                                          |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm()` | `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field                                                           |
+| `bun()`  | `bunfig.toml`, `.npmrc`                                                                                                           |
+| `npm()`  | `.npmrc`                                                                                                                          |
+| `yarn()` | `.yarnrc.yml`, `.yarnrc` and `.npmrc` (yarn 1), the root `package.json`'s `workspaces.nohoist`, `installConfig` and `resolutions` |
 
 `pnpm()` hashes `pnpm-workspace.yaml` without `patchedDependencies`, `overrides`, `catalog` and `catalogs`, which pnpm 10+ keeps there: the lockfile records what each one did, per project, so a patch, an override or a catalog bump re-keys only the projects that reach the package it changes, and `--affected` selects them through the lockfile. Any other setting in the file re-keys every project, and a file that does not parse is hashed whole. The root `package.json` adds only its `pnpm` field (`onlyBuiltDependencies` and the rest pnpm reads there and the lockfile does not record), its `overrides` and `patchedDependencies` aside: a root dependency edit is the lockfile's.
+
+`yarn()` folds the root `package.json`'s `resolutions` because yarn.lock does not record where one applies: a parent-scoped one (`"is-odd/is-number"`) leaves the parent's entry on the range it declares, so adding one whose range another package already keys changes the install under a byte-identical yarn.lock.
 
 A file has one owner, so two of these plugins that share a settings file (`pnpm()` and `bun()` both own `.npmrc`) cannot be declared together.
 

@@ -404,6 +404,111 @@ ${
   })
 })
 
+describe('a parent-scoped `resolutions` override (vercel/turborepo#14499)', () => {
+  // As Yarn 4.5 writes it: is-odd's entry keeps the range it declares, so
+  // adding `"is-odd/is-number": "^7.0.0"`, a range `c` already keys,
+  // leaves yarn.lock byte for byte (probed) while `a` now installs 7.
+  const LOCK = `__metadata:
+  version: 8
+  cacheKey: 10c0
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  dependencies:
+    is-odd: "npm:3.0.1"
+  languageName: unknown
+  linkType: soft
+
+"b@workspace:packages/b":
+  version: 0.0.0-use.local
+  resolution: "b@workspace:packages/b"
+  dependencies:
+    is-number: "npm:^6.0.0"
+  languageName: unknown
+  linkType: soft
+
+"c@workspace:packages/c":
+  version: 0.0.0-use.local
+  resolution: "c@workspace:packages/c"
+  dependencies:
+    is-number: "npm:^7.0.0"
+  languageName: unknown
+  linkType: soft
+
+"is-number@npm:^6.0.0":
+  version: 6.0.0
+  resolution: "is-number@npm:6.0.0"
+  checksum: 10c0/number6
+  languageName: node
+  linkType: hard
+
+"is-number@npm:^7.0.0":
+  version: 7.0.0
+  resolution: "is-number@npm:7.0.0"
+  checksum: 10c0/number7
+  languageName: node
+  linkType: hard
+
+"is-odd@npm:3.0.1":
+  version: 3.0.1
+  resolution: "is-odd@npm:3.0.1"
+  dependencies:
+    is-number: "npm:^6.0.0"
+  checksum: 10c0/odd
+  languageName: node
+  linkType: hard
+
+"root@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "root@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+  let root: string
+  const manifest = (extra: Record<string, unknown>) =>
+    writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'], ...extra }),
+    )
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(tmpdir(), 'vx-yarn-resolutions-'))
+    await manifest({})
+    for (const name of ['a', 'b', 'c']) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
+      await writeFile(path.join(dir, 'src', 'index.js'), `// ${name}\n`)
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
+      )
+    }
+    await writeFile(path.join(root, 'yarn.lock'), LOCK)
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource(['yarn()'], `import { yarn } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
+    )
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('adding one under an unchanged yarn.lock re-keys the workspace it reaches', async () => {
+    const hashes = async () => {
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      return Object.fromEntries(plan.tasks.map((t) => [t.node.id, t.hash]))
+    }
+    const before = await hashes()
+    // CONTROL: a field Yarn installs nothing by moves no key.
+    await manifest({ description: 'x' })
+    expect(await hashes()).toEqual(before)
+    await manifest({ resolutions: { 'is-odd/is-number': '^7.0.0' } })
+    expect((await hashes())['a#build']).not.toBe(before['a#build'])
+  })
+})
+
 describe('Yarn 4 catalogs (turborepo#12635)', () => {
   it('a catalog bump `^6 → ^7` moves the workspace that names `catalog:` and what links it', () => {
     // The file records `is-number: "catalog:"`, never the range: folded
