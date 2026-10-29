@@ -763,6 +763,28 @@ real warm-up. That ideal end (`TaskExecutor.idealMs`) sits beside the
 real time in the run summary and the footer's `ideal` line, and
 `@vzn/vx-ci` prints it.
 
+## Environment
+
+What `@vzn/vx-dte` reads from the CI job it runs in:
+
+- `GITHUB_SHA`: the commit every worker checks out.
+- `GITHUB_HEAD_REF` or `GITHUB_REF_NAME`, then `GITHUB_BASE_REF`: the
+  ref `github()` dispatches the worker workflow on, the base when the
+  head has no workflow file.
+- `GITHUB_RUN_ID` and `GITHUB_RUN_ATTEMPT`: the run's attempt, so a
+  worker that starts after it ended cancels itself.
+- `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`:
+  where the job asks GitHub for its OIDC token; `GITHUB_REPOSITORY_ID`:
+  the repository a token must name.
+- `GITLAB_CI` and `CI_JOB_TOKEN`: `gitlab()` runs on GitLab CI.
+- `CI_MERGE_REQUEST_SOURCE_BRANCH_NAME` or `CI_COMMIT_REF_NAME`, then
+  `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`: the ref worker pipelines run on.
+- `PATH`: a worker keeps the task's own bin directories, then its own
+  machine's `PATH`.
+- `GIT_INDEX_FILE`: `local()` clears it before `git worktree add`, so a
+  run started from a git hook checks out the run's commit, not the hook's
+  index.
+
 ## API
 
 - `dte(options?: DteOptions)` is the plugin. `DteOptions` is
