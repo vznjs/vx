@@ -412,7 +412,11 @@ What counts as a change:
   it changed.
 - What `vx lock` writes is left out (`.vx/projects.lock.json`,
   `.vx/.gitattributes`, `.vx/.gitignore`, each project's `vx.lock.json`
-  review copy), so `vx lock` never marks a project affected.
+  review copy), so `vx lock` never marks a project affected by itself.
+  `.vx/projects.lock.json` counts entry by entry when the base has
+  one: a project whose locked config changed is selected whole (a run
+  reads its config from there), and `vx lock` rewriting the same
+  entries selects nothing.
 
 **A lockfile change selects what its plugin says.** Core keys no
 lockfile and no install setting: without a lockfile plugin, the root
