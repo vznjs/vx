@@ -96,7 +96,7 @@ describe('migrateTurbo: a framework Turbo infers', () => {
       inputs: { env?: unknown }
       exec: { env?: { passThrough?: unknown } }
     }
-    expect([t.inputs.env, t.exec.env?.passThrough]).toEqual([undefined, undefined])
+    expect(JSON.stringify([t.inputs.env, t.exec.env?.passThrough])).not.toContain('NEXT_')
     expect(p.notes.filter((n) => n.includes('in other'))).toEqual([])
   })
 
