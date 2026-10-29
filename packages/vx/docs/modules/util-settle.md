@@ -54,7 +54,8 @@ dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void // die of it, waiting (1 s 
   off, the signal sent to itself, then a synchronous wait until it lands
   (1 s bound, the caller's exit code the fallback). A kill can land after
   it returns (another thread took it, a tracer held it), and the
-  `process.exit` right after it exited 130 instead (CI, PR #4867).
+  `process.exit` right after it exited with the code (130, 143, 129)
+  instead (CI, PR #4867).
   `VX_TEST_SELF_SIGNAL_DELAY` sends it from a helper that late, the
   window `tests/signal-handling.test.ts` widens.
 

@@ -78,10 +78,11 @@ const SELF_SIGNAL_WAIT_MS = 1000
  * kill is not always delivered before it returns: a signal another thread
  * takes, or one a tracer holds (the sandbox's `strace -f` sees every
  * signal before the tracee does), lands later, and the `process.exit`
- * after it won: vx exited 130, not of SIGINT, and a script running it
+ * after it won: vx exited with the signal's code (130), not of the
+ * signal, and a script running it
  * went on (CI, PR #4867). Bounded: the caller's exit code is the fallback
- * should the signal never land. `VX_TEST_SELF_SIGNAL_DELAY` sends it from
- * a helper that late instead, the window a test widens.
+ * should the signal never land. `testTimerMs('SELF_SIGNAL_DELAY')` sends
+ * it from a helper that late instead, the window a test widens.
  */
 export function dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void {
   process.removeAllListeners(signal)
