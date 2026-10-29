@@ -1495,7 +1495,8 @@ fed the raw string turns into NOTHING — and a task keyed on nothing
 replays old outputs as a green hit (2026-09-10, probed one by one):
 a leading `./`, an inner `/./` segment, a doubled `//`, and a trailing
 `/` on a pattern (`src/*\/` means the trees under `src`, so it becomes
-`src/*\/**`; a trailing slash on a LITERAL is `asTrees`' job). Applied
+`src/*\/**`; a trailing slash on a LITERAL is `asTrees`' job), and a
+trailing `/.`, read as a trailing `/`. Applied
 after an optional `!`; a bare `.` is the empty entry the schema refuses.
 
 ```ts

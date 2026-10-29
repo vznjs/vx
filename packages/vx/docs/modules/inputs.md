@@ -260,7 +260,7 @@ other walker: a project outside a git work tree is a `UserError`
 2. **Positive globs** — `inputs.files` strings without `!`.
    The default when `inputs.files` is undefined is `['**/*']`.
    Each is normalized (a leading `./`, inner `./` segments, doubled
-   slashes and a trailing slash) and checked against the candidate
+   slashes, a trailing slash and a trailing `/.`) and checked against the candidate
    set via `Bun.Glob.match`. A literal entry — no glob character —
    means the file or its whole tree: `src/`, `src` and `dist` all
    compile to the path plus `<path>/**` (`asTrees`, defined in
