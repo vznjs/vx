@@ -3,7 +3,7 @@
 // core, which wrap every parser alike. A parser fix that forgot the bump
 // kept replaying digests the old parser folded. A copy of the plugin
 // whose parser source differs by one comment must not trust the memo.
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -22,9 +22,15 @@ let copy: string
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'vx-memo-id-'))
   await writeFile(path.join(root, 'pnpm-lock.yaml'), LOCK)
-  // Beside src, so `@vzn/vx` resolves from the package's node_modules.
-  copy = await mkdtemp(path.join(import.meta.dir, '..', '.memo-id-'))
+  // In the temp dir, not beside src: a sandboxed test task may write only
+  // there. A link to the workspace's node_modules resolves `@vzn/vx`.
+  copy = await mkdtemp(path.join(tmpdir(), 'vx-memo-id-src-'))
   await cp(SRC, path.join(copy, 'src'), { recursive: true })
+  await cp(path.join(SRC, '..', 'package.json'), path.join(copy, 'package.json'))
+  await symlink(
+    path.resolve(import.meta.dir, '../../../node_modules'),
+    path.join(copy, 'node_modules'),
+  )
 })
 afterEach(async () => {
   await rm(root, { recursive: true, force: true })
