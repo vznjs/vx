@@ -366,6 +366,9 @@ describe('parseWhyArgs', () => {
     const want = '--filter requires a value: a project name, glob or path (see `vx show --help`)'
     expect(parseShowArgs(['--filter', '--format', 'json']).error).toBe(want)
     expect(parseShowArgs(['--filter']).error).toBe(want)
+    // An empty `=` was taken, and the run said `filter "" names no project`.
+    expect(parseShowArgs(['--filter=']).error).toBe(want)
+    expect(parseShowArgs(['--filter=app']).filters).toEqual(['app'])
   })
 
   it('rejects unknown flags, bad formats, empty --run, extra positionals', () => {
