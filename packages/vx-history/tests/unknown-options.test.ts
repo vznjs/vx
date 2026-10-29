@@ -49,6 +49,20 @@ it('an empty file is refused: it named the workspace root', () => {
   expect(refusal(() => vxHistory({ file: '.vx/timings.json' }))).toBe('taken')
 })
 
+// Only the top level was checked: `resources: { headrom }` packed on the
+// default headroom, and `{ cpu: 2 }` reserved no cores, both unsaid.
+it('a misspelt key inside resources or a reservation is refused', () => {
+  expect(refusal(() => vxHistory({ resources: { headrom: 1.5 } as never }))).toBe(
+    'vxHistory() option "resources" has unknown option "headrom" (allowed: headroom) — did you mean headroom?',
+  )
+  expect(refusal(() => vxHistory({ reservations: { 'a#b': { cpu: 2 } as never } }))).toBe(
+    'vxHistory() option "reservations["a#b"]" has unknown option "cpu" (allowed: cpus, memory) — did you mean cpus?',
+  )
+  expect(
+    refusal(() => vxHistory({ reservations: { 'a#b': { cpus: 2, memory: Number('x') } } })),
+  ).toBe('taken')
+})
+
 // A header it cannot send was refused once a server was named, so a
 // laptop passed what failed the first CI run. A value is never printed.
 it('a header it cannot send is refused at the call, with no url named', () => {
