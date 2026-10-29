@@ -15,6 +15,8 @@ import {
   formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
+  leavesStyle,
+  RESET,
   type OutputChunk,
 } from './framed-output.js'
 import {
@@ -645,14 +647,17 @@ export function defaultLogger(
   // The log ends on a blank line (a block's own): a blank status line
   // after it (the footer's) would make two; one blank line apart is the rule.
   let endsBlank = false
-  // A live-streamed task's partial line ends before anything of vx's own:
-  // a row or a block written after it (a step that ends while the task
-  // streams, another task's failure, a kept server's line) was glued to
-  // it, `building...      time status  cache    task`.
+  // A live-streamed task's partial line, and any colour it left on, end
+  // before anything of vx's own: a row or a block written after it (a step
+  // that ends while the task streams, another task's failure, a kept
+  // server's line) was glued to it, `building...      time status  cache
+  // task`, and took its colour.
+  let streamStyled = false
   const endStreamLine = (): void => {
-    if (!streamMidLine) return
+    const end = (streamStyled ? RESET : '') + (streamMidLine ? '\n' : '')
+    streamStyled = false
     streamMidLine = false
-    logWrite('\n')
+    if (end.length > 0) logWrite(end)
   }
   const taskWrite = (chunk: string): void => {
     endStreamLine()
@@ -661,6 +666,7 @@ export function defaultLogger(
   const streamWrite = (chunk: string): void => {
     streamedSinceBlock = true
     if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
+    if (chunk.includes('\x1b[')) streamStyled = leavesStyle(chunk)
     logWrite(chunk)
   }
   const logWrite = (chunk: string): void => {
