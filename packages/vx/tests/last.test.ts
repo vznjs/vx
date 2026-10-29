@@ -44,6 +44,9 @@ const APP_CONFIG = `
         dependsOn: ['boom'],
         exec: { command: 'echo never' },
       },
+      "it's boom": {
+        exec: { command: 'exit 4' },
+      },
     },
   }
 `
@@ -252,6 +255,17 @@ describe('vx last (e2e)', () => {
         `  $ vx run boom --all -- 'a b' 'c;echo X'`,
         `  re-run what failed: vx run app#boom -- 'a b' 'c;echo X'`,
       ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the re-run line quotes a task id a shell would split',
+    async () => {
+      // Joined bare, `app#it's boom` pasted as an unclosed quote.
+      await vx(root, ['run', "it's boom", '--all'])
+      const lines = (await vx(root, ['last'])).out.trimEnd().split('\n')
+      expect(lines.at(-1)).toBe(`  re-run what failed: vx run 'app#it'\\''s boom'`)
     },
     TIMEOUT,
   )

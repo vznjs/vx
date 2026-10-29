@@ -172,6 +172,10 @@ describe('a CI OIDC token', () => {
       'vznjs/vx:ci.yml is not issuer:owner/repo:workflow',
     )
     expect(() => parseAllow('https://x.dev:vx:ci.yml')).toThrow('is not issuer:owner/repo:workflow')
+    // Well formed, so "is not issuer:owner/repo:workflow" sent its author to the wrong part.
+    expect(() => parseAllow('http://x.dev:o/r:ci.yml')).toThrow(
+      new Error('http://x.dev:o/r:ci.yml: the issuer is https://, not http://x.dev'),
+    )
   })
 
   it('is refused for what is wrong with it', async () => {
@@ -184,14 +188,17 @@ describe('a CI OIDC token', () => {
       401,
       'alg is not RS256',
     ])
-    expect(await refusal(verify(await sign(other)))).toEqual([401, 'untrusted issuer'])
+    expect(await refusal(verify(await sign(other)))).toEqual([
+      401,
+      "issuer https://evil.example is not in this relay's ALLOW: add issuer:owner/repo:workflow for it",
+    ])
     expect(await refusal(verify(await sign(good, { kid: 'k2' })))).toEqual([
       401,
       'unknown signing key',
     ])
     expect(await refusal(verify(await sign({ ...good, aud: 'x' })))).toEqual([
       401,
-      'wrong audience',
+      `the token's aud is x, not this relay's ${AUD}: ask CI for a token for ${AUD}, or set the relay's audience`,
     ])
     expect(await refusal(verify(await sign({ ...good, exp: now - 61 })))).toEqual([401, 'expired'])
     // A token with no exp never expired: it lacks the claim.

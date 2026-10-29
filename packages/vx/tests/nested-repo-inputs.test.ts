@@ -16,7 +16,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { GitFilesCache, populateGitFilesCache, resolveInputs } from '../src/cache/inputs.js'
+import {
+  addedInput,
+  GitFilesCache,
+  populateGitFilesCache,
+  resolveInputs,
+} from '../src/cache/inputs.js'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const TIMEOUT = 60_000
@@ -172,6 +177,40 @@ describe('a project inside a nested repository', () => {
         } finally {
           delete process.env[name]
         }
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "sees a file added during the run by its own index under a hook's GIT_INDEX_FILE",
+    async () => {
+      // `addedInput`'s git listing inherited the hook's variables and read
+      // the workspace repository's index: a file the nested repository
+      // tracks under an ignore rule, added while the task ran, was not seen
+      // and the entry was saved under a key without it.
+      const dirs = await fixture(root)
+      const repo = path.join(root, 'vendor/sub')
+      await write(path.join(repo, '.gitignore'), '*.gen\n')
+      git(repo, 'add', '.gitignore')
+      git(repo, 'commit', '-qm', 'ignore')
+      const resolved = await resolveInputs({
+        projectDir: dirs.b,
+        workspaceRoot: root,
+        inputs: { files: ['src/**'] },
+        ownOutputs: ['dist/**'],
+        nestedProjectDirs: [],
+        envSource: {},
+      })
+      const listedAt = Date.now() - 1000
+      const added = path.join(dirs.b, 'src/keep.gen')
+      await write(added, 'one')
+      git(repo, 'add', '-f', 'b/src/keep.gen')
+      process.env['GIT_INDEX_FILE'] = path.join(root, '.git', 'index')
+      try {
+        expect(addedInput(resolved.listings, new Set(resolved.files), listedAt)).toBe(added)
+      } finally {
+        delete process.env['GIT_INDEX_FILE']
       }
     },
     TIMEOUT,

@@ -195,6 +195,40 @@ describe('VxCacheLayer', () => {
     ])
   })
 
+  it("reads a server's endless answer no further than its cap", async () => {
+    const pulled = { capabilities: 0, check: 0, refusal: 0 }
+    const endless = (into: keyof typeof pulled, status = 200) =>
+      new Response(
+        new ReadableStream({
+          pull(c) {
+            pulled[into] += 64 * 1024
+            c.enqueue(new Uint8Array(64 * 1024).fill(0x20))
+          },
+        }),
+        { status },
+      )
+    const fake = (where: keyof typeof pulled, status?: number): typeof fetch =>
+      Object.assign(
+        async (input: string | URL | Request, init?: RequestInit) => {
+          const at = new URL(input instanceof Request ? input.url : input).pathname
+          if (at === '/v1/capabilities' && where !== 'capabilities') return fetch(input, init)
+          return endless(where, status)
+        },
+        { preconnect: fetch.preconnect },
+      )
+    expect(layer(srv.url, write, [MAIN], fake('capabilities')).hasMany(['e1'])).rejects.toThrow(
+      '/v1/capabilities answered over 65536 bytes',
+    )
+    expect(layer(srv.url, write, [MAIN], fake('check')).hasMany(['e1'])).rejects.toThrow(
+      '/v1/artifacts answered over',
+    )
+    expect(layer(srv.url, write, [MAIN], fake('refusal', 500)).get('e1')).rejects.toThrow(
+      'HTTP 500',
+    )
+    await Bun.sleep(50)
+    for (const n of Object.values(pulled)) expect(n).toBeLessThanOrEqual(256 * 1024)
+  })
+
   it('says a job that reads only was refused a write once, and reads on', async () => {
     const c = layer(srv.url, read)
     expect(c.put('cc33', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
@@ -772,6 +806,31 @@ describe('config', () => {
       expect(await c.has('ab13')).toEqual({ size: 1 })
     } finally {
       await srv.stop()
+    }
+  })
+
+  // A URL of a website answers any path 200 with its page: JSON.parse's
+  // "Unrecognized token '<'" named no fault.
+  it('says a 200 that is no JSON is not a vx-cache server', async () => {
+    const site = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }),
+    })
+    try {
+      const c = new VxCacheLayer(
+        resolveVxCacheConfig({ ...NAMED, url: site.url.origin }, {})!,
+        fetch,
+        {},
+      )
+      c.refs = [MAIN]
+      await expect(c.has('ab14')).rejects.toThrow(
+        new Error(
+          '/v1/capabilities answered 200 with text/html, not JSON: is the url a vx-cache server?',
+        ),
+      )
+    } finally {
+      await site.stop(true)
     }
   })
 

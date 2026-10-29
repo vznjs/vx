@@ -20,20 +20,6 @@ const DEADLINE_MS = 10_000
 /** Tries of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
 const ATTEMPTS = 3
 
-/** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
-export function serverUrlOf(
-  option: string | undefined,
-  env: Record<string, string | undefined> = Bun.env,
-): string | undefined {
-  const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
-  if (url === undefined || url === '') return undefined
-  if (!/^https?:\/\//.test(url)) throw new Error(`vxHistory(): url must be http(s), got ${url}`)
-  // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
-  if (url.endsWith('/v1'))
-    throw new Error(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
-  return url
-}
-
 /** The issuer and repository a workspace names, as a key holds them: the issuer's URL with no trailing slash, `org/name` lowercased. */
 export interface Named {
   readonly issuer: string
@@ -48,10 +34,12 @@ const hasToken = (env: Record<string, string | undefined>): boolean =>
 /** A task the run ran and that succeeded, as the server takes its timing; else undefined. */
 export function timingOf(o: TaskOutcome): ServerTiming | undefined {
   if (o.status !== 'success') return undefined
-  const cores =
+  const need =
     o.cpuMs === undefined || o.durationMs <= 0
       ? undefined
       : o.cpuMs / (o.durationMs * (o.cpuShare ?? 1))
+  // A share rounded to 0 divides by it, and the server refuses the upload.
+  const cores = need !== undefined && Number.isFinite(need) ? need : undefined
   return {
     durationMs: Math.max(0, aloneMs(o)),
     ...(cores === undefined ? {} : { cores }),
@@ -98,6 +86,19 @@ async function refusal(res: Response): Promise<Error> {
   }
   said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
+}
+
+/** A 200's JSON; one that is none (a website's page) names the likely fault, the url. */
+async function jsonOf(res: Response, path: string): Promise<unknown> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    const type = res.headers.get('content-type') ?? 'no content type'
+    throw new Error(
+      `${path} answered ${res.status} with ${type}, not JSON: is the url a vx-history server?`,
+    )
+  }
 }
 
 /** A JWT's `exp` in ms; 0 when it names none. */
@@ -242,7 +243,10 @@ export class HistoryServer {
   /** `/v1/capabilities`, asked once a run, and again after a failed ask: nothing is guessed. */
   private limitsNow(): Promise<Limits> {
     const asked = (this.limits ??= (async () => {
-      const body = (await (await this.call('/v1/capabilities')).json()) as Partial<Limits> | null
+      const body = (await jsonOf(
+        await this.call('/v1/capabilities'),
+        '/v1/capabilities',
+      )) as Partial<Limits> | null
       const n = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0)
       const limits = {
         maxUploadTimings: n(body?.maxUploadTimings),
@@ -264,6 +268,7 @@ export class HistoryServer {
     refs: readonly string[],
     hashes: readonly string[],
   ): Promise<Map<string, ServerTiming>> {
+    if (hashes.length === 0) return new Map()
     const per = (await this.limitsNow()).maxQueryHashes
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
@@ -272,7 +277,7 @@ export class HistoryServer {
           refs,
           hashes: hashes.slice(i * per, (i + 1) * per),
         })
-        const body = (await res.json()) as { timings?: unknown } | null
+        const body = (await jsonOf(res, '/v1/timings/query')) as { timings?: unknown } | null
         if (typeof body?.timings !== 'object' || body.timings === null) {
           throw new Error('the query answered no `timings` object')
         }
@@ -281,7 +286,11 @@ export class HistoryServer {
     )
     const out = new Map<string, ServerTiming>()
     for (const [hash, t] of parts.flat()) {
-      if (typeof t?.durationMs !== 'number' || !(t.durationMs >= 0)) continue
+      if (
+        typeof t?.durationMs !== 'number' ||
+        !(t.durationMs >= 0 && t.durationMs <= Number.MAX_SAFE_INTEGER)
+      )
+        continue
       out.set(hash, {
         durationMs: t.durationMs,
         ...(typeof t.cores === 'number' ? { cores: t.cores } : {}),
