@@ -47,6 +47,13 @@ at it with `GIT_INDEX_FILE`. Later runs on the same index reuse the copy.
 A synthetic 5,300-file clone: 310 to 223 ms a run; a refreshed tree pays
 nothing. Skipped when a git location variable is set.
 
+`ls-files` and `status` each read the index on their own, so the index
+file is stamped (inode, ctime, size) before the listing spawns and after
+the status ends; an index written between them trusts no OID and every
+file hashes from disk. A `git reset` of a staged edit landing between the
+two made the file clean to `status` while `ls-files` had listed the staged
+blob, which then keyed the committed bytes.
+
 ## Public surface
 
 ```ts

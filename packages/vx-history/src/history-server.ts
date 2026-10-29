@@ -77,6 +77,15 @@ const deadline = (): AbortSignal => {
   return c.signal
 }
 
+/**
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
+ * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
+ * overwrote the line before (core's `printable`, L-31).
+ */
+const printable = (s: string): string =>
+  // oxlint-disable-next-line no-control-regex
+  s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
   const text = (await res.text().catch(() => '')).slice(0, 2048)
@@ -87,7 +96,7 @@ async function refusal(res: Response): Promise<Error> {
   } catch {
     // not JSON: the text is what it said
   }
-  said = said.replace(/\s+/g, ' ').trim().slice(0, 200)
+  said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
@@ -108,22 +117,6 @@ function expiryOf(jwt: string): number {
 interface Limits {
   readonly maxUploadTimings: number
   readonly maxQueryHashes: number
-}
-
-/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
-export function proxyHeaders(
-  headers: Record<string, string | undefined> | undefined,
-): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [name, value] of Object.entries(headers ?? {})) {
-    if (value === undefined) continue
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`vxHistory(): headers cannot set "${name}"`)
-    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`vxHistory(): header "${name}" must be one line of text`)
-    out[name] = value
-  }
-  return out
 }
 
 export class HistoryServer {
