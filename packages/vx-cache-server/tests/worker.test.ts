@@ -271,7 +271,10 @@ it('checks 6 lookups by default: one round of the calls a request has waiting', 
 // "the body is not N bytes", for a body that was whole.
 it('answers 502 naming R2 when R2 refuses an upload', async () => {
   const g = globalThis as Record<string, unknown>
-  g.caches = { open: async () => ({ match: async () => undefined, put: async () => {} }) }
+  g.caches = {
+    default: { match: async () => undefined, put: async () => {} },
+    open: async () => ({ match: async () => undefined, put: async () => {} }),
+  }
   g.FixedLengthStream = class extends TransformStream {
     constructor(_length: number) {
       super()
@@ -312,6 +315,48 @@ it('answers 502 naming R2 when R2 refuses an upload', async () => {
     g.fetch = realFetch
     delete g.caches
     delete g.FixedLengthStream
+  }
+})
+
+// A fresh isolate read the issuer's keys on its first token, and one slow
+// answer from GitHub failed an upload 502 (2026-10-29): the keys come
+// through the cache the data center's isolates share.
+it("reads the issuer's keys through the data center's cache", async () => {
+  const g = globalThis as Record<string, unknown>
+  const held = new Map<string, string>()
+  for (const url of [`${GITHUB}/.well-known/openid-configuration`]) {
+    held.set(url, JSON.stringify(await iss.fetchJson(url)))
+  }
+  const jwksUri = (JSON.parse(held.values().next().value!) as { jwks_uri: string }).jwks_uri
+  held.set(jwksUri, JSON.stringify(await iss.fetchJson(jwksUri)))
+  g.caches = {
+    default: {
+      match: async (url: string) => {
+        const body = held.get(String(url))
+        return body === undefined ? undefined : new Response(body)
+      },
+      put: async () => {},
+    },
+    open: async () => ({ match: async () => undefined, put: async () => {} }),
+  }
+  const realFetch = globalThis.fetch
+  g.fetch = async () => {
+    throw new Error('The operation was aborted due to timeout')
+  }
+  try {
+    const worker = (await import('../src/worker.js')).default
+    const BLOBS = { head: async () => null, get: async () => null, put: async () => null }
+    const res = await worker.fetch(
+      new Request(`${AUD}/v1/capabilities`, {
+        headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
+      }),
+      { BLOBS, ALLOW: ALLOW_VAR, AUDIENCE: AUD, MAX_CHECK_HASHES: '7' },
+      { waitUntil: () => {} },
+    )
+    expect(res.status).toBe(200)
+  } finally {
+    g.fetch = realFetch
+    delete g.caches
   }
 })
 

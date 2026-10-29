@@ -156,8 +156,12 @@ export interface OidcOptions {
   readonly allow: readonly Allowed[]
   /** The `aud` a token must name; unset, the origin the server is reached at. */
   readonly audience?: string
-  /** Reads a URL as JSON; tests serve keys without a network. */
-  readonly fetchJson?: (url: string) => Promise<unknown>
+  /**
+   * Reads a URL as JSON (`cachedFetchJson` on a Worker); tests serve keys
+   * without a network. `fresh`: a reload of keys already read, which must
+   * reach the issuer; the first read of a URL may come from a cache.
+   */
+  readonly fetchJson?: (url: string, fresh: boolean) => Promise<unknown>
   /** Seconds since the epoch; tests move the clock. */
   readonly now?: () => number
   /** `READ_ACCESS`: `public` lets a request with no token read a repository ALLOW names. */
@@ -303,7 +307,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
   const stale = new Set<string>()
   const keySet = async (iss: string, url: string): Promise<unknown> => {
     try {
-      const json = await fetchJson(url)
+      const json = await fetchJson(url, lastRead.has(url))
       lastRead.set(url, json)
       stale.delete(iss)
       return json
@@ -316,13 +320,15 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
   const keysOf = (iss: string) => {
     let set = keys.get(iss)
     if (set === undefined) {
-      set = fetchJson(`${iss.replace(/\/$/, '')}/.well-known/openid-configuration`).then((c) => {
-        const uri = (c as { jwks_uri?: unknown }).jwks_uri
-        if (typeof uri !== 'string') throw new Error('no jwks_uri')
-        return createRemoteJWKSet(new URL(uri), {
-          [customFetch]: async (url: string) => Response.json(await keySet(iss, url)),
-        })
-      })
+      set = fetchJson(`${iss.replace(/\/$/, '')}/.well-known/openid-configuration`, false).then(
+        (c) => {
+          const uri = (c as { jwks_uri?: unknown }).jwks_uri
+          if (typeof uri !== 'string') throw new Error('no jwks_uri')
+          return createRemoteJWKSet(new URL(uri), {
+            [customFetch]: async (url: string) => Response.json(await keySet(iss, url)),
+          })
+        },
+      )
       keys.set(iss, set)
       // A failed discovery is not kept: the next token tries again.
       // quiet: the awaited set rethrows it; this only forgets it
@@ -434,6 +440,39 @@ const keysUnread = (iss: string, err: unknown): Refusal =>
     502,
     `could not read ${iss}'s keys: ${err instanceof Error ? err.message : String(err)}`,
   )
+
+/** A cache a Worker's isolates share (`caches.default`), as `cachedFetchJson` uses it. */
+export interface KeysCache {
+  match(url: string): Promise<Response | undefined>
+  put(url: string, res: Response): Promise<void>
+}
+
+/** How long a shared cache holds an issuer's answer for the next isolate. */
+const KEYS_TTL_S = 600
+
+/**
+ * `fetchJson` through a cache isolates share: a Worker's fresh isolate read
+ * the issuer on its first token, and one slow answer from GitHub failed it
+ * 502 (2026-10-29), as the DTE relay found (2026-10-22). A fresh read (a
+ * reload, maybe for a rotated key) asks the issuer, and refills the cache.
+ */
+export function cachedFetchJson(
+  cache: KeysCache,
+  fetchImpl: typeof fetch = fetch,
+): (url: string, fresh: boolean) => Promise<unknown> {
+  return async (url, fresh) => {
+    const hit = fresh ? undefined : await cache.match(url)
+    if (hit !== undefined) return hit.json()
+    const res = await fetchImpl(url, { signal: AbortSignal.timeout(10_000) })
+    if (!res.ok) throw new Error(`${url}: ${res.status}`)
+    const body = await res.text()
+    await cache.put(
+      url,
+      new Response(body, { headers: { 'cache-control': `max-age=${KEYS_TTL_S}` } }),
+    )
+    return JSON.parse(body)
+  }
+}
 
 async function defaultFetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })

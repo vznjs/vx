@@ -5,6 +5,11 @@ export class Refusal extends Error {
     message: string,
   )
 }
+== function cachedFetchJson (src/oidc.ts)
+export function cachedFetchJson(
+  cache: KeysCache,
+  fetchImpl: typeof fetch = fetch,
+): (url: string, fresh: boolean) => Promise<unknown>
 == function errorJson (src/refusal.ts)
 export function errorJson(status: number, message: string): Response
 == function hashPart (src/hash-part.ts)
@@ -40,14 +45,23 @@ export interface Allowed {
 }
 == type Authorize (src/oidc.ts)
 export type Authorize = (req: Request) => Promise<Access>
+== type KeysCache (src/oidc.ts)
+export interface KeysCache {
+  match(url: string): Promise<Response | undefined>
+  put(url: string, res: Response): Promise<void>
+}
 == type OidcOptions (src/oidc.ts)
 export interface OidcOptions {
   /** `ALLOW` (`parseAllow`): who may take part. */
   readonly allow: readonly Allowed[]
   /** The `aud` a token must name; unset, the origin the server is reached at. */
   readonly audience?: string
-  /** Reads a URL as JSON; tests serve keys without a network. */
-  readonly fetchJson?: (url: string) => Promise<unknown>
+  /**
+   * Reads a URL as JSON (`cachedFetchJson` on a Worker); tests serve keys
+   * without a network. `fresh`: a reload of keys already read, which must
+   * reach the issuer; the first read of a URL may come from a cache.
+   */
+  readonly fetchJson?: (url: string, fresh: boolean) => Promise<unknown>
   /** Seconds since the epoch; tests move the clock. */
   readonly now?: () => number
   /** `READ_ACCESS`: `public` lets a request with no token read a repository ALLOW names. */

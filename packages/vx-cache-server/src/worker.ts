@@ -2,7 +2,15 @@
 // `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and the limits are vars in
 // it (README.md § On Cloudflare Workers).
 
-import { type Authorize, errorJson, oidcAuth, parseAllow, Refusal } from '@vzn/vx-devtools'
+import {
+  type Authorize,
+  cachedFetchJson,
+  errorJson,
+  type KeysCache,
+  oidcAuth,
+  parseAllow,
+  Refusal,
+} from '@vzn/vx-devtools'
 import { createCacheServer, DEFAULT_LIMITS, type Limits, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
@@ -18,7 +26,7 @@ interface WorkersCache {
   put(key: Request, res: Response): Promise<void>
   delete(key: Request): Promise<boolean>
 }
-declare const caches: { open(name: string): Promise<WorkersCache> }
+declare const caches: { open(name: string): Promise<WorkersCache>; default: KeysCache }
 export interface Context {
   waitUntil(p: Promise<unknown>): void
 }
@@ -124,6 +132,16 @@ function workerLimits(env: Env): Limits {
 /** What a request shares per isolate and settings. */
 let made: { key: string; authorize: Authorize; limits: Limits } | undefined
 
+/**
+ * The issuer's keys through the data center's cache: a fresh isolate read
+ * GitHub on its first token, and one slow answer failed it 502 (2026-10-29).
+ * `caches.default` is read at each call, as the bucket is per request.
+ */
+const edgeKeys = cachedFetchJson({
+  match: (url) => caches.default.match(url),
+  put: (url, res) => caches.default.put(url, res),
+})
+
 export default {
   async fetch(req: Request, env: Env, ctx: Context): Promise<Response> {
     // A deploy's mistake, not R2's outage: unbound, every read was a 502.
@@ -162,6 +180,7 @@ export default {
         authorize = oidcAuth({
           allow,
           readAccess: env.READ_ACCESS,
+          fetchJson: edgeKeys,
           // jose matches aud exactly: a pasted newline refused every
           // token as the wrong audience.
           ...(env.AUDIENCE ? { audience: env.AUDIENCE.trim() } : {}),

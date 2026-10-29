@@ -51,7 +51,7 @@ export type Authorize = (req: Request) => Promise<Access>
 export interface OidcOptions {
   readonly allow: readonly Allowed[]
   readonly audience?: string
-  readonly fetchJson?: (url: string) => Promise<unknown>
+  readonly fetchJson?: (url: string, fresh: boolean) => Promise<unknown>
   readonly now?: () => number
   readonly readAccess?: string
 }
@@ -64,7 +64,21 @@ export interface Repo {
 export function oidcTokenAuth(
   opts: OidcOptions,
 ): (req: Request, named?: Repo) => Promise<Access | undefined>
+export interface KeysCache {
+  match(url: string): Promise<Response | undefined>
+  put(url: string, res: Response): Promise<void>
+}
+export function cachedFetchJson(
+  cache: KeysCache,
+  fetchImpl?: typeof fetch,
+): (url: string, fresh: boolean) => Promise<unknown>
 ```
+
+- `fetchJson`'s `fresh` is true for a reload of keys already read. A reload
+  must reach the issuer. The first read of a URL may come from a cache.
+- `cachedFetchJson(caches.default)` (any `KeysCache`) is how a Worker reads the keys: a fresh
+  isolate takes them from the cache its data center shares (10 minutes),
+  not from the issuer.
 
 ## How it decides
 

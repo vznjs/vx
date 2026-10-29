@@ -6,6 +6,8 @@ export {
   type Access,
   type Allowed,
   type Authorize,
+  cachedFetchJson,
+  type KeysCache,
   oidcAuth,
   oidcTokenAuth,
   type OidcOptions,
