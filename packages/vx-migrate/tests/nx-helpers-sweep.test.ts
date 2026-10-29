@@ -625,6 +625,21 @@ describe('Nx glob grammar in inputs', () => {
     expect([got.files, got.todos]).toEqual([['**/*', '!**/{*.,}{spec,test}.[jt]s{x,}'], []])
   })
 
+  // Nx's native glob reads a bare `(a|b)` as `{a,b}` and `(a)` as `a`; read
+  // as literal text, `src/*.(js|ts)` keyed on nothing and an edit hit.
+  it('a bare group is its alternatives', () => {
+    const got = inputs(['{projectRoot}/src/*.(js|ts)', '!{projectRoot}/src/(gen)/**'])
+    expect([got.files, got.todos]).toEqual([['src/*.{js,ts}', '!src/gen/**'], []])
+  })
+
+  it('a bare group whose alternative holds a brace or a comma is a todo', () => {
+    const got = inputs(['{projectRoot}/src/*.({a,b}|c)'])
+    expect([got.files, got.todos]).toEqual([
+      [],
+      ['input "{projectRoot}/src/*.({a,b}|c)": glob syntax vx cannot take — map manually'],
+    ])
+  })
+
   it('what has no safe form is a todo', () => {
     const got = inputs(['{projectRoot}/+(a|b).ts', '!{projectRoot}/!(a).ts'])
     expect([got.files, got.todos]).toEqual([
@@ -633,6 +648,22 @@ describe('Nx glob grammar in inputs', () => {
         'input "{projectRoot}/+(a|b).ts": glob syntax vx cannot take — map manually',
         'input "!{projectRoot}/!(a).ts": glob syntax vx cannot take — map manually',
       ],
+    ])
+  })
+
+  // Nx's matcher (globset, literal separator) reads `**` glued to text as
+  // `*`, one level; core refuses the glued spelling, so copied verbatim it
+  // failed the load.
+  it('a ** glued to text is one level, as Nx reads it, in inputs and outputs', () => {
+    const got = inputs(['{projectRoot}/src/**.ts', '!{projectRoot}/gen**', '{workspaceRoot}/**x/a'])
+    const todos: string[] = []
+    const out = mapNxOutputs(['{projectRoot}/dist/**.js'], {}, 'packages/a', 'a', todos)
+    expect([got.files, got.wsFiles, got.todos, out.outFiles, todos]).toEqual([
+      ['src/*.ts', '!gen*'],
+      ['*x/a'],
+      [],
+      ['dist/*.js'],
+      [],
     ])
   })
 })

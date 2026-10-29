@@ -9,9 +9,11 @@ tags:
 excerpt: 'Tag your projects by layer and say which may depend on which. vx lock refuses a dependency that breaks a rule, and runs pay nothing.'
 ---
 
-Tag your projects by layer and say which layers may depend on which.
-`vx lock` refuses a dependency that breaks a rule. Here UI may not
-depend on a utility, and `packages/c` (UI) depends on `packages/a`:
+Tag your projects by layer and say which layers may depend on which. `vx
+lock` refuses a dependency that breaks a rule.
+
+Here UI may not depend on a utility, and `packages/c` (UI) depends on
+`packages/a`:
 
 ```mermaid
 flowchart LR
@@ -102,15 +104,18 @@ $ vx lock --check
 ```
 
 `vx lock --check` in CI fails the same way, so a pull request with a
-forbidden dependency goes red. Runs read the lock, which already passed
-the rules, so they pay nothing ([vx lock](../lock-and-frozen/)).
+forbidden dependency goes red.
+
+Runs read the lock, which already passed the rules, so they pay nothing
+([vx lock](../lock-and-frozen/)).
 
 ## From Nx
 
 `nx()` from `@vzn/vx-migrate` reads the `depConstraints` of
 `@nx/enforce-module-boundaries` from your ESLint config and fills
-`run.rules.dependencies`. It reads the file without running it, so
-ESLint never loads on a vx run.
+`run.rules.dependencies`.
+
+It reads the file without running it, so ESLint never loads on a vx run.
 
 ```js
 // eslint.config.mjs (Nx)
@@ -129,11 +134,14 @@ dependencies: [
 ]
 ```
 
-One difference: Nx's
-[lint rule](https://github.com/nrwl/nx/blob/master/packages/eslint-plugin/src/rules/enforce-module-boundaries.ts)
-checks source imports. vx checks declared dependencies. `allSourceTags`,
-`/regex/` tags and external-import bans are left out. The
-[vx-migrate README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#module-boundaries)
-lists them. The schema is in the
-[configuration reference](../../schema/). More at
+One difference: Nx's [lint
+rule](https://github.com/nrwl/nx/blob/master/packages/eslint-plugin/src/rules/enforce-module-boundaries.ts)
+checks source imports. vx checks declared dependencies.
+
+`allSourceTags`, `/regex/` tags and external-import bans are left out.
+The [vx-migrate
+README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#module-boundaries)
+lists them.
+
+The schema is in the [configuration reference](../../schema/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

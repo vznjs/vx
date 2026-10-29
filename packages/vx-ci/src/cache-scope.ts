@@ -16,7 +16,8 @@ import { type BranchFacts, branchCacheScope } from '@vzn/vx'
  * workflow that checks out the PR's head there would otherwise share main's
  * scope. `issue_comment` names no branch, so it writes `pr-<n>`.
  * A merge queue's run (`merge_group`) is trusted (2026-10-18): no
- * scope, compared with `merge_group.base_sha`.
+ * scope, compared with `merge_group.base_sha`. A push to a branch named
+ * like a queue ref is not one: anyone who can push can name one.
  * `base`: a pull request's base commit (`pull_request.base.sha`), what its
  * merge checkout is compared with, no git call needed. `refs`: what a
  * remote reads (`githubRefs`).
@@ -38,7 +39,8 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
 /**
  * The refs an Actions run reads, in order (2026-10-25): a merge
  * queue's run only its base branch, the code it is about to become; any
- * other its own branch (a pull request's head, else `GITHUB_REF`), then
+ * other its own branch (a pull request's head, a `workflow_run` a pull
+ * request started included, else `GITHUB_REF`), then
  * the branch it merges into, then the default branch (`baseBranch`, else
  * the event's).
  */
@@ -49,22 +51,34 @@ function githubRefs(
 ): string[] {
   const head = (b: string | undefined) => (b === undefined ? undefined : `refs/heads/${b}`)
   const ref = stringOf(env['GITHUB_REF'])
-  if (env['GITHUB_EVENT_NAME'] === 'merge_group') {
+  if (queued(env)) {
     const base = stringOf(event?.merge_group?.base_ref) ?? head(QUEUE.exec(ref ?? '')?.[1])
     return base === undefined ? [] : [base]
   }
-  const own = head(stringOf(env['GITHUB_HEAD_REF'])) ?? ref
-  const into = head(stringOf(env['GITHUB_BASE_REF']))
+  // A workflow_run a pull request started is the PR's, as its scope is.
+  const run = prRun(env['GITHUB_EVENT_NAME'], event)
+  const own = head(stringOf(env['GITHUB_HEAD_REF']) ?? stringOf(run?.head_branch)) ?? ref
+  const into = head(
+    stringOf(env['GITHUB_BASE_REF']) ?? stringOf(run?.pull_requests?.[0]?.base?.ref),
+  )
   const trunk = head(baseBranch ?? stringOf(event?.repository?.default_branch))
   return [...new Set([own, into, trunk].filter((r): r is string => r !== undefined))]
 }
+
+/**
+ * A merge queue's run: a `merge_group` event only. Anyone who can push can
+ * name a branch like a queue ref, so the cache server renames only a
+ * `merge_group` run's ref to its base, and only it reads just that base.
+ */
+const queued = (env: Readonly<Record<string, string | undefined>>): boolean =>
+  env['GITHUB_EVENT_NAME'] === 'merge_group'
 
 function scopeOf(
   env: Readonly<Record<string, string | undefined>>,
   event: ActionsEvent | undefined,
 ): BranchFacts {
   const ref = env['GITHUB_REF'] ?? ''
-  if (env['GITHUB_EVENT_NAME'] === 'merge_group') {
+  if (queued(env)) {
     const base = stringOf(event?.merge_group?.base_sha)
     return { trusted: true, ...(base !== undefined ? { base } : {}) }
   }
@@ -103,7 +117,7 @@ interface ActionsEvent {
     event?: unknown
     head_branch?: unknown
     head_repository?: { full_name?: unknown }
-    pull_requests?: { number?: unknown }[]
+    pull_requests?: { number?: unknown; base?: { ref?: unknown } }[]
   }
 }
 
@@ -133,18 +147,27 @@ function prOf(
     const n = event.issue.number
     return typeof n === 'number' && Number.isInteger(n) && n > 0 ? `pr-${n}` : 'pr-target'
   }
-  const run = event?.workflow_run
-  if (
-    name === 'workflow_run' &&
-    typeof run?.event === 'string' &&
-    run.event.startsWith('pull_request')
-  ) {
+  const run = prRun(name, event)
+  if (run !== undefined) {
     const branch = stringOf(run.head_branch)
     return branch === undefined
       ? 'pr-target'
       : headScope(branch, stringOf(run.head_repository?.full_name), repo)
   }
   return undefined
+}
+
+/** A `workflow_run` run's triggering run, when a pull request started it. */
+function prRun(
+  name: string | undefined,
+  event: ActionsEvent | undefined,
+): NonNullable<ActionsEvent['workflow_run']> | undefined {
+  const run = event?.workflow_run
+  return name === 'workflow_run' &&
+    typeof run?.event === 'string' &&
+    run.event.startsWith('pull_request')
+    ? run
+    : undefined
 }
 
 /** The event payload the runner writes; undefined when it cannot be read. */

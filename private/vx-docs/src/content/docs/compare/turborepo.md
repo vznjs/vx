@@ -3,10 +3,11 @@ title: vx vs Turborepo
 description: The same 1,090-package graph run by both, what each one asks of you, and when Turborepo is the better pick.
 ---
 
-Both tools run the tasks of a JavaScript monorepo and cache their results.
-This page puts them side by side on one benchmark, feature by feature, and
-says when Turborepo is the better choice. The design choices behind both
-are on [vx, Turborepo, Nx, Bazel](../).
+Both tools run the tasks of a JavaScript monorepo and cache their
+results. This page puts them side by side on one benchmark, feature by
+feature, and says when Turborepo is the better choice.
+
+The design choices behind both are on [vx, Turborepo, Nx, Bazel](../).
 
 ## The numbers
 
@@ -21,7 +22,10 @@ are on [vx, Turborepo, Nx, Bazel](../).
 
 Time each tool adds over the ideal run; lower is better.
 
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, with five core libraries a quarter of the projects use.
+
+Task times: build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms. Real repos with uneven task times differ.
+
 Run 2026-10-25 on linux x64, 4 cores: vx at commit 9abdfb52c, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
 
 Same graph, commands and concurrency, each tool in its own native config: [how it is measured](../../benchmarks/).
@@ -64,9 +68,11 @@ links each claim to its source.
   declare is out of its reach. A violation fails the task, and a failed
   task is never cached.
 - **Pull requests keep to their own branch.** `turboCache()` names the
-  branches a read may see (`x-artifact-read-scopes`), and the server's
-  OIDC trust policy decides where a write lands, so a pull request reads
-  main's entries and never writes them ([security model](../../security/#cache-poisoning)).
+  branches a read may see (`x-artifact-read-scopes`).
+
+  The server's OIDC trust policy decides where a write lands, so a pull
+  request reads main's entries and never writes them ([security
+  model](../../security/#cache-poisoning)).
 
 ## Where Turborepo wins
 
@@ -93,12 +99,16 @@ vx run build --all
 ```
 
 `vx init` finds `turbo.json` and writes one `vx.config.ts` per package,
-plus the workspace file, through [`@vzn/vx-migrate`](../../guides/migrate/).
+plus the workspace file, through
+[`@vzn/vx-migrate`](../../guides/migrate/).
+
 Anything Turbo can say that vx cannot becomes a `TODO(vx-migrate)`
-comment, never a silent wrong value. Your `package.json` scripts are never
-edited. Keep your remote cache with `turboCache()`: any server speaking
-Turbo's `/v8/artifacts` API, Vercel's hosted cache included. The numbers
-above are native vx config.
+comment, never a silent wrong value. Your `package.json` scripts are
+never edited.
+
+Keep your remote cache with `turboCache()`: any server speaking Turbo's
+`/v8/artifacts` API, Vercel's hosted cache included. The numbers above
+are native vx config.
 
 ## FAQ
 
@@ -109,9 +119,10 @@ vx way. None is dropped in silence.
 
 **Can I keep Vercel Remote Cache?**
 Yes. Set `TURBO_TOKEN` and `TURBO_TEAM` (or, on a laptop, type the token
-once when asked; it stays in the OS keychain), declare `turboCache()`, and
-vx stores its own artifacts there. Turbo cannot read what vx stores, and vx
-does not read Turbo's entries.
+once when asked; it stays in the OS keychain), declare `turboCache()`,
+and vx stores its own artifacts there.
+
+Turbo cannot read what vx stores, and vx does not read Turbo's entries.
 
 **What does it cost?**
 Nothing. vx is MIT, with no cloud and no account.

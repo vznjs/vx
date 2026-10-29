@@ -55,11 +55,11 @@ describe('resolveTurboCacheConfig, exactly', () => {
       msg('ghp_SECRET\rline2'),
       msg('secretÿ'),
     ]).toEqual([
-      'vx/turbo-cache: the token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
-      'vx/turbo-cache: the token holds a character past Latin-1, which no HTTP header can carry — check the secret (it is not printed)',
+      'turboCache(): the token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
+      'turboCache(): the token holds a character past Latin-1, which no HTTP header can carry — check the secret (it is not printed)',
       '(no refusal)',
       '(no refusal)',
-      'vx/turbo-cache: the token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
+      'turboCache(): the token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
       '(no refusal)',
     ])
   })

@@ -345,8 +345,12 @@ function ciLinks(provider: string, env: Record<string, string | undefined>): CiL
       const id = v('GITHUB_RUN_ID')
       links = {
         runUrl: repo && id ? `${server}/${repo}/actions/runs/${id}` : undefined,
-        // `refs/pull/<n>/merge` on a pull_request event.
-        change: /^refs\/pull\/(\d+)\//.exec(v('GITHUB_REF') ?? '')?.[1],
+        // `refs/pull/<n>/merge` on a pull_request event; a merge queue's
+        // run, `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`.
+        change: /^refs\/(?:pull\/(\d+)\/|heads\/gh-readonly-queue\/.+\/pr-(\d+)-[0-9a-f]+$)/
+          .exec(v('GITHUB_REF') ?? '')
+          ?.slice(1)
+          .find((x) => x !== undefined),
         pipeline: v('GITHUB_WORKFLOW'),
         job: v('GITHUB_JOB'),
         attempt: n(v('GITHUB_RUN_ATTEMPT')),

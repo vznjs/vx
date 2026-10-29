@@ -40,6 +40,28 @@ it('names the processes that used the most since the first look, its own tree as
   ])
 })
 
+// docker() execs the worker as its container's pid 1: the walk stopped
+// at pid 1 before asking whether it was the worker's, and listed its own
+// tasks and itself as the most besides.
+it('counts its own tree when it is pid 1', () => {
+  const before = parsePs(['   1     0 00:00:01 vx'].join('\n')).table
+  const after = parsePs(
+    ['   1     0 00:00:03 vx', '  40     1 00:00:20 bun test', '  41    40 00:00:05 git'].join(
+      '\n',
+    ),
+  )
+  expect(topBetween(before, after, 1)).toEqual([])
+})
+
+// Linux's comm is a name that may hold a slash, never a path: a kernel
+// thread `kworker/0:1` read as `0:1`, one name per CPU.
+it('keeps a Linux name with a slash whole, and a macOS path to its last part', () => {
+  const { table } = parsePs(
+    ['  12     2 00:00:01 kworker/0:1-events', '  13     1 00:00:01 /usr/libexec/mds'].join('\n'),
+  )
+  expect([table.get(12)?.name, table.get(13)?.name]).toEqual(['kworker/0:1-events', 'mds'])
+})
+
 it('reads its reaped children from /proc/self/stat, none off Linux', () => {
   const stat = `42 (bun (x)) S 1 42 42 0 -1 0 0 0 0 0 7 3 150 50 20 0 1 0`
   expect(childrenCpuMs(() => stat)).toBe(2_000)

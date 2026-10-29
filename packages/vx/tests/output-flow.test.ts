@@ -1273,6 +1273,20 @@ describe('persistent post-ready output', () => {
     }
   })
 
+  // `vx watch` hands its dev server to the next cycle's run, which writes
+  // the server's output from that run's start: before the run reaches the
+  // task it was buffered as a task's that has yet to run, and never shown.
+  it('a server held from an earlier run streams under its id before this run reaches it', () => {
+    for (const mode of ['broad', 'full'] as const) {
+      const out = sink()
+      const log = defaultLogger(NO_COLORS, { mode }, out)
+      const n = mkPersistent('app#server')
+      log.taskStdout(n, 'rebuilt lib\n')
+      log.taskStderr(n, 'warn: slow\n')
+      expect(out.text()).toBe('app#server │ rebuilt lib\napp#server │ warn: slow\n')
+    }
+  })
+
   // A server that writes only `\r` updates never ends a line: what it
   // held grew without bound and never printed.
   it("a kept server's line that never ends prints at the cap", () => {
@@ -1283,10 +1297,10 @@ describe('persistent post-ready output', () => {
     log.runEnd?.()
     const before = out.text().length
     for (let i = 0; i < 2000; i++) log.taskStdout(n, `\rbuilding ${String(i).padStart(30, '.')}`)
+    // Held without bound, nothing would print before settle; at the cap the
+    // held text prints as the redraw a terminal would show.
     const printed = out.text().slice(before)
-    expect(printed.startsWith('app#server │ \rbuilding')).toBe(true)
-    expect(printed.length).toBeGreaterThanOrEqual(64 * 1024)
-    expect(printed.length).toBeLessThan(80 * 1024)
+    expect(printed).toMatch(/^app#server │ building [.\d]{30}\n$/)
   })
 
   // The CLI's bus delivers one `run:end`; its last word is `settle`.

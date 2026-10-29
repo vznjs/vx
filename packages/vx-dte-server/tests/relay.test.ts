@@ -378,6 +378,9 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     expect((await c.call(R, 'join', { role: 'peer', info: 'x'.repeat(1 << 20) })).json).toEqual({
       error: 'join over 1 MiB',
     })
+    expect((await c.call(R, 'join', { role: 'peer', info: '€'.repeat(1 << 19) })).json).toEqual({
+      error: 'join over 1 MiB',
+    })
     expect((await c.call(R, 'socket', { id: 'x' })).status).toBe(405)
     // A signature that is not base64url threw out of the relay: its host answered 500.
     const join = encodeURIComponent(
@@ -718,6 +721,16 @@ describe('a host that keeps runs and holds websockets', () => {
       status: 413,
       error: 'body over 1 MiB',
     })
+    // The bound is bytes: 1 MiB of `€` is 3 MiB on the wire, under 1 MiB of UTF-16 units.
+    const wide = JSON.stringify({
+      n: 98,
+      sends: [{ to: 'host', body: '€'.repeat((1 << 20) - 100) }],
+    })
+    expect(JSON.parse(c.relay.frame(K, a, wide)!)).toEqual({
+      n: 98,
+      status: 413,
+      error: 'body over 1 MiB',
+    })
     // Unnumbered, its sender waits on no answer: it gets one only if a send fails.
     const unnumbered = (sends: unknown[]) => c.relay.frame(K, a, JSON.stringify({ sends }), socket)
     expect(unnumbered([{ to: 'host', body: 4 }])).toBeUndefined()
@@ -759,6 +772,64 @@ describe('a host that keeps runs and holds websockets', () => {
     const a = await c.join(R, 'peer')
     expect((await c.call(R, 'socket', undefined, `?id=${a}`)).status).toBe(426)
   })
+
+  // Bun's upgrade fails on a request with no websocket key: the refusal it
+  // was let in to say waited for a socket that never came, one kept per
+  // request, with no token needed.
+  it('keeps no refusal whose upgrade failed', async () => {
+    const ids: string[] = []
+    const relay = createRelay({
+      verify: async () => ({ iss: 'i', run: ['1'] }),
+      upgrade: (_key, id) => {
+        ids.push(id)
+        return Response.json({ error: 'not a websocket' }, { status: 426 })
+      },
+    })
+    const res = await relay.fetch(
+      new Request(`http://relay/v1/sessions/${R}/socket`, {
+        headers: { upgrade: 'websocket', 'sec-websocket-protocol': 'switchboard.v1' },
+      }),
+    )
+    expect(res.status).toBe(426)
+    const closes: (number | undefined)[] = []
+    const socket = { send() {}, close: (code?: number) => void closes.push(code) }
+    // Kept, the id would still close as the 401 it was refused with.
+    expect(relay.attach('', ids[0]!, socket)).toBe(false)
+    expect(closes).toEqual([GONE])
+  })
+
+  // A join whose socket never opened (its upgrade failed, its client went)
+  // had no socket to drop, so no grace ran out: its orchestrator held the
+  // run for good, each rejoin refused 409, and its worker never left.
+  it('loses a participant whose join’s socket never opened once its grace passes', async () => {
+    const c = client({ graceMs: 20 })
+    const [host] = await c.request(R, 'join', { role: 'host' })
+    expect((await c.relay.fetch(host)).status).toBe(101)
+    expect((await c.call(R, 'join', { role: 'host' })).status).toBe(409)
+    await Bun.sleep(30)
+    const again = await c.call(R, 'join', { role: 'host' })
+    expect(again.status).toBe(200)
+    const o = again.json.id
+    const [peer] = await c.request(R, 'join', { role: 'peer' })
+    expect((await c.relay.fetch(peer)).status).toBe(101)
+    const [{ body }] = await c.poll(R, o)
+    await Bun.sleep(30)
+    await c.frame(R, o, { sends: [] })
+    expect(await c.poll(R, o)).toEqual([{ from: 'relay', body: { type: 'left', id: body.id } }])
+  })
+
+  // A join's proof was checked against the session it opens, whose nonces
+  // were new: the same join, sent again once its session ended, opened
+  // the run again as its orchestrator.
+  it('takes a join’s proof once: replayed after its run ended, it opens nothing', async () => {
+    const c = client()
+    const [join] = await c.request(R, 'join', { role: 'host' })
+    const replay = new Request(join)
+    const o = await c.open(join)
+    expect(o.status).toBe(200)
+    await c.frame(R, o.json.id, { leave: true })
+    expect((await c.open(replay)).status).toBe(403)
+  })
 })
 
 it('the Bun entry serves the protocol, without auth on loopback only', async () => {
@@ -796,26 +867,31 @@ beforeAll(() => {
 afterAll(() => served?.stop())
 conformance('the Bun relay', { base: () => served!.url, headers: () => ({}) })
 
-it('names the flags it lacks', () => {
-  const said = (...args: string[]) =>
+it('reads ALLOW and AUDIENCE from the environment, as the other servers do, and names what it lacks', () => {
+  const said = (env: Record<string, string>, ...args: string[]) =>
     Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), ...args], {
+      env: { PATH: process.env.PATH ?? '', ...env },
       stderr: 'pipe',
     })
       .stderr.toString()
       .split('\n')[0]
-  const allow = ['--allow', 'https://token.actions.githubusercontent.com:acme/app:ci.yml']
+  const ALLOW = 'https://token.actions.githubusercontent.com:acme/app:ci.yml'
   expect([
-    said(),
-    said(...allow),
-    said('--audience', 'x'),
-    said('--allow', '', '--audience', ''),
-    said(...allow, '--audience', ' '),
+    said({}),
+    said({ ALLOW }),
+    said({ AUDIENCE: 'x' }),
+    said({ ALLOW: '', AUDIENCE: '' }),
+    said({ ALLOW, AUDIENCE: ' ' }),
+    said({ ALLOW: 'acme/app', AUDIENCE: 'x' }),
+    said({ ALLOW, AUDIENCE: 'x' }, '--allow', ALLOW),
   ]).toEqual([
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
-    'missing --allow (or --no-auth)',
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
+    'missing ALLOW and AUDIENCE (or --no-auth)',
+    'missing AUDIENCE (or --no-auth)',
+    'missing ALLOW (or --no-auth)',
+    'missing ALLOW and AUDIENCE (or --no-auth)',
+    'missing AUDIENCE (or --no-auth)',
+    'ALLOW: acme/app is not issuer:owner/repo:workflow',
+    "Unknown option '--allow'",
   ])
 })
 
@@ -837,4 +913,41 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     { stderr: 'pipe' },
   )
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+})
+
+// A join whose socket Bun could not open (no `sec-websocket-key`) kept its
+// participant with no socket and no grace: a host so joined held its run's
+// id forever, and its real host was refused 409.
+it('undoes a join whose socket the Bun relay could not open', async () => {
+  const server = serveRelay({ hostname: '127.0.0.1', port: 0 })
+  try {
+    const joinPath = async (prover: Prover) => {
+      const at = `/v1/sessions/${R}/socket?join=${encodeURIComponent(
+        JSON.stringify({ role: 'host', key: prover.key }),
+      )}`
+      return { at, proof: await prover.proof('GET', at, '') }
+    }
+    const ghost = await joinPath(await createProver())
+    const failed = await fetch(server.url + ghost.at, {
+      headers: {
+        upgrade: 'websocket',
+        connection: 'upgrade',
+        'sec-websocket-protocol': 'switchboard.v1',
+        'relay-proof': ghost.proof,
+      },
+    })
+    expect(failed.status).toBe(426)
+    const real = await joinPath(await createProver())
+    const ws = new WebSocket(server.url.replace(/^http/, 'ws') + real.at, {
+      protocols: ['switchboard.v1'],
+      headers: { 'relay-proof': real.proof },
+    } as never)
+    const first = await new Promise<Record<string, unknown>>((resolve) => {
+      ws.onmessage = (e) => resolve(JSON.parse(String(e.data)))
+    })
+    ws.close()
+    expect(Object.keys(first)).toEqual(['joined'])
+  } finally {
+    await server.stop()
+  }
 })

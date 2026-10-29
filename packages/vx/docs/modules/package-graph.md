@@ -4,8 +4,10 @@
 
 Build the project dependency graph from the edges plugins supply: a
 `discover` entry's `deps` and `reach` (`ProjectMeta.deps` / `.reach`,
-set by `linkDiscoveredEdges`), plus the cross-project `pkg#task` edges
-of the task configs. Core reads no edge from a manifest; the lockfile
+set by `linkDiscoveredEdges`), plus, for selection, `vx watch` and the
+dependency rules, the cross-project `pkg#task` edges of the task
+configs. The graph `'^name'` resolves against has no task edges: a run
+builds it before configs load. Core reads no edge from a manifest; the lockfile
 plugins (`@vzn/vx-lockfile`'s `bun()`, `pnpm()`, `npm()`, `yarn()`)
 supply what the package manager installed. Used by `buildTaskGraph` to
 resolve `'^name'` edges (`directDeps`), by `workspace/filter.ts` for the
@@ -57,7 +59,8 @@ project:
 - **reach** (`transitiveDeps` / `transitiveDependents`, what
   `--filter pkg...` and `--affected` read): order plus a plugin's
   `reach`, which never orders a build (the lockfile plugins put a
-  workspace peer there when it would close an order cycle).
+  workspace peer, or a workspace package the root installs, there when
+  it would close an order cycle).
 
 **The edge source.** `edgeSource` is true when any project carries
 `deps`, even an empty list: a `discover` entry with `deps` makes the

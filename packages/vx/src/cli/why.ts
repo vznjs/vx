@@ -2,11 +2,12 @@
 // terminal. The runs table names the run-over-run hash change, and
 // `entry_inputs` (the input-fingerprint moat) names the exact cache-key
 // components that differ. Read-only over cache.db plus a stat of each
-// moved input file — no config evaluation, no re-hash.
+// moved input file, no re-hash. Configs are evaluated only when a moved
+// upstream is a group: it records no run, so the graph names what it gathers.
 
 import { Cache } from '../cache/index.js'
-import { flagHint, formatValue, seeHelp } from './help.js'
-import { splitTaskId } from '../graph/index.js'
+import { anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
+import { buildTaskGraph, isGroupTask, splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
   explainCacheKey,
@@ -16,10 +17,30 @@ import {
   whyDidThisRerun,
 } from '../history/index.js'
 import { resolveRunId } from '../orchestrator/index.js'
-import { MASKED, nearMatches, printable, refusal, UserError } from '../util/index.js'
-import { findWorkspaceRoot } from '../workspace/index.js'
+import {
+  detectColors,
+  ERROR,
+  MASKED,
+  nearMatches,
+  paint,
+  printable,
+  refusal,
+  SUCCESS,
+  ui,
+  UserError,
+  WARN,
+} from '../util/index.js'
+import { runRules } from '../settings.js'
+import { buildPackageGraph, findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
-import { cliCacheDir, discoverCliProjects, parseCacheDirFlag } from './workspace-config.js'
+import {
+  cliCacheDir,
+  discoverCliProjects,
+  loadCliProjects,
+  loadCliWorkspace,
+  parseCacheDirFlag,
+  rootSpelled,
+} from './workspace-config.js'
 
 interface WhyArgs {
   target?: string
@@ -68,6 +89,13 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
       const rv = a === '--run' ? args[++i] : a.slice(6)
       if (rv === undefined || rv === '')
         return { ...out, error: '--run requires a run id (`vx last --list` shows them)' }
+      // No run id starts with `-`: `--run $EMPTY --format json` took
+      // `--format` as the id and then refused `json`.
+      if (a === '--run' && rv.startsWith('-'))
+        return {
+          ...out,
+          error: `--run requires a run id (got flag ${rv}; \`vx last --list\` shows them)`,
+        }
       out.runId = rv
       continue
     }
@@ -90,6 +118,13 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
       return { ...out, error: `unexpected argument: ${a}${seeHelp('why')}` }
     // Empty is no task: read as a query it matched every recorded one.
     if (a !== '') out.target = a
+  }
+  if (out.target !== undefined) {
+    const error = anchoredSpecError(
+      out.target,
+      (task) => `vx why ${task} finds the project that ran it`,
+    )
+    if (error !== undefined) return { ...out, error }
   }
   return out
 }
@@ -182,16 +217,6 @@ async function resolveTarget(
 
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
 
-/** `//#task`, Turbo's root package, as the root project's id: the name discovery gives it (D-39). */
-async function rootSpelled(root: string, target: string): Promise<string> {
-  if (!target.startsWith('//#')) return target
-  const name = await discoverCliProjects(root).then(
-    (metas) => metas.find((m) => m.dir === root)?.name,
-    () => undefined,
-  )
-  return name === undefined ? target : `${name}#${target.slice(3)}`
-}
-
 /** ` · up-to-date` or ` · restored` on a hit, as the run's summary said it; nothing otherwise. */
 function restoredWord(r: { restored: boolean | null }): string {
   return r.restored === null ? '' : r.restored ? ' · restored' : ' · up-to-date'
@@ -202,7 +227,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   if (parsed.error !== undefined) throw new UserError(`vx why: ${parsed.error}`, 'VX_E_USAGE')
   if (parsed.target === undefined) {
     throw new UserError(
-      'vx why: <task> required (e.g. vx why app#build, or vx why build)',
+      `vx why: <task> required (e.g. vx why app#build, or vx why build)${seeHelp('why')}`,
       'VX_E_USAGE',
     )
   }
@@ -233,8 +258,9 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       if (parsed.format === 'json') {
         process.stdout.write(`${JSON.stringify({ taskId, why: null, diff: null, explanation })}\n`)
       } else {
+        const c = detectColors(process.stdout)
         process.stdout.write(
-          `${taskId}: recorded runs carry no run id — showing the latest cache entry instead\n` +
+          `${ui.inline(ui.id(taskId), c)}: recorded runs carry no run id — showing the latest cache entry instead\n` +
             (explanation.latestEntry !== null
               ? `  hash ${explanation.latestEntry.hash} · $ ${explanation.latestEntry.command}\n`
               : '  (no cache entry either)\n'),
@@ -254,7 +280,13 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     // An upstream change is never the cause, only its carrier: follow
     // each moved dependency in this run down to the tasks whose own
     // inputs moved, so one `vx why` names the file, not the next task.
-    const roots = rootCauses(db, runId, taskId, diff.entries)
+    // A group records no run: the graph names what it gathers.
+    const unrecorded = diff.entries.filter(
+      (e) =>
+        e.kind === 'upstream' && e.change === 'changed' && !cacheKeyDiff(db, runId, e.name).found,
+    )
+    const groups = unrecorded.length > 0 ? await groupMembers(root, taskId) : new Map()
+    const roots = rootCauses(db, runId, taskId, diff.entries, groups)
     const writers = inputWriters(db, root, taskId, diff.entries, roots)
 
     if (parsed.format === 'json') {
@@ -263,23 +295,26 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     }
 
     const lines: string[] = []
+    const c = detectColors(process.stdout)
+    const dim = (text: string): string => paint('', text, c, { dim: true })
+    const head = (text: string): string => paint('', text, c, { bold: true })
     const t = why.thisRun!
-    lines.push(`${taskId} — run ${runId}`)
+    lines.push(`${ui.inline(ui.id(taskId), c)}${dim(` — run ${runId}`)}`)
     // A hit's status (`cache-hit`, `cache-hit-remote`) already names it and
     // its tier, and `up-to-date` / `restored` says what it did to the disk;
     // only an executed run needs the word. A skipped task never ran and has
     // no key: it read `skipped · executed · key ` (item 898).
     const ran = t.cacheHit === false && t.status !== 'skipped'
     lines.push(
-      `  this run   ${fmtWhen(t.startedAt)} · ${t.status}${restoredWord(t)}` +
+      `  ${dim('this run')}   ${fmtWhen(t.startedAt)} · ${t.status}${restoredWord(t)}` +
         `${ran ? ' · executed' : ''}${t.hash === '' ? ' · no key' : ` · key ${t.hash}`}`,
     )
     if (why.previousRun == null) {
-      lines.push('  previous   (none — first recorded run of this task)')
+      lines.push(`  ${dim('previous')}   (none — first recorded run of this task)`)
     } else {
       const p = why.previousRun
       lines.push(
-        `  previous   ${fmtWhen(p.startedAt)} · ${p.status}${restoredWord(p)} · key ${p.hash}`,
+        `  ${dim('previous')}   ${fmtWhen(p.startedAt)} · ${p.status}${restoredWord(p)} · key ${p.hash}`,
       )
       // The key moved and the diff says by what: the verdict names it, so
       // an env-only change reads as one line, not "inputs differ" above a
@@ -289,9 +324,13 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
       )
       lines.push(
-        `  verdict    ${
+        `  ${dim('verdict')}    ${
           why.hashChanged === true && moved.length > 0
-            ? `cache key changed: ${moved.slice(0, 3).join(', ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}`
+            ? paint(
+                WARN,
+                `cache key changed: ${moved.slice(0, 3).join(', ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}`,
+                c,
+              )
             : why.note
         }`,
       )
@@ -300,7 +339,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     if (diff.entries.length > 0) {
       lines.push('')
       lines.push(
-        `  what changed (${diff.entries.length} component${diff.entries.length === 1 ? '' : 's'}, ${diff.unchangedCount} unchanged):`,
+        `  ${head('what changed')}${dim(` (${diff.entries.length} component${diff.entries.length === 1 ? '' : 's'}, ${diff.unchangedCount} unchanged)`)}:`,
       )
       const kindW = Math.max(...diff.entries.map((e) => e.kind.length), 4)
       for (const e of diff.entries) {
@@ -314,11 +353,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
                 ? `- ${e.before}`
                 : `${e.before} → ${e.after}`
         lines.push(
-          `    ${e.change.padEnd(7)} ${e.kind.padEnd(kindW)}  ${printable(e.name)}  ${beforeAfter}`.trimEnd(),
+          `    ${paint(CHANGE_HUE[e.change] ?? WARN, e.change.padEnd(7), c)} ${dim(e.kind.padEnd(kindW))}  ${printable(e.name)}  ${dim(beforeAfter)}`.trimEnd(),
         )
       }
       if (roots.length > 0) {
-        lines.push('', '  root cause:')
+        lines.push('', `  ${head('root cause')}:`)
         for (const r of roots.slice(0, ROOTS_SHOWN)) {
           const what = r.entries.map((e) =>
             e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
@@ -330,9 +369,9 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         if (roots.length > ROOTS_SHOWN) lines.push(`    and ${roots.length - ROOTS_SHOWN} more`)
       }
       if (writers.length > 0) {
-        lines.push('', '  changed during a run:')
+        lines.push('', `  ${head('changed during a run')}:`)
         for (const w of writers) {
-          lines.push(`    ${printable(w.file)}  while ${w.writers.join(', ')} ran`)
+          lines.push(`    ${printable(w.file)}  ${dim(`while ${w.writers.join(', ')} ran`)}`)
         }
       }
       const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
@@ -340,30 +379,30 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         (k) => k in WHAT_TO_DO && !(k === 'upstream' && roots.length > 0),
       )
       if (kinds.length > 0) {
-        lines.push('', '  what to do:')
+        lines.push('', `  ${head('what to do')}:`)
         // An upstream row names the task to ask next: the command, not a
         // placeholder to fill in from the row above.
-        const upstream = diff.entries.filter((e) => e.kind === 'upstream').map((e) => e.name)
+        const upstream = diff.entries.filter((e) => e.kind === 'upstream')
         for (const k of kinds) {
+          if (k === 'upstream') {
+            for (const todo of upstreamTodo(upstream, unrecorded))
+              lines.push(`    ${dim(k.padEnd(kindW))}  ${todo}`)
+            continue
+          }
           const todo =
-            k === 'upstream'
-              ? WHAT_TO_DO[k]!.replace(
-                  '`vx why <that task>`',
-                  upstream.map((n) => `\`vx why ${n}\``).join(', '),
-                )
-              : k === 'config'
-                ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
-                : WHAT_TO_DO[k]
-          lines.push(`    ${k.padEnd(kindW)}  ${todo}`)
+            k === 'config'
+              ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
+              : WHAT_TO_DO[k]
+          lines.push(`    ${dim(k.padEnd(kindW))}  ${todo}`)
         }
         if (writers.length > 0) {
           // A task re-writing a file a key reads moves that key every run:
           // the miss is right, and only moving the write ends it.
-          lines.push(`    ${'written'.padEnd(kindW)}  ${WRITTEN_TODO}`)
+          lines.push(`    ${dim('written'.padEnd(kindW))}  ${WRITTEN_TODO}`)
         }
       }
     } else if (why.hashChanged === true) {
-      lines.push(`  detail     ${diff.note}`)
+      lines.push(`  ${dim('detail')}     ${diff.note}`)
     }
     process.stdout.write(`${lines.join('\n')}\n`)
     return 0
@@ -373,6 +412,60 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 }
 
 const ROOTS_SHOWN = 5
+
+const CHANGE_HUE: Record<string, string> = { added: SUCCESS, removed: ERROR, changed: WARN }
+
+type DiffEntry = ReturnType<typeof cacheKeyDiff>['entries'][number]
+
+/**
+ * The upstream advice: a moved key names the task to ask next, a group
+ * (no run of its own) the verb that names what it gathers, and an edge
+ * added or removed says the graph changed, since no key moved.
+ */
+function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffEntry[]): string[] {
+  const out: string[] = []
+  const groups = new Set(unrecorded.map((e) => e.name))
+  const moved = upstream.filter((e) => e.change === 'changed' && !groups.has(e.name))
+  if (moved.length > 0)
+    out.push(
+      WHAT_TO_DO['upstream']!.replace(
+        '`vx why <that task>`',
+        moved.map((e) => `\`vx why ${e.name}\``).join(', '),
+      ),
+    )
+  for (const g of groups)
+    out.push(
+      `${g} is a group and records no run; \`vx show ${g}\` names what it gathers, \`vx why\` on the one whose key moved says why`,
+    )
+  const edges = upstream.filter((e) => e.change !== 'changed')
+  if (edges.length > 0)
+    out.push(
+      `a dependency joined or left the graph (${edges.map((e) => `${e.name} ${e.change}`).join(', ')}): its \`dependsOn\` or a project edge changed, which re-keys the task by design`,
+    )
+  return out
+}
+
+/**
+ * Each group in `taskId`'s graph with the tasks it gathers. Empty when a
+ * config no longer loads: the advice then names the group to `vx show`.
+ */
+async function groupMembers(root: string, taskId: string): Promise<Map<string, string[]>> {
+  try {
+    const metas = await discoverCliProjects(root)
+    const projects = await loadCliProjects(root, metas, 'all', { closure: true })
+    const [project, task] = splitTaskId(taskId)
+    const nodes = buildTaskGraph({
+      projects,
+      packageGraph: buildPackageGraph(metas),
+      requested: [{ project, task }],
+      workspaceRoot: root,
+      rules: runRules((await loadCliWorkspace(root)).workspaceConfig),
+    })
+    return new Map([...nodes.values()].filter(isGroupTask).map((n) => [n.id, n.deps]))
+  } catch {
+    return new Map()
+  }
+}
 
 const WRITTEN_TODO =
   'a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files'

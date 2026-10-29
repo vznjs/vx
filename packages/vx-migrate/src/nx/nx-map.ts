@@ -23,7 +23,7 @@ import type { PackageMeta } from '../packages.js'
 import { withoutTakenBack } from '../glob-grammar.js'
 import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
-import { scriptCommand, yarnPnp } from '../script-command.js'
+import { runsScriptHooks, scriptCommand, yarnPnp, type Owner } from '../script-command.js'
 import {
   ownFileTakeBacks,
   takingBack,
@@ -275,6 +275,8 @@ type MapOpts = MapNxOptions & {
   /** The root TypeScript config Nx folds into every task's hash, if any. */
   readonly rootTsConfig: string | undefined
   readonly pnp: boolean
+  /** Whether the manager owning a directory runs `pre` / `post` hooks (`runsScriptHooks`). */
+  readonly hooks: (dir: string) => boolean
   /** Tasks per `syncGenerators` list, said once in the notes. */
   readonly syncTasks: Map<string, number>
 }
@@ -326,6 +328,7 @@ export async function mapNxWorkspace(
   const g = graph
 
   const { namedInputs, cacheable, globalSync } = await readNxJsonFacts(root)
+  const hookMemo = new Map<string, Owner>()
   const mapOpts: MapOpts = {
     ...opts,
     cacheable: new Set([...opts.cacheable, ...cacheable]),
@@ -334,6 +337,7 @@ export async function mapNxWorkspace(
       existsSync(path.join(root, f)),
     ),
     pnp: yarnPnp(root),
+    hooks: (dir) => runsScriptHooks(dir, hookMemo) !== null,
     syncTasks: new Map(),
   }
 
@@ -387,7 +391,7 @@ export async function mapNxWorkspace(
     nodeNameOf.set(synthetic, nodeName)
   }
 
-  const upstream = planNxUpstream(nodeMap, g.dependencies, namedInputs, metaByNode)
+  const upstream = planNxUpstream(nodeMap, g.dependencies, namedInputs, metaByNode, opts.tracked)
 
   const taskNameFor: TaskNameFor = (project, target, configuration) => {
     const t = nodeMap[project]?.data?.targets?.[target]
@@ -572,7 +576,7 @@ export async function mapNxWorkspace(
         )
         followNxGraph(t.task, nodeName, meta.name, nxEdges, metaByNode, emittedIds, reached)
       }
-      dropUnheldDeps(t, emitted, emittedIds)
+      dropUnheldDeps(t, meta.name, emitted, emittedIds)
       const reader = dependentReaders.get(t)
       if (reader !== undefined && !reachesProducer(t, meta.name, emittedIds, reached)) {
         delete t.task!['cache']
@@ -754,6 +758,7 @@ export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
 
 function dropUnheldDeps(
   t: GeneratedTask,
+  owner: string,
   emitted: ReadonlySet<string>,
   emittedIds: ReadonlySet<string>,
 ): void {
@@ -767,7 +772,9 @@ function dropUnheldDeps(
     if (d.startsWith('^')) return emitted.has(d.slice(1))
     // `pkg#task` on a project no package holds (the root project with no
     // vx.config) refused the whole run as "no such project".
-    if (!d.includes('#') || emittedIds.has(d)) return true
+    // A same-project target written as no task (an `nx:noop` with nothing
+    // to chain) is nothing Nx runs; kept, `vx lock` refused the project.
+    if (emittedIds.has(d.includes('#') ? d : `${owner}#${d}`)) return true
     t.todos.push(
       `dependsOn ${JSON.stringify(d)}: no vx project runs it — edge dropped, and the key misses it`,
     )
@@ -823,6 +830,7 @@ function buildTask(
     todos,
     dotenv,
     opts.pnp,
+    opts.hooks(meta.dir),
     meta.packageJson,
     opts.manifestField,
     opts.executors,
@@ -837,6 +845,7 @@ function buildTask(
     rel: projectRel,
     name: projectName,
     outputs: nxProjectOutputs(nodeMap[nodeName]?.data?.targets, projectRel, projectName),
+    ...(opts.tracked === undefined ? {} : { tracked: opts.tracked }),
     rootDeps: opts.rootDeps,
   }
   expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
@@ -865,7 +874,10 @@ function buildTask(
         patterns,
         Object.entries(nodeMap).map(([name, n]) => ({
           name,
-          tags: nxTags(n),
+          // Every tag Nx matches, its own `npm:*` too: nxTags is what vx writes.
+          tags: Array.isArray(n?.data?.tags)
+            ? n.data.tags.filter((t): t is string => typeof t === 'string')
+            : [],
           ...(typeof n?.data?.root === 'string' ? { root: n.data.root } : {}),
         })),
       ),
@@ -875,6 +887,12 @@ function buildTask(
       : { node: nodeName, configuration: variant.configuration! },
     options,
   )
+  // Nx draws no edge from a task to itself (`task.id !== selfTaskId`): a
+  // `projects: "*"` or a tag the project carries named it, and vx refused
+  // the workspace as a cycle (2026-10-28).
+  for (const own of [variant.name, `${meta.name}#${variant.name}`]) {
+    for (let i = deps.indexOf(own); i !== -1; i = deps.indexOf(own)) deps.splice(i, 1)
+  }
   // A nested `nx <target>` runs the target's default configuration, whatever this one runs.
   for (const c of mapped?.nxCalls ?? []) {
     const edge =
@@ -1130,6 +1148,7 @@ function mapCommand(
   todos: string[],
   dotenv: readonly string[] | null,
   pnp: boolean,
+  hooks: boolean,
   manifest: { readonly name?: unknown; readonly version?: unknown },
   manifestField: MapNxOptions['manifestField'],
   executors: NxExecutors | undefined,
@@ -1200,7 +1219,7 @@ function mapCommand(
     // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
     // that refuses to load, so it is the placeholder with its todo.
     if (body !== undefined && body.length > 0) {
-      const command = scriptCommand(script, body, scripts, pnp)
+      const command = scriptCommand(script, body, scripts, pnp, hooks)
       // `yarn run <name>` sets its own.
       const env =
         command === `yarn run ${script}`

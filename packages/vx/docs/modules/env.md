@@ -13,12 +13,14 @@ export interface BuildEnvOptions {
   passThrough: readonly string[] // names → values from source
   define: Readonly<Record<string, string>> // explicit literal pairs
   source: NodeJS.ProcessEnv // typically process.env
-  binPaths?: readonly string[] // prepended to PATH (project bins)
+  binPaths?: readonly string[] // prepended to PATH: the project's bin, then the workspace root's
+  workspaceRoot?: string // the inherited PATH drops each node_modules/.bin inside it
 }
 
 export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv
 
 // ESSENTIAL_ENV (util/essential-env.ts, so hideEnvFromTasks keeps it too): the allowlist below
+export function withoutWorkspaceBins(PATH: string, workspaceRoot: string): string // util/essential-env.ts; runtime probes use it too
 export const VX_RUN_WORKSPACE_ENV = 'VX_RUN_WORKSPACE' // set on every task's env by execute-task: the workspace root
 export const VX_RUN_TASK_ENV = 'VX_RUN_TASK' // and the task id — a `vx run` inside its own workspace reads them and refuses
 export const PM_EXEC_ENV = 'npm_execpath' // set by execute-task unless a layer gives it
@@ -35,7 +37,8 @@ Layers, lowest to highest priority:
    `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
    `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`,
    `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`, `COREPACK_HOME`,
-   `PNPM_HOME`.
+   `PNPM_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`,
+   `XDG_STATE_HOME`, `XDG_RUNTIME_DIR`.
 
 2. **`passThrough` names** — for each name, copy its value from
    `source` if present. Missing names are skipped (not assigned to
@@ -51,7 +54,11 @@ Layers, lowest to highest priority:
    `<workspaceRoot>/node_modules/.bin` (one entry when the root is the
    project), so local tools resolve by name, and a monorepo's shared
    tooling, installed at the root, too. Never a sibling project's bin, so
-   project isolation holds; the root is not a sibling. An entry whose path
+   project isolation holds; the root is not a sibling. With `workspaceRoot`
+   set (the orchestrator sets it), the `PATH` taken from `source` first
+   drops each `node_modules/.bin` inside that root: `npm run` in a member
+   puts that member's bins on the PATH vx inherits. A defined `PATH` is
+   kept whole. An `inputs.runtime` probe's PATH drops them too. An entry whose path
    holds `path.delimiter` (`:`) is left out: PATH cannot name it, and split
    it became two entries, the second relative to the task's cwd.
 

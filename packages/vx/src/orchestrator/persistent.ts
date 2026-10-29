@@ -176,9 +176,8 @@ export function sessionEnd(keepAlive: KeepAlive): Promise<{ code: number; i: num
 
 export interface HoldArgs {
   forwardArgs: readonly string[] | undefined
-  /** Where a held server's output goes. */
+  /** Where a held server's output, and the notice of its death, go. */
   outOf: (id: string) => HeldServer['out']
-  warn: (message: string) => void
 }
 
 /** The kept servers handed to the caller (`RunOptions.hold`) instead of waited on. */
@@ -193,17 +192,24 @@ export function holdServers(keepAlive: KeepAlive, args: HoldArgs): HeldPersisten
   const servers = new Map<string, HeldServer>()
   keepAlive.nodes.forEach((n, i) => {
     const child = held[i]!
+    const out = args.outOf(n.id)
     servers.set(n.id, {
       child,
       config: serverConfig(n, args.forwardArgs),
-      out: args.outOf(n.id),
+      out,
       handOver: () => void handed.add(child),
     })
     // One that died during the graph was said then.
     if (hasEnded(child)) return
+    // Said where its output goes: a later run that keeps it owns the
+    // terminal from its start, and this run's renderer wrote over its rows.
     void child.exited.then((code) => {
       if (!stopping && !handed.has(child) && code !== 0)
-        args.warn(`vx: ${n.id} exited with code ${code}`)
+        out.bus.emit({
+          kind: 'run:status',
+          line: `vx: ${n.id} exited with code ${code}`,
+          warn: true,
+        })
     })
   })
   return {
@@ -260,6 +266,12 @@ export async function disposeServers(args: {
   endedBeforeStop: ReadonlySet<Child> | undefined
 }): Promise<{ keepAlive: KeepAlive; crashed: CrashedPersistent[] }> {
   const { registry, outcomes, endedBeforeStop } = args
+  // One turn of the event loop first, so Bun reaps what has already died:
+  // `exitCode` stays null until it does. A server dead at once, with
+  // nothing between its spawn and here to yield, was judged still up: the
+  // footer counted it a success, pinned it `running`, and a teardown read
+  // the run ok over vx's exit 1.
+  if (registry.size > 0) await new Promise((resolve) => setTimeout(resolve, 0))
   let keepAlive = selectKeepAlive(registry, args.nodes, args.keep)
   const failedElsewhere =
     ![...outcomes.values()].every((o) => isPassStatus(o.status)) ||

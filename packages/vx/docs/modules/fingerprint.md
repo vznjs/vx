@@ -63,12 +63,12 @@ the claimants, over the shell in [`lockfile-claim.md`](./lockfile-claim.md).
 
 What each claims:
 
-| Plugin   | Lockfile                                       | Install settings                |
-| -------- | ---------------------------------------------- | ------------------------------- |
-| `pnpm()` | `pnpm-lock.yaml`                               | `pnpm-workspace.yaml`, `.npmrc` |
-| `bun()`  | `bun.lock` (a lone `bun.lockb` is refused)     | `bunfig.toml`, `.npmrc`         |
-| `npm()`  | `npm-shrinkwrap.json` over `package-lock.json` | `.npmrc`                        |
-| `yarn()` | `yarn.lock`                                    | `.yarnrc.yml`, `.yarnrc`        |
+| Plugin   | Lockfile                                       | Install settings                                                                 |
+| -------- | ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm()` | `pnpm-lock.yaml`                               | `pnpm-workspace.yaml`, `.npmrc`, `package.json` (its `pnpm` field)               |
+| `bun()`  | `bun.lock` (a lone `bun.lockb` is refused)     | `bunfig.toml`, `.npmrc`                                                          |
+| `npm()`  | `npm-shrinkwrap.json` over `package-lock.json` | `.npmrc`                                                                         |
+| `yarn()` | `yarn.lock`                                    | `.yarnrc.yml`, `.yarnrc`, `package.json` (`workspaces.nohoist`, `installConfig`) |
 
 An install setting moves `node_modules` under a byte-identical lockfile:
 bun 1.4.2 with `[install] linker = "isolated"` rewrote no byte of

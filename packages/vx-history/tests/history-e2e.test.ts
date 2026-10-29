@@ -258,7 +258,7 @@ describe('vx-history plugin end to end', () => {
           cmd: [process.execPath, CORE_BIN, 'history', flag],
           cwd: root,
         })
-        expect([help.exitCode, help.stdout.toString().split('\n')[0]]).toEqual([
+        expect([help.exitCode, Bun.stripANSI(help.stdout.toString()).split('\n')[0]]).toEqual([
           0,
           'Usage: vx history [--format pretty|json]',
         ])
@@ -394,7 +394,7 @@ describe('vx-history plugin end to end', () => {
       expect(a.reservation?.memory).toBe(
         Math.ceil((a.maxPeakRssBytes * 1.25) / (1024 * 1024) / 64) * 64,
       )
-      expect(json.stderr.toString()).toContain(
+      expect(Bun.stripANSI(json.stderr.toString())).toContain(
         '[vx] vx-history: ignores memory NaN (using what this process may use), resources.headroom NaN (using 1.25) — each must be a finite number above 0',
       )
     },
@@ -462,6 +462,44 @@ describe('vx-history plugin end to end', () => {
       expect(
         (JSON.parse(json.stdout.toString()) as { budgets: { cpus: number } }).budgets.cpus,
       ).toBe(1)
+    },
+    TIMEOUT,
+  )
+
+  // The run reads only the rows of a task as it is now (its command and
+  // `env.define`); the verb read every definition's, so a task whose
+  // command changed showed a reservation the run would never pack.
+  it(
+    '`vx history` shows a task as a run reads it: a changed command starts over',
+    async () => {
+      const hog =
+        'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(50); console.log(b.length)"'
+      await pkg('a', `export default { tasks: { build: { exec: { command: '${hog}' } } } }\n`)
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['vxHistory()']),
+      )
+      const r1 = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      expect(r1.ok).toBe(true)
+      const history = () => {
+        // `vx history` reads configs from the lock, as a run does.
+        Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'lock'], cwd: root })
+        const out = Bun.spawnSync({
+          cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+          cwd: root,
+        })
+        return (
+          JSON.parse(out.stdout.toString()) as {
+            tasks: { id: string; runs: number; reservation: unknown }[]
+          }
+        ).tasks.find((t) => t.id === 'a#build')
+      }
+      expect(history()).toEqual(
+        expect.objectContaining({ runs: 1, reservation: expect.anything() }),
+      )
+      await pkg('a', "export default { tasks: { build: { exec: { command: 'true' } } } }\n")
+      expect(history()).toEqual(expect.objectContaining({ runs: 0, reservation: null }))
     },
     TIMEOUT,
   )

@@ -10,6 +10,7 @@ import {
   SETTLE_MS,
   executions,
   initialOnly,
+  runWarned,
   startWatch,
   until,
   useWatchFixture,
@@ -135,10 +136,7 @@ describe('vx watch loop (e2e)', () => {
         `{ config(_ws, ctx) { ctx.warn('WS-EDIT-SEEN') } }`,
       )}] }\n`,
     )
-    await until(
-      () => w.out().includes('WS-EDIT-SEEN'),
-      'the cycle under the edited workspace config',
-    )
+    await until(() => runWarned(w, 'WS-EDIT-SEEN'), 'the cycle under the edited workspace config')
     await Bun.sleep(SETTLE_MS)
     expect(w.cycles()).toBe(1)
     // The config is not key material: the task is a hit under it.

@@ -112,7 +112,7 @@ Drop `plan.json` below, or paste it, then type a task. Nothing is uploaded.
 
 | Field             | Does                                                          |
 | ----------------- | ------------------------------------------------------------- |
-| `exec.command`    | the one shell command, run in the package's directory (chain steps with `&&`) |
+| `exec.command`    | the one shell command, run in the package's directory (join steps with `&&`) |
 | `exec.env`        | what the command sees ([Environment variables](../environment-variables/))       |
 | `exec.timeout`    | kill the task after this long                                 |
 | `exec.retries`    | re-run a failed task this many times                          |

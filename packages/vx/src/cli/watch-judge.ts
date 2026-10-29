@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { filesBehind } from '../cache/index.js'
-import { xxh3 } from '../util/index.js'
+import { ui, xxh3 } from '../util/index.js'
 import { gitIgnored, gitSpeller } from './watch-filter.js'
 import { modifiedBefore } from './watch-fs.js'
 
@@ -50,6 +50,14 @@ function settledState(abs: string): bigint {
   }
   entries.sort()
   return xxh3(Buffer.from(entries.join('\n')))
+}
+
+function isDirectory(abs: string): boolean {
+  try {
+    return fs.statSync(abs).isDirectory()
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -111,6 +119,8 @@ export class ChangeJudge {
   // are judged one window after the run ends, all together — an edit made
   // meanwhile still differs from what the loop last saw and re-runs.
   readonly pending = new Map<string, string>()
+  /** The paths the last judgement found changed. */
+  changed: readonly string[] = []
   /** The last cycle's window, its start on the mtime clock (`fsClockNow`); a write inside it is the run's own. */
   lastCycle: { start: number; end: number } | undefined
   // Declared outputs are ignored by PATH above. A task with no `cache`
@@ -220,6 +230,7 @@ export class ChangeJudge {
     const spell = gitSpeller(this.ctx.workspaceRoot)
     let first: string | undefined
     let firstAbs: string | undefined
+    let firstIsFile = false
     // `sameState` before the `first` test, never after it: it is what
     // RECORDS a path's settled state, and every path this judgement saw
     // must be recorded even though only the first change names the cycle.
@@ -248,21 +259,27 @@ export class ChangeJudge {
     // leaves out the editor's temporary file renamed away.
     let live = 0
     let goneCount = 0
+    const changed: string[] = []
     for (const [p, l] of this.pending) {
       if (ignored.has(p) && !editForUncached(p)) continue
       if (this.sameState(p, ignored.has(p), spell)) continue
+      changed.push(p)
       if (!fs.existsSync(p)) {
         goneCount++
         gone ??= [l, p]
         continue
       }
       live++
-      if (first !== undefined) continue
+      // A file names the cycle before a directory: `mkdir -p` and a write
+      // in it fire the directory first, and the cycle was named by it.
+      if (first !== undefined && (firstIsFile || isDirectory(p))) continue
       first = l
       firstAbs = p
+      firstIsFile = !isDirectory(p)
     }
     if (first === undefined && gone !== undefined) [first, firstAbs] = gone
     this.pending.clear()
+    this.changed = changed
     const more = (live > 0 ? live : goneCount) - 1
     const named = more > 0 ? `${first} (+${more} more)` : first
     const byServer = firstAbs !== undefined && this.ctx.held()
@@ -274,10 +291,12 @@ export class ChangeJudge {
     this.streak.abs = firstAbs
     if (this.streak.n >= 3 && !this.noticed.has(firstAbs)) {
       this.noticed.add(firstAbs)
-      process.stdout.write(
+      ui.say(
+        'warn',
         byServer
           ? `vx watch: ${first} has started 3 cycles in a row, written while a server was running — a persistent task rewrites it. Add it to .gitignore (a git-ignored path never starts a cycle); until then every write starts a cycle.\n`
           : `vx watch: ${first} has started 3 cycles in a row, written by the cycle before each — a task rewrites it every run. Declare it in cache.outputs (an output never starts a cycle) or add it to .gitignore (a git-ignored path never does); until then every run re-runs.\n`,
+        'out',
       )
     }
     return named

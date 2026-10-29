@@ -59,7 +59,7 @@ conformance('Workers with R2', {
 
 it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is unset or wrong', async () => {
   for (const [bindings, status, detail] of [
-    [{ ALLOW: '' }, 401, 'the server admits no CI: set ALLOW'],
+    [{ ALLOW: '' }, 401, 'ALLOW is empty: set it to the CI workflows this server serves'],
     [
       { ALLOW: 'https://gitlab.com:group/app' },
       500,
@@ -155,6 +155,68 @@ it('checks 6 lookups by default: one round of the calls a request has waiting', 
       headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
     })
     expect(((await res.json()) as { maxCheckHashes: number }).maxCheckHashes).toBe(6)
+  } finally {
+    await other.dispose()
+  }
+})
+
+// R2's failure is not the client's: an upload it refused answered 400,
+// "the body is not N bytes", for a body that was whole.
+it('answers 502 naming R2 when R2 refuses an upload', async () => {
+  const g = globalThis as Record<string, unknown>
+  g.caches = { open: async () => ({ match: async () => undefined, put: async () => {} }) }
+  g.FixedLengthStream = class extends TransformStream {
+    constructor(_length: number) {
+      super()
+    }
+  }
+  const realFetch = globalThis.fetch
+  // The issuer's keys, without a network, as the Worker's fetch reads them.
+  g.fetch = async (url: string) => Response.json(await iss.fetchJson(String(url)))
+  try {
+    const worker = (await import('../src/worker.js')).default
+    const BLOBS = {
+      head: async () => null,
+      get: async () => null,
+      put: async (_: string, body: ReadableStream) => {
+        await body.cancel()
+        throw new Error('R2 is down')
+      },
+    }
+    const url = `${AUD}/v1/artifacts/abcd`
+    const res = await worker.fetch(
+      new Request(url, {
+        method: 'PUT',
+        body: 'whole',
+        headers: {
+          ...NAMED,
+          authorization: `Bearer ${await iss.sign(JOBS.main, AUD)}`,
+          'content-length': '5',
+        },
+      }),
+      { BLOBS, ALLOW: ALLOW_VAR, AUDIENCE: AUD },
+      { waitUntil: () => {} },
+    )
+    expect([res.status, await res.json()]).toEqual([
+      502,
+      { code: 'bad_gateway', message: 'the bucket refused the artifact: R2 is down' },
+    ])
+  } finally {
+    g.fetch = realFetch
+    delete g.caches
+    delete g.FixedLengthStream
+  }
+})
+
+// wrangler.jsonc vars may be JSON numbers, which reach the Worker as
+// numbers: `"MAX_CHECK_HASHES": 20` was skipped, unsaid, for the default 6.
+it('takes a limit wrangler.jsonc writes as a number', async () => {
+  const other = await start({ ALLOW: ALLOW_VAR, MAX_CHECK_HASHES: 20 })
+  try {
+    const res = await fetch(new URL('/v1/capabilities', await other.ready), {
+      headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
+    })
+    expect(((await res.json()) as { maxCheckHashes: number }).maxCheckHashes).toBe(20)
   } finally {
     await other.dispose()
   }

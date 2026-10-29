@@ -160,7 +160,9 @@ it('prints its usage for --help and exits 0', async () => {
   } finally {
     process.stdout.write = write
   }
-  expect(printed).toEqual(Array(3).fill('Usage: vx setup github [--debs <dir>]\n'))
+  expect(printed.map(Bun.stripANSI)).toEqual(
+    Array(3).fill('Usage: vx setup github [--debs <dir>]\n'),
+  )
 })
 
 // vx-worker.yml restores by `vx-setup-debs-<runner.os>-<runner.arch>-`

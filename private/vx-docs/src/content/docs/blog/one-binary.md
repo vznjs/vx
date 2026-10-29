@@ -47,11 +47,12 @@ flowchart LR
   B --> T["your tasks: tsc, vite, eslint on your own Node"]
 ```
 
-You get the prebuilt binary for your platform: Linux (glibc, not Alpine's musl)
-and macOS, x64 and arm64 (Windows under WSL). The GitHub release carries
-the same binary, so CI can skip the package manager. No postinstall, no
-first-run download. The npm package's `vx` command is a small sh
-launcher that execs that binary.
+You get the prebuilt binary for your platform: Linux (glibc, not
+Alpine's musl) and macOS, x64 and arm64 (Windows under WSL).
+
+The GitHub release carries the same binary, so CI can skip the package
+manager. No postinstall, no first-run download. The npm package's `vx`
+command is a small sh launcher that execs that binary.
 
 Your tasks don't change. `tsc`, `vite` and `eslint` run on your own
 Node. vx only adds `node_modules/.bin` to their `PATH`.
@@ -66,21 +67,23 @@ Node. vx only adds `node_modules/.bin` to their `PATH`.
 
 ## Why Bun, and why it does not leak
 
-Bun gives vx most of what a runner needs, built in: `bun:sqlite` for
-the cache index, `Bun.zstd*` for compression, `Bun.spawn`, `Bun.Glob`,
-and `bun build --compile` for the binary. So vx has very few
-dependencies.
+Bun gives vx most of what a runner needs, built in: `bun:sqlite` for the
+cache index, `Bun.zstd*` for compression, `Bun.spawn`, `Bun.Glob`, and
+`bun build --compile` for the binary.
 
-None of that reaches you. A workspace on Node 18 with pnpm runs under
+So vx has very few dependencies.
+
+None of that reaches you. A workspace on Node 18 with pnpm works under
 vx as it does under Turborepo. Only running vx *from source* needs
-Bun ≥ 1.4.
+Bun ≥ 1.4.4.
 
 ## No daemon, no service
 
 The binary is the whole install. No background process
 ([why](../no-daemon/)), no account, no service. `vx run` in a container
-with no network works like on a laptop. Plugins that talk to the
-outside world are packages you add.
+with no network works like on a laptop.
+
+Plugins that talk to the outside world are packages you add.
 
 Install and first run: the [Quickstart](../../quickstart/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -214,6 +214,14 @@ interface MetaFile {
    */
   links?: Record<string, string>
   /**
+   * The directories under the outputs whose mode withholds a permission
+   * 0755 grants (`chmod 700 dist/keys`), entry name → permission bits
+   * (v49): a hit made each missing directory with mkdir's default, so a
+   * directory that kept its files to their owner came back readable by
+   * every user.
+   */
+  dirModes?: Record<string, number>
+  /**
    * What the PRODUCING execution used (2026-09-12, additive: an artifact
    * without it reads as before). Rides the artifact so a machine that
    * never ran the task — a fresh CI runner on a remote hit — still learns
@@ -265,6 +273,8 @@ interface PackArgs {
   exec?: ExecUsage | undefined
   /** The workspace root an output symlink's target must stay inside; absent, every link is refused. */
   root?: string
+  /** Where `outputs/` names lie, for the directory modes (`dirModes`); absent, none is recorded. */
+  projectDir?: string
 }
 
 /** The largest second count ustar's 12-byte mtime field holds: 11 octal digits. */
@@ -332,7 +342,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
             `${shown} is a symlink to ${to}, outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there, or take it back with a '!' entry`,
           )
         }
-        return { name, link: to }
+        return { name, link: to, abs, shown }
       }
       if (!st.isFile()) {
         throw new UserError(
@@ -353,6 +363,19 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       }
     }),
   )
+  const linked = new Map<string, string>()
+  const symlinks = files.filter(
+    (f): f is Extract<(typeof files)[number], { link: string }> => 'link' in f,
+  )
+  for (const f of symlinks) linked.set(f.abs, f.shown)
+  for (const f of symlinks) {
+    const via = throughLink(path.dirname(f.abs), f.link, linked)
+    if (via !== undefined) {
+      throw new UserError(
+        `${f.shown} is a symlink to ${f.link} through ${linked.get(via)}, another link: vx restores each link as written and checks where it points alone — point it at the target directly, or take it back with a '!' entry`,
+      )
+    }
+  }
   // In the outputs' order, not as each stat settled: one tree, one artifact.
   const regular: Array<Exclude<(typeof files)[number], { link: string }>> = []
   for (const f of files) {
@@ -361,6 +384,17 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       meta.files[f.name] = [f.mode, f.mtimeMs]
       regular.push(f)
     }
+  }
+  if (args.projectDir !== undefined) {
+    const modes = narrowDirModes(
+      [...args.outputs.keys(), ...(args.dirs ?? [])],
+      args.dirs ?? [],
+      (name) =>
+        name.startsWith('outputs/')
+          ? path.join(args.projectDir!, name.slice('outputs/'.length))
+          : path.join(args.root ?? args.projectDir!, name.slice(WORKSPACE_PREFIX.length)),
+    )
+    if (modes !== undefined) meta.dirModes = modes
   }
   const stdout = new TextEncoder().encode(args.stdout)
   const metaBytes = new TextEncoder().encode(JSON.stringify(meta))
@@ -376,6 +410,36 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
     { name: META_ENTRY, size: metaBytes.byteLength, body: metaBytes },
   ]
   return { inputs, size: tarSize([...inputs, sumInput('0'.repeat(SUM_SIZE))]) }
+}
+
+/**
+ * The modes `MetaFile.dirModes` keeps: of each directory on the way to an
+ * output name below its namespace, and of each empty output directory, the
+ * ones that withhold a permission 0755 grants. A wider mode is left to the
+ * restoring umask, as a plain mkdir's is, so most artifacts carry none.
+ */
+function narrowDirModes(
+  names: readonly string[],
+  emptyDirs: readonly string[],
+  abs: (name: string) => string,
+): Record<string, number> | undefined {
+  const seen = new Set<string>()
+  let out: Record<string, number> | undefined
+  const visit = (dir: string): void => {
+    if (seen.has(dir)) return
+    seen.add(dir)
+    const st = statSync(abs(dir), { throwIfNoEntry: false })
+    if (st?.isDirectory() !== true || (st.mode & 0o755) === 0o755) return
+    ;(out ??= {})[dir] = st.mode & 0o777
+  }
+  for (const d of emptyDirs) visit(d)
+  for (const name of names) {
+    const top = name.startsWith('outputs/') ? 'outputs/'.length : WORKSPACE_PREFIX.length
+    for (let i = name.lastIndexOf('/'); i > top; i = name.lastIndexOf('/', i - 1)) {
+      visit(name.slice(0, i))
+    }
+  }
+  return out
 }
 
 /** The tar as a stream: each output is read from disk as it is written. */
@@ -526,6 +590,7 @@ export async function sealTree(dir: string, scan: ArtifactScan): Promise<void> {
   }
   if (scan.dirs.length > 0) meta.dirs = scan.dirs
   if (scan.links.length > 0) meta.links = Object.fromEntries(scan.links)
+  if (scan.dirModes.length > 0) meta.dirModes = Object.fromEntries(scan.dirModes)
   if (scan.exec !== undefined) meta.exec = scan.exec
   await writeFile(path.join(dir, META_ENTRY), JSON.stringify(meta))
 }
@@ -537,10 +602,14 @@ export function planOfTree(dir: string, stdout: string): ArtifactPlan {
   const out = new TextEncoder().encode(stdout)
   const inputs: TarInput[] = [{ name: STDOUT_ENTRY, size: out.byteLength, body: out }]
   for (const [name, [mode, mtimeMs]] of Object.entries(meta.files)) {
+    // Bun.file reads through a link: only a regular file is packed as one.
+    const st = lstatSync(path.join(dir, name))
+    if (!st.isFile())
+      throw new ArchiveSecurityError(`kept tree entry ${name} is not a regular file`)
     const file = Bun.file(path.join(dir, name))
     inputs.push({
       name,
-      size: statSync(path.join(dir, name)).size,
+      size: st.size,
       mode,
       mtime: Math.min(USTAR_MTIME_MAX, Math.max(0, Math.floor(mtimeMs / 1000))),
       body: file,
@@ -557,6 +626,8 @@ interface ArtifactScan {
   dirs: string[]
   /** The sidecar's symlinks, `[name, target]`, each name and target proven safe. */
   links: Array<[name: string, target: string]>
+  /** The sidecar's directory modes, each a directory the artifact holds something in or is. */
+  dirModes: Array<[name: string, mode: number]>
   stdout: string | null
   exec: ExecUsage | undefined
   key: string | undefined
@@ -568,6 +639,7 @@ class ScanFold {
   private files: MetaFile['files'] = {}
   private dirs: string[] = []
   private links: Array<[string, string]> = []
+  private dirModes: Array<[string, number]> = []
   private exec: ExecUsage | undefined
   private key: string | undefined
   stdout: string | null = null
@@ -577,6 +649,7 @@ class ScanFold {
     this.files = parsed.files ?? {}
     this.dirs = dirsOf(parsed)
     this.links = linksOf(parsed)
+    this.dirModes = dirModesOf(parsed)
     // The ingest side is the untrusted boundary: a foreign sidecar's
     // usage is taken only when it is a plain non-negative number.
     this.exec = usageOf(parsed.exec)
@@ -588,6 +661,26 @@ class ScanFold {
   }
 
   result(): ArtifactScan {
+    // A mode names a directory the artifact holds, never one a restore
+    // would otherwise not make: the row it becomes is a directory a hit
+    // makes and asks to stand.
+    if (this.dirModes.length > 0) {
+      const held = new Set(this.dirs)
+      const hold = (name: string): void => {
+        for (let i = name.indexOf('/'); i !== -1; i = name.indexOf('/', i + 1))
+          held.add(name.slice(0, i))
+      }
+      for (const s of this.seen) hold(s.name)
+      for (const d of this.dirs) hold(d)
+      for (const [name] of this.links) hold(name)
+      for (const [name] of this.dirModes) {
+        if (!held.has(name)) {
+          throw new ArchiveSecurityError(
+            `archive directory mode names no output directory: ${name}`,
+          )
+        }
+      }
+    }
     return {
       entries: this.seen.map((s) => {
         const m = this.files[s.name]
@@ -598,6 +691,7 @@ class ScanFold {
       }),
       dirs: this.dirs,
       links: this.links,
+      dirModes: this.dirModes,
       stdout: this.stdout,
       exec: this.exec,
       key: this.key,
@@ -707,6 +801,89 @@ function linksOf(meta: MetaFile): Array<[string, string]> {
   })
 }
 
+/**
+ * The first of `links` (absolute paths) that `to` passes through, walked
+ * from `dir` a segment at a time. Each link's target is checked as text,
+ * but the kernel follows one link while it resolves the next: `up -> ..`
+ * and `esc -> up/../../x` each read as inside while `esc` lands outside.
+ */
+function throughLink(
+  dir: string,
+  to: string,
+  links: ReadonlyMap<string, string>,
+): string | undefined {
+  let at = dir
+  for (const seg of to.split('/')) {
+    if (seg === '' || seg === '.') continue
+    at = seg === '..' ? path.dirname(at) : path.join(at, seg)
+    if (links.has(at)) return at
+  }
+  return undefined
+}
+
+/**
+ * Whether a restore may write at `real`: under `realBase` and not in its
+ * `.git`, in any case (a case-insensitive disk reads `.GIT` as `.git`). The
+ * entry names are held to this lexically (`OUTPUT_NEVER`); this holds the
+ * path a link on the way resolves to (vercel/turborepo#14808). Only the
+ * base's own: a deeper `.git` (a submodule under `gen/**`, a build's
+ * `dist/.git`) is an output an entry may name, and refused only once it
+ * existed on disk, a restore failed by what the last run left.
+ */
+function writable(real: string, realBase: string): boolean {
+  if (real === realBase) return true
+  if (!real.startsWith(realBase + path.sep)) return false
+  const top = real.slice(realBase.length + 1).split(path.sep, 1)[0]!
+  return top.toLowerCase() !== '.git'
+}
+
+/**
+ * The sidecar's directory modes, each name held to a file entry's rules and
+ * each mode to permission bits.
+ */
+function dirModesOf(meta: MetaFile): Array<[string, number]> {
+  const raw: unknown = meta.dirModes
+  if (raw === undefined) return []
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new ArchiveSecurityError('archive sidecar dirModes is not a map')
+  }
+  return Object.entries(raw as Record<string, unknown>).map(([name, mode]) => {
+    if (!(name.startsWith('outputs/') || name.startsWith(WORKSPACE_PREFIX))) {
+      throw new ArchiveSecurityError(`archive directory is not an output: ${name}`)
+    }
+    assertSafeName(name)
+    if (typeof mode !== 'number' || !Number.isInteger(mode) || mode < 0 || mode > 0o777) {
+      throw new ArchiveSecurityError(
+        `archive directory ${name} has an unsafe mode: ${String(mode)}`,
+      )
+    }
+    return [name, mode]
+  })
+}
+
+/**
+ * A file this user cannot read, or one gone since its stat, is not the
+ * same bytes: the rename replaces it. Any other failure is the restore's:
+ * an EMFILE read as "differs" sent the restore on to stage, and its error
+ * named the staging file.
+ */
+function sameBytes(file: string, body: Uint8Array): boolean {
+  try {
+    return readFileSync(file).equals(body)
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'EACCES' || code === 'EPERM' || code === 'ENOENT') return false
+    throw err
+  }
+}
+
+/** The deepest directory holding both `a` and `b`. */
+function commonDir(a: string, b: string): string {
+  let dir = a
+  while (!inside(b, dir) && path.dirname(dir) !== dir) dir = path.dirname(dir)
+  return dir
+}
+
 /** `p` is `root` or under it, lexically. */
 const inside = (p: string, root: string): boolean => {
   const r = path.resolve(root)
@@ -757,6 +934,7 @@ export async function extractArtifactStream(
   let meta: MetaFile['files'] = {}
   let dirs: string[] = []
   let links: Array<[string, string]> = []
+  let dirModes: Array<[string, number]> = []
   const fold = onScan === undefined ? undefined : new ScanFold()
   try {
     const check = new SumCheck()
@@ -771,6 +949,7 @@ export async function extractArtifactStream(
         meta = parsed.files ?? {}
         dirs = dirsOf(parsed)
         links = linksOf(parsed)
+        dirModes = dirModesOf(parsed)
         continue
       }
       assertSafeName(e.name)
@@ -811,8 +990,23 @@ export async function extractArtifactStream(
       provided.add(`${name}/`)
     }
     // A link may point only inside the workspace (the project, without one).
-    const bound = stageRoot ?? workspaceDest ?? destDir
+    // Unpacked into a cache tree (no stage root), `outputs/` and
+    // `workspace-outputs/` are siblings: bounded by the latter alone, a
+    // `dist/link -> big.bin` pointed "out" and the ingest failed. The tree
+    // bounds by their parent; its restore checks against the workspace.
+    const bound =
+      stageRoot ?? (workspaceDest === undefined ? destDir : commonDir(destDir, workspaceDest))
+    const linked = new Map<string, string>()
+    for (const [name] of links) {
+      const dest = x.destFor(name)
+      if (dest !== null && dest.rel.length > 0) linked.set(path.join(dest.base, dest.rel), name)
+    }
     for (const [name, to] of links) {
+      // Renamed over an entry just written, the link would stand where the
+      // sidecar says a file is, and a re-pack of the tree reads through it.
+      if (provided.has(name) || [...provided].some((p) => p.startsWith(`${name}/`))) {
+        throw new ArchiveSecurityError(`archive link ${name} is also a file or directory entry`)
+      }
       if (accept !== undefined && !accept(name)) {
         throw new ArchiveSecurityError(
           `archive link is not one of the task's declared outputs: ${name}`,
@@ -822,11 +1016,29 @@ export async function extractArtifactStream(
       if (dest === null || dest.rel.length === 0) continue
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
-      if (!inside(path.resolve(path.dirname(target), to), bound)) {
+      const at = path.resolve(path.dirname(target), to)
+      if (!inside(at, bound)) {
         throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
+      }
+      const via = throughLink(path.dirname(target), to, linked)
+      if (via !== undefined) {
+        throw new ArchiveSecurityError(
+          `archive link ${name} points through ${linked.get(via)}, another link it restores: ${to}`,
+        )
+      }
+      // Lexical: a write through a link is judged where it resolves, so an
+      // alias chain into .git gets no further than this link would.
+      if (!writable(at, path.resolve(bound))) {
+        throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)
       }
       await x.stageLink(name, dest.base, target, to)
       provided.add(name)
+    }
+    // A moded directory is one the entries above make; its row, like an
+    // empty directory's, names it with a trailing slash. The cache applies
+    // the mode (`Cache.restoreOutputs`), to the directories a hit makes.
+    for (const [name] of dirModes) {
+      if (x.destFor(name) !== null) provided.add(`${name}/`)
     }
     verify?.(provided)
     // The sidecar's stat is the truth, a mode of 000 and an mtime at or
@@ -887,7 +1099,8 @@ function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined)
   const fd = openSync(s.target, constants.O_RDONLY | constants.O_NOFOLLOW)
   try {
     const st = fstatSync(fd)
-    if (st.ino !== ino || st.nlink !== 1) {
+    // An in-place write since the compare keeps the inode and bumps the ctime.
+    if (st.ino !== ino || st.nlink !== 1 || st.ctimeMs !== s.sameCtimeMs) {
       throw new Error(`${s.target} changed while it was restored`)
     }
     if ((st.mode & 0o7777) !== restoredMode(mode)) fchmodSync(fd, restoredMode(mode))
@@ -915,6 +1128,8 @@ interface Staged {
   base: string
   /** The target already holds the entry's bytes: nothing was written, and only its mode and mtime may change. */
   same?: number
+  /** The kept target's ctime when its bytes were compared. */
+  sameCtimeMs?: number
   /** `tmp` was copied beside `target`, which is on another filesystem than the staging (`crossOver`). */
   beside?: true
   /** A symlink to this target, made at `tmp`: no mode, no mtime. */
@@ -938,6 +1153,8 @@ interface Tree {
  */
 class Extractor {
   private readonly staged: Staged[] = []
+  /** Directories given owner write for a rename into them, with the mode to put back. */
+  private readonly reopened = new Map<string, number>()
   /** Empty output directories made, with the top of each chain created. */
   private readonly madeDirs: Array<{ dir: string; created: string }> = []
   private inflight: Promise<unknown>[] = []
@@ -1061,7 +1278,7 @@ class Extractor {
       )
       if (real !== null) {
         const realBase = await this.realBaseOf(base)
-        if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+        if (!writable(real, realBase)) {
           throw await linkOutError(baseResolved, probe, realBase)
         }
         return
@@ -1090,7 +1307,7 @@ class Extractor {
     if (err.code !== 'EEXIST' && err.code !== 'ENOENT' && err.code !== 'ELOOP') throw err
     const real = await resolveThrough(dir)
     const realBase = await this.realBaseOf(base)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+    if (!writable(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
     // What stands there without a link on the way (a file named like the
@@ -1226,7 +1443,7 @@ class Extractor {
         st.isFile() &&
         st.nlink === 1 &&
         st.size === body.byteLength &&
-        readFileSync(target).equals(body)
+        sameBytes(target, body)
       ) {
         this.staged.push({
           staged: false,
@@ -1237,6 +1454,7 @@ class Extractor {
           streamed: false,
           base,
           same: st.ino,
+          sameCtimeMs: st.ctimeMs,
         })
         return
       }
@@ -1361,6 +1579,16 @@ class Extractor {
   async commit(
     metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
   ): Promise<void> {
+    try {
+      await this.commitAll(metaFor)
+    } finally {
+      this.closeReopened()
+    }
+  }
+
+  private async commitAll(
+    metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
+  ): Promise<void> {
     await this.drain()
     // One stat per directory, shared by the filesystem check and the group.
     const dirStats = new Map<string, Stats>()
@@ -1472,9 +1700,47 @@ class Extractor {
       const dir = path.dirname(s.target)
       await this.makeDirIn(t.base, dir)
       await this.assertStillContained(t.base, dir, checked)
-      await rename(s.tmp, s.target)
+      await this.renameInto(s.tmp, s.target)
     }
     await rm(t.at, { recursive: true, force: true })
+  }
+
+  /**
+   * `rename`, into a directory of this user's that withholds its own write
+   * (a task's `chmod 555 dist/ro`, which a hit now restores): the
+   * directory gets owner write and search for the rest of the commit, and
+   * its mode back after. Without it every later hit that changed a file
+   * there failed EACCES, as only root could replace it.
+   */
+  private async renameInto(from: string, to: string): Promise<void> {
+    try {
+      await rename(from, to)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EACCES' || !this.reopen(path.dirname(to)))
+        throw err
+      await rename(from, to)
+    }
+  }
+
+  private reopen(dir: string): boolean {
+    if (this.reopened.has(dir)) return false
+    const st = lstatSync(dir, { throwIfNoEntry: false })
+    if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
+    if ((st.mode & 0o300) === 0o300) return false
+    this.reopened.set(dir, st.mode & 0o7777)
+    chmodSync(dir, (st.mode & 0o7777) | 0o300)
+    return true
+  }
+
+  private closeReopened(): void {
+    for (const [dir, mode] of this.reopened) {
+      try {
+        chmodSync(dir, mode)
+      } catch {
+        // gone with an abort's cleanup
+      }
+    }
+    this.reopened.clear()
   }
 
   private async makeDirIn(base: string, dir: string): Promise<void> {
@@ -1529,7 +1795,7 @@ class Extractor {
    */
   private async place(s: Staged, mode: number, t: Date | undefined): Promise<void> {
     try {
-      await rename(s.tmp, s.target)
+      await this.renameInto(s.tmp, s.target)
     } catch (err) {
       if (!s.staged || (err as NodeJS.ErrnoException).code !== 'EXDEV') throw err
       const side = siblingTemp(s.target)
@@ -1540,7 +1806,7 @@ class Extractor {
           chmodSync(side, restoredMode(mode))
           if (t !== undefined) utimesSync(side, t, t)
         }
-        await rename(side, s.target)
+        await this.renameInto(side, s.target)
       } catch (e) {
         await unlink(side).catch(() => undefined)
         throw e
@@ -1564,7 +1830,7 @@ class Extractor {
     checked.add(dir)
     const realBase = await this.realBaseOf(base)
     const real = await realOf(dir, true)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+    if (!writable(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
   }
@@ -1590,7 +1856,7 @@ class Extractor {
     for (const [dir, { base, placed }] of landed) {
       const realBase = await this.realBaseOf(base)
       const real = await realOf(dir, true).catch(() => null)
-      if (real === null || real === realBase || real.startsWith(realBase + path.sep)) continue
+      if (real === null || writable(real, realBase)) continue
       await Promise.allSettled(placed.map((p) => rm(p, { recursive: true, force: true })))
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
@@ -1735,7 +2001,13 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
   for (const part of path.relative(base, probe).split(path.sep)) {
     dir = path.join(dir, part)
     real = await resolveThrough(dir)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) break
+    if (!writable(real, realBase)) break
+  }
+  if (real.startsWith(realBase + path.sep)) {
+    return new UserError(
+      `${dir} is a symbolic link to ${real}, Git's metadata — a cache restore never writes ` +
+        'into a .git directory. Remove the link and re-run, or stop declaring outputs under it.',
+    )
   }
   return new UserError(
     `${dir} is a symbolic link to ${real}, outside ${base} — a cache restore never writes ` +

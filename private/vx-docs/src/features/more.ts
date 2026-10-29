@@ -7,12 +7,12 @@ import type { Feature } from './features.js'
 export const MORE: readonly Feature[] = [
   {
     slug: 'skip-dependencies',
-    title: 'Run just the task',
+    title: 'Run only the task',
     category: 'run',
     hook: 'Skip the dependency chain when you know it is already built.',
     body: [
       'Most runs should build what a task depends on first. Sometimes you know better: the upstream packages are built and you only want the test you are fixing.',
-      '`--exclude-dependencies` drops every `dependsOn` edge, so just the task you asked for runs. Give it names to drop only those edges and keep the rest.',
+      '`--exclude-dependencies` drops every `dependsOn` edge, so only the task you asked for runs. Give it names to drop only those edges and keep the rest.',
     ],
     example: {
       lang: 'sh',
@@ -160,7 +160,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '$ vx run build lnit --all\nvx run: no projects declare task(s): lnit. Tasks: build, test.',
+      code: '$ vx run build lnit --all\n✗ vx run  no projects declare task(s): lnit\n\n  Tasks: build, test\n  A run reads the lock: after editing a vx.config, run `vx lock`',
     },
     image: 'names-must-resolve.png',
     imageAlt: 'A misspelled task refused before the run.',
@@ -273,7 +273,7 @@ export const MORE: readonly Feature[] = [
     slug: 'output-modes',
     title: 'Choose how much you see',
     category: 'output',
-    hook: 'Full logs, errors only, just the hashes, or nothing.',
+    hook: 'Full logs, errors only, the hashes alone, or nothing.',
     body: [
       'The right amount of output depends on who reads it. You at a terminal want failures; a script wants hashes; a quiet CI step wants nothing at all.',
       '`--output-logs` picks one of `full`, `errors-only`, `hash-only` or `none`. Leave it out and vx picks from what you asked for.',
@@ -465,7 +465,7 @@ export const MORE: readonly Feature[] = [
     slug: 'signal-exits',
     title: 'Exit codes in plain words',
     category: 'output',
-    hook: 'A task killed by a signal says which signal, not just a number.',
+    hook: 'A task killed by a signal says which signal, not only a number.',
     body: [
       '`exit 137` means nothing to most people. vx adds the reading: `128 + SIGKILL`, and the usual reasons, such as the kernel’s out-of-memory killer.',
       'A timeout reports itself as a timeout, so the two are never confused.',
@@ -496,7 +496,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '$ vx run | cat\nvx run: missing task name (stdin is not a TTY, so no picker; tasks here: build, test)',
+      code: '$ vx run | cat\n✗ vx run  missing task name (stdin is not a TTY, so no picker; tasks here: build, test)\n\n  see vx run --help',
     },
     image: 'plain-off-tty.png',
     imageAlt: 'A run in a pipe listing tasks instead of opening a picker.',
@@ -904,7 +904,7 @@ export const MORE: readonly Feature[] = [
       "So the client never picks where a write lands. The CI OIDC token, checked against the workflows the cache server’s `ALLOW` names, does: main writes main’s scope, a branch writes its own, a fork writes nothing. `turboCache()` only steers reads: every request names the run’s refs in `x-artifact-read-scopes` (`refs/heads/feat-x, refs/heads/main`), and the server answers from the first that holds the key. For a server that ignores the header, `scope: 'key'` folds the ref into each key and asks every ref’s key in one batch. The local cache never knows a branch.",
     ],
     example: {
-      lang: 'text',
+      lang: 'ts',
       code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { turboCache } from '@vzn/vx-migrate'\n\nexport default defineWorkspace({\n  plugins: [turboCache({ scope: 'header' })], // the default; 'key' for Vercel\n})",
     },
     image: 'cache-scope.png',
@@ -1097,7 +1097,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '[vx] remote cache: upload 3f9a… failed: connection reset\n  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n            remote 3↑ 1✗\n(exit 0)',
+      code: "$ vx run build --all\n[vx] plugin '@vzn/vx-migrate': probe of 1 artifact at http://127.0.0.1:9/v8/artifacts failed: ECONNREFUSED: Unable to connect. Is the computer able to access the url?\n ⏺︎     9ms success miss     packages/api#build\n[vx] plugin '@vzn/vx-migrate': 1 more request failed the same way: ECONNREFUSED: Unable to connect. Is the computer able to access the url?\n  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n            remote 1✗\n(exit 0)",
     },
     image: 'background-uploads.png',
     imageAlt: 'Remote uploads finishing after the run, errors as warnings.',
@@ -1218,7 +1218,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: "vx: the sandbox refused writes outside the project: …/packages/shared.txt.\nIf the task needs one, grant its directory, e.g. `allow: { write: ['../'] }`.",
+      code: "vx: the sandbox refused writes outside the project, which are not reported as violations: …/packages/shared.txt. If the task needs one, grant its directory, e.g. `allow: { write: ['../'] }`.",
     },
     image: 'sandbox-grants.png',
     imageAlt: 'A sandbox refusal naming the path and the fix.',
@@ -1242,7 +1242,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '$ vx run build --timeout 1e3\nvx run: --timeout must be a positive integer in ms (got 1e3)',
+      code: "$ vx run build --timeout 1e3\n✗ vx run  --timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1e3)\n\n  see vx run --help",
     },
     image: 'strict-numbers.png',
     imageAlt: 'A numeric flag in exponent form refused.',
@@ -1338,7 +1338,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '$ vx run build --concurency 4\nvx run: unknown flag: --concurency (did you mean --concurrency?)\n\n$ vx run tset --all\nvx run: no projects declare task(s): tset. Did you mean test?',
+      code: '$ vx run build --concurency 4\n✗ vx run  unknown flag: --concurency\n\n  see vx run --help\n\n  fix  --concurrency\n\n$ vx run tset --all\n✗ vx run  no projects declare task(s): tset\n\n  fix  test',
     },
     image: 'did-you-mean.png',
     imageAlt: 'Mistyped flags and tasks answered with the nearest spelling.',
@@ -1362,7 +1362,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '$ vx build --all\nvx: `build` is a task here, not a command: vx run build --all',
+      code: '$ vx build --all\n✗ vx  `build` is a task here, not a command\n\n  fix  vx run build --all',
     },
     image: 'task-as-verb.png',
     imageAlt: 'A task typed as a verb answered with the right command.',
@@ -1497,7 +1497,7 @@ export const MORE: readonly Feature[] = [
   },
   {
     slug: 'presets',
-    title: 'Presets are just functions',
+    title: 'Presets are plain functions',
     category: 'config',
     hook: 'Share task setups across projects with a TypeScript function, no new concept.',
     body: [
@@ -1530,7 +1530,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: "vx: packages/api/vx.config.ts:8:42: tasks.hang.exec.timeout must be a positive integer (milliseconds)\n> 8 |     hang: { exec: { command: 'sleep 30', timeout: '1s' } },\n    |                                          ^",
+      code: "$ vx lock\n✗ vx lock  lock not written\n\n  packages/api/vx.config.ts:4:42\n  tasks.hang.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"soon\")\n\n  > 4 |     hang: { exec: { command: 'sleep 30', timeout: 'soon' } },\n      |                                          ^",
     },
     image: 'config-errors.png',
     imageAlt: 'A config error pointing at the line and key.',
@@ -1577,8 +1577,8 @@ export const MORE: readonly Feature[] = [
       'Your server stays; vx stores its own entries in it. `turboCache()` names the run’s refs on every read (`x-artifact-read-scopes`), so a server that keeps one cache per branch knows which to read; where a write lands stays the server’s call. `nxCache()` sends plain requests.',
     ],
     example: {
-      lang: 'text',
-      code: "// .vx/workspace.ts\nimport { turboCache } from '@vzn/vx-migrate'\n\nexport default defineWorkspace({ plugins: [turboCache()] })",
+      lang: 'ts',
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { turboCache } from '@vzn/vx-migrate'\n\nexport default defineWorkspace({ plugins: [turboCache()] })",
     },
     image: 'keep-remote-cache.png',
     imageAlt: 'vx using an existing Turbo remote cache.',
@@ -1597,7 +1597,7 @@ export const MORE: readonly Feature[] = [
     category: 'adoption',
     hook: '`prebuild` and `postbuild` fold into `build` when `@vzn/vx-migrate` maps your scripts.',
     body: [
-      'npm runs `prebuild` and `postbuild` around `build` without being asked. A migration that drops them changes what your build does.',
+      'npm calls `prebuild` and `postbuild` around `build` without being asked. A migration that drops them changes what your build does.',
       '`@vzn/vx-migrate` folds them into the task’s command in that order, and says so in its report.',
     ],
     example: {
@@ -1689,7 +1689,7 @@ export const MORE: readonly Feature[] = [
   },
   {
     slug: 'local-floor',
-    title: 'This machine is always the floor',
+    title: 'This machine is always the last stop',
     category: 'extend',
     hook: 'Running and caching locally are built in, so a declined plugin hands work back, never drops it.',
     body: [
@@ -1707,7 +1707,7 @@ export const MORE: readonly Feature[] = [
       href: 'docs/plugins/',
     },
     deepDive: {
-      label: 'The local floor',
+      label: 'Running here is not a plugin',
       href: 'blog/the-local-floor/',
     },
   },
@@ -1809,7 +1809,7 @@ export const MORE: readonly Feature[] = [
   },
   {
     slug: 'reapi-safety',
-    title: 'A wedged server is just a miss',
+    title: 'A wedged server is only a miss',
     category: 'extend',
     hook: 'Downloads are verified and calls have deadlines, so a bad server never hangs a run.',
     body: [

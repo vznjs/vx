@@ -186,7 +186,10 @@ browser (through `private/vx-bench/schedule-policy.ts`), and
 when they load:
 
 ```ts
-export function computeReverseDepCount(nodes: ReadonlyMap<string, TaskNode>): Map<string, number> // also the live region's waiting order
+export function computeReverseDepCount(
+  nodes: ReadonlyMap<string, TaskNode>,
+  counted?: ReadonlyMap<string, unknown>,
+): Map<string, number> // also the live region's waiting order; `counted` limits the dependents counted (the exec tier)
 export function tieredReverseDepCount(
   nodes: Map<string, TaskNode>,
   restoreTier: ReadonlySet<string>,
@@ -268,7 +271,9 @@ exec-tier tasks that depend on it. Its dependents do wait on its deps:
 one that finishes early releases them once its own deps have settled,
 so `dependsOn` order holds through a hit (released at its own finish,
 an `e2e` ran beside the `db:migrate` two edges up; item 963). An exec-tier task's count is the
-exact closure over the exec tier alone; a restore's is the sum over its
+exact closure over the exec tier, where an exec task under a restore
+counts that restore's exec dependents as its own (`e1 → r → e2` ranked
+`e1` 0 behind every idle task while `e2` waited on it); a restore's is the sum over its
 direct exec-tier dependents of one plus theirs, plus the rank of each
 restore that depends on it, since that one releases its dependents only
 after it (C-51: `r1 → r2 → e` ranked `r1` 0, behind every idle restore,

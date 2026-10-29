@@ -8,7 +8,12 @@
 // `.unsafe`: it asks git for the PR's commits, and a sandboxed shard has no git.
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { conventionalError, squashBreakingError } from '../scripts/conventional.js'
+import {
+  conventionalError,
+  landedHeads,
+  landsByMerge,
+  squashBreakingError,
+} from '../scripts/conventional.js'
 import { commitsBetween } from '../scripts/release-notes.js'
 import { fetchHistory } from './helpers/history.js'
 
@@ -22,16 +27,33 @@ it("the PR's title is a Conventional Commits header", () => {
   expect(conventionalError(title)).toBeNull()
 })
 
+// A mega branch's own commit made before this row knew mega branches; its
+// subject cannot change without rewriting the branch every landed PR
+// shares (2026-10-28).
+const KNOWN = new Set(['92f8f41369c5c8ebe41934bb31c8eeddda32b1a1'])
+
 it('every commit the PR adds has a Conventional Commits subject', () => {
   if (base === '' || head === '') return
-  const r = Bun.spawnSync(['git', 'log', '--no-merges', '--format=%h %s', `${base}..${head}`], {
-    cwd: path.resolve(import.meta.dir, '..'),
-  })
+  const cwd = path.resolve(import.meta.dir, '..')
+  // A PR a mega branch lands was held to this row in its own run, its
+  // squash title standing for its commits: only the branch's own are judged.
+  const landed = landedHeads(base, head, cwd)
+  const r = Bun.spawnSync(
+    [
+      'git',
+      'log',
+      '--no-merges',
+      '--format=%H %s',
+      `${base}..${head}`,
+      ...landed.map((h) => `^${h}`),
+    ],
+    { cwd },
+  )
   expect(r.exitCode).toBe(0)
   const bad = r.stdout
     .toString()
     .split('\n')
-    .filter((l) => l !== '')
+    .filter((l) => l !== '' && !KNOWN.has(l.slice(0, l.indexOf(' '))))
     .flatMap((l) => {
       const subject = l.slice(l.indexOf(' ') + 1)
       const why = conventionalError(subject)
@@ -42,6 +64,7 @@ it('every commit the PR adds has a Conventional Commits subject', () => {
 
 it('the squash lands as many breaking commits as the branch holds', () => {
   if (title === '' || base === '' || head === '') return
+  if (landsByMerge(base, head, path.resolve(import.meta.dir, '..'))) return
   const commits = commitsBetween(base, head, path.resolve(import.meta.dir, '..'))
   expect(squashBreakingError(title, commits)).toBeNull()
 })

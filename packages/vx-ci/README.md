@@ -73,8 +73,8 @@ A push to, or a pull request from, a branch names
 fork's pull request names the fork; so does a `pull_request_target` or
 `workflow_run` run on a PR's behalf (by `GITHUB_EVENT_NAME`, though its
 ref is main's), and an `issue_comment` on a PR, which names no branch,
-`pr-<n>`. A merge queue's run (`merge_group`) is trusted: no scope,
-whatever its `gh-readonly-queue/...` branch, compared with
+`pr-<n>`. A merge queue's run (`merge_group`) is trusted, whatever its
+`gh-readonly-queue/...` branch: no scope, compared with
 `merge_group.base_sha`. A pull request also names its base commit
 (`pull_request.base.sha`), the base of a bare `--affected`. The scope
 keys only what plugins store themselves (`ctx.cache`, run records):
@@ -82,8 +82,9 @@ task keys never carry it, and the cache server decides from the CI OIDC
 token where a task's entry lands. `VX_CACHE_SCOPE` overrides it.
 
 It also names the refs a remote cache reads, in order (`refs`): the
-run's own branch (a pull request's head, else `GITHUB_REF`), then the
-branch it merges into (`GITHUB_BASE_REF`), then the default branch (the
+run's own branch (a pull request's head, a `workflow_run` a pull request
+started included, else `GITHUB_REF`), then the branch it merges into
+(`GITHUB_BASE_REF`, or that `workflow_run`'s pull request's base), then the default branch (the
 workspace's `baseBranch`, else the event's). A merge queue's run reads
 only its base branch (`merge_group.base_ref`, else the queue ref's
 `<base>`): it is about to become that branch, and the server writes its
@@ -154,7 +155,10 @@ read it (on GitLab it sits in the checkout). On Actions the step's outputs, writ
 `GITHUB_OUTPUT`, are `fetched` and `key`
 (`vx-setup-debs-<RUNNER_OS>-<RUNNER_ARCH>-<image>-<version>`, the
 runner image's, which the restore prefix below finds), so a cache step
-saves only what it fetched:
+saves only what it fetched. Save only from the default branch's own
+runs: the restored debs install as root with `dpkg -i`, which checks no
+signature, and a restore takes the newest key of the prefix, so a
+pull request's code saving there would reach every later job:
 
 ```yaml
 - uses: actions/cache/restore@v5
@@ -164,7 +168,7 @@ saves only what it fetched:
     restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
 - id: setup
   run: vx setup github
-- if: steps.setup.outputs.fetched == 'true'
+- if: steps.setup.outputs.fetched == 'true' && github.ref == 'refs/heads/main'
   uses: actions/cache/save@v5
   with:
     path: ~/.cache/vx/setup-debs

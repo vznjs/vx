@@ -63,6 +63,19 @@ export async function discoverCliProjects(root: string): Promise<ProjectMeta[]> 
 }
 
 /**
+ * `//#task`, Turbo's root package, as the root project's id: the name
+ * discovery gives it (D-39), for a verb that reads history by task id.
+ */
+export async function rootSpelled(root: string, target: string): Promise<string> {
+  if (!target.startsWith('//#')) return target
+  const name = await discoverCliProjects(root).then(
+    (metas) => metas.find((m) => m.dir === root)?.name,
+    () => undefined,
+  )
+  return name === undefined ? target : `${name}#${target.slice(3)}`
+}
+
+/**
  * `--cache-dir <path>` / `--cache-dir=<path>` for a verb that reads the
  * cache a run wrote — `why`, `last`, `info`, `cache clean`. Same rules as
  * `vx run`'s: a value is required, and the space form refuses a value

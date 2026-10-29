@@ -10,6 +10,7 @@ import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import {
   SETTLE_MS,
   initialOnly,
+  runWarned,
   ARMS,
   arms,
   startWatch,
@@ -32,7 +33,7 @@ describe('vx watch and claimed root files', () => {
     await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     await Bun.write(path.join(f.root, '.vx/workspace.mjs'), claimant('org/claimant'))
-    await until(() => w.out().includes('CLAIMANT-LOADED'), 'the cycle under the new plugin')
+    await until(() => runWarned(w, 'CLAIMANT-LOADED'), 'the cycle under the new plugin')
     await until(() => arms(w) === 2, 'the re-arm after it')
     await writeFile(path.join(f.root, 'custom.lock'), 'v1\n')
     await until(() => w.cycles() === 2, 'the cycle for the claimed file')

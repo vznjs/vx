@@ -54,12 +54,14 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
 }
 
 export interface PersistentSpawn {
-  child: ReturnType<typeof Bun.spawn>
+  child: ReturnType<typeof Bun.spawn> | undefined // undefined when the spawn itself failed (`ready` rejects)
   ready: Promise<void> // resolves once "ready"; rejects if exit before ready, or on a readiness timeout once the group is gone (one SIGTERM, grace, SIGKILL)
   readyMs: () => number // ms from spawn to ready, to the readiness timeout giving up, or to now
 }
 
 export function runPersistent(opts: PersistentOptions): PersistentSpawn
+// Put back the terminal modes of every task still holding it (a second signal exits without waiting for them).
+export function restoreTerminalModes(): void
 
 export function shellQuote(arg: string): string
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
@@ -95,7 +97,7 @@ export function execWrap(command: string): string // `exec <command>` when execW
 export function armTimeout(proc, timeoutMs): { timedOut(): boolean; settle(): Promise<void> }
 export const POST_EXIT_CUT_LINE: string
 export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<boolean>
-export function spawnFailureText(err: unknown, cwd: string, what?: string): string
+export function spawnFailureText(err: unknown, cwd: string, what?: string, command?: string): string // E2BIG with `command`: its size and the 128 KiB limit
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
 export function droppedOutputLine(dropped: number, headChars?: number, tailChars?: number): string
@@ -108,6 +110,7 @@ export interface CapturedChunk {
 export class BoundedCapture {
   constructor(headChars?: number, tailChars?: number) // default CAPTURE_HEAD_CHARS / CAPTURE_TAIL_CHARS
   push(text: string, err?: boolean): void
+  rebound(headChars: number, tailChars: number, through?: (c: CapturedChunk[]) => CapturedChunk[]): BoundedCapture // tighter bounds; counts what this one already dropped; through maps each side first
   chunks(): CapturedChunk[] // the dropped middle named on stdout
   text(): string
 }
@@ -163,8 +166,9 @@ export class TaskPipes {
   fails the spawn with the reason). Cost: 0.9 ms once per process,
   13 µs a spawn; `runCommand` of `/usr/bin/env` min / median 1.458 /
   2.060 ms against 1.458 / 2.056 before (1,000 interleaved runs).
-  `runPersistent` alone spawns with `stdin: 'pipe'` and never writes
-  it: a dev server that exits on stdin EOF (esbuild `--watch`) stays up
+  `runPersistent` alone hands its child a stdin pipe vx holds and never
+  writes (on Linux a `pipe2` pipe too: `cat /dev/stdin` on the socketpair
+  failed with ENXIO instead of blocking): a dev server that exits on stdin EOF (esbuild `--watch`) stays up
   while vx lives, and sees EOF when vx exits (execution.md § Output
   capture and rendering). `terminal: true` (an `exec.interactive` task
   on a TTY) spawns either with `'inherit'` on all three: no stream, no

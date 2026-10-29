@@ -7,7 +7,7 @@
 // a later run replays. Moved out of execute-task.ts 2026-09-09 as pure
 // code motion.
 
-import { lstatSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   type CacheLayer,
@@ -16,6 +16,7 @@ import {
   outputWalkTakes,
   resolveOutputs,
   resolveWorkspaceOutputs,
+  resolveWorkspaceOutputTree,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
@@ -166,12 +167,11 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
           nestedProjectDirs: a.nestedProjectDirs,
         })
   const outputFiles = tree.files
-  const wsOutputFiles =
-    a.ownWsOutputFiles ??
-    (await resolveWorkspaceOutputs({
-      workspaceRoot: a.workspaceRoot,
-      outputs: a.wsOutputs,
-    }))
+  const wsTree =
+    a.ownWsOutputFiles !== undefined
+      ? { files: a.ownWsOutputFiles, emptyDirs: [] }
+      : await resolveWorkspaceOutputTree({ workspaceRoot: a.workspaceRoot, outputs: a.wsOutputs })
+  const wsOutputFiles = wsTree.files
   endResolve()
   // The mirror of the input warning: declared outputs that resolve to
   // nothing save an empty artifact, and the next hit "restores" it —
@@ -202,7 +202,11 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
           ? ` — ${linkedOut.dir} is a symlink to ${linkedOut.target}, outside ${linkedOut.base}, and vx keeps only outputs inside it: make ${linkedOut.dir} a directory`
           : sandboxed && !grantsWrite
             ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
-            : ''),
+            : '') +
+        bracketLiteralHint([
+          ...a.outputs.map((g) => [node.projectDir, g] as const),
+          ...a.wsOutputs.map((g) => [a.workspaceRoot, g] as const),
+        ]),
     )
   }
   const facts: SaveFacts = {}
@@ -220,6 +224,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       // The root an output symlink's target must stay inside, outputs.workspaceFiles or not.
       workspaceRoot: a.workspaceRoot,
       ...(wsOutputFiles.length > 0 ? { workspaceOutputFiles: wsOutputFiles } : {}),
+      ...(wsTree.emptyDirs.length > 0 ? { workspaceOutputDirs: wsTree.emptyDirs } : {}),
       inputComponents: a.captured.map((c) => ({ entryHash: a.hash, ...c })),
       // No `exitCode`: the save only runs under `effectiveExitCode === 0`, and
       // the contract no longer accepts one — so the invariant is enforced by
@@ -385,4 +390,33 @@ function realpathOrNull(p: string): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * The clause a "matched no files" warning gains when a glob holds an
+ * unescaped `[` and, read as a literal path, names something on disk:
+ * `app/[slug]/page.tsx` is a character class (caching.md) that matches
+ * no route, so the key stops following the file and an edit replays the
+ * old output. Only on the already-empty path; one stat per such glob, on
+ * its literal prefix up to the first segment holding another glob token.
+ */
+export function bracketLiteralHint(
+  globs: readonly (readonly [base: string, glob: string])[],
+): string {
+  let hint = ''
+  for (const [base, glob] of globs) {
+    if (glob.startsWith('!') || !/(^|[^\\])\[/.test(glob)) continue
+    const segments: string[] = []
+    for (const seg of glob.split('/')) {
+      if (/(^|[^\\])[*?{}]/.test(seg)) break
+      segments.push(seg)
+    }
+    const prefix = segments.join('/')
+    if (!/(^|[^\\])\[/.test(prefix)) continue
+    const literal = prefix.replace(/\\(.)/g, '$1')
+    if (!existsSync(path.join(base, literal))) continue
+    const escaped = glob.replace(/(^|[^\\])(?=[[\]])/g, '$1\\')
+    hint += ` — [ starts a character class and ${literal} exists: write ${escaped} to name it`
+  }
+  return hint
 }

@@ -140,6 +140,7 @@ here, itself or in a brace group.
 | [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `.vx/workspace.*` evaluation.                                                          |
 | [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                                     |
 |                                            | `src/workspace/json-data.ts` — a config is JSON data: the one rule the loader and the config worker run (see config-schema.md).            |
+|                                            | `src/workspace/bracket-literal.ts` — `vx lock` refuses a bracket class that names an existing path (see config-schema.md).                 |
 | [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — project graph from plugin edges.                                                                        |
 |                                            | `src/workspace/dependency-rules.ts` — `run.rules.dependencies` held to the graph's direct deps (see package-graph.md).                     |
 | [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.                                                                    |
@@ -163,7 +164,7 @@ here, itself or in a brace group.
 | [`scheduler.md`](./scheduler.md)             | `src/graph/scheduler.ts` — parallel topological executor.                                                 |
 |                                              | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md).                                   |
 |                                              | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).                                    |
-| [`dependency-spec.md`](./dependency-spec.md) | `src/graph/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.                                     |
+| [`dependency-spec.md`](./dependency-spec.md) | `src/util/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.                                      |
 | [`folds.md`](./folds.md)                     | `src/graph/folds.ts` — which dependencies a key folds (`inputs.tasks`).                                   |
 
 ## Cache cluster
@@ -226,6 +227,7 @@ here, itself or in a brace group.
 | [`util-cgroup.md`](./util-cgroup.md)               | `src/util/cgroup.ts` — the cores and memory this process may use, as its cgroup bounds them.                                                                                                        |
 |                                                    | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration`, `treeBytes` (cli-cache.md) and the core verb list (cli.md).                                                                              |
 |                                                    | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                                                                                                           |
+|                                                    | `src/util/write-file.ts` — `refuseSymlink`, `writeNoFollow`: a generated file never written through a link (migration.md).                                                                          |
 
 For the public package surface (what `import('@vzn/vx')` resolves to)
 see [`index.md`](./index.md).

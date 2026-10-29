@@ -4,6 +4,7 @@
 
 import { terminalSubscriber, type RunEventSubscriber } from '../report/index.js'
 import type { Logger } from '../report/index.js'
+import { settleWithin, teardownTimeoutMs } from '../util/index.js'
 import type { OutputContext, VxPlugin } from './plugin.js'
 
 const REQUIRED = ['status', 'taskStdout', 'taskStderr', 'taskComplete'] as const
@@ -32,8 +33,8 @@ function checkLogger(value: unknown): Logger {
 
 /**
  * The first plugin, in declaration order, whose `output` returns a Logger.
- * A hook that throws or returns something else is warned about and passed
- * over: a renderer must never fail a run.
+ * A hook that throws, returns something else or does not answer in time
+ * is warned about and passed over: a renderer must never fail a run.
  */
 export async function claimOutput(
   plugins: readonly VxPlugin[],
@@ -42,7 +43,17 @@ export async function claimOutput(
   for (const plugin of plugins) {
     if (plugin.output === undefined) continue
     try {
-      const logger = await plugin.output(ctx)
+      // Bounded as telemetry's hook is: one that never settled held the
+      // run before its first task until the loop drained, exit 1 (item 921).
+      let logger: Logger | undefined
+      const ms = teardownTimeoutMs()
+      const arrived = await settleWithin(
+        Promise.resolve(plugin.output(ctx)).then((l) => {
+          logger = l
+        }),
+        ms,
+      )
+      if (!arrived) throw new Error(`did not answer within ${ms} ms`)
       if (logger !== undefined) return { logger: checkLogger(logger), owner: plugin.name }
     } catch (err) {
       ctx.warn(
@@ -62,19 +73,35 @@ export function guardedOutput(
   claimed: { logger: Logger; owner: string },
   fallback: RunEventSubscriber,
 ): RunEventSubscriber {
-  const render = terminalSubscriber(claimed.logger)
   let failed = false
+  const fail = (err: unknown): void => {
+    if (failed) return
+    failed = true
+    fallback({
+      kind: 'run:status',
+      warn: true,
+      line: `[vx] plugin '${claimed.owner}' output failed: ${err instanceof Error ? err.message : String(err)}; vx renders the rest of the run`,
+    })
+  }
+  // An `async` method's rejection reached no one: an unhandled rejection
+  // ended the run with a stack, exit 1, after its tasks had passed. It
+  // fails the Logger as a throw does; the event it was handed stays its.
+  const logger = Object.create(claimed.logger) as Logger
+  for (const k of [...REQUIRED, ...OPTIONAL, 'warn'] as const) {
+    const method = claimed.logger[k] as ((...args: unknown[]) => unknown) | undefined
+    if (typeof method !== 'function') continue
+    ;(logger as unknown as Record<string, unknown>)[k] = (...args: unknown[]): void => {
+      const ret = method.apply(claimed.logger, args)
+      if (ret instanceof Promise) ret.catch(fail)
+    }
+  }
+  const render = terminalSubscriber(logger)
   return (event) => {
     if (failed) return fallback(event)
     try {
       render(event)
     } catch (err) {
-      failed = true
-      fallback({
-        kind: 'run:status',
-        warn: true,
-        line: `[vx] plugin '${claimed.owner}' output failed: ${err instanceof Error ? err.message : String(err)}; vx renders the rest of the run`,
-      })
+      fail(err)
       fallback(event)
     }
   }

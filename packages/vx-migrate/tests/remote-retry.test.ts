@@ -213,16 +213,16 @@ describe('the retries option', () => {
     const nx = (retries: number) =>
       refusal(() => resolveNxCacheConfig({ server: 'http://n', retries }, {}))
     expect([NaN, -1, 1.5, 0, 3].map(turbo)).toEqual([
-      'vx/turbo-cache: retries must be a whole number ≥ 0, got NaN',
-      'vx/turbo-cache: retries must be a whole number ≥ 0, got -1',
-      'vx/turbo-cache: retries must be a whole number ≥ 0, got 1.5',
+      'turboCache(): retries must be a whole number ≥ 0, got NaN',
+      'turboCache(): retries must be a whole number ≥ 0, got -1',
+      'turboCache(): retries must be a whole number ≥ 0, got 1.5',
       '(no refusal)',
       '(no refusal)',
     ])
     expect([NaN, -1, 1.5, 0, 3].map(nx)).toEqual([
-      'vx/nx-cache: retries must be a whole number ≥ 0, got NaN',
-      'vx/nx-cache: retries must be a whole number ≥ 0, got -1',
-      'vx/nx-cache: retries must be a whole number ≥ 0, got 1.5',
+      'nxCache(): retries must be a whole number ≥ 0, got NaN',
+      'nxCache(): retries must be a whole number ≥ 0, got -1',
+      'nxCache(): retries must be a whole number ≥ 0, got 1.5',
       '(no refusal)',
       '(no refusal)',
     ])

@@ -91,16 +91,16 @@ runners, add a size and name its label:
 vx dte init
 ```
 
-```text frame="terminal"
-vx dte init: wrote .github/workflows/ci.yml
-vx dte init: wrote .github/workflows/vx-worker.yml
-
-Next:
-  1. The relay at https://vx-dte-server.acme.workers.dev must admit these workflows.
-     Its ALLOW (a plain var, no secret): https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml
-  2. A remote cache the run and the workers share: workers hand back outputs only through it. https://vznjs.github.io/vx/docs/remote-cache/
-  3. Commit .github/workflows/ci.yml, .github/workflows/vx-worker.yml, .vx/workspace.ts and the lock (vx lock), and push.
-  How a run spreads over workers: https://vznjs.github.io/vx/docs/distributed-task-execution/
+```ansi
+[1m[38;2;6;182;212mvx dte init:[0m wrote .github/workflows/ci.yml
+[1m[38;2;6;182;212mvx dte init:[0m wrote .github/workflows/vx-worker.yml
+[38;2;6;182;212m[0m
+[38;2;6;182;212mNext:[0m
+[38;2;6;182;212m  1. Let these workflows use the relay at https://vx-dte-server.acme.workers.dev: set its ALLOW.[0m
+[38;2;6;182;212m     Its ALLOW (a plain var, no secret): https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml[0m
+[38;2;6;182;212m  2. A remote cache the run and the workers share: workers hand back outputs only through it. https://vznjs.github.io/vx/docs/remote-cache/[0m
+[38;2;6;182;212m  3. Commit .github/workflows/ci.yml, .github/workflows/vx-worker.yml, .vx/workspace.ts and the lock (vx lock), and push.[0m
+[38;2;6;182;212m  How a run spreads over workers: https://vznjs.github.io/vx/docs/distributed-task-execution/[0m
 ```
 
 `ci.yml` is the job that runs `vx run`. `vx-worker.yml` is the job each

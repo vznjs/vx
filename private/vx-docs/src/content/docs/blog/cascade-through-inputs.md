@@ -69,11 +69,17 @@ fill idle cores, remote execution and `vx why`.
 ## When a key has to wait
 
 A key waits for its dependencies when one may write a file the task
-reads first. That covers an upstream's root-anchored
-`outputs.workspaceFiles`, an upstream with no `cache` block that may
-write in the project, and an upstream that rewrites its own inputs in
-place (a formatter) whose key this one does not fold. That task, and every task depending
-on it, waits and is left out of the up-front lookup. `vx lock` refuses a task whose inputs match another
+reads first.
+
+That covers three kinds of upstream:
+
+- an upstream's root-anchored `outputs.workspaceFiles`;
+- an upstream with no `cache` block that may write in the project;
+- an upstream that rewrites its own inputs in place (a formatter) whose
+  key this one does not fold.
+
+That task, and every task depending on it, waits and is left out of the
+up-front lookup. `vx lock` refuses a task whose inputs match another
 task's outputs.
 
 Full details: [Caching](../../caching/). More at

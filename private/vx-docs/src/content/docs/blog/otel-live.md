@@ -66,8 +66,9 @@ Sending live costs no more than one send at the end:
 <small>Median of 10 interleaved runs · `private/vx-bench/generate.ts`, 60 projects, `build --all --no-cache` · local OTLP stub · CPU is vx's user + system time · Linux x64, 4 cores · vx 4c308fb · 2026-10-23</small>
 
 `otel({ live: false })` sends everything at the end instead. Why
-telemetry can never fail a build:
-[Observability that cannot break a run](../telemetry-never-breaks-a-run/).
-The full attribute list is in the
-[vx-otel README](https://github.com/vznjs/vx/tree/main/packages/vx-otel#live-export).
+telemetry can never fail a build: [Observability that cannot break a
+run](../telemetry-never-breaks-a-run/).
+
+The full attribute list is in the [vx-otel
+README](https://github.com/vznjs/vx/tree/main/packages/vx-otel#live-export).
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

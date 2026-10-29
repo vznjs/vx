@@ -1,19 +1,13 @@
 // The `github()` telemetry plugin. Contributes one observe-only sink that
 // writes the run as a GitHub Actions job summary. Off Actions
 // (`GITHUB_ACTIONS` not 'true') the factory returns undefined, which
-// `plugins` skips: no option check, no hook, no load, so declaring
-// `github()` costs nothing on a laptop.
+// `plugins` skips: no hook, no load, so declaring `github()` costs nothing
+// on a laptop. index.ts checks its options everywhere.
 import { appendFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import {
-  refuseUnknownOptions,
-  type PluginOptionKinds,
-  definePlugin,
-  UserError,
-  type VxPlugin,
-} from '@vzn/vx'
+import { definePlugin, type VxPlugin } from '@vzn/vx'
 import { githubBranch } from './cache-scope.js'
 
 // Every run evaluates `.vx/workspace.ts`; the sink and the summary
@@ -41,22 +35,9 @@ export interface GithubPluginOptions {
 }
 
 /** Each option `GithubPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
-const GITHUB_PLUGIN_KEYS: PluginOptionKinds<GithubPluginOptions> = {
-  summaryFile: 'string',
-  title: 'string',
-  cacheScope: 'boolean',
-}
-
 export function github(options: GithubPluginOptions = {}): VxPlugin | undefined {
   if (process.env['GITHUB_ACTIONS'] !== 'true') return undefined
-  refuseUnknownOptions('github()', options, GITHUB_PLUGIN_KEYS)
-  // '' passes the kind check but reads wrong: `??` keeps it, so summaryFile
-  // declined instead of using GITHUB_STEP_SUMMARY and title rendered an
-  // empty heading.
-  for (const key of ['summaryFile', 'title'] as const) {
-    if (options[key] === '')
-      throw new UserError(`github() option "${key}" must be a non-empty string, got ""`)
-  }
+  // Its options were checked by index.ts's github(), the only caller.
   return definePlugin(import.meta, {
     commands: {
       // Kept where actions/cache can save it: a hit installs the

@@ -61,6 +61,9 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
     expect(await refusal({ dir: 'packages/b', name: 'b#1' })).toBe(
       `plugin 'p' named project "b#1": the name holds "#" — vx addresses a task as <name>#<task>`,
     )
+    expect(await refusal({ dir: 'packages/b', name: '!b' })).toBe(
+      `plugin 'p' named project "!b": the name starts with '!', which a filter reads as an exclusion`,
+    )
   })
 
   it('an edge to a directory that is no project, or outside the root', () => {
@@ -120,6 +123,9 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
       })
     expect(() => checkProjectNames(root, named('pkg#1'))).toThrow(
       'pkg#1: a project is named by its path unless named, and this one holds "#" — vx addresses a task as <name>#<task> — set `name` in its vx.config',
+    )
+    expect(() => checkProjectNames(root, named('!old'))).toThrow(
+      "!old: a project is named by its path unless named, and this one starts with '!', which a filter reads as an exclusion — set `name` in its vx.config",
     )
     expect(() => checkProjectNames(root, named('packages/a', '//'))).toThrow(
       'packages/a: "//" names the workspace root — set another `name`',

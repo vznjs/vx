@@ -9,7 +9,7 @@ excerpt: 'The terminal scrolled away? vx last --failed shows the run that broke 
 ---
 
 A test failed and the terminal scrolled away. `vx last --failed` finds
-it and gives you the command to run just that again:
+it and gives you the command to run only that again:
 
 ```sh frame="terminal"
 $ vx last --failed

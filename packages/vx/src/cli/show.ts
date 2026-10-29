@@ -33,6 +33,7 @@ import {
 import {
   type AffectedChanges,
   buildPackageGraph,
+  EMPTY_LOCK,
   findWorkspaceRoot,
   type ProjectEntry,
   type ProjectMeta,
@@ -180,7 +181,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       sayNotice(
         'info',
         'vx show',
-        'no projects: no directory holds a vx.config — run `vx init` to write them, then `vx lock`',
+        `no projects: ${EMPTY_LOCK.charAt(0).toLowerCase()}${EMPTY_LOCK.slice(1)}`,
       )
     const shown = metas.filter((m) => inSelection(m.name))
     process.stdout.write(renderList(root, shown, projects, parsed.format, colorsOut()))
@@ -475,6 +476,7 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
   )
   add('env.secret', list(exec?.env?.secret))
   add('remote', exec?.remote === undefined ? undefined : String(exec.remote))
+  add('platforms', list(exec?.platforms))
   add('sandbox', exec?.sandbox === undefined ? undefined : JSON.stringify(exec.sandbox))
   const persistent = exec?.persistent
   if (persistent !== undefined) {
@@ -497,6 +499,12 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
   if (cache !== undefined) {
     add('outputs.files', list(cache.outputs.files))
     add('outputs.workspaceFiles', list(cache.outputs.workspaceFiles))
+    add(
+      'outputs.clean',
+      cache.outputs.clean === undefined ? undefined : cache.outputs.clean ? 'yes' : 'no',
+    )
+    add('inputStability.strategy', cache.inputStability?.strategy)
+    add('inputStability.severity', cache.inputStability?.severity)
   }
   return rows
 }

@@ -427,11 +427,65 @@ describe('a release from the npm registry', () => {
         signatures: [{ keyid: TEST_KEY.id, sig: signed(`${PKG}@${VERSION}:${integrity}`) }],
       },
     }
-    const result = await withFetch({ [MANIFEST_URL]: () => Response.json(doc) }, async (asked) => [
-      await releaseBinary(PKG, '9.9.9', () => {}, TEST_KEY),
+    const latest = `https://registry.npmjs.org/${PKG}/latest`
+    const result = await withFetch({ [latest]: () => Response.json(doc) }, async (asked) => [
+      await releaseBinary(PKG, 'latest', () => {}, TEST_KEY),
       asked,
     ])
-    expect(result).toEqual([null, [MANIFEST_URL]])
+    expect(result).toEqual([null, [latest]])
+  })
+
+  // A mirror, or a registry in the middle, answers with an older release npm
+  // did sign: the signature proves the bytes, not that they are the ones asked.
+  describe('a signed release it did not ask for', () => {
+    const at = (version: string): unknown => {
+      const integrity = integrityOf(TGZ)
+      return {
+        version,
+        dist: {
+          tarball: TARBALL_URL,
+          integrity,
+          signatures: [{ keyid: TEST_KEY.id, sig: signed(`${PKG}@${version}:${integrity}`) }],
+        },
+      }
+    }
+    const LATEST_URL = `https://registry.npmjs.org/${PKG}/latest`
+    const run = (spec: string, served: string, current: string) =>
+      withFetch(
+        {
+          [`https://registry.npmjs.org/${PKG}/${spec}`]: () => Response.json(at(served)),
+          [TARBALL_URL]: () => new Response(TGZ),
+        },
+        async (asked) => ({
+          outcome: await releaseBinary(PKG, spec, () => {}, TEST_KEY, current).then(
+            (b) => (b === null ? 'current' : 'installed'),
+            (err: Error) => err.message,
+          ),
+          asked,
+        }),
+      )
+
+    it('is refused when a version was asked and another came, before the download', async () => {
+      const { outcome, asked } = await run('9.9.9', '1.0.0', '2.0.0')
+      expect(outcome).toBe(
+        `vx upgrade: asked for ${PKG}@9.9.9, the registry answered 1.0.0 — nothing replaced; check the registry or mirror in .npmrc or bunfig.toml`,
+      )
+      expect(asked).toEqual([MANIFEST_URL])
+    })
+
+    it('as latest, one below this vx is refused, naming both', async () => {
+      const { outcome, asked } = await run('latest', '1.0.0', '2.0.0')
+      expect(outcome).toBe(
+        `vx upgrade: the registry's latest ${PKG} is 1.0.0, below this vx's 2.0.0 — nothing replaced; to go back, ask for it: vx upgrade v1.0.0`,
+      )
+      expect(asked).toEqual([LATEST_URL])
+    })
+
+    it('asked for exactly, an older version installs', async () => {
+      expect((await run('1.0.0', '1.0.0', '2.0.0')).outcome).toBe('installed')
+      expect((await run('latest', '2.0.1', '2.0.0')).outcome).toBe('installed')
+      expect((await run('latest', '2.0.0', '2.0.0-rc.1')).outcome).toBe('installed')
+    })
   })
 
   it('a host it cannot reach is one line naming the host, never a stack', async () => {
@@ -590,6 +644,27 @@ describe('managedInstall', () => {
     }
   })
 
+  it('a package.json that is not JSON is one refusal naming it, not "no package.json lists vx"', async () => {
+    const root = await tree({ 'package.json': '{ "devDependencies": { "@vzn/vx": "^1" }, }' })
+    const file = path.join(root, 'package.json')
+    expect(() => managedInstall(path.join(root, BIN), root)).toThrow(
+      new RegExp(
+        `^vx upgrade: ${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is not JSON \\(.+\\) — fix it, then run vx upgrade again$`,
+      ),
+    )
+  })
+
+  it('reads a package.json that opens with a byte-order mark, as npm does', async () => {
+    const root = await tree({ 'package.json': `﻿${lists('dependencies')}`, 'bun.lock': '' })
+    expect(managedInstall(path.join(root, BIN), root)).toEqual({
+      manager: 'bun',
+      scope: 'project',
+      cwd: root,
+      field: 'dependencies',
+      plugins: [],
+    } as never)
+  })
+
   it('a hoisted workspace finds the member that lists vx from cwd; the root adds with --workspace-root', async () => {
     const root = await tree({
       'package.json': '{}',
@@ -614,6 +689,27 @@ describe('managedInstall', () => {
       '@vzn/vx@1.2.3',
       '--save-dev',
       '--workspace-root',
+    ])
+  })
+
+  // Yarn 1 refuses an `add` at a workspace's root without -W ("Running this
+  // command will add the dependency to the workspace root…"), so `vx init`
+  // and `vx upgrade` failed there; Berry has no such flag. vx-migrate's
+  // install (adopt.ts) already passed it.
+  it('a Yarn 1 workspace root adds with -W; Berry and a lone package do not', async () => {
+    const ws = JSON.stringify({ workspaces: ['apps/*'], devDependencies: { '@vzn/vx': '^0.0.1' } })
+    const argv = async (files: Record<string, string>) => {
+      const root = await tree(files)
+      return upgradeArgv(managedInstall(path.join(root, BIN), root)!, '1.2.3').join(' ')
+    }
+    expect([
+      await argv({ 'package.json': ws, 'yarn.lock': '# yarn lockfile v1\n' }),
+      await argv({ 'package.json': ws, 'yarn.lock': '__metadata:\n  version: 8\n' }),
+      await argv({ 'package.json': lists('devDependencies'), 'yarn.lock': '' }),
+    ]).toEqual([
+      'yarn add @vzn/vx@1.2.3 --dev -W',
+      'yarn add @vzn/vx@1.2.3 --dev',
+      'yarn add @vzn/vx@1.2.3 --dev',
     ])
   })
 

@@ -100,7 +100,7 @@ describe('resolveOtelConfig', () => {
     expect([none, warns]).toEqual([
       undefined,
       [
-        '[vx-otel] OTEL_EXPORTER_OTLP_ENDPOINT is not an http:// or https:// URL — traces, metrics and logs are not exported',
+        '[vx] vx-otel: OTEL_EXPORTER_OTLP_ENDPOINT is not an http:// or https:// URL — traces, metrics and logs are not exported',
       ],
     ])
     // One bad signal endpoint drops that signal only.
@@ -115,7 +115,7 @@ describe('resolveOtelConfig', () => {
       false,
       true,
       [
-        '[vx-otel] the metricsEndpoint option is not an http:// or https:// URL — metrics are not exported',
+        '[vx] vx-otel: the metricsEndpoint option is not an http:// or https:// URL — metrics are not exported',
       ],
     ])
   })
@@ -136,7 +136,7 @@ describe('resolveOtelConfig', () => {
     expect([c.headers, warns]).toEqual([
       { 'x-ok': '1' },
       [
-        '[vx-otel] a header name holds a character no HTTP header name can carry (a space, a colon, …) — not sent (neither its name nor its value is printed)',
+        '[vx] vx-otel: a header name holds a character no HTTP header name can carry (a space, a colon, …) — not sent (neither its name nor its value is printed)',
       ],
     ])
   })
@@ -198,7 +198,7 @@ describe('resolveOtelConfig', () => {
       { 'x-ok': '1' },
       {},
       [
-        '[vx-otel] header "Authorization" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
+        '[vx] vx-otel: header "Authorization" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
       ],
     ])
   })
@@ -615,6 +615,46 @@ describe('OtelSink end-to-end', () => {
       ['cicd.pipeline.task.name', 'vx.task.project', 'vx.task.task'],
       ['cicd.pipeline.task.name', 'vx.task.project', 'vx.task.task', 'vx.cache.source'],
     ])
+  })
+
+  it('charts no task a stop aborted: never ran, or ran in part', async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    const rec = (r: Record<string, unknown>) =>
+      sink.onRecord({ v: 3, runId: 'r', ...r } as TelemetryRecord)
+    rec({ kind: 'run.start', run: RUN, total: 3, ts: 0, startedAt: 0 })
+    const end = (taskId: string, extra: Partial<TaskTelemetry>) => ({
+      kind: 'task.end',
+      taskId,
+      project: 'a',
+      task: taskId.slice(2),
+      exitCode: 0,
+      ts: 900,
+      ...extra,
+    })
+    rec({ kind: 'task.start', taskId: 'a#build', project: 'a', task: 'build', ts: 0 })
+    rec(end('a#build', { status: 'success', cacheSource: 'miss', durationMs: 900 }))
+    // Ctrl-C: one killed mid-run, one that never started (0 ms, as core sends it).
+    rec({ kind: 'task.start', taskId: 'a#test', project: 'a', task: 'test', ts: 100 })
+    rec(end('a#test', { status: 'aborted', cacheSource: 'none', exitCode: 130, durationMs: 800 }))
+    rec(end('a#lint', { status: 'aborted', cacheSource: 'none', exitCode: 130, durationMs: 0 }))
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    type Metric = {
+      name: string
+      gauge?: { dataPoints: { attributes: { key: string; value: { stringValue?: string } }[] }[] }
+    }
+    const metrics = (
+      calls.find((c) => c.url === 'http://c/v1/metrics')!.body as {
+        resourceMetrics: { scopeMetrics: { metrics: Metric[] }[] }[]
+      }
+    ).resourceMetrics[0]!.scopeMetrics[0]!.metrics
+    const charted = metrics
+      .find((m) => m.name === 'vx.task.duration')!
+      .gauge!.dataPoints.map(
+        (p) => p.attributes.find((a) => a.key === 'cicd.pipeline.task.name')!.value.stringValue,
+      )
+    expect(charted).toEqual(['a#build'])
   })
 
   it("splits a large run's task points across requests, the run's own metrics in the first only", async () => {
@@ -1115,7 +1155,7 @@ describe('OTLP losslessness', () => {
 
   // F-12: the semconv attribute is an enum; vx's status went out verbatim.
   it('maps each vx status onto the cicd.pipeline.task.run.result enum, and keeps it', () => {
-    const { timedOut: _, ...untimed } = FULL_TASK
+    const { timedOut: _, notReady: __, ...untimed } = FULL_TASK
     const got = (
       [
         ['success', false],
@@ -1143,6 +1183,21 @@ describe('OTLP losslessness', () => {
       ['timeout', 'failed'],
       ['skip', 'skipped'],
       ['cancellation', 'aborted'],
+    ])
+  })
+
+  // Core labels a server whose readiness wait ran out "timed out", as a
+  // one-shot task's deadline; the enum said failure.
+  it("maps a persistent task's readiness timeout to timeout, its other refusals to failure", () => {
+    const { timedOut: _, notReady: __, ...untimed } = FULL_TASK
+    const result = (notReady: 'timeout' | 'exited' | 'spawn') =>
+      attrMap(taskSpanAttributes({ ...untimed, status: 'failed', notReady }, TASK_RUN) as never)[
+        'cicd.pipeline.task.run.result'
+      ]
+    expect([result('timeout'), result('exited'), result('spawn')]).toEqual([
+      'timeout',
+      'failure',
+      'failure',
     ])
   })
 
@@ -1675,8 +1730,8 @@ describe('a signal ships only to its own url (item 807)', () => {
       logs: false,
     })
     expect(warns).toEqual([
-      '[vx-otel] metrics: true but no metrics endpoint (OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_METRICS_ENDPOINT) — metrics are not exported',
-      '[vx-otel] logs: true but no logs endpoint (OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_LOGS_ENDPOINT) — logs are not exported',
+      '[vx] vx-otel: metrics: true but no metrics endpoint (OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_METRICS_ENDPOINT) — metrics are not exported',
+      '[vx] vx-otel: logs: true but no logs endpoint (OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_LOGS_ENDPOINT) — logs are not exported',
     ])
   })
 
@@ -1992,6 +2047,18 @@ describe('config the sweep left unpinned', () => {
     ).toEqual(['off', 'off', 'on'])
   })
 
+  // A disabled SDK exports nothing, so a bad endpoint it would never use
+  // is nothing to warn about: the scheme check warned before it was read.
+  it('OTEL_SDK_DISABLED declines in silence', () => {
+    const warns: string[] = []
+    const c = resolveOtelConfig(
+      {},
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'localhost:4318', OTEL_SDK_DISABLED: 'true' },
+      (m) => void warns.push(m),
+    )
+    expect([c, warns]).toEqual([undefined, []])
+  })
+
   it('each signal reads its own headers variable; options top env for endpoint and name', () => {
     const c = resolveOtelConfig(
       { logsEndpoint: 'http://opt/logs', serviceName: 'svc-opt' },
@@ -2155,8 +2222,8 @@ describe('the standard OTLP env a pipeline already sets', () => {
       { team: 'a b', env: 'ci' },
     ])
     expect(warns).toEqual([
-      '[vx-otel] OTEL_RESOURCE_ATTRIBUTES is malformed (team=a%ZZb) — none of it is used',
-      '[vx-otel] OTEL_RESOURCE_ATTRIBUTES is malformed (team) — none of it is used',
+      '[vx] vx-otel: OTEL_RESOURCE_ATTRIBUTES is malformed (team=a%ZZb) — none of it is used',
+      '[vx] vx-otel: OTEL_RESOURCE_ATTRIBUTES is malformed (team) — none of it is used',
     ])
   })
 
@@ -2188,7 +2255,9 @@ describe('the standard OTLP env a pipeline already sets', () => {
       ['traces', 'metrics', 'logs'],
       [],
     ])
-    expect(warns).toEqual(['[vx-otel] compression "zstd" is not gzip or none — sent uncompressed'])
+    expect(warns).toEqual([
+      '[vx] vx-otel: compression "zstd" is not gzip or none — sent uncompressed',
+    ])
   })
 
   it('a gzip export reaches the collector gzipped, and decodes to the same OTLP', async () => {
@@ -2250,8 +2319,8 @@ describe('the standard OTLP env a pipeline already sets', () => {
     sink.onRunSummary(summaryFor(RUN, []))
     await sink.flush()
     expect(warns.sort()).toEqual([
-      '[vx-otel] export failed for http://c/v1/metrics: socket closed',
-      "[vx-otel] export failed for http://c/v1/traces: socket closed — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)",
+      '[vx] vx-otel: export failed for http://c/v1/metrics: socket closed',
+      "[vx] vx-otel: export failed for http://c/v1/traces: socket closed — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)",
     ])
   })
 })
@@ -2331,8 +2400,8 @@ describe('a large run ships in requests a collector accepts', () => {
       throw new Error('refused')
     })
     expect(warns.sort()).toEqual([
-      '[vx-otel] export failed for http://c/v1/logs: refused (2 of 2 requests)',
-      '[vx-otel] export failed for http://c/v1/traces: refused (2 of 2 requests)',
+      '[vx] vx-otel: export failed for http://c/v1/logs: refused (2 of 2 requests)',
+      '[vx] vx-otel: export failed for http://c/v1/traces: refused (2 of 2 requests)',
     ])
   })
 })
@@ -2528,10 +2597,10 @@ describe('the sink, past its sweep', () => {
       { tracesUrl: 'http://u:tok@h:99999/v1/traces' },
     )
     expect([partly, exact, sync, unparsable]).toEqual([
-      ['[vx-otel] export failed for http://c/v1/traces: second refused (1 of 3 requests)'],
+      ['[vx] vx-otel: export failed for http://c/v1/traces: second refused (1 of 3 requests)'],
       1,
-      ['[vx-otel] export failed for http://c/v1/traces: sync'],
-      ['[vx-otel] export failed for (an unparsable URL): down'],
+      ['[vx] vx-otel: export failed for http://c/v1/traces: sync'],
+      ['[vx] vx-otel: export failed for (an unparsable URL): down'],
     ])
   })
 })
@@ -2571,10 +2640,10 @@ describe('the OTLP env, as its second sweep found it unheld', () => {
     expect([c.headers, warns.sort()]).toEqual([
       { latin: 'é', trail: 'v\n' },
       [
-        '[vx-otel] header "both" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
-        '[vx-otel] header "cr" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
-        '[vx-otel] header "nul" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
-        '[vx-otel] header "wide" holds a character past Latin-1, which no HTTP header can carry — not sent (its value is not printed)',
+        '[vx] vx-otel: header "both" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
+        '[vx] vx-otel: header "cr" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
+        '[vx] vx-otel: header "nul" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
+        '[vx] vx-otel: header "wide" holds a character past Latin-1, which no HTTP header can carry — not sent (its value is not printed)',
       ],
     ])
   })
@@ -2597,7 +2666,7 @@ describe('the OTLP env, as its second sweep found it unheld', () => {
       {},
     ])
     expect(warns).toEqual([
-      '[vx-otel] OTEL_RESOURCE_ATTRIBUTES is malformed (=v) — none of it is used',
+      '[vx] vx-otel: OTEL_RESOURCE_ATTRIBUTES is malformed (=v) — none of it is used',
     ])
   })
 
@@ -2718,6 +2787,32 @@ describe('live mode', () => {
       1,
       ['vx.task', 'vx.task', 'vx.task'],
     ])
+  })
+
+  // A start queued its record and sent nothing: with no task ended and no
+  // sample taken, a long first task showed the run as not started.
+  it('a start is sent while the task still runs', async () => {
+    const { cfg, calls } = mkConfig({ live: true, liveBatchMs: 20, metricsEnabled: false })
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 3,
+      kind: 'task.start',
+      runId: 'run-1',
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      ts: 1001,
+    } as TelemetryRecord)
+    await Bun.sleep(80)
+    expect(eventNames(calls)).toEqual(['vx.run.start', 'vx.task.start'])
   })
 
   it('without it, nothing leaves before the run ends', async () => {

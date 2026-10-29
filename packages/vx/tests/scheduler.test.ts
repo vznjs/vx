@@ -741,6 +741,48 @@ describe('tieredReverseDepCount', () => {
     expect(order.indexOf('e2#b')).toBeLessThan(order.indexOf('e1#b'))
   })
 
+  it('an exec task under a restore blocks what that restore holds back', () => {
+    // r1's dependents are released only once e1 has settled (item 963), so
+    // e1 blocks e2 and e3 through it; through a chain of restores too.
+    const m = nodes(
+      node('e1#b'),
+      node('r1#b', ['e1#b']),
+      node('e2#b', ['r1#b']),
+      node('e3#b', ['e2#b']),
+      node('e4#b'),
+      node('r2#b', ['e4#b']),
+      node('r3#b', ['r2#b']),
+      node('e5#b', ['r3#b']),
+    )
+    const tier = new Set(['r1#b', 'r2#b', 'r3#b'])
+    expect(Object.fromEntries(tieredReverseDepCount(m, tier))).toEqual({
+      'e1#b': 2,
+      'e2#b': 1,
+      'e3#b': 0,
+      'e4#b': 1,
+      'e5#b': 0,
+      'r1#b': 2,
+      'r2#b': 1,
+      'r3#b': 1,
+    })
+  })
+
+  it('the exec task a restore waits on starts before an idle one', async () => {
+    const order: string[] = []
+    await runGraph({
+      nodes: nodes(node('x#b'), node('e1#b'), node('r#b', ['e1#b']), node('e2#b', ['r#b'])),
+      concurrency: 1,
+      restoreTier: new Set(['r#b']),
+      execute: async (n) => {
+        order.push(n.id)
+        return n.id === 'r#b'
+          ? { node: n, status: 'cache-hit', exitCode: 0, durationMs: 0, hash: `h-${n.id}` }
+          : success(n)
+      },
+    })
+    expect(order.indexOf('e1#b')).toBeLessThan(order.indexOf('x#b'))
+  })
+
   it('CONTROL: a restore that feeds pending work restores before one that feeds none', async () => {
     const order: string[] = []
     await runGraph({
@@ -1280,6 +1322,84 @@ describe('runGraph restore-tier (local short-circuit)', () => {
       expect(out.get('api#dev')?.status).toBe('skipped')
       expect(out.get('web#ci')?.status).toBe('skipped')
     })
+
+    it('a dependant already queued when its held server answers is dispatched once', async () => {
+      const restoreTier = new Set<string>()
+      let answer!: (ids: readonly string[]) => void
+      const held = new Promise<readonly string[]>((r) => (answer = r))
+      const calls: string[] = []
+      const finished: string[] = []
+      await runGraph({
+        nodes: nodes(
+          node('db#migrate'),
+          server('api#dev', ['db#migrate']),
+          { ...node('web#e2e', ['api#dev']), requested: false },
+          node('x#slow'),
+        ),
+        concurrency: 1,
+        restoreTier,
+        heldServers: new Map([['api#dev', held]]),
+        onFinish: (o) => finished.push(o.node.id),
+        execute: async (n) => {
+          calls.push(n.id)
+          if (n.id === 'x#slow') {
+            // The remote answers while web#e2e waits on the full exec lane.
+            restoreTier.add('web#e2e')
+            answer(['web#e2e'])
+            await Bun.sleep(5)
+          }
+          if (n.id === 'db#migrate') return failed(n)
+          return n.id === 'web#e2e' ? hit(n) : success(n)
+        },
+      })
+      expect(calls.filter((c) => c === 'web#e2e')).toEqual(['web#e2e'])
+      expect(finished.filter((c) => c === 'web#e2e')).toEqual(['web#e2e'])
+    })
+  })
+
+  // A held server skipped before the remote answered released its
+  // dependant to the exec queue; the answer then queued it on the restore
+  // lane as well, and it ran twice.
+  it('a held server skipped before its answer runs its dependant once', async () => {
+    const live = new Set<string>()
+    let answer!: (ids: readonly string[]) => void
+    const held = new Map([['api#dev', new Promise<readonly string[]>((r) => (answer = r))]])
+    const calls: string[] = []
+    let releaseBusy!: () => void
+    const busy = new Promise<void>((r) => (releaseBusy = r))
+    const out = await runGraph({
+      nodes: nodes(
+        node('db#migrate'),
+        {
+          ...node('api#dev', ['db#migrate']),
+          config: { exec: { command: 'serve', persistent: {} } },
+          requested: false,
+        },
+        { ...node('web#e2e', ['api#dev']), requested: false },
+        node('a#busy'),
+        node('b#busy'),
+      ),
+      concurrency: 2,
+      restoreTier: live,
+      heldServers: held,
+      execute: async (n) => {
+        calls.push(n.id)
+        if (n.id === 'db#migrate') return failed(n)
+        if (n.id.endsWith('#busy')) await busy
+        return live.has(n.id) ? hit(n) : success(n)
+      },
+      onStart: (n) => {
+        // The exec lane is full and web#e2e waits on it: the remote answers.
+        if (n.id === 'b#busy')
+          queueMicrotask(() => {
+            live.add('web#e2e')
+            answer(['web#e2e'])
+            setTimeout(releaseBusy, 10)
+          })
+      },
+    })
+    expect(calls.filter((c) => c === 'web#e2e')).toHaveLength(1)
+    expect(out.get('web#e2e')).toBeDefined()
   })
 })
 

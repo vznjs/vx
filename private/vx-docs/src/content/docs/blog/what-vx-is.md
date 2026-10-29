@@ -32,10 +32,14 @@ flowchart LR
    keys of everything before it.
 4. **Schedule.** Restore hits. Run misses. Save.
 
-In plugin terms the stages are named `config` → `discover` →
-`project` → `graph` → `key` → `fingerprint` → `schedule` → `admit`, then
-`executor`, `cache`, `telemetry`, `output`, `setup`, `teardown` and
-`commands`. Each is a seam a plugin can fill.
+In plugin terms the stages are named, in order:
+
+- `config` → `discover` → `project` → `graph` → `key` → `fingerprint`
+  → `schedule` → `admit`
+- then `executor`, `cache`, `telemetry`, `output`, `setup`, `teardown`
+  and `commands`
+
+A plugin can fill any of them.
 
 Core turns on **no** plugin by default. With none, vx still runs and
 caches on your machine.

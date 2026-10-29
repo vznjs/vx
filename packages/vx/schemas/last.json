@@ -176,7 +176,8 @@
         "sandboxViolations",
         "notReady",
         "remoteError",
-        "forwarded"
+        "forwarded",
+        "attempts"
       ],
       "properties": {
         "runId": { "type": ["string", "null"] },
@@ -228,6 +229,10 @@
           "description": "each failed remote read or write of the key, `; `-joined"
         },
         "forwarded": { "type": "boolean" },
+        "attempts": {
+          "type": ["integer", "null"],
+          "description": "the attempts a retried task took (more than one); null when it ran once"
+        },
         "output": {
           "type": "string",
           "description": "on a failed row: its output, plain text, bounded (first 8 KiB, last 56 KiB), secrets masked; '' when none was recorded"

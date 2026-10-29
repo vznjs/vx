@@ -17,6 +17,8 @@ interface Step {
   if?: string
   env?: Record<string, string>
   with?: Record<string, unknown>
+  'timeout-minutes'?: number
+  'continue-on-error'?: boolean
 }
 interface Job {
   name?: string
@@ -84,7 +86,7 @@ describe('ci.yml', () => {
   // The run fetches a merge-base itself when it needs one (--affected,
   // reachMergeBase), so the checkout is one commit.
   it('checks the run out at one commit: the run fetches its merge-base', () => {
-    expect(checkout(doc.jobs['linux'])?.with).toBeUndefined()
+    expect(checkout(doc.jobs['linux'])?.with).toEqual({ 'persist-credentials': false })
   })
 
   // The run's report is the job summary; github() posts no check run
@@ -260,7 +262,10 @@ describe('vx-worker.yml', () => {
   // The laws that read history fetch it on the worker that runs them
   // (tests/helpers/history.ts): a full clone was 5-7 s of each warm-up.
   it('checks out one commit', () => {
-    expect(checkout(worker)?.with).toEqual({ ref: '${{ inputs.sha }}' })
+    expect(checkout(worker)?.with).toEqual({
+      ref: '${{ inputs.sha }}',
+      'persist-credentials': false,
+    })
   })
 
   // A worker saving to ~/.vx while a shard runs failed the shard's home
@@ -270,6 +275,17 @@ describe('vx-worker.yml', () => {
     // workflow GitHub refuses to dispatch.
     const step = worker.steps?.find((s) => s.run?.includes('dte worker') === true)
     expect(step?.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
+  })
+
+  // setup installs the restored debs with `dpkg -i`, which checks no
+  // signature, and a restore takes the newest key of the prefix. A worker
+  // runs the code of whatever sha it was handed, so only main's own code
+  // may save what every later worker installs as root.
+  it('saves the setup packages only from main at main', () => {
+    const save = worker.steps!.find((s) => s.uses?.startsWith('actions/cache/save'))!
+    expect(save.if).toBe(
+      "steps.setup.outputs.fetched == 'true' && github.ref == 'refs/heads/main' && inputs.sha == github.sha",
+    )
   })
 
   // The worker is what a developer would write (2026-10-23: "why vx
@@ -284,10 +300,25 @@ describe('vx-worker.yml', () => {
       // The variables the run hands its workers (github({ env })).
       expect.stringMatching(/^jq -r 'to_entries/),
       'bun install --frozen-lockfile',
+      'bun install --frozen-lockfile',
       'actions/cache/restore',
       'bun packages/vx/src/bin.ts setup github',
       'actions/cache/save',
       'bun packages/vx/src/bin.ts dte worker',
+    ])
+  })
+
+  // Of 210 worker installs (2026-10-28, 00:00-12:00 UTC) the median took
+  // 4 s, p90 9 s, the slowest that finished on its own 49 s; three
+  // printed nothing past `bun install v1.4.4` for 159, 233 and 322 s, two
+  // of them until the run ended and cancelled them. A stalled fetch, so a
+  // bound and a second try, not a longer wait: the arm worker is the
+  // run's only one, and its 322 s held the arm64 binary behind it.
+  it('bounds the install and tries it once more after a stall', () => {
+    const steps = worker.steps!.filter((s) => s.run === 'bun install --frozen-lockfile')
+    expect(steps.map((s) => [s.id, s['timeout-minutes'], s['continue-on-error'], s.if])).toEqual([
+      ['install', 2, true, undefined],
+      [undefined, 3, undefined, "steps.install.outcome != 'success'"],
     ])
   })
 })

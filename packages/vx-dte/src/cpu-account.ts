@@ -50,7 +50,10 @@ export function parsePs(text: string): Ps {
     if (m === null) continue
     const ms = psTime(m[3]!)
     if (ms === undefined) continue
-    table.set(Number(m[1]), { name: m[4]!.split('/').pop()!, ms })
+    // macOS prints the path it ran; Linux a name, a kernel thread's with a
+    // slash in it (`kworker/0:1`).
+    const name = /^[./]/.test(m[4]!) ? m[4]!.split('/').pop()! : m[4]!
+    table.set(Number(m[1]), { name, ms })
     parents.set(Number(m[1]), Number(m[2]))
   }
   return { table, parents }
@@ -79,8 +82,11 @@ export function topBetween(
   n = 5,
 ): { name: string; ms: number }[] {
   const mine = (pid: number): boolean => {
-    for (let p: number | undefined = pid, hops = 0; p !== undefined && p > 1 && hops < 64; hops++) {
+    // `self` asked before the stop at pid 1: docker() execs the worker as
+    // its container's init.
+    for (let p: number | undefined = pid, hops = 0; p !== undefined && hops < 64; hops++) {
       if (p === self) return true
+      if (p <= 1) break
       p = after.parents.get(p)
     }
     return false

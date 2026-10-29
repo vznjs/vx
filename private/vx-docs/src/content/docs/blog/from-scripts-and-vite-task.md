@@ -23,7 +23,7 @@ flowchart LR
 
 ## npm hooks keep their order
 
-npm runs `prebuild` before `build` and `postbuild` after it. The
+npm calls `prebuild` before `build` and `postbuild` after it. The
 migrator puts the hooks into the task's command, in that order, and
 tells you:
 
@@ -41,10 +41,12 @@ $ bunx @vzn/vx-migrate --dry
             app#build: cache: add `inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs …
 ```
 
-The chain stops at the first part that fails. Arguments after `--`
-reach `build` only, as with npm. If your package manager skips these
-hooks (Yarn 2+, or npm with `ignore-scripts`), each hook stays its own
-task. Hooks like `prepack` never become tasks.
+The chain stops at the first part that fails. Arguments after `--` reach
+`build` only, as with npm.
+
+If your package manager skips these hooks (Yarn 2+, or npm with
+`ignore-scripts`), each hook stays its own task. Hooks like `prepack`
+never become tasks.
 
 ## Vite Task
 
@@ -56,8 +58,10 @@ $ bunx @vzn/vx-migrate --from vite-task
 ```
 
 `command`, `cwd`, `dependsOn` and cache settings map across. A command
-starting with `vp run x` becomes a `dependsOn` edge. Anything that does
-not map stays in the command with a TODO, so nothing gets lost.
+starting with `vp run x` becomes a `dependsOn` edge.
+
+Anything that does not map stays in the command with a TODO, so nothing
+gets lost.
 
 The full mapping table is in the
 [vx-migrate README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#readme).

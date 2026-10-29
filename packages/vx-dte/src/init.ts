@@ -3,8 +3,8 @@
 // Each adapter writes its own (`DteAdapter.init`); one that starts workers
 // on this machine (`local()`, `docker()`) needs none.
 
-import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { existsSync, lstatSync, readlinkSync } from 'node:fs'
+import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError, type Platform } from '@vzn/vx'
 import type { GithubOptions } from './github.js'
@@ -61,14 +61,14 @@ export function originOf(root: string): { repository?: string; host?: string } {
 const SITE = 'https://vznjs.github.io/vx/docs'
 const RELAY_DOCS = 'https://vznjs.github.io/vx/docs/relay/'
 
-/** What is left after the files: a relay that admits them, a shared cache, a commit. */
+/** What is left after the files: a relay that lets them in, a shared cache, a commit. */
 function nextSteps(relay: string | undefined, allow: string, files: readonly string[]): string[] {
   return [
     '',
     'Next:',
     relay === undefined
       ? `  1. A relay, where the run and its workers meet. Deploy your own on Cloudflare's free plan (the Deploy button) or run it with Bun or Docker: ${RELAY_DOCS}`
-      : `  1. The relay at ${relay} must admit these workflows.`,
+      : `  1. Let these workflows use the relay at ${relay}: set its ALLOW.`,
     `     Its ALLOW (a plain var, no secret): ${allow}`,
     ...(relay === undefined
       ? ["     Then name it in .vx/workspace.ts: dte({ relay: 'https://<your relay>' })"]
@@ -137,6 +137,16 @@ export async function writeInit(
   out: (line: string) => void,
 ): Promise<number> {
   const kept: string[] = []
+  // A repo can carry `ci.yml -> /anywhere`: refused before any write, as
+  // core's own writers do (`writeNoFollow`).
+  for (const rel of Object.keys(init.files)) {
+    const link = linkOf(path.join(root, rel))
+    if (link !== undefined) {
+      throw new UserError(
+        `vx dte init: refusing to write ${rel}: it is a symlink to ${link}; remove the link and run again`,
+      )
+    }
+  }
   for (const [rel, text] of Object.entries(init.files)) {
     const at = path.join(root, rel)
     // quiet: a file that cannot be read is one to write
@@ -150,7 +160,7 @@ export async function writeInit(
       continue
     }
     await mkdir(path.dirname(at), { recursive: true })
-    await writeFile(at, text)
+    await replace(at, text)
     out(`vx dte init: wrote ${rel}`)
   }
   if (kept.length > 0) {
@@ -160,6 +170,33 @@ export async function writeInit(
   }
   for (const line of init.next) out(line)
   return 0
+}
+
+/** Where `file` links to, or undefined for a file or nothing. */
+function linkOf(file: string): string | undefined {
+  try {
+    return lstatSync(file).isSymbolicLink() ? readlinkSync(file) : undefined
+  } catch {
+    // quiet: nothing there to write through
+    return undefined
+  }
+}
+
+/** A temp beside `file`, made with O_EXCL and renamed over it: never written through a link. */
+async function replace(file: string, text: string): Promise<void> {
+  const tmp = `${file}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
+  try {
+    const fh = await open(tmp, 'wx')
+    try {
+      await fh.writeFile(text)
+    } finally {
+      await fh.close()
+    }
+    await rename(tmp, file)
+  } catch (err) {
+    await rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
 }
 
 /** GitHub's hosted runner of each platform; a size naming none runs on Linux x64. */
@@ -239,13 +276,14 @@ ${install.join('\n')}
 `
   const vx = vxCommand(setup.manager)
   const named = setup.tasks.main !== '' && setup.tasks.change !== ''
-  const run = `# Written by vx dte init: the run. main runs every task and fills the cache;
+  const run = `# Written by vx dte init: the run. main and a merge queue run every task;
 # a pull request runs what it changed and its dependents. This job only
 # orchestrates: every task runs on a worker (${workflow}).
 name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 

@@ -11,18 +11,21 @@ Workers, Bun or Docker. You need only the ones you use.
 | --- | --- | --- |
 | [Cache server](cache/) | every machine reuses what another one built | `vxCache()` from `@vzn/vx-cache` |
 | [History server](history/) | a fresh CI runner knows how long each task takes, so it starts the long ones first | `vxHistory()` from `@vzn/vx-history` |
-| [DTE server](dte/) | one run spread over many CI runners | `dte()` from `@vzn/vx-dte` |
+| [DTE server](dte/) | [Distributed task execution](../distributed-task-execution/): one run split across several CI machines | `dte()` from `@vzn/vx-dte` |
 
 None of them stores a password or a token. Each request carries the CI
-job's own OIDC token, which GitHub Actions or GitLab CI hands the job,
-and the server checks it. A laptop has no such token, so off CI the
+job's own OIDC token, which GitHub Actions or GitLab CI hands the job.
+
+The server checks that token. A laptop has no such token, so off CI the
 plugins work locally.
 
 ## `ALLOW`: who takes part
 
 The cache and history servers read one setting, `ALLOW`: who may take
-part, space separated, each `issuer:owner/repo:workflow`. This lets
-every run of `acme/app`'s `ci.yml` workflow on GitHub Actions in:
+part, space separated, each `issuer:owner/repo:workflow`.
+
+This one lets in every run of `acme/app`'s `ci.yml` workflow on GitHub
+Actions:
 
 ```sh
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml'
@@ -34,10 +37,11 @@ What that gives each run of `ci.yml`:
   into, then `main`.
 - **A push to a branch**, such as `main`, writes that branch.
 - **A pull request from `feat-x`** writes `feat-x` only.
-- **A `pull_request_target` run** reads and writes nothing: it runs on
-  the base branch for a fork's code.
+- **A `pull_request_target`, `issue_comment` or `workflow_run` run**
+  writes nothing: it runs on the base branch, maybe for a fork's code.
 - **A run of another workflow or repository** is refused. With `ALLOW`
-  empty, every request is refused: `the server admits no CI: set ALLOW`.
+  empty, every request is refused: `ALLOW is empty: set it to the CI
+  workflows this server serves`.
 
 On GitLab, the workflow is the CI file:
 `https://gitlab.com:acme/web:.gitlab-ci.yml`.
@@ -45,23 +49,34 @@ On GitLab, the workflow is the CI file:
 <details>
 <summary>What a merge queue writes</summary>
 
-A GitHub merge queue run, on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
-writes `main` before its code lands. Code you queue is code you trust,
-so run security checks on the pull request, before it is queued.
+A GitHub merge queue run (`merge_group`), on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
+writes `main` before its code lands. A push to a branch of that name
+writes only that branch.
+
+Code you queue is code you trust, so run security checks on the pull
+request, before it is queued.
 
 </details>
 
 <details>
 <summary>What the server sees</summary>
 
-Every request names its issuer and repository, as `vxCache({ issuer,
-repository })` and `vxHistory({ issuer, repository })` declare them,
-hashed. A token of another repository is refused. A branch travels as
-the first 128 bits of its SHA-256 in hex, so the server never sees a
-branch name. A renamed repository starts with an empty cache.
+Every request names its issuer and repository, as
+`vxCache({ issuer, repository })` and `vxHistory({ issuer, repository })`
+declare them. A token of another repository is refused.
 
-`AUDIENCE` is the `aud` a token must name. By default it is the URL the
-server is reached at, which is what the plugins ask the CI for.
+The cache server gets each of them, and each branch, as the first 128
+bits of its SHA-256 in hex, so it never sees a name.
+
+The history server gets them as they are ([What it keeps](history/#what-it-keeps)).
+
+A renamed repository starts with an empty cache.
+
+`AUDIENCE` is the `aud` a token must name: the URL clients reach the
+server at, which is what the plugins ask the CI for.
+
+On Workers, leave it unset and it is that URL. On Bun and Docker, set
+it: there the URL is the request's `Host` header, which a client picks.
 
 `READ_ACCESS=public` lets a request with no token, such as a laptop's,
 read a repository `ALLOW` names. It writes nothing.
@@ -79,17 +94,17 @@ Run the three side by side with this `compose.yaml`:
 services:
   dte:
     image: ghcr.io/vznjs/vx-dte-server
-    command: [--allow, '${DTE_ALLOW:-}', --audience, '${DTE_AUDIENCE:-}']
+    environment: [ALLOW=${DTE_ALLOW:-}, AUDIENCE=${DTE_AUDIENCE:-}]
     ports: ['${DTE_PORT:-8080}:8080']
     restart: unless-stopped
   cache:
     image: ghcr.io/vznjs/vx-cache-server
-    environment: [ALLOW, AUDIENCE, READ_ACCESS, S3_BUCKET, S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, MAX_CHECK_HASHES, MAX_UPLOAD_BYTES]
+    environment: [ALLOW=${CACHE_ALLOW:-}, AUDIENCE=${CACHE_AUDIENCE:-}, READ_ACCESS=${CACHE_READ_ACCESS:-}, S3_BUCKET, S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, MAX_CHECK_HASHES, MAX_UPLOAD_BYTES]
     ports: ['${CACHE_PORT:-8081}:8080']
     restart: unless-stopped
   history:
     image: ghcr.io/vznjs/vx-history-server
-    environment: [ALLOW, AUDIENCE, READ_ACCESS, TIMING_DAYS]
+    environment: [ALLOW=${HISTORY_ALLOW:-}, AUDIENCE=${HISTORY_AUDIENCE:-}, READ_ACCESS=${HISTORY_READ_ACCESS:-}, TIMING_DAYS]
     volumes: ['history:/data']
     ports: ['${HISTORY_PORT:-8082}:8080']
     restart: unless-stopped
@@ -105,9 +120,13 @@ docker compose up -d cache history   # only the ones you need
 | Service | Port | Settings it reads |
 | --- | --- | --- |
 | `dte` | 8080 (`DTE_PORT`) | `DTE_ALLOW`, `DTE_AUDIENCE` |
-| `cache` | 8081 (`CACHE_PORT`) | `ALLOW`, `AUDIENCE`, `READ_ACCESS`, `S3_*`, `MAX_*` |
-| `history` | 8082 (`HISTORY_PORT`) | `ALLOW`, `AUDIENCE`, `READ_ACCESS`, `TIMING_DAYS` |
+| `cache` | 8081 (`CACHE_PORT`) | `CACHE_ALLOW`, `CACHE_AUDIENCE`, `CACHE_READ_ACCESS`, `S3_*`, `MAX_*` |
+| `history` | 8082 (`HISTORY_PORT`) | `HISTORY_ALLOW`, `HISTORY_AUDIENCE`, `HISTORY_READ_ACCESS`, `TIMING_DAYS` |
 
 Settings come from your shell or a `.env` file next to `compose.yaml`.
-The history server keeps its SQLite file in the `history` volume. Put
-HTTPS in front of each server: a CI token is a bearer token.
+A setting each server reads under one name gets its service's prefix
+here, so one `.env` holds all three.
+
+The history server keeps its SQLite file in the `history` volume.
+
+Put HTTPS in front of each server: a CI token is a bearer token.

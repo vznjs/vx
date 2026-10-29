@@ -20,6 +20,7 @@ import {
   lockKey,
   NO_LOCK,
   parseFilter,
+  PROJECT_CONFIG_FILENAMES,
   type ProjectMeta,
   readLockfile,
 } from '../workspace/index.js'
@@ -33,8 +34,10 @@ import {
   maskedCommand,
   maskedLine,
   nearest,
+  relPosix,
   UserError,
   sayNotice,
+  ui,
 } from '../util/index.js'
 import {
   claimedAffected,
@@ -87,7 +90,7 @@ export async function workspaceGlobOwners(
   // "nothing affected" and exit 0 without ever reaching the run's own
   // refusal. The sweep reads each entry from the lock: it never evaluates.
   const lock = await readLockfile(root)
-  if (lock === null) throw new UserError(NO_LOCK)
+  if (lock === null) throw new UserError(NO_LOCK, 'VX_E_LOCK')
   const owners: string[] = []
   for (const meta of projects) {
     if (meta.configPath === null || meta.configPath === '') continue
@@ -118,7 +121,7 @@ async function workspaceFingerprintClaims(
   const ctx = {
     workspaceRoot: root,
     cacheDir: load.cacheDir ?? ws.cacheDir,
-    warn: (m: string) => process.stderr.write(`${maskedLine(m)}\n`),
+    warn: (m: string) => ui.say('warn', maskedLine(m)),
     projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
   }
   return {
@@ -141,20 +144,24 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
  * reuse (`RunOptions.discovered`): discovering again ran every `discover`
  * hook twice (`nx()`'s graph load and worktree key among them).
  */
-export async function findCwdSelection(
-  cwd: string,
-): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
+export async function findCwdSelection(cwd: string): Promise<{
+  name: string
+  discovered: { root: string; projects: ProjectMeta[] }
+  /** A vx.config in the cwd's own directory the lock does not hold, root-relative. */
+  unlockedConfig?: string
+} | null> {
   const root = await findWorkspaceRoot(cwd)
   const projects = await discoverCliProjects(root)
   const abs = path.resolve(cwd)
-  const within = (dirOf: (p: ProjectMeta) => string): string | null => {
-    let best: string | null = null
-    let bestLength = -1
+  const within = (dirOf: (p: ProjectMeta) => string): { meta: ProjectMeta; dir: string } | null => {
+    let best: { meta: ProjectMeta; dir: string } | null = null
     for (const p of projects) {
       const dir = dirOf(p)
-      if ((abs === dir || abs.startsWith(dir + path.sep)) && dir.length > bestLength) {
-        best = p.name
-        bestLength = dir.length
+      if (
+        (abs === dir || abs.startsWith(dir + path.sep)) &&
+        dir.length > (best?.dir.length ?? -1)
+      ) {
+        best = { meta: p, dir }
       }
     }
     return best
@@ -164,7 +171,7 @@ export async function findCwdSelection(
   // so inside such a member nothing matched and a run from there was "not
   // inside a project" (item 1025). Only then are the members realpathed:
   // one syscall each, paid only by a run no plain match could place.
-  const name =
+  const found =
     within((p) => p.dir) ??
     within((p) => {
       try {
@@ -173,7 +180,18 @@ export async function findCwdSelection(
         return p.dir
       }
     })
-  return name === null ? null : { name, discovered: { root, projects } }
+  if (found === null) return null
+  const selection = { name: found.meta.name, discovered: { root, projects } }
+  // A config the lock has not seen in the cwd's own directory: the run
+  // fell under the parent project (ran ROOT's build, exit 0) or the
+  // config-less project's nothing ("run `vx init`"). Only a cwd that is
+  // not a locked config's directory pays the stats; nothing is evaluated.
+  const { configPath } = found.meta
+  if (found.dir === abs && typeof configPath === 'string' && configPath !== '') return selection
+  const config = PROJECT_CONFIG_FILENAMES.find((n) => fs.existsSync(path.join(abs, n)))
+  return config === undefined
+    ? selection
+    : { ...selection, unlockedConfig: relPosix(root, path.join(abs, config)) }
 }
 
 export type FilterResolution =
@@ -218,7 +236,7 @@ export function taskEdgesFrom(staged: ReadonlyMap<string, ProjectEntry>): Map<st
       for (const raw of task.dependsOn ?? []) {
         let spec
         try {
-          spec = parseDependencySpec(raw)
+          spec = parseDependencySpec(raw, 'dependsOn')
         } catch {
           continue
         }
@@ -345,6 +363,10 @@ export async function resolveFilters(
                 for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
                 return out
               },
+              flagged: async () => {
+                const g = await git.start()
+                return g.scopes.includes('.') ? g.flagged : null
+              },
             }
           : {}),
       }
@@ -384,10 +406,10 @@ export async function resolveFilters(
     ...(tags !== undefined ? { tags } : {}),
     // A `[<since>]` selector matching nothing is the ordinary "nothing
     // changed" outcome, reported below; only a name/path pattern that
-    // matched nothing is worth flagging as a probable typo.
-    onNoMatch: (f) => {
-      if (f.gitSince === undefined) unmatched.push(f.raw)
-      else emptyDiffs.add(f)
+    // matched no project in the workspace, ref or not, is a probable typo.
+    onNoMatch: (f, emptyDiff) => {
+      if (emptyDiff) emptyDiffs.add(f)
+      else unmatched.push(f.raw)
     },
     // A pattern that matched, with nothing on the walk it asked for: the
     // fact to say, where "no projects matched" read as a typo (item 1030).
@@ -410,7 +432,11 @@ export async function resolveFilters(
     // projects matched filter(s): one, !one" read as a typo of `one`.
     const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
     const excluded = `${negations.join(', ')} excluded every project the other filters matched`
-    if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
+    if (
+      unmatched.length === 0 &&
+      includes.length > 0 &&
+      includes.every((f) => f.gitSince !== undefined)
+    ) {
       if (includes.every((f) => emptyDiffs.has(f))) {
         const refs = includes.map((f) => f.gitSince).join(', ')
         // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
@@ -598,13 +624,21 @@ export async function pickTask(
   }
 }
 
+/**
+ * A pattern's name without its operators. In one pass `^\.\.\.`
+ * anchored to the string's start, so `!...apq` kept its dots.
+ */
+function typedName(pattern: string): string {
+  return pattern.replace(/^!/, '').replace(/^\.\.\.|\.\.\.$|\^/g, '')
+}
+
 /** The hint for the first unmatched pattern: a near tag for a `tag:` one, else a near project name. */
 function didYouMean(
   unmatched: readonly string[],
   projects: Iterable<{ name: string }>,
   tags: ReadonlyMap<string, readonly string[]> | undefined,
 ): string {
-  const first = unmatched[0]?.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+  const first = unmatched[0] === undefined ? undefined : typedName(unmatched[0])
   if (first?.startsWith('tag:') !== true) return didYouMeanProject(unmatched, projects)
   const known = [...new Set([...(tags?.values() ?? [])].flat())].sort()
   if (known.length === 0) return '. No project declares tags'
@@ -626,7 +660,7 @@ function didYouMeanProject(
     if (bare !== n) byBare.set(bare, [...(byBare.get(bare) ?? []), n])
   }
   for (const pattern of unmatched) {
-    const typed = pattern.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+    const typed = typedName(pattern.replace(/\[[^\]]*\]$/, ''))
     // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
     if (typed === '//') {
       return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'

@@ -7,8 +7,9 @@
 import { readFileSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
-import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
+import { refuseUnknownOptions, UserError, ui, type PluginOptionKinds } from '@vzn/vx'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
+import { printable } from './printable.js'
 
 export interface GithubOptions {
   /** The workers' workflow file in `.github/workflows` (default `vx-worker.yml`). */
@@ -39,9 +40,43 @@ const RUNS_FILE = 'vx-dte-runs'
  */
 const STARTED_FILE = 'vx-dte-started'
 
-/** A dispatched run's jobs are first read this soon, then twice as late each time, up to `WATCH_MAX_MS`. */
+/**
+ * A dispatched run's jobs are first read this soon, then twice as late each
+ * time, up to `WATCH_MAX_MS`. Every job of a repository shares
+ * GITHUB_TOKEN's API limit (1000 an hour): at 10 s, a dozen runs at once
+ * spent it, and dispatches and cancels were refused (2026-10-28).
+ */
 const WATCH_FIRST_MS = 2_000
-const WATCH_MAX_MS = 10_000
+const WATCH_MAX_MS = 30_000
+
+/** A dispatch the API limit refused waits for its reset only this long: the worker is `starting` meanwhile. */
+const DISPATCH_WAIT_MS = 5 * 60_000
+
+/** When a refused answer's API limit resets (epoch ms), or undefined for a refusal that is no limit. */
+function limitReset(res: Response): number | undefined {
+  if (res.status !== 403 && res.status !== 429) return undefined
+  const after = res.headers.get('retry-after')
+  if (after !== null && Number.isFinite(Number(after))) return Date.now() + Number(after) * 1000
+  const reset = res.headers.get('x-ratelimit-reset')
+  if (
+    res.headers.get('x-ratelimit-remaining') === '0' &&
+    reset !== null &&
+    Number.isFinite(Number(reset))
+  )
+    return Number(reset) * 1000
+  return undefined
+}
+
+const resetsAt = (at: number): string =>
+  `; the repository's API limit resets at ${new Date(at).toISOString()}`
+
+/** A workflow run's job, as its jobs list says it. */
+interface Job {
+  name: string
+  status: string
+  conclusion: string | null
+  steps?: { name: string; conclusion: string | null }[]
+}
 
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
@@ -61,11 +96,16 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const watched = new Map<string, Map<string, WorkerSpawn>>()
   let watch: ReturnType<typeof setTimeout> | undefined
   let closed = false
+  // Each jobs page's answer and ETag: asked with it, an unchanged answer is a
+  // 304, which the API limit does not count.
+  const etags = new Map<string, { tag: string; some: Job[]; total: number }>()
+  // No jobs are asked before this (epoch ms): the API limit is spent.
+  let held = 0
   // Workers the run no longer needs: a run of only these is cancelled.
   const cancelled = new Set<string>()
   // A poll or cancel that failed is said, each cause once (2026-10-23: no
   // fault is silent): a job that ended badly went unseen, a run held runners.
-  let warn = (m: string): void => void process.stderr.write(`[vx] ${m}\n`)
+  let warn = (m: string): void => ui.say('warn', `[vx] ${m}`)
   const said = new Set<string>()
   const runOf = (run: string): string => `workflow run ${run.slice(run.lastIndexOf('/') + 1)}`
   const failed = (what: string, why: string): void => {
@@ -83,7 +123,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
     if (res === undefined || res.ok || res.status === 409) return
     failed(
       `cancelling ${runOf(run)}`,
-      `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+      `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}`,
     )
   }
   /** Cancels `run` once none of its workers is still needed. */
@@ -98,31 +138,49 @@ export function github(options: GithubOptions = {}): DteAdapter {
     watch = setTimeout(() => {
       void Promise.all(
         [...watched].map(async ([run, workers]) => {
-          const res = await call(`${run}/jobs?per_page=100`).catch((err: unknown) => {
-            failed(`reading ${runOf(run)}'s jobs`, err instanceof Error ? err.message : String(err))
-            return undefined
-          })
-          if (res === undefined) return
-          if (!res.ok) {
-            failed(
-              `reading ${runOf(run)}'s jobs`,
-              `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
-            )
-            return
-          }
-          const { jobs = [] } = ((await res.json().catch((err: unknown) => {
-            failed(
-              `reading ${runOf(run)}'s jobs`,
-              `no JSON: ${err instanceof Error ? err.message : String(err)}`,
-            )
-            return null
-          })) ?? {}) as {
-            jobs?: {
-              name: string
-              status: string
-              conclusion: string | null
-              steps?: { name: string; conclusion: string | null }[]
-            }[]
+          // Paged at 100, and a matrix holds 256: a job on a later page that
+          // failed went unseen.
+          const jobs: Job[] = []
+          for (let page = 1; ; page++) {
+            const url = `${run}/jobs?per_page=100&page=${page}`
+            const seen = etags.get(url)
+            const res = await call(
+              url,
+              seen === undefined ? {} : { headers: { 'if-none-match': seen.tag } },
+            ).catch((err: unknown) => {
+              failed(
+                `reading ${runOf(run)}'s jobs`,
+                err instanceof Error ? err.message : String(err),
+              )
+              return undefined
+            })
+            if (res === undefined) return
+            let some: Job[]
+            let total: number
+            if (res.status === 304 && seen !== undefined) ({ some, total } = seen)
+            else if (!res.ok) {
+              const reset = limitReset(res)
+              if (reset !== undefined) held = Math.max(held, reset)
+              failed(
+                `reading ${runOf(run)}'s jobs`,
+                `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}${reset === undefined ? '' : resetsAt(reset)}`,
+              )
+              return
+            } else {
+              const body = ((await res.json().catch((err: unknown) => {
+                failed(
+                  `reading ${runOf(run)}'s jobs`,
+                  `no JSON: ${err instanceof Error ? err.message : String(err)}`,
+                )
+                return null
+              })) ?? {}) as { jobs?: Job[]; total_count?: number }
+              some = body.jobs ?? []
+              total = body.total_count ?? 0
+              const tag = res.headers.get('etag')
+              if (tag !== null) etags.set(url, { tag, some, total })
+            }
+            jobs.push(...some)
+            if (some.length < 100 || jobs.length >= total) break
           }
           for (const j of jobs) {
             const a = workers.get(j.name)
@@ -137,7 +195,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
           if (workers.size === 0) watched.delete(run)
         }),
       ).then(() => {
-        if (!closed && watched.size > 0) look(Math.min(2 * ms, WATCH_MAX_MS))
+        const next = Math.min(2 * ms, WATCH_MAX_MS)
+        if (!closed && watched.size > 0) look(Math.max(next, held - Date.now()))
         else watch = undefined
       })
     }, ms)
@@ -148,6 +207,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
     return fetch(`${api}${path}`, {
       ...init,
       headers: {
+        ...(init.headers as Record<string, string> | undefined),
         authorization: `Bearer ${token}`,
         accept: 'application/vnd.github+json',
         'content-type': 'application/json',
@@ -171,7 +231,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
     // check out `sha` either way.
     const refs = [env['GITHUB_HEAD_REF'] || env['GITHUB_REF_NAME'], env['GITHUB_BASE_REF']]
     let res: Response
-    for (let i = 0; ; i++) {
+    const end = Date.now() + DISPATCH_WAIT_MS
+    for (let i = 0; ;) {
       res = await call(`/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
         method: 'POST',
         body: JSON.stringify({
@@ -187,8 +248,17 @@ export function github(options: GithubOptions = {}): DteAdapter {
         }),
       })
       if (res.ok) break
-      const text = (await res.text()).slice(0, 200)
-      if (res.status !== 422 || !text.includes('No ref found') || !refs[i + 1]) {
+      const text = printable((await res.text()).slice(0, 200))
+      const reset = limitReset(res)
+      if (reset !== undefined) {
+        if (reset > end || closed)
+          throw new Error(
+            `github(): dispatching ${workflow}: ${res.status} ${text}${resetsAt(reset)}`,
+          )
+        await Bun.sleep(Math.max(0, reset - Date.now()))
+        continue
+      }
+      if (res.status !== 422 || !text.includes('No ref found') || !refs[++i]) {
         // GitHub's own words named no fix for the two a first run meets (2026-10-26).
         const fix =
           res.status === 404

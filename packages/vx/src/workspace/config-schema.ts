@@ -28,6 +28,8 @@ import {
   anyTaskGlob,
   asTrees,
   isLiteralPattern,
+  parseDependencySpec,
+  DependencySpecError,
 } from '../util/index.js'
 import {
   parseSettingValue,
@@ -39,6 +41,7 @@ import {
 } from '../settings.js'
 import { compileNameGlob, parseFilter } from './filter.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
+import { projectNameProblem, ROOT_NAME } from './workspace.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
 // the same reason the task levels reject them: `plugin: [...]` (singular)
@@ -63,13 +66,17 @@ const BASE_BRANCH_RULE = "must be a branch name like 'main'"
 
 /**
  * A branch name git takes after `origin/`: a leading '-' would reach git
- * as an option, and whitespace, `..`, `~^:?*[\\` are no ref's.
+ * as an option, and whitespace, `..`, `~^:?*[\\` are no ref's. A ref
+ * spelling (`origin/main`, `refs/heads/main`) is no branch either: vx
+ * looked for `origin/origin/main`, found no base, and a run on main took
+ * a branch's cache scope.
  */
 function isBaseBranch(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     /^[^-\s\0~^:?*[\\][^\s\0~^:?*[\\]*$/.test(value) &&
-    !value.includes('..')
+    !value.includes('..') &&
+    !/^(?:origin|refs)\//.test(value)
   )
 }
 
@@ -181,6 +188,14 @@ function validateDependencyRules(value: unknown, where: string): void {
   const shape = `an array of { from, allow?, deny? }, each a selector like 'tag:app' or '@acme/*'`
   if (!Array.isArray(value)) throw new UserError(`${where} must be ${shape}`)
   const selector = (v: unknown) => typeof v === 'string' && v.trim() !== '' && v !== 'tag:'
+  const matchable = (v: string, field: string) => {
+    const why = ruleSelectorProblem(v)
+    if (why !== null)
+      throw new UserError(
+        `${field} ${JSON.stringify(v)} ${why}; a selector is 'tag:<tag>' or a project name, ` +
+          `either may hold '*' (like 'tag:app' or '@acme/*')`,
+      )
+  }
   for (const [i, rule] of (value as unknown[]).entries()) {
     const at = `${where}[${i}]`
     if (typeof rule !== 'object' || rule === null || Array.isArray(rule))
@@ -188,17 +203,46 @@ function validateDependencyRules(value: unknown, where: string): void {
     assertKnownFields(rule, RULE_FIELDS, at)
     const { from, allow, deny } = rule as Record<string, unknown>
     if (!selector(from)) throw new UserError(`${at}.from must be a selector like 'tag:app'`)
+    matchable(from as string, `${at}.from`)
     for (const [k, list] of [
       ['allow', allow],
       ['deny', deny],
     ] as const) {
       if (list !== undefined && (!Array.isArray(list) || !list.every(selector)))
         throw new UserError(`${at}.${k} must be an array of selectors like 'tag:lib'`)
+      for (const [j, v] of ((list ?? []) as string[]).entries()) matchable(v, `${at}.${k}[${j}]`)
     }
     // A rule that says nothing reads as a constraint and checks nothing.
     if (allow === undefined && deny === undefined)
       throw new UserError(`${at} names neither \`allow\` nor \`deny\``)
   }
+}
+
+/**
+ * Why a rule selector can match no project, or null. The checker reads a
+ * selector as a tag or name glob only, so a `--filter` form loaded and
+ * matched nothing, and a `deny` of it passed every edge. Asked of the
+ * filter parser itself, as `tagProblem`.
+ */
+function ruleSelectorProblem(s: string): string | null {
+  const glob = s.startsWith('tag:') ? s.slice(4) : s
+  if (s.trim() !== s || glob.trim() !== glob) return 'has surrounding whitespace'
+  // The root's own name, which the filter reads as the root's directory.
+  if (s === ROOT_NAME) return null
+  if (s.startsWith('!')) return "starts with '!', which a filter reads as an exclusion"
+  const walk = "starts or ends with '...', which a filter reads as a dependency walk"
+  let f: ReturnType<typeof parseFilter>
+  try {
+    f = parseFilter(s, '/')
+  } catch {
+    // `...` alone: the walk with no project between.
+    return walk
+  }
+  if (f.withDeps || f.withDependents || f.onlyDeps || f.onlyDependents) return walk
+  if (f.gitSince !== undefined)
+    return `ends in "[${f.gitSince}]", which a filter reads as a git range`
+  if (f.isPath) return 'reads as a directory to a filter'
+  return null
 }
 
 /** `value` as the setting at `path` takes it, refused in `where`'s words. */
@@ -463,6 +507,12 @@ export function validateProjectConfig(
     if (typeof name !== 'string' || name === '' || name.trim() !== name || name.includes('#')) {
       throw new UserError(
         `${configPath}: \`name\` must be a non-empty string with no surrounding whitespace and no "#" (a task is <name>#<task>)`,
+      )
+    }
+    const why = projectNameProblem(name)
+    if (why !== null) {
+      throw new UserError(
+        `${configPath}: \`name\` ${JSON.stringify(name)} ${why} — dependsOn, --filter and the CLI could not name the project. Rename it.`,
       )
     }
   }
@@ -816,9 +866,9 @@ export function validateProjectConfig(
       // The only InputsConfig field that reached the run unvalidated: a
       // non-string entry crashes deep in `filterUpstreamHashes` /
       // `parseDependencySpec` with a raw TypeError naming neither the task
-      // nor the config. Entry SYNTAX is already checked downstream (a
-      // `DependencySpecError` becomes a UserError naming the task) — this
-      // only pins the shape.
+      // nor the config. Each entry's syntax too: a malformed one (`^`,
+      // `a#`) passed `vx lock` and failed the task at hash time, after its
+      // upstream ran.
       const taskFilters = (inputs as { tasks?: unknown }).tasks
       if (taskFilters !== undefined) {
         if (
@@ -829,6 +879,14 @@ export function validateProjectConfig(
             `${where}.inputs.tasks must be an array of non-empty strings ` +
               `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name', '*', '^*', '!name')`,
           )
+        }
+        for (const raw of taskFilters as string[]) {
+          try {
+            parseDependencySpec(raw, 'inputs.tasks')
+          } catch (err) {
+            if (err instanceof DependencySpecError) throw new UserError(`${where}: ${err.message}`)
+            throw err
+          }
         }
         assertFilterNamesDeclaredDeps(taskFilters, task.dependsOn, where)
       }
@@ -1282,7 +1340,46 @@ function assertNoForeignToken(glob: string, where: string): void {
         `files it names. Write ${rewrite} instead.`,
     )
   }
+  assertNoBareGroup(glob, body, where)
   assertNoBraceRange(glob, where)
+  assertNoGluedGlobstar(glob, where)
+}
+
+/**
+ * `Bun.Glob` reads `**` glued to other text (`src/**.ts`, `a**`) as `*`, one
+ * level: deeper inputs left the key and deeper outputs were never saved.
+ * Turbo rewrites it to the deep reading (vercel/turborepo#5431); vx refuses
+ * and names both.
+ */
+function assertNoGluedGlobstar(glob: string, where: string): void {
+  const body = glob.startsWith('!') ? glob.slice(1) : glob
+  if (!body.split(/[/{},]/).some((seg) => seg.includes('**') && /[^*]/.test(seg))) return
+  const deep = glob.replace(/\*\*([^*/{},]+)/g, '**/*$1').replace(/([^*/{},]+)\*\*/g, '$1*/**')
+  const one = glob.replace(/\*{2,}/g, (run, at: number) =>
+    /[^*/{},]/.test(glob[at - 1] ?? '') || /[^*/{},]/.test(glob[at + run.length] ?? '') ? '*' : run,
+  )
+  throw new UserError(
+    `${where}: "${glob}" glues ** to other text in one path segment, which vx's glob engine ` +
+      `reads as one *, a single directory level. Write "${deep}" for every depth, or "${one}" ` +
+      `for one level.`,
+  )
+}
+
+/** `(a|b)` with no extglob sigil: `Bun.Glob` reads parens and `|` as literal text. */
+const BARE_GROUP = /(?<!\\)\(([^()|]*(?:\|[^()|]*)+)\)/
+
+function assertNoBareGroup(glob: string, body: string, where: string): void {
+  const group = BARE_GROUP.exec(body)
+  if (group === null) return
+  const names = group[1]!.split('|')
+  const rewrite = BUN_GLOB_WILDCARDS.test(group[1]!)
+    ? 'braces ("{a,b}") or one entry per alternative'
+    : `"${glob.replace(group[0], `{${names.join(',')}}`)}"`
+  throw new UserError(
+    `${where}: "${glob}" holds a bare (…|…) group, which vx's glob engine reads as literal ` +
+      `text, never as the alternatives it lists, so the cache key would miss the files it ` +
+      `names. Write ${rewrite} instead.`,
+  )
 }
 
 const BRACE_RANGE = /(?<!\\)\{(-?\d+|[a-zA-Z])\.\.(-?\d+|[a-zA-Z])(\.\.-?\d+)?\}/g
@@ -1484,7 +1581,7 @@ function assertFilterNamesDeclaredDeps(
     // the wildcard skip below takes (item 678).
     if (raw.startsWith('!')) continue
     const f = specForm(raw)
-    if (f.task.length === 0 || f.task.includes('*') || named(f)) continue
+    if (f.task.includes('*') || named(f)) continue
     // `where` opens with the config's path; the message names it once.
     const task = where.slice(where.lastIndexOf(': tasks.') + 2)
     throw new UserError(
@@ -1569,11 +1666,19 @@ export function taskNameProblem(name: string): string | null {
 function tagProblem(tag: string): string | null {
   if (tag.trim() !== tag) return 'has surrounding whitespace'
   if (tag.includes('*')) return "holds '*', which makes it a pattern"
-  const f = parseFilter(`tag:${tag}`, '/')
+  const walk = "ends in '...', which a filter reads as a dependency walk"
+  let f: ReturnType<typeof parseFilter>
+  try {
+    f = parseFilter(`tag:${tag}`, '/')
+  } catch {
+    // `...` alone: the walk leaves the filter no tag, and its refusal
+    // named neither the config nor the tag.
+    return walk
+  }
   if (f.gitSince !== undefined) {
     return `ends in "[${f.gitSince}]", which a filter reads as a git range`
   }
-  if (f.withDeps || f.onlyDeps) return "ends in '...', which a filter reads as a dependency walk"
+  if (f.withDeps || f.onlyDeps) return walk
   return null
 }
 

@@ -91,7 +91,7 @@ describe('resolveNxCacheConfig', () => {
 
   it('refuses a server with no http(s) scheme', () => {
     expect(() => resolveNxCacheConfig({ server: 'cache.example.com' }, {})).toThrow(
-      'vx/nx-cache: server must be http(s), got cache.example.com',
+      'nxCache(): server must be http(s), got cache.example.com',
     )
   })
 
@@ -105,7 +105,7 @@ describe('resolveNxCacheConfig', () => {
       }
     }
     const MSG =
-      'vx/nx-cache: server carries credentials (user:pass@); pass them as the accessToken instead'
+      'nxCache(): server carries credentials (user:pass@); pass them as the accessToken instead'
     expect([
       refusal(() => resolveNxCacheConfig({ server: 'https://u:p@c.example' }, {})),
       refusal(() =>

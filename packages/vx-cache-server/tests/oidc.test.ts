@@ -17,10 +17,12 @@ const allow = parseAllow(`${GITHUB}:Acme/App:ci.yml`)
 let sign: (claims: JWTPayload, aud?: string) => Promise<string>
 let handle: (req: Request) => Promise<Response>
 let read: string
+let jwks: { keys: unknown[] }
 
 beforeAll(async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
   const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
+  jwks = { keys: [jwk] }
   sign = (claims, aud = AUD) =>
     new SignJWT({
       repository: 'acme/app',
@@ -98,6 +100,32 @@ describe('CI OIDC tokens', () => {
     expect(await status('e7', near.ref)).toBe(200)
   })
 
+  // The queue's rename keyed on the ref alone: a push to a branch named
+  // like a queue ref, or a pull request whose head branch was, wrote main.
+  it('only a merge_group run writes its base branch', async () => {
+    const queued = `gh-readonly-queue/main/pr-12-${'a'.repeat(40)}`
+    const push = { event_name: 'push', ref: `refs/heads/${queued}` }
+    expect((await put(await sign(push), 'a11')).status).toBe(204)
+    expect(await status('a11')).toBe(404)
+    expect(await status('a11', push.ref)).toBe(200)
+    const pr = { event_name: 'pull_request', ref: 'refs/pull/7/merge', head_ref: queued }
+    expect((await put(await sign(pr), 'a12')).status).toBe(204)
+    expect(await status('a12')).toBe(404)
+  })
+
+  // A fork names its own head branch: a fork's branch `main` wrote main
+  // wherever fork pull requests get a token.
+  it("a pull request whose head branch is its base branch's name writes nothing", async () => {
+    const pr = await sign({
+      event_name: 'pull_request',
+      ref: 'refs/pull/7/merge',
+      head_ref: 'main',
+      base_ref: 'main',
+    })
+    expect(await detail(await put(pr, 'a13'))).toEqual([403, 'this request reads only'])
+    expect(await status('a13')).toBe(404)
+  })
+
   // A pull_request_target run carries a fork's head_ref, named by the
   // fork: it wrote that branch's scope, so a fork poisoned a branch of the
   // same name (found 2026-10-26). Its ref is the base: a fork's code never
@@ -113,6 +141,19 @@ describe('CI OIDC tokens', () => {
     expect(await status('f8', 'refs/heads/feature')).toBe(404)
   })
 
+  // An issue_comment run (a "/test" comment on a pull request) or a
+  // workflow_run a pull request started carries main's ref while it may
+  // check out the pull request's code: it wrote main's scope, so a fork's
+  // code reached main's entries (#4570 dropped the event filter that
+  // kept it out).
+  it('an issue_comment or workflow_run token writes nothing', async () => {
+    for (const event_name of ['issue_comment', 'workflow_run']) {
+      const token = await sign({ event_name, ref: 'refs/heads/main' })
+      expect(await detail(await put(token, 'f9'))).toEqual([403, 'this request reads only'])
+      expect(await status('f9')).toBe(404)
+    }
+  })
+
   it('refuses a job of a workflow ALLOW does not name', async () => {
     const other = await sign({
       ...MAIN,
@@ -123,6 +164,29 @@ describe('CI OIDC tokens', () => {
       "job_workflow_ref acme/app/.github/workflows/release.yml is not in this server's ALLOW",
     ])
     expect(await status('c3')).toBe(404)
+  })
+
+  // An issuer's URL written with a trailing slash in ALLOW matched no
+  // token's iss (which has none): every job was refused "an issuer this
+  // server's ALLOW does not name".
+  it('admits a job whatever trailing slash ALLOW gives its issuer', async () => {
+    const slashed = createCacheServer({
+      blobs: memBlobs(),
+      authorize: oidcAuth({
+        allow: parseAllow(`${GITHUB}/:acme/app:ci.yml`),
+        audience: AUD,
+        fetchJson: async (url) =>
+          url.endsWith('/.well-known/openid-configuration') ? { jwks_uri: `${GITHUB}/keys` } : jwks,
+      }),
+    })
+    const res = await slashed(
+      new Request(`${AUD}/v1/artifacts/e1`, {
+        method: 'PUT',
+        body: 'x',
+        headers: { ...NAMED, authorization: `Bearer ${await sign(MAIN)}`, 'content-length': '1' },
+      }),
+    )
+    expect(res.status).toBe(204)
   })
 
   // A missing claim read as the text "undefined": the refusal named a
@@ -154,9 +218,11 @@ describe('CI OIDC tokens', () => {
       403,
       'the token is of repository acme/app at https://token.actions.githubusercontent.com, not the repository named',
     ])
+    // Behind a proxy that ends TLS the server is reached at http://: the
+    // refusal names both, so the fix (AUDIENCE) is in the message.
     expect(await detail(await put(await sign(MAIN, 'https://elsewhere'), 'd4'))).toEqual([
       401,
-      'wrong audience',
+      `wrong audience: the token names https://elsewhere, this server takes ${AUD} (AUDIENCE)`,
     ])
     const [h, p] = (await sign(MAIN)).split('.')
     const forged = `${h}.${p}.${'A'.repeat(342)}`
@@ -227,14 +293,17 @@ describe('READ_ACCESS=public', () => {
   })
 })
 
-describe('a server that admits no CI', () => {
+describe('a server whose ALLOW is empty', () => {
   it('refuses every request while ALLOW is empty', async () => {
     const none = createCacheServer({
       blobs: memBlobs(),
       authorize: oidcAuth({ allow: [] }),
     })
     const res = await none(new Request(`${AUD}/v1/artifacts/abc`))
-    expect(await detail(res)).toEqual([401, 'the server admits no CI: set ALLOW'])
+    expect(await detail(res)).toEqual([
+      401,
+      'ALLOW is empty: set it to the CI workflows this server serves',
+    ])
   })
 })
 
@@ -262,6 +331,9 @@ it("answers 502 while the issuer's keys cannot be read, never 401", async () => 
         },
       }),
     )
-    expect(await detail(res)).toEqual([502, `could not read ${GITHUB}'s keys`])
+    expect(await detail(res)).toEqual([
+      502,
+      `could not read ${GITHUB}'s keys: ${GITHUB}${down}: 503`,
+    ])
   }
 })

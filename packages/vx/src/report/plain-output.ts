@@ -34,12 +34,19 @@ export function plainOutput(sink: Logger): Logger {
     if (text !== '') write(node, text)
   }
   // Delegated one by one, never spread: an embedder's logger may be a class
-  // whose methods live on its prototype and read `this`.
+  // whose methods live on its prototype and read `this`. Every hook the sink
+  // has: a dropped `warn` put warnings on stdout, a dropped `runDone` left
+  // the live region under the footer.
   return {
     status: (line) => sink.status(line),
+    ...(sink.warn && { warn: (line) => sink.warn!(line) }),
     ...(sink.runStart && { runStart: (info) => sink.runStart!(info) }),
     ...(sink.taskStart && { taskStart: (node) => sink.taskStart!(node) }),
     ...(sink.runEnd && { runEnd: () => sink.runEnd!() }),
+    ...(sink.stepStart && { stepStart: (id) => sink.stepStart!(id) }),
+    ...(sink.stepEnd && { stepEnd: (id, info) => sink.stepEnd!(id, info) }),
+    ...(sink.runStop && { runStop: () => sink.runStop!() }),
+    ...(sink.runDone && { runDone: () => sink.runDone!() }),
     taskStdout(node, chunk) {
       const text = strip(`${node.id}\0out`, chunk)
       if (text !== '' || chunk === '') sink.taskStdout(node, text)

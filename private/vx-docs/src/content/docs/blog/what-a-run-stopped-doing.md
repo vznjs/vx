@@ -33,8 +33,10 @@ $ vx cache clean --max-size 100K
 ```
 
 Cleanup at the end of every run would be seven `DELETE`s, four of them
-full scans, and it grows with history. Run `vx cache clean` from cron
-or a scheduled CI job instead. There is no `cache.retention` setting.
+full scans, and it grows with history. Run `vx cache clean` from cron or
+a scheduled CI job instead.
+
+There is no `cache.retention` setting.
 
 ## The shared store opens by its index
 
@@ -43,8 +45,8 @@ entries or checks their folders.
 
 ## The footer shows only what it measured
 
-```txt frame="terminal"
-  time      1.86s · max 23ms · avg 5ms · min 3ms
+```ansi
+  [2mtime    [0m  63ms [2m·[0m [2mmax 8ms[0m [2m·[0m [2mavg 6ms[0m [2m·[0m [2mmin 4ms[0m
 ```
 
 That is wall time, then the slowest, average and fastest task. Adding

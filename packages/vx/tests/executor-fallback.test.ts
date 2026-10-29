@@ -90,7 +90,9 @@ describe('a remote executor that gives a task back', () => {
       ok: true,
       statuses: ['success'],
       out: 'here\n',
-      said: ['[vx] a#gen: no worker started it — running it here'],
+      said: [
+        "[vx] a#gen: plugin 'org/gives-back' (executor 'gives-back') gave it back: no worker started it — running it here",
+      ],
       stderr: '',
     })
   })

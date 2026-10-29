@@ -368,6 +368,30 @@ describe('parseWhyArgs', () => {
     expect(parseShowArgs(['--filter']).error).toBe(want)
   })
 
+  it('refuses an anchored target with no project or no task, as vx run does', () => {
+    // Read as a query, `#build` answered VX_E_NO_HISTORY and suggested every
+    // project's build: a usage mistake reported as missing history.
+    expect([parseWhyArgs(['#build']), parseWhyArgs(['a#']), parseWhyArgs(['#'])]).toEqual([
+      {
+        format: 'pretty',
+        target: '#build',
+        error: `missing project name before '#' in "#build" (vx why build finds the project that ran it)`,
+      },
+      {
+        format: 'pretty',
+        target: 'a#',
+        error: `missing task name after '#' in "a#" (vx show a lists the tasks)`,
+      },
+      {
+        format: 'pretty',
+        target: '#',
+        error: `missing task name after '#' in "#" (vx show lists the tasks)`,
+      },
+    ])
+    // Turbo's root spelling is a project, not a missing one.
+    expect(parseWhyArgs(['//#build']).error).toBeUndefined()
+  })
+
   it('rejects unknown flags, bad formats, empty --run, extra positionals', () => {
     expect(parseWhyArgs(['--nope']).error).toContain('unknown flag')
     // --cache-dir with vx run's rules: both spellings, a value required,
@@ -402,6 +426,19 @@ describe('parseWhyArgs', () => {
     expect(err).not.toContain('unknown flag')
     // And never the literal word "undefined" — an omitted value is empty.
     expect(err).not.toContain('undefined')
+  })
+
+  it('--run refuses a flag-shaped value in the space form', () => {
+    // `vx why build --run $EMPTY --format json` took `--format` as the run
+    // id and refused `json` as an extra argument; `--run --format=json`
+    // looked up a run named `--format=json`. No run id starts with `-`.
+    expect(parseWhyArgs(['build', '--run', '--format', 'json']).error).toBe(
+      '--run requires a run id (got flag --format; `vx last --list` shows them)',
+    )
+    expect(parseWhyArgs(['--run', '--format=json', 'build']).error).toBe(
+      '--run requires a run id (got flag --format=json; `vx last --list` shows them)',
+    )
+    expect(parseWhyArgs(['build', '--run', 'r1']).runId).toBe('r1')
   })
 
   it('still rejects a genuinely unknown flag that merely shares a prefix', () => {
@@ -568,7 +605,9 @@ describe('vx why (e2e) — the exact lines', () => {
       const bare = await vx(root, ['why'])
       expect(bare.code).toBe(1)
       expect(err(bare)).toBe(
-        noticed('vx why: <task> required (e.g. vx why app#build, or vx why build)').trimEnd(),
+        noticed(
+          'vx why: <task> required (e.g. vx why app#build, or vx why build) (see `vx why --help`)',
+        ).trimEnd(),
       )
     },
     TIMEOUT,

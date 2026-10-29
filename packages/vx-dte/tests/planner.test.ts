@@ -225,6 +225,30 @@ it('starts a worker of each platform its work needs, though that size is declare
   expect(plan([task], workers, sizes, WARM).start.map((s) => s.name)).toEqual(['mac'])
 })
 
+// A Mac task that filled its Mac: a bigger Linux worker cannot take it,
+// so the plan neither waits for one nor starts one for it.
+it('plays a task that filled its worker on no bigger one of another platform', () => {
+  const mac = 'darwin-arm64'
+  const heavy: PlanTask = {
+    id: 'ios',
+    cores: Infinity,
+    memory: Infinity,
+    above: { cores: 4, memory: 4e9 },
+    ms: 10_000,
+    deps: [],
+    platform: mac,
+  }
+  const workers: PlanWorker[] = [
+    worker('mac#1', { memory: 4e9, platform: mac }),
+    worker('big#1', { cores: 8, at: WARM, idle: false, starting: true, platform: 'linux-x64' }),
+  ]
+  expect(simulate([heavy], workers)).toBe(10_000)
+  const big: Size = { name: 'big', max: 2, cpu: 8, memory: 32e9, platform: 'linux-x64' }
+  const macBig: Size = { name: 'mac-big', max: 2, cpu: 8, memory: 32e9, platform: mac }
+  const sizes = candidates([big, macBig], new Map(), [{ ...heavy.above!, platform: mac }], 0)
+  expect(sizes.map((s) => s.name)).toEqual(['mac-big'])
+})
+
 // Main c27c238 asked 13 workers at 2.4 s and cancelled 7 at 2.6 s: the
 // Mac came after every Linux size, so reaching it took all twelve.
 it("reaches each platform's first worker without taking another's all", () => {

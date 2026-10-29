@@ -62,13 +62,15 @@ glob without a fence would delete other projects' files.
 ## How it works
 
 Once per run, vx lists the projects nested under each project. Every
-glob skips paths under them, for inputs and for output cleaning. A
-workspace package counts as a project even without a `vx.config.ts`.
+glob skips paths under them, for inputs and for output cleaning.
+
+A workspace package counts as a project even without a `vx.config.ts`.
 
 One trap: sorted as strings, `foo`, `foo-utils`, `foo/nested` come in
-that order, because `-` sorts before `/`. A scan that stopped at
-`foo-utils` would miss `foo/nested` and leave a hole. vx keeps scanning
-until it leaves the `foo` block.
+that order, because `-` sorts before `/`.
+
+A scan that stopped at `foo-utils` would miss `foo/nested` and leave a
+hole. vx keeps scanning until it leaves the `foo` block.
 
 ## The one way across
 
@@ -83,7 +85,9 @@ caching a result that wouldn't rerun.
 
 `inputs.workspaceFiles` and `cache.outputs.workspaceFiles` start at the
 workspace root and have no fence. Use them for root files like a shared
-`tsconfig.base.json`. For another project's files, prefer an edge.
+`tsconfig.base.json`.
+
+For another project's files, prefer an edge.
 
 Details: [Caching, cross-project
 boundaries](../../caching/#cross-project-boundaries). More at

@@ -9,6 +9,11 @@ can never drift on the stability gate.
 
 ## Public surface
 
+- `rederiveKeys(args, keys, dirty)` — the keys `deriveStableKeys` would
+  make, from the last derivation under the same graph (`run-keys.md`'s
+  delta row): each `dirty` task's key derived again over its deps' keys,
+  in the walk's order, the rest kept. Given `keys`, `deriveStableKeys`
+  fills it with every key it makes, in that order.
 - `deriveStableKeys(args: DeriveStableKeysArgs): StableKey[]` — `StableKey`
   is `{ hash, node }`; topo walk deriving every task's key the
   same way execute-task does; returns stable+cacheable non-group tasks

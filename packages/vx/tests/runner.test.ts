@@ -369,8 +369,8 @@ describe('runPersistent', () => {
       // route a persistent task's text has (the spawn retains nothing).
       expect(live.join('')).toContain('Listening on :3000')
     } finally {
-      spawn.child.kill('SIGKILL')
-      await spawn.child.exited
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
     }
   }, 8_000)
 
@@ -395,8 +395,8 @@ describe('runPersistent', () => {
       expect(live.join('')).toContain('server ready')
       expect(live.join('')).toContain('later chatter')
     } finally {
-      spawn.child.kill('SIGKILL')
-      await spawn.child.exited
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
     }
   }, 8_000)
 
@@ -414,8 +414,8 @@ describe('runPersistent', () => {
       ])
       expect(settled).toBe('ready')
     } finally {
-      spawn.child.kill('SIGKILL')
-      await spawn.child.exited
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
     }
   }, 8_000)
 
@@ -433,8 +433,8 @@ describe('runPersistent', () => {
       ])
       expect(settled).toBe('ready')
     } finally {
-      spawn.child.kill('SIGKILL')
-      await spawn.child.exited
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
     }
   }, 8_000)
 
@@ -457,8 +457,8 @@ describe('runPersistent', () => {
         Bun.sleep(1_500).then(() => 'timed out'),
       ])
     } finally {
-      spawn.child.kill('SIGKILL')
-      await spawn.child.exited
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
     }
   }
   it.each([
@@ -499,8 +499,8 @@ describe('runPersistent', () => {
       ])
       expect(settled).toBe('ready')
     } finally {
-      spawn.child.kill('SIGKILL')
-      await spawn.child.exited
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
     }
   }, 8_000)
 
@@ -525,7 +525,7 @@ describe('runPersistent', () => {
       readyWhen: 'READY',
     })
     await spawn.ready
-    await spawn.child.exited
+    await spawn.child!.exited
   })
 })
 
@@ -655,10 +655,10 @@ describe('runPersistent — what its exit bookkeeping keeps', () => {
     try {
       await spawn.ready
       await Bun.sleep(start + START_WINDOW_MS + 250 - Date.now())
-      expect(isAlive(spawn.child.pid)).toBe(true)
+      expect(isAlive(spawn.child!.pid)).toBe(true)
     } finally {
-      spawn.child.kill('SIGKILL')
-      await spawn.child.exited
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
     }
   })
 
@@ -670,7 +670,7 @@ describe('runPersistent — what its exit bookkeeping keeps', () => {
       readyWhen: 'Listening',
     })
     await spawn.ready
-    expect(await spawn.child.exited).toBe(0)
+    expect(await spawn.child!.exited).toBe(0)
   })
 
   it('a child that exits before ready leaves the live set', async () => {
@@ -1244,8 +1244,8 @@ describe('runPersistent — the rows its sweep asked for', () => {
   })
   const env = (): Record<string, string> => ({ PATH: process.env.PATH ?? '' })
   const stop = async (spawn: ReturnType<typeof runPersistent>): Promise<void> => {
-    spawn.child.kill('SIGKILL')
-    await spawn.child.exited
+    spawn.child!.kill('SIGKILL')
+    await spawn.child!.exited
   }
   const within = (p: Promise<unknown>, ms: number): Promise<string> =>
     Promise.race([p.then(() => 'ready'), Bun.sleep(ms).then(() => 'timed out')])
@@ -1260,7 +1260,7 @@ describe('runPersistent — the rows its sweep asked for', () => {
       onStdout: (c) => out.push(c),
       onStderr: (c) => err.push(c),
     })
-    await spawn.child.exited
+    await spawn.child!.exited
     await Bun.sleep(50)
     // The stderr stream ends on a truncated character: the flush reports it.
     expect([out.join(''), err.join(''), [...out, ...err].includes('')]).toEqual([
@@ -1290,10 +1290,10 @@ describe('runPersistent — the rows its sweep asked for', () => {
       env: env(),
       liveChildren: live,
     })
-    expect(live.has(spawn.child)).toBe(true)
-    await spawn.child.exited
+    expect(live.has(spawn.child!)).toBe(true)
+    await spawn.child!.exited
     await Bun.sleep(20)
-    expect(live.has(spawn.child)).toBe(false)
+    expect(live.has(spawn.child!)).toBe(false)
   })
 
   it('matches readyWhen across a chunk seam past a long unbroken line', async () => {
@@ -1347,7 +1347,7 @@ describe('runPersistent — the rows its sweep asked for', () => {
     try {
       expect(await within(spawn.ready, START_WINDOW_MS)).toBe('ready')
       await Bun.sleep(start + START_WINDOW_MS + 250 - Date.now())
-      expect(isAlive(spawn.child.pid)).toBe(true)
+      expect(isAlive(spawn.child!.pid)).toBe(true)
     } finally {
       await stop(spawn)
     }
@@ -1376,20 +1376,20 @@ describe('runPersistent — the rows its sweep asked for', () => {
     })
     try {
       await Promise.allSettled([polite.ready, deaf.ready])
-      await polite.child.exited
+      await polite.child!.exited
       expect(await Bun.file(heard).exists()).toBe(true)
       // `signalCode` is set when Bun reaps the child, after the kernel says
       // dead: read right after `waitForDead` it was null 4 times in 50 (M-32).
       const died = await Promise.race([
-        deaf.child.exited.then(() => deaf.child.signalCode),
+        deaf.child!.exited.then(() => deaf.child!.signalCode),
         Bun.sleep(3_000).then(() => 'still running'),
       ])
       expect(died).toBe('SIGKILL')
     } finally {
       if (prev === undefined) delete process.env['VX_TEST_KILL_GRACE']
       else process.env['VX_TEST_KILL_GRACE'] = prev
-      polite.child.kill('SIGKILL')
-      deaf.child.kill('SIGKILL')
+      polite.child!.kill('SIGKILL')
+      deaf.child!.kill('SIGKILL')
     }
   })
 })
@@ -1415,6 +1415,20 @@ describe('runCommand — the rows its sweep asked for', () => {
       true,
     ])
     expect(r.stderr).not.toContain('Install a POSIX sh')
+  })
+
+  // A command (its forwarded args folded in) is ONE argument to `sh -c`,
+  // capped at 128 KiB on Linux, far below the argv total: the frame said
+  // only E2BIG, which reads as "too many files" and names no fix.
+  it('a command too long to spawn says what the limit is and how to get under it', async () => {
+    const r = await runCommand({
+      command: `true ${'x'.repeat(3_000_000)}`,
+      cwd: dir,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect([r.exitCode, r.spawnFailed]).toEqual([127, true])
+    expect(r.stderr).toContain('E2BIG')
+    expect(r.stderr).toContain('the command, with the args after --, is 2930 KiB')
   })
 
   it('a timed-out command returns only once its group is gone', async () => {
@@ -1518,8 +1532,34 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
       await spawn.ready
       expect(live.join('')).toBe('Listening\n')
     } finally {
-      spawn.child.kill('SIGKILL')
-      await spawn.child.exited
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
+    }
+  })
+
+  // stdin too: a server's is a pipe vx holds open (schema.md), and Bun's
+  // socketpair refused `/dev/stdin` by path, so a server that read it
+  // failed at once instead of blocking until vx ends.
+  // No `timeout(1)`: macOS has none. A background job's stdin is /dev/null
+  // unless redirected, hence fd 3; still blocked after a second, it ends
+  // by the kill (143), where a refused open exits 1.
+  it('runPersistent: a server reading /dev/stdin by path blocks on it', async () => {
+    const live: string[] = []
+    const spawn = runPersistent({
+      command:
+        'echo up; exec 3<&0; cat /dev/stdin <&3 & c=$!; sleep 1; kill $c; wait $c 2>/dev/null; echo rc=$?; exec sleep 30',
+      cwd,
+      env,
+      readyWhen: 'rc=',
+      onStdout: (c) => live.push(c),
+      onStderr: (c) => live.push(c),
+    })
+    try {
+      await spawn.ready
+      expect(live.join('')).toBe('up\nrc=143\n')
+    } finally {
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
     }
   })
 
@@ -1567,8 +1607,8 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     expect(failed.spawnFailed).toBe(true)
     const spawn = runPersistent({ command: 'echo up; exec sleep 30', cwd, env, readyWhen: 'up' })
     await spawn.ready
-    spawn.child.kill('SIGKILL')
-    await spawn.child.exited
+    spawn.child!.kill('SIGKILL')
+    await spawn.child!.exited
     await Bun.sleep(50)
     expect([...openFds()].filter((fd) => !before.has(fd))).toEqual([])
   }, 10_000)

@@ -9,7 +9,9 @@ rules stand between them and neither changes what the task is:
   in one process (a daemon built on the façade; core ships none)
   supplies an `inflight` registry (`RunOptions.inflight`). A cacheable
   task whose key a sibling is already computing waits for the sibling,
-  then cache-hits on what it saved. A stateless `vx run` passes no
+  then cache-hits on what it saved. A sibling that saved nothing (it
+  failed) releases its joiners to run the task, one at a time: each
+  takes the barrier in turn, never two in one directory at once. A stateless `vx run` passes no
   registry and takes the untouched path: no key derivation before
   execute.
 - **Continue-taint.** Under `continueMode: 'always'` a task runs
@@ -102,7 +104,8 @@ no lane, at once.
 ## Tests
 
 `tests/inflight.test.ts` (two runs sharing a registry execute a key
-once and leave it empty; the joiner hits; a restore-tier task, a
+once and leave it empty; the joiner hits; joiners behind a failed
+sibling run in turn; a restore-tier task, a
 write-only and a read-only run do not join),
 `tests/continue-taint.test.ts` (the tainted task runs and does not
 save; taint reaches the grand-dependent; a hit between the failure

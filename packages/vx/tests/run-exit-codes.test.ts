@@ -29,7 +29,7 @@ afterAll(async () => {
 describe('vx run', () => {
   it('refuses an anchored spec with no project or no task, by name', async () => {
     const refused = []
-    for (const spec of ['#build', 'app#']) {
+    for (const spec of ['#build', 'app#', '#']) {
       refused.push(await resolveRunOptions(parseRunArgs([spec]), root, [spec]))
     }
     expect(refused).toEqual([
@@ -37,6 +37,36 @@ describe('vx run', () => {
         error: `missing project name before '#' in "#build" (vx run build runs it in every project)`,
       },
       { error: `missing task name after '#' in "app#" (vx show app lists the tasks)` },
+      // Both halves empty: the task is what is missing, not an empty name to run.
+      { error: `missing task name after '#' in "#" (vx show lists the tasks)` },
+    ])
+  })
+
+  it('refuses an empty or blank task name in its own words, run and watch alike', async () => {
+    // It reached the orchestrator, which answered in the embedder API's
+    // words ("RunOptions.tasks names no task").
+    const refused = []
+    for (const verb of ['run', 'watch'] as const) {
+      for (const tasks of [[''], [' '], ['build', '']]) {
+        refused.push(await resolveRunOptions(parseRunArgs(['--all', ...tasks]), root, tasks, verb))
+      }
+    }
+    const empty = (t: string) => ({
+      error: `empty task name ${JSON.stringify(t)} (vx show lists the tasks)`,
+    })
+    expect(refused).toEqual([empty(''), empty(' '), empty(''), empty(''), empty(' '), empty('')])
+  })
+
+  it('refuses a padded task name, by name', async () => {
+    // `vx run 'build ' --all` said "no projects declare task(s): build",
+    // its space invisible. No config can declare it (taskNameProblem).
+    const refused = []
+    for (const spec of ['build ', 'app# build']) {
+      refused.push(await resolveRunOptions(parseRunArgs(['--all', spec]), root, [spec]))
+    }
+    expect(refused).toEqual([
+      { error: `task name "build " has surrounding whitespace (vx show lists the tasks)` },
+      { error: `task name " build" has surrounding whitespace (vx show lists the tasks)` },
     ])
   })
 

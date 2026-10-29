@@ -94,6 +94,22 @@ function turboServer(opts: { token?: string; verifyTag?: boolean } = {}) {
 }
 
 describe('resolveTurboCacheConfig', () => {
+  it('reads an empty TURBO_API, TURBO_TEAM, TURBO_TEAMID or VERCEL_ARTIFACTS_OWNER as unset, as Turbo does', () => {
+    // CI hands `''` for a missing secret or variable (vercel/turborepo#6929).
+    expect(
+      resolveTurboCacheConfig({}, { TURBO_TOKEN: 't', TURBO_TEAM: 'acme', TURBO_API: '' })?.apiUrl,
+    ).toBe('https://vercel.com/api')
+    const local = { apiUrl: 'https://c.example', teamId: 'team_x', teamSlug: 'linked' }
+    expect(
+      resolveTurboCacheConfig(
+        {},
+        { TURBO_TOKEN: 't', TURBO_TEAM: '', TURBO_TEAMID: '', VERCEL_ARTIFACTS_OWNER: '' },
+        {},
+        local,
+      ),
+    ).toMatchObject({ apiUrl: 'https://c.example', teamId: 'team_x', teamSlug: 'linked' })
+  })
+
   it('reads options over Turbo’s environment, strips a trailing slash, declines without url, team or token', () => {
     expect(resolveTurboCacheConfig({}, {})).toBeUndefined()
     // A URL with no token is kept: the layer's `open` asks the OS keychain.
@@ -189,10 +205,10 @@ describe('resolveTurboCacheConfig', () => {
       [7, 8],
     ])
     expect(() => at({}, { TURBO_REMOTE_CACHE_TIMEOUT: '1.5' }, {})).toThrow(
-      'vx/turbo-cache: TURBO_REMOTE_CACHE_TIMEOUT must be whole seconds ≥ 0, got "1.5"',
+      'turboCache(): TURBO_REMOTE_CACHE_TIMEOUT must be whole seconds ≥ 0, got "1.5"',
     )
     expect(() => at({}, {}, { uploadTimeout: -1 })).toThrow(
-      'vx/turbo-cache: remoteCache.uploadTimeout must be whole seconds ≥ 0, got -1',
+      'turboCache(): remoteCache.uploadTimeout must be whole seconds ≥ 0, got -1',
     )
   })
 
@@ -240,6 +256,30 @@ describe('resolveTurboCacheConfig', () => {
     ])
   })
 
+  // A workflow's `${{ vars.TURBO_API }}` is `''` when the variable is unset,
+  // and Turbo reads `''` as unset. `??` took it as set: the empty URL turned
+  // the cache off over turbo.json's apiUrl, and an empty TURBO_TOKEN hid a
+  // Vercel build's VERCEL_ARTIFACTS_TOKEN.
+  it('an empty TURBO_* variable is unset, as Turbo reads it', () => {
+    const empty = { TURBO_API: '', TURBO_TOKEN: '', TURBO_TEAMID: '', TURBO_TEAM: '' }
+    const c = resolveTurboCacheConfig({}, empty, {
+      apiUrl: 'https://c.example',
+      teamId: 'team_json',
+    })
+    const v = resolveTurboCacheConfig(
+      {},
+      {
+        ...empty,
+        VERCEL_ARTIFACTS_TOKEN: 'vt',
+        VERCEL_ARTIFACTS_OWNER: 'team_v',
+      },
+    )
+    const slug = resolveTurboCacheConfig({}, { TURBO_TEAM: '' }, { teamSlug: 'acme' })
+    expect([c && [c.apiUrl, c.teamId], v && [v.apiUrl, v.token, v.teamId], slug?.teamSlug]).toEqual(
+      [['https://c.example', 'team_json'], ['https://vercel.com/api', 'vt', 'team_v'], 'acme'],
+    )
+  })
+
   // Turbo signs only under `remoteCache.signature: true`: a short env key
   // with the flag off refused the cache here and signed nothing there.
   it('the env signature key applies only where turbo.json turns signing on', () => {
@@ -263,7 +303,7 @@ describe('resolveTurboCacheConfig', () => {
       key({ signature: true }, { ...env, TURBO_SIGNATURE: '' }),
     ]).toEqual(['k'.repeat(32), undefined, 'k'.repeat(32)])
     expect(() => key({}, { ...env, TURBO_SIGNATURE: 'yes' })).toThrow(
-      'vx/turbo-cache: TURBO_SIGNATURE should be 1 or 0, got "yes"',
+      'turboCache(): TURBO_SIGNATURE should be 1 or 0, got "yes"',
     )
   })
 
@@ -282,11 +322,11 @@ describe('resolveTurboCacheConfig', () => {
 
   it('refuses an apiUrl with no http(s) scheme, from options or TURBO_API', () => {
     expect(() => resolveTurboCacheConfig({ apiUrl: 'cache.example.com', token: 't' }, {})).toThrow(
-      'vx/turbo-cache: apiUrl must be http(s), got cache.example.com',
+      'turboCache(): apiUrl must be http(s), got cache.example.com',
     )
     expect(() =>
       resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'cache.example.com/' }),
-    ).toThrow('vx/turbo-cache: apiUrl must be http(s), got cache.example.com')
+    ).toThrow('turboCache(): apiUrl must be http(s), got cache.example.com')
   })
 
   it('refuses an apiUrl carrying user:pass@, from options or TURBO_API (gaps §8 L232)', () => {
@@ -299,7 +339,7 @@ describe('resolveTurboCacheConfig', () => {
       }
     }
     const MSG =
-      'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead'
+      'turboCache(): apiUrl carries credentials (user:pass@); pass them as the token instead'
     expect([
       refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u:p@c.example', token: 't' }, {})),
       refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u@c.example', token: 't' }, {})),

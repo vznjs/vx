@@ -77,8 +77,10 @@ flowchart LR
 ```
 
 A package with no build step still matters to its users. vx gives it a
-`build` that runs nothing but is keyed on its files. Edit it, and the
-packages that use it build again, and `--affected` finds them.
+`build` that runs nothing but is keyed on its files.
+
+Edit it, and the packages that use it build again, and `--affected`
+finds them.
 
 Every flag is in the [CLI reference](../../cli/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

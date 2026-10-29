@@ -347,6 +347,11 @@ describe('--filter over random workspaces', () => {
       'tag:',
       '!tag:',
       '...tag:',
+      // An unset variable in `--filter "{$PKG}"` selected every project.
+      '{}',
+      '!{}',
+      '...{}',
+      '{ }',
     ]
     const refused = empty.map((raw) => {
       try {

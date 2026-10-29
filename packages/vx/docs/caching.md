@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v48'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v49'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -130,8 +130,8 @@ over (in order):
    `npm-shrinkwrap.json` over `package-lock.json`, as npm does; `bun()`
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
-   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`:
-   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`)
+   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
+   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, the root `package.json`'s `workspaces.nohoist` and `installConfig`)
    and folds each whole into every task.
 
    The run reads each claimed root file once, before any task. A task
@@ -290,7 +290,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A task glob is a **standard glob**: `[ab]` is a character class, as
     in `Bun.Glob`, Turbo and Nx, and a route directory is escaped:
     `app/\[id\]/**` folds `app/[id]`. Bare, `app/[id]/**` is the class
-    and folds `app/i/…` and `app/d/…`, never the route.
+    and folds `app/i/…` and `app/d/…`, never the route; `vx lock`
+    refuses it when `app/[id]` exists. When an input or output glob
+    matches no files and, read as a literal path, names one that exists,
+    the "matched no files" warning says so and gives the escaped spelling.
 
     An index OID is only trusted where git stores the worktree bytes
     **verbatim**, so the enumeration prunes it three ways:
@@ -344,7 +347,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     string, kept the key that `git status` and `--affected` saw move.
     Under `core.fileMode=false` (WSL's DrvFs) git reports no chmod, so
     there a clean file's mode comes from an lstat too, and its OID
-    from the index (item 1076).
+    from the index (item 1076). Each of these settings is read as git
+    reads a boolean: `false`, `no`, `off`, the empty value or a zero
+    integer (`0`, `00`) is false, and a bare key is true.
 
     A **symlink** folds as git folds it, the blob of its target
     _string_ (its mode-120000 index OID), and then the content behind
@@ -364,8 +369,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     whose static directory passes through a link (`lib/**` over
     `lib -> ../shared`) takes the link as an input: git lists a linked
     directory as the link alone, so the glob matched nothing and an
-    edit behind it was a hit (2026-10-25). A `**` glob does not enter
-    one it meets.
+    edit behind it was a hit (2026-10-25). A link to a directory below
+    a glob's fixed prefix (`src/**/*.ts` over `src/v -> ../shared`,
+    `**/*.ts` over `lib -> ../shared`) is an input the same way whenever
+    the glob could match a path under it: its name alone matched no
+    pattern, and an edit behind it was a hit (2026-10-28).
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.
@@ -433,10 +441,9 @@ On a hit:
    output that blocks a rename (a file where the entry needs a directory,
    or the reverse) goes before. Turbo also restores in place; Nx deletes
    and copies each file, and a reader meets a missing or short file.
-4. Captured stdout is replayed to the live terminal via the logger —
-   the framed block looks like a fresh run. (stderr is not cached —
-   only successful runs are cached and their stderr is near-always
-   empty; live runs still stream stderr normally.)
+4. The captured output is replayed to the live terminal via the
+   logger — stdout and stderr, each on its own stream, in the order the
+   task wrote them — so the framed block looks like a fresh run.
 5. The task is marked `cache-hit` (or `cache-hit-remote` when the
    `LayeredCache` hydrated from the remote layer this run);
    `durationMs` is the wallclock for the restore op, not the original
@@ -811,7 +818,9 @@ has moved whatever it holds (a whole-second stamp counts as any moment
 of its second, an even one of two, in both checks): an input changed and changed BACK while the
 command ran matched its digest again, and its output, built from the
 edit, was filed under the key and restored over the original (item
-1015). When one moved, the task's result stands but no entry is saved,
+1015). A symlinked input is also followed again: the key folds the
+content behind it, which an edit changes without touching the link, and
+a different digest there has moved. When one moved, the task's result stands but no entry is saved,
 one status line names the file (``[vx] app#format: `packages/app/a.ts`
 changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
@@ -940,9 +949,14 @@ installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
 No clean deletes a file git tracks (2026-10-14). Under an output
 glob it is still an output: the task may rewrite it (TanStack Router's
 committed `routeTree.gen.ts`), the artifact saves the bytes the run left,
-and a restore writes them. It also stays in the task's key, even under its
-own output glob, so an edit moves the key and the saved bytes follow from
-it; the task's rewrite is no input that moved mid-run. Until then the
+and a restore writes them. It is also in the task's key, even under its
+own output glob and when no `inputs.files` glob reaches it (`dist/LICENSE`
+under `dist/**` with inputs `src/**`; until 2026-10-28 that one was left
+out, and a hit wrote the old bytes over a committed edit, as
+turborepo#14831 fixed in Turbo), so an edit moves the key and the saved
+bytes follow from it; the task's rewrite is no input that moved mid-run.
+A committed file under `outputs.workspaceFiles` is keyed only where
+`inputs.workspaceFiles` reaches it. Until then the
 clean deleted a committed file under an output, and a reader with no edge
 to its producer failed naming only the file (A-48, vueuse's
 `metadata/index.json`). Untracked files under the glob are cleaned as
@@ -1377,7 +1391,8 @@ root) and it holds everything, shared with no other workspace:
     ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
     │                                       packed under (v35), the miss's CPU and RSS,
     │                                       the empty output directories (v44),
-    │                                       the output symlinks (v45)
+    │                                       the output symlinks (v45), the modes of
+    │                                       output directories narrower than 0755 (v49)
     └── .vx-sum                             CRC-32 of the archive this tree packs to (v36)
 ```
 
@@ -1488,7 +1503,7 @@ Its cost is the CRC's (~10 GB/s): a 32 MB restore 11.3 → 14.4 ms and
 Tar headers carry mode and second mtimes. vx needs both permission bits (a lost executable bit builds cold
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
-`.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, dirs?, exec? }` —
+`.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, dirs?, links?, dirModes?, exec? }` —
 into the archive. Restore applies both, the mode minus the process
 umask as tar gives a non-root user (under `umask 077` a 0644 output comes
 back 0600; until 2026-10-16 it came back 0644, readable by every user,
@@ -1508,7 +1523,8 @@ it), every wire ships the bytes verbatim, and an artifact without it
 reads as before. The ingest side takes the numbers only as plain
 non-negative numbers; anything else in a foreign sidecar is dropped.
 `dirs` (v44) names the empty directories the output globs matched at
-save (`outputs/dist/empty`): a tar of regular files cannot hold them, and
+save (`outputs/dist/empty`, `workspace-outputs/gen/empty` under
+`outputs.workspaceFiles`): a tar of regular files cannot hold them, and
 a hit makes each one, so the tree a hit leaves is the one the miss left.
 Each name is held to a file entry's rules and to the declared outputs,
 and is reached only through directories that stay in the project. Its
@@ -1575,7 +1591,12 @@ following a chain of links to its end — and writes through it, the
 link kept. Whether a link stays inside is decided on where it resolves,
 so a dangling link to `../elsewhere` or to an absolute path out of the
 project is the same refusal, nothing created outside, and a cycle of
-links is refused by name. (A link the output globs themselves cover,
+links is refused by name. Nor is a link written through into Git's
+metadata: a path that resolves into a `.git` directory under the
+project (or the workspace, for `outputs.workspaceFiles`), in any case,
+is refused naming the link (`dist/g -> ../.git` carried
+`dist/g/hooks/pre-commit` into `.git/hooks`), and an artifact's own link
+into `.git` fails its restore (vercel/turborepo#14808). (A link the output globs themselves cover,
 `dist/sub` under `dist/**`, is an output: the clean unlinks it.) Entry NAMES are
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps
@@ -2124,6 +2145,17 @@ breaking footer).
 
 ### History
 
+- **v48 → v49**: stored bytes wrong under a key the change does not move
+  (2026-10-28). A hit made each missing output directory with mkdir's
+  default, so `chmod 700 dist/keys` came back 0755 after `rm -rf dist` or
+  on a fresh checkout, and every user could read the files it kept to
+  its owner. The sidecar now keeps `dirModes`, the mode of each output
+  directory that withholds a permission 0755 grants, and a hit gives
+  each directory it makes that mode, minus the umask as a file's
+  (`tests/restore-dir-mode.test.ts`); a directory that stands is left as
+  it is. A rename into one of this user's that withholds its own write
+  (`chmod 555`) gives it owner write for the commit, then its mode back.
+  A v48 artifact keeps none.
 - **v47 → v48**: stored bytes wrong under a key the change does not move
   (2026-10-18). A task glob is a standard glob again: `[...]` is a
   character class and `\[id\]` names a route directory, which reverts

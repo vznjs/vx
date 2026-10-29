@@ -14,6 +14,7 @@
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { depsOf, record, stable } from './json.js'
 import { joinPosix } from './posix.js'
+import { parseSyml } from './syml.js'
 
 export interface Lockfile {
   readonly generation: 'berry' | 'classic'
@@ -40,6 +41,9 @@ export interface Lockfile {
 }
 
 export interface Entry {
+  /** The package's own name, from the resolution (berry; '' for classic) */
+  readonly name: string
+  readonly version: string
   readonly deps: ReadonlyMap<string, string>
   /** `dependencies` alone, which a workspace entry merges its devDependencies into (berry only) */
   readonly installed: ReadonlyMap<string, string>
@@ -57,9 +61,9 @@ export function parseLockfile(text: string): Lockfile {
 }
 
 function parseBerry(text: string): Lockfile {
-  let doc: unknown
+  let doc: unknown = parseSyml(text)
   try {
-    doc = Bun.YAML.parse(text)
+    doc ??= Bun.YAML.parse(text)
   } catch (err) {
     throw new Error(`yarn.lock: ${err instanceof Error ? err.message : String(err)}`)
   }
@@ -83,6 +87,8 @@ function parseBerry(text: string): Lockfile {
       Object.entries(e).filter(([k]) => k !== 'dependencies' && k !== 'peerDependencies'),
     )
     entries.set(resolution, {
+      name: resolution.slice(0, resolution.indexOf('@', 1)),
+      version: typeof e['version'] === 'string' ? e['version'] : '',
       deps: depsOf(e, ['dependencies', 'peerDependencies']),
       installed: depsOf(e, ['dependencies']),
       resolution: `${resolution}\0${stable(material)}`,
@@ -101,6 +107,7 @@ function parseBerry(text: string): Lockfile {
         } catch {
           inner = patch[1]!
         }
+        inner = npmDefault(inner)
         const ids = patches.get(inner)
         if (ids === undefined) patches.set(inner, [resolution])
         else if (!ids.includes(resolution)) ids.push(resolution)
@@ -125,6 +132,15 @@ function parseBerry(text: string): Lockfile {
   }
 }
 
+// Yarn 2/3 write a patch's inner descriptor with no protocol
+// (`resolve@^1.22.0`) where Yarn 4 writes `resolve@npm:^1.22.0`; npm: is
+// Yarn's default, so both key the same plain descriptor (turborepo#4770).
+function npmDefault(descriptor: string): string {
+  const at = descriptor.indexOf('@', 1)
+  const range = descriptor.slice(at + 1)
+  return range.includes(':') ? descriptor : `${descriptor.slice(0, at)}@npm:${range}`
+}
+
 /** The classic format: an unquoted-YAML dialect with `key value` lines. */
 function parseClassic(text: string): Lockfile {
   const entries = new Map<string, Entry>()
@@ -143,6 +159,8 @@ function parseClassic(text: string): Lockfile {
     // the digest did not move (item 902). Classic has no workspace entries
     // to carry that edge, so each entry carries its own descriptors.
     entries.set(id, {
+      name: '',
+      version: fields['version'] ?? '',
       deps,
       installed: deps,
       resolution: `${fields['version'] ?? ''}\0${fields['resolved'] ?? ''}\0${fields['integrity'] ?? ''}\0${[...keys].sort().join(',')}`,
@@ -265,7 +283,7 @@ function resolveDescriptor(
   // A patched descriptor reaches the patched entries Yarn installs as well
   // as the plain one it keys (item 1074).
   const withPatch = (descriptor: string, id: string): readonly string[] => {
-    const patched = lock.patches.get(descriptor)
+    const patched = lock.patches.get(npmDefault(descriptor))
     return patched === undefined ? [id] : [id, ...patched.filter((p) => p !== id)]
   }
   const direct = lock.descriptors.get(`${name}@${range}`)
@@ -391,9 +409,74 @@ function contentDirs(lock: Lockfile): Map<string, string> {
   return out
 }
 
-/** The directories `contentDirs` names, for the claim to hash. */
+/**
+ * The directories `contentDirs` names, for the claim to hash; berry's
+ * also `.yarnrc.yml`, whose `packageExtensions` the digest reads: as an
+ * extra file it joins the memo's identity, so an extension edit under an
+ * unchanged lockfile digests anew rather than replaying the old closure.
+ */
 export function fileDeps(lock: Lockfile): string[] {
-  return [...new Set(contentDirs(lock).values())].sort()
+  const dirs = [...new Set(contentDirs(lock).values())].sort()
+  return lock.generation === 'berry' ? [...dirs, YARNRC] : dirs
+}
+
+export const YARNRC = '.yarnrc.yml'
+
+/** One `packageExtensions` selector (`ident@range`) and the dependencies it adds. */
+export interface Extension {
+  readonly name: string
+  readonly range: string
+  readonly deps: ReadonlyMap<string, string>
+}
+
+// Yarn's builtin list (yarnpkg-extensions) adds one dependency; the rest
+// are peers, which the parent that provides them already reaches.
+const BUILTIN: readonly Extension[] = [
+  { name: '@babel/parser', range: '*', deps: new Map([['@babel/types', '^7.8.3']]) },
+]
+
+/**
+ * Yarn's builtin extensions and `.yarnrc.yml`'s `packageExtensions`
+ * dependencies. A file Yarn itself would refuse adds none: the entries
+ * an extension installed are then reached by no one, and every workspace
+ * folds them (`importerDigests`).
+ */
+export function packageExtensions(rc: string | undefined): readonly Extension[] {
+  if (rc === undefined) return BUILTIN
+  let doc: unknown
+  try {
+    doc = Bun.YAML.parse(rc)
+  } catch {
+    return BUILTIN
+  }
+  const out = [...BUILTIN]
+  for (const [selector, raw] of Object.entries(record(record(doc)?.['packageExtensions']) ?? {})) {
+    const deps = depsOf(record(raw) ?? {}, ['dependencies'])
+    if (deps.size === 0) continue
+    const at = selector.indexOf('@', 1)
+    out.push(
+      at === -1
+        ? { name: selector, range: '*', deps }
+        : { name: selector.slice(0, at), range: selector.slice(at + 1), deps },
+    )
+  }
+  return out
+}
+
+/**
+ * Whether `version` is what the selector's range extends. Yarn matches
+ * prereleases too (`satisfiesWithPrereleases`), and a range this cannot
+ * read matches: an edge too many re-keys once too often, never too seldom.
+ */
+function matches(range: string, version: string): boolean {
+  const r = range.startsWith('npm:') ? range.slice(4) : range
+  try {
+    if (Bun.semver.satisfies(version, r)) return true
+    const release = version.replace(/[-+].*$/, '')
+    return release !== version && Bun.semver.satisfies(release, r)
+  } catch {
+    return true
+  }
 }
 
 /** The entry a descriptor the file keys resolves to: as written, bound to `from`, or with berry's `npm:` prefix. */
@@ -411,6 +494,48 @@ function keyedDescriptor(
 }
 
 /**
+ * Yarn installs a `packageExtensions` dependency for each package its
+ * selector matches that does not declare one of that name, and records
+ * it on no entry (turborepo#14873): only the added package is keyed, so
+ * the extended package gets the edge here. Then every entry no workspace
+ * reaches (one an extension vx could not read installed) becomes an edge
+ * of every workspace: it is installed for one of them.
+ */
+function extend(
+  lock: Lockfile,
+  index: ReadonlyMap<string, number>,
+  edges: number[][],
+  extensions: readonly Extension[],
+): void {
+  for (const [id, e] of lock.entries) {
+    for (const ext of extensions) {
+      if (ext.name !== e.name || !matches(ext.range, e.version)) continue
+      for (const [name, range] of ext.deps) {
+        if (e.installed.has(name)) continue
+        for (const target of resolveDescriptor(lock, id, name, range)) {
+          edges[index.get(id)!]!.push(index.get(target)!)
+        }
+      }
+    }
+  }
+  const roots = [...lock.workspaces.values()].map((id) => index.get(id)!)
+  const seen = new Uint8Array(edges.length)
+  const stack = [...roots]
+  for (const r of roots) seen[r] = 1
+  while (stack.length > 0) {
+    for (const w of edges[stack.pop()!]!) {
+      if (seen[w] === 0) {
+        seen[w] = 1
+        stack.push(w)
+      }
+    }
+  }
+  const orphans: number[] = []
+  for (let i = 0; i < seen.length; i++) if (seen[i] === 0) orphans.push(i)
+  if (orphans.length > 0) for (const r of roots) edges[r]!.push(...orphans)
+}
+
+/**
  * Every workspace's digest. Berry: one node per entry, workspaces among
  * them, keyed by dir. Classic: the file has no workspace entries, so the
  * one digest is the root's (`.`) over every entry the file resolves —
@@ -419,6 +544,7 @@ function keyedDescriptor(
 export function importerDigests(
   lock: Lockfile,
   files: ReadonlyMap<string, string> = new Map(),
+  extensions: readonly Extension[] = BUILTIN,
 ): ReadonlyMap<string, string> {
   const index = new Map<string, number>()
   const material: string[] = []
@@ -440,6 +566,7 @@ export function importerDigests(
       if (targets.length === 0) material[from] += `\nunresolved\0${name}\0${range}`
     }
   }
+  if (lock.generation === 'berry') extend(lock, index, edges, extensions)
   const digests = reachDigests({ material, edges })
   // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
   // bits of a seed, so two lockfiles' globals could share one (item 682).

@@ -78,8 +78,10 @@ $ vx run lint --all --concurrency 200%   # I/O-bound work can go over
 ```
 
 The default is the core count, capped by the container's CPU quota.
-`run.concurrency` in `.vx/workspace.ts` changes it for everyone. Cache
-hits don't count: restores run on their own lane, up to twice the limit.
+`run.concurrency` in `.vx/workspace.ts` changes it for everyone.
+
+Cache hits don't count: restores run on their own lane, up to twice the
+limit.
 
 ## A table when you want one
 

@@ -3,7 +3,7 @@
 // (2026-10-20). A Turbo or Nx repo is `@vzn/vx-migrate`'s, which maps it
 // and installs what it writes (`migrate`); any other gets the workspace file
 // and an empty root project, then the lock (`starter`).
-// `vx init --plugin <seam>` writes a runnable plugin for one seam and its
+// `vx init --plugin <hook>` writes a runnable plugin for one hook and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -22,11 +22,23 @@ import {
   type ManagedInstall,
 } from './upgrade.js'
 import { VERSION } from '../version.js'
-import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError, sayNotice } from '../util/index.js'
+import {
+  detectColors,
+  DOT_VX_GITATTRIBUTES,
+  DOT_VX_GITIGNORE,
+  paint,
+  refuseSymlink,
+  sayNotice,
+  SUCCESS,
+  ui,
+  UserError,
+  writeNoFollow,
+} from '../util/index.js'
 import {
   findWorkspaceRoot,
   PROJECT_CONFIG_FILENAMES,
-  STARTER_PROJECT,
+  renderWorkspace,
+  starterProject,
   WORKSPACE_CONFIG_FILENAMES,
 } from '../workspace/index.js'
 
@@ -35,7 +47,7 @@ interface InitArgs {
   force: boolean
   /** `vx.config.mjs` instead of `.ts` — see `ApplyMigrationArgs.format`. */
   mjs: boolean
-  /** `--plugin <seam>`: scaffold that seam's plugin instead of the workspace. */
+  /** `--plugin <hook>`: scaffold that hook's plugin instead of the workspace. */
   plugin?: string
   /** `--native` / `--keep` in a Turbo or Nx repo; unset, vx-migrate asks a terminal. */
   mode?: 'native' | 'keep'
@@ -54,7 +66,7 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
       if (seam === undefined || !Object.hasOwn(PLUGIN_TEMPLATES, seam)) {
         return {
           ...out,
-          error: `--plugin takes a seam: one of ${seams}${seam === undefined || seam === '' ? '' : ` (got '${seam}')`}${seeHelp('init')}`,
+          error: `--plugin takes a hook: one of ${seams}${seam === undefined || seam === '' ? '' : ` (got '${seam}')`}${seeHelp('init')}`,
         }
       }
       out.plugin = seam
@@ -117,9 +129,38 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   if (dirs.some((d) => TOOL_CONFIGS.some((f) => existsSync(path.join(d, f))))) {
     return migrate(dirs, parsed)
   }
-  // The topmost package.json: a monorepo's root, wherever below it init ran.
-  const pkgRoot = dirs.findLast((d) => existsSync(path.join(d, 'package.json'))) ?? null
+  const pkgRoot = packageRoot(dirs, top !== null)
   return starter(marked ?? pkgRoot ?? cwd, pkgRoot, top === null, parsed)
+}
+
+/**
+ * Inside git, the topmost package.json: a monorepo's root, wherever below
+ * it init ran. Outside git `dirs` reach `/`, and the topmost took a stray
+ * package.json in the home directory (2026-10-28); there it is the nearest
+ * one, or the outermost above it that declares a workspace.
+ */
+function packageRoot(dirs: readonly string[], inGit: boolean): string | null {
+  const has = (d: string, f: string): boolean => existsSync(path.join(d, f))
+  if (inGit) return dirs.findLast((d) => has(d, 'package.json')) ?? null
+  const at = dirs.findIndex((d) => has(d, 'package.json'))
+  if (at === -1) return null
+  const outer = dirs
+    .slice(at + 1)
+    .findLast(
+      (d) => has(d, 'package.json') && (has(d, 'pnpm-workspace.yaml') || declaresWorkspaces(d)),
+    )
+  return outer ?? dirs[at]!
+}
+
+function declaresWorkspaces(dir: string): boolean {
+  try {
+    const pj = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
+      workspaces?: unknown
+    }
+    return pj.workspaces !== undefined
+  } catch {
+    return false
+  }
 }
 
 /** What makes a repo vx-migrate's to map: a Turbo or Nx config. */
@@ -263,10 +304,13 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
   const workspaceFile =
     WORKSPACE_CONFIG_FILENAMES.find((n) => existsSync(path.join(root, n))) ?? '.vx/workspace.ts'
+  const c = detectColors(process.stdout)
+  const dim = (t: string): string => paint('', t, c, { dim: true })
+  const bold = (t: string): string => paint('', t, c, { bold: true })
   process.stdout.write(
-    `${args.dry ? 'would write' : 'wrote'} ${files.map(([rel]) => rel).join(' and ')}\n` +
-      `Declare it in ${workspaceFile}: import { ${factory} } from '../plugins/${seam}.ts', then plugins: [${factory}(…)]\n` +
-      `Test it: bun test plugins/${seam}.test.ts (needs @vzn/vx installed)\n`,
+    `${paint(SUCCESS, args.dry ? 'would write' : 'wrote', c, { bold: true })} ${files.map(([rel]) => bold(rel)).join(' and ')}\n` +
+      `${dim('Declare it in')} ${workspaceFile}${dim(':')} ${bold(`import { ${factory} } from '../plugins/${seam}.ts'`)}${dim(', then')} ${bold(`plugins: [${factory}(…)]`)}\n` +
+      `${dim('Test it:')} ${bold(`bun test plugins/${seam}.test.ts`)} ${dim('(needs @vzn/vx installed)')}\n`,
   )
   return 0
 }
@@ -286,12 +330,6 @@ function lockfilePlugin(pkgRoot: string | null): 'pnpm' | 'bun' | 'yarn' | 'npm'
   return null
 }
 
-function workspaceSource(plugin: string | null): string {
-  if (plugin === null)
-    return "import { defineWorkspace } from '@vzn/vx'\n\nexport default defineWorkspace({ plugins: [] })\n"
-  return `import { defineWorkspace } from '@vzn/vx'\nimport { ${plugin} } from '@vzn/vx-lockfile'\n\nexport default defineWorkspace({ plugins: [${plugin}()] })\n`
-}
-
 /**
  * Whether `pkgRoot` has package.json scripts to map: its own, or a
  * workspace's members (`workspaces`, `pnpm-workspace.yaml`). Core maps none
@@ -301,7 +339,10 @@ function hasScripts(pkgRoot: string | null): boolean {
   if (pkgRoot === null) return false
   if (existsSync(path.join(pkgRoot, 'pnpm-workspace.yaml'))) return true
   try {
-    const pj = JSON.parse(readFileSync(path.join(pkgRoot, 'package.json'), 'utf8')) as {
+    // A byte-order mark is stripped, as npm strips it.
+    const pj = JSON.parse(
+      readFileSync(path.join(pkgRoot, 'package.json'), 'utf8').replace(/^﻿/, ''),
+    ) as {
       scripts?: unknown
       workspaces?: unknown
     }
@@ -347,8 +388,12 @@ async function starter(
   const kept: string[] = []
   const replaced: string[] = []
   for (const [names, name, contents] of [
-    [WORKSPACE_CONFIG_FILENAMES, `.vx/workspace.${ext}`, workspaceSource(plugin)],
-    [PROJECT_CONFIG_FILENAMES, config, STARTER_PROJECT],
+    [
+      WORKSPACE_CONFIG_FILENAMES,
+      `.vx/workspace.${ext}`,
+      renderWorkspace(ext, plugin === null ? [] : [{ pkg: '@vzn/vx-lockfile', factory: plugin }]),
+    ],
+    [PROJECT_CONFIG_FILENAMES, config, starterProject(ext)],
   ] as const) {
     const existing = names.find((n) => existsSync(path.join(root, n)))
     if (existing !== undefined && !args.force) kept.push(existing)
@@ -379,13 +424,14 @@ async function starter(
   if (kept.length > 0) rows.push(['kept', ...kept])
   if (replaced.length > 0) rows.push(['replaced', ...replaced])
   if (args.dry) {
-    for (const f of files) process.stdout.write(`── ${f.path} ──\n${f.contents}\n`)
+    for (const f of files) ui.print('out', ui.excerpt(f.path, f.contents))
     ui.print('out', ui.report(`vx init ${VERSION}`, [...rows, null, ['next', next]]))
     return 0
   }
+  for (const f of files) refuseSymlink(path.join(root, f.path))
   const ran = await install(pkgRoot, false, plugins)
   if (ran.length > 0) rows.push(['installed', ...ran])
-  for (const f of files) await Bun.write(path.join(root, f.path), f.contents)
+  for (const f of files) await writeNoFollow(path.join(root, f.path), f.contents)
   for (const f of replaced) await unlink(path.join(root, f))
   // The lock that follows loads the workspace file just written.
   workspaceFileWritten()

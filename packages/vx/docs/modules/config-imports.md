@@ -33,8 +33,13 @@ export interface ConfigImportOwnersArgs {
   projects: readonly ProjectMeta[]
   changed: readonly string[] // workspace-relative POSIX
   skip: ReadonlySet<string> // already-selected projects
+  workspaceConfigs?: readonly string[] // `.vx/workspace.*` paths, walked as roots too
 }
-export function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set<string>>
+export interface ConfigImportOwners {
+  owners: Set<string>
+  workspace?: string // a changed file a workspace config imports: `affected.ts` widens to all
+}
+export function configImportOwners(a: ConfigImportOwnersArgs): Promise<ConfigImportOwners>
 
 /** Every file a config imports by relative specifier, transitively, outside
  *  `node_modules`, the config excluded; an unresolved one by the names it would have. */
@@ -49,7 +54,9 @@ analysis, so the `project-loader.ts` note that a cache-bust "cannot
 reach the config's import closure" (which is about runtime `import()`)
 does not apply.
 
-1. Roots are every project's `configPath`, minus `skip`.
+1. Roots are every project's `configPath`, minus `skip`, and the
+   workspace configs: their plugins shape every resolved config, so a
+   file they import can re-key any task.
 2. Read each level of the walk together, scan each file (a file with no
    quoted `./`, `../`, escape or tsconfig alias skips the scan), keep specifiers starting with `./` or `../`
    and tsconfig aliases, resolve them, and record the REVERSE edge `target → importer`.

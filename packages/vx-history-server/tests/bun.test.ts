@@ -54,7 +54,47 @@ it('folds a thousand tasks in one statement, and sweeps what was not reported', 
     rssBytes: null,
     runs: 1,
   })
-  expect(await store.sweep(5)).toBe(990)
+  // A row is kept a day past its last write: a report it skipped may be that recent.
+  expect(await store.sweep(86_400_005, 86_400_006)).toBe(990)
+  expect(await store.sweptAt()).toBe(86_400_006)
+})
+
+// A report that does not move its row is not written for up to a day, so
+// the row's write time lags its last report: the sweep deleted a task
+// reported hours before, every row of a TIMING_DAYS=1 server.
+it('keeps a row reported within TIMING_DAYS, though that report was not written', async () => {
+  const day = 86_400_000
+  let t = 10 * day
+  const handle = createHistoryServer({
+    store: sqliteStore(sqliteDb(path.join(dir, 'lag.sqlite'))),
+    authorize: async () => ({ issuer: GITHUB, repository: REPO, write: 'refs/heads/main' }),
+    timingDays: 1,
+    now: () => t,
+  })
+  const post = (route: string, body: unknown) =>
+    handle(
+      new Request(`http://127.0.0.1/v1/timings/${route}`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  await post('upload', { timings: [{ hash: 'kept', durationMs: 100 }] })
+  t += 0.9 * day
+  // The same numbers: no write, the row's time stays.
+  await post('upload', { timings: [{ hash: 'kept', durationMs: 100 }] })
+  t += 0.2 * day
+  // Another task's upload: the day's sweep.
+  await post('upload', { timings: [{ hash: 'other', durationMs: 5 }] })
+  const res = await post('query', {
+    issuer: GITHUB,
+    repository: REPO,
+    refs: ['refs/heads/main'],
+    hashes: ['kept'],
+  })
+  expect(((await res.json()) as { timings: object }).timings).toEqual({
+    kept: { durationMs: 100, cores: null, rssBytes: null, runs: 1 },
+  })
 })
 
 it("folds and reads within D1's 2 MB a bound string may be", async () => {
@@ -107,7 +147,7 @@ it('drops the table rows were keyed by four columns in', async () => {
   await sqliteStore(db).init()
   expect(
     await db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'", []),
-  ).toEqual([{ name: 'timings' }])
+  ).toEqual([{ name: 'timings' }, { name: 'sweeps' }])
 })
 
 it('answers an upload it folded even when the sweep after it fails, and sweeps on the next', async () => {
@@ -119,9 +159,9 @@ it('answers an upload it folded even when the sweep after it fails, and sweeps o
   const handle = createHistoryServer({
     store: {
       ...store,
-      sweep: async (before) => {
+      sweep: async (before, now) => {
         if (++sweeps === 1) throw new Error('the database is busy')
-        return store.sweep(before)
+        return store.sweep(before, now)
       },
     },
     authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson }),
@@ -145,6 +185,79 @@ it('answers an upload it folded even when the sweep after it fails, and sweeps o
   }
   expect(sweeps).toBe(2)
   expect(errors).toEqual(['vx-history-server: the sweep: Error: the database is busy'])
+})
+
+// The client warns with what the server says: "internal error" told an
+// operator reading the warning nothing (2026-10-28).
+it('answers a failure it did not expect with what failed, and logs it', async () => {
+  const errors: unknown[] = []
+  const logged = console.error
+  console.error = (...args: unknown[]) => void errors.push(args.join(' '))
+  const handle = createHistoryServer({
+    store: {
+      ...sqliteStore(sqliteDb(path.join(dir, 'busy.sqlite'))),
+      read: async () => {
+        throw new Error('the database is busy')
+      },
+    },
+    authorize: async () => ({ issuer: GITHUB, repository: REPO }),
+  })
+  let res: Response
+  try {
+    res = await handle(
+      new Request('http://127.0.0.1/v1/timings/query', {
+        method: 'POST',
+        body: JSON.stringify({
+          issuer: GITHUB,
+          repository: REPO,
+          refs: ['refs/heads/main'],
+          hashes: ['t'],
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  } finally {
+    console.error = logged
+  }
+  expect([res.status, await res.json(), errors]).toEqual([
+    500,
+    { code: 'internal_error', message: 'the database is busy' },
+    ['vx-history-server: POST /v1/timings/query: Error: the database is busy'],
+  ])
+})
+
+// Workers run many isolates, each its own node, and start new ones all
+// day: each swept on its first upload, a scan of the whole table each time.
+it('sweeps once a day across every node that serves the database', async () => {
+  const sqlite = sqliteDb(path.join(dir, 'nodes.sqlite'))
+  let sweeps = 0
+  const db = {
+    all: sqlite.all,
+    run: (sql: string, params: readonly unknown[]) => {
+      if (sql.startsWith('DELETE FROM timings')) sweeps++
+      return sqlite.run(sql, params)
+    },
+  }
+  let t = 100 * 86_400_000
+  const node = () =>
+    createHistoryServer({
+      store: sqliteStore(db),
+      authorize: async () => ({ issuer: GITHUB, repository: REPO, write: 'refs/heads/main' }),
+      now: () => t,
+    })
+  const upload = (handle: (req: Request) => Promise<Response>) =>
+    handle(
+      new Request('https://history.example.com/v1/timings/upload', {
+        method: 'POST',
+        body: JSON.stringify({ timings: [{ hash: 'a', durationMs: 1 }] }),
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  for (let i = 0; i < 3; i++) expect((await upload(node())).status).toBe(204)
+  expect(sweeps).toBe(1)
+  t += 86_400_000
+  for (let i = 0; i < 3; i++) expect((await upload(node())).status).toBe(204)
+  expect(sweeps).toBe(2)
 })
 
 // A chunked body names no length: it was read whole, however large,
@@ -197,7 +310,35 @@ it("answers 502 while the issuer's keys cannot be read", async () => {
   )
   expect([res.status, await res.json()]).toEqual([
     502,
-    { code: 'bad_gateway', message: `could not read ${GITHUB}'s keys` },
+    {
+      code: 'bad_gateway',
+      message: `could not read ${GITHUB}'s keys: ${GITHUB}/.well-known/openid-configuration: 503`,
+    },
+  ])
+})
+
+// A JWKS the issuer serves broken is its fault, not the token's: it was
+// answered 401 "not a JWT", which turns a client's remote off for the run.
+it("answers 502, saying why, while the issuer's keys are not a key set", async () => {
+  const said = async (jwks: unknown) => {
+    const handle = createHistoryServer({
+      store: sqliteStore(sqliteDb(':memory:')),
+      authorize: oidcTokenAuth({
+        allow: allowOf(),
+        fetchJson: async (url) =>
+          url.endsWith('/.well-known/openid-configuration') ? { jwks_uri: `${GITHUB}/keys` } : jwks,
+      }),
+    })
+    const res = await handle(
+      new Request('http://127.0.0.1/v1/capabilities', {
+        headers: { authorization: `Bearer ${await iss.sign('main', 'http://127.0.0.1')}` },
+      }),
+    )
+    return [res.status, ((await res.json()) as { message: string }).message]
+  }
+  expect(await said({ keys: 'x' })).toEqual([
+    502,
+    `could not read ${GITHUB}'s keys: JSON Web Key Set malformed`,
   ])
 })
 
@@ -224,6 +365,19 @@ it('names ALLOW when it cannot be read', () => {
   expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
     [2, 'ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
     [2, 'ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
+  ])
+})
+
+// Unset, the audience was the origin the request named, its Host header:
+// a token minted for another service was taken by sending its host.
+it('refuses to start without AUDIENCE', () => {
+  const cli = Bun.spawnSync(
+    ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', ':memory:'],
+    { env: { ...process.env, ALLOW: '', AUDIENCE: '' }, stderr: 'pipe' },
+  )
+  expect([cli.exitCode, cli.stderr.toString().split('\n')[0]]).toEqual([
+    2,
+    'set AUDIENCE: the aud a CI token names, the URL clients reach this server at',
   ])
 })
 
@@ -262,4 +416,12 @@ it('reads with no token where READ_ACCESS is public, only a repository ALLOW nam
   expect(await auth(req)).toBeUndefined()
   const closed = oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson })
   await expect(closed(req, { issuer: GITHUB, repository: REPO })).rejects.toThrow('no bearer token')
+})
+
+// The image pinned jose itself (`bun add jose@…`), apart from the version
+// @vzn/vx-devtools pins: a bump there left the image on the old one.
+it('builds its image with the dependencies package.json pins, naming no version of its own', async () => {
+  const dockerfile = await Bun.file(`${import.meta.dir}/../Dockerfile`).text()
+  expect(dockerfile).not.toMatch(/bun add/)
+  expect(dockerfile).toContain('bun install --production')
 })

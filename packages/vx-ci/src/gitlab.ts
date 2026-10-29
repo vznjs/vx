@@ -2,14 +2,7 @@
 // run's branch through `setBranch`, as `github()` does on Actions. Off
 // GitLab CI (`GITLAB_CI` not 'true') the factory returns undefined, which
 // `plugins` skips, so declaring it costs nothing on a laptop.
-import {
-  type BranchFacts,
-  branchCacheScope,
-  definePlugin,
-  type PluginOptionKinds,
-  refuseUnknownOptions,
-  type VxPlugin,
-} from '@vzn/vx'
+import { type BranchFacts, branchCacheScope, definePlugin, type VxPlugin } from '@vzn/vx'
 import path from 'node:path'
 
 export interface GitlabPluginOptions {
@@ -23,13 +16,8 @@ export interface GitlabPluginOptions {
   cacheScope?: boolean
 }
 
-const GITLAB_PLUGIN_KEYS: PluginOptionKinds<GitlabPluginOptions> = {
-  cacheScope: 'boolean',
-}
-
 export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined {
   if (process.env['GITLAB_CI'] !== 'true') return undefined
-  refuseUnknownOptions('gitlab()', options, GITLAB_PLUGIN_KEYS)
   return definePlugin(import.meta, {
     commands: {
       // In the project: GitLab's `cache: paths` keeps only what is under it.

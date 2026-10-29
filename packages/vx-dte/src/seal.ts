@@ -9,6 +9,7 @@
 import { createHash } from 'node:crypto'
 import { type Bytes, type CipherState, Handshake, MAX_PLAINTEXT } from './noise.js'
 import { unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
+import { ui } from '@vzn/vx'
 
 /**
  * What admits a side: the run's key (Noise's psk), or each side's CI
@@ -36,6 +37,8 @@ export function secretProof(secret: string): Proof {
 }
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
+/** GitHub's keys are read again for a key not among them at most this often. */
+const KEYS_REREAD_MS = 60_000
 
 /**
  * An OIDC token for `audience` from GitHub's token endpoint. A 5xx or a
@@ -71,8 +74,9 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
     throw new Error('not a GitHub Actions job with id-token: write (ACTIONS_ID_TOKEN_REQUEST_URL)')
   const aud = (parts: readonly string[]): string =>
     `vx-dte:${createHash('sha256').update(parts.join('\0')).digest('base64url')}`
-  // GitHub's keys, read once for every check.
-  const seen = new Map<string, Promise<unknown>>()
+  // GitHub's keys, read once for every check, and again for a key not
+  // among them once a minute at most.
+  const seen = new Map<string, { at: number; p: Promise<unknown> }>()
   const read =
     fetchJson ??
     (async (u: string): Promise<unknown> => {
@@ -80,42 +84,50 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
       if (!res.ok) throw new Error(`${u}: ${res.status}`)
       return res.json()
     })
-  const once = (u: string): Promise<unknown> => {
-    let p = seen.get(u)
-    if (p === undefined) {
-      p = read(u)
-      // quiet: the caller awaits p and hears its error; this only forgets it
-      p.catch(() => seen.delete(u))
-      seen.set(u, p)
-    }
-    return p
+  const once = (u: string, fresh: boolean): Promise<unknown> => {
+    const had = seen.get(u)
+    if (had !== undefined && !(fresh && Date.now() - had.at >= KEYS_REREAD_MS)) return had.p
+    const entry = { at: Date.now(), p: read(u) }
+    // quiet: the caller awaits p and hears its error; this only forgets it
+    entry.p.catch(() => seen.get(u) === entry && seen.delete(u))
+    seen.set(u, entry)
+    return entry.p
   }
   return {
     async sign(parts) {
       return oidcToken(url, bearer, aud(parts))
     },
     async check(token, parts) {
-      const { createVerifier } = await import('@vzn/vx-dte-server')
+      const { createVerifier, TokenError } = await import('@vzn/vx-dte-server')
       // A read of GitHub's keys that failed is no check: refused as one, a
       // keys outage read "its key is not the run's" (2026-10-23).
       let unread: unknown
-      const verify = createVerifier({
-        allow: [{ issuer: GITHUB }],
-        audience: aud(parts),
-        runClaims: { [GITHUB]: ['repository_id'] },
-        fetchJson: (u) =>
-          once(u).catch((err: unknown) => {
-            unread = err
-            throw err
-          }),
-      })
-      return verify(token).then(
-        (t) => t.run[0] === repo,
-        () => {
-          if (unread !== undefined) throw unread
-          return false
-        },
-      )
+      // A verifier per check, its audience the parts: its own refetch for
+      // an unknown key never fires, so a stale read is redone here.
+      const verify = (fresh: boolean) =>
+        createVerifier({
+          allow: [{ issuer: GITHUB }],
+          audience: aud(parts),
+          runClaims: { [GITHUB]: ['repository_id'] },
+          fetchJson: (u) =>
+            once(u, fresh).catch((err: unknown) => {
+              unread = err
+              throw err
+            }),
+        })(token)
+      return verify(false)
+        .catch((err: unknown) => {
+          if (err instanceof TokenError && err.message === 'unknown signing key')
+            return verify(true)
+          throw err
+        })
+        .then(
+          (t) => t.run[0] === repo,
+          () => {
+            if (unread !== undefined) throw unread
+            return false
+          },
+        )
     },
     mismatch: 'run it in a job of this repository with id-token: write',
   }
@@ -153,11 +165,14 @@ function padded(n: number): number {
  * One worker and the orchestrator after their handshake. Each body is
  * Noise transport messages of at most 64 KiB, each naming its nonce, as
  * Noise allows for a transport that may reorder (§11.4); a nonce seen
- * before is a replay.
+ * before is a replay. The wire delivers in send order, so a body older
+ * than one opened does not open.
  */
 class Session {
   private sent = 0
   private readonly seen = new Set<number>()
+  /** The last nonce of the newest body opened. */
+  private newest = -1
   /** The last send handed to the wire, or still sealing: the next waits on it. */
   private turn: Promise<unknown> = Promise.resolve()
 
@@ -209,17 +224,25 @@ class Session {
       const [n, c] = p.split('.')
       const seq = Number(n)
       if (!Number.isSafeInteger(seq) || seq < 0 || c === undefined) return undefined
+      // A body's parts take consecutive nonces: every part shares one ad, so
+      // only this keeps a relay from repeating or reordering them.
+      if (parts.length > 0 && seq !== parts[0]!.n + parts.length) return undefined
       parts.push({ n: seq, c })
     }
     if (this.seen.has(parts[0]!.n)) return REPLAY
+    // The wire numbers sends outside the seal, in the order they were
+    // sealed: one older than a body already opened was held back by the relay.
+    if (parts[0]!.n <= this.newest) return undefined
     // Each part is sealed to its body's first nonce and part count: unbound,
     // a relay spliced a fresh first part onto a delivered body's second.
     const ad = bodyAd(parts[0]!.n, parts.length)
     try {
       const plain: Uint8Array[] = []
       for (const p of parts) plain.push(await this.rx.decrypt(p.n, ad, unb64(p.c)))
+      const body: unknown = JSON.parse(unsqueeze(Buffer.concat(plain)).toString())
       for (const p of parts) this.seen.add(p.n)
-      return JSON.parse(unsqueeze(Buffer.concat(plain)).toString())
+      this.newest = parts.at(-1)!.n
+      return body
       // quiet: a body that does not open is the relay's tampering, which the caller says
     } catch {
       return undefined
@@ -277,7 +300,7 @@ export function sealOrchestrator(
   me: Participant,
   run: string,
   proof: Proof,
-  warn: (message: string) => void = (m) => void process.stderr.write(`[vx] ${m}\n`),
+  warn: (message: string) => void = (m) => ui.say('warn', `[vx] ${m}`),
 ): Participant {
   const unsent = (what: string, to: string) => unsentBy(warn, what, to)
   const sessions = new Map<string, Session>()

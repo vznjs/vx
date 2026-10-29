@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { ESSENTIAL_ENV } from '../util/index.js'
+import { ESSENTIAL_ENV, withoutWorkspaceBins } from '../util/index.js'
 
 // Build the environment exposed to a task.
 //
@@ -34,6 +34,8 @@ export interface BuildEnvOptions {
    * One holding `path.delimiter` is left out: PATH cannot name it.
    */
   binPaths?: readonly string[]
+  /** When set, the PATH taken from `source` drops each `node_modules/.bin` inside it. */
+  workspaceRoot?: string
 }
 
 export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
@@ -46,6 +48,9 @@ export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
   for (const name of opts.passThrough) {
     const value = opts.source[name]
     if (value !== undefined) out[name] = value
+  }
+  if (opts.workspaceRoot !== undefined && out['PATH'] !== undefined) {
+    out['PATH'] = withoutWorkspaceBins(out['PATH'], opts.workspaceRoot)
   }
   for (const [name, value] of Object.entries(opts.define)) {
     out[name] = value

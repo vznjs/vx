@@ -6,6 +6,7 @@ import {
   ABSENT_INPUT,
   absentOr,
   addedInput,
+  behindLink,
   filesToken,
   foldHead,
   type InputListing,
@@ -172,6 +173,12 @@ export interface InputFact {
   path: string
   digest: string
   since: number
+  /**
+   * For a link, the content behind it (`behindLink`), which the key folds
+   * after the link's own target string. An edit there leaves the link
+   * untouched, so the re-check compares this rather than the link's ctime.
+   */
+  behind?: string
 }
 
 /**
@@ -193,11 +200,21 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
 }> {
   const hashedAt = Date.now()
   const { input, listings } = await resolveKeyInput(args)
-  const hash = await args.cache.key(input)
   const sorted = [...input.inputFiles].sort()
   const digests = await Promise.all(
     sorted.map((f) => input.fileHashes?.get(f) ?? args.cache.hashFile(f).catch(absentOr)),
   )
+  // Learned BEFORE the key folds it: an edit in between then reads as a
+  // move at the re-check (a withheld save), never as content the key
+  // did not fold matching it (a stale entry).
+  const hashFile = (f: string): Promise<string> => args.cache.hashFile(f)
+  const behind = new Map<string, string>()
+  await Promise.all(
+    sorted.map(async (f, i) => {
+      if (digests[i]!.startsWith('120000:')) behind.set(f, await behindLink(f, hashFile))
+    }),
+  )
+  const hash = await args.cache.key(input)
   // A file gone since the enumeration is no input: the task will not read it.
   const files: InputFile[] = sorted.flatMap((f, i) =>
     digests[i] === ABSENT_INPUT
@@ -205,11 +222,16 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
       : [{ path: relPosix(input.workspaceRoot, f), digest: digests[i]! }],
   )
   const indexedAt = args.gitFilesCache?.enumeratedAtMs ?? 0
-  const facts: InputFact[] = sorted.map((f, i) => ({
-    path: f,
-    digest: digests[i]!,
-    since: input.fileHashes?.has(f) === true ? indexedAt : hashedAt,
-  }))
+  const facts: InputFact[] = sorted.map((f, i) => {
+    const fact: InputFact = {
+      path: f,
+      digest: digests[i]!,
+      since: input.fileHashes?.has(f) === true ? indexedAt : hashedAt,
+    }
+    const linked = behind.get(f)
+    if (linked !== undefined) fact.behind = linked
+    return fact
+  })
   // Groups expanded: this list describes the INPUT ROOT, not the key, and a
   // group produces nothing of its own (see `CacheKeyInput.upstreamGraft`).
   // Sorted by hash so the list — and any action digest derived from it — is
@@ -273,7 +295,8 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
  * the command by content too, when it answers true for that file and its
  * ctime: the task says the same bytes are its own identical rewrite
  * (tsdown's package.json), not an edit undone, unless another command that
- * may write the file ran until then (command-windows.ts).
+ * may write the file ran until then (command-windows.ts). A link's content
+ * behind it (`InputFact.behind`) is followed again and compared.
  */
 export async function movedInput(
   facts: readonly InputFact[],
@@ -306,6 +329,12 @@ export async function movedInput(
   for (const f of suspects) {
     const now = await cache.hashFile(f.path).catch(() => undefined)
     if (now !== f.digest) return f.path
+  }
+  // What a link points to changes without touching the link: each is
+  // followed again (links are rare, so a task without one pays nothing).
+  const hashFile = (file: string): Promise<string> => cache.hashFile(file)
+  for (const f of facts) {
+    if (f.behind !== undefined && (await behindLink(f.path, hashFile)) !== f.behind) return f.path
   }
   return undefined
 }

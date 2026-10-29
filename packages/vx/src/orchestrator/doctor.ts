@@ -19,6 +19,7 @@ import {
   machineMemoryBytes,
   machineParallelism,
   treeBytes,
+  ui,
 } from '../util/index.js'
 import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
@@ -35,7 +36,7 @@ import { discoverProjects, loadProjects, loadWorkspacePlugins, lockReader } from
 import { atPath, envName, resolveSetting, SETTINGS, type SettingSource } from '../settings.js'
 
 const warnToStderr = (message: string): void => {
-  process.stderr.write(`${message}\n`)
+  ui.say('warn', message)
 }
 
 /** The doctor's facts, typed: what `--format json` prints and the pretty rows render. */
@@ -106,6 +107,8 @@ export interface InfoFacts {
   /** Tasks the retained history shows failing on a key that had passed. */
   flakyTasks: FlakyTask[]
   lockfile: boolean
+  /** Why a run refuses the lock that is there; null when it reads it (or there is none). */
+  lockError: string | null
   /**
    * Whether this host can run a task's `exec.sandbox`, and how many loaded
    * tasks declare one. A declared sandbox whose runtime cannot start is a
@@ -162,10 +165,14 @@ async function collectWorkspaceInfo(
   // The lock's projects: none without a lock, or with one a run would
   // refuse, which is `vx lock`'s to report.
   const lock = lockReader(root)
+  // A lock a run refuses is said, not swallowed: "projects lock yes" with
+  // no task hid why every run failed (2026-10-28).
+  let refused: string | null = null
   const held = await lock().then(
     () => true,
     (err: unknown) => {
       if (!isUserError(err)) throw err
+      refused = err.message
       return false
     },
   )
@@ -212,6 +219,8 @@ async function collectWorkspaceInfo(
   }
 
   const lockPresent = await Bun.file(lockfilePath(root)).exists()
+  // No lock is its own row, `lockfile`.
+  const lockError = lockPresent ? refused : null
   // Asked while the probe runs: each is a synchronous spawn.
   const git = gitVersion()
   const statusCache = gitStatusCache(root)
@@ -270,6 +279,7 @@ async function collectWorkspaceInfo(
     // this is the workspace's standing list.
     flakyTasks: flaky,
     lockfile: lockPresent,
+    lockError,
     sandbox,
   }
 }

@@ -75,8 +75,8 @@ passed, failed, timed out, or you pressed [Ctrl-C](../ctrl-c/).
 `vx run dev` keeps the server in your terminal. When one of the
 servers you asked for exits, vx says which and stops the rest:
 
-```
-vx: web#dev exited with code 1; stopping 2 other persistent tasks
+```ansi
+vx: packages/app#dev exited with code 1; stopping 1 other persistent task
 ```
 
 A crashed server makes `vx` exit 1.

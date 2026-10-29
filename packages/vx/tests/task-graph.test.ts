@@ -1368,6 +1368,30 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
     })
   })
 
+  it('an edge by pattern to a default build on a cycle goes on past it, as by name', () => {
+    // `bui*` and `^bui*` reach a#build as `build` and `^build` do, and
+    // stopped there: a#test and c#test folded nothing of b and hit after
+    // b changed.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('a', { ...defaultBuild, test: { ...cmd('t'), dependsOn: ['bui*'] } }),
+        project('b', defaultBuild),
+        project('c', { test: { ...cmd('t'), dependsOn: ['^bui*'] } }),
+      ),
+      packageGraph: packageGraph({ a: ['b'], b: ['a'], c: ['a'] }),
+      requested: [
+        { project: 'a', task: 'test' },
+        { project: 'c', task: 'test' },
+      ],
+    })
+    expect(depsOf(nodes)).toEqual({
+      'a#test': ['a#build', 'b#build'],
+      'a#build': [],
+      'b#build': [],
+      'c#test': ['a#build', 'b#build'],
+    })
+  })
+
   it('a default build on no cycle stops the walk as any holder does (control)', () => {
     const nodes = buildTaskGraph({
       projects: projects(
@@ -1382,6 +1406,34 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
       'app#build': ['lib#build'],
       'lib#build': ['core#build'],
       'core#build': [],
+    })
+  })
+
+  it("a config's keyed group on a cycle expands its own dependsOn, not ^ its name", () => {
+    // Only the `^name` shape walks last and passes through. `ci` keyed on
+    // `lint` was deferred as one: it lost its edge and `vx run ci` ran
+    // nothing, green; `deploy` walked `^deploy`, not its `^build`.
+    const tasks = {
+      ci: { dependsOn: ['lint'], inputs: { files: ['ci/**'] } } as TaskConfig,
+      lint: cmd('eslint'),
+      fixtures: { inputs: { files: ['fixtures/**'] } } as TaskConfig,
+      deploy: { dependsOn: ['^build'], inputs: { files: ['deploy/**'] } } as TaskConfig,
+    }
+    const nodes = buildTaskGraph({
+      projects: projects(project('a', tasks), project('b', { ...tasks, ...defaultBuild })),
+      packageGraph: packageGraph({ a: ['b'], b: ['a'] }),
+      requested: [
+        { project: 'a', task: 'ci' },
+        { project: 'a', task: 'fixtures' },
+        { project: 'a', task: 'deploy' },
+      ],
+    })
+    expect(depsOf(nodes)).toEqual({
+      'a#ci': ['a#lint'],
+      'a#lint': [],
+      'a#fixtures': [],
+      'a#deploy': ['b#build'],
+      'b#build': [],
     })
   })
 

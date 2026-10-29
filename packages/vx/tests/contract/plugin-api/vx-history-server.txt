@@ -10,8 +10,6 @@ export const RSS_DECAY = 0.9
 export const WEIGHT = 0.3
 == function createHistoryServer (src/server.ts)
 export function createHistoryServer(opts: ServerOptions): (req: Request) => Promise<Response>
-== function errorJson (src/server.ts)
-export function errorJson(status: number, message: string): Response
 == function sqliteStore (src/store.ts)
 export function sqliteStore(db: Db): Store
 == type Db (src/store.ts)
@@ -43,7 +41,8 @@ export interface Store {
   init(): Promise<void>
   fold(repo: Repo, ref: string, now: number, reports: readonly Report[]): Promise<void>
   read(repo: Repo, refs: readonly string[], hashes: readonly string[]): Promise<Map<string, Timing>>
-  sweep(before: number): Promise<number>
+  sweptAt(): Promise<number>
+  sweep(before: number, now: number): Promise<number>
 }
 == type Timing (src/store.ts)
 export interface Timing {

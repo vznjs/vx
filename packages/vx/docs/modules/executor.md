@@ -150,10 +150,15 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   a number) — a plugin bug, not a task failure"; an `exitCode` that is
   no non-negative integer, or a `durationMs` that is no non-negative
   finite number, the same, X-11), in the task's frame,
-  never a TypeError inside core. `where` is the
+  never a TypeError inside core. The optional fields are held to their
+  types too: each violation an object with a string `line`, `where` a
+  non-empty string, `cpuMs` / `peakRssBytes` non-negative numbers,
+  `signal` a string, `timedOut` a boolean, `machine` positive `cores`,
+  non-negative `memoryBytes` and an optional positive `cpuShare` (a
+  `where` object lost the run's history to a bind error). `where` is the
   executor-reported placement label (a REAPI worker id); absent = this
-  host. Rides `TaskOutcome.where` into telemetry only (OTel:
-  `vx.task.where`), never the analytics store.
+  host. Rides `TaskOutcome.where` into telemetry (OTel:
+  `vx.task.where`), the task's row and the run history.
 - `selectExecutor(executors, task, label?)` — first executor, in order,
   that may take the task: a `remote` executor is skipped outright for a
   `pinnedLocal` task, then `accepts` decides. An `accepts` that throws
@@ -187,7 +192,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   executor's own throw is vx's and is not renamed.
 - `executorFallback(reason)` (on the façade) is how a `remote` executor
   gives a task back: its `execute` rejects with it, core says
-  `[vx] <task>: <reason> — running it here` once and runs a fresh request
+  `[vx] <task>: plugin '<p>' (executor '<e>') gave it back: <reason> — running it here` once and runs a fresh request
   (its own timeout) on the local executor. A task placed
   `remote: 'only'` fails naming `reason` instead, as does one an
   `exclusive` executor took. A non-remote executor's

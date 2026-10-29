@@ -1,6 +1,8 @@
 // Parser for the Turbo/Nx-style task-edge micro-syntax used in
 // `dependsOn` and `inputs.tasks`. Returns a small discriminated
-// union the graph builder + cache filter both consume.
+// union the graph builder + cache filter both consume. In util, not
+// graph: the schema parses `inputs.tasks` at load (`vx lock`), and the
+// workspace module cannot import the graph.
 
 export type DependencySpec =
   | { kind: 'self'; task: string; negated: boolean }
@@ -9,9 +11,12 @@ export type DependencySpec =
   | { kind: 'wildcardSelf'; negated: boolean }
   | { kind: 'wildcardDeps'; negated: boolean }
 
+/** The field an entry came from, which the error names. */
+type SpecField = 'dependsOn' | 'inputs.tasks'
+
 export class DependencySpecError extends Error {
-  constructor(raw: string, message: string) {
-    super(`invalid dependsOn "${raw}": ${message}`)
+  constructor(field: SpecField, raw: string, message: string) {
+    super(`invalid ${field} "${raw}": ${message}`)
   }
 }
 
@@ -31,49 +36,53 @@ export function compileTaskPattern(pattern: string): RegExp {
   return new RegExp(`^${escaped}$`)
 }
 
+// `*` is the matcher's only metacharacter, so a run of them (`**`) matches
+// every name: the bare wildcard, not a pattern that names a namespace.
+const ALL_STARS = /^\*+$/
+
 /**
  * Parse one `dependsOn` / `inputs.tasks` entry.
  *
  *   `name`       → self.name
  *   `^name`      → every dep workspace's `name` task
  *   `pkg#name`   → specific package's `name` task (cross-edge)
- *   `*`          → all same-project upstream (filter-only)
- *   `^*`         → all dep upstream (filter-only)
+ *   `*`          → all same-project upstream (filter-only; `**` too)
+ *   `^*`         → all dep upstream (filter-only; `^**` too)
  *   `!<form>`    → negation of any of the above (filter-only)
  *
  * Wildcards and negation are accepted everywhere — callers (the graph
  * builder vs the filter) decide which ones make semantic sense and
  * surface their own validation errors. This keeps the parser pure.
  */
-export function parseDependencySpec(raw: string): DependencySpec {
-  if (raw.length === 0) throw new DependencySpecError(raw, 'empty spec')
+export function parseDependencySpec(raw: string, field: SpecField): DependencySpec {
+  if (raw.length === 0) throw new DependencySpecError(field, raw, 'empty spec')
 
   let negated = false
   let s = raw
   if (s.startsWith('!')) {
     negated = true
     s = s.slice(1)
-    if (s.length === 0) throw new DependencySpecError(raw, 'negation with no body')
+    if (s.length === 0) throw new DependencySpecError(field, raw, 'negation with no body')
   }
 
   if (s.startsWith('^')) {
     const rest = s.slice(1)
-    if (rest.length === 0) throw new DependencySpecError(raw, '"^" with no task name')
-    if (rest === '*') return { kind: 'wildcardDeps', negated }
+    if (rest.length === 0) throw new DependencySpecError(field, raw, '"^" with no task name')
+    if (ALL_STARS.test(rest)) return { kind: 'wildcardDeps', negated }
     if (rest.includes('#')) {
-      throw new DependencySpecError(raw, '"^" cannot combine with "pkg#task" — pick one')
+      throw new DependencySpecError(field, raw, '"^" cannot combine with "pkg#task" — pick one')
     }
     return { kind: 'deps', task: rest, negated }
   }
 
-  if (s === '*') return { kind: 'wildcardSelf', negated }
+  if (ALL_STARS.test(s)) return { kind: 'wildcardSelf', negated }
 
   const hashIdx = s.indexOf('#')
   if (hashIdx >= 0) {
     const project = s.slice(0, hashIdx)
     const task = s.slice(hashIdx + 1)
     if (!project || !task) {
-      throw new DependencySpecError(raw, 'pkg#task requires a non-empty project AND task')
+      throw new DependencySpecError(field, raw, 'pkg#task requires a non-empty project AND task')
     }
     return { kind: 'cross', project, task, negated }
   }

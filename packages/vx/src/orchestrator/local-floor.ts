@@ -97,8 +97,11 @@ export function localFloor(
       ...(spec.timeoutMs === undefined ? {} : { timeoutMs: spec.timeoutMs }),
       ...(signalChannel ? { signalChannel } : {}),
     })
-    children.push(spawn.child)
-    void spawn.child.exited.then(gone, gone)
+    if (spawn.child === undefined) void gone()
+    else {
+      children.push(spawn.child)
+      void spawn.child.exited.then(gone, gone)
+    }
     try {
       await spawn.ready
     } catch (err) {
@@ -107,7 +110,8 @@ export function localFloor(
       throw new Error(said === '' ? why : `${why}; its output:\n${said}`)
     }
     heard = undefined
-    return spawn.child
+    // Ready, so it spawned: only a failed spawn has no child.
+    return spawn.child!
   }
   const serve = (spec: ServerSpec, root: string): Promise<unknown> => {
     let up = servers.get(spec.taskId)

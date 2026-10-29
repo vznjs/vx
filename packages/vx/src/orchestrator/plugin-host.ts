@@ -18,7 +18,7 @@ import {
   type ResolvedRemote,
 } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
-import { maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
+import { errorCode, maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import { PLATFORMS, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import { checkGraph, type GraphRules, type TaskNode } from '../graph/index.js'
 import type {
@@ -91,10 +91,13 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
     // Masked here, not by whoever prints it: an embedder of `run()` and
     // a plugin's verb print it as they get it, and the throw quotes what the
     // plugin was told (a remote's reply, a header) (L-11).
+    // A plugin's own code survives (cli.md § Error codes): an agent
+    // branches on it.
     throw new UserError(
       maskedLine(
         `plugin '${plugin.name}' failed in ${hook}: ${err instanceof Error ? err.message : String(err)}`,
       ),
+      errorCode(err) === 'VX_E_INTERNAL' ? 'VX_E_REFUSED' : errorCode(err),
     )
   }
 }
@@ -364,13 +367,22 @@ export async function claimedAffected(
 ): Promise<Set<string> | undefined> {
   const answer = await safe(plugin, 'fingerprint', () => plugin.fingerprint!.affected(change, ctx))
   if (answer === undefined) return undefined
-  if (typeof answer === 'string' || typeof answer !== 'object' || answer === null) {
+  // A plain object is no list: `for…of` threw "is not iterable", naming
+  // neither the plugin nor the hook.
+  if (
+    typeof answer === 'string' ||
+    typeof answer !== 'object' ||
+    answer === null ||
+    typeof (answer as Partial<Iterable<unknown>>)[Symbol.iterator] !== 'function'
+  ) {
     throw new UserError(
       `plugin '${plugin.name}' failed in fingerprint: returned ${describeValue(answer)}, not a list of project names`,
     )
   }
   const names = new Set<string>()
-  for (const name of answer as Iterable<unknown>) {
+  // A lazy list (a generator) runs the plugin's code as it is read.
+  const read = await safe(plugin, 'fingerprint', () => [...(answer as Iterable<unknown>)])
+  for (const name of read) {
     if (typeof name !== 'string') {
       throw new UserError(
         `plugin '${plugin.name}' failed in fingerprint: affected project ${describeValue(name)} is not a name`,
@@ -765,6 +777,17 @@ export function executorDemand(
   }
 }
 
+const EXECUTOR_FLAGS = ['remote', 'sandbox', 'servers', 'runtime', 'exclusive', 'timeouts'] as const
+const EXECUTOR_HOOKS = [
+  'accepts',
+  'demand',
+  'footer',
+  'machines',
+  'idealMs',
+  'profile',
+  'running',
+] as const
+
 /**
  * Collect every plugin's `executor`, in declaration order, with core's
  * own appended at the tail: per task, `selectExecutor` takes the first
@@ -803,6 +826,22 @@ export async function resolveExecutors(
       throw new UserError(
         `plugin '${plugin.name}' returned executor '${executor.name}' with platforms ${JSON.stringify(platforms)}: it must be a non-empty array of ${PLATFORMS.join(', ')}`,
       )
+    }
+    // Placement reads each flag as `=== true`: `remote: 'yes'` read as a
+    // local executor, offered sandboxed and `exec.remote: false` tasks.
+    for (const flag of EXECUTOR_FLAGS) {
+      const v: unknown = executor[flag]
+      if (v !== undefined && typeof v !== 'boolean')
+        throw new UserError(
+          `plugin '${plugin.name}' returned executor '${executor.name}' with ${flag} ${v === null ? 'null' : JSON.stringify(v)}: it must be true or false`,
+        )
+    }
+    for (const hook of EXECUTOR_HOOKS) {
+      const v: unknown = executor[hook]
+      if (v !== undefined && typeof v !== 'function')
+        throw new UserError(
+          `plugin '${plugin.name}' returned executor '${executor.name}' with ${hook} that is not a function`,
+        )
     }
     executorPlugin.set(executor, plugin.name)
     executors.push(executor)

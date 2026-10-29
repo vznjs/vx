@@ -3,7 +3,7 @@
 // and the agents page's diff entry showed `a853d874…` where vx prints the
 // whole blob id, and a previous run that never happened (2026-10-23). Each
 // sample here is the output of the run the page describes, on one fixture.
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -55,6 +55,10 @@ function printed(page: string, command: string): string {
 function git(...args: string[]): void {
   expect(Bun.spawnSync({ cmd: ['git', ...args], cwd: root, env: ENV }).exitCode).toBe(0)
 }
+
+const SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+/** A coloured sample's text, to hold against a run with colour off. */
+const plain = (text: string): string => text.replace(SGR, '')
 
 /** What changes run to run: the run id, the times, the keys. */
 function stable(text: string): string {
@@ -113,13 +117,6 @@ afterAll(async () => {
 })
 
 describe('the guides show what vx prints', () => {
-  it("troubleshooting's vx why block is the run it describes", () => {
-    const page = readFileSync(path.join(GUIDES, 'troubleshooting.mdx'), 'utf8')
-    const why = vx('why', '@demo/app#build')
-    expect(why.code).toBe(0)
-    expect(stable(sample(page, '$ vx why @demo/app#build'))).toBe(stable(why.stdout))
-  })
-
   it("the agents page's diff entry is vx why --format json's", () => {
     const page = readFileSync(path.join(GUIDES, '..', 'docs', 'agents.mdx'), 'utf8')
     const line = /^\{"kind":"file".*\}$/m.exec(page)![0]
@@ -217,14 +214,14 @@ describe('the one-task guides show what vx prints', () => {
     const page = guide('running/run-what-changed.md')
     const r = run('run', 'build', '--affected', '--dry')
     expect(r.code).toBe(0)
-    expect(plan(printed(page, 'vx run build --affected --dry'))).toBe(plan(r.stdout))
+    expect(plan(plain(printed(page, 'vx run build --affected --dry')))).toBe(plan(r.stdout))
   })
 
   it('run-one-project: the --filter plan', () => {
     const page = guide('running/run-one-project.md')
     const r = run('run', 'build', '--filter', '@demo/web', '--dry')
     expect(r.code).toBe(0)
-    expect(plan(printed(page, 'vx run build --filter @demo/web --dry'))).toBe(plan(r.stdout))
+    expect(plan(plain(printed(page, 'vx run build --filter @demo/web --dry')))).toBe(plan(r.stdout))
   })
 
   it('check-the-lock: a drifted config, then a current lock', async () => {
@@ -246,7 +243,7 @@ describe('the one-task guides show what vx prints', () => {
     for (const task of ['@demo/ui#build', '@demo/web#build']) {
       const r = run('why', task)
       expect(r.code).toBe(0)
-      expect(stable(printed(page, `vx why ${task}`))).toBe(stable(r.stdout))
+      expect(stable(plain(printed(page, `vx why ${task}`)))).toBe(stable(r.stdout))
     }
   })
 })
@@ -361,12 +358,32 @@ describe("the quickstart's output", () => {
     const page = readFileSync(path.resolve(GUIDES, '..', 'quickstart.mdx'), 'utf8')
     // Each sits in a step, indented three spaces.
     const hit = /```ansi title="second run"\n(?: {3}.*\n)*? {3}(.*└─.*)\n/.exec(page)![1]!
-    const verdict = /```text frame="terminal"\n {3}( +verdict .*)\n/.exec(page)![1]!
+    const verdict = plain(/```ansi\n(?: {3}.*\n)*? {3}( +.*verdict.*)\n/.exec(page)![1]!)
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-site-quickstart-'))
     try {
       await mkdir(path.join(dir, '.vx'))
       await mkdir(path.join(dir, 'src'))
-      await writeFile(path.join(dir, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
+      // What `vx init` leaves in a repo you already have: its lockfile's
+      // plugin, which names the root project from its package.json.
+      await mkdir(path.join(dir, 'node_modules/@vzn'), { recursive: true })
+      await symlink(
+        path.resolve(import.meta.dir, '..', '..', 'vx-lockfile'),
+        path.join(dir, 'node_modules/@vzn/vx-lockfile'),
+      )
+      await writeFile(
+        path.join(dir, '.vx/workspace.mjs'),
+        "import { bun } from '@vzn/vx-lockfile'\n\nexport default { plugins: [bun()] }\n",
+      )
+      await writeFile(path.join(dir, '.gitignore'), 'node_modules\n')
+      await writeFile(path.join(dir, 'package.json'), '{ "name": "my-app", "private": true }\n')
+      await writeFile(
+        path.join(dir, 'bun.lock'),
+        JSON.stringify({
+          lockfileVersion: 1,
+          workspaces: { '': { name: 'my-app' } },
+          packages: {},
+        }),
+      )
       await writeFile(
         path.join(dir, 'vx.config.mjs'),
         `export default {

@@ -8,17 +8,28 @@ import { reapi } from '../src/index.js'
 import { ReapiRemoteCache } from '../src/cache.js'
 import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
 
-/** Run `fn` with the plugin's env vars cleared, whatever CI has set. */
-function withoutReapiEnv<T>(fn: () => T): T {
+/**
+ * Run `fn` with the env vars the plugin once fell back to set: every
+ * setting is an option now, and none of these may reach it.
+ */
+function withOldEnv<T>(fn: () => T): T {
   const saved: Record<string, string | undefined> = {}
-  for (const k of ['VX_REAPI_ENDPOINT', 'VX_REAPI_INSTANCE', 'VX_REAPI_EXECUTE']) {
+  const old = {
+    VX_REAPI_ENDPOINT: 'grpc://127.0.0.1:1',
+    VX_REAPI_INSTANCE: 'old',
+    VX_REAPI_EXECUTE: '1',
+  }
+  for (const [k, v] of Object.entries(old)) {
     saved[k] = Bun.env[k]
-    delete Bun.env[k]
+    Bun.env[k] = v
   }
   try {
     return fn()
   } finally {
-    for (const [k, v] of Object.entries(saved)) if (v !== undefined) Bun.env[k] = v
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete Bun.env[k]
+      else Bun.env[k] = v
+    }
   }
 }
 
@@ -30,11 +41,11 @@ const ctx = (warns: string[]) =>
   }) as never
 
 describe('reapi(): the decline path costs nothing', () => {
-  it('with no endpoint, both capabilities decline SILENTLY', async () => {
+  it('with no endpoint option, both capabilities decline SILENTLY, whatever the env says', async () => {
     // The README's promise — "safe to leave declared" — and the reason it has
     // to be silent: a warning on every run of every workspace that has not
     // configured a remote is noise the user cannot act on.
-    await withoutReapiEnv(async () => {
+    await withOldEnv(async () => {
       const warns: string[] = []
       const p = reapi()
       expect(p.cache?.(ctx(warns))).toBeUndefined()
@@ -44,29 +55,12 @@ describe('reapi(): the decline path costs nothing', () => {
     })
   })
 
-  it.skipIf(!CHUNKING_SUPPORTED)(
-    'an endpoint configured ONLY by env still contributes a cache',
-    async () => {
-      // The documented alternative to passing `endpoint` — worth pinning
-      // separately, since the decline test above would also pass if the env
-      // path were broken and everything simply declined.
-      await withoutReapiEnv(async () => {
-        Bun.env['VX_REAPI_ENDPOINT'] = 'grpc://127.0.0.1:1'
-        const warns: string[] = []
-        const p = reapi()
-        expect(p.cache?.(ctx(warns))).toBeDefined()
-        await p.teardown?.()
-      })
-    },
-  )
-
   it('execute stays OFF unless asked, even with an endpoint', async () => {
     // Remote execution changes where a build runs; configuring a CACHE must
     // not switch it on. Declining here needs no connection, so no server.
-    await withoutReapiEnv(async () => {
-      Bun.env['VX_REAPI_ENDPOINT'] = 'grpc://127.0.0.1:1'
+    await withOldEnv(async () => {
       const warns: string[] = []
-      const p = reapi()
+      const p = reapi({ endpoint: 'grpc://127.0.0.1:1' })
       expect(await p.executor?.(ctx(warns))).toBeUndefined()
       await p.teardown?.()
     })
@@ -77,8 +71,7 @@ describe('reapi(): lifecycle and failure messages', () => {
   it.skipIf(!CHUNKING_SUPPORTED)('teardown closes the cache client it created', async () => {
     // `RemoteCacheLayer` has no close hook and core closes only its local
     // store, so if the plugin does not release this, nothing does. Spied on the prototype because the client is created internally.
-    await withoutReapiEnv(async () => {
-      Bun.env['VX_REAPI_ENDPOINT'] = 'grpc://127.0.0.1:1'
+    await withOldEnv(async () => {
       const original = ReapiRemoteCache.prototype.close
       let closed = 0
       ReapiRemoteCache.prototype.close = function patched(this: ReapiRemoteCache) {
@@ -86,7 +79,7 @@ describe('reapi(): lifecycle and failure messages', () => {
         original.call(this)
       }
       try {
-        const p = reapi()
+        const p = reapi({ endpoint: 'grpc://127.0.0.1:1' })
         expect(p.cache?.(ctx([]))).toBeDefined()
         expect(closed).toBe(0) // precondition: not closed merely by being made
         await p.teardown?.()
@@ -104,7 +97,7 @@ describe('reapi(): lifecycle and failure messages', () => {
       // executor is load-bearing), so this string is what the user acts on. The
       // raw gRPC "14 UNAVAILABLE … Resolution note:" named neither the setting
       // nor a remedy.
-      await withoutReapiEnv(async () => {
+      await withOldEnv(async () => {
         const p = reapi({ endpoint: 'grpc://127.0.0.1:59999', execute: true })
         expect(p.executor).toBeDefined() // precondition, not an assumption
         let err: unknown
@@ -130,7 +123,7 @@ describe('reapi(): lifecycle and failure messages', () => {
       // A gRPC status names no server and no key: core names the request
       // from the remote's `endpoint` and keys the class on the status code,
       // so the throw must carry the code and the remote its endpoint.
-      await withoutReapiEnv(async () => {
+      await withOldEnv(async () => {
         const p = reapi({ endpoint: 'grpc://127.0.0.1:1', callTimeoutMs: 300 })
         const remote = (await p.cache?.(ctx([])))!
         const err = await remote.has('h1').then(
@@ -153,7 +146,7 @@ describe('reapi(): lifecycle and failure messages', () => {
   it.skipIf(!CHUNKING_SUPPORTED)(
     'a refused port says so without the empty tail grpc-js leaves',
     async () => {
-      await withoutReapiEnv(async () => {
+      await withOldEnv(async () => {
         const p = reapi({ endpoint: 'grpc://127.0.0.1:1' })
         const remote = (await p.cache?.(ctx([])))!
         const err = await remote.has('h1').then(
@@ -172,9 +165,8 @@ describe('reapi(): lifecycle and failure messages', () => {
 // `http://` failed the run with grpc's `Could not parse target name ""`, a
 // lone space or `host:notaport` degraded every request to a miss.
 describe('reapi(): the endpoint is checked where it is set', () => {
-  const outcome = (endpoint: string | undefined, env?: string): string =>
-    withoutReapiEnv(() => {
-      if (env !== undefined) Bun.env['VX_REAPI_ENDPOINT'] = env
+  const outcome = (endpoint: string | undefined): string =>
+    withOldEnv(() => {
       const p = reapi(endpoint === undefined ? {} : { endpoint })
       try {
         const layer = p.cache?.(ctx([]))
@@ -186,17 +178,17 @@ describe('reapi(): the endpoint is checked where it is set', () => {
       }
     })
 
-  it('refuses one that is not host[:port], naming where it came from', () => {
+  it('refuses one that is not host[:port], naming the option', () => {
     expect([
       outcome('http://'),
       outcome('127.0.0.1:notaport'),
-      outcome(undefined, 'cache.test:99999'),
-      outcome(undefined, 'a b:1'),
+      outcome('cache.test:99999'),
+      outcome('a b:1'),
     ]).toEqual([
-      'vx/reapi: `reapi({ endpoint })` is "http://", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
-      'vx/reapi: `reapi({ endpoint })` is "127.0.0.1:notaport", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
-      'vx/reapi: VX_REAPI_ENDPOINT is "cache.test:99999", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
-      'vx/reapi: VX_REAPI_ENDPOINT is "a b:1", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      '`reapi({ endpoint })` is "http://", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      '`reapi({ endpoint })` is "127.0.0.1:notaport", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      '`reapi({ endpoint })` is "cache.test:99999", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      '`reapi({ endpoint })` is "a b:1", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
     ])
   })
 
@@ -207,11 +199,11 @@ describe('reapi(): the endpoint is checked where it is set', () => {
     expect([
       outcome('10.0.0.5:9092'),
       outcome('grpcs://[::1]:8980'),
-      outcome(undefined, 'ipv4:10.0.0.5:443'),
+      outcome('ipv4:10.0.0.5:443'),
     ]).toEqual([
-      'vx/reapi: `reapi({ endpoint })` is "10.0.0.5:9092", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
-      'vx/reapi: `reapi({ endpoint })` is "grpcs://[::1]:8980", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
-      'vx/reapi: VX_REAPI_ENDPOINT is "ipv4:10.0.0.5:443", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
+      '`reapi({ endpoint })` is "10.0.0.5:9092", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
+      '`reapi({ endpoint })` is "grpcs://[::1]:8980", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
+      '`reapi({ endpoint })` is "ipv4:10.0.0.5:443", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
     ])
   })
 
@@ -219,7 +211,7 @@ describe('reapi(): the endpoint is checked where it is set', () => {
     'a blank one declines as an unset one does; well-formed ones are taken',
     () => {
       expect([
-        outcome(undefined, '  '),
+        outcome('  '),
         outcome('cache.test:443'),
         outcome('grpcs://cache.test'),
         outcome('https://cache.test:8443'),

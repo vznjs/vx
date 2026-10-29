@@ -3,7 +3,7 @@
 
 import path from 'node:path'
 import { isLiteralPattern } from '@vzn/vx'
-import { literalGlob, minimatchToVx } from '../glob-grammar.js'
+import { gluedGlobstarAsStar, literalGlob, minimatchToVx, nxBareGroups } from '../glob-grammar.js'
 import { takingBack } from '../shared-outputs.js'
 
 interface NxOutputs {
@@ -215,7 +215,9 @@ export function mapNxOutputs(
  */
 function vxOutputGlobs(o: string): string[] | null {
   const negated = o.startsWith('!')
-  const segs = o.slice(negated ? 1 : 0).split('/')
+  const bare = nxBareGroups(o.slice(negated ? 1 : 0))
+  if (bare === null) return null
+  const segs = gluedGlobstarAsStar(bare).split('/')
   const at = segs.findIndex((seg) => /^!\([^()|{},]+(\|[^()|{},]+)*\)$/.test(seg))
   if (at !== -1) {
     if (negated) return null

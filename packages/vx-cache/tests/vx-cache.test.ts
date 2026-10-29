@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { UserError } from '@vzn/vx'
 import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createCacheServer } from '@vzn/vx-cache-server'
 import type { JWTPayload } from 'jose'
@@ -205,6 +206,42 @@ describe('VxCacheLayer', () => {
     expect(await c.has('aa11')).not.toBeNull()
   })
 
+  // A refusal answered to requests already in flight was said by the first
+  // alone; the others' bodies were left unread, each holding its connection.
+  it('releases the body of every refusal it does not say', async () => {
+    const open = new Set<number>()
+    let n = 0
+    const refusing: typeof fetch = Object.assign(
+      () => {
+        const id = n++
+        open.add(id)
+        // Pulled only as it is read: unread, it stays open.
+        const body = new ReadableStream(
+          {
+            pull(c) {
+              c.enqueue(new TextEncoder().encode('{"message":"no"}'))
+              c.close()
+              open.delete(id)
+            },
+            cancel: () => void open.delete(id),
+          },
+          { highWaterMark: 0 },
+        )
+        return Promise.resolve(new Response(body, { status: 403 }))
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const c = layer(srv.url, write, [MAIN], refusing)
+    const puts = ['a1', 'a2', 'a3'].map((h) => c.put(h, new Blob(['x']), { durationMs: 1 }))
+    expect((await Promise.allSettled(puts)).map((p) => p.status).sort()).toEqual([
+      'fulfilled',
+      'fulfilled',
+      'rejected',
+    ])
+    expect(await Promise.allSettled([c.has('b1'), c.get('b2')])).toHaveLength(2)
+    expect([n, open.size]).toEqual([5, 0])
+  })
+
   // #4439: git takes any UTF-8 in a branch name, a header only bytes; the
   // old header of every read ref refused the whole run's reads.
   it('reads and writes under a UTF-8 branch name', async () => {
@@ -246,6 +283,44 @@ describe('VxCacheLayer', () => {
     expect(
       layer(srv.url, write).put('ee55', new Blob([new Uint8Array(65)]), { durationMs: 1 }),
     ).rejects.toThrow('HTTP 413: an upload is at most 64 bytes')
+  })
+
+  // fetch drops only Authorization on a cross-origin redirect: `headers`
+  // (a CF-Access secret) went on to the host the 307 named.
+  it('follows no redirect, naming it, and sends its headers nowhere else', async () => {
+    const other: string[] = []
+    const elsewhere = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => (other.push(req.url), Response.json({})),
+    })
+    const moved = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => Response.redirect(`${elsewhere.url.origin}${new URL(req.url).pathname}`, 307),
+    })
+    try {
+      const c = new VxCacheLayer(
+        {
+          url: moved.url.origin,
+          timeoutMs: 5_000,
+          uploadTimeoutMs: 5_000,
+          headers: { 'CF-Access-Client-Secret': 's' },
+          issuer: GITHUB,
+          repository: REPO,
+        },
+        fetch,
+        { VX_CACHE_TOKEN: write },
+      )
+      c.refs = [MAIN]
+      await expect(c.has('aa11')).rejects.toThrow(
+        `HTTP 307 to ${elsewhere.url.origin}/v1/capabilities: not followed`,
+      )
+      expect(other).toEqual([])
+    } finally {
+      await moved.stop(true)
+      await elsewhere.stop(true)
+    }
   })
 })
 
@@ -520,8 +595,14 @@ describe('config', () => {
       headers: {},
     })
     expect(() => resolveVxCacheConfig({ ...NAMED, url: 'c.example' }, {})).toThrow(
-      'vxCache(): url must be http(s), got c.example',
+      'vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got c.example',
     )
+    // http:// sent the CI token in clear to any host.
+    expect(() => resolveVxCacheConfig({ ...NAMED, url: 'http://c.example' }, {})).toThrow(
+      'vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got http://c.example',
+    )
+    for (const local of ['http://127.0.0.1:8080', 'http://[::1]:8080', 'http://localhost:8080'])
+      expect(resolveVxCacheConfig({ ...NAMED, url: local }, {})?.url).toBe(local)
     expect(() => resolveVxCacheConfig({ ...NAMED, url: 'https://c.example/v1' }, {})).toThrow(
       "vxCache(): url is the server's base, without /v1: https://c.example",
     )
@@ -532,15 +613,37 @@ describe('config', () => {
     expect(hasCiToken(gh, false)).toBe(true)
   })
 
-  // 2026-10-25: the user names both, always; nothing guesses them.
+  // 2026-10-25: the user names both, always; nothing guesses them. A
+  // UserError: a plain one printed a stack under VX_E_INTERNAL (2026-10-28).
   it('refuses a workspace that names no issuer or repository', () => {
     for (const [options, said] of [
       [{ repository: 'acme/app' }, "vxCache(): issuer must be the CI issuer's URL"],
       [{ issuer: 'token.actions.githubusercontent.com', repository: 'acme/app' }, 'issuer must be'],
       [{ issuer: GITHUB }, 'vxCache(): repository must be org/name, got undefined'],
       [{ issuer: GITHUB, repository: 'app' }, 'vxCache(): repository must be org/name, got app'],
-    ] as const)
+    ] as const) {
       expect(() => vxCache(options as never)).toThrow(said)
+      expect(() => vxCache(options as never)).toThrow(UserError)
+    }
+  })
+
+  // A deadline a timer cannot wait on ended every request at once: Bun
+  // fires a zero, NaN, Infinity or past-2^31 one after 1 ms.
+  it('refuses a deadline a timer cannot wait on', () => {
+    for (const [key, ms] of [
+      ['timeoutMs', 0],
+      ['timeoutMs', -1],
+      ['timeoutMs', Number.NaN],
+      ['uploadTimeoutMs', Number.POSITIVE_INFINITY],
+      ['uploadTimeoutMs', 2 ** 31],
+    ] as const)
+      expect(() => vxCache({ ...NAMED, url: 'https://c.example', [key]: ms })).toThrow(
+        `vxCache(): ${key} must be a number of ms from 1 to 2147483647, got ${ms}`,
+      )
+    expect(
+      resolveVxCacheConfig({ ...NAMED, url: 'https://c.example', timeoutMs: 2 ** 31 - 1 }, {})
+        ?.timeoutMs,
+    ).toBe(2 ** 31 - 1)
   })
 
   it('reads with no token from a public server, sends none, and uploads nothing', async () => {
@@ -607,6 +710,21 @@ describe('config', () => {
     } finally {
       await srv.stop()
     }
+  })
+
+  // A server's words reach the terminal: an ESC in them retitled it and
+  // overwrote the line vx printed before them.
+  it("writes the controls in a server's words as escapes", async () => {
+    const said = JSON.stringify({ message: '\x1b]0;PWNED\x07\x1b[2K\rall good' })
+    const c = layer(
+      'https://cache.test',
+      't',
+      [MAIN],
+      Object.assign(() => Promise.resolve(new Response(said, { status: 500 })), {
+        preconnect: fetch.preconnect,
+      }),
+    )
+    await expect(c.has('ab14')).rejects.toThrow('HTTP 500: \\x1b]0;PWNED\\x07\\x1b[2K all good')
   })
 
   // The layer asks for the limits as it starts, before any check: a

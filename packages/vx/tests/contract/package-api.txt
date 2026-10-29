@@ -5,6 +5,11 @@ export class BoundedCapture {
     private readonly tailChars = CAPTURE_TAIL_CHARS,
   ) {}
   push(text: string, err = false): void
+  rebound(
+    headChars: number,
+    tailChars: number,
+    through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
+  ): BoundedCapture
   chunks(): CapturedChunk[]
   text(): string
 }
@@ -77,6 +82,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
   }): Promise<void>
@@ -123,6 +129,7 @@ export class FoldMemo {
 }
 == class GitFilesCache (src/cache/git-inputs.ts)
 export class GitFilesCache extends Map<string, readonly string[]> {
+  vxDirs: readonly string[]
   noteTracked(scopes: readonly string[], absPaths: readonly string[]): void
   noteTrackedLater(scopes: readonly string[], absPaths: () => Iterable<string>): void
   committedIn(dir: string): (abs: string) => boolean
@@ -312,6 +319,8 @@ export function defineWorkspace<T extends WorkspaceConfig>(
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T
+== function excerpt (src/util/ui.ts)
+export function excerpt(title: string, body: string): Block
 == function executorFallback (src/exec/executor.ts)
 export function executorFallback(reason: string): Error
 == function exitSignal (src/exec/runner.ts)
@@ -431,6 +440,8 @@ export async function sandboxRequestFor(
   nested: readonly string[] = [],
   cacheDir?: string,
 ): Promise<SandboxRequest>
+== function say (src/util/ui.ts)
+export function say(t: Tone, line: string, stream: 'out' | 'err' = 'err'): void
 == function splitTaskId (src/util/task-id.ts)
 export function splitTaskId(id: string): [project: string, task: string]
 == function status (src/util/ui.ts)
@@ -439,6 +450,8 @@ export function status(t: Tone, verb: string, headline: Inline): Block
 export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
 == function table (src/util/ui.ts)
 export function table(columns: readonly string[], rows: readonly (readonly Inline[])[]): Block
+== function tagged (src/util/ui.ts)
+export function tagged(t: Tone, line: string, c: ColorSupport): string
 == function taskDefinitions (src/graph/definition.ts)
 export function taskDefinitions(nodes: Iterable<TaskNode>): Map<string, string>
 == function taskNameProblem (src/workspace/config-schema.ts)
@@ -653,6 +666,7 @@ export interface CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     absent?: boolean
@@ -1149,8 +1163,10 @@ export interface NoticeParts {
   tone: Tone
   verb: string
   headline: Inline
+  /** What is wrong, one fact a line. */
   what?: readonly Inline[]
   why?: Inline
+  /** A source frame, below the facts. */
   code?: string
   fix?: Inline
 }
@@ -1353,6 +1369,7 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry>
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
+  unlockedConfig: () => string | undefined
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

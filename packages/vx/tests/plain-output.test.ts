@@ -2,10 +2,15 @@
 // escapes are stripped on the way to the logger: whole, cut across chunks,
 // and never at the cost of a character of text.
 
-import { describe, expect, it } from 'bun:test'
+import { rm } from 'node:fs/promises'
+import path from 'node:path'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import type { Logger } from '../src/report/logger.js'
 import { plainOutput } from '../src/report/plain-output.js'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
+
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 const A = { id: 'a#build' } as TaskNode
 const B = { id: 'b#build' } as TaskNode
@@ -87,5 +92,71 @@ describe('plainOutput', () => {
     log.runEnd?.()
     expect(seen).toEqual(['mine s', 'mine end'])
     expect(log.taskStart).toBeUndefined()
+  })
+
+  // Dropping one moved a run's warnings onto stdout wherever output is plain
+  // (a pipe, CI, NO_COLOR), and on a NO_COLOR terminal left the live region
+  // under the footer: `runDone` never reached the renderer.
+  it('delegates every lifecycle hook the sink has', () => {
+    const seen: string[] = []
+    const sink: Logger = {
+      status: (l) => seen.push(`status ${l}`),
+      warn: (l) => seen.push(`warn ${l}`),
+      taskStdout: () => {},
+      taskStderr: () => {},
+      taskComplete: () => {},
+      runStart: () => seen.push('runStart'),
+      taskStart: () => seen.push('taskStart'),
+      runEnd: () => seen.push('runEnd'),
+      stepStart: (id) => seen.push(`stepStart ${id}`),
+      stepEnd: (id, i) => seen.push(`stepEnd ${id} ${i.ok}`),
+      runStop: () => seen.push('runStop'),
+      runDone: () => seen.push('runDone'),
+    }
+    const log = plainOutput(sink)
+    log.runStart?.({ total: 1 })
+    log.taskStart?.(A)
+    log.warn?.('w')
+    log.stepStart?.('vx:keys')
+    log.stepEnd?.('vx:keys', { durationMs: 1, ok: true })
+    log.runStop?.()
+    log.runEnd?.()
+    log.runDone?.()
+    expect(seen).toEqual([
+      'runStart',
+      'taskStart',
+      'warn w',
+      'stepStart vx:keys',
+      'stepEnd vx:keys true',
+      'runStop',
+      'runEnd',
+      'runDone',
+    ])
+  })
+})
+
+describe('a plain run', () => {
+  let root = ''
+  beforeAll(async () => {
+    root = await makeWorkspace({ prefix: 'vx-plain-warn-' })
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['nomatch/**'] }, cache: { outputs: { files: [] } } } } }\n`,
+    )
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('writes its warnings to stderr, never into stdout', () => {
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'run', 'build', '--all'],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    const warning = 'app#build: inputs matched no files'
+    expect([p.exitCode, p.stdout.toString().includes(warning)]).toEqual([0, false])
+    expect(p.stderr.toString()).toContain(warning)
   })
 })

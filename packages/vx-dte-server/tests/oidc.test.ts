@@ -123,7 +123,7 @@ describe('a CI OIDC token', () => {
   it('reads ALLOW’s entries from the right, since an issuer holds colons', () => {
     expect(
       parseAllow(
-        ' https://gitlab.example:8443:group/sub/app:ci/main.yml,\nhttps://x.dev:o/r:a.yml ',
+        ' https://gitlab.example:8443:group/sub/app:ci/main.yml\nhttps://x.dev:o/r:a.yml ',
       ),
     ).toEqual([
       {
@@ -137,6 +137,9 @@ describe('a CI OIDC token', () => {
       'vznjs/vx:ci.yml is not issuer:owner/repo:workflow',
     )
     expect(() => parseAllow('https://x.dev:vx:ci.yml')).toThrow('is not issuer:owner/repo:workflow')
+    expect(() => parseAllow('https://x.dev:o/r:a.yml,https://x.dev:o/s:a.yml')).toThrow(
+      'entries are space separated',
+    )
   })
 
   it('is refused for what is wrong with it', async () => {
@@ -188,8 +191,38 @@ describe('a CI OIDC token', () => {
           return { jwks_uri: `${ISS}/jwks` }
         },
       })
-      expect(await refusal(verify(await sign(good)))).toEqual([502, `could not read ${ISS}'s keys`])
+      // The cause is said: an operator could not tell a 503 from a missing jwks_uri.
+      expect(await refusal(verify(await sign(good)))).toEqual([
+        502,
+        `could not read ${ISS}'s keys: ${ISS}${down}: 503`,
+      ])
     }
+  })
+
+  // The keys were read once per process: a key the issuer withdrew (a leak,
+  // a rotation) still signed a token the relay took, until it restarted.
+  it('is refused once its issuer withdraws its key, read again after ten minutes', async () => {
+    let t = now
+    let served = [{ ...jwk, kid: 'k1' }]
+    const fetched: string[] = []
+    const verify = createVerifier({
+      allow: [{ issuer: ISS }],
+      audience: AUD,
+      now: () => t,
+      fetchJson: async (url) => {
+        fetched.push(url)
+        return url.endsWith('/jwks') ? { keys: served } : { jwks_uri: `${ISS}/jwks` }
+      },
+    })
+    const token = (exp: number) => sign({ ...good, exp })
+    expect(await verify(await token(t + 900))).toEqual({ iss: ISS, run: ['7'] })
+    served = []
+    t += 599
+    expect(await verify(await token(t + 300))).toEqual({ iss: ISS, run: ['7'] })
+    expect(fetched).toHaveLength(2)
+    t += 1
+    expect(await refusal(verify(await token(t + 300)))).toEqual([401, 'unknown signing key'])
+    expect(fetched).toHaveLength(4)
   })
 
   it('is refused before any key fetch when it carries no signature or another alg', async () => {

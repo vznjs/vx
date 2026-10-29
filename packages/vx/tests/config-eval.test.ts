@@ -343,7 +343,14 @@ describe('a config that calls process.exit (D-65)', () => {
     const [code, err] = await Promise.all([p.exited, new Response(p.stderr).text()])
     expect({ code, err }).toEqual({
       code: 3,
-      err: JSON.stringify({ got: [REFUSAL, REFUSAL], restored: true }) + '\n',
+      err:
+        JSON.stringify({
+          got: [
+            `Project config ${slow} threw: ${REFUSAL} (at ${slow}:2:9)`,
+            `Project config ${file} threw: ${REFUSAL} (at ${file}:1:9)`,
+          ],
+          restored: true,
+        }) + '\n',
     })
   }, 20_000)
 })
@@ -560,6 +567,23 @@ describe('evaluateConfigFresh: errors cross the boundary', () => {
     expect(err.name).toBe('PresetError')
     expect(err.message).toBe('preset is not configured')
     expect(err.stack).toContain(path.basename(file))
+  })
+
+  it('carries a thrown error’s cause chain back, each with its stack', async () => {
+    const file = await write(
+      `const inner = new RangeError('port out of range')\n` +
+        `throw new Error('preset failed', { cause: new Error('load failed', { cause: inner }) })\n`,
+    )
+    const err = await evaluateConfigFresh(file).then(
+      () => new Error('NO THROW'),
+      (e: unknown) => e as Error,
+    )
+    const c1 = err.cause as Error
+    const c2 = c1.cause as Error
+    expect(c1.stack).toStartWith('Error: load failed\n')
+    expect(c2.stack).toStartWith('RangeError: port out of range\n')
+    expect(c2.stack).toContain(path.basename(file))
+    expect(c2.cause).toBeUndefined()
   })
 
   it("forwards a transpile error's position, which its message does not carry", async () => {

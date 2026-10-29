@@ -9,8 +9,9 @@ tags:
 excerpt: 'When more tasks are ready than workers, a runner has to pick. Five rules for picking, the graphs where each one wins and loses, measured with vx, and why recorded timings beat every rule that has to guess.'
 ---
 
-When more tasks are ready than workers, the pick can change a run's
-wall time by a third. Every rule without timings loses on some graph.
+When more tasks are ready than workers, the pick can change a run's wall
+time by a third. Every rule without timings loses on some graph.
+
 Recorded timings found the best order in every case we measured.
 
 ## The five rules
@@ -43,12 +44,10 @@ flowchart LR
 The best order starts the 60-second task at once. Counting dependents
 starts both parents first, since the long task has nothing after it:
 
-```text
-best (60 s)       worker 1  long ████████████████████████████████
-                  worker 2  parent ███████████████ parent ███████████████ child child
-vx default (90 s) worker 1  parent ███████████████ long ████████████████████████████████
-                  worker 2  parent ███████████████ child child
-```
+| Order | Worker 1 | Worker 2 |
+| --- | --- | --- |
+| Best: 60 s in all | long | parent → parent → child → child |
+| vx default: 90 s in all | parent → long | parent → child → child |
 
 Measured with vx, two workers:
 

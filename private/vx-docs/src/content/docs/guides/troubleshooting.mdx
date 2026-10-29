@@ -73,21 +73,8 @@ vx run build --filter @demo/ap
   task's `readyWhen` has not matched its output yet. Fix the pattern,
   or set `exec.timeout` to bound the wait.
 - **A task re-ran and you do not know why.** `vx why <project#task>`
-  names the part of the key that changed:
-
-  ```text
-  $ vx why @demo/app#build
-  @demo/app#build — run 01a1661e-7a89-74f6-918e-d96743474a51
-    this run   2026-10-23T00:17:15.943Z · success · executed · key e45df494017b4fe9
-    previous   2026-10-23T00:17:15.733Z · success · key 3e6a03475b7efe74
-    verdict    cache key changed: file packages/app/src/a.ts
-
-    what changed (1 component, 2 unchanged):
-      changed file  packages/app/src/a.ts  d00491fd7e5bb6fa28c517a0bb32b8b506539d4d → 0cfbf08886fca9a91cb753ec8734c84fcbe52c9f
-
-    what to do:
-      file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
-  ```
+  names the part of the key that changed
+  ([Find why a task missed the cache](../caching/why-a-task-missed/)).
 - **A variable is empty inside the command.** Past a small essential
   allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what
   you list: add it to `exec.env.passThrough`

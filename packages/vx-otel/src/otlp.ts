@@ -460,7 +460,8 @@ interface TaskSpanRunContext {
 function runResult(t: TaskTelemetry): string {
   switch (t.status) {
     case 'failed':
-      return t.timedOut === true ? 'timeout' : 'failure'
+      // A server killed when its readiness wait ran out timed out too.
+      return t.timedOut === true || t.notReady === 'timeout' ? 'timeout' : 'failure'
     case 'skipped':
       return 'skip'
     case 'aborted':

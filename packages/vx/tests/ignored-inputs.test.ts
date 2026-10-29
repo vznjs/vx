@@ -323,3 +323,39 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  'a walked ignored prefix skips the cache directory under it: the task hits',
+  async () => {
+    // `tmp/` is ignored and named outright, so `tmp/**` walks it on disk,
+    // and `--cache-dir tmp/vx-cache` put the cache under it. The walk read
+    // the index every run wrote, and the task never hit.
+    root = await workspace(
+      {
+        t: task("{ files: ['src/**'], workspaceFiles: ['tmp/**'] }"),
+        u: task("{ files: ['src/**', 'tmp/**'] }"),
+      },
+      {},
+      'tmp/\npackages/lib/tmp/\n',
+    )
+    await mkdir(path.join(root, 'tmp'), { recursive: true })
+    await writeFile(path.join(root, 'tmp', 'note.txt'), 'n1\n')
+    await mkdir(pkg('tmp'), { recursive: true })
+    await writeFile(pkg('tmp/note.txt'), 'n1\n')
+    const status = async (cacheDir: string) => {
+      const r = await summarized(root, ['lib#t', 'lib#u', '--cache-dir', cacheDir])
+      expect(r.code).toBe(0)
+      const hit = (id: string) => (r.tasks.get(id)?.['status'] === 'cache-hit' ? 'hit' : 'miss')
+      return [hit('lib#t'), hit('lib#u')]
+    }
+    for (const dir of ['tmp/vx-cache', 'packages/lib/tmp/vx-cache']) {
+      expect(await status(dir)).toEqual(['miss', 'miss'])
+      expect(await status(dir)).toEqual(['hit', 'hit'])
+    }
+    // CONTROL: the rest of the walked prefix is still an input.
+    await writeFile(path.join(root, 'tmp', 'note.txt'), 'n2\n')
+    await writeFile(pkg('tmp/note.txt'), 'n2\n')
+    expect(await status('tmp/vx-cache')).toEqual(['miss', 'miss'])
+  },
+  TIMEOUT,
+)

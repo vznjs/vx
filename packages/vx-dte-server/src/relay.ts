@@ -35,6 +35,7 @@ export interface RelayOptions {
   /**
    * Answers a participant's `socket` request: the host accepts the
    * websocket and `attach`es it. A participant speaks only over it.
+   * Any status but 101 says it could not: the join it carried is undone.
    */
   upgrade: (key: string, id: string, req: Request, protocol?: string) => Response
 }
@@ -150,13 +151,20 @@ interface Session {
   /** The public key its host joined with; only its holder acts as it. */
   cert?: string
   certKey?: Promise<CryptoKey>
-  /** Proof nonces seen, and when: each is taken once. */
-  nonces?: Map<string, number>
 }
 
 /** A random (v4) UUID: no one can guess a session id to open it first or join it. */
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_BODY = 1 << 20
+let room: Uint8Array | undefined
+/** Over MAX_BODY in UTF-8: a UTF-16 unit is 1 to 3 bytes, so 1 MiB of `€` is 3. */
+function overMax(text: string): boolean {
+  if (text.length > MAX_BODY) return true
+  if (text.length * 3 <= MAX_BODY) return false
+  // No Buffer on Workers: encode into a fixed 1 MiB, which stops short of one that does not fit.
+  room ??= new Uint8Array(MAX_BODY)
+  return new TextEncoder().encodeInto(text, room).read < text.length
+}
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
@@ -175,6 +183,13 @@ export function createRelay(opts: RelayOptions): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 2_000
   const graceMs = opts.graceMs ?? 10_000
   const sessions = new Map<string, Session>()
+  /**
+   * Proof nonces seen, and when: each is taken once. The relay's, not a
+   * session's: a host's join proves itself to the session it opens, so a
+   * session's own were new to it, and that join sent again once its
+   * session ended opened it again.
+   */
+  const nonces = new Map<string, number>()
 
   /**
    * Down the participant's socket, or nowhere: a participant's message the
@@ -189,6 +204,7 @@ export function createRelay(opts: RelayOptions): Relay {
         p.socket.send(JSON.stringify({ messages: [m] }))
         return
       } catch {
+        // quiet: a socket that cannot send is unplugged; the participant rejoins
         unplug(p)
       }
     }
@@ -207,6 +223,7 @@ export function createRelay(opts: RelayOptions): Relay {
     try {
       if (s !== undefined) closeSocket(s)
     } catch {}
+    // quiet: the socket is already gone; closing it again says nothing new
   }
 
   /** `socket` reaches the participant: what queued for it goes down it. */
@@ -218,6 +235,7 @@ export function createRelay(opts: RelayOptions): Relay {
         socket.send(p.hello)
         delete p.hello
       } catch {
+        // quiet: a socket that cannot send is unplugged; the participant rejoins
         unplug(p)
         return
       }
@@ -227,6 +245,7 @@ export function createRelay(opts: RelayOptions): Relay {
     try {
       socket.send(JSON.stringify({ messages }))
     } catch {
+      // quiet: a socket that cannot send is unplugged; what queued waits for the rejoin
       unplug(p)
       p.queue = messages
     }
@@ -276,6 +295,7 @@ export function createRelay(opts: RelayOptions): Relay {
         try {
           p.socket?.send(JSON.stringify({ messages: left }))
         } catch {}
+        // quiet: the close code tells the participant it is gone
       }
     }
     // Its socket learns it is gone by the close code; its next socket, from `socket`.
@@ -330,7 +350,6 @@ export function createRelay(opts: RelayOptions): Relay {
     delete session.host
     delete session.cert
     delete session.certKey
-    delete session.nonces
   }
 
   const forget = (session: Session): void => {
@@ -355,8 +374,11 @@ export function createRelay(opts: RelayOptions): Relay {
     }
     const [, ts, nonce, sig] = m as unknown as [string, string, string, string]
     const now = Date.now()
-    const nonces = (session.nonces ??= new Map())
-    for (const [n, at] of nonces) if (now - at > 2 * PROOF_SKEW_MS) nonces.delete(n)
+    // Taken in time order: the first one still fresh ends the prune.
+    for (const [n, at] of nonces) {
+      if (now - at <= 2 * PROOF_SKEW_MS) break
+      nonces.delete(n)
+    }
     if (Math.abs(now - Number(ts)) > PROOF_SKEW_MS || nonces.has(nonce)) {
       throw new HttpError(403, 'not signed by the session’s host key')
     }
@@ -392,6 +414,9 @@ export function createRelay(opts: RelayOptions): Relay {
       // No one reads the host's.
       info: role === 'peer' ? (body.info ?? null) : null,
       queue: [],
+      // Its socket has yet to attach: one that never does (its upgrade
+      // failed, its client went) is gone a grace on, as a dropped one.
+      droppedAt: Date.now(),
     }
     session.byId.set(p.id, p)
     if (p.role === 'host') {
@@ -459,10 +484,15 @@ export function createRelay(opts: RelayOptions): Relay {
     if (version === undefined) throw new HttpError(406, SUPPORTED)
     const asked = url.searchParams.get('join')
     if (asked !== null) {
-      if (asked.length > MAX_BODY) throw new HttpError(413, 'join over 1 MiB')
+      if (overMax(asked)) throw new HttpError(413, 'join over 1 MiB')
       const p = await enter(key, req, url, parse(asked))
       p.hello = JSON.stringify({ joined: { id: p.id, heartbeatMs } })
-      return opts.upgrade(key, p.id, req, protocol)
+      const res = opts.upgrade(key, p.id, req, protocol)
+      // No socket comes, so neither does a redial or a `leave`: kept, a host
+      // so joined held its run's id forever.
+      const session = sessions.get(key)
+      if (res.status !== 101 && session?.byId.get(p.id) === p) drop(session, p)
+      return res
     }
     const session = sessions.get(key)
     if (session !== undefined) lapse(session)
@@ -526,7 +556,11 @@ export function createRelay(opts: RelayOptions): Relay {
         if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
           const id = `refused-${crypto.randomUUID()}`
           refusals.set(id, err)
-          return opts.upgrade('', id, req, protocol)
+          const res = opts.upgrade('', id, req, protocol)
+          // No socket will attach to take it (Bun's upgrade fails on a
+          // request with no websocket key): kept, one leaked per request.
+          if (res.status !== 101) refusals.delete(id)
+          return res
         }
         return Response.json(errorBody(err), { status: err.status })
       }
@@ -559,6 +593,7 @@ export function createRelay(opts: RelayOptions): Relay {
         try {
           closeSocket(earlier)
         } catch {}
+        // quiet: the earlier socket is replaced; its close says nothing new
       }
       return {
         key,
@@ -584,7 +619,7 @@ export function createRelay(opts: RelayOptions): Relay {
     frame(key, id, text, socket) {
       let n: unknown = null
       try {
-        if (text.length > MAX_BODY) {
+        if (overMax(text)) {
           // Answered by its number, read without parsing the rest.
           const k = /^\{"n":(\d+)[,}]/.exec(text)?.[1]
           if (k !== undefined) n = Number(k)

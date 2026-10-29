@@ -1,5 +1,8 @@
 // A participant of the relay protocol (@vzn/vx-dte-server's PROTOCOL.md).
 
+import { ui } from '@vzn/vx'
+import { printable } from './printable.js'
+
 export interface RelayMessage {
   readonly from: string
   readonly body: unknown
@@ -373,6 +376,7 @@ export async function join(
     heard.delete(peer)
     outbox.delete(peer)
     taken.delete(peer)
+    owing.delete(peer)
     const now = relayIds.get(peer)
     relayIds.delete(peer)
     if (now !== undefined) heldIds.delete(now)
@@ -433,12 +437,20 @@ export async function join(
   // may bill. A refusal closes it saying why (PROTOCOL.md § Sockets).
   const query = `join=${encodeURIComponent(JSON.stringify(asked))}`
   let socket: (Socket & { joined?: Joined }) | undefined
+  let dialed: { s: Socket & { joined?: Joined } } | { tokenless: unknown }
   try {
-    socket = await paced(async () => {
-      const s = await connect(base, query, await headers('GET', `${base}socket?${query}`, ''))
+    dialed = await paced(async () => {
+      let h: Record<string, string>
+      try {
+        h = await headers('GET', `${base}socket?${query}`, '')
+      } catch (tokenless) {
+        // Not the relay's fault, and its source already tried again.
+        return { tokenless }
+      }
+      const s = await connect(base, query, h)
       // A fault: dialed again within `REPLY_MS`.
       if (s === undefined) throw new Error('no socket')
-      return s
+      return { s }
     })
   } catch (err) {
     if (err instanceof RelayError) throw err
@@ -447,6 +459,10 @@ export async function join(
       `cannot connect to the relay ${new URL(base).origin}: no answer in ${REPLY_MS / 1000} s`,
     )
   }
+  // A token it cannot get is said as itself, not as a relay that never
+  // answered: the relay was not asked.
+  if ('tokenless' in dialed) throw dialed.tokenless
+  socket = dialed.s
   ;({ id, heartbeatMs } = socket.joined!)
   current = id
   joins.add(socket)
@@ -647,7 +663,10 @@ export async function join(
           return
         // Refused: the caller hears it. Its number still goes, delivering
         // nothing: dropped, its receiver waited on it and on every send after.
-        o.unacked.set(seq, { body: PROBED, at: 0 })
+        // One neither the relay nor this side knows waits on nothing, and
+        // would be asked every heartbeat for the rest of the run.
+        if (err.status === 404 && !heard.has(to)) outbox.delete(to)
+        else o.unacked.set(seq, { body: PROBED, at: 0 })
         throw err
       }
     },
@@ -829,7 +848,7 @@ async function connect(
     }, answerMs(hb)).unref()
   }
   const refused = (a: Answer): RelayError =>
-    new RelayError(a.status!, `relay send: ${a.status} ${a.error ?? ''}`)
+    new RelayError(a.status!, `relay send: ${a.status} ${printable(a.error ?? '')}`)
   /** Sends asked for in this turn of the event loop, which go as one frame. */
   let sends: {
     to: string
@@ -895,8 +914,9 @@ async function connect(
   const joined = new Promise<Joined | undefined>((resolve) => {
     said = resolve
   })
-  const closed = (why = 'socket closed', by = 0): void => {
+  const closed = (words = 'socket closed', by = 0): void => {
     if (!open) return
+    const why = printable(words)
     open = false
     code = by
     reason = why
@@ -967,7 +987,7 @@ async function connect(
       const failed = [m, ...(m.results ?? [])].filter(
         (a): a is Answer => a?.status !== undefined && a.status !== 404,
       )
-      for (const a of failed) process.stderr.write(`[vx] dte: ${refused(a).message}\n`)
+      for (const a of failed) ui.say('warn', `[vx] dte: ${refused(a).message}`)
       return
     }
     const p = pending.get(m.n)

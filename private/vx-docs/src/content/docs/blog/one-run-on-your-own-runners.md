@@ -11,10 +11,12 @@ excerpt: "vx's CI is one run spread over its own Linux and Mac runners. On Nx Cl
 ---
 
 :::caution[Alpha]
-`@vzn/vx-dte` and `@vzn/vx-dte-server` are alpha. They are open source, MIT, in
-[the vx repository](https://github.com/vznjs/vx/tree/main/packages/vx-dte),
-and vx's own CI runs on them every push. Names and options may still
-change.
+`@vzn/vx-dte` and `@vzn/vx-dte-server` are alpha. They are open source,
+MIT, in [the vx
+repository](https://github.com/vznjs/vx/tree/main/packages/vx-dte), and
+vx's own CI runs on them every push.
+
+Names and options may still change.
 :::
 
 vx's CI runs on its own GitHub runners, spread by `@vzn/vx-dte`. On Nx
@@ -32,9 +34,10 @@ Cloud's Team plan with Nx's agents, the same CI would cost about
 
 The first green main as one DTE run
 ([#4119](https://github.com/vznjs/vx/pull/4119),
-[49adc41](https://github.com/vznjs/vx/actions/runs/39985872848)) took
-1 min 59 s, docs deploy included. It was three jobs before: Linux, arm64
-and macOS.
+[49adc41](https://github.com/vznjs/vx/actions/runs/39985872848)) took 1
+min 59 s, docs deploy included.
+
+It was three jobs before: Linux, arm64 and macOS.
 
 | What                                 | Count |
 | ------------------------------------ | ----: |
@@ -89,13 +92,19 @@ worktrees) and `docker()`.
 
 ## The relay stores nothing
 
-[`@vzn/vx-dte-server`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server)
-depends only on [`jose`](https://github.com/panva/jose) and speaks
-[PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-dte-server/PROTOCOL.md).
+[`@vzn/vx-dte-server`][dte-server] depends only on
+[`jose`](https://github.com/panva/jose) and speaks
+[PROTOCOL.md][dte-protocol].
+
+[dte-server]: https://github.com/vznjs/vx/tree/main/packages/vx-dte-server
+[dte-protocol]: https://github.com/vznjs/vx/blob/main/packages/vx-dte-server/PROTOCOL.md
+
 It has one route: a websocket that joins as it opens. It pushes each
-message down the receiver's socket and keeps no copy. It runs one Durable
-Object per run on Cloudflare's free plan, or on Bun in Docker. One var,
-`ALLOW`, lists who may join as `issuer:owner/repo:workflow`.
+message down the receiver's socket and keeps no copy.
+
+It runs one Durable Object per run on Cloudflare's free plan, or on Bun
+in Docker. One var, `ALLOW`, lists who may join as
+`issuer:owner/repo:workflow`.
 
 ```mermaid
 xychart-beta
@@ -164,7 +173,9 @@ Each is a layer you swap with `dte({ scheduler })`
 ## The simulator matches real runs
 
 `packages/vx-dte/tests/sim.ts` plays a run on a virtual clock with the
-plugin's own code, so minutes play in milliseconds. Main's run at
+plugin's own code, so minutes play in milliseconds.
+
+Main's run at
 [c5d8353](https://github.com/vznjs/vx/actions/runs/40014645919), with
 each task's measured time, CPU and memory:
 
@@ -262,11 +273,12 @@ its cores. Orange is warm-up, grey is billed and idle.
 
 ## What it costs, next to Nx Cloud
 
-Nx Cloud is the closest product. Since 2026-10-22 its
-[dynamic task packing](https://nx.dev/blog/dynamic-task-packing-ultracache)
-packs tasks by measured CPU and memory, as vx DTE does. The difference
-is where it runs and what it costs. Running Nx Cloud yourself is its
-Enterprise plan, at a custom price.
+Nx Cloud is the closest product. Since 2026-10-22 its [dynamic task
+packing](https://nx.dev/blog/dynamic-task-packing-ultracache) packs
+tasks by measured CPU and memory, as vx DTE does.
+
+The difference is where it runs and what it costs. Running Nx Cloud
+yourself is its Enterprise plan, at a custom price.
 
 | Item                                 | Nx Cloud                                                               | vx DTE        |
 | ------------------------------------ | ---------------------------------------------------------------------- | ------------- |
@@ -294,10 +306,11 @@ pie showData
 **This repository:** 760 runs in a week (GitHub's API, cancelled not
 counted), 3,257 a month. From the 54 runs after
 [#4150](https://github.com/vznjs/vx/pull/4150), a PR run kept Linux
-workers online 4.2 minutes on average, a main run 2.1. That is 567
-credits a run with the 500 per execution: 1,846,529 a month, $1,016.
-The Hobby plan's 50,000 credits last 88 runs
-([per-run numbers](https://github.com/vznjs/vx/pull/4167)).
+workers online 4.2 minutes on average, a main run 2.1.
+
+That is 567 credits a run with the 500 per execution: 1,846,529 a month,
+$1,016. The Hobby plan's 50,000 credits last 88 runs ([per-run
+numbers](https://github.com/vznjs/vx/pull/4167)).
 
 **A 20-person team**, a made-up case: 200 executions a working day, 21
 days, 10 agent minutes each. 2,940,000 credits is $1,617, plus 15 seats
@@ -321,11 +334,15 @@ dte({
 ```
 
 The run's job needs `id-token: write` and `actions: write`, and a
-`vx-worker.yml` whose jobs run `bunx @vzn/vx dte worker`. The
-[package README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#on-github)
-has both workflows, GitLab's pipeline and every option. vx's own are
-[ci.yml](https://github.com/vznjs/vx/blob/main/.github/workflows/ci.yml)
-and
-[vx-worker.yml](https://github.com/vznjs/vx/blob/main/.github/workflows/vx-worker.yml).
+`vx-worker.yml` whose jobs run `bunx @vzn/vx dte worker`.
+
+The [package README][dte-readme] has both workflows, GitLab's pipeline
+and every option. vx's own are [ci.yml][ci-yml] and
+[vx-worker.yml][worker-yml].
+
+[dte-readme]: https://github.com/vznjs/vx/tree/main/packages/vx-dte#on-github
+[ci-yml]: https://github.com/vznjs/vx/blob/main/.github/workflows/ci.yml
+
+[worker-yml]: https://github.com/vznjs/vx/blob/main/.github/workflows/vx-worker.yml
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

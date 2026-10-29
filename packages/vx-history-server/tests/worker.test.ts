@@ -52,7 +52,7 @@ conformance('Workers with D1', {
 
 it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS is unset or wrong', async () => {
   for (const [bindings, status, message] of [
-    [{ ALLOW: '' }, 401, 'the server admits no CI: set ALLOW'],
+    [{ ALLOW: '' }, 401, 'ALLOW is empty: set it to the CI workflows this server serves'],
     [
       { ALLOW: 'https://gitlab.com:group/app' },
       500,

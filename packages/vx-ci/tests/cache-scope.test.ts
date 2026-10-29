@@ -162,6 +162,29 @@ it("an event that runs in main's context for a pull request is the PR's", async 
   ])
 })
 
+// A workflow_run a pull request started names the PR's head as its scope,
+// so it reads that branch first, then the branch the PR merges into, as
+// the PR's own runs do. Before: it read only GITHUB_REF, main's.
+it('a workflow_run a pull request started reads its head branch, then its base', async () => {
+  expect(
+    await branchOf({
+      ...actions('refs/heads/main', 'main'),
+      GITHUB_EVENT_NAME: 'workflow_run',
+      GITHUB_EVENT_PATH: await event({
+        repository: { default_branch: 'main', full_name: 'vznjs/vx' },
+        workflow_run: {
+          event: 'pull_request',
+          head_branch: 'b5',
+          pull_requests: [{ number: 5, base: { ref: 'release' } }],
+        },
+      }),
+    }),
+  ).toEqual({
+    scope: 'vznjs/vx:b5',
+    refs: ['refs/heads/b5', 'refs/heads/release', 'refs/heads/main'],
+  })
+})
+
 // Owner, 2026-10-18: a merge queue builds what is about to land on main,
 // so it reads and writes the default keys; its queue branch is a scope
 // nobody reads. 2026-10-25: it reads its base branch only.
@@ -188,6 +211,23 @@ it("a merge queue's run is trusted: no scope, compared with the queue's base, re
     trusted: true,
     base: 'b4se',
     refs: ['refs/heads/release'],
+  })
+})
+
+// Anyone who can push can name a branch like a queue ref, so only a
+// `merge_group` run is the queue's (the cache server renames only its
+// ref, b6c9f3478). Before: a push to such a branch named no scope, the
+// trusted keys, and read only the base it never writes.
+it("a push to a branch named like a queue ref is not the queue's run", async () => {
+  const name = `gh-readonly-queue/release/pr-7-${'a'.repeat(40)}`
+  expect(
+    await branchOf({
+      ...actions(`refs/heads/${name}`, name),
+      GITHUB_EVENT_NAME: 'push',
+    }),
+  ).toEqual({
+    scope: `vznjs/vx:${name}`,
+    refs: [`refs/heads/${name}`, 'refs/heads/main'],
   })
 })
 

@@ -146,6 +146,27 @@ describe('a project is a directory with a vx.config', () => {
     TIMEOUT,
   )
 
+  // git lists no ignored `.vx/`, so the outer lock claimed inner/pkg while a
+  // run from inner/pkg took inner as its root.
+  it(
+    'a nested workspace whose .vx/ git ignores keeps its projects',
+    async () => {
+      await write(path.join(root, '.gitignore'), '.vx/\n')
+      await write(path.join(root, 'inner/.vx/workspace.mjs'), 'export default {}\n')
+      await write(path.join(root, 'inner/vx.config.mjs'), config())
+      await write(path.join(root, 'inner/pkg/vx.config.mjs'), config())
+      await write(path.join(root, 'outer/vx.config.mjs'), config())
+      expect(vx(root, 'lock').code).toBe(0)
+      expect(planned(root, 'hello', '--all')).toEqual(['outer#hello'])
+      expect(vx(path.join(root, 'inner'), 'lock').code).toBe(0)
+      expect(planned(path.join(root, 'inner/pkg'), 'hello', '--all')).toEqual([
+        '//#hello',
+        'pkg#hello',
+      ])
+    },
+    TIMEOUT,
+  )
+
   it(
     'a config added after `vx lock` does not run until locked',
     async () => {

@@ -26,8 +26,9 @@ flowchart LR
 
 ## Connect the way Bazel does
 
-TLS is on by default. A hosted server's API key goes in `headers`. A
-private CA and mutual TLS take the same three files as Bazel's
+TLS is on by default. A hosted server's API key goes in `headers`.
+
+A private CA and mutual TLS take the same three files as Bazel's
 `--tls_certificate`, `--tls_client_certificate` and `--tls_client_key`.
 
 ```ts
@@ -54,21 +55,27 @@ plugin does nothing.
 
 Each successful remote run saves a record under the task's key: its
 outputs and its stdout. The next run with that key skips the upload and
-the execution, and replays the stdout. `--force` skips the record. A
-file edited mid-run isn't recorded under a key that no longer fits.
+the execution, and replays the stdout.
+
+`--force` skips the record. A file edited mid-run isn't recorded under a
+key that no longer fits.
 
 ## Every byte is checked
 
 Each download is hashed again and checked against what vx asked for.
 Bytes that don't match are refused before they touch disk, so a corrupt
-server means a miss. An output path with `..`, or a link pointing out of
-the workspace, is refused too.
+server means a miss.
+
+An output path with `..`, or a link pointing out of the workspace, is
+refused too.
 
 ## A wedged server is a miss, not a hang
 
 A server that's down answers at once. The dangerous one accepts the
-connection and never replies. Every call has a deadline: a short one
-for small calls, and a longer one for transfers that grows with size.
+connection and never replies.
+
+Every call has a deadline: a short one for small calls, and a longer one
+for transfers that grows with size.
 
 ## Leave the bytes on the server
 

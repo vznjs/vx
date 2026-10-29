@@ -40,7 +40,7 @@ export {
 export { ABSENT_INPUT, absentOr, CACHE_VERSION, foldHead } from './key-fold.js'
 export type { FoldMemo } from './fold-memo.js'
 export { measureFsClockLag, setFsClockLag } from './fs-clock.js'
-export { filesBehind } from './linked-inputs.js'
+export { behindLink, filesBehind } from './linked-inputs.js'
 export {
   addedInput,
   type InputListing,
@@ -57,6 +57,7 @@ export {
   resolveOutputs,
   outputWalkTakes,
   resolveWorkspaceOutputs,
+  resolveWorkspaceOutputTree,
   sweepRestoreTemps,
   sweepStaging,
   asTrees,

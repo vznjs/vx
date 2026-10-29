@@ -83,3 +83,36 @@ it('says why a server did not start through the stream a worker ships', async ()
     await floor.close()
   }
 }, 20_000)
+
+// A server that cannot spawn (its directory is gone) hands back no child:
+// the floor read its `exited` and threw a TypeError, the spawn's own
+// rejection went unhandled, and `close()` threw on the hole in its list.
+it('says why a server could not spawn, and closes', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const floor = localFloor()
+  const heard: string[] = []
+  const r = await floor.execute({
+    taskId: 's#live',
+    workspaceRoot: dir,
+    outputs: { files: [], workspaceFiles: [] },
+    command: 'true',
+    forwardArgs: [],
+    cwd: dir,
+    env: { PATH: process.env['PATH'] },
+    envDefine: {},
+    capture: { stdout: false, stderr: false },
+    onStdout: () => {},
+    onStderr: (t) => heard.push(t),
+    servers: [
+      {
+        taskId: 's#srv',
+        command: 'exec sleep 60',
+        cwd: path.join(dir, 'gone'),
+        env: { PATH: process.env['PATH'] },
+      },
+    ],
+  })
+  expect(r.exitCode).toBe(1)
+  expect(heard.join('')).toContain('did not start: failed to spawn persistent task')
+  await floor.close()
+}, 20_000)

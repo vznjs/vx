@@ -94,7 +94,7 @@ export function fits(bin: Bin, need: Need): boolean {
  * one holding most of its dependencies' outputs, then the one with fewest
  * cores free, so workers fill before the next takes work and the rest
  * fall idle and leave. A task bigger than every bin's last size goes to a
- * bigger one only, unless none is or `waits(above)` says one is coming.
+ * bigger one only, unless none is or `waits(above, platform)` says one of its platform is coming.
  * The first that fits nowhere but an empty bin holds the one using least: no task after it goes there, or later tasks fill it again and
  * again (check.bun, the gate of 56 tasks, waited 50 s on main 871ffba).
  * Bins' `used` and `running` count what is given. `all`, what the asks
@@ -105,7 +105,7 @@ export function fits(bin: Bin, need: Need): boolean {
 export function assign<B extends Bin>(
   asks: Iterable<Ask>,
   bins: readonly B[],
-  waits: (above: NonNullable<Need['above']>) => boolean = () => false,
+  waits: (above: NonNullable<Need['above']>, platform: string | undefined) => boolean = () => false,
   place: Strategy['place'] = 'best-fit',
   all?: {
     readonly floor: { readonly cores: number; readonly memory: number }
@@ -144,7 +144,7 @@ export function assign<B extends Bin>(
     const of =
       need.platform === undefined ? allowed : allowed.filter((b) => b.platform === need.platform)
     const anyBigger = of.some(bigger)
-    if (!anyBigger && need.above !== undefined && waits(need.above)) {
+    if (!anyBigger && need.above !== undefined && waits(need.above, need.platform)) {
       if (ask.kind !== undefined) spent.add(ask.kind)
       continue
     }

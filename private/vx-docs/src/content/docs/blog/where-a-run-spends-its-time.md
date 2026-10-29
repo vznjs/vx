@@ -59,9 +59,12 @@ them. We measured each check and kept it.
 | On a hit               | checks each task's outputs on disk; restores a task's outputs only if one differs | restores every output and log |
 
 Without its daemon, Turborepo rewrites every output on a hit
-([`restore_outputs`](https://github.com/vercel/turborepo/blob/v2.11.8/crates/turborepo-run-cache/src/lib.rs)).
+([`restore_outputs`][turbo-restore]).
+
 vx leaves a task's outputs alone if each file still matches its record
 (size, mode, modification time, inode, change time).
+
+[turbo-restore]: https://github.com/vercel/turborepo/blob/v2.11.8/crates/turborepo-run-cache/src/lib.rs
 
 ## Nx 23.3.0, warm: 21 to 24 s
 
@@ -93,9 +96,11 @@ vx sees root dependencies through the lockfile. A lockfile plugin such as
 ## What we checked in vx and dropped
 
 The output check on hits looked like 655 ms. Alone it is 10.8 ms over
-1,600 hits: the trace summed ten workers. A tool that rewrites outputs
-with the same bytes makes vx restore them, but a content hash on every
-save would cost more. Neither became a patch.
+1,600 hits: the trace summed ten workers.
+
+A tool that rewrites outputs with the same bytes makes vx restore them,
+but a content hash on every save would cost more. Neither became a
+patch.
 
 The bench and its scripts are in the repository. More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

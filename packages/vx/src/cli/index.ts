@@ -5,6 +5,7 @@ import { VERSION } from '../version.js'
 import { checkSettingsEnv } from '../settings.js'
 import { CORE_VERBS, flagHint, printHelp, refusedWord, seeHelp } from './help.js'
 import {
+  detectColors,
   errorDocument,
   hideEnvFromTasks,
   sayNotice,
@@ -28,6 +29,7 @@ import {
 const plugins = () => import('./plugin-commands.js')
 
 export async function run(argv: readonly string[]): Promise<number> {
+  refuseLossyArgs(argv)
   const [command, ...rest] = argv
   await hideEnvFromTasks()
 
@@ -52,6 +54,20 @@ export async function run(argv: readonly string[]): Promise<number> {
 }
 
 /**
+ * Bun decodes argv as lossy UTF-8 and exposes no raw bytes on macOS, so
+ * `-- $'a\xfe'` and `-- $'a\xff'` both became `a` U+FFFD: the task got
+ * bytes nobody typed and the two runs shared a key (a stale hit). A real
+ * U+FFFD cannot be told from a replaced byte, so any arg holding one is refused.
+ */
+function refuseLossyArgs(argv: readonly string[]): void {
+  const at = argv.findIndex((a) => a.includes('�'))
+  if (at === -1) return
+  throw new UserError(
+    `argument ${at + 1} (${JSON.stringify(argv[at])}) is not valid UTF-8, or holds U+FFFD; vx cannot pass it on byte for byte`,
+  )
+}
+
+/**
  * A crash from a hand-broken lock entry is that entry's fault: runs validate
  * no entry, so it surfaced as a raw TypeError (2026-10-14). The lock is
  * read only on the crash path, so a normal run pays nothing.
@@ -61,7 +77,8 @@ async function brokenLockNamed(err: unknown): Promise<unknown> {
   try {
     const { findWorkspaceRoot, LOCK_INVALID, lockEntryBroken } =
       await import('../workspace/index.js')
-    if (lockEntryBroken(await findWorkspaceRoot(process.cwd()))) return new UserError(LOCK_INVALID)
+    if (lockEntryBroken(await findWorkspaceRoot(process.cwd())))
+      return new UserError(LOCK_INVALID, 'VX_E_LOCK')
   } catch {}
   return err
 }
@@ -132,7 +149,10 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         )
         return 1
       }
-      process.stdout.write(`vx ${VERSION}\n`)
+      // Painted, and the same words piped: a script reads `vx <version>`.
+      process.stdout.write(
+        `${ui.inline([ui.cmd('vx'), ' ', ui.tone('info', VERSION)], detectColors(process.stdout))}\n`,
+      )
       return 0
     }
     case 'run':
@@ -201,10 +221,10 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         text: string,
         code = 'VX_E_UNKNOWN_COMMAND',
         tone: 'error' | 'info' = 'error',
+        json = text.split('\n')[0]!,
       ): number => {
         sayNotice(tone, 'vx', text.replace(/^vx: /, '').trimEnd())
-        if (wantsJson(rest))
-          process.stdout.write(errorDocument(code, maskedLine(text.split('\n')[0]!)))
+        if (wantsJson(rest)) process.stdout.write(errorDocument(code, maskedLine(json)))
         return 1
       }
       const loadNote =
@@ -259,9 +279,19 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
           'VX_E_USAGE',
         )
       }
+      // A workspace that does not load is the refusal to fix first: the
+      // verb may be its own plugin's.
+      if (resolved !== null && 'loadError' in resolved) {
+        return unknown(
+          `vx: unknown command: ${command}${guess}${loadNote} (see \`vx help\`)\n`,
+          'VX_E_CONFIG',
+          'error',
+          `vx: unknown command: ${command}; .vx/workspace failed to load: ${resolved.loadError}`,
+        )
+      }
       return unknown(
-        `vx: unknown command: ${command}${guess}${loadNote} (see \`vx help\`)\n` +
-          (guess === '' && loadNote === '' ? verbSourceNote(resolved, declaredVerbs) : ''),
+        `vx: unknown command: ${command}${guess} (see \`vx help\`)\n` +
+          (guess === '' ? verbSourceNote(resolved, declaredVerbs) : ''),
       )
     }
   }

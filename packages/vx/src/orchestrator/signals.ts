@@ -15,7 +15,13 @@
 
 import { signalExitCode } from '../exec/index.js'
 import { claimExitForSignal, hangupIgnored, killGraceMs, settleWithin } from '../util/index.js'
-import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
+import {
+  holdGroups,
+  killTree,
+  pauseTree,
+  restoreTerminalModes,
+  untilGroupsGone,
+} from '../exec/index.js'
 import type { Logger } from '../report/index.js'
 
 /**
@@ -135,6 +141,9 @@ export function forwardSignals(args: {
       // teardown must not throw on the way out
     }
     for (const child of everyChild()) killTree(child, 'SIGKILL')
+    // The runner restores a task's terminal modes when the task exits,
+    // which this exit does not wait for.
+    restoreTerminalModes()
     try {
       args.cache.close()
     } catch {
@@ -177,17 +186,33 @@ export function forwardSignals(args: {
   const onSigint = (): void => onSignal('SIGINT')
   const onSigterm = (): void => onSignal('SIGTERM')
   const onSighup = (): void => onSignal('SIGHUP')
+  // Ctrl-Z stops the terminal's foreground group, which is vx's alone: a
+  // task runs in its own session. vx stopped and its tasks ran on, an
+  // interactive one still reading the terminal the shell had taken back.
+  // So vx stops each task's group, then itself; `fg` or `bg` continues vx,
+  // and vx continues them.
+  const onSigtstp = (): void => {
+    for (const child of everyChild()) pauseTree(child, 'SIGSTOP')
+    process.kill(process.pid, 'SIGSTOP')
+  }
+  const onSigcont = (): void => {
+    for (const child of everyChild()) pauseTree(child, 'SIGCONT')
+  }
   if (args.enabled) {
     process.on('SIGINT', onSigint)
     process.on('SIGTERM', onSigterm)
     // A hang-up vx was started deaf to (nohup) stays ignored.
     if (!hangupIgnored()) process.on('SIGHUP', onSighup)
+    process.on('SIGTSTP', onSigtstp)
+    process.on('SIGCONT', onSigcont)
   }
   return {
     remove: () => {
       process.off('SIGINT', onSigint)
       process.off('SIGTERM', onSigterm)
       process.off('SIGHUP', onSighup)
+      process.off('SIGTSTP', onSigtstp)
+      process.off('SIGCONT', onSigcont)
     },
   }
 }

@@ -328,12 +328,12 @@ describe('the choosing page', () => {
     const costs = section('What vx’s choices cost')
     for (const phrase of [
       'Bun only.',
-      'Bun 1.4 or later',
+      'Bun 1.4.4 or later',
       'Pre-alpha.',
       '0.1.0 is not cut',
       'Explicit inputs are work.',
       'A small ecosystem.',
-      'Nothing distributed ships.',
+      'You host the servers.',
       'No first-party cloud.',
     ]) {
       expect(costs).toContain(phrase)

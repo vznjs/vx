@@ -34,6 +34,8 @@ and key derivation logic live here.
   its target string: a file's identity, or every file under a linked
   directory (caching.md § key). `filesBehind(dir)` lists what a linked
   directory keys; `vx watch` judges a change to one by the same list.
+  `behindLink(link, hashFile)` is the digest the key folds for one; the
+  item-743 re-check follows each linked input again with it.
 - `fs-clock.ts` — how far the workspace's file system clock runs behind
   this process's, measured once a run; `racyWindowMs` adds it.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
@@ -189,6 +191,15 @@ export function setFsClockLag(lagMs: number): void
 // `.vx/cache` and `.yarn/cache` skipped. `vx watch` judges a change behind
 // a link by the same list.
 export function filesBehind(dir: string): string[]
+
+// The content behind a symlinked input as the key folds it: a file's
+// identity, or a digest of every file `filesBehind` lists. The run's
+// re-check compares it again before a miss is saved.
+export function behindLink(
+  link: string,
+  hashFile: (file: string) => Promise<string>,
+  seen?: ReadonlySet<string>,
+): Promise<string>
 
 export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the
@@ -369,7 +380,7 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache clean`.
-export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
+export const CACHE_VERSION = 'vx-cache-v48' // key-fold.ts
 // An input gone between its listing and its hash folds as this, never an
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
@@ -489,7 +500,7 @@ everything in `cache.db`.
     ├── outputs/             #   declared output files, project-relative
     ├── workspace-outputs/   #   declared outputs.workspaceFiles,
     │                        #   WORKSPACE-ROOT-relative (when any)
-    ├── .vx-meta.json        #   { version, key, files: { <entry>: [mode, mtimeMs] }, exec? }
+    ├── .vx-meta.json        #   { version, key, files: { <entry>: [mode, mtimeMs] }, dirs?, links?, dirModes?, exec? }
     └── .vx-sum              #   CRC-32 of every entry above (v36)
 ```
 
@@ -655,6 +666,9 @@ Reads via `get()` are non-blocking thanks to WAL.
   its target directory is created first, decided on where the link
   resolves (`resolveThrough`), and only when a `mkdir` has failed, so a
   clean tree pays nothing. A cycle of links is a `UserError` by name.
+  A path that resolves into a `.git` under the anchor (any case) is
+  refused as a link out is, and an artifact's link into one is an
+  `ArchiveSecurityError` (`writable`).
   A path holding a backslash is resolved link by link (`realOf`): Bun's
   `realpath` answers ENOENT for any such path.
   On any throw, nothing was renamed into place.
@@ -724,7 +738,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v48'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v49'`; `SCHEMA_VERSION` is
 `'v49'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

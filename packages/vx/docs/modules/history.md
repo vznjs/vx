@@ -153,8 +153,9 @@ first run would have read every task unmeasured. `tests/history-definition.test.
 B-tree write per task and bought this reader nothing; `caching.md`). Rows
 are appended in time order, one contiguous block per invocation, so the
 rows of the newest `recent` invocations are exactly `id >= MIN(id)` of
-the `recent`-th newest `invocations` header: a primary-key range, no
-sort, plain aggregates. At most one row per pair per invocation, so the
+the newest `recent` `invocations` headers' rows (an index probe per
+header; a run of only a group records a header and no row): a
+primary-key range, no sort, plain aggregates. At most one row per pair per invocation, so the
 slice IS the last `recent` runs for a pair that runs every time, and
 whatever fewer it has for one that runs less often — a hint for ordering
 and prediction, not a ledger (`vx why` / `vx last` read by `run_id` and

@@ -2,8 +2,7 @@
 // `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and the limits are vars in
 // it (README.md § On Cloudflare Workers).
 
-import { type Authorize, oidcAuth, parseAllow } from '@vzn/vx-devtools'
-import { errorJson, Refusal } from './protocol.js'
+import { type Authorize, errorJson, oidcAuth, parseAllow } from '@vzn/vx-devtools'
 import { createCacheServer, DEFAULT_LIMITS, type Limits, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
@@ -35,8 +34,9 @@ export interface Env {
   readonly AUDIENCE?: string
   /** `public`: a request with no token reads a repository ALLOW names. */
   readonly READ_ACCESS?: string
-  readonly MAX_CHECK_HASHES?: string
-  readonly MAX_UPLOAD_BYTES?: string
+  /** A string, or a number as wrangler.jsonc may write it. */
+  readonly MAX_CHECK_HASHES?: string | number
+  readonly MAX_UPLOAD_BYTES?: string | number
 }
 
 /** An object's key in the data center's cache. */
@@ -48,17 +48,15 @@ const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${n
  * checked the token and named the object before a read reaches here.
  */
 
-function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
+export function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
   return {
     async put(name, body, size) {
-      // R2 takes a stream of known length; this one errors at any other.
+      // R2 takes a stream of known length; this one errors at any other, so
+      // R2 never keeps a short body. The runtime holds a request's body to
+      // its Content-Length, so a failure here is R2's (or a client gone):
+      // it was answered 400, "the body is not N bytes", for a whole body.
       const fixed = new FixedLengthStream(size)
-      const piped = body.pipeTo(fixed.writable)
-      try {
-        await Promise.all([bucket.put(name, fixed.readable), piped])
-      } catch (err) {
-        throw new Refusal(400, `the body is not ${size} bytes: ${String(err)}`)
-      }
+      await Promise.all([bucket.put(name, fixed.readable), body.pipeTo(fixed.writable)])
     },
     get: async (name) => {
       const key = keyOf(name)
@@ -66,13 +64,21 @@ function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): 
       if (hit?.body) return { body: hit.body, size: Number(hit.headers.get('content-length')) }
       const o = await bucket.get(name)
       if (o === null) return null
-      const [body, copy] = o.body.tee()
-      const headers = {
-        'content-length': String(o.size),
-        'cache-control': 'public, max-age=31536000, immutable',
-      }
-      ctx.waitUntil(cache.then((c) => c.put(key, new Response(copy, { headers }))))
-      return { body, size: o.size }
+      // The copy is R2 read again, never a tee of the client's body: a tee
+      // on Workers reads at its slower branch's pace, and the cache write
+      // held a download for 19 minutes (main, 2026-10-28).
+      ctx.waitUntil(
+        (async () => {
+          const again = await bucket.get(name)
+          if (again === null) return
+          const headers = {
+            'content-length': String(again.size),
+            'cache-control': 'public, max-age=31536000, immutable',
+          }
+          await (await cache).put(key, new Response(again.body, { headers }))
+        })(),
+      )
+      return { body: o.body, size: o.size }
     },
     // R2 alone answers whether it holds an object: a check, a HEAD and a
     // PUT's skip. The data center's copy outlives R2's (expiry, a wipe), so

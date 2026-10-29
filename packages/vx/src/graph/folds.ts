@@ -2,14 +2,14 @@
 // alone: the hash path, the sandbox's keyed set and `vx lock`'s
 // input-overlap rule read this one selection, so they cannot drift.
 
-import { UserError } from '../util/index.js'
 import {
+  UserError,
   DependencySpecError,
   compileTaskPattern,
   isTaskPattern,
   parseDependencySpec,
   type DependencySpec,
-} from './dependency-spec.js'
+} from '../util/index.js'
 import type { TaskNode } from './task-graph.js'
 
 /**
@@ -49,7 +49,6 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
     if (filter === undefined || filter.length === 0) continue
     const deps = keyedDeps(node).flatMap((id) => nodes.get(id) ?? [])
     const groups = deps.filter(isGroupTask)
-    if (groups.length === 0) continue
     for (const raw of filter) {
       const spec = parseSpec(raw, node.id)
       if (spec.negated) continue
@@ -63,16 +62,50 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
           `${node.id}: inputs.tasks: '${raw}' matches ${member.id} only through the group ${group.id}, so it selects nothing; name '${group.taskName}' or depend on ${member.id} directly`,
         )
       }
+      if (namesNoDependency(spec, node.config.dependsOn ?? [])) {
+        const named = deps.map((d) => d.id).join(', ') || 'none'
+        throw new UserError(
+          `${node.id}: inputs.tasks: '${raw}' names none of its dependencies (${named}), so it selects nothing and the key would not move with them; fix the name, or use [] to decouple on purpose`,
+        )
+      }
     }
   }
 }
 
+/**
+ * An exact filter that matched no dependency, where no `dependsOn` entry
+ * may resolve to nothing for it. The load pairs a `pkg#task` entry, or a
+ * `pkg#task` dependency, with any form whose task half matches, since it
+ * cannot tell this project's name from another's
+ * (`assertFilterNamesDeclaredDeps`), so `['nope#build']` over
+ * `dependsOn: ['build']`, `['gen']` over `['b#gen']` and `['^gen']` over
+ * this project's own `['a#gen']` each selected nothing and the key stopped
+ * moving with the dependency: a stale hit. A `^` entry or a pattern naming
+ * the task may match nothing in a preset's project, as a `^build` filter
+ * may, so it lets the entry through.
+ */
+function namesNoDependency(spec: DependencySpec, dependsOn: readonly string[]): boolean {
+  if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps' || isTaskPattern(spec.task))
+    return false
+  if (spec.kind === 'cross' && isTaskPattern(spec.project)) return false
+  return !dependsOn.some((raw) => {
+    let d: DependencySpec
+    try {
+      d = parseDependencySpec(raw, 'dependsOn')
+    } catch {
+      return false
+    }
+    if (d.kind !== 'self' && d.kind !== 'deps' && d.kind !== 'cross') return false
+    return (d.kind === 'deps' || isTaskPattern(d.task)) && nameMatcher(d.task)(spec.task)
+  })
+}
+
 function parseSpec(raw: string, selfTaskId: string): DependencySpec {
   try {
-    return parseDependencySpec(raw)
+    return parseDependencySpec(raw, 'inputs.tasks')
   } catch (err) {
     if (err instanceof DependencySpecError) {
-      throw new UserError(`${selfTaskId}: inputs.tasks: ${err.message}`)
+      throw new UserError(`${selfTaskId}: ${err.message}`)
     }
     throw err
   }

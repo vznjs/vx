@@ -7,7 +7,7 @@
 // closes at the bottom of execution, `planRun()` does so via
 // try/finally around its plan() call.
 
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
 import { beginRun, mark, nearest, relPosix, type SecretBroker, UserError } from '../util/index.js'
@@ -169,6 +169,12 @@ export interface PreparedRun {
    * mistaken for a workspace vx was never set up in.
    */
   anyProjectConfig: boolean
+  /**
+   * With no config in the lock, one a directory holds anyway (root-relative):
+   * written after `vx lock`, so the fix is `vx lock`, not `vx init`. Asked
+   * only by a refusal, so a run that goes on pays no stat.
+   */
+  unlockedConfig: () => string | undefined
   /** The claimed root files, and whether a task has since rewritten one (fingerprint-watch.ts). */
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
@@ -431,6 +437,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const requested = expandRequested(tasks, candidateProjects, projects, isDefaultBuild)
   let unresolvedTasks = unresolvedRequests(tasks, candidateProjects, projects, isDefaultBuild)
   refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
+  if (options.projects !== undefined && options.selectedByDiff !== true)
+    refuseUnlockedScope(unresolvedTasks, candidateProjects, projects, projectMetas, workspaceRoot)
   if (options.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
     // A name a loaded project declares is no typo, whether or not the load
     // was whole: an unaffected dependency loaded for the closure declared
@@ -571,6 +579,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
+      unlockedConfig: () => unlockedConfigOf(projectsWithConfigs, projectMetas, workspaceRoot),
       fingerprintWatch,
       nestedDirsByProject,
       gitFilesCache: new GitFilesCache(),
@@ -709,6 +718,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // `prepare (graph)` row until 2026-09-10.
     mark('build graph')
     const gitFilesCache = new GitFilesCache()
+    gitFilesCache.vxDirs = withinRoot(workspaceRoot, cacheDir)
     // Bulk-populate via a single `git ls-files` at the workspace root —
     // partitions the output by project. Avoids one fork+exec per project
     // (~5-10ms each on Linux; the dominant cold-start cost on big
@@ -849,6 +859,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
+      unlockedConfig: () => unlockedConfigOf(projectsWithConfigs, projectMetas, workspaceRoot),
       fingerprintWatch,
       nestedDirsByProject,
       gitFilesCache,
@@ -970,6 +981,20 @@ export function workspaceCachePolicy(
   }
 }
 
+/** A config no locked project has, looked for only when the lock holds none. */
+function unlockedConfigOf(
+  configured: readonly unknown[],
+  metas: ReadonlyArray<{ dir: string }>,
+  workspaceRoot: string,
+): string | undefined {
+  if (configured.length > 0) return undefined
+  for (const m of metas) {
+    const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(m.dir, n)))
+    if (config !== undefined) return relPosix(workspaceRoot, path.join(m.dir, config))
+  }
+  return undefined
+}
+
 /**
  * A `project#build` naming the default `build` of a project the lock holds
  * no config for, while its directory holds one, asks for that config's task, not
@@ -988,14 +1013,50 @@ function refuseUnlockedConfig(
     const name = spec.slice(0, at)
     const entry = projects.get(name)
     if (entry === undefined || !isDefaultBuild(entry.config.tasks?.[spec.slice(at + 1)])) continue
-    const locked = metas.find((m) => m.name === name)?.configPath
-    if (typeof locked === 'string' && locked !== '') continue
-    const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(entry.dir, n)))
+    const config = unlockedConfig(name, projects, metas)
     if (config === undefined) continue
     throw new UserError(
-      `${spec}: ${relPosix(workspaceRoot, path.join(entry.dir, config))} is not in the lock yet — run \`vx lock\``,
+      `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
     )
   }
+}
+
+/**
+ * The same for a bare name the selection (the cwd's project, `--filter`)
+ * left unresolved: run from a member whose config came after the lock, it
+ * said only projects outside the selection declare the task — pass
+ * `--all`, which skips that member too.
+ */
+function refuseUnlockedScope(
+  unresolved: readonly string[],
+  candidates: readonly string[],
+  projects: ReadonlyMap<string, ProjectEntry>,
+  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+  workspaceRoot: string,
+): void {
+  const spec = unresolved.find((t) => !t.includes('#'))
+  if (spec === undefined) return
+  for (const name of candidates) {
+    const config = unlockedConfig(name, projects, metas)
+    if (config === undefined) continue
+    throw new UserError(
+      `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
+    )
+  }
+}
+
+/** The config file in a project's directory the lock holds none for. */
+function unlockedConfig(
+  name: string,
+  projects: ReadonlyMap<string, ProjectEntry>,
+  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+): string | undefined {
+  const entry = projects.get(name)
+  if (entry === undefined) return undefined
+  const locked = metas.find((m) => m.name === name)?.configPath
+  if (typeof locked === 'string' && locked !== '') return undefined
+  const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(entry.dir, n)))
+  return config === undefined ? undefined : path.join(entry.dir, config)
 }
 
 /**
@@ -1028,4 +1089,22 @@ export async function openRemotes(
     }
   }
   return closed && !remotes.some((r) => r.read || r.write)
+}
+
+/**
+ * `dir` spelled under `root` as the run spells the root, when it lies
+ * there; compared through links, so a root reached by a symlink (macOS's
+ * `/var/folders`) still finds a cache directory written canonical.
+ */
+function withinRoot(root: string, dir: string): string[] {
+  const real = (p: string): string => {
+    try {
+      return realpathSync(p)
+    } catch {
+      return path.resolve(p)
+    }
+  }
+  const rel = path.relative(real(root), real(dir))
+  const outside = rel === '' || rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)
+  return outside ? [] : [path.join(root, rel)]
 }

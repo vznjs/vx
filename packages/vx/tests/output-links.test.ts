@@ -13,12 +13,13 @@ import {
   statSync,
   symlinkSync,
   unlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import { mkdtempSync, mkdirSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { extractArtifactStream } from '../src/cache/archive.js'
+import { extractArtifactStream, planOfTree } from '../src/cache/archive.js'
 import { tarPack } from '../src/cache/tar-stream.js'
 import { withSum } from './helpers/artifact-sum.js'
 import { vx } from './helpers/parity.js'
@@ -145,6 +146,103 @@ it.skipIf(process.platform === 'win32')(
       expect(lstatSync(path.join(dest, 'dist/ok'), { throwIfNoEntry: false })).toBeUndefined()
     }
   },
+)
+
+// Each link was checked alone, as text, but the kernel follows one link
+// while it resolves the next: `up -> ..` and `esc -> up/../../SECRET` each
+// read as inside, and `esc` landed on a file beside the workspace. A link
+// may not reach its target through another link the artifact restores.
+it.skipIf(process.platform === 'win32')(
+  'an artifact whose link reaches out through another of its links restores nothing',
+  async () => {
+    const outer = mkdtempSync(path.join(os.tmpdir(), 'vx-links-chain-'))
+    made.push(outer)
+    const ws = path.join(outer, 'ws')
+    const dest = path.join(ws, 'app')
+    mkdirSync(dest, { recursive: true })
+    const err = await extractArtifactStream(
+      streamOf(
+        await artifact({
+          links: { 'outputs/dist/up': '..', 'outputs/dist/esc': 'up/../../SECRET' },
+        }),
+      ),
+      dest,
+      ws,
+      undefined,
+      undefined,
+      ws,
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(String(err)).toContain(
+      'ArchiveSecurityError: archive link outputs/dist/esc points through outputs/dist/up, another link it restores',
+    )
+    expect(lstatSync(path.join(dest, 'dist/up'), { throwIfNoEntry: false })).toBeUndefined()
+    expect(lstatSync(path.join(dest, 'dist/esc'), { throwIfNoEntry: false })).toBeUndefined()
+  },
+)
+
+// A link named as a file entry was renamed over the file just written,
+// so a re-pack of the tree (planOfTree) read through it.
+it.skipIf(process.platform === 'win32')(
+  'an artifact with a link and a file of one name restores nothing',
+  async () => {
+    const ws = mkdtempSync(path.join(os.tmpdir(), 'vx-links-twice-'))
+    made.push(ws)
+    const dest = path.join(ws, 'app')
+    mkdirSync(dest)
+    const body = JSON.stringify({
+      version: 1,
+      files: { 'outputs/dist/k': [0o644, 0] },
+      links: { 'outputs/dist/k': 'other' },
+    })
+    const parts: Uint8Array[] = []
+    for await (const c of tarPack([
+      { name: 'stdout', size: 0, body: '' },
+      { name: 'outputs/dist/k', size: 5, body: 'decoy' },
+      { name: '.vx-meta.json', size: Buffer.byteLength(body), body },
+    ])) {
+      parts.push(c)
+    }
+    const tar = await withSum(new Uint8Array(await new Blob(parts).arrayBuffer()))
+    const err = await extractArtifactStream(streamOf(tar), dest, ws, undefined, undefined, ws).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(String(err)).toContain(
+      'ArchiveSecurityError: archive link outputs/dist/k is also a file or directory entry',
+    )
+    expect(lstatSync(path.join(dest, 'dist/k'), { throwIfNoEntry: false })).toBeUndefined()
+  },
+)
+
+// What the sidecar calls a file is packed only as one: a link there is
+// read through, so its target's bytes would ride the artifact.
+it.skipIf(process.platform === 'win32')('a kept tree packs no link it calls a file', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-links-tree-'))
+  made.push(dir)
+  mkdirSync(path.join(dir, 'outputs'))
+  symlinkSync('/etc/hostname', path.join(dir, 'outputs', 'k'))
+  writeFileSync(
+    path.join(dir, '.vx-meta.json'),
+    JSON.stringify({ version: 1, files: { 'outputs/k': [0o644, 0] } }),
+  )
+  expect(() => planOfTree(dir, '')).toThrow('kept tree entry outputs/k is not a regular file')
+})
+
+it.skipIf(process.platform === 'win32')(
+  'a link out of the workspace through another output link fails the save',
+  async () => {
+    const out = await workspace(
+      'rm -rf dist && mkdir -p dist && ln -s ../.. dist/up && ln -s up/../../x dist/esc',
+    )
+    const r = await build(out.root)
+    expect(r.out + r.err).toMatch(
+      /output dist\/esc is a symlink to up\/\.\.\/\.\.\/x through output dist\/up, another link/,
+    )
+  },
+  TIMEOUT,
 )
 
 // A tmpfs beside the disk: the only second filesystem a test reaches

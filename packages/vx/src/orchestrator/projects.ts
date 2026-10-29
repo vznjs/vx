@@ -86,9 +86,19 @@ export async function loadWorkspacePlugins(
       branch.refs = [...new Set(facts.refs)]
     }
   }
-  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) =>
-    validateWorkspace(workspaceConfig, `.vx/workspace (after plugin '${plugin.name}')`),
-  )
+  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) => {
+    const where = `.vx/workspace (after plugin '${plugin.name}')`
+    // The run keeps the list it loaded: an edit to it was validated and
+    // dropped, and `ws.plugins.length = 0` changed nothing and said nothing.
+    const now = workspaceConfig.plugins as readonly unknown[] | undefined
+    const was = list ?? []
+    if (!Array.isArray(now) || now.length !== was.length || now.some((p, i) => p !== was[i])) {
+      throw new UserError(
+        `${where}: \`plugins\` is fixed before the config stage runs — a plugin cannot add, drop or reorder plugins`,
+      )
+    }
+    validateWorkspace(workspaceConfig, where)
+  })
   return { workspaceConfig, plugins, branch }
 }
 
@@ -422,7 +432,7 @@ function crossDepProjects(config: ProjectConfig): string[] {
       // the offending task. Here it just contributes no project.
       if (!raw.includes('#')) continue
       try {
-        const spec = parseDependencySpec(raw)
+        const spec = parseDependencySpec(raw, 'dependsOn')
         if (spec.kind === 'cross') out.push(spec.project)
       } catch {
         continue
@@ -465,7 +475,7 @@ export function lockReader(workspaceRoot: string): () => Promise<Lockfile> {
   let read: Promise<Lockfile> | undefined
   return () =>
     (read ??= readLockfile(workspaceRoot).then((lock) => {
-      if (lock === null) throw new UserError(NO_LOCK)
+      if (lock === null) throw new UserError(NO_LOCK, 'VX_E_LOCK')
       return lock
     }))
 }

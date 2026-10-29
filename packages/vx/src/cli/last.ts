@@ -28,10 +28,22 @@ import {
   taskLog,
 } from '../orchestrator/index.js'
 import { outcomeWord } from '../report/index.js'
-import { formatElapsed, refusal, splitTaskId, UserError, sayNotice, ui } from '../util/index.js'
+import {
+  detectColors,
+  ERROR,
+  formatElapsed,
+  paint,
+  refusal,
+  splitTaskId,
+  SUCCESS,
+  UserError,
+  sayNotice,
+  ui,
+  type ColorSupport,
+} from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
-import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
+import { cliCacheDir, parseCacheDirFlag, rootSpelled } from './workspace-config.js'
 
 interface LastArgs {
   runId?: string
@@ -267,9 +279,14 @@ async function printStats(
     ]),
   ]
   const widths = rows[0]!.map((_, c) => Math.max(...rows.map((r) => r[c]!.length)))
-  const lines = rows.map((r) =>
+  const c = detectColors(process.stdout)
+  const lines = rows.map((r, i) =>
     r
-      .map((cell, c) => cell.padEnd(widths[c]!))
+      .map((cell, col) => {
+        const padded = col === r.length - 1 ? cell : cell.padEnd(widths[col]!)
+        if (i === 0) return paint('', padded, c, { dim: true })
+        return col === 0 ? `${ui.inline(ui.id(cell), c)}${padded.slice(cell.length)}` : padded
+      })
       .join('  ')
       .trimEnd(),
   )
@@ -305,13 +322,17 @@ function fmtUsage(t: {
  * their exit stands for, the sandbox's violation count, a skip's blocker.
  * Older rows carry none and read as before.
  */
-function reasonParts(t: RunSummaryRow): string {
+function reasonParts(t: RunSummaryRow, inputMoved: string | undefined): string {
   const parts: string[] = []
   if (t.status === 'failed') {
     if (t.notReady !== null) {
       parts.push(
         `never ready: ${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}`,
       )
+    } else if (inputMoved !== undefined) {
+      // `inputStability.severity: 'error'` forced the exit; the run keeps
+      // the input with the failure's output, not in the row.
+      parts.push(`${inputMoved === '' ? 'an input' : inputMoved} changed during the run`)
     } else if (t.timedOut === true) {
       parts.push('timed out')
     } else {
@@ -324,6 +345,9 @@ function reasonParts(t: RunSummaryRow): string {
   } else if (t.status === 'skipped' && t.blockedBy !== null) {
     parts.push(`after ${t.blockedBy} failed`)
   }
+  // The run's own row said `flaky - 2 attempts`: a pass that needed a
+  // retry is the one sign of a flaky task a replay can give.
+  if (t.attempts !== null && t.attempts > 1) parts.push(`${t.attempts} attempts`)
   if (t.remoteError !== null) parts.push(`remote \u2717 ${t.remoteError}`)
   return parts.map((p) => `  ${p}`).join('')
 }
@@ -335,14 +359,14 @@ const HITS_SHOWN = 16
  * The steps the run did not wait on (`vx:prefetch`), which its own output
  * never showed (2026-10-16): here for debugging, marked `internal`.
  */
-function formatStepRows(steps: readonly RunStep[]): string[] {
+function formatStepRows(steps: readonly RunStep[], c: ColorSupport): string[] {
   if (steps.length === 0) return []
   const idW = Math.max(...steps.map((s) => s.id.length), 4)
   return [
     '',
     ...steps.map(
       (s) =>
-        `  ${(s.ok ? 'success' : 'failed').padEnd(17)} ${s.id.padEnd(idW)}  ${fmtMs(s.durationMs).padStart(8)}  internal`,
+        `  ${paint(s.ok ? SUCCESS : ERROR, (s.ok ? 'success' : 'failed').padEnd(17), c)} ${paint('', s.id.padEnd(idW), c, { bold: true })}  ${paint('', `${fmtMs(s.durationMs).padStart(8)}  internal`, c, { dim: true })}`,
     ),
   ]
 }
@@ -356,7 +380,12 @@ function formatStepRows(steps: readonly RunStep[]): string[] {
  * row tells. `--format json` lists every row.
  */
 
-export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
+export function formatTaskRows(
+  tasks: readonly RunSummaryRow[],
+  c: ColorSupport = { enabled: false },
+  /** Task id → the input that moved under it, from the run's kept failures. */
+  inputMoved: ReadonlyMap<string, string> = new Map(),
+): string[] {
   if (tasks.length === 0) return []
   const failed = tasks.filter((t) => t.status === 'failed')
   const hits = tasks.filter((t) => t.status !== 'failed' && t.cacheHit === true)
@@ -384,15 +413,26 @@ export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
         : t.cacheHit === true && t.restored !== null
           ? outcomeWord({ status: t.status as 'cache-hit', restored: t.restored })
           : t.status
+    const hue = t.status === 'failed' ? ERROR : t.status === 'skipped' ? '' : SUCCESS
     lines.push(
-      `  ${status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
-        `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-        reasonParts(t),
+      `  ${paint(hue, status.padEnd(17), c, { dim: hue === '' })} ${ui.inline(ui.id(id), c)}${' '.repeat(idW - id.length)}  ${fmtMs(t.durationMs).padStart(8)}` +
+        paint(
+          '',
+          `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
+            reasonParts(t, inputMoved.get(`${t.project}#${t.task}`)),
+          c,
+          { dim: true },
+        ),
     )
   }
   if (folded) {
     lines.push(
-      `  … +${hits.length - HITS_SHOWN} more cache hits (the ${HITS_SHOWN} slowest restores shown) — vx last --format json lists every row`,
+      paint(
+        '',
+        `  … +${hits.length - HITS_SHOWN} more cache hits (the ${HITS_SHOWN} slowest restores shown) — vx last --format json lists every row`,
+        c,
+        { dim: true },
+      ),
     )
   }
   return lines
@@ -439,6 +479,7 @@ export function formatRunList(
     >
     id: string
   }[],
+  c: ColorSupport = { enabled: false },
 ): string[] {
   const rows = runs.map(({ inv, id }) => ({
     head: `${inv.exitOk ? 'ok    ' : 'FAILED'} ${fmtWhen(inv.startedAt)}`,
@@ -454,7 +495,7 @@ export function formatRunList(
   const msW = Math.max(...rows.map((r) => r.ms.length))
   return rows.map(
     (r) =>
-      `${r.head}  ${r.id.padEnd(idW)}  ${r.counts.padEnd(countsW)}  ${r.ms.padStart(msW)}  $ ${r.command}`,
+      `${paint(r.head.startsWith('ok') ? SUCCESS : ERROR, r.head.slice(0, 6), c)}${paint('', r.head.slice(6), c, { dim: true })}  ${paint('', r.id.padEnd(idW), c, { bold: true })}  ${paint('', `${r.counts.padEnd(countsW)}  ${r.ms.padStart(msW)}  $`, c, { dim: true })} ${r.command}`,
   )
 }
 
@@ -495,7 +536,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
 
     if (parsed.stats === true) {
       const branch = currentBranch(root, undefined, parsed.branch)
-      return await printStats(db, parsed.task, parsed.format, branch)
+      const task = parsed.task === undefined ? undefined : await rootSpelled(root, parsed.task)
+      return await printStats(db, task, parsed.format, branch)
     }
 
     if (parsed.log !== undefined) {
@@ -503,10 +545,18 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         parsed.runId === undefined
           ? undefined
           : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
-      const log = taskLog(cacheDir, db, await bareTaskId(db, parsed.log), runId)
+      const log = taskLog(
+        cacheDir,
+        db,
+        await bareTaskId(db, await rootSpelled(root, parsed.log)),
+        runId,
+      )
       if (log === null) {
+        // The id's form is hinted only when it lacks one: a task that
+        // never ran was told how to spell a task id.
         throw new UserError(
-          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`} (a task id is project#task)`,
+          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`}${parsed.log.includes('#') ? '' : ' (a task id is project#task)'}`,
+          'VX_E_NO_HISTORY',
         )
       }
       if (parsed.format === 'json') {
@@ -544,6 +594,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       }
       const lines = formatRunList(
         invocations.map((inv) => ({ inv, id: shortRunId(db, inv.runId) })),
+        detectColors(process.stdout),
       )
       process.stdout.write(`${lines.join('\n')}\n`)
       return 0
@@ -601,21 +652,32 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       return 0
     }
 
+    const c = detectColors(process.stdout)
+    const dim = (s: string): string => paint('', s, c, { dim: true })
     const lines: string[] = []
-    lines.push(`run ${inv.runId} — ${inv.exitOk ? 'ok' : 'FAILED'}`)
-    lines.push(`  $ ${inv.command}`)
     lines.push(
-      `  ${fmtWhen(inv.startedAt)} · ${fmtMs(inv.totalDurationMs)}` +
-        `${inv.branch !== null ? ` · ${inv.branch}` : ''}` +
-        `${inv.commitSha !== null ? ` @ ${inv.commitSha.slice(0, 8)}${inv.dirty === true ? '+dirty' : ''}` : ''}` +
-        `${inv.ci ? ` · CI${inv.ciProvider !== null ? ` (${inv.ciProvider})` : ''}` : ''}`,
+      `${paint('', 'run', c, { bold: true })} ${paint('', inv.runId, c, { bold: true })} ${dim('—')} ${inv.exitOk ? paint(SUCCESS, 'ok', c) : paint(ERROR, 'FAILED', c)}`,
+    )
+    lines.push(`  ${dim('$')} ${paint('', inv.command, c, { bold: true })}`)
+    lines.push(
+      dim(
+        `  ${fmtWhen(inv.startedAt)} · ${fmtMs(inv.totalDurationMs)}` +
+          `${inv.branch !== null ? ` · ${inv.branch}` : ''}` +
+          `${inv.commitSha !== null ? ` @ ${inv.commitSha.slice(0, 8)}${inv.dirty === true ? '+dirty' : ''}` : ''}` +
+          `${inv.ci ? ` · CI${inv.ciProvider !== null ? ` (${inv.ciProvider})` : ''}` : ''}`,
+      ),
     )
     lines.push(
-      `  ${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}` +
-        `${inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''}`,
+      dim(`  ${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`) +
+        `${inv.failedCount > 0 ? paint(ERROR, ` · ${inv.failedCount} failed`, c) : ''}`,
     )
-    lines.push(...formatTaskRows(detail?.tasks ?? []))
-    lines.push(...formatStepRows(runSteps(cacheDir, inv.runId)))
+    const moved = new Map<string, string>()
+    if (inv.failedCount > 0) {
+      for (const f of runFailures(cacheDir, db, inv.runId)?.tasks ?? [])
+        if (f.inputMoved !== undefined) moved.set(f.taskId, f.inputMoved)
+    }
+    lines.push(...formatTaskRows(detail?.tasks ?? [], c, moved))
+    lines.push(...formatStepRows(runSteps(cacheDir, inv.runId), c))
     // The next command after reading a failed run, with the arguments the
     // run forwarded to the tasks that got them (a failure under `-- --shard
     // 2` is that shard's); a dependency never got them, so its line has none.
@@ -629,7 +691,9 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
           .filter((t) => t.forwarded === withArgs)
           .map((t) => `${t.project}#${t.task}`)
         if (ids.length > 0)
-          rerun.push(`  re-run what failed: vx run ${ids.join(' ')}${withArgs ? args : ''}`)
+          rerun.push(
+            `  ${dim('re-run what failed:')} ${paint('', `vx run ${ids.join(' ')}${withArgs ? args : ''}`, c, { bold: true })}`,
+          )
       }
       lines.push('', ...rerun)
     }

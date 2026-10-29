@@ -156,7 +156,7 @@ function parseResourceAttributes(
       out[key] = decodeURIComponent(pair.slice(eq + 1).trim())
     } catch {
       warn?.(
-        `[vx-otel] OTEL_RESOURCE_ATTRIBUTES is malformed (${pair.trim()}) — none of it is used`,
+        `[vx] vx-otel: OTEL_RESOURCE_ATTRIBUTES is malformed (${pair.trim()}) — none of it is used`,
       )
       return {}
     }
@@ -173,6 +173,9 @@ export function resolveOtelConfig(
   env: Record<string, string | undefined>,
   warn?: (m: string) => void,
 ): OtelSinkConfig | undefined {
+  // `OTEL_SDK_DISABLED=true` exports nothing, so nothing below may warn:
+  // read after the endpoints, a bad one it would never use was warned about.
+  if (env['OTEL_SDK_DISABLED']?.trim().toLowerCase() === 'true') return undefined
   // Each URL with the setting it came from, so a refusal can name it
   // without printing a value that may hold a credential.
   const option = (name: keyof OtelPluginOptions): [string, string] | undefined => {
@@ -220,7 +223,7 @@ export function resolveOtelConfig(
   }
   for (const [setting, signals] of refused) {
     const names = signals.length === 3 ? 'traces, metrics and logs' : signals.join(' and ')
-    warn?.(`[vx-otel] ${setting} is not an http:// or https:// URL — ${names} are not exported`)
+    warn?.(`[vx] vx-otel: ${setting} is not an http:// or https:// URL — ${names} are not exported`)
   }
   const tracesUrl = picked.traces?.[0]
   const metricsUrl = picked.metrics?.[0]
@@ -233,9 +236,8 @@ export function resolveOtelConfig(
   }
   // The standard SDK opt-outs, honoured so a pipeline already configured
   // that way does not start receiving vx's telemetry because it upgraded
-  // vx. Only the logs one was read; `OTEL_SDK_DISABLED=true` and the traces
-  // and metrics `=none` were ignored and still exported (item 1056).
-  if (env['OTEL_SDK_DISABLED']?.trim().toLowerCase() === 'true') return undefined
+  // vx. Only the logs one was read; the traces and metrics `=none` were
+  // ignored and still exported (item 1056).
   const off = (name: string): boolean => env[name]?.trim().toLowerCase() === 'none'
   const tracesWanted = !off('OTEL_TRACES_EXPORTER')
   const logsWanted = opts.logs ?? !off('OTEL_LOGS_EXPORTER')
@@ -250,7 +252,7 @@ export function resolveOtelConfig(
   ] as const) {
     if (asked === true && url === undefined) {
       warn?.(
-        `[vx-otel] ${signal}: true but no ${signal} endpoint (OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_ENDPOINT) — ${signal} are not exported`,
+        `[vx] vx-otel: ${signal}: true but no ${signal} endpoint (OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_ENDPOINT) — ${signal} are not exported`,
       )
     }
   }
@@ -272,7 +274,7 @@ export function resolveOtelConfig(
         if (!badName) {
           badName = true
           warn?.(
-            '[vx-otel] a header name holds a character no HTTP header name can carry (a space, a colon, …) — not sent (neither its name nor its value is printed)',
+            '[vx] vx-otel: a header name holds a character no HTTP header name can carry (a space, a colon, …) — not sent (neither its name nor its value is printed)',
           )
         }
         continue
@@ -286,7 +288,7 @@ export function resolveOtelConfig(
       else if (!dropped.has(k)) {
         dropped.add(k)
         warn?.(
-          `[vx-otel] header ${JSON.stringify(raw)} holds ${fault}, which no HTTP header can carry — not sent (its value is not printed)`,
+          `[vx] vx-otel: header ${JSON.stringify(raw)} holds ${fault}, which no HTTP header can carry — not sent (its value is not printed)`,
         )
       }
     }
@@ -318,7 +320,9 @@ export function resolveOtelConfig(
     if (value === 'gzip') return true
     if (!badCompression) {
       badCompression = true
-      warn?.(`[vx-otel] compression ${JSON.stringify(raw)} is not gzip or none — sent uncompressed`)
+      warn?.(
+        `[vx] vx-otel: compression ${JSON.stringify(raw)} is not gzip or none — sent uncompressed`,
+      )
     }
     return false
   })
@@ -333,7 +337,7 @@ export function resolveOtelConfig(
         pem.set(file, readFileSync(file, 'utf8'))
       } catch (err) {
         warn?.(
-          `[vx-otel] ${name}: cannot read ${file} (${(err as NodeJS.ErrnoException).code ?? String(err)}) — not used`,
+          `[vx] vx-otel: ${name}: cannot read ${file} (${(err as NodeJS.ErrnoException).code ?? String(err)}) — not used`,
         )
         pem.set(file, undefined)
       }
@@ -347,7 +351,7 @@ export function resolveOtelConfig(
     !(typeof opts.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0)
   ) {
     throw new Error(
-      `[vx-otel] timeoutMs must be a positive number of ms, got ${JSON.stringify(opts.timeoutMs)}`,
+      `otel(): timeoutMs must be a positive number of ms, got ${typeof opts.timeoutMs === 'number' ? String(opts.timeoutMs) : JSON.stringify(opts.timeoutMs)}`,
     )
   }
   const timeoutMs = opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000

@@ -90,15 +90,19 @@ export function workflowClaimOf(iss: string): string {
 }
 
 /**
- * `ALLOW`'s entries, space or comma separated, each
+ * `ALLOW`'s entries, space separated, each
  * `issuer:owner/repo:workflow`: read from the right, since the issuer
  * holds `:`s of its own.
  */
 export function parseAllow(list: string): Allowed[] {
   return list
-    .split(/[\s,]+/)
+    .split(/\s+/)
     .filter((e) => e !== '')
     .map((e) => {
+      // One grammar on every server: read as a separator nowhere, a comma
+      // would end up inside a workflow name no token ever carries.
+      if (e.includes(','))
+        throw new Error(`${e} is not issuer:owner/repo:workflow: entries are space separated`)
       const w = e.lastIndexOf(':')
       const r = e.lastIndexOf(':', w - 1)
       const [issuer, repository, workflow] = [e.slice(0, r), e.slice(r + 1, w), e.slice(w + 1)]
@@ -125,26 +129,36 @@ const SIGNATURE = /^[\w-]{342,}$/
 
 /** An unknown `kid` refetches an issuer's keys at most this often. */
 const REFETCH_MS = 60_000
+/**
+ * Keys read longer ago than this are read again: a key the issuer withdrew
+ * stops signing for the relay, as jose's remote key set ages them for the
+ * cache and history servers.
+ */
+const KEYS_MAX_AGE_MS = 600_000
 
 export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken> {
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
+  const nowMs = () => now() * 1000
   type KeySet = ReturnType<typeof createLocalJWKSet>
   const keys = new Map<string, { at: number; set: Promise<KeySet> }>()
 
   const load = (iss: string, fresh: boolean): { at: number; set: Promise<KeySet> } => {
-    const entry = { at: Date.now(), set: loadKeys(iss, (url) => fetchJson(url, fresh)) }
+    const entry = { at: nowMs(), set: loadKeys(iss, (url) => fetchJson(url, fresh)) }
     keys.set(iss, entry)
     // A failed load is not kept: the next token tries again.
+    // quiet: the awaited set rethrows it; this only forgets it
     entry.set.catch(() => keys.get(iss) === entry && keys.delete(iss))
     return entry
   }
   const verifyWith = async (token: string, iss: string, fresh: boolean): Promise<JWTPayload> => {
-    const entry = (fresh ? undefined : keys.get(iss)) ?? load(iss, fresh)
+    const held = fresh ? undefined : keys.get(iss)
+    const entry =
+      held !== undefined && nowMs() - held.at < KEYS_MAX_AGE_MS ? held : load(iss, fresh)
     // The issuer's outage, not the token's fault: a client ends its run on
     // a 401, and retries a 5xx.
-    const set = await entry.set.catch(() => {
-      throw new TokenError(`could not read ${iss}'s keys`, 502)
+    const set = await entry.set.catch((err: unknown) => {
+      throw keysUnread(iss, err)
     })
     const { payload } = await jwtVerify(token, set, {
       algorithms: ['RS256'],
@@ -178,7 +192,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       // A key rotated in since the last read is fetched once a REFETCH_MS.
       claims = await verifyWith(token, iss, false).catch((err: unknown) => {
         const at = keys.get(iss)?.at ?? 0
-        if (!(err instanceof errors.JWKSNoMatchingKey) || Date.now() - at < REFETCH_MS) throw err
+        if (!(err instanceof errors.JWKSNoMatchingKey) || nowMs() - at < REFETCH_MS) throw err
         return verifyWith(token, iss, true)
       })
     } catch (err) {
@@ -221,7 +235,8 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
 function refusal(err: unknown, iss: string): TokenError {
   if (err instanceof TokenError) return err
   // A refetch of the keys for a kid not held failed: the network, not the token.
-  if (!(err instanceof errors.JOSEError)) return new TokenError(`could not read ${iss}'s keys`, 502)
+  if (!(err instanceof errors.JOSEError) || err instanceof errors.JWKSInvalid)
+    return keysUnread(iss, err)
   if (err instanceof errors.JOSEAlgNotAllowed) return new TokenError('alg is not RS256', 401)
   if (err instanceof errors.JWKSNoMatchingKey) return new TokenError('unknown signing key', 401)
   if (err instanceof errors.JWSSignatureVerificationFailed)
@@ -233,22 +248,6 @@ function refusal(err: unknown, iss: string): TokenError {
     if (err.claim === 'exp') return new TokenError('expired', 401)
   }
   return new TokenError('not a JWT', 401)
-}
-
-/**
- * The issuer and run claims a token says it has, unchecked: what routes a
- * request to its run's Durable Object, where the token is verified. A
- * forged one reaches an object that refuses it.
- */
-export function claimedRun(token: string): VerifiedToken | undefined {
-  try {
-    const claims = decodeJwt(token)
-    const iss = claims.iss
-    if (typeof iss !== 'string') return undefined
-    return { iss, run: runClaimsOf(iss).map((c) => String(claims[c])) }
-  } catch {
-    return undefined
-  }
 }
 
 async function loadKeys(
@@ -264,6 +263,13 @@ async function loadKeys(
   const jwks = (await fetchJson(config.jwks_uri)) as { keys?: unknown }
   return createLocalJWKSet({ keys: Array.isArray(jwks.keys) ? jwks.keys : [] })
 }
+
+/** The issuer's keys out of reach, with why: a 503 and a missing jwks_uri read the same. */
+const keysUnread = (iss: string, err: unknown): TokenError =>
+  new TokenError(
+    `could not read ${iss}'s keys: ${err instanceof Error ? err.message : String(err)}`,
+    502,
+  )
 
 async function defaultFetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })

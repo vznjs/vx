@@ -26,6 +26,7 @@ import {
   taskDefinitions,
   UserError,
   refuseUnknownOptions,
+  ui,
   type PluginOptionKinds,
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
@@ -84,8 +85,9 @@ export interface VxHistoryOptions {
    */
   readonly defaultBranch?: string
   /**
-   * A vx-history server's URL (`@vzn/vx-history-server`), or
-   * `VX_HISTORY_URL`. On a CI job with a token (GitHub's OIDC, or GitLab's
+   * A vx-history server's https URL (`@vzn/vx-history-server`; http only to
+   * this machine), or `VX_HISTORY_URL`. On a CI job with a token (GitHub's
+   * OIDC, or GitLab's
    * `VX_HISTORY_TOKEN`) each run asks it for its tasks' numbers, without
    * waiting, and sends its own timings once at its end.
    */
@@ -278,7 +280,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     (resources === null || typeof resources !== 'object' || Array.isArray(resources))
   ) {
     throw new UserError(
-      `vxHistory() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
+      `vxHistory() option "resources" must be false or an object, got ${typeof resources === 'number' ? String(resources) : (JSON.stringify(resources) ?? String(resources))}`,
     )
   }
   // `''` resolved to the workspace root: each run warned it could not read
@@ -339,8 +341,11 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         return undefined
       }
       reservations = reservationsFor(nodes.keys(), table, options)
+      // Read once: a server's answer orders the run a second time, and
+      // each read warned again.
+      const assumed = { ...assumptions(options, ctx.warn), ...carried }
       const order = (t: ReadonlyMap<string, TaskResources>): ReadonlyMap<string, number> =>
-        criticalPath([...nodes.values()], t, { ...assumptions(options, ctx.warn), ...carried })
+        criticalPath([...nodes.values()], t, assumed)
       // With a history server, its numbers re-rank what has not started
       // when they land; the run never waits on them.
       remote ??= await serverOf()
@@ -473,24 +478,31 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     const sent = reported
     remote = undefined
     reported = undefined
-    if (server !== undefined && sent !== undefined) {
-      try {
-        await server.upload(sent.timings)
-      } catch (err) {
-        sent.warn(
-          `[vx] vx-history: the timings were not sent to the history server at ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
-        )
-      }
-    }
     const done = scheduled
     const wrote = inRun && changed
     scheduled = undefined
     inRun = false
-    if (!wrote || done === undefined) return
-    const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
-    const timings = await import('./timings-file.js')
-    timings.writeTimings(done.file, done.carried, table)
-    if (fileWarn !== undefined) timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
+    // The file first: core bounds a teardown (3 s), and an upload ahead of
+    // it held the write hostage to the server's network. A failed write
+    // still sends.
+    try {
+      if (wrote && done !== undefined) {
+        const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
+        const timings = await import('./timings-file.js')
+        timings.writeTimings(done.file, done.carried, table)
+        if (fileWarn !== undefined) timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
+      }
+    } finally {
+      if (server !== undefined && sent !== undefined) {
+        try {
+          await server.upload(sent.timings)
+        } catch (err) {
+          sent.warn(
+            `[vx] vx-history: the timings were not sent to the history server at ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+      }
+    }
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
   // serves both) and declared in the options; asked at every dispatch.
@@ -628,8 +640,12 @@ async function historyCmd(
     const a = argv[i]!
     // A plugin verb owns its help; completions offer `--help` for every verb.
     if (a === '--help' || a === '-h') {
-      process.stdout.write(
-        'Usage: vx history [--format pretty|json]\n\nWhat vx-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.\n',
+      ui.say('info', 'Usage: vx history [--format pretty|json]', 'out')
+      process.stdout.write('\n')
+      ui.say(
+        'info',
+        'What vx-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.',
+        'out',
       )
       return 0
     }
@@ -647,8 +663,21 @@ async function historyCmd(
   // `schedule` hook is handed.
   const projects = await loadResolvedProjects(ctx.workspaceRoot, { scope: 'all', warn: ctx.warn })
   const ids: string[] = []
+  const nodes: TaskNode[] = []
   for (const p of projects.values()) {
-    for (const t of Object.keys(p.config.tasks ?? {})) ids.push(`${p.name}#${t}`)
+    for (const [t, config] of Object.entries(p.config.tasks ?? {})) {
+      const id = `${p.name}#${t}`
+      ids.push(id)
+      nodes.push({
+        id,
+        projectName: p.name,
+        projectDir: p.dir,
+        taskName: t,
+        config,
+        deps: [],
+        requested: false,
+      })
+    }
   }
   numberWarnings(options, ctx.warn)
   const window = windowOf(options)
@@ -659,6 +688,8 @@ async function historyCmd(
       cache.dbHandle(),
       window,
       currentBranch(ctx.workspaceRoot),
+      // A run reads only each task as it is now: a changed command starts over.
+      taskDefinitions(nodes),
     ).loadFor(ids)
   } finally {
     cache.close()

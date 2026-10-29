@@ -202,7 +202,7 @@ export interface TaskEnvSecrets {
  * value is written whole or in chunks that arrive together; one split by
  * a pause longer than that is not caught.
  */
-export function maskedEmitter(
+function maskedEmitter(
   mask: SecretMask,
   emit: (text: string) => void,
   idleMs = 25,
@@ -224,5 +224,37 @@ export function maskedEmitter(
       timer.unref?.()
     },
     end,
+  }
+}
+
+/**
+ * A task's two streams, each through `maskedEmitter`, in the order the
+ * task wrote them. Each held its own tail, so a stdout tail that could
+ * begin a value waited out the idle bound while stderr printed, and the
+ * run log, live and cached, put the stderr line first. A chunk on one
+ * stream now emits the other's held tail before it: a value split by a
+ * write to the other stream is not caught, as one split by a pause.
+ */
+export function maskedStreams(
+  mask: SecretMask,
+  emitOut: (text: string) => void,
+  emitErr: (text: string) => void,
+  idleMs = 25,
+): { out(chunk: string): void; err(chunk: string): void; end(): void } {
+  const out = maskedEmitter(mask, emitOut, idleMs)
+  const err = maskedEmitter(mask, emitErr, idleMs)
+  return {
+    out(chunk) {
+      err.end()
+      out.push(chunk)
+    },
+    err(chunk) {
+      out.end()
+      err.push(chunk)
+    },
+    end() {
+      out.end()
+      err.end()
+    },
   }
 }

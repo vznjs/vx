@@ -117,7 +117,7 @@ describe('filterUpstreamHashes', () => {
     const up = [outcome('self#a', 'h-a')]
     expect(() => filterUpstreamHashes(up, ['^'], 'self', 'self#build')).toThrow(UserError)
     expect(() => filterUpstreamHashes(up, ['^'], 'self', 'self#build')).toThrow(
-      /self#build: inputs\.tasks/,
+      'self#build: invalid inputs.tasks "^": "^" with no task name',
     )
   })
 
@@ -379,6 +379,85 @@ describe('inputs.tasks through a group', () => {
       expect(await runWith(['build.*'], ['build', 'build.a'])).toBe('ok')
       expect(await runWith(['*', '!build.a'])).toBe('ok')
       expect(await runWith(['lint.*'])).toBe('ok')
+    },
+    TIMEOUT,
+  )
+})
+
+// The load pairs a `pkg#task` filter or dependency with any form whose task
+// half matches, since it cannot tell this project's name from another's.
+// `inputs.tasks: ['nope#build']` over `dependsOn: ['build']` locked clean,
+// selected nothing, and a change to build's inputs replayed test's hit;
+// so did `['build']` over another project's `['b#build']`, and `['^build']`
+// over this project's own.
+describe('inputs.tasks: an exact entry naming no dependency', () => {
+  const runWith = async (filter: string[], dependsOn = ['build']) => {
+    const fixture = await makeWorkspace('vx-filter-cross-', { '@x/a': ['@x/b'] })
+    try {
+      const inputs = `{ files: ['src/**'] }`
+      const cache = `{ outputs: { files: [] } }`
+      await addProject(fixture.root, '@x/b', {
+        files: { 'src/b.js': '1\n' },
+        config: `export default { tasks: { build: { exec: { command: 'true' }, inputs: ${inputs}, cache: ${cache} } } }`,
+      })
+      await addProject(fixture.root, '@x/a', {
+        files: { 'src/a.js': '1\n' },
+        config: `export default { tasks: {
+            build: { exec: { command: 'true' }, inputs: ${inputs}, cache: ${cache} },
+            test: {
+              exec: { command: 'true' },
+              dependsOn: ${JSON.stringify(dependsOn)},
+              inputs: { files: ['src/**'], tasks: ${JSON.stringify(filter)} },
+              cache: ${cache},
+            },
+          } }`,
+      })
+      return await run({
+        cwd: fixture.root,
+        tasks: ['@x/a#test'],
+        log: silentLogger(fixture),
+      }).then(
+        (r) => (r.ok ? 'ok' : 'failed'),
+        (e: Error) => e.message,
+      )
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  }
+
+  it(
+    'is refused when the run plans, naming the dependencies it could have named',
+    async () => {
+      const tail =
+        'so it selects nothing and the key would not move with them; fix the name, or use [] to decouple on purpose'
+      expect(await runWith(['nope#build'])).toBe(
+        `@x/a#test: inputs.tasks: 'nope#build' names none of its dependencies (@x/a#build), ${tail}`,
+      )
+      expect(await runWith(['a#build'])).toBe(
+        `@x/a#test: inputs.tasks: 'a#build' names none of its dependencies (@x/a#build), ${tail}`,
+      )
+      expect(await runWith(['build'], ['@x/b#build'])).toBe(
+        `@x/a#test: inputs.tasks: 'build' names none of its dependencies (@x/b#build), ${tail}`,
+      )
+      expect(await runWith(['^build'], ['@x/a#build'])).toBe(
+        `@x/a#test: inputs.tasks: '^build' names none of its dependencies (@x/a#build), ${tail}`,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "CONTROLS: the dependency's own id, a negation, a pattern and a `^` preset run",
+    async () => {
+      expect(await runWith(['@x/a#build'])).toBe('ok')
+      expect(await runWith(['@x/b#build'], ['@x/b#build'])).toBe('ok')
+      expect(await runWith(['*', '!nope#build'])).toBe('ok')
+      expect(await runWith(['nope#*'])).toBe('ok')
+      // A preset's `^build` with a `pkg#build` filter for a dependency this
+      // project may not have stays legal, as a `^build` filter with no holder does.
+      expect(await runWith(['@x/c#build'], ['^build'])).toBe('ok')
+      expect(await runWith(['build'], ['@x/a#build'])).toBe('ok')
+      expect(await runWith(['^build'], ['@x/b#build'])).toBe('ok')
     },
     TIMEOUT,
   )

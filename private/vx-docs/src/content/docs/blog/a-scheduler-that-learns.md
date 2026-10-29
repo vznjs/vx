@@ -64,8 +64,10 @@ read breaks, it warns and uses the core order. It can't fail a build.
 
 Each ready task's weight is its median time plus the longest chain
 waiting behind it. A slow docs build at the end of the graph starts
-early, not last on an idle machine. A fresh CI runner has no history,
-so `assume` names tasks you know are slow:
+early, not last on an idle machine.
+
+A fresh CI runner has no history, so `assume` names tasks you know are
+slow:
 
 ```ts
 vxHistory({ assume: { '@demo/docs#build': 30_000 } })
@@ -78,15 +80,16 @@ CI runners, see [the timings file](../ci-timings-file/).
 
 Every run records each task's CPU time and peak memory. A task starts
 only while all reservations fit in the machine's memory, or the
-container's limit. Two heavy test suites no longer start together and
-crash a small runner.
+container's limit.
+
+Two heavy test suites do not start together and crash a small runner.
 
 A cache hit carries the numbers of the run that made it, so a runner
 knows a task's size without running it. `reservations` sets a size by
 hand for tasks with no history yet.
 
 The plugin only orders and admits. It never changes what runs or a
-task's key.
-Every option is in the
-[vx-history README](https://github.com/vznjs/vx/tree/main/packages/vx-history#readme).
+task's key. Every option is in the [vx-history
+README](https://github.com/vznjs/vx/tree/main/packages/vx-history#readme).
+
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

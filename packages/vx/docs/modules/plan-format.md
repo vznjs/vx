@@ -8,7 +8,7 @@ text or structured JSON. Pure functions; no I/O.
 ## Public surface
 
 ```ts
-export function formatPlanText(plan: RunPlan): string
+export function formatPlanText(plan: RunPlan, c?: ColorSupport): string
 export interface PlanTaskJson {
   id: string
   project: string
@@ -33,7 +33,8 @@ caller writes it to stdout or a file (`Bun.write(path, out)`).
 One line per real task — groups are hidden, as the live runner hides
 them — with a status symbol, the cache prediction, the first eight
 characters of the key and, on a task that would run and has history,
-its typical duration (`~p50`). A `description` on the task config
+its typical duration (`~p50`). Painted when `c` is enabled (the run
+passes stdout's); left out, the words are plain. A `description` on the task config
 renders on a second indented line under its row:
 
 ```

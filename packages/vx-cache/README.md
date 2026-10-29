@@ -30,19 +30,24 @@ export default {
 `vxCache({ url?, issuer, repository, timeoutMs?, uploadTimeoutMs?, headers? })`:
 
 - `url` is the server's base URL (`https://cache.example.com`, without `/v1`), or `VX_CACHE_URL`.
+  It must be `https://`: every request carries the CI token, so `http://`
+  is taken only to this machine (`127.0.0.1`, `::1`, `localhost`).
 - `issuer` (the CI issuer's URL, as its tokens name it) and `repository`
   (`org/name` there) are required: nothing guesses them. Every request
   names both by their hashes (`vx-issuer`, `vx-repository`), and the
   server refuses a token of another repository.
 - `timeoutMs` (default 30 000) bounds each read and query, and
-  `uploadTimeoutMs` (default 60 000) each upload. A download is bounded
+  `uploadTimeoutMs` (default 60 000) each upload, each from 1 to
+  2 147 483 647 ms (a timer fires any other at once). A download is bounded
   the same way until its answer, then only while no bytes arrive: a big
   artifact still coming in is not cut off.
 - `headers` are sent on every request to the server, for a proxy in
   front of it, such as a Cloudflare Access service token:
   `headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
 'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET }`. An
-  unset value is left out; `authorization` stays the CI token's. A DTE
+  unset value is left out; `authorization` stays the CI token's. A
+  redirect is not followed (it would carry them on): it fails the
+  request, naming where it pointed. A DTE
   worker sends them too, so give its job the same secrets.
 
 ## Tokens
@@ -51,8 +56,9 @@ A CI job's requests carry its own OIDC token, and the server's `ALLOW`
 decides whether the job gets in; it writes its own branch.
 
 - On GitHub Actions the job's token is asked for the server's origin,
-  and asked again before it ends; a 5xx or 429 from GitHub is asked
-  again up to three times before the remote turns off. The job needs
+  and asked again before it ends; after a 5xx, a 429 or no answer
+  from GitHub it is asked again, three tries in all, before the remote
+  turns off. The job needs
   `permissions: id-token: write`; without it (`GITHUB_ACTIONS` is set
   but no token comes), the plugin warns and the job reads only.
 - On GitLab, name an `id_tokens` entry `VX_CACHE_TOKEN` with the

@@ -1,7 +1,7 @@
 // A failed `inputs.runtime` probe's error quotes its command and its
-// output, and the probe runs in vx's own environment: a probe that echoed
-// `$API_TOKEN` printed the token in the task's stream and in `--dry`'s
-// stderr, unmasked (L-11).
+// output: a probe that echoed `$API_TOKEN` printed the token in the task's
+// stream and in `--dry`'s stderr, unmasked (L-11). A probe no longer sees
+// vx's secrets, but a file it reads may hold one, so its output is masked.
 import { realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -40,16 +40,17 @@ async function project(): Promise<void> {
     'app',
     `export default { tasks: { t: {
       exec: { command: 'true', env: { secret: ['GH_PAT'] } },
-      inputs: { files: ['package.json'], runtime: ['echo "saw $API_TOKEN $GH_PAT"; exit 3'] },
+      inputs: { files: ['package.json'], runtime: ['echo "saw $(cat tok)"; exit 3'] },
       cache: {
         outputs: { files: [] },
       },
     } } }`,
   )
+  await Bun.write(path.join(root, 'packages', 'app', 'tok'), `${SECRET} ${PAT}`)
 }
 
 const said = (cwd: string): string =>
-  `[vx] app#t: inputs runtime command exited 3: echo "saw $API_TOKEN $GH_PAT"; exit 3 (cwd: ${cwd})\nsaw *** ***\n`
+  `[vx] app#t: inputs runtime command exited 3: echo "saw $(cat tok)"; exit 3 (cwd: ${cwd})\nsaw *** ***\n`
 
 it("a failed probe's output is masked in the task's stream", async () => {
   await project()

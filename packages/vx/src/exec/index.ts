@@ -10,6 +10,7 @@ export {
 } from './env.js'
 export {
   runCommand,
+  restoreTerminalModes,
   runPersistent,
   PersistentReadyError,
   withForwardArgs,
@@ -48,7 +49,7 @@ export {
 } from './sandbox-paths.js'
 export { bindableWrites, punchWalls } from './sandbox-binds.js'
 export { isLocalExecutor, localExecutor } from './local-executor.js'
-export { holdGroups, killTree, untilGroupsGone } from './kill-tree.js'
+export { holdGroups, killTree, pauseTree, untilGroupsGone } from './kill-tree.js'
 export { sampleTrees, type TreeUsage } from './proc-sample.js'
 export {
   assertExecuteResult,

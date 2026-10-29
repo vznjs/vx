@@ -26,11 +26,12 @@ export interface TaskEnvSecrets {
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
 export function maskedLine(line: string): string // this process's secrets only
 export function secretNamed(name: string): boolean // the name rule alone; `vx why` hides such an env input's hashes
-export function maskedEmitter(
+export function maskedStreams(
   mask: SecretMask,
-  emit: (text: string) => void,
+  emitOut: (text: string) => void,
+  emitErr: (text: string) => void,
   idleMs?: number,
-): { push(chunk: string): void; end(): void }
+): { out(chunk: string): void; err(chunk: string): void; end(): void }
 ```
 
 A variable is masked when its name holds `TOKEN`, `SECRET`, `KEY`,
@@ -41,10 +42,14 @@ paid per byte.
 
 `stream()` holds back only a tail that could begin a value, so a value
 split across two chunks is caught and output that cannot be one (a
-`readyWhen` line, a start marker) is never delayed. `maskedEmitter` emits a held tail
+`readyWhen` line, a start marker) is never delayed. `maskedStreams` emits a held tail
 25 ms after the last chunk when none follows, so a long task's last
-characters do not wait for its exit; a value split by a longer pause
-between two writes is not caught. `maskCut` masks the two sides of a
+characters do not wait for its exit, and before a chunk on the other
+stream, so stdout and stderr keep the order the task wrote them in; a
+value split by a longer pause, or by a write to the other stream, is
+not caught on screen. What vx stores of the output (`encodeOutputLog`,
+`failedOutputLog`) masks each stream's run of chunks again, joined, so
+no stored copy keeps a value a pause split. `maskCut` masks the two sides of a
 cut whose middle is gone: a value the cut split leaves a piece at the
 end of `head` or the start of `tail`, and each piece is masked too.
 

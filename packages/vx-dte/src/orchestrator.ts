@@ -10,9 +10,10 @@
 // as its own.
 
 import { realpathSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { realpath, rm } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  hostPlatform,
   ui,
   UserError,
   withForwardArgs,
@@ -78,6 +79,8 @@ interface Job {
   fellBack?: true
   /** An uncached task run again for a dependant (`kept`): its result is the run's alone. */
   again?: { readonly only?: string; readonly avoid?: string }
+  /** Dependency keys it ran again for, sent again from this machine (`resend`). */
+  reread?: Set<string>
   /** Its upstreams, once the graph named it: walked again at every pump, 8000 queued spent 5 ms a pump on it (2026-10-25). */
   up?: Set<string>
 }
@@ -130,7 +133,7 @@ export interface Declared {
   readonly size: string
   readonly cpu: number
   readonly memory: number
-  /** Its size's platform: a worker reporting another is refused. */
+  /** Its size's platform: a worker reporting another is refused. None: planned as this machine's. */
   readonly platform?: string
 }
 
@@ -260,8 +263,8 @@ export class Orchestrator {
   private readonly sent: Map<string, number>
   /** Each hit's key, once on a remote a worker reads (`TaskArtifacts.share`). */
   private readonly shared = new Map<string, Promise<boolean>>()
-  /** Keys a worker could not read, sent again over the remotes' copy: once each. */
-  private readonly resent = new Set<string>()
+  /** Keys a worker could not read, sent again over the remotes' copy: once each, whether one reached a remote. */
+  private readonly resent = new Map<string, Promise<boolean>>()
   /** When each worker this run started was asked for, by `WorkerSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
@@ -340,6 +343,8 @@ export class Orchestrator {
   /** What workers read the cache under, asked once and again before its lent tokens end. */
   private facts: Promise<CacheFacts> | undefined
   private relend: ReturnType<typeof setTimeout> | undefined
+  /** The plugins any of the run's lends lent a token. */
+  private readonly lenders = new Set<string>()
 
   constructor(private readonly o: OrchestratorOptions) {
     this.sent = o.sent ?? new Map()
@@ -424,27 +429,53 @@ export class Orchestrator {
 
   /** The run's cache facts; once they end, every worker is sent them again before then. */
   private cache(): Promise<CacheFacts> {
-    if (this.facts !== undefined) return this.facts
-    const asked = this.o.cacheFacts()
-    this.facts = asked
+    this.facts ??= this.lend(undefined)
+    return this.facts
+  }
+
+  /**
+   * The run's cache facts, asked now. A remote whose lend failed this time
+   * (core lends it nothing) keeps the token `held` lent it until that ends,
+   * and is asked again `RELEND_FLOOR_MS` on: sent without it, workers lost
+   * the remote while its token held, and for the rest of the run when it
+   * was the one remote whose token ends (no relend came again).
+   */
+  private lend(held: CacheFacts | undefined): Promise<CacheFacts> {
+    let short = false
+    const asked = this.o.cacheFacts().then((fresh) => {
+      for (const p of Object.keys(fresh.lent)) this.lenders.add(p)
+      short = [...this.lenders].some((p) => !(p in fresh.lent))
+      const live =
+        held !== undefined && (held.expiresAt === undefined || held.expiresAt > Date.now())
+      if (!short || !live) return fresh
+      const lent = { ...fresh.lent }
+      for (const [p, t] of Object.entries(held.lent)) if (!(p in lent)) lent[p] = t
+      const expiresAt = Math.min(fresh.expiresAt ?? Infinity, held.expiresAt ?? Infinity)
+      return { ...fresh, lent, ...(expiresAt === Infinity ? {} : { expiresAt }) }
+    })
     void asked.then(
       (f) => {
-        if (f.expiresAt === undefined || this.ended) return
+        if ((f.expiresAt === undefined && !short) || this.ended) return
+        const left = (f.expiresAt ?? Infinity) - Date.now()
         this.relend = setTimeout(
           () => {
-            this.facts = undefined
-            void this.cache().then((cache) => {
-              for (const a of this.workers.values()) this.post(a, { type: 'cache', cache })
-            })
+            const next = this.lend(f)
+            this.facts = next
+            void next.then(
+              (cache) => {
+                if (JSON.stringify(cache) === JSON.stringify(f)) return
+                for (const a of this.workers.values()) this.post(a, { type: 'cache', cache })
+              },
+              // quiet: the workers keep what they hold, and the next ask asks again
+              () => {},
+            )
           },
-          f.expiresAt - Date.now() > RELEND_MS
-            ? f.expiresAt - Date.now() - RELEND_MS
-            : RELEND_FLOOR_MS,
+          short ? RELEND_FLOOR_MS : left > RELEND_MS ? left - RELEND_MS : RELEND_FLOOR_MS,
         )
         this.relend.unref()
       },
       () => {
-        this.facts = undefined
+        if (this.facts === asked) this.facts = undefined
       },
     )
     return asked
@@ -546,7 +577,7 @@ export class Orchestrator {
       floor.memory = Math.min(floor.memory, need.memory)
       asks.push({ id: job.req.taskId, need, up, ...pin })
     }
-    const to = assign(asks, bins, (above) => this.bigger(above), how.place, {
+    const to = assign(asks, bins, (above, platform) => this.bigger(above, platform), how.place, {
       floor,
       kinds: Infinity,
     })
@@ -747,14 +778,18 @@ export class Orchestrator {
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
   }
 
-  /** Whether a worker bigger than `above` is starting: a task that filled that size waits for it. */
-  private bigger(above: { readonly cores: number; readonly memory: number }): boolean {
+  /** Whether a worker of `platform` bigger than `above` is starting: a task that filled that size waits for it. */
+  private bigger(
+    above: { readonly cores: number; readonly memory: number },
+    platform: string | undefined,
+  ): boolean {
     const joined = new Set([...this.workers.values(), ...this.gone].map((x) => x.label))
     for (const [id, { declared }] of this.spawnedAt)
       if (
         !joined.has(id) &&
         !this.unstarted.has(id) &&
         !this.cancelled.has(id) &&
+        (platform === undefined || (declared.platform ?? hostPlatform()) === platform) &&
         (declared.cpu > above.cores || declared.memory > above.memory)
       )
         return true
@@ -800,12 +835,27 @@ export class Orchestrator {
     )
   }
 
-  /** True when one of `keys` not sent again before reached a remote. */
-  private async resend(keys: readonly string[]): Promise<boolean> {
-    const fresh = keys.filter((k) => typeof k === 'string' && !this.resent.has(k))
-    for (const k of fresh) this.resent.add(k)
-    // quiet: a key no remote took fails the task, by name
-    const got = await Promise.all(fresh.map((k) => this.o.artifacts.resend(k).catch(() => false)))
+  /**
+   * True when one of `keys` `job` did not run again for already reached a
+   * remote. Each key is sent once and each job runs again once for it:
+   * two dependants failing on one key together, the second found it sent
+   * and failed, though the copy it could not read was replaced.
+   */
+  private async resend(job: Job, keys: readonly string[]): Promise<boolean> {
+    const fresh = keys.filter((k) => typeof k === 'string' && job.reread?.has(k) !== true)
+    if (fresh.length === 0) return false
+    job.reread = new Set([...(job.reread ?? []), ...fresh])
+    const got = await Promise.all(
+      fresh.map((k) => {
+        let sent = this.resent.get(k)
+        if (sent === undefined) {
+          // quiet: a key no remote took fails the task, by name
+          sent = this.o.artifacts.resend(k).catch(() => false)
+          this.resent.set(k, sent)
+        }
+        return sent
+      }),
+    )
     return got.includes(true)
   }
 
@@ -1034,8 +1084,11 @@ export class Orchestrator {
   }
 
   private unsent(what: string, to: string): (err: unknown) => void {
-    return unsent(this.o.warn ?? ((m) => void process.stderr.write(`[vx] ${m}\n`)), what, to)
+    return unsent(this.warn, what, to)
   }
+
+  private readonly warn = (m: string): void =>
+    this.o.warn === undefined ? ui.say('warn', `[vx] ${m}`) : this.o.warn(m)
 
   /** Worker `a` began `task`: from now its cores are booked. */
   private begun(a: Worker, task: string): void {
@@ -1054,7 +1107,11 @@ export class Orchestrator {
     // upload): sent again from this machine, the task runs again. Taken as
     // the task's failure, it failed every run, the remote saying it held the
     // key (2026-10-25).
-    if (head.unread !== undefined && (await this.resend(head.unread)) && a.busy.get(task) === job) {
+    if (
+      head.unread !== undefined &&
+      (await this.resend(job, head.unread)) &&
+      a.busy.get(task) === job
+    ) {
       a.started.delete(task)
       const again = this.retry(a, job, `could not read ${head.unread.join(', ')}`)
       if (again !== undefined) {
@@ -1154,9 +1211,31 @@ export class Orchestrator {
         path.relative(this.o.root, node?.projectDir ?? job.req.cwd),
         job.req.outputs,
       )
-      for (const f of head.removed)
-        if (typeof f === 'string' && !f.split('/').includes('..') && ours(f))
+      // A link on the path (`dist/in -> ../../other`) would lead the rm
+      // into another project or off the workspace: the path is removed only
+      // where it is, as a restore lays a file only there (archive.ts).
+      const real = new Map<string, Promise<string | undefined>>()
+      for (const f of head.removed) {
+        if (typeof f !== 'string' || f.split('/').includes('..') || !ours(f)) continue
+        const dir = path.dirname(f)
+        let at = real.get(dir)
+        if (at === undefined)
+          real.set(
+            dir,
+            (at = realpath(path.join(this.o.root, dir)).catch(
+              // quiet: a dir that is gone holds nothing to remove
+              () => undefined,
+            )),
+          )
+        const where = await at
+        if (where === undefined) continue
+        if (where === path.join(this.realRoot, dir))
           await rm(path.join(this.o.root, f), { force: true })
+        else
+          this.warn(
+            `dte: ${task}: kept ${f}, which the worker removed: a link on its path leads elsewhere`,
+          )
+      }
     }
     // In the order the task wrote it: replayed a stream at a time, an error
     // line came after the stdout that followed it (2026-10-25).
@@ -1635,7 +1714,10 @@ export class Orchestrator {
           id,
           cores: declared.cpu,
           memory: declared.memory,
-          platform: declared.platform,
+          // A size naming none is planned as this machine's, as `dte()`
+          // planned it: on no platform, no task naming one fit it, and the
+          // next plan cancelled it.
+          platform: declared.platform ?? hostPlatform(),
           size: declared.size,
           at: Math.max(
             0,

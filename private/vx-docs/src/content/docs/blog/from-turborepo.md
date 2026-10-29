@@ -93,10 +93,12 @@ export default {
 ```
 
 Each script becomes `exec.command`. A task goes where the script exists,
-and to a package without it that another package's `^` task reaches:
-a key-only group with no outputs. So an edit there still reruns its
-dependants. Anything it cannot map becomes a `TODO(vx-migrate)` comment.
-It never overwrites a file without `--force`.
+and to a package without it that another package's `^` task reaches: a
+key-only group with no outputs.
+
+So an edit there still reruns its dependants. Anything it cannot map
+becomes a `TODO(vx-migrate)` comment. It never overwrites a file without
+`--force`.
 
 ## Check the mapping first
 

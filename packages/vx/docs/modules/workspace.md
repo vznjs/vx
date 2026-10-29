@@ -90,6 +90,8 @@ export function linkDiscoveredEdges(
 ): void
 // Sorts by name; refuses two projects of one name and a name no spec can address
 export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMeta[]
+// Why `dependsOn` or `--filter` would read a project name as something else, or null
+export function projectNameProblem(name: string): string | null
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string
 export function resolveStoreRoot(
   root: string,
@@ -157,7 +159,9 @@ root-relative POSIX path (`apps/web`), `//` for the root. A plugin renames
 only a project its path names: a config's `name` wins silently, and a
 different name from a second plugin is refused naming the first. Two
 projects of one name are refused naming both directories; a path that
-holds `#`, or `//` away from the root, is refused asking for `name`
+holds `#`, one `dependsOn` or `--filter` would read as something else
+(`projectNameProblem`: `*`, a leading `^` or `!`, `tag:`, `...`, `[<ref>]`,
+`./`), or `//` away from the root, is refused asking for `name`
 (`tests/discovery-refusals.test.ts`, `tests/project-dirs.test.ts`).
 
 ### `resolveCacheDir(root, config)`

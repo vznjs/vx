@@ -330,6 +330,18 @@ describe('a builtin compat patch', () => {
     // Control: the same lockfile moves nothing.
     expect(movedDirs(lock('0badc0'), lock('0badc0'))).toEqual([])
   })
+
+  // Yarn 2/3 write the inner descriptor without its default `npm:`
+  // protocol, and the bare dependency range: turborepo#4770.
+  it('moves it in Yarn 3 spelling too', () => {
+    const yarn3 = (hash: string) =>
+      lock(hash)
+        .replace('resolve: "npm:^1.22.0"', 'resolve: ^1.22.0')
+        .replace('resolve@npm%3A^1.22.0#optional!builtin', 'resolve@^1.22.0#~builtin')
+        .replace('#optional!builtin', '#~builtin')
+    expect(yarn3('0badc0')).toContain('"resolve@patch:resolve@^1.22.0#~builtin<compat/resolve>"')
+    expect(movedDirs(yarn3('0badc0'), yarn3('9bd1a5'))).toEqual(['packages/c'])
+  })
 })
 
 // A root `resolutions` entry pointing at a `patch:` (what `yarn

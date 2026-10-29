@@ -81,9 +81,55 @@ export function status(t: Tone, verb: string, headline: Inline): Block {
   ])
 }
 
+/**
+ * A line vx says mid-run (`[vx] cache save failed: …`, `vx watch: …`), its
+ * words as they always read and its tag in the tone's hue; a line with no
+ * tag is painted whole. One string, no newline: the run's own streams write it.
+ */
+export function tagged(t: Tone, line: string, c: ColorSupport): string {
+  const body = line.replace(/\n+$/, '')
+  const tag = /^(?:\[vx\]|vx(?: [a-z][\w-]*){0,2}:|[\w@/.-]+: )/.exec(body)?.[0].trimEnd()
+  return tag === undefined
+    ? paint(HUE[t], body, c)
+    : `${paint(HUE[t], tag, c, { bold: true })}${body.slice(tag.length)}`
+}
+
+/** `tagged` on a stream (stderr unless told), colored for it. */
+export function say(t: Tone, line: string, stream: 'out' | 'err' = 'err'): void {
+  const s = stream === 'out' ? process.stdout : process.stderr
+  s.write(`${tagged(t, line, detectColors(s))}\n`)
+}
+
+/**
+ * A file or excerpt shown whole (`vx init --dry`, `vx docs`): its title rule
+ * bold, its body behind a dim gutter. Uncolored it is the bare text, so a
+ * pipe gets the bytes it would copy.
+ */
+export function excerpt(title: string, body: string): Block {
+  return block((c) => {
+    if (!c.enabled) return [`── ${title} ──`, ...body.split('\n')]
+    const gutter = paint(INFO, '│', c, { dim: true })
+    return [
+      paint(INFO, `── ${title} ──`, c, { bold: true }),
+      ...body
+        .split('\n')
+        .map((l, i, all) => (i === all.length - 1 && l === '' ? l : `${gutter} ${l}`)),
+    ]
+  })
+}
+
 /** Indented short lines: what is wrong, or what happened. */
 export function text(...items: Inline[]): Block {
-  return block((c) => items.flatMap((i) => lines(i, c).map((l) => `${INDENT}${l}`)))
+  return block((c) =>
+    items.flatMap((i) =>
+      lines(typeof i === 'string' ? prose(i) : i, c).map((l) => `${INDENT}${l}`),
+    ),
+  )
+}
+
+/** Plain words dim, each `command` in them bold: no line of vx reads plain white. */
+function prose(text: string): Inline {
+  return text.split(/(`[^`\n]+`)/).map((p, i) => (i % 2 === 1 ? cmd(p) : p === '' ? p : dim(p)))
 }
 
 /** An indented dim line: why it matters. */

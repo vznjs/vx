@@ -123,7 +123,7 @@ it('a task no run recorded, or one outside the run named, is refused', () => {
   expect(vx('last', '--log', 'a#nope')).toEqual({
     code: 1,
     out: '',
-    err: noticed('vx last: no recorded run of a#nope (a task id is project#task)\n'),
+    err: noticed('vx last: no recorded run of a#nope\n'),
   })
   expect(vx('last', runIds['bad']!, '--log', 'a#build').code).toBe(1)
 })

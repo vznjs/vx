@@ -15,10 +15,13 @@ const said = (timeoutMs: unknown): string => {
 }
 
 it('a timeout that is not a positive number is refused', () => {
-  expect(said(0)).toBe('[vx-otel] timeoutMs must be a positive number of ms, got 0')
-  expect(said(-5)).toBe('[vx-otel] timeoutMs must be a positive number of ms, got -5')
-  expect(said(Number.NaN)).toBe('[vx-otel] timeoutMs must be a positive number of ms, got null')
-  expect(said('5000')).toBe('[vx-otel] timeoutMs must be a positive number of ms, got "5000"')
+  expect(said(0)).toBe('otel(): timeoutMs must be a positive number of ms, got 0')
+  expect(said(-5)).toBe('otel(): timeoutMs must be a positive number of ms, got -5')
+  expect(said(Number.NaN)).toBe('otel(): timeoutMs must be a positive number of ms, got NaN')
+  expect(said(Number.POSITIVE_INFINITY)).toBe(
+    'otel(): timeoutMs must be a positive number of ms, got Infinity',
+  )
+  expect(said('5000')).toBe('otel(): timeoutMs must be a positive number of ms, got "5000"')
 })
 
 it('a positive timeout, or none, is taken', () => {
