@@ -3,6 +3,18 @@ import { defineProject } from '@vzn/vx'
 // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
 const NO_TRANSPILER_CACHE = { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' } }
 
+// What the head-to-head's numbers depend on besides the tool measured.
+const HARNESS = [
+  'compare.ts',
+  'shape.ts',
+  'prng.ts',
+  'ideal.ts',
+  'ab.ts',
+  'outputs.ts',
+  'bench-env.ts',
+  'package.json',
+]
+
 export default defineProject({
   tasks: {
     install: {
@@ -10,7 +22,7 @@ export default defineProject({
     },
 
     ci: {
-      dependsOn: ['lint', 'test', 'check.site'],
+      dependsOn: ['lint', 'test'],
     },
 
     // The per-PR benchmarks, one task so they never share a machine with
@@ -72,45 +84,51 @@ export default defineProject({
       },
     },
 
-    // The landing page's benchmark rows, the benchmarks doc's stress
-    // section, the README's benchmark table and the vx-vs-Turborepo and
-    // vx-vs-Nx pages' tables are generated from
-    // results.json by update-site.ts; `--check` fails when any
-    // drifted. All live outside this project, so the task declares the
-    // reads and folds the files as inputs.
-    'check.site': {
-      description: 'update-site.ts --check: the site matches results.json',
-      dependsOn: ['install'],
-      exec: {
-        command: 'bun update-site.ts --check',
-        env: NO_TRANSPILER_CACHE,
-        sandbox: {
-          allow: {
-            read: [
-              '**/*',
-              '../vx-docs/src/pages/index.astro',
-              '../../packages/vx/docs/benchmarks.md',
-              '../../README.md',
-              '../vx-docs/src/content/docs/compare/turborepo.md',
-              '../vx-docs/src/content/docs/compare/nx.md',
-            ],
-            systemInfo: ['vfs.disk-space'],
+    // The site's head-to-head (2026-10-29: no figure on the site is typed by
+    // hand). One task per runner, each writing its rows to site/<runner>.json,
+    // which @vzn/vx-docs#import gathers into the site's bench.json. vx's is
+    // keyed on its source through install's ^build, so every change to vx
+    // re-measures it; a rival's is keyed on the harness and the pins in
+    // package.json alone, so it re-measures only when either changes. One
+    // runner at a time on a machine of its own: CI's Bench job (ci.yml)
+    // runs them with `--concurrency 1` before main's run, which restores
+    // them; a DTE worker is packed beside other tasks.
+    ...Object.fromEntries(
+      (['vx', 'turbo', 'nx', 'vite-task'] as const).map((runner) => [
+        `bench.${runner}`,
+        {
+          description: `compare.ts: ${runner} on the 9,603-task head-to-head → site/${runner}.json`,
+          ...(runner === 'vx' ? { dependsOn: ['install'] } : {}),
+          exec: {
+            command: 'bun compare.ts 3',
+            timeout: '30m',
+            env: {
+              define: {
+                ...NO_TRANSPILER_CACHE.define,
+                RUNNERS: runner,
+                OUT: `site/${runner}.json`,
+              },
+              // The commit the page names; cache-invariant, as the source is the key.
+              passThrough: ['GITHUB_SHA'],
+            },
+            // No sandbox: on Linux it traces every process the task starts,
+            // and the bench starts tens of thousands. Under it vx's cold
+            // overhead read 55.61 s against 7.01 s, nothing changed 2.12 s
+            // against 0.60 s (2026-10-29), so the page would time the tracer.
+          },
+          inputs: {
+            files: [...HARNESS, ...(runner === 'vx' ? ['edges.ts'] : [])],
+          },
+          cache: {
+            outputs: { files: [`site/${runner}.json`] },
           },
         },
-      },
-      inputs: {
-        files: ['update-site.ts', 'results.json'],
-        workspaceFiles: [
-          'private/vx-docs/src/pages/index.astro',
-          'packages/vx/docs/benchmarks.md',
-          'README.md',
-          'private/vx-docs/src/content/docs/compare/turborepo.md',
-          'private/vx-docs/src/content/docs/compare/nx.md',
-        ],
-      },
-      cache: {
-        outputs: { files: [] },
-      },
+      ]),
+    ),
+
+    'site.numbers': {
+      description: 'every runner of the head-to-head, the rows the site reads',
+      dependsOn: ['bench.*'],
     },
 
     lint: {

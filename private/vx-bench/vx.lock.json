@@ -8,8 +8,7 @@
     "ci": {
       "dependsOn": [
         "lint",
-        "test",
-        "check.site"
+        "test"
       ]
     },
     "check.perf": {
@@ -105,53 +104,159 @@
         }
       }
     },
-    "check.site": {
-      "description": "update-site.ts --check: the site matches results.json",
+    "bench.vx": {
+      "description": "compare.ts: vx on the 9,603-task head-to-head → site/vx.json",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun update-site.ts --check",
+        "command": "bun compare.ts 3",
+        "timeout": "30m",
         "env": {
           "define": {
-            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
-          }
-        },
-        "sandbox": {
-          "allow": {
-            "read": [
-              "**/*",
-              "../vx-docs/src/pages/index.astro",
-              "../../packages/vx/docs/benchmarks.md",
-              "../../README.md",
-              "../vx-docs/src/content/docs/compare/turborepo.md",
-              "../vx-docs/src/content/docs/compare/nx.md"
-            ],
-            "systemInfo": [
-              "vfs.disk-space"
-            ]
-          }
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "RUNNERS": "vx",
+            "OUT": "site/vx.json"
+          },
+          "passThrough": [
+            "GITHUB_SHA"
+          ]
         }
       },
       "inputs": {
         "files": [
-          "update-site.ts",
-          "results.json",
-          "package.json"
-        ],
-        "workspaceFiles": [
-          "private/vx-docs/src/pages/index.astro",
-          "packages/vx/docs/benchmarks.md",
-          "README.md",
-          "private/vx-docs/src/content/docs/compare/turborepo.md",
-          "private/vx-docs/src/content/docs/compare/nx.md"
+          "compare.ts",
+          "shape.ts",
+          "prng.ts",
+          "ideal.ts",
+          "ab.ts",
+          "outputs.ts",
+          "bench-env.ts",
+          "package.json",
+          "edges.ts"
         ]
       },
       "cache": {
         "outputs": {
-          "files": []
+          "files": [
+            "site/vx.json"
+          ]
         }
       }
+    },
+    "bench.turbo": {
+      "description": "compare.ts: turbo on the 9,603-task head-to-head → site/turbo.json",
+      "exec": {
+        "command": "bun compare.ts 3",
+        "timeout": "30m",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "RUNNERS": "turbo",
+            "OUT": "site/turbo.json"
+          },
+          "passThrough": [
+            "GITHUB_SHA"
+          ]
+        }
+      },
+      "inputs": {
+        "files": [
+          "compare.ts",
+          "shape.ts",
+          "prng.ts",
+          "ideal.ts",
+          "ab.ts",
+          "outputs.ts",
+          "bench-env.ts",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": [
+            "site/turbo.json"
+          ]
+        }
+      }
+    },
+    "bench.nx": {
+      "description": "compare.ts: nx on the 9,603-task head-to-head → site/nx.json",
+      "exec": {
+        "command": "bun compare.ts 3",
+        "timeout": "30m",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "RUNNERS": "nx",
+            "OUT": "site/nx.json"
+          },
+          "passThrough": [
+            "GITHUB_SHA"
+          ]
+        }
+      },
+      "inputs": {
+        "files": [
+          "compare.ts",
+          "shape.ts",
+          "prng.ts",
+          "ideal.ts",
+          "ab.ts",
+          "outputs.ts",
+          "bench-env.ts",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": [
+            "site/nx.json"
+          ]
+        }
+      }
+    },
+    "bench.vite-task": {
+      "description": "compare.ts: vite-task on the 9,603-task head-to-head → site/vite-task.json",
+      "exec": {
+        "command": "bun compare.ts 3",
+        "timeout": "30m",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "RUNNERS": "vite-task",
+            "OUT": "site/vite-task.json"
+          },
+          "passThrough": [
+            "GITHUB_SHA"
+          ]
+        }
+      },
+      "inputs": {
+        "files": [
+          "compare.ts",
+          "shape.ts",
+          "prng.ts",
+          "ideal.ts",
+          "ab.ts",
+          "outputs.ts",
+          "bench-env.ts",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": [
+            "site/vite-task.json"
+          ]
+        }
+      }
+    },
+    "site.numbers": {
+      "description": "every runner of the head-to-head, the rows the site reads",
+      "dependsOn": [
+        "bench.*"
+      ]
     },
     "lint": {
       "dependsOn": [

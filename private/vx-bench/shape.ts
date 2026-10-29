@@ -12,7 +12,7 @@
 // into the graph the ideal schedule runs over.
 
 import type { GraphNode } from './ideal.js'
-import { prng } from './schedule-policy.js'
+import { prng } from './prng.js'
 
 export const LEVELS = 30
 export const PER_LEVEL = 50

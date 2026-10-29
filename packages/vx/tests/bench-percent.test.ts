@@ -1,7 +1,7 @@
 // docs/benchmarks.md's tables print each tool's figure only (owner,
 // 2026-10-12: never say how much faster vx is; the numbers speak).
-// update-site.ts --check holds the generated table; the hand-typed ones are
-// held here, so no `(vx N× faster)` aside comes back.
+// The head-to-head's cells are tokens filled from the measured data; the
+// dated tables are held here, so no `(vx N× faster)` aside comes back.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'

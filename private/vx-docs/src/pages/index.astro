@@ -5,9 +5,8 @@
 // (2026-10-08: "it should look like we are busy"), how to start, then the one diagram with its six callouts, the four pillars
 // and a strip of the feature pages.
 // In the site's one Starlight shell (header, search, theme, phone menu),
-// with its own footer; static, one script for the copy button. The benchTable and benchFormula blocks and the graph's size in the #bench
-// kicker are written by private/vx-bench/update-site.ts from results.json
-// (check.site guards them). tests/landing.test.ts holds the rest.
+// with its own footer; static, one script for the copy button. The #bench
+// chart and kicker read src/data/bench.json. tests/landing.test.ts holds the rest.
 import Diagram from '../components/guide/diagram/Diagram.astro'
 import FeatureCard from '../components/features/FeatureCard.astro'
 import Footer from '../components/landing/Footer.astro'
@@ -21,6 +20,7 @@ import '../styles/blog.css'
 import { parseDuration, renderBars } from '../plugins/data-charts.ts'
 import { coverShowsTitle, formatDate, posts } from '../blog/posts.js'
 import Cover from '../components/blog/Cover.astro'
+import { FIGURES, fillBench } from '../bench/data.ts'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
@@ -73,21 +73,29 @@ const pillars = [
   },
 ]
 
-const benchTable = [
-  { label: 'Nothing changed', vx: '799 ms', turbo: '927 ms', nx: '24.15 s', vt: '12.07 s' },
-  { label: 'Nothing changed, outputs restored', vx: '1.28 s', turbo: '2.01 s', nx: '24.45 s', vt: '11.86 s' },
-  { label: 'Cold build', vx: '7.57 s', turbo: '9.63 s', nx: '3 min 6 s', vt: '9.01 s' },
-  { label: 'Cold build: CPU the runner burns', vx: '36.64 s', turbo: '1 min 12 s', nx: '5 min 34 s', vt: '25.32 s' },
-]
+// The chart's figures come from src/data/bench.json, the bench tasks' rows
+// (2026-10-29: no figure on the site is typed by hand).
+const bench = (key: string): string => FIGURES.get(key)!
+const benchTable = (
+  [
+    ['Nothing changed', 'warm'],
+    ['Nothing changed, outputs restored', 'restore'],
+    ['Cold build', 'cold'],
+    ['Cold build: CPU the runner burns', 'cpu'],
+  ] as const
+).map(([label, k]) => ({
+  label,
+  vx: bench(`vx.${k}`),
+  turbo: bench(`turbo.${k}`),
+  nx: bench(`nx.${k}`),
+  vt: bench(`vt.${k}`),
+}))
 const benchFormula = 'Time each tool adds over the ideal run; lower is better.'
-const benchWorkload = 'Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.'
-const benchRun = 'Run 2026-10-25 on linux x64, 4 cores: vx at commit 9abdfb52c, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.'
+const benchWorkload = fillBench(
+  'Benchmark workload: a synthetic monorepo of %bench.projects% projects and %bench.tasks% tasks in %bench.levels% dependency levels, five core libraries a quarter of the projects use; build %bench.task.build%, test and typecheck %bench.task.test%, lint %bench.task.lint%, publish %bench.task.publish%; real repos with uneven task times will differ.',
+)
+const benchRun = bench('provenance')
 
-/** A competitor cell's value and its "vx N× faster". */
-const vsOf = (c: string): [string, string] => {
-  const at = c.indexOf(' (')
-  return at === -1 ? [c, ''] : [c.slice(0, at), c.slice(at + 2, -1)]
-}
 const benchBars = renderBars(
   benchTable.map((r) => ({
     title: r.label,
@@ -99,7 +107,7 @@ const benchBars = renderBars(
           ['Nx', r.nx],
           ['Vite Task', r.vt],
         ] as const
-      ).map(([name, c]) => ({ name, ms: parseDuration(c)!, value: vsOf(c)[0], note: vsOf(c)[1] })),
+      ).map(([name, c]) => ({ name, ms: parseDuration(c)!, value: c })),
     ],
   })),
 )
@@ -318,7 +326,7 @@ vx run build         # again: up-to-date, from the cache`
       <section class="section" id="bench">
         <div class="container">
           <div class="section-head">
-            <p class="vx-kicker">// 9,603 tasks · 1,601 projects · 30 levels · identical commands, identical concurrency</p>
+            <p class="vx-kicker">{fillBench('// %bench.tasks% tasks · %bench.projects% projects · %bench.levels% levels · identical commands, identical concurrency')}</p>
             <h2>Fast, never at the cost of a correct cache.</h2>
           </div>
           <div class="bench-panel">

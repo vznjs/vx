@@ -13,16 +13,18 @@ Turborepo runs and caches. Nx adds a platform around its runner. We
 wanted the runner with open plugin points, and nothing behind a paid
 cloud. So we built vx.
 
-| Time added over the ideal run, 9,603 tasks | vx      | Turborepo  | Nx         | Vite Task |
-| ------------------------------------------ | ------- | ---------- | ---------- | --------- |
-| Nothing changed                            | 799 ms  | 927 ms     | 24.15 s    | 12.07 s   |
-| Cold build                                 | 7.57 s  | 9.63 s    | 3 min 6 s  | 9.01 s    |
-| Cold build: CPU the runner burns           | 36.64 s | 1 min 12 s | 5 min 34 s | 25.32 s   |
+| Time added over the ideal run, %bench.tasks% tasks | vx | Turborepo | Nx | Vite Task |
+| --- | --- | --- | --- | --- |
+| Nothing changed | %bench.vx.warm% | %bench.turbo.warm% | %bench.nx.warm% | %bench.vt.warm% |
+| Cold build | %bench.vx.cold% | %bench.turbo.cold% | %bench.nx.cold% | %bench.vt.cold% |
+| Cold build: CPU the runner burns | %bench.vx.cpu% | %bench.turbo.cpu% | %bench.nx.cpu% | %bench.vt.cpu% |
 
-<small>Synthetic monorepo, 1,601 projects, 9,603 tasks, 30 levels · linux x64, 4 cores, concurrency 10 · vx 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task 1.4.0 · 2026-10-23 · real repos with uneven task times will differ</small>
+<small>Synthetic monorepo, %bench.projects% projects, %bench.tasks% tasks, %bench.levels% levels · concurrency %bench.concurrency% · real repos with uneven task times will differ</small>
 
-With nothing changed, Nx adds 24.15 s against Turborepo's 927 ms and
-vx's 799 ms, Nx's daemon off as in CI. Source:
+<small>%bench.provenance%</small>
+
+With nothing changed, Nx adds %bench.nx.warm% against Turborepo's %bench.turbo.warm% and
+vx's %bench.vx.warm%, Nx's daemon off as in CI. Source:
 [Benchmarks](../../benchmarks/).
 
 ## What each one is

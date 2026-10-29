@@ -3,6 +3,7 @@ import starlight from '@astrojs/starlight'
 import { defineConfig } from 'astro/config'
 import { readdirSync } from 'node:fs'
 import { SIDEBAR } from './src/nav/sections.ts'
+import { bench } from './src/plugins/bench.ts'
 import { dataCharts } from './src/plugins/data-charts.ts'
 import { mermaid } from './src/plugins/mermaid.ts'
 
@@ -124,7 +125,8 @@ export default defineConfig({
   // content sync (2026-10-23).
   markdown: {
     processor: satteri({
-      mdastPlugins: [mermaid, dataCharts],
+      // bench first: the charts read the figures it fills in.
+      mdastPlugins: [bench, mermaid, dataCharts],
       // `--filter` stays two hyphens, never an en dash.
       features: { smartPunctuation: { dashes: false } },
     }),

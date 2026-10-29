@@ -5,10 +5,10 @@
 // (`https://…`). `image` names a file in src/assets/features/; the four
 // small things one post showed share its image.
 //
-// Benchmark figures here are hand-copied from README.md's generated table:
-// update-site.ts does not rewrite this file, so a new results.json run
-// must be carried here too.
+// Benchmark figures are `%bench.…%` tokens, filled from the measured data
+// (src/bench/format.ts): none is typed by hand.
 
+import { fillBench } from '../bench/data.ts'
 import { MORE } from './more.js'
 
 export type CategoryId =
@@ -150,7 +150,9 @@ const FIRST: readonly Feature[] = [
     category: 'speed',
     hook: 'The harness is in the repo, and the benchmarks page shows every row.',
     body: [
-      'vx is measured on a synthetic workspace of 1,601 projects and 9,603 tasks in 30 dependency levels, with every runner in its own native config, the same graph, the same commands and the same concurrency. Each number is the time a runner adds over the ideal run.',
+      fillBench(
+        'vx is measured on a synthetic workspace of %bench.projects% projects and %bench.tasks% tasks in %bench.levels% dependency levels, with every runner in its own native config, the same graph, the same commands and the same concurrency. Each number is the time a runner adds over the ideal run.',
+      ),
       'The numbers live on the benchmarks page, with every row, the ones vx loses included. Real repos with uneven task times will differ, so run the harness on your own machine.',
     ],
     example: { lang: 'sh', code: 'bun private/vx-bench/compare.ts 3' },
@@ -185,7 +187,9 @@ const FIRST: readonly Feature[] = [
     hook: 'Nothing runs in the background, so nothing goes stale or needs a reset.',
     body: [
       'A daemon is a second copy of the truth: a graph that is stale after a branch switch, a socket that died, a cache you reset by hand. vx has none and will not grow one.',
-      'Every run starts cold and reads the workspace as it is. With nothing changed across 9,603 tasks it adds 1.07 s over the ideal run, where Nx, whose daemon is on by default, adds 25.45 s.',
+      fillBench(
+        'Every run starts cold and reads the workspace as it is. With nothing changed across %bench.tasks% tasks it adds %bench.vx.warm% over the ideal run, where Nx, its daemon off as in CI, adds %bench.nx.warm%.',
+      ),
     ],
     example: { lang: 'sh', code: 'git switch feature\nvx run test --all   # no daemon to restart' },
     image: 'no-daemon.png',

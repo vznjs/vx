@@ -43,9 +43,9 @@ const IMPORTED = [
   'src/content/docs/schema/**',
 ]
 // A key reads no other task's outputs (`vx lock`, X-54): each
-// arrives through that task's key and `dependsOn`. All three are gitignored,
+// arrives through that task's key and `dependsOn`. All four are gitignored,
 // so no key read them before either.
-const NOT_GENERATED = [...IMPORTED, 'public/_img/**', 'dist/**'].map((g) => `!${g}`)
+const NOT_GENERATED = [...IMPORTED, 'src/data/**', 'public/_img/**', 'dist/**'].map((g) => `!${g}`)
 
 export default defineProject({
   tasks: {
@@ -71,7 +71,7 @@ export default defineProject({
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command:
-          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/features src/nav src/pages src/plugins tests',
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/features src/nav src/pages src/plugins tests',
         sandbox: {
           allow: {
             read: ['**/*', '../../packages/vx/src/**'],
@@ -79,12 +79,14 @@ export default defineProject({
           },
         },
       },
-      dependsOn: ['install'],
+      // src/bench/data.ts imports the benchmark data bench.data writes.
+      dependsOn: ['install', 'bench.data'],
       inputs: {
         files: [
           'astro.config.mjs',
           'scripts/**',
           'src/env.d.ts',
+          'src/bench/**',
           'src/blog/**',
           'src/components/**',
           'src/features/**',
@@ -167,6 +169,34 @@ export default defineProject({
       },
     },
 
+    // The benchmark figures every page prints (2026-10-29: none typed by
+    // hand): the rows each @vzn/vx-bench#bench.<runner> task measured,
+    // gathered into src/data/bench.json. Their keys arrive through
+    // `dependsOn`, so a change to vx, the harness or a pinned rival
+    // re-measures and rebuilds the site with the new figures.
+    'bench.data': {
+      description:
+        'gather the head-to-head rows of @vzn/vx-bench#site.numbers → src/data/bench.json',
+      dependsOn: ['install', '@vzn/vx-bench#site.numbers'],
+      exec: {
+        command: 'bun scripts/bench-data.ts',
+        env: { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' } },
+        sandbox: {
+          allow: {
+            read: ['**/*', '../vx-bench/site/**'],
+            write: ['src/data/bench.json'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
+      inputs: {
+        files: ['scripts/bench-data.ts', 'src/bench/format.ts'],
+      },
+      cache: {
+        outputs: { files: ['src/data/bench.json'] },
+      },
+    },
+
     // `build` because the page pins (landing, sidebar, redirects, links)
     // read what the site shipped: whether a widget's
     // no-JavaScript fallback is there is a fact about the built HTML, not
@@ -183,7 +213,7 @@ export default defineProject({
     test: {
       description:
         'bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)',
-      dependsOn: ['install', 'import', 'build'],
+      dependsOn: ['install', 'import', 'bench.data', 'build'],
       exec: {
         command: 'bun test --only-failures',
         // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
@@ -214,6 +244,8 @@ export default defineProject({
           // The compare pins import the widgets' model to hold the built
           // pages to it.
           'src/components/demos/model/**',
+          // The figures' formatter and the data the pages are held to.
+          'src/bench/**',
           // sidebar-coverage.test.ts imports the sidebars; diagram-kit.test.ts
           // reads the kit's styles, the widgets' and the theme's tokens, and
           // with landing.test.ts the landing's picture.
@@ -275,7 +307,7 @@ export default defineProject({
 
     build: {
       description: 'astro build → dist/',
-      dependsOn: ['install', 'import', 'build.images'],
+      dependsOn: ['install', 'import', 'bench.data', 'build.images'],
       exec: {
         // Under Bun, prerender included. `bun --bun` runs astro's bin on Bun,
         // but astro prerenders in a CHILD process it starts as `node`, and
@@ -364,7 +396,7 @@ export default defineProject({
 
     dev: {
       description: 'astro dev server (persistent)',
-      dependsOn: ['install', 'build.images'],
+      dependsOn: ['install', 'bench.data', 'build.images'],
       exec: {
         command: 'bun --bun astro dev',
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },

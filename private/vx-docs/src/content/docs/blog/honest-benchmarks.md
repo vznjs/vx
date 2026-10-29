@@ -6,26 +6,30 @@ authors:
 tags:
   - performance
   - benchmarks
-excerpt: 'One synthetic 9,603-task graph, each tool in its own native config, every number one command away.'
+excerpt: 'One synthetic task graph, each tool in its own native config, every number one command away.'
 ---
 
 Every number on our benchmark page is one command away. Here is the
-time each runner adds on top of the tasks, on one 9,603-task graph:
+time each runner adds on top of the tasks, on one %bench.tasks%-task graph:
 
 | Runner    | Cold build overhead | Nothing changed | Cold build CPU |
 | --------- | ------------------- | --------------- | -------------- |
-| vx        | **7.57 s** | **799 ms** | 36.64 s |
-| Turborepo | 9.63 s | 927 ms | 1 min 12 s |
-| Nx        | 3 min 6 s | 24.15 s | 5 min 34 s |
-| Vite Task | 9.01 s | 12.07 s | 25.32 s |
+| vx        | %bench.vx.cold% | %bench.vx.warm% | %bench.vx.cpu% |
+| Turborepo | %bench.turbo.cold% | %bench.turbo.warm% | %bench.turbo.cpu% |
+| Nx        | %bench.nx.cold% | %bench.nx.warm% | %bench.nx.cpu% |
+| Vite Task | %bench.vt.cold% | %bench.vt.warm% | %bench.vt.cpu% |
 
-<small>Synthetic monorepo, 1,601 projects, 9,603 tasks, 30 levels · build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms · linux x64, 4 cores, concurrency 10 · vx 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task 1.4.0 · 2026-10-23</small>
+<small>Synthetic monorepo, %bench.projects% projects, %bench.tasks% tasks, %bench.levels% levels · build %bench.task.build%, test and typecheck %bench.task.test%, lint %bench.task.lint%, publish %bench.task.publish% · concurrency %bench.concurrency%</small>
 
-Lower is better. A cold build's tasks alone take 1 min 53 s with an
+<small>%bench.provenance%</small>
+
+Lower is better. A cold build's tasks alone take %bench.ideal.cold% with an
 ideal schedule. With nothing changed the ideal is 0, so all of that time
 is the runner.
 
-No tool wins every row: Vite Task uses the least CPU.
+The table is filled from the latest run when the site is built: each
+change to vx re-measures vx, and a new Turborepo, Nx or Vite Task pin
+re-measures that tool.
 
 ## Re-run it
 
@@ -37,13 +41,16 @@ Every task is a `sleep` of a fixed length, so the numbers measure the
 runner, not a compiler. Each runner runs the graph cold, with nothing
 changed, and with outputs restored.
 
+The site takes its rows from `vx run @vzn/vx-bench#site.numbers`: one
+task per runner, each on a machine of its own.
+
 ```mermaid
 flowchart LR
   G[generate.ts: one graph] --> V[vx config]
   G --> T[turbo.json]
   G --> N[Nx targets]
   G --> VT[vite.config.ts]
-  V & T & N & VT --> C[compare.ts: same machine, one runner at a time]
+  V & T & N & VT --> C[compare.ts: one runner at a time]
 ```
 
 | Rule                         | Why                                                   |
