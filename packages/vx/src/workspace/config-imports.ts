@@ -16,10 +16,10 @@
 // Two rules keep the walk small, and the second is the one that makes it
 // affordable at all:
 //
-//   - RELATIVE specifiers only. A bare specifier is a package; it moves when
-//     the lockfile moves, which a lockfile plugin's key covers.
-//     A tsconfig `paths` / `baseUrl` alias is the exception: Bun loads it
-//     from disk (D-27).
+//   - LOCAL specifiers only (`localTarget`): relative, package.json
+//     `#imports`, or a tsconfig `paths` / `baseUrl` alias, each of which
+//     Bun loads from disk (D-27). Any other bare specifier is a package; it
+//     moves when the lockfile moves, which a lockfile plugin's key covers.
 //   - One reversed BFS from every config at once, each file read once
 //     however many configs reach it. It descends through every file in
 //     the workspace, another project's included: a site's `vx.config.ts`
@@ -28,8 +28,8 @@
 //     first file of another project, and containment selected core alone
 //     while the site's key moved (X-128).
 //
-// `configImports` walks one config's relative closure forward, for the
-// files `vx watch` watches.
+// `configImports` walks one config's local closure forward, by the same
+// rule, for the files `vx watch` watches.
 
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
@@ -323,20 +323,149 @@ function selfReference(pkg: string, fromDir: string): boolean {
   }
 }
 
-/**
- * A textual pass before the scan: a relative specifier opens with a quoted
- * `./` or `../`, or spells one with an escape, and most configs hold
- * neither, so the scan is skipped for them (D-23). A candidate in a comment
- * or string still goes to the scan, which decides.
- */
-const RELATIVE_CANDIDATE = /["'`](?:\.\.?\/|[^"'`\n]*\\)/
+/** The nearest `package.json`'s directory and `imports` map, per directory. */
+type ImportsMemo = Map<string, { dir: string; imports: Record<string, unknown> } | null>
+
+/** What one walk learns once: tsconfig paths and package `imports` per directory. */
+interface LookupMemo {
+  tsconfig: TsconfigMemo
+  imports: ImportsMemo
+}
+
+function lookupMemo(): LookupMemo {
+  return { tsconfig: new Map(), imports: new Map() }
+}
+
+/** The `imports` map of the package `dir` sits in: its nearest `package.json`'s. */
+function importsAt(
+  dir: string,
+  memo: ImportsMemo,
+): { dir: string; imports: Record<string, unknown> } | null {
+  const known = memo.get(dir)
+  if (known !== undefined) return known
+  let out: { dir: string; imports: Record<string, unknown> } | null = null
+  const manifest = path.join(dir, 'package.json')
+  const up = path.dirname(dir)
+  if (existsSync(manifest)) {
+    try {
+      const json = JSON.parse(readFileSync(manifest, 'utf8').replace(/^﻿/, '')) as {
+        imports?: unknown
+      }
+      if (typeof json.imports === 'object' && json.imports !== null) {
+        out = { dir, imports: json.imports as Record<string, unknown> }
+      }
+    } catch {}
+  } else if (up !== dir) {
+    out = importsAt(up, memo)
+  }
+  memo.set(dir, out)
+  return out
+}
+
+/** Every string a package `imports` target holds, through arrays and conditions. */
+function targetStrings(target: unknown): string[] {
+  if (typeof target === 'string') return [target]
+  if (Array.isArray(target)) return target.flatMap(targetStrings)
+  if (typeof target === 'object' && target !== null)
+    return Object.values(target).flatMap(targetStrings)
+  return []
+}
 
 /**
- * Absolute resolved targets of the RELATIVE specifiers in `source`; one that
- * does not resolve contributes the paths it names.
+ * The paths a `#` specifier's entry names in the nearest `package.json`
+ * `imports` (exact key, else the `*` pattern with the longest head, as
+ * Node picks), and whether every target is local. An entry mapping to a
+ * package is the lockfile's, as any bare specifier.
+ */
+function packageImportPaths(
+  spec: string,
+  fromDir: string,
+  memo: ImportsMemo,
+): { paths: string[]; allLocal: boolean } | undefined {
+  const scope = importsAt(fromDir, memo)
+  if (scope === null) return undefined
+  let target: unknown = scope.imports[spec]
+  let hole = ''
+  if (target === undefined) {
+    let head = ''
+    for (const [key, t] of Object.entries(scope.imports)) {
+      const star = key.indexOf('*')
+      if (star === -1 || star < head.length) continue
+      const h = key.slice(0, star)
+      const tail = key.slice(star + 1)
+      if (spec.length < key.length - 1 || !spec.startsWith(h) || !spec.endsWith(tail)) continue
+      head = h
+      target = t
+      hole = spec.slice(h.length, spec.length - tail.length)
+    }
+  }
+  const strings = targetStrings(target)
+  const local = strings.filter((s) => s.startsWith('./'))
+  if (local.length === 0) return undefined
+  return {
+    paths: local.map((s) => path.resolve(scope.dir, s.replaceAll('*', hole))),
+    allLocal: local.length === strings.length,
+  }
+}
+
+/**
+ * The local file `spec` names from `fromDir`, by the rules Bun loads one
+ * with: a relative path (`.`, `..`, `./x`, `../x`), a package.json
+ * `#imports` entry, or a tsconfig `paths` / `baseUrl` alias (D-27).
+ * `file` is the hit, realpath'd as `Bun.resolveSync` names one. With none, `named` lists the paths the
+ * specifier names (and, bare of an extension, the files Bun would have
+ * tried): most often the change itself deleted or renamed the target, and
+ * the config importing it is the project the change broke (item 958).
+ * Undefined for a package, a builtin or `@vzn/vx`.
  *
- * Paths come back realpath'd, because `Bun.resolveSync` realpaths them — see
- * the caller, which realpaths everything it compares against for exactly that
+ * Both walks ask this, so what `--affected` follows and what `vx watch`
+ * watches cannot part: the watch walk once kept `./` and `../` alone.
+ */
+function localTarget(
+  spec: string,
+  fromDir: string,
+  memo: LookupMemo,
+): { file: string } | { named: string[] } | undefined {
+  if (spec === '.' || spec === '..' || spec.startsWith('./') || spec.startsWith('../')) {
+    try {
+      return { file: Bun.resolveSync(spec, fromDir) }
+    } catch {
+      return { named: expansions(path.resolve(fromDir, spec)) }
+    }
+  }
+  if (spec.startsWith('#')) {
+    const entry = packageImportPaths(spec, fromDir, memo.imports)
+    if (entry === undefined) return undefined
+    // Bun picks the condition; it is asked only when no condition names a
+    // package, which it would fetch from the registry with no
+    // node_modules above.
+    if (entry.allLocal) {
+      try {
+        return { file: Bun.resolveSync(spec, fromDir) }
+      } catch {}
+    }
+    return { named: entry.paths.flatMap(expansions) }
+  }
+  if (spec.startsWith('.') || spec.startsWith('/') || !needsLookup(spec)) return undefined
+  const bases = tsconfigBases(spec, fromDir, memo.tsconfig)
+  if (bases.length === 0) return undefined
+  const hit = bases.map(fileAt).find((f) => f !== undefined)
+  return hit !== undefined ? { file: realpathOr(hit) } : { named: bases.flatMap(expansions) }
+}
+
+/**
+ * A textual pass before the scan: a local specifier opens with a quoted
+ * `./`, `../`, `.`, `..` or `#`, or spells one with an escape, and most
+ * configs hold none, so the scan is skipped for them (D-23). A candidate in
+ * a comment or string still goes to the scan, which decides.
+ */
+const LOCAL_CANDIDATE = /["'`](?:\.\.?(?:\/|["'`])|#|[^"'`\n]*\\)/
+
+/**
+ * Absolute targets of the local specifiers in `source` ({@link localTarget}).
+ *
+ * Paths come back realpath'd, as `Bun.resolveSync` names them — see the
+ * caller, which realpaths everything it compares against for exactly that
  * reason. `import type` is erased by `scanImports` and so contributes no edge,
  * which is correct: an erased import cannot move a resolved value.
  */
@@ -344,10 +473,9 @@ function scanLocalImports(
   source: string,
   fromDir: string,
   loader: 'ts' | 'js',
-  memo: TsconfigMemo,
+  memo: LookupMemo,
 ): string[] {
-  const aliased = hasAliasCandidate(source, fromDir, memo)
-  if (!aliased && !RELATIVE_CANDIDATE.test(source)) return []
+  if (!LOCAL_CANDIDATE.test(source) && !hasAliasCandidate(source, fromDir, memo.tsconfig)) return []
   let specifiers: string[]
   try {
     specifiers = scanner(loader)
@@ -358,27 +486,11 @@ function scanLocalImports(
   }
   const out: string[] = []
   for (const spec of specifiers) {
-    if (!spec.startsWith('./') && !spec.startsWith('../')) {
-      // A tsconfig alias is a local import Bun resolves by path (D-27); a
-      // target the change deleted still names its paths, as below.
-      if (!aliased || spec.startsWith('.') || spec.startsWith('/') || !needsLookup(spec)) continue
-      const bases = tsconfigBases(spec, fromDir, memo)
-      const hit = bases.map(fileAt).find((f) => f !== undefined)
-      if (hit !== undefined) out.push(realpathOr(hit))
-      else out.push(...bases.flatMap(expansions))
-      continue
-    }
-    try {
-      out.push(Bun.resolveSync(spec, fromDir))
-    } catch {
-      // Unresolvable: most often the change itself deleted or renamed the
-      // target, and the config that imports it is exactly the project the
-      // change broke. The edge is the path the specifier names (and, bare
-      // of an extension, the files Bun would have tried), so the deleted
-      // path in the diff still reaches its importer (item 958). Selection
-      // may widen; it is never hashed.
-      out.push(...expansions(path.resolve(fromDir, spec)))
-    }
+    // Selection may widen on a named path; it is never hashed.
+    const t = localTarget(spec, fromDir, memo)
+    if (t === undefined) continue
+    if ('file' in t) out.push(t.file)
+    else out.push(...t.named)
   }
   return out
 }
@@ -421,7 +533,7 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
 
   // target → the files that import it. Reversed up front so one BFS from the
   // changed set answers every root at once, instead of a walk per root.
-  const tsconfigs: TsconfigMemo = new Map()
+  const memo = lookupMemo()
   const importedBy = new Map<string, string[]>()
   const visited = new Set<string>()
   // A level at a time, its files read together: one awaited read per
@@ -447,7 +559,7 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
       if (entry === null) continue
       const { file, source } = entry
       const loader = TS_EXT.has(path.extname(file)) ? 'ts' : 'js'
-      for (const target of scanLocalImports(source, path.dirname(file), loader, tsconfigs)) {
+      for (const target of scanLocalImports(source, path.dirname(file), loader, memo)) {
         if (!target.startsWith(workspaceRoot + path.sep)) continue
         if (target.split(path.sep).includes('node_modules')) continue
         const list = importedBy.get(target)
@@ -482,7 +594,7 @@ function realDirOf(file: string): string {
 }
 
 /**
- * Every file a config imports by relative specifier, transitively, outside
+ * Every file a config imports by local specifier, transitively, outside
  * `node_modules`, the config itself excluded. `vx watch` watches these: a
  * shared preset outside the project (`../../shared/preset.mjs`, the way
  * configs compose) changed what a run evaluates and no watcher saw it
@@ -497,6 +609,7 @@ export async function configImports(
   read: (file: string) => Promise<string> = (file) => Bun.file(file).text(),
 ): Promise<string[]> {
   const seen = new Set<string>([configPath])
+  const memo = lookupMemo()
   const out: string[] = []
   const queue = [configPath]
   let given = configSource
@@ -525,24 +638,26 @@ export async function configImports(
     }
     let dir: string | undefined
     for (const spec of specs) {
-      if (!spec.startsWith('./') && !spec.startsWith('../')) continue
-      let resolved: string
+      let t: ReturnType<typeof localTarget>
       try {
         dir ??= realDirOf(file)
-        resolved = realPath(Bun.resolveSync(spec, dir))
+        t = localTarget(spec, dir, memo)
       } catch {
+        continue
+      }
+      if (t === undefined) continue
+      if (!('file' in t)) {
         // Missing for now, still imported: the config that names it fails
         // to load until it is back, and a list without it left `vx watch`
         // deaf to its return. Named as written, and not walked.
-        if (dir === undefined) continue
-        for (const ext of path.extname(spec) === '' ? RESOLVED_EXTENSIONS : ['']) {
-          const missing = path.resolve(dir, spec + ext)
+        for (const missing of t.named) {
           if (seen.has(missing)) continue
           seen.add(missing)
           out.push(missing)
         }
         continue
       }
+      const resolved = realpathOr(t.file)
       if (seen.has(resolved) || resolved.split(path.sep).includes('node_modules')) continue
       seen.add(resolved)
       out.push(resolved)
