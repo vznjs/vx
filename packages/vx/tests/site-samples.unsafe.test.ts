@@ -8,7 +8,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
-import { flakyNote, formatTaskExecutedLine } from '../src/report/framed-output.js'
+import { executedCells, flakyNote, formatTaskExecutedLine } from '../src/report/framed-output.js'
 import { formatFailureLine } from '../src/report/status-line.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { REMOTE_CACHE_METHODS } from '../src/orchestrator/plugin-host.js'
@@ -370,7 +370,8 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
       ...(attempts !== undefined && { attempts }),
     }
     return status === 'failed'
-      ? formatFailureLine(id, durationMs) + flakyNote(o)
+      ? formatFailureLine(id, durationMs, undefined, 'miss', executedCells(o, undefined)) +
+          flakyNote(o)
       : formatTaskExecutedLine(node, o)
   }
 

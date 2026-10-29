@@ -840,27 +840,46 @@ other persistent task`), and a non-zero exit makes the run exit 1
    under `--output-logs errors-only`, `hash-only` or `none`; a single
    requested server in the focused flow streams raw from its frame.
 3. **The running list** — one row per worker (`--concurrency`), always,
-   so its height never changes. No glyph and no spinner: the live
-   ticking elapsed time leads, then `running`, the usual duration, and
-   `blocked`, how many tasks not yet started depend on that task
-   directly (why they are not running), right before the id
-   (`     568ms running ~1.2s      3 <id>`). A task stays in its slot
-   for its whole life; a task running beyond the slots gets a row after
-   them until one frees, and none is ever folded away. A bold header
-   names the columns (`time status cache blocked task`, `· worker`
-   when an executor places tasks); the list of finished tasks has its
-   own header once over its first row. The rows no task runs in hold
-   the tasks the scheduler has picked for the next free workers, as
-   many as there are free rows and nothing further ahead, each nested
-   under the running task it waits on (`blocked  └ solid-js#build`);
-   the rest stay blank. When an executor places tasks (`@vzn/vx-dte`),
+   so its height never changes. A task stays in its slot for its whole
+   life; a task running beyond the slots gets a row after them until
+   one frees, and none is ever folded away. Both lists share one grid,
+   each under its own header, dim and underlined across the whole line,
+   straight over its rows:
+
+   ```
+         time   usual  waited status  cache      cpu    mem outputs  blocks worker       task
+        3.19s    ~18s   400ms running miss      180%  412MB              12 local        solid-js#types  critical path
+                ~6.0s         blocked                                                    └ solid-element#build
+   ```
+
+   - **time**: the live elapsed time; no glyph and no spinner.
+   - **usual**: the task's executed p50 from local history, fixed while
+     the time counts up toward it. The results list's `±usual` is how
+     far a run landed from it, `+6.00s` red or `−1.40s` green, only
+     past a fifth either way and never on a hit.
+   - **waited**: how long the task sat ready for a free slot; blank
+     under 50 ms.
+   - **status** and **cache**: `running` and `miss`, or `no-cache` for a
+     task with no `cache` block (or a `--no-cache` run); finished rows
+     say `local` or `remote` on a hit.
+   - **cpu** and **mem**: the task's process tree now, looked at every
+     500 ms only while this list draws (a pipe or CI reads nothing); on a
+     finished row its average cores and peak memory, blank on a hit.
+   - **outputs**: on a finished row, the bytes of its outputs; on a hit
+     the files it restored, blank for a remote hit not yet downloaded.
+   - **blocks**: how many tasks are downstream of it, all of them.
+   - **worker**: `local`, or the machine an executor (`@vzn/vx-dte`)
+     names, cut to 12 columns with `…`.
+
+   The rows no task runs in hold the tasks the scheduler has picked for
+   the next free workers, as many as there are free rows and nothing
+   further ahead, each nested under the running task it waits on with
+   its usual time; the rest stay blank. When an executor places tasks,
    the rows are only what runs: no blank or nested row, blocked tasks
    are the tasks line's dim `N blocked` alone. `critical path` (red)
-   follows the running task the longest unfinished chain waits on;
-   its row in the list says it too once it ends. Where
-   local history knows the task, its row also shows its usual duration
-   (its executed p50) in the cache column, fixed while the elapsed time
-   counts up toward it (`3.33s running ~5.2s  solid-js#types`).
+   follows the running task the longest unfinished chain waits on; its
+   row in the list says it too once it ends.
+
 4. **vx's own steps** — what vx does around the tasks that the run
    waits on, before its first task starts or before it ends, as rows of
    their own below the worker rows: `vx:load` (configs and graph from
@@ -3658,8 +3677,8 @@ on a terminal or not; a note vx prints before it is not part of it.
 A broad run looks like:
 
 ```
- ⇢     4ms success local    @vzn/vx#format-check
- ⏺︎   5.20s success miss     @vzn/vx#test
+ ⇢     4ms                 success local                                 local        @vzn/vx#format-check
+ ⏺︎   5.20s                 success miss                                  local        @vzn/vx#test
 
 ─ vx 0.0.0 ───────────────────────────────────────────────────
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱

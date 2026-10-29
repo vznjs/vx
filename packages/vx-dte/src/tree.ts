@@ -2,7 +2,7 @@
 // them. Workers compare trees, not commits, so a run on uncommitted changes
 // still matches the worktrees `local()` makes from them.
 
-import { copyFile, mkdtemp, rm } from 'node:fs/promises'
+import { copyFile, mkdtemp, rm, stat, utimes } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -27,6 +27,12 @@ export async function snapshot(root: string): Promise<{ commit: string; tree: st
     const env = { GIT_INDEX_FILE: path.join(dir, 'index') }
     try {
       await copyFile(index, env.GIT_INDEX_FILE)
+      // The copy keeps the index's mtime (as core's refreshedIndex): git
+      // trusts an entry's stat only while its file is older than the index,
+      // and a fresh mtime took a same-size edit made in the tick the index
+      // was written for clean, its old blob in the tree (2026-10-29).
+      const st = await stat(index)
+      await utimes(env.GIT_INDEX_FILE, st.atime, st.mtime)
     } catch {
       // quiet: no index yet, so HEAD's tree is its tracked set.
       if ((await git(['read-tree', head], root, env)) === undefined) return none
