@@ -623,7 +623,8 @@ describe('Turbo parity — glob characters in paths are names', () => {
     const git = gitIn(root)
     git('init', '-q')
     git('add', '-A')
-    git('commit', '-q', '-m', 'init')
+    // CI's runner has no git identity: name one, as makeWorkspace's own init does.
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init')
   }, TIMEOUT)
   afterAll(async () => {
     await rm(parent, { recursive: true, force: true })
