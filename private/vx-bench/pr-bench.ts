@@ -117,6 +117,11 @@ try {
   must(['bun', 'build', '--compile', '--minify', '--bytecode', bin, '--outfile', vx], ws)
   // Every run reads configs only from the lock.
   must([vx, 'lock'], ws)
+  // vx times a copy too, made as the base's is: timing the tree git wrote
+  // against a copy of it read restore 1.10-1.13× slower for one binary in
+  // both arms (three local runs, 2026-10-29).
+  const vxWs = `${ws}-vx`
+  copyWorkspace(ws, vxWs)
   // Turbo times its own copy: it rewrites every output on a warm hit, and in
   // one shared tree vx's next noop restored all of them.
   const turboWs = `${ws}-turbo`
@@ -130,7 +135,7 @@ try {
     buildBase(path.resolve(import.meta.dir, '../..'), BASE, baseVx)
     must([baseVx, 'lock'], baseWs)
   }
-  const dirs = { vx: ws, base: baseWs, turbo: turboWs }
+  const dirs = { vx: vxWs, base: baseWs, turbo: turboWs }
   const tools: readonly Tool[] = BASE === undefined ? ['vx', 'turbo'] : ['vx', 'base', 'turbo']
 
   const vxRun = ['run', 'build', 'test', '--all', `--concurrency=${CONCURRENCY}`]
@@ -192,14 +197,19 @@ try {
     best.set(k, Math.min(best.get(k) ?? Infinity, ms))
     return ms
   }
-  // vx, the base, then Turbo, back to back, and the cores other processes
-  // kept busy over them: the machine's busy time less this process's and its children's.
-  const pair = (arm: Arm): Pair => {
+  // vx and the base, in turn first, then Turbo, back to back, and the cores
+  // other processes kept busy over them: the machine's busy time less this
+  // process's and its children's. In turn: with vx always first, right
+  // behind the last pair's Turbo, a CI-only change read noop 1.24× its own
+  // base (#4885).
+  const pair = (arm: Arm, rep: number): Pair => {
     const busy0 = machineBusyMs()
     const own0 = ownCpuMs()
     const t0 = Bun.nanoseconds()
+    const baseFirst = BASE !== undefined && rep % 2 === 1
+    const early = baseFirst ? time('base', arm) : undefined
     const vx = time('vx', arm)
-    const base = BASE === undefined ? undefined : time('base', arm)
+    const base = BASE === undefined ? undefined : (early ?? time('base', arm))
     const turbo = time('turbo', arm)
     const busy1 = machineBusyMs()
     const wall = (Bun.nanoseconds() - t0) / 1e6
@@ -224,7 +234,7 @@ try {
       (a) => pairs.get(a)!.length < REPS || !enoughQuiet(pairs.get(a)!, REPS, QUIET_CORES),
     )
     if (left.length === 0) break
-    for (const arm of left) pairs.get(arm)!.push(pair(arm))
+    for (const arm of left) pairs.get(arm)!.push(pair(arm, rep))
   }
   for (const arm of arms) {
     const ran = pairs.get(arm)!
@@ -286,6 +296,7 @@ try {
 } finally {
   if (!process.env.KEEP) {
     await rm(ws, { recursive: true, force: true })
+    await rm(`${ws}-vx`, { recursive: true, force: true })
     await rm(`${ws}-turbo`, { recursive: true, force: true })
     await rm(`${ws}-base`, { recursive: true, force: true })
   } else console.log(ws)
