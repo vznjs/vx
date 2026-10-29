@@ -2,12 +2,12 @@
 // a lockfile change re-keys exactly the projects whose reachable packages
 // changed, `--affected` names the same projects, and a warm run reads the
 // memo instead of parsing.
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isUserError, type Logger } from '@vzn/vx'
-import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
+import { lock, planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { pnpm } from '../src/index.js'
@@ -632,6 +632,31 @@ describe('vx run with pnpm() declared', () => {
     expect(out).toContain('b#build')
     expect(out).toContain('c#build')
     expect(out).not.toContain('a#build')
+  })
+
+  // vercel/turborepo#5958: the lockfile's path was matched against
+  // repo-root-relative changes as a workspace-relative one, so a workspace
+  // below the git top-level never saw its lockfile change.
+  it('`--affected` follows a lockfile bump in a workspace below the git top-level', async () => {
+    const outer = await mkdtemp(path.join(tmpdir(), 'vx-pnpm-outer-'))
+    try {
+      const ws = path.join(outer, 'nested', 'ws')
+      await mkdir(path.dirname(ws), { recursive: true })
+      await rename(root, ws)
+      root = ws
+      await rm(path.join(ws, '.git'), { recursive: true, force: true })
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: outer })
+      await lock(ws)
+      commitAll(outer)
+      await writeFile(path.join(ws, 'pnpm-lock.yaml'), v9({ baz: '3.0.1' }))
+      expect(affectedIds(ws, 'build')).toEqual(['b#build', 'c#build'])
+      // CONTROL: the same bump outside the workspace selects nothing.
+      await writeFile(path.join(ws, 'pnpm-lock.yaml'), v9())
+      await writeFile(path.join(outer, 'pnpm-lock.yaml'), v9({ baz: '3.0.1' }))
+      expect(affectedIds(ws, 'build')).toEqual([])
+    } finally {
+      await rm(outer, { recursive: true, force: true })
+    }
   })
 
   it('scope: workspace folds the whole file into every task', async () => {
