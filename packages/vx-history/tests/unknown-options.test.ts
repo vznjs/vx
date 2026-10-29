@@ -81,3 +81,13 @@ it('a header it cannot send is refused at the call, with no url named', () => {
   )
   expect(refusal(() => vxHistory({ headers: { a: 'x', b: undefined } }))).toBe('taken')
 })
+
+// A name the request sets itself, in any case, was joined to its own value
+// ("x, application/json") and the server refused every upload; vxCache()
+// refuses such names (226034b744).
+it('a header the request sets itself is refused, in any case', () => {
+  for (const name of ['Content-Type', 'content-length'])
+    expect(refusal(() => vxHistory({ headers: { [name]: 'x' } }))).toBe(
+      `vxHistory() option "headers" cannot set "${name}"`,
+    )
+})

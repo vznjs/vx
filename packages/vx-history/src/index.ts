@@ -308,6 +308,12 @@ function serverUrlOf(
   return url
 }
 
+/**
+ * The names a request sets itself: one of them in `headers`, in another
+ * case, was joined to the request's own value, and the server refused it.
+ */
+const WIRE_HEADERS = new Set(['authorization', 'content-type', 'content-length'])
+
 /** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused, never printing a value. */
 function proxyHeaders(
   headers: Record<string, string | undefined> | undefined,
@@ -315,7 +321,7 @@ function proxyHeaders(
   const out: Record<string, string> = {}
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || WIRE_HEADERS.has(name.toLowerCase()))
       throw new UserError(`vxHistory() option "headers" cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
       throw new UserError(
