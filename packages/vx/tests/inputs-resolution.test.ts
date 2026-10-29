@@ -1429,6 +1429,14 @@ describe('a declared literal settles on its own tree, and only its own', () => {
     expect(got.files.map((f) => relPosix(root, f))).toEqual(['pack.json', 'pkg/fix.txt'])
   })
 
+  it('two globstars in one entry each span any depth (Turbo #6633)', async () => {
+    for (const f of ['src/x/a', 'src/deep/x/y/f.txt', 'src/d1/d2/x/f', 'src/x.txt', 'src/deep/y/f'])
+      await write(path.join(projectDir, f), f)
+    expect(await filesOf(['src/**/x/**'])).toEqual(
+      ['src/d1/d2/x/f', 'src/deep/x/y/f.txt', 'src/x/a'].map((f) => path.join(...f.split('/'))),
+    )
+  })
+
   it('a sibling that merely SHARES A PREFIX does not settle it', async () => {
     // The `/` in `${lit}/` is the whole guard. Without it `gen-notes.txt`
     // starts with `gen` and settles the literal `gen`, so the ignored `gen`
