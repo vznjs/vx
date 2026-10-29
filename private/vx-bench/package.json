@@ -9,12 +9,15 @@
     "bun": ">=1.4"
   },
   "//": [
-    "turbo: pr-bench.ts's rival (the per-PR vx vs Turborepo ratio, 2026-10-12); pinned so CI and the baseline see one version."
+    "turbo: pr-bench.ts's rival (the per-PR vx vs Turborepo ratio, 2026-10-12) and the site's head-to-head (compare.ts); pinned so CI and the baseline see one version.",
+    "nx, vite-plus: the site's head-to-head rivals (compare.ts, the bench.* tasks). Pinned: a bump re-keys their bench tasks, so the site re-measures them."
   ],
   "devDependencies": {
     "@types/bun": "^1.4.0",
     "@vzn/vx": "workspace:*",
     "@vzn/vx-history": "workspace:*",
-    "turbo": "2.11.7"
+    "nx": "24.0.2",
+    "turbo": "2.11.10",
+    "vite-plus": "1.4.0"
   }
 }
