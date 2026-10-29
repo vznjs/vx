@@ -170,7 +170,7 @@ function guardWrite(line: string): void {
  * races it. The guard starts BEFORE the spawn, so there is a pipe to hand.
  * `undefined` when the guard could not start: nothing lists anything.
  */
-export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child {
+export function spawnGuarded<C = Child>(spawn: (guard: number | undefined) => C): C {
   startGuard()
   if (typeof guardFd !== 'number') return spawn(undefined)
   handingTo = guardProc?.pid
