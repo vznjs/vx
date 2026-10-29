@@ -1708,6 +1708,28 @@ describe('runGraph — priorities override', () => {
     expect(out.get('p#scored')!).toBeGreaterThan(out.get('p#hub')!)
   })
 
+  // A weight of 0 (a task whose recorded p50 rounds to 0 ms) scaled to 0
+  // and tied every unscored node, so one that blocks others ran first;
+  // a negative one sank below them. Every scored node sorts above.
+  it('an override of 0 or below still outranks the baseline, in its order', () => {
+    const out = mergePriorities(
+      new Map([
+        ['p#hub', 5],
+        ['p#zero', 0],
+        ['p#neg', 0],
+        ['p#one', 0],
+      ]),
+      new Map([
+        ['p#zero', 0],
+        ['p#neg', -3],
+        ['p#one', 1],
+      ]),
+    )
+    const rank = ['p#one', 'p#zero', 'p#neg', 'p#hub'].map((id) => out.get(id)!)
+    expect(rank).toEqual([...rank].sort((a, b) => b - a))
+    expect(new Set(rank).size).toBe(4)
+  })
+
   it('EQUAL overrides break on the baseline', async () => {
     // The `+ b` in `w * SCALE + b` exists "for parity within the override
     // set". Every fixture scores nodes with distinct weights, where the
