@@ -11,27 +11,27 @@ ever needs. Its sibling packages integrate with core exclusively
 through its public API (`src/index.ts`, imported as the bare `@vzn/vx`
 specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 
-| Package                      | What                                                                                                                                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `packages/vx`                | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                           |
-| `packages/vx-otel`           | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces, metrics and logs, zero SDK deps                                                                                   |
-| `packages/vx-reapi`          | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                     |
-| `packages/vx-ci`             | `@vzn/vx-ci` — `github()` telemetry plugin: the GitHub Actions job summary                                                                                                           |
-| `packages/vx-history`        | `@vzn/vx-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`                   |
-| `packages/vx-migrate`        | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI         |
-| `packages/vx-lockfile`       | `@vzn/vx-lockfile` — `bun()` `pnpm()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim`     |
-| `private/vx-docs`            | Astro Starlight docs site; imports `packages/vx/docs/**` at build time (private)                                                                                                     |
-| `packages/vx-dte`            | `@vzn/vx-dte` — distributed task execution: one run spread over workers the CI starts, through a relay; `local()` adapter; private until it is on npm                                |
-| `packages/vx-dte-server`     | `@vzn/vx-dte-server` — the reference relay of `@vzn/vx-dte`: passes a run's messages between sockets behind CI OIDC tokens, storing none (`PROTOCOL.md`); private until it is on npm |
-| `packages/vx-cache-server`   | `@vzn/vx-cache-server` — a cache server anyone hosts (`PROTOCOL.md`, `/v1`): one bucket, no database; Bun or Docker + S3, or Workers + R2                                            |
-| `packages/vx-devtools`       | `@vzn/vx-devtools` — code vx's servers and plugins share, never core: first the CI OIDC token check (`ALLOW`, `oidcAuth`); imports only jose                                         |
-| `packages/vx-history-server` | `@vzn/vx-history-server` — the task timings `vxHistory()` reads, one folded row per task (`PROTOCOL.md`, `/v1`): Bun + SQLite, Workers + D1, or Docker                               |
-| `packages/vx-cache`          | `@vzn/vx-cache` — `vxCache()` cache plugin: a remote cache for CI jobs, on a server that speaks `@vzn/vx-cache-server`'s `/v1` wire                                                  |
-| `private/vx-bench`           | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                                |
-| `private/vx-plugin-examples` | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                          |
-| `private/vx-dte-service`     | vznjs's own relay deploy: `@vzn/vx-dte-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                                  |
-| `private/vx-cache-service`   | vznjs's own cache server deploy: `@vzn/vx-cache-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                         |
-| `private/vx-history-service` | vznjs's own history server deploy: `@vzn/vx-history-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                     |
+| Package                      | What                                                                                                                                                                             |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/vx`                | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                       |
+| `packages/vx-otel`           | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces, metrics and logs, zero SDK deps                                                                               |
+| `packages/vx-reapi`          | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                 |
+| `packages/vx-ci`             | `@vzn/vx-ci` — `github()` telemetry plugin: the GitHub Actions job summary                                                                                                       |
+| `packages/vx-history`        | `@vzn/vx-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`               |
+| `packages/vx-migrate`        | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI     |
+| `packages/vx-lockfile`       | `@vzn/vx-lockfile` — `bun()` `pnpm()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
+| `private/vx-docs`            | Astro Starlight docs site; imports `packages/vx/docs/**` at build time (private)                                                                                                 |
+| `packages/vx-dte`            | `@vzn/vx-dte` — distributed task execution: one run spread over workers the CI starts, through a relay; `local()` adapter                                                        |
+| `packages/vx-dte-server`     | `@vzn/vx-dte-server` — the reference relay of `@vzn/vx-dte`: passes a run's messages between sockets behind CI OIDC tokens, storing none (`PROTOCOL.md`)                         |
+| `packages/vx-cache-server`   | `@vzn/vx-cache-server` — a cache server anyone hosts (`PROTOCOL.md`, `/v1`): one bucket, no database; Bun or Docker + S3, or Workers + R2                                        |
+| `packages/vx-devtools`       | `@vzn/vx-devtools` — code vx's servers and plugins share, never core: first the CI OIDC token check (`ALLOW`, `oidcAuth`); imports only jose                                     |
+| `packages/vx-history-server` | `@vzn/vx-history-server` — the task timings `vxHistory()` reads, one folded row per task (`PROTOCOL.md`, `/v1`): Bun + SQLite, Workers + D1, or Docker                           |
+| `packages/vx-cache`          | `@vzn/vx-cache` — `vxCache()` cache plugin: a remote cache for CI jobs, on a server that speaks `@vzn/vx-cache-server`'s `/v1` wire                                              |
+| `private/vx-bench`           | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
+| `private/vx-plugin-examples` | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
+| `private/vx-dte-service`     | vznjs's own relay deploy: `@vzn/vx-dte-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                              |
+| `private/vx-cache-service`   | vznjs's own cache server deploy: `@vzn/vx-cache-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                     |
+| `private/vx-history-service` | vznjs's own history server deploy: `@vzn/vx-history-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                 |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (59 runtime symbols, a deliberate
