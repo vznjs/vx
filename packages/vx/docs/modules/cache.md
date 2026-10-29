@@ -667,8 +667,8 @@ Reads via `get()` are non-blocking thanks to WAL.
   its target directory is created first, decided on where the link
   resolves (`resolveThrough`), and only when a `mkdir` has failed, so a
   clean tree pays nothing. A cycle of links is a `UserError` by name.
-  A path that resolves into a `.git` under the anchor (any case) is
-  refused as a link out is, and an artifact's link into one is an
+  A path that resolves into the anchor's own `.git` (any case) is
+  refused as a link out is (a deeper `.git` is an output, as by name), and an artifact's link into one is an
   `ArchiveSecurityError` (`writableUnder` in util, the rule the output
   clean holds a glob root's link and a recorded row to as well).
   A path holding a backslash is resolved link by link (`realOf`): Bun's
