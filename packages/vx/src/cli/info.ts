@@ -143,7 +143,7 @@ function describeSettings(settings: InfoFacts['settings']): string {
     .filter(([, s]) => s.source !== 'default')
     .map(
       ([path, s]) =>
-        `${path} ${String(s.value)} (${s.source === 'env' ? envName(path) : '.vx/workspace'})`,
+        `${path} ${String(s.value)} (${s.source === 'env' ? envName(path) : '.vx/workspace'}${s.refused === undefined ? '' : `, refused: ${s.refused}`})`,
     )
     .join(', ')
 }

@@ -216,7 +216,7 @@ export interface FlakyTask {
  * (30 days, `RunHistory.pruneOlderThan`), most failures first: the
  * doctor's list. A pass that took a retry mixes its key on its own: it is
  * one `success` row whose failed attempts count as failures (`vx info`
- * said `none` over one). A full scan of `runs`, which an inspection verb
+ * said `none` over one). A full scan of `task_outcomes`, which an inspection verb
  * affords.
  */
 export function flakyTasks(db: Database): FlakyTask[] {
