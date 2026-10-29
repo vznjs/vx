@@ -127,7 +127,7 @@ export interface Feature {
   hook: string
   /** Two to four short paragraphs; `code` spans in backticks. */
   body: readonly string[]
-  example: { lang: 'sh' | 'ts' | 'text'; code: string }
+  example: { lang: 'sh' | 'ts' | 'ansi' | 'text'; code: string }
   image: string
   imageAlt: string
   docs: Link
@@ -348,13 +348,8 @@ export default defineProject({
       '`--dry` builds the graph, computes the keys and asks the cache. It lists what would hit and what would run, with a predicted wall time from past runs. Nothing executes.',
     ],
     example: {
-      lang: 'text',
-      code: `$ vx run ci --dry
-would run:
-  ✓  web#lint   cache hit (local)         d66cfed2
-  ▶  web#test   cache miss — would exec   68595e49  ~72.64s
-
-2 task(s) planned, 1 cache hit (1 local), 1 would run.`,
+      lang: 'ansi',
+      code: '$ vx run ci --dry\nwould run:\n  ✓  @demo/web#lint  cache hit (local)         d11668f9\n  ▶  @demo/web#test  cache miss — would exec   1ca82629\n\n2 task(s) planned, 1 cache hit (1 local), 1 would run.',
     },
     image: 'dry-run.png',
     imageAlt: 'vx run --dry listing predicted hits and misses.',
@@ -445,7 +440,10 @@ would run:
       'The end of a run is a footer: projects, tasks and cache as meters, the run id `vx last` opens, the run time, and the spread of task times.',
       'It is always the last word. Warnings and notes about the run print above it, so you never scroll for the verdict.',
     ],
-    example: { lang: 'text', code: 'time      40ms · max 31ms · min 9ms' },
+    example: {
+      lang: 'ansi',
+      code: '$ vx run build --all\n\n \x1b[38;2;34;197;94m⏺︎\x1b[0m     \x1b[2m7ms\x1b[0m \x1b[38;2;34;197;94msuccess\x1b[0m \x1b[2mmiss\x1b[0m     \x1b[38;2;232;121;249m@demo/api\x1b[0m\x1b[2m#\x1b[0m\x1b[38;2;244;114;182mbuild\x1b[0m\n \x1b[38;2;34;197;94m⏺︎\x1b[0m     \x1b[2m6ms\x1b[0m \x1b[38;2;34;197;94msuccess\x1b[0m \x1b[2mmiss\x1b[0m     \x1b[38;2;244;114;182m@demo/web\x1b[0m\x1b[2m#\x1b[0m\x1b[38;2;244;114;182mbuild\x1b[0m\n\n  \x1b[2mtime    \x1b[0m  57ms \x1b[2m·\x1b[0m \x1b[2mmax 7ms\x1b[0m \x1b[2m·\x1b[0m \x1b[2mmin 6ms\x1b[0m',
+    },
     image: 'run-summary.png',
     imageAlt: 'The run footer with meters for projects, tasks and cache.',
     docs: { label: 'Output format', href: 'cli/output/' },
@@ -460,9 +458,8 @@ would run:
       'The cause is followed through a chain of skips to the failure at its root, so the footer’s skipped count always has names above it.',
     ],
     example: {
-      lang: 'text',
-      code: ` ⊘         skipped          app#build • blocked by lib#build
- ⊘         skipped          web#build • blocked by lib#build`,
+      lang: 'ansi',
+      code: '$ vx run build --all\n\n \x1b[38;2;239;68;68m◼︎\x1b[0m     \x1b[2m3ms\x1b[0m \x1b[38;2;239;68;68mfailed\x1b[0m  \x1b[2mmiss\x1b[0m     \x1b[38;2;129;140;248m@demo/lib\x1b[0m\x1b[2m#\x1b[0m\x1b[38;2;244;114;182mbuild\x1b[0m\n \x1b[38;2;234;179;8m⊘\x1b[0m        \x1b[2m\x1b[0m \x1b[38;2;234;179;8mskipped\x1b[0m          \x1b[38;2;232;121;249m@demo/app\x1b[0m\x1b[2m#\x1b[0m\x1b[38;2;244;114;182mbuild\x1b[0m \x1b[2m• blocked by @demo/lib#build\x1b[0m\n \x1b[38;2;234;179;8m⊘\x1b[0m        \x1b[2m\x1b[0m \x1b[38;2;234;179;8mskipped\x1b[0m          \x1b[38;2;244;114;182m@demo/web\x1b[0m\x1b[2m#\x1b[0m\x1b[38;2;244;114;182mbuild\x1b[0m \x1b[2m• blocked by @demo/lib#build\x1b[0m',
     },
     image: 'skipped-blockers.png',
     imageAlt: 'Skipped tasks, each naming the failed task that blocked it.',
@@ -622,8 +619,8 @@ export default defineProject({
       'Failing on new inputs is a break, not a flake, and carries no note.',
     ],
     example: {
-      lang: 'text',
-      code: ' ◼︎   4.21s failed  miss     app#test flaky - passed 3× before',
+      lang: 'ansi',
+      code: '$ vx run test --all\n\n \x1b[38;2;239;68;68m◼︎\x1b[0m     \x1b[2m4ms\x1b[0m \x1b[38;2;239;68;68mfailed\x1b[0m  \x1b[2mmiss\x1b[0m     \x1b[38;2;232;121;249m@demo/app\x1b[0m\x1b[2m#\x1b[0m\x1b[38;2;96;165;250mtest\x1b[0m \x1b[2mflaky - passed 3× before\x1b[0m',
     },
     image: 'flaky-detection.png',
     imageAlt: 'A failed task row marked flaky, with its history.',

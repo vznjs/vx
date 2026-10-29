@@ -119,24 +119,23 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    'locks a task named __proto__ as its own task',
+    'locks a task named __proto__ and runs it',
     async () => {
-      // vx-migrate writes one as a computed key (item 1033); the lock's
-      // key sort assigned it into a plain object, which set the prototype:
-      // the task left the lock, and --check said drift right after vx lock.
+      // vx init writes `['__proto__']` for such a script; the lock's
+      // sorted copy assigned it into a plain object and lost it.
       await addProject(
         root,
         'app',
-        `export default { tasks: { ['__proto__']: { exec: { command: 'echo proto' } } } }`,
+        `export default { tasks: { ['__proto__']: { exec: { command: 'echo proto-ran' } } } }\n`,
       )
       expect((await vx(root, ['lock'], {})).code).toBe(0)
       const lockJson = JSON.parse(
         await Bun.file(path.join(root, '.vx/projects.lock.json')).text(),
       ) as { projects: Record<string, { config: { tasks: object } }> }
       expect(Object.keys(lockJson.projects['packages/app']!.config.tasks)).toEqual(['__proto__'])
-      expect((await vx(root, ['lock', '--check'], {})).out).toBe(
-        '✓ vx lock --check  up to date (1 project)\n',
-      )
+      const run = await vx(root, ['run', 'app#__proto__', '--output-logs', 'full'], {})
+      expect(run.code).toBe(0)
+      expect(run.out).toContain('proto-ran')
     },
     TIMEOUT,
   )
@@ -303,7 +302,7 @@ describe('vx lock (e2e)', () => {
       const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
       expect([run.code, run.err]).toEqual([1, invalid('run')])
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
-      expect([check.code, check.err]).toEqual([1, invalid('lock')])
+      expect([check.code, check.err]).toEqual([1, invalid('lock --check')])
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
       expect(await Bun.file(file).text()).toBe(ours)
       expect((await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })).code).toBe(0)

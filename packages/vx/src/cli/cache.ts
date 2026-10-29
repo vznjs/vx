@@ -1,10 +1,11 @@
-import { existsSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { Cache, vxCacheEntries } from '../cache/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import {
   errorCode,
+  isUserError,
   nearest,
   parseDuration,
   parseSize,
@@ -78,6 +79,16 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
         'VX_E_USAGE',
       )
     default:
+      // `vx cache --older-than 30d` dropped the verb, not misspelled it:
+      // name the clean command those flags make, when they parse as one.
+      if (sub.startsWith('-') && parsePruneArgs(args).error === undefined) {
+        return refuse(
+          'cache',
+          args,
+          `missing subcommand before ${sub}. Did you mean \`vx cache clean ${args.join(' ')}\`?${seeHelp('cache')}`,
+          'VX_E_USAGE',
+        )
+      }
       return refuse(
         'cache',
         args,
@@ -308,17 +319,27 @@ async function clear(
   storeRoot: string | null,
   parsed: PruneArgs,
 ): Promise<number> {
-  // The store the index recorded wins over today's (a changed HOME), as a
-  // run reads it; a directory with no index is not a vx cache to delete.
+  // The store the index recorded and today's (a changed HOME, an origin
+  // added) both go; a directory with no index is not a vx cache to delete.
   const targets: string[] = []
   if (existsSync(path.join(dir, 'cache.db'))) {
-    const cache = new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
-    const store = cache.storeDir
-    cache.close()
+    // An index SQLite cannot read is what its own refusal sends here to
+    // clear: today's store stands in for the one it recorded.
+    let store: string | undefined = storeRoot ?? undefined
+    try {
+      const cache = new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
+      store = cache.storeDir
+      cache.close()
+    } catch (err) {
+      if (!isUserError(err)) throw err
+    }
     targets.push(dir)
     // The index is a file in the checkout (committed, or restored from a CI
     // cache): the store it names is deleted only when it is one.
     if (store !== undefined && isStore(store)) targets.push(store)
+    // Today's store too: the next run reads it, whichever store the index
+    // last recorded (a moved HOME, an origin added).
+    if (storeRoot !== null) targets.push(storeRoot)
   } else if (storeRoot !== null) targets.push(storeRoot)
   if (parsed.global === true) {
     const vxHome = path.join(process.env['HOME'] || homedir(), '.vx')
@@ -341,9 +362,17 @@ async function clear(
   const dry = parsed.dryRun === true
   // `.vx/cache` and the stores are vx's own; any other directory is the
   // user's, cleared entry by entry and removed only if that empties it.
-  const named = path.resolve(dir) === path.join(dotVx, 'cache') ? undefined : path.resolve(dir)
+  // A `.vx/cache` linked to a volume (a CI cache mount) is emptied through
+  // the link: removing the link alone left the cache where it points.
+  const own = path.join(dotVx, 'cache')
+  const named = path.resolve(dir) === own ? undefined : path.resolve(dir)
+  const linked = named === undefined && existsSync(own) && lstatSync(own).isSymbolicLink()
   const entries = (t: string): string[] =>
-    t === named ? vxCacheEntries(t).map((e) => path.join(t, e)) : [t]
+    t === named
+      ? vxCacheEntries(t).map((e) => path.join(t, e))
+      : linked && t === own
+        ? readdirSync(t).map((e) => path.join(t, e))
+        : [t]
   const bytes = doomed.reduce((n, t) => n + entries(t).reduce((m, e) => m + treeBytes(e), 0), 0)
   if (!dry && doomed.length > 0) {
     // A clear beside a run deletes what the run is restoring or saving; it

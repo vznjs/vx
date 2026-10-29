@@ -488,18 +488,27 @@ function realDirOf(file: string): string {
  * configs compose) changed what a run evaluates and no watcher saw it
  * (item 949). A file that cannot be read ends its branch; an import that
  * cannot be resolved is still listed, by the names it would have.
+ * `configSource` is the config's, when the caller has read it; `read` reads the
+ * rest, for a caller that keeps what was read.
  */
-export async function configImports(configPath: string): Promise<string[]> {
+export async function configImports(
+  configPath: string,
+  configSource?: string,
+  read: (file: string) => Promise<string> = (file) => Bun.file(file).text(),
+): Promise<string[]> {
   const seen = new Set<string>([configPath])
   const out: string[] = []
   const queue = [configPath]
+  let given = configSource
   while (queue.length > 0) {
     const file = queue.shift()!
     let source: string
     try {
-      source = await Bun.file(file).text()
+      source = given ?? (await read(file))
     } catch {
       continue
+    } finally {
+      given = undefined
     }
     let specs: string[]
     try {

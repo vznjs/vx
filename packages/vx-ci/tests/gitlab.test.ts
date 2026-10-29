@@ -18,6 +18,8 @@ const GITLAB_KEYS = [
   'CI_MERGE_REQUEST_SOURCE_PROJECT_PATH',
   'CI_MERGE_REQUEST_DIFF_BASE_SHA',
   'CI_MERGE_REQUEST_TARGET_BRANCH_NAME',
+  'CI_EXTERNAL_PULL_REQUEST_SOURCE_BRANCH_NAME',
+  'CI_EXTERNAL_PULL_REQUEST_TARGET_BRANCH_NAME',
 ]
 
 async function branchOf(
@@ -88,6 +90,23 @@ it("a merge request names its source branch, a fork's in the fork, and its diff 
   ).toEqual({
     scope: 'eve/app:feat-x',
     base: 'b4se',
+    refs: ['refs/heads/feat-x', 'refs/heads/release', 'refs/heads/main'],
+  })
+})
+
+// A GitHub pull request mirrored to GitLab runs as an external pull
+// request pipeline: no CI_MERGE_REQUEST_* variables, and the branch it
+// merges into went unread.
+it('an external pull request reads the branch it merges into', async () => {
+  expect(
+    await branchOf(
+      job('feat-x', {
+        CI_EXTERNAL_PULL_REQUEST_SOURCE_BRANCH_NAME: 'feat-x',
+        CI_EXTERNAL_PULL_REQUEST_TARGET_BRANCH_NAME: 'release',
+      }),
+    ),
+  ).toEqual({
+    scope: 'acme/web/app:feat-x',
     refs: ['refs/heads/feat-x', 'refs/heads/release', 'refs/heads/main'],
   })
 })

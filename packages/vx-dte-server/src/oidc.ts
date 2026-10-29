@@ -105,7 +105,8 @@ export function parseAllow(list: string): Allowed[] {
       if (r < 0 || !issuer.startsWith('https://') || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
-      return { issuer, repository, workflow }
+      // A token's iss has no trailing slash: one written in ALLOW matched none.
+      return { issuer: issuer.replace(/\/+$/, ''), repository, workflow }
     })
 }
 
@@ -198,12 +199,17 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       const claim = workflowClaimOf(iss)
       const ref = claims[claim]
       if (typeof ref !== 'string') throw new TokenError(`no ${claim} claim`, 403)
-      const workflow = ref.replace(/@.*$/, '')
       const repo = String(claims[repositoryClaimOf(iss)])
-      if (
-        !ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository ?? repo, a.workflow!)))
-      ) {
-        throw new TokenError(`workflow ${workflow} is not in this relay's ALLOW`, 403)
+      // The path is the claim up to an `@` that a ref follows: a file name may hold `@` too.
+      const named = ofRepo.some((a) => {
+        const p = `${workflowPath(iss, a.repository ?? repo, a.workflow!)}@`
+        return same(ref.slice(0, p.length), p)
+      })
+      if (!named) {
+        throw new TokenError(
+          `workflow ${ref.replace(/@.*$/, '')} is not in this relay's ALLOW`,
+          403,
+        )
       }
     }
     const run = (opts.runClaims?.[iss] ?? runClaimsOf(iss)).map((c) => {
@@ -230,7 +236,8 @@ function refusal(err: unknown, iss: string): TokenError {
   if (err instanceof errors.JWTClaimValidationFailed) {
     if (err.claim === 'aud') return new TokenError('wrong audience', 401)
     if (err.claim === 'nbf') return new TokenError('not yet valid', 401)
-    if (err.claim === 'exp') return new TokenError('expired', 401)
+    if (err.claim === 'exp')
+      return new TokenError(err.reason === 'missing' ? 'no exp claim' : 'expired', 401)
   }
   return new TokenError('not a JWT', 401)
 }

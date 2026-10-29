@@ -1270,6 +1270,76 @@ describe('runGraph restore-tier (local short-circuit)', () => {
       expect(finished.indexOf('web#e2e')).toBeGreaterThan(finished.indexOf('api#dev'))
     })
 
+    // A group between the server and its hits (`env: { dependsOn: ['dev'] }`)
+    // was a dependant outside the tier: a warm `vx run e2e` booted the server.
+    const grouped = () =>
+      nodes(
+        node('db#migrate'),
+        server('api#dev', ['db#migrate']),
+        { ...node('web#env', ['api#dev']), config: {}, requested: false },
+        { ...node('web#e2e', ['web#env']), requested: false },
+        { ...node('web#smoke', ['web#env']), requested: false },
+        node('web#ci', ['web#e2e', 'web#smoke']),
+      )
+
+    it('is never started behind a group only hits depend on', async () => {
+      const calls: string[] = []
+      const done: string[] = []
+      const out = await runGraph({
+        nodes: grouped(),
+        concurrency: 4,
+        restoreTier: tier,
+        execute: async (n) => {
+          calls.push(n.id)
+          if (n.id === 'db#migrate') await new Promise((r) => setTimeout(r, 30))
+          done.push(n.id)
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(calls.sort()).toEqual(['db#migrate', 'web#ci', 'web#e2e', 'web#smoke'])
+      expect([...out.keys()].sort()).toEqual(['db#migrate', 'web#ci', 'web#e2e', 'web#smoke'])
+      expect(done.indexOf('web#ci')).toBeGreaterThan(done.indexOf('db#migrate'))
+    })
+
+    it('starts behind a group when a hit above it is demoted', async () => {
+      const calls: string[] = []
+      const finished: string[] = []
+      let demote = true
+      const out = await runGraph({
+        nodes: grouped(),
+        concurrency: 4,
+        restoreTier: tier,
+        execute: async (n) => {
+          calls.push(n.id)
+          if (n.id === 'web#e2e' && demote) {
+            await new Promise((r) => setTimeout(r, 20))
+            demote = false
+            throw new RestoreDemoted(n.id)
+          }
+          finished.push(n.id)
+          return n.id === 'web#smoke' ? hit(n) : success(n)
+        },
+      })
+      expect(out.get('api#dev')?.status).toBe('success')
+      expect(out.get('web#env')?.status).toBe('success')
+      expect(out.get('web#e2e')?.status).toBe('success')
+      expect(finished.indexOf('web#e2e')).toBeGreaterThan(finished.indexOf('api#dev'))
+    })
+
+    it('starts behind a group a task outside the tier depends on (control)', async () => {
+      const calls: string[] = []
+      await runGraph({
+        nodes: grouped(),
+        concurrency: 4,
+        restoreTier: new Set(['web#e2e']),
+        execute: async (n) => {
+          calls.push(n.id)
+          return n.id === 'web#e2e' ? hit(n) : success(n)
+        },
+      })
+      expect(calls).toContain('api#dev')
+    })
+
     it('is skipped as before when its own dependency failed', async () => {
       const out = await runGraph({
         nodes: graph(),
@@ -1280,6 +1350,31 @@ describe('runGraph restore-tier (local short-circuit)', () => {
       expect(out.get('api#dev')?.status).toBe('skipped')
       expect(out.get('web#ci')?.status).toBe('skipped')
     })
+  })
+
+  // The stop reached the scheduler only through a task's completion, and a
+  // held server waiting on the remote has none: Ctrl-C waited for the
+  // remote's answer, however long its timeout.
+  it('a stop while a held server waits on the remote ends the run at once', async () => {
+    const controller = new AbortController()
+    const out = await runGraph({
+      nodes: nodes(
+        {
+          ...node('api#dev'),
+          config: { exec: { command: 'serve', persistent: {} } },
+          requested: false,
+        },
+        { ...node('web#e2e', ['api#dev']), requested: false },
+      ),
+      concurrency: 2,
+      restoreTier: new Set(),
+      heldServers: new Map([['api#dev', new Promise<readonly string[]>(() => {})]]),
+      signal: controller.signal,
+      execute: async (n) => success(n),
+      reprioritize: () => queueMicrotask(() => controller.abort()),
+    })
+    expect(out.get('api#dev')?.status).toBe('aborted')
+    expect(out.get('web#e2e')?.status).toBe('aborted')
   })
 })
 
