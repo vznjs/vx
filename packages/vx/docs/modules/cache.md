@@ -673,6 +673,9 @@ Reads via `get()` are non-blocking thanks to WAL.
   clean holds a glob root's link and a recorded row to as well).
   A path holding a backslash is resolved link by link (`realOf`): Bun's
   `realpath` answers ENOENT for any such path.
+  A directory where an entry holds a file (one `dist/**` covers and the
+  clean, which takes files only, left) is refused as it is staged, with
+  `EISDIR`: its rename would fail after others landed.
   On any throw, nothing was renamed into place.
 
 `get(hash)`:

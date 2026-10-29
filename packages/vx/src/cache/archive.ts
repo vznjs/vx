@@ -1459,8 +1459,15 @@ class Extractor {
     // file costs ~0.4 ms on ext4 (auto_da_alloc), and a hit that changed
     // one of 2,000 outputs paid it 2,000 times. Bytes, not a stat stamp: a
     // reproducible build gives every output one mtime (item 886).
+    const st = created === undefined ? lstatSync(target, { throwIfNoEntry: false }) : undefined
+    // A directory there fails its rename at commit, after the renames
+    // before it landed: refused now, no output is replaced.
+    if (st?.isDirectory() === true)
+      throw Object.assign(
+        new Error(`EISDIR: illegal operation on a directory, rename '${target}'`),
+        { code: 'EISDIR', path: target },
+      )
     if (body instanceof Uint8Array && created === undefined) {
-      const st = lstatSync(target, { throwIfNoEntry: false })
       if (
         st !== undefined &&
         st.isFile() &&
