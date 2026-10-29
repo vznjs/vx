@@ -78,14 +78,13 @@ function parseBerry(text: string): Lockfile {
     if (keys === '__metadata') continue
     const e = record(raw) ?? {}
     const resolution = typeof e['resolution'] === 'string' ? e['resolution'] : keys
-    // Every field of the entry but the dependencies it links, so a field
-    // this parser has not heard of moves what reaches the entry: reading
-    // the resolution and checksum alone dropped the root workspace's
-    // `dependenciesMeta` (`built`, `unplugged`), which governs the whole
-    // install (item 933).
-    const material = Object.fromEntries(
-      Object.entries(e).filter(([k]) => k !== 'dependencies' && k !== 'peerDependencies'),
-    )
+    // Every field of the entry, so a field this parser has not heard of
+    // moves what reaches the entry: reading the resolution and checksum
+    // alone dropped the root workspace's `dependenciesMeta` (`built`,
+    // `unplugged`), which governs the whole install (item 933). Its
+    // dependency lists too: the edges say where each lands, not under
+    // which name, and two aliases swapping targets kept the key.
+    const material = e
     entries.set(resolution, {
       name: resolution.slice(0, resolution.indexOf('@', 1)),
       version: typeof e['version'] === 'string' ? e['version'] : '',
