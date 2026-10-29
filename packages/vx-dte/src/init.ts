@@ -213,10 +213,12 @@ const RUNNERS: Record<Platform, string> = {
 export function githubInit(options: GithubOptions, setup: DteSetup): DteInit {
   const workflow = options.workflow ?? 'vx-worker.yml'
   const runners = Object.fromEntries(
-    setup.sizes.map((s) => [
-      s.name,
-      options.runsOn?.[s.name] ?? RUNNERS[s.platform ?? 'linux-x64'],
-    ]),
+    setup.sizes.map((s) => {
+      const label: unknown = options.runsOn?.[s.name]
+      if (label !== undefined && (typeof label !== 'string' || label === ''))
+        throw new UserError(`vx dte init: github() runsOn.${s.name} is a runner label`)
+      return [s.name, label ?? RUNNERS[s.platform ?? 'linux-x64']]
+    }),
   )
   // A workspace in a subdirectory: CI files live at the repository's root,
   // and their commands run in the workspace.

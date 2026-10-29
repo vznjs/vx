@@ -129,6 +129,15 @@ it('runs vx with Bun in a Yarn workspace', async () => {
   expect(files['.gitlab-ci.yml']).not.toContain('yarn vx')
 })
 
+// An empty or non-string label was written into runs-on, a workflow GitHub refuses.
+it('github({ runsOn }) refuses a label that is not one, as gitlab({ tags }) does', async () => {
+  await writeFile(path.join(root, 'bun.lock'), '')
+  for (const label of ['', 5])
+    await expect(
+      init({ workers: sizes, adapter: github({ runsOn: { small: label as string } }) }),
+    ).rejects.toThrow('vx dte init: github() runsOn.small is a runner label')
+})
+
 // A `: ` in a plain scalar made GitHub refuse the workflow (2026-10-25).
 it('writes workflows that parse as YAML', async () => {
   await writeFile(path.join(root, 'bun.lock'), '')
