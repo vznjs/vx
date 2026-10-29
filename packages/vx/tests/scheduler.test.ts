@@ -78,6 +78,36 @@ describe('runGraph', () => {
     expect(order.indexOf('end-a#build')).toBeLessThan(order.indexOf('start-b#build'))
   })
 
+  // vercel/turborepo#5770: two roots over one shared leaf, one branch
+  // held until the other finishes. Go's walker could not walk it. The
+  // held branch is inserted first, so a walk that waits on it hangs.
+  it('walks a graph with two roots over a shared leaf, a branch held behind the other', async () => {
+    const order: string[] = []
+    let releaseE!: () => void
+    const eHeld = new Promise<void>((r) => (releaseE = r))
+    const out = await runGraph({
+      nodes: nodes(
+        node('c#t'),
+        node('e#t', ['c#t']),
+        node('b#t', ['c#t']),
+        node('d#t', ['e#t']),
+        node('a#t', ['b#t']),
+      ),
+      concurrency: 4,
+      execute: async (n) => {
+        if (n.id === 'e#t') await eHeld
+        order.push(n.id)
+        if (n.id === 'b#t') releaseE()
+        return success(n)
+      },
+    })
+    expect([...out.values()].map((o) => o.status)).toEqual(Array(5).fill('success'))
+    expect(order[0]).toBe('c#t')
+    expect(order.indexOf('b#t')).toBeLessThan(order.indexOf('e#t'))
+    expect(order.indexOf('b#t')).toBeLessThan(order.indexOf('a#t'))
+    expect(order.indexOf('e#t')).toBeLessThan(order.indexOf('d#t'))
+  })
+
   it('respects the concurrency cap', async () => {
     let active = 0
     let peak = 0
