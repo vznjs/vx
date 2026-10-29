@@ -385,12 +385,24 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
     // is a node of its own, so its version still counts.
     edges[from]!.push(node(key, `${key}\0${lock.resolutions.get(packageKey(key)) ?? ''}\0`))
   }
+  // A node folds the names it asks for as well as where they land: by
+  // its edges alone, two aliases swapping targets (`foo: npm:x`, `bar:
+  // npm:y` → the reverse) reached the same packages and kept the key,
+  // while `require('foo')` loads another package.
+  const named = (from: number, deps: ReadonlyMap<string, string>): void => {
+    material[from] += `\nnames\0${[...deps]
+      .map(([n, v]) => `${n}\0${v}`)
+      .sort()
+      .join('\0')}`
+  }
   for (const [dir, deps] of lock.importers) {
     const from = index.get(importerNode(dir))!
+    named(from, deps)
     for (const [name, version] of deps) link(from, dir, name, version)
   }
   for (const [key, deps] of lock.snapshots) {
     const from = index.get(key)!
+    named(from, deps)
     for (const [name, version] of deps) link(from, '.', name, version)
   }
   return { index, material, edges }
