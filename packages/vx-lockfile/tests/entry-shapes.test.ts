@@ -66,6 +66,18 @@ describe('npm', () => {
     expect(moved(npm as never, lock('1.0.0'), lock('1.0.1'))).toEqual(['packages/a'])
   })
 
+  it('workspaces listed by path, with no `*`, are workspaces as a glob names them', () => {
+    const lock = (v: string) =>
+      npmLock(
+        { 'node_modules/x': { version: v, integrity: `sha512-${v}` } },
+        { x: '^1' },
+      ).replace('"workspaces":["packages/*"]', '"workspaces":["packages/a","packages/b"]')
+    expect(lock('1.0.0')).toContain('"packages/a","packages/b"')
+    const digests = npm.importerDigests(npm.parseLockfile(lock('1.0.0')))
+    expect([...digests.keys()].sort()).toEqual(['.', 'packages/a', 'packages/b'])
+    expect(moved(npm as never, lock('1.0.0'), lock('1.0.1'))).toEqual(['packages/a'])
+  })
+
   it('an entry with no version or resolution parses, and gaining one moves its reacher', () => {
     const bare = npmLock({ 'node_modules/x': {} }, { x: '*' })
     const full = npmLock(
