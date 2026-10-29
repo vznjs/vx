@@ -81,3 +81,17 @@ it('a package.json script runs as a task; a declared task wins', async () => {
   expect(await Bun.file(path.join(dir, 'hello.txt')).text()).toBe('hi\n')
   expect(await Bun.file(path.join(dir, 'build.txt')).text()).toBe('declared\n')
 }, 20_000)
+
+// A blank script, or one no task can be named after (a `#` comment key),
+// was handed to core, which refused the project: every run of it failed.
+it('leaves out a blank script and one no task can be named after', async () => {
+  const dir = await pkg('a', `export default { tasks: {} }`, {
+    '# notes': 'see README',
+    test: '',
+    hello: 'echo hi > hello.txt',
+  })
+  await workspace('scriptTasks()')
+  const r = await run({ cwd: root, tasks: ['hello'], log: log(), handleSignals: false })
+  expect(r.outcomes.map((o) => `${o.node.id} ${o.status}`)).toEqual(['a#hello success'])
+  expect(await Bun.file(path.join(dir, 'hello.txt')).text()).toBe('hi\n')
+}, 20_000)

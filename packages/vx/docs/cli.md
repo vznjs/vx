@@ -256,7 +256,8 @@ Filters follow both: `vx run test --filter '...app'` runs `e2e#test`
 even though no plugin links `e2e` to `app`. There is no
 `implicitDependencies` field: declare the dependency on the task.
 
-A filter that names no project (`...`, a bare `!`) is refused. One
+A filter that names no project (`...`, a bare `!`) is refused, and so
+is a path that climbs out of the root (`../`, `{..}`). One
 whose pattern matched but selected nothing says what it matched:
 `no projects selected: filter "...^core" matched core, and no
 project depends on it`.
