@@ -427,6 +427,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   /** What stopped a cycle that waited on a server's readiness; the loop runs it next. */
   let interruptedBy: string | undefined
   let interruptTimer: ReturnType<typeof setTimeout> | null = null
+  /** The server's own writes among the paths that stopped the last cycle waiting on readiness. */
+  let stoppedLast = new Set<string>()
   // Judged on settled state one window later, as an idle edit is, and only
   // if the cycle still waits on readiness alone by then.
   const interruptIfWaiting = (): void => {
@@ -438,6 +440,18 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       if (c === undefined || c.interrupted || !c.waitsOnReadiness() || stop.aborted) return
       const label = changes.judge()
       if (label === undefined) return
+      // What a server writes in its project as it boots (a timestamped
+      // config bundle, a route tree) is an edit: it stopped the cycle, the
+      // next server wrote it again, and the loop restarted it for good,
+      // never ready. A path that stopped the last such cycle, untracked
+      // and in a waiting server's project, is that server's own write.
+      const dirs = c.serverDirs()
+      const own = changes.changed.filter(
+        (p) => !changes.trackedAtArm(p) && dirs.some((d) => p.startsWith(d + path.sep)),
+      )
+      const again = own.length === changes.changed.length && own.every((p) => stoppedLast.has(p))
+      stoppedLast = new Set(own)
+      if (again) return
       interruptedBy = label
       c.interrupt()
     }, DEBOUNCE_MS)
@@ -563,6 +577,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         // after the run, under the label of what actually arrived.
         current = undefined
         if (stop.aborted) break
+        if (interruptedBy === undefined) stoppedLast = new Set()
         if (interruptedBy !== undefined) {
           label = interruptedBy
           interruptedBy = undefined

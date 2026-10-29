@@ -451,6 +451,8 @@ describe('GitHub OIDC', () => {
       fetch: async (req) => {
         asked++
         const status = answers.shift() ?? 403
+        // GitHub says why it refuses; the warning carries its words.
+        if (status === 403) return Response.json({ message: 'no id-token permission' }, { status })
         if (status !== 200) return new Response('busy', { status })
         const audience = new URL(req.url).searchParams.get('audience')!
         return Response.json({ value: await iss.sign(BRANCH_JOB, audience) })
@@ -476,7 +478,7 @@ describe('GitHub OIDC', () => {
         async () => {},
       )
       await expect(refused.put('b2', new Blob(['y']), { durationMs: 1 })).rejects.toThrow(
-        "GitHub's OIDC endpoint: HTTP 403; remote cache off for this run",
+        "GitHub's OIDC endpoint: HTTP 403: no id-token permission; remote cache off for this run",
       )
       expect(asked).toBe(4)
     } finally {
@@ -609,21 +611,25 @@ describe('config', () => {
         h.get('vx-issuer'),
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', await hashPart(GITHUB), await hashPart(REPO)])
-    // A name the wire sets, in any case, joined its value ("x, application/json"):
+    // Refused at the call, with no url named: in the hook a laptop passed
+    // what failed the first CI run. A value is never printed. A name the
+    // wire sets, in any case, joined its value ("x, application/json"):
     // every request was a 400.
-    for (const bad of [
-      { authorization: 'x' },
-      { 'a b': 'x' },
-      { a: 'x\ny' },
-      { 'Content-Type': 'text/plain' },
-      { 'Content-Length': '1' },
-      { 'VX-Issuer': 'x' },
-      { 'vx-repository': 'x' },
-      { 'Vx-Scope': 'x' },
+    for (const name of [
+      'authorization',
+      'a b',
+      'Content-Type',
+      'Content-Length',
+      'VX-Issuer',
+      'vx-repository',
+      'Vx-Scope',
     ])
-      expect(() =>
-        resolveVxCacheConfig({ ...NAMED, url: 'https://c.example', headers: bad }, {}),
-      ).toThrow('vxCache(): header')
+      expect(() => vxCache({ ...NAMED, headers: { [name]: 'x' } })).toThrow(
+        `vxCache() option "headers" cannot set "${name}"`,
+      )
+    expect(() => vxCache({ ...NAMED, headers: { a: 'x\ny' } })).toThrow(
+      'vxCache() option "headers.a" must be one line of text (its value is not printed)',
+    )
   })
 
   it('reads the URL over VX_CACHE_URL, and a CI token from GitHub, GitLab or a lending run', () => {
@@ -658,6 +664,24 @@ describe('config', () => {
       [{ issuer: GITHUB, repository: 'app' }, 'vxCache(): repository must be org/name, got app'],
     ] as const)
       expect(() => vxCache(options as never)).toThrow(said)
+  })
+
+  // A NaN, zero or negative deadline armed its abort at once: every request
+  // failed "no answer within NaN ms" and the cache read as a miss each time.
+  it('refuses a deadline it cannot wait on, naming the value', () => {
+    for (const [options, said] of [
+      [
+        { timeoutMs: Number.NaN },
+        'vxCache() option "timeoutMs" must be a positive number of ms, got NaN',
+      ],
+      [{ timeoutMs: 0 }, 'vxCache() option "timeoutMs" must be a positive number of ms, got 0'],
+      [
+        { uploadTimeoutMs: -1 },
+        'vxCache() option "uploadTimeoutMs" must be a positive number of ms, got -1',
+      ],
+    ] as const)
+      expect(() => vxCache({ ...NAMED, ...options })).toThrow(said)
+    expect(() => vxCache({ ...NAMED, timeoutMs: 1000, uploadTimeoutMs: 2000 })).not.toThrow()
   })
 
   it('reads with no token from a public server, sends none, and uploads nothing', async () => {
