@@ -304,9 +304,9 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                       and never writes the lock: with none it fails.',
     '  vx lock --check      Audit the lock: re-evaluate every config here and compare',
     '                       it with the frozen object, find a config added or gone, and',
-    '                       check the graph rules. Exits 1 on drift (e.g. configs that read env',
-    '                       vars). Run it before the run in CI. With --format json it prints',
-    '                       {upToDate, audited, notAudited, problems}.',
+    '                       check the graph rules. Exits 1 on drift (e.g. configs that',
+    '                       read env vars). Run it before the run in CI. With --format json',
+    '                       it prints {upToDate, audited, notAudited, problems}.',
     '',
     ...(pluginCommands.length > 0 ? ['Plugin commands:', ...pluginCommands, ''] : []),
   ].join('\n')
