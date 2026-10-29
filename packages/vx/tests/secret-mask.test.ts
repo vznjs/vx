@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { run as runFromLock } from '../src/orchestrator/index.js'
+import { decodeOutputLog } from '../src/orchestrator/output-log.js'
 import { lock, run } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/report/logger.js'
 import { MASKED, maskedStreams, secretMask } from '../src/util/index.js'
@@ -285,16 +286,16 @@ describe('a value split by a pause is masked in every stored copy', () => {
     else process.env['API_TOKEN'] = saved
     await rm(root, { recursive: true, force: true })
   })
-  const split = (exit: number): string =>
-    `printf %s "$API_TOKEN" | head -c 7; sleep 0.2; printf "%s\\n" "$API_TOKEN" | tail -c +8; echo done > out.txt; exit ${exit}`
-  const project = (exit: number): Promise<string> =>
+  const split = (exit: number, between = ''): string =>
+    `printf %s "$API_TOKEN" | head -c 7; ${between}sleep 0.2; printf "%s\\n" "$API_TOKEN" | tail -c +8; echo done > out.txt; exit ${exit}`
+  const project = (exit: number, between?: string): Promise<string> =>
     addProject(root, 'p', {
       files: { 'in.txt': 'x' },
       config: `
         export default {
           tasks: {
             t: {
-              exec: { command: ${JSON.stringify(split(exit))}, env: { passThrough: ['API_TOKEN'] } },
+              exec: { command: ${JSON.stringify(split(exit, between))}, env: { passThrough: ['API_TOKEN'] } },
               inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out.txt'] } },
             },
           },
@@ -302,8 +303,8 @@ describe('a value split by a pause is masked in every stored copy', () => {
       `,
     })
   const quiet = defaultLogger({ enabled: false }, { mode: 'focused' }, { write: () => true })
-  const runOnce = async (exit: number) => {
-    await project(exit)
+  const runOnce = async (exit: number, between?: string) => {
+    await project(exit, between)
     delete process.env['API_TOKEN']
     await lock(root)
     process.env['API_TOKEN'] = SECRET
@@ -323,6 +324,26 @@ describe('a value split by a pause is masked in every stored copy', () => {
       ok: true,
       leaked: false,
       masked: true,
+    })
+  })
+
+  // A hit replays each stream to its own descriptor, so `vx run t > log`
+  // wrote stdout's two pieces into one file whole: a stderr write in the
+  // pause split the stream's text into two runs, each masked alone.
+  it("the entry's stored stdout, a stderr write in the pause", async () => {
+    const r = await runOnce(0, 'sleep 0.1; echo working >&2; ')
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
+    const stored = db.query<{ stdout: string }, []>('SELECT stdout FROM entry_stdout').get()!.stdout
+    db.close()
+    const stream = (err: boolean): string =>
+      decodeOutputLog(stored)
+        .filter((c) => c.err === err)
+        .map((c) => c.text)
+        .join('')
+    expect({ ok: r.ok, stdout: stream(false), stderr: stream(true) }).toEqual({
+      ok: true,
+      stdout: `${MASKED}\n`,
+      stderr: 'working\n',
     })
   })
 

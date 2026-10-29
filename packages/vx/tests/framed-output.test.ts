@@ -4,6 +4,7 @@ import path from 'node:path'
 import {
   formatFrameClose,
   formatFrameOpen,
+  formatKeptLines,
   formatPersistentList,
   formatPersistentTailBlock,
   formatTaskBlock,
@@ -227,7 +228,22 @@ describe('the compact one-liners', () => {
         ...outcome('@vzn/vx#fmt', 'success', { durationMs: 99_999_999 }),
         node: uncached,
       }),
-    ).toBe(' ⏺\uFE0E 100000.00s success no-cache @vzn/vx#fmt')
+    ).toBe(' ⏺\uFE0E 1666m 40s success no-cache @vzn/vx#fmt')
+  })
+
+  // `1000.00s` is one wider than the column: past 16m 40s a running row's
+  // ticking time pushed its status and id right, and finished rows went
+  // out of line with their neighbours.
+  it('a duration past 999.99s keeps the grid, in minutes', () => {
+    const uncached = node('@vzn/vx#fmt', 'oxfmt .')
+    const row = (ms: number) =>
+      formatTaskExecutedLine(uncached, {
+        ...outcome('@vzn/vx#fmt', 'success', { durationMs: ms }),
+        node: uncached,
+      })
+    expect(row(999_990)).toBe(' ⏺\uFE0E 999.99s success no-cache @vzn/vx#fmt')
+    expect(row(1_000_000)).toBe(' ⏺\uFE0E 16m 40s success no-cache @vzn/vx#fmt')
+    expect(row(5_999_000)).toBe(' ⏺\uFE0E 99m 59s success no-cache @vzn/vx#fmt')
   })
 
   it('with colour on the cache word is dim, and a blank cell emits nothing', () => {
@@ -266,6 +282,27 @@ describe('formatTaskBlock', () => {
         'Finished in 327ms.\n' +
         '\n' +
         '└─ @vzn/vx#lint ── (327ms) success\n',
+    )
+  })
+
+  // A task killed mid-write, or one that never resets, left its colour on:
+  // the frame's close and the summary below it took the task's background.
+  it("a colour the task left open ends with its output, not on vx's lines", () => {
+    const out = formatTaskBlock(node('a#build', 'x'), outcome('a#build', 'failed'), {
+      output: [{ text: '\x1b[41mERROR\n', err: false }],
+    })
+    expect(out).toContain('\x1b[41mERROR\x1b[0m\n\n└─ a#build')
+    const plain = formatTaskBlock(node('a#build', 'x'), outcome('a#build', 'failed'), {
+      output: [{ text: 'ERROR\n', err: false }],
+    })
+    expect(plain).not.toContain('\x1b')
+    const srv = persistentNode('a#dev', 'x')
+    const tail = formatPersistentTailBlock(srv, outcome('a#dev', 'success'), {
+      stdout: '\x1b[41mERROR\n',
+    })
+    expect(tail).toContain('\x1b[41mERROR\x1b[0m\n')
+    expect(formatKeptLines(srv, '\x1b[41mERROR\nok', { enabled: false })).toBe(
+      'a#dev │ \x1b[41mERROR\x1b[0m\na#dev │ ok\n',
     )
   })
 

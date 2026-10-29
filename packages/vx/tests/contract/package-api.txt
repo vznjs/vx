@@ -479,6 +479,8 @@ export interface AffectedChanges {
   whole: ReadonlySet<string>
   wholeBy?: ReadonlyMap<string, string>
   nested?: readonly string[]
+  dirLinks?: ReadonlySet<string>
+  dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
 }
 == type AffectedReason (src/orchestrator/affected-tasks.ts)
 export interface AffectedReason {
@@ -1802,6 +1804,7 @@ export interface SandboxViolation {
   target?: string
   hint?: true
   path?: string
+  via?: string
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 == type SaveArgs (src/cache/layer.ts)

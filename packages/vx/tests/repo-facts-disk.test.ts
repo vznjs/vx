@@ -101,6 +101,31 @@ describe('repoFacts', () => {
     expect(facts(wt)).toEqual({ facts: asked(wt), spawned: true })
   })
 
+  it('asks git when core.worktree moves the work tree off the .git directory', async () => {
+    // Read off the disk, the prefix was the path below `.git`'s parent,
+    // `sub/ws/` where git says `ws/`: `status`' paths kept that prefix, so
+    // none was stripped, no dirty path left the trusted set, and an edited
+    // file kept its committed OID.
+    git(tmp, 'init', '-q', 'repo')
+    const root = path.join(tmp, 'repo')
+    git(root, 'config', 'core.worktree', path.join(root, 'sub'))
+    const ws = path.join(root, 'sub', 'ws')
+    await mkdir(ws, { recursive: true })
+    expect(facts(ws)).toEqual({ facts: asked(ws), spawned: true })
+    expect((asked(ws) as { prefix: string }).prefix).toBe('ws/')
+  })
+
+  it('asks git when core.worktree is set in config.worktree', async () => {
+    git(tmp, 'init', '-q', 'repo')
+    const root = path.join(tmp, 'repo')
+    git(root, 'config', 'extensions.worktreeConfig', 'true')
+    git(root, 'config', '--worktree', 'core.worktree', path.join(root, 'sub'))
+    const ws = path.join(root, 'sub', 'ws')
+    await mkdir(ws, { recursive: true })
+    expect(facts(ws)).toEqual({ facts: asked(ws), spawned: true })
+    expect((asked(ws) as { prefix: string }).prefix).toBe('ws/')
+  })
+
   it('asks git when GIT_DIR moves the repository', () => {
     git(tmp, 'init', '-q', 'repo')
     const root = path.join(tmp, 'repo')

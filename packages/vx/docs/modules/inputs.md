@@ -31,6 +31,7 @@ export function declaresInput(
   task: TaskConfig,
   projectRel: string | null,
   workspaceRel: string | null,
+  dirLink?: boolean, // the path is a link to a directory: a glob that may reach below it counts
 ): boolean
 
 /** May `inputs.workspaceFiles` name a file under `dir` (workspace-relative)?
@@ -95,6 +96,7 @@ export interface InputListing {
   workspaceRoot: string // where git's location variables point; a nested repo's root is listed without them
   listed: readonly string[] // root-relative, as git listed them
   isInput: (rel: string) => boolean // the declaration's verdict
+  linked: (rel: string) => boolean // a link to a directory here is an input
   nested: (rel: string) => boolean // inside a nested project
   prefixes: readonly string[] // directories a positive entry reaches, '' for the root
   literals: readonly string[]
@@ -258,7 +260,7 @@ other walker: a project outside a git work tree is a `UserError`
 2. **Positive globs** — `inputs.files` strings without `!`.
    The default when `inputs.files` is undefined is `['**/*']`.
    Each is normalized (a leading `./`, inner `./` segments, doubled
-   slashes and a trailing slash) and checked against the candidate
+   slashes, a trailing slash and a trailing `/.`) and checked against the candidate
    set via `Bun.Glob.match`. A literal entry — no glob character —
    means the file or its whole tree: `src/`, `src` and `dist` all
    compile to the path plus `<path>/**` (`asTrees`, defined in
@@ -320,7 +322,8 @@ directory a positive entry reaches, reads one whose ctime moved since
 `listedAt` (less the racy window), and asks `git ls-files` only when a
 name there matches the declaration and the key lacks it, or names an
 unlisted directory; a literal absent from the key that exists now is
-asked too. Blind to a file added inside a directory that held no
+asked too, and a new link to a directory a glob may match below
+(`InputListing.linked`). Blind to a file added inside a directory that held no
 listed file and was not itself created since the listing.
 
 ## Env resolution rules

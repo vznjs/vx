@@ -708,9 +708,6 @@ export function credentialStorePaths(home: string): string[] {
   return [...out]
 }
 
-/** The stores present on this host, learned once per home and XDG pair. */
-let presentStores: { at: string; paths: string[] } | undefined
-
 /**
  * The credential stores to deny, less any that holds the workspace, and
  * punched around the task's write grants: a grant names a store as a read
@@ -723,13 +720,11 @@ async function credentialStores(
   workspaceRoot: string,
   writes: readonly string[],
 ): Promise<string[]> {
-  const home = homedir()
-  const at = `${home}\0${process.env['XDG_CONFIG_HOME']}\0${process.env['XDG_DATA_HOME']}`
-  if (presentStores?.at !== at) {
-    presentStores = { at, paths: credentialStorePaths(home).filter((p) => existsSync(p)) }
-  }
-  const stores = presentStores.paths.filter(
-    (p) => workspaceRoot !== p && !workspaceRoot.startsWith(p + path.sep),
+  // Asked per task, never memoized: an unsandboxed task earlier in the run
+  // (`npm config set` writing a token) makes a store the first sandboxed
+  // task did not see, and a refusal is never decided from a memo.
+  const stores = credentialStorePaths(homedir()).filter(
+    (p) => existsSync(p) && workspaceRoot !== p && !workspaceRoot.startsWith(p + path.sep),
   )
   return (await Promise.all(stores.map((p) => denyAround(toRealPath(p), writes)))).flat()
 }

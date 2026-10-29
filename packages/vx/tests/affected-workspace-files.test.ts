@@ -15,7 +15,7 @@
 // that proves the defect is "the key moved" AND "affected selected nothing",
 // because either half alone is consistent with correct behaviour.
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -302,6 +302,64 @@ describe('--affected sees a workspaceFiles change', () => {
       git(fresh, 'init', '-q')
       // `vendor/*/f.txt` may descend into any repository under `vendor`.
       expect(planned()).toEqual(['fresh#build', 'gen#build'])
+    },
+    TIMEOUT,
+  )
+})
+
+describe('--affected and a directory link below a glob', () => {
+  // A glob's fixed prefix may hold a link to a directory (`src/v ->
+  // ../linked`): git lists the link as one path, which `src/**/*.txt` does
+  // not match, while the key folds what is behind it. The diff names the
+  // link when that content changes, and selection matched it as a file.
+  const planned = (task: string): string[] | string => {
+    const r = vx(root, 'run', task, '--affected=HEAD~1', '--dry=json')
+    if (r.exitCode !== 0) return r.stdout
+    const ids = (JSON.parse(r.json) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
+    return ids.length === 0 ? r.stdout : ids.sort()
+  }
+  const keyed = (files: string, ws = '[]') =>
+    `{ exec: { command: "true" }, inputs: { files: ${files}, workspaceFiles: ${ws} }, cache: { outputs: { files: [] } } }`
+  const editBehindLink = async (): Promise<void> => {
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'link')
+    await write(path.join(root, 'linked/b.txt'), '2')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'edit behind the link')
+  }
+
+  it(
+    'a project link whose content changed selects the task whose glob reaches through it',
+    async () => {
+      // `all` claims the link's path, so the project is not reached whole:
+      // `txt` must be seeded by its own glob.
+      await write(
+        path.join(root, 'pkgs/app/vx.config.mjs'),
+        `export default { tasks: { txt: ${keyed('["src/**/*.txt"]')}, all: ${keyed('["src/**"]')}, md: ${keyed('["src/*.md"]')} } }\n`,
+      )
+      await write(path.join(root, 'linked/b.txt'), '1')
+      await symlink('../../../linked', path.join(root, 'pkgs/app/src/v'))
+      await editBehindLink()
+      expect(planned('txt')).toEqual(['app#txt'])
+      // CONTROL: a glob that cannot reach below the link's depth.
+      expect(planned('md')).toContain('othing affected')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a workspace link whose content changed selects the task whose workspaceFiles reach through it',
+    async () => {
+      await write(
+        path.join(root, 'pkgs/app/vx.config.mjs'),
+        `export default { tasks: { txt: ${keyed('[]', '["shared/**/*.txt"]')}, md: ${keyed('[]', '["shared/*.md"]')} } }\n`,
+      )
+      await write(path.join(root, 'linked/b.txt'), '1')
+      await symlink('../linked', path.join(root, 'shared/v'))
+      await editBehindLink()
+      expect(planned('txt')).toEqual(['app#txt'])
+      // CONTROL: a glob that cannot reach below the link's depth.
+      expect(planned('md')).toContain('othing affected')
     },
     TIMEOUT,
   )

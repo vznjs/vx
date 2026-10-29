@@ -510,6 +510,38 @@ describe('affectedProjects', () => {
     expect(await all()).toEqual(['a', 'b'])
   })
 
+  it('a lock entry that changed selects its project, and a rewrite that changed none selects nothing', async () => {
+    // A run reads each config from the lock, so an entry that moved (a
+    // config evaluated under another env, a preset imported by package
+    // name) moved its project's keys while no other path did: with the
+    // review files off, the lock was the only change, and it was dropped.
+    const lockOf = (command: string) =>
+      JSON.stringify({
+        version: 4,
+        projects: Object.fromEntries(
+          ['a', 'b'].map((n) => [
+            `packages/${n}`,
+            {
+              file: 'vx.config.mjs',
+              config: { tasks: { t: { exec: { command: n === 'a' ? command : 'b' } } } },
+            },
+          ]),
+        ),
+      })
+    const all = () =>
+      affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }).then((s) => [...s].sort())
+    // Control: a lock the base did not have ran nothing there to compare.
+    await Bun.write(path.join(root, LOCKFILE_NAME), lockOf('one'))
+    expect(await all()).toEqual([])
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'lock')
+    // Control: the same entries, written again in another layout.
+    await Bun.write(path.join(root, LOCKFILE_NAME), `${lockOf('one')}\n\n`)
+    expect(await all()).toEqual([])
+    await Bun.write(path.join(root, LOCKFILE_NAME), lockOf('two'))
+    expect(await all()).toEqual(['a'])
+  })
+
   it('a new nested project selects the project it took files from (D-1)', async () => {
     // `a`'s inputs stop at every project below it, so a config that makes
     // `packages/a/sub` a project re-keys `a` while containment maps the

@@ -117,7 +117,8 @@ holds the list to the file.
 - What a hook hands back is checked once, at the seam, and refused by
   plugin and hook: a `cache` / `executor` return missing the
   contract's methods, a `key` return that is not a record of strings
-  or names a part with a NUL (the fold's delimiter, A-57),
+  or names a part with a NUL (the fold's delimiter, A-57), or holds a
+  lone UTF-16 surrogate in a part (the fold's UTF-8 writes each as U+FFFD),
   a `schedule` return that is not a `Map`. A stage's edit is
   re-validated after EACH plugin (the `afterEach` of `applyConfigHooks`,
   `applyProjectHooks` and `applyGraphHooks`, the last over each node's

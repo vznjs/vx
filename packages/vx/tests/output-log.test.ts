@@ -3,7 +3,13 @@
 
 import { describe, expect, it } from 'bun:test'
 import { BoundedCapture, CAPTURE_HEAD_CHARS, droppedOutputLine } from '../src/exec/runner.js'
-import { decodeOutputLog, encodeOutputLog } from '../src/orchestrator/output-log.js'
+import {
+  decodeOutputLog,
+  encodeOutputLog,
+  maskedOutputLog,
+  maskStreams,
+} from '../src/orchestrator/output-log.js'
+import { MASKED, secretMask } from '../src/util/index.js'
 
 const out = (text: string) => ({ text, err: false })
 const err = (text: string) => ({ text, err: true })
@@ -32,6 +38,49 @@ describe('the output log', () => {
   it("keeps the task's own RS, even before e or o", () => {
     const chunks = [out('a\x1ee\x1e'), err('\x1eo'), out('\x1e')]
     expect(decodeOutputLog(encodeOutputLog(chunks))).toEqual(chunks)
+  })
+})
+
+describe('maskStreams', () => {
+  const mask = secretMask([{ API_TOKEN: 'abcdefgh', DB_PASSWORD: 'zyxwvu' }])!
+  const streamOf = (chunks: { text: string; err: boolean }[], e: boolean): string =>
+    chunks
+      .filter((c) => c.err === e)
+      .map((c) => c.text)
+      .join('')
+
+  it('masks a value across runs of its stream where it starts, its rest cut', () => {
+    expect(
+      maskStreams([out('x abc'), err('e1'), out('de'), err('e2'), out('fgh y')], mask),
+    ).toEqual([out(`x ${MASKED}`), err('e1e2'), out(' y')])
+    // One that starts on a run's first character, and two in one run.
+    expect(maskStreams([err('.'), out('abcdefgh zyxwvu.')], mask)).toEqual([
+      err('.'),
+      out(`${MASKED} ${MASKED}.`),
+    ])
+    expect(maskStreams([out('plain'), err('text')], mask)).toEqual([out('plain'), err('text')])
+  })
+
+  // Each stream reads as `mask` reads its whole text, however it was cut.
+  it('equals the mask of each stream joined, for any cut', () => {
+    const pick = (s: string) => s[Math.floor(Math.random() * s.length)]!
+    for (let n = 0; n < 2000; n++) {
+      const chunks = Array.from({ length: 1 + Math.floor(Math.random() * 8) }, () => ({
+        text: Array.from({ length: Math.floor(Math.random() * 6) }, () =>
+          pick('abcdefghzyxwvu '),
+        ).join(''),
+        err: Math.random() < 0.4,
+      }))
+      const got = maskStreams(chunks, mask)
+      for (const e of [false, true]) expect(streamOf(got, e)).toBe(mask.mask(streamOf(chunks, e)))
+    }
+  })
+
+  // A plugin's own run (`taskArtifacts`) stores through maskedOutputLog: a
+  // value split by a write to the other stream is masked there too.
+  it('maskedOutputLog masks a value a write to the other stream split', () => {
+    const stored = decodeOutputLog(maskedOutputLog([out('x abc'), err('e'), out('defgh')], mask))
+    expect(stored).toEqual([out(`x ${MASKED}`), err('e')])
   })
 })
 

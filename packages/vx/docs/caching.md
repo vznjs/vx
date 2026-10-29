@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v50'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v51'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -179,7 +179,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     at 100,000 files). The key stands only for an index written before
     the run began and still in place after its listing, so a `git add`
     between the two cannot pair one index's verdict with the other's
-    entries; any other run checks every blob. A changed index spawns
+    entries; any other run checks every blob. That check's own listing
+    reads the index again: one written since the enumeration's stamp
+    (an add rewrote a resized entry to one whose size fits) trusts no
+    OID, as the enumeration does. A changed index spawns
     `git ls-files -s -v -z --debug` for the recorded sizes, takes each
     blob's size from `blob_sizes` (fixed for its OID), and asks one
     `git cat-file --batch-check` for the ones not yet known (65 ms
@@ -374,7 +377,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     a glob's fixed prefix (`src/**/*.ts` over `src/v -> ../shared`,
     `**/*.ts` over `lib -> ../shared`) is an input the same way whenever
     the glob could match a path under it: its name alone matched no
-    pattern, and an edit behind it was a hit (2026-10-28).
+    pattern, and an edit behind it was a hit (2026-10-28). So is one
+    in a gitignored directory an entry names (`gen/**/*.ts` over
+    `gen/v -> ../shared`), which the walk on disk meets the same way.
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.
@@ -852,7 +857,8 @@ the save the same way, named on the same line: the listing's
 directories a glob reaches are `lstat`ed, one whose ctime moved since
 the listing is read, and a new name the declaration matches (or an
 unlisted directory) is asked of git, which alone knows what is ignored;
-a literal input absent then and present now is asked too. Not seen: a
+a literal input absent then and present now is asked too, and so is
+a new link to a directory a glob may match below. Not seen: a
 file added inside a directory that held no listed file before (only
 ignored ones, or none) and was not itself created mid-run. Cost: one
 `lstat` per input and per reached directory on a miss that saves, a
@@ -1410,8 +1416,11 @@ never a hard link: a later write to a restored output must not reach the
 store). A restore into outputs already on disk, a workspace output or a
 symlink takes the archive extractor, fed the tree packed back into its
 tar. An upload packs the tree into the tar.zst in the upload queue, off
-the save. A hit trusts the tree and checks none of its files: the store
-is vx's own, and a check could not stop a write to it. A tree no row names
+the save. A hit trusts the tree and checks none of its files' bytes: the store
+is vx's own, and a check could not stop a write to it. Each file's size
+is held to its row's, which costs no read: a file cut short at rest (a
+crash after its rename, before its data reached the disk) is a corrupt
+entry: a restore drops it and runs the task, and an upload refuses it. A tree no row names
 is an orphan the sweep reaps; only the archive form is adopted back
 after a `SCHEMA_VERSION` reset, as a tree's stdout lives in its row.
 
@@ -2155,6 +2164,10 @@ breaking footer).
 
 ### History
 
+- **v50 → v51**: stored bytes wrong under a key the change does not move
+  (2026-10-29). An output ending `/.` stored nothing, and a stored stream
+  could keep a secret split across stdout and stderr writes unmasked; a
+  v50 entry for either holds those bytes, so it is never read.
 - **v49 → v50**: stored bytes wrong under a key the change does not move
   (2026-10-29). Two branches each took v49 for one of the two changes
   below: a store written by one lacks the other's (brace alternatives

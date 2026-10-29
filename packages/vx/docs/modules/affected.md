@@ -22,6 +22,7 @@ export interface AffectedArgs {
   workspaceGlobOwners?: (
     changedPaths: readonly string[],
     nested: readonly string[],
+    dirLinks: ReadonlySet<string>, // changed links to a directory: matched as one
   ) => Promise<Iterable<string>>
   /** The fingerprint files a plugin claims and its answer for a change to
    *  one; resolved lazily, only when a diff touches a root file. */
@@ -44,6 +45,8 @@ export interface AffectedChanges {
   whole: ReadonlySet<string> // reached whatever inputs say: lockfile claim, config import, nested repo
   wholeBy?: ReadonlyMap<string, string> // a whole project → the workspace-wide file that made it so
   nested?: readonly string[] // changed nested repositories, workspace-relative: each stands for its files
+  dirLinks?: ReadonlySet<string> // changed paths that are (or were) a link to a directory, workspace-relative
+  dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its dirLinks, project-relative
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
 
@@ -114,7 +117,13 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    nothing, as the refresh did.
 3. Untracked files (`git ls-files --others --exclude-standard`) are
    unioned in — a brand-new source file is a change. `.vx/projects.lock.json` is
-   filtered out, so re-running `vx lock` never selects everything.
+   no project's path: its entries are compared at the base and now (when
+   both have a lock that parses), and a project whose entry changed is
+   selected whole, so a lock rewritten over the same configs selects
+   nothing. A changed path that is a link to a directory, or was a link (mode
+   120000 on either side) and is no link to a file now, is a `dirLinks`
+   entry: `declaresInput` matches it as a directory a glob may reach
+   below, as the key does (`mayHoldMatch`).
 4. A changed ROOT file a `fingerprint` plugin claims (a lockfile under
    `@vzn/vx-lockfile`) is asked of its claimant, which names the
    projects whose dependency closure moved —

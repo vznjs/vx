@@ -14,7 +14,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   async open(): Promise<void>
   start(): void
   async has(hash: string): Promise<ArtifactInfo | null>
-  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>>
+  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null>
   async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void | false>
 }

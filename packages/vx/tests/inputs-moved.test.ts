@@ -876,6 +876,37 @@ describe('an input file added during the run', () => {
     TIMEOUT,
   )
 
+  // A link to a directory below a glob's fixed prefix is an input (its key
+  // folds the files behind it), but its name fits no `*.txt`, so one added
+  // while the command read through it was no move (2026-10-28).
+  it(
+    'a link to a directory below the glob’s fixed prefix: the entry is withheld',
+    async () => {
+      await mkdir(path.join(root, 'shared'))
+      await writeFile(path.join(root, 'shared', 'x.txt'), 'NEW\n')
+      const app = await addProject(root, 'app', {
+        config: ADDS(BUILD, "['src/**/*.txt']"),
+        files: { 'src/in.txt': 'hi\n' },
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n')
+      commit()
+      const pending = runTask('build')
+      await reached(path.join(app, 'started'))
+      await symlink('../../../shared', path.join(app, 'src', 'v'))
+      await writeFile(path.join(app, 'go'), '')
+      await pending
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#build: `packages/app/src/v` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+      ])
+      await rm(path.join(app, 'src', 'v'))
+      await rm(path.join(app, 'dist'), { recursive: true, force: true })
+      // Before the fix: a local hit restoring `hi NEW`.
+      expect(statusOf(await runTask('build'), 'app#build')).toBe('success')
+      expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('hi\n')
+    },
+    TIMEOUT,
+  )
+
   it(
     'control: an ignored file, or one no glob matches, added during the run is no move',
     async () => {

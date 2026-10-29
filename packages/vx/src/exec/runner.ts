@@ -14,6 +14,7 @@ import {
   isOutOfFds,
   killGraceMs,
   OUT_OF_FDS_HINT,
+  helperEnv,
   type SecretMask,
 } from '../util/index.js'
 import {
@@ -294,6 +295,7 @@ export function restoreTerminalModes(): void {
 function stty(arg: string): string | undefined {
   try {
     const out = Bun.spawnSync(['stty', arg], {
+      env: helperEnv(),
       stdio: ['inherit', 'pipe', 'ignore'],
       detached: true,
     })

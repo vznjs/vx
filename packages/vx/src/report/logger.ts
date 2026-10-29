@@ -15,6 +15,8 @@ import {
   formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
+  leavesStyle,
+  RESET,
   type OutputChunk,
 } from './framed-output.js'
 import {
@@ -645,7 +647,29 @@ export function defaultLogger(
   // The log ends on a blank line (a block's own): a blank status line
   // after it (the footer's) would make two; one blank line apart is the rule.
   let endsBlank = false
+  // A live-streamed task's partial line, and any colour it left on, end
+  // before anything of vx's own: a row or a block written after it (a step
+  // that ends while the task streams, another task's failure, a kept
+  // server's line) was glued to it, `building...      time status  cache
+  // task`, and took its colour.
+  let streamStyled = false
+  const endStreamLine = (): void => {
+    const end = (streamStyled ? RESET : '') + (streamMidLine ? '\n' : '')
+    streamStyled = false
+    streamMidLine = false
+    if (end.length > 0) logWrite(end)
+  }
   const taskWrite = (chunk: string): void => {
+    endStreamLine()
+    logWrite(chunk)
+  }
+  const streamWrite = (chunk: string): void => {
+    streamedSinceBlock = true
+    if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
+    if (chunk.includes('\x1b[')) streamStyled = leavesStyle(chunk)
+    logWrite(chunk)
+  }
+  const logWrite = (chunk: string): void => {
     if (chunk.length > 0) endsBlank = chunk.endsWith('\n\n')
     if (!logOpened && chunk.length > 0) {
       logOpened = true
@@ -654,16 +678,7 @@ export function defaultLogger(
     }
     writer.write(chunk)
   }
-  // A live-streamed task's partial line ends before vx's own: a row or a
-  // block written after it (a step that ends while the task streams) was
-  // glued to it, `building...      time status  cache    task`.
-  const endStreamLine = (): void => {
-    if (!streamMidLine) return
-    taskWrite('\n')
-    streamMidLine = false
-  }
   const emitLine = (line: string): void => {
-    endStreamLine()
     taskWrite(`${line}\n`)
     lineEmitted = true
   }
@@ -735,20 +750,14 @@ export function defaultLogger(
       flushKept()
       // A live-streamed server keeps writing after its frame closes, so a
       // summary row or "exited with code" can follow its partial line.
-      if (streamMidLine) {
-        writer.write('\n')
-        streamMidLine = false
-      }
+      endStreamLine()
       if (line === '' && endsBlank) return
       endsBlank = line === ''
       writer.write(`${line}\n`)
     },
     warn(line) {
       flushKept()
-      if (streamMidLine) {
-        writer.write('\n')
-        streamMidLine = false
-      }
+      endStreamLine()
       writer.writeTo(errOut, `${ui.tagged('warn', line, colors)}\n`)
     },
     runStart(info) {
@@ -910,9 +919,7 @@ export function defaultLogger(
     taskStdout(node, chunk) {
       if (discardsOutput) return
       if (streamsLive(node)) {
-        streamedSinceBlock = true
-        if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
-        taskWrite(chunk)
+        streamWrite(chunk)
         return
       }
       const tail = persistentTails.get(node.id)
@@ -927,9 +934,7 @@ export function defaultLogger(
     taskStderr(node, chunk) {
       if (discardsOutput) return
       if (streamsLive(node)) {
-        streamedSinceBlock = true
-        if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
-        taskWrite(chunk)
+        streamWrite(chunk)
         return
       }
       const tail = persistentTails.get(node.id)
@@ -989,23 +994,21 @@ export function defaultLogger(
             (view.mode === 'focused' && isPrimary(node)) ||
             (framesTerminal && holdsTerminal(node)))
         if (framed && streamsLive(node)) {
-          if (streamMidLine) {
-            taskWrite('\n')
-            streamMidLine = false
-          }
           emitFrameClose(formatFrameClose(node, outcome, colors))
           return
         }
         if (framed && output.some((c) => c.text.length > 0)) {
           emitBlock(
-            formatTaskBlock(
-              node,
-              outcome,
-              { output, ...dropped },
-              colors,
-              true,
-              forwardArgs,
-              links,
+            fenced(
+              formatTaskBlock(
+                node,
+                outcome,
+                { output, ...dropped },
+                colors,
+                true,
+                forwardArgs,
+                links,
+              ),
             ),
           )
           return
@@ -1080,10 +1083,6 @@ export function defaultLogger(
       }
       if (isGroupTask(node)) return
       if (holdsTerminal(node) && streamsLive(node) && outcome.status !== 'skipped') {
-        if (streamMidLine) {
-          taskWrite('\n')
-          streamMidLine = false
-        }
         emitFrameClose(formatFrameClose(node, outcome, colors))
         return
       }
@@ -1157,10 +1156,6 @@ export function defaultLogger(
               // this close — full task info for every outcome, cached
               // and up-to-date included (owner: "always full frame
               // for a single task").
-              if (streamMidLine) {
-                taskWrite('\n')
-                streamMidLine = false
-              }
               emitFrameClose(formatFrameClose(node, outcome, colors))
               return
             }
@@ -1186,14 +1181,16 @@ export function defaultLogger(
             // forceCommand: a requested task's frame shows `$ cmd`
             // whether it ran or was cached — same frame every run.
             emitBlock(
-              formatTaskBlock(
-                node,
-                outcome,
-                { output, ...dropped },
-                colors,
-                true,
-                forwardArgs,
-                links,
+              fenced(
+                formatTaskBlock(
+                  node,
+                  outcome,
+                  { output, ...dropped },
+                  colors,
+                  true,
+                  forwardArgs,
+                  links,
+                ),
               ),
             )
             return

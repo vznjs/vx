@@ -1,7 +1,8 @@
 # util/hide-env
 
 `hideEnvFromTasks()`, called once at the start of every verb
-(`cli/index.ts`, 2026-10-13). A task gets only the variables it
+(`cli/index.ts`, 2026-10-13), and by a global vx before it hands off to
+the project's (`handoff.ts`), since it waits out the run. A task gets only the variables it
 declares, but vx's own process still holds the rest, and an unsandboxed
 task, which runs as the same user, could read them: on Linux from
 `/proc/<vx pid>/environ`, on macOS through `ps eww`.

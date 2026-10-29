@@ -25,7 +25,8 @@ spawn (`runSandboxed`, `wrapSandboxedCommand`, the macOS profile rules).
 Three companions hold the rest, split 2026-09-09 as pure code motion:
 
 - `sandbox-violations.ts` — the Linux strace pass (`deniedCalls`,
-  `parseStraceViolations`), the seatbelt record description, and the
+  `parseStraceViolations`; a call's result is read at its line's end,
+  never from an argv string that spells one), the seatbelt record description, and the
   report filters (`reportableViolations`: inside the project or a
   withheld linked package, minus loopback noise, minus the task's
   `ignore`).
@@ -77,7 +78,13 @@ reads 0777), or a file there that is not empty or not executable, is
 refused for `true` (`sandbox-noscan-dir.unsafe.test.ts`). The
 availability probe hands SRT's dependency check that file made anew if
 a temp cleaner took it, not the path SRT's live config holds
-(`sandbox-noscan-gone.unsafe.test.ts`).
+(`sandbox-noscan-gone.unsafe.test.ts`). The OS temp dir can itself be
+one every task may write (an agent's shell sets `TMPDIR=/tmp/claude`,
+which SRT binds writable into each), and there a task rewrote the file
+and the next wrap ran it unsandboxed. So its directory, and the socat
+wrapper's (whose file is granted back read-only: it is the task's side of
+the proxy bridge too), are walled from every task
+(`sandbox-host-helpers.unsafe.test.ts`).
 100 sandboxed `true` tasks at concurrency 1: 2,846 ms against 2,721
 (min of 8, interleaved; medians 2,948 and 2,812). The parity rows arm
 SRT as vx does, with a root entry (`.ZshRC`) only a scan finds.
@@ -220,6 +227,7 @@ export interface SandboxViolation {
   target?: string
   hint?: true // vx's own note, shown but never counted (B-20)
   path?: string
+  via?: string // Linux: the unmounted directory holding a link the task opened through
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 export interface SandboxedRunResult extends RunResult {
@@ -470,7 +478,10 @@ into a directory no grant holds failed with no violation, and
 (`access`, `faccessat`, `faccessat2`) is traced too: a refused
 `./gen.sh || fallback` or `test -x src/gen.sh` went unreported. A hidden
 path answers `ENOENT`, as a missing one does, so a probe's `ENOENT` counts
-only where the host has the path; `EACCES` and `EPERM` always count. The
+only where the host has the path; `EACCES` and `EPERM` always count. A
+`chdir` is judged as a probe: `mkdir -p gen/deep`, refused at `gen`, then
+cds into it, and that `ENOENT` was reported, judged a write (nothing on
+the host) and fixed with a file grant `gen` that vx refuses beside `gen/`. The
 stat family stays untraced: a stop per stat cost `oxlint --type-aware`
 19% (min of 7, 679 → 811 ms) and `git status` 30% (57 → 74), where the
 execs and probes cost nothing measurable (688 and 58). Tracing it was tried
@@ -688,7 +699,7 @@ by its real path, which the grant covers, and dropped it: a tool that fell
 back on the missing file went green and cached the fallback. An ENOENT
 whose real path is granted and exists on the host is now a violation when
 a link on the opened path sits in the deny anchor in a directory no grant
-mounts (`hiddenByLink`). A link in a mounted directory, or outside the
+mounts (`hiddenLink`). A link in a mounted directory, or outside the
 anchor, is there inside; a target missing on the host is missing outside
 too (`sandbox-grant-through-link.unsafe.test.ts`).
 

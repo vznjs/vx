@@ -236,6 +236,40 @@ describe('defaultLogger visibility matrix — focused', () => {
     )
   })
 
+  // A row or a kept server's line written while the streamed task sat
+  // mid-line was glued onto the task's own text.
+  it("vx's own lines never glue onto a streamed task's partial line", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    const db = mkNode('db#serve')
+    db.config.exec!.persistent = {}
+    log.taskComplete(db, mkOutcome(db, 'success'))
+    const n = mkNode('app#dev', { requested: true })
+    log.taskStart?.(n)
+    log.taskStdout(n, 'compiling... ')
+    log.stepEnd?.('vx:keys', { durationMs: 500, ok: false })
+    log.taskComplete(n, mkOutcome(n, 'failed'))
+    log.taskStdout(n, 'late, partial')
+    log.runEnd?.()
+    log.taskStdout(db, 'db line\n')
+    expect(out.text()).toBe(
+      '┌─ app#dev > $ noop\ncompiling... \n ◼︎   500ms failed  internal vx:keys\n' +
+        '└─ app#dev ── (100ms) failed (exit 1)\n\nlate, partial\ndb#serve │ db line\n',
+    )
+  })
+
+  it('a colour the streamed task left open ends before the frame close', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    const n = mkNode('one#test', { requested: true })
+    log.taskStart?.(n)
+    log.taskStdout(n, '\x1b[41mERR\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    expect(out.text()).toBe(
+      '┌─ one#test > $ noop\n\x1b[41mERR\n\x1b[0m└─ one#test ── (100ms) success\n\n',
+    )
+  })
+
   // It opened no frame, so a frame close for it closed nothing.
   it('requested task the stop kept from starting → a `not run` row, no frame close', () => {
     const out = sink()
@@ -646,6 +680,19 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     expect(text.split('::error::injected').length - 1).toBe(1)
     expect(unfenced(text)).not.toContain('::error::injected')
     expect(unfenced(text)).not.toContain('::endgroup::')
+  })
+
+  // A cancelled job stops the run; what a task printed while it stopped
+  // printed raw, so its `::error::` became a real annotation.
+  it("an aborted task's output is fenced on GitHub Actions", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#build')
+    log.taskStdout(n, '::error::from-trap\n')
+    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 130, wallclockStartNs: 1n }))
+    const text = out.text()
+    expect(text).toContain('::error::from-trap')
+    expect(unfenced(text)).not.toContain('::error::from-trap')
   })
 
   it("a server's output since ready is fenced on GitHub Actions", () => {

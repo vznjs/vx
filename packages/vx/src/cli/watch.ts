@@ -190,7 +190,12 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // No lock yet is no project yet: the first cycle fails saying so, and
   // the lock `vx lock` writes is the event that arms the set.
   let unlocked = false
-  const stageLoad: CliLoadOptions = opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}
+  // The watch's own reads say no plugin warning: each cycle's run says it.
+  const quiet = (): void => {}
+  const stageLoad: CliLoadOptions = {
+    warn: quiet,
+    ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
+  }
   const allProjects = await discoverCliProjects(workspaceRoot, stageLoad).catch((err: unknown) => {
     if (!(err instanceof Error) || err.message !== NO_LOCK) throw err
     unlocked = true
@@ -292,10 +297,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     delete opts.affected
     delete opts.selectedOutright
 
-    const load: CliLoadOptions = opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}
+    const load = stageLoad
     const swept = await sweepConfigs(allProjects, workspaceRoot, load, opts.tasks)
     const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
-    const ws = await loadCliWorkspace(workspaceRoot)
+    const ws = await loadCliWorkspace(workspaceRoot, quiet)
     const claimsOf = (plugins: Parameters<typeof fingerprintClaims>[0]): Set<string> =>
       new Set([...fingerprintClaims(plugins).keys(), LOCKFILE_NAME])
     await runWatchLoop({
@@ -329,7 +334,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
           // A plugin the workspace config gained since claims its file from
           // the cycle that loaded it; read once, its edits started nothing
           // until a restart.
-          claimedRootFiles: claimsOf((await loadCliWorkspace(workspaceRoot)).plugins),
+          claimedRootFiles: claimsOf((await loadCliWorkspace(workspaceRoot, quiet)).plugins),
           workspaceWide: sweep.workspaceWide,
           workspaceInputs: sweep.workspaceInputs,
           outputs: sweep.outputs,
@@ -679,6 +684,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     uncached: () => uncached,
     namedIgnored: () => namedIgnored,
     fenced: (ownDir, abs) => fenced(ownDir, abs),
+    awaited: (abs) => ancestorNames.get(path.dirname(abs))?.has(path.basename(abs)) === true,
     ...(atArm !== undefined ? { existedAtArm: atArm.listed, trackedAtArm: atArm.tracked } : {}),
   })
   /** Per-project arms by directory, so `rearm` can add and drop them. */

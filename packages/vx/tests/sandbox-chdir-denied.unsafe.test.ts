@@ -60,5 +60,29 @@ describe.skipIf(!available || process.platform !== 'linux')(
       })
       expect([r.exitCode, r.violations.map((v) => v.target)]).toEqual([0, [path.join(proj, 'src')]])
     })
+
+    it('is the tool’s own miss where the host has no such directory', async () => {
+      // `mkdir -p gen/deep` refused at `gen` then cds into it: the cd's
+      // ENOENT was reported too, and judged a write (nothing on the host),
+      // so the fix named a FILE grant `gen` beside `gen/`, which vx then
+      // refused as a file where a directory is needed.
+      const proj = path.join(dir, 'proj')
+      await mkdir(proj, { recursive: true })
+      await writeFile(path.join(proj, 'package.json'), '{}')
+      const r = await runSandboxed({
+        command: 'cd gone; mkdir -p gen/deep; true',
+        cwd: proj,
+        env: process.env,
+        baseAllowRead: [],
+        baseDenyRead: [dir],
+        reportWithin: proj,
+        reportLinked: [],
+        config: resolveSandboxConfig({ allow: { read: ['package.json'] } }, proj),
+      })
+      expect([r.exitCode, r.violations.map((v) => v.line.split('(')[0] + ' ' + v.target)]).toEqual([
+        0,
+        [`mkdir ${path.join(proj, 'gen')}`],
+      ])
+    })
   },
 )

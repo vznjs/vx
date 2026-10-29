@@ -219,6 +219,10 @@ export function vxPath(): string {
  * second would read as "stop now" (npm-launcher.cjs, the same rule).
  */
 export async function handOff(bin: string, args: readonly string[]): Promise<never> {
+  // This vx waits out the whole run beside the tasks, and `run()`, which
+  // hides the env on every verb, is never reached here. Imported here:
+  // a start that hands off nothing pays nothing.
+  await (await import('./util/index.js')).hideEnvFromTasks()
   const child = Bun.spawn([bin, ...args], {
     stdio: ['inherit', 'inherit', 'inherit'],
     env: { ...process.env, VX_HANDED_OFF: process.execPath },
@@ -246,7 +250,10 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
 
 function inForeground(): boolean {
   try {
-    const stat = Bun.spawnSync(['ps', '-o', 'pgid=,tpgid=', '-p', String(process.pid)])
+    // The handed-off vx's tasks run meanwhile and could read its env: PATH alone (`helperEnv`).
+    const stat = Bun.spawnSync(['ps', '-o', 'pgid=,tpgid=', '-p', String(process.pid)], {
+      env: { PATH: process.env['PATH'] ?? '' },
+    })
     const [pgid, tpgid] = stat.stdout.toString().trim().split(/\s+/)
     return pgid !== undefined && pgid === tpgid
   } catch {

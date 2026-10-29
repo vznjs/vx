@@ -281,16 +281,20 @@ export function codeIdentity(): string {
   // `Bun.main`, not `import.meta.dir`: `--minify` inlines the build
   // machine's source path, so an installed binary walked a `src/` that is
   // not there, threw, and lost every warm run's short circuit (2026-10-22).
+  // ctime and inode with the mtime, as the file hash memo keys: an npm
+  // tarball stamps every file 1985-10-26 and extraction keeps that mtime,
+  // so an upgrade that kept a file's size left its stamp alone, and `cp
+  // -p` does the same to a binary. No write can set ctime back.
   if (Bun.main.startsWith('/$bunfs/')) {
     const st = statSync(process.execPath)
-    return (identity = `${process.execPath}:${st.size}:${st.mtimeMs}:${st.ino}`)
+    return (identity = `${process.execPath}:${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`)
   }
   const src = path.resolve(import.meta.dir, '..')
   const stamps: string[] = []
   for (const rel of readdirSync(src, { recursive: true, encoding: 'utf8' }).sort()) {
     if (!rel.endsWith('.ts')) continue
     const st = statSync(path.join(src, rel))
-    stamps.push(`${rel}:${st.size}:${st.mtimeMs}`)
+    stamps.push(`${rel}:${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`)
   }
   return (identity = xxh3hex(stamps.join('\0')))
 }

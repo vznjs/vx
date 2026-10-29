@@ -210,6 +210,48 @@ describe('a refusal under --format json', () => {
     }
   }, 30_000)
 
+  // A config written or removed after the lock is the lock's drift, and
+  // its fix is `vx lock`: it read VX_E_USAGE from the project's directory
+  // and VX_E_REFUSED by name, where a missing lock reads VX_E_LOCK.
+  it('a config the lock has not seen, or one it locks that is gone, is VX_E_LOCK', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-drift-', edges: {} })
+    try {
+      const c = await addProject(ws, 'c', {})
+      const d = await addProject(ws, 'd', {
+        config: "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
+      })
+      expect(Bun.spawnSync([process.execPath, REAL_BIN, 'lock'], { cwd: ws }).exitCode).toBe(0)
+      await Bun.write(
+        path.join(c, 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
+      )
+      const code = (args: string[], cwd = ws): string => {
+        const p = Bun.spawnSync([process.execPath, REAL_BIN, ...args], {
+          cwd,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        expect(p.exitCode).toBe(1)
+        return (JSON.parse(p.stdout.toString()) as { error: { code: string } }).error.code
+      }
+      const unlocked = {
+        named: code(['run', 'c#build', '--dry=json']),
+        cwd: code(['run', 'build', '--dry=json'], c),
+        filter: code(['run', 'build', '--filter', 'c', '--dry=json']),
+      }
+      await rm(path.join(c, 'vx.config.mjs'))
+      await rm(path.join(d, 'vx.config.mjs'))
+      expect({ ...unlocked, gone: code(['run', 'build', '--all', '--dry=json']) }).toEqual({
+        named: 'VX_E_LOCK',
+        cwd: 'VX_E_LOCK',
+        filter: 'VX_E_LOCK',
+        gone: 'VX_E_LOCK',
+      })
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   // A config's own throw (or a plugin factory's, run as the config loads)
   // read as a vx defect: VX_E_INTERNAL, whose fix is to file a vx bug
   // (2026-10-28).
@@ -324,6 +366,24 @@ describe('a refusal under --format json', () => {
       ])
     } finally {
       await rm(ws, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  // A workspace with no git work tree, or a machine with no git, read
+  // VX_E_REFUSED: an agent could not tell either from a plugin's refusal,
+  // and its next step is the environment's, `git init` or installing git.
+  it('no git work tree, or no git on PATH, is VX_E_NO_GIT', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-nogit-', git: false })
+    const noPath = await mkdtemp(path.join(os.tmpdir(), 'vx-error-codes-nopath-'))
+    try {
+      await addProject(ws, 'a', `export default { tasks: { b: { exec: { command: 'true' } } } }\n`)
+      expect({
+        noTree: await refusal(['run', 'b', '--all', '--dry=json'], ws),
+        noGit: await refusal(['run', 'b', '--all', '--dry=json'], ws, { PATH: noPath }),
+      }).toEqual({ noTree: 'VX_E_NO_GIT', noGit: 'VX_E_NO_GIT' })
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+      await rm(noPath, { recursive: true, force: true })
     }
   }, 30_000)
 

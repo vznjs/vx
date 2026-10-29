@@ -370,6 +370,7 @@ function resolveWorkspaceFiles(args: {
   // caller sees a different array and scans again.
   let isExcluded: ((rel: string) => boolean) | undefined
   let isPositive: ((rel: string) => boolean) | undefined
+  let mayHold: ((rel: string) => boolean) | undefined
   const excludedByDeclaration = (rel: string): boolean =>
     (isExcluded ??= anyTaskGlob([...WORKSPACE_ALWAYS_IGNORE, ...asTrees(negative)]))(rel)
   // A committed file stays an input whatever output reaches it (`committedFiles`).
@@ -387,6 +388,8 @@ function resolveWorkspaceFiles(args: {
       (isPositive ??= throughLinks(positive, anyTaskGlob(asTrees(positive))))(rel) &&
       !excludedByDeclaration(rel) &&
       !own(rel),
+    linked: (rel) =>
+      (mayHold ??= mayHoldMatch(positive))(rel) && !excludedByDeclaration(rel) && !own(rel),
     nested: () => false,
     ...reachOf(positive),
   }
@@ -423,6 +426,7 @@ function resolveWorkspaceFiles(args: {
       args.workspaceRoot,
       reach,
       (rel) => accept(rel) && !excludedByDeclaration(rel) && !own(rel),
+      listing.linked,
       args.gitFilesCache?.vxDirs,
     )
     return extra.length === 0 ? kept : mergeSorted(kept, extra)
@@ -1700,12 +1704,15 @@ function outright(reach: { prefixes: readonly string[]; literals: readonly strin
  * `exists()`: that answers false for a directory. Never memoized: a
  * dependency writes these mid-run. Nothing under `vxDirs` (the run's cache
  * directory) is read: an ignored prefix over a `cache.dir` there walked the
- * index each run writes, and the task never hit.
+ * index each run writes, and the task never hit. The walk does not follow
+ * links, so a link to a directory a glob may reach below (`linked`) is an
+ * input itself, as a listed one is (`dirLinkInput`).
  */
 function ignoredInputs(
   root: string,
   reach: readonly string[],
   accept: (rel: string) => boolean,
+  linked: (rel: string) => boolean,
   vxDirs: readonly string[] = [],
 ): string[] {
   const found = new Set<string>()
@@ -1726,9 +1733,11 @@ function ignoredInputs(
       dot: true,
     })) {
       const full = `${entry}/${rel.split(path.sep).join('/')}`
-      if (!accept(full)) continue
       const file = path.join(abs, rel)
-      if (!vxOwn(file) && isInputOnDisk(file)) found.add(file)
+      if (vxOwn(file)) continue
+      if (accept(full)) {
+        if (isInputOnDisk(file)) found.add(file)
+      } else if (linked(full) && dirLinkInput(file, undefined)) found.add(file)
     }
   }
   return [...found].sort()
@@ -1941,6 +1950,11 @@ export function declaresInput(
   task: TaskConfig,
   projectRel: string | null,
   workspaceRel: string | null,
+  /**
+   * The path is a link to a directory (or was one): a glob that may reach
+   * below it keys what is behind it, as `mayHoldMatch` says at key time.
+   */
+  dirLink = false,
 ): boolean {
   const inputs = task.inputs
   if (inputs === undefined) return false
@@ -1950,10 +1964,13 @@ export function declaresInput(
     // lists: either way it may be an input, so it counts.
     const plan = filesPlan(inputs.files, task.cache?.outputs.files ?? [])
     if (plan !== null && (inPlan(plan, projectRel) || ownOnly(plan, projectRel))) return true
+    if (plan !== null && dirLink && plan.mayHold(projectRel) && !plan.isExcluded(projectRel)) {
+      return true
+    }
   }
   const ws = inputs.workspaceFiles
   if (workspaceRel === null || ws === undefined || ws.length === 0) return false
-  return workspaceMatcher(ws)(workspaceRel)
+  return workspaceMatcher(ws)(workspaceRel, dirLink)
 }
 
 /**
@@ -2003,16 +2020,17 @@ function ownOnly(plan: FilesPlan, rel: string): boolean {
   return own
 }
 
-const workspaceMatchers = new Map<string, (rel: string) => boolean>()
+const workspaceMatchers = new Map<string, (rel: string, dirLink: boolean) => boolean>()
 
-function workspaceMatcher(decl: readonly string[]): (rel: string) => boolean {
+function workspaceMatcher(decl: readonly string[]): (rel: string, dirLink: boolean) => boolean {
   const key = JSON.stringify(decl)
   let m = workspaceMatchers.get(key)
   if (m !== undefined) return m
   const { positive, negative } = splitNegations(decl)
   const isPositive = throughLinks(positive, anyTaskGlob(asTrees(positive)))
+  const mayHold = mayHoldMatch(positive)
   const isExcluded = anyTaskGlob([...WORKSPACE_ALWAYS_IGNORE, ...asTrees(negative)])
-  m = (rel) => isPositive(rel) && !isExcluded(rel)
+  m = (rel, dirLink) => (isPositive(rel) || (dirLink && mayHold(rel))) && !isExcluded(rel)
   workspaceMatchers.set(key, m)
   return m
 }
@@ -2174,6 +2192,12 @@ function withIgnored(
     projectDir,
     reach,
     (rel) => inPlan(plan, rel) && !nested(rel) && !ownWsOutput(rel),
+    (rel) =>
+      plan.mayHold(rel) &&
+      !plan.isExcluded(rel) &&
+      !plan.ownOutput(rel) &&
+      !nested(rel) &&
+      !ownWsOutput(rel),
     cache?.vxDirs,
   )
   return extra.length === 0 ? [...resolved] : mergeSorted(resolved, extra)
@@ -2197,6 +2221,8 @@ function listingFor(
         (ownOnly(plan, rel) &&
           (committed ??= committedFiles(args.gitFilesCache, root))(path.join(root, rel)))) &&
       !ownWsOutput(rel),
+    linked: (rel) =>
+      plan.mayHold(rel) && !plan.isExcluded(rel) && !plan.ownOutput(rel) && !ownWsOutput(rel),
     nested,
     prefixes: plan.prefixes,
     literals: plan.literals,
@@ -2263,6 +2289,11 @@ export interface InputListing {
   /** Root-relative paths, as git listed them. */
   listed: readonly string[]
   isInput: (rel: string) => boolean
+  /**
+   * Whether a link to a directory at `rel` is an input: a glob may match
+   * below it (`mayHoldMatch`), though its name fits none (`dirLinkInput`).
+   */
+  linked: (rel: string) => boolean
   nested: (rel: string) => boolean
   /** Root-relative directories a positive entry reaches, `''` for the root. */
   prefixes: readonly string[]
@@ -2368,7 +2399,10 @@ function addedTo(
         if (known.has(rel) || e.name === 'node_modules' || l.nested(`${rel}/`)) continue
         if (reaches(l.prefixes, rel)) candidates.push(rel)
       } else if (
-        l.isInput(rel) &&
+        (l.isInput(rel) ||
+          (e.isSymbolicLink() &&
+            l.linked(rel) &&
+            dirLinkInput(path.resolve(abs, e.name), undefined))) &&
         !l.nested(rel) &&
         !isInstalledPath(rel) &&
         !keyFiles.has(path.resolve(abs, e.name))
@@ -2380,8 +2414,9 @@ function addedTo(
   if (candidates.length === 0) return undefined
   for (const rel of runGitLsFiles(l.root, listingEnv(l.root, l.workspaceRoot)).files) {
     if (!candidates.some((c) => c === '' || rel === c || rel.startsWith(`${c}/`))) continue
-    if (isInstalledPath(rel) || l.nested(rel) || !l.isInput(rel)) continue
+    if (isInstalledPath(rel) || l.nested(rel)) continue
     const abs = path.resolve(l.root, rel)
+    if (!l.isInput(rel) && !(l.linked(rel) && dirLinkInput(abs, undefined))) continue
     if (!keyFiles.has(abs) && isInputOnDisk(abs)) return abs
   }
   return undefined

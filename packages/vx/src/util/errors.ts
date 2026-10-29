@@ -228,6 +228,7 @@ export function isExecutableMissing(err: unknown): boolean {
 export function gitSpawnRefusal(cwd: string): UserError {
   return new UserError(
     `vx requires git: failed to spawn 'git' (working dir: ${cwd}). Install git and re-run.`,
+    'VX_E_NO_GIT',
   )
 }
 
@@ -240,6 +241,7 @@ export function notAWorkTree(cwd: string, stderr = ''): UserError {
   return new UserError(
     `vx requires git: ${cwd} is not inside a git work tree. ` +
       `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
+    'VX_E_NO_GIT',
   )
 }
 
