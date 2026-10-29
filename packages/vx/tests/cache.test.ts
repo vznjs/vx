@@ -946,8 +946,28 @@ describe('Cache storage (v10)', () => {
       thrown = err
     }
     expect(thrown).toBeInstanceOf(UserError)
+    expect((thrown as UserError).code).toBe('VX_E_FS')
     expect((thrown as Error).message).toBe(
-      `cannot create cache directory ${file} (EEXIST: file already exists, mkdir '${file}') — vx keeps its cache there; make the workspace writable, set \`cache.dir\` in .vx/workspace.ts, or pass --cache-dir <path>`,
+      `cannot create cache directory ${file}: ${file} is a file, not a directory — move it away, set \`cache.dir\` in .vx/workspace.ts, or pass --cache-dir <path>`,
+    )
+  })
+
+  // ENOTDIR: the file in the way is a parent, and the fix names it, not
+  // the directory vx asked for.
+  it('a file where a parent of the cache directory goes is named as the one in the way', async () => {
+    const file = path.join(projectDir, 'not-a-dir-parent')
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(file, 'x')
+    const dir = path.join(file, 'sub', 'cache')
+    let thrown: unknown
+    try {
+      new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE).close()
+    } catch (err) {
+      thrown = err
+    }
+    expect((thrown as UserError).code).toBe('VX_E_FS')
+    expect((thrown as Error).message).toBe(
+      `cannot create cache directory ${dir}: ${file} is a file, not a directory — move it away, set \`cache.dir\` in .vx/workspace.ts, or pass --cache-dir <path>`,
     )
   })
 
