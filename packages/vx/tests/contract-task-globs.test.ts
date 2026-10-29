@@ -39,6 +39,7 @@ const TREE = [
   'ignored.txt',
   'lib/b.js',
   'node_modules/m/index.js',
+  'node_modules/@s/p/i.js',
   'package.json',
   'src/(group)/page.ts',
   'src/[id].ts',
@@ -87,6 +88,14 @@ const INPUTS: readonly (readonly string[])[] = [
   ['**', '!src/**'],
   ['src/*.ts', '!src/[id].ts'],
   ['src/*.ts', '!src/\\[id\\].ts'],
+  // A wildcard in a segment narrows the walk to no shorter literal prefix.
+  ['src/?.js'],
+  ['s?c/**/*.ts'],
+  // Two brace groups in one pattern, each read whole.
+  ['{src,lib}/{a,b}.js'],
+  // A negation trims only the paths it overlaps; a later positive is untouched.
+  ['src/**', '!src/deep/**', 'lib/**'],
+  ['src/**/*.ts', '!src/deep/x/y.ts'],
 ]
 
 /** Output lists, resolved by the resolver `cleanOutputs` and a save share. */
@@ -100,6 +109,8 @@ const OUTPUTS: readonly (readonly string[])[] = [
   ['src/[id].ts'],
   ['src/\\[id\\].ts'],
   ['.github/**'],
+  ['node_modules/@s/p/**'],
+  ['dist/**', '!dist/nested/*.js'],
 ]
 
 let root: string

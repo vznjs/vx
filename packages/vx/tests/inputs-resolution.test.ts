@@ -653,6 +653,26 @@ describe('the hard project boundary holds in both directions', () => {
     ])
   })
 
+  it('a gitignored directory named outright is read from disk, but not the nested project under it', async () => {
+    // A named ignored prefix (`gen/**` over an ignored `gen/`) is walked on
+    // disk, beside git's listing; that walk is where a nested project's
+    // files could leak into the parent's key.
+    await write(path.join(projectDir, '.gitignore'), 'gen/\n')
+    await write(path.join(projectDir, 'gen', 'own.txt'))
+    const nested = path.join(projectDir, 'gen', 'sub')
+    await write(path.join(nested, 'theirs.txt'))
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['gen/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [nested],
+    })
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('gen', 'own.txt')])
+  })
+
   it('resolveOutputs keeps the parent’s same-depth files while excluding the nested project', async () => {
     // `resolveOutputs` feeds `cleanOutputs`, which DELETES what it resolves, so
     // the over-exclusion direction is a correctness bug and the under-exclusion

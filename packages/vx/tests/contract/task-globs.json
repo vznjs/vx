@@ -50,7 +50,7 @@
     "[\".github/**\"]": [".github/ci.yml"],
     "[\"README.md\"]": ["README.md"],
     "[\"ignored.txt\"]": ["ignored.txt"],
-    "[\"node_modules/**\"]": ["node_modules/m/index.js"],
+    "[\"node_modules/**\"]": ["node_modules/@s/p/i.js", "node_modules/m/index.js"],
     "[\"src\"]": [
       "src/(group)/page.ts",
       "src/[id].ts",
@@ -174,6 +174,37 @@
       "src/file with space.ts",
       "src/index.ts",
       "src/{b}.ts"
+    ],
+    "[\"src/?.js\"]": ["src/a.js"],
+    "[\"s?c/**/*.ts\"]": [
+      "src/(group)/page.ts",
+      "src/[id].ts",
+      "src/a.test.ts",
+      "src/deep/.hidden.ts",
+      "src/deep/x/y.ts",
+      "src/file with space.ts",
+      "src/index.ts",
+      "src/{b}.ts"
+    ],
+    "[\"{src,lib}/{a,b}.js\"]": ["lib/b.js", "src/a.js"],
+    "[\"src/**\",\"!src/deep/**\",\"lib/**\"]": [
+      "lib/b.js",
+      "src/(group)/page.ts",
+      "src/[id].ts",
+      "src/a.js",
+      "src/a.test.ts",
+      "src/file with space.ts",
+      "src/index.ts",
+      "src/{b}.ts"
+    ],
+    "[\"src/**/*.ts\",\"!src/deep/x/y.ts\"]": [
+      "src/(group)/page.ts",
+      "src/[id].ts",
+      "src/a.test.ts",
+      "src/deep/.hidden.ts",
+      "src/file with space.ts",
+      "src/index.ts",
+      "src/{b}.ts"
     ]
   },
   "outputs": {
@@ -185,6 +216,8 @@
     "[\"lib/*.js\"]": ["lib/b.js"],
     "[\"src/[id].ts\"]": [],
     "[\"src/\\\\[id\\\\].ts\"]": ["src/[id].ts"],
-    "[\".github/**\"]": [".github/ci.yml"]
+    "[\".github/**\"]": [".github/ci.yml"],
+    "[\"node_modules/@s/p/**\"]": ["node_modules/@s/p/i.js"],
+    "[\"dist/**\",\"!dist/nested/*.js\"]": ["dist/out.js"]
   }
 }
