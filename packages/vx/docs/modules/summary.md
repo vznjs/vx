@@ -88,7 +88,7 @@ export function formatRunSummary(
 // The `--verbosity 1` table (RunOptions.summaryTable): one row per real task, groups left out.
 export function formatOutcomeTable(
   outcomes: readonly TaskOutcome[],
-  colors?: ColorSupport, // default no colour
+  colors?: ColorSupport,
 ): string[]
 
 export function neverStarted(o: TaskOutcome): boolean

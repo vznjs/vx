@@ -164,6 +164,37 @@ describe('the cache gate names EVERY remote method, not a count of them', () => 
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('an optional method that is not a function is refused by name', async () => {
+    // `hasMany: true` failed every batch probe, and `missing: true` every
+    // upload, each said as the remote's own fault per call.
+    const dir = mkdtempSync(path.join(tmpdir(), 'vx-cache-gate-opt-'))
+    const local = new Cache(dir, { read: true, write: true })
+    const fns = Object.fromEntries(required.map((m) => [m, () => undefined]))
+    const said = (extra: Record<string, unknown>): Promise<string> =>
+      resolveCache([testPlugin('org/odd', { cache: () => ({ ...fns, ...extra }) as never })], {
+        ...baseCtx,
+        localCache: local,
+        policy: POLICY,
+      }).then(
+        () => 'ok',
+        (e: unknown) => (e as Error).message,
+      )
+    try {
+      expect([
+        await said({ hasMany: true, missing: 'x' }),
+        await said({ open: null }),
+        await said({ hasMany: () => null, lend: undefined }),
+      ]).toEqual([
+        "plugin 'org/odd' returned from cache something that is not a remote cache layer: hasMany, missing not functions",
+        "plugin 'org/odd' returned from cache something that is not a remote cache layer: open not a function",
+        'ok',
+      ])
+    } finally {
+      local.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 // --- plugin-host unit-level consultation -------------------------------
@@ -318,6 +349,41 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     }
     expect(await said(1)).toBe('ok')
     expect(await said(undefined)).toBe('ok')
+  })
+
+  it('resolveExecutors: a flag that is not a boolean is refused by name', async () => {
+    // Core reads each flag as `=== true`: `remote: 'yes'` ran a remote
+    // executor as a local one, offered tasks pinned to this machine.
+    const said = async (flags: Record<string, unknown>): Promise<string> => {
+      try {
+        await resolveExecutors(
+          [
+            testPlugin('org/pool', {
+              executor: () => ({
+                name: 'pool',
+                ...flags,
+                execute: () => Promise.reject(new Error('unused')),
+              }),
+            }),
+          ],
+          { ...baseCtx, concurrency: 1 },
+        )
+        return 'ok'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect([
+      await said({ remote: 'yes' }),
+      await said({ remote: true, exclusive: 1 }),
+      await said({ remote: true, sandbox: null }),
+      await said({ remote: true, servers: true, runtime: false, timeouts: true }),
+    ]).toEqual([
+      `plugin 'org/pool' returned executor 'pool' with remote "yes": it must be true or false`,
+      `plugin 'org/pool' returned executor 'pool' with exclusive 1: it must be true or false`,
+      `plugin 'org/pool' returned executor 'pool' with sandbox null: it must be true or false`,
+      'ok',
+    ])
   })
 
   it('resolveExecutors: an empty executor name is refused like a missing one', async () => {
@@ -550,7 +616,8 @@ describe('executor capability — end-to-end via run()', () => {
   })
 
   // Isolated, a report a plugin threw on was dropped with nothing said: the
-  // summary lacked its machines and no line told why.
+  // summary lacked its machines and no line told why. The line names the
+  // plugin: `executor 'fleet'` alone named no package to look in.
   it("an executor's report that throws is left out, and said once", async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
@@ -590,8 +657,8 @@ describe('executor capability — end-to-end via run()', () => {
       const s = (globalThis as unknown as { __vxFleet: RunSummaryRecord }).__vxFleet
       expect(s.machines ?? []).toEqual([])
       expect(lines.filter((l) => l.includes('fleet'))).toEqual([
-        "[vx] executor 'fleet': machines() threw: machines broke — left out",
-        "[vx] executor 'fleet': idealMs() threw: ideal broke — left out",
+        "[vx] plugin 'org/fleet' (executor 'fleet'): machines() threw: machines broke — left out",
+        "[vx] plugin 'org/fleet' (executor 'fleet'): idealMs() threw: ideal broke — left out",
       ])
     } finally {
       cleanup()

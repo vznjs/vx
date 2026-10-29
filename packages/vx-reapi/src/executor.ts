@@ -103,12 +103,19 @@ async function decomposeOutputDir(
   const seen = new Set<string>()
 
   // Every transitive child of `dir`, which is what a Tree message must carry.
-  const descendants = (dir: Directory, acc: Directory[] = []): Directory[] => {
+  // Each once: a subtree a Tree names under many names was walked per name,
+  // 2^depth from a Tree of depth+1 directories.
+  const descendants = (
+    dir: Directory,
+    acc: Directory[] = [],
+    had = new Set<string>(),
+  ): Directory[] => {
     for (const d of dir.directories) {
       const child = byDigest.get(d.digest.hash)
-      if (child === undefined) continue
+      if (child === undefined || had.has(d.digest.hash)) continue
+      had.add(d.digest.hash)
       acc.push(child)
-      descendants(child, acc)
+      descendants(child, acc, had)
     }
     return acc
   }
@@ -1287,13 +1294,14 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
           .join('/')}`
   const root = cdInto === '' ? `"$PWD${climb}"` : '"$PWD"'
   // Order matters: VX_ROOT is read BEFORE the cd, the project-local bin dir
-  // AFTER it, so both are right whichever mode we are in.
+  // AFTER it, so both are right whichever mode we are in. The project's
+  // first, as core's taskBinDirs: a tool the project pins beats the root's.
   // Quoted as the forwarded args are: a project directory is a name like
   // any other, and `it's` ended the quote and ran the rest as script (L-7).
   const cd = cdInto === '' ? '' : `cd '${cdInto.replaceAll("'", `'\\''`)}' || exit 1; `
   return (
     `VX_ROOT=${root}; ${cd}` +
-    `export PATH="$VX_ROOT/node_modules/.bin:$PWD/node_modules/.bin:$PATH"; ` +
+    `export PATH="$PWD/node_modules/.bin:$VX_ROOT/node_modules/.bin:$PATH"; ` +
     command
   )
 }

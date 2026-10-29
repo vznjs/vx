@@ -28,7 +28,8 @@ export interface ParsedFilter {
   dirFallback?: ParsedFilter // `apps/*` naming no project: read as ./apps/*
 }
 
-export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter
+// throws a UserError for a path that climbs out of workspaceRoot (`../`, `{..}`), naming `typed`
+export function parseFilter(raw: string, workspaceRoot: string, typed?: string): ParsedFilter
 
 export interface ApplyFiltersOptions {
   filters: ParsedFilter[]

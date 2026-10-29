@@ -4,6 +4,7 @@ import {
   isOutOfFds,
   isUserError,
   OUT_OF_FDS_HINT,
+  thrownMessage,
 } from '../util/index.js'
 import {
   computeReverseDepCount,
@@ -607,8 +608,40 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // (`dormant`) until a dependant is demoted, which starts it, or until
   // every dependant has finished, which settles it unspawned. Settled
   // without an outcome: it is not part of the run, as a pruned task is not.
-  const idle = idleServers(nodes, dependents, restoreTier)
+  // A group between it and its hits is idle with it.
+  const idleGroups = new Set<string>()
+  const idle = idleServers(nodes, dependents, restoreTier, idleGroups)
+  for (const g of idleGroups) idle.add(g)
   const dormant = new Set<string>()
+  // The idle tasks below `id`, through idle groups: those its outcome may
+  // let settle, and those its demotion wakes.
+  const idleBelow = (id: string, each: (p: string) => void): void => {
+    const stack = [...(nodes.get(id) as TaskNode).deps]
+    const seen = new Set<string>()
+    while (stack.length > 0) {
+      const p = stack.pop()!
+      if (seen.has(p) || !idle.has(p)) continue
+      seen.add(p)
+      each(p)
+      if (idleGroups.has(p)) stack.push(...(nodes.get(p) as TaskNode).deps)
+    }
+  }
+  // Every task above an idle one, through idle groups, has finished.
+  const settledAbove = (id: string): boolean => {
+    const stack = [id]
+    const seen = new Set<string>()
+    while (stack.length > 0) {
+      for (const d of dependents.get(stack.pop()!) ?? []) {
+        if (outcomes.has(d)) continue
+        if (!idleGroups.has(d) || !idle.has(d)) return false
+        if (!seen.has(d)) {
+          seen.add(d)
+          stack.push(d)
+        }
+      }
+    }
+    return true
+  }
   // Held servers not yet answered, and those of them that became ready.
   const unanswered = new Set(options.heldServers?.keys() ?? [])
   for (const id of idle) unanswered.delete(id)
@@ -759,7 +792,9 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // A dormant server is asked again: the dispatch settles it once its
       // last dependant is in.
       if (dormant.size > 0) {
-        for (const p of (nodes.get(id) as TaskNode).deps) if (dormant.delete(p)) execReady.push(p)
+        idleBelow(id, (p) => {
+          if (dormant.delete(p)) execReady.push(p)
+        })
       }
       // Observer hook (the logger's taskComplete). Crash-isolated: a
       // throwing observer must NOT break scheduling — it would otherwise
@@ -770,7 +805,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       try {
         onFinish?.(outcome)
       } catch (err) {
-        const m = err instanceof Error ? err.message : String(err)
+        const m = thrownMessage(err)
         process.stderr.write(`[vx] onFinish observer threw for ${id}: ${m}\n`)
       }
       // A restore-tier task runs before its deps, but its DEPENDENTS keep
@@ -792,7 +827,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     // one carries.
     const blockedRestores = new Map<string, string | undefined>()
     const heldRelease = new Set<string>()
-    const release = (id: string): void => {
+    const blockOf = (id: string): void => {
       if (inRestoreTier(id) && continueMode !== 'always') {
         for (const dep of (nodes.get(id) as TaskNode).deps) {
           const u = outcomes.get(dep)
@@ -813,16 +848,33 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           }
         }
       }
-      const ds = dependents.get(id)
-      if (!ds) return
-      for (const d of ds) {
+    }
+    // Its block, then its dependents: one whose pending hits 0 is enqueued,
+    // or, when it is a held hit, released in turn before the next sibling.
+    // A frame stack, not recursion: a chain of held hits is released in one
+    // walk, and recursion threw RangeError on a 30,000-deep one.
+    const release = (root: string): void => {
+      const frames: { ds: readonly string[]; i: number }[] = []
+      const enter = (id: string): void => {
+        blockOf(id)
+        const ds = dependents.get(id)
+        if (ds !== undefined) frames.push({ ds, i: 0 })
+      }
+      enter(root)
+      while (frames.length > 0) {
+        const f = frames[frames.length - 1]!
+        if (f.i === f.ds.length) {
+          frames.pop()
+          continue
+        }
+        const d = f.ds[f.i++]!
         const rem = (pending.get(d) ?? 0) - 1
         pending.set(d, rem)
         if (rem !== 0) continue
         // Restore-tier dependents were already enqueued at startup (they
         // don't wait on deps); one that finished early releases its own
         // dependents now. Only an exec-tier dependent is enqueued.
-        if (heldRelease.delete(d)) release(d)
+        if (heldRelease.delete(d)) enter(d)
         else if (!inRestoreTier(d)) {
           execReady.push(d)
           readyAt.set(d, Date.now())
@@ -903,7 +955,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       try {
         onStart?.(node)
       } catch (err) {
-        const m = err instanceof Error ? err.message : String(err)
+        const m = thrownMessage(err)
         process.stderr.write(`[vx] onStart observer threw for ${node.id}: ${m}\n`)
       }
     }
@@ -1009,7 +1061,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         }
         if (idle.has(id)) {
           readyAt.delete(id)
-          if (dependents.get(id)!.every((d) => outcomes.has(d))) {
+          if (settledAbove(id)) {
             settledIdle++
             release(id)
           } else dormant.add(id)
@@ -1091,12 +1143,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               leave()
               untrack()
               demoted.add(id)
-              for (const p of node.deps) {
-                if (idle.delete(p) && dormant.delete(p)) {
+              idleBelow(id, (p) => {
+                idle.delete(p)
+                if (dormant.delete(p)) {
                   execReady.push(p)
                   readyAt.set(p, Date.now())
                 }
-              }
+              })
               if (pending.get(id) === 0) {
                 execReady.push(id)
                 readyAt.set(id, Date.now())
@@ -1104,7 +1157,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               tick()
               return
             }
-            const message = err instanceof Error ? err.message : String(err)
+            const message = thrownMessage(err)
             // After the run's stop a rejection is the stop's doing (a probe
             // it killed, C-65): aborted, as any task it kills, and unsaid.
             const stopped = aborted()
@@ -1215,18 +1268,66 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   })
 }
 
-/** Persistent tasks nobody asked for whose every dependant is a restore-tier hit. */
+/**
+ * Persistent tasks nobody asked for whose every dependant is a restore-tier
+ * hit, or a group nobody asked for that only such dependants stand behind:
+ * a group runs nothing, so `env: { dependsOn: ['dev'] }` between the server
+ * and its hits booted the server on every warm run. Those groups go in
+ * `groups`.
+ */
 export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
   dependents: ReadonlyMap<string, string[]>,
   restoreTier: ReadonlySet<string> | undefined,
+  groups?: Set<string>,
 ): Set<string> {
   const out = new Set<string>()
   if (restoreTier === undefined || restoreTier.size === 0) return out
+  const unasked = (n: TaskNode): boolean => !n.requested && n.surfaced !== true
+  // Per group: whether only hits stand behind it. Post-order on a stack, as
+  // groups nest as deep as the graph.
+  const spare = new Map<string, boolean>()
+  const spareGroup = (root: string): boolean => {
+    const stack = [root]
+    while (stack.length > 0) {
+      const id = stack[stack.length - 1]!
+      if (spare.has(id)) {
+        stack.pop()
+        continue
+      }
+      const n = nodes.get(id)
+      const ds = dependents.get(id)
+      if (n === undefined || !isGroupTask(n) || !unasked(n) || ds === undefined) {
+        spare.set(id, false)
+        stack.pop()
+        continue
+      }
+      const next = ds.find((d) => !restoreTier.has(d) && !spare.has(d))
+      if (next !== undefined) {
+        stack.push(next)
+        continue
+      }
+      stack.pop()
+      spare.set(
+        id,
+        ds.every((d) => restoreTier.has(d) || spare.get(d) === true),
+      )
+    }
+    return spare.get(root)!
+  }
   for (const n of nodes.values()) {
-    if (n.config.exec?.persistent === undefined || n.requested || n.surfaced === true) continue
+    if (n.config.exec?.persistent === undefined || !unasked(n)) continue
     const ds = dependents.get(n.id)
-    if (ds !== undefined && ds.every((d) => restoreTier.has(d))) out.add(n.id)
+    if (ds === undefined || !ds.every((d) => restoreTier.has(d) || spareGroup(d))) continue
+    out.add(n.id)
+    if (groups === undefined) continue
+    const stack = ds.filter((d) => !restoreTier.has(d))
+    while (stack.length > 0) {
+      const g = stack.pop()!
+      if (groups.has(g)) continue
+      groups.add(g)
+      for (const d of dependents.get(g)!) if (!restoreTier.has(d)) stack.push(d)
+    }
   }
   return out
 }
