@@ -23,6 +23,11 @@ const shallow =
     .stdout.toString()
     .trim() === 'true'
 
+it('a footer ends at a git trailer with no blank line before it', () => {
+  const body = 'Why.\n\nBREAKING CHANGE: a is b\nnow.\nCo-Authored-By: C <c@c>\nClaude-Session: s'
+  expect(footers(page([{ subject: 'feat!: x', body }]))).toEqual(['a is b now.'])
+})
+
 it('guides/upgrading.md carries every breaking footer in git log', () => {
   // A shallow checkout (actions/checkout's default depth 1, the macOS job)
   // holds none of the history: where CI sets VX_REQUIRE_TAGS, the job that
