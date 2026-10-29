@@ -133,3 +133,31 @@ it('--dry=json stdout parses with a remote cache layer, answering or failing', (
   // CONTROL: the failing remote was asked, and said so where a machine does not read.
   expect(down.stderr).toContain('remote down')
 })
+
+// Turbo #10375: `--dry` refused what only a real run's resources decide
+// (more persistent tasks than `--concurrency`, interactive tasks off a TTY).
+it('--dry=json plans three servers at --concurrency 1, off a TTY', () => {
+  writeFileSync(
+    path.join(root, 'pkgs', 'app', 'vx.config.mjs'),
+    `export default { tasks: Object.fromEntries(['a', 'b', 'c'].map((t) => [t, { exec: { command: 'sleep 30', persistent: {}, interactive: true } }])) }\n`,
+  )
+  const p = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      CLI,
+      'run',
+      'app#a',
+      'app#b',
+      'app#c',
+      '--concurrency',
+      '1',
+      '--dry=json',
+    ],
+    cwd: root,
+    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+  })
+  // The workspace's warner plugin says its one line; nothing else.
+  expect([p.exitCode, p.stderr.toString()]).toEqual([0, 'careful: app\n'])
+  const plan = JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }
+  expect(plan.tasks.map((t) => t.id).sort()).toEqual(['app#a', 'app#b', 'app#c'])
+})
