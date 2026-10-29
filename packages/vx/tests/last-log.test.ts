@@ -172,3 +172,15 @@ it('a cached task whose run saved no entry says so, not that it is uncached', ()
     ),
   })
 })
+
+// An entry saved before masking, or by another machine, can hold a value
+// this machine's env names a secret: a hit's replay masks it, and so does
+// the log `vx last` reads from the entry.
+it("a cached task's log masks this process's secret values, as its replay does", () => {
+  const p = Bun.spawnSync({
+    cmd: [process.execPath, BIN, 'last', '--log', 'a#build'],
+    cwd: root,
+    env: { ...process.env, PROBE_TOKEN: 'built-ok' },
+  })
+  expect([p.exitCode, p.stdout.toString()]).toEqual([0, '***\n'])
+})
