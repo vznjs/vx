@@ -73,4 +73,5 @@ that, `413`.
 
 Every refusal is `{ code, message }`, the message saying what to fix. A
 JSON body without `Content-Type: application/json` is `400`, an unknown
-route `404`, a route's wrong method `405` with `Allow`.
+route `404`, a route's wrong method `405` with `Allow`, a failure the
+server did not expect `500`, its `message` what failed.

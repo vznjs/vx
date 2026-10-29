@@ -232,7 +232,9 @@ out (`..`, absolute), a link whose target leaves the workspace (read as
 the OS follows it, through the links the result placed), and a
 directory that resolves out through a link are refused before anything
 is written through them; a link standing at an output file is replaced, never written
-through; a Tree file's setuid and setgid bits are dropped.
+through; a Tree file's setuid and setgid bits are dropped. A Tree may name
+one subtree many times; one that expands to more paths than the file
+system has free inodes is refused before anything is written.
 
 ## Artifacts stream
 
