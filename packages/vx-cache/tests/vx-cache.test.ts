@@ -11,6 +11,7 @@ import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createCacheServer } from '@vzn/vx-cache-server'
 import type { JWTPayload } from 'jose'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
+import { silentLogger } from '../../vx/tests/helpers/orchestrator-fixture.js'
 import {
   BRANCH_JOB,
   GITHUB,
@@ -36,6 +37,8 @@ beforeAll(async () => {
 function server(maxUploadBytes = 1 << 20, readAccess?: string, maxCheckHashes?: number) {
   const blobs = new Map<string, Uint8Array>()
   const seen: { method: string; path: string; body: string; scope: string | null }[] = []
+  /** Downloads keep this many of their bytes, when set. */
+  const cut: { bytes?: (length: number) => number } = {}
   const handle = createCacheServer({
     blobs: memBlobs(blobs),
     authorize: oidcAuth({ allow: ALLOW, readAccess, fetchJson: (u) => iss.fetchJson(u) }),
@@ -53,7 +56,22 @@ function server(maxUploadBytes = 1 << 20, readAccess?: string, maxCheckHashes?: 
         body: text.split('\n')[0]!,
         scope: req.headers.get('vx-scope'),
       })
-      return handle(req as never)
+      const res = await handle(req as never)
+      const at = cut.bytes
+      const artifact = new URL(req.url).pathname.startsWith('/v1/artifacts/')
+      if (at === undefined || !artifact || req.method !== 'GET' || res.status !== 200) return res
+      // A body cut short, ended cleanly: chunked, with its terminator.
+      const bytes = new Uint8Array(await res.arrayBuffer())
+      const kept = bytes.subarray(0, at(bytes.length))
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(kept.slice(0, kept.length >> 1))
+            c.enqueue(kept.slice(kept.length >> 1))
+            c.close()
+          },
+        }),
+      )
     },
   })
   const url = srv.url.href.replace(/\/$/, '')
@@ -61,6 +79,7 @@ function server(maxUploadBytes = 1 << 20, readAccess?: string, maxCheckHashes?: 
     url,
     blobs,
     seen,
+    cut,
     token: (claims: JWTPayload) => iss.sign(claims, new URL(url).origin),
     stop: () => srv.stop(true),
   }
@@ -1218,5 +1237,51 @@ describe('vx run with vxCache()', () => {
       'console.log("app")\n',
     )
     expect(srv.seen.slice(before).filter((r) => r.method === 'PUT')).toEqual([])
+  })
+
+  // Bun.serve sends a streamed answer chunked, with no Content-Length
+  // (PROTOCOL.md), so a body cut short can end cleanly: its terminator
+  // says nothing of its length. The artifact's own frame must refuse it.
+  it('a download cut short, ended cleanly, is a miss said, and never stored', async () => {
+    const cacheDir = path.join(root, '.vx', 'cache')
+    const noWrite = { localRead: true, localWrite: false, remoteRead: true, remoteWrite: false }
+    const localOnly = { localRead: true, localWrite: false, remoteRead: false, remoteWrite: false }
+    // The remote holds the task's artifact whole.
+    await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir })
+    expect(srv.blobs.size).toBe(1)
+    for (const at of [(n: number) => n >> 1, (n: number) => n - 1, () => 0]) {
+      await rm(cacheDir, { recursive: true, force: true })
+      await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+      const fx = { root, log: [] as string[], err: [] as string[] }
+      srv.cut.bytes = at
+      try {
+        const r = await run({
+          cwd: root,
+          tasks: ['build'],
+          handleSignals: false,
+          cacheDir,
+          cache: noWrite,
+          log: silentLogger(fx),
+        })
+        expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+      } finally {
+        delete srv.cut.bytes
+      }
+      expect(fx.log.filter((l) => l.startsWith('[vx]'))).toEqual([
+        expect.stringMatching(
+          /^\[vx\] plugin '@vzn\/vx-cache': download [0-9a-f]+ from http:\/\/127\.0\.0\.1:\d+ failed: cache: corrupt artifact for [0-9a-f]+: artifact is not a readable archive$/,
+        ),
+      ])
+      // Nothing a later run would serve: the cut bytes were not kept.
+      const again = await run({
+        cwd: root,
+        tasks: ['build'],
+        handleSignals: false,
+        cacheDir,
+        cache: localOnly,
+        log: silentLogger({ root, log: [], err: [] }),
+      })
+      expect(again.outcomes.map((o) => o.status)).toEqual(['success'])
+    }
   })
 })
