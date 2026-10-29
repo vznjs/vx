@@ -30,8 +30,8 @@ import {
   WARN,
 } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { findCwdProject } from './select.js'
-import { cliCacheDir, discoverCliProjects, parseCacheDirFlag } from './workspace-config.js'
+import { findCwdProject, rootSpelled } from './select.js'
+import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
 interface WhyArgs {
   target?: string
@@ -193,16 +193,6 @@ async function resolveTarget(
 }
 
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
-
-/** `//#task`, Turbo's root package, as the root project's id: the name discovery gives it (D-39). */
-async function rootSpelled(root: string, target: string): Promise<string> {
-  if (!target.startsWith('//#')) return target
-  const name = await discoverCliProjects(root).then(
-    (metas) => metas.find((m) => m.dir === root)?.name,
-    () => undefined,
-  )
-  return name === undefined ? target : `${name}#${target.slice(3)}`
-}
 
 /** ` · up-to-date` or ` · restored` on a hit, as the run's summary said it; nothing otherwise. */
 function restoredWord(r: { restored: boolean | null }): string {

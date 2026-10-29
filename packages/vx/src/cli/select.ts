@@ -133,6 +133,16 @@ async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
   return await discoverCliProjects(await findWorkspaceRoot(cwd))
 }
 
+/** `//#task`, Turbo's root package, as the root project's id: the name discovery gives it (D-39). */
+export async function rootSpelled(root: string, target: string): Promise<string> {
+  if (!target.startsWith('//#')) return target
+  const name = await discoverCliProjects(root).then(
+    (metas) => metas.find((m) => m.dir === root)?.name,
+    () => undefined,
+  )
+  return name === undefined ? target : `${name}#${target.slice(3)}`
+}
+
 export async function findCwdProject(cwd: string): Promise<string | null> {
   return (await findCwdSelection(cwd))?.name ?? null
 }
