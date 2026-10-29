@@ -84,7 +84,7 @@ Owning the file, the per-project key, the memo and the `--affected` diff are cor
 
 ## `--affected`
 
-`vx run test --affected=origin/main` after a lockfile change used to select every project. With a plugin declared at `scope: 'project'`, core hands it the lockfile at the base ref and in the working tree; it digests both and names the projects whose digest moved. At `scope: 'workspace'` a change still selects every project. A lockfile that appeared or was deleted still selects everything — every project's `node_modules` is in question.
+`vx run test --affected=origin/main` after a lockfile change used to select every project. With a plugin declared at `scope: 'project'`, core hands it the lockfile at the base ref and in the working tree; it digests both and names the projects whose digest moved. At `scope: 'workspace'` a change still selects every project. A lockfile that appeared or was deleted still selects everything — every project's `node_modules` is in question. A change to a file the lockfile names but does not pin (a `file:`, `link:` or `portal:` directory, a patch) selects the projects reaching it, even when it sits inside another project's directory.
 
 ## Testing
 
