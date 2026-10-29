@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { TaskNode } from '@vzn/vx'
+import type { DiscoverContext, TaskNode } from '@vzn/vx'
 import { yarn } from '../src/index.js'
 
 let root: string
@@ -80,4 +80,29 @@ it('a workspace a `!` glob names is still one: Yarn 1 links it anyway', async ()
   const before = await key()
   await writeFile(path.join(root, 'packages/c/dist/index.js'), '// v2\n')
   expect(await key()).toBe(before)
+})
+
+it('a `link:` to a workspace under another name is an edge to it', async () => {
+  // Yarn 1 symlinks the directory whatever the name; the edge came only
+  // from the name, so `"y": "link:../c"` ordered nothing and b's ^build
+  // ran beside c's.
+  await writeFile(
+    path.join(root, 'packages/b/package.json'),
+    JSON.stringify({ name: 'b', dependencies: { y: 'link:../c', d: 'file:../d' } }),
+  )
+  await writeFile(
+    path.join(root, 'yarn.lock'),
+    '# yarn lockfile v1\n\n\n"d@file:packages/d":\n  version "1.0.0"\n\n"y@link:packages/c":\n  version "1.0.0"\n',
+  )
+  const ctx: DiscoverContext = {
+    workspaceRoot: root,
+    cacheDir: path.join(root, '.vx', 'cache'),
+    projects: [],
+    warn() {},
+    worktreeChanges: async () => null,
+  }
+  const rel = (dir: string) => path.relative(root, dir)
+  const b = (await yarn().discover!(ctx)).find((p) => rel(p.dir) === 'packages/b')!
+  // CONTROL: the `file:` copy of d is no edge.
+  expect((b.deps ?? []).map(rel)).toEqual(['packages/c'])
 })
