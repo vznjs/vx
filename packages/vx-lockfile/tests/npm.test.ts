@@ -102,6 +102,14 @@ describe('workspace digests (npm)', () => {
     expect(a.get('packages/a')).not.toBe(b.get('packages/a'))
   })
 
+  // vercel/turborepo#2272: npm keeps an old package's `engines` as an
+  // array of strings, which Turbo's lockfile reader refused.
+  it('reads an entry whose engines is an array, keying as without it', () => {
+    const doc = JSON.parse(lock()) as { packages: Record<string, Record<string, unknown>> }
+    doc.packages['node_modules/bar']!['engines'] = ['node >= 0.8.0']
+    expect(digests(JSON.stringify(doc))).toEqual(digests(lock()))
+  })
+
   it('a hoisted bump moves the workspaces that reach it and no other', () => {
     const before = digests(lock())
     const after = digests(lock({ bar: '2.0.1' }))
