@@ -31,6 +31,7 @@ export default { tasks: {
   bad: { exec: { command: 'echo boom; exit 3' } },
   quiet: { exec: { command: 'true' }, inputs, cache },
   mute: { exec: { command: 'exit 4' } },
+  unsaved: { exec: { command: 'echo unsaved' }, inputs, cache },
 } }
 `,
   )
@@ -157,5 +158,17 @@ it('--log takes a bare task name: the one project that ran it, else the ones to 
     code: 1,
     out: '',
     err: noticed('vx last: "build" ran in 2 projects — pick one:\n  a#build\n  b#build\n'),
+  })
+})
+
+it('a cached task whose run saved no entry says so, not that it is uncached', () => {
+  expect(vx('run', 'a#unsaved', '--cache-policy', 'local:r').code).toBe(0)
+  expect(vx('last', '--log', 'a#unsaved')).toEqual({
+    code: 0,
+    out: '',
+    err: noticed(
+      'vx last: a#unsaved ended success, and its entry is not in the cache: the run did not save it, or it was pruned since\n',
+      'info',
+    ),
   })
 })

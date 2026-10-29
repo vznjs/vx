@@ -201,3 +201,20 @@ it('a changed review copy selects nothing under --affected', async () => {
   await Bun.write(path.join(dir, 'src/vx.lock.json'), '2')
   expect(vx(r, 'show', '--affected=HEAD').out).toContain('packages/a')
 })
+
+// `.vx/.gitattributes` and `.vx/.gitignore` are vx's too, and no key reads
+// them: under a root project, an edit to one selected that project whole.
+it('vx-written files under .vx select no root project under --affected', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-root-', edges: {} }))
+  await Bun.write(
+    path.join(r, 'vx.config.mjs'),
+    `export default { tasks: { check: { exec: { command: 'true' }, inputs: { files: ['**'] } } } }\n`,
+  )
+  expect(vx(r, 'lock').code).toBe(0)
+  await Bun.write(path.join(r, '.vx', '.gitignore'), '/cache\n/tmp\n')
+  gitIn(r)('add', '-A')
+  gitIn(r)('commit', '-q', '-m', 'init')
+  await Bun.write(path.join(r, '.vx', '.gitattributes'), 'x\n')
+  await Bun.write(path.join(r, '.vx', '.gitignore'), '/cache\n')
+  expect(vx(r, 'show', '--affected=HEAD').err).toContain('nothing affected since HEAD')
+})

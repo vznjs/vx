@@ -22,7 +22,9 @@ that set `deps = null` was refused as "null is not an object", naming
 neither the task nor the field. Its `projectName` and `taskName` must be
 names and its `projectDir` an absolute path (X-94): a node a hook added
 without one failed at its run as an internal error (a TypeError from
-`path`), and a relative one keyed and ran against vx's own cwd.
+`path`), and a relative one keyed and ran against vx's own cwd. Its `id`
+must be `projectName#taskName`: a copy under a new id kept the old
+`taskName`, which `--exclude-dependencies` read while the key read the id.
 
 Every capability is resolved inside `prepareRun`/`run()` from the declared
 list (`prepared.plugins`). (A whole-run `backend` capability was resolved

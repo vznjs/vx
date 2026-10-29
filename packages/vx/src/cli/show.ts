@@ -58,8 +58,7 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     else if (a.startsWith('--format=')) format = a.slice('--format='.length)
     else if (a === '--filter' || a.startsWith('--filter=')) {
       const v = a === '--filter' ? args[++i] : a.slice('--filter='.length)
-      // `--filter --format json` took `--format` as the pattern; no filter
-      // opens with `--`. An empty `=` said `filter "" names no project`.
+      // `--filter --format json` took `--format` as the pattern; no filter opens with `--`.
       if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
         return {
           ...out,

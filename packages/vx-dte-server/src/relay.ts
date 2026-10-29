@@ -529,7 +529,10 @@ export function createRelay(opts: RelayOptions): Relay {
         if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
           const id = `refused-${crypto.randomUUID()}`
           refusals.set(id, err)
-          return opts.upgrade('', id, req, protocol)
+          const res = opts.upgrade('', id, req, protocol)
+          // No socket will attach to take it.
+          if (res.status !== 101) refusals.delete(id)
+          return res
         }
         return Response.json(errorBody(err), { status: err.status })
       }
