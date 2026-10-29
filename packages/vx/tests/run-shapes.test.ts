@@ -1,12 +1,13 @@
 // Run shapes other runners broke on: a task name holding `:` (split as a
 // configuration), a cache directory named with shell syntax (passed
 // through a shell, it ran), and a wide fan-out (a listener per task
-// warned past Node's default ten, and a scheduler race ran a task twice).
+// warned past Node's default ten, and a scheduler race ran a task twice),
+// and a runtime input run from wherever the runner was started.
 import { readdir, readFile, realpath, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { planned, vx } from './helpers/parity.js'
+import { dry, planned, vx } from './helpers/parity.js'
 
 const TIMEOUT = 60_000
 
@@ -88,6 +89,38 @@ describe('a cache directory named with shell syntax', () => {
       const all = await readdir(root, { recursive: true })
       expect(all.filter((f) => f.includes('PWNED') && !f.includes('$('))).toEqual([])
       expect(all).toContain(env.VX_CACHE_DIR)
+    },
+    TIMEOUT,
+  )
+})
+
+describe('a runtime input', () => {
+  let root = ''
+  beforeAll(async () => {
+    root = await realpath(await makeWorkspace({ prefix: 'vx-runtime-cwd-', edges: {} }))
+    await addProject(root, 'a', {
+      config: `export default {
+        tasks: {
+          build: {
+            exec: { command: 'true' },
+            inputs: { files: ['src/**'], runtime: ['pwd'] },
+            cache: { outputs: { files: [] } },
+          },
+        },
+      }
+      `,
+      files: { 'src/deep/x.txt': 'x\n' },
+    })
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'runs in the project directory whatever directory vx runs from, so the key does not move',
+    async () => {
+      const key = async (cwd: string) => (await dry(cwd, ['a#build']))[0]!.hash
+      expect(await key(path.join(root, 'packages', 'a', 'src', 'deep'))).toBe(await key(root))
     },
     TIMEOUT,
   )
