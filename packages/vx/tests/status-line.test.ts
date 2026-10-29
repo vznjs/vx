@@ -573,6 +573,25 @@ describe('defaultLogger status line integration', () => {
     log.runEnd?.()
   })
 
+  // A server that died while the graph ran stayed pinned `running` under
+  // the line naming its exit, until the run ended.
+  it('a persistent task that exited on its own is no longer pinned', () => {
+    const s = tty()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
+    log.runStart?.({ total: 3, concurrency: 1 })
+    const dev = mkNode('web#dev', { persistent: true })
+    const api = mkNode('web#api', { persistent: true })
+    for (const n of [dev, api]) log.taskStart?.(n)
+    const gone = mkOutcome(dev, 'success')
+    log.taskComplete(dev, gone)
+    log.taskComplete(api, mkOutcome(api, 'success'))
+    gone.serverExit = 3
+    log.taskStart?.(mkNode('web#e2e'))
+    const rows = regionRows(s.chunks[s.chunks.length - 1]!)
+    expect(rows.filter((r) => r.includes('▸'))).toEqual([' ▸         running          web#api'])
+    log.runEnd?.()
+  })
+
   it('a non-persistent success never pins', () => {
     const s = tty()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
