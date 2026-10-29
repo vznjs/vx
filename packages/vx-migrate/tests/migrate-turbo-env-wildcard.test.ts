@@ -53,8 +53,8 @@ it('a task `*` env name lists what its package spells; one nothing spells stays 
       lintTodos: task('a', 'lint').todos,
       notes: p.notes.filter((n) => n.startsWith('env ')),
     }).toEqual({
-      e2e: ['E2E_APP_ID'],
-      build: ['A_KEY'],
+      e2e: [{ raw: '...globalEnvInputs' }, 'E2E_APP_ID'],
+      build: [{ raw: '...globalEnvInputs' }, 'A_KEY'],
       lintTodos: ['passThroughEnv "B_*": wildcards are not supported — list explicit names'],
       notes: [
         'env "A_*": the configs list the names the files of each task\'s package and its workspace dependencies spell (1 task) — add any other a task reads to inputs.env and exec.env.passThrough',

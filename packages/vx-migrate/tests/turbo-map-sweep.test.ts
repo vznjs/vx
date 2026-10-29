@@ -7,10 +7,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { UserError } from '@vzn/vx'
 import type { PackageMeta } from '../src/packages.js'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP, dotenvGlobsProbe } from '../src/dotenv-probe.js'
+import { notTurbos, ownSplice } from './helpers/turbo-own.js'
 import { mapTurboWorkspace, type TurboMappedTask } from '../src/turbo/turbo-map.js'
 
 let root: string
-const opts = { splice: (_k: string, v: readonly string[]) => v, persistentTodo: 'PERSIST' }
+const opts = {
+  splice: ownSplice,
+  persistentTodo: 'PERSIST',
+}
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'vx-turbo-map-'))
@@ -1121,7 +1125,12 @@ describe('turbo-map: the `global` block', () => {
       },
       { a: { scripts: { build: 'b' } } },
     )
-    expect(m.globals).toEqual({ inputs: ['tsconfig.base.json'], env: ['GLOBAL_V'], pass: ['PT'] })
+    const { inputs, env, pass } = m.globals
+    expect({ inputs, env: notTurbos(env), pass: notTurbos(pass) }).toEqual({
+      inputs: ['tsconfig.base.json'],
+      env: ['GLOBAL_V'],
+      pass: ['PT'],
+    })
   })
 })
 
@@ -1715,5 +1724,87 @@ describe('turbo-map: an uncached task keeps its key', () => {
       { files: [], workspaceFiles: ['shared/schema.txt'], env: ['API_URL'] },
       undefined,
     ])
+  })
+})
+
+// Turbo hashes `DEFAULT_ENV_VARS` into every task (vercel/turborepo#9635,
+// #9718), keys Next's VERCEL_DEPLOYMENT_ID under skew protection (#9853)
+// and passes `BUILTIN_PASS_THROUGH_ENV` to every task, unhashed
+// (crates/turborepo-env). Unkeyed, a preview build replayed in
+// production; unpassed, a task ran without TZ.
+describe("turbo-map: Turbo's builtin env", () => {
+  const live = [
+    'GITHUB_SHA',
+    'TZ',
+    'VERCEL_ANALYTICS_ID',
+    'VERCEL_DEPLOYMENT_ID',
+    'VERCEL_TARGET_ENV',
+    'VERCEL_URL',
+  ]
+  const web = async (
+    turboJson: unknown,
+    extra: Partial<Parameters<typeof mapTurboWorkspace>[2]>,
+  ): Promise<{ key: string[]; pass: string[] }> => {
+    await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turboJson))
+    const dir = path.join(root, 'apps', 'web')
+    await mkdir(dir, { recursive: true })
+    const packageJson = {
+      name: 'web',
+      scripts: { build: 'next build' },
+      dependencies: { next: '15' },
+    }
+    const m = await mapTurboWorkspace(
+      root,
+      [{ name: 'web', dir, packageJson: packageJson as never, configPath: null }],
+      { ...opts, splice: (_k, v) => v, ...extra },
+    )
+    const task = m.projects[0]!.tasks[0]!.task as {
+      inputs: { env?: string[] }
+      exec: { env?: { passThrough?: string[] } }
+    }
+    return { key: task.inputs.env ?? [], pass: task.exec.env?.passThrough ?? [] }
+  }
+
+  it('keys the defaults and the skew rule, and passes the builtins unkeyed', async () => {
+    const skew = (v: string | undefined) => (n: string) =>
+      n === 'VERCEL_SKEW_PROTECTION_ENABLED' ? v : undefined
+    const on = await web({ tasks: { build: {} } }, { envNames: live, envValue: skew('1') })
+    expect(on.key.toSorted()).toEqual([
+      'NEXT_DEPLOYMENT_ID',
+      'VERCEL_ANALYTICS_ID',
+      'VERCEL_DEPLOYMENT_ID',
+      'VERCEL_TARGET_ENV',
+    ])
+    // Keyed names pass too, as Turbo passes what it hashes.
+    expect(on.pass.toSorted()).toEqual([...live, 'NEXT_DEPLOYMENT_ID'].toSorted())
+    // CONTROL: skew protection off keys no deployment id; it is still passed.
+    const off = await web({ tasks: { build: {} } }, { envNames: live, envValue: skew('0') })
+    expect(off.key.toSorted()).toEqual([
+      'NEXT_DEPLOYMENT_ID',
+      'VERCEL_ANALYTICS_ID',
+      'VERCEL_TARGET_ENV',
+    ])
+    expect(off.pass).toContain('VERCEL_DEPLOYMENT_ID')
+    // A builtin wildcard matches only the live names; a name it does not cover is not passed.
+    expect(off.pass).not.toContain('VERCEL_SKEW_PROTECTION_ENABLED')
+  })
+
+  it('a `!` in globalEnv takes the defaults back, as Turbo does', async () => {
+    const r = await web({ globalEnv: ['!VERCEL*'], tasks: { build: {} } }, { envNames: live })
+    expect(r.key).toEqual(['NEXT_DEPLOYMENT_ID'])
+  })
+
+  it('written configs key the defaults and the skew name, and pass the literal builtins', async () => {
+    const r = await web({ tasks: { build: {} } }, { sourceNames: async () => [] })
+    expect(r.key.toSorted()).toEqual([
+      'NEXT_DEPLOYMENT_ID',
+      'VERCEL_ANALYTICS_ID',
+      'VERCEL_DEPLOYMENT_ID',
+      'VERCEL_TARGET_ENV',
+    ])
+    expect(r.pass).toEqual(expect.arrayContaining(['TZ', 'VERCEL', 'COMSPEC', 'PNPM_HOME']))
+    // Not a shell name: core refuses it in exec.env.passThrough.
+    expect(r.pass).not.toContain('ProgramFiles(x86)')
+    expect(r.pass.some((n) => n.includes('*'))).toBe(false)
   })
 })

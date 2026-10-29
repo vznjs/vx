@@ -37,6 +37,8 @@ export const FRAMEWORK_ENV: ReadonlyArray<{
   env: readonly string[]
   all: boolean
   dependencies: readonly string[]
+  /** Turbo's `envConditionals`: `include` is keyed while `key` holds `value`. */
+  conditionals?: ReadonlyArray<{ key: string; value: string; include: readonly string[] }>
 }> = [
   { slug: 'astro', env: ['PUBLIC_*'], all: true, dependencies: ['astro'] },
   { slug: 'blitzjs', env: ['NEXT_PUBLIC_*'], all: true, dependencies: ['blitz'] },
@@ -53,6 +55,10 @@ export const FRAMEWORK_ENV: ReadonlyArray<{
     env: ['NEXT_PUBLIC_*', 'NEXT_DEPLOYMENT_ID'],
     all: true,
     dependencies: ['next'],
+    // Skew protection builds the deployment id into the app (vercel/turborepo#9853).
+    conditionals: [
+      { key: 'VERCEL_SKEW_PROTECTION_ENABLED', value: '1', include: ['VERCEL_DEPLOYMENT_ID'] },
+    ],
   },
   {
     slug: 'nitro',
@@ -85,20 +91,105 @@ export const FRAMEWORK_ENV: ReadonlyArray<{
   },
 ]
 
+/** The variables each framework conditional reads; a live mapping is keyed on their values. */
+export const ENV_CONDITION_KEYS: readonly string[] = FRAMEWORK_ENV.flatMap((f) =>
+  (f.conditionals ?? []).map((c) => c.key),
+)
+
+// Turbo's own env, from crates/turborepo-env (2026-10-27, edace4621): the
+// promise is a Turbo repo run unchanged, so these mirror it exactly.
+/** `DEFAULT_ENV_VARS`: hashed into every task as if listed in `globalEnv` (a `!` there takes them back). */
+export const TURBO_DEFAULT_ENV: readonly string[] = ['VERCEL_ANALYTICS_ID', 'VERCEL_TARGET_ENV']
+/** `BUILTIN_PASS_THROUGH_ENV`: passed to every task, never hashed. */
+export const TURBO_BUILTIN_PASS_THROUGH: readonly string[] = [
+  'HOME',
+  'USER',
+  'TZ',
+  'LANG',
+  'SHELL',
+  'PWD',
+  'XDG_DATA_*',
+  'XDG_RUNTIME_DIR',
+  'XAUTHORITY',
+  'DBUS_SESSION_BUS_ADDRESS',
+  'CI',
+  'NODE_OPTIONS',
+  'COREPACK_*',
+  'LD_LIBRARY_PATH',
+  'DYLD_FALLBACK_LIBRARY_PATH',
+  'LIBPATH',
+  'LD_PRELOAD',
+  'DYLD_INSERT_LIBRARIES',
+  'COLORTERM',
+  'FORCE_COLOR',
+  'NO_COLOR',
+  'TERM',
+  'TERM_PROGRAM',
+  'DISPLAY',
+  'TMP',
+  'TEMP',
+  'WINDIR',
+  'ProgramFiles',
+  'ProgramFiles(x86)',
+  'VSCODE_*',
+  'ELECTRON_RUN_AS_NODE',
+  'DOCKER_*',
+  'BUILDKIT_*',
+  'COMPOSE_*',
+  'JB_IDE_*',
+  'JB_INTERPRETER',
+  '_JETBRAINS_TEST_RUNNER_RUN_SCOPE_TYPE',
+  'TURBO_*',
+  'VERCEL',
+  'VERCEL_*',
+  'NEXT_*',
+  'USE_OUTPUT_FOR_EDGE_FUNCTIONS',
+  'NOW_BUILDER',
+  'VC_MICROFRONTENDS_CONFIG_FILE_NAME',
+  'GITHUB_*',
+  'RUNNER_*',
+  '__NIXOS_*',
+  'NIX_*',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'PATH',
+  'PROGRAMDATA',
+  'SYSTEMROOT',
+  'SYSTEMDRIVE',
+  'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'PNPM_HOME',
+  'pnpm_config_verify_deps_before_run',
+  'NPM_CONFIG_STORE_DIR',
+  'COMSPEC',
+  'PATHEXT',
+]
+
 /** A name core takes in `inputs.env` and `exec.env.passThrough`. */
 export const keyable = (name: string): boolean =>
   name.length > 0 && !name.startsWith('!') && !/[*?[\]{}=\0]/.test(name)
 
 /**
  * The names of `names` a live mapping can read differently: each a `*` in
- * one of `configs` (turbo.json texts, any string, a superset) or in Turbo's
- * framework table matches, and each core cannot key (a literal one is
+ * one of `configs` (turbo.json texts, any string, a superset), in Turbo's
+ * framework table or in its builtin env matches, each of those tables'
+ * literals, and each core cannot key (a literal one is
  * dropped only when no variable has it). The kept mapping keyed on every
  * name, so any variable that came or went (a CI step's, `VX_DEBUG_TIMING`)
  * remapped the workspace: ~330 ms a run on vercel/ai.
  */
 export function envNamesThatMap(configs: readonly string[], names: readonly string[]): string[] {
-  const patterns = new Set(FRAMEWORK_ENV.flatMap((f) => f.env).filter((e) => e.includes('*')))
+  const patterns = new Set(
+    [...FRAMEWORK_ENV.flatMap((f) => f.env), ...TURBO_BUILTIN_PASS_THROUGH].filter((e) =>
+      e.includes('*'),
+    ),
+  )
+  // A builtin or conditional literal is passed or keyed only when set.
+  const literals = new Set([
+    ...TURBO_BUILTIN_PASS_THROUGH.filter((e) => !e.includes('*')),
+    ...FRAMEWORK_ENV.flatMap((f) => (f.conditionals ?? []).flatMap((c) => c.include)),
+  ])
   for (const text of configs)
     for (const m of text.matchAll(/"((?:[^"\\]|\\.)*)"/g))
       if (m[1]!.includes('*')) patterns.add(m[1]!)
@@ -110,7 +201,7 @@ export function envNamesThatMap(configs: readonly string[], names: readonly stri
         `^${p.replaceAll('\\', '').replace(/^!/, '').split('*').map(RegExp.escape).join('.*')}$`,
       ),
   )
-  return names.filter((n) => !keyable(n) || res.some((re) => re.test(n)))
+  return names.filter((n) => !keyable(n) || literals.has(n) || res.some((re) => re.test(n)))
 }
 
 /**

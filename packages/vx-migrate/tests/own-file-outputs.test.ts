@@ -12,6 +12,7 @@ import type { PackageMeta } from '../src/packages.js'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 import { ownFileOutput, ownFileTakeBacks } from '../src/shared-outputs.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
+import { ownSplice } from './helpers/turbo-own.js'
 
 let root: string
 
@@ -107,7 +108,7 @@ describe('an output that covers the project’s own package.json', () => {
       }),
     )
     const m = await mapTurboWorkspace(root, [a], {
-      splice: (_k: string, v: readonly string[]) => v,
+      splice: ownSplice,
       persistentTodo: 'PERSIST',
     })
     const t = m.projects[0]!.tasks[0]!

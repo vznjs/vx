@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
+import { BUILTIN_FAMILIES_NOTE } from './helpers/turbo-own.js'
 
 let root: string
 let metas: PackageMeta[]
@@ -67,9 +68,15 @@ describe('migrateTurbo: a framework Turbo infers', () => {
       'NEXT_DEPLOYMENT_ID',
     ]
     expect(await env()).toEqual({
-      env: names,
-      pass: names,
+      env: [{ raw: '...globalEnvInputs' }, ...names, 'VERCEL_DEPLOYMENT_ID'],
+      pass: [
+        { raw: '...globalEnvInputs' },
+        { raw: '...globalPassThroughEnv' },
+        ...names,
+        'VERCEL_DEPLOYMENT_ID',
+      ],
       notes: [
+        BUILTIN_FAMILIES_NOTE,
         'nextjs in web: Turbo passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID implicitly; the configs ' +
           'list the names the package and its workspace dependencies spell, so add any an ' +
           'installed dependency reads to inputs.env and exec.env.passThrough',
@@ -78,6 +85,10 @@ describe('migrateTurbo: a framework Turbo infers', () => {
   })
 
   it('without git lists only the literal names', async () => {
-    expect((await env()).env).toEqual(['NEXT_DEPLOYMENT_ID'])
+    expect((await env()).env).toEqual([
+      { raw: '...globalEnvInputs' },
+      'NEXT_DEPLOYMENT_ID',
+      'VERCEL_DEPLOYMENT_ID',
+    ])
   })
 })

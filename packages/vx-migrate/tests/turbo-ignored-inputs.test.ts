@@ -11,6 +11,7 @@ import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP, ignoredFilesProbe } from '../src/dotenv-probe.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
+import { ownSplice } from './helpers/turbo-own.js'
 
 const ws = useTurboWorkspace({
   globalDependencies: ['config.local.json'],
@@ -77,7 +78,7 @@ describe('turbo-map: gitignored inputs named by path', () => {
     const asked: string[][] = []
     const ignore = new Set(['config.local.json', 'packages/a/secret.local.txt', 'root.local'])
     const m = await mapTurboWorkspace(dir, metas, {
-      splice: (_k, v) => v,
+      splice: ownSplice,
       persistentTodo: 'PERSIST',
       ignored: async (rels) => {
         asked.push([...rels].sort())

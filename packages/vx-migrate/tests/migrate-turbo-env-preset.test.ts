@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
+import { WRITTEN_BUILTINS, WRITTEN_DEFAULTS } from './helpers/turbo-own.js'
 
 let root: string
 beforeEach(async () => {
@@ -59,19 +60,28 @@ describe('migrateTurbo: a task env several configs share', () => {
       c: env('c'),
       imports: p.projects.map((x) => x.importLines),
     }).toEqual({
-      exports: ["export const globalEnvInputs = ['G']", "export const buildEnv = ['A', 'B', 'C']"],
+      exports: [
+        `export const globalEnvInputs = [${WRITTEN_DEFAULTS}, 'G']`,
+        `export const globalPassThroughEnv = [${WRITTEN_BUILTINS}]`,
+        "export const buildEnv = ['A', 'B', 'C']",
+      ],
       a: [
         [{ raw: '...globalEnvInputs' }, { raw: '...buildEnv' }],
-        [{ raw: '...globalEnvInputs' }, { raw: '...buildEnv' }, 'P'],
+        [
+          { raw: '...globalEnvInputs' },
+          { raw: '...globalPassThroughEnv' },
+          { raw: '...buildEnv' },
+          'P',
+        ],
       ],
       c: [
         [{ raw: '...globalEnvInputs' }, 'D', 'E', 'F'],
-        [{ raw: '...globalEnvInputs' }, 'D', 'E', 'F', 'P'],
+        [{ raw: '...globalEnvInputs' }, { raw: '...globalPassThroughEnv' }, 'D', 'E', 'F', 'P'],
       ],
       imports: [
-        ["import { buildEnv, globalEnvInputs } from '../../vx-preset.js'"],
-        ["import { buildEnv, globalEnvInputs } from '../../vx-preset.js'"],
-        ["import { globalEnvInputs } from '../../vx-preset.js'"],
+        ["import { buildEnv, globalEnvInputs, globalPassThroughEnv } from '../../vx-preset.js'"],
+        ["import { buildEnv, globalEnvInputs, globalPassThroughEnv } from '../../vx-preset.js'"],
+        ["import { globalEnvInputs, globalPassThroughEnv } from '../../vx-preset.js'"],
       ],
     })
   })

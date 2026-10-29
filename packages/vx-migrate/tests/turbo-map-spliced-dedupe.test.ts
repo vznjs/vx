@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
+import { notTurbos } from './helpers/turbo-own.js'
 
 let root: string
 beforeEach(async () => {
@@ -51,7 +52,7 @@ describe('turbo-map: a global name the task repeats', () => {
         inputs: { env: unknown[]; workspaceFiles: unknown[] }
         exec: { env: { passThrough: unknown[] } }
       }
-      return [t.inputs.env, t.exec.env.passThrough, t.inputs.workspaceFiles]
+      return [notTurbos(t.inputs.env), notTurbos(t.exec.env.passThrough), t.inputs.workspaceFiles]
     }
     expect([await inputsOf((_k, v) => v), await inputsOf((k) => [{ raw: `...${k}` }])]).toEqual([
       [['A', 'B'], ['A', 'C', 'B', 'D'], ['g.json']],

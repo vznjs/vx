@@ -10,6 +10,7 @@ import { lock, planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { turbo } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { tamperMapping } from './helpers/tamper-mapping.js'
+import { notTurbos } from './helpers/turbo-own.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const TIMEOUT = 30_000
@@ -117,9 +118,13 @@ describe('turbo()', () => {
       // globalDependencies and the $TURBO_ROOT$/ input both name the
       // file; the mapper sees both strings and lists it once.
       expect(inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
-      expect(inputs.env).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
+      expect(notTurbos(inputs.env!)).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
       expect(cache.outputs.files).toEqual(['dist/**'])
-      expect(app.config.exec?.env?.passThrough).toEqual(['GLOBAL_MODE', 'AWS_PROFILE', 'NODE_ENV'])
+      expect(notTurbos(app.config.exec!.env!.passThrough!)).toEqual([
+        'GLOBAL_MODE',
+        'AWS_PROFILE',
+        'NODE_ENV',
+      ])
       expect(app.config.exec?.command).toBe('mkdir -p dist && cat src/gen/api.js > dist/app.js')
     },
     TIMEOUT,
@@ -1483,6 +1488,59 @@ describe('the npm_* variables a package manager sets', () => {
       const lib = path.join(root, 'packages', 'lib')
       expect(await Bun.file(path.join(lib, 'v.txt')).text()).toBe('lib 1.2.3 v\n')
       expect(await Bun.file(path.join(lib, 'w.txt')).text()).toBe('1.2.3 \n')
+    },
+    TIMEOUT,
+  )
+})
+
+// Turbo passes `BUILTIN_PASS_THROUGH_ENV` (TZ, VERCEL_*, GITHUB_*, …) to
+// every task and hashes `DEFAULT_ENV_VARS` into every key
+// (crates/turborepo-env). Under turbo() the task ran without TZ, and a
+// build for VERCEL_TARGET_ENV=preview was a hit for production.
+describe("Turbo's builtin env under turbo()", () => {
+  const NAMES = ['TZ', 'VERCEL_URL', 'GITHUB_SHA', 'VERCEL_TARGET_ENV', 'UNLISTED_VAR']
+  const saved = new Map(NAMES.map((n) => [n, process.env[n]]))
+  afterEach(() => {
+    for (const [n, v] of saved) {
+      if (v === undefined) delete process.env[n]
+      else process.env[n] = v
+    }
+  })
+  it(
+    'reaches the task; a default re-keys it, a pass-through one does not',
+    async () => {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { e: { outputs: ['dist/**'] } } }),
+      )
+      await writeFile(
+        path.join(root, 'packages', 'lib', 'package.json'),
+        JSON.stringify({
+          name: 'lib',
+          scripts: {
+            e: 'mkdir -p dist && echo "$TZ|$VERCEL_URL|$GITHUB_SHA|$VERCEL_TARGET_ENV|$UNLISTED_VAR" > dist/e.txt',
+          },
+        }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      Object.assign(process.env, {
+        TZ: 'Asia/Tokyo',
+        VERCEL_URL: 'x.vercel.app',
+        GITHUB_SHA: 'abc',
+        VERCEL_TARGET_ENV: 'preview',
+        UNLISTED_VAR: 'no',
+      })
+      const go = async () =>
+        (await run({ cwd: root, tasks: ['lib#e'], log: silent(), handleSignals: false }))
+          .outcomes[0]!.status
+      expect(await go()).toBe('success')
+      expect(await Bun.file(path.join(root, 'packages', 'lib', 'dist', 'e.txt')).text()).toBe(
+        'Asia/Tokyo|x.vercel.app|abc|preview|\n',
+      )
+      process.env['TZ'] = 'UTC'
+      expect(await go()).toBe('cache-hit')
+      process.env['VERCEL_TARGET_ENV'] = 'production'
+      expect(await go()).toBe('success')
     },
     TIMEOUT,
   )
