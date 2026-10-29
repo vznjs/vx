@@ -220,6 +220,7 @@ export function classicLinks(
   }
   const workspace = (name: string): string | undefined =>
     count.get(name) === 1 ? dirOf.get(name) : undefined
+  const forced = everywhereResolutions(manifests.get('.'))
   const out = new Map<string, LockfileImporter>()
   for (const [dir, pkg] of manifests) {
     const links = { deps: {} as Record<string, string>, peers: {} as Record<string, string> }
@@ -228,7 +229,10 @@ export function classicLinks(
       for (const [name, range] of depsOf(pkg, [field])) {
         installed.add(name)
         const target = workspace(name)
-        if (target !== undefined && target !== dir && !lock.descriptors.has(`${name}@${range}`)) {
+        // A root resolution rewrites the request before the workspace is
+        // asked: Yarn keys the resolution's range, never the manifest's.
+        const asked = forced.get(name) ?? range
+        if (target !== undefined && target !== dir && !lock.descriptors.has(`${name}@${asked}`)) {
           links.deps[name] = target
         }
       }
@@ -238,6 +242,23 @@ export function classicLinks(
       if (target !== undefined && target !== dir && !installed.has(name)) links.peers[name] = target
     }
     out.set(dir, links)
+  }
+  return out
+}
+
+/**
+ * The root manifest's Yarn 1 `resolutions` that rewrite every request of a
+ * name (`ms`, `**\/ms`, `@s/x`), name → range, the first that names it
+ * winning as in Yarn. One scoped to a parent (`a/ms`, `a/**\/ms`) is left
+ * out: Yarn 1.22 keys its range and still hoists the workspace link over
+ * it, so the link stands.
+ */
+function everywhereResolutions(root: Record<string, unknown> | undefined): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const [pattern, range] of depsOf(root ?? {}, ['resolutions'])) {
+    const name = pattern.replace(/^(?:\*\*\/)+/, '')
+    if (!/^(?:@[^/]+\/)?[^/@*]+$/.test(name) || out.has(name)) continue
+    out.set(name, range)
   }
   return out
 }

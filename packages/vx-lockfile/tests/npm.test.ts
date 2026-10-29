@@ -132,6 +132,21 @@ describe('workspace digests (npm)', () => {
     for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
   })
 
+  it("the root's and a workspace's own version move no digest: npm installs nothing new", () => {
+    // A release bump of the root's version re-keyed every task in the
+    // workspace, the root's digest being in every key, with node_modules
+    // unchanged. Bun and pnpm record no importer version.
+    const bump = (text: string): string => {
+      const doc = JSON.parse(text)
+      doc.packages[''].version = '2.0.0'
+      doc.packages['packages/b'].version = '1.0.1'
+      return JSON.stringify(doc, null, 2)
+    }
+    const before = digests(lock())
+    const after = digests(bump(lock()))
+    for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
+  })
+
   it('refuses what is not an npm v2+ lockfile', () => {
     expect(() => parseLockfile('{"name":"x"}')).toThrow(/no lockfileVersion/)
     expect(() => parseLockfile('{"lockfileVersion":1,"dependencies":{}}')).toThrow(
