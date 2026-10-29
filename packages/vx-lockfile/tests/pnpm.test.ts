@@ -2,12 +2,12 @@
 // a lockfile change re-keys exactly the projects whose reachable packages
 // changed, `--affected` names the same projects, and a warm run reads the
 // memo instead of parsing.
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isUserError, type Logger } from '@vzn/vx'
-import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
+import { lock, planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { pnpm } from '../src/index.js'
@@ -535,6 +535,19 @@ describe('vx run with pnpm() declared', () => {
     return Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
   }
 
+  it('a single package with no pnpm-workspace.yaml and no lockfile runs (Turbo #5002)', async () => {
+    // pnpm writes no lockfile for a package with no dependencies, and a
+    // single-package repo has no pnpm-workspace.yaml.
+    await rm(path.join(root, 'packages'), { recursive: true })
+    await rm(path.join(root, 'pnpm-workspace.yaml'))
+    await rm(path.join(root, 'pnpm-lock.yaml'))
+    await mkdir(path.join(root, 'src'))
+    await writeFile(path.join(root, 'src', 'index.js'), '// solo\n')
+    await writeFile(path.join(root, 'vx.config.mjs'), BUILD)
+    expect(await statuses()).toEqual({ '//#build': 'success' })
+    expect(await statuses()).toEqual({ '//#build': 'cache-hit' })
+  })
+
   it('a dependency bump re-keys only the projects that reach it', async () => {
     const before = await hashes()
     expect(await statuses()).toEqual({
@@ -589,6 +602,31 @@ describe('vx run with pnpm() declared', () => {
     expect(affectedIds(root, 'build')).toEqual(['a#build', 'b#build', 'c#build'])
   })
 
+  it('`--affected` over a commit that adds a workspace and its dependency selects it alone', async () => {
+    // Turbo #8127: the importer the old lockfile lacks read as a change to
+    // every package.
+    commitAll(root)
+    const dir = path.join(root, 'packages', 'd')
+    await mkdir(path.join(dir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'd', version: '1.0.0', dependencies: { newdep: '^1' } }),
+    )
+    await writeFile(path.join(dir, 'src', 'index.js'), '// d\n')
+    await writeFile(path.join(dir, 'vx.config.mjs'), BUILD)
+    await writeFile(
+      path.join(root, 'pnpm-lock.yaml'),
+      v9()
+        .replace(
+          '\npackages:\n',
+          '\n  packages/d:\n    dependencies:\n      newdep:\n        specifier: ^1\n        version: 1.0.0\n\npackages:\n\n  newdep@1.0.0:\n    resolution: {integrity: sha512-newdep}\n',
+        )
+        .replace('\nsnapshots:\n', '\nsnapshots:\n\n  newdep@1.0.0: {}\n'),
+    )
+    await lock(root)
+    expect(affectedIds(root, 'build')).toEqual(['d#build'])
+  })
+
   it('`vx why` names the plugin part', async () => {
     await statuses()
     await writeFile(path.join(root, 'pnpm-lock.yaml'), v9({ bar: '2.0.1' }))
@@ -632,6 +670,31 @@ describe('vx run with pnpm() declared', () => {
     expect(out).toContain('b#build')
     expect(out).toContain('c#build')
     expect(out).not.toContain('a#build')
+  })
+
+  // vercel/turborepo#5958: the lockfile's path was matched against
+  // repo-root-relative changes as a workspace-relative one, so a workspace
+  // below the git top-level never saw its lockfile change.
+  it('`--affected` follows a lockfile bump in a workspace below the git top-level', async () => {
+    const outer = await mkdtemp(path.join(tmpdir(), 'vx-pnpm-outer-'))
+    try {
+      const ws = path.join(outer, 'nested', 'ws')
+      await mkdir(path.dirname(ws), { recursive: true })
+      await rename(root, ws)
+      root = ws
+      await rm(path.join(ws, '.git'), { recursive: true, force: true })
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: outer })
+      await lock(ws)
+      commitAll(outer)
+      await writeFile(path.join(ws, 'pnpm-lock.yaml'), v9({ baz: '3.0.1' }))
+      expect(affectedIds(ws, 'build')).toEqual(['b#build', 'c#build'])
+      // CONTROL: the same bump outside the workspace selects nothing.
+      await writeFile(path.join(ws, 'pnpm-lock.yaml'), v9())
+      await writeFile(path.join(outer, 'pnpm-lock.yaml'), v9({ baz: '3.0.1' }))
+      expect(affectedIds(ws, 'build')).toEqual([])
+    } finally {
+      await rm(outer, { recursive: true, force: true })
+    }
   })
 
   it('scope: workspace folds the whole file into every task', async () => {
@@ -1089,6 +1152,119 @@ snapshots:
       deep: ${deep}
 `
     expect(movedDirs(lock('1.0.0'), lock('1.0.1'))).toEqual(['.'])
+  })
+
+  // vercel/turborepo#3461 and #4555: pnpm writes a dependency (an alias
+  // too) as its full lockfile key; read as a version, its closure fell out.
+  it('a dependency written as an absolute key (v5, v6) is followed to its snapshot', () => {
+    const v5 = (child: string) => `lockfileVersion: 5.4
+importers:
+  packages/a:
+    specifiers:
+      parent: ^1
+      eth: npm:hardhat-deploy-ethers@0.3.0-beta.13
+    dependencies:
+      parent: /@scope/parent/1.0.0
+      eth: /hardhat-deploy-ethers/0.3.0-beta.13_ethers@5.7.0
+packages:
+  /@scope/parent/1.0.0:
+    resolution: {integrity: sha512-parent}
+    dependencies:
+      child: /@scope/child/1.0.0
+  /@scope/child/1.0.0:
+    resolution: {integrity: ${child}}
+  /hardhat-deploy-ethers/0.3.0-beta.13_ethers@5.7.0:
+    resolution: {integrity: sha512-hde}
+`
+    expect(movedDirs(v5('sha512-c1'), v5('sha512-c2'))).toEqual(['packages/a'])
+    const aliased = (eth: string) =>
+      v5('sha512-c1').replace('{integrity: sha512-hde}', `{integrity: ${eth}}`)
+    expect(movedDirs(aliased('sha512-e1'), aliased('sha512-e2'))).toEqual(['packages/a'])
+    const v6 = (child: string) => `lockfileVersion: '6.0'
+importers:
+  packages/a:
+    dependencies:
+      parent:
+        specifier: ^1
+        version: /@scope/parent@1.0.0
+packages:
+  /@scope/parent@1.0.0:
+    resolution: {integrity: sha512-parent}
+    dependencies:
+      child: /@scope/child@1.0.0
+  /@scope/child@1.0.0:
+    resolution: {integrity: ${child}}
+`
+    expect(movedDirs(v6('sha512-c1'), v6('sha512-c2'))).toEqual(['packages/a'])
+  })
+
+  // vercel/turborepo#3611 and #3656: a top-level dependency beside another
+  // version of itself deeper down, and a specifier an override rewrote: the
+  // key is the resolved version, never the specifier.
+  it('a version beside a deeper one, under any specifier, is keyed by what it resolved to', () => {
+    const lock = (deep: string) => `lockfileVersion: '9.0'
+importers:
+  packages/a:
+    dependencies:
+      ci-info:
+        specifier: ^9.9.9
+        version: 2.0.0
+      is-ci:
+        specifier: ^3
+        version: 3.0.1
+packages:
+  ci-info@2.0.0:
+    resolution: {integrity: sha512-ci2}
+  ci-info@3.7.1:
+    resolution: {integrity: ${deep}}
+  is-ci@3.0.1:
+    resolution: {integrity: sha512-isci}
+snapshots:
+  ci-info@2.0.0: {}
+  ci-info@3.7.1: {}
+  is-ci@3.0.1:
+    dependencies:
+      ci-info: 3.7.1
+`
+    expect(movedDirs(lock('sha512-d1'), lock('sha512-d2'))).toEqual(['packages/a'])
+  })
+
+  // vercel/turborepo#8003: `a@1.0.0(b@1.0.0(c@1.0.0))` cut at the last `(`
+  // named no package. A bump of a, or of c behind it, moves x and not y.
+  it('a nested peer suffix folds the package before the first parenthesis', () => {
+    const lock = (c: string, a = 'sha512-a') => `lockfileVersion: '9.0'
+importers:
+  packages/x:
+    dependencies:
+      a:
+        specifier: ^1
+        version: 1.0.0(b@1.0.0(c@1.0.0))
+  packages/y:
+    dependencies:
+      b:
+        specifier: ^1
+        version: 1.0.0
+packages:
+  a@1.0.0:
+    resolution: {integrity: ${a}}
+  b@1.0.0:
+    resolution: {integrity: sha512-b}
+  c@1.0.0:
+    resolution: {integrity: ${c}}
+snapshots:
+  a@1.0.0(b@1.0.0(c@1.0.0)):
+    dependencies:
+      b: 1.0.0(c@1.0.0)
+  b@1.0.0: {}
+  b@1.0.0(c@1.0.0):
+    dependencies:
+      c: 1.0.0
+  c@1.0.0: {}
+`
+    expect(movedDirs(lock('sha512-c1'), lock('sha512-c2'))).toEqual(['packages/x'])
+    expect(movedDirs(lock('sha512-c1', 'sha512-a1'), lock('sha512-c1', 'sha512-a2'))).toEqual([
+      'packages/x',
+    ])
   })
 
   it('a `link:` outside every importer folds its target', () => {

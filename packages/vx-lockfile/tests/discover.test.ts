@@ -414,6 +414,17 @@ describe('discover', () => {
         await mkdir(path.join(root, 'packages/a/test'), { recursive: true })
         await writeFile(path.join(root, 'packages/a/test/package.json'), '{"name":"a-test"}')
         expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+        // CONTROL: without the negation `packages/**` reaches the manifest two
+        // levels down (vercel/turborepo#310: a doublestar workspace glob
+        // found only the first level).
+        if (c.name === 'pnpm') {
+          await writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/**'\n")
+        }
+        await expect(
+          discover(c.make(), await projects({ root: { ...rootPkg, workspaces: ['packages/**'] } })),
+        ).rejects.toThrow(
+          `${c.file} is out of date: it does not list the workspace packages/a/test`,
+        )
       })
 
       it(`${c.name}(): a directory a negated globstar names is no workspace, itself included`, async () => {

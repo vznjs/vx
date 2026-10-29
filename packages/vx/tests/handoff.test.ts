@@ -262,6 +262,40 @@ describe('the compiled binary hands off', () => {
     ])
   })
 
+  // Turbo #6724: a SIGTERM sent to the global vx alone (a process
+  // manager, `kill`) must reach the local vx it handed off to.
+  it('passes a SIGTERM sent to it alone on to the local vx', async () => {
+    const bin = path.join(root, 'traps', 'vx')
+    // Bounded: a broken hand-off leaves no shell looping after the test.
+    exe(
+      bin,
+      "trap 'echo got-term; exit 0' TERM\necho ready\ni=0; while [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done",
+    )
+    const p = Bun.spawn({
+      cmd: [
+        process.execPath,
+        '-e',
+        `const { handOff } = await import(${JSON.stringify(HANDOFF)}); await handOff(${JSON.stringify(bin)}, [])`,
+      ],
+      env: { PATH: process.env['PATH'] ?? '' },
+      stdout: 'pipe',
+    })
+    const reader = p.stdout.getReader()
+    let out = ''
+    while (!out.includes('ready\n')) {
+      const { value, done } = await reader.read()
+      if (done) break
+      out += new TextDecoder().decode(value)
+    }
+    p.kill('SIGTERM')
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      out += new TextDecoder().decode(value)
+    }
+    expect([await p.exited, out]).toEqual([0, 'ready\ngot-term\n'])
+  })
+
   // A shell running `vx run` in a script stops on Ctrl-C only when its
   // child DIED of SIGINT; handed off, vx exited 130 and the script ran
   // its next line (cli.md § Exit codes: vx dies of the signal).

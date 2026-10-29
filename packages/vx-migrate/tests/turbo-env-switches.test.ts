@@ -85,7 +85,6 @@ const IGNORED: Record<string, string> = {
   TURBO_CACHE_DIR: 'elsewhere/cache',
   TURBO_CACHE_MAX_AGE: '1d',
   TURBO_CACHE_MAX_SIZE: '1GB',
-  TURBO_SCM_HEAD: 'HEAD~1',
   TURBO_DAEMON: 'true',
   TURBO_UI: 'tui',
   TURBO_EXPERIMENTAL_UI: 'true',

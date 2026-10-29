@@ -5,11 +5,12 @@
 // The deep pins for each behaviour live in the suites `docs/parity.md`
 // maps; this file is the one place a Turbo reader can scan.
 
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { gitIn, makeWorkspace } from './helpers/workspace.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import {
   dry,
   makeParityWorkspace,
@@ -234,7 +235,7 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
         exec: { command: 'echo mode=$MODE token=$TOKEN', env: { passThrough: ['MODE', 'TOKEN'] } },
         inputs: { files: ['src/**'], env: ['MODE'] }, cache: { outputs: { files: [] } },
       },
-      uncached: { exec: { command: 'echo uncached' } },
+      uncached: { exec: { command: "printf 'streamed-%s\\\\n' out" } },
       args: {
         exec: { command: 'echo args' },
         inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
@@ -312,14 +313,18 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
     TIMEOUT,
   )
 
+  // vercel/turborepo@15a11406c: an uncached task's output took another
+  // writer and lost its log streaming. The printf keeps the command line
+  // from matching: only the task's own output reads `streamed-out`.
   it(
-    '`"cache": false` (vx: no `cache` block) executes on every run',
+    '`"cache": false` (vx: no `cache` block) executes on every run, its output shown',
     async () => {
       for (let i = 0; i < 2; i++) {
         const r = await summarized(root, ['lib#uncached'])
         expect(r.code).toBe(0)
         expect(r.tasks.get('lib#uncached')?.['status']).toBe('success')
         expect(r.tasks.get('lib#uncached')?.['noCache']).toBe(true)
+        expect(r.text).toContain('streamed-out\n')
       }
     },
     TIMEOUT,
@@ -591,6 +596,51 @@ describe('Turbo parity — a directory filter run from a subdirectory', () => {
       expect((JSON.parse(own.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id)).toEqual([
         'apps#lint',
       ])
+    },
+    TIMEOUT,
+  )
+})
+
+// turborepo#6877: a checkout whose path holds glob characters read its own
+// path as a pattern. Here the root, a project and an input all hold them,
+// beside a sibling `cx` that `[c]x` would match as a class.
+describe('Turbo parity — glob characters in paths are names', () => {
+  let parent: string
+  let root: string
+  let dir: string
+  beforeAll(async () => {
+    parent = await mkdtemp(path.join(os.tmpdir(), 'vx-parity-glob-path-'))
+    root = await makeWorkspace({ dir: parent, prefix: '[br] (x){y}-', git: false })
+    const config = `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist && cat src/*/page.ts > dist/o' },
+      inputs: { files: ['src/\\\\[id\\\\]/**'] }, cache: { outputs: { files: ['dist/**'] } },
+    } } }`
+    dir = await addProject(root, '[c]x', {
+      config,
+      files: { 'src/[id]/page.ts': 'v1\n', '.gitignore': 'dist/\n' },
+    })
+    await addProject(root, 'cx', { config, files: { 'src/[id]/page.ts': 'c\n' } })
+    const git = gitIn(root)
+    git('init', '-q')
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(parent, { recursive: true, force: true })
+  })
+
+  it(
+    'a project `[c]x` under `[br] (x){y}` misses on an edit, then hits and restores',
+    async () => {
+      const status = async () =>
+        (await summarized(root, ['[c]x#build'])).tasks.get('[c]x#build')?.['status']
+      expect(await status()).toBe('success')
+      expect(await status()).toBe('cache-hit')
+      await writeFile(path.join(dir, 'src', '[id]', 'page.ts'), 'v2\n')
+      expect(await status()).toBe('success')
+      await rm(path.join(dir, 'dist'), { recursive: true })
+      expect(await status()).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'dist', 'o'), 'utf8')).toBe('v2\n')
     },
     TIMEOUT,
   )

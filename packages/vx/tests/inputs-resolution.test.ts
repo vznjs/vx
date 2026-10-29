@@ -1413,6 +1413,30 @@ describe('a declared literal settles on its own tree, and only its own', () => {
     expect(await filesOf(['gen'])).toEqual(['gen/x.ts'])
   })
 
+  it('a glob that also matches a directory keys the files it matches, not the tree (Turbo #6738)', async () => {
+    await write(path.join(projectDir, 'fix.txt'), 'f')
+    await write(path.join(projectDir, 'fixtures', 'a.txt'), 'a')
+    await write(path.join(root, 'pack.json'), '{}')
+    await write(path.join(root, 'packages', 'z.txt'), 'z')
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['fix*'], workspaceFiles: ['pack*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => relPosix(root, f))).toEqual(['pack.json', 'pkg/fix.txt'])
+  })
+
+  it('two globstars in one entry each span any depth (Turbo #6633)', async () => {
+    for (const f of ['src/x/a', 'src/deep/x/y/f.txt', 'src/d1/d2/x/f', 'src/x.txt', 'src/deep/y/f'])
+      await write(path.join(projectDir, f), f)
+    expect(await filesOf(['src/**/x/**'])).toEqual(
+      ['src/d1/d2/x/f', 'src/deep/x/y/f.txt', 'src/x/a'].map((f) => path.join(...f.split('/'))),
+    )
+  })
+
   it('a sibling that merely SHARES A PREFIX does not settle it', async () => {
     // The `/` in `${lit}/` is the whole guard. Without it `gen-notes.txt`
     // starts with `gen` and settles the literal `gen`, so the ignored `gen`
@@ -1816,6 +1840,19 @@ describe('inputs.files can only ever narrow the git file set', () => {
       workspaceRoot: root,
       envSource: {},
       inputs: { files: ['src/a.ts', 'not-here.ts'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('src', 'a.ts')])
+  })
+
+  it('a glob into a directory that does not exist stays silent (Turbo #5404)', async () => {
+    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/**', 'gone/**', 'nonexistent/*/x.ts', 'src/a.ts/**'] },
       ownOutputs: [],
       nestedProjectDirs: [],
     })

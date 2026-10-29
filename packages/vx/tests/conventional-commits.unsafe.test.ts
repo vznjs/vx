@@ -58,6 +58,9 @@ const KNOWN = new Set([
   '37f3a825a627e6d675318aa96eac671f21441d6f',
   // A turbo pass 2 chunk's, folded before the row ran on it: 74 chars.
   'ff8e78d50c1cfc92f23a000997e0966aa0c0d551',
+  // Chunk pA's, folded before the row ran on it: 74 and 72 chars.
+  'c4fb2047d4ee0bb68da45db241b0b38ac87fed12',
+  '35ccab7810060f0eb477fd68f74b447d8b6c3013',
 ])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {

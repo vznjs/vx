@@ -147,12 +147,43 @@ describe('workspace digests (npm)', () => {
     for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
   })
 
+  it("a workspaces glob with a trailing slash still names the workspace's own version", () => {
+    // Turbo #6772: `packages/*/` matched no workspace, so none had a
+    // digest of its own and b's version read as an installed package's.
+    const slash = (text: string, version: string): string => {
+      const doc = JSON.parse(text)
+      doc.packages[''].workspaces = ['packages/*/']
+      doc.packages['packages/b'].version = version
+      return JSON.stringify(doc, null, 2)
+    }
+    const before = digests(slash(lock(), '1.0.0'))
+    const after = digests(slash(lock(), '1.0.1'))
+    expect([...before.keys()].sort()).toEqual([...digests(lock()).keys()].sort())
+    for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
+  })
+
+  it('workspaces written as `{ packages: [...] }` name the same workspaces (Turbo #3235, #3244)', () => {
+    const doc = JSON.parse(lock())
+    doc.packages[''].workspaces = { packages: doc.packages[''].workspaces }
+    expect(digests(JSON.stringify(doc))).toEqual(digests(lock()))
+  })
+
   it('refuses what is not an npm v2+ lockfile', () => {
     expect(() => parseLockfile('{"name":"x"}')).toThrow(/no lockfileVersion/)
     expect(() => parseLockfile('{"lockfileVersion":1,"dependencies":{}}')).toThrow(
       /lockfileVersion 1 has no/,
     )
     expect(() => parseLockfile('nope')).toThrow(/JSON Parse error/)
+  })
+
+  it('refuses a v2+ lockfile whose packages are only in the legacy tree (vercel/turborepo#13993)', () => {
+    // Read as empty, a bump in the legacy `dependencies` tree moved no key.
+    expect(() =>
+      parseLockfile('{"lockfileVersion":2,"dependencies":{"foo":{"version":"1.0.0"}}}'),
+    ).toThrow(/only in the legacy `dependencies` tree/)
+    // An empty or absent legacy tree is no such lockfile.
+    expect(() => parseLockfile('{"lockfileVersion":2,"dependencies":{}}')).not.toThrow()
+    expect(() => parseLockfile('{"lockfileVersion":3}')).not.toThrow()
   })
 })
 
@@ -199,6 +230,36 @@ describe('every input the npm digest must read', () => {
         })
       expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['packages/a'])
     }
+  })
+
+  // vercel/turborepo#4824 (its fixture workspace-peer-dependency.json): a
+  // workspace linked under a registry name (`eslint` → packages/c) that a
+  // registry package and a workspace both peer on. It resolved to no
+  // package and the closure failed; it is a link, the bump moves only a.
+  it('a peer on a workspace linked under a registry name is that workspace', () => {
+    const text = (v: string) =>
+      doc({
+        'node_modules/a': { resolved: 'packages/a', link: true },
+        'node_modules/b': { resolved: 'packages/b', link: true },
+        'node_modules/eslint': { resolved: 'packages/c', link: true },
+        'node_modules/eslint-plugin-turbo': {
+          version: v,
+          resolved: `https://r/e-${v}.tgz`,
+          integrity: `sha-${v}`,
+          peerDependencies: { eslint: '>6.6.0' },
+        },
+        'packages/a': {
+          dependencies: { eslint: '^0.0.0-workspace', 'eslint-plugin-turbo': '^1.9.3' },
+        },
+        'packages/b': { peerDependencies: { eslint: '*' } },
+        'packages/c': { name: 'eslint', version: '0.0.0-workspace' },
+      })
+    const links = importerLinks(parseLockfile(text('1.9.3')))
+    expect([links.get('packages/a'), links.get('packages/b')]).toEqual([
+      { deps: { eslint: 'packages/c' }, peers: {} },
+      { deps: {}, peers: { eslint: 'packages/c' } },
+    ])
+    expect(movedDirs(text('1.9.3'), text('1.9.4'))).toEqual(['packages/a'])
   })
 
   it.each([

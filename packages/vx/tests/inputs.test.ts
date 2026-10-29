@@ -229,6 +229,20 @@ describe('resolveOutputs', () => {
     ])
   })
 
+  it('a repeated or overlapping glob lists each file once (vercel/turborepo#14004)', async () => {
+    await write(path.join(projectDir, 'dist', 'a.js'))
+    await write(path.join(projectDir, 'dist', 'sub', 'b.js'))
+    const out = await resolveOutputs({
+      projectDir,
+      outputs: ['dist/**', 'dist/**', 'dist/sub/**'],
+      nestedProjectDirs: [],
+    })
+    expect(out).toEqual([
+      path.join(projectDir, 'dist', 'a.js'),
+      path.join(projectDir, 'dist', 'sub', 'b.js'),
+    ])
+  })
+
   it('does not filter outputs through gitignore (typical dist/ is ignored)', async () => {
     // `dist/` is normally in .gitignore; outputs should still be captured.
     await write(path.join(root, '.gitignore'), 'dist\n')

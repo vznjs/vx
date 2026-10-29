@@ -223,6 +223,28 @@ describe('buildTaskGraph', () => {
     expect(nodes.get('app#build')?.deps.sort()).toEqual(['app#codegen', 'lib#build'])
   })
 
+  // vercel/turborepo#2981: with two of a package's tasks on `^build`, the
+  // second requested lost its edge to the dependency's build.
+  it('two tasks of one project on ^build each wait on the dependency build, created once', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: { ...cmd('build app'), dependsOn: ['^build'] },
+          compile: { ...cmd('compile app'), dependsOn: ['^build'] },
+        }),
+        project('lib', { build: cmd('build lib') }),
+      ),
+      packageGraph: packageGraph({ app: ['lib'] }),
+      requested: [
+        { project: 'app', task: 'build' },
+        { project: 'app', task: 'compile' },
+      ],
+    })
+    expect([...nodes.keys()].sort()).toEqual(['app#build', 'app#compile', 'lib#build'])
+    expect(nodes.get('app#build')?.deps).toEqual(['lib#build'])
+    expect(nodes.get('app#compile')?.deps).toEqual(['lib#build'])
+  })
+
   it('silently skips workspace deps that have no such task', () => {
     const nodes = buildTaskGraph({
       projects: projects(

@@ -2463,6 +2463,29 @@ describe('Cache storage (v10)', () => {
     expect(stored).toBe('second-version-longer')
   })
 
+  // Turbo #7016: a rewrite that did not truncate left the longer old
+  // bytes' tail behind the shorter new ones.
+  it('a shorter re-save, and a restore over a longer file, leave no old tail', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    const save = async (content: string, stdout: string): Promise<void> => {
+      await writeFile(outFile, content)
+      await cache.save({
+        hash: 'h-shorter',
+        projectDir,
+        outputFiles: [outFile],
+        entry: { taskId: 'pkg#build', command: 'c', durationMs: 1, stdout },
+      })
+    }
+    await save('a much longer first version', 'a much longer first log\n')
+    await save('short', 'log\n')
+    expect((await cache.get('h-shorter'))?.stdout).toBe('log\n')
+    await writeFile(outFile, 'a stale file longer than the entry')
+    await cache.restoreOutputs('h-shorter', projectDir)
+    expect(await readFile(outFile, 'utf8')).toBe('short')
+  })
+
   it('save() in a cache that does not read (--force) keeps a prior entry at the same hash', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises')
     await mkdir(projectDir, { recursive: true })
