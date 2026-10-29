@@ -4,7 +4,8 @@
 // RS (U+001E) + `e` / `o` where the stream switches to stderr / stdout, and
 // a literal RS doubled. Output that never touched stderr is its own text.
 
-import { BoundedCapture, type CapturedChunk } from '../exec/index.js'
+import { BoundedCapture, type CapturedChunk, isDroppedOutputChunk } from '../exec/index.js'
+import type { SecretMask } from '../util/index.js'
 
 const RS = '\x1e'
 
@@ -21,6 +22,23 @@ export function encodeOutputLog(chunks: readonly CapturedChunk[]): string {
     out += c.text.replaceAll(RS, RS + RS)
   }
   return out
+}
+
+/**
+ * `encodeOutputLog` with `mask` applied, for a capture of raw output: a
+ * value the capture's dropped middle cut left a piece either side, which
+ * only `maskCut` sees, as `maskCaptured` does for core's own capture.
+ */
+export function maskedOutputLog(chunks: readonly CapturedChunk[], mask: SecretMask): string {
+  const at = chunks.findIndex(isDroppedOutputChunk)
+  if (at === -1) return mask.mask(encodeOutputLog(chunks))
+  const before = chunks.slice(0, at)
+  const tail = encodeOutputLog(chunks.slice(at + 1))
+  // The dropped line is on stdout, where the tail's own log starts.
+  const lead = tail.startsWith(RS + 'e') ? RS + 'e' : ''
+  const [h, t] = mask.maskCut(encodeOutputLog(before), tail.slice(lead.length))
+  const back = before.findLast((c) => c.text.length > 0)?.err === true ? RS + 'o' : ''
+  return h + back + chunks[at]!.text + lead + t
 }
 
 /** The chunks `encodeOutputLog` wrote, adjacent same-stream text joined. */
@@ -60,7 +78,7 @@ export const FAILED_OUTPUT_TAIL_CHARS = 56 * 1024
 /** A failed attempt's capture, re-bounded to the failure's limits when it is the entry's. */
 export function failedOutputLog(capture: BoundedCapture, entrySized: boolean): string {
   if (!entrySized) return encodeOutputLog(capture.chunks())
-  const small = new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
-  for (const c of capture.chunks()) small.push(c.text, c.err)
-  return encodeOutputLog(small.chunks())
+  return encodeOutputLog(
+    capture.rebound(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS).chunks(),
+  )
 }

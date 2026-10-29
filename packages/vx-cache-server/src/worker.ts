@@ -17,6 +17,7 @@ export interface R2Bucket {
 interface WorkersCache {
   match(key: Request): Promise<Response | undefined>
   put(key: Request, res: Response): Promise<void>
+  delete(key: Request): Promise<boolean>
 }
 declare const caches: { open(name: string): Promise<WorkersCache> }
 export interface Context {
@@ -28,7 +29,7 @@ declare const FixedLengthStream: new (length: number) => {
 }
 
 export interface Env {
-  readonly BLOBS: R2Bucket
+  readonly BLOBS?: R2Bucket
   /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow` entries, space separated. */
   readonly ALLOW?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
@@ -44,7 +45,8 @@ const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${n
 
 /**
  * R2, read through the data center's cache: an artifact never changes
- * under its name, so a copy needs no expiry of its own. The server has
+ * under its name while R2 holds it, so a copy needs no expiry of its own;
+ * an upload drops the copy, of bytes R2 has since let go. The server has
  * checked the token and named the object before a read reaches here.
  */
 
@@ -59,6 +61,9 @@ function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): 
       } catch (err) {
         throw new Refusal(400, `the body is not ${size} bytes: ${String(err)}`)
       }
+      // R2 takes a name only once it holds none: a copy here is of bytes
+      // R2 expired, a corrupt one too, and outlived the new ones a year.
+      await (await cache).delete(keyOf(name))
     },
     get: async (name) => {
       const key = keyOf(name)
@@ -107,6 +112,10 @@ let made: { key: string; authorize: Authorize; limits: Limits } | undefined
 
 export default {
   async fetch(req: Request, env: Env, ctx: Context): Promise<Response> {
+    // A deploy's mistake, not R2's outage: unbound, every read was a 502.
+    if (env.BLOBS === undefined) {
+      return errorJson(500, 'BLOBS: bind an R2 bucket as BLOBS (wrangler.jsonc r2_buckets)')
+    }
     const key = [
       env.ALLOW,
       env.AUDIENCE,
@@ -117,6 +126,13 @@ export default {
     if (made?.key !== key) {
       let allow
       let limits
+      // wrangler.jsonc may write a var as JSON: a list reached parseAllow.
+      if (env.ALLOW !== undefined && typeof env.ALLOW !== 'string') {
+        return errorJson(
+          500,
+          'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
+        )
+      }
       try {
         allow = parseAllow(env.ALLOW ?? '')
       } catch (err) {

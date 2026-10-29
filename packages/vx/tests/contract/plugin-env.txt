@@ -3,6 +3,7 @@
 @vzn/vx-ci CI_COMMIT_REF_NAME
 @vzn/vx-ci CI_COMMIT_TAG
 @vzn/vx-ci CI_DEFAULT_BRANCH
+@vzn/vx-ci CI_EXTERNAL_PULL_REQUEST_TARGET_BRANCH_NAME
 @vzn/vx-ci CI_MERGE_REQUEST_DIFF_BASE_SHA
 @vzn/vx-ci CI_MERGE_REQUEST_EVENT_TYPE
 @vzn/vx-ci CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
@@ -23,6 +24,9 @@
 @vzn/vx-ci GITLAB_CI
 @vzn/vx-ci RUNNER_ARCH
 @vzn/vx-ci RUNNER_OS
+@vzn/vx-devtools FORCE_COLOR
+@vzn/vx-devtools NO_COLOR
+@vzn/vx-devtools TERM
 @vzn/vx-history GITHUB_ACTIONS
 @vzn/vx-history VX_HISTORY_URL
 @vzn/vx-migrate ACTIONS_ID_TOKEN_REQUEST_TOKEN

@@ -51,6 +51,20 @@ it('a patch or an override in pnpm-workspace.yaml keys no task by itself', async
   expect(await affected(BASE, OVERRIDDEN)).toEqual([])
 })
 
+// A catalog is how a range was written; pnpm-lock.yaml records what it
+// resolved to, per project (`catalogs`, and each importer's version), as
+// bun.lock's catalogs key through the entry they install (D-141). Folded
+// whole, one catalog bump re-keyed and selected every project.
+it('a catalog in pnpm-workspace.yaml keys no task by itself', async () => {
+  const catalogs = (react: string) =>
+    `${BASE}catalog:\n  react: ${react}\ncatalogs:\n  legacy:\n    react: ^17.0.0\n`
+  await write(BASE)
+  const base = await key()
+  await write(catalogs('^18.0.0'))
+  expect(await key()).toBe(base)
+  expect(await affected(catalogs('^18.0.0'), catalogs('^19.0.0'))).toEqual([])
+})
+
 it('any other pnpm-workspace.yaml setting keys every task, and a file that does not parse folds whole', async () => {
   await write(BASE)
   const base = await key()
@@ -122,4 +136,37 @@ it('a patch edit moves only the projects whose closure holds the patched package
   const two = pnpmLock.importerDigests(pnpmLock.parseLockfile(lock('h2')))
   expect([...one.keys()].sort()).toEqual(['.', 'packages/a', 'packages/b'])
   expect([...one.keys()].filter((d) => one.get(d) !== two.get(d))).toEqual(['packages/b'])
+})
+
+// pnpm 10 reads install settings from the root package.json's `pnpm`
+// field too, and the lockfile records none of `onlyBuiltDependencies`:
+// adding `dep` there ran its postinstall under a byte-identical
+// pnpm-lock.yaml (probed, pnpm 10.28), and no key moved. The rest of the
+// manifest is the lockfile's to record, or the root's own input.
+it("the root package.json's pnpm field keys every task, but for what the lockfile records", async () => {
+  const manifest = (pkg: Record<string, unknown>): Promise<void> =>
+    writeFile(path.join(root, 'package.json'), JSON.stringify(pkg))
+  await manifest({ name: 'root', private: true })
+  const base = await key()
+  await manifest({ name: 'root', private: true, devDependencies: { x: '1.0.0' } })
+  expect(await key()).toBe(base)
+  await manifest({ name: 'root', pnpm: { overrides: { x: '2' }, patchedDependencies: { x: 'p' } } })
+  expect(await key()).toBe(base)
+  await manifest({ name: 'root', pnpm: { onlyBuiltDependencies: ['dep'] } })
+  expect(await key()).not.toBe(base)
+  const enc = new TextEncoder()
+  const ctx = { workspaceRoot: root, cacheDir: root, warn() {}, projects: [] }
+  const affectedBy = (before: unknown, after: unknown): unknown =>
+    pnpm().fingerprint!.affected(
+      {
+        file: 'package.json',
+        before: enc.encode(JSON.stringify(before)),
+        after: enc.encode(JSON.stringify(after)),
+      },
+      ctx,
+    )
+  expect(await affectedBy({ name: 'root' }, { name: 'root', dependencies: { x: '1' } })).toEqual([])
+  expect(
+    await affectedBy({ name: 'root' }, { name: 'root', pnpm: { neverBuiltDependencies: ['x'] } }),
+  ).toBeUndefined()
 })

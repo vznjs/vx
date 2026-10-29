@@ -17,6 +17,8 @@ export interface ServerTiming {
 
 /** Every request's deadline: a run never waits on history longer. */
 const DEADLINE_MS = 10_000
+/** Tries of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
+const ATTEMPTS = 3
 
 /** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
 export function serverUrlOf(
@@ -108,22 +110,6 @@ interface Limits {
   readonly maxQueryHashes: number
 }
 
-/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
-export function proxyHeaders(
-  headers: Record<string, string | undefined> | undefined,
-): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [name, value] of Object.entries(headers ?? {})) {
-    if (value === undefined) continue
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`vxHistory(): headers cannot set "${name}"`)
-    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`vxHistory(): header "${name}" must be one line of text`)
-    out[name] = value
-  }
-  return out
-}
-
 export class HistoryServer {
   private token: Promise<string> | undefined
   private held: { jwt: string; exp: number } | undefined
@@ -135,6 +121,7 @@ export class HistoryServer {
     private readonly env: Record<string, string | undefined> = Bun.env,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly headers: Readonly<Record<string, string>> = {},
+    private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
   ) {}
 
   /** Whether the run has a token to send: with none it reads only. */
@@ -157,10 +144,7 @@ export class HistoryServer {
       if (ask === undefined || ask === '') return { jwt: this.env.VX_HISTORY_TOKEN ?? '', exp: 0 }
       const u = new URL(ask)
       u.searchParams.set('audience', new URL(this.url).origin)
-      const res = await this.fetchImpl(u, {
-        headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
-        signal: deadline(),
-      })
+      const res = await this.askGithub(u)
       if (!res.ok) throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res)).message}`)
       const jwt = ((await res.json()) as { value?: unknown }).value
       if (typeof jwt !== 'string' || jwt === '') throw new Error("GitHub's OIDC endpoint: no token")
@@ -171,18 +155,70 @@ export class HistoryServer {
     return this.token
   }
 
+  /**
+   * One answer, asked again while `again(status)` (`undefined`: no answer)
+   * holds, up to three tries, 1 s then 2 s apart: the upload is sent once, at the run's end,
+   * and one 503 there, or from GitHub's OIDC endpoint (as vx-cache asks
+   * it, #4571), lost the run's timings.
+   */
+  private async tried(
+    send: () => Promise<Response>,
+    again: (status: number | undefined) => boolean,
+  ): Promise<Response> {
+    for (let attempt = 1; ; attempt++) {
+      let res: Response | undefined
+      let failure: unknown
+      try {
+        res = await send()
+      } catch (err) {
+        failure = err
+      }
+      if (!again(res?.status)) {
+        if (res === undefined) throw failure
+        return res
+      }
+      if (attempt === ATTEMPTS) {
+        if (res === undefined) throw failure
+        return res
+      }
+      await res?.body?.cancel()
+      await this.wait(1000 * attempt)
+    }
+  }
+
+  /** GitHub's OIDC endpoint: a 4xx is final. */
+  private askGithub(ask: URL): Promise<Response> {
+    return this.tried(
+      () =>
+        this.fetchImpl(ask, {
+          headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
+          signal: deadline(),
+        }),
+      (status) => status === undefined || status === 429 || status >= 500,
+    )
+  }
+
   private async call(path: string, body?: unknown): Promise<Response> {
     const bearer = this.writes ? await this.bearer() : ''
-    const res = await this.fetchImpl(`${this.url}${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        ...this.headers,
-        ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: deadline(),
-    })
+    const json = body === undefined ? undefined : JSON.stringify(body)
+    // A 500 is the server's own failure, maybe after the fold: sent again, a
+    // run would count twice. The edge's 502, 503 and 504 and a 429 come
+    // before it. No answer is not asked again: a server down or misnamed
+    // would add seconds to every run's end.
+    const res = await this.tried(
+      () =>
+        this.fetchImpl(`${this.url}${path}`, {
+          method: json === undefined ? 'GET' : 'POST',
+          headers: {
+            ...this.headers,
+            ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
+            ...(json === undefined ? {} : { 'content-type': 'application/json' }),
+          },
+          ...(json === undefined ? {} : { body: json }),
+          signal: deadline(),
+        }),
+      (status) => status !== undefined && (status === 429 || (status >= 502 && status <= 504)),
+    )
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
       const err = await refusal(res)

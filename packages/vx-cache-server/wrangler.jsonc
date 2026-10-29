@@ -9,7 +9,7 @@
   // separated by spaces (README.md § CI tokens); empty, every request is
   // refused with "set ALLOW". AUDIENCE: the aud a
   // CI token names, unset the Worker's own origin. MAX_CHECK_HASHES
-  // and MAX_UPLOAD_BYTES set the limits (PROTOCOL.md).
+  // and MAX_UPLOAD_BYTES set the limits, a string or a number (PROTOCOL.md).
   "vars": { "ALLOW": "" },
   // Expiry is the bucket's lifecycle rules (README.md § Expiry).
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],

@@ -226,6 +226,38 @@ describe('exec.retries — e2e', () => {
   )
 
   it(
+    'the retry line starts its own line after an attempt that ended mid-line',
+    async () => {
+      await addProject(
+        fixture.root,
+        'mid',
+        `export default {
+          tasks: {
+            build: { exec: { command: 'printf partial; exit 1', retries: 1 } },
+          },
+        }
+        `,
+      )
+      const seq: string[] = []
+      await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        projects: ['mid'],
+        log: {
+          ...capturingLogger(fixture),
+          taskStdout: (_n, c) => void seq.push(c),
+          taskStderr: (_n, c) => void seq.push(c),
+        },
+      })
+      // A frame reads both streams as one: glued, it read `partialvx: retrying`.
+      expect(seq.join('')).toBe(
+        'partial\nvx: retrying mid#build (attempt 2/2) after exit 1\npartial',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'single successful attempt carries no `attempts` field',
     async () => {
       await addProject(
@@ -286,6 +318,9 @@ describe('exec.retries — e2e', () => {
           tasks: ['flaky', 'other'],
           projects: ['p'],
           log: capturingLogger(fixture),
+          // Two slots: the tasks wait on each other's markers, and a
+          // one-core runner's default of one slot ran one forever.
+          concurrency: 2,
         })
         const status = Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
         expect(status).toEqual({ 'p#flaky': 'failed', 'p#other': 'success' })

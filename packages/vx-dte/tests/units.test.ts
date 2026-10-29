@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
@@ -9,6 +9,7 @@ import {
   localEnv,
   runWorker,
   swapRoots,
+  trackedFiles,
   treeMeter,
 } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
@@ -31,6 +32,7 @@ import { planTasks, tailsMs } from '../src/planner.js'
 import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder, ToWorker, WiredResult } from '../src/messages.js'
+import { snapshot } from '../src/tree.js'
 import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -3106,9 +3108,12 @@ it('places an unmeasured task on any free core, and sizes the run by 2 cores and
     [2, 4e9],
     [2, 4e9],
   ])
-  expect(
-    refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } })),
-  ).toContain('unmeasured needs cpu > 0')
+  expect(refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } }))).toBe(
+    'dte() option "unmeasured.cpu" must be a number above 0, got 0',
+  )
+  expect(refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 1, memory: 'lots' } }))).toBe(
+    `dte() option "unmeasured.memory" must be bytes above 0 or a size such as '4GB', got "lots"`,
+  )
 })
 
 it('reads memory as bytes or with a unit', () => {
@@ -3132,28 +3137,47 @@ const refusal = (make: () => unknown): string => {
   }
 }
 
+// Worded as vxCache() and vxHistory() word the same refusal; a value is never printed.
+it('refuses a header it cannot send, never printing a value', () => {
+  const relay = 'https://r'
+  expect(refusal(() => dte({ relay, headers: { authorization: 'x' } }))).toBe(
+    'dte() option "headers" cannot set "authorization"',
+  )
+  expect(refusal(() => dte({ relay, headers: { a: 'x\ny' } }))).toBe(
+    'dte() option "headers.a" must be one line of text (its value is not printed)',
+  )
+})
+
 it('refuses options it does not read and workers it cannot start', () => {
   const adapter = local()
   const W = { s: { cpu: 1, memory: '1GB' } }
   expect(refusal(() => dte({ workers: W, adapter, relays: 'x' } as never))).toContain(
     'dte() has unknown option "relays"',
   )
+  // Each names the field and the value it got: one line for three fields named none.
   expect(refusal(() => dte({ workers: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
-    "dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
+    'dte() option "workers.s.cpu" must be a whole number ≥ 1, got 0',
   )
   expect(
     refusal(() => dte({ workers: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter })),
-  ).toBe("dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any")
+  ).toBe(
+    `dte() option "workers.s.memory" must be bytes above 0 or a size such as '8GB', got "8 lots"`,
+  )
+  expect(refusal(() => dte({ workers: { s: { max: 1.5, cpu: 1, memory: '1GB' } }, adapter }))).toBe(
+    'dte() option "workers.s.max" must be a whole number ≥ 0, got 1.5',
+  )
   expect(
     refusal(() =>
       dte({ workers: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } }, adapter }),
     ),
-  ).toBe('dte(): workers.s.platform is one of linux-x64, linux-arm64, darwin-x64, darwin-arm64')
+  ).toBe(
+    'dte() option "workers.s.platform" must be one of linux-x64, linux-arm64, darwin-x64, darwin-arm64, got "win32-x64"',
+  )
   expect(refusal(() => dte({ workers: W, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
-    'dte(): scheduler.order is one of critical-path, graphene, fifo',
+    'dte() option "scheduler.order" must be one of critical-path, graphene, fifo, got "lifo"',
   )
   expect(refusal(() => dte({ workers: W, adapter, scheduler: { pace: 'x' } as never }))).toBe(
-    'dte(): scheduler.pace is no layer: the layers are order, place, book, scale',
+    'dte() option "scheduler" has no layer "pace" (layers: order, place, book, scale)',
   )
   expect(refusal(() => dte({}))).toBe(
     'dte(): with no adapter, set relay: the workers that join it run the tasks',
@@ -3175,6 +3199,72 @@ it('refuses options it does not read and workers it cannot start', () => {
     "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
   )
 })
+
+// A run from a git hook inherits the hook's GIT_INDEX_FILE / GIT_DIR. The
+// worktree add then wrote the new tree's index over the one being
+// committed (the staged change was gone), and every worker in its own
+// worktree read the hook's index and repository, not its own.
+// A hook in the main worktree sets a relative GIT_INDEX_FILE alone; one in
+// a linked worktree sets both, absolute.
+for (const hook of ['main', 'linked'] as const)
+  it(`local() makes its worktrees and workers under no git hook index or repository (${hook} worktree hook)`, async () => {
+    const repo = await realpath(await tmp())
+    const git = (...args: string[]) => {
+      const p = Bun.spawnSync(['git', '-c', 'commit.gpgsign=false', ...args], {
+        cwd: repo,
+        env: { ...process.env, GIT_INDEX_FILE: undefined, GIT_DIR: undefined },
+      })
+      if (p.exitCode !== 0) throw new Error(p.stderr.toString())
+      return p.stdout.toString().trim()
+    }
+    git('init', '-q')
+    git('config', 'user.email', 't@vx.local')
+    git('config', 'user.name', 't')
+    await writeFile(path.join(repo, 'a.txt'), 'a')
+    git('add', 'a.txt')
+    git('commit', '-qm', 'init')
+    await writeFile(path.join(repo, 'staged.txt'), 's')
+    git('add', 'staged.txt')
+    const commit = git('rev-parse', 'HEAD')
+    const seen = path.join(await tmp(), 'env.txt')
+    const saved = { index: process.env['GIT_INDEX_FILE'], dir: process.env['GIT_DIR'] }
+    if (hook === 'main') process.env['GIT_INDEX_FILE'] = '.git/index'
+    else {
+      process.env['GIT_INDEX_FILE'] = path.join(repo, '.git', 'index')
+      process.env['GIT_DIR'] = path.join(repo, '.git')
+    }
+    // The prepare records the worker's env and fails, so no worker starts.
+    const adapter = local({ prepare: `env > ${JSON.stringify(seen)}; exit 1` })
+    let failed = ''
+    try {
+      await adapter.spawn({
+        run: R,
+        relay: 'http://127.0.0.1:9',
+        size: 's',
+        max: 1,
+        cpu: 1,
+        memory: 1e9,
+        index: 1,
+        id: 's#1',
+        workspaceRoot: repo,
+        commit,
+        env: {},
+        exited: () => {},
+      })
+    } catch (err) {
+      failed = (err as Error).message
+    } finally {
+      if (saved.index === undefined) delete process.env['GIT_INDEX_FILE']
+      else process.env['GIT_INDEX_FILE'] = saved.index
+      if (saved.dir === undefined) delete process.env['GIT_DIR']
+      else process.env['GIT_DIR'] = saved.dir
+      await adapter.close?.()
+    }
+    expect(failed).toStartWith('prepare exited 1')
+    expect(git('diff', '--cached', '--name-only')).toBe('staged.txt')
+    const env = await readFile(seen, 'utf8')
+    expect(env).not.toMatch(/^GIT_(INDEX_FILE|DIR)=/m)
+  }, 20_000)
 
 it('a run that is not distributed loads none of it', async () => {
   // Every run evaluates `.vx/workspace.ts`: importing the plugin may not
@@ -3922,6 +4012,68 @@ it('names a tracked file a task changed as the workspace does, in a repository s
   expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
 })
 
+// A worker clears what an earlier task left under a task's outputs, but
+// never a tracked file. A git that could not list them (a corrupt index)
+// read as none tracked, and committed files under `gen/**` were deleted.
+it('refuses a checkout whose tracked files git cannot list', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  await mkdir(path.join(ws, 'a/gen'), { recursive: true })
+  await writeFile(path.join(ws, 'a/gen/g.txt'), '1\n')
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  expect(trackedFiles(ws)).toEqual(new Set(['a/gen/g.txt']))
+  await writeFile(path.join(ws, '.git/index'), 'not an index')
+  expect(() => trackedFiles(ws)).toThrow(/git ls-files/)
+  // Outside git nothing is tracked.
+  expect(trackedFiles(await tmp())).toEqual(new Set())
+})
+
+// A pathspec is a glob unless told otherwise: a project at `p*` named its
+// sibling `pa`'s changed files as its own, and its entry was withheld.
+it('names only the tracked files under a project whose directory has glob characters', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  for (const d of ['p*', 'pa']) {
+    await mkdir(path.join(ws, d), { recursive: true })
+    await writeFile(path.join(ws, d, 'in.txt'), '1\n')
+  }
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  await writeFile(path.join(ws, 'pa/in.txt'), '2\n')
+  const outputs = { files: [], workspaceFiles: [] }
+  const m = { project: 'p*', nested: [], outputs } as unknown as RunOrder
+  expect(await changedTracked(ws, 'HEAD', m, names('p*', outputs))).toEqual([])
+})
+
 // git quotes a path with a quote, a non-ASCII byte or a newline unless
 // asked for NUL-separated names: `"a/\303\251.ts"` started with no
 // project's directory, and the forecast missed the task it changed.
@@ -3951,6 +4103,81 @@ it('names a changed path as it is, whatever bytes it holds', async () => {
   git('add', '-A')
   git('commit', '-qm', 'ii')
   expect((await changedSinceParent(ws)).toSorted()).toEqual(odd.toSorted())
+})
+
+// `git stash create` writes a commit, and git refuses one with no identity
+// (a CI runner with none configured): the snapshot fell back to HEAD, and
+// the run's workers checked out a tree without its uncommitted changes.
+it('snapshots the uncommitted changes in a checkout with no git identity', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'commit.gpgsign=false', ...a], { cwd: ws })
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  await writeFile(path.join(ws, 'f.txt'), '1\n')
+  git('add', '-A')
+  git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
+  git('config', 'user.name', '')
+  git('config', 'user.email', '')
+  await writeFile(path.join(ws, 'f.txt'), '2\n')
+  const { tree } = await snapshot(ws)
+  expect(tree).not.toBe('')
+  expect(git('rev-parse', `${tree}:f.txt`)).toBe(git('hash-object', 'f.txt'))
+})
+
+// `git stash create` cannot save a tree holding an intent-to-add entry
+// (`git add -N`): the snapshot fell back to HEAD, without the changes.
+it('snapshots every tracked file as it is on disk, deletions, modes and intent-to-add too', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  for (const f of ['gone.txt', 'mode.sh', 'mod.txt']) await writeFile(path.join(ws, f), '1\n')
+  await symlink('mod.txt', path.join(ws, 'link'))
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  await rm(path.join(ws, 'gone.txt'))
+  await chmod(path.join(ws, 'mode.sh'), 0o755)
+  await writeFile(path.join(ws, 'mod.txt'), '2\n')
+  await rm(path.join(ws, 'link'))
+  await symlink('mode.sh', path.join(ws, 'link'))
+  await writeFile(path.join(ws, 'new.txt'), 'new\n')
+  git('add', '-N', 'new.txt')
+  await writeFile(path.join(ws, 'untracked.txt'), 'u\n')
+  const { commit, tree } = await snapshot(ws)
+  expect(git('rev-parse', `${commit}^{tree}`)).toBe(tree)
+  expect(git('ls-tree', '-r', tree).replace(/ [0-9a-f]{40}/g, '')).toBe(
+    [
+      '120000 blob\tlink',
+      '100644 blob\tmod.txt',
+      '100755 blob\tmode.sh',
+      '100644 blob\tnew.txt',
+    ].join('\n'),
+  )
+  for (const f of ['mod.txt', 'mode.sh', 'new.txt'])
+    expect(git('rev-parse', `${tree}:${f}`)).toBe(git('hash-object', f))
+  expect(git('cat-file', 'blob', `${tree}:link`)).toBe('mode.sh')
+  // The index and the working tree are as they were.
+  expect(git('status', '--porcelain')).toBe(
+    ['D gone.txt', ' M link', ' M mod.txt', ' M mode.sh', ' A new.txt', '?? untracked.txt'].join(
+      '\n',
+    ),
+  )
 })
 
 // A worker checkout whose prepare rewrote a tracked file joined on HEAD's

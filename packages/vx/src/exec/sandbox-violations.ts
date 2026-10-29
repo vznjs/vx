@@ -8,6 +8,7 @@ import { existsSync, lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
 import { bindableReads, bindableWrites } from './sandbox-binds.js'
+import { printable } from '../util/index.js'
 import type {
   ResolvedSandboxConfig,
   SandboxedRunArgs,
@@ -421,17 +422,20 @@ export async function parseStraceViolations(
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
+    // The line is printed verbatim, and the trace's `\033` is decoded: a
+    // denied file named `ESC ]0;…` retitled the terminal.
+    const [said, real] = [printable(rawPath), printable(abs)]
     out.push(
       read === true
         ? {
-            line: `${syscall}(${rawPath}) read under a write grant's directory, granted no read  [${abs}]`,
+            line: `${syscall}(${said}) read under a write grant's directory, granted no read  [${real}]`,
             timestamp: new Date(),
             target: abs,
             path: abs,
             ignorable: ['read'],
           }
         : {
-            line: `${syscall}(${rawPath}) = -1 ${errno}  [${abs}]`,
+            line: `${syscall}(${said}) = -1 ${errno}  [${real}]`,
             timestamp: new Date(),
             target: abs,
             path: abs,

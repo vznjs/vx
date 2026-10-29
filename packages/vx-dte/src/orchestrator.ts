@@ -852,6 +852,9 @@ export class Orchestrator {
           cwd: path.relative(this.o.root, req.cwd),
           project: node === undefined ? '' : path.relative(this.o.root, node.projectDir),
           env,
+          ...(node?.config.exec?.env?.secret === undefined
+            ? {}
+            : { secret: [...node.config.exec.env.secret] }),
           ...(req.timeoutMs === undefined ? {} : { timeoutMs: req.timeoutMs }),
           outputs: {
             files: [...req.outputs.files],

@@ -594,7 +594,8 @@ layer carries it as it carried stdout (v42).
    4 MiB or less is packed in memory; a larger one streams into
    `<cacheDir>/<hash>.tar.zst.tmp-<pid>-…`.
 2. Scans it as a restore would (a readable archive whose sum
-   matches, a `stdout` entry, its own key in the sidecar); a failure
+   matches, a `stdout` entry, its own key in the sidecar, an integer mode and a
+   Date-sized mtime for each file); a failure
    removes the temp. An artifact of at most `INLINE_MAX` compressed
    is never written to a file; a larger one in memory is written to
    the temp first.
@@ -728,7 +729,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v48'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v49'`; `SCHEMA_VERSION` is
 `'v49'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

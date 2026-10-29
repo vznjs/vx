@@ -217,6 +217,48 @@ describe('renderJobSummary', () => {
       }),
     )
     expect(here).toContain('1 on this machine: a#\\*x\\*.')
+    // A line break in a task id ended the line: `# y` became a heading.
+    const broken = renderJobSummary(
+      summary([task({ taskId: 'a#x\n# y' }), task({ taskId: 'b#y', where: 'w' })], {
+        machines: [{ ...m, name: 'w', done: 1, onlineMs: 1, busyMs: 1, cpuAvg: 0, utilization: 0 }],
+      }),
+    )
+    expect(broken).toContain('1 on this machine: a#x # y.')
+  })
+
+  it('a worker with no booked cores is not read as 0% booked', () => {
+    const m = {
+      name: 'w',
+      status: 'online',
+      cores: 4,
+      memoryBytes: 16e9,
+      memoryPeakBytes: 1e9,
+      memoryAvgBytes: 5e8,
+      done: 1,
+      failed: 0,
+      onlineMs: 10_000,
+      busyMs: 10_000,
+      cpuPeak: 4,
+      cpuAvg: 2,
+      utilization: 0.5,
+    }
+    const unbooked = renderJobSummary(
+      summary([task({ where: 'w' })], { machines: [m, { ...m, name: 'v' }] }),
+    )
+    expect(unbooked).toContain("Over their online time, tasks used 50% of the workers' cores.")
+    expect(unbooked).not.toContain('booked 0%')
+    // Booked share over the workers that report one.
+    const mixed = renderJobSummary(
+      summary([task({ where: 'w' })], {
+        machines: [
+          { ...m, bookedAvg: 3 },
+          { ...m, name: 'v' },
+        ],
+      }),
+    )
+    expect(mixed).toContain(
+      "Over their online time, tasks booked 75% of the workers' cores and used 50%.",
+    )
   })
 
   it('failures head the table and get a callout section', () => {

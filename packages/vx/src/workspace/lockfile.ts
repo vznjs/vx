@@ -125,6 +125,11 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
     throw new UserError(`${LOCKFILE_NAME}: \`projects\` must be an object — re-run \`vx lock\``)
   }
   for (const [dir, entry] of Object.entries(lock.projects)) {
+    // A run joins the key onto the root: `../x` ran a project outside it.
+    if (!isLockKey(dir))
+      throw new UserError(
+        `${LOCKFILE_NAME}: "${dir}" is not a directory under the workspace root — re-run \`vx lock\``,
+      )
     const { file, config } = (entry ?? {}) as { file?: unknown; config?: unknown }
     if (
       typeof entry !== 'object' ||
@@ -160,9 +165,8 @@ function validatedDigest(body: string): string {
 function taskKeysSorted(key: string, value: unknown): unknown {
   if (key !== 'tasks' || value === null || typeof value !== 'object' || Array.isArray(value))
     return value
-  const tasks: Record<string, unknown> = {}
-  for (const [name, task] of Object.entries(value)) tasks[name] = keysSorted(task)
-  return tasks
+  // Entries, not assignment: a task named `__proto__` set the prototype.
+  return Object.fromEntries(Object.entries(value).map(([name, task]) => [name, keysSorted(task)]))
 }
 
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {
@@ -217,6 +221,14 @@ export function frozenProjectConfigs(
     }
     return entry.config
   })
+}
+
+/** An empty, `.` or `..` segment. A regex: a split per key was 1.2 ms of a 10k-project read, this 0.4 ms. */
+const BAD_SEGMENT = /(?:^|\/)\.{0,2}(?:\/|$)/
+
+/** Whether `dir` is a key `lockKey` could give: `.`, or a relative POSIX path with no empty, `.` or `..` segment. */
+function isLockKey(dir: string): boolean {
+  return dir === '.' || (!dir.startsWith('/') && !BAD_SEGMENT.test(dir))
 }
 
 /** A project directory as the lock keys it: root-relative POSIX, `.` for the root. */
