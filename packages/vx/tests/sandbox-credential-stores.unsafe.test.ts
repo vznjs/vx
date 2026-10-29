@@ -123,6 +123,41 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     expect(await Bun.file(path.join(home, '.aws/config')).text()).toBe('CLI\n')
   }, 30_000)
 
+  it('denies one a task made earlier in the same run', async () => {
+    // The stores present were learned once per process: an unsandboxed
+    // task writing a registry token (`npm config set`) after the first
+    // sandboxed one left it readable to every sandboxed task after it.
+    const home = path.join(root!, 'home2')
+    const ws = path.join(root!, 'ws')
+    await mkdir(home, { recursive: true })
+    const sb = `sandbox: { allow: { read: ['.'] } }`
+    await writeFile(
+      path.join(ws, 'packages', 'a', 'vx.config.mjs'),
+      `export default { name: 'a', tasks: {
+  first: { exec: { command: 'true', ${sb} } },
+  login: { dependsOn: ['first'], exec: { command: 'echo TOKEN > "$HOME/.npmrc"' } },
+  peek: { dependsOn: ['login'], exec: { command: 'grep -s . "$HOME/.npmrc" || echo "no .npmrc"', ${sb} } },
+} }
+`,
+    )
+    lock(ws)
+    const r = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'run', 'a#peek', '--output-logs', 'full', '--concurrency', '1'],
+      cwd: ws,
+      env: { ...process.env, HOME: home },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const text = r.stdout.toString() + r.stderr.toString()
+    expect(r.exitCode, text).toBe(0)
+    expect(await Bun.file(path.join(home, '.npmrc')).text()).toBe('TOKEN\n')
+    const seen = text
+      .split('\n')
+      .map((l) => l.replace(/^.*?│\s?/, '').trim())
+      .filter((l) => /^(TOKEN|no \.npmrc)$/.test(l))
+    expect(seen).toEqual(['no .npmrc'])
+  }, 30_000)
+
   it('cannot hard-link one into a granted output', async () => {
     // A hard link needs no read of its source: had the link landed in
     // `dist/`, vx (outside the sandbox) would pack the key into the cache.
