@@ -9,6 +9,7 @@ import { quoteTsLiteral } from '@vzn/vx'
 import type { PackageMeta } from '../src/packages.js'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP, dotenvGlobsProbe } from '../src/dotenv-probe.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
+import { WRITTEN_BUILTINS, WRITTEN_DEFAULTS } from './helpers/turbo-own.js'
 
 let root: string
 beforeEach(async () => {
@@ -53,9 +54,12 @@ describe('migrateTurbo: the .env probes', () => {
       build: [[{ raw: 'dotenvFiles' }], undefined],
       test: [[{ raw: 'dotenvFilesDeep' }], [{ raw: 'dotenvRootFiles' }]],
       imports: [
-        "import { dotenvFiles, dotenvFilesDeep, dotenvRootFiles } from '../../vx-preset.js'",
+        'import { dotenvFiles, dotenvFilesDeep, dotenvRootFiles, globalEnvInputs, ' +
+          "globalPassThroughEnv } from '../../vx-preset.js'",
       ],
       exports: [
+        `export const globalEnvInputs = [${WRITTEN_DEFAULTS}]`,
+        `export const globalPassThroughEnv = [${WRITTEN_BUILTINS}]`,
         `export const dotenvFiles = ${quoteTsLiteral(DOTENV_PROBE_TOP)}`,
         `export const dotenvFilesDeep = ${quoteTsLiteral(DOTENV_PROBE)}`,
         `export const dotenvRootFiles = ${quoteTsLiteral(dotenvGlobsProbe(['.env'])!)}`,

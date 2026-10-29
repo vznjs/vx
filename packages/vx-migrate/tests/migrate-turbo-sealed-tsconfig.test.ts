@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 import { sealsConfig } from '../src/sealed-tsconfig.js'
+import { WRITTEN_BUILTINS, WRITTEN_DEFAULTS } from './helpers/turbo-own.js'
 
 let root: string
 beforeEach(async () => {
@@ -51,9 +52,13 @@ describe('migrateTurbo: a package whose tsconfig refuses files outside it', () =
       preset: p.extraFiles.map((f) => f.relPath),
     }).toEqual({
       imports: [
-        ["import { buildEnv, globalEnvInputs } from '../../vx-preset.js'"],
-        ["const globalEnvInputs = ['G']", "const buildEnv = ['A', 'B', 'C']"],
-        ["import { buildEnv, globalEnvInputs } from '../../vx-preset.js'"],
+        ["import { buildEnv, globalEnvInputs, globalPassThroughEnv } from '../../vx-preset.js'"],
+        [
+          `const globalEnvInputs = [${WRITTEN_DEFAULTS}, 'G']`,
+          `const globalPassThroughEnv = [${WRITTEN_BUILTINS}]`,
+          "const buildEnv = ['A', 'B', 'C']",
+        ],
+        ["import { buildEnv, globalEnvInputs, globalPassThroughEnv } from '../../vx-preset.js'"],
       ],
       preset: ['vx-preset.ts'],
     })

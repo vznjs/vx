@@ -36,6 +36,8 @@ import {
   keyable,
   microfrontendsConfigs,
   ROOT,
+  TURBO_BUILTIN_PASS_THROUGH,
+  TURBO_DEFAULT_ENV,
   turboConfigFile,
 } from './turbo-reads.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
@@ -133,6 +135,23 @@ function explicitEnv(
   return out.filter((n) => !excluded.some((re) => re.test(n)))
 }
 
+/**
+ * Turbo's builtin pass-through names: matched against the live names under
+ * `turbo()`, as Turbo matches its environment; written configs list the
+ * literal ones (a wildcard family is a note). A name that is no shell
+ * variable name (`ProgramFiles(x86)`) is left out: core refuses it there.
+ */
+function builtinPassThrough(live: readonly string[] | undefined): string[] {
+  const shellName = /^[A-Za-z_][A-Za-z0-9_]*$/
+  const out: string[] = []
+  for (const e of TURBO_BUILTIN_PASS_THROUGH) {
+    if (e.endsWith('*')) {
+      if (live !== undefined) out.push(...live.filter((n) => n.startsWith(e.slice(0, -1))).sort())
+    } else if (live === undefined || live.includes(e)) out.push(e)
+  }
+  return out.filter((n) => shellName.test(n))
+}
+
 /** A gap's message: a wildcard, or a literal name core cannot key. */
 const envGap = (field: string, entry: string, literal: string | null, list: string): string =>
   literal === null
@@ -224,6 +243,12 @@ export interface MapTurboOptions {
    * Absent (`bunx @vzn/vx-migrate` writes files), a wildcard is a todo.
    */
   envNames?: readonly string[]
+  /**
+   * A variable's value where the tasks will run, read only for a framework
+   * conditional's key (Turbo's `envConditionals`). Absent (written configs),
+   * every conditional name is keyed: more misses, never a stale hit.
+   */
+  envValue?: (name: string) => string | undefined
   /**
    * Without `envNames` (written configs): the upper-case names the files
    * under `dirs` spell, which a framework's `*` prefix is matched against.
@@ -869,11 +894,24 @@ export async function mapTurboWorkspace(
   const globals = {
     inputs: globalFiles.filter((f) => !isDotenvGlob(f) && !globalIgnored.includes(f)),
     env: [
-      ...envNames('globalEnv', rootCfg.globalEnv ?? []),
+      // Turbo's defaults sit before the user's list, so its `!` takes them back.
+      ...envNames('globalEnv', [...TURBO_DEFAULT_ENV, ...(rootCfg.globalEnv ?? [])]),
       ...globalDeps.flatMap((d) => envDependency(d) ?? []),
     ],
-    pass: envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
+    pass: [
+      ...envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
+      ...builtinPassThrough(opts.envNames),
+    ],
   }
+
+  // A written config names no variable by pattern: Turbo's builtin
+  // families are the user's to list, once, for the tasks that read them.
+  if (opts.envNames === undefined && opts.sourceNames !== undefined)
+    notes.push(
+      `Turbo passes every ${TURBO_BUILTIN_PASS_THROUGH.filter((e) => e.endsWith('*')).join(', ')} ` +
+        'variable to each task; the configs pass its literal names only — add the ones a task ' +
+        'reads to exec.env.passThrough',
+    )
 
   // The workspace root as a project (a `vx.config` there, D-39) holds
   // Turbo's `//#task`s (`rootMeta`, above); Turbo runs no plain task in the root package.
@@ -1131,6 +1169,8 @@ export async function mapTurboWorkspace(
         const head = e.slice(0, -1)
         return live.filter((n) => n.startsWith(head)).sort()
       })
+      for (const c of fw.conditionals ?? [])
+        if (opts.envValue?.(c.key) === c.value) names.push(...c.include)
       inferredOf.set(m.name, vendor ? names.filter((n) => !n.startsWith(vendor)) : names)
     } else if (opts.sourceNames !== undefined) {
       // A written config cannot ask the run's environment, and with the
@@ -1143,11 +1183,15 @@ export async function mapTurboWorkspace(
         m.name,
         // The bare prefix is no name: formbricks' web spells `NEXT_PUBLIC_`
         // in a `startsWith` test, and the configs keyed a variable of it.
-        fw.env.flatMap((e) => {
-          if (!e.endsWith('*')) return [e]
-          const head = e.slice(0, -1)
-          return spelled.filter((n) => n.startsWith(head) && n.length > head.length)
-        }),
+        [
+          ...fw.env.flatMap((e) => {
+            if (!e.endsWith('*')) return [e]
+            const head = e.slice(0, -1)
+            return spelled.filter((n) => n.startsWith(head) && n.length > head.length)
+          }),
+          // Written for another environment: keyed whatever the condition.
+          ...(fw.conditionals ?? []).flatMap((c) => c.include),
+        ],
       )
       sourcedOf.set(fw, [...(sourcedOf.get(fw) ?? []), m.name])
     } else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])

@@ -24,6 +24,7 @@ import { onceReader, type ReadText, tscBuildInfo } from '../tsc-buildinfo.js'
 import type * as TurboMap from './turbo-map.js'
 import type { TurboMappedProject } from './turbo-map.js'
 import {
+  ENV_CONDITION_KEYS,
   envNamesThatMap,
   microfrontendsConfigs,
   rootTaskProject,
@@ -223,6 +224,8 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       // An env wildcard expands over these; a new name it matches maps afresh.
       JSON.stringify(envNames),
       process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
+      // A framework conditional keys its names on these values (skew protection).
+      JSON.stringify(ENV_CONDITION_KEYS.map((k) => process.env[k] ?? null)),
       process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
       yarnrc,
@@ -265,6 +268,7 @@ async function mapAll(
     splice: (_kind, values) => values,
     persistentTodo: PERSISTENT_NOTE,
     envNames,
+    envValue: (name) => process.env[name],
     vendorEnvPrefix: process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
     envMode: process.env['TURBO_ENV_MODE'] ?? '',
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
