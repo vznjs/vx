@@ -327,6 +327,29 @@ describe('turbo-map: what the sweep found unheld', () => {
     })
   })
 
+  // Turbo #5623: Turbo reads `turbo.json` itself as JSONC too.
+  it('reads comments and trailing commas in `turbo.json`', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      '{\n  // line\n  /* block */\n  "tasks": { "build": { "inputs": ["src/**",], }, },\n}\n',
+    )
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const m = await mapTurboWorkspace(
+      root,
+      [
+        {
+          name: 'a',
+          dir,
+          packageJson: { name: 'a', scripts: { build: 'b' } } as never,
+          configPath: null,
+        },
+      ],
+      opts,
+    )
+    expect(m.projects[0]!.tasks[0]!.task!['inputs'] as unknown).toEqual({ files: ['src/**'] })
+  })
+
   // Item 939: a task Turbo defines but the package has no script for is a
   // no-op node that keeps its edges. Dropped whole, `test → codegen →
   // ^build` lost `^build`: `test` ran before its dependency's build and its
