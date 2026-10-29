@@ -95,12 +95,12 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       // `vx help <plugin verb>`: a plugin verb owns its own help.
       const [verb, extra] = rest
       if (extra !== undefined) {
-        sayNotice(
-          'error',
-          'vx help',
+        return refuse(
+          'help',
+          rest,
           `${refusedWord(extra)}: ${extra}${flagHint('help', extra)} (see \`vx help\`)`,
+          'VX_E_USAGE',
         )
-        return 1
       }
       const core = verb !== undefined && (CORE_VERBS as readonly string[]).includes(verb)
       if (verb !== undefined && !core) {

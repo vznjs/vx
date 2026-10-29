@@ -232,7 +232,8 @@ describe('a refusal under --format json', () => {
       'VX_E_USAGE',
       'VX_E_USAGE',
       'VX_E_USAGE',
-      'VX_E_UNKNOWN_COMMAND',
+      // `vx help` takes one word: the JSON flag is the word too many.
+      'VX_E_USAGE',
       'VX_E_USAGE',
       'VX_E_USAGE',
       'VX_E_USAGE',
