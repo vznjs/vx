@@ -89,6 +89,25 @@ it('an edit stops a cycle waiting on a server that never becomes ready', async (
   expect(await w.proc.exited).toBe(0)
 }, 40_000)
 
+// The first run is a run like any other: the server starts once its
+// dependency finished, not beside it (vercel/turborepo#11953).
+it('the first run starts a server after its dependsOn, never beside it', async () => {
+  const marks = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-first-'))
+  try {
+    await fixture(`sleep 1; echo done >> ${marks}/prep`)
+    watch = startWatch(root, ['--all'], {}, 'dev')
+    const w = watch
+    await until(async () => (await lines('pids')).length === 1, 'the server')
+    const f = Bun.file(path.join(marks, 'prep'))
+    expect((await f.exists()) ? await f.text() : '').toBe('done\n')
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    w.proc.kill('SIGTERM')
+    expect(await w.proc.exited).toBe(0)
+  } finally {
+    await rm(marks, { recursive: true, force: true })
+  }
+}, 40_000)
+
 // Control: an edit while a plain task runs waits for the cycle, as before.
 it('an edit during other work does not stop the cycle', async () => {
   const marks = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-ready-prep-'))
