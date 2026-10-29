@@ -11,7 +11,7 @@
 // Bun.JSONC is the parser: no dependency, and the file is Bun's own.
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
-import { depsOf, peerOnly, record, type Json } from './json.js'
+import { depsOf, peerOnly, record, stable, type Json } from './json.js'
 import { joinPosix } from './posix.js'
 
 export interface Lockfile {
@@ -103,7 +103,8 @@ export function parseLockfile(text: string): Lockfile {
   for (const [k, v] of Object.entries(record(d['patchedDependencies']) ?? {})) {
     patches.set(k, typeof v === 'string' ? v : JSON.stringify(v))
   }
-  const global = JSON.stringify(rest)
+  // Sorted: the order Bun writes the fields in says nothing of the install.
+  const global = stable(rest)
   return {
     version: String(d['lockfileVersion']),
     workspaces,

@@ -598,3 +598,29 @@ describe('vx run with bun() declared', () => {
     expect(out).not.toContain('a#build')
   })
 })
+
+describe('bun.lock top-level field order', () => {
+  // The install-wide fields were folded as written, so the same lockfile
+  // with `trustedDependencies` before `configVersion` (a Bun writer that
+  // orders them anew) re-keyed every project with nothing changed.
+  it('does not move a digest', () => {
+    const body = (fields: string) => `{
+  "lockfileVersion": 1,
+  ${fields}
+  "workspaces": { "": { "name": "r", "dependencies": { "ms": "2.1.3" } } },
+  "packages": { "ms": ["ms@2.1.3", "", {}, "sha512-ms"] }
+}`
+    const a = importerDigests(
+      parseLockfile(body('"configVersion": 1, "trustedDependencies": ["ms"],')),
+    )
+    const b = importerDigests(
+      parseLockfile(body('"trustedDependencies": ["ms"], "configVersion": 1,')),
+    )
+    expect(b.get('.')).toBe(a.get('.'))
+    // CONTROL: a changed value moves it.
+    const c = importerDigests(
+      parseLockfile(body('"configVersion": 2, "trustedDependencies": ["ms"],')),
+    )
+    expect(c.get('.')).not.toBe(a.get('.'))
+  })
+})
