@@ -265,7 +265,14 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
     }
   }
   if (!args.dry) {
-    await mkdir(path.join(root, 'plugins'), { recursive: true })
+    await mkdir(path.join(root, 'plugins'), { recursive: true }).catch(
+      (err: NodeJS.ErrnoException) => {
+        if (err.code !== 'EEXIST' && err.code !== 'ENOTDIR') throw err
+        throw new UserError(
+          `vx init: cannot write ${files[0][0]}: plugins is a file, not a directory; move it and re-run`,
+        )
+      },
+    )
     for (const [rel, text] of files) await Bun.write(path.join(root, rel), text)
   }
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
@@ -397,7 +404,14 @@ async function starter(
   }
   const ran = await install(pkgRoot, false, plugins)
   if (ran.length > 0) rows.push(['installed', ...ran])
-  for (const f of files) await Bun.write(path.join(root, f.path), f.contents)
+  for (const f of files) {
+    await Bun.write(path.join(root, f.path), f.contents).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== 'ENOTDIR') throw err
+      throw new UserError(
+        `vx init: cannot write ${f.path}: ${path.dirname(f.path)} is a file, not a directory; move it and re-run`,
+      )
+    })
+  }
   for (const f of replaced) await unlink(path.join(root, f))
   // The lock that follows loads the workspace file just written.
   workspaceFileWritten()
