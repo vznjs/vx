@@ -202,6 +202,7 @@ src/util/which.ts
 src/util/write-file.ts
 src/version.ts
 src/workspace/affected.ts
+src/workspace/bracket-literal.ts
 src/workspace/config-bytecode.ts
 src/workspace/config-eval.ts
 src/workspace/config-imports.ts
