@@ -50,8 +50,10 @@ function wholeProjects(
     const keyed = Object.values(projects.get(name)?.config.tasks ?? {}).filter(
       (t) => t.exec !== undefined && t.inputs !== undefined,
     )
+    const links = changes.dirLinksIn?.get(name)
     const unclaimed = (rel: string): boolean =>
-      KEYED_BY_EVERY_TASK.has(rel) || (!byKeys && !keyed.some((t) => declaresInput(t, rel, null)))
+      KEYED_BY_EVERY_TASK.has(rel) ||
+      (!byKeys && !keyed.some((t) => declaresInput(t, rel, null, links?.has(rel))))
     const rel = rels.find(unclaimed)
     if (rel !== undefined) whole.set(name, rel)
   }
@@ -147,7 +149,9 @@ export function affectedRoots(
     // Asked of every node, not only the changed projects' (the
     // `workspaceFiles` owners): a `graph` hook may have given the glob.
     if (keyed) {
-      const file = changes.changed.find((rel) => declaresInput(task, null, rel))
+      const file = changes.changed.find((rel) =>
+        declaresInput(task, null, rel, changes.dirLinks?.has(rel)),
+      )
       const dir =
         file === undefined
           ? (changes.nested ?? []).find((d) => workspaceFilesReachInto(task, d))
@@ -171,7 +175,8 @@ export function affectedRoots(
       seeds?.set(n.id, inProject(n.projectName, whole.get(n.projectName)))
       return true
     }
-    const rel = rels.find((r) => declaresInput(task, r, null))
+    const links = changes.dirLinksIn?.get(n.projectName)
+    const rel = rels.find((r) => declaresInput(task, r, null, links?.has(r)))
     if (rel === undefined) return false
     if (seeds !== null) seeds.set(n.id, { ...inProject(n.projectName, rel), kind: 'input' })
     return true

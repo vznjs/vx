@@ -31,6 +31,7 @@ export function declaresInput(
   task: TaskConfig,
   projectRel: string | null,
   workspaceRel: string | null,
+  dirLink?: boolean, // the path is a link to a directory: a glob that may reach below it counts
 ): boolean
 
 /** May `inputs.workspaceFiles` name a file under `dir` (workspace-relative)?

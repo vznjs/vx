@@ -404,7 +404,9 @@ What counts as a change:
   differ, as the key hashes them. One a sparse checkout left out does not.
 - A symlinked input is its target: a link whose target changed is a
   change, and a link to a target git cannot diff (outside the
-  workspace, or ignored) is one on every run.
+  workspace, or ignored) is one on every run. A link to a directory
+  selects a task whose glob may reach below it (`src/**/*.ts` over
+  `src/v`), as its key reads what is behind it.
 - A gitignored file a task names (`.env.local`, `dist/**`) never
   selects it, as in Nx. The key still hashes it, so the task misses when
   it changed.

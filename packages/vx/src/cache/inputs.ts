@@ -1941,6 +1941,11 @@ export function declaresInput(
   task: TaskConfig,
   projectRel: string | null,
   workspaceRel: string | null,
+  /**
+   * The path is a link to a directory (or was one): a glob that may reach
+   * below it keys what is behind it, as `mayHoldMatch` says at key time.
+   */
+  dirLink = false,
 ): boolean {
   const inputs = task.inputs
   if (inputs === undefined) return false
@@ -1950,10 +1955,13 @@ export function declaresInput(
     // lists: either way it may be an input, so it counts.
     const plan = filesPlan(inputs.files, task.cache?.outputs.files ?? [])
     if (plan !== null && (inPlan(plan, projectRel) || ownOnly(plan, projectRel))) return true
+    if (plan !== null && dirLink && plan.mayHold(projectRel) && !plan.isExcluded(projectRel)) {
+      return true
+    }
   }
   const ws = inputs.workspaceFiles
   if (workspaceRel === null || ws === undefined || ws.length === 0) return false
-  return workspaceMatcher(ws)(workspaceRel)
+  return workspaceMatcher(ws)(workspaceRel, dirLink)
 }
 
 /**
@@ -2003,16 +2011,17 @@ function ownOnly(plan: FilesPlan, rel: string): boolean {
   return own
 }
 
-const workspaceMatchers = new Map<string, (rel: string) => boolean>()
+const workspaceMatchers = new Map<string, (rel: string, dirLink: boolean) => boolean>()
 
-function workspaceMatcher(decl: readonly string[]): (rel: string) => boolean {
+function workspaceMatcher(decl: readonly string[]): (rel: string, dirLink: boolean) => boolean {
   const key = JSON.stringify(decl)
   let m = workspaceMatchers.get(key)
   if (m !== undefined) return m
   const { positive, negative } = splitNegations(decl)
   const isPositive = throughLinks(positive, anyTaskGlob(asTrees(positive)))
+  const mayHold = mayHoldMatch(positive)
   const isExcluded = anyTaskGlob([...WORKSPACE_ALWAYS_IGNORE, ...asTrees(negative)])
-  m = (rel) => isPositive(rel) && !isExcluded(rel)
+  m = (rel, dirLink) => (isPositive(rel) || (dirLink && mayHold(rel))) && !isExcluded(rel)
   workspaceMatchers.set(key, m)
   return m
 }

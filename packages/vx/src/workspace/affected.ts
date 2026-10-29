@@ -7,7 +7,7 @@
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
 import { lstatSync } from 'node:fs'
-import { readlink, realpath, stat } from 'node:fs/promises'
+import { lstat, readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   executablePath,
@@ -102,6 +102,7 @@ export interface AffectedArgs {
   workspaceGlobOwners?: (
     changedPaths: readonly string[],
     nested: readonly string[],
+    dirLinks: ReadonlySet<string>,
   ) => Promise<Iterable<string>>
   /**
    * The fingerprint files a plugin claims (`VxPlugin.fingerprint`) and its
@@ -198,6 +199,13 @@ export interface AffectedChanges {
    * in it, so a `workspaceFiles` glob that reaches under one is reached.
    */
   nested?: readonly string[]
+  /**
+   * The changed paths a glob matches as a directory (a link to one),
+   * workspace-relative: `declaresInput`'s `dirLink`.
+   */
+  dirLinks?: ReadonlySet<string>
+  /** Project → its `dirLinks`, relative to the project's directory. */
+  dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
 }
 
 /** `<base>...HEAD` / `<base>..HEAD`: the base alone, read as `affectedChanges` reads it. */
@@ -331,13 +339,23 @@ export async function affectedChanges(
       (await args.flagged?.().catch(() => null)) ??
       (await listIndex()).filter((e) => e.flagged).map((e) => e.path))(),
   ])
-  changed.push(...(await linkedChanges(args.workspaceRoot, links, changed)))
+  const dirLinkSet = new Set<string>()
+  changed.push(...(await linkedChanges(args.workspaceRoot, links, changed, dirLinkSet)))
   // A path git was told not to look at (`update-index --assume-unchanged`,
   // `--skip-worktree`): `git diff` reports no edit to it, and the key
   // hashes it from disk, so the task missed and selection left it out.
   if (flagged.length > 0) {
     changed.push(...(await flaggedChanges(args.workspaceRoot, flagged, await listIndex(), changed)))
   }
+  // A changed path that is a link to a directory, or was a link and is
+  // no link to a file now: a glob reaching below it keys what is behind
+  // it (cache/inputs.ts `mayHoldMatch`), so it is matched as a directory.
+  const dirLinks = await changedDirLinks(
+    args.workspaceRoot,
+    changed,
+    dirLinkSet,
+    new Set([...diffed.links, ...untracked]),
+  )
   // The nested repositories git reports as one path: a gitlink, or an
   // untracked embedded repository (`dir/`, the only path git prints so).
   const nested = new Set(diffed.gitlinks)
@@ -455,6 +473,7 @@ export async function affectedChanges(
     ),
   )
   const paths = new Map<string, string[]>()
+  const dirLinksIn = new Map<string, Set<string>>()
   const whole = new Set<string>(claimedOwned.keys())
   const owned = projectsContaining(
     args.workspaceRoot,
@@ -464,10 +483,14 @@ export async function affectedChanges(
     realDirs,
     perTask
       ? {
-          path: (name, rel) => {
+          path: (name, rel, wsRel) => {
             const list = paths.get(name)
             if (list) list.push(rel)
             else paths.set(name, [rel])
+            if (!dirLinks.has(wsRel)) return
+            const links = dirLinksIn.get(name)
+            if (links) links.add(rel)
+            else dirLinksIn.set(name, new Set([rel]))
           },
           repo: (name) => whole.add(name),
         }
@@ -523,9 +546,10 @@ export async function affectedChanges(
     whole,
     ...(claimedOwned.size > 0 ? { wholeBy: claimedOwned } : {}),
     ...(nestedDirs.length > 0 ? { nested: nestedDirs } : {}),
+    ...(dirLinks.size > 0 ? { dirLinks, dirLinksIn } : {}),
   })
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
-  for (const name of await args.workspaceGlobOwners(changed, nestedDirs)) owned.add(name)
+  for (const name of await args.workspaceGlobOwners(changed, nestedDirs, dirLinks)) owned.add(name)
   return done()
 }
 
@@ -765,6 +789,8 @@ async function linkedChanges(
   workspaceRoot: string,
   links: readonly string[],
   changed: readonly string[],
+  /** Given each link to a directory. */
+  dirs: Set<string>,
 ): Promise<string[]> {
   if (links.length === 0) return []
   const realRoot = await realpath(workspaceRoot).catch(() => workspaceRoot)
@@ -779,6 +805,7 @@ async function linkedChanges(
     } catch {
       continue
     }
+    if (dir) dirs.add(link)
     const rel = path.relative(realRoot, real)
     if (rel.startsWith('..') || path.isAbsolute(rel)) out.push(link)
     else inside.push({ link, target: rel.split(path.sep).join('/'), dir })
@@ -809,6 +836,45 @@ async function linkedChanges(
   return out
 }
 
+/**
+ * The changed paths a glob must match as a directory: a tracked link to
+ * one (`dirs`), and each of `maybe` (a link on either side of the diff,
+ * an untracked path) that is a link now to no file.
+ */
+async function changedDirLinks(
+  workspaceRoot: string,
+  changed: readonly string[],
+  dirs: ReadonlySet<string>,
+  maybe: ReadonlySet<string>,
+): Promise<Set<string>> {
+  const out = new Set<string>()
+  await Promise.all(
+    changed.map(async (rel) => {
+      if (dirs.has(rel)) out.add(rel)
+      else if (
+        maybe.has(rel) &&
+        !rel.endsWith('/') &&
+        (await noFileLink(path.join(workspaceRoot, rel)))
+      ) {
+        out.add(rel)
+      }
+    }),
+  )
+  return out
+}
+
+/** A link now to anything but a file, or a path that is gone (a deleted link). */
+async function noFileLink(abs: string): Promise<boolean> {
+  try {
+    if (!(await lstat(abs)).isSymbolicLink()) return false
+  } catch {
+    return true
+  }
+  return !(await stat(abs)
+    .then((s) => s.isFile())
+    .catch(() => false))
+}
+
 /** Run a NUL-separated path-listing git command from the workspace root. */
 async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]> {
   const proc = spawnGit([...cmd], workspaceRoot)
@@ -828,8 +894,9 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
 }
 
 /**
- * `git diff --raw -z <base>`'s paths, and those that are a gitlink on
- * either side: one the change removed took its files with it. Each record
+ * `git diff --raw -z <base>`'s paths, those that are a symlink on either
+ * side, and those that are a gitlink on either side: one the change
+ * removed took its files with it. Each record
  * is `:<mode> <mode> <oid> <oid> <status>` then its path (one path:
  * `--no-renames`).
  *
@@ -843,7 +910,7 @@ async function gitDiffPaths(
   workspaceRoot: string,
   base: string,
   partial: Promise<boolean>,
-): Promise<{ paths: string[]; gitlinks: string[] }> {
+): Promise<{ paths: string[]; gitlinks: string[]; links: string[] }> {
   const diff = (...revs: string[]) =>
     gitPaths(workspaceRoot, [
       '-c',
@@ -870,6 +937,7 @@ async function gitDiffPaths(
       : [await diff(base)]
   const paths: string[] = []
   const gitlinks: string[] = []
+  const links: string[] = []
   const seen = new Set<string>()
   const unread: { rel: string; oid: string; link: boolean }[] = []
   for (const fields of lists) {
@@ -880,14 +948,15 @@ async function gitDiffPaths(
       paths.push(rel)
       const head = fields[i]!
       if (head.startsWith('160000 ', 1) || head.startsWith('160000 ', 8)) gitlinks.push(rel)
+      if (head.startsWith('120000 ', 1) || head.startsWith('120000 ', 8)) links.push(rel)
       const [src, dst, oid, worktree, status] = head.slice(1).split(' ')
       if (status === 'M' && src === dst && /^0+$/.test(worktree!) && src !== '160000')
         unread.push({ rel, oid: oid!, link: src === '120000' })
     }
   }
-  if (unread.length === 0) return { paths, gitlinks }
+  if (unread.length === 0) return { paths, gitlinks, links }
   const same = await statOnly(workspaceRoot, unread)
-  return { paths: paths.filter((p) => !same.has(p)), gitlinks }
+  return { paths: paths.filter((p) => !same.has(p)), gitlinks, links }
 }
 
 /**
@@ -1391,7 +1460,7 @@ function projectsContaining(
   projects: readonly ProjectMeta[],
   realDirs: ReadonlyMap<string, string>,
   /** Told each owned path relative to its project, and each nested repository's projects. */
-  on?: { path(name: string, rel: string): void; repo(name: string): void },
+  on?: { path(name: string, rel: string, wsRel: string): void; repo(name: string): void },
 ): Set<string> {
   // Index projects by their (canonical) dir, then for each changed path walk
   // its ancestor dirs bottom-up until one is a project dir. The FIRST hit is
@@ -1425,7 +1494,7 @@ function projectsContaining(
       const name = dirToName.get(dir)
       if (name !== undefined) {
         owned.add(name)
-        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel).normalize('NFC')))
+        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel).normalize('NFC')), rel)
         // Its files are the project's inputs, and none of them is this
         // path: a task's globs cannot say whether they reach inside.
         if (repo) on?.repo(name)
