@@ -259,6 +259,53 @@ describe('--affected sees a workspaceFiles change', () => {
   )
 
   it(
+    "a root file one cached task reads selects that task alone, not its sibling's (vercel/turborepo#12341)",
+    async () => {
+      // Each task names its own root config: an edit to one must not run
+      // the other, and a root file neither names selects nothing.
+      await write(path.join(root, 'build-config.txt'), 'b1')
+      await write(path.join(root, 'test-config.txt'), 't1')
+      await write(path.join(root, 'other.txt'), 'o1')
+      await write(
+        path.join(root, 'pkgs/app/vx.config.mjs'),
+        [
+          'export default {',
+          '  tasks: {',
+          '    build: {',
+          '      exec: { command: "true" },',
+          '      inputs: { files: ["src/**"], workspaceFiles: ["build-config.txt"] }, cache: { outputs: { files: [] } },',
+          '    },',
+          '    test: {',
+          '      exec: { command: "true" },',
+          '      inputs: { files: ["src/**"], workspaceFiles: ["test-config.txt"] }, cache: { outputs: { files: [] } },',
+          '    },',
+          '  },',
+          '}',
+          '',
+        ].join('\n'),
+      )
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'two root configs')
+      const planned = (): string[] | string => {
+        const r = vx(root, 'run', 'build', 'test', '--affected=HEAD~1', '--dry=json')
+        if (r.exitCode !== 0) return r.stdout
+        return (JSON.parse(r.json) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
+      }
+      await write(path.join(root, 'test-config.txt'), 't2')
+      git(root, 'commit', '-qam', 'test config')
+      expect(planned()).toEqual(['app#test'])
+      await write(path.join(root, 'other.txt'), 'o2')
+      git(root, 'commit', '-qam', 'other')
+      expect(planned()).toEqual([])
+      // CONTROL: the other config selects the other task.
+      await write(path.join(root, 'build-config.txt'), 'b2')
+      git(root, 'commit', '-qam', 'build config')
+      expect(planned()).toEqual(['app#build'])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a glob reaching into a changed nested repository selects its declarer',
     async () => {
       // git reports a submodule or an embedded repository as ONE path
