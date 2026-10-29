@@ -62,3 +62,38 @@ it('an unbounded wait says no exec.timeout bounds it', async () => {
 it('a server ready in time says nothing', async () => {
   expect(await runWith('echo ready; exec sleep 30')).toEqual([])
 }, 20_000)
+
+// The pattern in the command line is not output: a matcher fed the
+// `$ command` header, or an echo of it, called the server ready at spawn.
+it('a pattern only the command line holds is no readiness', async () => {
+  expect(await runWith(': ready; echo listening; exec sleep 30', 1500)).toEqual([
+    'vx: app#dev not ready after 200 ms: waiting for a line matching /ready/ (readyWhen)',
+  ])
+}, 20_000)
+
+it('a task waiting on two servers names each one not ready', async () => {
+  root = await makeWorkspace({ prefix: 'vx-ready-notice-' })
+  const server = (n: string) =>
+    `${n}: { exec: { command: 'echo booting; exec sleep 30', persistent: { readyWhen: 'up-${n}' }, timeout: '1500ms' } },`
+  await addProject(
+    root,
+    'app',
+    `export default { tasks: {
+      ${server('s1')}
+      ${server('s2')}
+      e2e: { dependsOn: ['s1', 's2'], exec: { command: 'true' } },
+    } }`,
+  )
+  const lines: string[] = []
+  const log: Logger = {
+    status: (s) => void lines.push(s),
+    taskStdout() {},
+    taskStderr() {},
+    taskComplete() {},
+  }
+  await run({ cwd: root, tasks: ['app#e2e'], log, handleSignals: false })
+  expect(lines.filter((l) => l.includes('not ready after')).sort()).toEqual([
+    'vx: app#s1 not ready after 200 ms: waiting for a line matching /up-s1/ (readyWhen)',
+    'vx: app#s2 not ready after 200 ms: waiting for a line matching /up-s2/ (readyWhen)',
+  ])
+}, 20_000)

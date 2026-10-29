@@ -146,6 +146,9 @@ export class SecretBroker {
     let answer: string
     try {
       answer = (await this.terminal.ask(prompt)).trim()
+    } catch {
+      // The terminal could not take a hidden answer: nobody can answer.
+      throw unavailable(key, 'no-terminal')
     } finally {
       release()
     }
