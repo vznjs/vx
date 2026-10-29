@@ -160,6 +160,16 @@ it('keeps an idle worker the rest of the run needs again', () => {
   expect(out).not.toContain('small#3')
 }, 60_000)
 
+// The footer prints after teardown: its ideal lost the graph there, and a
+// chain whose longest path was 7 s read `ideal 3.2s`.
+it('the footer’s ideal waits for each task’s dependencies', () => {
+  const r = vx(['run', 'c#z1', 'c#z2'], 'e2e-ideal')
+  expect(r.exitCode).toBe(0)
+  const ideal = /^ +ideal +([\d.]+)s:/m.exec(r.stdout.toString())?.[1]
+  // x1 → y1 → y2 → z1: four `sleep 0.3` one after another.
+  expect(Number(ideal)).toBeGreaterThanOrEqual(1.2)
+}, 60_000)
+
 // The worker running a task is killed: the task runs again on one the run
 // starts in its place, where it once waited for it forever.
 it('runs a task again on a new worker when its worker is killed', async () => {
