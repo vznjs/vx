@@ -169,6 +169,53 @@ describe('plugin commands', () => {
     })
   }
 
+  // `VX_CACHE_POLICY` beats the workspace's `cache.policy` for a run; a
+  // verb's artifacts read only the workspace's, so `remote:r` on CI still
+  // wrote the remote.
+  it("a verb's artifacts take VX_CACHE_POLICY, as a run does", async () => {
+    const box = globalThis as unknown as { __vxWire: Map<string, Uint8Array> }
+    box.__vxWire = new Map()
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/wire',
+          `{ cache: () => ({
+              has: async (h) => globalThis.__vxWire.has(h),
+              get: async () => null,
+              put: async (h, b) => { globalThis.__vxWire.set(h, new Uint8Array(await b.arrayBuffer())) },
+            }) }`,
+        ),
+        pluginSource(
+          'org/saver',
+          `{ commands: { save: { description: 'saves', async run(argv, ctx) {
+             await ctx.artifacts.save('00000000000000aa', {
+               id: 'app#build', projectDir: ctx.workspaceRoot, command: 'true',
+               outputs: { files: [], workspaceFiles: [] },
+             }, { output: [{ text: 'ran', err: false }], durationMs: 1 })
+             return 0
+           } } } }`,
+        ),
+      ]),
+    )
+    const was = { CI: process.env['CI'], VX_CACHE_POLICY: process.env['VX_CACHE_POLICY'] }
+    process.env['CI'] = 'true'
+    try {
+      process.env['VX_CACHE_POLICY'] = 'remote:r'
+      expect(await cli(['save'])).toBe(0)
+      expect(box.__vxWire.size).toBe(0)
+      // Control: unset, the verb writes the remote on CI.
+      delete process.env['VX_CACHE_POLICY']
+      expect(await cli(['save'])).toBe(0)
+      expect(box.__vxWire.size).toBe(1)
+    } finally {
+      for (const [k, v] of Object.entries(was)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  })
+
   // `vx <verb> --help` answers from core's reference for a CORE verb only: a
   // plugin verb owns its arguments, `--help` included (docs/cli.md). The
   // gate that says so could go with the suite green (E-10's sweep of the

@@ -18,7 +18,14 @@ import type {
   TaskArtifacts,
 } from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
-import { machineParallelism, maskedLine, SecretBroker, thrownMessage, ui } from '../util/index.js'
+import {
+  machineParallelism,
+  maskedLine,
+  SecretBroker,
+  thrownMessage,
+  ui,
+  UserError,
+} from '../util/index.js'
 import { resolveSetting } from '../settings.js'
 
 export interface ResolvedPluginCommand {
@@ -190,7 +197,7 @@ async function verbArtifacts(
   facts?: () => CacheFacts | undefined,
 ): Promise<TaskArtifacts> {
   const [
-    { Cache, FULL_CACHE_POLICY },
+    { Cache, FULL_CACHE_POLICY, parseCachePolicy },
     {
       cacheRefs,
       namesRemote,
@@ -206,9 +213,29 @@ async function verbArtifacts(
     import('../orchestrator/index.js'),
     import('./run.js'),
   ])
-  const asked = workspaceCachePolicy(ws.workspaceConfig) ?? FULL_CACHE_POLICY
+  // `VX_CACHE_POLICY` beats the workspace's `cache.policy`, as it does for a
+  // run, refused as `parseRunArgs` refuses it (cli/run.ts).
+  const envSpec = process.env['VX_CACHE_POLICY'] || undefined
+  let asked: CachePolicy
+  if (envSpec === undefined) {
+    asked = workspaceCachePolicy(ws.workspaceConfig) ?? FULL_CACHE_POLICY
+  } else {
+    if (!envSpec.split(',').some((seg) => seg.trim().length > 0))
+      throw new UserError(
+        'VX_CACHE_POLICY needs a spec like local:r, local:rw, remote:, or local:,remote:rw',
+        'VX_E_USAGE',
+      )
+    try {
+      asked = parseCachePolicy(envSpec)
+    } catch (err) {
+      throw new UserError(
+        `VX_CACHE_POLICY: ${err instanceof Error ? err.message : String(err)}`,
+        'VX_E_USAGE',
+      )
+    }
+  }
   const policy: CachePolicy =
-    onCI(process.env['CI']) || namesRemote(ws.workspaceConfig?.cache?.policy)
+    onCI(process.env['CI']) || namesRemote(envSpec ?? ws.workspaceConfig?.cache?.policy)
       ? asked
       : { ...asked, remoteWrite: false }
   const scope = resolveCacheScope(
