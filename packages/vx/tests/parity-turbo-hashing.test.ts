@@ -109,6 +109,29 @@ describe('Turbo parity — scm: which file changes move a key (turborepo-scm)', 
   )
 
   it(
+    '`tree_walks_match_wax_walks` (turborepo#14511) — a name holding a newline keys, committed or untracked, file or directory',
+    async () => {
+      const git = gitIn(root)
+      await mkdir(path.join(lib, 'src', 'new\nline'), { recursive: true })
+      await writeFile(path.join(lib, 'src', 'a\nb.txt'), '1\n')
+      await writeFile(path.join(lib, 'src', 'new\nline', 'f.txt'), '1\n')
+      const untracked = await key(root, 'lib#t')
+      await writeFile(path.join(lib, 'src', 'new\nline', 'f.txt'), '2\n')
+      expect(await key(root, 'lib#t')).not.toBe(untracked)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'newline names')
+      for (const file of ['a\nb.txt', 'new\nline/f.txt']) {
+        const before = await key(root, 'lib#t')
+        await writeFile(path.join(lib, 'src', file), 'edited\n')
+        expect([file, await key(root, 'lib#t')]).not.toEqual([file, before])
+      }
+      git('rm', '-q', '-r', '-f', '--', 'packages/lib/src/a\nb.txt', 'packages/lib/src/new\nline')
+      git('commit', '-q', '-m', 'drop newline names')
+    },
+    TIMEOUT,
+  )
+
+  it(
     '`test_scoped_untracked_files_only_include_selected_package` / `test_prefix_does_not_match_sibling_with_shared_prefix`',
     async () => {
       const before = await key(root, 'lib#t')
