@@ -17,6 +17,10 @@ a brace of directories (`{src,lib}`) or of `./` spellings (`{./src,lib}/**`) in 
 
 `vx cache clean --dry-run` → `vx cache clean --dry`
 
+## cli: vx cache clean --dry, as vx run and vx init spell it
+
+vx cache clean --dry-run is now --dry; its JSON field dryRun is dry, and Cache.prune takes { dry } in place of { dryRun }.
+
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 
 the cache and history servers read ALLOW (space separated issuer:owner/repo:workflow entries) in place of TRUST; @vzn/vx-devtools exports parseAllow and Allowed in place of parseTrust and TrustRule, and oidcAuth and oidcTokenAuth take allow, not trust. Protected refs are gone: any run of a named workflow writes its branch. Set ALLOW to each repository's CI workflow.
