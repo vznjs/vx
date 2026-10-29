@@ -144,12 +144,21 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       const actualAbs = projTree.files
       const actualWsAbs = wsTree.files
       // An empty directory is an entry row (`dist/empty/`): one the entry
-      // does not hold is a stray, as a file is.
+      // does not hold is a stray, as a file is. A directory row with a row
+      // under it is one kept for its mode (`DIR_MODE`), and the walk lists
+      // no such directory: only the files and empty directories it holds.
       const setsMatch = (
         actual: readonly string[],
         exp: ReadonlyArray<{ path: string }>,
       ): boolean => {
-        const expSet = new Set(exp.map((e) => e.path))
+        const held = new Set<string>()
+        for (const { path: p } of exp) {
+          for (let i = p.lastIndexOf('/', p.length - 2); i > 0; i = p.lastIndexOf('/', i - 1))
+            held.add(p.slice(0, i + 1))
+        }
+        const expSet = new Set(
+          exp.map((e) => e.path).filter((p) => !p.endsWith('/') || !held.has(p)),
+        )
         return actual.length === expSet.size && actual.every((r) => expSet.has(r))
       }
       const dirRels = (root: string, dirs: readonly string[]): string[] =>
