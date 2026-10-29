@@ -5,6 +5,7 @@
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay, serveRelay, TokenError, type RelayServer } from '@vzn/vx-dte-server'
 import { join, RelayError, unsent, type RelayMessage } from '../src/wire.js'
+import { joinOffLoop } from '../src/wire-thread.js'
 import { answer, servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -1056,3 +1057,74 @@ it('sends to a worker lost while an ack to it was owed as to any lost one', asyn
     await served.stop()
   }
 })
+
+// CI run 40886829588 (2026-10-29): the orchestrator said nothing for 12 s
+// and every worker then running ended. Its own sync work (whatever held its
+// loop) starved its socket's acks. Off the loop, a held loop sends them
+// still; on it, the worker ends. The relay and the worker run in a process
+// of their own, as on CI, so holding this loop holds only the orchestrator.
+// Held five heartbeats, the loop is taken as hung: the thread leaves, the
+// relay closes the run, and the run hears why when its loop is back.
+for (const [how, open, heldMs, want] of [
+  ['on the loop', 'loop', 2_000, 'ended relay: the orchestrator went silent'],
+  ['off the loop', 'thread', 2_000, 'alive'],
+  ['off the loop, past its bound', 'thread', 3_500, 'ended relay: the run is closed'],
+] as const)
+  it(`an orchestrator whose loop is held ${heldMs} ms, its socket ${how}: the worker says ${want}`, async () => {
+    const child = Bun.spawn(['bun', `${import.meta.dir}/wire-stall-fixture.ts`, R2], {
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'inherit',
+      timeout: 20_000,
+    })
+    const reader = child.stdout.getReader()
+    let buf = ''
+    const line = async (): Promise<string> => {
+      for (;;) {
+        const i = buf.indexOf('\n')
+        if (i !== -1) {
+          const l = buf.slice(0, i)
+          buf = buf.slice(i + 1)
+          return l
+        }
+        const { value, done } = await reader.read()
+        if (done) return ''
+        buf += new TextDecoder().decode(value)
+      }
+    }
+    const url = await line()
+    const o =
+      open === 'thread'
+        ? await joinOffLoop(url, R2, null, undefined)
+        : await join(url, R2, 'orchestrator', null, undefined)
+    void child.stdin.write('go\n')
+    void child.stdin.flush()
+    expect(await line()).toBe('joined')
+    while (!(await o.poll()).some((m) => m.from === 'relay')) {}
+    // Past a worker's loss (1.9 heartbeats of 500 ms), short of the
+    // thread's bound on a held loop (five).
+    const said: string[] = []
+    const write = process.stderr.write.bind(process.stderr)
+    process.stderr.write = ((chunk: string) => (said.push(String(chunk)), true)) as never
+    const until = performance.now() + heldMs
+    while (performance.now() < until) {}
+    await Bun.sleep(500)
+    process.stderr.write = write
+    // What held it is not known here: its length and time are said, for the run's log.
+    expect(said.some((l) => l.includes("dte: this machine's loop was held"))).toBe(
+      open === 'thread',
+    )
+    void child.stdin.write('done\n')
+    void child.stdin.flush()
+    expect(await line()).toBe(want)
+    if (heldMs > 2_000) {
+      const err = await (async () => {
+        for (;;) await o.poll()
+      })().catch((e: unknown) => e)
+      expect((err as RelayError).message).toMatch(
+        /^dte: this machine's run was held \d+ s, past 5 heartbeats/,
+      )
+    }
+    await o.leave().catch(() => undefined)
+    await child.exited
+  }, 25_000)

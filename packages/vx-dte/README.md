@@ -621,6 +621,11 @@ use your own instead.
   with no worker yet asks the relay an empty frame instead; a frame the
   relay leaves unanswered a heartbeat closes the socket, which is dialed
   again.
+- The orchestrator's socket, its acks, probes and redials run on a thread
+  of their own, so sync work on the run's loop never holds them (one CI
+  run went quiet 12 s that way and lost every worker). A loop held a
+  second or more says so, with how long; one held 5 heartbeats (10 s)
+  ends the run, as a dead orchestrator would.
 - Each send is numbered for its receiver and held until the receiver
   acknowledges it, so one a socket or the relay dropped goes again after
   a heartbeat, or at once on a new socket; the receiver takes each once,
