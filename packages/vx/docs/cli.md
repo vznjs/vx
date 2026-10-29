@@ -550,7 +550,9 @@ Mutual exclusion:
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest flag the verb accepts when one is within two edits
-(`unknown flag: --concurency (did you mean --concurrency?)`). Every verb
+(`unknown flag: --concurency (did you mean --concurrency?)`); a name of
+four letters or fewer gets one edit or a swap of two letters, so
+`--poll` is not hinted `--all` nor `vx test` `last`. Every verb
 does this against its own usage line and `--help`: `vx info --formt`
 hints `--format`, `vx lock --chek` hints `--check`, `vx upgrade --hlp`
 hints `--help`, and `--json` on a verb that takes `--format` hints
@@ -1391,6 +1393,10 @@ watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** A cycle opens with a blank line and
    `changed <project> <relpath>`, plus ` (+N more)` when more paths
    changed, then its task rows as `vx run` prints them, with no footer.
+   Where a hit prints no row (`--all`, `--filter`, `--affected`, or
+   `--output-logs errors-only` / `none`), a cycle of hits alone says
+   ` N tasks cached, nothing ran`, so a cycle back to cached bytes is
+   not silent below the failure before it.
    The named path is the first changed file that still exists (a
    directory only when no file changed), so an
    editor's temporary file renamed away names nothing; a deletion names
@@ -1714,10 +1720,10 @@ listing the directories.
 
 ### Exit codes
 
-| Code | When                                                                                                                                                   |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `0`  | pruning completed (zero or more entries evicted). A workspace that never ran has no cache: `› vx cache clean  nothing to free`, and nothing is created |
-| `1`  | parse error, missing policy, or workspace-discovery error                                                                                              |
+| Code | When                                                                                                                                                                                                                        |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | pruning completed (zero or more entries evicted). A workspace that never ran has no cache, nor does a directory holding nothing vx wrote (`--cache-dir build`): `› vx cache clean  nothing to free`, and nothing is created |
+| `1`  | parse error, missing policy, or workspace-discovery error                                                                                                                                                                   |
 
 ## Runs read the lock
 
@@ -2460,9 +2466,10 @@ message is that plugin's or check's: do what it says.
 
 #### `VX_E_FS`
 
-The file system refused a write: permissions, a full disk. The message
-names the path. Free space (`vx cache clean --max-size <size>` trims the
-cache) or grant the write, then re-run.
+The file system refused a write: permissions, a full disk, a file where
+the cache directory goes. The message names the path. Free space
+(`vx cache clean --max-size <size>` trims the cache), grant the write,
+or move the file away, then re-run.
 
 #### `VX_E_FDS`
 
