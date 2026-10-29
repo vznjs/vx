@@ -826,8 +826,12 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     plan has work for it, though the run would end no later without) is
     cancelled: the adapter
     stops it before its setup if it can (`github()` cancels its workflow
-    run once no worker in it is needed), and one that joins anyway is told
-    to exit. The same signal changes nothing. The
+    run once no worker in it is needed and none of its jobs has a runner),
+    and one that joins anyway is told to exit. One the adapter leaves
+    running (its job had a runner, its run holds a worker still needed, or
+    the adapter stops none) is counted again, and the run takes it when it
+    joins: its setup is paid, and a cancel landing late could stop it
+    mid-task. The same signal changes nothing. The
     run ends: a task the history has not measured books one free core on
     any worker (`unmeasured` sizes the run); one that used all of its worker's cores or memory (90%) last time runs
     alone on the smallest bigger size, which the run starts for it. Each
@@ -864,7 +868,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   when the run ended before it joined. On SIGINT or SIGTERM it stops its
   tasks, leaves the run, which runs them again on another worker, and
   exits 130 or 143; a second signal ends it at once.
-- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset; `keyless` workers prove themselves by GitHub OIDC, and `workerRuns` names the workflow runs whose jobs alone may join as them (`undefined`: any job of the repository).
+- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined, and may answer with those it left running, which the run takes (with `late`, workers given up on joining, stopped whatever their job holds); `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset; `keyless` workers prove themselves by GitHub OIDC, and `workerRuns` names the workflow runs whose jobs alone may join as them (`undefined`: any job of the repository).
   `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env }`,
   with `memory` in bytes and `max` its size's (`Infinity` uncapped),
   where `id` is the worker's name (`small#2`, numbered within its size), `commit` the

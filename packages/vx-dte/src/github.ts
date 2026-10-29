@@ -162,15 +162,76 @@ export function github(options: GithubOptions = {}): DteAdapter {
       return
     }
   }
-  /** Cancels `run` once none of its workers is still needed. */
-  const letGo = (run: string, workers: ReadonlyMap<string, WorkerSpawn>): void => {
-    if (![...workers.keys()].every((id) => cancelled.has(id))) return
+  // A worker `cancel` was asked to stop, until it is known whether it was:
+  // true when it was left running (`cancel`'s answer).
+  const deciding = new Map<string, (left: boolean) => void>()
+  // Workers whose dispatch has not answered yet.
+  const flying = new Set<string>()
+  // Of `cancelled`, those given up as late: stuck or queued, stopped whatever their job holds.
+  const late = new Set<string>()
+  const decide = (id: string, left: boolean): void => {
+    deciding.get(id)?.(left)
+    deciding.delete(id)
+  }
+  /**
+   * Whether a job of `run` has a runner: its worker's setup is paid, and
+   * a cancel only races its join. Read fresh, past the poll's ETag, which
+   * it leaves alone; undefined when GitHub does not answer.
+   */
+  const hasRunner = async (run: string): Promise<boolean | undefined> => {
+    const res = await call(`${run}/jobs?per_page=100`).catch((err: unknown) => {
+      failed(`reading ${runOf(run)}'s jobs`, err instanceof Error ? err.message : String(err))
+      return undefined
+    })
+    if (res === undefined) return undefined
+    if (!res.ok) {
+      failed(
+        `reading ${runOf(run)}'s jobs`,
+        `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}`,
+      )
+      return undefined
+    }
+    // quiet: an answer that is no JSON leaves the run to be cancelled, as before it was read
+    const body = (await res.json().catch(() => undefined)) as { jobs?: Job[] } | null | undefined
+    if (!Array.isArray(body?.jobs)) return undefined
+    return body.jobs.some((j) => j.status === 'in_progress')
+  }
+  /**
+   * Cancels `run` once none of its workers is still needed and none of its
+   * jobs has a runner. Otherwise it goes on, and each worker let go in it
+   * is left running: it joins, and the run takes it (2026-10-29: small#3,
+   * let go with its job running, joined to be told to exit while two tasks
+   * waited for a core).
+   */
+  const letGo = (run: string, workers: Map<string, WorkerSpawn>): void => {
+    const ids = [...workers.keys()]
+    if (!ids.every((id) => cancelled.has(id))) {
+      for (const id of ids)
+        if (late.has(id)) decide(id, false)
+        else if (cancelled.delete(id)) decide(id, true)
+      return
+    }
     watched.delete(run)
     // Let go already (a cancel while its dispatch wrote RUNNER_TEMP).
     const i = runs.indexOf(run)
     if (i < 0) return
     runs.splice(i, 1)
-    const p = cancelOf(run).finally(() => pending.delete(p))
+    const p = (ids.some((id) => late.has(id)) ? Promise.resolve(false) : hasRunner(run))
+      .then((held) => {
+        if (held === true && !closed) {
+          runs.push(run)
+          watched.set(run, workers)
+          if (watch === undefined) look(WATCH_FIRST_MS)
+          for (const id of ids) {
+            cancelled.delete(id)
+            decide(id, true)
+          }
+          return
+        }
+        for (const id of ids) decide(id, false)
+        return cancelOf(run)
+      })
+      .finally(() => pending.delete(p))
     pending.add(p)
   }
   /**
@@ -320,6 +381,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
         : undefined
     if (id === undefined) {
       unbound = true
+      // No run to cancel: each let go meanwhile joins all the same.
+      for (const a of workers) if (cancelled.delete(a.id)) decide(a.id, true)
       return
     }
     workerRuns.add(String(id))
@@ -365,6 +428,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
       if (watched.size > 0 && watch === undefined) look(WATCH_FIRST_MS)
     },
     spawn(a) {
+      flying.add(a.id)
       const wave = waves.get(a.size)
       // A full wave dispatches as it is; the next worker starts another.
       if (wave !== undefined && wave.length < MATRIX_MAX) {
@@ -378,18 +442,34 @@ export function github(options: GithubOptions = {}): DteAdapter {
         const p = dispatch(a.size, workers)
           .catch((err: unknown) => {
             const why = err instanceof Error ? err.message : String(err)
-            for (const x of workers) x.exited(why)
+            for (const x of workers) {
+              x.exited(why)
+              decide(x.id, false)
+            }
           })
-          .finally(() => pending.delete(p))
+          .finally(() => {
+            for (const x of workers) flying.delete(x.id)
+            pending.delete(p)
+          })
         pending.add(p)
       })
     },
     // Before a worker's setup when its job has yet to run: its runner is
-    // free for others (2026-10-23). A run with a worker still needed
-    // goes on; that worker's fellows are told to exit when they join.
-    cancel(ids) {
+    // free for others (2026-10-23). A run with a worker still needed, or
+    // a job with a runner, goes on; the workers let go in it are left
+    // running. One given up as late is stopped whatever its job holds.
+    cancel(ids, givenUp) {
+      if (givenUp === true) for (const id of ids) late.add(id)
+      const left = ids.map((id) => new Promise<boolean>((done) => deciding.set(id, done)))
+      // Neither watched nor in flight (its job ended, its dispatch failed): nothing to stop.
+      const gone = ids.filter(
+        (id) => !flying.has(id) && ![...watched.values()].some((w) => w.has(id)),
+      )
       for (const id of ids) cancelled.add(id)
-      for (const [run, workers] of watched) letGo(run, workers)
+      for (const [run, workers] of [...watched])
+        if (ids.some((id) => workers.has(id))) letGo(run, workers)
+      for (const id of gone) decide(id, false)
+      return Promise.all(left).then((l) => ids.filter((_, i) => l[i]))
     },
     // A finished run answers 409; one still queued or running is the
     // run's no more: its results are in, or the run failed without them.
@@ -398,6 +478,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
       clearTimeout(watch)
       await Promise.resolve() // a wave spawned this tick dispatches first
       await Promise.all(pending)
+      for (const id of [...deciding.keys()]) decide(id, false)
       // A cancel that fails leaves the run to its timeout, and says so.
       await Promise.all(runs.splice(0).map(cancelOf))
     },
