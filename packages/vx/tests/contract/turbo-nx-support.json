@@ -91,8 +91,8 @@
   },
   {
     "key": "turbo.json tags",
-    "status": "not-applicable",
-    "reason": "Package tags feed only Turbo boundaries; never read."
+    "status": "supported",
+    "reason": "A package's own `tags` (Turbo 2.11.6) become its vx project `tags`, so `--filter tag:<label>` selects its tasks as Turbo's does; the root's label the root project, and none is inherited."
   },
   {
     "key": "turbo.json tasks",
@@ -678,5 +678,20 @@
     "key": "inputs: {json, fields, excludeFields}",
     "status": "mapped",
     "reason": "The whole file is hashed, a superset of the selected fields."
+  },
+  {
+    "key": "turbo.json setup",
+    "status": "not-applicable",
+    "reason": "`turbo setup`'s toolchain provisioning policy; vx provisions no toolchain and ignores it."
+  },
+  {
+    "key": "turbo.json tasks.*.tags",
+    "status": "not-supported",
+    "reason": "Ignored: vx tags are a project's, so a `tag:` filter selects by a package's own `tags`, never a task's."
+  },
+  {
+    "key": "turbo.json futureFlags.experimentalSetup",
+    "status": "not-applicable",
+    "reason": "Gates `turbo setup`, which vx has no counterpart for."
   }
 ]
