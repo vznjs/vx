@@ -236,7 +236,8 @@ it('gitlab() jobs add git to an image that lacks it, as oven/bun does', async ()
       tasks: { main: '', change: '' },
     })
   ).files['.gitlab-ci.yml']!
-  expect(ci).toContain('  image: oven/bun:1.4\n')
+  // By digest: a tag is its publisher's to move (oven/bun's moved on 2026-10-22).
+  expect(ci).toMatch(/\n {2}image: oven\/bun:1\.4\.4@sha256:[0-9a-f]{64}\n/)
   const git =
     '    - command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)\n'
   expect(ci).toContain(
@@ -465,4 +466,124 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RUN',
   ])
+})
+
+interface Step {
+  name?: string
+  if?: string
+  run?: string
+  env?: Record<string, string>
+}
+const workflowOf = async (
+  file: string,
+): Promise<{
+  on: { workflow_dispatch?: { inputs: Record<string, { required: boolean; default?: string }> } }
+  permissions?: Record<string, string>
+  jobs: Record<string, { steps: Step[]; permissions?: Record<string, string> }>
+}> => Bun.YAML.parse(await readFile(path.join(root, file), 'utf8')) as never
+
+/** Runs a step's script as GitHub runs one (`bash -e`), its API at `api`. */
+async function step(s: Step, api: string, env: Record<string, string>): Promise<number> {
+  const proc = Bun.spawn(['bash', '-e', '-c', s.run!], {
+    env: { PATH: process.env['PATH']!, GITHUB_API_URL: api, GITHUB_REPOSITORY: 'o/r', ...env },
+    stdout: 'ignore',
+    stderr: 'ignore',
+  })
+  return await proc.exited
+}
+
+// An orchestrator that died where it could not cancel (the API limit
+// spent, a SIGKILL) left its queued workers to start for no one, each
+// holding a runner for its whole setup (2026-10-28).
+it("github()'s worker first reads its run's attempt and cancels its own run once that is over", async () => {
+  await writeFile(path.join(root, 'bun.lock'), '')
+  expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+  const wf = await workflowOf(WORKFLOW)
+  expect(wf.on.workflow_dispatch!.inputs['parent']).toEqual({ required: false, default: '' })
+  // Cancelling its own run.
+  expect(wf.permissions?.['actions']).toBe('write')
+  const first = wf.jobs['worker']!.steps[0]!
+  expect(first.if).toBe("inputs.parent != ''")
+  let status = 'in_progress'
+  let refuse = false
+  let refusePost = false
+  const calls: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const p = new URL(req.url).pathname
+      calls.push(`${req.method} ${p} ${req.headers.get('authorization')}`)
+      if (refuse) return new Response('API rate limit exceeded', { status: 403 })
+      if (req.method === 'POST') return new Response(null, { status: refusePost ? 403 : 202 })
+      return Response.json({ id: 55, status })
+    },
+  })
+  const api = `http://127.0.0.1:${server.port}`
+  // The step's env, as GitHub fills its expressions.
+  const env = { GH_TOKEN: 'ght', PARENT: '55/attempts/2', GITHUB_RUN_ID: '90' }
+  try {
+    expect(await step(first, api, env)).toBe(0)
+    expect(calls).toEqual(['GET /repos/o/r/actions/runs/55/attempts/2 Bearer ght'])
+    calls.length = 0
+    refuse = true
+    // An API that answers nothing leaves the worker to the relay, which
+    // turns away a worker of a run it no longer holds.
+    expect(await step(first, api, env)).toBe(0)
+    calls.length = 0
+    refuse = false
+    status = 'completed'
+    // Its later steps run only until the cancel lands, seconds later.
+    expect(await step(first, api, env)).toBe(0)
+    expect(calls).toEqual([
+      'GET /repos/o/r/actions/runs/55/attempts/2 Bearer ght',
+      'POST /repos/o/r/actions/runs/90/cancel Bearer ght',
+    ])
+    // A worker that cannot cancel itself fails: it would work for no one.
+    refusePost = true
+    expect(await step(first, api, env)).not.toBe(0)
+  } finally {
+    await server.stop(true)
+  }
+  expect(Object.keys(first.env ?? {}).toSorted()).toEqual(['GH_TOKEN', 'PARENT'])
+})
+
+// github() lists each run it dispatched in RUNNER_TEMP for this step: a
+// run cancelled or timed out may die before it closes (2026-10-28: no
+// workflow had the step that list was written for).
+it("github()'s run cancels the worker runs it listed when its job is cancelled", async () => {
+  await writeFile(path.join(root, 'bun.lock'), '')
+  expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+  const wf = await workflowOf('.github/workflows/ci.yml')
+  const steps = wf.jobs['vx']!.steps
+  const last = steps.at(-1)!
+  expect(last.if).toBe('cancelled()')
+  const calls: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      calls.push(`${req.method} ${new URL(req.url).pathname} ${req.headers.get('authorization')}`)
+      return new Response(null, { status: calls.length === 1 ? 409 : 202 })
+    },
+  })
+  const temp = path.join(root, 'temp')
+  await mkdir(temp)
+  try {
+    const env = { GITHUB_TOKEN: 'ght', RUNNER_TEMP: temp }
+    // No worker dispatched: nothing to cancel.
+    expect(await step(last, `http://127.0.0.1:${server.port}`, env)).toBe(0)
+    expect(calls).toEqual([])
+    await writeFile(
+      path.join(temp, 'vx-dte-runs'),
+      '/repos/o/r/actions/runs/1\n/repos/o/r/actions/runs/2\n',
+    )
+    expect(await step(last, `http://127.0.0.1:${server.port}`, env)).toBe(0)
+    expect(calls).toEqual([
+      'POST /repos/o/r/actions/runs/1/cancel Bearer ght',
+      'POST /repos/o/r/actions/runs/2/cancel Bearer ght',
+    ])
+  } finally {
+    await server.stop(true)
+  }
 })

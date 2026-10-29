@@ -377,6 +377,19 @@ describe('project stage', () => {
   )
 
   it(
+    'a project-stage edit of `name` is refused, naming the plugin: the stage runs after naming',
+    async () => {
+      // The edit validated and was dropped: the project kept its name.
+      await pkg('a', build)
+      await workspace([pluginSource('org/renamer', `{ project(config) { config.name = 'b' } }`)])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        'vx.config.mjs (after plugin \'org/renamer\'): project "a" is named before the project stage, so `name: "b"` cannot rename it — a plugin names a project in its `discover` hook',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     "a plugin's output is judged against the project's own config file, not the refusal's label",
     async () => {
       // The label `<path> (after plugin 'org/x')` was read as the config
@@ -585,6 +598,29 @@ describe('graph stage', () => {
       ])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         /plugin 'org\/rekey' failed in graph: the task a#build is stored under 'zz#build', not its own id/,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a node whose id is not its projectName#taskName is refused by name',
+    async () => {
+      // A copy under a new id kept the old taskName: the key read the id,
+      // `--exclude-dependencies=build` the name, and dropped the copy's edge.
+      await pkg('a', build)
+      await workspace([
+        pluginSource(
+          'org/copy',
+          `{ graph(nodes) {
+            const n = nodes.get('a#build')
+            nodes.set('a#gen', { ...n, id: 'a#gen', deps: [] })
+            n.deps.push('a#gen')
+          } }`,
+        ),
+      ])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        `plugin 'org/copy' failed in graph: a#gen's id is "a#gen", not its projectName#taskName (a#build)`,
       )
     },
     TIMEOUT,

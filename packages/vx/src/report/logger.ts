@@ -640,7 +640,16 @@ export function defaultLogger(
     }
     writer.write(chunk)
   }
+  // A live-streamed task's partial line ends before vx's own: a row or a
+  // block written after it (a step that ends while the task streams) was
+  // glued to it, `building...      time status  cache    task`.
+  const endStreamLine = (): void => {
+    if (!streamMidLine) return
+    taskWrite('\n')
+    streamMidLine = false
+  }
   const emitLine = (line: string): void => {
+    endStreamLine()
     taskWrite(`${line}\n`)
     lineEmitted = true
   }
@@ -658,6 +667,7 @@ export function defaultLogger(
   // write so a stray newline doesn't sneak into the output.
   const emitBlock = (block: string): void => {
     if (block.length === 0) return
+    endStreamLine()
     const lead = lineEmitted || streamedSinceBlock ? '\n' : ''
     taskWrite(`${lead}${block}\n`)
     lineEmitted = false
@@ -745,7 +755,12 @@ export function defaultLogger(
     stepEnd(id, { durationMs, ok }) {
       steps.delete(id)
       if (durationMs < STEP_SHOWN_MS) return
-      if (ok ? view.mode !== 'none' && view.mode !== 'errors-only' : view.mode !== 'none')
+      // `hash-only` is one line per task: only a step that failed adds one.
+      if (
+        ok
+          ? view.mode !== 'none' && view.mode !== 'errors-only' && view.mode !== 'hash-only'
+          : view.mode !== 'none'
+      )
         emitRow(formatStepLine(id, durationMs, ok, colors))
       refresh(true)
     },

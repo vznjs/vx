@@ -508,7 +508,19 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     failures.push(problem)
     drifted.add(dir)
   }
-  if (broken !== null) failures.push(broken)
+  if (broken !== null && check.loaded) failures.push(broken)
+  // Each config that does not load, as `vx lock` names them: a CI fixing
+  // one at a time re-ran the gate once per broken config.
+  const refused: { message: string; parts?: RefusalParts }[] =
+    broken === null || check.loaded
+      ? []
+      : [
+          { message: broken, ...(check.brokenParts ? { parts: check.brokenParts } : {}) },
+          ...(check.alsoBroken ?? []).map((e) => ({
+            message: e.message,
+            ...(e.parts ? { parts: e.parts } : {}),
+          })),
+        ]
   if (check.reviewFiles && check.loaded) {
     // A project the lock already fails is named once.
     const stale = await Promise.all(
@@ -537,8 +549,14 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       failures.push(`the lock holds ${dir}, which has no vx.config now — run 'vx lock'`)
     }
   }
-  if (json) return answer(failures)
-  if (failures.length > 0) {
+  if (json)
+    // Root-relative, as every other problem: the loader names the absolute path.
+    return answer([
+      ...refused.map((r) => r.message.split(`${root}${path.sep}`).join('')),
+      ...failures,
+    ])
+  if (failures.length + refused.length > 0) {
+    for (const r of refused) ui.print('err', refusalNotice('vx lock --check', r.message, r.parts))
     for (const f of failures) sayNotice('error', 'vx lock --check', f)
     return 1
   }

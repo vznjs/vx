@@ -364,7 +364,8 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     whose static directory passes through a link (`lib/**` over
     `lib -> ../shared`) takes the link as an input: git lists a linked
     directory as the link alone, so the glob matched nothing and an
-    edit behind it was a hit (2026-10-25). A `**` glob does not enter
+    edit behind it was a hit (2026-10-25); each brace alternative counts
+    alone (`{lib,src}/**`). A `**` glob does not enter
     one it meets.
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
@@ -1367,7 +1368,7 @@ root) and it holds everything, shared with no other workspace:
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
 ├── failures/<runId>.json                   a failed run's task output and the files it
-│                                           names (`vx last --format json`, getFailures);
+│                                           names (`vx last --format json`, runFailures);
 │                                           the newest 50 kept
 └── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
     ├── outputs/<rel>                       declared output files, project-relative (when any),
@@ -1512,7 +1513,8 @@ save (`outputs/dist/empty`, `workspace-outputs/gen/empty` under
 `outputs.workspaceFiles`): a tar of regular files cannot hold them, and
 a hit makes each one, so the tree a hit leaves is the one the miss left.
 A miss's clean removes the empty directories it finds under the outputs
-too, so one an older build left is not saved as this run's.
+too, so one an older build left is not saved as this run's, and a hit
+removes one the entry does not hold, as it removes a stray file.
 Each name is held to a file entry's rules and to the declared outputs,
 and is reached only through directories that stay in the project. Its
 index row is the path with a trailing slash (`dist/empty/`); the
