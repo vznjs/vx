@@ -9,7 +9,10 @@ export COMPOSE_PROJECT_NAME="vx-servers-smoke-$$"
 export DTE_PORT=18801 CACHE_PORT=18802 HISTORY_PORT=18803
 export DTE_ALLOW='https://token.actions.githubusercontent.com:o/r:.github/workflows/ci.yml'
 export DTE_AUDIENCE='https://relay.example'
-export CACHE_ALLOW='https://token.actions.githubusercontent.com:o/r:ci.yml' HISTORY_ALLOW="$CACHE_ALLOW"
+# Its own line: dash expands every word of one export before it sets any,
+# so HISTORY_ALLOW="$CACHE_ALLOW" beside it reads an unset name under -u.
+export CACHE_ALLOW='https://token.actions.githubusercontent.com:o/r:ci.yml'
+export HISTORY_ALLOW="$CACHE_ALLOW"
 export CACHE_AUDIENCE="http://127.0.0.1:$CACHE_PORT" HISTORY_AUDIENCE="http://127.0.0.1:$HISTORY_PORT"
 export S3_BUCKET=b S3_ENDPOINT='http://127.0.0.1:1' S3_ACCESS_KEY_ID=a S3_SECRET_ACCESS_KEY=s
 trap 'docker compose down -v --rmi local >/dev/null 2>&1' EXIT
