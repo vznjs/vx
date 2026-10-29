@@ -256,7 +256,8 @@ Filters follow both: `vx run test --filter '...app'` runs `e2e#test`
 even though no plugin links `e2e` to `app`. There is no
 `implicitDependencies` field: declare the dependency on the task.
 
-A filter that names no project (`...`, a bare `!`) is refused. One
+A filter that names no project (`...`, a bare `!`) is refused, and so
+is a path that climbs out of the root (`../`, `{..}`). One
 whose pattern matched but selected nothing says what it matched:
 `no projects selected: filter "...^core" matched core, and no
 project depends on it`.
@@ -576,8 +577,8 @@ apart from "`build` is the git base". Write `--affected=origin/main`. Getting it
 becomes a positional that matches no project, so the run refuses to
 start (see "Every requested name must resolve" above).
 
-`--exclude-dependencies=` with an EMPTY value is rejected rather than
-guessed — "drop every edge" and "drop none" are both plausible readings.
+`--exclude-dependencies=` with an EMPTY value, or a list of no names
+(`=,`), is rejected rather than guessed — "drop every edge" and "drop none" are both plausible readings.
 Pass bare `--exclude-dependencies` for the first, omit the flag for the
 second. Given twice, the name lists add up, and a bare one drops every
 edge.
@@ -1136,7 +1137,9 @@ the base reaches, a root `package.json` edit among them.
 
 `--profile` adds a side-effect after a real run completes. Errors
 writing the artifact are surfaced via `vx: failed to write …` but
-don't change the run's exit code — the run already happened.
+don't change the run's exit code — the run already happened. A path
+that is a directory is refused before the run (`VX_E_USAGE`); a missing
+parent directory is made.
 
 ### `--profile[=<path>]`
 
