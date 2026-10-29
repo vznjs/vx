@@ -327,6 +327,39 @@ describe('turbo-map: what the sweep found unheld', () => {
     })
   })
 
+  // vercel/turborepo#10083: Turbo refuses a directory holding both files.
+  // Read first, `turbo.json` shadowed the `.jsonc` beside it in silence,
+  // so an edit there keyed and ran nothing.
+  it('refuses `turbo.json` beside `turbo.jsonc`, at the root or in a package', async () => {
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const metas: PackageMeta[] = [
+      {
+        name: 'a',
+        dir,
+        packageJson: { name: 'a', scripts: { build: 'b' } } as never,
+        configPath: null,
+      },
+    ]
+    const said = (): Promise<string> =>
+      mapTurboWorkspace(root, metas, opts).then(
+        () => 'mapped',
+        (e: Error) => `${e instanceof UserError} ${e.message}`,
+      )
+    const both = (where: string): string =>
+      `true ${where} holds both turbo.json and turbo.jsonc: Turbo refuses this — remove one`
+    await writeFile(path.join(root, 'turbo.json'), '{ "tasks": { "build": {} } }')
+    await writeFile(path.join(root, 'turbo.jsonc'), '{ "tasks": { "build": {} } }')
+    expect(await said()).toBe(both('the workspace root'))
+    await rm(path.join(root, 'turbo.jsonc'))
+    await writeFile(path.join(dir, 'turbo.json'), '{ "extends": ["//"] }')
+    await writeFile(path.join(dir, 'turbo.jsonc'), '{ "extends": ["//"] }')
+    expect(await said()).toBe(both('packages/a'))
+    // CONTROL: either one alone maps.
+    await rm(path.join(dir, 'turbo.json'))
+    expect(await said()).toBe('mapped')
+  })
+
   // Item 939: a task Turbo defines but the package has no script for is a
   // no-op node that keeps its edges. Dropped whole, `test → codegen →
   // ^build` lost `^build`: `test` ran before its dependency's build and its

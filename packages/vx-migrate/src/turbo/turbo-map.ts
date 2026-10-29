@@ -762,6 +762,22 @@ async function rootPackageJson(root: string): Promise<PackageMeta['packageJson']
   return (pkg !== null && typeof pkg === 'object' ? pkg : {}) as PackageMeta['packageJson']
 }
 
+/**
+ * `turboConfigFile`, refusing a directory that holds both files as Turbo
+ * does (vercel/turborepo#10083): `turbo.json` shadowed the `.jsonc` beside
+ * it in silence, so an edit there keyed and ran nothing.
+ */
+async function onlyConfigFile(dir: string, root: string): Promise<string | null> {
+  const file = await turboConfigFile(dir)
+  if (file?.endsWith('.json') === true && (await Bun.file(`${file}c`).exists())) {
+    const where = dir === root ? 'the workspace root' : relPosix(root, dir)
+    throw new UserError(
+      `${where} holds both turbo.json and turbo.jsonc: Turbo refuses this — remove one`,
+    )
+  }
+  return file
+}
+
 export async function mapTurboWorkspace(
   root: string,
   metas: readonly PackageMeta[],
@@ -769,7 +785,7 @@ export async function mapTurboWorkspace(
 ): Promise<TurboMapping> {
   // A workspace with no Turbo config answered with a bare ENOENT and a stack
   // (item 1043): turbo() declared in the wrong repo, or its file removed.
-  const rootFile = await turboConfigFile(root)
+  const rootFile = await onlyConfigFile(root, root)
   if (rootFile === null) {
     throw new UserError(
       `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from .vx/workspace.ts`,
@@ -862,7 +878,7 @@ export async function mapTurboWorkspace(
   const files = new Map<string, TurboJson>([[ROOT, rootCfg]])
   for (const meta of metas) {
     if (meta === rootMeta) continue
-    const file = await turboConfigFile(meta.dir)
+    const file = await onlyConfigFile(meta.dir, root)
     if (file !== null) files.set(meta.name, await readTurboJson(file, root))
   }
 

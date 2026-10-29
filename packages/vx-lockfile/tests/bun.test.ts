@@ -253,6 +253,16 @@ describe('workspace digests', () => {
     for (const dir of before.keys()) expect(after.get(dir)).not.toBe(before.get(dir))
   })
 
+  // vercel/turborepo#10729 (test_global_change_version_mismatch): Bun
+  // rewrites the whole layout across lockfile versions, so a version bump
+  // with no other edit is install-wide.
+  it('a lockfileVersion bump alone moves every workspace', () => {
+    const before = digests(lock())
+    const after = digests(lock().replace('"lockfileVersion": 1,', '"lockfileVersion": 2,'))
+    expect(before.size).toBe(4)
+    for (const dir of before.keys()) expect(after.get(dir)).not.toBe(before.get(dir))
+  })
+
   it("a workspace's own manifest entry moves that workspace and what links it, no other", () => {
     const before = lock()
     // b gains a dependency on foo, which a already reaches.
