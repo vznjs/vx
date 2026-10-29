@@ -46,10 +46,12 @@ export async function planExecutorOf(
   prepared: PreparedRun,
   log: Logger,
   policy: 'all' | 'toplevel' | 'none', // the run's --cache-download policy
+  ci: boolean, // a platform skip on CI is refused, as the run refuses it
 ): Promise<{
   executorOf?: (id: string) => string | undefined
   downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
+  otherPlatform?: ReadonlyMap<string, readonly string[]> // tasks exec.platforms skips here
 }>
 
 export function hasPooledExecutor(executors: readonly TaskExecutor[]): boolean
