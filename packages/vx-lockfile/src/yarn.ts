@@ -412,9 +412,18 @@ function contentDirs(lock: Lockfile): Map<string, string> {
   return out
 }
 
-/** The directories `contentDirs` names, for the claim to hash. */
-export function fileDeps(lock: Lockfile): string[] {
-  return [...new Set(contentDirs(lock).values())].sort()
+/**
+ * The directories `contentDirs` names, for the claim to hash, but a
+ * classic `link:` to a directory `workspace` says is one: Yarn 1 links
+ * that workspace as it would by its name.
+ */
+export function fileDeps(lock: Lockfile, workspace?: (dir: string) => boolean): string[] {
+  const out = new Set<string>()
+  for (const [id, dir] of contentDirs(lock)) {
+    if (workspace !== undefined && /^.[^@]*@link:/.test(id) && workspace(dir)) continue
+    out.add(dir)
+  }
+  return [...out].sort()
 }
 
 /** The entry a descriptor the file keys resolves to: as written, bound to `from`, or with berry's `npm:` prefix. */
