@@ -56,6 +56,11 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
     `runs-on: \${{ fromJSON('{"small":"ubuntu-latest","mac":"macos-latest"}')[inputs.size] }}`,
   )
   expect(yml).toContain('name: ${{ matrix.worker }}')
+  // A write is the job's alone, as the supply-chain law holds this repo's.
+  expect(yml).toContain('permissions:\n  contents: read\n  id-token: write\n\njobs:\n')
+  expect(yml).toContain(
+    '    permissions:\n      contents: read\n      id-token: write\n      # A worker of a run that is over cancels its own run.\n      actions: write\n',
+  )
   expect(yml).toContain('VX_DTE_WORKER: ${{ matrix.worker }}')
   expect(yml).toContain("with: { ref: '${{ inputs.sha }}', persist-credentials: false }")
   expect(yml).toContain(
@@ -674,8 +679,9 @@ it("github()'s worker first reads its run's attempt and cancels its own run once
   expect(await init({ workers: sizes, adapter: github() })).toBe(0)
   const wf = await workflowOf(WORKFLOW)
   expect(wf.on.workflow_dispatch!.inputs['parent']).toEqual({ required: false, default: '' })
-  // Cancelling its own run.
-  expect(wf.permissions?.['actions']).toBe('write')
+  // Cancelling its own run: the job's write, never the workflow's.
+  expect(wf.permissions?.['actions']).toBeUndefined()
+  expect(wf.jobs['worker']!.permissions?.['actions']).toBe('write')
   const first = wf.jobs['worker']!.steps[0]!
   expect(first.if).toBe("inputs.parent != ''")
   let status = 'in_progress'
