@@ -286,6 +286,28 @@ describe('buildTaskGraph', () => {
     ).toThrow(/dependsOn cycle: a#build -> b#build -> a#build — remove one edge of the loop$/)
   })
 
+  // Another runner split `build:prod` at its colon, or matched it against a
+  // project whose name it starts with.
+  it('a task name holding a colon is one name, even where a project shares its head', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('build', {
+          'build:prod': cmd('prod'),
+          lib: { ...cmd('lib'), dependsOn: ['build:prod'] },
+        }),
+        project('other', { 'build:prod': cmd('other prod') }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [
+        { project: 'build', task: 'lib' },
+        { project: 'other', task: 'build:prod' },
+      ],
+    })
+    expect([...nodes.keys()].sort()).toEqual(['build#build:prod', 'build#lib', 'other#build:prod'])
+    expect(nodes.get('build#lib')?.deps).toEqual(['build#build:prod'])
+    expect(splitTaskId('build#build:prod')).toEqual(['build', 'build:prod'])
+  })
+
   it('names an unknown pkg#task target as such, not as a missing same-project task', () => {
     expect(() =>
       buildTaskGraph({
