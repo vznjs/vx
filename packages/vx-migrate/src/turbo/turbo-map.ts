@@ -136,21 +136,16 @@ function explicitEnv(
 }
 
 /**
- * Turbo's builtin pass-through names: matched against the live names under
- * `turbo()`, as Turbo matches its environment; written configs list the
- * literal ones (a wildcard family is a note). A name that is no shell
- * variable name (`ProgramFiles(x86)`) is left out: core refuses it there.
+ * The literal names of Turbo's builtin pass-through list, the same under
+ * `turbo()` as in written configs: `exec.env.passThrough` is keyed by name,
+ * so a list matched against the live environment keyed each machine apart
+ * and missed the cache `turbo()` filled once the configs were written. A
+ * wildcard family is a note. A name that is no shell variable name
+ * (`ProgramFiles(x86)`) is left out: core refuses it there.
  */
-function builtinPassThrough(live: readonly string[] | undefined): string[] {
-  const shellName = /^[A-Za-z_][A-Za-z0-9_]*$/
-  const out: string[] = []
-  for (const e of TURBO_BUILTIN_PASS_THROUGH) {
-    if (e.endsWith('*')) {
-      if (live !== undefined) out.push(...live.filter((n) => n.startsWith(e.slice(0, -1))).sort())
-    } else if (live === undefined || live.includes(e)) out.push(e)
-  }
-  return out.filter((n) => shellName.test(n))
-}
+const BUILTIN_PASS_THROUGH = TURBO_BUILTIN_PASS_THROUGH.filter((e) =>
+  /^[A-Za-z_][A-Za-z0-9_]*$/.test(e),
+)
 
 /** A gap's message: a wildcard, or a literal name core cannot key. */
 const envGap = (field: string, entry: string, literal: string | null, list: string): string =>
@@ -900,7 +895,7 @@ export async function mapTurboWorkspace(
     ],
     pass: [
       ...envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
-      ...builtinPassThrough(opts.envNames),
+      ...BUILTIN_PASS_THROUGH,
     ],
   }
 

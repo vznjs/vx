@@ -77,7 +77,7 @@
   {
     "key": "turbo.json globalPassThroughEnv",
     "status": "mapped",
-    "reason": "Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise a wildcard is dropped with a note."
+    "reason": "Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise a wildcard is dropped with a note. The literal names of Turbo's builtin pass-through list (`TZ`, `CI`, the Vercel, Docker and IDE names) join it, under `turbo()` as in written configs, so both key alike; its wildcard families (`GITHUB_*`, `DOCKER_*`, ...) are a note."
   },
   {
     "key": "turbo.json noUpdateNotifier",

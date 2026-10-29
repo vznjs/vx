@@ -1589,7 +1589,10 @@ describe("Turbo's builtin env under turbo()", () => {
           .outcomes[0]!.status
       expect(await go()).toBe('success')
       expect(await Bun.file(path.join(root, 'packages', 'lib', 'dist', 'e.txt')).text()).toBe(
-        'Asia/Tokyo|x.vercel.app|abc|preview|\n',
+        // A builtin wildcard family (VERCEL_*, GITHUB_*) is not matched
+        // against the run's names: the list is keyed, and must key alike
+        // on every machine and in the written configs.
+        'Asia/Tokyo|||preview|\n',
       )
       process.env['TZ'] = 'UTC'
       expect(await go()).toBe('cache-hit')

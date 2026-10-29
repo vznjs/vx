@@ -1802,7 +1802,7 @@ describe("turbo-map: Turbo's builtin env", () => {
       'VERCEL_TARGET_ENV',
     ])
     // Keyed names pass too, as Turbo passes what it hashes.
-    expect(on.pass.toSorted()).toEqual([...live, 'NEXT_DEPLOYMENT_ID'].toSorted())
+    expect(on.pass).toEqual(expect.arrayContaining([...on.key, 'TZ']))
     // CONTROL: skew protection off keys no deployment id; it is still passed.
     const off = await web({ tasks: { build: {} } }, { envNames: live, envValue: skew('0') })
     expect(off.key.toSorted()).toEqual([
@@ -1810,9 +1810,16 @@ describe("turbo-map: Turbo's builtin env", () => {
       'VERCEL_ANALYTICS_ID',
       'VERCEL_TARGET_ENV',
     ])
-    expect(off.pass).toContain('VERCEL_DEPLOYMENT_ID')
-    // A builtin wildcard matches only the live names; a name it does not cover is not passed.
-    expect(off.pass).not.toContain('VERCEL_SKEW_PROTECTION_ENABLED')
+    // The builtin list's literal names, whatever the run's environment
+    // holds: passThrough is keyed by name, so a list matched against the
+    // live names keyed each machine apart and missed the cache once the
+    // configs were written. A wildcard family is a note, as written.
+    const written = await web({ tasks: { build: {} } }, { sourceNames: async () => [] })
+    expect(off.pass.filter((n) => !written.key.includes(n))).toEqual(
+      written.pass.filter((n) => !written.key.includes(n)),
+    )
+    expect(off.pass).not.toContain('VERCEL_URL')
+    expect(off.pass).not.toContain('GITHUB_SHA')
   })
 
   it('a `!` in globalEnv takes the defaults back, as Turbo does', async () => {
