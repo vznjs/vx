@@ -178,6 +178,29 @@ describe('Turbo parity — scm: which file changes move a key (turborepo-scm)', 
     TIMEOUT,
   )
 
+  // vercel/turborepo#12096
+  it(
+    '`test_nested_gitignore_scoping` / `test_empty_directories_on_disk` — a nested .gitignore ignores only below it; an empty directory keys nothing',
+    async () => {
+      const git = gitIn(root)
+      await mkdir(path.join(lib, 'src', 'a'), { recursive: true })
+      await writeFile(path.join(lib, 'src', 'a', '.gitignore'), 'x.txt\n')
+      git('add', '-A')
+      git('commit', '-q', '-m', 'nested ignore')
+      const before = await key(root, 'lib#t')
+      await writeFile(path.join(lib, 'src', 'a', 'x.txt'), 'x\n')
+      await mkdir(path.join(lib, 'src', 'empty', 'deeper'), { recursive: true })
+      expect(await key(root, 'lib#t')).toBe(before)
+      await mkdir(path.join(lib, 'src', 'b'), { recursive: true })
+      await writeFile(path.join(lib, 'src', 'b', 'x.txt'), 'x\n')
+      expect(await key(root, 'lib#t')).not.toBe(before)
+      await rm(path.join(lib, 'src', 'b'), { recursive: true })
+      await rm(path.join(lib, 'src', 'empty'), { recursive: true })
+      await rm(path.join(lib, 'src', 'a', 'x.txt'))
+    },
+    TIMEOUT,
+  )
+
   it(
     '`test_superset_prefixes_produce_same_hashes_as_scoped_prefixes` / `versioned_package_filter_and_explicit_task_id_share_a_hash`',
     async () => {
