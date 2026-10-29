@@ -28,6 +28,9 @@ a brace of directories (`{src,lib}`) or of `./` spellings (`{./src,lib}/**`) in 
 ## vx-history: read the run's refs, never a guessed main
 
 vxHistory({ defaultBranch }) is refused; set the workspace's baseBranch instead.
+## cli: vx run --dry=pretty, the value every --format takes
+
+vx run --dry=text is now --dry=pretty (bare --dry is unchanged).
 
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 
