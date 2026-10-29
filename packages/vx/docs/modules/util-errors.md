@@ -130,4 +130,6 @@ is not on PATH — the input enumeration and `--affected` say it (item 241): ins
 finds the field's key in the file, path segment after path segment, and
 returns the message with the file at `line:col` (relative to `cwd`
 unless that climbs out) and the lines up to it with a caret; undefined
-when it cannot place the field, and the message prints as it was.
+when it cannot place the field, and the message prints as it was. The
+loader's syntax error (`Project config <file>:<line>:<col>: …`, Bun's
+position) is framed at that position.

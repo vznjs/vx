@@ -1467,9 +1467,10 @@ async function runOnBus(
       // Stopped: not a run `vx last` lists (item 854), but what finished is
       // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
-      stepSync('vx:history', () =>
-        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs)),
-      )
+      stepSync('vx:history', () => {
+        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs))
+        recordFailures(ended)
+      })
     }
     mark('record history')
     // Drain any still-in-flight background prefetches before closing the
