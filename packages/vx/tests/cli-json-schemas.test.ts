@@ -434,6 +434,7 @@ describe('each schema object is its source type', () => {
         schemaVersion: true,
         cacheEntries: true,
         cacheBytes: true,
+        cacheIndexError: true,
         settings: true,
         orphans: true,
         runs24h: true,
