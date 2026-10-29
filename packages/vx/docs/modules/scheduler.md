@@ -272,7 +272,9 @@ concurrency` check for exec-tier nodes — including its O(1) early-out
 Priority within a queue: highest transitive-reverse-dependent count
 first (`computeReverseDepCount` — an exact bitset closure swept in
 reverse-topo order, O(E·N/32); Set-based closures cost 8.5 s at 3,270
-tasks). Ties break in graph-insertion order: `ReadyHeap` is a binary
+tasks). The sweep runs once per block of words that fits the cache:
+at 9,603 tasks the whole closure is 11.5 MB and its one call took
+77 ms, blocked 37 ms. Ties break in graph-insertion order: `ReadyHeap` is a binary
 max-heap ordered by (priority DESC, enqueue-seq ASC).
 With a restore tier the count is `tieredReverseDepCount` (item 754): a
 restore-tier task never waits on its deps, so it blocks only the

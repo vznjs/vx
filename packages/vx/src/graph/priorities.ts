@@ -159,26 +159,31 @@ export function computeReverseDepCount(
   // Exact transitive-dependent COUNTS need closure SETS (diamonds
   // double-count under naive summing). Set-of-strings closures are
   // O(N²) entries and took 8.5s on a 1090-package, 100-layer repo;
-  // bitsets make the same closure O(E·N/32) time and N²/8 bits of
-  // memory (3270 tasks ≈ 1.3 MB) — single-digit ms at that scale.
+  // bitsets make the same closure O(E·N/32) time.
   const ids = [...nodes.keys()]
-  const index = new Map<string, number>()
-  for (let i = 0; i < ids.length; i++) index.set(ids[i]!, i)
   const n = ids.length
-  const words = (n + 31) >>> 5
+  const index = new Map<string, number>()
+  for (let i = 0; i < n; i++) index.set(ids[i]!, i)
 
-  // Direct dependents as index lists + in-degree for the topo pass.
-  const directReverse: number[][] = Array.from({ length: n }, () => [])
+  // Direct dependents as one flat list (offsets per node) + in-degree.
+  const from: number[] = []
+  const to: number[] = []
+  const offset = new Int32Array(n + 1)
   const indegree = new Uint32Array(n)
-  for (const node of nodes.values()) {
-    const ni = index.get(node.id)!
-    for (const dep of node.deps) {
+  for (let ni = 0; ni < n; ni++) {
+    for (const dep of nodes.get(ids[ni]!)!.deps) {
       const di = index.get(dep)
       if (di === undefined) continue
-      directReverse[di]!.push(ni)
+      from.push(di)
+      to.push(ni)
+      offset[di + 1]!++
       indegree[ni]!++
     }
   }
+  for (let i = 0; i < n; i++) offset[i + 1]! += offset[i]!
+  const next = offset.slice(0, n)
+  const dependents = new Int32Array(from.length)
+  for (let e = 0; e < from.length; e++) dependents[next[from[e]!]!++] = to[e]!
 
   // Kahn topo order over dependency edges (deps before dependents).
   // Insertion order is topo today, but the closure's correctness
@@ -189,43 +194,70 @@ export function computeReverseDepCount(
   for (let i = 0; i < n; i++) if (indegree[i] === 0) topo[tail++] = i
   while (head < tail) {
     const v = topo[head++]!
-    for (const r of directReverse[v]!) {
+    for (let k = offset[v]!; k < offset[v + 1]!; k++) {
+      const r = dependents[k]!
       if (--indegree[r]! === 0) topo[tail++] = r
     }
   }
 
-  // Reverse-topo sweep: every direct dependent's closure is final
-  // before its dependency folds it in. closure[t] = bitset over topo
-  // POSITIONS of the node at position t's transitive dependents. A
-  // dependent sits after its dependency, so a closure holds only bits
-  // past its own position, and each OR starts at the dependent's word:
-  // half the words of indexing by insertion order on a layered graph.
+  // The same lists by topo POSITION. A dependent sits after its
+  // dependency, so a closure holds only bits past its own position.
   const pos = new Int32Array(n)
   for (let t = 0; t < tail; t++) pos[topo[t]!] = t
+  const start = new Int32Array(tail + 1)
+  for (let t = 0; t < tail; t++) {
+    const i = topo[t]!
+    start[t + 1] = start[t]! + offset[i + 1]! - offset[i]!
+  }
+  const rev = new Int32Array(start[tail]!)
+  for (let t = 0; t < tail; t++) {
+    const i = topo[t]!
+    let k = start[t]!
+    for (let j = offset[i]!; j < offset[i + 1]!; j++) rev[k++] = pos[dependents[j]!]!
+  }
+  const words = (tail + 31) >>> 5
   const mask = new Uint32Array(words)
   if (counted === undefined) mask.fill(0xffffffff)
   else
     for (let t = 0; t < tail; t++) if (counted.has(ids[topo[t]!]!)) mask[t >>> 5]! |= 1 << (t & 31)
-  const closure = new Uint32Array(n * words)
-  const counts = new Map<string, number>()
-  for (let t = tail - 1; t >= 0; t--) {
-    const i = topo[t]!
-    const base = t * words
-    for (const ri of directReverse[i]!) {
-      const r = pos[ri]!
-      closure[base + (r >>> 5)]! |= 1 << (r & 31)
-      const rbase = r * words
-      for (let w = r >>> 5; w < words; w++) closure[base + w]! |= closure[rbase + w]!
+
+  // Reverse-topo sweeps, one per block of `span` words: every node's
+  // closure restricted to the block's positions, its count summed over
+  // the blocks. All N rows of all words (9,603 tasks: 11.5 MB) missed
+  // the cache on nearly every OR, and the first call, the only one a run
+  // makes, took 77 ms; a block of ~256 KB took 37 (2026-10-29). A
+  // dependent past the block holds no bit in it, so its edge is skipped.
+  const span = Math.max(1, Math.min(words, Math.floor(65536 / Math.max(1, tail))))
+  const total = new Int32Array(tail)
+  const closure = new Uint32Array(tail * span)
+  for (let w0 = 0; w0 < words; w0 += span) {
+    const width = Math.min(words, w0 + span) - w0
+    const end = Math.min(tail, (w0 + width) << 5)
+    if (w0 > 0) closure.fill(0, 0, end * span)
+    for (let t = end - 1; t >= 0; t--) {
+      const base = t * span
+      for (let k = start[t]!; k < start[t + 1]!; k++) {
+        const r = rev[k]!
+        if (r >= end) continue
+        const rw = r >>> 5
+        if (rw >= w0) closure[base + rw - w0]! |= 1 << (r & 31)
+        const rbase = r * span
+        for (let w = rw > w0 ? rw - w0 : 0; w < width; w++)
+          closure[base + w]! |= closure[rbase + w]!
+      }
+      let count = 0
+      for (let w = t >>> 5 > w0 ? (t >>> 5) - w0 : 0; w < width; w++) {
+        let v = closure[base + w]! & mask[w0 + w]!
+        if (v === 0) continue
+        v = v - ((v >>> 1) & 0x55555555)
+        v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
+        count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+      }
+      total[t]! += count
     }
-    let count = 0
-    for (let w = t >>> 5; w < words; w++) {
-      let v = closure[base + w]! & mask[w]!
-      v = v - ((v >>> 1) & 0x55555555)
-      v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
-      count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
-    }
-    counts.set(ids[i]!, count)
   }
+  const counts = new Map<string, number>()
+  for (let t = 0; t < tail; t++) counts.set(ids[topo[t]!]!, total[t]!)
   // Cycle-stranded nodes (never topo-visited) can't occur — the graph
   // builder rejects cycles — but a missing Map entry would silently
   // sort as undefined, so default them defensively to 0.
