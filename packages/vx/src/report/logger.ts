@@ -403,7 +403,8 @@ export function defaultLogger(
   // deferred to runEnd (owner: '✗ line, continue, all full frames at
   // the end'). 'full'/CI keeps frames inline.
   const deferredFailures: string[] = []
-  const pinnedPersistent: string[] = []
+  // Each ready server's outcome: one whose child has exited (`serverExit`) is no longer pinned.
+  const pinnedPersistent: TaskOutcome[] = []
   let flushedFailures = false
   // A persistent task (dev server, watcher, daemon) is the one task kind
   // nothing bounds: a one-shot command's output ends when it exits, but a
@@ -575,7 +576,9 @@ export function defaultLogger(
     writer.setRegion(
       formatStatusRegion(
         {
-          pinnedPersistent,
+          pinnedPersistent: pinnedPersistent
+            .filter((o) => o.serverExit === undefined)
+            .map((o) => o.node.id),
           // Every running task has a row: one beyond the slots follows them.
           slots: [...slots, ...slotQueue],
           size: slots.length,
@@ -1013,7 +1016,7 @@ export function defaultLogger(
           // A persistent task's outcome arrives at READY; the child
           // keeps running until the orchestrator SIGTERMs it at run
           // end — pin it so its liveness stays visible.
-          pinnedPersistent.push(node.id)
+          pinnedPersistent.push(outcome)
           // …and capture what it writes from here on. A live-streaming
           // node already owns the terminal, so buffering it would emit
           // its output twice.

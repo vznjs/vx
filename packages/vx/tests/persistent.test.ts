@@ -911,7 +911,7 @@ describe('exec.persistent (e2e)', () => {
   )
 
   // The outcome says the child is gone, so no label calls it running: a
-  // setup step's exit 0 at ready.
+  // setup step's exit 0 at ready, and a crash while the graph runs.
   it(
     'a server that exited on its own carries its exit on its outcome',
     async () => {
@@ -920,7 +920,8 @@ describe('exec.persistent (e2e)', () => {
         'app',
         `export default { tasks: {
           migrate: { exec: { command: 'echo migrated', persistent: { readyWhen: 'READY' } } },
-          e2e: { dependsOn: ['migrate'], exec: { command: 'sleep 0.6' } },
+          srv: { exec: { command: 'echo READY; sleep 0.1; exit 3', persistent: { readyWhen: 'READY' } } },
+          e2e: { dependsOn: ['migrate', 'srv'], exec: { command: 'sleep 0.6' } },
         } }`,
       )
       const r = await run({
@@ -930,7 +931,7 @@ describe('exec.persistent (e2e)', () => {
         log: silentLogger(fixture),
       })
       const exit = (id: string) => r.outcomes.find((o) => o.node.id === id)?.serverExit
-      expect(exit('app#migrate')).toBe(0)
+      expect([exit('app#migrate'), exit('app#srv')]).toEqual([0, 3])
     },
     TIMEOUT,
   )

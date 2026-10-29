@@ -1244,6 +1244,13 @@ async function runOnBus(
         keeper?.taskDone(o)
         log.taskComplete(o.node, o)
         demand.finished(o.node.id)
+        // A server that dies while the graph runs is no longer running:
+        // its pin stayed `running` under the line naming its exit.
+        const server = o.status === 'success' ? persistentRegistry.get(o.node.id) : undefined
+        if (server !== undefined && o.serverExit === undefined)
+          void server.exited.then((code) => {
+            if (code !== 0 && !graphOver && !stop.signal.aborted) o.serverExit = code
+          })
       },
       // A crash a hand-broken lock entry caused is named as that; asked
       // only here, so a run that does not crash pays nothing.

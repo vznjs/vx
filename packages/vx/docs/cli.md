@@ -784,8 +784,10 @@ tracks the run live. Top to bottom:
 1. **A blank separator line** — keeps the live region visually apart
    from the completed-task scrollback above it.
 2. **Pinned persistent tasks** — `▸ <id> running` for every persistent
-   task that became ready. The pin lives until run end, so it is the
-   visible evidence the dev server is still alive. After the summary,
+   task that became ready. The pin lives until run end, or until the
+   task's process exits on its own (a crash, or a setup step ready by
+   its exit 0, whose frame then closes `success`, not `running`), so it
+   is the visible evidence the dev server is still alive. After the summary,
    a requested persistent task keeps vx in the foreground, with the
    persistent tasks it depends on, until it — or, with several, the
    first of them — exits (one kept only as a dependency that exits 0,
