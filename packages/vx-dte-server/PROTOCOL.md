@@ -147,7 +147,8 @@ without it, the host too, may dial again by its `id` for a grace, 10 s
 on `@vzn/vx-dte-server`, and is gone when the grace passes with no socket:
 a peer as if it left, the host closing its session. The relay keeps no
 timer and counts no heartbeat: it finds a grace passed as the session is
-next used. A client whose socket drops dials again, and says its `leave`
+next used. A join whose socket never opened (its client dropped during
+the upgrade) has the same grace from the join. A client whose socket drops dials again, and says its `leave`
 again on a new socket if the first dropped under it.
 `heartbeatMs` is how often participants should hear from each other: a
 peer quiet on a socket that never closed is its peers' to lose. The

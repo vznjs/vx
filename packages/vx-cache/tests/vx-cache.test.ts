@@ -547,6 +547,40 @@ describe('lend', () => {
   })
 })
 
+// Core lends while its remote reads, and the layer turns itself off: a
+// refused token was lent to every worker, each of which said the refusal
+// again, and a failed OIDC ask was asked again at each lend.
+it('lends nothing once the remote is off', async () => {
+  const srv = server()
+  let asked = 0
+  const github = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: () => {
+      asked++
+      return new Response('no', { status: 403 })
+    },
+  })
+  try {
+    const refused = layer(srv.url, 'nope')
+    await expect(refused.has('aa11')).rejects.toThrow('remote cache off for this run')
+    expect(await refused.lend()).toBeUndefined()
+
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: github.url.href,
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'gh',
+    }
+    const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, env)!, fetch, env)
+    c.refs = [MAIN]
+    await expect(c.has('aa11')).rejects.toThrow("GitHub's OIDC endpoint: HTTP 403")
+    expect(await c.lend()).toBeUndefined()
+    expect(asked).toBe(1)
+  } finally {
+    await srv.stop()
+    await github.stop(true)
+  }
+})
+
 describe('config', () => {
   // 2026-10-25: a proxy in front of the server (an Access service token).
   it('sends its headers on every request to the server, never over the CI token', async () => {
@@ -575,7 +609,18 @@ describe('config', () => {
         h.get('vx-issuer'),
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', await hashPart(GITHUB), await hashPart(REPO)])
-    for (const bad of [{ authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
+    // A name the wire sets, in any case, joined its value ("x, application/json"):
+    // every request was a 400.
+    for (const bad of [
+      { authorization: 'x' },
+      { 'a b': 'x' },
+      { a: 'x\ny' },
+      { 'Content-Type': 'text/plain' },
+      { 'Content-Length': '1' },
+      { 'VX-Issuer': 'x' },
+      { 'vx-repository': 'x' },
+      { 'Vx-Scope': 'x' },
+    ])
       expect(() =>
         resolveVxCacheConfig({ ...NAMED, url: 'https://c.example', headers: bad }, {}),
       ).toThrow('vxCache(): header')
@@ -655,6 +700,31 @@ describe('config', () => {
     ])
   })
 
+  // Core opens a remote only when the run's policy reads or writes it: the
+  // factory asked the limits (and GitHub for a token) on a --no-cache run.
+  it('asks the server nothing until core opens it', async () => {
+    const saved = { ...Bun.env }
+    const names = [
+      'ACTIONS_ID_TOKEN_REQUEST_URL',
+      'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+      'VX_CACHE_TOKEN',
+    ]
+    for (const k of names) delete Bun.env[k]
+    const srv = server(1 << 20, 'public')
+    try {
+      const plugin = vxCache({ ...NAMED, url: srv.url })
+      const layer = await plugin.cache!({ refs: [MAIN], warn: () => {} } as never)
+      await Bun.sleep(50)
+      expect(srv.seen).toEqual([])
+      await layer!.open!({ ci: false, warn: () => {} } as never)
+      await Bun.sleep(50)
+      expect(srv.seen.map((r) => r.path)).toEqual(['/v1/capabilities'])
+    } finally {
+      for (const k of names) if (saved[k] !== undefined) Bun.env[k] = saved[k]
+      await srv.stop()
+    }
+  })
+
   // The second failed ask of the limits was kept: every later check threw
   // it, though the server was back (2026-10-26).
   it('asks the limits again after each failed ask, and reads once the server is back', async () => {
@@ -719,6 +789,27 @@ describe('config', () => {
         'HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run',
       )
       expect(await c.has('ab12')).toBeNull()
+    } finally {
+      await srv.stop()
+    }
+  })
+
+  // A check that started while the start's ask was still out shared its
+  // refusal, threw it, and the next check threw it again.
+  it('says a refusal met while it starts once, though a check waited on the same ask', async () => {
+    const srv = server()
+    try {
+      const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, {})!, fetch, {})
+      c.refs = [MAIN]
+      c.start()
+      const said: string[] = []
+      for (let i = 0; i < 3; i++)
+        await c.has('ab12').catch((err: Error) => {
+          said.push(err.message)
+        })
+      expect(said).toEqual([
+        'HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run',
+      ])
     } finally {
       await srv.stop()
     }

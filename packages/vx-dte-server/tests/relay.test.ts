@@ -679,6 +679,55 @@ describe('a host that keeps runs and holds websockets', () => {
     ])
   })
 
+  // A refused socket request is held for the socket its host attaches. One
+  // whose upgrade its host could not make (Bun's, with no
+  // Sec-WebSocket-Key) never attaches, and each was held for as long as
+  // the relay ran: any client, no token needed, grew its memory by one.
+  it('holds no refusal whose upgrade its host could not make', async () => {
+    const ids: string[] = []
+    const relay = createRelay({
+      verify: () => Promise.reject(new Error('unused')),
+      upgrade: (_key, id) => {
+        ids.push(id)
+        return Response.json({ error: 'not a websocket' }, { status: 426 })
+      },
+    })
+    const res = await relay.fetch(
+      new Request(`http://relay/v1/sessions/${R}/socket`, {
+        headers: { upgrade: 'websocket', 'sec-websocket-protocol': 'switchboard.v1' },
+      }),
+    )
+    expect(res.status).toBe(426)
+    const frames: unknown[] = []
+    const closed: (number | undefined)[] = []
+    const socket = {
+      send: (t: string) => void frames.push(JSON.parse(t)),
+      close: (c?: number) => void closed.push(c),
+    }
+    expect(relay.attach('', ids[0]!, socket)).toBe(false)
+    expect(closed).toEqual([GONE])
+  })
+
+  // A join whose socket never opened (its client dropped during the
+  // upgrade) left a participant with no socket and no drop time, which no
+  // grace ever lapsed: a host's kept its session, refusing its own rejoin
+  // 409 for as long as the relay ran.
+  it('loses a participant whose join’s socket never opened, once its grace passes', async () => {
+    const c = client({ graceMs: 20 })
+    const [host] = await c.request(R, 'join', { role: 'host' })
+    expect((await c.relay.fetch(host)).status).toBe(101)
+    await Bun.sleep(30)
+    const joined = await c.call(R, 'join', { role: 'host' })
+    expect(joined.status).toBe(200)
+    const o = joined.json.id
+    const [peer] = await c.request(R, 'join', { role: 'peer' })
+    expect((await c.relay.fetch(peer)).status).toBe(101)
+    const [ghost] = (await c.poll(R, o)).map((m) => m.body.id)
+    await Bun.sleep(30)
+    await c.frame(R, o, { sends: [] })
+    expect((await c.poll(R, o)).map((m) => m.body)).toEqual([{ type: 'left', id: ghost }])
+  })
+
   it('pushes messages down a socket and takes sends from it', async () => {
     const c = client()
     const joined = await c.call(R, 'join', { role: 'host' })

@@ -94,6 +94,15 @@ it('reads the limits from the environment, and refuses one that is not a count',
   )
 })
 
+// wrangler.jsonc writes a var as JSON: a number was skipped, and the
+// default limit served in its place.
+it('reads a limit a Worker var gives as a number, and refuses another type', () => {
+  expect(limitsFrom({ MAX_UPLOAD_BYTES: 5 })).toEqual({ maxUploadBytes: 5 })
+  expect(() => limitsFrom({ MAX_UPLOAD_BYTES: [5] })).toThrow(
+    'MAX_UPLOAD_BYTES: not a whole number above 0: [5]',
+  )
+})
+
 // A truncated upload stored would be a wrong artifact under a right key:
 // the worst a cache does.
 it('refuses a body of another length than its Content-Length, and stores nothing', async () => {

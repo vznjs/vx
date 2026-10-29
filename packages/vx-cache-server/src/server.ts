@@ -38,15 +38,18 @@ const VARS = {
   maxUploadBytes: 'MAX_UPLOAD_BYTES',
 } as const
 
-/** `MAX_CHECK_HASHES` and `MAX_UPLOAD_BYTES` from the environment, each a whole number above 0. */
+/** `MAX_CHECK_HASHES` and `MAX_UPLOAD_BYTES` from the environment (a string, or a Worker's JSON number), each a whole number above 0. */
 export function limitsFrom(env: object): Partial<Limits> {
   const out: Partial<Record<keyof Limits, number>> = {}
   for (const [field, name] of Object.entries(VARS) as [keyof Limits, string][]) {
     const v = (env as Record<string, unknown>)[name]
-    if (typeof v !== 'string' || v === '') continue
-    const n = Number(v)
+    if (v === undefined || v === '') continue
+    // A Worker var may be JSON: a number was skipped, the default served.
+    const n = typeof v === 'string' || typeof v === 'number' ? Number(v) : Number.NaN
     if (!(Number.isSafeInteger(n) && n > 0))
-      throw new Error(`${name}: not a whole number above 0: ${v}`)
+      throw new Error(
+        `${name}: not a whole number above 0: ${typeof v === 'string' ? v : JSON.stringify(v)}`,
+      )
     out[field] = n
   }
   return out

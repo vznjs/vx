@@ -407,7 +407,7 @@ function reasonParts(t: RunSummaryRow, skippedHere: ReadonlySet<string>): string
         : `after ${t.blockedBy} failed`,
     )
   } else if (t.status === 'skipped' && t.exitCode === 0) {
-    // Only a platform skip records exit 0; a blocked or fail-fast skip records 1.
+    // Exit 0 with no blocker is a platform skip; a fail-fast skip records 1.
     parts.push(OTHER_PLATFORM)
   }
   if (t.remoteError !== null) parts.push(`remote \u2717 ${t.remoteError}`)
@@ -607,12 +607,24 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         return 0
       }
       if (log.source === null) {
+        // A cached task with no entry was not saved (a read-only policy) or
+        // was pruned; calling it uncached sends the user to the config.
+        const [project, task] = splitTaskId(log.taskId)
+        const cached =
+          log.status !== 'failed' &&
+          (
+            db
+              .query('SELECT cached FROM runs WHERE run_id = ? AND project = ? AND task = ?')
+              .get(log.runId, project, task) as { cached: number | null } | null
+          )?.cached === 1
         sayNotice(
           'info',
           'vx last',
           log.status === 'failed'
             ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
-            : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
+            : cached
+              ? `${log.taskId} ended ${log.status}, and its entry is not in the cache: the run did not save it, or it was pruned since`
+              : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
         )
       } else if (log.output === '') {
         sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)

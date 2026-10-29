@@ -604,6 +604,29 @@ describe('graph stage', () => {
   )
 
   it(
+    'a node whose id is not its projectName#taskName is refused by name',
+    async () => {
+      // A copy under a new id kept the old taskName: the key read the id,
+      // `--exclude-dependencies=build` the name, and dropped the copy's edge.
+      await pkg('a', build)
+      await workspace([
+        pluginSource(
+          'org/copy',
+          `{ graph(nodes) {
+            const n = nodes.get('a#build')
+            nodes.set('a#gen', { ...n, id: 'a#gen', deps: [] })
+            n.deps.push('a#gen')
+          } }`,
+        ),
+      ])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        `plugin 'org/copy' failed in graph: a#gen's id is "a#gen", not its projectName#taskName (a#build)`,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task config a plugin breaks is refused, naming the plugin and the field',
     async () => {
       // Unchecked, the misspelled field left the task without a command:
