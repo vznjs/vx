@@ -8,6 +8,7 @@ import {
   PersistentReadyError,
   releaseBridges,
   runPersistent,
+  sandboxReads,
   signalExitCode,
   withForwardArgs,
   wrapSandboxedCommand,
@@ -26,9 +27,16 @@ import {
   undeclaredWriteReach,
   untouchedPlaceholderLine,
 } from './sandbox-request.js'
+import { shellVerdict } from './shell-verdict.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
 import { computeTaskHash } from './task-hash.js'
-import { forgetUndeclaredWrites, isAborted, taskEnv, taskTimeoutMs } from './task-process.js'
+import {
+  forgetUndeclaredWrites,
+  isAborted,
+  taskBinDirs,
+  taskEnv,
+  taskTimeoutMs,
+} from './task-process.js'
 
 /** How long a server may take to match `readyWhen` before vx says it waits. */
 const READY_NOTICE_MS = 10_000
@@ -115,6 +123,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // server that dies before readiness is told the directory spelling — the
   // same trap and the same answer as a one-shot task's (sandbox-request.ts).
   let placeholders: Placeholder[] = []
+  let serverSandbox: Awaited<ReturnType<typeof sandboxRequestFor>>['sandbox'] | undefined
   if (step.sandbox !== undefined) {
     await args.armSandbox?.()
     // A persistent task never declares `cache` (the loader refuses it), so
@@ -128,6 +137,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       args.cacheDir,
     )
     placeholders = sb.placeholders
+    serverSandbox = sb.sandbox
     // A wrap that refuses (a port the host holds) leaves the server unspawned
     // and the placeholders vx made for it in the project for every later run.
     const wrapped = await wrapSandboxedCommand({
@@ -278,6 +288,26 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       node,
       ends.own(`[vx] ${node.id}: persistent task failed to become ready: ${message}\n`),
     )
+    // A server's 127, 126 or signal death needs the line a one-shot task's
+    // gets (execute-task.ts): a dev server whose tool sits in a sibling's
+    // bin said only "exit 127".
+    if (
+      err instanceof PersistentReadyError &&
+      err.reason === 'exited' &&
+      err.exitCode !== undefined
+    ) {
+      const signal = spawn.child?.signalCode
+      const verdict = shellVerdict({
+        code: err.exitCode,
+        command: step.command,
+        cwd: node.projectDir,
+        bins: taskBinDirs(node, args.workspaceRoot),
+        signal: typeof signal === 'string' ? signal : undefined,
+        hidden: serverSandbox && ((f: string) => !sandboxReads(serverSandbox, f)),
+      })
+      if (verdict !== undefined)
+        log.taskStderr(node, `${serverSecrets?.mask(verdict) ?? verdict}\n`)
+    }
     // A server is never traced, so the sandbox's refusals reach no report:
     // a dev server that died on a file outside its grants read only as the
     // tool's own "not found" (2026-10-03). Said for a sandboxed server that

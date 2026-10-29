@@ -236,7 +236,8 @@ the request withheld gets one more line beside it
 
 ## Verdict
 
-A step that exits 127 or 126 gets one frame line from
+A step that exits 127 or 126, or a persistent task that exits so
+before it is ready (`persistent-task.ts`), gets one frame line from
 `shell-verdict.ts` (`shellVerdict`), because the shell's own line names
 the word and nothing about why. A bare word is a PATH lookup and the
 PATH is vx's: the line names the word (`execWord`, the predicate
