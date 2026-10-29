@@ -846,10 +846,11 @@ other persistent task`), and a non-zero exit makes the run exit 1
    directly (why they are not running), right before the id
    (`     568ms running ~1.2s      3 <id>`). A task stays in its slot
    for its whole life; a task running beyond the slots gets a row after
-   them until one frees, and none is ever folded away. A bold header
-   names the columns (`time status cache blocked task`, `· worker`
-   when an executor places tasks); the list of finished tasks has its
-   own header once over its first row. The rows no task runs in hold
+   them until one frees, and none is ever folded away. Its header names
+   its own columns (`time state usual blocks task`, `· worker` when
+   an executor places tasks); the list of finished tasks has its own
+   once over its first row (`time status cache task`). Each header is
+   dim and underlined across the whole line, straight over its rows. The rows no task runs in hold
    the tasks the scheduler has picked for the next free workers, as
    many as there are free rows and nothing further ahead, each nested
    under the running task it waits on (`blocked  └ solid-js#build`);

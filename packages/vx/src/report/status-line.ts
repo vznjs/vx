@@ -7,7 +7,7 @@
 
 import { dumbTerminal, paint, type ColorSupport } from '../util/index.js'
 import {
-  formatListHeader,
+  formatRunningHeader,
   formatTaskRow,
   paintIdParts,
   pathNote,
@@ -562,7 +562,7 @@ export function formatStatusRegion(
       ),
     )
   }
-  if (lines.length > 1) lines.splice(1, 0, formatListHeader(placed, colors, true))
+  if (lines.length > 1) lines.splice(1, 0, formatRunningHeader(placed, colors))
   // The live summary section — identical shape to the final printout,
   // so the region visually BECOMES the summary when the run ends.
   lines.push(...s.summaryLines)

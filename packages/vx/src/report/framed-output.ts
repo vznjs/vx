@@ -294,7 +294,6 @@ const STATUS_COL = 7 // "success" / "running" / "skipped" / "aborted" / "not run
 const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
 const BLOCKED_COL = 7 // the live list's count of tasks a running one holds back
 /** The list header's colour: violet-400, the summary rule's first stop. */
-const HEADER = '#a78bfa'
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
@@ -403,18 +402,24 @@ export function formatTaskRow(
 }
 
 /**
- * The header over a task list, on the row grid: bold and coloured, so it
- * reads apart from the rows (dim, it was lost among them). `worker` when an
- * executor places tasks: the name after the id's dot. `blocked` on the live
- * list, whose rows count the tasks each running one holds back.
+ * The header over a task list, on the row grid: dim and underlined across
+ * the whole line, gaps included, straight over its rows (bold in a hue, it
+ * blended into rows of the same hues). `worker` when an executor places
+ * tasks: the name after the id's dot.
  */
-export function formatListHeader(
-  worker: boolean,
-  colors: ColorSupport = NO_COLOR,
-  blocked = false,
-): string {
-  const head = `   ${'time'.padStart(TIME_COL)} ${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${blocked ? `${'blocked'.padStart(BLOCKED_COL)} ` : ''}task${worker ? ' \u00b7 worker' : ''}`
-  return paint(HEADER, head, colors, { bold: true })
+export function formatListHeader(worker: boolean, colors: ColorSupport = NO_COLOR): string {
+  const head = `   ${'time'.padStart(TIME_COL)} ${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} task${worker ? ' \u00b7 worker' : ''}`
+  return paint('', head, colors, { dim: true, underline: true })
+}
+
+/**
+ * The live list's header: its rows hold the elapsed time, the state, the
+ * usual duration and how many tasks each running one holds back, not a
+ * result's status and cache (2026-10-29: `cache` sat over `~18s`).
+ */
+export function formatRunningHeader(worker: boolean, colors: ColorSupport = NO_COLOR): string {
+  const head = `   ${'time'.padStart(TIME_COL)} ${'state'.padEnd(STATUS_COL)} ${'usual'.padEnd(CACHE_COL)} ${'blocks'.padStart(BLOCKED_COL)} task${worker ? ' \u00b7 worker' : ''}`
+  return paint('', head, colors, { dim: true, underline: true })
 }
 
 /** Compact one-liner for a cache hit with nothing to replay. */

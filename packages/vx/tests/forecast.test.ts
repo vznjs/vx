@@ -287,7 +287,7 @@ describe('rows under an executor that places tasks', () => {
     )
     expect(lines).toEqual([
       '',
-      '      time status  cache    blocked task · worker',
+      '      time state   usual     blocks task · worker',
       '     500ms running                0 p#a · small#2',
     ])
   })
@@ -566,7 +566,7 @@ describe('free worker rows hold the planned tasks', () => {
       log.taskComplete(n, { node: n, status: 'success', exitCode: 0, durationMs: 1 } as TaskOutcome)
     const frame = (): string[] => {
       const lines = out.text().split('\n')
-      const i = lines.findLastIndex((l) => l.includes('blocked task'))
+      const i = lines.findLastIndex((l) => l.includes('blocks task'))
       return lines.slice(i + 1, i + 4).map((l) => l.trimEnd())
     }
     return { log, frame }

@@ -12,6 +12,7 @@ import {
   type StatusStream,
   type WorkerSlot,
 } from '../src/report/status-line.js'
+import { formatListHeader } from '../src/report/framed-output.js'
 import { defaultLogger } from '../src/report/logger.js'
 import type { RunContext } from '../src/report/summary.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
@@ -346,7 +347,7 @@ describe('defaultLogger status line integration', () => {
     log.taskComplete(a, mkOutcome(a, 'success'))
     const after = s.chunks[s.chunks.length - 1]!
     // A freed row stays, blank, so the list keeps its height (2 workers).
-    expect(after).toContain('blocked task\n\n\n')
+    expect(after).toContain('blocks task\n\n\n')
     expect(after).not.toContain('idle')
     // The live section speaks the summary's language as it fills in.
     expect(after).toContain('1 success')
@@ -716,7 +717,7 @@ describe('formatStatusRegion', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#build'), null], size: 2 })
     expect(lines).toEqual([
       '',
-      '      time status  cache    blocked task',
+      '      time state   usual     blocks task',
       '     2.00s running                0 a#build',
       '',
       ...SUMMARY,
@@ -761,7 +762,7 @@ describe('formatStatusRegion', () => {
       size: 8,
       where,
     })
-    expect(lines[1]).toBe('      time status  cache    blocked task · worker')
+    expect(lines[1]).toBe('      time state   usual     blocks task · worker')
     expect(lines[2]).toMatch(/ a#x · small#2$/)
     expect(lines[3]).toMatch(/b#x$/)
     // An executor's machines are not the size: no blank rows under it.
@@ -776,7 +777,7 @@ describe('formatStatusRegion', () => {
     })
     expect(lines).toEqual([
       '',
-      '      time status  cache    blocked task',
+      '      time state   usual     blocks task',
       ...Array.from({ length: 10 }, () => ''),
       ...SUMMARY,
     ])
@@ -847,7 +848,7 @@ describe('formatStatusRegion', () => {
     })
     expect(lines).toEqual([
       '',
-      '      time status  cache    blocked task',
+      '      time state   usual     blocks task',
       ' ▸         running                  web#dev',
       ' ▸         running                  api#dev',
       '',
@@ -1221,5 +1222,62 @@ describe('--output-logs hash-only', () => {
     const painted = line(true)
     expect(painted).toStartWith('\x1b[38;2;239;68;68mfailed\x1b[0m ')
     expect(painted).toEndWith('\x1b[2mabcdef0123456789\x1b[0m')
+  })
+})
+
+// The header blended into the rows under it (bold, in the rows' own hues),
+// and the live list's header named the results' columns over rows that hold
+// other values: `cache` over the usual time. Each list now has its own
+// header, dim and underlined across the whole line, gaps included, straight
+// over its rows.
+describe('list headers', () => {
+  const ON = { enabled: true }
+  const OPEN = '\x1b[2m\x1b[4m'
+  /** The text of a line painted as one dim underline, or undefined if it is not. */
+  const underlined = (line: string): string | undefined =>
+    line.startsWith(OPEN) &&
+    line.endsWith('\x1b[0m') &&
+    line.indexOf('\x1b', OPEN.length) === line.length - 4
+      ? line.slice(OPEN.length, -4)
+      : undefined
+
+  it('the running list names its own columns: elapsed, state, usual time, blocks', () => {
+    const lines = formatStatusRegion({
+      pinnedPersistent: [],
+      nowMs: 10_000,
+      summaryLines: [],
+      slots: [{ id: 'a#build', startedMs: 8000 }],
+      size: 1,
+      expected: new Map([['a#build', 18_000]]),
+      blockedBy: new Map([['a#build', 1]]),
+    })
+    expect(lines.slice(1, 3)).toEqual([
+      '      time state   usual     blocks task',
+      '     2.00s running ~18s           1 a#build',
+    ])
+    const head = lines[1]!
+    expect(['state', 'usual', 'task'].map((w) => head.indexOf(w))).toEqual(
+      ['running', '~18s', 'a#build'].map((w) => lines[2]!.indexOf(w)),
+    )
+    // `blocks` is right-aligned over its count.
+    expect(head.indexOf('blocks') + 'blocks'.length).toBe(lines[2]!.indexOf('1 a#build') + 1)
+  })
+
+  it('each header is one dim underline across the whole line, gaps included, on its rows', () => {
+    const live = formatStatusRegion(
+      {
+        pinnedPersistent: [],
+        nowMs: 1,
+        summaryLines: [],
+        slots: [{ id: 'a#b', startedMs: 0 }],
+        size: 1,
+      },
+      ON,
+    )
+    expect(underlined(live[1]!)).toBe('      time state   usual     blocks task')
+    expect(underlined(formatListHeader(false, ON))).toBe('      time status  cache    task')
+    expect(underlined(formatListHeader(true, ON))).toBe('      time status  cache    task · worker')
+    // No blank line between a header and its first row.
+    expect(Bun.stripANSI(live[2]!)).toEndWith('a#b')
   })
 })
