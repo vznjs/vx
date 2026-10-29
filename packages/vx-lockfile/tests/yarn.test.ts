@@ -404,6 +404,75 @@ ${
   })
 })
 
+// Yarn 4 records a patch a workspace asks for directly (`yarn patch` in
+// the workspace) in its own dependencies, with a `~/` (project root) path,
+// and keys the patched entry by that descriptor (vercel/turborepo#6974).
+describe('a Yarn 4 patch a workspace names directly', () => {
+  const lock = (hash: string) => `__metadata:
+  version: 8
+  cacheKey: 10c0
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  dependencies:
+    c: "workspace:*"
+  languageName: unknown
+  linkType: soft
+
+"b@workspace:packages/b":
+  version: 0.0.0-use.local
+  resolution: "b@workspace:packages/b"
+  dependencies:
+    c: "workspace:*"
+    is-odd: "patch:is-odd@npm%3A3.0.1#~/.yarn/patches/is-odd-npm-3.0.1-93c3c3f41b.patch"
+  languageName: unknown
+  linkType: soft
+
+"c@workspace:*, c@workspace:packages/c":
+  version: 0.0.0-use.local
+  resolution: "c@workspace:packages/c"
+  languageName: unknown
+  linkType: soft
+
+"is-number@npm:^6.0.0":
+  version: 6.0.0
+  resolution: "is-number@npm:6.0.0"
+  checksum: 10c0/number
+  languageName: node
+  linkType: hard
+
+"is-odd@npm:3.0.1":
+  version: 3.0.1
+  resolution: "is-odd@npm:3.0.1"
+  dependencies:
+    is-number: "npm:^6.0.0"
+  checksum: 10c0/plain
+  languageName: node
+  linkType: hard
+
+"is-odd@patch:is-odd@npm%3A3.0.1#~/.yarn/patches/is-odd-npm-3.0.1-93c3c3f41b.patch":
+  version: 3.0.1
+  resolution: "is-odd@patch:is-odd@npm%3A3.0.1#~/.yarn/patches/is-odd-npm-3.0.1-93c3c3f41b.patch::version=3.0.1&hash=${hash}"
+  dependencies:
+    is-number: "npm:^6.0.0"
+  checksum: 10c0/${hash}
+  languageName: node
+  linkType: hard
+
+"r@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "r@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+  it('editing the patch moves the workspace that names it, and no other', () => {
+    expect(movedDirs(lock('9b90ad'), lock('1c2d3e'))).toEqual(['packages/b'])
+    // Control: the same lockfile moves nothing.
+    expect(movedDirs(lock('9b90ad'), lock('9b90ad'))).toEqual([])
+  })
+})
+
 describe('Yarn 4 catalogs (turborepo#12635)', () => {
   it('a catalog bump `^6 → ^7` moves the workspace that names `catalog:` and what links it', () => {
     // The file records `is-number: "catalog:"`, never the range: folded
