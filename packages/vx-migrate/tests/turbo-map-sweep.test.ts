@@ -109,7 +109,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       { a: { scripts: { build: 'b' } }, b: { scripts: { build: 'b' } } },
     )
     const inputs = m.projects.map((p) => p.tasks[0]!.task!['inputs'] as unknown)
-    expect(inputs).toEqual([{ files: ['**/*'] }, { files: ['src/**'], env: ['X'] }])
+    expect(inputs).toEqual([{ files: ['**/*'] }, { files: ['src/**', 'package.json'], env: ['X'] }])
   })
 
   // Item 936: `inputs: []` is Turbo's default (every package file), and
@@ -121,7 +121,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     [['!**/*.md'], ['**/*', '!**/*.md']],
     [
       ['src/**', '!**/*.md'],
-      ['src/**', '!**/*.md'],
+      ['src/**', '!**/*.md', 'package.json'],
     ],
   ])('inputs %j key on %j', async (inputs, files) => {
     const t = await taskOf({ tasks: { build: { inputs } } }, { a: { scripts: { build: 'b' } } })
@@ -287,7 +287,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       wsRuntime: probe(inputs['workspaceRuntime']),
       todos: t.todos,
     }).toEqual({
-      files: ['src/**'],
+      files: ['src/**', 'package.json'],
       ws: undefined,
       runtime: 'top',
       wsRuntime: [dotenvGlobsProbe(['.env'])],
@@ -323,7 +323,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     )
     const t = m.projects[0]!.tasks[0]!
     expect(t.task!['inputs'] as unknown).toEqual({
-      files: ['src/**', 'config.json'],
+      files: ['src/**', 'config.json', 'package.json'],
     })
   })
 
@@ -587,6 +587,20 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(a.todos).toEqual(['dependsOn "b#gen": b declares no gen script — edge dropped'])
   })
 
+  // vercel/turborepo#3592: a root script turbo.json does not name `//#x` is
+  // no task; "ws declares no x script" pointed at a script that is there.
+  it('a `//#task` edge turbo.json does not define says so', async () => {
+    const m = await map(
+      { tasks: { build: { dependsOn: ['//#gen'] } } },
+      { a: { scripts: { build: 'b' } }, ws: { scripts: { gen: 'x' }, root: true } },
+    )
+    const a = m.projects.find((p) => p.name === 'a')!.tasks[0]!
+    expect(a.task!['dependsOn']).toBeUndefined()
+    expect(a.todos).toEqual([
+      'dependsOn "//#gen": turbo.json defines no "//#gen" task — edge dropped',
+    ])
+  })
+
   // highlight's `rrweb#build` names a submodule not checked out: "rrweb
   // declares no build script" sent the reader to a package.json that is not there.
   it('a `pkg#task` edge to no workspace package says the package is missing', async () => {
@@ -626,7 +640,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       { a: { scripts: { build: 'b' } } },
     )
     const inputs = t.task!['inputs'] as { files: string[]; workspaceFiles?: string[] }
-    expect(inputs).toEqual({ files: ['src/**'], workspaceFiles: ['!secret.json'] })
+    expect(inputs).toEqual({ files: ['src/**', 'package.json'], workspaceFiles: ['!secret.json'] })
     expect(t.todos).toEqual([
       'input "../../../out.txt": leaves the workspace — map manually',
       'input "a/$TURBO_ROOT$/x": $TURBO_ROOT$ only maps as a \'$TURBO_ROOT$/<path>\' prefix (→ inputs.workspaceFiles) — map manually',
@@ -675,7 +689,11 @@ describe('turbo-map: a package overlay that extends an inherited list', () => {
       dependsOn: task.dependsOn,
       files: task.inputs?.files,
       env: task.inputs?.env,
-    }).toEqual({ dependsOn: ['^build'], files: ['src/**', 'config.json'], env: ['MODE', 'EXTRA'] })
+    }).toEqual({
+      dependsOn: ['^build'],
+      files: ['src/**', 'config.json', 'package.json'],
+      env: ['MODE', 'EXTRA'],
+    })
   })
 
   it('CONTROL: an overlay array without the token replaces the inherited one', async () => {
@@ -689,7 +707,7 @@ describe('turbo-map: a package overlay that extends an inherited list', () => {
       },
     )
     const task = t.task as { inputs?: { files?: string[] } }
-    expect(task.inputs?.files).toEqual(['lib/**'])
+    expect(task.inputs?.files).toEqual(['lib/**', 'package.json'])
   })
 })
 
@@ -776,7 +794,7 @@ describe('turbo-map: Turbo’s glob grammar', () => {
       ws: inputs.workspaceFiles,
       out: cacheOf(t)!.outputs!.files,
     }).toEqual({
-      files: ['src/**/*.ts', '!src/gen*/**', '!src/gen*'],
+      files: ['src/**/*.ts', '!src/gen*/**', '!src/gen*', 'package.json'],
       ws: ['config/**/*.json'],
       out: ['dist/**/*.js'],
     })
@@ -883,12 +901,12 @@ describe('turbo-map: `.env` inputs', () => {
     // A package's root-level globs take the one-shell probe; one below the
     // root, or the workspace's, takes the walk.
     [{ inputs: ['$TURBO_DEFAULT$', '.env*'] }, { files: ['**/*'], runtime: 'top' }],
-    [{ inputs: ['src/**', '.env.local'] }, { files: ['src/**'], runtime: 'top' }],
+    [{ inputs: ['src/**', '.env.local'] }, { files: ['src/**', 'package.json'], runtime: 'top' }],
     [{ dotEnv: ['.env.local'] }, { files: ['**/*'], runtime: 'top' }],
-    [{ inputs: ['.env*', 'config/.env.local'] }, { files: [], runtime: 'walk' }],
+    [{ inputs: ['.env*', 'config/.env.local'] }, { files: ['package.json'], runtime: 'walk' }],
     [
       { inputs: ['$TURBO_ROOT$/.env'] },
-      { files: [], workspaceRuntime: [dotenvGlobsProbe(['.env'])] },
+      { files: ['package.json'], workspaceRuntime: [dotenvGlobsProbe(['.env'])] },
     ],
   ])('%j keys %j', async (def, expected) => {
     const t = await taskOf({ tasks: { build: def } }, { a: { scripts: { build: 'b' } } })
@@ -1071,24 +1089,24 @@ describe('turbo-map: a package config that extends another package', () => {
     )
     expect(got).toEqual({
       app: [
-        ['build', ['src/**', 'mid/**'], ['dist/**', 'out/**'], ['B', 'C'], []],
-        ['check', ['check/**'], [], [], []],
+        ['build', ['src/**', 'mid/**', 'package.json'], ['dist/**', 'out/**'], ['B', 'C'], []],
+        ['check', ['check/**', 'package.json'], [], [], []],
         // `test` reads the package: `build`'s outputs are taken back (X-54).
         ['test', ['**/*', '!dist/**', '!out/**'], [], [], []],
       ],
       mid: [
-        ['build', ['src/**', 'mid/**'], ['dist/**', 'out/**'], ['B'], []],
-        ['check', ['check/**'], [], [], []],
+        ['build', ['src/**', 'mid/**', 'package.json'], ['dist/**', 'out/**'], ['B'], []],
+        ['check', ['check/**', 'package.json'], [], [], []],
       ],
       base: [
-        ['build', ['src/**'], ['dist/**', 'out/**'], ['B'], []],
-        ['check', ['check/**'], [], [], []],
-        ['test', ['test/**'], [], [], []],
+        ['build', ['src/**', 'package.json'], ['dist/**', 'out/**'], ['B'], []],
+        ['check', ['check/**', 'package.json'], [], [], []],
+        ['test', ['test/**', 'package.json'], [], [], []],
       ],
       other: [
-        ['build', ['src/**'], ['dist/**'], ['A'], []],
+        ['build', ['src/**', 'package.json'], ['dist/**'], ['A'], []],
         ['check', ['**/*', '!dist/**'], [], [], ['build']],
-        ['test', ['test/**'], [], [], []],
+        ['test', ['test/**', 'package.json'], [], [], []],
       ],
     })
   })
@@ -1153,11 +1171,11 @@ describe('turbo-map: structured inputs', () => {
       await files([{ mode: 'dependencyOutputs' }]),
       await files(['src/**']),
     ]).toEqual([
-      ['src/**', 'gen/**'],
+      ['src/**', 'gen/**', 'package.json'],
       ['**/*', '!docs/**'],
       ['**/*', 'gen/**'],
       ['**/*'],
-      ['src/**'],
+      ['src/**', 'package.json'],
     ])
   })
 })
@@ -1209,17 +1227,17 @@ describe('turbo-map: an extends diamond', () => {
       ),
     )
     expect(got).toEqual({
-      'a#build': ['src/**', 'a/**'],
-      'a#check': ['a-check/**'],
-      'b#build': ['src/**', 'b/**'],
+      'a#build': ['src/**', 'a/**', 'package.json'],
+      'a#check': ['a-check/**', 'package.json'],
+      'b#build': ['src/**', 'b/**', 'package.json'],
       'b#check': ['**/*'],
-      'b#test': ['b-test/**'],
-      'c#build': ['src/**'],
-      'c#check': ['root-check/**'],
-      'c#test': ['c-test/**'],
-      'e#build': ['src/**'],
-      'e#check': ['root-check/**'],
-      'p#build': ['src/**', 'b/**'],
+      'b#test': ['b-test/**', 'package.json'],
+      'c#build': ['src/**', 'package.json'],
+      'c#check': ['root-check/**', 'package.json'],
+      'c#test': ['c-test/**', 'package.json'],
+      'e#build': ['src/**', 'package.json'],
+      'e#check': ['root-check/**', 'package.json'],
+      'p#build': ['src/**', 'b/**', 'package.json'],
       'p#check': ['**/*'],
     })
   })
@@ -1720,7 +1738,7 @@ describe('turbo-map: an uncached task keeps its key', () => {
       { a: { scripts: { gen: 'g' } } },
     )
     expect([t.task!['inputs'], t.task!['cache']]).toEqual([
-      { files: [], workspaceFiles: ['shared/schema.txt'], env: ['API_URL'] },
+      { files: ['package.json'], workspaceFiles: ['shared/schema.txt'], env: ['API_URL'] },
       undefined,
     ])
   })

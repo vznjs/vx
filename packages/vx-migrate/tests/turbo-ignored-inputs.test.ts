@@ -95,14 +95,14 @@ describe('turbo-map: gitignored inputs named by path', () => {
       ],
       inputs: {
         build: {
-          files: ['src/**', 'README.md'],
+          files: ['src/**', 'README.md', 'package.json'],
           workspaceFiles: ['tsconfig.json', 'certs/*.pem'],
           workspaceRuntime: [
             ignoredFilesProbe(['config.local.json', 'packages/a/secret.local.txt', 'root.local']),
           ],
         },
         only: {
-          files: [],
+          files: ['!x/**', 'package.json'],
           workspaceFiles: ['tsconfig.json', 'certs/*.pem'],
           workspaceRuntime: [
             ignoredFilesProbe(['config.local.json', 'packages/a/secret.local.txt']),
