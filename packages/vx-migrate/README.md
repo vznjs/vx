@@ -75,6 +75,7 @@ Rules:
 - `outputLogs: "new-only"` maps to nothing: frames for the tasks that ran and a one-liner per cache hit is vx's default flow already. The other values are per-run in vx, so they are a todo naming the flag (`vx run … --output-logs hash-only`).
 - `interruptible` maps to nothing: `vx watch` keeps a persistent task up across cycles and restarts it only when its config changes or it dies.
 - A task's `tags` (Turbo main, after 2.11.5) map to nothing: Turbo keeps them out of the hash and the run.
+- A task's `experimentalCI` maps to nothing: Turbo reads it for external CI tooling and acts on nothing.
 - `envMode: "loose"` (top-level or in `global`, or `TURBO_ENV_MODE=loose`, which wins) is a note: Turbo hands every task the whole environment, vx only the declared names.
 - The workspace keys vx has a home for, top level or in `global`, fill what `.vx/workspace.ts` leaves unset: `run.concurrency` (`"10"`, `"50%"` of the cores) → `run.concurrency`. `TURBO_CONCURRENCY` wins over turbo.json, as under Turbo; a set one decides, its `0` included. `cacheMaxSize` / `cacheMaxAge` map to nothing: no vx run evicts, `vx cache clean --max-size / --older-than` does.
 - `TURBO_SCM_BASE`, the base `turbo run --affected` compares with, is the run's base commit (`setBranch({ base })`): a bare `vx run build --affected` compares with the same ref. With it unset on GitHub Actions (`GITHUB_ACTIONS`), Turbo's own base applies: a pull request's `GITHUB_BASE_REF`, else the push event's `before` from `GITHUB_EVENT_PATH`.

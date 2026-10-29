@@ -409,16 +409,23 @@ describe('turbo-map: what the sweep found unheld', () => {
   })
 
   // Turbo's task `tags` are labels kept out of its hash; a todo telling
-  // the user to map them had nothing to map. CONTROL: an unknown key keeps
-  // its todo.
-  it('task tags map to nothing', async () => {
+  // the user to map them had nothing to map. `experimentalCI` likewise:
+  // Turbo parses it for external CI tooling and acts on nothing
+  // (vercel/turborepo#12480, #13264). CONTROL: an unknown key keeps its todo.
+  it('task tags and experimentalCI map to nothing', async () => {
     await writeFile(
       path.join(root, 'turbo.json'),
-      JSON.stringify({ tasks: { build: { tags: ['ci'] }, test: { tagz: ['ci'] } } }),
+      JSON.stringify({
+        tasks: {
+          build: { tags: ['ci'], experimentalCI: { shards: 2 } },
+          lint: { experimentalCI: true },
+          test: { tagz: ['ci'] },
+        },
+      }),
     )
     const dir = path.join(root, 'packages', 'a')
     await mkdir(dir, { recursive: true })
-    const packageJson = { name: 'a', scripts: { build: 'b', test: 't' } }
+    const packageJson = { name: 'a', scripts: { build: 'b', lint: 'l', test: 't' } }
     const m = await mapTurboWorkspace(
       root,
       [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
@@ -426,6 +433,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     )
     expect(m.projects[0]!.tasks.map((t) => [t.name, t.todos])).toEqual([
       ['build', []],
+      ['lint', []],
       ['test', ['turbo key "tagz" (["ci"]) has no vx equivalent — map it manually']],
     ])
   })
