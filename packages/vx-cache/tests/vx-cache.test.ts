@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { UserError } from '@vzn/vx'
 import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createCacheServer } from '@vzn/vx-cache-server'
 import type { JWTPayload } from 'jose'
@@ -612,15 +613,18 @@ describe('config', () => {
     expect(hasCiToken(gh, false)).toBe(true)
   })
 
-  // 2026-10-25: the user names both, always; nothing guesses them.
+  // 2026-10-25: the user names both, always; nothing guesses them. A
+  // UserError: a plain one printed a stack under VX_E_INTERNAL (2026-10-28).
   it('refuses a workspace that names no issuer or repository', () => {
     for (const [options, said] of [
       [{ repository: 'acme/app' }, "vxCache(): issuer must be the CI issuer's URL"],
       [{ issuer: 'token.actions.githubusercontent.com', repository: 'acme/app' }, 'issuer must be'],
       [{ issuer: GITHUB }, 'vxCache(): repository must be org/name, got undefined'],
       [{ issuer: GITHUB, repository: 'app' }, 'vxCache(): repository must be org/name, got app'],
-    ] as const)
+    ] as const) {
       expect(() => vxCache(options as never)).toThrow(said)
+      expect(() => vxCache(options as never)).toThrow(UserError)
+    }
   })
 
   // A deadline a timer cannot wait on ended every request at once: Bun

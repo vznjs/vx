@@ -30,6 +30,14 @@ export const ESSENTIAL_ENV: readonly string[] = [
   // manager (offline or sandboxed: fails) and pnpm loses its global dir.
   'COREPACK_HOME',
   'PNPM_HOME',
+  // The XDG base directories, machine paths as HOME is. Stripped, a task
+  // resolved other homes than the shell did: pnpm used another store, and
+  // a CLI keeping its login there ran signed out (vercel/turborepo#13145).
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_CACHE_HOME',
+  'XDG_STATE_HOME',
+  'XDG_RUNTIME_DIR',
 ]
 
 /**

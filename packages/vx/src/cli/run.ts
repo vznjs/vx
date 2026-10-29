@@ -494,6 +494,9 @@ export async function resolveRunOptions(
         error: `not inside a project: run from a project directory, or pass --all or --filter <pattern>${seeHelp(verb)}`,
       }
     }
+    if (cwdProject.unlockedConfig !== undefined) {
+      return { error: `${cwdProject.unlockedConfig} is not in the lock yet — run \`vx lock\`` }
+    }
     projects = [cwdProject.name]
     discovered = cwdProject.discovered
   }

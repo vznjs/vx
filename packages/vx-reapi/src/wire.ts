@@ -170,7 +170,7 @@ async function unzstdBounded(data: Uint8Array, digest: Digest): Promise<Uint8Arr
 /** More bytes than the digest declares, refused before the rest arrive. */
 const overServed = (digest: Digest): Error =>
   new Error(
-    `@vzn/vx-reapi: blob integrity failure for ${digest.hash.slice(0, 16)}…: ` +
+    `blob integrity failure for ${digest.hash.slice(0, 16)}…: ` +
       `served past its declared ${digest.size_bytes} bytes`,
   )
 
@@ -185,7 +185,7 @@ const wireBound = (size: number): number => size + (size >> 8) + 1024
 function assertServed(size: number, hash: (() => string) | undefined, digest: Digest): void {
   if (size !== Number(digest.size_bytes)) {
     throw new Error(
-      `@vzn/vx-reapi: blob integrity failure for ${digest.hash.slice(0, 16)}…: ` +
+      `blob integrity failure for ${digest.hash.slice(0, 16)}…: ` +
         `size ${size} != declared ${digest.size_bytes}`,
     )
   }
@@ -193,7 +193,7 @@ function assertServed(size: number, hash: (() => string) | undefined, digest: Di
   const got = hash()
   if (got !== digest.hash) {
     throw new Error(
-      `@vzn/vx-reapi: blob integrity failure: bytes hash to ${got.slice(0, 16)}… ` +
+      `blob integrity failure: bytes hash to ${got.slice(0, 16)}… ` +
         `but were served for digest ${digest.hash.slice(0, 16)}…`,
     )
   }
@@ -320,7 +320,7 @@ const RETRY_DELAYS_MS = [100, 400, 1600]
 
 const deadlineOf = (bounds: grpc.CallOptions): number => (bounds.deadline as Date).getTime()
 
-const executionAborted = (): Error => new Error('reapi: execution aborted')
+const executionAborted = (): Error => new Error('execution aborted')
 
 /** A backoff an abort ends at once: the caller's deadline may fire mid-wait. */
 function abortableSleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
@@ -509,7 +509,7 @@ export class ReapiClient {
     for (const [k, v] of Object.entries(this.headers)) {
       if (!/^[ -~]*$/.test(v)) {
         throw new Error(
-          `reapi: header ${JSON.stringify(k)} holds a character gRPC metadata cannot carry (printable ASCII only) — check it (its value is not printed)`,
+          `reapi(): header ${JSON.stringify(k)} holds a character gRPC metadata cannot carry (printable ASCII only) — check it (its value is not printed)`,
         )
       }
     }
@@ -522,7 +522,7 @@ export class ReapiClient {
     // not silently lengthen every metadata probe too.
     this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
     // No listener is no reason to say nothing.
-    this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', `[vx] ${m}`))
+    this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', m))
     // A zero, negative or non-number deadline ended every call as it began.
     for (const [name, ms] of [
       ['callTimeoutMs', this.callTimeoutMs],
@@ -530,14 +530,12 @@ export class ReapiClient {
     ] as const) {
       if (!(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
         throw new Error(
-          `@vzn/vx-reapi: ${name} must be a positive number of ms (got ${JSON.stringify(ms)})`,
+          `reapi(): ${name} must be a positive number of ms (got ${typeof ms === 'number' ? String(ms) : JSON.stringify(ms)})`,
         )
       }
     }
     if (!Number.isInteger(this.chunkBytes) || this.chunkBytes < 1) {
-      throw new Error(
-        `@vzn/vx-reapi: chunkBytes must be a positive integer (got ${this.chunkBytes})`,
-      )
+      throw new Error(`reapi(): chunkBytes must be a positive integer (got ${this.chunkBytes})`)
     }
   }
 
@@ -711,11 +709,10 @@ export class ReapiClient {
     if (wanted !== undefined) {
       if (!caps.digestFunctions.includes(wanted)) {
         throw new Error(
-          `@vzn/vx-reapi: server does not support digest function ${wanted} (has ${caps.digestFunctions.join(', ')})`,
+          `server does not support digest function ${wanted} (has ${caps.digestFunctions.join(', ')})`,
         )
       }
-      if (!canDigest(wanted))
-        throw new Error(`@vzn/vx-reapi: this runtime cannot compute ${wanted}`)
+      if (!canDigest(wanted)) throw new Error(`this runtime cannot compute ${wanted}`)
       this.digestFunction = wanted
     } else {
       // Default stays SHA256 even when the server advertises stronger
@@ -807,7 +804,7 @@ export class ReapiClient {
       const code = r.status?.code ?? 0
       if (code !== 0) {
         throw new Error(
-          `reapi: BatchUpdateBlobs rejected ${r.digest?.hash}: code ${code} ${r.status?.message ?? ''}`,
+          `BatchUpdateBlobs rejected ${r.digest?.hash}: code ${code} ${r.status?.message ?? ''}`,
         )
       }
     }
@@ -1106,7 +1103,7 @@ export class ReapiClient {
           wireBytes > chunk
         ) {
           this.onWarn(
-            `vx/reapi: chunked write of ${digest.hash.slice(0, 12)} hit the ${chunk}-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
+            `[vx] vx-reapi: chunked write of ${digest.hash.slice(0, 12)} hit the ${chunk}-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
           )
           chunk = SAFE_CHUNK_BYTES
           continue
@@ -1177,9 +1174,7 @@ export class ReapiClient {
           // failed the upload of an input two actions share (F-44).
           const expected = compressed ? total : digest.size_bytes
           if (committed !== expected && !(compressed && (committed > 0 || committed === -1))) {
-            return reject(
-              new Error(`reapi: short write for ${digest.hash}: ${committed}/${expected}`),
-            )
+            return reject(new Error(`short write for ${digest.hash}: ${committed}/${expected}`))
           }
           resolve()
         },
@@ -1431,10 +1426,10 @@ export class ReapiClient {
         // An unnamed one cannot be re-attached, and a plain Error is not
         // retried.
         if (operationName === '') {
-          throw new Error('reapi: execution stream closed before the operation finished')
+          throw new Error('execution stream closed before the operation finished')
         }
         failure = new Error(
-          `reapi: execution stream for ${operationName} closed before the operation finished`,
+          `execution stream for ${operationName} closed before the operation finished`,
         )
       } catch (err) {
         const code = (err as grpc.ServiceError).code
@@ -1518,7 +1513,7 @@ export class ReapiClient {
       stream.on('end', () => {
         signal?.removeEventListener('abort', onAbort)
         if (last === undefined)
-          return reject(new Error('reapi: execution stream closed with no operation'))
+          return reject(new Error('execution stream closed with no operation'))
         resolve(last)
       })
     })

@@ -23,7 +23,7 @@ import {
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, homeOf, needOf, pace } from '../src/plugin.js'
-import { hostPlatform, type Platform } from '@vzn/vx'
+import { hostPlatform, type Platform, UserError } from '@vzn/vx'
 import {
   type CacheFacts,
   type CapturedChunk,
@@ -67,8 +67,13 @@ it('a worker clears the files a task’s outputs match, links included, before i
 })
 
 it('a worker runs the orchestrator’s env with its own root, host names and PATH', () => {
-  const saved = { HOME: process.env['HOME'], PATH: process.env['PATH'] }
+  const saved = {
+    HOME: process.env['HOME'],
+    PATH: process.env['PATH'],
+    XDG_DATA_HOME: process.env['XDG_DATA_HOME'],
+  }
   process.env['HOME'] = '/worker/home'
+  process.env['XDG_DATA_HOME'] = '/worker/data'
   process.env['PATH'] = '/usr/bin'
   try {
     expect(
@@ -88,6 +93,7 @@ it('a worker runs the orchestrator’s env with its own root, host names and PAT
       ),
     ).toMatchObject({
       HOME: '/worker/home',
+      XDG_DATA_HOME: '/worker/data',
       TMPDIR: '/defined/tmp',
       PATH: '/worker/ws/node_modules/.bin:/worker/ws:/usr/bin',
       VX_RUN_WORKSPACE: '/worker/ws',
@@ -96,7 +102,9 @@ it('a worker runs the orchestrator’s env with its own root, host names and PAT
       HOLDS: '/private/orc/ws/x',
     })
   } finally {
-    Object.assign(process.env, saved)
+    for (const [k, v] of Object.entries(saved))
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
   }
 })
 
@@ -1903,7 +1911,7 @@ it('sends a host name such as HOME only when the task’s env.define sets it', a
     await Bun.sleep(50)
     void h.o.execute({
       ...h.req('t1'),
-      env: { HOME: '/orc/home', TMPDIR: '/defined/tmp', X: '1' },
+      env: { HOME: '/orc/home', XDG_RUNTIME_DIR: '/run/user/1', TMPDIR: '/defined/tmp', X: '1' },
       envDefine: { TMPDIR: '/defined/tmp' },
     })
     expect(await a.batches()).toEqual([['t1']])
@@ -3326,6 +3334,8 @@ it('refuses options it does not read and workers it cannot start', () => {
   expect(refusal(() => docker({} as never))).toBe(
     "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
   )
+  // A plain Error printed a stack under VX_E_INTERNAL (2026-10-28).
+  expect(() => docker({} as never)).toThrow(UserError)
 })
 
 it('a run that is not distributed loads none of it', async () => {

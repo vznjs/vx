@@ -432,7 +432,7 @@ function crossDepProjects(config: ProjectConfig): string[] {
       // the offending task. Here it just contributes no project.
       if (!raw.includes('#')) continue
       try {
-        const spec = parseDependencySpec(raw)
+        const spec = parseDependencySpec(raw, 'dependsOn')
         if (spec.kind === 'cross') out.push(spec.project)
       } catch {
         continue

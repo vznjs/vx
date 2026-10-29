@@ -64,7 +64,7 @@ const run = (result: object, r = req()) =>
     (e: Error) => e.message,
   )
 const refused = (what: string) =>
-  `vx/reapi: the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${ws}`
+  `the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${ws}`
 
 beforeEach(async () => {
   top = await realpath(await mkdtemp(path.join(tmpdir(), 'vx-fence-')))

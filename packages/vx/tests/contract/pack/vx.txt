@@ -85,7 +85,6 @@ src/exec/sandbox-violations.ts
 src/graph/critical-path.ts
 src/graph/default-build.ts
 src/graph/definition.ts
-src/graph/dependency-spec.ts
 src/graph/folds.ts
 src/graph/index.ts
 src/graph/priorities.ts
@@ -173,6 +172,7 @@ src/util/bun-version.ts
 src/util/cgroup.ts
 src/util/colors.ts
 src/util/config-frame.ts
+src/util/dependency-spec.ts
 src/util/edit-distance.ts
 src/util/errors.ts
 src/util/essential-env.ts
@@ -199,6 +199,7 @@ src/util/ui.ts
 src/util/ulid.ts
 src/util/verbs.ts
 src/util/which.ts
+src/util/write-file.ts
 src/version.ts
 src/workspace/affected.ts
 src/workspace/config-bytecode.ts

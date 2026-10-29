@@ -117,7 +117,7 @@ describe('filterUpstreamHashes', () => {
     const up = [outcome('self#a', 'h-a')]
     expect(() => filterUpstreamHashes(up, ['^'], 'self', 'self#build')).toThrow(UserError)
     expect(() => filterUpstreamHashes(up, ['^'], 'self', 'self#build')).toThrow(
-      /self#build: inputs\.tasks/,
+      'self#build: invalid inputs.tasks "^": "^" with no task name',
     )
   })
 

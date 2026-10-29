@@ -104,7 +104,13 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    under it (X-126). Matches Turbo's `[<since>]` semantics. A base
    that names HEAD's own ancestor (`HEAD~1`, `HEAD^2`) is its own merge
    base, so its resolved commit stands in and no `git merge-base`
-   spawns (#2288).
+   spawns (#2288). It runs with `diff.autoRefreshIndex=false`: a
+   porcelain `diff` that meets a stat-dirty file rewrites the index under
+   `index.lock`, ignoring `--no-optional-locks`, and a user's `git commit`
+   beside the run failed on that lock. A file it then lists as modified
+   whose content still hashes (`git hash-object`, a link's target in
+   process) to the base's blob is dropped, so a stat-only change selects
+   nothing, as the refresh did.
 3. Untracked files (`git ls-files --others --exclude-standard`) are
    unioned in — a brand-new source file is a change. `.vx/projects.lock.json` is
    filtered out, so re-running `vx lock` never selects everything.

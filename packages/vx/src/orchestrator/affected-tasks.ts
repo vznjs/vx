@@ -118,7 +118,7 @@ export function affectedRoots(
   // it passes through: a holder's own node is already in `deps`.
   const passesChanged = (n: TaskNode): boolean => {
     for (const raw of n.config.dependsOn ?? []) {
-      const spec = parseDependencySpec(raw)
+      const spec = parseDependencySpec(raw, 'dependsOn')
       if (spec.kind !== 'deps' || spec.negated) continue
       const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
       const holds = (name: string): boolean => {

@@ -278,12 +278,13 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
       })
       keys.set(iss, set)
       // A failed discovery is not kept: the next token tries again.
+      // quiet: the awaited set rethrows it; this only forgets it
       set.catch(() => keys.get(iss) === set && keys.delete(iss))
     }
     // The issuer's outage, not the token's fault: a 401 tells a client its
     // token is refused, and vx-cache turns the remote off for the run.
-    return set.catch(() => {
-      throw new Refusal(502, `could not read ${iss}'s keys`)
+    return set.catch((err: unknown) => {
+      throw keysUnread(iss, err)
     })
   }
 
@@ -350,9 +351,14 @@ const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
  */
 function refusal(err: unknown, iss: string, audiences: () => string): Refusal {
   if (err instanceof Refusal) return err
-  // A refetch of the keys for a kid not held failed: the network, not the token.
-  if (!(err instanceof errors.JOSEError) || err instanceof errors.JWKSTimeout)
-    return new Refusal(502, `could not read ${iss}'s keys`)
+  // A refetch of the keys for a kid not held failed, or the issuer served
+  // no key set: the issuer, not the token. A broken set read "not a JWT".
+  if (
+    !(err instanceof errors.JOSEError) ||
+    err instanceof errors.JWKSTimeout ||
+    err instanceof errors.JWKSInvalid
+  )
+    return keysUnread(iss, err)
   if (err instanceof errors.JOSEAlgNotAllowed) return new Refusal(401, 'alg is not RS256')
   if (err instanceof errors.JWKSNoMatchingKey) return new Refusal(401, 'unknown signing key')
   if (err instanceof errors.JWSSignatureVerificationFailed) return new Refusal(401, 'bad signature')
@@ -363,6 +369,13 @@ function refusal(err: unknown, iss: string, audiences: () => string): Refusal {
   }
   return new Refusal(401, 'not a JWT')
 }
+
+/** The issuer's keys out of reach, with why: a 503 and a missing jwks_uri read the same. */
+const keysUnread = (iss: string, err: unknown): Refusal =>
+  new Refusal(
+    502,
+    `could not read ${iss}'s keys: ${err instanceof Error ? err.message : String(err)}`,
+  )
 
 async function defaultFetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })

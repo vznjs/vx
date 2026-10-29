@@ -20,6 +20,7 @@ import {
   lockKey,
   NO_LOCK,
   parseFilter,
+  PROJECT_CONFIG_FILENAMES,
   type ProjectMeta,
   readLockfile,
 } from '../workspace/index.js'
@@ -33,6 +34,7 @@ import {
   maskedCommand,
   maskedLine,
   nearest,
+  relPosix,
   UserError,
   sayNotice,
   ui,
@@ -142,20 +144,24 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
  * reuse (`RunOptions.discovered`): discovering again ran every `discover`
  * hook twice (`nx()`'s graph load and worktree key among them).
  */
-export async function findCwdSelection(
-  cwd: string,
-): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
+export async function findCwdSelection(cwd: string): Promise<{
+  name: string
+  discovered: { root: string; projects: ProjectMeta[] }
+  /** A vx.config in the cwd's own directory the lock does not hold, root-relative. */
+  unlockedConfig?: string
+} | null> {
   const root = await findWorkspaceRoot(cwd)
   const projects = await discoverCliProjects(root)
   const abs = path.resolve(cwd)
-  const within = (dirOf: (p: ProjectMeta) => string): string | null => {
-    let best: string | null = null
-    let bestLength = -1
+  const within = (dirOf: (p: ProjectMeta) => string): { meta: ProjectMeta; dir: string } | null => {
+    let best: { meta: ProjectMeta; dir: string } | null = null
     for (const p of projects) {
       const dir = dirOf(p)
-      if ((abs === dir || abs.startsWith(dir + path.sep)) && dir.length > bestLength) {
-        best = p.name
-        bestLength = dir.length
+      if (
+        (abs === dir || abs.startsWith(dir + path.sep)) &&
+        dir.length > (best?.dir.length ?? -1)
+      ) {
+        best = { meta: p, dir }
       }
     }
     return best
@@ -165,7 +171,7 @@ export async function findCwdSelection(
   // so inside such a member nothing matched and a run from there was "not
   // inside a project" (item 1025). Only then are the members realpathed:
   // one syscall each, paid only by a run no plain match could place.
-  const name =
+  const found =
     within((p) => p.dir) ??
     within((p) => {
       try {
@@ -174,7 +180,18 @@ export async function findCwdSelection(
         return p.dir
       }
     })
-  return name === null ? null : { name, discovered: { root, projects } }
+  if (found === null) return null
+  const selection = { name: found.meta.name, discovered: { root, projects } }
+  // A config the lock has not seen in the cwd's own directory: the run
+  // fell under the parent project (ran ROOT's build, exit 0) or the
+  // config-less project's nothing ("run `vx init`"). Only a cwd that is
+  // not a locked config's directory pays the stats; nothing is evaluated.
+  const { configPath } = found.meta
+  if (found.dir === abs && typeof configPath === 'string' && configPath !== '') return selection
+  const config = PROJECT_CONFIG_FILENAMES.find((n) => fs.existsSync(path.join(abs, n)))
+  return config === undefined
+    ? selection
+    : { ...selection, unlockedConfig: relPosix(root, path.join(abs, config)) }
 }
 
 export type FilterResolution =
@@ -219,7 +236,7 @@ export function taskEdgesFrom(staged: ReadonlyMap<string, ProjectEntry>): Map<st
       for (const raw of task.dependsOn ?? []) {
         let spec
         try {
-          spec = parseDependencySpec(raw)
+          spec = parseDependencySpec(raw, 'dependsOn')
         } catch {
           continue
         }

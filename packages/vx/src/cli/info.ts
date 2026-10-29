@@ -120,7 +120,10 @@ export function renderInfo(f: InfoFacts, colors: ColorSupport = { enabled: false
     ],
     ['flaky tasks', describeFlakyTasks(f.flakyTasks)],
     ['sandbox', describeSandbox(f.sandbox)],
-    ['projects lock', f.lockfile ? 'yes' : 'no'],
+    [
+      'projects lock',
+      typeof f.lockError === 'string' ? `refused: ${f.lockError}` : f.lockfile ? 'yes' : 'no',
+    ],
   ]
   return ui.report('vx info', rows).lines(colors).join('\n')
 }

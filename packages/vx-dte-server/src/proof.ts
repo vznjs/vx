@@ -62,6 +62,7 @@ export async function verifyProof(
   try {
     return await crypto.subtle.verify(SIGN, key, unb64u(sig), signed)
   } catch {
+    // quiet: a signature that cannot be read is a bad one: false is the answer
     return false
   }
 }

@@ -7,7 +7,7 @@ export {
   isTaskPattern,
   parseDependencySpec,
   type DependencySpec,
-} from './dependency-spec.js'
+} from '../util/index.js'
 export {
   type FoldCandidate,
   foldedDeps,

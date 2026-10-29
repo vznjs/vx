@@ -307,6 +307,21 @@ describe('plugin commands', () => {
     expect(answers[2]!.err).toContain('unknown command: hasOwnProperty')
   })
 
+  it("a verb named like an Object member is unknown, not the plugin's crash", async () => {
+    // `commands.constructor` read Object's own: `vx constructor` ran it and
+    // blamed the plugin for `run is not a function`.
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
+    for (const verb of ['constructor', 'toString', '__proto__']) {
+      err.length = 0
+      expect(await cli([verb])).toBe(1)
+      expect(err.join('')).toContain(`unknown command: ${verb}`)
+      expect(err.join('')).not.toContain('org/hello')
+    }
+    err.length = 0
+    expect(await cli(['help', 'constructor'])).toBe(1)
+    expect(err.join('')).toContain('unknown command: constructor')
+  })
+
   it('a typo of a PLUGIN verb gets the same "did you mean" a core verb gets', async () => {
     // The verbs this workspace's plugins declare are verbs here, and the
     // lookup that just failed already knows them: `vx helo` in a workspace

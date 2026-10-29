@@ -19,6 +19,7 @@ export {
   gitSpawnRefusal,
   isExecutableMissing,
   isOutOfFds,
+  gitFailure,
   notAWorkTree,
   OUT_OF_FDS_HINT,
   wantsJson,
@@ -134,3 +135,10 @@ export {
   type SecretUnavailableReason,
 } from './secrets.js'
 export { terminalOf, type SecretTerminal } from './hidden-prompt.js'
+export {
+  DependencySpecError,
+  compileTaskPattern,
+  isTaskPattern,
+  parseDependencySpec,
+  type DependencySpec,
+} from './dependency-spec.js'

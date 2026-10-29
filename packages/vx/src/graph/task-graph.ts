@@ -18,15 +18,13 @@ import {
   UserError,
   wholeIgnored,
   wholeSubtreePrefixes,
-} from '../util/index.js'
-import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
-import {
   DependencySpecError,
   compileTaskPattern,
   isTaskPattern,
   parseDependencySpec,
   type DependencySpec,
-} from './dependency-spec.js'
+} from '../util/index.js'
+import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild } from './default-build.js'
 import { foldedDeps, isGroupTask } from './folds.js'
 import type { TaskOutcome } from './scheduler.js'
@@ -515,7 +513,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     const { id, projectName, taskName } = node
     let spec: DependencySpec
     try {
-      spec = parseDependencySpec(raw)
+      spec = parseDependencySpec(raw, 'dependsOn')
     } catch (err) {
       if (err instanceof DependencySpecError) {
         throw new UserError(`${id}: ${err.message}`, 'VX_E_DEPENDS_ON')

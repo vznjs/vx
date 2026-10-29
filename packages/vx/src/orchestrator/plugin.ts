@@ -21,6 +21,7 @@ import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../con
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
 import {
+  errorCode,
   maskedLine,
   nearest,
   type PluginSecrets,
@@ -232,7 +233,9 @@ export interface VxPlugin {
    * renderer in place. The first plugin, in declaration order, that
    * returns one renders the run; the rest are not asked. Not consulted
    * when an embedder passed its own `log`. A logger that throws or rejects
-   * hands the rest of the run back to core's renderer with one warning.
+   * hands the rest of the run back to core's renderer with one warning; a
+   * hook that does not answer within the teardown bound (3 s) is passed
+   * over with one.
    */
   output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
 
@@ -821,8 +824,9 @@ export class PluginSetupError extends UserError {
   constructor(
     readonly plugin: Plugin,
     message: string,
+    code = 'VX_E_REFUSED',
   ) {
-    super(message)
+    super(message, code)
   }
 }
 
@@ -960,6 +964,8 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
         maskedLine(
           `plugin '${plugin.name}' failed in setup: ${err instanceof Error ? err.message : String(err)}`,
         ),
+        // The plugin's own code survives, as `safe()` keeps it.
+        errorCode(err) === 'VX_E_INTERNAL' ? 'VX_E_REFUSED' : errorCode(err),
       )
     }
   }
