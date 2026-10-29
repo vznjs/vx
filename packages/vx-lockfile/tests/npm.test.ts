@@ -235,6 +235,36 @@ describe('every input the npm digest must read', () => {
     expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['packages/a'])
   })
 
+  // A package that bundles its dependencies installs them as `inBundle`
+  // entries with a version and no resolved or integrity. Matched by
+  // name@version, the bundled copy could stand in for the registry entry
+  // of the same version and drop its integrity. By Node's walk it stands
+  // only for its parent's own reads.
+  it('a bundled copy stands in for no registry entry of the same version', () => {
+    const text = (o: { integrity?: string; bundled?: string } = {}) =>
+      doc({
+        'packages/a': { name: 'a', dependencies: { bar: '^1' } },
+        'packages/b': { name: 'b', dependencies: { pkg: '^1' } },
+        'node_modules/bar': {
+          version: '1.0.0',
+          resolved: 'https://r/bar-1.0.0.tgz',
+          integrity: o.integrity ?? 'sha512-bar',
+        },
+        'node_modules/pkg': {
+          version: '1.0.0',
+          resolved: 'https://r/pkg-1.0.0.tgz',
+          integrity: 'sha512-pkg',
+          bundleDependencies: ['bar'],
+          dependencies: { bar: '^1' },
+        },
+        'node_modules/pkg/node_modules/bar': { version: o.bundled ?? '1.0.0', inBundle: true },
+      })
+    expect({
+      registry: movedDirs(text(), text({ integrity: 'sha512-other' })),
+      bundled: movedDirs(text(), text({ bundled: '1.0.1' })),
+    }).toEqual({ registry: ['packages/a'], bundled: ['packages/b'] })
+  })
+
   it('an unresolved dependency and a dangling link still fold what they name', () => {
     const spec = (s: string) => doc({ 'packages/a': { name: 'a', dependencies: { ghost: s } } })
     expect(movedDirs(spec('^1'), spec('^2'))).toEqual(['packages/a'])
@@ -289,6 +319,31 @@ describe('every input the npm digest must read', () => {
       importers: [...one.keys()].sort(),
       moved: one.get('packages/a') !== two.get('packages/a'),
     }).toEqual({ fileDirs: ['vendor/dep'], importers: ['.', 'packages/a'], moved: true })
+  })
+
+  // The `{ packages: [...] }` spelling of `workspaces` (Turbo's
+  // `test_npm_resolves_alternative_workspace_format`, vercel/turborepo#3632).
+  it('a `workspaces: { packages }` root names its workspaces as the array form does', () => {
+    const text = (workspaces: unknown) =>
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'r', workspaces },
+          'node_modules/a': { resolved: 'packages/a', link: true },
+          'packages/a': { version: '1.0.0' },
+        },
+      })
+    const read = (workspaces: unknown) => {
+      const lock = parseLockfile(text(workspaces))
+      return {
+        fileDirs: lock.fileDirs,
+        importers: [...importerDigests(lock, new Map()).keys()].sort(),
+      }
+    }
+    const expected = { fileDirs: [], importers: ['.', 'packages/a'] }
+    expect(read({ packages: ['packages/*'] })).toEqual(expected)
+    // CONTROL: the array form.
+    expect(read(['packages/*'])).toEqual(expected)
   })
 
   // Item 1073's class, npm's side: two workspaces that link each other,

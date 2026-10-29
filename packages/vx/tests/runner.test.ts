@@ -221,6 +221,38 @@ describe('runCommand', () => {
     expect(result.stdout.trim()).toBe(`prefix: hello world with space it's`)
   })
 
+  it('a task writes into a pipe and reads no terminal, so it sends no terminal queries to replay', async () => {
+    const result = await runCommand({
+      command:
+        'if [ -t 1 ]; then echo out-tty; else echo out-pipe; fi; if [ -t 0 ]; then echo in-tty; else echo in-none; fi',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect(result.stdout).toBe('out-pipe\nin-none\n')
+  })
+
+  it('a forwarded arg reaches the command as one word, the shell expanding nothing in it', async () => {
+    const args = [
+      '--name=a b',
+      '$HOME',
+      ';echo PWNED',
+      '`id`',
+      '$(id)',
+      '*',
+      '',
+      '--foo=0x1',
+      "it's",
+    ]
+    const result = await runCommand({
+      command: `printf '[%s]\\n'`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '', HOME: '/nowhere' },
+      forwardArgs: args,
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toBe(args.map((a) => `[${a}]\n`).join(''))
+  })
+
   it('reports cpuMs from rusage; a task lighter than this process has no peak on record', async () => {
     // Burn a tiny bit of CPU so cpuMs is observably > 0. The shell loop
     // peaks at ~2 MB, under this process's own mark, and Linux hands the
