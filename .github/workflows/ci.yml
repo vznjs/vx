@@ -245,5 +245,14 @@ jobs:
           restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
       - name: Set up the sandbox
         run: bun packages/vx/src/bin.ts setup github
+      # The commit pr-bench.ts times this checkout against: the PR's base,
+      # or main before the push. A shallow clone holds neither.
+      - name: Fetch the base commit
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          case "$BASE" in ''|0000000000000000000000000000000000000000) exit 0 ;; esac
+          git fetch --no-tags --depth=1 origin "$BASE"
+          echo "VX_BENCH_BASE=$BASE" >> "$GITHUB_ENV"
       - name: vx run check.perf
         run: bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}

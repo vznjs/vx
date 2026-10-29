@@ -238,6 +238,15 @@ between two CI runs of one commit. A 60 ms sleep added to vx's startup failed th
 nothing-changed case (0.83 → 1.24). Record a change meant to move it
 with `vx run @vzn/vx-bench#vs-turbo.update`.
 
+The ratio alone let main grow slower one PR at a time: every step stayed
+inside 1.3×. So each held case is also timed against the base commit's
+own vx (`VX_BENCH_BASE`: the PR's base, or main before a push), compiled
+in the same job from `git archive` of `packages/vx` and run in its own
+copy of the workspace, locked by itself. Each pair runs vx, the base,
+then Turbo, and a restore or nothing-changed min more than 1.15× the
+base's fails: three checks of one change read restore at 0.96 to 1.09
+of its base.
+
 `private/vx-bench/real/nightly.ts` re-runs the repos on
 [Real repos](#real-repos) each night against the tool they ship with,
 on this checkout's vx, and exits 1 with a `LOSS` line for any case vx
