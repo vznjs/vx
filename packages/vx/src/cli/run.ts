@@ -490,7 +490,10 @@ export async function resolveRunOptions(
   } else if (parsed.all) {
     projects = undefined
   } else {
-    const cwdProject = await findCwdSelection(cwd)
+    const cwdProject = await findCwdSelection(
+      cwd,
+      parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
+    )
     if (!cwdProject) {
       const nx = await nxTargetHint(tasks, cwd)
       if (nx !== null) return { error: nx }
