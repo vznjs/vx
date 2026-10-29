@@ -7,7 +7,7 @@
 import { readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { gitIn } from './helpers/workspace.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import {
   dry,
   makeParityWorkspace,
@@ -343,6 +343,127 @@ describe('Nx parity — cache control and failure handling', () => {
       const relapse = await summarized(root, ['lib#fail', '--force'])
       expect(relapse.tasks.get('lib#fail')?.['status']).toBe('failed')
       expect(relapse.text).toContain('flaky - passed 1× before')
+    },
+    TIMEOUT,
+  )
+})
+
+describe('Nx parity — path shapes, shared configs and outcomes Nx fixed', () => {
+  const made: string[] = []
+  afterAll(async () => {
+    for (const d of made) await rm(d, { recursive: true, force: true })
+  })
+  const workspace = async (prefix: string, projects: Record<string, ProjectFiles>) => {
+    const root = await makeWorkspace({ prefix })
+    made.push(root)
+    for (const [name, spec] of Object.entries(projects)) await addProject(root, name, spec)
+    return root
+  }
+  type ProjectFiles = { config: string; files?: Record<string, string> }
+
+  it(
+    'a workspace, a project, an input and an output whose paths hold spaces: saved, restored from the subdir, missed on an edit',
+    async () => {
+      const root = await workspace('vx parity w s-', {
+        'a b': {
+          config: `export default { tasks: { build: {
+            exec: { command: 'mkdir -p "out dir" && cat "src/my file.txt" > "out dir/r e.txt"' },
+            inputs: { files: ['src/my file.txt'] }, cache: { outputs: { files: ['out dir/**'] } },
+          } } }\n`,
+          files: { 'src/my file.txt': 'v1' },
+        },
+      })
+      const dir = path.join(root, 'packages', 'a b')
+      expect((await summarized(root, ['build', '--all'])).code).toBe(0)
+      await rm(path.join(dir, 'out dir'), { recursive: true })
+      expect((await vx(dir, ['run', 'build'])).code).toBe(0)
+      expect(await readFile(path.join(dir, 'out dir', 'r e.txt'), 'utf8')).toBe('v1')
+      expect((await summarized(root, ['build', '--all'])).tasks.get('a b#build')?.['status']).toBe(
+        'cache-hit',
+      )
+      await writeFile(path.join(dir, 'src', 'my file.txt'), 'v2')
+      expect((await summarized(root, ['build', '--all'])).tasks.get('a b#build')?.['status']).toBe(
+        'success',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'one task object two projects import runs in each project as its own, keyed apart',
+    async () => {
+      const shared = `export { default } from '../../shared.mjs'\n`
+      const root = await workspace('vx-parity-nx-shared-', {
+        a: { config: shared, files: { 'src/x.txt': 'a' } },
+        b: { config: shared, files: { 'src/x.txt': 'b' } },
+      })
+      await writeFile(
+        path.join(root, 'shared.mjs'),
+        `export default { tasks: { build: {
+          exec: { command: 'basename "$PWD" > who.txt' },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['who.txt'] } },
+        } } }\n`,
+      )
+      expect((await summarized(root, ['build', '--all'])).code).toBe(0)
+      const who = (p: string) => readFile(path.join(root, 'packages', p, 'who.txt'), 'utf8')
+      expect([await who('a'), await who('b')]).toEqual(['a\n', 'b\n'])
+      await writeFile(path.join(root, 'packages', 'b', 'src', 'x.txt'), 'b2')
+      const r = await summarized(root, ['build', '--all'])
+      expect([r.tasks.get('a#build')?.['status'], r.tasks.get('b#build')?.['status']]).toEqual([
+        'cache-hit',
+        'success',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a task named with a colon is its own task: run alone by name, keyed and recorded apart',
+    async () => {
+      const task = (word: string) =>
+        `{ exec: { command: 'echo ${word}' }, inputs: { files: [] }, cache: { outputs: { files: [] } } }`
+      const root = await workspace('vx-parity-nx-colon-', {
+        a: {
+          config: `export default { tasks: { build: ${task('dev')}, 'build:prod': ${task('prod')} } }\n`,
+        },
+      })
+      const alone = await summarized(root, ['a#build:prod'])
+      expect([alone.code, [...alone.tasks.keys()]]).toEqual([0, ['a#build:prod']])
+      const both = await summarized(root, ['a#build', 'a#build:prod'])
+      expect([
+        both.tasks.get('a#build')?.['status'],
+        both.tasks.get('a#build:prod')?.['status'],
+      ]).toEqual(['success', 'cache-hit'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a failed run under --no-cache leaves the cached success's output, and a task that prints nothing hits",
+    async () => {
+      const root = await workspace('vx-parity-nx-keep-log-', {
+        a: {
+          config: `export default { tasks: {
+            t: {
+              exec: { command: 'v=GOOD; c=0; if [ -f ../../red ]; then v=FAILED; c=1; fi; echo "$v-LOG"; exit $c' },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+            },
+            quiet: { exec: { command: 'true' }, inputs: { files: [] }, cache: { outputs: { files: [] } } },
+          } }\n`,
+          files: { 'src/x.txt': 'x' },
+        },
+      })
+      expect((await summarized(root, ['a#t', 'a#quiet'])).code).toBe(0)
+      await writeFile(path.join(root, 'red'), '')
+      expect((await summarized(root, ['a#t', '--no-cache'])).code).toBe(1)
+      await unlink(path.join(root, 'red'))
+      const r = await summarized(root, ['a#t', 'a#quiet'])
+      expect([r.code, r.tasks.get('a#t')?.['status'], r.tasks.get('a#quiet')?.['status']]).toEqual([
+        0,
+        'cache-hit',
+        'cache-hit',
+      ])
+      expect([r.text.includes('GOOD-LOG'), r.text.includes('FAILED-LOG')]).toEqual([true, false])
     },
     TIMEOUT,
   )

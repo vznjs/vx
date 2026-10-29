@@ -1,7 +1,7 @@
 // A run's warnings outlive its terminal: `vx last` shows the ones the
 // footer counted (`warn  2 warnings above`), so an agent that reads the
 // run afterwards sees what it was warned of, not only what failed. Kept
-// like the background steps, one file per run that had one.
+// like the background steps, as rows of cache.db's `warnings`.
 import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -57,6 +57,18 @@ it('vx last shows the warnings a run said, plain, in pretty and json', () => {
   const pretty = vx('last').out
   expect(pretty).toContain('\n  warnings\n')
   expect(pretty).toContain(`    ${json.warnings[0]!.split('\n')[0]}`)
+  // A table `vx last --sql` reads, and no file beside the index.
+  const sql = JSON.parse(
+    vx(
+      'last',
+      '--sql',
+      `SELECT w.text FROM warnings w JOIN invocations i USING (run_id) ORDER BY i.started_at DESC LIMIT 1`,
+      '--format',
+      'json',
+    ).out,
+  ) as { rows: { text: string }[] }
+  expect(sql.rows).toEqual([{ text: json.warnings[0]! }])
+  expect(existsSync(warningsDir())).toBe(false)
 })
 
 it('a later run without warnings does not inherit them', () => {

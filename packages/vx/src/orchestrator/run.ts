@@ -13,6 +13,7 @@ import {
   cachesNothing,
   formatCachePolicy,
   networkConcurrency,
+  keepRunNotes,
   stopRuntimeProbes,
   sweepStaging,
 } from '../cache/index.js'
@@ -95,7 +96,6 @@ import {
 } from './plugin-host.js'
 import { createSteps } from './steps.js'
 import { liveSocketOf, serveLive } from './run-live.js'
-import { writeRunSteps, writeRunWarnings } from './run-steps.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
 import { assembleRunSummary } from './telemetry.js'
@@ -1510,8 +1510,11 @@ async function runOnBus(
     // A cache directory this user cannot write keeps none of the run's
     // records: the run's one notice said so.
     const keeps = prepared.localCache.readOnlyNotice() === null
-    const recordFailures = (final: readonly TaskOutcome[]): void => {
-      if (keeps) writeRunFailures(prepared.cacheDir, runId, final, warnOf(log))
+    const recordFailures = (
+      final: readonly TaskOutcome[],
+      into: Cache = prepared.localCache,
+    ): void => {
+      if (keeps) writeRunFailures(into, runId, final, warnOf(log))
     }
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
@@ -1553,8 +1556,18 @@ async function runOnBus(
       await Promise.all([cache.drainUploads?.(), keeper?.settled()])
     })
     if (keeps) {
-      writeRunSteps(prepared.cacheDir, runId, steps.ended, warnOf(log))
-      writeRunWarnings(prepared.cacheDir, runId, warned, warnOf(log))
+      // Beside the run's rows (cache/run-notes.ts); a refused write costs only them.
+      try {
+        keepRunNotes(prepared.localCache.dbHandle(), runId, {
+          steps: steps.ended,
+          warnings: warned.map((w) => Bun.stripANSI(w)),
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        warnOf(log)(
+          `[vx] background steps and warnings not kept: ${message} — the verdict above stands`,
+        )
+      }
     }
     // An upload that failed after the rows went in: its row says so too.
     if (prepared.localCache.uploads.failed > 0 && stop.stoppedBy === undefined && !historyAfterWait)
@@ -1688,11 +1701,11 @@ async function runOnBus(
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
             local.recordRunBundle(recordsOf(final, ok && !crashed))
+            recordFailures(final, local)
           } finally {
             local.close()
           }
         })
-        recordFailures(final)
       }
       return { ok: ok && !crashed, outcomes: final }
     }

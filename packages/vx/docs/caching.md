@@ -1384,14 +1384,13 @@ root) and it holds everything, shared with no other workspace:
 │                                           existing dir that lacks one, so the cache is
 │                                           never committed and never enumerated as an
 │                                           input (a user's own file is left alone)
-├── cache.db                                SQLite metadata + run history, and the
-│                                           artifacts of at most 32 KiB compressed,
-│                                           the same bytes as a file below (v33)
+├── cache.db                                SQLite metadata + run history (its steps,
+│                                           warnings and failed output too), the
+│                                           lockfile memos, and the artifacts of at
+│                                           most 32 KiB compressed, the same bytes as
+│                                           a file below (v33)
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
-├── failures/<runId>.json                   a failed run's task output and the files it
-│                                           names (`vx last --format json`, runFailures);
-│                                           the newest 50 kept
 └── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
     ├── outputs/<rel>                       declared output files, project-relative (when any),
     │                                       each with its saved mode and mtime
@@ -1424,13 +1423,18 @@ entry: a restore drops it and runs the task, and an upload refuses it. A tree no
 is an orphan the sweep reaps; only the archive form is adopted back
 after a `SCHEMA_VERSION` reset, as a tree's stdout lives in its row.
 
-`failures/` sits outside `cache.db` so the index layout, and every
-shared store under it, stays as it was. Each file is
-`{ runId, tasks: [{ taskId, project, task, exitCode, timedOut?, output, locations }] }`,
-written at run end (temp file + rename) only when a task failed with
-output; `output` is plain text (ANSI stripped, secrets masked, the first
-8 KiB and last 56 KiB). A refused write (`EACCES`, `ENOSPC`) costs only
-that output, never the run's verdict.
+If a record can be in `cache.db`, it is (v50). Only the artifacts above
+and the files below stay files: the config bundle in
+`.vx/cache/compiled/` (Bun imports the bytecode from disk, and it is read
+before the workspace config names the cache dir), the no-remote workspace
+id `.vx/cache/workspace-id` (outlives a cleared or reset index), restore
+staging in `.vx/tmp/` (output bytes), and the probes a run writes and
+removes at once (`.vx-clock-<pid>`, the watch stamps). A failed run's
+task output is `failures` rows (one per task: `output` plain text, ANSI
+stripped, secrets masked, the first 8 KiB and last 56 KiB; `locations`
+and `sandbox_fix` JSON), written at run end only when a task failed with
+output or a moved input; the newest 50 failed runs are kept. A refused
+write (a full disk) costs only that output, never the run's verdict.
 
 `<hash>` is the 16-hex xxh3 key. The `workspace-outputs/` namespace is
 additive: tasks that don't declare `outputs.workspaceFiles` produce
@@ -1683,7 +1687,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v49', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v50', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1895,6 +1899,52 @@ CREATE TABLE invocations (
 CREATE INDEX invocations_started ON invocations(started_at);
 CREATE INDEX invocations_branch  ON invocations(branch);
 CREATE INDEX invocations_ci      ON invocations(ci);
+
+-- v50: what a run said that its runs rows do not hold, for `vx last`
+-- (cache/run-notes.ts); `vx last --sql` reads them as it reads runs. Rows
+-- of the newest 50 runs that had any, per table (run ids are UUIDv7, so
+-- they sort by age); a run with none writes none.
+CREATE TABLE steps (                -- vx's steps the run did not wait on (vx:prefetch)
+  run_id      TEXT NOT NULL,
+  seq         INTEGER NOT NULL,     -- the order they ended
+  step        TEXT NOT NULL,        -- 'vx:prefetch'
+  duration_ms INTEGER NOT NULL,
+  ok          INTEGER NOT NULL,
+  PRIMARY KEY (run_id, seq)
+);
+CREATE TABLE warnings (             -- what the run warned of, colour stripped
+  run_id TEXT NOT NULL,
+  seq    INTEGER NOT NULL,
+  text   TEXT NOT NULL,
+  PRIMARY KEY (run_id, seq)
+);
+CREATE TABLE failures (             -- a failed task's output (runFailures, vx last --log)
+  run_id      TEXT NOT NULL,
+  task_id     TEXT NOT NULL,        -- project#task
+  input_moved TEXT,                 -- the input that changed while it ran
+  output      TEXT NOT NULL,        -- plain, masked, first 8 KiB + last 56 KiB
+  locations   TEXT NOT NULL,        -- JSON [{ file, line?, col? }]
+  sandbox_fix TEXT,                 -- JSON: the allow entries its denials needed
+  PRIMARY KEY (run_id, task_id)
+);
+
+-- v50: a lockfile claimant's parse (orchestrator/lockfile-claim.ts), one
+-- row per lockfile and claimant (an xxh3 of its parsers' source, scope and
+-- part), read while version and lock match and replaced when they do not.
+-- Read and written on a connection of its own, as its readers (a discover
+-- hook, --affected's selection) run before a run opens the index; only an
+-- index of this schema that exists is read or written.
+CREATE TABLE lockfile_memos (
+  file      TEXT NOT NULL,          -- 'pnpm-lock.yaml'
+  claimant  TEXT NOT NULL,
+  version   INTEGER NOT NULL,       -- the claimant's digest version
+  lock      TEXT NOT NULL,          -- xxh3 of the lockfile's bytes
+  extras    TEXT NOT NULL,          -- JSON { file: content hash } of the files it names
+  importers TEXT NOT NULL,          -- JSON { importer: digest }
+  edges     TEXT NOT NULL,          -- JSON { importer: { deps, peers } }
+  recorded  TEXT,                   -- JSON { importer: [dependency name] }
+  PRIMARY KEY (file, claimant)
+);
 
 -- v22 (Tier 3): the input-fingerprint moat. One row per cache-key
 -- component, keyed by the cache-ENTRY hash it belongs to (NOT a run

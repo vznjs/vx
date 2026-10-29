@@ -254,6 +254,27 @@ describe('the hidden prompt', () => {
     expect(r.modes).toEqual([true, false])
   })
 
+  it('is asked only where stdin and stderr are both terminals', () => {
+    const sink = { write: () => true }
+    const input = (isTTY: boolean) => Object.assign(raw().input, { isTTY })
+    expect([
+      terminalOf(input(true), { ...sink, isTTY: true }).interactive(),
+      terminalOf(input(false), { ...sink, isTTY: true }).interactive(),
+      terminalOf(input(true), { ...sink, isTTY: false }).interactive(),
+    ]).toEqual([true, false, false])
+  })
+
+  it('a terminal that refuses raw mode is no terminal: no question, no crash', async () => {
+    const r = raw()
+    r.input.setRawMode = () => {
+      throw Object.assign(new Error('setRawMode EIO'), { code: 'EIO' })
+    }
+    const got = await reason(
+      broker(store().s, r.t).for('p').secret({ key: 'k', prompt: 'Token: ' }),
+    )
+    expect([got, r.out]).toEqual(['no-terminal', []])
+  })
+
   it('Ctrl-D answers nothing and interrupts nothing', async () => {
     const r = raw()
     const line = r.t.ask('Token: ')

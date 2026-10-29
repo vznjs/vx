@@ -6,9 +6,9 @@
 //
 // A run shows only the steps it waits on, before its first task or its end
 // (2026-10-16). One that runs beside the tasks (`vx:prefetch`) is a
-// `background` step: never shown, and kept for `vx last` (run-steps.ts).
+// `background` step: never shown, and kept for `vx last` (cache/run-notes.ts).
 import type { Logger } from '../report/index.js'
-import type { RunStep } from './run-steps.js'
+import type { RunStep } from '../cache/index.js'
 
 export interface Steps {
   /** Time `work` as step `id` when steps show; else run it as it is. */

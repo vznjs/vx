@@ -3,6 +3,7 @@
 // about paths no project owned, so an edit there selected the owner by
 // path and never the project the lockfile says reaches it: the key moved,
 // the run left it out.
+import { Database } from 'bun:sqlite'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -10,6 +11,7 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { type Logger } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { editMemo, readMemo } from './helpers/memo.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -117,16 +119,21 @@ it('with no memo yet (a fresh clone) the edit still selects the project reaching
   await hashes()
   commitAll(root)
   await writeFile(path.join(root, 'packages/other/vendor/index.js'), '// dep v2\n')
-  await rm(path.join(root, '.vx', 'cache', 'lockfile-claims'), { recursive: true })
+  const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+  db.run('DELETE FROM lockfile_memos')
+  db.close()
   expect(affectedIds(root, 'build')).toContain('lib#build')
 })
 
 it('the files --affected is told the lockfile names come from the memo once a run wrote it', async () => {
   await hashes()
-  const memo = path.join(root, '.vx', 'cache', 'lockfile-claims', 'pnpm-lock.yaml.json')
-  const kept = JSON.parse(await Bun.file(memo).text()) as { extras: Record<string, string> }
-  expect(Object.keys(kept.extras)).toEqual(['packages/other/vendor'])
-  await Bun.write(memo, JSON.stringify({ ...kept, extras: { 'from/the/memo': '' } }))
+  const cacheDir = path.join(root, '.vx', 'cache')
+  expect(Object.keys(readMemo(cacheDir, 'pnpm-lock.yaml').extras)).toEqual([
+    'packages/other/vendor',
+  ])
+  editMemo(cacheDir, 'pnpm-lock.yaml', (m) => {
+    m.extras = { 'from/the/memo': '' }
+  })
   const { pnpm } = await import('../src/index.js')
   const ctx = {
     workspaceRoot: root,

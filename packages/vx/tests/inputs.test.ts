@@ -1305,6 +1305,19 @@ describe('resolveInputs — runtime values', () => {
     expect(bytes.length).toBe(1) // ran exactly once despite two resolveInputs calls
   })
 
+  it('two concurrent asks for one runtime command join one spawn', async () => {
+    // The memo holds the promise before the spawn settles: two tasks keyed
+    // at once on one command must not each run it.
+    const runtimeCache = new Map<string, Promise<string>>()
+    const counter = path.join(root, 'count-concurrent')
+    const cmd = `sh -c 'printf x >> ${counter}; sleep 0.2; wc -c < ${counter}'`
+    await Promise.all([
+      resolveInputs({ ...args({ runtime: [cmd] }), runtimeCache }),
+      resolveInputs({ ...args({ runtime: [cmd] }), runtimeCache }),
+    ])
+    expect((await readFile(counter, 'utf8')).length).toBe(1)
+  })
+
   it('global dedup for workspaceRuntime: two projects, one spawn', async () => {
     const workspaceRuntimeCache = new Map<string, Promise<string>>()
     const counter = path.join(root, 'wscount')

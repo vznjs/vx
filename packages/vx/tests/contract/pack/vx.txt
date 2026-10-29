@@ -29,12 +29,14 @@ src/cache/key-fold.ts
 src/cache/layer.ts
 src/cache/layered-cache.ts
 src/cache/linked-inputs.ts
+src/cache/lockfile-memo.ts
 src/cache/output-index.ts
 src/cache/plugin-cache.ts
 src/cache/policy.ts
 src/cache/remote-hits.ts
 src/cache/remote-lane.ts
 src/cache/run-history.ts
+src/cache/run-notes.ts
 src/cache/run-store.ts
 src/cache/schema.ts
 src/cache/scoped-cache.ts
@@ -140,7 +142,6 @@ src/orchestrator/run-lock.ts
 src/orchestrator/run-records.ts
 src/orchestrator/run-report.ts
 src/orchestrator/run-settings.ts
-src/orchestrator/run-steps.ts
 src/orchestrator/run-stop.ts
 src/orchestrator/run.ts
 src/orchestrator/sandbox-fix.ts

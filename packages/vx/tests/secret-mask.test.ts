@@ -5,7 +5,6 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
-import { readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { run as runFromLock } from '../src/orchestrator/index.js'
@@ -349,10 +348,11 @@ describe('a value split by a pause is masked in every stored copy', () => {
 
   it('the failure record', async () => {
     const r = await runOnce(1)
-    const dir = path.join(root, '.vx', 'cache', 'failures')
-    const stored = (await Array.fromAsync(new Bun.Glob('*.json').scan({ cwd: dir })))
-      .map((f) => readFileSync(path.join(dir, f), 'utf8'))
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
+    const stored = (db.query('SELECT output FROM failures').all() as { output: string }[])
+      .map((r) => r.output)
       .join('\n')
+    db.close()
     expect({ ok: r.ok, leaked: stored.includes(SECRET), masked: stored.includes(MASKED) }).toEqual({
       ok: false,
       leaked: false,

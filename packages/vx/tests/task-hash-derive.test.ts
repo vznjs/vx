@@ -375,6 +375,15 @@ describe('computeTaskHash — upstream folding', () => {
     expect(after).not.toBe(before)
   })
 
+  it('SENSITIVITY: each of two sibling upstreams moves the key on its own', async () => {
+    // Two dependencies of one task: a change to either must reach it, not
+    // only the first or the last one folded.
+    const both = await key({ upstream: [outcome('l1#build', 'a1'), outcome('l2#build', 'b1')] })
+    const l1 = await key({ upstream: [outcome('l1#build', 'a2'), outcome('l2#build', 'b1')] })
+    const l2 = await key({ upstream: [outcome('l1#build', 'a1'), outcome('l2#build', 'b2')] })
+    expect(new Set([both, l1, l2]).size).toBe(3)
+  })
+
   it('STABILITY: upstream ORDER does not matter', async () => {
     // Scheduling is concurrent, so upstream outcomes arrive in whatever order
     // the workers finished. If order reached the key, the same graph would
@@ -697,6 +706,31 @@ describe('the key FRAMES its list sections — moving a pair across a boundary m
       },
     ],
   ]
+  it('every assignment of two env names keys apart: a name folds with its value, never merged', async () => {
+    // A key built from a map of rendered parts kept one part where two
+    // inputs rendered alike, and a hit replayed another environment's bytes.
+    const shapes: Array<Array<[string, string]>> = [
+      [],
+      [['A', '1']],
+      [['A', '2']],
+      [['B', '1']],
+      [['B', '2']],
+      [
+        ['A', '1'],
+        ['B', '2'],
+      ],
+      [
+        ['A', '2'],
+        ['B', '1'],
+      ],
+      [['A,B', '1']],
+    ]
+    const keys = await Promise.all(
+      shapes.map((envValues) => cache.key({ ...base, envValues } as never)),
+    )
+    expect(new Set(keys).size).toBe(shapes.length)
+  })
+
   for (const [what, left, right] of crossings) {
     it(`distinguishes ${what}`, async () => {
       const a = await cache.key({ ...base, ...left } as never)

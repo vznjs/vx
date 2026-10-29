@@ -1,7 +1,7 @@
 // A file the plugin reads that is there but cannot be read is never taken
 // for one that is absent: absent, it turns a check off or keys nothing,
 // and the run goes on from a guess. Only ENOENT means absent.
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -47,21 +47,6 @@ it('a settings file that is there but unreadable refuses the key, not folds as a
   await mkdir(path.join(root, '.npmrc'))
   const ctx = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn() {} }
   await expect(pnpm().key!({ projectDir: root } as TaskNode, ctx)).rejects.toThrow('.npmrc')
-})
-
-it('a recorded-names memo that cannot be written leaves no temp file behind', async () => {
-  // The write-then-rename failed every run (here: the memo path is a
-  // directory) and each run left one more `.tmp-<pid>-<ts>` in the cache.
-  await writeFile(
-    path.join(root, 'bun.lock'),
-    '{ "lockfileVersion": 1, "workspaces": { "": { "name": "r" } }, "packages": {} }\n',
-  )
-  await writeFile(path.join(root, 'package.json'), '{"name":"r"}')
-  const claims = path.join(root, '.vx', 'cache', 'lockfile-claims')
-  await mkdir(path.join(claims, 'bun.lock.recorded.json', 'x'), { recursive: true })
-  await discover(bun())
-  await discover(bun())
-  expect((await readdir(claims)).filter((f) => f.includes('.tmp-'))).toEqual([])
 })
 
 it('a package.json that is there but unreadable refuses the lock, not reads as no manifest', async () => {

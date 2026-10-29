@@ -11,7 +11,6 @@ import { expect, it } from 'bun:test'
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import { run } from './helpers/orchestrator.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
-import { runSteps } from '../src/orchestrator/index.js'
 import { formatStepLine } from '../src/report/status-line.js'
 
 const TASK = (project: string, task: string) => `
@@ -128,8 +127,11 @@ it(
       const cacheDir = path.join(fixture.root, '.vx/cache')
       const db = new Database(path.join(cacheDir, 'cache.db'), { readonly: true })
       const { run_id } = db.query('SELECT run_id FROM invocations').get() as { run_id: string }
+      const rows = db.query('SELECT run_id, seq, step, ok FROM steps').all()
       db.close()
-      expect(runSteps(cacheDir, run_id).map((s) => [s.id, s.ok])).toEqual([['vx:prefetch', true]])
+      // In cache.db, where `vx last --sql` reads it, and in no file.
+      expect(rows).toEqual([{ run_id, seq: 0, step: 'vx:prefetch', ok: 1 }])
+      expect(readdirSync(cacheDir)).not.toContain('steps')
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
     }
@@ -145,8 +147,14 @@ it(
       await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CACHED })
       const result = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(result.ok).toBe(true)
-      expect(await Bun.file(path.join(fixture.root, '.vx/cache/steps')).exists()).toBe(false)
-      expect(readdirSync(path.join(fixture.root, '.vx/cache'))).not.toContain('steps')
+      const db = new Database(path.join(fixture.root, '.vx/cache/cache.db'), { readonly: true })
+      const counts = db
+        .query(
+          'SELECT (SELECT COUNT(*) FROM invocations) AS runs, (SELECT COUNT(*) FROM steps) AS steps',
+        )
+        .get()
+      db.close()
+      expect(counts).toEqual({ runs: 1, steps: 0 })
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
     }
