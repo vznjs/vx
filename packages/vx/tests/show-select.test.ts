@@ -92,6 +92,16 @@ describe('vx show --filter / --affected', () => {
     ])
   })
 
+  // The warning named `vx run`, a verb nobody typed.
+  it('warns of a filter that matched nothing as vx show', () => {
+    const r = names('--filter', 'lib', '--filter', 'nosuch')
+    expect([r.code, r.names, r.err.split('\n')[0]]).toEqual([
+      0,
+      ['lib'],
+      '! vx show  filter "nosuch" matched no projects',
+    ])
+  })
+
   it('refuses them beside one project', () => {
     const r = names('lib', '--affected')
     expect([r.code, r.err]).toEqual([

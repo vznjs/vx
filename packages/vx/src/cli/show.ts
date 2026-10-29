@@ -164,7 +164,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       affected = f
       raw.unshift(f)
     }
-    const r = await resolveFilters(process.cwd(), raw, {}, affected)
+    const r = await resolveFilters(process.cwd(), raw, {}, affected, 'vx show')
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
     if ('empty' in r) sayNotice('info', 'vx show', r.empty)
     selected = new Set('empty' in r ? [] : r.names)

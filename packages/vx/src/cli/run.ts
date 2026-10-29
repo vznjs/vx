@@ -446,6 +446,7 @@ export async function resolveRunOptions(
           filterStrings,
           parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
           affectedFilter,
+          `vx ${verb}`,
         )
       : undefined
   if (resolved !== undefined && 'error' in resolved) return resolved
