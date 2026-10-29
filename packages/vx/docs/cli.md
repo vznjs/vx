@@ -506,7 +506,10 @@ They are appended to the command's last line (trailing blank lines are
 dropped first, so a multi-line command's closing newline does not run
 them as a command of their own), before a trailing `;` or `&` for the
 same reason (an escaped `\;`, as in `find … -exec … \;`, takes them
-after), or before a `#` comment still
+after), inside a compound command that ends the line, on its last
+command (`(cd web && vite)`, `{ …; }`, `if …; fi`, `for …; done`,
+`case … esac` get them where the shell still reads arguments), or
+before a `#` comment still
 open there (`echo args: # show` gets them; with comment-only lines
 below a commented line, before the earliest). A heredoc's body and
 terminator are not command lines: `cat <<X … X` gets them on the

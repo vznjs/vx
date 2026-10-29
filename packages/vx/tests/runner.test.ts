@@ -918,6 +918,28 @@ describe('withForwardArgs', () => {
     expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
   })
 
+  // Appended after a compound command's closer, the args were a syntax
+  // error: `(echo a) --fix` and `if …; fi --fix` ran nothing. They go to
+  // the last command inside it, as before a trailing `;`.
+  it.each([
+    ['a subshell', '(echo args:)', 'args: --fix a b\n'],
+    ['a subshell after a command', 'cd . && (echo args: )', 'args: --fix a b\n'],
+    ['a brace group', '{ echo args:; }', 'args: --fix a b\n'],
+    ['an if', 'if true; then echo args:; fi', 'args: --fix a b\n'],
+    ['an if over lines', 'if true\nthen echo args:\nfi\n', 'args: --fix a b\n'],
+    ['a for loop', 'for x in args:; do echo $x; done', 'args: --fix a b\n'],
+    ['a case', 'case a in a) echo args:;; esac', 'args: --fix a b\n'],
+    ['a case over lines', 'case a in\na) echo args:\nesac', 'args: --fix a b\n'],
+    ['control: a command substitution', 'echo $(echo args:)', 'args: --fix a b\n'],
+    ['control: an arithmetic expansion', 'echo $((1+1))', '2 --fix a b\n'],
+    ['control: a closer word as an argument', 'echo done', 'done --fix a b\n'],
+    ['control: a parameter expansion', 'x=args:; echo ${x}', 'args: --fix a b\n'],
+    ['control: a quoted paren', "echo '(a)'", '(a) --fix a b\n'],
+    ['control: an escaped paren', 'echo \\(a\\)', '(a) --fix a b\n'],
+  ])('%s', (_name, command, printed) => {
+    expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
+  })
+
   it('leaves the command alone with no args', () => {
     expect(withForwardArgs('echo hi # c', [])).toBe('echo hi # c')
     expect(withForwardArgs('echo hi # c', undefined)).toBe('echo hi # c')
