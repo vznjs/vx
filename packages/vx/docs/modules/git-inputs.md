@@ -215,7 +215,8 @@ directory (the workspace root, `new Cache(dir, policy, workspaceRoot)`),
 so a cold run learns them ONCE whichever asks first — the
 enumeration on an unscoped run, the config load on a scoped one
 (`tests/git-spawns-once.test.ts` holds both as exact lists). A plain
-repository answers off the disk with no spawn at all (~3 ms a run;
+repository (no `core.worktree` moving its work tree) answers off the
+disk with no spawn at all (~3 ms a run;
 `tests/repo-facts-disk.test.ts` holds it to git's answer). The config
 read stays a spawn of its own: `rev-parse` prints no config value.
 `lazyGitEnumeration` holds a run's whole-tree enumeration: an unscoped
