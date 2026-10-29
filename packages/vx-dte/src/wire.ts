@@ -1,5 +1,7 @@
 // A participant of the relay protocol (@vzn/vx-dte-server's PROTOCOL.md).
 
+import { ui } from '@vzn/vx'
+
 export interface RelayMessage {
   readonly from: string
   readonly body: unknown
@@ -979,7 +981,7 @@ async function connect(
       const failed = [m, ...(m.results ?? [])].filter(
         (a): a is Answer => a?.status !== undefined && a.status !== 404,
       )
-      for (const a of failed) process.stderr.write(`[vx] dte: ${refused(a).message}\n`)
+      for (const a of failed) ui.say('warn', `[vx] dte: ${refused(a).message}`)
       return
     }
     const p = pending.get(m.n)

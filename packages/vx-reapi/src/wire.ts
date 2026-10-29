@@ -15,6 +15,7 @@ import {
   strField,
   type DigestFunctionName,
 } from './merkle.js'
+import { ui } from '@vzn/vx'
 
 /**
  * Default bytes per ByteStream message.
@@ -522,7 +523,7 @@ export class ReapiClient {
     // not silently lengthen every metadata probe too.
     this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
     // No listener is no reason to say nothing.
-    this.onWarn = opts.onWarn ?? ((m) => void process.stderr.write(`[vx] ${m}\n`))
+    this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', `[vx] ${m}`))
     // A zero, negative or non-number deadline ended every call as it began.
     for (const [name, ms] of [
       ['callTimeoutMs', this.callTimeoutMs],

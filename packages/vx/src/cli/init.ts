@@ -22,7 +22,16 @@ import {
   type ManagedInstall,
 } from './upgrade.js'
 import { VERSION } from '../version.js'
-import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError, sayNotice } from '../util/index.js'
+import {
+  detectColors,
+  DOT_VX_GITATTRIBUTES,
+  DOT_VX_GITIGNORE,
+  paint,
+  SUCCESS,
+  ui,
+  UserError,
+  sayNotice,
+} from '../util/index.js'
 import {
   findWorkspaceRoot,
   PROJECT_CONFIG_FILENAMES,
@@ -305,10 +314,13 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
   const workspaceFile =
     WORKSPACE_CONFIG_FILENAMES.find((n) => existsSync(path.join(root, n))) ?? '.vx/workspace.ts'
+  const c = detectColors(process.stdout)
+  const dim = (t: string): string => paint('', t, c, { dim: true })
+  const bold = (t: string): string => paint('', t, c, { bold: true })
   process.stdout.write(
-    `${args.dry ? 'would write' : 'wrote'} ${files.map(([rel]) => rel).join(' and ')}\n` +
-      `Declare it in ${workspaceFile}: import { ${factory} } from '../plugins/${seam}.ts', then plugins: [${factory}(…)]\n` +
-      `Test it: bun test plugins/${seam}.test.ts (needs @vzn/vx installed)\n`,
+    `${paint(SUCCESS, args.dry ? 'would write' : 'wrote', c, { bold: true })} ${files.map(([rel]) => bold(rel)).join(' and ')}\n` +
+      `${dim('Declare it in')} ${workspaceFile}${dim(':')} ${bold(`import { ${factory} } from '../plugins/${seam}.ts'`)}${dim(', then')} ${bold(`plugins: [${factory}(…)]`)}\n` +
+      `${dim('Test it:')} ${bold(`bun test plugins/${seam}.test.ts`)} ${dim('(needs @vzn/vx installed)')}\n`,
   )
   return 0
 }
@@ -425,7 +437,7 @@ async function starter(
   if (kept.length > 0) rows.push(['kept', ...kept])
   if (replaced.length > 0) rows.push(['replaced', ...replaced])
   if (args.dry) {
-    for (const f of files) process.stdout.write(`── ${f.path} ──\n${f.contents}\n`)
+    for (const f of files) ui.print('out', ui.excerpt(f.path, f.contents))
     ui.print('out', ui.report(`vx init ${VERSION}`, [...rows, null, ['next', next]]))
     return 0
   }

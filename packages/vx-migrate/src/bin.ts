@@ -10,6 +10,7 @@
 // 2026-10-16).
 
 import path from 'node:path'
+import * as core from '@vzn/vx'
 import { isUserError, UserError, VERSION } from '@vzn/vx'
 import { ownVersion } from './adopt.js'
 
@@ -26,8 +27,27 @@ try {
   const { migrateCmd } = await import('./migrate.js')
   process.exitCode = await migrateCmd(process.argv.slice(2))
 } catch (err) {
+  // Asked for JSON (`vx init --dry --format json` hands a Turbo or Nx repo
+  // here), a refusal is core's error document on stdout too
+  // (schemas/error.json): stdout was empty.
+  const args = process.argv.slice(2)
+  if (args.some((a, i) => a === '--format=json' || (a === '--format' && args[i + 1] === 'json'))) {
+    const message = err instanceof Error ? err.message : String(err)
+    const own = isUserError(err) ? (err as { code?: unknown }).code : 'VX_E_INTERNAL'
+    const code = typeof own === 'string' ? own : 'VX_E_REFUSED'
+    const docs = code.startsWith('VX_E_')
+      ? { docs: `https://vznjs.github.io/vx/cli/#${code.toLowerCase()}` }
+      : {}
+    process.stdout.write(
+      `${JSON.stringify({ ok: false, error: { code, message: `vx-migrate: ${message}`, ...docs } })}\n`,
+    )
+  }
   if (isUserError(err)) {
-    process.stderr.write(`vx-migrate: ${err.message}\n`)
+    // `ui` by namespace: a core older than it has none, and its refusal
+    // still reaches the reader.
+    const ui = (core as Partial<typeof core>).ui
+    if (ui === undefined) process.stderr.write(`vx-migrate: ${err.message}\n`)
+    else ui.say('error', `vx-migrate: ${err.message}`)
     process.exitCode = 1
   } else {
     throw err

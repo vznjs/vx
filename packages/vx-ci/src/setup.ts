@@ -8,7 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { UserError } from '@vzn/vx'
+import { ui, UserError } from '@vzn/vx'
 
 const PACKAGES = ['bubblewrap', 'socat', 'strace', 'ripgrep']
 const BINARIES = ['bwrap', 'socat', 'strace', 'rg']
@@ -45,7 +45,7 @@ const userns = (): boolean => {
 }
 
 export async function setup(o: SetupOptions): Promise<number> {
-  const print = o.print ?? ((l: string) => process.stdout.write(`${l}\n`))
+  const print = o.print ?? ((l: string) => ui.say('info', l, 'out'))
   const platform = o.platform ?? process.platform
   if (platform === 'darwin') {
     print('vx setup: macOS has its sandbox built in; nothing to set up')
@@ -185,12 +185,12 @@ export async function runSetup(
   const usage = `Usage: vx setup ${ci} [--debs <dir>]`
   // Asked for, the usage is an answer: `vx setup --help` exited 1 (2026-10-26).
   if (argv.includes('--help') || argv.includes('-h')) {
-    process.stdout.write(`${usage}\n`)
+    ui.say('info', usage, 'out')
     return 0
   }
   // The bare usage said nothing of what was wrong with the line typed.
   const wrong = (what: string): never => {
-    throw new UserError(`${what}\n${usage}`)
+    throw new UserError(`${what}\n${usage}`, 'VX_E_USAGE')
   }
   if (argv[0] === undefined) wrong(`missing the CI: vx setup ${ci}`)
   if (argv[0] !== ci) wrong(`unknown CI: ${argv[0]} (this workspace sets up ${ci})`)

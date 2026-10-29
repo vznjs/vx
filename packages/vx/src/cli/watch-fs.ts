@@ -4,6 +4,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { ui } from '../util/index.js'
 
 /** Directories whose changes never trigger a re-run, wherever they appear. */
 export const IGNORED_SEGMENTS = ['node_modules', '.git']
@@ -323,7 +324,8 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
       if (rel === '' || (limit && !armed)) throw err
       if (limit && !warned) {
         warned = true
-        process.stderr.write(
+        ui.say(
+          'warn',
           `vx watch: ${abs}: the OS watch limit is reached (${code}); directories made from here on are not watched — raise it (Linux: sysctl fs.inotify.max_user_watches)\n`,
         )
       }
@@ -433,8 +435,7 @@ export class WatcherPool {
     private readonly skip: (dir: string, rel: string) => boolean,
     private readonly forcePoll = false,
   ) {
-    if (forcePoll)
-      process.stderr.write(`vx watch: polling every ${POLL_INTERVAL_MS} ms (watch.poll)\n`)
+    if (forcePoll) ui.say('info', `vx watch: polling every ${POLL_INTERVAL_MS} ms (watch.poll)\n`)
   }
 
   private poll(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle {
@@ -466,7 +467,8 @@ export class WatcherPool {
       const code = (err as NodeJS.ErrnoException).code
       if (code !== 'ENOSPC' && code !== 'EMFILE') throw err
       watchers.push(this.poll(dir, recursive, onEvent))
-      process.stderr.write(
+      ui.say(
+        'warn',
         `vx watch: ${dir}: the OS watch limit is reached (${code}); polling every ${POLL_INTERVAL_MS} ms instead — raise it (Linux: sysctl fs.inotify.max_user_watches) to watch natively\n`,
       )
       return handle
@@ -482,7 +484,8 @@ export class WatcherPool {
         // stream the OS refused, a filesystem that reports nothing. Swap in
         // the poller rather than run a loop that silently never fires.
         watchers[at] = this.poll(dir, recursive, onEvent)
-        process.stderr.write(
+        ui.say(
+          'warn',
           `vx watch: ${dir}: no OS watch events within ${WATCH_PROBE_TIMEOUT_MS} ms; polling every ${POLL_INTERVAL_MS} ms instead\n`,
         )
       }),

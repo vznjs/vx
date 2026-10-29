@@ -20,7 +20,7 @@ import { constants, existsSync, readFileSync } from 'node:fs'
 import { createPublicKey, verify } from 'node:crypto'
 import { access, chmod, chown, link, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { flagHint, seeHelp } from './help.js'
+import { flagHint, refuse, seeHelp } from './help.js'
 import { resolveRegistry, type Registry } from './registry.js'
 import { UserError, sayNotice, ui } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
@@ -788,6 +788,8 @@ interface UpgradeArgs {
   global: boolean
   tag?: string
   error?: string
+  /** The error names an unknown flag: `--format json` reads it as JSON. */
+  flag?: true
 }
 
 export function parseUpgradeArgs(argv: readonly string[]): UpgradeArgs {
@@ -797,6 +799,7 @@ export function parseUpgradeArgs(argv: readonly string[]): UpgradeArgs {
   if (unknown !== undefined) {
     return {
       global,
+      flag: true,
       error: `unknown flag: ${unknown}${flagHint('upgrade', unknown)}${seeHelp('upgrade')}`,
     }
   }
@@ -810,7 +813,8 @@ export function parseUpgradeArgs(argv: readonly string[]): UpgradeArgs {
 }
 
 export async function upgradeCmd(argv: readonly string[]): Promise<number> {
-  const { global, tag, error } = parseUpgradeArgs(argv)
+  const { global, tag, error, flag } = parseUpgradeArgs(argv)
+  if (error !== undefined && flag === true) return refuse('upgrade', argv, error, 'VX_E_USAGE')
   if (error !== undefined) {
     sayNotice('error', 'vx upgrade', error)
     return 1

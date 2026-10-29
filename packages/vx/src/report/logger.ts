@@ -44,6 +44,7 @@ import {
   detectColors,
   envFlagOn,
   type ColorSupport,
+  ui,
 } from '../util/index.js'
 import { isCacheHit } from '../graph/index.js'
 import { failedLabel, outcomeWord, ranNoCache } from './events.js'
@@ -748,7 +749,7 @@ export function defaultLogger(
         writer.write('\n')
         streamMidLine = false
       }
-      writer.writeTo(errOut, `${line}\n`)
+      writer.writeTo(errOut, `${ui.tagged('warn', line, colors)}\n`)
     },
     runStart(info) {
       total = info.total

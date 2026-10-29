@@ -314,6 +314,8 @@ export function defineWorkspace<T extends WorkspaceConfig>(
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T
+== function excerpt (src/util/ui.ts)
+export function excerpt(title: string, body: string): Block
 == function executorFallback (src/exec/executor.ts)
 export function executorFallback(reason: string): Error
 == function exitSignal (src/exec/runner.ts)
@@ -435,6 +437,8 @@ export async function sandboxRequestFor(
   nested: readonly string[] = [],
   cacheDir?: string,
 ): Promise<SandboxRequest>
+== function say (src/util/ui.ts)
+export function say(t: Tone, line: string, stream: 'out' | 'err' = 'err'): void
 == function secretNamed (src/util/secret-mask.ts)
 export function secretNamed(name: string): boolean
 == function splitTaskId (src/util/task-id.ts)
@@ -445,6 +449,8 @@ export function status(t: Tone, verb: string, headline: Inline): Block
 export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
 == function table (src/util/ui.ts)
 export function table(columns: readonly string[], rows: readonly (readonly Inline[])[]): Block
+== function tagged (src/util/ui.ts)
+export function tagged(t: Tone, line: string, c: ColorSupport): string
 == function taskDefinitions (src/graph/definition.ts)
 export function taskDefinitions(nodes: Iterable<TaskNode>): Map<string, string>
 == function taskNameProblem (src/workspace/config-schema.ts)
@@ -1158,8 +1164,10 @@ export interface NoticeParts {
   tone: Tone
   verb: string
   headline: Inline
+  /** What is wrong, one fact a line. */
   what?: readonly Inline[]
   why?: Inline
+  /** A source frame, below the facts. */
   code?: string
   fix?: Inline
 }

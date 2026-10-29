@@ -70,6 +70,7 @@ import {
   isTmpdirRefusal,
   procfsIsOwn,
   TMPDIR_HINT,
+  ui,
   UserError,
   xxh3hex,
 } from '../util/index.js'
@@ -1614,7 +1615,8 @@ function seatbeltSpells(grant: string, kind: 'read' | 'write', name: boolean): b
   const at = name ? m.index : m.index + m[0].length - 2
   if (!warnedUnspellable.has(`${kind} ${grant}`)) {
     warnedUnspellable.add(`${kind} ${grant}`)
-    process.stderr.write(
+    ui.say(
+      'warn',
       `[vx] sandbox: the ${kind} grant ${grant} names a literal ${grant[at + (name ? 0 : 1)]}, ` +
         `which the macOS sandbox reads as a pattern and cannot spell as a name, so it is not ` +
         `granted. Rename it, or grant the directory above it: ` +
@@ -2883,7 +2885,8 @@ function writeGrantMatchedNothing(grant: string, within: string): void {
   // As a committed config spells them (B-97): the absolute path held only
   // on the machine that printed it, as in `outsideWritesHint`.
   const dir = grantSpelled(grantPrefix(grant), within)
-  process.stderr.write(
+  ui.say(
+    'warn',
     `[vx] sandbox: the write grant ${jsString(grantSpelled(grant, within))} matches nothing ` +
       `yet, and a read grant mounts its directory read-only, so a file the task creates under ` +
       `it will fail with "Read-only file system". A bind mount covers what exists when the ` +
@@ -3005,7 +3008,8 @@ let warnedNoTrace = false
 function warnUntraced(why: string): void {
   if (warnedNoTrace) return
   warnedNoTrace = true
-  process.stderr.write(
+  ui.say(
+    'warn',
     `[vx] sandbox: ${why}, so sandboxed tasks run without the report of the reads the sandbox denied; ` +
       `the sandbox still enforces\n`,
   )

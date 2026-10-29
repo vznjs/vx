@@ -2443,11 +2443,12 @@ history is this checkout's own.
 
 #### `VX_E_CONFIG`
 
-A `vx.config.*` or `.vx/workspace.*` that does not load or is refused. The
-message names the file and the field; fix that field
-(`vx docs <field>` prints its reference). `vx info --format json` lists
-every config error at once. A project config's refusal is `vx lock`'s,
-not a run's: a run never evaluates one.
+A `vx.config.*` or `.vx/workspace.*` that does not load, throws or is
+refused. The message names the file and the field; fix that field
+(`vx docs <field>` prints its reference); a throw's stack on stderr
+names its line. `vx lock` names every project config that does not
+load at once. A project config's refusal is `vx lock`'s, not a run's: a
+run never evaluates one.
 
 #### `VX_E_CYCLE`
 

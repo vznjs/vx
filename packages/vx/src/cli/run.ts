@@ -20,7 +20,14 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { envFlagOn, hasControl, parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
+import {
+  detectColors,
+  envFlagOn,
+  hasControl,
+  parseDecimalInt,
+  sayNotice,
+  sayLine,
+} from '../util/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
 import { formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -682,7 +689,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     if (parsed.dry === 'json') {
       process.stdout.write(formatPlanJson(plan, scopeOut.affectedBase))
     } else {
-      process.stdout.write(formatPlanText(plan))
+      process.stdout.write(formatPlanText(plan, detectColors(process.stdout)))
     }
     return 0
   }

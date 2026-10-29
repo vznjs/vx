@@ -351,13 +351,13 @@ describe('Plugin API', () => {
   })
 
   it('without a warn callback the disable still reaches the operator', async () => {
-    // The default is console.error on purpose: `installPlugins` is called
+    // The default is stderr on purpose: `installPlugins` is called
     // outside a run too, and a plugin that silently stops observing is
     // indistinguishable from one nobody configured.
     const bus = createEventBus()
     const printed: string[] = []
-    const real = console.error
-    console.error = (...args: unknown[]) => printed.push(args.map(String).join(' '))
+    const real = process.stderr.write
+    process.stderr.write = ((chunk: string) => printed.push(String(chunk)) > 0) as typeof real
     try {
       await installPlugins({
         plugins: [
@@ -377,7 +377,7 @@ describe('Plugin API', () => {
       })
       bus.emit({ kind: 'run:end' })
     } finally {
-      console.error = real
+      process.stderr.write = real
     }
     expect(printed).toHaveLength(1)
     expect(printed[0]).toContain("plugin 'org/quiet' threw in onRunEnd")

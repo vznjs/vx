@@ -38,6 +38,7 @@ import {
   relPosix,
   UserError,
   sayNotice,
+  ui,
 } from '../util/index.js'
 import {
   claimedAffected,
@@ -122,7 +123,7 @@ async function workspaceFingerprintClaims(
   const ctx = {
     workspaceRoot: root,
     cacheDir: stageCacheDir(ws, load),
-    warn: (m: string) => process.stderr.write(`${maskedLine(m)}\n`),
+    warn: (m: string) => ui.say('warn', maskedLine(m)),
     projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
   }
   return {
