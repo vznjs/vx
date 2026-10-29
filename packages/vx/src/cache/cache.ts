@@ -117,8 +117,8 @@ import { FileHashStore } from './file-hashes.js'
 import { DIR_MODE, LINK_MODE, OutputIndex } from './output-index.js'
 import { RunHistory } from './run-history.js'
 import { CACHE_VERSION, foldKey } from './key-fold.js'
-import { FoldMemo } from './fold-memo.js'
-import { RemoteHits } from './remote-hits.js'
+import { type FoldMemo, IndexFoldMemo } from './fold-memo.js'
+import { IndexRemoteHits, type RemoteHits } from './remote-hits.js'
 import { behindLink } from './linked-inputs.js'
 
 /**
@@ -946,7 +946,7 @@ export class Cache implements CacheLayer {
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
   private readonly outputs: OutputIndex
-  private readonly folds: FoldMemo
+  private readonly folds: IndexFoldMemo
   private readonly history: RunHistory
   /** What the remotes said they hold, across runs (remote-hits.ts). */
   readonly remoteHits: RemoteHits
@@ -1334,9 +1334,9 @@ export class Cache implements CacheLayer {
     // the schema above is the one place every table is declared.
     this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
     this.outputs = new OutputIndex(this.db, this.writeBlocked === null && !this.inspecting)
-    this.folds = new FoldMemo(this.db, this.write && !this.inspecting)
+    this.folds = new IndexFoldMemo(this.db, this.write && !this.inspecting)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))
-    this.remoteHits = new RemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
+    this.remoteHits = new IndexRemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
 
     // A CACHE_VERSION bump keeps the index but moves every key, so the run
     // after an upgrade misses everything. Roadmap 3.3: that is announced,
@@ -3208,17 +3208,6 @@ export class Cache implements CacheLayer {
     this.db.prepare(`UPDATE entries SET accessed_at = ? WHERE hash ${test}`).run(now, ...params)
   }
 
-  /**
-   * Raw `bun:sqlite` Database handle. Exposed for subsystems that
-   * need to issue their own queries (LocalHistoryProvider's CTE,
-   * future analytics consumers) without us proxying every method.
-   * Callers must NOT close the handle directly — `Cache.close()` owns
-   * the lifetime.
-   */
-  dbHandle(): Database {
-    return this.db
-  }
-
   // --- run history: delegated to `RunHistory` (see run-history.ts) ---
   // A run over a directory it cannot write records no history:
   // `readOnlyNotice` said so once.
@@ -3563,6 +3552,16 @@ export class Cache implements CacheLayer {
 
 /** SQLite's file-control opcode (sqlite3.h). */
 export const SQLITE_FCNTL_PERSIST_WAL = 10
+
+/**
+ * The cache's `bun:sqlite` handle, for core's own readers (`vx last`, `vx
+ * why`, the history provider). A function, not a member: the façade hands
+ * `Cache` to plugins and no plugin touches cache.db (2026-10-29). Callers
+ * never close it — `Cache.close()` owns the lifetime.
+ */
+export function indexDb(cache: Cache): Database {
+  return cache['db']
+}
 
 /**
  * Close for real. A plain `close()` leaves the connection open while any

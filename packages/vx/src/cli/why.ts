@@ -5,7 +5,7 @@
 // moved input file, no re-hash. Configs are evaluated only when a moved
 // upstream is a group: it records no run, so the graph names what it gathers.
 
-import { Cache } from '../cache/index.js'
+import { indexDb, Cache } from '../cache/index.js'
 import { anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
 import { buildTaskGraph, isGroupTask, splitTaskId } from '../graph/index.js'
 import {
@@ -166,7 +166,7 @@ async function resolveTarget(
   target: string,
   cwdProject: () => Promise<string | null>,
 ): Promise<string> {
-  const db = cache.dbHandle()
+  const db = indexDb(cache)
   if (target.includes('#')) {
     // An exact id needs one row, and its newest is where a scan from the
     // top of the table finds it first — the full DISTINCT walk below is for
@@ -263,7 +263,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   const root = await findWorkspaceRoot(process.cwd())
   const cache = Cache.inspect(await cliCacheDir(root, parsed.cacheDir))
   try {
-    const db = cache.dbHandle()
+    const db = indexDb(cache)
     const taskId = await resolveTarget(cache, await rootSpelled(root, parsed.target), () =>
       findCwdProject(process.cwd()),
     )

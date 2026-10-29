@@ -9,7 +9,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/cache.js'
 import { LayeredCache, type RemoteCacheLayer } from '../src/cache/layered-cache.js'
-import { networkConcurrency, type InvocationRecord } from '../src/cache/index.js'
+import { indexDb, networkConcurrency, type InvocationRecord } from '../src/cache/index.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 import { layeredOver } from './helpers/layered.js'
 import { TAR_STORE } from './helpers/tar-store.js'
@@ -1070,8 +1070,8 @@ describe('LayeredCache', () => {
       // An entry is immutable, so only a writer that checked before the
       // first save landed (another process) re-saves the key: its row is
       // dropped here to stand for that race.
-      local.dbHandle().run('DELETE FROM entries WHERE hash = ?', ['h-resave'])
-      local.dbHandle().run('DELETE FROM artifacts WHERE hash = ?', ['h-resave'])
+      indexDb(local).run('DELETE FROM entries WHERE hash = ?', ['h-resave'])
+      indexDb(local).run('DELETE FROM artifacts WHERE hash = ?', ['h-resave'])
       await save(local, 'second, longer than the first')
       expect(Buffer.from(storedArtifact(local, 'h-resave')!)).not.toEqual(firstBytes)
       resume()

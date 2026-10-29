@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 let root: string
@@ -47,7 +47,7 @@ async function holdsNothingAfter(
 ): Promise<boolean> {
   const writer = new Cache(cacheDir)
   if (body !== null) await save(writer, 'a'.repeat(16), body)
-  if (dropRow) writer.dbHandle().query('DELETE FROM entries').run()
+  if (dropRow) indexDb(writer).query('DELETE FROM entries').run()
   writer.close()
   const cache = new Cache(cacheDir)
   try {

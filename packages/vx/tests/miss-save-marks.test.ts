@@ -7,7 +7,7 @@
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
+import { indexDb, Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -28,8 +28,7 @@ afterEach(async () => {
 function keyedFiles(task: string): string[] {
   const c = new Cache(path.join(root, '.vx/cache'))
   try {
-    const rows = c
-      .dbHandle()
+    const rows = indexDb(c)
       .query(
         "SELECT j.value->>1 AS name FROM entry_inputs i JOIN entries e ON e.hash = i.entry_hash, json_each(i.components) j WHERE e.project = ? AND j.value->>0 = 'file'",
       )
@@ -148,10 +147,7 @@ it(
     expect((await run({ cwd: root, tasks: ['tail'], log: silent })).ok).toBe(true)
     const c = new Cache(path.join(root, '.vx/cache'))
     try {
-      const { hash } = c
-        .dbHandle()
-        .query("SELECT hash FROM entries WHERE task = 'build'")
-        .get() as {
+      const { hash } = indexDb(c).query("SELECT hash FROM entries WHERE task = 'build'").get() as {
         hash: string
       }
       expect((c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)).toEqual(['dist'])

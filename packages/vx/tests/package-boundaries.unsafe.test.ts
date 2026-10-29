@@ -120,7 +120,6 @@ describe('package boundaries', () => {
       'Cache',
       'LOG_WIRE_VERSION',
       // LayeredCache left (0.0.637): core builds every layer; a plugin returns the remote.
-      'LocalHistoryProvider',
       'PERSISTENT_TODO',
       // Widened 2026-10-23: `@vzn/vx-dte` checks a worker size's platform
       // and defaults it to the host (exec.platforms).
@@ -162,6 +161,8 @@ describe('package boundaries', () => {
       'loadResolvedProjects',
       // Widened 2026-10-21: `@vzn/vx-dte` runs tasks itself, sandbox included.
       'localFloor',
+      // 2026-10-29: run history reaches a plugin as rows, never as a handle on cache.db.
+      'localHistory',
       'lockfileClaim',
       'machineMemoryBytes',
       'machineParallelism',

@@ -71,6 +71,16 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
 
 // history.ts again:
 export const PASS_STATUSES: string // the pass set as SQL `(…)`, derived from `isPassStatus`
+// What a plugin reads history through (the façade's only door to it): the
+// provider below over `cache`'s index, typed so no handle leaves core.
+export function localHistory(cache: Cache, options?: LocalHistoryOptions): LocalHistory
+export interface LocalHistoryOptions {
+  recent?: number // the window; default 50 invocations
+  branch?: string | null // undefined: a forecast reads every branch
+  defs?: ReadonlyMap<string, string> // `taskDefinitions`: rows of each task as it is now
+}
+// LocalHistory: HistoryProvider + resourcesFor, hasImported, importTimings.
+// Core's own readers (`vx last`, `--dry`) build the provider on the handle.
 export class LocalHistoryProvider implements HistoryProvider {
   // without branch a forecast reads every branch
   constructor(db: Database, recent?: number, branch?: string | null) // the window; defaults to 50 invocations
@@ -165,7 +175,7 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
 ## Invariants
 
 - Zero cost on a plain run: no history query is issued.
-- `LocalHistoryProvider(db, window)` never mutates; `EmptyHistoryProvider`
+- `LocalHistoryProvider(db, window)` (and `localHistory`) reads only; `importTimings` is its one write; `EmptyHistoryProvider`
   is the no-history stand-in.
 - The flakiness / failure-mode verdict is `failureModeOf` over
   `mixedOutcomeKeysSql` (`failure-mode.ts`) — one rule, applied here over

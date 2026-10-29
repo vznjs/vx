@@ -2,6 +2,7 @@
 // the `cache-hit-perf` PR. Each test targets one specific behavior
 // rather than asserting wall-clock time (which is too flaky for CI).
 
+import { indexDb } from '../src/cache/index.js'
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile, utimes, stat, rename } from 'node:fs/promises'
 import os from 'node:os'
@@ -128,7 +129,7 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     const f = path.join(dir, 'young.txt')
     const rows = () =>
       (
-        cache.dbHandle().query('SELECT COUNT(*) AS n FROM file_hashes WHERE path = ?').get(f) as {
+        indexDb(cache).query('SELECT COUNT(*) AS n FROM file_hashes WHERE path = ?').get(f) as {
           n: number
         }
       ).n
@@ -141,7 +142,7 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
         inWindow = true
         expect(rows()).toBe(0) // fresh: hashed, not memoised
       }
-      cache.dbHandle().query('DELETE FROM file_hashes WHERE path = ?').run(f)
+      indexDb(cache).query('DELETE FROM file_hashes WHERE path = ?').run(f)
     }
     expect(inWindow).toBe(true) // the box managed one write+hash inside the window
     const first = await cache.hashFile(f)
