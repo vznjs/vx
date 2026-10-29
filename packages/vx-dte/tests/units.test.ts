@@ -55,6 +55,17 @@ const tmp = async (): Promise<string> => {
   return d
 }
 
+/** A tmp dir that is a git checkout, as a worker's root is: a save is
+ *  withheld where git cannot diff the task's project. */
+const checkout = async (): Promise<string> => {
+  const d = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: d })
+  git('init', '-q')
+  git('commit', '-q', '--allow-empty', '-m', 'i')
+  return d
+}
+
 it('a worker clears the files a task’s outputs match, links included, before it runs it', async () => {
   const from = await tmp()
   await mkdir(path.join(from, 'p/out/deep'), { recursive: true })
@@ -2305,7 +2316,7 @@ it('a worker uploads a key the run found missing, and its run key, asking the re
   } finally {
     await h.stop()
   }
-  const root = await tmp()
+  const root = await checkout()
   const served = servedRelay()
   try {
     const o = sealOrchestrator(
@@ -2385,7 +2396,7 @@ it('a worker uploads a key the run found missing, and its run key, asking the re
 })
 
 it('a worker says which task no remote took the upload of, sending its output with it', async () => {
-  const root = await tmp()
+  const root = await checkout()
   const served = servedRelay()
   try {
     const o = sealOrchestrator(
@@ -2476,7 +2487,7 @@ it('a forced run’s order is fresh, and its worker saves a success under the ru
   } finally {
     await h.stop()
   }
-  const root = await tmp()
+  const root = await checkout()
   const served = servedRelay()
   try {
     const o = sealOrchestrator(
@@ -3366,6 +3377,7 @@ console.log(JSON.stringify(seen.sort()))
     'vx-dte/src/index.ts',
     'vx-dte/src/local.ts',
     'vx-dte/src/plugin.ts',
+    'vx-dte/src/printable.ts',
     'vx-dte/src/strategy.ts',
   ])
 })

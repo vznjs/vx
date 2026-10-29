@@ -1,20 +1,12 @@
 // A participant of the relay protocol (@vzn/vx-dte-server's PROTOCOL.md).
 
 import { ui } from '@vzn/vx'
+import { printable } from './printable.js'
 
 export interface RelayMessage {
   readonly from: string
   readonly body: unknown
 }
-
-/**
- * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
- * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
- * overwrote the line before (core's `printable`, L-31).
- */
-export const printable = (s: string): string =>
-  // oxlint-disable-next-line no-control-regex
-  s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
 
 export class RelayError extends Error {
   constructor(

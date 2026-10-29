@@ -9,7 +9,7 @@
 
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
 import type { DteAdapter, WorkerSpawn } from './plugin.js'
-import { printable } from './wire.js'
+import { printable } from './printable.js'
 
 export interface GitlabOptions {
   /** Runner tags by worker size: the runners each size's jobs go to. */
