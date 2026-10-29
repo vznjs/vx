@@ -338,12 +338,14 @@ A status the server answers with and no retry heals (PERMISSION_DENIED on
 Execute, a refused upload) fails the task with a line naming the task and
 the status, never as a vx "internal error".
 
-A failed READ is never a failed task. The execution-record lookup is a
+A failed RECORD read is never a failed task. The execution-record lookup is a
 shortcut past the worker, so a transport error there means "no usable record"
 and the task executes normally, with a warning naming why. The UPSTREAM record
 reads are the deliberate exception — those decide whether a dependency's bytes
 exist at all, and carrying on past a failure there is how an action runs
-without its inputs and caches the result.
+without its inputs and caches the result. A fresh execution's stdout or
+stderr that cannot be read fails the task, as a declared output does
+(above): those are the task's result, not a shortcut.
 
 ## Tests
 
