@@ -100,6 +100,22 @@ describe('extra files the lockfile names', () => {
     expect((await withExtras().key(task('packages/a'), ctx()))!['deps']).not.toBe(first)
   })
 
+  // Read as absent, an extra file that is there but unreadable folded as
+  // '' — the key of no patch at all — while settings files refuse so. A
+  // symlink loop is unreadable to root too (EACCES is not).
+  it('an extra file that is there but unreadable refuses the key, named', async () => {
+    const { symlink } = await import('node:fs/promises')
+    await lock('packages/a=a1\nextra:patches/p.patch\n')
+    await mkdir(path.join(root, 'patches'), { recursive: true })
+    await symlink('p.patch', path.join(root, 'patches', 'p.patch'))
+    await expect(withExtras().key(task('packages/a'), ctx())).rejects.toThrow(
+      'patches/p.patch: cannot be read (',
+    )
+    // CONTROL: an absent one is absent.
+    await rm(path.join(root, 'patches', 'p.patch'))
+    expect((await withExtras().key(task('packages/a'), ctx()))!['deps']).toBe('a1|patches/p.patch:')
+  })
+
   it('CONTROL: an unchanged extra file costs a warm run no parse', async () => {
     await lock('packages/a=a1\nextra:patches/p.patch\n')
     await patch('one')

@@ -17,7 +17,7 @@ lockfile is a parser and nothing else.
 ```ts
 export interface LockfileClaimOptions {
   readonly file: string // the lockfile's name at the workspace root
-  // importer dir → digest; `files` is extraFiles' content hashes ('' when absent)
+  // importer dir → digest; `files` is extraFiles' content hashes ('' when absent; one there but unreadable refuses the key)
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   // root-relative files the lockfile names but does not pin (bun.lock's patches)
   readonly extraFiles?: (text: string) => readonly string[]

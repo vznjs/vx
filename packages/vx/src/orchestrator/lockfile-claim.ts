@@ -15,7 +15,7 @@
 
 import path from 'node:path'
 import { rename, stat } from 'node:fs/promises'
-import { relPosix, xxh3, xxh3hex } from '../util/index.js'
+import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {
   FingerprintChange,
@@ -37,7 +37,7 @@ export interface LockfileClaimOptions {
   /**
    * Root-relative files the lockfile names whose BYTES the install uses but
    * the lockfile does not pin (bun.lock's `patchedDependencies` names a patch
-   * file and records no hash of it). Their content hashes ('' when absent)
+   * file and records no hash of it). Their content hashes ('' when absent; unreadable refuses)
    * reach `digest` as `files` and join the memo's identity, so an edited
    * patch moves the key (item 1014). A directory (a `file:` dependency the
    * install copies) hashes every file under it but `node_modules` and
@@ -108,16 +108,28 @@ interface Memo {
   edges?: Record<string, LockfileImporter>
 }
 
-/** A root-relative extra file's content hash, '' when absent; a path leaving the root is never read. */
+/**
+ * A root-relative extra file's content hash, '' when absent; a path leaving
+ * the root is never read. One there but unreadable (EACCES, a symlink loop)
+ * refuses, as a settings file does: folded as '', it keyed as no file at all.
+ */
 async function hashExtra(workspaceRoot: string, rel: string): Promise<string> {
   if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return 'outside-root'
   const abs = path.join(workspaceRoot, rel)
   try {
     return xxh3hex(await Bun.file(abs).bytes())
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'EISDIR') return hashDir(abs)
-    return ''
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'EISDIR') return hashDir(abs)
+    if (code === 'ENOENT' || code === 'ENOTDIR') return ''
+    throw unreadable(rel, err)
   }
+}
+
+function unreadable(rel: string, err: unknown): UserError {
+  return new UserError(
+    `${rel}: cannot be read (${err instanceof Error ? err.message : String(err)})`,
+  )
 }
 
 /**
