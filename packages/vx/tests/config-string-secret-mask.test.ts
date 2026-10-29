@@ -113,6 +113,53 @@ it('vx show masks every string of the task', () => {
   ])
 }, 20_000)
 
+it('vx show builds the env mask once for the tasks that define no variable', async () => {
+  // Built per task, the pattern over vx's env was 10 of `vx show build`'s
+  // 58 ms over 100 projects. A preload counts the patterns that hold the
+  // env's secret: one per task before, one per process now.
+  for (const name of ['p1', 'p2', 'p3']) {
+    await addProject(
+      root,
+      name,
+      `export default { tasks: { b: { exec: { command: 'echo ${TOKEN}' } } } }`,
+    )
+  }
+  const { API_TOKEN: _t, GH_PAT: _p, ...clean } = process.env
+  const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], {
+    cwd: root,
+    env: { ...clean, VX_LOCK_REVIEW_FILES: 'false' },
+    stderr: 'pipe',
+  })
+  expect(lock.stderr.toString()).toBe('')
+  const log = path.join(root, 'patterns.log')
+  const preload = path.join(root, 'count-patterns.ts')
+  await Bun.write(
+    preload,
+    `import { appendFileSync } from 'node:fs'
+const Native = RegExp
+globalThis.RegExp = new Proxy(Native, {
+  construct(target, args) {
+    if (String(args[0]).includes(${JSON.stringify(TOKEN)})) appendFileSync(${JSON.stringify(log)}, 'x')
+    return Reflect.construct(target, args)
+  },
+})
+`,
+  )
+  const p = Bun.spawnSync([process.execPath, '--preload', preload, BIN, 'show', 'b'], {
+    cwd: root,
+    env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const out = p.stdout.toString()
+  expect(out.split('\n').filter((l) => l.includes('command'))).toEqual([
+    '  command   echo ***',
+    '  command   echo ***',
+    '  command   echo ***',
+  ])
+  expect(await Bun.file(log).text()).toBe('x')
+}, 20_000)
+
 it("vx why names a runtime probe's row masked, and the history holds no value", async () => {
   vx(['run', 't', '--all'], { STAMP: '1' })
   vx(['run', 't', '--all'], { STAMP: '2' })

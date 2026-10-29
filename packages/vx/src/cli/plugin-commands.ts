@@ -52,7 +52,7 @@ async function workspacePlugins(cwd: string): Promise<
   | {
       workspaceRoot: string
       cacheDir: string
-      storeRoot: Promise<string | null>
+      storeRoot: () => Promise<string | null>
       workspaceConfig: WorkspaceConfig | null
       concurrency: number
       plugins: readonly VxPlugin[]
@@ -163,7 +163,7 @@ async function verbCache(
     ws.workspaceRoot,
     undefined,
     'open',
-    await ws.storeRoot,
+    await ws.storeRoot(),
   )
   const remotes: ResolvedRemote[] = []
   await resolveCache(ws.plugins, {
@@ -223,7 +223,7 @@ async function verbArtifacts(
     ws.workspaceRoot,
     undefined,
     'open',
-    await ws.storeRoot,
+    await ws.storeRoot(),
   )
   const remotes: ResolvedRemote[] = []
   const cache = await resolveCache(ws.plugins, {
