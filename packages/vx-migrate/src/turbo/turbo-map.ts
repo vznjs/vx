@@ -13,6 +13,7 @@
 import path from 'node:path'
 import { isLiteralPattern, pruneOrphanPersistentNotes, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
+import { refuseTaskNames } from '../plugin-gaps.js'
 import { apartTakeBacks, literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { type Owner, runsScriptHooks, scriptCommand, yarnPnp } from '../script-command.js'
@@ -1429,6 +1430,7 @@ export async function mapTurboWorkspace(
   excludeWorkspaceOutputs(root, projects, (e) => opaque.get(JSON.stringify(e)) ?? [])
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
+  refuseTaskNames(projects, 'task')
   return { projects, notes, globals }
 }
 

@@ -24,7 +24,13 @@ import {
   type RunOptions,
   shellQuote,
 } from '../orchestrator/index.js'
-import { findWorkspaceRoot, LOCKFILE_NAME, NO_LOCK, type ProjectMeta } from '../workspace/index.js'
+import {
+  findWorkspaceRoot,
+  LOCKFILE_NAME,
+  NO_LOCK,
+  type ProjectMeta,
+  WORKSPACE_CONFIG_FILENAMES,
+} from '../workspace/index.js'
 import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './workspace-config.js'
 import { resolveSetting } from '../settings.js'
 import {
@@ -475,6 +481,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   }
   let windowOpened = 0
 
+  const hasWorkspaceFile = (): boolean =>
+    WORKSPACE_CONFIG_FILENAMES.some((n) => fs.existsSync(path.join(workspaceRoot, n)))
   const lockAbs = path.join(workspaceRoot, LOCKFILE_NAME)
   const lockStamp = (): string => {
     try {
@@ -538,10 +546,27 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             lockAtRun = lockStamp()
             const relocked = lockAtRun !== lockSeen
             lockSeen = lockAtRun
+            // The file marks the root, and `vx run` refuses without it; a
+            // cycle ran on with no workspace config, its plugins gone and
+            // its tasks named by path.
+            if (!hasWorkspaceFile()) {
+              process.stdout.write(`\nchanged ${label}\n`)
+              throw new Error(
+                `no .vx/workspace.ts in ${workspaceRoot}; restore it, or stop vx watch`,
+              )
+            }
             if (reread) await rearm(false)
             process.stdout.write(`\nchanged ${label}\n`)
             if (!relocked) sayUnlocked(changes.changed)
             if (stop.aborted) break
+            // A file a `.gitignore` edit stops ignoring is an input from this
+            // cycle on, and was not on the arm's inventory: its deletion read
+            // as a file born and gone since, and ran nothing.
+            if (
+              atArm !== undefined &&
+              changes.changed.some((p) => path.basename(p) === '.gitignore')
+            )
+              for (const p of gitFiles(workspaceRoot)?.listed ?? []) atArm.listed.add(p)
             restartTimings()
             // On the mtime clock, as the arm is: from `Date.now()` a write the
             // run made within a tick of it carried an earlier mtime and read as
@@ -587,7 +612,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config
         // was never an event.
-        if (reread && !stop.aborted) {
+        if (reread && !stop.aborted && hasWorkspaceFile()) {
           reread = false
           await rearm()
         }
@@ -636,7 +661,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // unconditional segments AND this run's declared output containers. Read
   // through `isIgnoredPath` rather than captured, because `rearm` replaces
   // the filter when the selection changes.
-  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel), args.poll)
+  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel, true), args.poll)
   const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle =>
     pool.arm(dir, recursive, onEvent)
 
@@ -726,6 +751,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     // too: its edit can add an output or a `workspaceFiles` input.
     if (shapesWatchedSet(filename) || configImportFiles.includes(abs) || linkChanged(abs))
       reread = true
+    // Inside a project (any repo whose root is one) no import arm hears it.
+    if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
     trigger(`${proj.name} ${filename}`, abs)
   }
   const armProject = (proj: ProjectMeta): void => {
@@ -791,6 +818,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               configImportFiles.includes(abs)
             )
               reread = true
+            if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
             const owner = ownerOf(abs)
             trigger(
               owner === undefined
@@ -851,6 +879,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const importArms = new Map<string, WatchHandle>()
   let importNames = new Map<string, Set<string>>()
   const staleNamed = new Map<string, number>()
+  const sayStaleImport = (abs: string): void => {
+    // One line per save, not per event: a save is often two.
+    const now = Date.now()
+    if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
+    staleNamed.set(abs, now)
+    process.stdout.write(
+      `vx watch: ${printable(path.relative(workspaceRoot, abs))} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
+    )
+  }
   const armImports = (): void => {
     const inProject = (f: string): boolean => projectDirs.some((d) => f.startsWith(d + path.sep))
     const want = new Map<string, Set<string>>()
@@ -882,13 +919,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               trigger(`config import ${rel}`, abs)
               return
             }
-            // One line per save, not per event: a save is often two.
-            const now = Date.now()
-            if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
-            staleNamed.set(abs, now)
-            process.stdout.write(
-              `vx watch: ${printable(rel)} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
-            )
+            sayStaleImport(abs)
           }),
         )
         armedAs.set(dir, inodeOf(dir) ?? '')
@@ -1008,7 +1039,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       dropMode()
       workspaceWide = next.workspaceWide
       armMode(next.projects)
-    } else if (!workspaceWide) {
+    } else if (workspaceWide) wide = next.projects
+    else {
       streamed = oneStream ? toStream(next.projects) : []
       const inStream = new Set(streamed.map((s) => s.proj))
       const own = next.projects.filter((p) => !inStream.has(p))
