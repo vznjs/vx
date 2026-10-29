@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: store each results row's waited, outputs and blocks
+
+SCHEMA_VERSION is v51: the first run after upgrading resets the index (run history goes; artifacts stay).
+
 ## vx-devtools: read issuer keys through the Worker shared cache
 
 OidcOptions.fetchJson is called as fetchJson(url, fresh): fresh is true for a reload of keys already read, which must reach the issuer. A fetchJson that took one argument still works.
