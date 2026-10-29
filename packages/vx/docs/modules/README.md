@@ -166,6 +166,7 @@ here, itself or in a brace group.
 |                                              | `src/graph/critical-path.ts` — `criticalPath`, the order a `schedule` plugin returns (see task-graph.md). |
 | [`scheduler.md`](./scheduler.md)             | `src/graph/scheduler.ts` — parallel topological executor.                                                 |
 |                                              | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md).                                   |
+|                                              | `src/graph/counts.ts` — a run's dependents counts, one closure (see scheduler.md).                        |
 |                                              | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).                                    |
 | [`dependency-spec.md`](./dependency-spec.md) | `src/util/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.                                      |
 | [`folds.md`](./folds.md)                     | `src/graph/folds.ts` — which dependencies a key folds (`inputs.tasks`).                                   |

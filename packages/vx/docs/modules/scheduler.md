@@ -106,6 +106,8 @@ export interface ScheduleOptions {
   reprioritize?: (apply: (priorities: ReadonlyMap<string, number>) => void) => void
   /** The baseline ranking under `priorities`: `schedule` in .vx/workspace.ts. */
   strategy?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  /** The `most-work` baseline already counted (`reverseDepCounts().all`), asked only when used. */
+  reverseDeps?: () => ReadonlyMap<string, number>
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */
   restoreTier?: ReadonlySet<string>
   /** Servers held until the caller adds their remote-hit dependants to `restoreTier` (the ids it added). */
@@ -188,6 +190,19 @@ dependants it names join the restore lane, and it is idle when every
 dependant is then in the tier, else it dispatches as usual
 (`orchestrator/held-servers.ts` asks the remote).
 
+A run counts dependents once: `src/graph/counts.ts`'s `reverseDepCounts`
+answers the `most-work` baseline (`all`) and every row's `blocks` (`tasks`,
+groups not counted) from one closure, and the orchestrator remembers both
+with the graph (`graphCounts`, keyed by the graph token and the node ids).
+
+```ts
+export interface ReverseDepCounts {
+  all: Map<string, number>
+  tasks: Map<string, number>
+}
+export function reverseDepCounts(nodes: ReadonlyMap<string, TaskNode>): ReverseDepCounts
+```
+
 The ranking lives in `src/graph/priorities.ts`, a file with no runtime
 import at all. The Learn page's scheduler simulator bundles it for the
 browser (through `private/vx-bench/schedule-policy.ts`), and
@@ -203,6 +218,10 @@ export function tieredReverseDepCount(
   nodes: Map<string, TaskNode>,
   restoreTier: ReadonlySet<string>,
 ): Map<string, number>
+export function reverseDepCountsOver(
+  nodes: ReadonlyMap<string, TaskNode>,
+  counted: ReadonlyArray<ReadonlyMap<string, unknown> | undefined>,
+): Map<string, number>[] // one closure, one count per `counted` (undefined counts every node)
 export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,

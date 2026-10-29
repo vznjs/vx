@@ -357,6 +357,11 @@ export interface ScheduleOptions {
    */
   strategy?: ScheduleStrategy
   /**
+   * The `most-work` baseline already counted (`reverseDepCounts().all`, read
+   * back with the graph): asked only when that baseline is the one used.
+   */
+  reverseDeps?: () => ReadonlyMap<string, number>
+  /**
    * Restore-tier task ids: confirmed stable-key LOCAL cache hits (the
    * local short-circuit). A restore-tier task:
    *   - becomes READY IMMEDIATELY — its `pending` does NOT gate it, since
@@ -599,7 +604,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       ? strategyPriorities(nodes, options.strategy)
       : options.restoreTier !== undefined && options.restoreTier.size > 0
         ? tieredReverseDepCount(nodes, options.restoreTier)
-        : computeReverseDepCount(nodes)
+        : (options.reverseDeps?.() ?? computeReverseDepCount(nodes))
   const priority: ReadonlyMap<string, number> = options.priorities
     ? mergePriorities(baseline, options.priorities)
     : baseline
