@@ -436,6 +436,25 @@ describe('reachDigests', () => {
     ).toBe(before[0])
   })
 
+  // npm and bun key a node by what it is, not where it sits, so two copies
+  // of one version are one material: `packages/a/node_modules/foo` → bar@1
+  // and `node_modules/foo` → bar@2. Two workspaces in a cycle swapping
+  // which copy each reaches gave the same lines and the same children,
+  // and a's install moved from bar@1 to bar@2 under its old key.
+  it('moves when cycle members swap two copies of one material that reach apart', () => {
+    // 0 ↔ 1 (a, b); 2 and 3 both `foo`, 2 → 4 bar1, 3 → 5 bar2.
+    const swap = (a: number, b: number) =>
+      reachDigests({
+        material: ['a', 'b', 'foo', 'foo', 'bar1', 'bar2'],
+        edges: [[1, a], [0, b], [4], [5], [], []],
+      })
+    expect(swap(3, 2)[0]).not.toBe(swap(2, 3)[0])
+    // CONTROL: a singleton's children already say where its edges land,
+    // so an acyclic digest keeps its value.
+    const single = reachDigests({ material: ['a', 'foo', 'bar1'], edges: [[1], [2], []] })[0]
+    expect(single).toBe('38108168b5ad6712')
+  })
+
   it('a member of a cycle shares its component digest', () => {
     const d = reachDigests(graph(['a', 'b', 'c', 'd']))
     expect(d[1]).toBe(d[2])
