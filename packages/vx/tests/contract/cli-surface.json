@@ -43,6 +43,7 @@
       "--help",
       "--list",
       "--log",
+      "--sql",
       "--stats"
     ],
     "lock": [
@@ -177,6 +178,9 @@
       "2"
     ],
     "last --log": [
+      "*"
+    ],
+    "last --sql": [
       "*"
     ],
     "lock --format": [
