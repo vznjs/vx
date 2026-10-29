@@ -20,6 +20,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { type Duration, type GeneratedProject, type GeneratedTask, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
+import { refuseTaskNames } from '../plugin-gaps.js'
 import { withoutTakenBack } from '../glob-grammar.js'
 import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
@@ -621,6 +622,7 @@ export async function mapNxWorkspace(
       `\`syncGenerators\` (${gens}) on ${n} task${n === 1 ? '' : 's'}: ` +
         `Nx runs them before those targets, and vx does not — ${syncAdvice}`,
     )
+  refuseTaskNames(projects, 'target')
   return { projects, notes }
 }
 

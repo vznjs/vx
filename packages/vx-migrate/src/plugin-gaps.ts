@@ -6,6 +6,8 @@
 // form was a hundred identical lines before the first frame (2026-09-11).
 // Shared by `turbo()` and `nx()` since the second one existed.
 
+import { taskNameProblem } from '@vzn/vx'
+
 /** What both mappers' projects have in common: a name and tasks with todos. */
 interface MappedProject {
   readonly name: string
@@ -60,4 +62,24 @@ export function warnGaps(
       `[${pluginName}] ${ids.length} task(s) (${names.join(', ')} across ${packages.size} package(s)): ${todo}`,
     )
   }
+}
+
+/**
+ * A task whose name the schema refuses (`lint#fix`, `^up`) becomes a TODO,
+ * as the scripts migrator does (item 1033): written as a task, core
+ * refused the whole config on the next command.
+ */
+export function refuseTaskNames(
+  projects: readonly { tasks: { name: string; todos: string[]; task: object | null }[] }[],
+  what: string,
+): void {
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const why = t.task === null ? null : taskNameProblem(t.name)
+      if (why === null) continue
+      t.task = null
+      t.todos = [
+        `${what} ${JSON.stringify(t.name)} not migrated: its name ${why} — rename it, or add it by hand under another name`,
+      ]
+    }
 }

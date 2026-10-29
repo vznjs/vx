@@ -47,7 +47,10 @@ that reads no ref (a detached HEAD with no default branch) asks nothing.
 The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,
-with each worker's measurements. A task that shared a crowded worker's
+with each worker's measurements. The upload starts as the last task
+ends, beside core's own end of run, and the plugin's teardown waits at
+most 2 s more for it (core bounds a teardown at 3 s); one not done by
+then is dropped and said, with how many timings it held. A task that shared a crowded worker's
 cores is sent as long as it would have taken alone, as local history
 keeps it. A refusal is said with the server's
 words, and a CI job with no token says so once (on GitHub Actions,

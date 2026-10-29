@@ -34,7 +34,7 @@ vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--pl
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
-vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--live [--follow]] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [TAG] [-g|--global]
 vx docs <query> [--limit N] [--format pretty|json]
 vx completions bash|zsh|fish
@@ -540,7 +540,7 @@ than run with the args unheard.
 | `--cache-concurrency-upload <n>`           | int (1+)       | `cache.concurrency.upload`, else min(96, max(cores × 3, 64))   | Uploads at once, per remote.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `--cache-concurrency-restore <n>`          | int (1+)       | `cache.concurrency.restore`, else twice `--concurrency`        | Local hits restoring their outputs at once.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--verbosity <n>`                          | int (0+)       | `0`                                                            | `1` or more prints a per-task table (groups left out, painted as the task list on a colour terminal) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `--dry[=text\|json]`                       | optional value | off                                                            | Print the task graph + predicted cache hit/miss; skip execution. `VX_DEBUG_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--dry[=pretty\|json]`                     | optional value | off                                                            | Print the task graph + predicted cache hit/miss; skip execution. `VX_DEBUG_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--profile[=<path>]`                       | optional value | off (`profile.json` when set)                                  | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 Mutual exclusion:
@@ -787,8 +787,10 @@ tracks the run live. Top to bottom:
 1. **A blank separator line** — keeps the live region visually apart
    from the completed-task scrollback above it.
 2. **Pinned persistent tasks** — `▸ <id> running` for every persistent
-   task that became ready. The pin lives until run end, so it is the
-   visible evidence the dev server is still alive. After the summary,
+   task that became ready. The pin lives until run end, or until the
+   task's process exits on its own (a crash, or a setup step ready by
+   its exit 0, whose frame then closes `success`, not `running`), so it
+   is the visible evidence the dev server is still alive. After the summary,
    a requested persistent task keeps vx in the foreground, with the
    persistent tasks it depends on, until it — or, with several, the
    first of them — exits (one kept only as a dependency that exits 0,
@@ -1293,7 +1295,8 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    watched (non-recursively) for a claimed file (a lockfile), for
    `.vx/projects.lock.json` and for an edit to `.vx/workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
-   task's input; the cycle after it re-evaluates the file. A `.gitignore`
+   task's input; the cycle after it re-evaluates the file. With the file
+   removed a cycle fails, as `vx run` refuses, until it is back. A `.gitignore`
    there or in a project's parent directory is a cycle too: inputs are
    gitignore-aware, so it changes what keys read (X-136). A file a
    config imports by relative path from outside the watched projects (a
@@ -1345,7 +1348,8 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    with an old mtime by `mv`, `cp -p` or `tar x` still counts, and a
    symlink's own times are read, never its target's), and a
    path git did not list at the arm that is gone again (vim's `4913`
-   write probe, a lock file) is no edit; and
+   write probe, a lock file) is no edit (a `.gitignore` edit lists
+   again, so a file it stops ignoring is one); and
    nothing is judged while a cycle runs — its
    own writes are mid-flight, a `dist` deleted and not yet rebuilt is
    a state the tree will not keep — so paths that land mid-run are
@@ -1449,11 +1453,13 @@ notice on stderr (`no OS watch events within 2000 ms; polling every
 250 ms instead`). Where the watcher is known not to deliver — a sandbox
 without FSEvents access on macOS, a network mount, a container bind —
 `VX_WATCH_POLL=1` polls from the start and skips the 2 s probe; the loop
-says so once (`vx watch: polling every 250 ms (VX_WATCH_POLL)`). A
+says so once (`vx watch: polling every 250 ms (watch.poll)`). A
 watcher the OS refuses for its watch limit (`ENOSPC`, `EMFILE`) is
 polled too, with a notice naming the limit to raise. The
 poller walks the same tree the event filter keeps: the always-ignored
-segments and the run's declared output containers are never sampled.
+segments and the run's declared output containers are never sampled,
+unless a task's inputs can lie in one (`src/**/*.ts` beside an output
+`src/**/*.js`) or git tracks a file there.
 It samples each file's later clock of mtime and ctime, so a replacement
 that carries the old file's mtime (`cp -p`, `rsync -a`, a `mv`) is an
 edit to it as it is to the OS watcher.
@@ -2426,8 +2432,9 @@ its `package.json`), else by its directory; `vx show --format json` lists them.
 
 #### `VX_E_NO_HISTORY`
 
-`vx why` / `vx last` find no recorded run for what they were asked. Run
-the task once (`vx run <task>`); history is this checkout's own.
+`vx why` / `vx last` find no recorded run for what they were asked, or
+`vx last --live` no run in progress. Run the task once (`vx run <task>`);
+history is this checkout's own.
 
 #### `VX_E_AMBIGUOUS`
 
@@ -3022,7 +3029,7 @@ run before it; nor does a `vx watch` cycle one stopped.
 ### Usage
 
 ```
-vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--live [--follow]] [--format pretty|json] [--cache-dir <path>]
 ```
 
 ### Examples
@@ -3068,6 +3075,8 @@ vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 | `--stats [<task>]`      | per-task numbers over the last 50 runs                                                |
 | `--branch <name>`       | the branch `--stats` forecasts from                                                   |
 | `--sql <query>`         | the rows one read-only `SELECT` over the history selects                              |
+| `--live`                | the run in progress: what runs, what ended, what waits, its warnings                  |
+| `--follow`              | with `--live`, the run's events from now to its end                                   |
 | `--format pretty\|json` | `json` for scripts and agents, below                                                  |
 | `--cache-dir <path>`    | read the cache a run with the same flag uses                                          |
 
@@ -3176,6 +3185,55 @@ a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ tas
 p50DurationMs, p99DurationMs, successRate, hitRate, failureMode,
 maxPeakRssBytes, maxCpuParallelism }`, `null` where nothing was
 measured.
+
+### `--live`
+
+`vx last --live` asks the run in progress on this workspace, from another
+shell, while it runs: an agent that started `vx run` in the background
+reads what runs, what already ended and what waits, without waiting for
+the end (the history holds a run only once it ended).
+
+```
+$ vx last --live
+run 019a2f3c-5b1e-7c2d-9a40-1f3e5d7c8b21 — running 4.21s
+  $ vx run a#all
+  1 running · 2 ended · 1 waiting
+
+  running  a#slow   4.12s
+  success  a#lost   9ms
+  success  a#quick  8ms
+  waiting  a#after
+
+  warnings
+    [vx] a#lost: inputs.files matched no files …
+```
+
+With `--format json` it prints `{ live, tasks, warnings }`: `live` is
+`{ runId, command, pid, startedAt, elapsedMs }`, each task
+`{ taskId, status, startedAt, durationMs }` (`status` is `running`,
+`waiting` or the status it ended with; times epoch ms, `null` where not
+yet known), running first, then what ended, then what waits. Groups are
+not listed.
+
+`--follow` prints the same snapshot, then each of the run's events until
+it ends: a task's output as `app#test │ <line>`, each end as
+`success  app#test  1.20s`, each warning as `warn  …`. With
+`--format json` the snapshot line is followed by one event per line,
+each with a `kind`: `task:start`, `task:stdout`, `task:stderr`,
+`task:complete`, `run:status`, `step:start`, `step:end`, `run:end`,
+and last `run:done` (the run's wire events).
+
+No run in progress is `no run in progress` (exit 1, `VX_E_NO_HISTORY`),
+a run killed with its socket left included. A run that does not answer
+within 5 s reads the same.
+
+**What it costs a run.** Nothing is written. The run listens on a unix
+socket beside its run lock (in this user's own temp directory, so no
+other user reaches it) while it holds the lock, and keeps only when each
+task started; the snapshot is built when asked. Output is not kept: it
+reaches a follower only while one is attached, and a follower that falls
+1 MiB behind is let go, so a stuck reader never holds the run. `--live`
+combines only with `--follow`, `--format` and `--cache-dir`.
 
 ### `--sql`
 
@@ -3475,8 +3533,9 @@ copy/paste yields the verbatim output. Every block (and every live
 frame close in focused flow) is followed by a blank line so frames
 never collide with the next one-liner. A persistent task's frame is
 marked with a cyan `▸` after `┌─`/`└─`, and its close reads `running`
-(the child is still alive), or `failed (exit <n>)` for a server that
-died on its own before the run stopped it.
+(the child is still alive), `success` for a setup step ready by its
+exit 0, or `failed (exit <n>)` for a server that died on its own before
+the run stopped it.
 
 There is **no top-of-run banner** — the run context lives in the
 footer. The task log opens with one blank line before its first row,

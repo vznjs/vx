@@ -53,6 +53,13 @@ does not):
 is one of its inputs), `project`, `package`, `named` or `selected`, and
 `via` is the `dependsOn` chain that carried the change.
 
+## While a run is in progress
+
+```sh
+vx last --live --format json            # what runs, what ended, what waits, warnings so far
+vx last --live --follow --format json   # then each event (output included), one per line, until the run ends
+```
+
 ## When a task fails
 
 ```sh
