@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { configErrorFrame } from '../src/util/index.js'
+import { configErrorFrame, configRefusal } from '../src/util/index.js'
 import { makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -91,6 +91,35 @@ describe('configErrorFrame', () => {
         '> 2 |   concurrency: 4,\n' +
         '    |   ^',
     )
+  })
+})
+
+describe('configRefusal', () => {
+  it('splits a refusal in a directory whose name holds a space', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-frame-'))
+    try {
+      await mkdir(path.join(dir, 'my app'))
+      const file = path.join(dir, 'my app', 'vx.config.ts')
+      await writeFile(file, CONFIG)
+      expect(
+        configRefusal(
+          `${file}: tasks.lint.fix.exec has unknown field "comand" (allowed: command, env) — did you mean command?`,
+          dir,
+        ),
+      ).toEqual({
+        where: 'my app/vx.config.ts:7:15',
+        problem: 'tasks.lint.fix.exec has unknown field "comand"',
+        allowed: 'command, env',
+        fix: 'use command',
+        frame:
+          '  5 |     },\n' +
+          "  6 |     'lint.fix': {\n" +
+          "> 7 |       exec: { comand: 'x', timeout: -1 },\n" +
+          '    |               ^',
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })
 

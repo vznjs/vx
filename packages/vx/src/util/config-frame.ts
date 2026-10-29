@@ -137,7 +137,8 @@ export function configRefusal(message: string, cwd: string): ConfigRefusal | und
   const cut = framed.indexOf('\n\n')
   const line = framed.slice(0, cut)
   const frame = framed.slice(cut + 2)
-  const at = /^(\S+?:\d+:\d+):? (.*)$/s.exec(line)
+  // A path may hold spaces (`packages/my app/`); the first `:line:col` ends it.
+  const at = /^([^\n]+?:\d+:\d+):? (.*)$/s.exec(line)
   if (at === null) return { where: line, problem: '', frame }
   // After ` — `: the field meant, or how vx spells another runner's field.
   const said =
