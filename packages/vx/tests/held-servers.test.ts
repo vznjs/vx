@@ -14,7 +14,7 @@ import {
   type Fixture,
 } from './helpers/orchestrator-fixture.js'
 import type { RemoteCacheLayer } from '../src/cache/index.js'
-import { run } from './helpers/orchestrator.js'
+import { planRun, run } from './helpers/orchestrator.js'
 
 function memoryRemote(): RemoteCacheLayer {
   const store = new Map<string, Uint8Array>()
@@ -123,6 +123,53 @@ describe('a server behind remote hits', () => {
         ]),
       )
       expect(started()).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  // `--dry` previews that run: it called the server `would exec` whenever
+  // the hits were the remote's, not the local store's.
+  it(
+    '--dry says not started when the remote holds every dependant',
+    async () => {
+      const remote = memoryRemote()
+      await runOnce(remote)
+      await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
+      const plan = await planRun({
+        cwd: fixture.root,
+        tasks: ['t1', 't2'],
+        log: silentLogger(fixture),
+        remoteCache: remote,
+        remoteReadOnlyByDefault: false,
+      })
+      expect(plan.tasks.map((t) => `${t.node.id} ${t.cacheStatus}`).sort()).toEqual([
+        'app#t1 hit-remote',
+        'app#t2 hit-remote',
+        'svc#srv not-started',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--dry says the server starts when the remote misses one dependant',
+    async () => {
+      const remote = memoryRemote()
+      await runOnce(remote)
+      await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
+      await writeFile(path.join(dir, 't2.txt'), 'changed')
+      const plan = await planRun({
+        cwd: fixture.root,
+        tasks: ['t1', 't2'],
+        log: silentLogger(fixture),
+        remoteCache: remote,
+        remoteReadOnlyByDefault: false,
+      })
+      expect(plan.tasks.map((t) => `${t.node.id} ${t.cacheStatus}`).sort()).toEqual([
+        'app#t1 hit-remote',
+        'app#t2 miss',
+        'svc#srv no-cache',
+      ])
     },
     TIMEOUT,
   )
