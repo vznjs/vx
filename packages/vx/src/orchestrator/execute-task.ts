@@ -1010,6 +1010,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         load = untrack?.() ?? load
         untrack = undefined
       })
+      .catch((thrown: unknown) => {
+        // The scheduler prints the throw's line into the task's stream,
+        // after the masked tail the finally above flushed.
+        if (midLine) log.taskStderr(node, '\n')
+        throw thrown
+      })
     endExec()
     if (secrets !== null)
       res = {
@@ -1123,7 +1129,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   let flushMasked = (): void => {}
   // The attempt's output, both streams, last ended mid-line: vx's own line
-  // (a retry, an abandoned executor) starts its own. Glued, a frame read
+  // (a retry, an abandoned or thrown executor) starts its own. Glued, a frame read
   // `partialvx: retrying …`.
   let midLine = false
   // The attempt's output as the logger got it (masked): the entry's when

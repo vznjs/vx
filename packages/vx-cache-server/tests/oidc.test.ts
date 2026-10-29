@@ -75,7 +75,7 @@ describe('CI OIDC tokens', () => {
     expect(await status('a1')).toBe(200)
   })
 
-  it("a pull request's token writes its head branch, read only by naming it", async () => {
+  it("a pull request's token writes its merge ref, read only by naming it", async () => {
     const pr = await sign({
       event_name: 'pull_request',
       ref: 'refs/pull/7/merge',
@@ -83,7 +83,8 @@ describe('CI OIDC tokens', () => {
     })
     expect((await put(pr, 'b2')).status).toBe(204)
     expect(await status('b2')).toBe(404)
-    expect(await status('b2', 'refs/heads/feature')).toBe(200)
+    expect(await status('b2', 'refs/heads/feature')).toBe(404)
+    expect(await status('b2', 'refs/pull/7/merge')).toBe(200)
   })
 
   it("a merge queue's token writes its base branch", async () => {
@@ -114,17 +115,17 @@ describe('CI OIDC tokens', () => {
     expect(await status('a12')).toBe(404)
   })
 
-  // A fork names its own head branch: a fork's branch `main` wrote main
-  // wherever fork pull requests get a token.
-  it("a pull request whose head branch is its base branch's name writes nothing", async () => {
-    const pr = await sign({
-      event_name: 'pull_request',
-      ref: 'refs/pull/7/merge',
-      head_ref: 'main',
-      base_ref: 'main',
-    })
-    expect(await detail(await put(pr, 'a13'))).toEqual([403, 'this request reads only'])
-    expect(await status('a13')).toBe(404)
+  // A fork names its own head branch: its branch `release` wrote the base
+  // repository's release wherever fork pull requests get a token.
+  it('a pull request writes no branch its head_ref names', async () => {
+    for (const [head, key] of [
+      ['release', 'a13'],
+      ['main', 'a14'],
+    ] as const) {
+      const pr = { event_name: 'pull_request', ref: 'refs/pull/7/merge', base_ref: 'main' }
+      expect((await put(await sign({ ...pr, head_ref: head }), key)).status).toBe(204)
+      expect(await status(key, `refs/heads/${head}`)).toBe(404)
+    }
   })
 
   // A pull_request_target run carries a fork's head_ref, named by the
@@ -227,11 +228,19 @@ describe('CI OIDC tokens', () => {
     ])
     expect(await detail(await put(await sign(MAIN, 'https://elsewhere'), 'd4'))).toEqual([
       401,
-      'wrong audience',
+      `the token's aud is https://elsewhere, not this server's ${AUD}: ask CI for a token for ${AUD}, or set the server's AUDIENCE`,
     ])
     const [h, p] = (await sign(MAIN)).split('.')
     const forged = `${h}.${p}.${'A'.repeat(342)}`
     expect(await detail(await put(forged, 'd4'))).toEqual([401, 'bad signature'])
+    // Its issuer is read before its signature: no key of it is needed.
+    const elsewhere = Buffer.from(JSON.stringify({ iss: 'https://ci.example' })).toString(
+      'base64url',
+    )
+    expect(await detail(await put(`${h}.${elsewhere}.${'A'.repeat(342)}`, 'd4'))).toEqual([
+      401,
+      "issuer https://ci.example is not in this server's ALLOW: add issuer:owner/repo:workflow for it",
+    ])
   })
 })
 

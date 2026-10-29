@@ -9,7 +9,17 @@
 // anything depending on one, and `exec.remote: false` never reach an
 // executor. This declines the rest of what it cannot honour.
 
-import { mkdir, writeFile, chmod, readlink, realpath, rm, symlink, unlink } from 'node:fs/promises'
+import {
+  mkdir,
+  writeFile,
+  chmod,
+  readlink,
+  realpath,
+  rm,
+  statfs,
+  symlink,
+  unlink,
+} from 'node:fs/promises'
 import { constants, existsSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -103,12 +113,19 @@ async function decomposeOutputDir(
   const seen = new Set<string>()
 
   // Every transitive child of `dir`, which is what a Tree message must carry.
-  const descendants = (dir: Directory, acc: Directory[] = []): Directory[] => {
+  // Each once: a subtree a Tree names under many names was walked per name,
+  // 2^depth from a Tree of depth+1 directories.
+  const descendants = (
+    dir: Directory,
+    acc: Directory[] = [],
+    had = new Set<string>(),
+  ): Directory[] => {
     for (const d of dir.directories) {
       const child = byDigest.get(d.digest.hash)
-      if (child === undefined) continue
+      if (child === undefined || had.has(d.digest.hash)) continue
+      had.add(d.digest.hash)
       acc.push(child)
-      descendants(child, acc)
+      descendants(child, acc, had)
     }
     return acc
   }
@@ -1287,13 +1304,14 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
           .join('/')}`
   const root = cdInto === '' ? `"$PWD${climb}"` : '"$PWD"'
   // Order matters: VX_ROOT is read BEFORE the cd, the project-local bin dir
-  // AFTER it, so both are right whichever mode we are in.
+  // AFTER it, so both are right whichever mode we are in. The project's
+  // first, as core's taskBinDirs: a tool the project pins beats the root's.
   // Quoted as the forwarded args are: a project directory is a name like
   // any other, and `it's` ended the quote and ran the rest as script (L-7).
   const cd = cdInto === '' ? '' : `cd '${cdInto.replaceAll("'", `'\\''`)}' || exit 1; `
   return (
     `VX_ROOT=${root}; ${cd}` +
-    `export PATH="$VX_ROOT/node_modules/.bin:$PWD/node_modules/.bin:$PATH"; ` +
+    `export PATH="$PWD/node_modules/.bin:$VX_ROOT/node_modules/.bin:$PATH"; ` +
     command
   )
 }
@@ -1526,7 +1544,7 @@ export async function materialiseOutputs(
     await writeOutput(abs, bytes, created)
     // REAPI carries the executable bit per output; a build that produces a
     // script and a later task that runs it depends on it surviving.
-    if (f.is_executable === true) await chmod(abs, 0o755)
+    if (f.is_executable === true) await chmod(abs, masked(0o755))
   })
 
   // `OutputSymlink` — a declared output that is a link, not a file. Restoring
@@ -1806,6 +1824,33 @@ async function materialiseTree(
   const byDigest = new Map<string, Directory>()
   tree.children.forEach((child, i) => byDigest.set(tree.childDigests[i]!, child))
 
+  // A Tree may name one subtree under many names, so 41 directories can
+  // expand to 2^41 paths, and the walk wrote until the disk gave out. Each
+  // path is an inode on disk: counted once per distinct directory, a Tree
+  // that expands past what the file system has free is refused unwritten.
+  const counted = new Map<string, number>()
+  const entries = (dir: Directory): number => {
+    let n = 1 + dir.files.length + dir.symlinks.length
+    for (const d of dir.directories) {
+      const node = byDigest.get(d.digest.hash)
+      if (node === undefined) continue
+      let below = counted.get(d.digest.hash)
+      if (below === undefined) {
+        below = entries(node)
+        counted.set(d.digest.hash, below)
+      }
+      n += below
+    }
+    return n
+  }
+  const expands = entries(tree.root)
+  const room = await freeEntries(destDir)
+  if (expands > room) {
+    throw new UserError(
+      `vx/reapi: the server's Tree for ${destDir} expands to ${expands < 1e6 ? expands : expands.toPrecision(2)} entries, more than the ${room} this file system has free — refused`,
+    )
+  }
+
   // Files are gathered from the whole tree before any is fetched: one
   // BatchReadBlobs per DIRECTORY was a round trip each, so a `dist/` of 200
   // directories restored in 200 sequential calls (F-18). Windows bound what
@@ -1862,13 +1907,36 @@ async function materialiseTree(
       }
       await fence.landing(abs)
       await writeOutput(abs, bytes, created)
-      if (f.is_executable) await chmod(abs, 0o755)
+      if (f.is_executable) await chmod(abs, masked(0o755))
       // NodeProperties.unix_mode is authoritative when the server sent it.
       const mode = f.node_properties?.unixMode
       // Permission bits only: a server's setuid or setgid bit is not a build output's.
-      if (mode !== undefined) await chmod(abs, mode & 0o777)
+      if (mode !== undefined) await chmod(abs, masked(mode))
     })
     i = j
+  }
+}
+
+/**
+ * A mode as this machine gives it: minus the umask, as a local build and
+ * core's restore do. A server's 0777 was written world-writable under
+ * umask 022, and 0755 world-readable under 077.
+ */
+function masked(mode: number): number {
+  return mode & 0o777 & ~process.umask()
+}
+
+/**
+ * The files `dir`'s file system can still create: its free inodes, or its
+ * free blocks where it keeps no inode count (btrfs reports 0 of 0). Asked of
+ * the nearest ancestor that exists; unbounded when none answers.
+ */
+async function freeEntries(dir: string): Promise<number> {
+  for (let at = dir; ; at = path.dirname(at)) {
+    // quiet: a path not there yet: its parent answers
+    const fs = await statfs(at).catch(() => null)
+    if (fs !== null) return fs.files > 0 ? fs.ffree : fs.bavail
+    if (path.dirname(at) === at) return Infinity
   }
 }
 

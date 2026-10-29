@@ -377,6 +377,7 @@ function resolveWorkspaceFiles(args: {
     )
   const listing: InputListing = {
     root: args.workspaceRoot,
+    workspaceRoot: args.workspaceRoot,
     listed: gitFiles,
     isInput: (rel) =>
       (isPositive ??= throughLinks(positive, anyTaskGlob(asTrees(positive))))(rel) &&
@@ -1178,6 +1179,8 @@ export async function cleanOutputPaths(args: {
   committed?: (abs: string) => boolean
   /** Directories the prune leaves standing even when emptied (absolute). */
   keep?: ReadonlySet<string>
+  /** Empty directories to remove too (project-relative). */
+  emptyDirs?: readonly string[]
 }): Promise<void> {
   const committed = args.committed ?? committedFiles(undefined, args.projectDir)
   const files = args.rels.map((r) => path.resolve(args.projectDir, r)).filter((f) => !committed(f))
@@ -1186,6 +1189,7 @@ export async function cleanOutputPaths(args: {
     await removeAll(files, args.projectDir),
     pruneScope(args.projectDir, args.outputs),
     args.keep,
+    args.emptyDirs?.map((r) => path.resolve(args.projectDir, r)),
   )
 }
 
@@ -2075,7 +2079,7 @@ function withIgnored(
 }
 
 function listingFor(
-  args: { projectDir: string; gitFilesCache?: GitFilesCache | undefined },
+  args: { projectDir: string; workspaceRoot: string; gitFilesCache?: GitFilesCache | undefined },
   listed: readonly string[],
   plan: FilesPlan,
   nested: (rel: string) => boolean,
@@ -2085,6 +2089,7 @@ function listingFor(
   let committed: ((abs: string) => boolean) | undefined
   return {
     root,
+    workspaceRoot: args.workspaceRoot,
     listed,
     isInput: (rel) =>
       (inPlan(plan, rel) ||
@@ -2152,6 +2157,8 @@ function undecodableOnDisk(abs: string): boolean {
  */
 export interface InputListing {
   root: string
+  /** Where git's location variables point; `root` in a repository below it is listed without them. */
+  workspaceRoot: string
   /** Root-relative paths, as git listed them. */
   listed: readonly string[]
   isInput: (rel: string) => boolean
@@ -2270,7 +2277,7 @@ function addedTo(
     }
   }
   if (candidates.length === 0) return undefined
-  for (const rel of runGitLsFiles(l.root).files) {
+  for (const rel of runGitLsFiles(l.root, listingEnv(l.root, l.workspaceRoot)).files) {
     if (!candidates.some((c) => c === '' || rel === c || rel.startsWith(`${c}/`))) continue
     if (isInstalledPath(rel) || l.nested(rel) || !l.isInput(rel)) continue
     const abs = path.resolve(l.root, rel)

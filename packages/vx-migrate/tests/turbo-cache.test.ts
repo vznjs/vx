@@ -256,37 +256,37 @@ describe('resolveTurboCacheConfig', () => {
       resolveTurboCacheConfig({ teamId: 'team_1', signatureKey: 'o'.repeat(32) }, env, {})
         ?.signatureKey,
     ]).toEqual([undefined, undefined, 'k'.repeat(32), undefined, 'o'.repeat(32)])
-    // TURBO_SIGNATURE sits above turbo.json either way.
+    // Turbo maps no TURBO_SIGNATURE (`turborepo-config/src/env.rs`): read here,
+    // `0` skipped the verify turbo.json asks for and `yes` failed the run.
     expect([
       key({}, { ...env, TURBO_SIGNATURE: '1' }),
       key({ signature: true }, { ...env, TURBO_SIGNATURE: 'false' }),
-      key({ signature: true }, { ...env, TURBO_SIGNATURE: '' }),
-    ]).toEqual(['k'.repeat(32), undefined, 'k'.repeat(32)])
-    expect(() => key({}, { ...env, TURBO_SIGNATURE: 'yes' })).toThrow(
-      'vx/turbo-cache: TURBO_SIGNATURE should be 1 or 0, got "yes"',
-    )
+      key({}, { ...env, TURBO_SIGNATURE: 'yes' }),
+    ]).toEqual([undefined, 'k'.repeat(32), undefined])
   })
 
-  it('a signature key must be Turbo’s minimum length and come with a team id', () => {
+  it('a signatureKey option must be at least 32 bytes', () => {
     expect(() =>
       resolveTurboCacheConfig(
         { apiUrl: 'https://u', token: 't', signatureKey: 'short', teamId: 'team_1' },
         {},
       ),
     ).toThrow(/at least 32 bytes/)
-    expect(() =>
-      resolveTurboCacheConfig({ apiUrl: 'https://u', token: 't', signatureKey: KEY }, {}),
-    ).toThrow(/needs teamId/)
     expect(MIN_SIGNATURE_KEY_LENGTH).toBe(32)
   })
 
-  it('refuses an apiUrl with no http(s) scheme, from options or TURBO_API', () => {
+  // Each names where the URL came from: TURBO_API was refused as an
+  // apiUrl option the workspace never set.
+  it('refuses an apiUrl with no http(s) scheme, naming options, TURBO_API or turbo.json', () => {
     expect(() => resolveTurboCacheConfig({ apiUrl: 'cache.example.com', token: 't' }, {})).toThrow(
-      'vx/turbo-cache: apiUrl must be http(s), got cache.example.com',
+      'turboCache() option "apiUrl" must be an http(s) URL, got "cache.example.com"',
     )
     expect(() =>
       resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'cache.example.com/' }),
-    ).toThrow('vx/turbo-cache: apiUrl must be http(s), got cache.example.com')
+    ).toThrow('TURBO_API must be an http(s) URL, got "cache.example.com"')
+    expect(() =>
+      resolveTurboCacheConfig({ token: 't' }, {}, { apiUrl: 'cache.example.com' }),
+    ).toThrow('turbo.json remoteCache.apiUrl must be an http(s) URL, got "cache.example.com"')
   })
 
   it('refuses an apiUrl carrying user:pass@, from options or TURBO_API (gaps §8 L232)', () => {
@@ -299,14 +299,15 @@ describe('resolveTurboCacheConfig', () => {
       }
     }
     const MSG =
-      'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead'
+      'turboCache() option "apiUrl" carries credentials (user:pass@); pass them as the token instead'
+    const ENV = 'TURBO_API carries credentials (user:pass@); pass them as the token instead'
     expect([
       refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u:p@c.example', token: 't' }, {})),
       refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u@c.example', token: 't' }, {})),
       refusal(() =>
         resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'https://:p@c.example/' }),
       ),
-    ]).toEqual([MSG, MSG, MSG])
+    ]).toEqual([MSG, MSG, ENV])
     // CONTROL: the same host without userinfo resolves.
     expect(resolveTurboCacheConfig({ apiUrl: 'https://c.example', token: 't' }, {})?.apiUrl).toBe(
       'https://c.example',

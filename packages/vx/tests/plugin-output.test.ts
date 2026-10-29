@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { pluginSource } from './helpers/plugin.js'
+import { pluginSource, testPlugin } from './helpers/plugin.js'
+import { claimOutput } from '../src/orchestrator/output-host.js'
 import { gitInitCommit } from './helpers/workspace.js'
 
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -95,7 +96,8 @@ describe('the output stage', () => {
     const root = await fixture([pluginSource('org/bad', `{ output() { return { status() {} } } }`)])
     const r = vx(root)
     expect(r.code).toBe(0)
-    expect(r.stdout).toContain(
+    // A warning goes to stderr, as every verb's does; stdout is the run's frame.
+    expect(r.stderr).toContain(
       "[vx] plugin 'org/bad' output: output Logger has no taskStdout, taskStderr, taskComplete; vx renders the run",
     )
     expect(r.stdout).toContain('hi')
@@ -111,10 +113,47 @@ describe('the output stage', () => {
     const r = vx(root)
     expect(r.code).toBe(0)
     expect(r.stdout).toContain('start 1\n')
-    expect(r.stdout).toContain(
+    expect(r.stderr).toContain(
       "[vx] plugin 'org/crash' output failed: boom; vx renders the rest of the run",
     )
     expect(r.stdout).not.toContain('done pkg-a#hello')
     expect(r.stdout).toContain('hi')
+  })
+})
+
+describe('claimOutput, called directly', () => {
+  it('an output hook that never settles is passed over within the bound, with a word', async () => {
+    // Unbounded, it held the run before its first task for good, as the
+    // telemetry hook did until item 921.
+    const prev = process.env['VX_TEST_TEARDOWN_TIMEOUT']
+    process.env['VX_TEST_TEARDOWN_TIMEOUT'] = '50ms'
+    try {
+      const said: string[] = []
+      const claimed = await claimOutput(
+        [testPlugin('org/hung', { output: () => new Promise<never>(() => {}) })],
+        { warn: (m: string) => said.push(m) } as never,
+      )
+      expect({ claimed, said }).toEqual({
+        claimed: undefined,
+        said: ["[vx] plugin 'org/hung' output: did not answer within 50 ms; vx renders the run"],
+      })
+    } finally {
+      if (prev === undefined) delete process.env['VX_TEST_TEARDOWN_TIMEOUT']
+      else process.env['VX_TEST_TEARDOWN_TIMEOUT'] = prev
+    }
+  })
+})
+
+it('a Logger whose warn is not a function is refused at the claim, as its other optional methods are', async () => {
+  const said: string[] = []
+  const logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {}, warn: 'loud' }
+  const claimed = await claimOutput([testPlugin('org/odd', { output: () => logger as never })], {
+    warn: (m: string) => said.push(m),
+  } as never)
+  expect({ claimed, said }).toEqual({
+    claimed: undefined,
+    said: [
+      "[vx] plugin 'org/odd' output: output Logger's warn must be a function; vx renders the run",
+    ],
   })
 })

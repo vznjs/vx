@@ -284,7 +284,10 @@ without it `@vzn/vx` resolves only for `import` and the source loads.
 Every workspace load asks for it, so a repeat load in one process (the
 run after the CLI's selection pass) gets the same required module and
 plugin instances. It is built only once `.vx/cache` exists, so a reading verb on a fresh
-workspace writes nothing (item 900). A cache clear removes `compiled/`.
+workspace writes nothing (item 900). `compiled/` holds a `*` `.gitignore`
+(written when missing), so git skips it when `VX_CACHE_DIR` points
+elsewhere and no `.vx/.gitignore` names `/cache`. A cache clear removes
+`compiled/`.
 `.vx/cache` is trusted as the rest of the cache is. Pinned by
 `tests/config-bytecode.test.ts`.
 

@@ -1078,7 +1078,9 @@ describe('flow e2e against a real fixture workspace', () => {
     async () => {
       const path = await import('node:path')
       const BIN = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-      const ghaEnv = { ...process.env, CI: '1', GITHUB_ACTIONS: 'true' }
+      // FORCE_COLOR=0, as the gate's SUITE_ENV sets: GITHUB_ACTIONS paints
+      // a pipe, and a bare `bun test` read `┌─ one#boom` split by escapes.
+      const ghaEnv = { ...process.env, CI: '1', GITHUB_ACTIONS: 'true', FORCE_COLOR: '0' }
       const vx = async (args: string[]): Promise<{ code: number; out: string }> => {
         const proc = Bun.spawn([process.execPath, BIN, ...args], {
           cwd: workspaceRoot,
@@ -1345,7 +1347,7 @@ describe('persistent post-ready output', () => {
     log.taskComplete(n, mkOutcome(n, 'success'))
     log.runEnd?.()
     // The ready frame prints as always; nothing trails it.
-    expect(out.text()).toContain('└─ app#server ── (100ms) success')
+    expect(out.text()).toContain('└─ ▸ app#server ── (100ms) running')
     expect(out.text()).not.toContain('since ready')
   })
 })
@@ -1380,7 +1382,7 @@ describe('persistent pre-ready output is bounded too', () => {
     // The newest output explains why it never became ready, so it survives…
     expect(text).toContain('NEWEST-PRE-READY-LINE')
     // …in the failure frame, not a "since ready" block — it never was.
-    expect(text).toContain('┌─ app#server')
+    expect(text).toContain('┌─ ▸ app#server > failed')
     expect(text).not.toContain('since ready')
     // …and the frame stays far under the megabyte that was written, while
     // saying so, so a capped log can never read as a complete one.

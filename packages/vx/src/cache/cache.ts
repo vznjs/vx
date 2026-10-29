@@ -168,6 +168,7 @@ const VX_CACHE_NAMES = new Set([
   // `.vx/cache/compiled`, so a `runs` or `compiled` here is the user's.
   'failures',
   'steps',
+  'warnings',
   'lockfile-claims',
 ])
 
@@ -807,12 +808,37 @@ function makeCacheDir(cacheDir: string): void {
   try {
     mkdirSync(cacheDir, { recursive: true })
   } catch (err) {
+    const where = 'set `cache.dir` in .vx/workspace.ts, or pass --cache-dir <path>'
+    const code = (err as NodeJS.ErrnoException).code
+    // A file at the path or at a parent of it: "make the workspace
+    // writable" sent the user to chmod a tree that was writable.
+    if (code === 'EEXIST' || code === 'ENOTDIR') {
+      const file = inTheWay(cacheDir)
+      throw new UserError(
+        `cannot create cache directory ${cacheDir}: ${file} is a file, not a directory — move it away, ${where}`,
+        'VX_E_FS',
+      )
+    }
     // A read-only checkout with no cache yet: every verb opens the cache,
     // so this is the first thing any of them says there.
+    const fix = isDiskFull(err) ? 'free space on that disk' : 'make the workspace writable'
     throw new UserError(
-      `cannot create cache directory ${cacheDir} (${errorText(err)}) — vx keeps its cache there; make ` +
-        `the workspace writable, set \`cache.dir\` in .vx/workspace.ts, or pass --cache-dir <path>`,
+      `cannot create cache directory ${cacheDir} (${errorText(err)}) — vx keeps its cache there; ${fix}, ${where}`,
+      'VX_E_FS',
     )
+  }
+}
+
+/** The nearest of `dir` and its parents that exists, as itself (a link is not followed). */
+function inTheWay(dir: string): string {
+  for (let at = dir; ; at = path.dirname(at)) {
+    try {
+      lstatSync(at)
+      return at
+    } catch {
+      // quiet: a missing level is the walk's question, not a fault
+      if (path.dirname(at) === at) return dir
+    }
   }
 }
 

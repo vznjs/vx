@@ -98,7 +98,8 @@ refused too: vx prints names raw, and one could retitle the terminal.
 `tags` label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
 Each is a non-empty string a tag filter can name, or it is refused at
-load: no surrounding whitespace, no `*` (a pattern), and no ending in
+load: no surrounding whitespace, no `*` (a pattern), no control
+character (`vx show` prints tags raw), and no ending in
 `...` (a dependency walk) or `[<ref>]` (a git range). A
 `project` plugin may set or edit them (`nx()` gives each project its Nx
 `tags` unless the vx.config has its own). A tag is in no cache key: it
@@ -229,9 +230,9 @@ number is refused by `vx lock`. Omitted → no limit.
 build: { exec: { command: 'tsc -b', timeout: '2m' } }
 ```
 
-- For a **normal task**, `timeout` bounds the total run time, counted
-  from the spawn (a sandbox's setup, its wrap included, is vx's, not the
-  task's). A task
+- For a **normal task**, `timeout` bounds each attempt's run time,
+  counted from its spawn (a sandbox's setup, its wrap included, is vx's,
+  not the task's); a [retry](#retries-optional) gets the whole limit again. A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
   teardown, which is reported `aborted`.)
@@ -490,7 +491,9 @@ Semantics:
 - **Not started when nothing needs it.** A persistent task you did not
   request, whose every dependant is a confirmed cache hit, local or
   remote, is never spawned: a fully cached `vx run e2e` does not boot the server
-  `e2e` depends on, and the server is in no outcome or count. Behind a
+  `e2e` depends on, and the server is in no outcome or count. A group
+  between them that nobody requested (`env: { dependsOn: ['dev'] }`) is
+  passed through for local hits. Behind a
   remote cache, the server waits for the remote's answer on the
   dependants the local store missed, and starts at the first miss. It starts
   if one of those hits turns out to need running (its artifact went),
@@ -541,7 +544,7 @@ REPL, a watch mode that reads keys. Turbo's `interactive`.
   to the run's end, so other tasks may run once it is spawned (their
   output goes to the same terminal), a run may hold one, and every
   other interactive task must be its dependency. A run that breaks
-  either is refused before any task runs.
+  either is refused before any task runs, and so is its `--dry`.
 - **Off a TTY** (CI, a pipe) it runs as any task: stdin is empty, or
   a pipe vx holds for a persistent one, and it runs beside others.
   A prompt there reads end of input; it never hangs.
@@ -700,7 +703,9 @@ split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
 those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
-then masked in the same places.
+then masked in the same places. A token a plugin's OS keychain answered
+(`ctx.secret`) is masked in vx's own lines too (a plugin's warning, an
+error).
 
 Two `node_modules/.bin` directories are prepended to `PATH` so
 installed tools (`oxlint`, `vite`, etc.) run by name: the
@@ -954,7 +959,11 @@ watch` re-runs it on an edit there.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
-  upstream-hash propagation.
+  upstream-hash propagation. An entry rooted inside a nested project
+  (`dist/**` when `dist/` holds its own config) would key nothing, so
+  `vx lock` refuses it (`VX_E_NESTED_INPUT`): depend on that project's
+  task, or name its files in `inputs.workspaceFiles`. `**`, a sibling
+  and a `!` entry are fine.
 
 ##### `inputs.workspaceFiles` (optional, default `[]`)
 
@@ -1012,8 +1021,8 @@ Env var names whose host values are folded into the cache key.
 - Listing a name here does NOT forward it to the child process.
 
 To both forward AND track, list it in both places. Yes, the
-double-declaration is mild noise; a preset helper
-(`envTracked('NODE_ENV')`) can sugar it.
+double-declaration is mild noise; vx ships no helper for it, but a
+config is TypeScript, so a function of your own can return both lists.
 
 Names are exact: a wildcard (`NEXT_PUBLIC_*`) is refused, and so is
 Turbo's `!NAME` exclusion, here, in `exec.env.passThrough` and in
