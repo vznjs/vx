@@ -1848,7 +1848,7 @@ it('a task sent again over a dependency it could not read gives its booked cores
     await a.begin('t')
     await a.finish('t')
     expect((await ran).exitCode).toBe(0)
-    const before = h.o.machines()[0]!.bookedAvg
+    const before = h.o.machines()[0]!.bookedAvg!
     await Bun.sleep(300)
     expect(h.o.machines()[0]!.bookedAvg).toBeLessThan(before)
   } finally {
