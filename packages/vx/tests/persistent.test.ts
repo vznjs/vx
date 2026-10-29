@@ -909,4 +909,29 @@ describe('exec.persistent (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  // The outcome says the child is gone, so no label calls it running: a
+  // setup step's exit 0 at ready.
+  it(
+    'a server that exited on its own carries its exit on its outcome',
+    async () => {
+      await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: {
+          migrate: { exec: { command: 'echo migrated', persistent: { readyWhen: 'READY' } } },
+          e2e: { dependsOn: ['migrate'], exec: { command: 'sleep 0.6' } },
+        } }`,
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['e2e'],
+        projects: ['app'],
+        log: silentLogger(fixture),
+      })
+      const exit = (id: string) => r.outcomes.find((o) => o.node.id === id)?.serverExit
+      expect(exit('app#migrate')).toBe(0)
+    },
+    TIMEOUT,
+  )
 })

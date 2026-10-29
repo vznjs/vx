@@ -623,7 +623,7 @@ export function formatFrameClose(
   // so the close reads `running` (accent), not `success` — the ▸ marks
   // both ends of the frame as a long-lived task.
   const tail =
-    persistent && outcome.status === 'success'
+    persistent && outcome.status === 'success' && outcome.serverExit === undefined
       ? ` ${paint('', `(${formatElapsed(outcome.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
       : formatBlockFooter(outcome, colors)
   const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${tail}`

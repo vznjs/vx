@@ -575,6 +575,17 @@ describe('persistent task framing', () => {
     expect(close).toBe('└─ ▸ @vzn/vx-docs#dev ── (1.81s) running')
   })
 
+  // A setup step (migrate, seed) is ready by its clean exit: it closed as
+  // `running`, and was pinned so, though nothing ran any more.
+  it('a persistent task whose child already exited closes as success', () => {
+    const n = persistentNode('app#migrate', 'migrate up')
+    const close = formatFrameClose(
+      n,
+      outcome('app#migrate', 'success', { durationMs: 1810, serverExit: 0 }),
+    )
+    expect(close).toBe('└─ ▸ app#migrate ── (1.81s) success')
+  })
+
   it('a non-persistent task frame is unmarked and closes as success', () => {
     const n = node('@vzn/vx#lint', 'oxlint .')
     expect(formatFrameOpen(n)).toBe('┌─ @vzn/vx#lint > $ oxlint .')

@@ -324,11 +324,14 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   if (mayWriteFingerprint(node, args.workspaceRoot, args.fingerprintWatch?.names ?? [])) {
     args.fingerprintWatch?.wrote()
   }
+  // Ready by its clean exit (a setup step): nothing is running any more.
+  const exited = spawn.child.exitCode
   return {
     node,
     status: 'success',
     exitCode: 0,
     durationMs: spawn.readyMs(),
+    ...(exited === null ? {} : { serverExit: exited }),
     ...(hash !== undefined ? { hash } : {}),
     wallclockStartNs,
     wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,

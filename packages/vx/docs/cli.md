@@ -3452,8 +3452,9 @@ copy/paste yields the verbatim output. Every block (and every live
 frame close in focused flow) is followed by a blank line so frames
 never collide with the next one-liner. A persistent task's frame is
 marked with a cyan `▸` after `┌─`/`└─`, and its close reads `running`
-(the child is still alive), or `failed (exit <n>)` for a server that
-died on its own before the run stopped it.
+(the child is still alive), `success` for a setup step ready by its
+exit 0, or `failed (exit <n>)` for a server that died on its own before
+the run stopped it.
 
 There is **no top-of-run banner** — the run context lives in the
 footer. The task log opens with one blank line before its first row,
