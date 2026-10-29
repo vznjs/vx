@@ -292,6 +292,10 @@ function checkNodeShapes(nodes: Map<string, TaskNode>): void {
   }
 }
 
+// With `u`, a well-formed pair is one code point, so `Cs` matches only a lone half.
+const LONE_SURROGATE = /\p{Cs}/u
+const LONE_SURROGATES = /\p{Cs}/gu
+
 /**
  * `key` stage: every plugin may add `{ name: value }` material to every
  * task. Stored on the node as sorted `[plugin/name, value]` pairs so the
@@ -329,6 +333,13 @@ export async function applyKeyHooks(
         if (name.includes('\0')) {
           throw new UserError(
             `plugin '${plugin.name}' failed in key: a name on ${node.id} holds a NUL, the fold's delimiter`,
+          )
+        }
+        // The fold hashes a part's UTF-8, which writes every lone surrogate
+        // as U+FFFD: `'\ud800'` and `'\ud801'` folded one key.
+        if (LONE_SURROGATE.test(name) || LONE_SURROGATE.test(value)) {
+          throw new UserError(
+            `plugin '${plugin.name}' failed in key: part '${name.replace(LONE_SURROGATES, '�')}' on ${node.id} holds a lone UTF-16 surrogate, which the key cannot tell from another`,
           )
         }
         parts.push([`${plugin.name}/${name}`, value])
