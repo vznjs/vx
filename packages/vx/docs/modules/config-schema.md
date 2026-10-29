@@ -39,6 +39,9 @@ export interface NonJsonValue {
 }
 export function nonJsonPaths(value: unknown): NonJsonValue[]
 export function nonJsonMessage(configPath: string, found: NonJsonValue): string
+
+// bracket-literal.ts: `vx lock` refuses a glob whose `[…]` class, read literally, names an existing path
+export function checkBracketLiterals(root: string, projects: Iterable<ProjectEntry>): void
 ```
 
 `validateProjectConfig` is the one boundary three readers cross with the

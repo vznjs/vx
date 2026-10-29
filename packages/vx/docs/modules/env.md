@@ -13,7 +13,7 @@ export interface BuildEnvOptions {
   passThrough: readonly string[] // names → values from source
   define: Readonly<Record<string, string>> // explicit literal pairs
   source: NodeJS.ProcessEnv // typically process.env
-  binPaths?: readonly string[] // prepended to PATH (project bins)
+  binPaths?: readonly string[] // prepended to PATH: the project's bin, then the workspace root's
   workspaceRoot?: string // the inherited PATH drops each node_modules/.bin inside it
 }
 
