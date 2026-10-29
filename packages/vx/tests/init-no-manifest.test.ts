@@ -131,6 +131,9 @@ describe('vx init with no package.json', () => {
       "✗ vx init  --keep answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here\n",
       false,
     ])
+    // A flag this repo cannot take is usage, not the catch-all VX_E_REFUSED.
+    const json = await vx(root, ['init', '--native', '--dry', '--format', 'json'])
+    expect([json.code, JSON.parse(json.out).error.code]).toEqual([1, 'VX_E_USAGE'])
   })
 })
 

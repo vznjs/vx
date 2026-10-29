@@ -93,6 +93,30 @@ it('a worker runs the orchestrator’s env with its own root, host names and PAT
   }
 })
 
+// Core sets it to the workspace's manager on every local task; a worker
+// gave the one its own process happened to have (`bun vx dte worker`: bun),
+// or none in the Docker image, where `npm-run-all` then looked for npm.
+it("a worker names the workspace's package manager in npm_execpath, as a local run does", async () => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-dte-pm-')))
+  const saved = process.env['npm_execpath']
+  try {
+    await writeFile(path.join(root, 'package.json'), '{"packageManager":"pnpm@9.0.0"}')
+    await mkdir(path.join(root, 'node_modules/.bin'), { recursive: true })
+    await writeFile(path.join(root, 'node_modules/.bin/pnpm'), '#!/bin/sh\n')
+    await chmod(path.join(root, 'node_modules/.bin/pnpm'), 0o755)
+    process.env['npm_execpath'] = '/elsewhere/bun'
+    expect(localEnv({ PATH: '/usr/bin' }, '/orc/ws', root)['npm_execpath']).toBe(
+      path.join(root, 'node_modules/.bin/pnpm'),
+    )
+    // A task's own `define` still wins.
+    expect(localEnv({ npm_execpath: '/mine' }, '/orc/ws', root)['npm_execpath']).toBe('/mine')
+  } finally {
+    if (saved === undefined) delete process.env['npm_execpath']
+    else process.env['npm_execpath'] = saved
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 it('a worker swaps each root once, the first pair naming it winning', () => {
   expect(
     swapRoots({ a: '/ws/p/x', b: ['/ws', '/ws2/q', '/private/ws/r'], c: 'x:/ws/b' }, [
@@ -3084,9 +3108,12 @@ it('places an unmeasured task on any free core, and sizes the run by 2 cores and
     [2, 4e9],
     [2, 4e9],
   ])
-  expect(
-    refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } })),
-  ).toContain('unmeasured needs cpu > 0')
+  expect(refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } }))).toBe(
+    'dte() option "unmeasured.cpu" must be a number above 0, got 0',
+  )
+  expect(refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 1, memory: 'lots' } }))).toBe(
+    `dte() option "unmeasured.memory" must be bytes above 0 or a size such as '4GB', got "lots"`,
+  )
 })
 
 it('reads memory as bytes or with a unit', () => {
@@ -3110,28 +3137,47 @@ const refusal = (make: () => unknown): string => {
   }
 }
 
+// Worded as vxCache() and vxHistory() word the same refusal; a value is never printed.
+it('refuses a header it cannot send, never printing a value', () => {
+  const relay = 'https://r'
+  expect(refusal(() => dte({ relay, headers: { authorization: 'x' } }))).toBe(
+    'dte() option "headers" cannot set "authorization"',
+  )
+  expect(refusal(() => dte({ relay, headers: { a: 'x\ny' } }))).toBe(
+    'dte() option "headers.a" must be one line of text (its value is not printed)',
+  )
+})
+
 it('refuses options it does not read and workers it cannot start', () => {
   const adapter = local()
   const W = { s: { cpu: 1, memory: '1GB' } }
   expect(refusal(() => dte({ workers: W, adapter, relays: 'x' } as never))).toContain(
     'dte() has unknown option "relays"',
   )
+  // Each names the field and the value it got: one line for three fields named none.
   expect(refusal(() => dte({ workers: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
-    "dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
+    'dte() option "workers.s.cpu" must be a whole number ≥ 1, got 0',
   )
   expect(
     refusal(() => dte({ workers: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter })),
-  ).toBe("dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any")
+  ).toBe(
+    `dte() option "workers.s.memory" must be bytes above 0 or a size such as '8GB', got "8 lots"`,
+  )
+  expect(refusal(() => dte({ workers: { s: { max: 1.5, cpu: 1, memory: '1GB' } }, adapter }))).toBe(
+    'dte() option "workers.s.max" must be a whole number ≥ 0, got 1.5',
+  )
   expect(
     refusal(() =>
       dte({ workers: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } }, adapter }),
     ),
-  ).toBe('dte(): workers.s.platform is one of linux-x64, linux-arm64, darwin-x64, darwin-arm64')
+  ).toBe(
+    'dte() option "workers.s.platform" must be one of linux-x64, linux-arm64, darwin-x64, darwin-arm64, got "win32-x64"',
+  )
   expect(refusal(() => dte({ workers: W, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
-    'dte(): scheduler.order is one of critical-path, graphene, fifo',
+    'dte() option "scheduler.order" must be one of critical-path, graphene, fifo, got "lifo"',
   )
   expect(refusal(() => dte({ workers: W, adapter, scheduler: { pace: 'x' } as never }))).toBe(
-    'dte(): scheduler.pace is no layer: the layers are order, place, book, scale',
+    'dte() option "scheduler" has no layer "pace" (layers: order, place, book, scale)',
   )
   expect(refusal(() => dte({}))).toBe(
     'dte(): with no adapter, set relay: the workers that join it run the tasks',

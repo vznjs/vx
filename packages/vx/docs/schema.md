@@ -959,7 +959,11 @@ watch` re-runs it on an edit there.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
-  upstream-hash propagation.
+  upstream-hash propagation. An entry rooted inside a nested project
+  (`dist/**` when `dist/` holds its own config) would key nothing, so
+  `vx lock` refuses it (`VX_E_NESTED_INPUT`): depend on that project's
+  task, or name its files in `inputs.workspaceFiles`. `**`, a sibling
+  and a `!` entry are fine.
 
 ##### `inputs.workspaceFiles` (optional, default `[]`)
 
