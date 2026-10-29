@@ -93,7 +93,10 @@ describe('vx lock refuses a bracket class that names an existing path', () => {
       await writeFile(path.join(root, 'packages/a/app/[id]/page.ts'), 'two')
       const r = vx(root, ['run', 'build', '--all'])
       expect(r.code).toBe(0)
-      expect(r.out).toMatch(/success miss +packages\/a#build/)
+      // The row's words, not their spacing: a run that sampled the task's
+      // CPU adds columns between them.
+      const row = r.out.split('\n').find((l) => l.endsWith(' packages/a#build'))
+      expect(row?.trim().split(/ +/)).toEqual(expect.arrayContaining(['success', 'miss']))
     },
     TIMEOUT,
   )

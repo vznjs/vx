@@ -1096,7 +1096,10 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       const first = vxExit(root, 'run', 'build', '--all')
       expect([first.code, first.out]).toEqual([1, expect.stringContaining('src/x\uFFFDy')])
       expect(first.out).toContain('not valid UTF-8')
-      expect(first.out).toMatch(/success +miss +b#build/)
+      // The row's words, not their spacing: a run that sampled a task's CPU
+      // adds columns between them (CI, PR #4867).
+      const row = first.out.split('\n').find((l) => l.endsWith(' b#build'))
+      expect(row?.trim().split(/ +/)).toEqual(expect.arrayContaining(['success', 'miss']))
       expect(vxExit(root, 'run', 'build', '--filter', 'b').out).toContain('local 1✓')
       await writeFile(badIn(path.join(root, 'pkgs', 'a', 'src')), 'bad2')
       await writeFile(badIn(path.join(root, 'docs')), 'doc2')
