@@ -489,3 +489,22 @@ it.each([
   },
   TIMEOUT,
 )
+
+// vercel/turborepo#13793: an input glob that does not compile (`[invalid`)
+// failed affected detection. vx compiles no such class: an unclosed `[` is
+// the literal name, keyed as any file is.
+it(
+  'an unclosed `[` in an input names the literal file, keyed and re-keyed',
+  async () => {
+    const root = await workspace("{ files: ['src/[invalid'] }", {
+      'src/[invalid': 'v1\n',
+      'src/i': 'v1\n',
+    })
+    const k0 = await key(root)
+    await writeFile(at(root, 'src/i'), 'v2\n')
+    expect(await key(root)).toBe(k0)
+    await writeFile(at(root, 'src/[invalid'), 'v2\n')
+    expect(await key(root)).not.toBe(k0)
+  },
+  TIMEOUT,
+)
