@@ -279,6 +279,15 @@ describe('the projects bar', () => {
     expect(line).toContain('▰')
   })
 
+  it('fills no cell when no project is affected', () => {
+    // A run of command-less groups (`vx run build` where no project gives
+    // build a command) read `0 affected` beside a filled cell.
+    const line = withCtx({ packageCount: 0, workspaceProjectCount: 2 }).find((l) =>
+      l.includes('projects'),
+    )
+    expect(line).not.toContain('▰')
+  })
+
   it('never overflows when every project is affected', () => {
     const lines = withCtx({ packageCount: 100, workspaceProjectCount: 100 })
     expect(bar(lines, 'projects')).toHaveLength(BAR_WIDTH)

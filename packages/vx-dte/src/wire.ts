@@ -692,7 +692,9 @@ export async function join(
         await said.catch(() => undefined)
       }
       left = true
-      clearTimeout(redial)
+      // Ends what still waits on a socket (an ack, a probe): no redial
+      // would ever bring one, and each waits a heartbeat at a time, for good.
+      end(new RelayError(410, 'relay: this participant left'))
       const s = socket
       // One the relay's close frame dropped may still be in its handshake:
       // Bun 1.4.4 fires the close only after it.

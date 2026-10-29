@@ -51,6 +51,16 @@ describe('linkPaths', () => {
     )
   })
 
+  it('encodes a # or ? in the directory, which a URL reads as its fragment or query', () => {
+    // A C# repo's `c#-app`: the link opened `file:///…/c` and dropped the rest.
+    const odd = path.join(root, 'c#-app?')
+    mkdirSync(odd)
+    writeFileSync(path.join(odd, 'a.ts'), '')
+    expect(linkPaths('a.ts:2', odd, fileMemo())).toBe(
+      `\x1b]8;;file://${root}/c%23-app%3F/a.ts\x1b\\a.ts:2\x1b]8;;\x1b\\`,
+    )
+  })
+
   it('asks the file system once per path', () => {
     let asked = 0
     const memo = fileMemo()
