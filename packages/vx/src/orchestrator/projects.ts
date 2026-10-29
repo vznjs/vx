@@ -91,9 +91,17 @@ export async function loadWorkspacePlugins(
       branch.refs = [...new Set(facts.refs)]
     }
   }
-  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) =>
-    validateWorkspace(workspaceConfig, `.vx/workspace (after plugin '${plugin.name}')`),
-  )
+  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) => {
+    const at = `.vx/workspace (after plugin '${plugin.name}')`
+    validateWorkspace(workspaceConfig, at)
+    // The run takes `plugins` from the file: an edited list validated and was dropped.
+    const now = workspaceConfig.plugins
+    if (now?.length !== list?.length || now?.some((p, i) => p !== list![i])) {
+      throw new UserError(
+        `${at}: \`plugins\` is fixed before the config stage, so an edit to it would change nothing — declare plugins in .vx/workspace`,
+      )
+    }
+  })
   return { workspaceConfig, plugins, branch }
 }
 
