@@ -310,7 +310,7 @@ describe('cache.scope', () => {
           (err: Error) => err.message,
         )
         expect(refused).toBe(
-          "VX_CACHE_SCOPE must be a scope name of letters, digits and . _ - / @ : (at most 128), like 'vznjs/vx:feat-x'",
+          "VX_CACHE_SCOPE must be a scope name of letters, digits and . _ - / @ : (at most 128), like 'vznjs/vx:feat-x' (got pr 9)",
         )
       } finally {
         if (saved === undefined) delete process.env['VX_CACHE_SCOPE']

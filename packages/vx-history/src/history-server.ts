@@ -77,6 +77,15 @@ const deadline = (): AbortSignal => {
   return c.signal
 }
 
+/**
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
+ * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
+ * overwrote the line before (core's `printable`, L-31).
+ */
+const printable = (s: string): string =>
+  // oxlint-disable-next-line no-control-regex
+  s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
   const text = (await res.text().catch(() => '')).slice(0, 2048)
@@ -87,8 +96,21 @@ async function refusal(res: Response): Promise<Error> {
   } catch {
     // not JSON: the text is what it said
   }
-  said = said.replace(/\s+/g, ' ').trim().slice(0, 200)
+  said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
+}
+
+/** A 200's JSON; one that is none (a website's page) names the likely fault, the url. */
+async function jsonOf(res: Response, path: string): Promise<unknown> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    const type = res.headers.get('content-type') ?? 'no content type'
+    throw new Error(
+      `${path} answered ${res.status} with ${type}, not JSON: is the url a vx-history server?`,
+    )
+  }
 }
 
 /** A JWT's `exp` in ms; 0 when it names none. */
@@ -233,7 +255,10 @@ export class HistoryServer {
   /** `/v1/capabilities`, asked once a run, and again after a failed ask: nothing is guessed. */
   private limitsNow(): Promise<Limits> {
     const asked = (this.limits ??= (async () => {
-      const body = (await (await this.call('/v1/capabilities')).json()) as Partial<Limits> | null
+      const body = (await jsonOf(
+        await this.call('/v1/capabilities'),
+        '/v1/capabilities',
+      )) as Partial<Limits> | null
       const n = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0)
       const limits = {
         maxUploadTimings: n(body?.maxUploadTimings),
@@ -263,7 +288,7 @@ export class HistoryServer {
           refs,
           hashes: hashes.slice(i * per, (i + 1) * per),
         })
-        const body = (await res.json()) as { timings?: unknown } | null
+        const body = (await jsonOf(res, '/v1/timings/query')) as { timings?: unknown } | null
         if (typeof body?.timings !== 'object' || body.timings === null) {
           throw new Error('the query answered no `timings` object')
         }

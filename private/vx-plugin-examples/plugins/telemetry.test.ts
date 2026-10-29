@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { run, type Logger } from '@vzn/vx'
+import { run, type Logger, type TelemetrySink } from '@vzn/vx'
+import { jsonlTelemetry } from './telemetry.ts'
 
 let root: string
 beforeEach(async () => {
@@ -76,3 +77,23 @@ it('appends one line per run', async () => {
     '{"tasks":1,"failed":0,"cached":0}\n{"tasks":1,"failed":0,"cached":0}\n',
   )
 }, 20_000)
+
+// Read against the process's cwd, a relative file was another file for a
+// run started in a project's directory, written inside that project.
+it('writes a relative file at the workspace root', async () => {
+  const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'vx-plugin-telemetry-cwd-'))
+  const cwd = process.cwd()
+  process.chdir(elsewhere)
+  try {
+    const plugin = jsonlTelemetry('runs.jsonl')
+    const sink = (await plugin.telemetry!({ workspaceRoot: root } as never)) as TelemetrySink
+    sink.onRunSummary!({ taskCount: 2, failedCount: 0, hitCount: 1 } as never)
+    await sink.flush!(new AbortController().signal)
+  } finally {
+    process.chdir(cwd)
+    await rm(elsewhere, { recursive: true, force: true })
+  }
+  expect(await Bun.file(path.join(root, 'runs.jsonl')).text()).toBe(
+    '{"tasks":2,"failed":0,"cached":1}\n',
+  )
+})

@@ -1603,7 +1603,9 @@ describe('an install at the workspace root names the flag pnpm and Yarn 1 requir
       path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'adopt.ts'),
       'utf8',
     )
-    expect(adopt).toContain("['pnpm', 'add', '-D', '-w', ...packages]")
+    // pnpm takes -w only inside a pnpm workspace, the root these lines name.
+    expect(adopt).toContain("['pnpm', 'add', '-D', ...pnpmRoot(root), ...packages]")
+    expect(adopt).toContain("'pnpm-workspace.yaml')) ? ['-w'] : []")
     expect(adopt).toContain("['yarn', 'add', '-D', '-W', ...packages]")
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const files = [
