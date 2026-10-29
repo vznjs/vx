@@ -188,6 +188,11 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       await blobs.put(name, req.body ?? new Blob([]).stream(), length)
     } catch (err) {
       if (err instanceof Refusal) throw err
+      // A client that left mid-body (a cancelled run, a dropped link) fails
+      // the bucket's write too: no fault of the bucket's, nor the operator's.
+      if (req.signal.aborted) {
+        throw new Refusal(400, 'the upload ended before its body did: the client left')
+      }
       throw new Refusal(502, `the bucket refused the artifact: ${message(err)}`)
     }
     return new Response(null, { status: 204 })

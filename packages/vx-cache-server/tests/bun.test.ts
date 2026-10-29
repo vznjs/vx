@@ -443,6 +443,44 @@ it("answers a bucket that cannot be read 502, naming the bucket's answer", async
   logged.mockRestore()
 })
 
+// A client that left mid-upload (a cancelled run, a dropped link) failed
+// the bucket's write, and was logged as "502 the bucket refused the
+// artifact": the operator was told of a fault that is no one's.
+it("answers an upload its client left as the client's, never the bucket's 502", async () => {
+  const errors: string[] = []
+  const logged = console.error
+  console.error = (...args: unknown[]) => void errors.push(args.join(' '))
+  const left = new AbortController()
+  let res: Response
+  try {
+    res = await createCacheServer({
+      blobs: {
+        put: async () => {
+          left.abort()
+          throw new DOMException('The connection was closed.', 'AbortError')
+        },
+        get: async () => null,
+        size: async () => null,
+      },
+      authorize: async () => ({ issuer: GITHUB, repository: REPO, write: 'refs/heads/main' }),
+    })(
+      new Request('http://x.test/v1/artifacts/abc', {
+        method: 'PUT',
+        body: 'partial',
+        headers: { 'content-length': '100' },
+        signal: left.signal,
+      }),
+    )
+  } finally {
+    console.error = logged
+  }
+  expect({ status: res.status, errors }).toEqual({ status: 400, errors: [] })
+  expect(await res.json()).toEqual({
+    code: 'bad_request',
+    message: 'the upload ended before its body did: the client left',
+  })
+})
+
 // A failed request logged the bare error, no server name, method or route,
 // beside the history server's `vx-history-server: <method> <path>: <why>`.
 it('logs a request it failed with its name, method and path', async () => {
