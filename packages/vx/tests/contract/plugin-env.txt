@@ -97,10 +97,12 @@
 @vzn/vx-migrate TURBO_CI_VENDOR_ENV_KEY
 @vzn/vx-migrate TURBO_CONCURRENCY
 @vzn/vx-migrate TURBO_ENV_MODE
+@vzn/vx-migrate TURBO_FORCE
 @vzn/vx-migrate TURBO_PREFLIGHT
 @vzn/vx-migrate TURBO_REMOTE_CACHE_SIGNATURE_KEY
 @vzn/vx-migrate TURBO_REMOTE_CACHE_TIMEOUT
 @vzn/vx-migrate TURBO_REMOTE_CACHE_UPLOAD_TIMEOUT
+@vzn/vx-migrate TURBO_ROOT_TURBO_JSON
 @vzn/vx-migrate TURBO_SCM_BASE
 @vzn/vx-migrate TURBO_TEAM
 @vzn/vx-migrate TURBO_TEAMID
