@@ -291,6 +291,31 @@ describe('every input the npm digest must read', () => {
     }).toEqual({ fileDirs: ['vendor/dep'], importers: ['.', 'packages/a'], moved: true })
   })
 
+  // The `{ packages: [...] }` spelling of `workspaces` (Turbo's
+  // `test_npm_resolves_alternative_workspace_format`, vercel/turborepo#3632).
+  it('a `workspaces: { packages }` root names its workspaces as the array form does', () => {
+    const text = (workspaces: unknown) =>
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'r', workspaces },
+          'node_modules/a': { resolved: 'packages/a', link: true },
+          'packages/a': { version: '1.0.0' },
+        },
+      })
+    const read = (workspaces: unknown) => {
+      const lock = parseLockfile(text(workspaces))
+      return {
+        fileDirs: lock.fileDirs,
+        importers: [...importerDigests(lock, new Map()).keys()].sort(),
+      }
+    }
+    const expected = { fileDirs: [], importers: ['.', 'packages/a'] }
+    expect(read({ packages: ['packages/*'] })).toEqual(expected)
+    // CONTROL: the array form.
+    expect(read(['packages/*'])).toEqual(expected)
+  })
+
   // Item 1073's class, npm's side: two workspaces that link each other,
   // each on its own is-number. Swapping which one reaches 7.0.0 gives
   // their nodes the same lines unless each folds its own path — both are
