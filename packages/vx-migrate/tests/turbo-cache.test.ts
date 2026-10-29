@@ -111,6 +111,37 @@ describe('resolveTurboCacheConfig', () => {
     ).toMatchObject({ url: 'https://c.example', teamId: 'team_x', teamSlug: 'linked' })
   })
 
+  // vercel/turborepo#1844: Turbo uses its remote only when linked, a token
+  // with a team. A TURBO_TOKEN with no team ran remote here, team-less,
+  // where `turbo` runs local. CONTROL: a team from any source, or a
+  // turboCache() option naming the cache.
+  it('a Turbo token or url with no team declines, as turbo runs local', () => {
+    const said: string[] = []
+    const at = (env: Record<string, string>, local = {}) =>
+      resolveTurboCacheConfig({}, env, {}, local, (m) => said.push(m))?.url
+    expect([
+      at({ TURBO_TOKEN: 't' }),
+      at({ TURBO_TOKEN: 't', TURBO_API: 'https://c.example' }),
+      at({ TURBO_API: 'https://c.example' }),
+      at({ VERCEL_ARTIFACTS_TOKEN: 'vt' }),
+      at({ TURBO_TOKEN: 't', TURBO_TEAM: 'acme' }),
+      at({ TURBO_TOKEN: 't' }, { teamId: 'team_link' }),
+      resolveTurboCacheConfig({ token: 't' }, {})?.url,
+    ]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'https://vercel.com/api',
+      'https://vercel.com/api',
+      'https://vercel.com/api',
+    ])
+    // Turbo names a token it ignores; a bare url it reads as not linked.
+    const line =
+      'a Turbo token is set but no team (TURBO_TEAM, TURBO_TEAMID or .turbo/config.json): remote cache off for this run, as for turbo'
+    expect(said).toEqual([line, line])
+  })
+
   it('reads options over Turbo’s environment, strips a trailing slash, declines without url, team or token', () => {
     expect(resolveTurboCacheConfig({}, {})).toBeUndefined()
     // A URL with no token is kept: the layer's `open` asks the OS keychain.
@@ -168,7 +199,13 @@ describe('resolveTurboCacheConfig', () => {
       pick(resolveTurboCacheConfig({}, {}, file)),
       pick(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't' }, { ...file, enabled: false })),
       pick(resolveTurboCacheConfig({ token: 't' }, {}, { ...file, enabled: false })),
-      pick(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't' }, { apiUrl: 7, teamId: null })),
+      pick(
+        resolveTurboCacheConfig(
+          {},
+          { TURBO_TOKEN: 't', TURBO_TEAM: 'a' },
+          { apiUrl: 7, teamId: null },
+        ),
+      ),
     ]).toEqual([
       ['https://file.example', 'team_file', 'file'],
       ['https://env.example', 'team_env', 'env'],
@@ -176,7 +213,7 @@ describe('resolveTurboCacheConfig', () => {
       ['https://file.example', 'team_file', 'file'],
       undefined,
       ['https://file.example', 'team_file', 'file'],
-      ['https://vercel.com/api', undefined, undefined],
+      ['https://vercel.com/api', undefined, 'a'],
     ])
   })
 
@@ -719,8 +756,10 @@ describe('vx run with turboCache() layered over the local cache', () => {
         return turboCache({}).cache?.(ctx as never) !== undefined
       }
       expect([
-        await on({ remoteCache: { apiUrl: 'https://file.example' } }),
-        await on({ remoteCache: { apiUrl: 'https://file.example', enabled: false } }),
+        await on({ remoteCache: { apiUrl: 'https://file.example', teamSlug: 'a' } }),
+        await on({
+          remoteCache: { apiUrl: 'https://file.example', teamSlug: 'a', enabled: false },
+        }),
       ]).toEqual([true, false])
     } finally {
       if (before === undefined) delete process.env['TURBO_TOKEN']
@@ -736,6 +775,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
     try {
       process.env['TURBO_TOKEN'] = 't'
       process.env['TURBO_API'] = 'https://c.example'
+      process.env['TURBO_TEAM'] = 'acme'
       const remote = (env: Record<string, string>) => {
         Object.assign(process.env, env)
         const ctx = {
@@ -903,7 +943,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
       await mkdir(path.join(ws, '.turbo'), { recursive: true })
       await writeFile(
         path.join(ws, '.turbo', 'config.json'),
-        JSON.stringify({ apiurl: 'https://link.example', token: 'lt' }),
+        JSON.stringify({ apiurl: 'https://link.example', teamid: 'team_l', token: 'lt' }),
       )
       expect([before, on()]).toEqual([false, true])
     } finally {

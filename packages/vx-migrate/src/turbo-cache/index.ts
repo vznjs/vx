@@ -301,10 +301,20 @@ export function resolveTurboCacheConfig(
     fromFile(file.teamId)
   const teamSlug =
     options.teamSlug ?? set('TURBO_TEAM') ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
-  // Turbo's own default when a token or a team is set and no URL is:
-  // Vercel's hosted Remote Cache. A token alone is a configured cache, as it
-  // is for `turbo`; a URL or a team without one asks the OS keychain at
-  // `open`; none of them is the declined, local run.
+  // Turbo uses its remote only when linked, a team set (`is_linked`): a
+  // token without one ran remote here, team-less, where `turbo` runs local.
+  // An option naming the cache is vx's own, and stands.
+  const named =
+    options.url !== undefined || options.token !== undefined || options.oidc !== undefined
+  if (!named && teamId === undefined && teamSlug === undefined) {
+    if (token !== undefined)
+      warn(
+        'a Turbo token is set but no team (TURBO_TEAM, TURBO_TEAMID or .turbo/config.json): remote cache off for this run, as for turbo',
+      )
+    return undefined
+  }
+  // Turbo's own default when no URL is set: Vercel's hosted Remote Cache.
+  // A team without a token asks the OS keychain at `open`.
   // Each source with its name: TURBO_API was refused as a `url`
   // option the workspace never set.
   const [rawUrl, urlFrom] =
