@@ -74,10 +74,13 @@ key, and adds a package's `package.json` to its tasks' inputs:
 | `pnpm()` | `pnpm-workspace.yaml` except `patchedDependencies`, `overrides` and the catalogs (the lockfile records their effect per package), `.npmrc`, the root `package.json`'s `pnpm` field |
 | `bun()` | `bunfig.toml`, `.npmrc` |
 | `npm()` | `.npmrc` |
-| `yarn()` | `.yarnrc.yml`, `.yarnrc` (yarn 1) |
+| `yarn()` | `.yarnrc.yml`, `.yarnrc` and `.npmrc` (yarn 1) |
 
 A yarn 1 lockfile records no workspaces, so `yarn()` reads which package
 depends on which from the workspaces' `package.json` files.
+Under pnpm's `excludeLinksFromLockfile`, the lockfile leaves out every
+`link:` dependency, so `pnpm()` reads those from `package.json` and
+every package's key folds every package's dependencies.
 
 `vx why` names the part `plugin @vzn/vx-lockfile/pnpm`. An unreadable
 lockfile stops the run and names the install to re-run. An import you
