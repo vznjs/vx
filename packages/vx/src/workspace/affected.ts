@@ -22,7 +22,7 @@ import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
-import { PROJECT_CONFIG_FILENAMES, type ProjectMeta } from './workspace.js'
+import { PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from './workspace.js'
 
 /**
  * Every git call here goes through these two: a git that is not on PATH
@@ -271,12 +271,22 @@ export async function affectedChanges(
 
   const projects = await args.projects
 
-  // .vx/projects.lock.json (workspace-root metadata) is excluded like a gitignored
-  // file: re-running `vx lock` must not mark every project affected.
+  // What vx writes under `.vx` (the lock, its git files, the cache) is
+  // excluded like a gitignored file: re-running `vx lock` must not mark
+  // every project affected, nor the root project whole.
   // An untracked file under `node_modules` is an install, which the input
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.
+  // So is each project's `vx.lock.json`, the review copy `vx lock` writes
+  // beside its config and nothing reads: a re-lock rewriting them all
+  // selected every project while no key moved.
+  const reviewCopies = new Set(projects.map((p) => path.join(p.dir, REVIEW_FILE)))
+  const rootDir = path.resolve(args.workspaceRoot)
   const changed = [...diffed.paths, ...untracked.filter((s) => !isInstalledPath(s))].filter(
-    (s) => s !== LOCKFILE_NAME,
+    (s) =>
+      !VX_OWN.has(s) &&
+      !s.startsWith('.vx/cache/') &&
+      !s.startsWith('.vx/tmp/') &&
+      (path.posix.basename(s) !== REVIEW_FILE || !reviewCopies.has(path.join(rootDir, s))),
   )
   // A symlinked input keys the content behind it (cache/linked-inputs.ts),
   // and the diff names that content's path, never the link's: a link whose
@@ -333,7 +343,6 @@ export async function affectedChanges(
     string,
     Map<string, { before: Uint8Array | null; after: Uint8Array | null }>
   >()
-  const rootDir = path.resolve(args.workspaceRoot)
   const loose = changed.filter((rel) => {
     const abs = path.join(rootDir, rel)
     return !projects.some((p) => p.dir !== rootDir && abs.startsWith(p.dir + path.sep))
@@ -472,6 +481,9 @@ export async function affectedChanges(
   for (const name of await args.workspaceGlobOwners(changed, nestedDirs)) owned.add(name)
   return done()
 }
+
+/** What vx writes under `.vx`, which no key reads (cache/inputs.ts `ALWAYS_IGNORE`). */
+const VX_OWN: ReadonlySet<string> = new Set([LOCKFILE_NAME, '.vx/.gitattributes', '.vx/.gitignore'])
 
 const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 
@@ -1037,13 +1049,19 @@ function parentsOf(workspaceRoot: string, sha: string): string[] {
 /**
  * What to ask origin for a base: a commit id as it is (GitHub serves any
  * commit a ref reaches), `origin/<branch>` as that branch into its
- * remote-tracking ref. Anything else is a name only this clone knows.
+ * remote-tracking ref, any other plain name as origin's tag of that name
+ * (a release base, `v1`; `--no-tags` fetched none). An expression (`v1~2`)
+ * is a name only this clone knows.
  */
 function originSpec(ref: string): string | undefined {
   if (/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(ref)) return ref
   const branch = /^(?:refs\/remotes\/)?origin\/(.+)$/s.exec(ref)?.[1]
-  if (branch === undefined || branch === 'HEAD') return undefined
-  return `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  if (branch !== undefined) {
+    return branch === 'HEAD' ? undefined : `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  }
+  const tag = /^(?:refs\/tags\/)?([^\s~^:?*[\\@{]+)$/.exec(ref)?.[1]
+  if (tag === undefined || tag === 'HEAD' || tag.startsWith('refs/')) return undefined
+  return `+refs/tags/${tag}:refs/tags/${tag}`
 }
 
 /**
@@ -1122,6 +1140,25 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   if (proc.exitCode !== 1) {
     const noHistory = noHistoryRefusal(workspaceRoot)
     if (noHistory !== undefined) throw noHistory
+    // `--quiet` also silences a ref git refused in its own words (a reflog
+    // entry the log lacks, `main@{9}`: exit 128): ask again to say why.
+    if (stderr.length === 0) {
+      const loud = spawnGitSync(
+        ['rev-parse', '--verify', '--end-of-options', ref],
+        workspaceRoot,
+        'pipe',
+      )
+      const why = new TextDecoder()
+        .decode(loud.stderr)
+        .trim()
+        .replace(/^fatal: /, '')
+      if (loud.exitCode !== 0 && why.length > 0) {
+        throw new UserError(
+          `git ref "${ref}" did not resolve: ${why.replace(/\.?$/, '.')}`,
+          'VX_E_AFFECTED_BASE',
+        )
+      }
+    }
     throw new UserError(
       `git rev-parse failed (exit ${proc.exitCode}) in ${workspaceRoot}` +
         (stderr.length > 0 ? `: ${stderr}` : ''),

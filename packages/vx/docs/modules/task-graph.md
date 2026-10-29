@@ -38,6 +38,9 @@ export interface BuildGraphOptions {
   undeclaredDeps?: (taskId: string, name: string) => void
   workspaceRoot?: string // lets root-anchored outputs be checked against `files` outputs (item 1088)
   rules?: GraphRules | undefined // the workspace's `rules`; each on unless false (X-53)
+  // By project name, every project rooted inside its dir; with `workspaceRoot`
+  // and unlocked (`vx lock`), an `inputs.files` entry rooted in one is refused.
+  nestedProjects?: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>
 }
 
 // `locked`: a run, which never checks the rules; `vx lock` does.
@@ -235,6 +238,14 @@ so the refusal names the same pair and the marks land in the same
 order. One project of 4,000 tasks with outputs built its graph in
 10.0 s (distinct literals) and now in 10 ms (item 746).
 
+## Inputs inside a nested project
+
+Given `nestedProjects` (only `vx lock` passes it) and unlocked,
+`refuseNestedInputs` refuses an `inputs.files` entry whose brace
+alternative's fixed prefix lies inside a project nested in the task's
+own (`VX_E_NESTED_INPUT`): the boundary drops every file it can match,
+so it keys nothing (`tests/nested-input.test.ts`).
+
 ## Inputs that read outputs
 
 Unless the graph is locked, `detectInputOverlaps` (X-54, no opt-out)
@@ -249,7 +260,7 @@ refused; the stability gate keeps the "may reach" cases preliminary. An
 output the reader's own `!` entries take back whole (`outputTakenBack`)
 does not count, nor do its own outputs, nor an output git ignores
 whole: the overlaps found are collected, one per output, and git is
-asked once for all of them (`refuseUnlessIgnored`: one `git
+asked once for all of them (`refuseOverlaps`: one `git
 check-ignore` over each output's directory, `util/git-ignored.ts`, and a
 `git ls-files` for a glob that reaches below it, which must list no file
 the glob matches). Undecided, or no work tree: refused. A group has no

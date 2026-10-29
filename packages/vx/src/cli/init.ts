@@ -147,7 +147,9 @@ export function initInstalls(
 ): { argv: string[]; cwd: string | null }[] {
   const out: { argv: string[]; cwd: string | null }[] = []
   if (globalAt !== version) {
-    const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1] ?? 'bun'
+    // Yarn 2+ has no `yarn global`: Bun, which vx needs anyway, as with no runner.
+    const ua = /^(npm|pnpm|yarn|bun)\/(\d+)/.exec(userAgent ?? '')
+    const runner = ua === null || (ua[1] === 'yarn' && Number(ua[2]) >= 2) ? 'bun' : ua[1]!
     const manager = runner as ManagedInstall['manager']
     out.push({ argv: upgradeArgv({ manager, scope: 'global', cwd: '' }, version), cwd: null })
   }
@@ -263,7 +265,14 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
     }
   }
   if (!args.dry) {
-    await mkdir(path.join(root, 'plugins'), { recursive: true })
+    await mkdir(path.join(root, 'plugins'), { recursive: true }).catch(
+      (err: NodeJS.ErrnoException) => {
+        if (err.code !== 'EEXIST' && err.code !== 'ENOTDIR') throw err
+        throw new UserError(
+          `vx init: cannot write ${files[0][0]}: plugins is a file, not a directory; move it and re-run`,
+        )
+      },
+    )
     for (const [rel, text] of files) await Bun.write(path.join(root, rel), text)
   }
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
@@ -307,7 +316,8 @@ function hasScripts(pkgRoot: string | null): boolean {
   if (pkgRoot === null) return false
   if (existsSync(path.join(pkgRoot, 'pnpm-workspace.yaml'))) return true
   try {
-    const pj = JSON.parse(readFileSync(path.join(pkgRoot, 'package.json'), 'utf8')) as {
+    const text = readFileSync(path.join(pkgRoot, 'package.json'), 'utf8').replace(/^﻿/, '')
+    const pj = JSON.parse(text) as {
       scripts?: unknown
       workspaces?: unknown
     }
@@ -335,6 +345,7 @@ async function starter(
   if (args.mode !== undefined) {
     throw new UserError(
       `vx init: --${args.mode} answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here`,
+      'VX_E_USAGE',
     )
   }
   // A source checkout installs nothing, so it declares the plugin only where one is.
@@ -393,7 +404,14 @@ async function starter(
   }
   const ran = await install(pkgRoot, false, plugins)
   if (ran.length > 0) rows.push(['installed', ...ran])
-  for (const f of files) await Bun.write(path.join(root, f.path), f.contents)
+  for (const f of files) {
+    await Bun.write(path.join(root, f.path), f.contents).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== 'ENOTDIR') throw err
+      throw new UserError(
+        `vx init: cannot write ${f.path}: ${path.dirname(f.path)} is a file, not a directory; move it and re-run`,
+      )
+    })
+  }
   for (const f of replaced) await unlink(path.join(root, f))
   // The lock that follows loads the workspace file just written.
   workspaceFileWritten()
@@ -403,7 +421,8 @@ async function starter(
     lock.code === 0 ? next : `fix the above, then vx lock and ${next}`,
   ])
   ui.print('out', ui.report(`vx init ${VERSION}`, rows))
-  return 0
+  // A run reads only the lock: init without one is not done, as vx-migrate exits.
+  return lock.code === 0 ? 0 : 1
 }
 
 /**

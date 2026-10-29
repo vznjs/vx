@@ -8,6 +8,7 @@
 import type { ExecConfig } from '../config.js'
 import {
   localExecutor,
+  PersistentReadyError,
   releaseBridges,
   resetSandbox,
   runPersistent,
@@ -103,6 +104,10 @@ export function localFloor(
     try {
       await spawn.ready
     } catch (err) {
+      // A shell that exited before ready can leave its group running
+      // (`server & …; exit`), holding the port of the one the next task starts.
+      if (err instanceof PersistentReadyError && err.reason === 'exited')
+        await terminateChildren(() => [spawn.child])
       const why = err instanceof Error ? err.message : String(err)
       const said = (heard ?? '').trimEnd()
       throw new Error(said === '' ? why : `${why}; its output:\n${said}`)

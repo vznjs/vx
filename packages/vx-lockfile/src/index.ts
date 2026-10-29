@@ -56,7 +56,7 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 19
+const DIGEST_VERSION = 20
 
 interface Manager {
   readonly name: string
@@ -193,7 +193,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   const scope = options.scope ?? 'project'
   if (scope !== 'project' && scope !== 'workspace') {
     throw new UserError(
-      `${manager.name}() scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`,
+      `${manager.name}() option "scope" must be 'project' or 'workspace', got ${JSON.stringify(scope)}`,
     )
   }
   const extraFiles = manager.extraFiles
@@ -545,7 +545,10 @@ async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<s
   const strip = (p: string): string => p.replace(/^\.\//, '').replace(/\/+$/, '')
   const excluded = globs
     .filter((p): p is string => typeof p === 'string' && p.startsWith('!'))
-    .map((p) => new Bun.Glob(strip(p.slice(1))))
+    // Matched as the manager does, over `<glob>/package.json`: a `**`
+    // ending a negated glob matches zero directories, so `!**/fixtures/**`
+    // leaves out `packages/fixtures` itself, as pnpm and npm install it.
+    .map((p) => new Bun.Glob(`${strip(p.slice(1))}/package.json`))
   const dirs = new Set<string>()
   for (const pattern of globs) {
     if (typeof pattern !== 'string' || pattern.startsWith('!')) continue
@@ -553,7 +556,7 @@ async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<s
     for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
       const dir = path.dirname(file).split(path.sep).join('/')
       if (dir === '.' || dir.split('/').includes('node_modules')) continue
-      if (!excluded.some((g) => g.match(dir))) dirs.add(dir)
+      if (!excluded.some((g) => g.match(`${dir}/package.json`))) dirs.add(dir)
     }
   }
   return [...dirs].sort()

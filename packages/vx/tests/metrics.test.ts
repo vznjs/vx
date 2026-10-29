@@ -966,8 +966,13 @@ describe('whyDidThisRerunQuery', () => {
     expect(verdict({ prevStatus: 'failed', entryAt: 2500 })).toBe(
       'cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit',
     )
-    expect(verdict({ policy: 'lW', entryAt: 500 })).toBe(
+    expect(verdict({ policy: 'local:w,remote:', entryAt: 500 })).toBe(
       'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)',
+    )
+    // `--no-cache` records `local:,remote:`: it was named nowhere, and the
+    // flags the verdict named were not the one passed.
+    expect(verdict({ policy: 'local:,remote:', entryAt: 500 })).toBe(
+      'cache key unchanged — re-executed because this run did not use the cache (--no-cache, or a --cache-policy without read or write)',
     )
     expect(verdict({ entryAt: 2500 })).toBe(
       'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one',

@@ -101,7 +101,10 @@ export function versionSpec(tag: string | undefined): string {
   if (tag === undefined) return 'latest'
   const v = tag.startsWith('v') ? tag.slice(1) : tag
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v)) {
-    throw new UserError(`vx upgrade: ${tag} is not a version (expected v<major>.<minor>.<patch>)`)
+    throw new UserError(
+      `vx upgrade: ${tag} is not a version (expected v<major>.<minor>.<patch>)`,
+      'VX_E_USAGE',
+    )
   }
   return v
 }
@@ -437,7 +440,8 @@ const FIELDS = ['devDependencies', 'dependencies', 'optionalDependencies'] as co
 
 function readJson(file: string): Record<string, unknown> | null {
   try {
-    const v: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    // A byte-order mark is stripped, as every package manager strips it.
+    const v: unknown = JSON.parse(readFileSync(file, 'utf8').replace(/^﻿/, ''))
     return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
   } catch {
     return null
@@ -791,6 +795,8 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
     sayNotice('error', 'vx upgrade', `unexpected argument: ${extra}${seeHelp('upgrade')}`)
     return 1
   }
+  // A mistyped tag is the mistake to name, before any guard about this install.
+  versionSpec(tag)
   if (!isCompiledBinary()) {
     throw new UserError(
       'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull',
@@ -867,13 +873,19 @@ export async function relock(bin: string, cwd = process.cwd()): Promise<void> {
  * binary in place, old one never restored.
  */
 export function startedVersion(bin: string, timeoutMs = 10_000): string | null {
-  const proc = Bun.spawnSync({
-    cmd: [bin, '--version'],
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'pipe',
-    timeout: timeoutMs,
-  })
+  let proc: ReturnType<typeof Bun.spawnSync>
+  try {
+    proc = Bun.spawnSync({
+      cmd: [bin, '--version'],
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: timeoutMs,
+    })
+  } catch {
+    // The OS refused the spawn (EACCES on a noexec mount, ENOENT): it did not start.
+    return null
+  }
   const out = new TextDecoder().decode(proc.stdout).trim()
   return proc.exitCode === 0 && out.startsWith('vx ') ? out : null
 }
