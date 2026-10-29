@@ -555,6 +555,10 @@ export async function discoveredProject(
     throw new UserError(`${where}${named} at ${dir}: outside the workspace root`)
   }
   const shown = rel === '' ? '.' : rel
+  // Refused once the stage ended too, but naming no plugin and saying to set a `name`.
+  if (name === ROOT_NAME && rel !== '') {
+    throw new UserError(`${where} "//" at ${shown}: "//" names the workspace root`)
+  }
   let meta = known.get(dir)
   if (meta === undefined) {
     // Only a directory no project holds is resolved: a locked one is
