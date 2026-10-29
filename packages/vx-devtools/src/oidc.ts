@@ -293,6 +293,26 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
   const now = opts.now ?? (() => Date.now() / 1000)
   // jose keeps each issuer's keys, and refetches them for a key it lacks.
   const keys = new Map<string, Promise<ReturnType<typeof createRemoteJWKSet>>>()
+  // The key set each URL last answered. jose refetches every 10 minutes and
+  // threw when that failed: one slow answer from GitHub's key endpoint failed
+  // an upload 502 and lost a DTE worker's entry (2026-10-29). Keys rotate
+  // rarely, so the last set answers until the issuer answers again.
+  const lastRead = new Map<string, unknown>()
+  // The issuers answered from lastRead since their last fetch: a kid that
+  // set lacks is then the issuer out of reach, not a token refused.
+  const stale = new Set<string>()
+  const keySet = async (iss: string, url: string): Promise<unknown> => {
+    try {
+      const json = await fetchJson(url)
+      lastRead.set(url, json)
+      stale.delete(iss)
+      return json
+    } catch (err) {
+      if (!lastRead.has(url)) throw err
+      stale.add(iss)
+      return lastRead.get(url)
+    }
+  }
   const keysOf = (iss: string) => {
     let set = keys.get(iss)
     if (set === undefined) {
@@ -300,7 +320,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
         const uri = (c as { jwks_uri?: unknown }).jwks_uri
         if (typeof uri !== 'string') throw new Error('no jwks_uri')
         return createRemoteJWKSet(new URL(uri), {
-          [customFetch]: async (url: string) => Response.json(await fetchJson(url)),
+          [customFetch]: async (url: string) => Response.json(await keySet(iss, url)),
         })
       })
       keys.set(iss, set)
@@ -346,6 +366,8 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
         })
       ).payload
     } catch (err) {
+      if (err instanceof errors.JWKSNoMatchingKey && stale.has(iss))
+        throw keysUnread(iss, new Error('a key the keys last read lack, and a refetch failed'))
       throw refusal(err, iss, audience)
     }
     const claim = repoClaimOf(iss)

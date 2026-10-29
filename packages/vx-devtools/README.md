@@ -71,6 +71,8 @@ export function oidcTokenAuth(
 - jose checks the JWT: `RS256`, the signature against the issuer's keys
   (found through its `/.well-known/openid-configuration`, kept and
   refetched by `createRemoteJWKSet`), `aud`, `exp` and `nbf` within 60 s.
+  When a refetch fails, the keys last read still check tokens. A key they
+  lack is then `502`, not a refused token.
 - With `oidcAuth`, every request names its repository: `vx-issuer` and `vx-repository`,
   the `hashPart`s of the issuer's URL (no trailing slash) and of its
   `org/name` lowercased; one missing or not a hash is `400`.
