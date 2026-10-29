@@ -861,7 +861,8 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of
   one workflow, one dispatch per size and demand. `GithubOptions` is
   `{ workflow?, env? }`: `workflow` defaults to `vx-worker.yml`; `env`
-  is variables every worker gets (one-line strings), sent as the
+  is variables every worker gets (one-line strings, no secret-named one:
+  the worker job's log shows them), sent as the
   dispatch's `env` input only when set, which `vx dte init`'s workflow
   exports. Its workers are `keyless`, and only jobs of the workflow runs
   it dispatched join as them. It

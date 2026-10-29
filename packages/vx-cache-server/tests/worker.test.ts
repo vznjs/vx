@@ -190,6 +190,43 @@ it("answers a read from the data center's cache once R2 served it, and whether i
   ).toBe(401)
 })
 
+// R2 expired an artifact the data center still held, and a writer sent
+// it again: every read there answered the old copy for a year, a corrupt
+// one too, which the client distrusted and the writer could not replace.
+it("drops the data center's copy when R2 takes the artifact again", async () => {
+  const hash = crypto.randomUUID().replaceAll('-', '')
+  const url = new URL(`/v1/artifacts/${hash}`, base)
+  const auth = (job: 'main' | 'read') => iss.sign(JOBS[job], AUD).then((t) => `Bearer ${t}`)
+  const put = async (body: string) =>
+    (
+      await fetch(url, {
+        method: 'PUT',
+        body,
+        headers: { ...NAMED, authorization: await auth('main') },
+      })
+    ).status
+  const read = async () =>
+    (
+      await fetch(url, {
+        headers: {
+          ...NAMED,
+          authorization: await auth('read'),
+          'vx-scope': scopeOf('refs/heads/main'),
+        },
+      })
+    ).text()
+  expect(await put('old')).toBe(204)
+  expect(await read()).toBe('old')
+  await Bun.sleep(200)
+  const bucket = (await mf.getR2Bucket('BLOBS')) as unknown as {
+    list(): Promise<{ objects: { key: string }[] }>
+    delete(keys: string[]): Promise<void>
+  }
+  await bucket.delete((await bucket.list()).objects.map((o) => o.key))
+  expect(await put('new')).toBe(204)
+  expect(await read()).toBe('new')
+})
+
 it('checks 6 lookups by default: one round of the calls a request has waiting', async () => {
   const other = await start({ ALLOW: ALLOW_VAR })
   try {

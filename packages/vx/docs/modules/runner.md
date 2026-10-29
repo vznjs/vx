@@ -109,6 +109,7 @@ export interface CapturedChunk {
 export class BoundedCapture {
   constructor(headChars?: number, tailChars?: number) // default CAPTURE_HEAD_CHARS / CAPTURE_TAIL_CHARS
   push(text: string, err?: boolean): void
+  rebound(headChars: number, tailChars: number): BoundedCapture // tighter bounds; counts what this one already dropped
   chunks(): CapturedChunk[] // the dropped middle named on stdout
   text(): string
 }

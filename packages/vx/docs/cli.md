@@ -215,6 +215,8 @@ filter(s): …`, plus a hint:
 - `Did you mean <name>?` when a project name is within two edits, or
   when one scoped name matches after its `/` (`--filter vx-otel` hints
   `@vzn/vx-otel`).
+- `A filter is one pattern: --filter a --filter b` for a comma list
+  (`--filter a,b`, Nx's `--projects` habit).
 - `Projects: a, b` otherwise: eight names, then a count.
 - For a `tag:` filter, the nearest tag (`Did you mean tag:scope:web?`),
   else the list of tags.
@@ -842,7 +844,8 @@ other persistent task`), and a non-zero exit makes the run exit 1
    row, forecast, flaky verdict or telemetry record holds one;
    `--profile` and `VX_DEBUG_TIMING` time vx's stages their own way.
    Steps show only beside a live region; a log (CI, a pipe) prints
-   none.
+   none. Under `--output-logs hash-only` (one line per task) and
+   `errors-only` only a step that failed leaves a row.
 5. **The live summary section** — the SAME meters the final footer
    prints (`tasks` + `cache` bars with legends, `time`), filling in as
    the run progresses, under a bare `vx` wordmark rule. A second in,
@@ -1488,7 +1491,11 @@ idles is said (`vx: app#dev exited with code 3`); the next change
 starts it again. A cycle in which a task the server depends on fails
 stops it. An edit while a cycle waits only on a server that has not
 printed its `readyWhen` line stops that cycle and starts the next, so a
-fix reaches a server stuck before ready, in the initial run too.
+fix reaches a server stuck before ready, in the initial run too. A file
+git does not track in the server's project that stopped the last such
+cycle and is written again while the next server starts is that
+server's own boot write (a timestamped config bundle, a route tree): it
+stops no further cycle, so the server is not restarted for good.
 Stopping watch stops the server too. A one-shot task (`vx watch build`)
 re-runs itself and what it depends on.
 
@@ -2510,6 +2517,15 @@ a run, so it would delete its sources) or another task's (its key must
 not read them; `dependsOn` already cascades). Exclude the outputs from
 the inputs with a `!` glob, as the message shows, or declare no outputs
 for a task that rewrites files in place.
+`vx lock` refuses it, not a run: a run trusts the graph the lock holds.
+
+#### `VX_E_NESTED_INPUT`
+
+A task's `inputs.files` entry is rooted inside a project nested in its
+own (`dist/**` where `dist/` holds a config): a project's globs never
+reach another project's files, so it would key nothing. Depend on a
+task of the nested project, or name the files in
+`inputs.workspaceFiles`, as the message shows.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_DEPENDENCY_RULE`
