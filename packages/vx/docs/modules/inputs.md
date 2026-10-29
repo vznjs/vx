@@ -92,6 +92,7 @@ export type ProjectFilesCache = Map<
 // One git listing a task's input files were filtered from.
 export interface InputListing {
   root: string // project dir, or the workspace root for `workspaceFiles`
+  workspaceRoot: string // where git's location variables point; a nested repo's root is listed without them
   listed: readonly string[] // root-relative, as git listed them
   isInput: (rel: string) => boolean // the declaration's verdict
   nested: (rel: string) => boolean // inside a nested project

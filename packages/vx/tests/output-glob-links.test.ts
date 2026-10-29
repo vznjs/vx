@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { cleanOutputs, resolveOutputs } from '../src/cache/inputs.js'
+import { relPosix } from '../src/util/index.js'
 
 const made: string[] = []
 afterEach(() => {
@@ -73,7 +74,7 @@ it('a linked output head is walked the same beside a ** glob', async () => {
   mkdirSync(path.join(d, 'build'))
   writeFileSync(path.join(d, 'build/a.js'), 'x')
   symlinkSync('build', path.join(d, 'dist'))
-  const rel = (fs: string[]) => fs.map((f) => path.relative(d, f))
+  const rel = (fs: string[]) => fs.map((f) => relPosix(d, f))
   const one = await resolveOutputs({ projectDir: d, outputs: ['dist/**'], nestedProjectDirs: [] })
   const two = await resolveOutputs({
     projectDir: d,
