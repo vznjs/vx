@@ -436,10 +436,11 @@ export async function resolveFilters(
     onEmptyWalk: (f, matched) => {
       if (f.negate) return
       const which = matched.join(', ')
+      const several = matched.length > 1
       emptyWalks.push(
         f.onlyDeps
-          ? `filter "${f.raw}" matched ${which}, which depends on no project`
-          : `filter "${f.raw}" matched ${which}, and no project depends on it`,
+          ? `filter "${f.raw}" matched ${which}, which ${several ? 'depend' : 'depends'} on no project`
+          : `filter "${f.raw}" matched ${which}, and no project depends on ${several ? 'them' : 'it'}`,
       )
     },
   })
