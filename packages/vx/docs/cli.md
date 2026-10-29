@@ -865,8 +865,9 @@ other persistent task`), and a non-zero exit makes the run exit 1
    - **cpu** and **mem**: the task's process tree now, looked at every
      500 ms only while this list draws (a pipe or CI reads nothing); on a
      finished row its average cores and peak memory, blank on a hit.
-   - **outputs**: on a finished row, the bytes of its outputs; on a hit
-     the files it restored, blank for a remote hit not yet downloaded.
+   - **outputs**: on a finished row, the bytes of its outputs: on a hit
+     the files it restored, on a miss the files it saved; blank for a
+     remote hit not yet downloaded.
    - **blocks**: how many tasks are downstream of it, all of them.
    - **worker**: `local`, or the machine an executor (`@vzn/vx-dte`)
      names, cut to 12 columns with `…`.
@@ -2833,7 +2834,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v51 · index schema v50
+  cache versions    keys vx-cache-v51 · index schema v51
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)

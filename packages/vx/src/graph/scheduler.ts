@@ -89,7 +89,8 @@ export interface TaskOutcome {
    */
   artifactBytes?: number
   /**
-   * The raw bytes of a hit's outputs: the entry's files as restored.
+   * The raw bytes of the task's outputs: on a hit, the entry's files as
+   * restored; on a miss, the files its save stored (the row waits for it).
    */
   outputBytes?: number
   /** On a remote hit this run pulled: the download and its ingest. */

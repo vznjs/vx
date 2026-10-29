@@ -146,6 +146,8 @@ export interface SaveMissArgs {
 export interface SaveFacts {
   saveMs?: number
   artifactBytes?: number
+  /** The saved files' bytes, as a hit's `outputBytes` counts them: the row's `outputs`. */
+  outputBytes?: number
   /** The entry landed: the outcome's `saved`, set only once it has. */
   saved?: true
 }
@@ -239,6 +241,8 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       },
     })
     endSave()
+    const bytes = cache.outputBytes?.(a.hash)
+    if (bytes !== undefined) facts.outputBytes = bytes
     if (a.measure === true) {
       facts.saveMs = Math.round(performance.now() - saveStart)
       // No local artifact (local writes off): no size to say.

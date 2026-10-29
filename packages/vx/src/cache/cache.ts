@@ -355,7 +355,10 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //   v50: steps, warnings, failures and lockfile_memos — what a run said
 //        and a lockfile claimant parsed, files under the cache dir until
 //        now (if it can be in the DB, it is). The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v50'
+//   v51: runs.queued_ms, output_bytes, blocks, flaky_passes and
+//        flaky_failures — the rest of what a results row shows, so `vx
+//        last --sql` reads it. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v51'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -1952,6 +1955,18 @@ export class Cache implements CacheLayer {
   }
   outputsPath(hash: string): string {
     return this.tarPath(hash)
+  }
+  outputBytes(hash: string): number | undefined {
+    return this.guard(
+      () =>
+        (
+          this.db
+            .query(
+              'SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM output_files WHERE entry_hash = e.hash) AS n FROM entries e WHERE e.hash = ?',
+            )
+            .get(hash) as { n: number } | null
+        )?.n,
+    )
   }
   artifactSize(hash: string): number | undefined {
     return this.guard(

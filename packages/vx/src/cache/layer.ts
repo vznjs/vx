@@ -232,6 +232,15 @@ export interface RunRecord {
   placementMemoryBytes?: number
   /** The share of a core each runnable thread got there (`ExecuteResult.machine.cpuShare`, v49). */
   cpuShare?: number
+  /** How long it waited ready for a slot (`TaskOutcome.queuedMs`, v51). */
+  queuedMs?: number
+  /** Its output files' bytes (`TaskOutcome.outputBytes`, v51). */
+  outputBytes?: number
+  /** The tasks downstream of it in the run (v51). */
+  blocks?: number
+  /** The flaky record its row's note quoted (`TaskOutcome.flaky`, v51). */
+  flakyPasses?: number
+  flakyFailures?: number
 }
 
 /**
@@ -823,6 +832,8 @@ export interface CacheLayer {
   outputsPath(hash: string): string
   /** The stored artifact's compressed size, wherever it lives; undefined when none is stored. */
   artifactSize?(hash: string): number | undefined
+  /** The entry's output files' bytes, uncompressed; undefined when no entry is indexed. */
+  outputBytes?(hash: string): number | undefined
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }

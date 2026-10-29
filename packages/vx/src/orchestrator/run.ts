@@ -1487,6 +1487,7 @@ async function runOnBus(
         ci: ciContext,
         host: hostContext,
         withTelemetry: telemetry !== undefined,
+        blocks: blocksNow(),
         remoteTraffic: prepared.localCache.traffic.keys,
       })
     const records = recordsOf(list, ok)

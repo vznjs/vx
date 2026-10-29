@@ -643,6 +643,10 @@ transaction (`recordRunBundle`), one row per real task (hits included) to the
 | `keyless_by`                              | the task with no `inputs` its key folded; it never read or saved (v46)          |
 | `def`                                     | the task's definition (command + `env.define`), which history reads by (v48)    |
 | `cpu_share`                               | the share of a core its threads got there; history divides `cpu_ms` by it (v49) |
+| `queued_ms`                               | how long it waited ready for a slot; NULL when it started at once (v51)         |
+| `output_bytes`                            | its output files' bytes: a hit's restored, a miss's saved (v51)                 |
+| `blocks`                                  | the tasks downstream of it in the run (v51)                                     |
+| `flaky_passes` / `flaky_failures`         | the flaky record its row's note quoted; NULL when not proven flaky (v51)        |
 | `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                                   |
 | `cache_hit`                               | convenience boolean (derivable from status)                                     |
 | `attempts`                                | attempts a retried task took (> 1); NULL for a once-run task                    |

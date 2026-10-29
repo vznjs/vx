@@ -260,6 +260,7 @@ export class Cache implements CacheLayer {
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   outputsPath(hash: string): string
+  outputBytes(hash: string): number | undefined
   artifactSize(hash: string): number | undefined
   async recordOutputDirs(
     hash: string,
@@ -435,6 +436,7 @@ export interface CacheLayer {
   hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string
   artifactSize?(hash: string): number | undefined
+  outputBytes?(hash: string): number | undefined
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }
@@ -2392,6 +2394,11 @@ export interface RunRecord {
   placementCores?: number
   placementMemoryBytes?: number
   cpuShare?: number
+  queuedMs?: number
+  outputBytes?: number
+  blocks?: number
+  flakyPasses?: number
+  flakyFailures?: number
 }
 ```
 

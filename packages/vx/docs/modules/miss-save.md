@@ -57,6 +57,7 @@ export interface SaveMissArgs {
 export interface SaveFacts {
   saveMs?: number // the save's own time (pack, write, index)
   artifactBytes?: number // the artifact it wrote
+  outputBytes?: number // the files it saved, uncompressed: the row's `outputs` and runs.output_bytes
   saved?: true // the entry landed; the outcome's `saved` comes from here in a run
 }
 export function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveFacts> }>
