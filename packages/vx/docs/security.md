@@ -201,11 +201,13 @@ nothing. `tests/sandbox-parent-env.unsafe.test.ts` prints the cost of one
   it reads anything you can. vx hides its own environment from it on
   every command: on Linux vx makes itself non-dumpable (about 0.8 ms), on
   macOS it zeroes the values `ps eww` reads, every variable but the
-  essentials every task gets (about 0.7 ms). It starts its helpers with `PATH`
-  alone and each `git` with only what git reads. The sandbox's host
+  essentials every task gets (about 0.7 ms). It starts its helpers (the
+  macOS `ps` that samples a running task, `stty`) with `PATH` alone and
+  each `git` with only what git reads. The sandbox's host
   network bridge, which lives the whole run, and vx's sandbox probes get
   the essentials only (`tests/hide-env.unsafe.test.ts`,
-  `tests/git-env.test.ts`, `tests/sandbox-helper-env.unsafe.test.ts`). That hides
+  `tests/git-env.test.ts`, `tests/proc-sample-env.test.ts`,
+  `tests/sandbox-helper-env.unsafe.test.ts`). That hides
   the environment only, not files.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like
   stay readable (tools need them) and fold into no key. The credential
