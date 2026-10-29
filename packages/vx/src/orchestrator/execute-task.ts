@@ -1169,7 +1169,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // the task saves, else only what a failure reports (`failedOutput`).
   let output: BoundedCapture | undefined
   // Masked again whole: the live stream lets a held piece go after a pause.
-  const storeMask = secrets === null ? undefined : (t: string): string => secrets.mask(t)
+  const storeMask = secrets ?? undefined
   const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [], storeMask)
   const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
   // The sampling of the attempt's process tree, stopped once it settles.

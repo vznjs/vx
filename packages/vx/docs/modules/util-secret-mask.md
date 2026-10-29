@@ -12,6 +12,7 @@ appears, the way GitHub Actions masks its secrets.
 export const MASKED = '***'
 export interface SecretMask {
   mask(text: string): string
+  spans(text: string): Array<[start: number, end: number]> // where mask replaces a value
   stream(): { push(chunk: string): string; end(): string }
   maskCut(head: string, tail: string): [string, string] // also the pieces a cut left
 }
@@ -56,8 +57,10 @@ characters do not wait for its exit, and before a chunk on the other
 stream, so stdout and stderr keep the order the task wrote them in; a
 value split by a longer pause, or by a write to the other stream, is
 not caught on screen. What vx stores of the output (`encodeOutputLog`,
-`failedOutputLog`) masks each stream's run of chunks again, joined, so
-no stored copy keeps a value a pause split. `maskCut` masks the two sides of a
+`failedOutputLog`) and a replayed hit mask each stream's whole text
+again through `spans` (`maskStreams`), a write to the other stream
+between the pieces included, so no stored copy keeps a value a pause
+split. `maskCut` masks the two sides of a
 cut whose middle is gone: a value the cut split leaves a piece at the
 end of `head` or the start of `tail`, and each piece is masked too.
 
