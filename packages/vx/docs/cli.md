@@ -1377,6 +1377,10 @@ watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** A cycle opens with a blank line and
    `changed <project> <relpath>`, plus ` (+N more)` when more paths
    changed, then its task rows as `vx run` prints them, with no footer.
+   Where a hit prints no row (`--all`, `--filter`, `--affected`, or
+   `--output-logs errors-only` / `none`), a cycle of hits alone says
+   ` N tasks cached, nothing ran`, so a cycle back to cached bytes is
+   not silent below the failure before it.
    The named path is the first changed file that still exists (a
    directory only when no file changed), so an
    editor's temporary file renamed away names nothing; a deletion names
