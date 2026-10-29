@@ -36,9 +36,9 @@ export default {
   server refuses a token of another repository.
 - `timeoutMs` (default 30 000) bounds each read and query, and
   `uploadTimeoutMs` (default 60 000) each upload. A download is bounded
-  the same way until its answer, then only while no bytes arrive: a big
-  artifact still coming in is not cut off. Each is ms above 0, or
-  `vxCache()` refuses it.
+  the same way until its answer, then must bring at least 1 MiB a second
+  over each `timeoutMs`: a big artifact still coming in is not cut off,
+  and one trickling in is. Each is ms above 0, or `vxCache()` refuses it.
 - `headers` are sent on every request to the server, for a proxy in
   front of it, such as a Cloudflare Access service token:
   `headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,

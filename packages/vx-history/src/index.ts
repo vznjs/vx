@@ -459,11 +459,12 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   // Loaded only when a server is named: every run evaluates the config.
   const serverOf = async (): Promise<HistoryServer | undefined> => {
     if ((options.url ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
+    // VX_HISTORY_URL alone: the workspace names no repository to ask for,
+    // so the URL is never read; parsed first, a malformed one failed the run.
+    if (named === undefined) return undefined
     const m = await import('./history-server.js')
     const url = serverUrlOf(options.url)
     if (url === undefined) return undefined
-    // VX_HISTORY_URL alone: the workspace names no repository to ask for.
-    if (named === undefined) return undefined
     return new m.HistoryServer(url, named, Bun.env, fetch, headers)
   }
   // What the run sends the history server at its end, by task definition.

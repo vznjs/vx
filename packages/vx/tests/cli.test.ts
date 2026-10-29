@@ -1878,21 +1878,24 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--verbosity', '-1']).error).toMatch(/--verbosity must be/)
   })
 
-  it('parses --dry and --dry=json / --dry=text', () => {
-    expect(parseRunArgs(['build', '--dry']).dry).toBe('text')
-    expect(parseRunArgs(['build', '--dry=text']).dry).toBe('text')
+  it('parses --dry and --dry=json / --dry=pretty, the values every --format takes', () => {
+    expect(parseRunArgs(['build', '--dry']).dry).toBe('pretty')
+    expect(parseRunArgs(['build', '--dry=pretty']).dry).toBe('pretty')
     expect(parseRunArgs(['build', '--dry=json']).dry).toBe('json')
+    expect(parseRunArgs(['build', '--dry=text']).error).toBe(
+      '--dry must be pretty or json (got text)',
+    )
   })
 
   it('rejects invalid --dry=<format>', () => {
     expect(parseRunArgs(['build', '--dry=yaml']).error).toMatch(
-      /--dry must be text or json \(got yaml\)/,
+      /--dry must be pretty or json \(got yaml\)/,
     )
   })
 
   it('an empty `=` value is a missing value, not a bad one', () => {
     expect(parseRunArgs(['build', '--dry=']).error).toBe(
-      '--dry= requires a format (text or json); bare --dry prints text',
+      '--dry= requires a format (pretty or json); bare --dry prints pretty',
     )
     expect(parseRunArgs(['build', '--verbosity=']).error).toBe(
       '--verbosity requires a value (a non-negative integer)',
