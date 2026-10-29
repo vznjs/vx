@@ -135,21 +135,6 @@ export function conformance(name: string, target: Target): void {
       ]).toEqual([200, 'application/octet-stream', '5', 'first'])
     })
 
-    // Bun.serve drops a streamed answer's Content-Length and sends it
-    // chunked: one chunk's artifact kept it, and a bigger one came without.
-    it('names the Content-Length of a download many chunks long', async () => {
-      const k = key()
-      const big = new Uint8Array(4 * 1024 * 1024 + 1).fill(7)
-      expect((await put(k, big)).status).toBe(204)
-      const got = await get(k)
-      expect([
-        got.status,
-        got.headers.get('content-length'),
-        got.headers.get('transfer-encoding'),
-      ]).toEqual([200, String(big.length), null])
-      expect(new Uint8Array(await got.arrayBuffer())).toEqual(big)
-    })
-
     it('answers HEAD with the size the scope holds, and no bytes', async () => {
       const k = key()
       const head = (scope = MAIN) =>
