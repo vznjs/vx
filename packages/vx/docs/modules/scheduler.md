@@ -211,10 +211,6 @@ export function tieredReverseDepCount(
   nodes: Map<string, TaskNode>,
   restoreTier: ReadonlySet<string>,
 ): Map<string, number>
-export function reverseDepCountsOver(
-  nodes: ReadonlyMap<string, TaskNode>,
-  counted: ReadonlyArray<ReadonlyMap<string, unknown> | undefined>,
-): Map<string, number>[] // one closure, one count per `counted` (undefined counts every node)
 export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,
