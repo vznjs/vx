@@ -1178,6 +1178,8 @@ export async function cleanOutputPaths(args: {
   committed?: (abs: string) => boolean
   /** Directories the prune leaves standing even when emptied (absolute). */
   keep?: ReadonlySet<string>
+  /** Empty directories to remove too (project-relative). */
+  emptyDirs?: readonly string[]
 }): Promise<void> {
   const committed = args.committed ?? committedFiles(undefined, args.projectDir)
   const files = args.rels.map((r) => path.resolve(args.projectDir, r)).filter((f) => !committed(f))
@@ -1186,6 +1188,7 @@ export async function cleanOutputPaths(args: {
     await removeAll(files, args.projectDir),
     pruneScope(args.projectDir, args.outputs),
     args.keep,
+    args.emptyDirs?.map((r) => path.resolve(args.projectDir, r)),
   )
 }
 
