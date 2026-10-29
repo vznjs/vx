@@ -36,7 +36,7 @@ export interface ConfigImportOwnersArgs {
 }
 export function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set<string>>
 
-/** Every file a config imports by relative specifier, transitively, outside
+/** Every file a config imports by local specifier, transitively, outside
  *  `node_modules`, the config excluded; an unresolved one by the names it would have.
  *  `configSource` spares the config's read; `read` reads the rest. */
 export async function configImports(
@@ -56,8 +56,8 @@ does not apply.
 
 1. Roots are every project's `configPath`, minus `skip`.
 2. Read each level of the walk together, scan each file (a file with no
-   quoted `./`, `../`, escape or tsconfig alias skips the scan), keep specifiers starting with `./` or `../`
-   and tsconfig aliases, resolve them, and record the REVERSE edge `target → importer`.
+   quoted `./`, `../`, `.`, `..`, `#`, escape or tsconfig alias skips the scan), keep the
+   local specifiers (below), resolve them, and record the REVERSE edge `target → importer`.
    Targets outside the workspace, or under `node_modules`, are dropped.
 3. **Descend through every file the walk reaches**, another project's
    included: the evaluation follows those imports (`configImports`), so
@@ -88,13 +88,19 @@ would run every such project on a README edit.
 
 ## The rule that bounds it
 
-**Relative specifiers only.** A bare specifier is a package; it moves
-when the lockfile moves, and the lockfile's claimant
-(`@vzn/vx-lockfile`) already selects the projects a lockfile change
-reaches. The exception is a bare specifier the
-nearest tsconfig maps through `paths` or `baseUrl`: Bun loads its target
-from disk, so it is an edge like a relative one, a deleted target
-included (D-27). A config quoting no bare specifier such a tsconfig
+**Local specifiers only**, by one rule (`localTarget`) both this walk
+and `configImports` ask, so `--affected` and `vx watch` follow the same
+files: a relative path (`./x`, `../x`, `.`, `..`), a package.json
+`#imports` entry with a `./` target (nearest `package.json`; exact key,
+else the `*` pattern with the longest head; Bun picks the condition, and
+a deleted target names every local one), or a bare specifier the nearest
+tsconfig maps through `paths` or `baseUrl` (D-27). Bun loads each from
+disk, so each is an edge, a deleted target included. Any other bare
+specifier is a package; it moves when the lockfile moves, and the
+lockfile's claimant (`@vzn/vx-lockfile`) already selects the projects a
+lockfile change reaches; so does a `#imports` entry naming a package.
+The watch walk once kept `./` and `../` alone, and both walks dropped
+`..` and `#imports`: an aliased preset edit was served stale, unrefused. A config quoting no bare specifier such a tsconfig
 maps is not scanned for one; at 5,000 configs that each import a
 package and sit under a tsconfig, the lookup costs a one-file change
 140 → 200 ms, and nothing when the configs import only `@vzn/vx`.
@@ -143,8 +149,8 @@ the channel cost 0.36 ms.
 
 ## Where this stops
 
-Imports only (a file a config READS is not followed, above), relative
-or tsconfig-mapped only, and nothing under `node_modules` or outside the
+Imports only (a file a config READS is not followed, above), local
+specifiers only (relative, `#imports` or tsconfig-mapped), and nothing under `node_modules` or outside the
 workspace. Until X-128 the walk also stopped at the first file of
 another project (and, before D-41, of a root project): both left an
 importer out while its key moved.
@@ -191,6 +197,6 @@ source evaluation (its reads kept across one load's configs):
 a shared preset outside the project changed what a run evaluates and no
 watcher saw it (item 949). The walk scans each file with
 `Bun.Transpiler.scanImports` (a plain match when the parser refuses the
-source mid-edit), resolves relative specifiers from the file's real
-directory (item 950), and lists an unresolvable one by the paths it
+source mid-edit), resolves local specifiers by the rule above from the
+file's real directory (item 950), and lists an unresolvable one by the paths it
 names, so `vx watch` sees it come back.
