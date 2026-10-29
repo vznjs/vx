@@ -21,12 +21,16 @@ on:
 permissions:
   contents: read
   id-token: write
-  # A worker of a run that is over cancels its own run.
-  actions: write
 
 jobs:
   worker:
     name: ${{ matrix.worker }}
+    # A job's permissions replace the workflow's, so it names all three.
+    permissions:
+      contents: read
+      id-token: write
+      # A worker of a run that is over cancels its own run.
+      actions: write
     runs-on: ${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}
     timeout-minutes: 25
     strategy:
