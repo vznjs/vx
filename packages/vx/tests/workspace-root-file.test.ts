@@ -135,8 +135,11 @@ it('a submodule whose own .git is a directory walks on to its superproject too',
   git('super', 'add', '-A')
   git('super', 'commit', '-q', '-m', 'super')
   expect(await found('super/mods/sub')).toBe('super')
-  // CONTROL: a repository the superproject does not track is its own top-level.
+  // CONTROL: a repository the superproject neither tracks nor lists is its
+  // own top-level. Ignored, as one git lists untracked is the workspace's
+  // (the embedded-repository walk above).
   await file('super/other/package.json', JSON.stringify({ name: 'other' }))
+  await file('super/.gitignore', '/other/\n')
   git('super/other', 'init', '-q')
   expect(await found('super/other')).toBe('VX_E_NO_WORKSPACE')
 })
