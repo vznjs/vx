@@ -96,7 +96,8 @@ describe('the output stage', () => {
     const root = await fixture([pluginSource('org/bad', `{ output() { return { status() {} } } }`)])
     const r = vx(root)
     expect(r.code).toBe(0)
-    expect(r.stdout).toContain(
+    // A warning goes to stderr, as every verb's does; stdout is the run's frame.
+    expect(r.stderr).toContain(
       "[vx] plugin 'org/bad' output: output Logger has no taskStdout, taskStderr, taskComplete; vx renders the run",
     )
     expect(r.stdout).toContain('hi')
@@ -112,7 +113,7 @@ describe('the output stage', () => {
     const r = vx(root)
     expect(r.code).toBe(0)
     expect(r.stdout).toContain('start 1\n')
-    expect(r.stdout).toContain(
+    expect(r.stderr).toContain(
       "[vx] plugin 'org/crash' output failed: boom; vx renders the rest of the run",
     )
     expect(r.stdout).not.toContain('done pkg-a#hello')

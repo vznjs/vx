@@ -1069,7 +1069,7 @@ Status legend:
 | `▶`    | cache miss — task would execute (under `--force` too: nothing is read, what runs is saved) |
 | `∅`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
 | `·`    | `@noop` — task would not run anywhere                                                      |
-| `−`    | not started — a server you did not request whose every dependant restores a local hit      |
+| `−`    | not started — a server you did not request whose every dependant is a hit, local or remote |
 | `·`    | skipped — `exec.platforms` leave this machine out, or a task it depends on is skipped      |
 | `○`    | group task (suppressed in human view; in JSON)                                             |
 
@@ -2238,7 +2238,8 @@ $ vx init --dry
 ### Install
 
 `vx init` first installs `@vzn/vx` globally (the package manager that
-ran it, else Bun; skipped when the `vx` on `PATH` is already that
+ran it, else Bun, also under Yarn 2+, which has no `yarn global`;
+skipped when the `vx` on `PATH` is already that
 version) and, under the topmost `package.json`, as a root
 devDependency with that repo's own manager (2026-10-20). The latest
 version is read from the registry that manager is configured for

@@ -26,6 +26,8 @@ export interface TaskEnvSecrets {
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
 export function maskedLine(line: string): string // this process's secrets only
 export function secretNamed(name: string): boolean // the name rule alone; `vx why` hides such an env input's hashes
+export function holdSecret(value: string): void // a keychain answer: masked with this process's secrets
+export function heldSecrets(): number // how many are held: a mask built with fewer is stale
 export function maskedEmitter(
   mask: SecretMask,
   emit: (text: string) => void,
@@ -38,6 +40,12 @@ A variable is masked when its name holds `TOKEN`, `SECRET`, `KEY`,
 or `_DIR` and is not git's `GIT_CONFIG_KEY_<n>`, or the task names it in
 `exec.env.secret` (L-14), and its value has six characters or more. No such variable: `secretMask` is null and nothing is
 paid per byte.
+
+A mask whose sources include `process.env` also masks every value
+`holdSecret` holds: what a plugin's keychain (`ctx.secret`) answered,
+which no environment names. A server's reply that echoed that token
+printed it whole in the warning. `events.ts` builds its status-line mask
+again when `heldSecrets()` grows.
 
 `stream()` holds back only a tail that could begin a value, so a value
 split across two chunks is caught and output that cannot be one (a
