@@ -471,6 +471,25 @@ describe('reachDigests', () => {
     expect(single).toBe('38108168b5ad6712')
   })
 
+  // The same swap one step in: the two `foo` copies are members of the
+  // cycle themselves (each depends back on a), so their edges were named
+  // by material, and a reaching bar@1 or bar@2 was one line.
+  it('moves when cycle members swap two in-cycle copies of one material', () => {
+    // 0 ↔ 1 (a, b); 2 and 3 both `foo`, each → 0; 2 → 4 bar1, 3 → 5 bar2.
+    const swap = (a: number, b: number) =>
+      reachDigests({
+        material: ['a', 'b', 'foo', 'foo', 'bar1', 'bar2'],
+        edges: [[1, a], [0, b], [0, 4], [0, 5], [], []],
+      })
+    expect(swap(3, 2)[0]).not.toBe(swap(2, 3)[0])
+    // CONTROL: the same graph numbered otherwise digests alike.
+    const renumbered = reachDigests({
+      material: ['b', 'a', 'foo', 'foo', 'bar2', 'bar1'],
+      edges: [[1, 2], [0, 3], [1, 4], [1, 5], [], []],
+    })
+    expect(renumbered[1]).toBe(swap(2, 3)[0])
+  })
+
   it('a member of a cycle shares its component digest', () => {
     const d = reachDigests(graph(['a', 'b', 'c', 'd']))
     expect(d[1]).toBe(d[2])

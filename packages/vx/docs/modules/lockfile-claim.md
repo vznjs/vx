@@ -111,7 +111,7 @@ children first, each component folding its members and its child
 components' digests, both sorted. A member folds as its material AND the
 materials its edges land on (a self-loop aside): every member shares the
 component's digest, so a retarget between two members — an importer moved
-from `y@1.0.0` to `y@1.1.0`, both in one cycle — moved no key before item 1013. `DIGEST_VERSION` 5 (`@vzn/vx-lockfile`) retired the memos that folded the old way. In a cycle, an edge leaving it lands on its child component's digest, not its material: npm and bun key two copies of one version alike (`a/node_modules/foo` → bar@1, `node_modules/foo` → bar@2), and two members swapping copies moved no key (`DIGEST_VERSION` 23). A singleton folds as before, so an acyclic digest keeps its value.
+from `y@1.0.0` to `y@1.1.0`, both in one cycle — moved no key before item 1013. `DIGEST_VERSION` 5 (`@vzn/vx-lockfile`) retired the memos that folded the old way. In a cycle, each member folds as a colour-refinement label: its material and the child digests its edges leave for, then its in-cycle targets' labels until no two labels part further. npm and bun key two copies of one version alike (`a/node_modules/foo` → bar@1, `node_modules/foo` → bar@2), and two members swapping copies, in the cycle or out of it, moved no key. A singleton folds as before, so an acyclic digest keeps its value.
 O(nodes + edges): 1000 importers
 over 3000 packages digest in ~20 ms where one traversal per importer
 took 400.
