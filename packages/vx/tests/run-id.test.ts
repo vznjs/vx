@@ -43,6 +43,15 @@ describe('resolveRunId', () => {
       resolveRunId(d, 'zz', 'vx last'),
     ]).toEqual(['abc', 'abd', 'x', null])
   })
+
+  it('reads an id typed in upper case: a UUID is the same id in either', () => {
+    const id = '01a0e5ca-f86b-7001-aaaa'
+    const d = db([id, '01a0e5cb-0000-7000-aaaa'])
+    expect([
+      resolveRunId(d, id.toUpperCase(), 'vx last'),
+      resolveRunId(d, '01A0E5CA', 'vx last'),
+    ]).toEqual([id, id])
+  })
 })
 
 describe('shortRunId', () => {

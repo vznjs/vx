@@ -241,7 +241,13 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     )
     let runId: string | null
     if (parsed.runId !== undefined) {
-      runId = resolveRunId(db, parsed.runId, 'vx why')
+      // A stopped run keeps rows but no header (item 854), and `vx last
+      // --log` prints its id, so the whole id is taken from its rows too.
+      runId =
+        resolveRunId(db, parsed.runId, 'vx why') ??
+        (db.query('SELECT 1 FROM runs WHERE run_id = ? LIMIT 1').get(parsed.runId) !== null
+          ? parsed.runId
+          : null)
       // An unknown id read as a known run missing the task (X-18).
       if (runId === null) {
         throw new UserError(

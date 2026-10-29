@@ -101,7 +101,10 @@ export function versionSpec(tag: string | undefined): string {
   if (tag === undefined) return 'latest'
   const v = tag.startsWith('v') ? tag.slice(1) : tag
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v)) {
-    throw new UserError(`vx upgrade: ${tag} is not a version (expected v<major>.<minor>.<patch>)`)
+    throw new UserError(
+      `vx upgrade: ${tag} is not a version (expected v<major>.<minor>.<patch>)`,
+      'VX_E_USAGE',
+    )
   }
   return v
 }
@@ -437,7 +440,8 @@ const FIELDS = ['devDependencies', 'dependencies', 'optionalDependencies'] as co
 
 function readJson(file: string): Record<string, unknown> | null {
   try {
-    const v: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    // A byte-order mark is stripped, as every package manager strips it.
+    const v: unknown = JSON.parse(readFileSync(file, 'utf8').replace(/^﻿/, ''))
     return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
   } catch {
     return null

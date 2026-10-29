@@ -54,6 +54,7 @@ import {
   detectColors,
   type ColorSupport,
   SecretBroker,
+  thrownMessage,
   type ui,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
@@ -83,7 +84,13 @@ import {
 } from '../report/index.js'
 import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
 import { keepsFailures, reportOf, RunKeeper } from './run-report.js'
-import { buildAdmission, executorDemand, resolveExecutors, teardownPlugins } from './plugin-host.js'
+import {
+  buildAdmission,
+  executorDemand,
+  executorLabel,
+  resolveExecutors,
+  teardownPlugins,
+} from './plugin-host.js'
 import { createSteps } from './steps.js'
 import { writeRunSteps, writeRunWarnings } from './run-steps.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
@@ -1460,9 +1467,10 @@ async function runOnBus(
       // Stopped: not a run `vx last` lists (item 854), but what finished is
       // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
-      stepSync('vx:history', () =>
-        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs)),
-      )
+      stepSync('vx:history', () => {
+        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs))
+        recordFailures(ended)
+      })
     }
     mark('record history')
     // Drain any still-in-flight background prefetches before closing the
@@ -1617,7 +1625,9 @@ async function runOnBus(
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            local.recordRunBundle(recordsOf(final, ok && first.code === 0))
+            // A stop ending the session is the usual end of a dev session,
+            // not a failure: the server's 130 is the stop's, as above.
+            local.recordRunBundle(recordsOf(final, ok && (stop.signal.aborted || first.code === 0)))
           } finally {
             local.close()
           }
@@ -2012,9 +2022,7 @@ function executorFaults(warn: (line: string) => void): ExecutorFault {
     const k = `${e.name}\0${what}`
     if (said.has(k)) return
     said.add(k)
-    warn(
-      `[vx] executor '${e.name}': ${what}() threw: ${err instanceof Error ? err.message : String(err)} — left out`,
-    )
+    warn(`[vx] ${executorLabel(e)}: ${what}() threw: ${thrownMessage(err)} — left out`)
   }
 }
 

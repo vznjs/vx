@@ -151,6 +151,13 @@ jobs:
         env:
           URL: ${{ steps.trace.outputs.artifact-url }}
         run: echo "[Run profile]($URL), opened in https://ui.perfetto.dev" >> "$GITHUB_STEP_SUMMARY"
+      # github() lists each worker run it dispatched: a run cancelled or
+      # timed out can die before it cancels them itself (2026-10-28).
+      - name: Cancel the workers
+        if: cancelled()
+        run: |
+          [ -f "$RUNNER_TEMP/vx-dte-runs" ] || exit 0
+          while read -r run; do curl -sS -o /dev/null -X POST -H "authorization: Bearer $GITHUB_TOKEN" "$GITHUB_API_URL$run/cancel" || true; done < "$RUNNER_TEMP/vx-dte-runs"
 
   # The benchmarks, on a runner of their own: they time the machine, and a
   # DTE worker is packed for the run's wall time, not a task's
