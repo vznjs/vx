@@ -82,6 +82,13 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
       500,
       'AUDIENCE: the aud CI tokens name, or unset, not blank',
     ],
+    // wrangler.jsonc may write a var as JSON: "env.AUDIENCE.trim is not a function".
+    [{ ALLOW: ALLOW_VAR, AUDIENCE: 42 }, 500, 'AUDIENCE: one string, the aud CI tokens name'],
+    [
+      { ALLOW: ALLOW_VAR, AUDIENCE: ['https://a.example'] },
+      500,
+      'AUDIENCE: one string, the aud CI tokens name',
+    ],
     [{ ALLOW: ALLOW_VAR, READ_ACCESS: 'yes' }, 500, 'READ_ACCESS: public, or unset, not yes'],
   ] as const) {
     const other = await start(bindings)
