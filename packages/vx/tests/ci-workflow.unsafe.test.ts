@@ -46,7 +46,7 @@ const checkout = (j: Job | undefined): Step | undefined =>
 describe('ci.yml', () => {
   // The run only plans and dispatches: Linux x64, so every macOS and arm
   // runner is a worker's. The benchmarks run beside it on a runner of
-  // their own; main's run waits for the site's benchmark rows first.
+  // their own; every run waits for the site's benchmark rows first.
   it('is one run, and the benchmarks beside it', () => {
     const top =
       "github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size"
@@ -55,24 +55,19 @@ describe('ci.yml', () => {
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
       ['linux', 'VX DTE', 'ubuntu-latest', afterBench, 'bench'],
-      [
-        'bench',
-        'Bench',
-        'ubuntu-latest',
-        "github.event_name == 'push' && github.ref == 'refs/heads/main'",
-        undefined,
-      ],
+      ['bench', 'Bench', 'ubuntu-latest', top, undefined],
       ['perf', 'Perf', 'ubuntu-latest', top, undefined],
     ])
   })
 
   // The site's head-to-head rows are timed on a machine of their own, one
-  // runner at a time, before main's run restores them (2026-10-29).
+  // runner at a time, before the DTE run restores them: a benchmark never
+  // runs under DTE (2026-10-29).
   it('measures the site benchmark off the DTE run, one runner at a time', () => {
     const bench = doc.jobs['bench']!
     expect(JSON.stringify(bench)).not.toContain('VX_DTE')
     expect(bench.steps?.at(-1)?.run).toBe(
-      'bun packages/vx/src/bin.ts run site.numbers --all --concurrency 1',
+      "bun packages/vx/src/bin.ts run site.numbers --concurrency 1 ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}",
     )
   })
 
@@ -115,7 +110,10 @@ describe('ci.yml', () => {
       Object.entries(doc.jobs).flatMap(([id, j]) =>
         j.permissions?.['checks'] === undefined ? [] : [[id, j.permissions['checks']]],
       ),
-    ).toEqual([['linux', 'read']])
+    ).toEqual([
+      ['linux', 'read'],
+      ['bench', 'read'],
+    ])
   })
 
   // A PR that changes the relay runs on its own relay code, Workers Builds'
