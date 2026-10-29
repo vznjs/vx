@@ -12,6 +12,7 @@ export interface TerminalSignals {
 export function terminalSignals(
   env: Readonly<Record<string, string | undefined>>,
 ): TerminalSignals {
+  if (inMultiplexer(env)) return { progress: false, notify: false }
   const program = env['TERM_PROGRAM']
   if (program === 'ghostty') return { progress: true, notify: true }
   // iTerm2 posts OSC 9 since 3.0 and draws OSC 9;4 since 3.6.
@@ -22,6 +23,17 @@ export function terminalSignals(
   if (env['WT_SESSION'] !== undefined || env['ConEmuPID'] !== undefined)
     return { progress: true, notify: false }
   return { progress: false, notify: false }
+}
+
+/** Inside tmux or screen, which keep the outer terminal's variables (`WT_SESSION`, its `TERM_PROGRAM`). */
+function inMultiplexer(env: Readonly<Record<string, string | undefined>>): boolean {
+  const program = env['TERM_PROGRAM']
+  return (
+    env['TMUX'] !== undefined ||
+    env['STY'] !== undefined ||
+    program === 'tmux' ||
+    program === 'screen'
+  )
 }
 
 function atLeast(version: string | undefined, major: number, minor: number): boolean {
@@ -50,9 +62,8 @@ export function notifyEscape(text: string): string {
  * tmux and screen pass it through only when configured to.
  */
 export function terminalLinks(env: Readonly<Record<string, string | undefined>>): boolean {
-  if (env['TMUX'] !== undefined || env['STY'] !== undefined) return false
+  if (inMultiplexer(env)) return false
   const program = env['TERM_PROGRAM']
-  if (program === 'tmux' || program === 'screen') return false
   if (program === 'ghostty' || program === 'WezTerm' || program === 'vscode') return true
   if (program === 'iTerm.app') return atLeast(env['TERM_PROGRAM_VERSION'], 3, 1)
   if (env['WT_SESSION'] !== undefined || env['KITTY_WINDOW_ID'] !== undefined) return true

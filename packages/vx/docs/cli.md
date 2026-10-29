@@ -895,8 +895,9 @@ done, red once a task fails, and cleared when the region goes; and a
 run of 10 s or more ends with a desktop notification (OSC 9: Ghostty,
 iTerm2, WezTerm), `vx: 12 tasks done` or `vx: 1 of 12 tasks failed`.
 The terminal is named by `TERM_PROGRAM` (or `WT_SESSION`,
-`ConEmuPID`); any other, tmux included, gets neither, since there
-OSC 9 may itself be a notification.
+`ConEmuPID`); any other gets neither, and so do tmux and screen, even
+started from one of those, since there OSC 9 may itself be a
+notification.
 
 In a terminal known to open OSC 8 links (Ghostty, iTerm2 3.1+, WezTerm,
 VS Code, Windows Terminal, kitty, Konsole, VTE terminals; never inside
