@@ -1656,6 +1656,19 @@ export interface OutputView {
 }
 ```
 
+## `packageManagerPath`
+
+function · `src/exec/env.ts`
+
+The executable of the workspace's package manager: the root
+package.json's `packageManager`, else its lockfile, found on the root's
+`node_modules/.bin` and PATH. Learned once per root; null when the root
+names none or this machine has none.
+
+```ts
+export function packageManagerPath(root: string): string | null
+```
+
 ## `PERSISTENT_TODO`
 
 const · `src/workspace/migration.ts`

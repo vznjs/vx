@@ -212,6 +212,9 @@ export { executorFallback, hostPlatform, sampleTrees, type TreeUsage } from './e
 // trailing comment or a template literal's closing newline lost the args
 // there while the local floor kept them (X-112).
 export { withForwardArgs } from './exec/index.js'
+// The `npm_execpath` core gives a local task: a `@vzn/vx-dte` worker gives
+// its tasks the same, its own machine's, not what launched it.
+export { packageManagerPath } from './exec/index.js'
 // A task's output both streams in the order written, bounded as core's
 // capture is: what a worker saves through `TaskArtifacts` (`@vzn/vx-dte`).
 export { BoundedCapture, type CapturedChunk } from './exec/index.js'

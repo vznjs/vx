@@ -783,6 +783,8 @@ describe('subscribeTelemetry — host', () => {
         bad('org/null', null),
         bad('org/number', 42),
         bad('org/wants', { wants: 'run.start', onRecord: () => undefined }),
+        // A misspelt kind was a sink that never heard it, with no word.
+        bad('org/typo', { wants: ['task.end', 'task.logs'], onRecord: () => undefined }),
       ],
       createEventBus(),
       { ...ctx, warn: (m) => warnings.push(m) },
@@ -795,6 +797,10 @@ describe('subscribeTelemetry — host', () => {
       why('org/null', 'telemetry sink must be an object, got null'),
       why('org/number', 'telemetry sink must be an object, got number'),
       why('org/wants', "telemetry sink 'wants' must be an array, got string"),
+      why(
+        'org/typo',
+        'telemetry sink \'wants\' names "task.logs", which is no record kind (run.start, task.start, task.log, task.sample, task.end, run.end)',
+      ),
     ])
   })
 

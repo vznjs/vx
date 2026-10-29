@@ -10,7 +10,15 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { beginRun, mark, nearest, relPosix, type SecretBroker, UserError } from '../util/index.js'
+import {
+  beginRun,
+  mark,
+  nearest,
+  relPosix,
+  type SecretBroker,
+  thrownMessage,
+  UserError,
+} from '../util/index.js'
 import {
   Cache,
   type CacheLayer,
@@ -1039,7 +1047,7 @@ export async function openRemotes(
     } catch (err) {
       entry.read = false
       entry.write = false
-      const e = err instanceof Error ? err : new Error(String(err))
+      const e = err instanceof Error ? err : new Error(thrownMessage(err))
       entry.onError?.(e)
       closed = true
     }

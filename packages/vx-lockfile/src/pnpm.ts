@@ -29,6 +29,8 @@ export interface Lockfile {
   readonly directories: ReadonlyMap<string, string>
   /** Material every importer folds: the lockfile version and the install-wide knobs. */
   readonly global: string
+  /** `settings.excludeLinksFromLockfile`: no importer records its `link:` dependencies. */
+  readonly excludesLinks: boolean
 }
 
 type Yaml = Record<string, unknown>
@@ -119,7 +121,46 @@ export function parseLockfile(text: string): Lockfile {
       ? { lockfileVersion: version, rest }
       : { lockfileVersion: version, rest, leading },
   )
-  return { version, importers, snapshots, resolutions, patches, directories, global }
+  const excludesLinks = record(doc['settings'])?.['excludeLinksFromLockfile'] === true
+  return { version, importers, snapshots, resolutions, patches, directories, global, excludesLinks }
+}
+
+/**
+ * Whether pnpm drops a manifest's dependency `name` from the install:
+ * one of its `optionalDependencies` the lockfile's
+ * `ignoredOptionalDependencies` names (pnpm also drops it from
+ * `dependencies`, and records it nowhere), matched as `@pnpm/matcher`
+ * does: `*` any run, a leading `!` excludes.
+ */
+export function ignoredOptional(
+  text: string,
+): (name: string, pkg: Record<string, unknown>) => boolean {
+  const list = topLevel(text, 'ignoredOptionalDependencies')
+  const patterns = Array.isArray(list) ? list.filter((p) => typeof p === 'string') : []
+  if (patterns.length === 0) return () => false
+  const matchers = patterns.map((p) => {
+    const ignore = p.startsWith('!')
+    const pattern = ignore ? p.slice(1) : p
+    const re = new RegExp(`^${pattern.replace(/[|\\{}()[\]^$+?.]/g, '\\$&').replace(/\*/g, '.*')}$`)
+    return { ignore, match: (s: string) => re.test(s) }
+  })
+  const hasInclude = matchers.some((m) => !m.ignore)
+  const hasIgnore = matchers.some((m) => m.ignore)
+  const matches = (name: string): boolean => {
+    if (!hasIgnore) return matchers.some((m) => m.match(name))
+    if (!hasInclude) return !matchers.some((m) => m.match(name))
+    let matched = false
+    for (const m of matchers) {
+      if (m.ignore) {
+        if (m.match(name)) matched = false
+      } else if (!matched && m.match(name)) matched = true
+    }
+    return matched
+  }
+  return (name, pkg) => {
+    const optional = record(pkg['optionalDependencies'])
+    return optional !== undefined && Object.hasOwn(optional, name) && matches(name)
+  }
 }
 
 /**
@@ -130,24 +171,32 @@ export function parseLockfile(text: string): Lockfile {
  * next top-level key; any other shape is parsed whole.
  */
 export function recordedImporters(text: string): ReadonlyMap<string, ReadonlyMap<string, string>> {
-  const doc = Math.max(text.lastIndexOf('\n---'), 0)
-  const at = text.indexOf('\nimporters:\n', doc)
-  const block = at < 0 ? undefined : text.slice(at + 1)
-  const end = block === undefined ? null : /\n\S/.exec(block.slice('importers:\n'.length))
-  const rawImporters =
-    block === undefined
-      ? undefined
-      : record(
-          record(
-            Bun.YAML.parse(
-              end === null ? block : block.slice(0, 'importers:\n'.length + end.index + 1),
-            ),
-          )?.['importers'],
-        )
+  const rawImporters = record(topLevel(text, 'importers'))
   if (rawImporters === undefined) return parseLockfile(text).importers
   const importers = new Map<string, ReadonlyMap<string, string>>()
   for (const [dir, entry] of Object.entries(rawImporters)) importers.set(dir, depsOf(entry))
   return importers
+}
+
+/** `settings.excludeLinksFromLockfile`, read from its block alone as `recordedImporters` reads. */
+export function excludesLinks(text: string): boolean {
+  return record(topLevel(text, 'settings'))?.['excludeLinksFromLockfile'] === true
+}
+
+/**
+ * The last document's top-level `key`, parsed from its block alone (to
+ * the next top-level key); undefined where pnpm wrote no such block.
+ */
+function topLevel(text: string, key: string): unknown {
+  const doc = Math.max(text.lastIndexOf('\n---'), 0)
+  const head = `\n${key}:\n`
+  const at = text.indexOf(head, doc)
+  if (at < 0) return undefined
+  const block = text.slice(at + 1)
+  const end = /\n\S/.exec(block.slice(head.length - 1))
+  return record(
+    Bun.YAML.parse(end === null ? block : block.slice(0, head.length - 1 + end.index + 1)),
+  )?.[key]
 }
 
 /** `dependencies` + `devDependencies` + `optionalDependencies` of an entry, as name → version. */
@@ -237,8 +286,15 @@ export function importerDigests(
   // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
   // bits of a seed, so two lockfiles' globals could share one (item 682).
   const global = Bun.hash.xxHash3(lock.global).toString(16).padStart(16, '0')
+  const reachOf = (dir: string): string => hashes[g.index.get(importerNode(dir))!]!
+  // With its links left out, the file does not say which importer links
+  // which, so each folds them all: keyed by its own reach, a project
+  // linking another missed a bump in the linked one's dependencies.
+  const all = lock.excludesLinks
+    ? [...lock.importers.keys()].sort().map(reachOf).join('\0')
+    : undefined
   for (const dir of lock.importers.keys()) {
-    const h = Bun.hash.xxHash3(`${global}\0${hashes[g.index.get(importerNode(dir))!]!}`)
+    const h = Bun.hash.xxHash3(`${global}\0${all ?? reachOf(dir)}`)
     out.set(dir, h.toString(16).padStart(16, '0'))
   }
   return out
@@ -265,12 +321,17 @@ function importerNode(dir: string): string {
  */
 export function fileDeps(lock: Lockfile): string[] {
   const out = new Set(lock.directories.values())
-  for (const [dir, deps] of lock.importers) {
+  const add = (dir: string, deps: ReadonlyMap<string, string>): void => {
     for (const version of deps.values()) {
       const target = linkTarget(lock, dir, version)
       if (target !== undefined && !lock.importers.has(target)) out.add(target)
     }
   }
+  for (const [dir, deps] of lock.importers) add(dir, deps)
+  // An override to a `link:` directory reaches a package's own
+  // dependencies, written root-relative in its snapshot: one no importer
+  // names was never read, so an edit in it moved no key.
+  for (const deps of lock.snapshots.values()) add('.', deps)
   return [...out].sort()
 }
 

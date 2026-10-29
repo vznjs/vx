@@ -238,6 +238,10 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // and it held its port against the next `vx watch` cycle's server.
     if (err instanceof PersistentReadyError && err.reason === 'exited')
       await terminateChildren(() => [spawn.child])
+    // What the masked streams hold back (a tail that could begin a secret)
+    // belongs above vx's own line: left to the idle flush, it came after it.
+    serverOut?.end()
+    serverErr?.end()
     // A server the run's stop killed while it started is aborted, as any
     // task the stop kills (item 962): it read `failed (never ready:
     // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop

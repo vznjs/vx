@@ -10,7 +10,7 @@ import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { bun } from '../src/index.js'
-import { importerDigests, parseLockfile, patchFiles } from '../src/bun.js'
+import { importerDigests, importerLinks, parseLockfile, patchFiles } from '../src/bun.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -386,6 +386,43 @@ describe('every input the digest must read', () => {
         `"ws": ["ws@workspace:"], "a": ["a@workspace:packages/a"], "t": ["t@${v}", "", {}, "sha512-t${v}"]`,
       )
     expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['.', 'packages/a'])
+  })
+
+  it('a workspace whose name a root package holds resolves under `./<name>`, where Bun nests its own', () => {
+    // Bun 1.4.4 for a workspace named `ms` beside a root `ms@2.0.0`: no
+    // root entry for the workspace, and what it nests sits under `./ms`.
+    // Resolved from `ms`, its is-number was the root's, so a bump of its
+    // own moved no key, here or in `a`, which links it.
+    const text = (v: string) =>
+      doc(
+        `"": { "name": "ws", "dependencies": { "ms": "2.0.0" } },
+    "packages/a": { "name": "a", "dependencies": { "ms": "workspace:*" } },
+    "packages/c": { "name": "ms", "dependencies": { "is-number": "${v}" } }`,
+        `"a": ["a@workspace:packages/a"],
+    "is-number": ["is-number@6.0.0", "", {}, "sha512-n6"],
+    "ms": ["ms@2.0.0", "", {}, "sha512-ms"],
+    "./ms/is-number": ["is-number@${v}", "", {}, "sha512-n${v}"],
+    "a/ms": ["ms@workspace:packages/c"],
+    "a/ms/is-number": ["is-number@${v}", "", {}, "sha512-n${v}"]`,
+      )
+    expect(movedDirs(text('5.0.0'), text('7.0.0'))).toEqual(['packages/a', 'packages/c'])
+  })
+
+  it('a workspace dependency on the root package links the root (`root@root:`)', () => {
+    // Bun 1.4.4 writes the root package as `name@root:`, not
+    // `name@workspace:`, so the edge to it was dropped and a `^build`
+    // ran before the root's.
+    const text = doc(
+      `"": { "name": "root", "dependencies": { "ms": "2.0.0" } },
+    "packages/a": { "name": "a", "dependencies": { "root": "workspace:*" } }`,
+      `"a": ["a@workspace:packages/a"],
+    "ms": ["ms@2.0.0", "", {}, "sha512-ms"],
+    "root": ["root@root:", {}]`,
+    )
+    expect(importerLinks(parseLockfile(text)).get('packages/a')).toEqual({
+      deps: { root: '.' },
+      peers: {},
+    })
   })
 
   it('an entry that is not a package tuple is passed over, not a crash', () => {

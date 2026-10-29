@@ -147,6 +147,22 @@ describe('resolveFilters', () => {
     expect((value as { empty: string }).empty).toStartWith('nothing affected since HEAD — ')
   })
 
+  it('an empty walk from several matched projects speaks of them all', async () => {
+    // "matched app, lib, which depends on no project" read as lib alone.
+    const said = []
+    for (const f of ['*^...', '...^*'])
+      said.push((await quiet(() => resolveFilters(root, [f]))).value)
+    expect(said).toEqual([
+      {
+        error: 'no projects selected: filter "*^..." matched app, lib, which depend on no project',
+      },
+      {
+        error:
+          'no projects selected: filter "...^*" matched app, lib, and no project depends on them',
+      },
+    ])
+  })
+
   it('the refusal names only the filters that matched nothing', async () => {
     // It listed every filter: `app` and `!app` matched app, and an
     // `--affected` base appeared as a `...[<base>]` nobody typed.

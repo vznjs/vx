@@ -2,15 +2,31 @@
 // of its commit, and any other PR on the deployed relay (owner,
 // 2026-10-25): its client and the deployed relay may speak different
 // protocols (Switchboard v1, #4333).
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
   githubApi,
+  changedSince,
+  compareFiles,
   previewUrl,
   workerUrl,
   watched,
   watchOf,
   type PreviewDeps,
 } from '../worker-url.ts'
+
+// A commit needs a name; the host's git config may hold none.
+const GIT_ENV = {
+  ...process.env,
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_CONFIG_NOSYSTEM: '1',
+  GIT_AUTHOR_NAME: 't',
+  GIT_AUTHOR_EMAIL: 't@t',
+  GIT_COMMITTER_NAME: 't',
+  GIT_COMMITTER_EMAIL: 't@t',
+}
 
 type CheckRun = Awaited<ReturnType<PreviewDeps['checks']>>[number]
 
@@ -163,6 +179,31 @@ describe('the relay a PR’s run uses', () => {
 
   // Workers Builds builds what its watch paths match, and the run waits for
   // that build: a path one names and the other does not hangs or skips.
+  // git names a rename by where the file went: a PR moving relay code out
+  // of a watch path read as one that left the relay alone.
+  it('sees a file renamed out of a watch path, in the diff and since a commit', async () => {
+    const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-worker-url-'))
+    try {
+      const git = (...args: string[]) =>
+        expect(Bun.spawnSync(['git', ...args], { cwd: repo, env: GIT_ENV }).exitCode).toBe(0)
+      git('init', '-q')
+      await Bun.write(path.join(repo, 'packages/vx-dte-server/src/relay.ts'), 'relay\n'.repeat(20))
+      git('add', '-A')
+      git('commit', '-qm', 'a')
+      await mkdir(path.join(repo, 'packages/vx-dte/src'), { recursive: true })
+      git('mv', 'packages/vx-dte-server/src/relay.ts', 'packages/vx-dte/src/relay.ts')
+      git('commit', '-qm', 'b')
+      expect(watched(WATCH, await changedSince('HEAD~1', repo))).toBe(true)
+    } finally {
+      await rm(repo, { recursive: true, force: true })
+    }
+    const moved = {
+      filename: 'packages/vx-dte/src/relay.ts',
+      previous_filename: 'packages/vx-dte-server/src/relay.ts',
+    }
+    expect(watched(WATCH, compareFiles({ commits: [], files: [moved] }))).toBe(true)
+  })
+
   it('watches what a README says Workers Builds watches', () => {
     expect(WATCH).toEqual(['packages/vx-dte-server/', 'private/vx-dte-service/', 'bun.lock'])
     expect(watched(WATCH, ['packages/vx-dte-server-x/a'])).toBe(false)

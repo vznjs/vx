@@ -100,8 +100,11 @@ export function formatTaskBlock(
 
   const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('', s, colors, { dim: true })
-  const header = formatBlockHeader(outcome, colors)
-  const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
+  // A ready server's frame reads as the live one does: marked, and running.
+  const mark = persistentMark(node, colors)
+  const running = mark !== '' && outcome.status === 'success' && outcome.serverExit === undefined
+  const header = running ? paint(ACCENT, 'running', colors) : formatBlockHeader(outcome, colors)
+  const lines: string[] = [`${corner('┌─')} ${mark}${idPainted} ${corner('>')} ${header}`]
 
   // The command section shows what actually ran — executed tasks
   // (success and failed). Cache hits normally skip it (the stored
@@ -127,7 +130,7 @@ export function formatTaskBlock(
   lines.push(...violationSection(outcome, colors))
 
   lines.push(
-    `${corner('└─')} ${idPainted}${whereNote(outcome, colors)} ${corner('──')}${formatBlockFooter(outcome, colors)}`,
+    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${running ? runningFooter(outcome, colors) : formatBlockFooter(outcome, colors)}`,
   )
   return lines.join('\n') + '\n'
 }
@@ -548,7 +551,7 @@ export function formatFrameOpen(
 ): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
   const cmd = shownCommand(node, forwardArgs)
-  const mark = isPersistentNode(node) ? `${paint(ACCENT, '▸', colors)} ` : ''
+  const mark = persistentMark(node, colors)
   return `${corner('┌─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
 }
 
@@ -617,14 +620,13 @@ export function formatFrameClose(
   colors: ColorSupport = NO_COLOR,
 ): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
-  const persistent = isPersistentNode(node)
-  const mark = persistent ? `${paint(ACCENT, '▸', colors)} ` : ''
+  const mark = persistentMark(node, colors)
   // A persistent task's child keeps running past this "ready" outcome,
   // so the close reads `running` (accent), not `success` — the ▸ marks
   // both ends of the frame as a long-lived task.
   const tail =
-    persistent && outcome.status === 'success' && outcome.serverExit === undefined
-      ? ` ${paint('', `(${formatElapsed(outcome.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
+    mark !== '' && outcome.status === 'success' && outcome.serverExit === undefined
+      ? runningFooter(outcome, colors)
       : formatBlockFooter(outcome, colors)
   const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${tail}`
   const violations = violationSection(outcome, colors)
@@ -640,8 +642,12 @@ function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string {
   )
 }
 
-function isPersistentNode(node: TaskNode): boolean {
-  return node.config.exec?.persistent !== undefined
+function persistentMark(node: TaskNode, colors: ColorSupport): string {
+  return node.config.exec?.persistent !== undefined ? `${paint(ACCENT, '▸', colors)} ` : ''
+}
+
+function runningFooter(o: TaskOutcome, colors: ColorSupport): string {
+  return ` ${paint('', `(${formatElapsed(o.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
 }
 
 /**

@@ -8,7 +8,8 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { type Logger } from '../src/report/index.js'
+import { busLogger, createEventBus, type Logger } from '../src/report/index.js'
+import { maskedLine, SecretBroker } from '../src/util/index.js'
 import { run } from './helpers/orchestrator.js'
 
 const SECRET = 'supersecretvalue123'
@@ -46,4 +47,22 @@ it("a plugin's warning is masked", async () => {
   await run({ cwd: root, tasks: ['t'], projects: ['app'], log, handleSignals: false })
   expect(lines.filter((l) => l.includes('server said'))).toEqual(['server said: token=***'])
   expect(lines.join('\n').includes(SECRET)).toBe(false)
+})
+
+// A token from a plugin's keychain is in no environment, so a server's
+// reply that echoed it printed whole in the warning.
+it("a plugin's keychain secret is masked in what vx prints", async () => {
+  const value = 'keychain-token-value'
+  const broker = new SecretBroker(false, () => {}, {
+    get: async () => value,
+    set: async () => {},
+    delete: async () => true,
+  })
+  const bus = createEventBus()
+  const lines: string[] = []
+  bus.subscribe((e) => void (e.kind === 'run:status' && lines.push(e.line)))
+  const log = busLogger(bus)
+  expect(await broker.for('org/remote').secret({ key: 'k' })).toBe(value)
+  log.warn?.(`server said: bad token ${value}`)
+  expect([lines, maskedLine(`x ${value}`)]).toEqual([['server said: bad token ***'], 'x ***'])
 })
