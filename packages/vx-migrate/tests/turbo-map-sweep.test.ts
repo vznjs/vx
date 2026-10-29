@@ -1805,10 +1805,12 @@ describe('turbo-map: an uncached task keeps its key', () => {
 // #9718), keys Next's VERCEL_DEPLOYMENT_ID under skew protection (#9853)
 // and passes `BUILTIN_PASS_THROUGH_ENV` to every task, unhashed
 // (crates/turborepo-env). Unkeyed, a preview build replayed in
-// production; unpassed, a task ran without TZ.
+// production; unpassed, a task ran without TZ. Turbo 1 also keyed any
+// name holding THASH (vercel/turborepo#1461); Turbo 2 keys none.
 describe("turbo-map: Turbo's builtin env", () => {
   const live = [
     'GITHUB_SHA',
+    'SOMETHING_THASH_YES',
     'TZ',
     'VERCEL_ANALYTICS_ID',
     'VERCEL_DEPLOYMENT_ID',
