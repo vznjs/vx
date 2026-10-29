@@ -2046,6 +2046,9 @@ describe('parseRunArgs', () => {
       '--skip-nx-cache',
       '--only',
       '--graph',
+      '--no-color',
+      '--parallel',
+      '--no-parallel',
     ])
       expect(parseRunArgs(['build', flag, 'x']).error).toMatch(
         new RegExp(`unknown flag: ${flag}\\b`),
