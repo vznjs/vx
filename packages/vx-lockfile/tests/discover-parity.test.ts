@@ -1048,6 +1048,55 @@ importers:
     ])
   })
 
+  it('pnpm: a concrete `npm:` dependency wins over a `workspace:` peer of the same name (vercel/turborepo#12682)', async () => {
+    // b: devDependency buffer npm:buffer@6.0.3, peer buffer workspace:*;
+    // pnpm 10.28 installs the registry buffer and links no workspace.
+    const text = `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: false
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  packages/a:
+    dependencies:
+      b:
+        specifier: workspace:*
+        version: link:../b
+
+  packages/b:
+    devDependencies:
+      buffer:
+        specifier: npm:buffer@6.0.3
+        version: 6.0.3
+
+  packages/buffer: {}
+
+packages:
+
+  buffer@6.0.3:
+    resolution: {integrity: sha512-FTiC}
+
+snapshots:
+
+  buffer@6.0.3: {}
+`
+    const projects = await metas({
+      'packages/a': { name: 'a', version: '1.0.0', dependencies: { b: 'workspace:*' } },
+      'packages/b': {
+        name: 'b',
+        version: '1.0.0',
+        devDependencies: { buffer: 'npm:buffer@6.0.3' },
+        peerDependencies: { buffer: 'workspace:*' },
+      },
+      'packages/buffer': { name: 'buffer', version: '6.0.3' },
+    })
+    expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', text, projects)).order).toEqual(['a → b'])
+  })
+
   it('yarn berry: an `npm:` alias named like a workspace is the registry package (vercel/turborepo#12061)', async () => {
     // Turbo's berry-npm-alias fixture, as yarn 4.4 wrote it.
     const text = `__metadata:
