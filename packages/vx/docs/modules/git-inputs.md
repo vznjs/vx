@@ -52,7 +52,10 @@ file is stamped (inode, ctime, size) before the listing spawns and after
 the status ends; an index written between them trusts no OID and every
 file hashes from disk. A `git reset` of a staged edit landing between the
 two made the file clean to `status` while `ls-files` had listed the staged
-blob, which then keyed the committed bytes. The stamp needs the index
+blob, which then keyed the committed bytes. The blob-size check's
+`--debug` listing, spawned later, holds the same stamp: an index written
+since trusts no OID (A-60's check would judge entries the OIDs did not
+come from). The stamp needs the index
 path before the listing spawns, so `repoFacts` is asked first: one
 enumeration on this repo, min of 30 interleaved fresh processes, 13.25
 before against 13.23 ms after in a plain clone, 16.43 against 15.46 ms

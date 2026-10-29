@@ -1991,6 +1991,10 @@ export async function startGitEnumeration(
       async blobs() {
         const run = await spawnGit(['ls-files', '-s', '-v', '-z', '--debug', '--', ...pathspecs])
         if (run === null || run.exitCode !== 0) return null
+        // Sizes from an index written since the listing judge entries the
+        // trusted OIDs did not come from: an add there rewrote a resized
+        // entry to one that fits, and the listed OID stood (A-60).
+        if (indexStamp() !== stampBefore) return null
         const debug = splitLsDebug(run)
         const indexed = new Map<string, { oid: string; size: number }>()
         parseLsFilesOutput(debug.records, debug.undecodable, { sizes: debug.sizes, indexed })
