@@ -1,7 +1,7 @@
 // The vx-history protocol, v1 (PROTOCOL.md), as one fetch handler over a
 // `Store`: Bun and Workers serve the same one.
 
-import { type Access, Refusal } from '@vzn/vx-devtools'
+import { type Access, errorJson, notAllowed, Refusal } from '@vzn/vx-devtools'
 import type { Report, Repo, Store } from './store.js'
 
 /** Reports one upload folds in: a run's tasks. */
@@ -116,7 +116,12 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
   return async (req) => {
     const path = new URL(req.url).pathname
     try {
-      if (new URL(req.url).search !== '') throw new Refusal(400, 'no query parameters')
+      const search = new URL(req.url).search
+      if (search !== '')
+        throw new Refusal(
+          400,
+          `this server takes no query parameters: drop ${search.slice(0, 200)} from the url`,
+        )
       if (path === '/v1/timings/upload') {
         if (req.method !== 'POST') return notAllowed('POST')
         const res = await upload(req)
@@ -131,35 +136,17 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
         await authorize(req)
         return Response.json(capabilities)
       }
-      return errorJson(404, 'no such route')
+      return errorJson(
+        404,
+        `no route ${req.method} ${path.slice(0, 200)}: name the server's base URL; it serves /v1/ (PROTOCOL.md)`,
+      )
     } catch (err) {
       if (err instanceof Refusal) return errorJson(err.status, err.message)
+      // Never swallowed: the client warns with what the server says.
       console.error(`vx-history-server: ${req.method} ${path}: ${String(err)}`)
-      return errorJson(500, 'internal error')
+      return errorJson(500, err instanceof Error ? err.message : String(err))
     }
   }
-}
-
-const CODES: Record<number, string> = {
-  400: 'bad_request',
-  401: 'unauthorized',
-  403: 'forbidden',
-  404: 'not_found',
-  405: 'method_not_allowed',
-  413: 'payload_too_large',
-  500: 'internal_error',
-  502: 'bad_gateway',
-}
-
-/** Every refusal: `{ code, message }`, the message saying what to fix. */
-export function errorJson(status: number, message: string): Response {
-  return Response.json({ code: CODES[status] ?? 'error', message }, { status })
-}
-
-function notAllowed(allow: string): Response {
-  const res = errorJson(405, `use ${allow}`)
-  res.headers.set('allow', allow)
-  return res
 }
 
 const field = (body: unknown, key: string): unknown =>
@@ -175,7 +162,7 @@ const isCount = (n: unknown): n is number =>
 
 async function readJson(req: Request, max: number): Promise<unknown> {
   if (!/^application\/json\b/i.test(req.headers.get('content-type') ?? '')) {
-    throw new Refusal(400, 'the body is application/json')
+    throw new Refusal(400, 'send the body as Content-Type: application/json')
   }
   if (Number(req.headers.get('content-length') ?? 0) > max) {
     throw new Refusal(413, `the body is at most ${max} bytes`)

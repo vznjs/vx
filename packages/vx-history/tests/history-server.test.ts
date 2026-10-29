@@ -109,6 +109,26 @@ describe('HistoryServer', () => {
     )
   })
 
+  // A URL of a website answers any path 200 with its page: JSON.parse's
+  // "Unrecognized token '<'" named no fault.
+  it('says a 200 that is no JSON is not a history server', async () => {
+    const site = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }),
+    })
+    try {
+      const client = new HistoryServer(site.url.origin, NAMED, {})
+      await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+        new Error(
+          '/v1/capabilities answered 200 with text/html, not JSON: is the url a vx-history server?',
+        ),
+      )
+    } finally {
+      await site.stop(true)
+    }
+  })
+
   it('says why a read with no token was refused, and what lets it in', async () => {
     const client = new HistoryServer(url, NAMED, {})
     await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
