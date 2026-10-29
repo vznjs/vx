@@ -77,7 +77,13 @@ reads 0777), or a file there that is not empty or not executable, is
 refused for `true` (`sandbox-noscan-dir.unsafe.test.ts`). The
 availability probe hands SRT's dependency check that file made anew if
 a temp cleaner took it, not the path SRT's live config holds
-(`sandbox-noscan-gone.unsafe.test.ts`).
+(`sandbox-noscan-gone.unsafe.test.ts`). The OS temp dir can itself be
+one every task may write (an agent's shell sets `TMPDIR=/tmp/claude`,
+which SRT binds writable into each), and there a task rewrote the file
+and the next wrap ran it unsandboxed. So its directory, and the socat
+wrapper's (whose file is granted back read-only: it is the task's side of
+the proxy bridge too), are walled from every task
+(`sandbox-host-helpers.unsafe.test.ts`).
 100 sandboxed `true` tasks at concurrency 1: 2,846 ms against 2,721
 (min of 8, interleaved; medians 2,948 and 2,812). The parity rows arm
 SRT as vx does, with a root entry (`.ZshRC`) only a scan finds.

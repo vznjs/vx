@@ -648,6 +648,22 @@ function noScanCommand(): string {
   return file
 }
 
+/**
+ * vx's executables the runtime spawns OUTSIDE the sandbox (the no-op scan,
+ * the socat wrapper), as directories every task is walled from, and the
+ * files a task still runs (the wrapper is its side of the proxy bridge
+ * too), granted back read-only. They live in the OS temp dir, and where
+ * that is one every task may write (SRT binds `/tmp/claude` writable into
+ * each), a task rewrote the no-op and the next wrap ran it unsandboxed.
+ */
+function hostHelpers(): { dirs: string[]; files: string[] } {
+  const files = [...socatWrappers].filter(([bare, w]) => w !== bare).map(([, w]) => w)
+  const dirs = [...(noScan === undefined ? [] : [noScan]), ...files].map((f) =>
+    toRealPath(path.dirname(f)),
+  )
+  return { dirs: unique(dirs), files: files.map(toRealPath) }
+}
+
 function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
   if (process.platform !== 'linux') return {}
   const paths: { bwrapPath?: string; socatPath?: string } = {}
@@ -1412,6 +1428,9 @@ async function wrapIn(
     baselines.cwd,
   )
   customConfig!.filesystem!.denyRead!.push(toRealPath(taskTmpRoot()))
+  const helpers = hostHelpers()
+  customConfig!.filesystem!.denyRead!.push(...helpers.dirs)
+  customConfig!.filesystem!.allowRead!.push(...helpers.files)
   if (process.platform === 'linux' && !cwdMounted(baselines.cwd, customConfig!.filesystem!)) {
     customConfig!.filesystem!.denyRead!.push(baselines.cwd)
   }
