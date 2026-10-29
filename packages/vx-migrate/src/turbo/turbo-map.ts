@@ -14,7 +14,7 @@ import path from 'node:path'
 import { isLiteralPattern, pruneOrphanPersistentNotes, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
 import { refuseTaskNames } from '../plugin-gaps.js'
-import { literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
+import { apartTakeBacks, literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { type Owner, runsScriptHooks, scriptCommand, yarnPnp } from '../script-command.js'
 import {
@@ -1167,7 +1167,10 @@ export async function mapTurboWorkspace(
 
   const projects: TurboMappedProject[] = []
   const hookMemo = new Map<string, Owner>()
-  const literals = { tasks: [] as Literals[], globalIgnored }
+  // Turbo 2.11's `global.inputs` joins each task's own inputs, where its
+  // `!` entries reach them; `globalDependencies` is hashed apart.
+  const globalPrepended = new Set(rootCfg.global?.inputs ?? [])
+  const literals = { tasks: [] as Literals[], globalIgnored, globalPrepended }
   for (const meta of metas) {
     const scripts = packageScripts(meta)
     const own = runnable.get(meta.name)!
@@ -1654,7 +1657,11 @@ function keyOnlyGroup(t: TurboMappedTask): TurboMappedTask {
 }
 
 function buildTask(
-  literals: { readonly tasks: Literals[]; readonly globalIgnored: readonly string[] },
+  literals: {
+    readonly tasks: Literals[]
+    readonly globalIgnored: readonly string[]
+    readonly globalPrepended: ReadonlySet<string>
+  },
   name: string,
   def: TurboTask,
   command: string,
@@ -1870,9 +1877,9 @@ function buildTask(
   let pkgDotenvDeep = false
   // The root-relative `.env` globs, probed at the workspace root.
   const wsDotenv = [...rootDotenv]
-  // globalDependencies are workspace-root-relative by definition —
-  // they map to inputs.workspaceFiles, not project-relative files.
-  const wsFiles: unknown[] = [...global('inputs')]
+  // The task's own root-relative inputs; globalDependencies, root-relative
+  // by definition, join them in inputs.workspaceFiles.
+  const wsFiles: string[] = []
   // Root-relative path → the entry naming it.
   const rels = new Map<string, Named>(literals.globalIgnored.map((f) => [f, [null, f]]))
   const atRoot = pkgDir === '' || pkgDir === '.'
@@ -1951,9 +1958,27 @@ function buildTask(
   // project's own globs at every member (D-39), so as `files` a root
   // `oxlint` over the repo replayed green after a member file broke.
   // A root task's globs are the workspace's, outputs too.
-  if (atRoot) wsFiles.unshift(...files.splice(0))
+  const head = atRoot ? files.splice(0) : []
+  const joined = (g: string) => literals.globalPrepended.has(g)
+  const [apartKept, ownKept] = apartTakeBacks<unknown>(
+    globals.inputs.filter((g) => !joined(g)),
+    [...globals.inputs.filter(joined), ...head, ...wsFiles],
+  )
+  const kept = new Set([...apartKept, ...ownKept])
+  const globalKept = globals.inputs.filter((g) => kept.has(g))
+  // A global exclusion dropped for this task cannot leave an opaque
+  // preset spread: the task lists the global values itself.
+  const inline = globalKept.length !== globals.inputs.length
+  const allWs = uniq(
+    [
+      ...head.filter((e) => typeof e !== 'string' || kept.has(e)),
+      ...(inline ? globalKept : global('inputs')),
+      ...wsFiles.filter((e) => kept.has(e)),
+    ],
+    inline ? [] : hidden('inputs'),
+  )
   const inputs: Record<string, unknown> = { files: withoutTakenBack(files) }
-  if (wsFiles.length > 0) inputs.workspaceFiles = withoutTakenBack(uniq(wsFiles, hidden('inputs')))
+  if (allWs.length > 0) inputs.workspaceFiles = withoutTakenBack(allWs)
   if (keyEnv.length > 0) inputs.env = keyEnv
   if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
   if (wsDotenv.length > 0) inputs.workspaceRuntime = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]

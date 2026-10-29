@@ -206,8 +206,36 @@ export function conformance(name: string, target: Target): void {
       })
       expect((await call('/v1/capabilities', {}, null)).status).toBe(401)
       const get = await call('/v1/timings/query')
-      expect([get.status, get.headers.get('allow')]).toEqual([405, 'POST'])
-      expect((await call('/v1/nope')).status).toBe(404)
+      expect([get.status, get.headers.get('allow'), await get.json()]).toEqual([
+        405,
+        'POST',
+        { code: 'method_not_allowed', message: 'this route takes POST' },
+      ])
+      const nope = await call('/v1/nope')
+      expect([nope.status, await nope.json()]).toEqual([
+        404,
+        {
+          code: 'not_found',
+          message: `no route GET /v1/nope: name the server's base URL; it serves /v1/ (PROTOCOL.md)`,
+        },
+      ])
+      const text = await call('/v1/timings/query', {
+        method: 'POST',
+        body: '{}',
+        headers: { 'content-type': 'text/plain' },
+      })
+      expect([text.status, await text.json()]).toEqual([
+        400,
+        { code: 'bad_request', message: 'send the body as Content-Type: application/json' },
+      ])
+      const query = await call('/v1/capabilities?team=a')
+      expect([query.status, await query.json()]).toEqual([
+        400,
+        {
+          code: 'bad_request',
+          message: 'this server takes no query parameters: drop ?team=a from the url',
+        },
+      ])
     })
   })
 }

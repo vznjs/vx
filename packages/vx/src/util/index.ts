@@ -22,6 +22,7 @@ export {
   isOutOfFds,
   notAWorkTree,
   OUT_OF_FDS_HINT,
+  thrownMessage,
   wantsJson,
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
@@ -119,6 +120,7 @@ export {
 } from './git-ignored.js'
 export { realPath, realpathOf } from './real-path.js'
 export {
+  heldSecrets,
   maskedCommand,
   maskedEmitter,
   maskedLine,

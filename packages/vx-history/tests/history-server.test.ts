@@ -11,7 +11,7 @@ import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { allowOf, type Issuer, issuer, NAMED } from './issuer.js'
-import { HistoryServer, proxyHeaders, serverUrlOf, timingOf } from '../src/history-server.js'
+import { HistoryServer, serverUrlOf, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
 
 let iss: Issuer
@@ -76,6 +76,21 @@ describe('HistoryServer', () => {
     )
   })
 
+  // A server's words reach the terminal: an ESC in them retitled it and
+  // overwrote the line vx printed before them.
+  it("writes the controls in a server's words as escapes", async () => {
+    const said = JSON.stringify({ message: '\x1b]0;PWNED\x07\x1b[2K\rall good' })
+    const client = new HistoryServer(
+      'https://history.test',
+      NAMED,
+      { VX_HISTORY_TOKEN: 't' },
+      (() => Promise.resolve(new Response(said, { status: 500 }))) as unknown as typeof fetch,
+    )
+    await expect(client.query(['refs/heads/main'], ['a1'])).rejects.toThrow(
+      'HTTP 500: \\x1b]0;PWNED\\x07\\x1b[2K all good',
+    )
+  })
+
   it("says a refusal with the server's own words", async () => {
     const read = await iss.sign('read', new URL(url).origin)
     const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: read })
@@ -92,6 +107,26 @@ describe('HistoryServer', () => {
     await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
       `HTTP 403: the token is of ${NAMED.repository} at ${NAMED.issuer}, not acme/other at ${NAMED.issuer}`,
     )
+  })
+
+  // A URL of a website answers any path 200 with its page: JSON.parse's
+  // "Unrecognized token '<'" named no fault.
+  it('says a 200 that is no JSON is not a history server', async () => {
+    const site = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }),
+    })
+    try {
+      const client = new HistoryServer(site.url.origin, NAMED, {})
+      await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+        new Error(
+          '/v1/capabilities answered 200 with text/html, not JSON: is the url a vx-history server?',
+        ),
+      )
+    } finally {
+      await site.stop(true)
+    }
   })
 
   it('says why a read with no token was refused, and what lets it in', async () => {
@@ -249,8 +284,7 @@ describe('HistoryServer', () => {
       seen.push(new Headers(init.headers))
       return new Response(JSON.stringify({ maxUploadTimings: 10, maxQueryHashes: 10, rows: [] }))
     }) as unknown as typeof fetch
-    const headers = proxyHeaders({ 'CF-Access-Client-Id': 'id', 'X-Unset': undefined })
-    expect(headers).toEqual({ 'CF-Access-Client-Id': 'id' })
+    const headers = { 'CF-Access-Client-Id': 'id' }
     const client = new HistoryServer(
       'https://h.example',
       NAMED,
@@ -267,8 +301,6 @@ describe('HistoryServer', () => {
         h.get('vx-issuer'),
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', null, null])
-    for (const bad of [{ Authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
-      expect(() => proxyHeaders(bad)).toThrow('vxHistory(): ')
   })
 
   it('reads with no token from a public server, sending none', async () => {
