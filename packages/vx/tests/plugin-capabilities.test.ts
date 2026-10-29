@@ -386,6 +386,45 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     ])
   })
 
+  // Placement reads each flag as `=== true`: `remote: 'yes'` read as a
+  // local executor, so it was offered sandboxed and `exec.remote: false`
+  // tasks and ran them elsewhere, unsandboxed. A hook that is no function
+  // surfaced mid-run as "accepts is not a function".
+  it('resolveExecutors: a flag that is no boolean, or a hook that is no function, is refused', async () => {
+    const said = async (extra: Record<string, unknown>): Promise<string> =>
+      resolveExecutors(
+        [
+          testPlugin('org/pool', {
+            executor: () =>
+              ({
+                name: 'pool',
+                execute: () => Promise.reject(new Error('unused')),
+                ...extra,
+              }) as never,
+          }),
+        ],
+        { ...baseCtx, concurrency: 1 },
+      ).then(
+        () => 'ok',
+        (e: Error) => e.message,
+      )
+    expect([
+      await said({ remote: 'yes' }),
+      await said({ sandbox: 1 }),
+      await said({ exclusive: null }),
+      await said({ accepts: true }),
+      await said({ demand: 'all' }),
+      await said({ remote: true, sandbox: false, accepts: () => true }),
+    ]).toEqual([
+      "plugin 'org/pool' returned executor 'pool' with remote \"yes\": it must be true or false",
+      "plugin 'org/pool' returned executor 'pool' with sandbox 1: it must be true or false",
+      "plugin 'org/pool' returned executor 'pool' with exclusive null: it must be true or false",
+      "plugin 'org/pool' returned executor 'pool' with accepts that is not a function",
+      "plugin 'org/pool' returned executor 'pool' with demand that is not a function",
+      'ok',
+    ])
+  })
+
   it('resolveExecutors: an empty executor name is refused like a missing one', async () => {
     const said = await resolveExecutors(
       [

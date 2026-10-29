@@ -453,7 +453,7 @@ function crossDepProjects(config: ProjectConfig): string[] {
       // the offending task. Here it just contributes no project.
       if (!raw.includes('#')) continue
       try {
-        const spec = parseDependencySpec(raw)
+        const spec = parseDependencySpec(raw, 'dependsOn')
         if (spec.kind === 'cross') out.push(spec.project)
       } catch {
         continue
@@ -496,7 +496,7 @@ export function lockReader(workspaceRoot: string): () => Promise<Lockfile> {
   let read: Promise<Lockfile> | undefined
   return () =>
     (read ??= readLockfile(workspaceRoot).then((lock) => {
-      if (lock === null) throw new UserError(NO_LOCK)
+      if (lock === null) throw new UserError(NO_LOCK, 'VX_E_LOCK')
       return lock
     }))
 }

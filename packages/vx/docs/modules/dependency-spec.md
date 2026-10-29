@@ -1,10 +1,10 @@
-# `src/graph/dependency-spec.ts` — Turbo/Nx micro-syntax parser
+# `src/util/dependency-spec.ts` — Turbo/Nx micro-syntax parser
 
 ## Purpose
 
 Parse one entry from `dependsOn` or `inputs.tasks` into a small
 discriminated union. Pure — no FS, no project lookups. Caller-side
-modules (`graph/task-graph.ts`, `orchestrator/upstream.ts`) decide
+modules (`graph/task-graph.ts`, `graph/folds.ts`) decide
 which kinds make semantic sense in their context.
 
 ## Public surface
@@ -18,10 +18,13 @@ export type DependencySpec =
   | { kind: 'wildcardDeps'; negated: boolean } // '^*'
 
 export class DependencySpecError extends Error {
-  constructor(raw: string, message: string) // message: `invalid dependsOn "<raw>": <message>`
+  constructor(field: 'dependsOn' | 'inputs.tasks', raw: string, message: string) // message: `invalid <field> "<raw>": <message>`
 }
 
-export function parseDependencySpec(raw: string): DependencySpec
+export function parseDependencySpec(
+  raw: string,
+  field: 'dependsOn' | 'inputs.tasks',
+): DependencySpec
 
 // A task name holding `*` is a PATTERN over task names (`build.*`, `check.*`):
 export function isTaskPattern(task: string): boolean
@@ -59,8 +62,13 @@ a preset-spread pattern need not match in every project. The parser
 does not know any of this; it parses, and `isTaskPattern` /
 `compileTaskPattern` are what the consumers match with.
 
-`orchestrator/upstream.ts` accepts every form because that's the
-filter context. Last-write-wins ordering is applied there, not here.
+`graph/folds.ts` accepts every form because that's the filter
+context. Last-write-wins ordering is applied there, not here.
+
+The parser lives in `util`, not `graph`, because
+`workspace/config-schema.ts` parses each `inputs.tasks` entry at load
+(`vx lock` included) and the workspace module cannot import the graph.
+An error names the field it parses: `invalid inputs.tasks "^": …`.
 
 ## Tests
 

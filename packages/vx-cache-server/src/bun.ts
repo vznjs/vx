@@ -11,7 +11,7 @@ import type { Blobs } from './store.js'
 const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
   ALLOW           who may take part, space separated, each issuer:owner/repo:workflow
                   (README.md § CI tokens); only their jobs' OIDC tokens are taken
-  AUDIENCE        the aud a CI token names (default: the origin it was sent to)
+  AUDIENCE        the aud a CI token names: the URL clients reach this server at
   READ_ACCESS     public: a request with no token reads a repository ALLOW names
   S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
                   S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
@@ -136,12 +136,17 @@ function main(argv: string[]): void {
   } catch (err) {
     fail(`S3: ${(err as Error).message}`)
   }
+  // Unset, the audience would be the origin a request names: its Host
+  // header, which the client picks. Workers know their own hostnames.
+  const audience = env.AUDIENCE?.trim() ?? ''
+  if (audience === '')
+    fail(`set AUDIENCE: the aud a CI token names, the URL clients reach this server at\n${USAGE}`)
   const handle = createCacheServer({
     blobs: s3Blobs(client),
     authorize: oidcAuth({
       allow,
       readAccess: env.READ_ACCESS,
-      ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
+      audience,
     }),
     limits,
   })

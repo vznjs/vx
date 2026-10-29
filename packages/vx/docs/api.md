@@ -162,7 +162,11 @@ export class BoundedCapture {
     private readonly tailChars = CAPTURE_TAIL_CHARS,
   ) {}
   push(text: string, err = false): void
-  rebound(headChars: number, tailChars: number): BoundedCapture
+  rebound(
+    headChars: number,
+    tailChars: number,
+    through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
+  ): BoundedCapture
   chunks(): CapturedChunk[]
   text(): string
 }
@@ -1940,6 +1944,7 @@ export interface PreparedRun {
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
   taskless: (name: string) => boolean
+  unlockedConfig: () => string | undefined
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

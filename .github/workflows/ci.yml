@@ -81,7 +81,6 @@ jobs:
       VX_PR_TITLE: ${{ github.event.pull_request.title }}
       VX_PR_BASE: ${{ github.event.pull_request.base.sha }}
       VX_PR_HEAD: ${{ github.event.pull_request.head.sha }}
-      # The 2 MiB tmpfs each Linux worker mounts (vx-worker.yml).
       # Cold reads nothing but still writes: workers hand outputs back
       # through the remote.
       VX_CACHE_POLICY: ${{ inputs.cold && 'local:w,remote:w' || '' }}
@@ -90,10 +89,12 @@ jobs:
       # the merge-base themselves, commits and trees only; main needs none.
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # The job's token stays out of .git/config, where every task could
+        # read it; the repo is public, so a fetch needs none.
+        with:
+          persist-credentials: false
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.4
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Check vx.lock.json
@@ -174,10 +175,10 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.4
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Restore the sandbox packages

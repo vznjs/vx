@@ -31,7 +31,7 @@ async function owners(root: string, configRel: string, changed: string): Promise
     changed: [changed],
     skip: new Set(),
   })
-  return [...found]
+  return [...found.owners]
 }
 
 const config = (spec: string) => `import { cmd } from '${spec}'

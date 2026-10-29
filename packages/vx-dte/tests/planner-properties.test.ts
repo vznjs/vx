@@ -58,8 +58,13 @@ function reference(tasks: readonly PlanTask[], workers: readonly PlanWorker[], h
   for (;;) {
     ready = ordered([...ready, ...joining], how.order, tail, (id) => byId.get(id)!, widest)
     joining = []
-    const later = (above: { cores: number; memory: number }): boolean =>
-      slots.some((s) => s.at > now && (s.cores > above.cores || s.memory > above.memory))
+    const later = (above: { cores: number; memory: number }, platform?: string): boolean =>
+      slots.some(
+        (s) =>
+          s.at > now &&
+          (platform === undefined || s.platform === platform) &&
+          (s.cores > above.cores || s.memory > above.memory),
+      )
     const asks = ready.map((id) => ({ id, need: byId.get(id)! }))
     const joined = slots.filter((s) => s.at <= now)
     const to = assign(asks, joined, later, how.place)

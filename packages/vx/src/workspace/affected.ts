@@ -6,7 +6,8 @@
 // index + unstaged — so it captures everything you touched and nothing
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
-import { realpath, stat } from 'node:fs/promises'
+import { lstatSync } from 'node:fs'
+import { readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   executablePath,
@@ -122,6 +123,12 @@ export interface AffectedArgs {
    * -s` here. A changed or untracked link is a changed path already.
    */
   links?: () => Promise<readonly string[] | null>
+  /**
+   * The tracked paths git does not look at on disk (assume-unchanged,
+   * skip-worktree), workspace-relative, from the run's enumeration; null or
+   * absent asks `git ls-files -v` here.
+   */
+  flagged?: () => Promise<readonly string[] | null>
 }
 
 export interface FingerprintClaims {
@@ -135,6 +142,28 @@ export interface FingerprintClaims {
   }): Promise<ReadonlySet<string> | undefined>
   /** The files a claimed file names that its claimant keys too; absent = it reads none. */
   extraFiles?(file: string, bytes: Uint8Array): readonly string[] | undefined
+}
+
+/**
+ * `extraFiles` on one side of a claimed file. Which side failed to parse is
+ * the whole fix: a broken lockfile at the base ref is not the working
+ * tree's to regenerate, and the bare refusal named neither.
+ */
+function extraFilesOn(
+  claims: FingerprintClaims,
+  file: string,
+  bytes: Uint8Array,
+  side: string,
+): readonly string[] | undefined {
+  try {
+    return claims.extraFiles?.(file, bytes)
+  } catch (err) {
+    if (!(err instanceof Error)) throw err
+    throw new UserError(
+      `${err.message} (${side})`,
+      err instanceof UserError ? err.code : 'VX_E_REFUSED',
+    )
+  }
 }
 
 /**
@@ -291,13 +320,24 @@ export async function affectedChanges(
   // A symlinked input keys the content behind it (cache/linked-inputs.ts),
   // and the diff names that content's path, never the link's: a link whose
   // target changed is a changed path itself.
-  changed.push(
-    ...(await linkedChanges(
-      args.workspaceRoot,
-      (await args.links?.().catch(() => null)) ?? (await trackedLinks(args.workspaceRoot)),
-      changed,
-    )),
-  )
+  // One index listing serves both when the run's enumeration did not.
+  let index: Promise<IndexEntry[]> | undefined
+  const listIndex = () => (index ??= indexEntries(args.workspaceRoot))
+  const [links, flagged] = await Promise.all([
+    (async () =>
+      (await args.links?.().catch(() => null)) ??
+      (await listIndex()).filter((e) => e.mode === '120000').map((e) => e.path))(),
+    (async () =>
+      (await args.flagged?.().catch(() => null)) ??
+      (await listIndex()).filter((e) => e.flagged).map((e) => e.path))(),
+  ])
+  changed.push(...(await linkedChanges(args.workspaceRoot, links, changed)))
+  // A path git was told not to look at (`update-index --assume-unchanged`,
+  // `--skip-worktree`): `git diff` reports no edit to it, and the key
+  // hashes it from disk, so the task missed and selection left it out.
+  if (flagged.length > 0) {
+    changed.push(...(await flaggedChanges(args.workspaceRoot, flagged, await listIndex(), changed)))
+  }
   // The nested repositories git reports as one path: a gitlink, or an
   // untracked embedded repository (`dir/`, the only path git prints so).
   const nested = new Set(diffed.gitlinks)
@@ -351,9 +391,12 @@ export async function affectedChanges(
   for (const file of extraClaims?.files ?? []) {
     const after = await bytesOrNull(path.join(args.workspaceRoot, file))
     const before = await gitBytesAt(args.workspaceRoot, base, file)
-    const namedAfter = after === null ? [] : extraClaims!.extraFiles?.(file, after)
+    const namedAfter =
+      after === null ? [] : extraFilesOn(extraClaims!, file, after, 'in the working tree')
     const named = new Set([
-      ...(before === null ? [] : (extraClaims!.extraFiles?.(file, before) ?? [])),
+      ...(before === null
+        ? []
+        : (extraFilesOn(extraClaims!, file, before, 'as of the base ref') ?? [])),
       ...(namedAfter ?? []),
     ])
     const extras = new Map<string, { before: Uint8Array | null; after: Uint8Array | null }>()
@@ -432,11 +475,11 @@ export async function affectedChanges(
   )
   for (const name of claimedOwned.keys()) owned.add(name)
 
-  // A config that makes an existing directory a project took files from
-  // the project above it.
-  const configs = changed.filter((rel) => CONFIG_NAMES.has(path.posix.basename(rel)))
-  if (configs.length > 0) {
-    const atBase = await gitBlobsAt(args.workspaceRoot, base, configs)
+  // A config or manifest that makes an existing directory a project took
+  // files from the project above it.
+  const markers = changed.filter((rel) => PROJECT_MARKERS.has(path.posix.basename(rel)))
+  if (markers.length > 0) {
+    const atBase = await gitBlobsAt(args.workspaceRoot, base, markers)
     // A config the base had in a directory that is no project now: the
     // project is gone, and with it the edge naming who depended on it,
     // while their keys lost an upstream. Today's graph cannot say who.
@@ -456,16 +499,20 @@ export async function affectedChanges(
   // (`../../src/index.ts`), whose target is owned.
   // Per task, a project that owns the changed file still needs to know its
   // config imported it: that re-keys every task, whatever their inputs.
-  for (const name of args.configImports === false
-    ? []
-    : await configImportOwners({
-        workspaceRoot: args.workspaceRoot,
-        projects: projects,
-        changed,
-        skip: perTask ? new Set() : owned,
-      })) {
-    owned.add(name)
-    whole.add(name)
+  // A file the workspace config imports widens as the config itself does.
+  if (args.configImports !== false) {
+    const imports = await configImportOwners({
+      workspaceRoot: args.workspaceRoot,
+      projects: projects,
+      changed,
+      skip: perTask ? new Set() : owned,
+      workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(rootDir, n)),
+    })
+    if (imports.workspace !== undefined) return everything(imports.workspace)
+    for (const name of imports.owners) {
+      owned.add(name)
+      whole.add(name)
+    }
   }
 
   const nestedDirs = [...nested].map((rel) => rel.replace(/\/$/, ''))
@@ -486,15 +533,21 @@ export async function affectedChanges(
 const VX_OWN: ReadonlySet<string> = new Set([LOCKFILE_NAME, '.vx/.gitattributes', '.vx/.gitignore'])
 
 const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
+/**
+ * The files that make a directory a project: core's configs, and the
+ * `package.json` a `discover` plugin reads (core keys every project's own).
+ * Discovery names no file it read, so these stand for the base's project set.
+ */
+const PROJECT_MARKERS: ReadonlySet<string> = new Set([...PROJECT_CONFIG_FILENAMES, 'package.json'])
 
 /**
  * The projects a NEW nested project took files from. A project's inputs
- * stop at every project below it, so a config that makes an existing
+ * stop at every project below it, so a marker that makes an existing
  * directory a project re-keys the project above it — its `**` lost the
  * directory's files — while containment maps the change to the new
  * project alone, and `--affected` left the re-keyed parent out. "New" is
- * judged at the base: none of the changed configs in its directory was
- * there. `atBase` holds each changed config there.
+ * judged at the base: none of the changed markers in its directory was
+ * there. `atBase` holds each changed marker there.
  */
 function parentsOfNewNested(
   workspaceRoot: string,
@@ -530,7 +583,8 @@ async function removedProjectConfig(
 ): Promise<string | undefined> {
   const dirs = new Set(projects.map((p) => p.dir.normalize('NFC')))
   for (const [rel, bytes] of atBase) {
-    if (bytes === null) continue
+    // A manifest's directory may never have been a project; a config's was.
+    if (bytes === null || !CONFIG_NAMES.has(path.posix.basename(rel))) continue
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel)).normalize('NFC')
     if (dirs.has(dir)) continue
     if (await Bun.file(path.join(workspaceRoot, rel)).exists()) continue
@@ -621,12 +675,82 @@ async function bytesOrNull(file: string): Promise<Uint8Array | null> {
   return (await f.exists()) ? await f.bytes() : null
 }
 
-/** The symlinks the index lists, workspace-relative. */
-async function trackedLinks(workspaceRoot: string): Promise<string[]> {
-  const out: string[] = []
-  for (const record of await gitPaths(workspaceRoot, ['ls-files', '-s', '-z'])) {
-    if (record.startsWith('120000 ')) out.push(record.slice(record.indexOf('\t') + 1))
+interface IndexEntry {
+  path: string
+  mode: string
+  oid: string
+  /** Assume-unchanged or skip-worktree: git does not look at it on disk. */
+  flagged: boolean
+  skipWorktree: boolean
+}
+
+/**
+ * The index's stage-0 entries, workspace-relative. `ls-files -v` prefixes
+ * a tag: `S` skip-worktree, a lowercase letter assume-unchanged (`s` both).
+ */
+async function indexEntries(workspaceRoot: string): Promise<IndexEntry[]> {
+  const out: IndexEntry[] = []
+  for (const record of await gitPaths(workspaceRoot, ['ls-files', '-s', '-v', '-z'])) {
+    const m = /^(\S) (\d+) ([0-9a-f]+) 0\t(.*)$/s.exec(record)
+    if (m === null) continue
+    const tag = m[1]!
+    out.push({
+      path: m[4]!,
+      mode: m[2]!,
+      oid: m[3]!,
+      flagged: tag === 'S' || (tag >= 'a' && tag <= 'z'),
+      skipWorktree: tag === 'S' || tag === 's',
+    })
   }
+  return out
+}
+
+/**
+ * The flagged paths whose disk side moved from the index (`git diff` covers
+ * the index against the base): a file whose bytes hash to another blob, a
+ * link, or an assume-unchanged file deleted. An absent skip-worktree file
+ * is a sparse checkout's: the key leaves it out, and so does this.
+ */
+async function flaggedChanges(
+  workspaceRoot: string,
+  flagged: readonly string[],
+  index: readonly IndexEntry[],
+  changed: readonly string[],
+): Promise<string[]> {
+  const byPath = new Map(index.map((e) => [e.path, e]))
+  const seen = new Set(changed)
+  const out: string[] = []
+  const hash: IndexEntry[] = []
+  for (const rel of flagged) {
+    const entry = byPath.get(rel)
+    if (entry === undefined || seen.has(rel)) continue
+    // Synchronous: a sparse checkout flags its every absent file, and one
+    // awaited stat each was 7 s per 100,000 (a loop of these, 0.15 s).
+    if (lstatSync(path.join(workspaceRoot, rel), { throwIfNoEntry: false }) === undefined) {
+      if (!entry.skipWorktree) out.push(rel)
+    } else if (entry.mode === '120000' || rel.includes('\n')) out.push(rel)
+    else hash.push(entry)
+  }
+  if (hash.length === 0) return out
+  // `--stdin-paths` hashes each file as `git add` would (its clean
+  // filters), so an unchanged one names the index's blob.
+  const proc = spawnGit(
+    ['hash-object', '--stdin-paths'],
+    workspaceRoot,
+    new TextEncoder().encode(hash.map((e) => `${e.path}\n`).join('')),
+  )
+  const [stdout, stderr, exit] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exit !== 0) {
+    throw new UserError(`git hash-object failed (exit ${exit}): ${stderr.trim()}`, 'VX_E_GIT')
+  }
+  const oids = stdout.split('\n')
+  hash.forEach((e, i) => {
+    if (oids[i] !== e.oid) out.push(e.path)
+  })
   return out
 }
 
@@ -695,7 +819,10 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
   const stderr = await new Response(proc.stderr).text()
   const exit = await proc.exited
   if (exit !== 0) {
-    throw new UserError(`git ${cmd[0]} failed (exit ${exit}): ${stderr.trim()}`, 'VX_E_GIT')
+    throw new UserError(
+      `git ${cmd[cmd[0] === '-c' ? 2 : 0]} failed (exit ${exit}): ${stderr.trim()}`,
+      'VX_E_GIT',
+    )
   }
   return stdout.split('\0').filter((s) => s.length > 0)
 }
@@ -705,6 +832,12 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
  * either side: one the change removed took its files with it. Each record
  * is `:<mode> <mode> <oid> <oid> <status>` then its path (one path:
  * `--no-renames`).
+ *
+ * `diff.autoRefreshIndex=false`: a porcelain `diff` that meets a
+ * stat-dirty file rewrites the index under `index.lock`, and ignores
+ * `--no-optional-locks`, so a user's `git commit` beside a run failed on
+ * that lock. Without the refresh a stat-only change is listed as a
+ * modification (`statOnly` drops it).
  */
 async function gitDiffPaths(
   workspaceRoot: string,
@@ -713,11 +846,14 @@ async function gitDiffPaths(
 ): Promise<{ paths: string[]; gitlinks: string[] }> {
   const diff = (...revs: string[]) =>
     gitPaths(workspaceRoot, [
+      '-c',
+      'diff.autoRefreshIndex=false',
       'diff',
       '--no-renames',
       '--ignore-submodules=none',
       '--relative',
       '--raw',
+      '--no-abbrev',
       '-z',
       '--end-of-options',
       ...revs,
@@ -735,6 +871,7 @@ async function gitDiffPaths(
   const paths: string[] = []
   const gitlinks: string[] = []
   const seen = new Set<string>()
+  const unread: { rel: string; oid: string; link: boolean }[] = []
   for (const fields of lists) {
     for (let i = 0; i + 1 < fields.length; i += 2) {
       const rel = fields[i + 1]!
@@ -743,9 +880,57 @@ async function gitDiffPaths(
       paths.push(rel)
       const head = fields[i]!
       if (head.startsWith('160000 ', 1) || head.startsWith('160000 ', 8)) gitlinks.push(rel)
+      const [src, dst, oid, worktree, status] = head.slice(1).split(' ')
+      if (status === 'M' && src === dst && /^0+$/.test(worktree!) && src !== '160000')
+        unread.push({ rel, oid: oid!, link: src === '120000' })
     }
   }
-  return { paths, gitlinks }
+  if (unread.length === 0) return { paths, gitlinks }
+  const same = await statOnly(workspaceRoot, unread)
+  return { paths: paths.filter((p) => !same.has(p)), gitlinks }
+}
+
+/**
+ * Of the paths the diff listed as modified in the working tree, those
+ * whose content is still the base's blob: the working-tree side is hashed
+ * as `git add` would (filters, a link's target), so only a stat changed.
+ */
+async function statOnly(
+  workspaceRoot: string,
+  unread: readonly { rel: string; oid: string; link: boolean }[],
+): Promise<Set<string>> {
+  const same = new Set<string>()
+  const files: { rel: string; oid: string }[] = []
+  for (const u of unread) {
+    if (!u.link) {
+      // `--stdin-paths` reads a line and unquotes a leading `"`; the
+      // decoder replaced a byte that was not UTF-8. Such a path stays listed.
+      if (!/[\n\uFFFD]/.test(u.rel) && !u.rel.startsWith('"')) files.push(u)
+      continue
+    }
+    try {
+      const target = await readlink(path.join(workspaceRoot, u.rel), 'buffer')
+      const hasher = new Bun.CryptoHasher(u.oid.length === 64 ? 'sha256' : 'sha1')
+      hasher.update(`blob ${target.length}\0`)
+      hasher.update(target)
+      if (hasher.digest('hex') === u.oid) same.add(u.rel)
+    } catch {
+      // not a link any more: a change
+    }
+  }
+  if (files.length === 0) return same
+  const proc = spawnGit(
+    ['hash-object', '--stdin-paths'],
+    workspaceRoot,
+    new TextEncoder().encode(files.map((f) => `${f.rel}\n`).join('')),
+  )
+  const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  if (exit !== 0) return same
+  const oids = out.split('\n')
+  files.forEach((f, i) => {
+    if (oids[i] === f.oid) same.add(f.rel)
+  })
+  return same
 }
 
 /** A remote that serves missing objects on demand: `--filter` on a clone or a fetch. */
@@ -784,6 +969,12 @@ export async function defaultAffectedBase(
       'VX_E_AFFECTED_BASE',
     )
   }
+  // A detached HEAD (a CI checkout of a pushed commit) is on the base
+  // branch when the branch holds it: the base was HEAD, or a commit after
+  // it, and nothing ran, green.
+  if (!found.onIt && found.detached && (await isAncestor(workspaceRoot, 'HEAD', found.ref))) {
+    found.onIt = true
+  }
   if (found.onIt) {
     throw new UserError(
       `--affected has no default on the base branch (${found.branch}): ${instead}, or name the last good commit, --affected=<sha>`,
@@ -821,7 +1012,7 @@ function noHistoryRefusal(workspaceRoot: string): UserError | undefined {
 async function baseBranchRef(
   workspaceRoot: string,
   configured: string | undefined,
-): Promise<{ ref: string; branch: string; onIt: boolean } | undefined> {
+): Promise<{ ref: string; branch: string; onIt: boolean; detached: boolean } | undefined> {
   const text = async (args: string[]): Promise<string> => {
     const proc = spawnGit(args, workspaceRoot)
     const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
@@ -844,7 +1035,12 @@ async function baseBranchRef(
     text(['symbolic-ref', '--short', '-q', 'HEAD']),
   ])
   const have = new Set(refs.split('\n'))
-  const at = (branch: string, ref: string) => ({ ref, branch, onIt: head === branch })
+  const at = (branch: string, ref: string) => ({
+    ref,
+    branch,
+    onIt: head === branch,
+    detached: head === '',
+  })
   if (remoteHead.startsWith('origin/') && have.has(remoteHead)) {
     return at(remoteHead.slice('origin/'.length), remoteHead)
   }
@@ -952,6 +1148,15 @@ export async function mergeBaseWith(
   ref: string,
 ): Promise<string | undefined> {
   return (await gitMergeBase(workspaceRoot, ref)) ?? (await reachMergeBase(workspaceRoot, ref))
+}
+
+/** Whether `commit` is `ref` or one of its ancestors. */
+async function isAncestor(workspaceRoot: string, commit: string, ref: string): Promise<boolean> {
+  const proc = spawnGit(
+    ['merge-base', '--is-ancestor', '--end-of-options', commit, ref],
+    workspaceRoot,
+  )
+  return (await proc.exited) === 0
 }
 
 async function gitMergeBase(workspaceRoot: string, ref: string): Promise<string | undefined> {
@@ -1074,7 +1279,7 @@ function originSpec(ref: string): string | undefined {
 async function fetchBaseBranch(
   workspaceRoot: string,
   configured: string | undefined,
-): Promise<{ ref: string; branch: string; onIt: boolean } | undefined> {
+): Promise<{ ref: string; branch: string; onIt: boolean; detached: boolean } | undefined> {
   if (!isShallow(workspaceRoot)) return undefined
   const branch = configured ?? (await originDefaultBranch(workspaceRoot))
   if (branch === undefined) return undefined
@@ -1082,7 +1287,7 @@ async function fetchBaseBranch(
   if (!(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) return undefined
   const proc = spawnGitSync(['symbolic-ref', '--short', '-q', 'HEAD'], workspaceRoot, 'ignore')
   const head = new TextDecoder().decode(proc.stdout).trim()
-  return { ref: `origin/${branch}`, branch, onIt: head === branch }
+  return { ref: `origin/${branch}`, branch, onIt: head === branch, detached: head === '' }
 }
 
 /** The branch origin's HEAD names, asked of origin (a one-commit checkout has no `origin/HEAD`). */

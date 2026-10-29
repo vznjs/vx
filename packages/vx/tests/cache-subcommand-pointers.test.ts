@@ -48,6 +48,22 @@ it('a clean flag typed without clean names the whole clean command', async () =>
   ])
 })
 
+it("an Object.prototype name is a word no runner uses, not that object's source", async () => {
+  // The pointer table is a plain object: `vx cache constructor` printed
+  // "— function Object() { [native code] }".
+  const clean = (sub: string): [number, string] => [
+    1,
+    noticed(
+      `vx cache: unknown subcommand: ${sub}. The subcommand is clean (see \`vx cache --help\`)\n`,
+    ),
+  ]
+  expect([await said('constructor'), await said('toString'), await said('__proto__')]).toEqual([
+    clean('constructor'),
+    clean('toString'),
+    clean('__proto__'),
+  ])
+})
+
 it('a word no runner uses still names clean (control)', async () => {
   expect(await said('bogus')).toEqual([
     1,

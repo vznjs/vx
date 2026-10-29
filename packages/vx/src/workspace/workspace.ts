@@ -17,12 +17,13 @@ import {
   isExecutableMissing,
   isOutOfFds,
   printable,
-  realPath,
   refusal,
   relPosix,
   UserError,
 } from '../util/index.js'
 import { gitTop, WORKSPACE_CONFIG_FILENAMES, workspaceFile, workspaceRootOf } from '../handoff.js'
+import { canonicalDir } from './canonical-dir.js'
+import { parseFilter } from './filter.js'
 import { repoIdOf } from './repo-id.js'
 
 export interface ProjectMeta {
@@ -218,37 +219,6 @@ export function linkDiscoveredEdges(
   for (const [meta, names] of reach) meta.reach = [...names].sort()
 }
 
-const realRoots = new Map<string, string>()
-
-/**
- * `dir` at the directory it leads to, spelled under `root` as given (a
- * root reached through a link, as macOS's temp dir is, keeps its
- * spelling); `dir` itself when that directory lies outside the root; null
- * when `dir` is not there. A workspace glob over linked packages (pnpm's
- * `widgets/**`, `widgets/a -> ../submodules/a`) names the link, and git
- * lists the config at the real directory: matched by spelling, one
- * directory was two projects, the config-less twin at the link taking
- * every edge.
- */
-export function canonicalDir(root: string, dir: string): string | null {
-  const real = realOrNull(dir)
-  if (real === null) return null
-  let realRoot = realRoots.get(root)
-  if (realRoot === undefined) realRoots.set(root, (realRoot = realOrNull(root) ?? root))
-  const rel = path.relative(realRoot, real)
-  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return dir
-  return path.join(root, rel)
-}
-
-function realOrNull(p: string): string | null {
-  try {
-    return realPath(p)
-  } catch (err) {
-    if (isOutOfFds(err)) throw err
-    return null
-  }
-}
-
 /** The root project's name when nothing names it: Turbo's spelling, and the root alias in filters and `dependsOn`. */
 export const ROOT_NAME = '//'
 
@@ -290,12 +260,14 @@ export interface ProjectConfigs {
  * the first that is a file.
  */
 export async function findProjectConfigs(root: string): Promise<ProjectConfigs> {
-  const rels = (await gitTop(root)) === null ? await scanConfigs(root) : await gitConfigs(root)
+  const inGit = (await gitTop(root)) !== null
+  const rels = inGit ? await gitConfigs(root) : await scanConfigs(root)
   const nested: string[] = []
   for (const rel of rels) {
     const at = rel.lastIndexOf('/.vx/')
     if (at > 0 && WORKSPACE_RANK.has(rel.slice(at + 1))) nested.push(rel.slice(0, at))
   }
+  if (inGit) nested.push(...(await unlistedNested(root, rels, nested)))
   const byDir = new Map<string, string[]>()
   const reviewed: string[] = []
   for (const rel of rels) {
@@ -355,6 +327,42 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     .filter((f) => f !== null)
     .sort()
   return { configs, strayReviews, shadowed }
+}
+
+/**
+ * The nested workspace roots git did not list (an ignored `.vx/`) among the
+ * directories holding `rels` and their ancestors under `root`: a run from
+ * under one takes it as its root, so the outer lock must not claim it.
+ */
+async function unlistedNested(
+  root: string,
+  rels: readonly string[],
+  listed: readonly string[],
+): Promise<string[]> {
+  const dirs = new Set<string>()
+  for (const rel of rels) {
+    for (let d = rel.slice(0, Math.max(rel.lastIndexOf('/'), 0)); d !== '';) {
+      if (dirs.has(d)) break
+      dirs.add(d)
+      d = d.slice(0, Math.max(d.lastIndexOf('/'), 0))
+    }
+  }
+  for (const n of listed) dirs.delete(n)
+  // A stat, no descriptor: most directories have no `.vx`.
+  const found = await Promise.all(
+    [...dirs].map(async (d) =>
+      (await stat(path.join(root, d, '.vx')).then(
+        (st) => st.isDirectory(),
+        (err: unknown) => {
+          if (isOutOfFds(err)) throw err
+          return false
+        },
+      )) && (await workspaceFileIn(root, d))
+        ? d
+        : null,
+    ),
+  )
+  return found.filter((d) => d !== null)
 }
 
 async function isFile(p: string): Promise<boolean> {
@@ -598,6 +606,36 @@ function nameFault(name: string): string | null {
   if (name.includes('#')) return 'the name holds "#" — vx addresses a task as <name>#<task>'
   // Printed raw by the status line and summary: `ESC ]0;` retitled the terminal.
   if (hasControl(name)) return 'the name holds a control character'
+  const why = projectNameProblem(name)
+  return why === null ? null : `the name ${why}`
+}
+
+/**
+ * Why `dependsOn` or `--filter` cannot name a project called `name`, or
+ * null; surrounding whitespace and `#` are each caller's own words. Each
+ * shape loaded and could not be addressed: `^ui#build` was refused as `^`
+ * with `pkg#task`, `--filter '!ui'` excluded it, `tag:ui` and `ui...` read
+ * as a tag and a walk. Asked of the filter parser itself, as `tagProblem`.
+ */
+export function projectNameProblem(name: string): string | null {
+  if (name.includes('*')) return "holds '*', which makes it a pattern"
+  if (name.startsWith('^')) return "starts with '^', which names dependencies' tasks"
+  if (name.startsWith('!')) return "starts with '!', which a filter reads as an exclusion"
+  // The root's own name, which the filter reads as the root's directory.
+  if (name === ROOT_NAME) return null
+  const walk = "starts or ends with '...', which a filter reads as a dependency walk"
+  let f: ReturnType<typeof parseFilter>
+  try {
+    f = parseFilter(name, '/')
+  } catch {
+    // `...` alone: the walk with no project between.
+    return walk
+  }
+  if (f.withDeps || f.withDependents || f.onlyDeps || f.onlyDependents) return walk
+  if (f.gitSince !== undefined)
+    return `ends in "[${f.gitSince}]", which a filter reads as a git range`
+  if (f.tag === true) return "starts with 'tag:', which a filter reads as a tag selector"
+  if (f.isPath) return 'reads as a directory to a filter'
   return null
 }
 

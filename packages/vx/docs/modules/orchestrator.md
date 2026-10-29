@@ -34,11 +34,19 @@ for the extension seams.
 ```ts
 export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
+// The abort reason `vx watch` stops a cycle with: the run's own work stops, the servers it was handed (`RunOptions.keep`) are spared.
+export const CYCLE_INTERRUPT: 'vx:cycle-interrupt'
 export function nxProjectTarget(spec: string, projects): string | undefined // Nx's `web:build` as `web#build`, when web declares build
 export function projectNamed(typed: string, projects): string | undefined // `cart` as `@scope/cart`, when that is the one such project
 export function shouldShortCircuit(nodes, policy): boolean
 export function invocationCommand(line: readonly string[] | string): string // the args after `--` as `<n arguments>`; a string is split as sh splits words
 export function runLockPath(workspaceRoot: string, dir?: string): string // the lock directory
+export function liveSocketPath(workspaceRoot: string, lockDir?: string): string // `<lock>.sock`: the run in progress answers `vx last --live` there
+export interface LiveSnapshot {
+  live: { runId; command; pid; startedAt; elapsedMs }
+  tasks: LiveTask[]
+  warnings: string[]
+}
 // The workspace's run lock (below); `vx cache clean` takes it too.
 export function acquireRunLock(
   workspaceRoot: string,
@@ -354,3 +362,12 @@ removed the artifacts the run had just probed as hits, whose
 `accessed_at` bumps were not flushed yet (nx#36688). The run survives
 that now (a vanished artifact is a miss), but only by re-running the
 task.
+
+## The run in progress (`run-live.ts`)
+
+While it holds the run lock, a run answers on a unix socket beside it
+(`liveSocketPath`), for `vx last --live` (2026-10-28): one request line,
+`snapshot` or `follow`, then the snapshot as one JSON line; a follower
+then gets each event until `run:done`. Nothing is written for it, and a
+follower a megabyte behind is let go, so a stuck reader never holds the
+run's memory.

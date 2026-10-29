@@ -12,6 +12,7 @@ async function start(env: Record<string, string>): Promise<string> {
     env: {
       ...process.env,
       ALLOW: 'https://token.actions.githubusercontent.com:o/r:ci.yml',
+      AUDIENCE: 'https://cache.example',
       S3_BUCKET: 'b',
       ...env,
     },

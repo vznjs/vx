@@ -34,8 +34,8 @@ describe('resolveNxCacheConfig, exactly', () => {
   it('an access token no header can carry is refused, and not printed', () => {
     const msg = (token: string) => refusal(() => resolveNxCacheConfig({ url: SERVER, token }, {}))
     expect([msg('SECRET\r\nX: y'), msg('SECRET\0'), msg('SECRET')]).toEqual([
-      'vx/nx-cache: the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
-      'vx/nx-cache: the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
+      'nxCache(): the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
+      'nxCache(): the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
       '(no refusal)',
     ])
   })

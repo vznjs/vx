@@ -63,6 +63,8 @@ export interface RunSummaryRow {
   forwarded: boolean
   /** Each remote read or write of its key that failed, `upload: <message>`, `; `-joined (v40). */
   remoteError: string | null
+  /** The attempts a retried task took (>1, v23); null when it ran once. */
+  attempts: number | null
 }
 
 export interface ListRunsArgs {
@@ -124,7 +126,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
               wallclock_start_ns AS wallclockStartNs, wallclock_end_ns AS wallclockEndNs,
               blocked_by AS blockedBy, timed_out AS timedOut,
               sandbox_violations AS sandboxViolations, not_ready AS notReady,
-              forward_args IS NOT NULL AS forwarded, remote_error AS remoteError
+              forward_args IS NOT NULL AS forwarded, remote_error AS remoteError, attempts
        FROM runs ${clause} ORDER BY id DESC LIMIT ?`,
     )
     .all(...params, limit) as RawRow[]
@@ -923,13 +925,16 @@ export interface RootCause {
 /**
  * The tasks under `taskId`'s moved upstreams whose OWN key components
  * moved in the same run, each with the chain that carried it up. A task
- * visited once is not walked again (a diamond names its root once).
+ * visited once is not walked again (a diamond names its root once). A
+ * group records no run, so `groups` (group id → the tasks it gathers)
+ * carries the walk through it.
  */
 export function rootCauses(
   db: Database,
   runId: string,
   taskId: string,
   entries: CacheKeyDiff['entries'],
+  groups: ReadonlyMap<string, readonly string[]> = new Map(),
 ): RootCause[] {
   const roots: RootCause[] = []
   const seen = new Set([taskId])
@@ -941,8 +946,16 @@ export function rootCauses(
       seen.add(task)
       const next = [...chain, ...e.name.split(GROUP_VIA)]
       const d = cacheKeyDiff(db, runId, task)
-      // A group: its members' rows carry the walk.
-      if (!d.found) continue
+      // A group: its members carry the walk, named in the key through it
+      // (`group ← task`) or, in a row that names the group alone, by the graph.
+      if (!d.found) {
+        const members = groups.get(task) ?? []
+        walk(
+          next,
+          members.map((name) => ({ ...e, name })),
+        )
+        continue
+      }
       const own = d.entries.filter((x) => x.kind !== 'upstream')
       if (own.length > 0) roots.push({ chain: next, entries: own })
       walk(next, d.entries)

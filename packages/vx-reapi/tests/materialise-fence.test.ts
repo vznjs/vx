@@ -64,7 +64,7 @@ const run = (result: object, r = req()) =>
     (e: Error) => e.message,
   )
 const refused = (what: string) =>
-  `vx-reapi: the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${ws}`
+  `the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${ws}`
 
 beforeEach(async () => {
   top = await realpath(await mkdtemp(path.join(tmpdir(), 'vx-fence-')))
@@ -131,7 +131,7 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
       output_directories: [{ path: 'dist', tree_digest: tree(top!, children) }],
     })
     expect(r).toMatch(
-      /^vx-reapi: the server's Tree for .*dist expands to 3\.3e\+12 entries, more than the \d+ this file system has free — refused$/,
+      /^the server's Tree for .*dist expands to 3\.3e\+12 entries, more than the \d+ this file system has free — refused$/,
     )
     expect(existsSync(path.join(cwd, 'dist'))).toBe(false)
   })
@@ -460,6 +460,79 @@ describe('materialiseOutputs writes nothing through a link into an undeclared pl
       { ...req(['dist/**', '!dist/*.map']), cwd: ws },
     )
     expect(r).toBe(refused(path.join(ws, 'dist', 'a', 'post-checkout')))
+    expect(existsSync(path.join(ws, '.git', 'hooks', 'post-checkout'))).toBe(false)
+  })
+
+  // A link placed through an earlier link lands where that one leads: it
+  // planted a hook or replaced another project's file (placeSymlink rm's
+  // what stands), both inside the root.
+  for (const via of ['output_symlinks', 'a Tree symlink']) {
+    it(`a link placed through a declared link, via ${via}`, async () => {
+      await mkdir(path.join(ws, '.git', 'hooks'), { recursive: true })
+      await mkdir(path.join(ws, 'other', 'src'), { recursive: true })
+      await writeFile(path.join(ws, 'other', 'src', 'index.ts'), 'user source')
+      const links = [
+        { path: 'dist/a', target: '../../.git/hooks' },
+        { path: 'dist/b', target: '../../other/src' },
+      ]
+      const into = (name: string): Directory => ({
+        files: [],
+        directories: [],
+        symlinks: [{ name, target: '../../pkg/dist/run.sh' }],
+      })
+      const result =
+        via === 'output_symlinks'
+          ? {
+              output_symlinks: [
+                ...links,
+                { path: 'dist/a/post-checkout', target: '../../pkg/dist/run.sh' },
+              ],
+            }
+          : {
+              output_symlinks: links,
+              output_directories: [{ path: 'dist/a', tree_digest: tree(into('post-checkout')) }],
+            }
+      expect(await run(result, req(['dist/**']))).toBe(
+        refused(path.join(cwd, 'dist', 'a', 'post-checkout')),
+      )
+      const other =
+        via === 'output_symlinks'
+          ? {
+              output_symlinks: [
+                ...links,
+                { path: 'dist/b/index.ts', target: '../../pkg/dist/run.sh' },
+              ],
+            }
+          : {
+              output_symlinks: links,
+              output_directories: [{ path: 'dist/b', tree_digest: tree(into('index.ts')) }],
+            }
+      expect(await run(other, req(['dist/**']))).toBe(
+        refused(path.join(cwd, 'dist', 'b', 'index.ts')),
+      )
+      expect(existsSync(path.join(ws, '.git', 'hooks', 'post-checkout'))).toBe(false)
+      expect((await lstat(path.join(ws, 'other', 'src', 'index.ts'))).isSymbolicLink()).toBe(false)
+    })
+  }
+
+  it('a link re-placed after a landing through it was judged', async () => {
+    await mkdir(path.join(ws, '.git', 'hooks'), { recursive: true })
+    const r = await run(
+      {
+        output_files: [
+          { path: 'dist/x/f', digest: blob('f') },
+          { path: 'dist/run.sh', digest: blob('#!/bin/sh\npwned\n'), is_executable: true },
+        ],
+        output_symlinks: [
+          { path: 'dist/a', target: 'x' },
+          { path: 'dist/a/l', target: 'f' },
+          { path: 'dist/a', target: '../../.git/hooks' },
+          { path: 'dist/a/post-checkout', target: '../../pkg/dist/run.sh' },
+        ],
+      },
+      req(['dist/**']),
+    )
+    expect(r).toBe(refused(path.join(cwd, 'dist', 'a', 'post-checkout')))
     expect(existsSync(path.join(ws, '.git', 'hooks', 'post-checkout'))).toBe(false)
   })
 })

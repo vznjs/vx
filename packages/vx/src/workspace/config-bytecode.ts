@@ -8,9 +8,10 @@
 // every input still has the bytes it was built from requires that instead.
 //
 // The bundle is built from the bytes it records, file by file, and is used
-// only while each recorded file still hashes the same and each bare import
-// still resolves to the file it did; anything else loads the source as
-// before and builds again. A graph the bundle could run differently is
+// only while each recorded file still hashes the same and each import still
+// resolves to the file it did (a relative one too: `./preset` finds a new
+// `preset.ts` before the bundled `preset.js`); anything else loads the
+// source as before and builds again. A graph the bundle could run differently is
 // never built: an `import.meta` field beyond its location, a `require` or
 // `import()` of a computed specifier (relative to the bundle, not the
 // file), top-level await, a CommonJS config, a file this process already
@@ -36,7 +37,7 @@ import path from 'node:path'
 import { xxh3hex } from '../util/index.js'
 
 /** Bumped when what a bundle holds, or how it is checked, changes. */
-const COMPILED_VERSION = 1
+const COMPILED_VERSION = 2
 
 /** What `import.meta` becomes in a bundled file: an identifier no source spells. */
 const META = '__vxImportMeta'
@@ -50,8 +51,8 @@ interface Manifest {
   entry: string
   /** Every file the bundle was built from, by real path, and its bytes' hash. */
   inputs: Record<string, string>
-  /** Each bare import: the importing file's directory, the specifier, the real path it resolved to. */
-  bare: [string, string, string][]
+  /** Each import: the importing file's directory, the specifier, the real path it resolved to. */
+  imports: [string, string, string][]
   /** The graph cannot be bundled faithfully: load the source while the inputs stay as they are. */
   skip?: true
 }
@@ -75,7 +76,7 @@ function fresh(manifest: Manifest): boolean {
     }
     if (xxh3hex(bytes) !== hash) return false
   }
-  for (const [from, spec, to] of manifest.bare) {
+  for (const [from, spec, to] of manifest.imports) {
     try {
       if (realpathSync(Bun.resolveSync(spec, from)) !== to) return false
     } catch {
@@ -238,7 +239,7 @@ export async function buildCompiled(
       version: COMPILED_VERSION,
       entry: entryFile,
       inputs,
-      bare: bareImports(built.metafile),
+      imports: importsOf(built.metafile),
       ...(faithful && bytecode ? {} : { skip: true as const }),
     }
     // The metafile names every input; one no onLoad saw (a JSON import) is
@@ -267,14 +268,13 @@ export async function buildCompiled(
   }
 }
 
-function bareImports(metafile: Bun.BuildMetafile | undefined): [string, string, string][] {
+function importsOf(metafile: Bun.BuildMetafile | undefined): [string, string, string][] {
   const out: [string, string, string][] = []
   for (const [input, entry] of Object.entries(metafile?.inputs ?? {})) {
     const from = path.dirname(realpathSync(path.resolve(input)))
     for (const imp of entry.imports) {
       const spec = imp.original
       if (imp.external === true || spec === undefined) continue
-      if (spec.startsWith('.') || path.isAbsolute(spec)) continue
       out.push([from, spec, realpathSync(path.resolve(imp.path))])
     }
   }

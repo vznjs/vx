@@ -24,6 +24,21 @@ export function keyUpstream(node: TaskNode, upstream: TaskOutcome[]): TaskOutcom
   return node.excludedUpstream === undefined ? keyed : [...keyed, ...node.excludedUpstream]
 }
 
+/** The ids some task of the run depends on; the rest run with `noDependants`. */
+export function dependedOn(nodes: Iterable<TaskNode>): Set<string> {
+  const ids = new Set<string>()
+  for (const n of nodes) for (const d of n.deps) ids.add(d)
+  return ids
+}
+
+/**
+ * A server's key is read only by a dependant (A-17), so with none in the
+ * run it derives none (`noDependants`), and the plan must not show one.
+ */
+export function keylessServer(node: TaskNode, depended: ReadonlySet<string>): boolean {
+  return node.config.exec?.persistent !== undefined && !depended.has(node.id)
+}
+
 /** A dependency as a key reads it: only `node` and `hash` matter. */
 export function keyedOutcome(node: TaskNode, hash: string | undefined): TaskOutcome {
   const o: TaskOutcome = { node, status: 'success', exitCode: 0, durationMs: 0 }

@@ -131,7 +131,7 @@ describe.if(CHUNKING_SUPPORTED)('the operation stream', () => {
     fake.onExecute = () => ({ endEarly: true })
     await using(async (c) => {
       await expect(c.execute(c.digestOf(bytes('silent')))).rejects.toThrow(
-        'reapi: execution stream closed with no operation',
+        'execution stream closed with no operation',
       )
     })
   })
@@ -165,7 +165,7 @@ describe.if(CHUNKING_SUPPORTED)('the operation stream', () => {
       'WaitExecution',
     ])
     expect(refused).toBe(
-      `reapi: execution stream for ${String(calls[1]!.request['name'])} closed before the operation finished`,
+      `execution stream for ${String(calls[1]!.request['name'])} closed before the operation finished`,
     )
   })
 
@@ -179,7 +179,7 @@ describe.if(CHUNKING_SUPPORTED)('the operation stream', () => {
       ),
     )
     expect([refused, fake.calls.slice(mark).map((x) => x.method)]).toEqual([
-      'reapi: execution stream closed before the operation finished',
+      'execution stream closed before the operation finished',
       ['Execute'],
     ])
   })
@@ -205,7 +205,7 @@ describe.if(CHUNKING_SUPPORTED)('the operation stream', () => {
         const unheard = Bun.sleep(3000).then(() => {
           throw new Error('the abort was not heard')
         })
-        await expect(Promise.race([running, unheard])).rejects.toThrow('reapi: execution aborted')
+        await expect(Promise.race([running, unheard])).rejects.toThrow('execution aborted')
         const deadline = Date.now() + 3000
         while (fake.executesCancelled === before && Date.now() < deadline) await Bun.sleep(5)
         expect(fake.executesCancelled).toBe(before + 1)
@@ -238,7 +238,7 @@ describe.if(CHUNKING_SUPPORTED)('the operation stream', () => {
           (e: Error) => e.message,
         )
         expect([refused, fake.calls.slice(mark).map((x) => x.method)]).toEqual([
-          'reapi: execution aborted',
+          'execution aborted',
           [],
         ])
       })

@@ -1299,10 +1299,10 @@ describe('persistent post-ready output', () => {
     log.runEnd?.()
     const before = out.text().length
     for (let i = 0; i < 2000; i++) log.taskStdout(n, `\rbuilding ${String(i).padStart(30, '.')}`)
+    // Held without bound, nothing would print before settle; at the cap the
+    // held text prints as the redraw a terminal would show.
     const printed = out.text().slice(before)
-    expect(printed.startsWith('app#server │ \rbuilding')).toBe(true)
-    expect(printed.length).toBeGreaterThanOrEqual(64 * 1024)
-    expect(printed.length).toBeLessThan(80 * 1024)
+    expect(printed).toMatch(/^app#server │ building [.\d]{30}\n$/)
   })
 
   // The CLI's bus delivers one `run:end`; its last word is `settle`.

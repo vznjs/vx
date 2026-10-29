@@ -935,6 +935,34 @@ describe('exec.persistent (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    '--dry gives a server no task depends on no key, as the run derives none',
+    async () => {
+      await addProject(fixture.root, 'api', {
+        config: `
+          export default {
+            tasks: {
+              dev: { exec: { command: 'true', persistent: {} }, inputs: { files: ['package.json'] } },
+            },
+          }
+        `,
+      })
+      const planned = await planRun({
+        cwd: fixture.root,
+        tasks: ['api#dev'],
+        log: silentLogger(fixture),
+      })
+      expect(planned.tasks.map((t) => `${t.node.id} ${t.cacheStatus} '${t.hash}'`)).toEqual([
+        "api#dev no-cache ''",
+      ])
+      const r = await run({ cwd: fixture.root, tasks: ['api#dev'], log: silentLogger(fixture) })
+      expect(r.outcomes.map((o) => `${o.node.id} ${o.status} ${o.hash}`)).toEqual([
+        'api#dev success undefined',
+      ])
+    },
+    TIMEOUT,
+  )
 })
 
 // vx's note opens a line of its own, and only that: its leading newline

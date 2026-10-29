@@ -44,7 +44,7 @@ import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '..
 import {
   killGraceMs,
   MASKED,
-  maskedEmitter,
+  maskedStreams,
   outputMatcher,
   printable,
   relPosix,
@@ -68,7 +68,13 @@ import {
   type WithheldLink,
   withheldLinkLine,
 } from './sandbox-request.js'
-import { markUnsaved, saveMiss, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
+import {
+  bracketLiteralHint,
+  markUnsaved,
+  saveMiss,
+  type OutputDirSnapshot,
+  type SaveFacts,
+} from './miss-save.js'
 import type { FingerprintWatch } from './fingerprint-watch.js'
 import { currentHit, restoreHit } from './hit-restore.js'
 import type { MissExplainer } from '../history/index.js'
@@ -859,7 +865,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (inputs !== undefined && declaredInputs.length > 0 && inputs.files.length === 0) {
     warnOf(log)(
       `[vx] ${node.id}: inputs matched no files (${declaredInputs.join(', ')}) — ` +
-        `the key will not change when this project's source does`,
+        `the key will not change when this project's source does` +
+        bracketLiteralHint([
+          ...(cfg.inputs?.files ?? []).map((g) => [node.projectDir, g] as const),
+          ...(cfg.inputs?.workspaceFiles ?? []).map((g) => [args.workspaceRoot, g] as const),
+        ]),
     )
   }
 
@@ -932,6 +942,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
       args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
     }
+    // What the attempt before this one left, put back if this one is
+    // withdrawn: it stands, with its output and its refusals.
+    const standing = { output, violations, flushMasked }
     violations = []
     const endReq = span('miss: build request')
     const req = await buildRequest(isLocalExecutor(args.executor))
@@ -940,6 +953,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // cleans or builds its request, after the loop's own check: the retry
     // is withdrawn and the attempt before it stands.
     if (attempt > 1 && args.failFast?.aborted === true) {
+      output = standing.output
+      violations = standing.violations
+      flushMasked = standing.flushMasked
       clearTimeout(timeoutTimer)
       unlistenStop?.()
       unlistenStop = undefined
@@ -984,7 +1000,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           } else if (args.executor.exclusive === true) {
             raw = new UserError(`${why}, and ${args.executor.name} runs no task on this machine`)
           } else {
-            warnOf(log)(`[vx] ${node.id}: ${why} — running it here`)
+            warnOf(log)(
+              `[vx] ${node.id}: ${executorLabel(args.executor)} gave it back: ${why} — running it here`,
+            )
             const local = await localExecutor().execute(await buildRequest(true))
             assertExecuteResult('local', node.id, local)
             return local
@@ -1142,7 +1160,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // The attempt's output as the logger got it (masked): the entry's when
   // the task saves, else only what a failure reports (`failedOutput`).
   let output: BoundedCapture | undefined
-  const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [])
+  // Masked again whole: the live stream lets a held piece go after a pause.
+  const storeMask = secrets === null ? undefined : (t: string): string => secrets.mask(t)
+  const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [], storeMask)
   const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
   // The sampling of the attempt's process tree, stopped once it settles.
   let untrack: (() => TreeLoad | undefined) | undefined
@@ -1252,12 +1272,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       if (t.length > 0) midLine = !t.endsWith('\n')
       log.taskStderr(node, t)
     }
-    const out = secrets && maskedEmitter(secrets, toOut)
-    const err = secrets && maskedEmitter(secrets, toErr)
-    flushMasked = () => {
-      out?.end()
-      err?.end()
-    }
+    const masked = secrets && maskedStreams(secrets, toOut, toErr)
+    flushMasked = () => masked?.end()
     const base: ExecuteRequest = {
       taskId: node.id,
       workspaceRoot: args.workspaceRoot,
@@ -1267,8 +1283,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       env,
       envDefine: step.env?.define ?? {},
       capture,
-      onStdout: out ? (chunk) => out.push(chunk) : toOut,
-      onStderr: err ? (chunk) => err.push(chunk) : toErr,
+      onStdout: masked ? masked.out : toOut,
+      onStderr: masked ? masked.err : toErr,
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       ...(args.track !== undefined
         ? {
@@ -1549,7 +1565,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(keylessBy !== undefined ? { keylessBy } : {}),
     ...(saved ? { saved: true as const } : {}),
     ...(effectiveExitCode !== 0 && output !== undefined
-      ? { failedOutput: failedOutputLog(output, willSave || args.keepRun !== undefined) }
+      ? { failedOutput: failedOutputLog(output, willSave || args.keepRun !== undefined, storeMask) }
       : {}),
     ...(args.keepRun !== undefined &&
     (effectiveExitCode !== 0 ? args.keepRun.failures : !willSave) &&

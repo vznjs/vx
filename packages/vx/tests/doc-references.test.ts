@@ -106,12 +106,14 @@ describe('every camelCase name a module page quotes is in the source', () => {
     'globalInputs',
     'globalPassThrough',
     'hostValue',
+    'installConfig',
     'installDeps',
     'nA',
     'outputsHash',
     'queueTimeoutMs',
     'readableStream',
     'typeRoots',
+    'vxCache',
   ])
   it('each one is a word of src/, tests/ or scripts/', () => {
     const words = new Set<string>()

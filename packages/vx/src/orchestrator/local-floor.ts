@@ -110,14 +110,19 @@ export function localFloor(
     } catch (err) {
       // A shell that exited before ready can leave its group running
       // (`server & …; exit`), holding the port of the one the next task starts.
-      if (err instanceof PersistentReadyError && err.reason === 'exited')
-        await terminateChildren(() => [spawn.child])
+      if (
+        err instanceof PersistentReadyError &&
+        err.reason === 'exited' &&
+        spawn.child !== undefined
+      )
+        await terminateChildren(() => [spawn.child!])
       const why = err instanceof Error ? err.message : String(err)
       const said = (heard ?? '').trimEnd()
       throw new Error(said === '' ? why : `${why}; its output:\n${said}`)
     }
     heard = undefined
-    return spawn.child
+    // Ready, so it spawned: only a failed spawn has no child.
+    return spawn.child!
   }
   const serve = (spec: ServerSpec, root: string): Promise<ReturnType<typeof Bun.spawn>> => {
     let up = servers.get(spec.taskId)

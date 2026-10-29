@@ -20,8 +20,9 @@ export interface PackageGraph {
  * no plugin edge names but the task graph does; without it
  * `--filter '...app'` never selected `e2e`, and a CI that runs "what
  * changed and everything depending on it" silently left it out
- * (2026-09-10). The `^task` walk still reads `directDeps`, which carries
- * both — a task edge IS a dependency.
+ * (2026-09-10). Selection, `vx watch` and the dependency rules pass them;
+ * the graph a run or `vx lock` resolves `^task` against does not (it is
+ * built before configs load), so a task edge never widens a `^task` walk.
  */
 export function buildPackageGraph(
   projects: ProjectMeta[],
@@ -30,8 +31,8 @@ export function buildPackageGraph(
   const byName = new Map<string, ProjectMeta>()
   for (const p of projects) byName.set(p.name, p)
 
-  // Two adjacencies. ORDER (`directDeps`, the `^task` walk) is the task
-  // edges and a `discover` plugin's `deps`. REACH (the transitive closures
+  // Two adjacencies. ORDER (`directDeps`, the `^task` walk) is a
+  // `discover` plugin's `deps`, plus the task edges when passed. REACH (the transitive closures
   // `--filter pkg...` and `--affected` read) is ORDER plus a plugin's
   // `reach`, which never orders a build.
   const directDeps = new Map<string, string[]>()

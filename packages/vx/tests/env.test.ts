@@ -9,7 +9,7 @@ import {
   VX_RUN_WORKSPACE_ENV,
 } from '../src/exec/env.js'
 import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
-import { resolveInputs } from '../src/cache/index.js'
+import { answerRuntime, resolveInputs } from '../src/cache/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
@@ -53,6 +53,25 @@ describe('buildIsolatedEnv', () => {
     })
     expect(Object.keys(env).sort()).toEqual(['COREPACK_HOME', 'FORCE_COLOR', 'PNPM_HOME'])
     expect([env['COREPACK_HOME'], env['PNPM_HOME']]).toEqual(['/c', '/p'])
+  })
+
+  // A task resolved another home than the shell's: pnpm used
+  // ~/.local/share/pnpm/store over $XDG_DATA_HOME's, a CLI keeping its
+  // login under $XDG_CONFIG_HOME ran signed out (vercel/turborepo#13145).
+  it('passes the XDG base directories, as HOME', () => {
+    const xdg = {
+      XDG_CONFIG_HOME: '/x/config',
+      XDG_DATA_HOME: '/x/data',
+      XDG_CACHE_HOME: '/x/cache',
+      XDG_STATE_HOME: '/x/state',
+      XDG_RUNTIME_DIR: '/run/user/1',
+    }
+    const env = buildIsolatedEnv({
+      passThrough: [],
+      define: {},
+      source: { ...xdg, XDG_CURRENT_DESKTOP: 'GNOME' },
+    })
+    expect(env).toEqual({ ...xdg, FORCE_COLOR: '1' })
   })
 
   it('omits essentials that are not set in source', () => {
@@ -179,6 +198,44 @@ describe('buildIsolatedEnv', () => {
       binPaths: [],
     })
     expect(env.PATH).toBe('/usr/bin')
+  })
+
+  // `npm run` in a sibling package puts its bins, its parents' and the
+  // root's on the PATH vx inherits: a's task then ran b's `tool` (probed).
+  it("drops the workspace's node_modules/.bin entries from the PATH it inherits", () => {
+    const d = path.delimiter
+    const env = buildIsolatedEnv({
+      passThrough: [],
+      define: {},
+      source: {
+        PATH: [
+          '/r/packages/b/node_modules/.bin',
+          '/r/packages/node_modules/.bin',
+          '/r/node_modules/.bin',
+          '/r/tools/bin',
+          '/up/node_modules/.bin',
+          '/usr/bin',
+        ].join(d),
+      },
+      binPaths: ['/r/packages/a/node_modules/.bin', '/r/node_modules/.bin'],
+      workspaceRoot: '/r',
+    })
+    expect(env.PATH!.split(d)).toEqual([
+      '/r/packages/a/node_modules/.bin',
+      '/r/node_modules/.bin',
+      '/r/tools/bin',
+      '/up/node_modules/.bin',
+      '/usr/bin',
+    ])
+    // CONTROL: a PATH the task defines is its own, kept whole.
+    const own = buildIsolatedEnv({
+      passThrough: [],
+      define: { PATH: '/r/packages/b/node_modules/.bin' },
+      source: {},
+      binPaths: [],
+      workspaceRoot: '/r',
+    })
+    expect(own.PATH).toBe('/r/packages/b/node_modules/.bin')
   })
 
   it('binPaths prepend even after define overrides PATH', () => {
@@ -390,6 +447,43 @@ describe('what a task sees of the host environment, end to end', () => {
         if (v === undefined) delete process.env[k]
         else process.env[k] = v
       }
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("a sibling's bin on the PATH vx inherits, end to end", () => {
+  it('reaches neither a task nor its runtime probe', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-env-sibling-bin-' })
+    const saved = process.env['PATH']
+    try {
+      const dir = await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              probe: {
+                exec: { command: 'command -v tool > seen.txt || echo none > seen.txt' },
+                inputs: { files: ['src/**'], runtime: ['command -v tool || echo none'] },
+                cache: { outputs: { files: ['seen.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      const bin = path.join(root, 'packages', 'b', 'node_modules', '.bin')
+      await mkdir(bin, { recursive: true })
+      await writeFile(path.join(bin, 'tool'), '#!/bin/sh\necho sibling\n')
+      await chmod(path.join(bin, 'tool'), 0o755)
+      // As `npm run` in packages/b leaves it.
+      process.env['PATH'] = `${bin}${path.delimiter}${saved ?? ''}`
+      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      const r = await run({ cwd: root, tasks: ['probe'], log: quiet })
+      expect(r.ok).toBe(true)
+      expect((await Bun.file(path.join(dir, 'seen.txt')).text()).trim()).toBe('none')
+      expect(await answerRuntime('command -v tool || echo none', dir, root)).toBe('none')
+      expect(await answerRuntime('command -v tool || echo none', dir, root, true)).toBe('none')
+    } finally {
+      process.env['PATH'] = saved
       await rm(root, { recursive: true, force: true })
     }
   })

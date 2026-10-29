@@ -10,7 +10,7 @@ import path from 'node:path'
 import { type GeneratedProject, type GeneratedTask, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
 import { refuseTaskNames } from '../plugin-gaps.js'
-import { minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
+import { hasGluedGlobstar, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
@@ -555,7 +555,8 @@ function globs(
     } else continue
     const neg = pattern.startsWith('!')
     const raw = neg ? pattern.slice(1) : pattern
-    const wax = minimatchToVx(raw, neg)
+    // wax refuses a glued `**` (`src/**.ts`), and so does core.
+    const wax = hasGluedGlobstar(raw) ? null : minimatchToVx(raw, neg)
     if (wax === null) {
       todos.push(
         `${kind} ${JSON.stringify(pattern)}: glob syntax vx cannot take — ` +

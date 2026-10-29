@@ -32,9 +32,9 @@ Cache your first task in two minutes, in a repo you already have.
    package script in between.
 
    ```ts title="vx.config.ts" ins={5-9}
-   import { defineProject } from '@vzn/vx'
+   import type { ProjectConfig } from '@vzn/vx/config'
 
-   export default defineProject({
+   export default {
      tasks: {
        build: {
          exec: { command: 'tsc' },
@@ -42,7 +42,7 @@ Cache your first task in two minutes, in a repo you already have.
          cache: { outputs: { files: ['dist/**'] } },
        },
      },
-   })
+   } satisfies ProjectConfig
    ```
 
    In a monorepo, give each package its own `vx.config.ts` beside its
@@ -63,24 +63,29 @@ Cache your first task in two minutes, in a repo you already have.
    ```
 
    The first run builds and stores the result. The second finds nothing
-   changed and skips the work:
+   changed and skips the work (`up-to-date`). `my-app` is the `name` in
+   your `package.json`:
 
    ```ansi title="second run"
-   [2m┌─[0m [1m[38;2;244;114;182m//[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ tsc
-   [2m└─[0m [1m[38;2;244;114;182m//[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(3ms)[0m [2mup-to-date[0m
+   [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ tsc
+   [2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(3ms)[0m [2mup-to-date[0m
    ```
 
 4. **Change a file and ask why**
 
-   Edit a file in `src/`, run again, and ask vx what changed:
+   Edit a file in `src/`, run again, and ask vx what changed. `verdict`
+   names the file you edited:
 
    ```sh
    vx run build
    vx why build
    ```
 
-   ```text frame="terminal"
-     verdict    cache key changed: file src/index.ts
+   ```ansi
+   [38;2;232;121;249mmy-app[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m — run 01a18373-cbc8-70eb-986e-685e07653b9a[0m
+     [2mthis run[0m   2026-10-28T16:59:26.572Z · success · executed · key f523566ac0287303
+     [2mprevious[0m   2026-10-28T16:59:26.299Z · cache-hit · up-to-date · key 70c4be91d591a7cc
+     [2mverdict[0m    [38;2;234;179;8mcache key changed: file src/index.ts[0m
    ```
 
 </Steps>

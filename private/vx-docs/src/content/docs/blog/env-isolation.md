@@ -81,9 +81,12 @@ cache hits.
 
 A name with `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or
 `CREDENTIAL` in it is masked without asking. `GH_PAT` has none, so it
-goes in `secret`. Masking covers every place vx prints: logs, cache
-replays, `vx show`, `vx why`, `vx last`, telemetry and JSON. A value
-split across two output chunks is still caught.
+goes in `secret`.
+
+Masking covers every place vx prints: logs, cache replays, `vx show`,
+`vx why`, `vx last`, telemetry and JSON. A value split across two output
+chunks is still caught. Split by a pause, it can show on screen, but no
+stored copy keeps it.
 
 ## When a variable changes the output
 

@@ -250,8 +250,9 @@ platform claim or a timed test, and add new lessons there.
   fix whose old key was already wrong is self-healing and does not bump.
 - Key derivation: xxh3 seed-chained parts (seed fed forward: Bun reads 32
   bits of a seed, item 682), `\0` delimiters, git blob OIDs
-  for tracked-clean files, pure-input transitive hashing, the project's
-  `package.json` bytes and the workspace fingerprint. `exec.remote` is
+  for tracked-clean files, pure-input transitive hashing, and the
+  `fingerprint` plugin's digest (a lockfile plugin's dependency closure);
+  core folds no `package.json` or lockfile itself (#3562). `exec.remote` is
   stripped (placement only; `exec.resources` went with the reservations
   on 2026-09-12 and a config cannot declare it); `timeout`/`retries` and
   `description` are folded. Proven by `tests/task-hash-derive.test.ts`.

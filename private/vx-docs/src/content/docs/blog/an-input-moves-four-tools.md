@@ -24,21 +24,26 @@ exits, read from its source.
 ## Turborepo 2.11.7
 
 It takes the hash before the run and saves the outputs under it.
+
 Inputs are not checked again
 ([`save_outputs`](https://github.com/vercel/turborepo/blob/v2.11.7/crates/turborepo-run-cache/src/lib.rs)).
 
 ## Nx 23.3.0
 
-It hashes in `processTask` and saves with `cache.put(task.hash, …)`. In
-batch mode, a task that reads its dependencies' outputs is hashed again
-([`task-orchestrator.js`](https://unpkg.com/nx@23.3.0/dist/src/tasks-runner/task-orchestrator.js),
-[`cache.js`](https://unpkg.com/nx@23.3.0/dist/src/tasks-runner/cache.js)).
+It hashes in `processTask` and saves with `cache.put(task.hash, …)`.
+
+In batch mode, a task that reads its dependencies' outputs is hashed
+again ([`task-orchestrator.js`][nx-orchestrator], [`cache.js`][nx-cache]).
+
+[nx-orchestrator]: https://unpkg.com/nx@23.3.0/dist/src/tasks-runner/task-orchestrator.js
+[nx-cache]: https://unpkg.com/nx@23.3.0/dist/src/tasks-runner/cache.js
 
 ## Vite Task (vite-plus 1.1.0)
 
 It traces the files a task opens. If the task wrote a file it also read,
-it skips the save (`InputModified`). Writes by other processes are not
-traced
+it skips the save (`InputModified`).
+
+Writes by other processes are not traced
 ([`cache_update.rs`](https://github.com/voidzero-dev/vite-task/blob/7d69d6577ecf6bd83deee32186de59918a712873/crates/vt/src/session/execute/cache_update.rs)).
 
 ## vx
@@ -55,12 +60,15 @@ $ vx run packages/api#build
 
 vx checks every declared input after the run, whoever wrote it. A
 changed input keeps the result and saves nothing, and tasks downstream
-skip their save too. `cache.inputStability` relaxes it per task
+skip their save too.
+
+`cache.inputStability` relaxes it per task
 ([how](../inputs-that-move/)).
 
 ## Each one is a trade
 
 vx pays one `lstat` per input on a run that saves. Turborepo and Nx skip
 that work. Vite Task checks what its tracer already saw. Which fits
-depends on how often your inputs move during a run. More at
-[vznjs.github.io/vx](https://vznjs.github.io/vx/).
+depends on how often your inputs move during a run.
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

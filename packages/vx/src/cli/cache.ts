@@ -58,8 +58,8 @@ const CACHE_ELSEWHERE: Record<string, string> = {
 }
 
 function cacheSubHint(sub: string): string {
-  const elsewhere = CACHE_ELSEWHERE[sub]
-  if (elsewhere !== undefined) return ` — ${elsewhere}`
+  // Own keys only: `vx cache constructor` printed `Object`'s source.
+  if (Object.hasOwn(CACHE_ELSEWHERE, sub)) return ` — ${CACHE_ELSEWHERE[sub]}`
   const best = nearest(sub, ['clean'])
   // `clean` is the one subcommand: name it when nothing is near (M-58).
   return best === undefined ? '. Its one subcommand is `vx cache clean`' : `. Did you mean ${best}?`

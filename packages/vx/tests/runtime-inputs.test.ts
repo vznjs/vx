@@ -192,11 +192,13 @@ describe('runtime inputs — e2e', () => {
     expect((await readFile(counter, 'utf8')).length).toBe(1)
   })
 
-  it("the probe reads the AMBIENT env, never a task's exec.env — which is what makes the memo sound", async () => {
+  it("the probe reads vx's essentials only, never a task's exec.env — which is what makes the memo sound", async () => {
     // Two tasks in one project, the same probe, different `define`s. The
     // memo is keyed on (projectDir, command), so the probe runs ONCE and
-    // both tasks fold the one value — sound only because the value comes
-    // from vx's own environment. A change that threads the task env into
+    // both tasks fold the one value — sound only because every probe gets
+    // one environment. vx's own MY_PROBE stays out too: a probe sees
+    // `ESSENTIAL_ENV` alone, so a task cannot read vx's secrets through
+    // it. A change that threads the task env into
     // the probe without widening the memo would hand task A's value to
     // task B (one line, 'a' or 'b'); one that widens the memo would spawn
     // twice (two lines). Both fail here; Nx pins the same regression.
@@ -229,7 +231,7 @@ describe('runtime inputs — e2e', () => {
       MY_PROBE: 'ambient',
     })
     expect(r.code).toBe(0)
-    expect(await readFile(log, 'utf8')).toBe('ambient\n')
+    expect(await readFile(log, 'utf8')).toBe('unset\n')
   })
 
   // A gitignored file a tool reads by itself (Vite's `.env.local`) is not a

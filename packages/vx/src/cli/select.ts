@@ -92,7 +92,7 @@ export async function workspaceGlobOwners(
   // "nothing affected" and exit 0 without ever reaching the run's own
   // refusal. The sweep reads each entry from the lock: it never evaluates.
   const lock = await readLockfile(root)
-  if (lock === null) throw new UserError(NO_LOCK)
+  if (lock === null) throw new UserError(NO_LOCK, 'VX_E_LOCK')
   const owners: string[] = []
   for (const meta of projects) {
     if (meta.configPath === null || meta.configPath === '') continue
@@ -135,16 +135,6 @@ async function workspaceFingerprintClaims(
 
 async function loadWorkspaceProjects(cwd: string, load: CliLoadOptions): Promise<ProjectMeta[]> {
   return await discoverCliProjects(await findWorkspaceRoot(cwd), load)
-}
-
-/** `//#task`, Turbo's root package, as the root project's id: the name discovery gives it (D-39). */
-export async function rootSpelled(root: string, target: string): Promise<string> {
-  if (!target.startsWith('//#')) return target
-  const name = await discoverCliProjects(root).then(
-    (metas) => metas.find((m) => m.dir === root)?.name,
-    () => undefined,
-  )
-  return name === undefined ? target : `${name}#${target.slice(3)}`
 }
 
 export async function findCwdProject(cwd: string): Promise<string | null> {
@@ -269,7 +259,7 @@ export function taskEdgesFrom(staged: ReadonlyMap<string, ProjectEntry>): Map<st
       for (const raw of task.dependsOn ?? []) {
         let spec
         try {
-          spec = parseDependencySpec(raw)
+          spec = parseDependencySpec(raw, 'dependsOn')
         } catch {
           continue
         }
@@ -403,6 +393,10 @@ export async function resolveFilters(
                 for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
                 return out
               },
+              flagged: async () => {
+                const g = await git.start()
+                return g.scopes.includes('.') ? g.flagged : null
+              },
             }
           : {}),
       }
@@ -442,12 +436,10 @@ export async function resolveFilters(
     ...(tags !== undefined ? { tags } : {}),
     // A `[<since>]` selector matching nothing is the ordinary "nothing
     // changed" outcome, reported below; only a name/path pattern that
-    // matched nothing is worth flagging as a probable typo.
-    // A selector beside the ref (`lbi[main]`) that names no project is the
-    // same typo, whatever the diff: it exited 0 as "nothing affected".
-    onNoMatch: (f) => {
-      if (f.gitSince === undefined || namesNothing(f, projects, graph, tags)) unmatched.push(f.raw)
-      else emptyDiffs.add(f)
+    // matched no project in the workspace, ref or not, is a probable typo.
+    onNoMatch: (f, emptyDiff) => {
+      if (emptyDiff) emptyDiffs.add(f)
+      else unmatched.push(f.raw)
     },
     // A pattern that matched, with nothing on the walk it asked for: the
     // fact to say, where "no projects matched" read as a typo (item 1030).
@@ -686,37 +678,13 @@ async function unlockedHint(
   return `. ${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``
 }
 
-/** Whether `f`'s name, path or tag selector, its `[<since>]` aside, matches no project. */
-function namesNothing(
-  f: ReturnType<typeof parseFilter>,
-  projects: ProjectMeta[],
-  graph: ReturnType<typeof buildPackageGraph>,
-  tags: ReadonlyMap<string, readonly string[]> | undefined,
-): boolean {
-  if (f.matcher === '') return false
-  const { gitSince: _since, sinceViaDeps: _viaDeps, ...selector } = f
-  return (
-    applyFilters({
-      filters: [
-        {
-          ...selector,
-          negate: false,
-          withDeps: false,
-          withDependents: false,
-          onlyDeps: false,
-          onlyDependents: false,
-        },
-      ],
-      projects,
-      graph,
-      ...(tags !== undefined ? { tags } : {}),
-    }).size === 0
-  )
-}
-
 /** A pattern as a name: its `[<since>]` and graph operators aside. */
+// `^\.\.\.` anchored in one alternation with `!` kept `!...apq`'s dots.
 const typedName = (pattern: string): string =>
-  pattern.replace(/\[[^\]]*\]$/, '').replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+  pattern
+    .replace(/\[[^\]]*\]$/, '')
+    .replace(/^!/, '')
+    .replace(/^\.\.\.|\.\.\.$|\^/g, '')
 
 /** The hint for the first unmatched pattern: a near tag for a `tag:` one, else a near project name. */
 function didYouMean(

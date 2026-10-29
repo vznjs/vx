@@ -66,6 +66,7 @@ here, itself or in a brace group.
 |                                                    | `src/orchestrator/persistent.ts` — keep-alive selection and bounded shutdown of persistent children (see orchestrator.md).                                                                                                     |
 |                                                    | `src/orchestrator/run-stop.ts` — one stop for the run: `RunOptions.signal` and a process signal abort it; owns the live-child registries (see orchestrator.md).                                                                |
 |                                                    | `src/orchestrator/run-lock.ts` — one run at a time per workspace on this machine; runs in one process share it (see orchestrator.md).                                                                                          |
+|                                                    | `src/orchestrator/run-live.ts` — the run in progress on a socket beside its lock, for `vx last --live` (see orchestrator.md).                                                                                                  |
 |                                                    | `src/orchestrator/steps.ts` — vx's own steps (`vx:keys`, `<plugin>:setup`) timed for the logger, a passthrough when nothing renders them (see logger.md).                                                                      |
 | [`options.md`](./options.md)                       | `src/orchestrator/options.ts` — `RunOptions` / `RunSummary` declarations; `src/orchestrator/run-settings.ts` fills them from the settings.                                                                                     |
 | [`execute-task.md`](./execute-task.md)             | `src/orchestrator/execute-task.ts` — per-task: hash → cache lookup → spawn → save.                                                                                                                                             |
@@ -137,9 +138,11 @@ here, itself or in a brace group.
 | File                                       | Topic                                                                                                                                      |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | [`workspace.md`](./workspace.md)           | `src/workspace/{workspace,load-reads,repo-id}.ts` — `findWorkspaceRoot`, `findProjectConfigs`, names, cacheDir, store id; root reads once. |
+|                                            | `src/workspace/canonical-dir.ts` — `canonicalDir`: a directory as the real path it leads to, spelled under the root (see workspace.md).    |
 | [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `.vx/workspace.*` evaluation.                                                          |
 | [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                                     |
 |                                            | `src/workspace/json-data.ts` — a config is JSON data: the one rule the loader and the config worker run (see config-schema.md).            |
+|                                            | `src/workspace/bracket-literal.ts` — `vx lock` refuses a bracket class that names an existing path (see config-schema.md).                 |
 | [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — project graph from plugin edges.                                                                        |
 |                                            | `src/workspace/dependency-rules.ts` — `run.rules.dependencies` held to the graph's direct deps (see package-graph.md).                     |
 | [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.                                                                    |
@@ -163,7 +166,7 @@ here, itself or in a brace group.
 | [`scheduler.md`](./scheduler.md)             | `src/graph/scheduler.ts` — parallel topological executor.                                                 |
 |                                              | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md).                                   |
 |                                              | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).                                    |
-| [`dependency-spec.md`](./dependency-spec.md) | `src/graph/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.                                     |
+| [`dependency-spec.md`](./dependency-spec.md) | `src/util/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.                                      |
 | [`folds.md`](./folds.md)                     | `src/graph/folds.ts` — which dependencies a key folds (`inputs.tasks`).                                   |
 
 ## Cache cluster
@@ -227,6 +230,7 @@ here, itself or in a brace group.
 |                                                    | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration`, `treeBytes` (cli-cache.md) and the core verb list (cli.md).                                                                              |
 |                                                    | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                                                                                                           |
 |                                                    | `src/util/env-flag.ts` — `envFlagOn`: whether `CI` and the like are on (`0`, `false` and empty are off).                                                                                            |
+|                                                    | `src/util/write-file.ts` — `refuseSymlink`, `writeNoFollow`: a generated file never written through a link (migration.md).                                                                          |
 
 For the public package surface (what `import('@vzn/vx')` resolves to)
 see [`index.md`](./index.md).

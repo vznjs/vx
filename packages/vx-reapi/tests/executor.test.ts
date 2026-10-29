@@ -361,7 +361,7 @@ describe('materialiseOutputs: a declared output that cannot be fetched', () => {
         (e: Error) => e.message,
       )
       expect([got, warns]).toEqual([
-        'vx-reapi: pkg#build declared output out.txt is missing from the CAS (deadbeef) — re-run it (e.g. --force)',
+        'pkg#build declared output out.txt is missing from the CAS (deadbeef) — re-run it (e.g. --force)',
         [],
       ])
     } finally {

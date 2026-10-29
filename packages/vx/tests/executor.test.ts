@@ -292,6 +292,52 @@ describe('assertExecuteResult — what a plugin executor may resolve', () => {
     expect(refusal({ ...ok, changed: ['a.txt'] })).toBe('ACCEPTED')
   })
 
+  // The optional fields went unchecked: a `where` object lost the whole
+  // run's history to a bind error naming no executor, a string `cpuMs`
+  // reached telemetry and history as text, and a `null` violation failed
+  // the task with a TypeError.
+  it('an optional field of the wrong shape is refused by name', () => {
+    expect([
+      refusal({ ...ok, where: { host: 'w' } }),
+      refusal({ ...ok, where: '' }),
+      refusal({ ...ok, cpuMs: '5' }),
+      refusal({ ...ok, cpuMs: Number.NaN }),
+      refusal({ ...ok, peakRssBytes: -1 }),
+      refusal({ ...ok, signal: 15 }),
+      refusal({ ...ok, timedOut: 'yes' }),
+      refusal({ ...ok, machine: 8 }),
+      refusal({ ...ok, machine: { cores: 'x', memoryBytes: 1 } }),
+      refusal({ ...ok, machine: { cores: 8, memoryBytes: 1, cpuShare: 0 } }),
+      refusal({ ...ok, violations: [null] }),
+      refusal({ ...ok, violations: [{ line: 7 }] }),
+    ]).toEqual([
+      says('where is object (expected a non-empty string)'),
+      says('where is empty (expected a non-empty string)'),
+      says('cpuMs is 5 (expected a non-negative number)'),
+      says('cpuMs is NaN (expected a non-negative number)'),
+      says('peakRssBytes is -1 (expected a non-negative number)'),
+      says('signal is number (expected a string)'),
+      says('timedOut is string (expected a boolean)'),
+      says('machine is not an object'),
+      says('machine.cores is x (expected a positive number)'),
+      says('machine.cpuShare is 0 (expected a positive number)'),
+      says('violations[0] is not an object with a string line'),
+      says('violations[0] is not an object with a string line'),
+    ])
+    expect(
+      refusal({
+        ...ok,
+        where: 'w-1',
+        cpuMs: 0,
+        peakRssBytes: 1024,
+        signal: 'SIGTERM',
+        timedOut: false,
+        machine: { cores: 8, memoryBytes: 0, cpuShare: 0.5 },
+        violations: [{ line: 'deny', timestamp: new Date() }],
+      }),
+    ).toBe('ACCEPTED')
+  })
+
   it('CONTROL: the shapes a correct executor resolves all pass', () => {
     // `outputs` ABSENT is the ordinary case — every executor before deferral
     // existed resolved exactly this — so the guard must not require it.

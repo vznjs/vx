@@ -6,8 +6,10 @@ description: Let every machine reuse a task another machine already ran.
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 
 On its own, vx caches on the machine that ran the task. A remote cache
-shares those results. When the run on `main` builds `@acme/ui`, a pull
-request's run downloads that build instead of running it again.
+shares those results between machines.
+
+When `main` builds `@acme/ui`, a pull request's run downloads that build
+instead of running it again.
 
 ```mermaid
 flowchart LR
@@ -22,9 +24,10 @@ result in the background. A remote that is down or says no never fails
 a run: vx runs the task, as it would with no remote.
 
 This page sets up the vx cache server, which you host. It keeps results
-in one bucket and stores no secret: each CI job proves who it is with
-the token its CI gives it. Already have a Turborepo, Nx or Bazel cache?
-See [Other remote caches](#other-remote-caches).
+in one bucket and stores no secret.
+
+Each CI job proves who it is with the token its CI gives it. Already have
+a Turborepo, Nx or Bazel cache? See [Other remote caches](#other-remote-caches).
 
 <Aside title="Before you start">
   You need vx running on CI ([CI](../ci/)) and a Cloudflare account. The
@@ -76,12 +79,12 @@ curl https://vx-cache-server.acme.workers.dev/v1/capabilities
 A request from outside vx is refused, and the reason shows the server
 works:
 
-```text
+```json
 {"code":"bad_request","message":"vx-issuer and vx-repository: the issuer's and the repository's hashes (PROTOCOL.md § Keys)"}
 ```
 
-If it says `the server admits no CI: set ALLOW`, `ALLOW` is empty: fill
-it in and deploy again.
+If it says `ALLOW is empty: set it to the CI workflows this server serves`,
+fill `ALLOW` in and deploy again.
 
 ## 3. Point vx at it
 
@@ -129,17 +132,19 @@ secrets.
 
 ## 5. Push
 
-The first run on `main` runs its tasks and uploads them. The summary
-says how many went up:
+The first run on `main` runs its tasks and uploads them. The summary's
+`remote` line says how many went up (`↑`):
 
-```text frame="terminal"
-  cache     remote 2↑ 776 B
+```ansi
+  [2mcache   [0m  [38;2;37;99;235m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mremote[0m [38;2;37;99;235m2↑[0m [2m556 B[0m
 ```
 
-A pull request opened after it downloads what it did not change:
+A pull request opened after it downloads (`↓`) what it did not change:
 
-```text frame="terminal"
-  cache     remote 2↓ 776 B
+```ansi
+  [2mcache   [0m  [38;2;37;99;235m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mremote[0m [38;2;37;99;235m2↓[0m [2m556 B[0m
 ```
 
 To delete old results, give the bucket an expiry rule. This one deletes
@@ -157,7 +162,7 @@ bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
 | --- | --- | --- |
 | push to `main` | `main` | `main` |
 | pull request from `feat-x` | `feat-x`, then `main` | `feat-x` |
-| `pull_request_target` | `main` | nothing |
+| `pull_request_target`, `issue_comment`, `workflow_run` | `main` | nothing |
 | a laptop | nothing, unless the server sets `READ_ACCESS=public` | nothing |
 | another repository | refused | refused |
 
@@ -168,9 +173,10 @@ token; no option in your config can change it.
 ## Your laptop
 
 A laptop has no CI token, so by default it reads nothing from the
-server and runs with its local cache. To let anyone who can reach the
-server read from it, set `READ_ACCESS` to `public` beside `ALLOW`.
-Writes still need a CI token.
+server and runs with its local cache.
+
+To let anyone who can reach the server read from it, set `READ_ACCESS`
+to `public` beside `ALLOW`. Writes still need a CI token.
 
 To keep the server private, put Cloudflare Access or another proxy in
 front of it, and pass its headers with `vxCache({ headers })`
@@ -180,8 +186,8 @@ front of it, and pass its headers with `vxCache({ headers })`
 
 vx says what went wrong once, then runs on without the remote:
 
-```text frame="terminal"
-[vx] plugin '@vzn/vx-cache': download 1849970be23e053c from https://vx-cache-server.acme.workers.dev failed: HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run
+```ansi
+[1m[38;2;234;179;8m[vx][0m plugin '@vzn/vx-cache': download e04649970f18ba23 from https://vx-cache-server.acme.workers.dev failed: HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run
 ```
 
 - **`no bearer token`** on CI: the job lacks `id-token: write`. On a
@@ -202,10 +208,13 @@ vx says what went wrong once, then runs on without the remote:
     ```
 
     Then declare `plugins: [turboCache()]` from `@vzn/vx-migrate`. It reads
-    Turbo's own variables. On GitHub Actions, `turboCache({ oidc: true })`
-    with `permissions: id-token: write` swaps the job's OIDC token for a
-    short-lived one, so no token is stored. On a laptop it asks for a
-    read-only token once and keeps it in the OS keychain.
+    Turbo's own variables.
+
+    On GitHub Actions, `turboCache({ oidc: true })` with `id-token: write`
+    trades the job's OIDC token for a short-lived one, so no token is stored.
+
+    On a laptop it asks for a read-only token once and keeps it in the OS
+    keychain.
   </TabItem>
   <TabItem label="Nx">
     `nxCache()` from `@vzn/vx-migrate` does the same for a self-hosted Nx
@@ -220,7 +229,7 @@ vx says what went wrong once, then runs on without the remote:
     import { reapi } from '@vzn/vx-reapi'
 
     export default defineWorkspace({
-      plugins: [reapi({ endpoint: 'grpcs://cache.example.com:443' })], // or VX_REAPI_ENDPOINT
+      plugins: [reapi({ endpoint: process.env.REAPI_ENDPOINT })], // grpcs://cache.example.com:443
     })
     ```
   </TabItem>
@@ -232,14 +241,16 @@ vx says what went wrong once, then runs on without the remote:
 ## Cache scopes and tokens
 
 `--cache-policy` decides whether a run reads and writes the remote at
-all. By default CI (`CI` set) reads and writes, and a laptop only reads
-(`local:rw,remote:r`). The server decides the rest, from the token.
+all. By default a CI run (`CI` set) reads and writes, and a laptop only
+reads (`local:rw,remote:r`).
 
-Each read names the branches the run reads, its own first, and the
-server answers from the first one that holds the result. On CI,
-`github()` or `gitlab()` ([`@vzn/vx-ci`](../../plugins/vx-ci/)) names
-them. Without one, a CI run reads git's branch (none on a detached
-checkout) and the default branch. On a laptop, git's:
+The server decides the rest, from the token. Each read names the
+branches the run reads, its own first. The server answers from the
+first one that holds the result.
+
+On CI, `github()` or `gitlab()` ([`@vzn/vx-ci`](../../plugins/vx-ci/))
+names the branches. Without one, a run reads the checked-out branch
+(none on a detached checkout), then the default branch:
 
 | Run | Branches read, in order |
 | --- | --- |
@@ -249,11 +260,13 @@ checkout) and the default branch. On a laptop, git's:
 | laptop on `feat-x` | `refs/heads/feat-x, refs/heads/main` |
 
 `vxCache()` sends each branch as a hash, so no branch name leaves the
-machine. `turboCache()` sends them in `x-artifact-read-scopes`. For a
-server that ignores that header (Vercel), `turboCache({ scope: 'key' })`
-folds the branch into each key: branches stay apart, but nothing
-enforces it. [Branch caches a server enforces](../../blog/branch-caches-a-server-enforces/)
+machine. `turboCache()` sends them in `x-artifact-read-scopes`.
+
+For a server that ignores that header (Vercel), `turboCache({ scope: 'key' })`
+adds the branch to each key. Branches stay apart, but nothing enforces it.
+
+[Branch caches a server enforces](../../blog/branch-caches-a-server-enforces/)
 shows the server side.
 
-Next: [Distributed task execution](../distributed-task-execution/) spread one run over many
-runners.
+Next: [Distributed task execution](../distributed-task-execution/) splits
+one run across several machines.

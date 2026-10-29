@@ -29,6 +29,24 @@ export function workspaceSettings(text: string): string | undefined {
 }
 
 /**
+ * pnpm's `shared-workspace-lockfile`, true unless set: pnpm-workspace.yaml's
+ * `sharedWorkspaceLockfile` when a boolean (pnpm 10.8+ reads it first; a
+ * quoted "false" installs shared), else `.npmrc`'s.
+ */
+export function sharedWorkspaceLockfile(
+  workspaceYaml: string | null,
+  npmrc: string | null,
+): boolean {
+  if (workspaceYaml !== null) {
+    try {
+      const set = record(Bun.YAML.parse(workspaceYaml))?.['sharedWorkspaceLockfile']
+      if (typeof set === 'boolean') return set
+    } catch {}
+  }
+  return npmrc?.match(/^[ \t]*shared-workspace-lockfile[ \t]*=[ \t]*(\S*)/m)?.[1] !== 'false'
+}
+
+/**
  * The root package.json as every task folds it: only its `pnpm` field,
  * which pnpm reads install settings from (`onlyBuiltDependencies`,
  * `supportedArchitectures`, …) and the lockfile records none of, without

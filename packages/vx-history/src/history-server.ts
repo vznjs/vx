@@ -34,10 +34,14 @@ const hasToken = (env: Record<string, string | undefined>): boolean =>
 /** A task the run ran and that succeeded, as the server takes its timing; else undefined. */
 export function timingOf(o: TaskOutcome): ServerTiming | undefined {
   if (o.status !== 'success') return undefined
+  // Core's need (history.ts NEED_SQL): at most the machine's cores, and no
+  // reading where the share is 0. Uncapped, a crowded 4-core worker sent 8
+  // and a DTE plan booked that; an Infinity went as null and the server
+  // refused the whole upload.
   const need =
     o.cpuMs === undefined || o.durationMs <= 0
       ? undefined
-      : o.cpuMs / (o.durationMs * (o.cpuShare ?? 1))
+      : Math.min(o.cpuMs / (o.durationMs * (o.cpuShare ?? 1)), o.whereCores ?? Infinity)
   // A share rounded to 0 divides by it, and the server refuses the upload.
   const cores = need !== undefined && Number.isFinite(need) ? need : undefined
   return {
@@ -77,13 +81,14 @@ const printable = (s: string): string =>
 
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
+  // quiet: with the body unread, the status alone names the refusal
   const text = (await res.text().catch(() => '')).slice(0, 2048)
   let said = text
   try {
     const m = (JSON.parse(text) as { message?: unknown }).message
     if (typeof m === 'string') said = m
   } catch {
-    // not JSON: the text is what it said
+    // quiet: not JSON, so the text is what it said
   }
   said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
@@ -102,6 +107,18 @@ async function jsonOf(res: Response, path: string): Promise<unknown> {
   }
 }
 
+/**
+ * A redirect, never followed: fetch drops only `Authorization` on one to
+ * another origin, so `headers` (a proxy's secret) went where a 307 named.
+ */
+async function redirected(res: Response, from: string): Promise<Error> {
+  await res.body?.cancel()
+  const to = res.headers.get('location')
+  return new Error(
+    `HTTP ${res.status}${to === null ? '' : ` to ${new URL(to, from).href}`}: not followed, as it would carry the server's headers; name the server's own URL`,
+  )
+}
+
 /** A JWT's `exp` in ms; 0 when it names none. */
 function expiryOf(jwt: string): number {
   try {
@@ -112,9 +129,14 @@ function expiryOf(jwt: string): number {
     ).exp
     return typeof exp === 'number' ? exp * 1000 : 0
   } catch {
+    // quiet: an unreadable exp is no known expiry; the server refuses the token
     return 0
   }
 }
+
+/** A whole count a server keeps (its own check): a sum of thousands stays finite. */
+const isCount = (n: unknown): n is number =>
+  typeof n === 'number' && Number.isSafeInteger(n) && n >= 0
 
 interface Limits {
   readonly maxUploadTimings: number
@@ -125,6 +147,8 @@ export class HistoryServer {
   private token: Promise<string> | undefined
   private held: { jwt: string; exp: number } | undefined
   private limits: Promise<Limits> | undefined
+  // A refused token is refused again: the run's later calls stay unasked and unsaid.
+  private refused = false
 
   constructor(
     readonly url: string,
@@ -216,9 +240,10 @@ export class HistoryServer {
     // run would count twice. The edge's 502, 503 and 504 and a 429 come
     // before it. No answer is not asked again: a server down or misnamed
     // would add seconds to every run's end.
+    const url = `${this.url}${path}`
     const res = await this.tried(
       () =>
-        this.fetchImpl(`${this.url}${path}`, {
+        this.fetchImpl(url, {
           method: json === undefined ? 'GET' : 'POST',
           headers: {
             ...this.headers,
@@ -227,9 +252,11 @@ export class HistoryServer {
           },
           ...(json === undefined ? {} : { body: json }),
           signal: deadline(signal),
+          redirect: 'manual',
         }),
       (status) => status !== undefined && (status === 429 || (status >= 502 && status <= 504)),
     )
+    if (res.status >= 300 && res.status < 400) throw await redirected(res, url)
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
       const err = await refusal(res)
@@ -240,6 +267,14 @@ export class HistoryServer {
             ? 'name an id_tokens entry VX_HISTORY_TOKEN'
             : 'off CI, a server reads only with READ_ACCESS=public'
       throw new Error(`${err.message}: a read with no CI token was refused (${fix})`)
+    }
+    if (res.status === 401) {
+      // The bare "HTTP 401: wrong audience" named neither what was sent nor what to check.
+      this.refused = true
+      const err = await refusal(res)
+      throw new Error(
+        `${err.message}: the token was refused (this workspace names ${this.named.repository} at ${this.named.issuer}; the server's ALLOW must name it, and the token's audience be ${new URL(this.url).origin}); the history server is off for this run`,
+      )
     }
     if (!res.ok) throw await refusal(res)
     return res
@@ -262,6 +297,7 @@ export class HistoryServer {
       }
       return limits
     })())
+    // quiet: the awaited ask rethrows it; this only forgets it
     asked.catch(() => {
       if (this.limits === asked) this.limits = undefined
     })
@@ -273,7 +309,7 @@ export class HistoryServer {
     refs: readonly string[],
     hashes: readonly string[],
   ): Promise<Map<string, ServerTiming>> {
-    if (hashes.length === 0) return new Map()
+    if (hashes.length === 0 || this.refused) return new Map()
     const per = (await this.limitsNow()).maxQueryHashes
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
@@ -289,17 +325,18 @@ export class HistoryServer {
         return Object.entries(body.timings as Record<string, ServerTiming | null>)
       }),
     )
+    // Only numbers a server folds (PROTOCOL.md): `1e309` parses to Infinity,
+    // and kept as a forecast it made a NaN weight that failed every later
+    // run of the cache in `schedule`.
     const out = new Map<string, ServerTiming>()
     for (const [hash, t] of parts.flat()) {
-      if (
-        typeof t?.durationMs !== 'number' ||
-        !(t.durationMs >= 0 && t.durationMs <= Number.MAX_SAFE_INTEGER)
-      )
-        continue
+      if (!isCount(t?.durationMs)) continue
       out.set(hash, {
         durationMs: t.durationMs,
-        ...(typeof t.cores === 'number' ? { cores: t.cores } : {}),
-        ...(typeof t.rssBytes === 'number' ? { rssBytes: t.rssBytes } : {}),
+        ...(typeof t.cores === 'number' && Number.isFinite(t.cores) && t.cores >= 0
+          ? { cores: t.cores }
+          : {}),
+        ...(isCount(t.rssBytes) ? { rssBytes: t.rssBytes } : {}),
       })
     }
     return out
@@ -307,7 +344,7 @@ export class HistoryServer {
 
   /** The run's timings, by task definition hash, in uploads of at most `maxUploadTimings`; `stop` abandons them. */
   async upload(timings: ReadonlyMap<string, ServerTiming>, stop?: AbortSignal): Promise<void> {
-    if (timings.size === 0) return
+    if (timings.size === 0 || this.refused) return
     const per = (await this.limitsNow()).maxUploadTimings
     const all = [...timings].map(([hash, t]) => ({ hash, ...t }))
     for (let i = 0; i < all.length; i += per) {

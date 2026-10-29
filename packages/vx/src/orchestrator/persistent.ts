@@ -266,6 +266,12 @@ export async function disposeServers(args: {
   endedBeforeStop: ReadonlySet<Child> | undefined
 }): Promise<{ keepAlive: KeepAlive; crashed: CrashedPersistent[] }> {
   const { registry, outcomes, endedBeforeStop } = args
+  // One turn of the event loop first, so Bun reaps what has already died:
+  // `exitCode` stays null until it does. A server dead at once, with
+  // nothing between its spawn and here to yield, was judged still up: the
+  // footer counted it a success, pinned it `running`, and a teardown read
+  // the run ok over vx's exit 1.
+  if (registry.size > 0) await new Promise((resolve) => setTimeout(resolve, 0))
   let keepAlive = selectKeepAlive(registry, args.nodes, args.keep)
   const failedElsewhere =
     ![...outcomes.values()].every((o) => isPassStatus(o.status)) ||

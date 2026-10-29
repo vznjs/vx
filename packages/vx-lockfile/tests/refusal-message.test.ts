@@ -5,11 +5,12 @@
 // "pnpm-lock.yaml: pnpm-lock.yaml is not a YAML document" (item 904),
 // after bun's "bun.lock: bun.lock: Failed to parse JSONC" (2026-09-20).
 // One row per manager, each through the parser's own message.
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { bun, npm, pnpm, yarn } from '../src/index.js'
+import { affectedRefusal, commitAll } from './helpers/affected.js'
 
 type Affected = { fingerprint: { affected: (change: unknown, ctx: unknown) => unknown } }
 
@@ -91,6 +92,52 @@ describe('a malformed bun.lock on the key path (L-16)', () => {
       )
       expect(got.startsWith('bun.lock: ')).toBe(true)
       expect(got.endsWith(' — regenerate it with `bun install`')).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("a base ref's bun.lock under --affected", () => {
+  // Core reads the claimed file's patch list on both sides before the
+  // claimant compares them, and that read refused with no side named: a
+  // base commit's broken bun.lock told the user to regenerate the working
+  // tree's, which was fine.
+  it('is refused as of the base ref when only the base is broken', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-base-lock-'))
+    try {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+      )
+      await mkdir(path.join(root, 'packages/a'), { recursive: true })
+      await writeFile(
+        path.join(root, 'packages/a/package.json'),
+        JSON.stringify({ name: 'a', version: '1.0.0' }),
+      )
+      await writeFile(
+        path.join(root, 'packages/a/vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
+      )
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `import { bun } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\nexport default { plugins: [bun()] }\n`,
+      )
+      await writeFile(path.join(root, 'bun.lock'), '{garbage\n')
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      commitAll(root)
+      await writeFile(
+        path.join(root, 'bun.lock'),
+        JSON.stringify({
+          lockfileVersion: 1,
+          workspaces: { '': { name: 'r' }, 'packages/a': { name: 'a', version: '1.0.0' } },
+          packages: { a: ['a@workspace:packages/a'] },
+        }),
+      )
+      const { exitCode, stderr } = affectedRefusal(root, 'build')
+      expect(stderr).toContain('bun.lock: ')
+      expect(stderr).toContain(' — regenerate it with `bun install` (as of the base ref)')
+      expect(exitCode).toBe(1)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

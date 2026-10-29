@@ -338,6 +338,9 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
       // F-53: its own timeout is this side's abort, never retried: two more
       // tries held the flush three timeouts and a second.
       expect([Date.now() - t0 < 600, warnings.length, tries]).toEqual([true, 1, 1])
+      // The warning names the timeout spent: "The operation was aborted."
+      // alone did not say whether the collector or vx gave up, nor when.
+      expect(warnings[0]).toEndWith(': no answer within 100 ms')
     } finally {
       await hang.stop(true)
     }

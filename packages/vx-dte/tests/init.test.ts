@@ -1,7 +1,7 @@
 // `vx dte init`: each adapter writes the CI files that start its workers,
 // from dte()'s own sizes, so none is copied by hand.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -67,6 +67,9 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
   expect(run).toContain('      id-token: write\n')
   expect(run).toContain('      actions: write\n')
   expect(run).toContain('GITHUB_TOKEN: ${{ github.token }}')
+  // A merge queue's run, as .gitlab-ci.yml runs a merge train's: without
+  // the trigger a queue that requires ci waited on a check never started.
+  expect(run).toContain('on:\n  pull_request:\n  merge_group:\n  push:\n')
   // No task runs on the orchestrator: vx and the plugins only.
   expect(run).toContain("      - run: bun install --frozen-lockfile --filter './'\n")
   // The tasks are the user's: none written, so the run fails until named.
@@ -256,6 +259,34 @@ it('keeps a workflow its owner changed unless --force, and says when it is up to
   expect(printed.join('')).toContain('vx dte init: .github/workflows/vx-worker.yml is up to date')
 })
 
+// A repo can carry `.github/workflows/vx-worker.yml -> /anywhere`: init
+// wrote through it, outside the repo.
+for (const [what, existing] of [
+  ['a dangling', false],
+  ['an existing', true],
+] as const) {
+  it(`refuses a workflow that is a link to ${what} file, even under --force`, async () => {
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-init-outside-'))
+    try {
+      const victim = path.join(outside, 'x')
+      if (existing) await writeFile(victim, 'mine\n')
+      await writeFile(path.join(root, 'bun.lock'), '')
+      await mkdir(path.join(root, '.github/workflows'), { recursive: true })
+      await symlink(victim, path.join(root, WORKFLOW))
+      expect(init({ workers: sizes, adapter: github() }, '--force')).rejects.toThrow(
+        `vx dte init: refusing to write ${WORKFLOW}: it is a symlink to ${victim}; remove the link and run again`,
+      )
+      expect(await readFile(victim, 'utf8').catch(() => null)).toBe(existing ? 'mine\n' : null)
+      // Refused before any write.
+      expect(
+        await readFile(path.join(root, '.github/workflows/ci.yml'), 'utf8').catch(() => null),
+      ).toBe(null)
+    } finally {
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+}
+
 it('gitlab() writes one pipeline file: the run, and a job per size only its trigger runs', async () => {
   await writeFile(path.join(root, 'bun.lock'), '')
   const adapter = gitlab({ tags: { mac: ['saas-macos-medium-m1'] } })
@@ -282,7 +313,7 @@ it('gitlab() writes one pipeline file: the run, and a job per size only its trig
     'ALLOW (a plain var, no secret): https://gitlab.com:<group>/<project>:.gitlab-ci.yml',
   )
   expect(printed.join('')).toContain(
-    'The relay at https://relay.example.com must admit these workflows.',
+    'Let these workflows use the relay at https://relay.example.com: set its ALLOW.',
   )
 })
 

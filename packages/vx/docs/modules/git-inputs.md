@@ -33,9 +33,9 @@ Every enumeration spawn runs `git --no-optional-locks`. A plain `status`
 refreshes the index under `index.lock` when files are stat-dirty, and the
 user's own `git add` or `commit` failed on that lock while a vx run held
 it: 12 of 1,165 across 80 runs, 0 of 1,121 with the flag (item 880). A
-clean tree costs the same. The flag does not reach `--affected`'s
-`git diff <base>`, which git 2.43 refreshes regardless; the plumbing
-`diff-index` would report every stat-dirty file as changed.
+clean tree costs the same. The flag does not reach a porcelain `git diff`,
+which refreshes regardless; `--affected`'s diff turns the refresh off
+instead (`affected.md`).
 
 So vx never refreshes the real index, and a fresh checkout's is racily
 clean: written in the second its files were, so git re-hashes every file
@@ -97,6 +97,7 @@ export interface GitEnumeration {
   tracked: readonly string[] // every index path (a submodule as its gitlink), root-relative: never cleaned
   scopes: readonly string[] // the pathspecs listed, root-relative
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
+  flagged: readonly string[] // tracked paths git does not look at on disk (assume-unchanged, skip-worktree)
   dirty: boolean | null
   vars: string | null // `git var -l` output, read once for config lookups
   changed: readonly string[] | null // what `status` listed (dirty, both sides of a rename, untracked)

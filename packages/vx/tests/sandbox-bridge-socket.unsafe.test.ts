@@ -185,4 +185,31 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
     },
     20_000,
   )
+
+  // SRT's dependency check reads the socat its live config names, vx's
+  // env-cutting wrapper. Made per process and reaped by the exit hook, an
+  // emitted `exit` left the next probe "socat not executable" while the
+  // process went on, and every later file of the shard lost its sandbox.
+  it('a probe after an emitted exit still finds the sandbox', async () => {
+    const script = `
+      const exec = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/exec/index.ts'))})
+      await exec.initSandbox({ allowAllUnixSockets: true })
+      process.emit('exit', 0)
+      const v = await exec.probeSandbox()
+      await exec.resetSandbox()
+      console.log(JSON.stringify([v.available, v.reason]))
+      process.exit(0)
+    `
+    const proc = Bun.spawn([process.execPath, '-e', script], {
+      env: { ...process.env },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const [out, err] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    expect({ out: out.trim(), err }).toEqual({ out: '[true,""]', err: '' })
+  }, 20_000)
 })

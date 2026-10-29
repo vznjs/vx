@@ -9,7 +9,8 @@ here and caching it on this machine (`~/.vx/<id>/cache`, or a named
 to the tail of every executor list and `resolveCache` puts the host's
 local `Cache` first in every chain, before each remote in declared order
 (`src/orchestrator/plugin-host.ts`).
-A workspace with no `.vx/workspace.ts` therefore runs and caches, and a
+A `.vx/workspace.ts` that declares no plugin therefore runs and caches
+(the file itself is required: it marks the workspace root), and a
 plugin executor whose `accepts()` declines hands the task back to this
 machine.
 
@@ -53,6 +54,7 @@ it), the `TaskExecutor` contract for an executor.
 | `@vzn/vx-history`  | `schedule` `admit` `commands`     | order ready tasks by the critical path learned from run history; pack the reservations learned from what they used; `vx history` shows both |
 | `@vzn/vx-reapi`    | `executor`, `cache`               | Bazel REAPI: remote execution and remote cache                                                                                              |
 | `@vzn/vx-otel`     | `telemetry`                       | OpenTelemetry export, no SDK dependency                                                                                                     |
+| `@vzn/vx-cache`    | `cache`                           | `vxCache()`: the remote cache on a `@vzn/vx-cache-server` you host, written from CI jobs only                                               |
 | `@vzn/vx-ci`       | `telemetry`                       | GitHub Actions job summary                                                                                                                  |
 | `@vzn/vx-migrate`  | `project`, `fingerprint`, `cache` | `turbo()` / `nx()`: such a repo under vx with nothing written (`nx-exec` runs Nx executors); `turboCache()` / `nxCache()`: the wires        |
 | `@vzn/vx-lockfile` | `fingerprint`, `key`              | `bun()` `pnpm()` `npm()` `yarn()`: the lockfile keyed per project — one install re-keys only the projects it reaches                        |
@@ -60,7 +62,7 @@ it), the `TaskExecutor` contract for an executor.
 
 ## Tests
 
-`tests/local-fallbacks.test.ts` (the floor: a workspace with no workspace
-file runs and caches; a declining executor falls back), the `NO PLUGINS` /
+`tests/local-fallbacks.test.ts` (the floor: a workspace that declares no
+plugin runs and caches; a declining executor falls back), the `NO PLUGINS` /
 `CONTROL` e2e pins in `tests/plugin-capabilities.test.ts`, and each
 package's own suite (CI's plugin-packages job).

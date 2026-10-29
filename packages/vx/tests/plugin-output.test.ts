@@ -44,10 +44,18 @@ async function fixture(plugins: string[]): Promise<string> {
 }
 
 function vx(root: string, ...args: string[]): { code: number; stdout: string; stderr: string } {
+  return vxWith({}, root, ...args)
+}
+
+function vxWith(
+  env: Record<string, string>,
+  root: string,
+  ...args: string[]
+): { code: number; stdout: string; stderr: string } {
   const r = Bun.spawnSync({
     cmd: [process.execPath, CLI, 'run', 'pkg-a#hello', '--no-cache', ...args],
     cwd: root,
-    env: { ...process.env, CI: '', NO_COLOR: '1' },
+    env: { ...process.env, CI: '', NO_COLOR: '1', ...env },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -117,6 +125,40 @@ describe('the output stage', () => {
       "[vx] plugin 'org/crash' output failed: boom; vx renders the rest of the run",
     )
     expect(r.stdout).not.toContain('done pkg-a#hello')
+    expect(r.stdout).toContain('hi')
+  })
+
+  it('a Logger method that rejects hands the rest of the run to core, as a throw does', async () => {
+    // An `async` method's rejection reached no one: an unhandled
+    // rejection, a stack, exit 1 after the task had passed.
+    const root = await fixture([
+      pluginSource(
+        'org/crash',
+        `{ output() { return { ...${PRINTER}, async taskStdout() { throw new Error('boom') } } } }`,
+      ),
+    ])
+    const r = vx(root)
+    expect(r.stderr).not.toContain('error: boom')
+    expect(r.code).toBe(0)
+    expect(r.stderr).toContain(
+      "[vx] plugin 'org/crash' output failed: boom; vx renders the rest of the run",
+    )
+    expect(r.stdout).not.toContain('done pkg-a#hello')
+    expect(r.stdout).toContain('pkg-a#hello')
+  })
+
+  it('an output hook that never answers is passed over in time, and core renders the run', async () => {
+    // Unbounded, it held the run before its first task until the loop
+    // drained: exit 1, the task never run (telemetry's item 921).
+    const root = await fixture([
+      pluginSource('org/hang', `{ output() { return new Promise(() => {}) } }`),
+    ])
+    const r = vxWith({ VX_TEST_TEARDOWN_TIMEOUT: '200ms' }, root)
+    expect(r.stderr).not.toContain('the run stopped before it finished')
+    expect(r.code).toBe(0)
+    expect(r.stderr).toContain(
+      "[vx] plugin 'org/hang' output: did not answer within 200 ms; vx renders the run",
+    )
     expect(r.stdout).toContain('hi')
   })
 })

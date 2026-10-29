@@ -25,7 +25,6 @@ export interface RefusalParts {
 export function refusal(parts: RefusalParts, opts?: { code?; message? }): UserError // message defaults to the parts joined
 export function isUserError(err: unknown): err is UserError // by name, across a copy boundary (below)
 export function errorCode(err: unknown): string // the stable code of anything bin.ts catches
-export function configThrow(err: object): object // marks a config's own throw: errorCode answers VX_E_CONFIG
 export function thrownMessage(err: unknown): string // what any thrown value says; never throws
 export function wantsJson(argv: readonly string[]): boolean // --format json, --format=json, --dry=json, before `--`
 export function errorDocument(code: string, message: string): string // `{"ok":false,"error":{code,message}}` + newline
@@ -45,6 +44,7 @@ export const TMPDIR_HINT: string // "point TMPDIR at a writable directory"
 export function isExecutableMissing(err: unknown): boolean // Bun's ENOENT for a spawn that could not run at all
 export function gitSpawnRefusal(cwd: string): UserError // the one refusal for a git that is not on PATH
 export function notAWorkTree(cwd: string, stderr?: string): UserError // the one refusal for a directory git does not track
+export function gitFailure(cwd: string, args: string, exitCode: number, stderr: string): UserError // a git that failed in cwd: notAWorkTree, else VX_E_GIT
 
 // src/util/config-frame.ts: a config refusal at its `line:col`, with the source under it; undefined when it names no field
 export function configErrorFrame(message: string, cwd: string): string | undefined
@@ -72,9 +72,8 @@ anything else with
 its stack. Every one sets exit code 1 — nothing is re-thrown. When the
 argv asks for JSON (`wantsJson`), `bin.ts` also prints `errorDocument`
 on stdout with `errorCode`: a UserError's own code (`VX_E_CONFIG` for a
-codeless one that opens with its config file, and for a config's own
-throw, which the loader marks with `configThrow` and `bin.ts` prints with
-its stack), `VX_E_FDS`, `VX_E_FS`, or `VX_E_INTERNAL`. The codes are listed in `cli.md` § Error codes.
+codeless one that opens with its config file, which a config's own
+throw becomes: `<kind> config <file> threw: …`), `VX_E_FDS`, `VX_E_FS`, or `VX_E_INTERNAL`. The codes are listed in `cli.md` § Error codes.
 `isTmpdirRefusal` is not `bin.ts`'s: the sandbox runtime and the run
 lock ask it and add `TMPDIR_HINT` to their own message, because a
 minimal image's sandboxed task once said only "EACCES … mkdtemp"

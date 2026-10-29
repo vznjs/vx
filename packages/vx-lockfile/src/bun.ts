@@ -249,24 +249,30 @@ export function patchFiles(text: string): string[] {
 }
 
 /**
- * The root-relative paths of `file:` dependencies (`dep@file:vendor/dep`).
- * Bun copies the directory at install and records only its path, so an
- * edit in it moved no key (Growth, file-dir-dep-stale.sh): the claim hashes
- * its content like a patch's.
+ * The root-relative paths of `file:` and `link:` dependencies
+ * (`dep@file:vendor/dep`, `dep@link:./vendor/dep`). Bun copies the first
+ * at install and links the second, recording only the path, so an edit in
+ * either moved no key (Growth, file-dir-dep-stale.sh): the claim hashes
+ * its content like a patch's. A link to a workspace is that workspace's
+ * node, not its files.
  */
 export function fileDeps(lock: Lockfile): string[] {
   const out = new Set<string>()
   for (const e of lock.packages.values()) {
-    const dir = fileDir(e.id)
+    const dir = fileDir(lock, e.id)
     if (dir !== undefined) out.add(dir)
   }
   return [...out].sort()
 }
 
-/** `dep@file:vendor/dep` → `vendor/dep`. */
-function fileDir(id: string): string | undefined {
-  const at = id.indexOf('@file:', 1)
-  return at === -1 ? undefined : id.slice(at + '@file:'.length)
+/** `dep@file:vendor/dep` → `vendor/dep`; `dep@link:./vendor/dep` → `vendor/dep` unless a workspace. */
+function fileDir(lock: Lockfile, id: string): string | undefined {
+  const file = id.indexOf('@file:', 1)
+  if (file !== -1) return id.slice(file + '@file:'.length)
+  const link = id.indexOf('@link:', 1)
+  if (link === -1) return undefined
+  const dir = joinPosix('.', id.slice(link + '@link:'.length))
+  return dir === undefined || lock.workspaces.has(dir) ? undefined : dir
 }
 
 /**
@@ -299,7 +305,7 @@ export function importerDigests(
   // it sits still decides what it resolves; that is the edges.
   for (const [p, e] of lock.packages) node(p, `${installName(p)}\0${e.id}\0${e.resolution}`)
   for (const [p, e] of lock.packages) {
-    const dir = fileDir(e.id)
+    const dir = fileDir(lock, e.id)
     if (dir !== undefined) material[index.get(p)!] += `\nfile\0${files.get(dir) ?? ''}`
   }
   // A patch is part of the package it patches: an edit to one only `b`

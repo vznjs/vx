@@ -286,19 +286,21 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
 
   const owners = async (changed: string[]): Promise<string[]> =>
     [
-      ...(await configImportOwners({
-        workspaceRoot: root,
-        projects: [
-          {
-            name: 'app',
-            dir: path.join(root, 'app'),
-            packageJson: { name: 'app' },
-            configPath: path.join(root, 'app', 'vx.config.ts'),
-          },
-        ] as never,
-        changed,
-        skip: new Set<string>(),
-      })),
+      ...(
+        await configImportOwners({
+          workspaceRoot: root,
+          projects: [
+            {
+              name: 'app',
+              dir: path.join(root, 'app'),
+              packageJson: { name: 'app' },
+              configPath: path.join(root, 'app', 'vx.config.ts'),
+            },
+          ] as never,
+          changed,
+          skip: new Set<string>(),
+        })
+      ).owners,
     ].sort()
 
   it('a changed preset still selects the project that imports it', async () => {
@@ -400,12 +402,14 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
     ] as never
     const ownersOf = async (changed: string[]): Promise<string[]> =>
       [
-        ...(await configImportOwners({
-          workspaceRoot: root,
-          projects,
-          changed,
-          skip: new Set<string>(),
-        })),
+        ...(
+          await configImportOwners({
+            workspaceRoot: root,
+            projects,
+            changed,
+            skip: new Set<string>(),
+          })
+        ).owners,
       ].sort()
 
     expect(await ownersOf(['core/src/index.ts'])).toEqual(['app'])

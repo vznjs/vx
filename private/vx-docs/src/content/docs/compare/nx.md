@@ -3,10 +3,11 @@ title: vx vs Nx
 description: The same 1,090-package graph run by both, what each one asks of you, what Nx keeps for Nx Cloud, and when Nx is the better pick.
 ---
 
-Both tools run the tasks of a JavaScript monorepo and cache their results.
-This page puts them side by side on one benchmark, feature by feature, and
-says when Nx is the better choice. The design choices behind both are on
-[vx, Turborepo, Nx, Bazel](../).
+Both tools run the tasks of a JavaScript monorepo and cache their
+results. This page puts them side by side on one benchmark, feature by
+feature, and says when Nx is the better choice.
+
+The design choices behind both are on [vx, Turborepo, Nx, Bazel](../).
 
 ## The numbers
 
@@ -21,7 +22,10 @@ says when Nx is the better choice. The design choices behind both are on
 
 Time each tool adds over the ideal run; lower is better.
 
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, with five core libraries a quarter of the projects use.
+
+Task times: build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms. Real repos with uneven task times differ.
+
 Run 2026-10-25 on linux x64, 4 cores: vx at commit 9abdfb52c, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
 
 Same graph, commands and concurrency, each tool in its own native config: [how it is measured](../../benchmarks/).
@@ -31,9 +35,10 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 The bench turns Nx's `.env` loading off (`NX_LOAD_DOT_ENV_FILES=false`), which makes Nx faster here than with its default setting.
 
 Every Nx task is an `nx:run-commands` target running the same command vx
-runs, with Nx's daemon off as in CI. The daemon does not help here: with it on,
-a nothing-changed run of this benchmark took 87 s against 25 s off
-(Nx 23.3.0, 2026-10-12).
+runs, with Nx's daemon off as in CI.
+
+The daemon does not help here: with it on, a nothing-changed run of this
+benchmark took 87 s against 25 s off (Nx 23.3.0, 2026-10-12).
 
 ## Feature by feature
 
@@ -74,18 +79,22 @@ cost:
 ## A shared cache a pull request cannot poison
 
 A pull request that can write the cache your default branch reads can
-plant bytes that main later replays. That attack is CREEP
+plant bytes that main later replays.
+
+That attack is CREEP
 ([CVE-2025-36852](https://nx.dev/blog/cve-2025-36852-critical-cache-poisoning-vulnerability-creep));
 Nx's advisory names its bucket-based self-hosted cache packages as
 affected.
 
-vx leaves the boundary to the cache server: the CI OIDC token, checked
-against the server's trust policy, decides where a write lands, so a pull
-request writes only its own branch's cache and never what main reads.
+vx leaves the boundary to the cache server. The CI OIDC token, checked
+against the server's trust policy, decides where a write lands.
+
+So a pull request writes only its own branch's cache and never what
+main reads.
+
 `turboCache()` names the branches a read may see in a header
-(`x-artifact-read-scopes`), so a pull request reads its own results, then
-main's
-([security model](../../security/#cache-poisoning)).
+(`x-artifact-read-scopes`), so a pull request reads its own results,
+then main's ([security model](../../security/#cache-poisoning)).
 
 ## Where Nx wins
 
@@ -97,9 +106,9 @@ Pick Nx if one of these decides it for you:
 - **JVM or .NET in the same graph**
   ([multi-language support](https://nx.dev/docs/features/multi-language-support)).
   vx runs JavaScript workspaces only.
-- **CI distribution run for you as a service**
-  ([Nx Agents](https://nx.dev/docs/features/ci-features/distribute-task-execution)).
-  vx ships the seam and a REAPI plugin; the servers are yours.
+- **CI distribution run for you as a service** ([Nx Agents][nx-agents]).
+  vx ships [Distributed task execution](../../docs/distributed-task-execution/)
+  over workers your CI starts, and a REAPI plugin; the servers are yours.
 - **One task, many modes.** Nx's `configurations` keep `build:prod` as one
   target.
 - **A stable release.** vx is pre-alpha: 0.0.x on npm, no support policy
@@ -114,11 +123,15 @@ vx run build --all
 
 `vx init` reads the resolved Nx graph and writes one `vx.config.ts` per
 package, plus the workspace file, through
-[`@vzn/vx-migrate`](../../guides/migrate/). Anything Nx can say that vx
-cannot becomes a `TODO(vx-migrate)` comment, never a silent wrong value.
-Executor targets (`@nx/js:tsc`, `@nx/vite:build`) run as themselves, so Nx
-stays installed until you rewrite each one as the command it runs. Keep
-your remote cache with `nxCache()`, which speaks Nx's self-hosted
+[`@vzn/vx-migrate`](../../guides/migrate/).
+
+Anything Nx can say that vx cannot becomes a `TODO(vx-migrate)` comment,
+never a silent wrong value.
+
+Executor targets (`@nx/js:tsc`, `@nx/vite:build`) run as themselves, so
+Nx stays installed until you rewrite each one as the command it runs.
+
+Keep your remote cache with `nxCache()`, which speaks Nx's self-hosted
 `/v1/cache` spec. The numbers above are native vx config.
 
 ## FAQ
@@ -138,3 +151,5 @@ Nothing. vx is MIT, with no cloud and no account.
 **Do I need Bun?**
 No. The npm package installs a prebuilt binary for Linux and macOS, x64 and
 arm64. Windows: use WSL2.
+
+[nx-agents]: https://nx.dev/docs/features/ci-features/distribute-task-execution

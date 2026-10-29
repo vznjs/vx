@@ -68,11 +68,10 @@ jobs:
         # worker's warm-up.
         with:
           ref: ${{ inputs.sha }}
+          persist-credentials: false
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.4
 
       - name: The run's variables
         env:
@@ -80,7 +79,18 @@ jobs:
         run: |
           jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\r\n]") | not) then "\(.key)=\(.value)" else error("env \(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
 
+      # An install takes 4 s (median, p90 9 s, slowest 49 s), but a stalled
+      # fetch printed nothing for up to 322 s and held the run's one arm
+      # worker (2026-10-28, 3 of 210 installs). Two minutes, then one more
+      # try; a step's own timeout bounds it on every runner image.
       - name: Install dependencies
+        id: install
+        timeout-minutes: 2
+        continue-on-error: true
+        run: bun install --frozen-lockfile
+      - name: Install dependencies again
+        if: steps.install.outcome != 'success'
+        timeout-minutes: 3
         run: bun install --frozen-lockfile
 
       # The sandbox runtime, as @vzn/vx-ci sets it up. Its packages are
@@ -95,8 +105,11 @@ jobs:
       - name: Set up the sandbox
         id: setup
         run: bun packages/vx/src/bin.ts setup github
+      # `dpkg -i` checks no signature, and a restore takes the newest key
+      # of the prefix: only main's own code saves what every later worker
+      # installs as root. A worker runs whatever sha it was handed.
       - name: Save the sandbox packages
-        if: steps.setup.outputs.fetched == 'true'
+        if: steps.setup.outputs.fetched == 'true' && github.ref == 'refs/heads/main' && inputs.sha == github.sha
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/vx/setup-debs

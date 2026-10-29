@@ -125,6 +125,7 @@ export class FoldMemo {
 }
 == class GitFilesCache (src/cache/git-inputs.ts)
 export class GitFilesCache extends Map<string, readonly string[]> {
+  vxDirs: readonly string[]
   noteTracked(scopes: readonly string[], absPaths: readonly string[]): void
   noteTrackedLater(scopes: readonly string[], absPaths: () => Iterable<string>): void
   committedIn(dir: string): (abs: string) => boolean

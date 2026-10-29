@@ -65,6 +65,19 @@ it('a catalog in pnpm-workspace.yaml keys no task by itself', async () => {
   expect(await affected(catalogs('^18.0.0'), catalogs('^19.0.0'))).toEqual([])
 })
 
+it('a catalog entry no importer names keys no task either', async () => {
+  // pnpm-lock.yaml records what each catalog entry resolved to and the
+  // importers naming it (probed, pnpm 10.28: a bump re-keys b and c, its
+  // dependent, and an entry no importer names leaves the lockfile as it
+  // was). Folded whole, one bump re-keyed every project.
+  await write(BASE)
+  const base = await key()
+  const CATALOGS = `${BASE}catalog:\n  is-number: 7.0.0\ncatalogs:\n  next:\n    is-odd: 3.0.1\n`
+  await write(CATALOGS)
+  expect(await key()).toBe(base)
+  expect(await affected(BASE, CATALOGS)).toEqual([])
+})
+
 it('any other pnpm-workspace.yaml setting keys every task, and a file that does not parse folds whole', async () => {
   await write(BASE)
   const base = await key()

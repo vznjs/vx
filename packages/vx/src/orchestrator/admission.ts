@@ -212,12 +212,16 @@ export function admitTasks(
       upstream,
       nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
     })
-    const existing = inflight.get(hash)
-    if (existing !== undefined) {
-      // Join a sibling already computing this exact task: wait, then
-      // executeTask cache-hits on the artifact it just saved.
+    // Join a sibling already computing this exact task: wait, then
+    // executeTask cache-hits on the artifact it just saved. A sibling that
+    // saved nothing (it failed) leaves this task to run, so the joiners
+    // released together take the barrier in turn: each returning straight
+    // to executeTask ran the task side by side in one directory.
+    let joined = false
+    for (let existing = inflight.get(hash); existing !== undefined;) {
+      joined = true
       await existing.catch(() => {})
-      return executeTask(buildExecuteArgs(node, upstream, false))
+      existing = inflight.get(hash)
     }
     // Become the executor: register a barrier siblings await. get→set has
     // no await between, so registration is atomic — at most one executor
@@ -229,7 +233,7 @@ export function admitTasks(
         release = resolve
       }),
     )
-    const execArgs = buildExecuteArgs(node, upstream)
+    const execArgs = buildExecuteArgs(node, upstream, !joined)
     try {
       // `return await`, deliberately: the finally must run after the task
       // settles, not when its promise is handed back.

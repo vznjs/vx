@@ -76,8 +76,11 @@ worker's info (JSON), encrypted under the psk. After the handshake every
 body is Noise transport messages, base64, each at most 65535 bytes and
 naming its nonce `n` (Noise §11.4, since a relay may reorder); each is
 sealed with associated data `<first n>.<parts>` of its body, so no part
-opens in another body. A body whose first nonce was seen before is a
-replay and is dropped; one that does not open loses its sender. The
+opens in another body, and a body's parts take consecutive nonces, so
+none is repeated or reordered in it. A body whose first nonce was seen before is a
+replay and is dropped; one older than a body already opened (the relay
+held it back: the wire's numbers are outside the seal) or that does not
+open loses its sender. The
 plaintext is JSON, or over 256 bytes and smaller so, a `0` byte, the
 zstd frame's length (4 bytes, big-endian) and the frame: compressed
 before sealing, since no relay or socket compresses what is sealed. It
@@ -116,7 +119,8 @@ runs here as always (on GitHub Actions, `github()` with a relay names one
 itself). It is a random UUID, so no one can guess a run to
 open it first or join it; vx and the relay refuse any other. `local()` starts each worker as a process in its own
 git worktree of the tracked files as they are, uncommitted changes
-included (untracked files are not: a task that keys one fails), at the
+included (untracked files are not: a task that keys one fails; a run with
+an unmerged index, mid-merge, is refused), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
 saving to the run's store (a relative `cache.dir` or `--cache-dir` too).
 A run from a git hook works too: the worktree and its worker drop the
@@ -225,13 +229,14 @@ export default defineWorkspace({
 
 ```yaml
 # .github/workflows/ci.yml
-# Written by vx dte init: the run. main runs every task and fills the cache;
+# Written by vx dte init: the run. main and a merge queue run every task;
 # a pull request runs what it changed and its dependents. This job only
 # orchestrates: every task runs on a worker (vx-worker.yml).
 name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 
@@ -533,8 +538,9 @@ use your own instead.
   except committed files, nested projects' files, and its dependencies'
   outputs (an additive task builds on its upstream's tree). An upstream's
   file the task leaves as it found it is not saved in its entry; one it
-  removes is removed on this machine too, and the task saves no entry, as
-  core saves none.
+  removes is removed on this machine too, unless a link on its path leads
+  elsewhere (that file is kept, with a warning), and the task saves no
+  entry, as core saves none.
 - A hit only this machine's cache holds (the remote evicted it, or this
   run does not write the remote) is uploaded to the remotes the workers
   read before a task that depends on it is sent; with none written, its
@@ -755,7 +761,8 @@ real time in the run summary and the footer's `ideal` line, and
 ## API
 
 - `dte(options?: DteOptions)` is the plugin. `DteOptions` is
-  `{ workers?, adapter?, relay?, local?, token?, scheduler?, unmeasured?, headers? }`.
+  `{ workers?, adapter?, relay?, local?, token?, scheduler?, unmeasured?, headers? }`;
+  a key it does not take, in a size or `unmeasured` too, is refused.
   `headers` go on every dial to the relay, the orchestrator's and each
   worker's (redials too), for a proxy in front of it, such as a
   Cloudflare Access service token (`{ 'CF-Access-Client-Id':
@@ -842,14 +849,16 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
       `first-fit`;
     - `book`, what a task holds: `measured` (its history), `margin`
       (a fifth more), `whole` (a worker each);
-    - `scale`, how many workers: `plan` (above), `backlog` (cores for
+    - `scale`, how many workers: `plan` (above), `backlog` (cores, of each platform, for
       what is ready or running, Spark's dynamic allocation).
       `tests/sim.test.ts` plays main's runs with each.
 - `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (unset or empty,
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
   `VX_DTE_WORKER` (its name). It is
   described only by the cores and memory its machine reports. It exits 0
-  when the run ended before it joined.
+  when the run ended before it joined. On SIGINT or SIGTERM it stops its
+  tasks, leaves the run, which runs them again on another worker, and
+  exits 130 or 143; a second signal ends it at once.
 - `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset; `keyless` workers prove themselves by GitHub OIDC, and `workerRuns` names the workflow runs whose jobs alone may join as them (`undefined`: any job of the repository).
   `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env }`,
   with `memory` in bytes and `max` its size's (`Infinity` uncapped),

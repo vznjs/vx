@@ -50,8 +50,8 @@ export interface ReapiPluginOptions extends Partial<
    */
   queueTimeoutMs?: number
   /**
-   * Endpoint, or omit to read `VX_REAPI_ENDPOINT`. With neither the plugin
-   * DECLINES — a declared-but-unconfigured plugin costs nothing and must
+   * Endpoint (`process.env.REAPI_ENDPOINT` in `.vx/workspace.ts`). Unset
+   * or empty, the plugin DECLINES — a declared-but-unconfigured plugin costs nothing and must
    * never fail a run. TLS unless it starts `grpc://`, `http://`, `unix:` or
    * `unix-abstract:`, or `tls: false` is set, as Bazel reads a schemeless
    * `--remote_cache`.
@@ -61,8 +61,7 @@ export interface ReapiPluginOptions extends Partial<
    * Contribute the `executor` capability too, so tasks RUN on the REAPI
    * server rather than only caching there. Default false: remote execution
    * changes where a user's build runs, which is not something a plugin should
-   * switch on merely by being configured for caching. `VX_REAPI_EXECUTE=1`
-   * also enables it.
+   * switch on merely by being configured for caching.
    */
   execute?: boolean
   /** REAPI platform properties for remote execution (`container-image`, …). */
@@ -71,14 +70,12 @@ export interface ReapiPluginOptions extends Partial<
   capacity?: number
   /**
    * PEM file of the CA that signed the server's certificate, for a server
-   * behind a private CA. Falls back to `VX_REAPI_TLS_CERTIFICATE`. Bazel's
-   * `--tls_certificate`.
+   * behind a private CA. Bazel's `--tls_certificate`.
    */
   tlsCertificate?: string
   /**
    * PEM files of a client certificate and its key, for a server that asks
-   * for mutual TLS (`VX_REAPI_TLS_CLIENT_CERTIFICATE` / `_KEY`). Bazel's
-   * `--tls_client_certificate` / `--tls_client_key`.
+   * for mutual TLS. Bazel's `--tls_client_certificate` / `--tls_client_key`.
    */
   tlsClientCertificate?: string
   tlsClientKey?: string
@@ -95,73 +92,51 @@ export interface ReapiPluginOptions extends Partial<
  * Declines when no endpoint is configured, so it is safe to leave declared.
  */
 function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
-  // `process.env`, not `Bun.env`, for core's reason (exec/sandbox-runtime.ts):
-  // an embedder that replaces the env object leaves `Bun.env` on the old one.
-  const from = options.endpoint !== undefined ? '`reapi({ endpoint })`' : 'VX_REAPI_ENDPOINT'
+  const from = '`reapi({ endpoint })`'
   // A trailing slash is stripped, as every other plugin strips its URL's; a
   // socket path is the file system's to read.
-  const given = (options.endpoint ?? process.env['VX_REAPI_ENDPOINT'])?.trim()
+  const given = options.endpoint?.trim()
   const endpoint =
     given?.startsWith('unix') === true ? given : given?.replace(/^(.*[^/:])\/+$/, '$1')
   if (endpoint === undefined || endpoint === '') return undefined
   assertEndpoint(endpoint, from)
   // A secrets file's trailing newline sent a name no blob is under, and
   // every lookup missed in silence.
-  const instanceName =
-    (options.instanceName ?? process.env['VX_REAPI_INSTANCE'])?.trim() || undefined
+  const instanceName = options.instanceName?.trim() || undefined
   // A server behind a private CA, or one that asks for a client
   // certificate, was unreachable: TLS used the system roots and no client
   // pair (F-41). Each is a PEM file, read here; one that cannot be read is
   // a setting to fix, refused naming it.
-  const pem = (
-    option: string | undefined,
-    name: string,
-    fromEnv: string | undefined,
-    env: string,
-  ): string | undefined => {
-    const file = option ?? fromEnv?.trim()
-    if (file === undefined || file === '') return undefined
+  const pem = (file: string | undefined, name: string): string | undefined => {
+    if (file === undefined || file.trim() === '') return undefined
     try {
-      return readFileSync(file, 'utf8')
+      return readFileSync(file.trim(), 'utf8')
     } catch (err) {
-      const from = option !== undefined ? `\`reapi({ ${name} })\`` : env
       throw new UserError(
-        `vx-reapi: ${from} names ${file}, which cannot be read (${(err as NodeJS.ErrnoException).code ?? String(err)})`,
+        `\`reapi({ ${name} })\` names ${file.trim()}, which cannot be read (${(err as NodeJS.ErrnoException).code ?? String(err)})`,
       )
     }
   }
-  const tlsCaPem = pem(
-    options.tlsCertificate,
-    'tlsCertificate',
-    process.env['VX_REAPI_TLS_CERTIFICATE'],
-    'VX_REAPI_TLS_CERTIFICATE',
-  )
-  const tlsClientCertPem = pem(
-    options.tlsClientCertificate,
-    'tlsClientCertificate',
-    process.env['VX_REAPI_TLS_CLIENT_CERTIFICATE'],
-    'VX_REAPI_TLS_CLIENT_CERTIFICATE',
-  )
-  const tlsClientKeyPem = pem(
-    options.tlsClientKey,
-    'tlsClientKey',
-    process.env['VX_REAPI_TLS_CLIENT_KEY'],
-    'VX_REAPI_TLS_CLIENT_KEY',
-  )
+  const tlsCaPem = pem(options.tlsCertificate, 'tlsCertificate')
+  const tlsClientCertPem = pem(options.tlsClientCertificate, 'tlsClientCertificate')
+  const tlsClientKeyPem = pem(options.tlsClientKey, 'tlsClientKey')
   // grpc-js refuses either one alone, with a message that names neither
   // setting.
   if ((tlsClientCertPem === undefined) !== (tlsClientKeyPem === undefined)) {
     throw new UserError(
-      'vx-reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
+      'reapi(): a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey, or neither',
     )
   }
   if (usesTls({ endpoint, tls: options.tls, tlsCaPem, tlsClientCertPem }) && ipTarget(endpoint)) {
     throw new UserError(
-      `vx-reapi: ${from} is ${JSON.stringify(endpoint)}, TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext`,
+      `${from} is ${JSON.stringify(endpoint)}, TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext`,
     )
   }
+  // Never the option as written: a blank one spread here was sent as the
+  // instance name.
+  const { instanceName: _written, ...rest } = options
   return {
-    ...options,
+    ...rest,
     endpoint,
     ...(instanceName === undefined ? {} : { instanceName }),
     ...(tlsCaPem === undefined ? {} : { tlsCaPem }),
@@ -185,7 +160,7 @@ function assertEndpoint(endpoint: string, from: string): void {
   const port = m?.[2] === undefined ? undefined : Number(m[2])
   if (m === null || (port !== undefined && (port < 1 || port > 65_535))) {
     throw new UserError(
-      `vx-reapi: ${from} is ${JSON.stringify(endpoint)}, which is not host[:port] (e.g. grpcs://cache.example.com:443)`,
+      `${from} is ${JSON.stringify(endpoint)}, which is not host[:port] (e.g. grpcs://cache.example.com:443)`,
     )
   }
 }
@@ -268,7 +243,7 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
     async executor(ctx): Promise<TaskExecutor | undefined> {
       // Before the connection: with execute off, an unreadable PEM is the
       // cache hook's to refuse, never a failure "in executor".
-      if (options.execute !== true && process.env['VX_REAPI_EXECUTE'] !== '1') return undefined
+      if (options.execute !== true) return undefined
       const conn = connection(options)
       if (conn === undefined) return undefined
       executorClient = new ReapiClient({ ...conn, onWarn: (m) => ctx.warn(m) })
@@ -279,8 +254,12 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       // plugin's setting nor anything to do about it. Core turns a throwing
       // factory into a UserError and ABORTS — deliberately, an executor is
       // load-bearing — so this is the message a user acts on.
+      // Both asks: a failed second one escaped as the raw status, naming
+      // neither the server nor the setting.
+      let caps: Awaited<ReturnType<ReapiClient['capabilities']>>
       try {
         await executorClient.negotiate()
+        caps = await executorClient.capabilities()
       } catch (err) {
         executorClient.close()
         executorClient = undefined
@@ -300,7 +279,6 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       // A cache-only deployment (bazel-remote) advertises no execution
       // capability. Offering it work would hang the run on a server that will
       // never answer, so DECLINE loudly and let the local executor take over.
-      const caps = await executorClient.capabilities()
       if (!caps.execEnabled) {
         ctx.warn(
           `[vx] vx-reapi: ${conn.endpoint} does not advertise remote execution (cache only) — tasks will run locally`,

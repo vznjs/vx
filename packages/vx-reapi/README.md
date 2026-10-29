@@ -25,7 +25,9 @@ export default defineWorkspace({
 Off CI a run reads the remote and does not write it unless its policy names
 the remote. Give the write credential only to the default branch's CI and a
 read-only one to laptops and pull request jobs: the server's token is the
-boundary (`docs/security.md` § Cache poisoning).
+boundary (`docs/security.md` § Cache poisoning). A server that refuses a
+save's `UpdateActionResult` (`PERMISSION_DENIED`, `UNIMPLEMENTED`) is taken
+at its word for the run: later saves fail the same way without uploading.
 
 `ReapiRemoteCache` is the layer class behind `reapi()`, for a workspace that
 composes cache layers by hand. The package exports `reapi`, `ReapiPluginOptions`,
@@ -41,13 +43,13 @@ optional `grpc(s)://` or `http(s)://` scheme (a trailing `/` is dropped), or a g
 (`unix:`, `unix-abstract:`, `dns:`, `ipv4:`, `ipv6:`), is refused at startup
 with a line naming the setting. So is a TLS endpoint at an IP address:
 Bun's TLS refuses an IP as the server name, so name the server by host
-name, or use `grpc://` for plaintext. `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE` configure it
-from the environment, and `VX_REAPI_EXECUTE=1` turns on remote execution the
-way `execute: true` does (off by default: a plugin must not move where a
-build runs merely by being configured for caching). `execute` is a
-boolean: a string (`process.env.X`) is refused.
-`instanceName` is the option form of `VX_REAPI_INSTANCE`; like the endpoint
-it is trimmed, and a blank one is unset. `headers`
+name, or use `grpc://` for plaintext. The plugin reads no environment
+variable: every setting is an option, and a value from CI is named in
+`.vx/workspace.ts` (`endpoint: process.env.REAPI_ENDPOINT`). `execute:
+true` turns on remote execution (off by default: a plugin must not move
+where a build runs merely by being configured for caching). `execute` is
+a boolean: a string (`process.env.X`) is refused. `instanceName`, like
+the endpoint, is trimmed, and a blank one is unset. `headers`
 adds gRPC metadata to every call: a hosted server's API key goes there
 (`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`); a name
 gRPC metadata cannot carry (a space, a `-bin` suffix) is refused at startup,
@@ -61,10 +63,8 @@ TLS is on unless asked off, as in Bazel: a bare `host:port`, a `grpcs://`
 or `https://` endpoint, and a `dns:`/`ipv4:`/`ipv6:` target all use it.
 Plaintext takes a `grpc://` or `http://` endpoint or `tls: false`; a `unix:`
 or `unix-abstract:` socket is plaintext (`tls: true` turns it on). It uses the system roots unless told otherwise. A server behind a private
-CA takes `tlsCertificate` (or `VX_REAPI_TLS_CERTIFICATE`), a PEM file of
-that CA; one that asks for mutual TLS takes `tlsClientCertificate` and
-`tlsClientKey` (`VX_REAPI_TLS_CLIENT_CERTIFICATE` / `VX_REAPI_TLS_CLIENT_KEY`)
-— Bazel's `--tls_certificate`, `--tls_client_certificate` and
+CA takes `tlsCertificate`, a PEM file of that CA; one that asks for
+mutual TLS takes `tlsClientCertificate` and `tlsClientKey` — Bazel's `--tls_certificate`, `--tls_client_certificate` and
 `--tls_client_key`. Any of them turns TLS on unless `tls: false` is set; a file that cannot be read
 is refused at startup, naming the setting.
 
@@ -105,9 +105,10 @@ See Bun [#30342](https://github.com/oven-sh/bun/issues/30342) and
 [#26915](https://github.com/oven-sh/bun/issues/26915), largely fixed by
 [#31584](https://github.com/oven-sh/bun/pull/31584) — which is why the ceiling
 _rose_ from ~64 KB on Bun 1.3.x to ~216 KB on 1.4.0 rather than the hang going
-away. Hence **Bun >= 1.4** is required, and the plugin refuses to start on
-anything older with a named error: the alternative is a wedged upload with
-nothing for a user to act on.
+away. Hence **Bun >= 1.4.4** is required (core's own floor, the package's
+`engines.bun`), and the plugin refuses to start on anything older with a
+named error: the alternative is a wedged upload with nothing for a user to
+act on.
 
 The default is the one size with no peer-dependence — 65535, the RFC 7540
 default initial window every peer must honour with no `WINDOW_UPDATE` at
@@ -117,7 +118,7 @@ the call's 30 s deadline; 65535 stalled in none, and costs ~51% on a 32 MiB
 upload (390 → 590 ms on loopback). A larger `chunkBytes` is still accepted:
 
 ```ts
-reapi({ endpoint: '…', chunkBytes: 128 * 1024 })
+reapi({ endpoint: 'grpcs://cache.example.com:443', chunkBytes: 128 * 1024 })
 ```
 
 The stall is a RACE, not a boundary. So above the safe size the client
@@ -233,8 +234,9 @@ digest not asked for is dropped.
 A verified blob still lands where the server's ActionResult says, so its
 paths are held to the workspace: an output path or Tree name that climbs
 out (`..`, absolute), a link whose target leaves the workspace (read as
-the OS follows it, through the links the result placed), and a
-directory that resolves out through a link are refused before anything
+the OS follows it, through the links the result placed), a
+directory that resolves out through a link, and a file or link that
+lands, through one, where no declared glob names are refused before anything
 is written through them; a link standing at an output file is replaced, never written
 through; a Tree file's setuid and setgid bits are dropped. A Tree may name
 one subtree many times; one that expands to more paths than the file
@@ -275,9 +277,10 @@ minutes before it can degrade, which is the opposite of what the deadline is
 for.
 
 Each deadline must be a positive number of ms; anything else is refused when
-the plugin starts. `executeTimeoutMs` and `queueTimeoutMs` are held to the
-same rule when the executor starts, so with `execute` off they are not
-checked.
+the plugin starts. `executeTimeoutMs` and `queueTimeoutMs` are checked when
+the executor starts, so with `execute` off they are not checked. They wait
+on a timer, so each must also be at most 2147483647 (a longer timer fires at
+once).
 
 That is not hypothetical. A NativeLink instance degraded into a state where it
 answered every ActionCache MISS in 3 ms and every HIT never — idle CPU,
@@ -301,7 +304,7 @@ Execute stream is closed, the operation is cancelled with
 that refuses it, or lacks the service, may still run the action, and its
 result lands in the action cache; that refusal is a warning) and the task is given back to vx, which
 runs it here and says so once:
-`[vx] <task>: vx-reapi: no worker started the action within queueTimeoutMs (…ms); its operation was cancelled — running it here`.
+`[vx] <task>: plugin '@vzn/vx-reapi' (executor 'vx/reapi') gave it back: no worker started the action within queueTimeoutMs (…ms); its operation was cancelled — running it here`.
 A task placed `exec.remote: 'only'` fails with that reason instead. Unset,
 the task's own `exec.timeout` bounds the queue as it bounds the run (the
 task fails as timed out); with neither, the wait is unbounded.

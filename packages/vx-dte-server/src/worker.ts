@@ -5,7 +5,7 @@
 // participant.
 // `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
-import { claimedRun, createVerifier, parseAllow } from './oidc.js'
+import { createVerifier, parseAllow, TokenError, type VerifiedToken } from './oidc.js'
 import {
   closeSocket,
   createRelay,
@@ -123,6 +123,21 @@ function upgraded(socket: Socket, protocol: string | undefined): Response {
 /** Verifiers by ALLOW and audience, shared by the runs of one isolate. */
 const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
 
+/**
+ * The verifier of a request's token. The worker's URL is not known before
+ * its first deploy; a token for another one is not meant for this relay.
+ */
+function verifierOf(env: Env, req: Request): ReturnType<typeof createVerifier> {
+  const audience = env.AUDIENCE || new URL(req.url).origin
+  const key = `${env.ALLOW}\0${audience}`
+  let v = verifiers.get(key)
+  if (v === undefined) {
+    v = createVerifier({ allow: parseAllow(env.ALLOW ?? ''), audience, fetchJson })
+    verifiers.set(key, v)
+  }
+  return v
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const session = SESSION.exec(new URL(req.url).pathname)?.[1]
@@ -139,9 +154,19 @@ export default {
         'RELAY: bind the RelayRun Durable Object as RELAY (wrangler.jsonc durable_objects)',
       )
     }
+    // Checked here, before any object: each one a request wakes is billed,
+    // and a host's daily limit then refuses every run, so a request with
+    // no good token spent the relay's quota.
     const token = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1]
-    const claimed = token === undefined ? undefined : claimedRun(token)
-    const stub = env.RELAY.get(env.RELAY.idFromName(await sessionKey(session, claimed)))
+    if (token === undefined) return refuse(req, 401, 'no bearer token')
+    let run: VerifiedToken
+    try {
+      run = await verifierOf(env, req)(token)
+    } catch (err) {
+      if (!(err instanceof TokenError)) throw err
+      return refuse(req, err.status, err.message)
+    }
+    const stub = env.RELAY.get(env.RELAY.idFromName(await sessionKey(session, run)))
     try {
       return await stub.fetch(req)
     } catch (err) {
@@ -165,19 +190,8 @@ export class RelayRun {
       throw new Error(`vx-dte-server: ALLOW: ${(err as Error).message}`)
     }
     if (allow.length === 0) throw new Error('vx-dte-server: set ALLOW')
-    // The worker's URL is not known before its first deploy; a token for
-    // another one is not meant for this relay.
-    const verifierOf = (audience: string): ReturnType<typeof createVerifier> => {
-      const key = `${env.ALLOW}\0${audience}`
-      let v = verifiers.get(key)
-      if (v === undefined) {
-        v = createVerifier({ allow, audience, fetchJson })
-        verifiers.set(key, v)
-      }
-      return v
-    }
     this.relay = createRelay({
-      verify: (token, req) => verifierOf(env.AUDIENCE || new URL(req.url).origin)(token),
+      verify: (token, req) => verifierOf(env, req)(token),
       // One `attach` closed kept nothing: it is gone.
       sockets: state.getWebSockets().flatMap((ws) => {
         const kept = ws.deserializeAttachment()
@@ -208,6 +222,7 @@ export class RelayRun {
     try {
       if (answer !== undefined) ws.send(answer)
     } catch {}
+    // quiet: a socket that cannot send has closed; its close is the answer
   }
 
   webSocketClose(ws: Socket): void {

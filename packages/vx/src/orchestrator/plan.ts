@@ -19,7 +19,7 @@ import type { AffectedReason } from './affected-tasks.js'
 import type { HistoryProvider } from '../history/index.js'
 import { hostPlatform } from '../exec/index.js'
 import { computeGroupKey, computeTaskHash } from './task-hash.js'
-import { keyedOutcome, keyUpstream } from './upstream.js'
+import { dependedOn, keyedOutcome, keylessServer, keyUpstream } from './upstream.js'
 
 export type CacheStatus =
   | 'hit-local' // entry exists in local cache
@@ -154,6 +154,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
   // Keyed first, probed after: a remote that can batch (`hasMany`) is
   // asked once for every key, one that cannot is asked per key.
   const probed = new Map<string, string>()
+  const depended = dependedOn(args.nodes.values())
 
   const outcomes = await runGraph({
     nodes: args.nodes,
@@ -179,7 +180,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         return keyedOutcome(node, await computeGroupKey(hashArgs))
       }
 
-      const hash = await computeTaskHash(hashArgs)
+      const hash = keylessServer(node, depended) ? undefined : await computeTaskHash(hashArgs)
 
       // Prediction keys off READS: a no-read policy re-executes every task,
       // so nothing is probed. Whether that run is a miss or no cache at all
@@ -190,7 +191,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       const policy = args.cachePolicy ?? FULL_CACHE_POLICY
       const reads = policy.localRead || policy.remoteRead
       let status: CacheStatus
-      if (ranNoCache({ node, cacheOff: cachesNothing(policy) })) {
+      if (hash === undefined || ranNoCache({ node, cacheOff: cachesNothing(policy) })) {
         status = 'no-cache'
       } else if (!reads) {
         status = 'miss'

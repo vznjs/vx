@@ -2,11 +2,12 @@
 // terminal. The runs table names the run-over-run hash change, and
 // `entry_inputs` (the input-fingerprint moat) names the exact cache-key
 // components that differ. Read-only over cache.db plus a stat of each
-// moved input file — no config evaluation, no re-hash.
+// moved input file, no re-hash. Configs are evaluated only when a moved
+// upstream is a group: it records no run, so the graph names what it gathers.
 
 import { Cache } from '../cache/index.js'
-import { flagHint, formatValue, seeHelp } from './help.js'
-import { splitTaskId } from '../graph/index.js'
+import { anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
+import { buildTaskGraph, isGroupTask, splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
   explainCacheKey,
@@ -30,9 +31,17 @@ import {
   UserError,
   WARN,
 } from '../util/index.js'
-import { findWorkspaceRoot } from '../workspace/index.js'
-import { findCwdProject, rootSpelled } from './select.js'
-import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
+import { runRules } from '../settings.js'
+import { buildPackageGraph, findWorkspaceRoot } from '../workspace/index.js'
+import { findCwdProject } from './select.js'
+import {
+  cliCacheDir,
+  discoverCliProjects,
+  loadCliProjects,
+  loadCliWorkspace,
+  parseCacheDirFlag,
+  rootSpelled,
+} from './workspace-config.js'
 
 interface WhyArgs {
   target?: string
@@ -107,6 +116,13 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
       return { ...out, error: `unexpected argument: ${a}${seeHelp('why')}` }
     // Empty is no task: read as a query it matched every recorded one.
     if (a !== '') out.target = a
+  }
+  if (out.target !== undefined) {
+    const error = anchoredSpecError(
+      out.target,
+      (task) => `vx why ${task} finds the project that ran it`,
+    )
+    if (error !== undefined) return { ...out, error }
   }
   return out
 }
@@ -297,7 +313,15 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     // An upstream change is never the cause, only its carrier: follow
     // each moved dependency in this run down to the tasks whose own
     // inputs moved, so one `vx why` names the file, not the next task.
-    const roots = rootCauses(db, runId, taskId, diff.entries)
+    // A group records no run: the graph names what it gathers.
+    const unrecorded = diff.entries.filter(
+      (e) =>
+        e.kind === 'upstream' &&
+        e.change === 'changed' &&
+        !cacheKeyDiff(db, runId, upstreamTask(e.name)).found,
+    )
+    const groups = unrecorded.length > 0 ? await groupMembers(root, taskId) : new Map()
+    const roots = rootCauses(db, runId, taskId, diff.entries, groups)
     const writers = inputWriters(db, root, taskId, diff.entries, roots)
 
     if (parsed.format === 'json') {
@@ -384,11 +408,10 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       // An upstream row names the task to ask next: the command, not a
       // placeholder to fill in from the row above. A group records no run,
       // so `vx why` on one refuses: its members are asked instead.
-      const upstream = [
-        ...new Set(
-          diff.entries.filter((e) => e.kind === 'upstream').map((e) => upstreamTask(e.name)),
-        ),
-      ].filter((n) => cacheKeyDiff(db, runId, n).found)
+      const upstream = upstreamTodo(
+        diff.entries.filter((e) => e.kind === 'upstream'),
+        unrecorded,
+      )
       const kinds = [...new Set([...diff.entries.map((e) => e.kind), ...rootKinds])].filter(
         (k) =>
           k in WHAT_TO_DO && !(k === 'upstream' && (roots.length > 0 || upstream.length === 0)),
@@ -399,15 +422,14 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         // not in the table above, and overflowed its width.
         const todoW = Math.max(kindW, ...kinds.map((k) => k.length), writers.length > 0 ? 7 : 0)
         for (const k of kinds) {
+          if (k === 'upstream') {
+            for (const todo of upstream) lines.push(`    ${dim(k.padEnd(todoW))}  ${todo}`)
+            continue
+          }
           const todo =
-            k === 'upstream'
-              ? WHAT_TO_DO[k]!.replace(
-                  '`vx why <that task>`',
-                  upstream.map((n) => `\`vx why ${n}\``).join(', '),
-                )
-              : k === 'config'
-                ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
-                : WHAT_TO_DO[k]
+            k === 'config'
+              ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
+              : WHAT_TO_DO[k]
           lines.push(`    ${dim(k.padEnd(todoW))}  ${todo}`)
         }
         if (writers.length > 0) {
@@ -429,6 +451,64 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 const ROOTS_SHOWN = 5
 
 const CHANGE_HUE: Record<string, string> = { added: SUCCESS, removed: ERROR, changed: WARN }
+
+type DiffEntry = ReturnType<typeof cacheKeyDiff>['entries'][number]
+
+/**
+ * The upstream advice: a moved key names the task to ask next, a group
+ * (no run of its own) the verb that names what it gathers, and an edge
+ * added or removed says the graph changed, since no key moved.
+ */
+function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffEntry[]): string[] {
+  const out: string[] = []
+  const groups = new Set(unrecorded.map((e) => e.name))
+  const moved = [
+    ...new Set(
+      upstream
+        .filter((e) => e.change === 'changed' && !groups.has(e.name))
+        .map((e) => upstreamTask(e.name)),
+    ),
+  ]
+  if (moved.length > 0)
+    out.push(
+      WHAT_TO_DO['upstream']!.replace(
+        '`vx why <that task>`',
+        moved.map((n) => `\`vx why ${n}\``).join(', '),
+      ),
+    )
+  for (const g of groups)
+    out.push(
+      `${g} is a group and records no run; \`vx show ${g}\` names what it gathers, \`vx why\` on the one whose key moved says why`,
+    )
+  const edges = upstream.filter((e) => e.change !== 'changed')
+  if (edges.length > 0)
+    out.push(
+      `a dependency joined or left the graph (${edges.map((e) => `${e.name} ${e.change}`).join(', ')}): its \`dependsOn\` or a project edge changed, which re-keys the task by design`,
+    )
+  return out
+}
+
+/**
+ * Each group in `taskId`'s graph with the tasks it gathers. Empty when a
+ * config no longer loads: the advice then names the group to `vx show`.
+ */
+async function groupMembers(root: string, taskId: string): Promise<Map<string, string[]>> {
+  try {
+    const metas = await discoverCliProjects(root)
+    const projects = await loadCliProjects(root, metas, 'all', { closure: true })
+    const [project, task] = splitTaskId(taskId)
+    const nodes = buildTaskGraph({
+      projects,
+      packageGraph: buildPackageGraph(metas),
+      requested: [{ project, task }],
+      workspaceRoot: root,
+      rules: runRules((await loadCliWorkspace(root)).workspaceConfig),
+    })
+    return new Map([...nodes.values()].filter(isGroupTask).map((n) => [n.id, n.deps]))
+  } catch {
+    return new Map()
+  }
+}
 
 const WRITTEN_TODO =
   'a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files'

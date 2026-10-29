@@ -85,7 +85,11 @@ All are on the `@vzn/vx` façade.
   replayed the old tool's output (nx#36415 class, 2026-09-24). A bin
   alone is not narrower-and-sound: `@types/node` has no bin. The cost is
   every project on a root-dependency bump, the root's `workspace:`
-  devDependencies' closures included.
+  devDependencies' closures included. That digest is the lockfile's
+  view of such a package, never its source: `@vzn/vx-lockfile`'s
+  `discover` makes it an order edge of every other project (reach only
+  where that would close a cycle), so an edit to it re-keys and selects
+  the projects that load it through the root (Turbo #8364, #8465).
 - **A project the file does not list** folds its nearest listed
   ancestor's digest, with the root's: inside a member with no manifest
   of its own (`packages/a/e2e`), Node resolves it from that member's

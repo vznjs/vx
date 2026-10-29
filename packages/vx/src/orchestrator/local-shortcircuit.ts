@@ -44,8 +44,8 @@
 import { normalizeGlob, relPosix, span, staticPrefix } from '../util/index.js'
 import type { CacheEntry, CacheLayer, GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { deriveStableKeys, workspaceInputsReach } from './stable-keys.js'
-import { readRunKeys, runKeysToken, writeRunKeys } from './run-keys.js'
+import { deriveStableKeys, rederiveKeys, workspaceInputsReach } from './stable-keys.js'
+import { readRunDelta, readRunKeys, runKeysToken, writeRunDelta, writeRunKeys } from './run-keys.js'
 import type { HashCache, UpfrontGroupKey } from './task-hash.js'
 import { getContext } from './remote-prefetch.js'
 
@@ -126,8 +126,32 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
       stableKeys = remembered.stableKeys
       for (const [id, key] of remembered.uncachedKeys) uncachedKeys.set(id, key)
     } else {
-      stableKeys = await deriveStableKeys({ ...args, uncachedKeys, groupKeys })
-      if (at !== undefined) writeRunKeys(args, at, { stableKeys, uncachedKeys })
+      // An edit moved some files tokens: the last derivation under the same
+      // graph keys again only the tasks the edit reaches.
+      const delta = at === undefined ? undefined : readRunDelta(args, at)
+      let derivation
+      if (delta !== undefined) {
+        derivation = delta.derivation
+        await rederiveKeys(args, derivation.keys, delta.dirty)
+        const keys = derivation.keys
+        stableKeys = derivation.stable.map((id) => ({
+          hash: keys.get(id)!,
+          node: args.nodes.get(id)!,
+        }))
+        for (const id of derivation.uncached) uncachedKeys.set(id, keys.get(id)!)
+      } else {
+        const keys = new Map<string, string>()
+        stableKeys = await deriveStableKeys({ ...args, uncachedKeys, groupKeys, keys })
+        derivation = {
+          keys,
+          stable: stableKeys.map((k) => k.node.id),
+          uncached: [...uncachedKeys.keys()],
+        }
+      }
+      if (at !== undefined) {
+        writeRunKeys(args, at, { stableKeys, uncachedKeys })
+        writeRunDelta(args, at, derivation)
+      }
     }
   } catch {
     return {

@@ -112,6 +112,19 @@ it('says a trigger GitLab refused, by status and body', async () => {
   )
 })
 
+// GitLab.com's new projects let no one set pipeline variables (17.7): every
+// trigger failed with GitLab's words alone, which name no setting.
+it('says where to let the job set pipeline variables when GitLab refuses them', async () => {
+  reply = () =>
+    Response.json(
+      { message: { base: ['Insufficient permissions to set pipeline variables'] } },
+      { status: 400 },
+    )
+  await expect(gitlab().spawn(worker)).rejects.toThrow(
+    `gitlab(): triggering small#2: 400 {"message":{"base":["Insufficient permissions to set pipeline variables"]}}: the workers take the run's variables; in the project's Settings > CI/CD > Variables, let the vx job's role use pipeline variables`,
+  )
+})
+
 it("writes the controls in GitLab's words as escapes", async () => {
   reply = () => new Response('\x1b]0;PWNED\x07', { status: 403 })
   expect(gitlab().spawn(worker)).rejects.toThrow(

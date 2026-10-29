@@ -24,6 +24,12 @@ it('turboCache refuses a negative or non-number timeout, and takes 0', () => {
   expect(said(() => turboCache({ uploadTimeoutMs: Number.NaN }))).toBe(
     'turboCache() option "uploadTimeoutMs" must be ms ≥ 0 (0: none), got NaN',
   )
+  expect(said(() => turboCache({ uploadTimeoutMs: '60' } as never))).toBe(
+    'turboCache() option "uploadTimeoutMs" must be a number, got "60"',
+  )
+  expect(said(() => turboCache({ timeoutMs: Number.NaN }))).toBe(
+    'turboCache() option "timeoutMs" must be ms ≥ 0 (0: none), got NaN',
+  )
   expect(said(() => turboCache({ timeoutMs: 0 }))).toBe('taken')
   expect(said(() => turboCache({ timeoutMs: 5000 }))).toBe('taken')
 })

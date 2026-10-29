@@ -96,6 +96,28 @@ describe('a project under a bracketed directory', () => {
   })
 })
 
+// The runtime reports a refused touch as one line per record, so a path
+// holding a line break reached vx split: an undeclared write to the
+// project's own file was judged as outside the project, and the hint said
+// to write under $TMPDIR. A space, a quote or unicode reported right.
+describe('a project under a directory holding a line break', () => {
+  it('is refused with the directory named, before anything is created', async () => {
+    for (const name of ['a\nb', 'a\rb']) {
+      dir = path.join(root, 'packages', name, 'proj')
+      await mkdir(dir, { recursive: true })
+      const err = await requestFor(['dist/']).then(
+        () => undefined,
+        (e: unknown) => (e as Error).message,
+      )
+      expect([err, await kind(path.join(dir, 'dist'))]).toEqual([
+        `exec.sandbox: ${dir} holds a line break, which the sandbox runtime's reports cannot ` +
+          `carry, so a refused touch is misreported — rename the directory, or run the task without exec.sandbox`,
+        'none',
+      ])
+    }
+  })
+})
+
 describe('the run-wide union SRT is armed with', () => {
   // `prepareSandbox` folds every sandboxed task into ONE allowlist,
   // because SRT runs one filtering proxy per run and checks every request
@@ -497,6 +519,20 @@ describe('a root project stops at the walls: nested projects, .git, .vx', () => 
       ).rejects.toThrow(`the grant binding ${gitDir} would make ${gitDir} writable`)
     },
   )
+
+  // A grant INSIDE the repository's or vx's wall was not judged at all:
+  // only a bind holding a wall was. `write: ['../.git/hooks/']` let a
+  // sandboxed task plant a hook that runs unsandboxed at the next commit,
+  // and `../.vx/cache/failures/` wrote into vx's own store.
+  it('a write grant inside .git or vx’s cache is refused', async () => {
+    await walled()
+    for (const inner of ['.git/hooks', '.git/refs/heads', '.vx/cache/failures']) {
+      await mkdir(path.join(root, inner), { recursive: true })
+      await expect(
+        sandboxRequestFor(node(), { allow: { write: [`../${inner}/`] } }, root, undefined, []),
+      ).rejects.toThrow(`the grant binding ${path.join(root, inner)} would make`)
+    }
+  })
 
   // And one whose bind only shares a wall's name prefix stays (B-16).
   it('a write grant beside a wall that shares its name prefix stays', async () => {
@@ -1098,5 +1134,43 @@ describe('a cache directory inside a project is a wall', () => {
     )
     const open = await sandboxRequestFor(node(), grant, root, undefined, [])
     expect(open.sandbox.config.allowWrite).toEqual([cacheDir])
+  })
+})
+
+// vx's stores outside the workspace were neither walled nor denied: a
+// sandboxed task with no grant read every project's cached outputs from
+// `~/.vx/<repo>/cache/store.db` (and every other repository's), around
+// the cross-project wall and its own key. A `cacheDir` outside the
+// workspace (`VX_CACHE_DIR=~/.cache/vx`) the same.
+describe('vx’s stores outside the workspace are denied', () => {
+  it('~/.vx and an outside cache directory are in the read deny', async () => {
+    const home = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-sandbox-home-')))
+    const saved = process.env['HOME']
+    try {
+      process.env['HOME'] = home
+      await mkdir(path.join(home, '.vx', 'repo', 'cache'), { recursive: true })
+      const outside = path.join(home, '.cache', 'vx')
+      await mkdir(outside, { recursive: true })
+      const r = await sandboxRequestFor(node(), { allow: {} }, root, undefined, [], outside)
+      expect(r.sandbox.baseDenyRead).toContain(path.join(home, '.vx'))
+      expect(r.sandbox.baseDenyRead).toContain(outside)
+      const inside = await sandboxRequestFor(
+        node(),
+        { allow: {} },
+        root,
+        undefined,
+        [],
+        path.join(root, '.vxc'),
+      )
+      // Inside, the workspace's own deny covers it; macOS denies each wall
+      // too, and an inside cache dir is one (sealed), so it is there once.
+      expect(inside.sandbox.baseDenyRead.filter((p) => p === path.join(root, '.vxc')).length).toBe(
+        process.platform === 'darwin' ? 1 : 0,
+      )
+    } finally {
+      if (saved === undefined) delete process.env['HOME']
+      else process.env['HOME'] = saved
+      await rm(home, { recursive: true, force: true })
+    }
   })
 })

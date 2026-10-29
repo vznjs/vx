@@ -9,7 +9,7 @@ import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
 import { refuseUnknownOptions, secretNamed, UserError, ui, type PluginOptionKinds } from '@vzn/vx'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
-import { printable } from './wire.js'
+import { printable } from './printable.js'
 
 export interface GithubOptions {
   /** The workers' workflow file in `.github/workflows` (default `vx-worker.yml`). */

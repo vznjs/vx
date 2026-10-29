@@ -13,7 +13,7 @@
 
 import type { Database } from 'bun:sqlite'
 import { branchSource, EXECUTED_RUNS_SQL } from '../cache/index.js'
-import { splitTaskId } from '../util/index.js'
+import { isMeasure, splitTaskId } from '../util/index.js'
 import { failureModeOf, mixedOutcomeKeysSql } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
 import { isPassStatus, TASK_STATUSES } from '../graph/index.js'
@@ -164,8 +164,8 @@ export class LocalHistoryProvider implements HistoryProvider {
    * ranking every pair's rows newest-first (`ROW_NUMBER` over a partition)
    * sorted the whole table either way, 230 ms at 116k rows. Rows are
    * appended in time order, one contiguous block per invocation, so the
-   * rows of the newest `recent` invocations are exactly `id >= MIN(id)` of
-   * the `recent`-th newest header — a primary-key range, no sort, plain
+   * rows of the newest `recent` invocations are exactly `id >=` the first
+   * row of the newest `recent` headers — a primary-key range, no sort, plain
    * aggregates, and at most one row per pair per invocation, so "the last
    * `recent` invocations" IS the last `recent` runs for a pair that runs
    * every time and whatever fewer it has for one that runs less often. A
@@ -323,8 +323,15 @@ export class LocalHistoryProvider implements HistoryProvider {
     this.db
       .transaction(() => {
         for (const [id, ms] of timings) {
-          const [project, task] = splitTaskId(id)
           const n = needs.get(id)
+          // A plugin's Infinity or negative, kept, made every later forecast
+          // NaN or below zero: the row is never written again to correct it.
+          if (
+            !isMeasure(ms) ||
+            (n !== undefined && !Object.values(n).every((v) => v === undefined || isMeasure(v)))
+          )
+            continue
+          const [project, task] = splitTaskId(id)
           insert.run(
             project,
             task,
@@ -599,17 +606,21 @@ export class LocalHistoryProvider implements HistoryProvider {
 
   /** The first `runs` id of the newest `recent` invocations (see `loadFor`). */
   private floor(): number {
+    // The first row of each invocation in the window, an index probe each:
+    // a run of only a group records a header and no row (X-50), and at the
+    // oldest slot it gave no first row, so the window read the whole table.
     const row = this.db
       .query(
-        // Over the whole window, not its oldest invocation alone: a run of
-        // groups or aborted tasks writes a header and no row, and as the
-        // oldest it had no MIN, so the window became the whole table.
-        `SELECT MIN(id) AS id FROM runs WHERE run_id IN
-           (SELECT run_id FROM invocations ORDER BY rowid DESC LIMIT ?)`,
+        `SELECT COUNT(*) AS n, MIN(first) AS id,
+           (SELECT COALESCE(MAX(id), 0) + 1 FROM runs) AS past
+         FROM (SELECT (SELECT MIN(id) FROM runs WHERE run_id = i.run_id) AS first
+               FROM (SELECT run_id FROM invocations ORDER BY rowid DESC LIMIT ?) i)`,
       )
-      .get(this.recent) as { id: number | null }
+      .get(this.recent) as { n: number; id: number | null; past: number }
     // Fewer invocations than the window (or none): the whole table is the window.
-    return row.id ?? 0
+    if (row.n < this.recent) return 0
+    // A window of only empty invocations holds no row.
+    return row.id ?? row.past
   }
 
   /** Mixed-outcome key count per `project#task`, over the slice, for `pairs` only. */

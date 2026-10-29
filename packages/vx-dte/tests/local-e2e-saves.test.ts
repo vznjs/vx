@@ -502,6 +502,47 @@ it('local() starts workers again after a run closed it', async () => {
   await a.close!()
 }, 60_000)
 
+// A closed run stopped a prepare's shell alone: an install it started
+// (`bun install && …` keeps the shell) kept running, writing into a
+// worktree being removed.
+it('local() stops a prepare’s whole process tree at close', async () => {
+  const said = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-prep-'))
+  const began = path.join(said, 'began')
+  const late = path.join(said, 'late')
+  // Liveness by what it writes, not by pid: a killed child under a pid 1
+  // that does not reap still answers `kill -0`.
+  try {
+    const a = local({
+      prepare: `(touch ${JSON.stringify(began)}; sleep 1; touch ${JSON.stringify(late)}) & wait; true`,
+    })
+    await a.relay!()
+    const spawned = Promise.resolve(
+      a.spawn({
+        run: crypto.randomUUID(),
+        relay: '',
+        size: 'small',
+        max: 1,
+        cpu: 1,
+        memory: 1e9,
+        index: 1,
+        id: 'small#1',
+        workspaceRoot: root,
+        commit: (await snapshot(root)).commit,
+        env: {},
+        exited: () => {},
+      }),
+    ).catch(() => {})
+    for (let i = 0; i < 400 && !(await Bun.file(began).exists()); i++) await Bun.sleep(25)
+    expect(await Bun.file(began).exists()).toBe(true)
+    await a.close!()
+    await spawned
+    await Bun.sleep(1_500)
+    expect(await Bun.file(late).exists()).toBe(false)
+  } finally {
+    await rm(said, { recursive: true, force: true })
+  }
+}, 60_000)
+
 it('says why a worker never joined, and fails the run when none can', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),

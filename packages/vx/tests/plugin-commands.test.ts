@@ -360,6 +360,42 @@ describe('plugin commands', () => {
     }
   })
 
+  it("an Object.prototype name is no plugin's verb", async () => {
+    // `commands` is a plain object, so `commands['constructor']` is
+    // `Object`: `vx constructor` ran it as HELLO's verb and blamed
+    // org/hello for a crash, and `vx help toString` printed the reference.
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
+    const answers = []
+    for (const argv of [['constructor'], ['toString'], ['help', 'hasOwnProperty']]) {
+      err.length = 0
+      out.length = 0
+      answers.push({ argv, code: await cli(argv), out: out.join(''), err: err.join('') })
+    }
+    expect(answers.map((a) => [a.argv, a.code, a.out])).toEqual([
+      [['constructor'], 1, ''],
+      [['toString'], 1, ''],
+      [['help', 'hasOwnProperty'], 1, ''],
+    ])
+    expect(answers[0]!.err).toContain('unknown command: constructor')
+    expect(answers[1]!.err).toContain('unknown command: toString')
+    expect(answers[2]!.err).toContain('unknown command: hasOwnProperty')
+  })
+
+  it("a verb named like an Object member is unknown, not the plugin's crash", async () => {
+    // `commands.constructor` read Object's own: `vx constructor` ran it and
+    // blamed the plugin for `run is not a function`.
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
+    for (const verb of ['constructor', 'toString', '__proto__']) {
+      err.length = 0
+      expect(await cli([verb])).toBe(1)
+      expect(err.join('')).toContain(`unknown command: ${verb}`)
+      expect(err.join('')).not.toContain('org/hello')
+    }
+    err.length = 0
+    expect(await cli(['help', 'constructor'])).toBe(1)
+    expect(err.join('')).toContain('unknown command: constructor')
+  })
+
   it('a typo of a PLUGIN verb gets the same "did you mean" a core verb gets', async () => {
     // The verbs this workspace's plugins declare are verbs here, and the
     // lookup that just failed already knows them: `vx helo` in a workspace

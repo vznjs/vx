@@ -472,6 +472,7 @@ describe('each schema object is its source type', () => {
         restored24h: true,
         flakyTasks: true,
         lockfile: true,
+        lockError: true,
         sandbox: true,
       }),
     )
@@ -567,6 +568,7 @@ describe('each schema object is its source type', () => {
         remoteError: true,
         forwarded: true,
         inputMoved: true,
+        attempts: true,
         output: true,
         locations: true,
         sandboxFix: true,

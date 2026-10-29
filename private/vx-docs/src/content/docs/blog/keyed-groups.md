@@ -65,9 +65,10 @@ other dependency.
 
 ## Migrations use it too
 
-Nx keys a task on its dependencies' `production` files even with no
-task edge between them. Turbo hashes a transit node per package.
-`@vzn/vx-migrate` writes each as a keyed group, with no processes. On
-TanStack/query, `vx run build` counts 25 tasks, as Nx does.
+Nx keys a task on its dependencies' `production` files even with no task
+edge between them. Turbo hashes a transit node per package.
+`@vzn/vx-migrate` writes each as a keyed group, with no processes.
+
+On TanStack/query, `vx run build` counts 25 tasks, as Nx does.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

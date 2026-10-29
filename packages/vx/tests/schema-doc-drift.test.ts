@@ -298,6 +298,21 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
+    // A malformed entry failed the task at hash time, after its upstream ran.
+    'invalid inputs.tasks "<entry>": <reason>',
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            dependsOn: ['build'],
+            inputs: { files: [], tasks: ['^'] },
+            cache: { outputs: { files: [] } },
+          },
+        },
+      }),
+  ],
+  [
     'cache.outputs must be an object',
     () => validated({ tasks: { b: { ...ok, inputs: { files: [] }, cache: { outputs: 'dist' } } } }),
   ],

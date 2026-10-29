@@ -319,6 +319,28 @@ describe('a Mac worker beside Linux ones', () => {
   })
 })
 
+// `backlog` counted every core alike: Linux workers with cores to spare
+// started no Mac worker, and the Mac task waited for one forever.
+it('backlog starts a worker of the platform a ready task needs, though others are spare', () => {
+  const linux: Size = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 2, cpu: 4, memory: 16e9, platform: 'darwin-arm64' }
+  const t = (id: string, deps: string[], platform?: string): SimTask => ({
+    id,
+    deps,
+    exec: true,
+    cache: true,
+    ran: { ms: 10_000, cores: 1, memory: 5e8 },
+    ...(platform === undefined ? {} : { platform }),
+  })
+  const graph = [t('build', []), t('lint', []), t('mac', ['lint'], 'darwin-arm64')]
+  const r = simulate(graph, {
+    sizes: [linux, mac],
+    home: 'linux-x64',
+    how: { ...DEFAULT_STRATEGY, scale: 'backlog' },
+  })
+  expect(r.workers.find((w) => w.platform === 'darwin-arm64')?.ran).toEqual(['mac'])
+})
+
 // Each choice of each layer (`dte({ scheduler })`), the rest the default's:
 // whatever a workspace picks, no worker is booked past its cores and every
 // miss runs once.

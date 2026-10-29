@@ -194,7 +194,10 @@ browser (through `private/vx-bench/schedule-policy.ts`), and
 when they load:
 
 ```ts
-export function computeReverseDepCount(nodes: ReadonlyMap<string, TaskNode>): Map<string, number> // also the live region's waiting order
+export function computeReverseDepCount(
+  nodes: ReadonlyMap<string, TaskNode>,
+  counted?: ReadonlyMap<string, unknown>,
+): Map<string, number> // also the live region's waiting order; `counted` limits the dependents counted (the exec tier)
 export function tieredReverseDepCount(
   nodes: Map<string, TaskNode>,
   restoreTier: ReadonlySet<string>,

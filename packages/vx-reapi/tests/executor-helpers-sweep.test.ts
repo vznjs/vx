@@ -508,9 +508,7 @@ describe.if(CHUNKING_SUPPORTED)('server logs on a failed execution', () => {
       return { response: { status: { code: 13, message: 'boom' }, server_logs: logs } }
     }
     const message = await refusal(runOne(request()))
-    expect(message.startsWith('vx-reapi: pkg#gen execution failed: boom\n--- server log ')).toBe(
-      true,
-    )
+    expect(message.startsWith('pkg#gen execution failed: boom\n--- server log ')).toBe(true)
     expect(message.match(/--- server log/g)?.length).toBe(1)
     expect(message).not.toMatch(/not for people|xxxx/)
   })
@@ -608,7 +606,7 @@ describe.if(CHUNKING_SUPPORTED)('materialising outputs', () => {
         await refusal(
           materialise({ output_directories: [{ path: 'dist', tree_digest: digest }] }, ['dist/**']),
         ),
-      ).toStartWith(`vx-reapi: pkg#gen declared output ${what} is missing from the CAS (`)
+      ).toStartWith(`pkg#gen declared output ${what} is missing from the CAS (`)
     }
   })
 })

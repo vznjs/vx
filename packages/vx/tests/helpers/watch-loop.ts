@@ -30,6 +30,14 @@ export const arms = (w: Watch, projects?: number): number =>
         : `vx watch: armed ${projects} project${projects === 1 ? '' : 's'}\n`,
     ).length - 1
 
+/**
+ * Whether a cycle's run warned `line`. A run's warnings go to stderr (they
+ * left stdout so `vx run > log` keeps only output), as one bare line; the
+ * watch's own config reads say theirs tagged `! vx`, so only the run's is
+ * the whole line.
+ */
+export const runWarned = (w: Watch, line: string): boolean => w.err().split('\n').includes(line)
+
 export interface Watch {
   proc: ReturnType<typeof Bun.spawn>
   out: () => string

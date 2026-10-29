@@ -111,7 +111,8 @@ describe('opening the cache out of file descriptors', () => {
     })
   })
 
-  it('control: an index SQLite cannot open for another reason keeps its own error', async () => {
+  // Not the fd hint, and not a stack either: the path, refused (2026-10-28).
+  it('control: an index SQLite cannot open for another reason is VX_E_FS, not the fd hint', async () => {
     const { mkdirSync } = await import('node:fs')
     const { Cache } = await import('../src/cache/index.js')
     mkdirSync(path.join(root, 'cache', 'cache.db'), { recursive: true })
@@ -132,6 +133,10 @@ describe('opening the cache out of file descriptors', () => {
         () => null,
         (e: unknown) => e as Error,
       )
-    expect([err?.name, err?.message.includes(HINT)]).toEqual(['SQLiteError', false])
+    expect([
+      err?.name,
+      (err as { code?: string } | null)?.code,
+      err?.message.includes(HINT),
+    ]).toEqual(['UserError', 'VX_E_FS', false])
   })
 })

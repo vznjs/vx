@@ -9,6 +9,7 @@ export const MAX_TIMEOUT_MS = 2 ** 31 - 1
 clampInt(n, min, max): number
 parseDecimalInt(input): number | null
 formatElapsed(ms, minutes?): string
+isMeasure(v): boolean
 ```
 
 - **`MAX_TIMEOUT_MS`** is the largest delay `setTimeout` honours
@@ -29,6 +30,9 @@ formatElapsed(ms, minutes?): string
   and with `minutes` (`vx last`) `2m 5s`. The value is rounded to the
   unit shown before the unit is chosen: 999.6 ms printed `1000ms` and
   119,600 ms `1m 60s` (item 1034).
+- **`isMeasure`** is a timing SQLite may keep: finite and not below
+  zero. Infinity stored as REAL reads back through `group_concat` as
+  `Inf`, a NaN forecast.
 
 ## Tests
 

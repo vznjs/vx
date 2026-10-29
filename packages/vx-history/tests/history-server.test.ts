@@ -104,6 +104,27 @@ describe('HistoryServer', () => {
     )
   })
 
+  // `1e400` parses as Infinity: kept, every later run's schedule failed.
+  it('drops a timing or a need that is not a finite, non-negative number', async () => {
+    const body =
+      '{"timings":{"a":{"durationMs":1e400},"b":{"durationMs":1,"cores":-3},' +
+      '"c":{"durationMs":1,"rssBytes":1e400},"d":{"durationMs":1,"cores":0},' +
+      '"e":{"durationMs":-1},"f":{"durationMs":2,"cores":1.5,"rssBytes":0}}}'
+    const fake = (async (u: string) =>
+      new URL(u).pathname === '/v1/capabilities'
+        ? Response.json({ maxUploadTimings: 9, maxQueryHashes: 9 })
+        : new Response(body)) as unknown as typeof fetch
+    const client = new HistoryServer('https://h.example', NAMED, { VX_HISTORY_TOKEN: 't' }, fake)
+    expect(await client.query(['refs/heads/main'], ['a', 'b', 'c', 'd', 'e', 'f'])).toEqual(
+      new Map([
+        ['b', { durationMs: 1 }],
+        ['c', { durationMs: 1 }],
+        ['d', { durationMs: 1, cores: 0 }],
+        ['f', { durationMs: 2, cores: 1.5, rssBytes: 0 }],
+      ]),
+    )
+  })
+
   // A server's words reach the terminal: an ESC in them retitled it and
   // overwrote the line vx printed before them.
   it("writes the controls in a server's words as escapes", async () => {
@@ -157,6 +178,34 @@ describe('HistoryServer', () => {
     }
   })
 
+  // fetch drops only Authorization on a cross-origin redirect: serverHeaders
+  // (a CF-Access secret) went on to the host the 307 named.
+  it('follows no redirect, naming it, and sends serverHeaders nowhere else', async () => {
+    const other: string[] = []
+    const elsewhere = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => (other.push(req.url), Response.json({})),
+    })
+    const moved = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => Response.redirect(`${elsewhere.url.origin}${new URL(req.url).pathname}`, 307),
+    })
+    try {
+      const client = new HistoryServer(moved.url.origin, NAMED, {}, fetch, {
+        'CF-Access-Client-Secret': 's',
+      })
+      await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+        `HTTP 307 to ${elsewhere.url.origin}/v1/capabilities: not followed`,
+      )
+      expect(other).toEqual([])
+    } finally {
+      await moved.stop(true)
+      await elsewhere.stop(true)
+    }
+  })
+
   it('says why a read with no token was refused, and what lets it in', async () => {
     const client = new HistoryServer(url, NAMED, {})
     await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
@@ -176,6 +225,20 @@ describe('HistoryServer', () => {
     expect(await said({ GITHUB_ACTIONS: 'true' })).toBe(
       'HTTP 401: no bearer token: a read with no CI token was refused (give the job `permissions: id-token: write`)',
     )
+  })
+
+  // A refused token said only "HTTP 401: wrong audience", and the upload
+  // at the run's end asked again and said it a second time.
+  it('says what a refused token names and what to check, then stops asking', async () => {
+    const token = await iss.sign('main', 'https://elsewhere.example')
+    const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token })
+    await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+      `HTTP 401: the token's aud is https://elsewhere.example, not this server's ${new URL(url).origin}: ask CI for a token for ${new URL(url).origin}, or set the server's AUDIENCE: the token was refused (this workspace names ${NAMED.repository} at ${NAMED.issuer}; the server's ALLOW must name it, and the token's audience be ${new URL(url).origin}); the history server is off for this run`,
+    )
+    const before = seen.length
+    await client.upload(new Map([['p1', { durationMs: 1 }]]))
+    expect(await client.query(['refs/heads/main'], ['p1'])).toEqual(new Map())
+    expect(seen.length).toBe(before)
   })
 
   it("asks GitHub for a new token before the job's ends, once for parallel calls", async () => {
@@ -396,6 +459,18 @@ describe('HistoryServer', () => {
     expect(timingOf({ ...ran, cpuMs: 500, cpuShare: 0.5 } as never)?.cores).toBe(1)
   })
 
+  it('sends the cores a task needs as local history keeps them: at most its machine, none on no share', () => {
+    const ran = { status: 'success', durationMs: 10_000, cpuMs: 40_000 } as const
+    // Four cores' work at half a core each reads as eight; the machine had four.
+    expect(timingOf({ ...ran, cpuShare: 0.5, whereCores: 4 } as never)?.cores).toBe(4)
+    expect(timingOf({ ...ran, cpuShare: 0.5 } as never)?.cores).toBe(8)
+    // No share is no reading: an Infinity went on the wire as null, and the
+    // server refused the whole upload.
+    const none = timingOf({ ...ran, cpuShare: 0 } as never)
+    expect(none?.cores).toBeUndefined()
+    expect(JSON.stringify(none)).not.toContain('null')
+  })
+
   it('refuses a workspace that names a server but no issuer or repository', () => {
     expect(() => vxHistory({ url: 'https://h.example', repository: 'acme/app' })).toThrow(
       "vxHistory(): issuer must be the CI issuer's URL",
@@ -462,7 +537,7 @@ describe('HistoryServer', () => {
       // Named as the workspace set it: it said `url`, an option never written.
       Bun.env.VX_HISTORY_URL = 'h.example'
       await expect(setup({ ...NAMED }) as Promise<unknown>).rejects.toThrow(
-        'vxHistory(): VX_HISTORY_URL must be http(s), got h.example',
+        'vxHistory(): VX_HISTORY_URL must be https (http only to 127.0.0.1, ::1 or localhost), got h.example',
       )
       Bun.env.VX_HISTORY_URL = 'https://h.example/v1'
       await expect(setup({ ...NAMED }) as Promise<unknown>).rejects.toThrow(
@@ -491,7 +566,15 @@ describe('HistoryServer', () => {
         return (err as Error).message
       }
     }
-    expect(refusal({ url: 'h.example' })).toBe('vxHistory(): url must be http(s), got h.example')
+    expect(refusal({ url: 'h.example' })).toBe(
+      'vxHistory(): url must be https (http only to 127.0.0.1, ::1 or localhost), got h.example',
+    )
+    // http:// sent the CI token in clear to any host.
+    expect(refusal({ url: 'http://h.example' })).toBe(
+      'vxHistory(): url must be https (http only to 127.0.0.1, ::1 or localhost), got http://h.example',
+    )
+    for (const local of ['http://127.0.0.1:8080', 'http://[::1]:8080', 'http://localhost:8080'])
+      expect(refusal({ url: local })).toBe('taken')
     expect(refusal({ url: 'https://h.example/v1' })).toBe(
       "vxHistory(): url is the server's base, without /v1: https://h.example",
     )

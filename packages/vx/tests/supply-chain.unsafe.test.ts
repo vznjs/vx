@@ -32,6 +32,13 @@ function unpinned(text: string): string[] {
   return bad
 }
 
+/** Every SHA-pinned `uses:` ref whose line names no version (`# v1.2.3`). */
+function unversioned(text: string): string[] {
+  return [...text.matchAll(/^\s*(?:-\s*)?uses:\s*['"]?([^\s'"#]+@[0-9a-f]{40})['"]?(.*)$/gm)]
+    .filter((m) => !/^\s*#\s*v\d+(?:\.\d+){0,2}\s*$/.test(m[2]!))
+    .map((m) => m[1]!)
+}
+
 /**
  * Every line of a `run:` script that expands a value an event or a
  * dispatcher supplies (`github.event.*`, `inputs.*`, `github.head_ref`):
@@ -62,8 +69,37 @@ function injectable(text: string): string[] {
 }
 const TAINTED = /\$\{\{[^}]*\b(?:github\.event\.|inputs\.|github\.head_ref)/
 
-const files = yamlFiles(path.join(ROOT, '.github'))
+// Sorted: readdir order differs by filesystem, and the CI runner's put
+// release.yml before auto-release.yml.
+const files = yamlFiles(path.join(ROOT, '.github')).sort()
 const rel = (p: string) => path.relative(ROOT, p)
+
+interface Step {
+  uses?: string
+  with?: Record<string, unknown>
+}
+interface Job {
+  permissions?: Record<string, string>
+  'timeout-minutes'?: number
+  steps?: Step[]
+}
+interface Workflow {
+  permissions?: Record<string, string>
+  concurrency?: { group?: string; 'cancel-in-progress'?: unknown }
+  jobs: Record<string, Job>
+}
+const workflows = files
+  .filter((f) => f.includes(`${path.sep}workflows${path.sep}`))
+  .map((f) => ({ file: rel(f), doc: Bun.YAML.parse(readFileSync(f, 'utf8')) as Workflow }))
+/** Every step of every workflow that runs `action`, as `file#job`. */
+const stepsOf = (action: string) =>
+  workflows.flatMap(({ file, doc }) =>
+    Object.entries(doc.jobs).flatMap(([id, job]) =>
+      (job.steps ?? [])
+        .filter((s) => s.uses?.split('@')[0] === action)
+        .map((step) => ({ at: `${path.basename(file)}#${id}`, step })),
+    ),
+  )
 
 describe('the supply chain', () => {
   it('runs every third-party action from a full commit SHA', () => {
@@ -76,6 +112,42 @@ describe('the supply chain', () => {
     expect(refs.filter((r) => !r.startsWith('./')).length).toBeGreaterThan(5)
     expect(
       files.flatMap((f) => unpinned(readFileSync(f, 'utf8')).map((r) => `${rel(f)}: ${r}`)),
+    ).toEqual([])
+  })
+
+  // A bare SHA says nothing a reviewer or an updater can check: each pin
+  // names the release it is, as `# v7.0.1`.
+  it('names the version of every pinned action beside its SHA', () => {
+    expect(
+      files.flatMap((f) => unversioned(readFileSync(f, 'utf8')).map((r) => `${rel(f)}: ${r}`)),
+    ).toEqual([])
+  })
+
+  it('finds a pin with no version comment (the checker itself)', () => {
+    expect(
+      unversioned(
+        [
+          '      - uses: owner/a@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2',
+          '        uses: owner/b@4d101475d8b20a2381f78447822ac1eab6504dd8',
+          '      - uses: owner/c@4d101475d8b20a2381f78447822ac1eab6504dd8 # pinned',
+          '      - uses: ./.github/actions/vx-runner',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      'owner/b@4d101475d8b20a2381f78447822ac1eab6504dd8',
+      'owner/c@4d101475d8b20a2381f78447822ac1eab6504dd8',
+    ])
+  })
+
+  // A hung job holds its runner for GitHub's six hours, and a DTE run's
+  // workers queue behind it.
+  it('bounds every job with timeout-minutes', () => {
+    const jobs = workflows.flatMap(({ file, doc }) =>
+      Object.entries(doc.jobs).map(([id, job]) => [`${path.basename(file)}#${id}`, job] as const),
+    )
+    expect(jobs.length).toBeGreaterThan(5)
+    expect(
+      jobs.filter(([, job]) => typeof job['timeout-minutes'] !== 'number').map(([at]) => at),
     ).toEqual([])
   })
 
@@ -144,6 +216,70 @@ describe('the supply chain', () => {
     )
     expect(images.length).toBeGreaterThan(3)
     expect(images.filter((i) => !/:[\w.-]+@sha256:[0-9a-f]{64}$/.test(i))).toEqual([])
+  })
+
+  // A write the workflow grants reaches every job, one added later
+  // included; each job names the writes it needs, as npm.yml and
+  // auto-release.yml do. An OIDC token writes nothing of the repo's.
+  it('grants a write to a job, never to the whole workflow', () => {
+    expect(
+      workflows.flatMap(({ file, doc }) =>
+        Object.entries(doc.permissions ?? {})
+          .filter(([scope, level]) => level === 'write' && scope !== 'id-token')
+          .map(([scope]) => `${path.basename(file)}: ${scope}`),
+      ),
+    ).toEqual([])
+  })
+
+  // actions/checkout writes the job's token into .git/config unless told
+  // not to, where every later step and every unsandboxed task reads it:
+  // ci.yml's run holds contents, actions and pages write. Nothing here
+  // pushes with git (tags and releases go through the API with GH_TOKEN)
+  // and the repo is public, so a fetch needs no credential.
+  it('leaves the job token out of every checkout', () => {
+    const checkouts = stepsOf('actions/checkout')
+    expect(checkouts.length).toBeGreaterThan(5)
+    expect(
+      checkouts
+        .filter(({ step }) => step.with?.['persist-credentials'] !== false)
+        .map(({ at }) => at),
+    ).toEqual([])
+  })
+
+  // A second dispatch of a release workflow while the first runs races
+  // it: release.yml had no group, so two runs of one tag would upload to
+  // the same draft and either could publish it first. Each queues behind the one running,
+  // never cancelling it halfway through a publish.
+  it('runs each release workflow one at a time, never cancelled', () => {
+    expect(
+      workflows
+        .filter(({ file }) => /(?:^|\/)(?:release|npm|auto-release)\.yml$/.test(file))
+        .map(({ file, doc }) => [
+          path.basename(file),
+          doc.concurrency?.group,
+          doc.concurrency?.['cancel-in-progress'],
+        ]),
+    ).toEqual([
+      ['auto-release.yml', 'auto-release', false],
+      ['npm.yml', 'npm-publish', false],
+      ['release.yml', 'release-assets-${{ inputs.tag }}', false],
+    ])
+  })
+
+  // package.json's `packageManager` is the one Bun version: setup-bun reads
+  // it when no step names one. Five steps named 1.4.4 and three read the
+  // file, so a bump of the file moved the release builds and left CI's
+  // run and workers on the old Bun.
+  it('installs the Bun package.json names, and no step names another', () => {
+    const setups = stepsOf('oven-sh/setup-bun')
+    expect(setups.length).toBeGreaterThan(5)
+    expect(
+      setups.filter(({ step }) => step.with?.['bun-version'] !== undefined).map(({ at }) => at),
+    ).toEqual([])
+    const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as {
+      packageManager?: string
+    }
+    expect(pkg.packageManager).toMatch(/^bun@\d+\.\d+\.\d+$/)
   })
 
   // The publish is scripts/release.ts's (`release.publish.<os>`); a workflow

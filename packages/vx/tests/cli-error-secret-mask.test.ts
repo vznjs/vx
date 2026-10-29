@@ -60,7 +60,9 @@ it("a config's own throw is masked", async () => {
   await addProject(root, 'app', `${THROW}\n`)
   // `vx lock` is the one verb a run's configs are evaluated by.
   const err = stderr(['lock'])
-  expect(err.split('\n').filter((l) => l.includes('reply'))).toEqual([`vx: Error: ${SAID}`])
+  expect(err.split('\n').filter((l) => l.includes('reply'))).toEqual([
+    `  Project config ${root}/packages/app/vx.config.mjs threw: ${SAID} (at ${root}/packages/app/vx.config.mjs:1:11)`,
+  ])
 }, 20_000)
 
 it("vx watch's failed cycle is masked", async () => {

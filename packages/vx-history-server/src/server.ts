@@ -99,14 +99,21 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
   }
 
   let swept = 0
-  // At most one sweep a day per node, on an upload: no timer, no cron. A
-  // failed one fails no upload, which is folded by then; the next tries again.
+  // At most one sweep a day, on an upload: no timer, no cron. Each node
+  // asks the database when any node last swept, once a day: a Worker's
+  // isolates each swept the whole table on their first upload. A failed
+  // sweep fails no upload, which is folded by then; the next tries again.
   const sweep = async (): Promise<void> => {
     const t = now()
     if (t - swept < DAY_MS) return
     swept = t
     try {
-      await store.sweep(t - (opts.timingDays ?? 30) * DAY_MS)
+      const last = await store.sweptAt()
+      if (t - last < DAY_MS) {
+        swept = last
+        return
+      }
+      await store.sweep(t - (opts.timingDays ?? 30) * DAY_MS, t)
     } catch (err) {
       swept = 0
       console.error(`vx-history-server: the sweep: ${String(err)}`)

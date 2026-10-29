@@ -31,6 +31,8 @@ export interface Lockfile {
 
 export function lockfilePath(root: string): string
 export const NO_LOCK = 'no lock: run `vx lock`' // a run's refusal when no lock exists
+export const EMPTY_LOCK =
+  'The lock holds no project — write a vx.config (`vx init`), then run `vx lock`' // run and vx show, when it holds none
 export const LOCK_INVALID = '.vx/projects.lock.json is invalid, run `vx lock`'
 // On a run's crash path only: does the lock hold an entry `vx lock` could
 // not have written? A run validates no entry, so it pays nothing for this.

@@ -250,7 +250,8 @@
         "sandboxViolations",
         "notReady",
         "remoteError",
-        "forwarded"
+        "forwarded",
+        "attempts"
       ],
       "properties": {
         "runId": { "type": ["string", "null"] },
@@ -308,6 +309,10 @@
         "inputMoved": {
           "type": "string",
           "description": "on a row failed by inputStability.severity 'error': the input that changed during the run"
+        },
+        "attempts": {
+          "type": ["integer", "null"],
+          "description": "the attempts a retried task took (more than one); null when it ran once"
         },
         "output": {
           "type": "string",

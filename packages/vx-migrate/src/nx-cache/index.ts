@@ -80,7 +80,7 @@ export function resolveNxCacheConfig(
   const fault = token === undefined ? null : headerValueFault(token)
   if (fault !== null)
     throw new Error(
-      `vx/nx-cache: the access token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
+      `nxCache(): the access token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
     )
   const retries = options.retries ?? 1
   return {

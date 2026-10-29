@@ -76,7 +76,7 @@ upgrade did.
 
 ## Frames
 
-Frames are JSON text, each at most 1 MiB.
+Frames are JSON text, each at most 1 MiB of UTF-8 (bytes, not characters).
 
 The relay pushes:
 
@@ -161,18 +161,18 @@ numbered frame the relay leaves unanswered a heartbeat is a dead socket.
 A refused request is let in and its socket closed with `4000 + status`,
 said first in a `{ "close", "error" }` frame:
 
-| Code   | Why                                                                       |
-| ------ | ------------------------------------------------------------------------- |
-| `4400` | a malformed request or join                                               |
-| `4401` | no token, or an invalid one                                               |
-| `4403` | a token the relay does not admit, or a host request not signed by its key |
-| `4404` | an unknown, left or removed participant (and every socket it let go)      |
-| `4406` | no version both speak; the reason names the relay's range                 |
-| `4409` | a second host                                                             |
-| `4410` | a closed session                                                          |
-| `4413` | a join over 1 MiB                                                         |
-| `4502` | the relay could not read the token issuer's keys; retry                   |
-| `4503` | the relay's host refused the session (a plan's limit)                     |
+| Code   | Why                                                                        |
+| ------ | -------------------------------------------------------------------------- |
+| `4400` | a malformed request or join                                                |
+| `4401` | no token, or an invalid one                                                |
+| `4403` | a token the relay does not accept, or a host request not signed by its key |
+| `4404` | an unknown, left or removed participant (and every socket it let go)       |
+| `4406` | no version both speak; the reason names the relay's range                  |
+| `4409` | a second host                                                              |
+| `4410` | a closed session                                                           |
+| `4413` | a join over 1 MiB                                                          |
+| `4502` | the relay could not read the token issuer's keys; retry                    |
+| `4503` | the relay's host refused the session (a plan's limit)                      |
 
 A request that is no upgrade is answered its status and `{ "error" }`.
 
@@ -184,7 +184,9 @@ tokens: their signature by the issuer's published keys
 and `nbf`, an issuer it trusts, an `aud` naming its audience, and a
 repository and workflow it allows (`403` else). Keys it cannot read
 are the issuer's outage, not the token's fault: `502`, which a client
-retries. A session is its id
+retries. Keys are read again once ten minutes old, so a key the issuer
+withdraws stops admitting tokens, and for a key the relay does not hold
+at most once a minute. A session is its id
 within its token's issuer and repository claims (`repository_id` on
 GitHub Actions, `project_id` on GitLab), so a tenant that learns another's
 session id cannot open or join it.

@@ -46,8 +46,12 @@ interface VxResult {
  * `init` is vx-migrate's run, as `vx init` hands it over; any other verb is
  * core's, behind `vx lock` as a user runs it.
  */
-async function vx(root: string, args: string[]): Promise<VxResult> {
-  const env = { ...process.env, PATH: `${FAKE_PM}:${process.env['PATH']}` }
+async function vx(
+  root: string,
+  args: string[],
+  extra: Record<string, string> = {},
+): Promise<VxResult> {
+  const env = { ...process.env, PATH: `${FAKE_PM}:${process.env['PATH']}`, ...extra }
   if (['run', 'show'].includes(args[0]!)) {
     Bun.spawnSync([process.execPath, CORE_BIN, 'lock'], {
       cwd: root,
@@ -1341,6 +1345,22 @@ describe('vx init — the generated build is not a cached no-op', () => {
         'packages/app',
         'packages/lib',
         'packages/silent',
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a coloured report names the lock once: vx lock’s own mark is not its row', async () => {
+    // `vx lock` inherits FORCE_COLOR, so its line starts with an escape and
+    // the plain `✓ vx lock` prefix match missed: the row repeated it.
+    const root = await makeScriptsWorkspace()
+    await withLockfile(root)
+    try {
+      const r = await vx(root, ['init'], { FORCE_COLOR: '1' })
+      expect(r.code).toBe(0)
+      expect(row(Bun.stripANSI(r.out), 'lock')).toEqual([
+        '3 project configs → .vx/projects.lock.json',
       ])
     } finally {
       await rm(root, { recursive: true, force: true })

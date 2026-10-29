@@ -48,13 +48,11 @@ export function oidcSettings(
 ): Omit<OidcConfig, 'idTokenUrl' | 'idTokenBearer'> {
   const o = oidc === true ? {} : oidc
   if (typeof o !== 'object' || o === null)
-    throw new Error(
-      'vx/turbo-cache: oidc must be true or { tokenUrl, revokeUrl, audience, params }',
-    )
+    throw new Error('turboCache(): oidc must be true or { tokenUrl, revokeUrl, audience, params }')
   if (!vercel && o.tokenUrl === undefined)
-    throw new Error("vx/turbo-cache: oidc needs tokenUrl for a cache that is not Vercel's")
+    throw new Error("turboCache(): oidc needs tokenUrl for a cache that is not Vercel's")
   if (vercel && team === undefined)
-    throw new Error('vx/turbo-cache: oidc on Vercel needs teamId or teamSlug (TURBO_TEAM)')
+    throw new Error('turboCache(): oidc on Vercel needs teamId or teamSlug (TURBO_TEAM)')
   const revokeUrl = o.revokeUrl ?? (vercel ? VERCEL_REVOKE_URL : undefined)
   return {
     tokenUrl: o.tokenUrl ?? VERCEL_TOKEN_URL,

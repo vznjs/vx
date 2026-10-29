@@ -36,6 +36,7 @@ import { killTree } from '../src/exec/kill-tree.js'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
 import * as violations from '../src/exec/sandbox-violations.js'
 import { taskRoot } from './helpers/sandbox-fixture.js'
+import { skipAsRoot } from './helpers/nonroot-gate.js'
 
 const available = await sandboxAvailable('sandbox-runtime tests')
 
@@ -89,6 +90,22 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     config: resolveSandboxConfig({}, dir),
     ...extra,
   })
+
+  // The task's temp directory is removed once it exits, and a task may
+  // leave it unremovable: a read-only subdirectory (a Go module cache, a
+  // `chmod -R a-w` of a fixture) threw EACCES out of the release, and the
+  // task that had passed failed as a worker fault (dte, 2026-10-29).
+  it.skipIf(skipAsRoot('a read-only directory in the task temp dir'))(
+    'a read-only directory a task leaves in its temp dir fails nothing, and goes',
+    async () => {
+      const r = await runSandboxed(
+        args(
+          'mkdir "$TMPDIR/ro" && touch "$TMPDIR/ro/f" && chmod 500 "$TMPDIR/ro" && echo "$TMPDIR"',
+        ),
+      )
+      expect([r.exitCode, existsSync(r.stdout.trim())]).toEqual([0, false])
+    },
+  )
 
   it('appends forwarded arguments, each shell-quoted', async () => {
     const r = await runSandboxed(args("printf '%s|'", { forwardArgs: ['a b', "c'd"] }))
@@ -325,12 +342,17 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       env,
     })
     try {
+      // socat runs behind vx's env-cutting wrapper (#4821), which `exec`s
+      // the socat vx found, by path.
+      const socat = /(\/[^\s'"]*socat[^\s'"]*)'*"* TCP-LISTEN/.exec(w.wrapped)?.[1] ?? ''
       expect([
         w.wrapped
           .replace(/^SOCAT_DEFAULT_LISTEN_IP=4 /, '')
           .startsWith(`exec ${Bun.which('bwrap')} `),
-        w.wrapped.includes(`${Bun.which('socat')} TCP-LISTEN`),
-      ]).toEqual([true, true])
+        socat.startsWith(bin),
+        socat === Bun.which('socat') ||
+          readFileSync(socat, 'utf8').includes(` ${Bun.which('socat')} "$@"`),
+      ]).toEqual([true, false, true])
     } finally {
       releaseBridges(w.tag)
     }

@@ -18,6 +18,7 @@
 // and edges only out of the cycle.
 import type { GeneratedTask } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
+import type { TrackedKinds } from '../tracked-outputs.js'
 import { emptyNxInputs, expandNxInputs, type NxInputs } from './nx-inputs.js'
 import { nxProjectOutputs } from './nx-outputs.js'
 import { matchNxProjects } from './nx-deps.js'
@@ -72,6 +73,7 @@ export function planNxUpstream(
   dependencies: unknown,
   workspaceNamed: Readonly<Record<string, unknown[]>> | null,
   metaByNode: ReadonlyMap<string, PackageMeta>,
+  tracked?: (rel: string) => TrackedKinds,
 ): NxUpstream {
   const isProject = (n: string): boolean => typeof nodes[n]?.data?.root === 'string'
   const projectTags = Object.entries(nodes).map(([name, n]) => ({
@@ -221,6 +223,7 @@ export function planNxUpstream(
       rel,
       name: nm,
       outputs: nxProjectOutputs(nodes[node]?.data?.targets, rel || '.', nm),
+      ...(tracked === undefined ? {} : { tracked }),
     }
     expandNxInputs([name], namedOf(node), at, into, todos)
   }

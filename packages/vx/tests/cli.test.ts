@@ -1735,6 +1735,18 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--cache-dir=-weird']).cacheDir).toBe('-weird')
   })
 
+  it('--branch rejects a flag-shaped value in the space form', () => {
+    // `--branch $EMPTY --dry`: `--dry` became the branch name and the
+    // "dry" run executed every task. No git branch starts with `-`.
+    const r = parseRunArgs(['build', '--branch', '--dry'])
+    expect(r.error).toBe(
+      '--branch requires a value (got flag --dry; a value that starts with - needs --branch=--dry)',
+    )
+    expect(r.dry).toBeUndefined()
+    expect(parseRunArgs(['build', '--branch', 'feat/x']).settings['run.branch']).toBe('feat/x')
+    expect(parseRunArgs(['build', '--branch=-odd']).settings['run.branch']).toBe('-odd')
+  })
+
   it('--exclude-dependencies= (empty value) is rejected, not read as "exclude nothing"', () => {
     const r = parseRunArgs(['build', '--exclude-dependencies='])
     expect(r.error).toMatch(/--exclude-dependencies= needs a value/)
@@ -2012,6 +2024,15 @@ describe('parseRunArgs', () => {
     for (const flag of ['--format', '--json'])
       expect(parseRunArgs(['build', flag, 'json']).error).toBe(
         `unknown flag: ${flag} (the run as JSON is \`vx last --format json\` after it; the plan is --dry=json)`,
+      )
+  })
+
+  // `vx watch build --format json` was still told "did you mean --force?":
+  // watch refuses --dry, so the run's branch above never matched it.
+  it('--format and --json on a watch name where its JSON is, never --force', () => {
+    for (const flag of ['--format', '--json'])
+      expect(parseRunArgs(['build', flag, 'json'], 'watch').error).toBe(
+        `unknown flag: ${flag} (vx watch prints no JSON; each cycle's run is \`vx last --format json\` after it)`,
       )
   })
 
@@ -2312,6 +2333,23 @@ describe('--continue parsing', () => {
         `--continue takes its mode with '=': --continue=${mode}`,
       )
     }
+  })
+})
+
+describe('--dry parsing', () => {
+  it('a format written with a space is refused with the = form, not read as a task', () => {
+    // `vx run build --dry json` ran with `json` as a second task name and
+    // failed with "no projects declare task(s): json" and a hint to re-lock.
+    for (const fmt of ['pretty', 'json'] as const) {
+      expect(parseRunArgs(['build', '--dry', fmt]).error).toBe(
+        `--dry takes its format with '=': --dry=${fmt}`,
+      )
+    }
+    // A task name after a bare --dry is still a task name.
+    const ok = parseRunArgs(['build', '--dry', 'test'])
+    expect(ok.error).toBeUndefined()
+    expect(ok.dry).toBe('pretty')
+    expect(ok.tasks).toEqual(['build', 'test'])
   })
 })
 

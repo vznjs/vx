@@ -100,9 +100,7 @@ describe('reading verbs spawn no git', () => {
   it(
     'a verb that opens the store still finds it: `vx cache clean --dry` asks for the repo id',
     async () => {
-      expect(await gitCalls(['cache', 'clean', '--dry'])).toEqual([
-        'rev-list --max-parents=0 HEAD',
-      ])
+      expect(await gitCalls(['cache', 'clean', '--dry'])).toEqual(['rev-list --max-parents=0 HEAD'])
     },
     TIMEOUT,
   )

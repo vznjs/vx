@@ -26,6 +26,9 @@ it('a timeout that is not a positive number is refused', () => {
   expect(said({ timeoutMs: Number.NaN })).toBe(
     'otel() option "timeoutMs" must be a positive number of ms, got NaN',
   )
+  expect(said({ timeoutMs: Number.POSITIVE_INFINITY })).toBe(
+    'otel() option "timeoutMs" must be a positive number of ms, got Infinity',
+  )
 })
 
 it('a compression it does not send is refused', () => {

@@ -450,18 +450,19 @@ const OUTPUT_NEVER = ['.git/**', '.vx/**', 'vx.lock.json']
 
 /**
  * Whether vx may write or delete at `real`, a path a link on the way
- * resolved: under `realBase` and in no `.git` there, in any case (a
+ * resolved: under `realBase` and not in its `.git`, in any case (a
  * case-insensitive disk reads `.GIT` as `.git`). Names are held to
  * `OUTPUT_NEVER` lexically; this holds where a link lands
- * (vercel/turborepo#14808).
+ * (vercel/turborepo#14808). Only the base's own: a deeper `.git` (a
+ * submodule under `gen/**`, a build's `dist/.git`) is an output an entry
+ * may name, and refused only once it existed on disk, a restore failed by
+ * what the last run left.
  */
 export function writableUnder(real: string, realBase: string): boolean {
   if (real === realBase) return true
   if (!real.startsWith(realBase + path.sep)) return false
-  return !real
-    .slice(realBase.length + 1)
-    .split(path.sep)
-    .some((part) => part.toLowerCase() === '.git')
+  const top = real.slice(realBase.length + 1).split(path.sep, 1)[0]!
+  return top.toLowerCase() !== '.git'
 }
 
 /**

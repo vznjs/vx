@@ -24,6 +24,7 @@ import {
   checkIgnoreSync,
   executablePath,
   gitEnv,
+  gitFailure,
   gitSpawnRefusal,
   isInstalledPath,
   notAWorkTree,
@@ -244,6 +245,12 @@ interface IgnoredListing {
 }
 
 export class GitFilesCache extends Map<string, readonly string[]> {
+  /**
+   * vx's own directories inside the workspace (the run's cache directory),
+   * spelled under the workspace root as the run spells it: no input, even
+   * where a glob walks an ignored prefix on disk.
+   */
+  vxDirs: readonly string[] = []
   private changed = new Map<string, string[]>()
   /**
    * Per-project trusted index OIDs: absolute path → git blob OID, for
@@ -304,7 +311,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     this.foldCase ??=
       this.vars === null
         ? process.platform === 'darwin'
-        : this.vars.get('core.ignorecase')?.trim().toLowerCase() === 'true'
+        : gitBool(this.vars.get('core.ignorecase')) === true
     return this.foldCase ? abs.toLowerCase() : abs
   }
 
@@ -691,9 +698,9 @@ export function runGitLsFiles(cwd: string, env = gitEnv()): GitLsResult {
     throw gitSpawnRefusal(cwd)
   }
   if (proc.exitCode !== 0) {
-    // Exit 128 = not a git work tree; other non-zero = git failure.
-    // Either way we can't enumerate inputs reliably.
-    throw notAWorkTree(cwd, new TextDecoder().decode(proc.stderr).trim())
+    // Not a work tree, or git failing in one: either way the inputs
+    // cannot be enumerated, and the two have different fixes.
+    throw gitFailure(cwd, 'ls-files', proc.exitCode, new TextDecoder().decode(proc.stderr).trim())
   }
   const { text, undecodable } = decodeGitZ(proc.stdout)
   const parsed = parseLsFilesOutput(text.length === 0 ? [] : text.split('\0'), undecodable)
@@ -706,7 +713,9 @@ export function runGitLsFiles(cwd: string, env = gitEnv()): GitLsResult {
 /**
  * The files git tracks under `dir`, absolute: one `ls-files` of the index,
  * no worktree walk. Outside a work tree (an embedder's temp dir) nothing
- * is tracked.
+ * is tracked. A git that fails otherwise refuses: read as "nothing
+ * tracked", every committed file under `dir` was the output clean's to
+ * delete (2026-10-28).
  */
 function listTracked(dir: string): string[] {
   let proc
@@ -719,9 +728,16 @@ function listTracked(dir: string): string[] {
       stderr: 'pipe',
     })
   } catch {
-    return []
+    throw gitSpawnRefusal(dir)
   }
-  if (proc.exitCode !== 0) return []
+  if (proc.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(proc.stderr).trim()
+    if (/not a git repository/i.test(stderr)) return []
+    throw new UserError(
+      `git ls-files failed (exit ${proc.exitCode}) in ${dir}: ${stderr || 'no output'}. Run it there to see why.`,
+      'VX_E_GIT',
+    )
+  }
   const { text } = decodeGitZ(proc.stdout)
   return text
     .split('\0')
@@ -1292,8 +1308,28 @@ function gitVarList(listing: string): Map<string, string> {
   for (const line of listing.split('\n')) {
     const eq = line.indexOf('=')
     if (eq > 0) vars.set(line.slice(0, eq), line.slice(eq + 1))
+    // A bare key (`[core] fileMode` with no `=`) is listed without one, and
+    // git reads it as true.
+    else if (eq === -1 && /^[a-z]+\./i.test(line)) vars.set(line, 'true')
   }
   return vars
+}
+
+/**
+ * A boolean config value as git reads it: `true`/`yes`/`on`, `false`/
+ * `no`/`off` and the empty value, or an integer (`k`/`m`/`g` suffix
+ * allowed) that is true when nonzero. Only `false`/`no`/`off`/`0` were
+ * taken, so `trustctime =` or `fileMode = 00` kept index OIDs trusted
+ * while git judged by the weaker stat. Undefined when unset or not a
+ * boolean git takes.
+ */
+function gitBool(v: string | undefined): boolean | undefined {
+  if (v === undefined) return undefined
+  const t = v.trim().toLowerCase()
+  if (t === 'true' || t === 'yes' || t === 'on') return true
+  if (t === 'false' || t === 'no' || t === 'off' || t === '') return false
+  const n = /^([-+]?\d+)[kmg]?$/.exec(t)
+  return n === null ? undefined : Number(n[1]) !== 0
 }
 
 /**
@@ -1303,8 +1339,7 @@ function gitVarList(listing: string): Map<string, string> {
  * says nothing about the worktree.
  */
 function fileModeIgnored(gitVars: string): boolean {
-  const v = gitVarList(gitVars).get('core.filemode')?.trim().toLowerCase()
-  return v === 'false' || v === 'no' || v === 'off' || v === '0'
+  return gitBool(gitVarList(gitVars).get('core.filemode')) === false
 }
 
 /**
@@ -1341,21 +1376,14 @@ function restampModes(trusted: Map<string, string>, workspaceRoot: string): void
  */
 export function gitStatWeakened(gitVars: string): boolean {
   const vars = gitVarList(gitVars)
-  const trustctime = vars.get('core.trustctime')?.trim().toLowerCase()
   const checkStat = vars.get('core.checkstat')?.trim().toLowerCase()
-  return (
-    trustctime === 'false' ||
-    trustctime === 'no' ||
-    trustctime === 'off' ||
-    trustctime === '0' ||
-    checkStat === 'minimal'
-  )
+  return gitBool(vars.get('core.trustctime')) === false || checkStat === 'minimal'
 }
 
 /** `true` when git may rewrite bytes for EVERY auto-detected text file. */
 export function autocrlfConverts(gitVars: string): boolean {
-  const v = gitVarList(gitVars).get('core.autocrlf')?.trim().toLowerCase()
-  return v === 'true' || v === 'input'
+  const v = gitVarList(gitVars).get('core.autocrlf')
+  return v?.trim().toLowerCase() === 'input' || gitBool(v) === true
 }
 
 /**
@@ -1509,6 +1537,8 @@ export interface GitEnumeration {
   scopes: readonly string[]
   /** Workspace-relative path → index OID, for files whose worktree state matched the index. */
   trusted: Map<string, string>
+  /** Tracked paths git does not look at on disk (assume-unchanged, skip-worktree), workspace-relative. */
+  flagged: readonly string[]
   /** Whether the worktree had uncommitted changes; null when `git status` failed. */
   dirty: boolean | null
   /** `git var -l`'s listing (merged config, then git's variables); null when it failed. */
@@ -1865,13 +1895,8 @@ export async function startGitEnumeration(
   if (ls === null) {
     throw gitSpawnRefusal(workspaceRoot)
   }
-  if (parsedLs === undefined) {
-    const stderr = ls.stderr.trim()
-    throw new UserError(
-      `vx requires git: ${workspaceRoot} is not inside a git work tree. ` +
-        `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
-    )
-  }
+  if (parsedLs === undefined)
+    throw gitFailure(workspaceRoot, 'ls-files', ls.exitCode, ls.stderr.trim())
   const { files: tracked, oids, flagged, gitlinks, undecodable } = parsedLs
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
   // the `--show-prefix`) so the dirty set is keyed identically to the trusted
@@ -1950,6 +1975,7 @@ export async function startGitEnumeration(
     tracked: gitlinks.size === 0 ? tracked : tracked.concat([...gitlinks]),
     scopes: pathspecs,
     trusted,
+    flagged: [...flagged],
     dirty: worktreeDirty,
     vars: vars !== null && vars.exitCode === 0 ? vars.stdout : null,
     changed: dirty === null ? null : [...dirty, ...untracked],

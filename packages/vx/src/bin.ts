@@ -108,8 +108,7 @@ async function main(): Promise<void> {
       // the verb's write, which the reader cannot act on either.
       say(`vx: ${err.message} — ${fsRefusalHint(err)}\n`)
     } else {
-      const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
-      say(`vx: ${message}\n`)
+      say(`vx: ${withCauses(err)}\n`)
     }
     // A verb asked for JSON answers JSON on a refusal too: an agent reading
     // stdout got nothing to parse, and only prose on stderr to branch on.
@@ -145,6 +144,26 @@ async function exitOnceFlushed(): Promise<void> {
   }
   process.stdout.end(ended)
   process.stderr.end(ended)
+}
+
+/**
+ * An error's stack, then each `cause` under it: a config or plugin that
+ * wraps a failure (`new Error(msg, { cause })`) put the reason there, and
+ * the stack alone printed only the wrapper. Bounded, and a cause seen
+ * before ends the chain.
+ */
+function withCauses(err: unknown): string {
+  const text = (e: unknown): string =>
+    e instanceof Error ? (e.stack ?? `${e.name}: ${e.message}`) : String(e)
+  let out = text(err)
+  const seen = new Set<unknown>([err])
+  let at = err instanceof Error ? err.cause : undefined
+  for (let depth = 0; at !== undefined && at !== null && !seen.has(at) && depth < 8; depth++) {
+    seen.add(at)
+    out += `\nCaused by: ${at instanceof Error ? text(at) : Bun.inspect(at)}`
+    at = at instanceof Error ? at.cause : undefined
+  }
+  return out
 }
 
 // The loop drained while the verb was still pending: something it awaits

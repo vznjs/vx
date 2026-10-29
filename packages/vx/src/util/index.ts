@@ -7,7 +7,6 @@ export {
   errorDocument,
   fsRefusalHint,
   isDiskFull,
-  configThrow,
   isFsRefusal,
   isTmpdirRefusal,
   TMPDIR_HINT,
@@ -20,6 +19,7 @@ export {
   gitSpawnRefusal,
   isExecutableMissing,
   isOutOfFds,
+  gitFailure,
   notAWorkTree,
   OUT_OF_FDS_HINT,
   thrownMessage,
@@ -51,7 +51,7 @@ export {
   stageTimes,
   type StageTime,
 } from './timing.js'
-export { clampInt, formatElapsed, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
+export { clampInt, formatElapsed, isMeasure, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export {
   asTrees,
   BUN_GLOB_WILDCARDS,
@@ -109,7 +109,7 @@ export { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from './bun-version.
 export { executablePath, shellArgv, taskShell } from './which.js'
 export { procfsIsOwn } from './procfs.js'
 export { hangupIgnored } from './hangup.js'
-export { ESSENTIAL_ENV } from './essential-env.js'
+export { ESSENTIAL_ENV, withoutWorkspaceBins } from './essential-env.js'
 export { gitEnv, helperEnv, hideEnvFromTasks } from './hide-env.js'
 export {
   checkIgnore,
@@ -119,10 +119,11 @@ export {
   wholeIgnored,
 } from './git-ignored.js'
 export { realPath, realpathOf } from './real-path.js'
+export { refuseSymlink, writeNoFollow } from './write-file.js'
 export {
   heldSecrets,
   maskedCommand,
-  maskedEmitter,
+  maskedStreams,
   maskedLine,
   MASKED,
   secretMask,
@@ -139,3 +140,10 @@ export {
   type SecretUnavailableReason,
 } from './secrets.js'
 export { terminalOf, type SecretTerminal } from './hidden-prompt.js'
+export {
+  DependencySpecError,
+  compileTaskPattern,
+  isTaskPattern,
+  parseDependencySpec,
+  type DependencySpec,
+} from './dependency-spec.js'

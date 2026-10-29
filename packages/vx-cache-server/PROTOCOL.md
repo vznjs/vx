@@ -59,14 +59,15 @@ alone decides what it reads and where it writes, by the server's
   (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, that exact form)
   its base branch (`refs/heads/<base>`), which its code is about to
   become, else its `ref`; on GitLab its `ref_path`.
-- A `pull_request_target` run writes nothing (a write is `403`): it
-  runs a fork's code on the base branch's `ref`. Nor does a GitLab `merge_request_event` pipeline unless its
+- A `pull_request_target`, `issue_comment` or `workflow_run` run writes
+  nothing (a write is `403`): its `ref` is the base while it may run a
+  pull request's code. Nor does a GitLab `merge_request_event` pipeline unless its
   `source_project_path` (GitLab 19.5+) names its own project: a fork's
   runs in the parent project with the fork's branch as its `ref_path`.
 
 A bad token is `401`. A server with `ALLOW` empty does not start; a
 Worker, which cannot refuse to, refuses every request: `401`,
-`the server admits no CI: set ALLOW`. A server that
+`ALLOW is empty: set it to the CI workflows this server serves`. A server that
 cannot fetch the issuer's keys answers `502`: the token is not refused,
 so a client keeps the remote for its next request.
 

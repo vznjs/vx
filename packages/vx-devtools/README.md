@@ -74,8 +74,8 @@ export function oidcTokenAuth(
 - With `oidcAuth`, every request names its repository: `vx-issuer` and `vx-repository`,
   the `hashPart`s of the issuer's URL (no trailing slash) and of its
   `org/name` lowercased; one missing or not a hash is `400`.
-- The token's repository is its issuer and its name, `org/name`
-  lowercased: `repository` (GitHub) or `project_path` (GitLab), what a
+- The token's repository is its issuer (a trailing slash, in `ALLOW` or
+  the token, is the same issuer) and its name, `org/name` lowercased: `repository` (GitHub) or `project_path` (GitLab), what a
   checkout's origin names (2026-10-25). One `ALLOW` does not name is
   `403`, and so is one other than the request names.
 - The token's workflow (`job_workflow_ref` on GitHub, `ci_config_ref_uri`
@@ -88,6 +88,7 @@ export function oidcTokenAuth(
   its merge ref, `refs/pull/<n>/merge`, never its `head_ref`, which a fork
   names; a `merge_group` run its base branch for a
   `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>` ref. A
-  `pull_request_target` run writes nothing: it runs a fork's code on the
-  base branch's `ref`. Nor does a GitLab merge request pipeline unless `source_project_path` (GitLab
+  `pull_request_target`, `issue_comment` or `workflow_run` run writes
+  nothing: its `ref` is the base while it may run a pull request's code.
+  Nor does a GitLab merge request pipeline unless `source_project_path` (GitLab
   19.5+) names its own project: a fork's runs in the parent project.

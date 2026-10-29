@@ -9,7 +9,7 @@ import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { npm } from '../src/index.js'
-import { importerDigests, parseLockfile } from '../src/npm.js'
+import { importerDigests, importerLinks, parseLockfile } from '../src/npm.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -158,6 +158,26 @@ describe('workspace digests (npm)', () => {
 
 // What moves a digest, one input at a time (item 798's rows for bun.lock):
 // an input the digest does not read is a stale hit on every run changing it.
+it('a root with no workspaces has none: a file: directory is hashed, not a project', () => {
+  // As npm 10 wrote it for `"dep": "file:./vendor/dep"` in a one-package
+  // repo. Every entry outside node_modules read as a workspace there, so
+  // vendor/dep became a project and its content left the key.
+  const lock = parseLockfile(
+    JSON.stringify({
+      name: 'r',
+      lockfileVersion: 3,
+      requires: true,
+      packages: {
+        '': { name: 'r', dependencies: { dep: 'file:./vendor/dep' } },
+        'node_modules/dep': { resolved: 'vendor/dep', link: true },
+        'vendor/dep': { version: '1.0.0' },
+      },
+    }),
+  )
+  expect(lock.fileDirs).toEqual(['vendor/dep'])
+  expect([...importerLinks(lock).keys()]).toEqual(['.'])
+})
+
 describe('every input the npm digest must read', () => {
   const doc = (packages: Record<string, unknown>) =>
     JSON.stringify({

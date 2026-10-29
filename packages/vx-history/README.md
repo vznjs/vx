@@ -29,12 +29,14 @@ export default {
 }
 ```
 
-A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a number of ms from 0 to 2^53 (`Number()` of an unset variable is NaN; a larger one summed along a chain past any number) is dropped with one warning naming its task ids; the rest still order the run. vx's own CI declares four, this one among them — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
+A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a number of ms from 0 to 2^53 (`Number()` of an unset variable is NaN; a larger one summed along a chain past any number) is dropped with one warning naming its task ids; the rest still order the run. The example is vx's own docs build, once the 29 s tail of a 99 s cold gate: ready from the second second and started last (2026-09-10).
 
 ## Timings from a history server
 
 `url` (or `VX_HISTORY_URL`), its base URL without `/v1`, names a
-[`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server).
+[`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server),
+over `https://` (`http://` only to `127.0.0.1`, `::1` or `localhost`: every
+request carries the CI token).
 On a CI job with a token (GitHub's OIDC token, which needs
 `permissions: id-token: write` to set `ACTIONS_ID_TOKEN_REQUEST_URL`
 and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, or a GitLab `id_tokens` entry
@@ -52,9 +54,11 @@ with each worker's measurements. The upload starts as the last task
 ends, beside core's own end of run, and the plugin's teardown waits at
 most 2 s more for it (core bounds a teardown at 3 s); one not done by
 then is dropped and said, with how many timings it held. A task that shared a crowded worker's
-cores is sent as long as it would have taken alone, as local history
-keeps it. A refusal is said with the server's
-words, and a CI job with no token says so once (on GitHub Actions,
+cores is sent as long as it would have taken alone, and its cores at
+most its machine's, as local history keeps them. A refusal is said with the server's
+words; a refused token (401) also names the repository and issuer the
+workspace declares and the audience it must carry, and the server is
+off for the rest of the run. A CI job with no token says so once (on GitHub Actions,
 `GITHUB_ACTIONS`, naming the permission).
 A run with no token (off CI) reads only, from a server whose
 `READ_ACCESS` is `public`, and sends nothing; a server refusing it
@@ -66,7 +70,9 @@ them; `VX_HISTORY_URL` alone, with neither declared, is said and not asked.
 `headers` are sent on every request to the server, for a proxy in
 front of it (a Cloudflare Access service token:
 `{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID, … }`); an
-unset value is left out, and `authorization` stays the CI token's.
+unset value is left out, and `authorization` stays the CI token's. A
+redirect is not followed (it would carry them on): it fails the request,
+naming where it pointed.
 
 ```ts
 export default {
@@ -84,7 +90,11 @@ Each timing is of the task as it was: its command and `env.define`
 (`taskDefinitions`). A task whose command changed reads none of its old
 timings; editing its inputs, outputs or deps keeps them. A forecast
 reads this branch's last five timings first, then the newest the server
-answered, then any branch's, then `assume`.
+answered, then any branch's, then `assume`. Of a timing the server
+answers vx keeps only what a server folds: a duration that is not a whole
+count of ms skips the timing, cores not finite from 0 or RSS not a whole
+byte count are dropped (`1e400` parses as Infinity: kept, it failed every
+later run's schedule); core's history store keeps no such number either.
 
 ## Timings between CI runners, without a server
 

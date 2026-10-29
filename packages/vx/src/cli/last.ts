@@ -47,8 +47,8 @@ import {
   type ColorSupport,
 } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { findCwdProject, rootSpelled } from './select.js'
-import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
+import { findCwdProject } from './select.js'
+import { cliCacheDir, parseCacheDirFlag, rootSpelled } from './workspace-config.js'
 
 interface LastArgs {
   runId?: string
@@ -555,13 +555,21 @@ function fmtUsage(t: {
  * their exit stands for, the sandbox's violation count, a skip's blocker.
  * Older rows carry none and read as before.
  */
-function reasonParts(t: RunSummaryRow, skippedHere: ReadonlySet<string>): string {
+function reasonParts(
+  t: RunSummaryRow,
+  skippedHere: ReadonlySet<string>,
+  inputMoved: string | undefined,
+): string {
   const parts: string[] = []
   if (t.status === 'failed') {
     if (t.notReady !== null) {
       parts.push(
         `never ready: ${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}`,
       )
+    } else if (inputMoved !== undefined) {
+      // `inputStability.severity: 'error'` forced the exit; the run keeps
+      // the input with the failure's output, not in the row.
+      parts.push(`${inputMoved === '' ? 'an input' : inputMoved} changed during the run`)
     } else if (t.timedOut === true) {
       parts.push('timed out')
     } else {
@@ -583,6 +591,9 @@ function reasonParts(t: RunSummaryRow, skippedHere: ReadonlySet<string>): string
     // Exit 0 with no blocker is a platform skip; a fail-fast skip records 1.
     parts.push(OTHER_PLATFORM)
   }
+  // The run's own row said `flaky - 2 attempts`: a pass that needed a
+  // retry is the one sign of a flaky task a replay can give.
+  if (t.attempts !== null && t.attempts > 1) parts.push(`${t.attempts} attempts`)
   if (t.remoteError !== null) parts.push(`remote \u2717 ${t.remoteError}`)
   return parts.map((p) => `  ${p}`).join('')
 }
@@ -620,6 +631,8 @@ function formatStepRows(steps: readonly RunStep[], c: ColorSupport): string[] {
 export function formatTaskRows(
   tasks: readonly RunSummaryRow[],
   c: ColorSupport = { enabled: false },
+  /** Task id → the input that moved under it, from the run's kept failures. */
+  inputMoved: ReadonlyMap<string, string> = new Map(),
 ): string[] {
   if (tasks.length === 0) return []
   const failed = tasks.filter((t) => t.status === 'failed')
@@ -657,7 +670,7 @@ export function formatTaskRows(
         paint(
           '',
           `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-            reasonParts(t, skippedHere),
+            reasonParts(t, skippedHere, inputMoved.get(`${t.project}#${t.task}`)),
           c,
           { dim: true },
         ),
@@ -792,8 +805,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         runId,
       )
       if (log === null) {
+        // The id's form is hinted only when it lacks one: a task that
+        // never ran was told how to spell a task id.
         throw new UserError(
-          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`} (a task id is project#task)`,
+          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`}${parsed.log.includes('#') ? '' : ' (a task id is project#task)'}`,
           'VX_E_NO_HISTORY',
         )
       }
@@ -927,7 +942,12 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       dim(`  ${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`) +
         `${inv.failedCount > 0 ? paint(ERROR, ` · ${inv.failedCount} failed`, c) : ''}`,
     )
-    lines.push(...formatTaskRows(detail?.tasks ?? [], c))
+    const moved = new Map<string, string>()
+    if (inv.failedCount > 0) {
+      for (const f of runFailures(cacheDir, db, inv.runId)?.tasks ?? [])
+        if (f.inputMoved !== undefined) moved.set(f.taskId, f.inputMoved)
+    }
+    lines.push(...formatTaskRows(detail?.tasks ?? [], c, moved))
     lines.push(...formatStepRows(runSteps(cacheDir, inv.runId), c))
     const warnings = runWarnings(cacheDir, inv.runId)
     if (warnings.length > 0) {

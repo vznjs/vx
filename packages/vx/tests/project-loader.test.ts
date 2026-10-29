@@ -86,13 +86,18 @@ describe('loadProjectConfig', () => {
         `Project config ${file}: an import does not parse: JSON Parse error: Expected '}'`,
       ])
     }
-    // A config's own JSON.parse keeps its stack and is not reworded.
+    // A config's own JSON.parse is its throw: named with its line, the
+    // SyntaxError kept as the cause.
     await writeFile(path.join(dir, 'vx.config.ts'), "export default JSON.parse('{')\n")
     const own = await loadProjectConfig(path.join(dir, 'vx.config.ts')).then(
       () => null,
       (e: unknown) => e as Error,
     )
-    expect(own?.name).toBe('SyntaxError')
+    expect([own?.name, (own?.cause as Error | undefined)?.name]).toEqual([
+      'UserError',
+      'SyntaxError',
+    ])
+    expect(own?.message).toStartWith(`Project config ${path.join(dir, 'vx.config.ts')} threw: `)
   })
 
   it('a throw that is not an Error names the config, first load and repeat', async () => {
@@ -119,7 +124,7 @@ describe('loadProjectConfig', () => {
       const want = ['UserError', `Project config ${file} threw ${shown}, which is not an Error`]
       expect(got).toEqual([want, want])
     }
-    // An Error keeps its own stack: not reworded.
+    // An Error is named with the line it was thrown at, its stack kept as the cause.
     const own = path.join(dir, 'own', 'vx.config.mjs')
     await mkdir(path.dirname(own))
     await writeFile(own, "throw new Error('boom')\nexport default {}\n")
@@ -127,7 +132,11 @@ describe('loadProjectConfig', () => {
       () => null,
       (e: unknown) => e as Error,
     )
-    expect([err?.name, err?.message]).toEqual(['Error', 'boom'])
+    expect([err?.name, err?.message, (err?.cause as Error | undefined)?.message]).toEqual([
+      'UserError',
+      `Project config ${own} threw: boom (at ${own}:1:11)`,
+      'boom',
+    ])
   })
 
   it('two syntax errors name the first one, not a stack', async () => {
@@ -172,18 +181,21 @@ describe('loadProjectConfig', () => {
     expect(again?.message).toContain(`Project config ${file} (in ${preset}:1:`)
   })
 
-  it("a config's own runtime throw passes through with its stack (control)", async () => {
-    // Only Bun's loader errors are rewrapped: a throw in user code already
-    // names its file in the stack, and wrapping it would lose that.
+  it("a config's own runtime throw names its file and line, its stack kept as the cause", async () => {
+    // Passed through, it printed a stack under VX_E_INTERNAL, which says
+    // to report a vx bug (2026-10-28). The line stands in for the stack.
     const file = path.join(dir, 'vx.config.mjs')
     await writeFile(file, "throw new RangeError('preset out of range')\n")
     const err = await loadProjectConfig(file).then(
       () => null,
       (e: unknown) => e as Error,
     )
-    expect(err?.name).toBe('RangeError')
-    expect(err?.message).toBe('preset out of range')
-    expect(err?.stack).toContain(path.basename(file))
+    expect([err?.name, err?.message, (err as { code?: string } | null)?.code]).toEqual([
+      'UserError',
+      `Project config ${file} threw: preset out of range (at ${file}:1:11)`,
+      'VX_E_CONFIG',
+    ])
+    expect((err?.cause as Error | undefined)?.stack).toContain(path.basename(file))
   })
 
   it('a typo at the top level is refused with the spelling meant, not loaded as an empty project', async () => {
@@ -1190,9 +1202,10 @@ export default { tasks: {} }
       () => null,
       (e: unknown) => e as Error,
     )
-    expect(err?.name).toBe('RangeError')
-    expect(err?.stack).toContain(`${file}:2:`)
-    expect(err?.stack).not.toContain('?vx-')
+    // The line it was thrown at, in the file the user wrote.
+    expect(err?.message).toBe(`Project config ${file} threw: preset out of range (at ${file}:2:13)`)
+    expect((err?.cause as Error | undefined)?.stack).toContain(`${file}:2:`)
+    expect((err?.cause as Error | undefined)?.stack).not.toContain('?vx-')
   })
 
   it("a served config's unresolvable relative import names the file without vx's query (control)", async () => {
@@ -1570,7 +1583,7 @@ describe('first loads run together (D-68)', () => {
       () => 'loaded',
       (e: Error) => e.message,
     )
-    expect(got).toBe('early in order')
+    expect(got).toStartWith(`Project config ${early} threw: early in order`)
   })
 })
 
@@ -1680,7 +1693,11 @@ describe('a config that changes the built-ins (D-74)', () => {
         ["Object.prototype.cache = {}\nthrow new Error('broken')\n" + task],
         "'cache' in {}",
       ),
-    ).toEqual({ got: 'broken', after: false, first: firstFile() })
+    ).toEqual({
+      got: `Project config ${firstFile()} threw: broken (at ${firstFile()}:2:11)`,
+      after: false,
+      first: firstFile(),
+    })
   })
 
   it('CONTROL: configs that leave the built-ins alone load', async () => {

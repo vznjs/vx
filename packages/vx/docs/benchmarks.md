@@ -212,6 +212,12 @@ workspace (build then test, copy-sized tasks), this checkout's vx
 compiled as released against Turborepo 2.11.7 (pinned in
 `private/vx-bench/package.json`), both at concurrency 4: restore
 and nothing-changed as pairs, vx then Turbo back to back, and cold once.
+Each tool runs in its own copy of the workspace: Turbo rewrites every
+output on a warm hit, so in one shared tree vx's nothing-changed run
+found them changed and restored all 100, and the case timed a restore
+(2026-10-28; the bench now fails if a vx nothing-changed run rewrites
+an output). The true nothing-changed ratio is 1.14, not the 0.93 the
+shared tree recorded.
 Other processes on the machine slow vx more than Turbo (four busy
 loops moved the nothing-changed ratio from 0.90 to 1.28; check.perf and
 two test shards beside it, from 0.97 to 1.25 on one commit), so each

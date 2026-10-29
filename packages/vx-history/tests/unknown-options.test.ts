@@ -38,6 +38,10 @@ it('a resources value that is neither false nor an object is refused', () => {
   expect(refusal(() => vxHistory({ resources: true } as never))).toBe(
     'vxHistory() option "resources" must be false or an object, got true',
   )
+  // JSON.stringify(NaN) is "null": the refusal named a value nobody wrote.
+  expect(refusal(() => vxHistory({ resources: Number.NaN } as never))).toBe(
+    'vxHistory() option "resources" must be false or an object, got NaN',
+  )
   expect(refusal(() => vxHistory({ resources: false }))).toBe('taken')
   expect(refusal(() => vxHistory({ resources: { headroom: 1.2 } }))).toBe('taken')
 })

@@ -138,6 +138,29 @@ snapshots:
       2,
     )}\n`,
   },
+  // A `!` glob in the root's workspaces matched every path, so the linked
+  // directory read as a workspace: a project, its content in no key.
+  'npm !glob': {
+    file: 'package-lock.json',
+    text: `${JSON.stringify(
+      {
+        name: 'r',
+        lockfileVersion: 3,
+        requires: true,
+        packages: {
+          '': { name: 'r', workspaces: ['packages/*', '!**/test/**'] },
+          'node_modules/dep': { resolved: 'vendor/dep', link: true },
+          'node_modules/lib': { resolved: 'packages/lib', link: true },
+          'node_modules/other': { resolved: 'packages/other', link: true },
+          'packages/lib': { version: '1.0.0', dependencies: { dep: 'file:../../vendor/dep' } },
+          'packages/other': { version: '1.0.0' },
+          'vendor/dep': { version: '1.0.0' },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  },
   // pnpm links a `link:` directory that is no importer; the lockfile
   // records only its path.
   'pnpm link:': {
@@ -199,6 +222,40 @@ snapshots:
   dep@1.0.0:
     dependencies:
       inner: link:vendor/dep
+`,
+  },
+  // Bun links a `link:` directory and records only its path, root-relative
+  // (bun 1.4.4).
+  'bun link:': {
+    file: 'bun.lock',
+    spec: 'link:../../vendor/dep',
+    text: `{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "r",
+    },
+    "packages/lib": {
+      "name": "lib",
+      "version": "1.0.0",
+      "dependencies": {
+        "dep": "link:../../vendor/dep",
+      },
+    },
+    "packages/other": {
+      "name": "other",
+      "version": "1.0.0",
+    },
+  },
+  "packages": {
+    "dep": ["dep@link:./vendor/dep", {}],
+
+    "lib": ["lib@workspace:packages/lib"],
+
+    "other": ["other@workspace:packages/other"],
+  }
+}
 `,
   },
   // Yarn berry links a `portal:` directory; its entry records no hash.
@@ -273,8 +330,10 @@ for (const row of [
   'bun',
   'npm',
   'npm install-links',
+  'npm !glob',
   'pnpm link:',
   'pnpm link: override',
+  'bun link:',
   'yarn portal:',
   'yarn link:',
   'yarn',

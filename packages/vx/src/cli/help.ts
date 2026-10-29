@@ -116,7 +116,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]',
     '  vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]',
     '  vx lock [--check] [--format pretty|json]',
-    '  vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]',
+    '  vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]',
     '  vx upgrade [TAG] [-g|--global]',
     '  vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]',
     '  vx info [--format pretty|json] [--cache-dir <path>]',
@@ -274,7 +274,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --mjs            Write .mjs files (no type import) instead of .ts.',
     '      --native         Turbo or Nx: write a vx.config.ts per package (no question).',
     '      --keep           Turbo or Nx: only .vx/workspace.ts, declaring turbo() or nx().',
-    '      --plugin <seam>  Instead: write plugins/<seam>.ts, a runnable plugin, and its',
+    '      --plugin <hook>  Instead: write plugins/<hook>.ts, a runnable plugin, and its',
     '                       test (executor, cache, telemetry, schedule, admit, commands,',
     '                       project, graph, key).',
     '',
@@ -323,6 +323,27 @@ export function seeHelp(verb: string): string {
   return ` (see \`vx ${verb} --help\`)`
 }
 
+/**
+ * The refusal for a `project#task` spec with an empty half, or undefined.
+ * An empty task wins over an empty project: `#` names no task to run in
+ * every project, so `bare(task)` would print a hint with no task in it.
+ */
+export function anchoredSpecError(
+  spec: string,
+  bare: (task: string) => string,
+): string | undefined {
+  const idx = spec.indexOf('#')
+  if (idx < 0) return undefined
+  const project = spec.slice(0, idx)
+  const task = spec.slice(idx + 1)
+  if (!task) {
+    const list = project ? `vx show ${project}` : 'vx show'
+    return `missing task name after '#' in "${spec}" (${list} lists the tasks)`
+  }
+  if (!project) return `missing project name before '#' in "${spec}" (${bare(task)})`
+  return undefined
+}
+
 /** `--format`'s value, or the one refusal every verb gives for a bad one. */
 export function formatValue(
   v: string | undefined,
@@ -360,6 +381,9 @@ export function flagHint(verb: string, arg: string): string {
   // from `--format`: a run with its cache reads turned off.
   if ((name === '--format' || name === '--json') && flags.includes('--dry'))
     return ' (the run as JSON is `vx last --format json` after it; the plan is --dry=json)'
+  // Watch takes run's flags but --dry, so the branch above missed it.
+  if ((name === '--format' || name === '--json') && verb === 'watch')
+    return " (vx watch prints no JSON; each cycle's run is `vx last --format json` after it)"
   // A bare flag handed a value (`--check=yes`) is no edit from itself.
   if (name !== arg && flags.includes(name)) return ` (did you mean ${name}?)`
   // Another verb's own flag is no typo: `vx run --poll` was told "did you

@@ -10,7 +10,8 @@ import type { TaskNode } from './task-graph.js'
  * `computeReverseDepCount` for a run with a restore tier (item 754). A
  * restore-tier task is a confirmed hit that never waits on its deps, so it
  * blocks only the exec-tier tasks that depend on it: an exec-tier task's
- * count is taken over the exec tier alone, which is exact, and a restore's
+ * count is taken over the exec tier, an edge through a restore it holds
+ * back counted too, and a restore's
  * is the sum over its direct exec-tier dependents of one plus theirs, plus
  * the weight of each restore that depends on it, so a restore that feeds
  * pending work, directly or through other restores, still goes first. A warm run's exec tier
@@ -150,7 +151,11 @@ function execThroughRestores(
  * dependents only (`calculateReverseDeps` in
  * `packages/nx/src/tasks-runner/utils.ts`, read 2026-09-24).
  */
-export function computeReverseDepCount(nodes: ReadonlyMap<string, TaskNode>): Map<string, number> {
+export function computeReverseDepCount(
+  nodes: ReadonlyMap<string, TaskNode>,
+  /** Count only these dependents (the exec tier); every one when absent. */
+  counted?: ReadonlyMap<string, unknown>,
+): Map<string, number> {
   // Exact transitive-dependent COUNTS need closure SETS (diamonds
   // double-count under naive summing). Set-of-strings closures are
   // O(N²) entries and took 8.5s on a 1090-package, 100-layer repo;
@@ -197,6 +202,10 @@ export function computeReverseDepCount(nodes: ReadonlyMap<string, TaskNode>): Ma
   // half the words of indexing by insertion order on a layered graph.
   const pos = new Int32Array(n)
   for (let t = 0; t < tail; t++) pos[topo[t]!] = t
+  const mask = new Uint32Array(words)
+  if (counted === undefined) mask.fill(0xffffffff)
+  else
+    for (let t = 0; t < tail; t++) if (counted.has(ids[topo[t]!]!)) mask[t >>> 5]! |= 1 << (t & 31)
   const closure = new Uint32Array(n * words)
   const counts = new Map<string, number>()
   for (let t = tail - 1; t >= 0; t--) {
@@ -210,7 +219,7 @@ export function computeReverseDepCount(nodes: ReadonlyMap<string, TaskNode>): Ma
     }
     let count = 0
     for (let w = t >>> 5; w < words; w++) {
-      let v = closure[base + w]!
+      let v = closure[base + w]! & mask[w]!
       v = v - ((v >>> 1) & 0x55555555)
       v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
       count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24

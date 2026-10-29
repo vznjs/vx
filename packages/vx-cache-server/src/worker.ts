@@ -35,7 +35,7 @@ export interface Env {
   readonly AUDIENCE?: string
   /** `public`: a request with no token reads a repository ALLOW names. */
   readonly READ_ACCESS?: string
-  /** A string, or a number when `vars` names one. */
+  /** A string, or a number as wrangler.jsonc may write it. */
   readonly MAX_CHECK_HASHES?: string | number
   readonly MAX_UPLOAD_BYTES?: string | number
 }
@@ -57,11 +57,16 @@ export function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Con
       const fixed = new FixedLengthStream(size)
       const piped = body.pipeTo(fixed.writable)
       const [stored, read] = await Promise.allSettled([bucket.put(name, fixed.readable), piped])
-      // A body of another length fails the pipe; R2 failing alone is the
-      // bucket's fault (a 502), never the client's 400.
+      // A body of another length fails the pipe and R2's read of it with
+      // one error. R2 failing of its own is the bucket's fault (a 502),
+      // never the client's 400, though its stream's cancel fails the pipe.
+      if (
+        stored.status === 'rejected' &&
+        (read.status === 'fulfilled' || stored.reason !== read.reason)
+      )
+        throw stored.reason
       if (read.status === 'rejected')
         throw new Refusal(400, `the body is not ${size} bytes: ${String(read.reason)}`)
-      if (stored.status === 'rejected') throw stored.reason
       // R2 takes a name only once it holds none: a copy here is of bytes
       // R2 expired, a corrupt one too, and outlived the new ones a year.
       await (await cache).delete(keyOf(name))
@@ -72,13 +77,21 @@ export function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Con
       if (hit?.body) return { body: hit.body, size: Number(hit.headers.get('content-length')) }
       const o = await bucket.get(name)
       if (o === null) return null
-      const [body, copy] = o.body.tee()
-      const headers = {
-        'content-length': String(o.size),
-        'cache-control': 'public, max-age=31536000, immutable',
-      }
-      ctx.waitUntil(cache.then((c) => c.put(key, new Response(copy, { headers }))))
-      return { body, size: o.size }
+      // The copy is R2 read again, never a tee of the client's body: a tee
+      // on Workers reads at its slower branch's pace, and the cache write
+      // held a download for 19 minutes (main, 2026-10-28).
+      ctx.waitUntil(
+        (async () => {
+          const again = await bucket.get(name)
+          if (again === null) return
+          const headers = {
+            'content-length': String(again.size),
+            'cache-control': 'public, max-age=31536000, immutable',
+          }
+          await (await cache).put(key, new Response(again.body, { headers }))
+        })(),
+      )
+      return { body: o.body, size: o.size }
     },
     // R2 alone answers whether it holds an object: a check, a HEAD and a
     // PUT's skip. The data center's copy outlives R2's (expiry, a wipe), so

@@ -88,7 +88,7 @@ export function workspaceFileWritten(): void {
 }
 
 async function findWorkspaceFile(start: string): Promise<string | null> {
-  const top = await gitTop(start)
+  let top = await gitTop(start)
   const passed: string[] = []
   let found: string | null = null
   walk: for (let d = start; ; d = d.slice(0, d.lastIndexOf('/'))) {
@@ -100,7 +100,15 @@ async function findWorkspaceFile(start: string): Promise<string | null> {
         break walk
       }
     }
-    if (d === '' || d === top) break
+    if (d === '') break
+    if (d === top) {
+      // A submodule whose `.git` is a directory (added from a clone, not
+      // absorbed) is a top-level by its files: git alone knows the
+      // superproject tracks it. Asked only once the walk found nothing.
+      const above = await superproject(d)
+      if (above === null) break
+      top = await gitTop(above)
+    }
   }
   if (found === null && top !== null && top !== '/') found = await outerWorkspaceFile(top)
   // Every directory walked has the same answer: the loader asks for the root's.
@@ -143,6 +151,27 @@ async function outerWorkspaceFile(top: string): Promise<string | null> {
 }
 
 const tops = new Map<string, Promise<string | null>>()
+
+/** The working tree of the repository that tracks `top` as a submodule, or null. */
+async function superproject(top: string): Promise<string | null> {
+  const { executablePath, gitEnv } = await import('./util/index.js')
+  try {
+    const proc = Bun.spawn({
+      cmd: [executablePath('git'), 'rev-parse', '--show-superproject-working-tree'],
+      cwd: top,
+      env: gitEnv(),
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+    const dir = out.trim()
+    return exit === 0 && dir.length > 0 ? dir : null
+  } catch {
+    // No git: the files are all there is to go by.
+    return null
+  }
+}
 
 /**
  * The git top-level holding `dir`, or null outside git: the nearest `.git`

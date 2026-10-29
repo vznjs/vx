@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { WorkspaceConfig } from '../src/config.js'
 import { validateProjectConfig, validateWorkspace } from '../src/workspace/config-schema.js'
-import { parseDependencySpec } from '../src/graph/dependency-spec.js'
+import { parseDependencySpec } from '../src/util/dependency-spec.js'
 import { testPlugin } from './helpers/plugin.js'
 
 const WS = '/ws/.vx/workspace.ts'
@@ -102,6 +102,26 @@ describe('a NUL in a workspace string', () => {
     ]).toEqual([
       `${WS}: \`cache.dir\` holds a NUL, which no path can carry`,
       `${WS}: \`baseBranch\` must be a branch name like 'main'`,
+      null,
+    ])
+  })
+})
+
+// `origin/main` passed as a branch: vx asks for `origin/origin/main`,
+// found no base, and a run on main took a branch's cache scope.
+describe('a baseBranch spelled as a ref', () => {
+  it('is refused: the branch alone, as git names it after origin/', () => {
+    expect([
+      refusal({ baseBranch: 'origin/main' }),
+      refusal({ baseBranch: 'refs/heads/main' }),
+      refusal({ baseBranch: 'refs/remotes/origin/main' }),
+      refusal({ baseBranch: 'main' }),
+      refusal({ baseBranch: 'release/origin' }),
+    ]).toEqual([
+      `${WS}: \`baseBranch\` must be a branch name like 'main'`,
+      `${WS}: \`baseBranch\` must be a branch name like 'main'`,
+      `${WS}: \`baseBranch\` must be a branch name like 'main'`,
+      null,
       null,
     ])
   })
@@ -643,12 +663,25 @@ describe('glob and filter refusals the sweep found unheld (item 653)', () => {
     expect(cacheRefusal({ files: ['src/**'], workspaceFiles: ['tsconfig.json'] })).toBeNull()
   })
 
-  it('an inputs.tasks entry with an EMPTY task half is left to the syntax check', () => {
-    // `'^'` names no task, but the schema leaves it to `parseDependencySpec`,
-    // whose reason says what is wrong; "names no task in dependsOn" would
-    // send the author looking for a typo in a name that is not there.
-    expect(cacheRefusal({ files: ['src/**'], tasks: ['^'] }, { files: [] }, ['^build'])).toBeNull()
-    expect(() => parseDependencySpec('^')).toThrow('"^" with no task name')
+  // A malformed entry passed `vx lock`, and the run failed the task late,
+  // after its upstream ran, naming `dependsOn`. The parser's reason, not
+  // "names no task in dependsOn", which sends the author after a typo.
+  it('a malformed inputs.tasks entry is refused at load with the parser reason, naming inputs.tasks', () => {
+    for (const [entry, reason] of [
+      ['^', '"^" with no task name'],
+      ['!^', '"^" with no task name'],
+      ['!', 'negation with no body'],
+      ['a#', 'pkg#task requires a non-empty project AND task'],
+      ['#x', 'pkg#task requires a non-empty project AND task'],
+      ['^a#b', '"^" cannot combine with "pkg#task" — pick one'],
+    ] as const) {
+      expect(
+        cacheRefusal({ files: ['src/**'], tasks: [entry] }, { files: [] }, ['^build', 'a#x']),
+      ).toBe(`${CFG}: tasks.t: invalid inputs.tasks "${entry}": ${reason}`)
+    }
+    expect(() => parseDependencySpec('^', 'dependsOn')).toThrow(
+      'invalid dependsOn "^": "^" with no task name',
+    )
     // Control: a non-empty name dependsOn lacks is refused here.
     expect(
       cacheRefusal({ files: ['src/**'], tasks: ['^buidl'] }, { files: [] }, ['^build']),
@@ -1021,6 +1054,10 @@ describe('project tags', () => {
     ['ui*', "holds '*', which makes it a pattern"],
     ['v1...', "ends in '...', which a filter reads as a dependency walk"],
     ['v1^...', "ends in '...', which a filter reads as a dependency walk"],
+    // The walk alone left the filter no tag: its own refusal escaped,
+    // `filter "tag:..." names no tag`, naming neither config nor tag.
+    ['...', "ends in '...', which a filter reads as a dependency walk"],
+    ['^...', "ends in '...', which a filter reads as a dependency walk"],
     ['v[2]', 'ends in "[2]", which a filter reads as a git range'],
   ])('refuses %j, which a tag filter cannot name', (tag, why) => {
     expect(refusal(['ok', tag])).toBe(
@@ -1029,6 +1066,51 @@ describe('project tags', () => {
   })
   it('keeps the characters a tag filter reads literally', () => {
     expect(refusal(['scope:web', 'a.b', 'v1..', '[x', 'x]', 'a b', 'a#b', '^x', '!x'])).toBeNull()
+  })
+})
+
+describe('project name', () => {
+  const refusal = (name: unknown): string | null => {
+    try {
+      validateProjectConfig({ name, tasks: {} } as never, CFG)
+    } catch (err) {
+      return (err as Error).message
+    }
+    return null
+  }
+  // Each loaded and could not be addressed: `^ui#build` refused as `^` with
+  // `pkg#task`, `--filter '!ui'` excluded it, `tag:ui` and `ui...` read as a
+  // tag and a walk, `ui*#build` as a pattern.
+  it.each([
+    ['^ui', "starts with '^', which names dependencies' tasks"],
+    ['!ui', "starts with '!', which a filter reads as an exclusion"],
+    ['ui*', "holds '*', which makes it a pattern"],
+    ['tag:ui', "starts with 'tag:', which a filter reads as a tag selector"],
+    ['ui...', "starts or ends with '...', which a filter reads as a dependency walk"],
+    ['...ui', "starts or ends with '...', which a filter reads as a dependency walk"],
+    ['...', "starts or ends with '...', which a filter reads as a dependency walk"],
+    ['ui[2]', 'ends in "[2]", which a filter reads as a git range'],
+    ['./ui', 'reads as a directory to a filter'],
+    ['{ui}', 'reads as a directory to a filter'],
+  ])('refuses %j, which dependsOn or --filter cannot name', (name, why) => {
+    expect(refusal(name)).toBe(
+      `${CFG}: \`name\` ${JSON.stringify(name)} ${why} — dependsOn, --filter and the CLI could not name the project. Rename it.`,
+    )
+  })
+  it('keeps the names a filter reads literally', () => {
+    for (const ok of [
+      'ui',
+      '@acme/ui',
+      'ui.kit',
+      'ui..',
+      'scope:ui',
+      'u^i',
+      'u!i',
+      '[x',
+      'x]',
+      '//',
+    ])
+      expect(refusal(ok)).toBeNull()
   })
 })
 
@@ -1076,6 +1158,46 @@ describe('an extglob in a task glob', () => {
     // CONTROL: `(group)` is a Next.js route group, and a leading `!` is
     // vx's own negation, so `!(group)/**` takes one back.
     expect(taskRefusal(task({ files: ['app/(marketing)/**', 'src/{x,y}.ts'] }))).toBeNull()
+    expect(taskRefusal(task({ files: ['**', '!(group)/**'] }))).toBeNull()
+  })
+})
+
+// A bare `(a|b)` is no group to `Bun.Glob`: it reads the parens and the bar
+// literally, so `src/*.(js|ts)` keyed no file and an edit to src/a.js
+// replayed a stale hit behind only a "matched no files" warning.
+describe('a bare parenthesised group in a task glob', () => {
+  const task = (inputs: object, outputs: object = { files: ['dist/**'] }) => ({
+    exec: { command: 'x' },
+    inputs,
+    cache: { outputs },
+  })
+  const tail =
+    `" holds a bare (…|…) group, which vx's glob engine reads as literal text, never as ` +
+    'the alternatives it lists, so the cache key would miss the files it names.'
+
+  it('is refused in every task glob field, with the brace it means', () => {
+    expect(taskRefusal(task({ files: ['src/*.(js|ts)'] }))).toBe(
+      `${CFG}: tasks.t.inputs.files: "src/*.(js|ts)${tail} Write "src/*.{js,ts}" instead.`,
+    )
+    expect(taskRefusal(task({ files: ['**', '!src/(a|b).ts'] }))).toBe(
+      `${CFG}: tasks.t.inputs.files: "!src/(a|b).ts${tail} Write "!src/{a,b}.ts" instead.`,
+    )
+    expect(taskRefusal(task({ files: ['**'], workspaceFiles: ['(a|b).json'] }))).toBe(
+      `${CFG}: tasks.t.inputs.workspaceFiles: "(a|b).json${tail} Write "{a,b}.json" instead.`,
+    )
+    expect(taskRefusal(task({ files: ['**'] }, { files: ['(dist|lib)/**'] }))).toBe(
+      `${CFG}: tasks.t.cache.outputs.files: "(dist|lib)/**${tail} Write "{dist,lib}/**" instead.`,
+    )
+    expect(
+      taskRefusal(task({ files: ['**'] }, { files: ['dist/**'], workspaceFiles: ['(*.a|b)'] })),
+    ).toBe(
+      `${CFG}: tasks.t.cache.outputs.workspaceFiles: "(*.a|b)${tail} Write braces ("{a,b}") or one entry per alternative instead.`,
+    )
+  })
+
+  it('leaves parens without a bar alone', () => {
+    // CONTROL: parens are filename characters, and a route group holds no `|`.
+    expect(taskRefusal(task({ files: ['app/(marketing)/**', 'src/a (1).ts'] }))).toBeNull()
     expect(taskRefusal(task({ files: ['**', '!(group)/**'] }))).toBeNull()
   })
 })
@@ -1163,5 +1285,51 @@ describe('cache.store.embeddings', () => {
     // Control: the boolean is off, and a size is a size.
     expect(refusal({ cache: { store: { embeddings: false } } })).toBeNull()
     expect(refusal({ cache: { store: { embeddings: '0' } } })).toBeNull()
+  })
+})
+
+// Turbo sweep, vercel/turborepo#5431: `Bun.Glob` reads `**` glued to text as
+// `*`, so `src/**.ts` keyed only src/*.ts (a deeper edit replayed a stale hit)
+// and `dist/**.js` saved only dist/*.js.
+describe('a ** glued to text in a task glob', () => {
+  const task = (inputs: object, outputs: object = { files: ['dist/**'] }) => ({
+    exec: { command: 'x' },
+    inputs,
+    cache: { outputs },
+  })
+  const glued = (field: string, g: string, deep: string, one: string) =>
+    `${CFG}: tasks.t.${field}: "${g}" glues ** to other text in one path segment, which ` +
+    `vx's glob engine reads as one *, a single directory level. Write "${deep}" for every ` +
+    `depth, or "${one}" for one level.`
+
+  it('is refused in every task glob field, naming both readings', () => {
+    expect(taskRefusal(task({ files: ['src/**.ts'] }))).toBe(
+      glued('inputs.files', 'src/**.ts', 'src/**/*.ts', 'src/*.ts'),
+    )
+    expect(taskRefusal(task({ files: ['src/a**'] }))).toBe(
+      glued('inputs.files', 'src/a**', 'src/a*/**', 'src/a*'),
+    )
+    expect(taskRefusal(task({ files: ['**x/y'] }))).toBe(
+      glued('inputs.files', '**x/y', '**/*x/y', '*x/y'),
+    )
+    expect(taskRefusal(task({ files: ['src/**', '!src/**.test.ts'] }))).toBe(
+      glued('inputs.files', '!src/**.test.ts', '!src/**/*.test.ts', '!src/*.test.ts'),
+    )
+    expect(taskRefusal(task({ files: ['**'], workspaceFiles: ['{**.json,x}'] }))).toBe(
+      glued('inputs.workspaceFiles', '{**.json,x}', '{**/*.json,x}', '{*.json,x}'),
+    )
+    expect(taskRefusal(task({ files: ['**'] }, { files: ['dist/**.js'] }))).toBe(
+      glued('cache.outputs.files', 'dist/**.js', 'dist/**/*.js', 'dist/*.js'),
+    )
+    expect(
+      taskRefusal(task({ files: ['**'] }, { files: ['dist/**'], workspaceFiles: ['out/**.map'] })),
+    ).toBe(glued('cache.outputs.workspaceFiles', 'out/**.map', 'out/**/*.map', 'out/*.map'))
+  })
+
+  it('leaves a whole-segment ** alone', () => {
+    // CONTROL: `**` alone in its segment, or a brace arm, is the globstar.
+    expect(
+      taskRefusal(task({ files: ['**', 'src/**/*.ts', '{src,lib}/**', '{**,x}/a'] })),
+    ).toBeNull()
   })
 })

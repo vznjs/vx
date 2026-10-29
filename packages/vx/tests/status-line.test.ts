@@ -675,6 +675,30 @@ describe('defaultLogger status line integration', () => {
       'vx: web#dev exited with code 2\n',
     ])
   })
+
+  it('a kept server line that returns to column 1 keeps its id prefix', () => {
+    // A dev server redraws its line with `\x1b[2K\x1b[1G` or `\r`; written
+    // after the prefix, the terminal erased or overwrote the id.
+    const s = pipe()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
+    log.runStart?.({ total: 1, concurrency: 1 })
+    const dev = mkNode('web#dev', { requested: true, persistent: true })
+    log.taskStart?.(dev)
+    log.taskStdout(dev, 'ready\n')
+    log.taskComplete(dev, mkOutcome(dev, 'success'))
+    log.runEnd?.()
+    const before = s.chunks.length
+    log.taskStdout(dev, '\x1b[2K\x1b[1Gbuilt in 30ms\n')
+    log.taskStdout(dev, '10%\r100%\n')
+    log.taskStdout(dev, '\x1b[32mok\r\x1b[1mdone\x1b[0m\n')
+    log.taskStdout(dev, 'crlf\r\n')
+    expect(s.chunks.slice(before)).toEqual([
+      'web#dev │ built in 30ms\n',
+      'web#dev │ 100%\n',
+      'web#dev │ \x1b[32m\x1b[1mdone\x1b[0m\n',
+      'web#dev │ crlf\n',
+    ])
+  })
 })
 
 describe('formatStatusRegion', () => {

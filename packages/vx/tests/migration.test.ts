@@ -18,7 +18,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import {
   applyMigration,
   foldScriptHooks,
+  isStarterConfig,
   quoteTsLiteral,
+  starterProject,
   type ApplyMigrationArgs,
   type GeneratedTask,
   type MigrationPlan,
@@ -409,6 +411,15 @@ describe('a written config passes the repo’s own checks', () => {
     expect(stdout).toContain('  files     cjs/vx.config.mts\n            esm/vx.config.ts\n')
   })
 
+  it('a package.json read from disk opens with a byte-order mark: its type still counts', async () => {
+    const { packageJson: _, ...esm } = pkg('esm', {})
+    writeFileSync(path.join(esm.dir, 'package.json'), '﻿{"name":"esm","type":"module"}')
+    expect(await apply(plan([['esm', []]]), { metas: [esm] })).toBe(0)
+    expect(
+      ['esm/vx.config.ts', 'esm/vx.config.mts'].map((f) => existsSync(path.join(root, f))),
+    ).toEqual([true, false])
+  })
+
   // medusa: the mapping takes the config back as `!vx.config.ts`, and a
   // `*` output then covered the `.mts` written: `vx lock` refused 80 of
   // 84 configs (Growth, 2026-10-14).
@@ -533,5 +544,26 @@ describe('foldScriptHooks runs the hooks as npm does', () => {
 
   it('CONTROL: a script with no hooks is its body, verbatim', () => {
     expect(foldScriptHooks(undefined, 'tsc -b && echo x', undefined)).toBe('tsc -b && echo x')
+  })
+})
+
+describe('isStarterConfig', () => {
+  it("is the starter of the file's own format only", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-starter-'))
+    try {
+      const at = (name: string, text: string): boolean => {
+        writeFileSync(path.join(dir, name), text)
+        return isStarterConfig(path.join(dir, name))
+      }
+      expect([
+        at('vx.config.ts', starterProject('ts')),
+        at('vx.config.mjs', starterProject('mjs')),
+        // A user's own config that happens to read as the other starter.
+        at('vx.config.ts', starterProject('mjs')),
+        at('vx.config.mjs', starterProject('ts')),
+      ]).toEqual([true, true, false, false])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

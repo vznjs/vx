@@ -104,7 +104,7 @@ describe('reapi(): the connection it resolves', () => {
   })
 
   it.skipIf(!CHUNKING_SUPPORTED)(
-    'the endpoint option wins over VX_REAPI_ENDPOINT; VX_REAPI_INSTANCE names the instance',
+    'the env the plugin once fell back to names nothing: VX_REAPI_INSTANCE is not the instance',
     async () => {
       await withEnv(
         { VX_REAPI_ENDPOINT: 'grpc://127.0.0.1:1', VX_REAPI_INSTANCE: 'from-env' },
@@ -115,7 +115,7 @@ describe('reapi(): the connection it resolves', () => {
           const p = reapi({ endpoint, execute: true, callTimeoutMs: 2000 })
           expect(await p.executor?.(ctx(warns))).toBeUndefined()
           await p.teardown?.()
-          expect(instances.slice(before)).toEqual(['from-env', 'from-env'])
+          expect(instances.slice(before)).toEqual(['', ''])
         },
       )
     },
@@ -139,9 +139,9 @@ describe('reapi(): the connection it resolves', () => {
           await p.teardown?.()
           return instances.slice(before)
         })
-      expect(await sent({ VX_REAPI_INSTANCE: 'from-env\n' })).toEqual(['from-env', 'from-env'])
+      expect(await sent({}, 'opt\n')).toEqual(['opt', 'opt'])
       expect(await sent({}, ' opt\t')).toEqual(['opt', 'opt'])
-      expect(await sent({ VX_REAPI_INSTANCE: ' \n' })).toEqual(['', ''])
+      expect(await sent({}, ' \n')).toEqual(['', ''])
     },
     30_000,
   )
@@ -212,7 +212,7 @@ describe('reapi(): execute off', () => {
           (err: Error) => err.message,
         )
       expect(refusal).toBe(
-        'vx-reapi: `reapi({ tlsCertificate })` names /nonexistent/vx-reapi-ca.pem, which cannot be read (ENOENT)',
+        '`reapi({ tlsCertificate })` names /nonexistent/vx-reapi-ca.pem, which cannot be read (ENOENT)',
       )
       await on.teardown?.()
     })

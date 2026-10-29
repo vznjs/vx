@@ -185,6 +185,39 @@ it('collects what each readable remote lends, by plugin, and the first end', asy
   expect(said).toEqual(["lend of pd's access failed: down"])
 })
 
+// `lend` is a plugin's: a synchronous throw skipped the `.catch` and
+// rejected the whole answer, and a `null` or a numeric token met `.token`
+// as a TypeError, so no remote's access reached the workers.
+it('a lend that throws at once, or answers no token, lends nothing and is said', async () => {
+  const said: string[] = []
+  const remote = (lend: unknown, plugin: string) => ({
+    remote: { ...memoryRemote().layer, lend } as RemoteCacheLayer,
+    plugin,
+    read: true,
+    write: true,
+    onError: (e: Error) => said.push(e.message),
+  })
+  const facts = await cacheFacts(
+    [
+      remote(() => {
+        throw new Error('no session')
+      }, 'pa'),
+      remote(async () => null, 'pb'),
+      remote(async () => ({ token: 5 }), 'pc'),
+      remote(async () => ({ token: 'ok', expiresAt: 'soon' }), 'pd'),
+      remote(async () => ({ token: 'fine', expiresAt: 900 }), 'pe'),
+    ],
+    [],
+  )
+  expect(facts).toEqual({ refs: [], lent: { pe: 'fine' }, expiresAt: 900 })
+  expect(said).toEqual([
+    "lend of pa's access failed: no session",
+    "lend of pb's access failed: it answered null, not { token, expiresAt? }",
+    "lend of pc's access failed: it answered a token that is not a string",
+    "lend of pd's access failed: it answered an expiresAt that is not a time in ms",
+  ])
+})
+
 it('gives each cache plugin the token lent to it, read when asked', async () => {
   const local = new Cache(path.join(dir, '.vx', 'cache'), { read: true, write: true }, dir)
   caches.push(local)

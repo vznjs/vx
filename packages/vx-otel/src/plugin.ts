@@ -189,6 +189,9 @@ export function resolveOtelConfig(
   env: Record<string, string | undefined>,
   warn?: (m: string) => void,
 ): OtelSinkConfig | undefined {
+  // `OTEL_SDK_DISABLED=true` exports nothing, so nothing below may warn:
+  // read after the endpoints, a bad one it would never use was warned about.
+  if (env['OTEL_SDK_DISABLED']?.trim().toLowerCase() === 'true') return undefined
   // Each URL with the setting it came from, so a refusal can name it
   // without printing a value that may hold a credential.
   const option = (name: keyof OtelPluginOptions): [string, string] | undefined => {
@@ -249,9 +252,8 @@ export function resolveOtelConfig(
   }
   // The standard SDK opt-outs, honoured so a pipeline already configured
   // that way does not start receiving vx's telemetry because it upgraded
-  // vx. Only the logs one was read; `OTEL_SDK_DISABLED=true` and the traces
-  // and metrics `=none` were ignored and still exported (item 1056).
-  if (env['OTEL_SDK_DISABLED']?.trim().toLowerCase() === 'true') return undefined
+  // vx. Only the logs one was read; the traces and metrics `=none` were
+  // ignored and still exported (item 1056).
   const off = (name: string): boolean => env[name]?.trim().toLowerCase() === 'none'
   const tracesWanted = !off('OTEL_TRACES_EXPORTER')
   const logsWanted = opts.logs ?? !off('OTEL_LOGS_EXPORTER')

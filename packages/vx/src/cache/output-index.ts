@@ -37,6 +37,12 @@ import {
  */
 export const LINK_MODE = 0o120000
 
+/**
+ * The type bits a directory row carries beside a mode the restore applies
+ * (`MetaFile.dirModes`); an empty directory's row without one is mode 0.
+ */
+export const DIR_MODE = 0o040000
+
 /** A link row is current while a link with that target stands there; never followed. */
 function linkCurrent(abs: string, e: { size: number; mtimeMs: number }): boolean {
   if (!lstatSync(abs).isSymbolicLink()) return false

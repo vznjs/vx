@@ -45,9 +45,10 @@ never cached, so the mistake cannot reach the cache.
 ## A sandboxed task starts with nothing
 
 `sandbox: {}` reads nothing in the workspace, writes only its `TMPDIR`
-and has no network. Most tasks start with
-`sandbox: { allow: { read: ['.'] } }`. `~/.ssh` and `~/.npmrc` stay
-closed unless a grant names them.
+and has no network. Most tasks start with `sandbox: { allow: { read:
+['.'] } }`.
+
+`~/.ssh` and `~/.npmrc` stay closed unless a grant names them.
 
 | Grant          | What it opens                                                     |
 | -------------- | ----------------------------------------------------------------- |
@@ -77,7 +78,9 @@ flowchart LR
 
 vx links neither to the other, so the violation is judged against the
 grants alone. Grant `read: ['src', '.eslintrc']` and every failure is an
-input you missed. The fix line never offers `~/.ssh` or a `.env` file.
+input you missed.
+
+The fix line never offers `~/.ssh` or a `.env` file.
 
 ## What it costs
 
@@ -108,5 +111,6 @@ pie showData
 
 The 16 are suites a sandbox cannot host, Docker services and checks that
 drive the sandbox themselves. Guide: [Sandboxing
-tasks](../../docs/sandboxing/). More at
-[vznjs.github.io/vx](https://vznjs.github.io/vx/).
+tasks](../../docs/sandboxing/).
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -12,7 +12,7 @@ import { type Db, sqliteStore } from './store.js'
 const USAGE = `usage: vx-history-server [--db vx-history.sqlite] [--port 8080] [--host 0.0.0.0]
   ALLOW        who may take part, space separated, each issuer:owner/repo:workflow
                (README.md § CI tokens); only their jobs' OIDC tokens are taken
-  AUDIENCE     the aud a CI token names (default: the origin it was sent to)
+  AUDIENCE     the aud a CI token names: the URL clients reach this server at
   READ_ACCESS  public: a request with no token reads a repository ALLOW names
   TIMING_DAYS  days a task's timings outlive its last report (default 30)`
 
@@ -74,12 +74,17 @@ function main(argv: string[]): void {
     // SQLite's own message ("unable to open database file") named no path.
     fail(`--db ${values.db}: ${(err as Error).message}`)
   }
+  // Unset, the audience would be the origin a request names: its Host
+  // header, which the client picks. Workers know their own hostnames.
+  const audience = env.AUDIENCE?.trim() ?? ''
+  if (audience === '')
+    fail(`set AUDIENCE: the aud a CI token names, the URL clients reach this server at\n${USAGE}`)
   const handle = createHistoryServer({
     store: sqliteStore(db),
     authorize: oidcTokenAuth({
       allow,
       readAccess: env.READ_ACCESS,
-      ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
+      audience,
     }),
     ...(timingDays === undefined ? {} : { timingDays }),
   })

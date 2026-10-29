@@ -39,7 +39,10 @@ vulnerability), never in a public issue.
 - **Your lockfile and your repo.** vx parses a lockfile (and
   `turbo.json` or an Nx graph when migrating) into keys and refuses one
   it cannot read, naming the file. A lockfile that names another
-  install is a different key, never a code path.
+  install is a different key, never a code path. A file vx generates
+  (`vx init`, `vx lock`'s review copies, `@vzn/vx-migrate`,
+  `vx dte init`) is never written through a symlink the repo carries:
+  vx refuses it, naming where it points.
 - **Whoever can write your remote cache.** A cache key names the
   inputs, not the bytes, so a store that answers a key with bytes of its
   choosing is trusted as a writer, as it is in every action cache. Use a
@@ -165,12 +168,17 @@ A task with `exec.sandbox` runs where only what it declares exists:
   (`tests/sandbox-credential-stores.unsafe.test.ts`, `tests/sandbox-fix.test.ts`);
 - vx's own cache directory, wherever `cache.dir` puts it in the
   workspace, is a wall like `.vx/cache`: a broad grant stops at it, and a write
-  grant that would bind it is refused (L-24);
+  grant that would bind it, or that lies inside it or `.git`, is refused
+  (L-24); `~/.vx`, which holds every repository's shared store, and a
+  cache directory outside the workspace are unreadable to a task;
 - a symlinked output is cached as the link, never read through: vx packs
   outputs outside the sandbox, and packing a link as its target's bytes
   carried a file the task could not read into the cache (L-23). A link
   must be relative and stay inside the workspace, on save and again on
-  restore, where a link out of it fails the whole restore. An output
+  restore, where a link out of it fails the whole restore. Nor may it
+  reach its target through another link of the same outputs: each
+  target is checked as text, and `up -> ..` with `esc -> up/../../x`
+  each read as inside while `esc` lands outside. An output
   directory linked out of the project refuses the task by name (X-88).
   Linux judges making a link by the link, never its target
   (`tests/sandbox-output-link.unsafe.test.ts`).
@@ -194,8 +202,10 @@ nothing. `tests/sandbox-parent-env.unsafe.test.ts` prints the cost of one
   every command: on Linux vx makes itself non-dumpable (about 0.8 ms), on
   macOS it zeroes the values `ps eww` reads, every variable but the
   essentials every task gets (about 0.7 ms). It starts its helpers with `PATH`
-  alone and each `git` with only what git reads
-  (`tests/hide-env.unsafe.test.ts`, `tests/git-env.test.ts`). That hides
+  alone and each `git` with only what git reads. The sandbox's host
+  network bridge, which lives the whole run, and vx's sandbox probes get
+  the essentials only (`tests/hide-env.unsafe.test.ts`,
+  `tests/git-env.test.ts`, `tests/sandbox-helper-env.unsafe.test.ts`). That hides
   the environment only, not files.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like
   stay readable (tools need them) and fold into no key. The credential
@@ -243,7 +253,9 @@ in vx, and the tarball matches that integrity: the host that serves the
 bytes cannot make the signature, so a swapped tarball is refused before
 anything is written, and a key id vx does not pin is refused with a hint
 that the installer needs updating (2026-10-13; pnpm's installer
-checks the same). The new binary is staged in a fresh directory, never a
+checks the same). The signed version must be the one asked for, and
+`latest` below the running vx is refused, so a mirror cannot downgrade
+vx to an older signed release. The new binary is staged in a fresh directory, never a
 name another user could plant a link at. A vx a package manager
 installed is upgraded by that manager, which checks its own integrity.
 npm packages
@@ -252,3 +264,10 @@ full commit SHA; and a workflow hands an event's or a dispatcher's value
 to a script through `env`, never pasted in (a release tag is checked as a
 version first); every workflow names its token's permissions, and CI's
 is read-only. A test holds each rule.
+
+The publishing workflows build a release tag only: `release.yml` checks
+out `refs/tags/<tag>`, and `npm.yml` a dispatch's `ref` as a tag, so a
+dispatch naming a branch or a commit builds nothing. npm's trusted
+publisher takes a token only from a job of the `npm` environment, whose
+branch rule admits `main` and the release tags
+(`tests/auto-release.unsafe.test.ts`).

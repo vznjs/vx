@@ -86,7 +86,7 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
 
 // The running-tasks guide merged into the CI page (the short site).
 describe('the CI guide shows what --dry prints', () => {
-  it('its `would run:` block is formatPlanText on three local hits', () => {
+  it('its `would run:` block is formatPlanText on two local hits', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'running-tasks.mdx'), 'utf8')
     const task = (id: string, hash: string) => ({
       node: {
@@ -101,12 +101,15 @@ describe('the CI guide shows what --dry prints', () => {
     })
     const plan: RunPlan = {
       tasks: [
-        task('@acme/api#build', '8625b6031a2b3c4d'),
-        task('@acme/ui#build', '71e5d9a05e6f7a8b'),
-        task('@acme/web#build', '42e9b39d9c0d1e2f'),
+        task('@demo/ui#build', 'e04649970f18ba23'),
+        task('@demo/web#build', 'b421f74f0107bb20'),
       ],
     }
-    expect(fencedBlock(page, 'text', 'would run:')).toBe(formatPlanText(plan))
+    // The page shows vx's colours (an `ansi` block); its text is the plain plan.
+    const start = page.indexOf('```ansi\n', page.indexOf('`--dry` prints'))
+    const block = page.slice(start + '```ansi\n'.length, page.indexOf('\n```', start))
+    const plain = block.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
+    expect(plain).toBe(formatPlanText(plan).replace(/ +$/gm, '').replace(/\n+$/, ''))
   })
 })
 
@@ -371,7 +374,11 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
 
   it('its sample is the two rows of the findings it describes', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
-    const sample = fencedBlock(page, '', ' ◼\uFE0E').replace(/\n$/, '')
+    // eslint-disable-next-line no-control-regex
+    const painted = /```ansi\n( \x1b\[[^\n]*◼[\s\S]*?)\n```/.exec(page)![1]!
+    expect(painted).toContain('\x1b[')
+    // eslint-disable-next-line no-control-regex
+    const sample = painted.replace(/\x1b\[[0-9;]*m/g, '')
     expect(sample.split('\n')).toEqual([
       row('app#test', 'failed', 4210, 3, 1),
       row('api#e2e', 'success', 12840, 1, 1, 2),
@@ -469,7 +476,7 @@ describe('the watch-mode post states what watch.ts does', () => {
     expect(src).toContain('const DEBOUNCE_MS = 150')
     expect(page).toContain('about 150 ms')
     expect(src).toContain('const WATCH_PROBE_TIMEOUT_MS = 2_000')
-    expect(page).toContain('silent for\ntwo seconds')
+    expect(page.replace(/\s+/g, ' ')).toContain('silent for two seconds')
   })
   it('its always-ignored list names every ignored segment and suffix', () => {
     const list = (name: string): string[] => {
@@ -1461,7 +1468,8 @@ describe('the documented glyph set is the set the renderer prints', () => {
 describe('the what-vx-is post names every plugin hook', () => {
   it('each of PLUGIN_HOOKS is a code span in its pipeline paragraph', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'what-vx-is.md'), 'utf8')
-    const para = /In plugin terms the stages are named([\s\S]*?)\n\n/.exec(page)
+    const para =
+      /In plugin terms the stages are named([\s\S]*?)\nA plugin can fill any of them\./.exec(page)
     expect(para).not.toBeNull()
     for (const hook of PLUGIN_HOOKS) expect(para![1]!).toContain('`' + hook + '`')
   })
@@ -1547,19 +1555,10 @@ describe('a config sample imports the schema from @vzn/vx/config', () => {
   // `@vzn/vx` is core's own src/index.ts: a user's tsc over a package that
   // includes its vx.config.ts walked core's Bun-only sources and printed
   // 527 errors, where `@vzn/vx/config` checked clean (J-94).
-  // The exception: cli.md shows the starter `vx init` writes where there is
-  // no package.json, so nothing installed; only `@vzn/vx` resolves there,
-  // served by the running vx (core-alias.ts), and no tsc walks it.
-  // init.ts writes the workspace file; migration.ts holds the project starter.
-  const init = ['cli/init.ts', 'workspace/migration.ts']
-    .map((f) => readFileSync(path.resolve(import.meta.dir, '..', 'src', f), 'utf8'))
-    .join('\n')
-  const STARTER = [
-    "import { defineWorkspace } from '@vzn/vx'",
-    "import { defineProject } from '@vzn/vx'",
-  ].filter((line) => init.includes(line))
+  // `vx init` writes the same type-only form (J-94 held there too: its
+  // starter imported `@vzn/vx`). A sample indented under a list item, as
+  // the quickstart's are, is a sample too.
   it('no page, README or example imports only config.ts exports from @vzn/vx', async () => {
-    expect(STARTER).toHaveLength(2)
     const schema = new Set(Object.keys(await import('../src/config.js')))
     for (const t of ['ProjectConfig', 'WorkspaceConfig', 'TaskConfig']) schema.add(t)
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
@@ -1579,13 +1578,12 @@ describe('a config sample imports the schema from @vzn/vx/config', () => {
     let schemaImports = 0
     for (const f of files) {
       for (const m of readFileSync(f, 'utf8').matchAll(
-        /^import (?:type )?\{([^}]+)\} from '(@vzn\/vx(?:\/config)?)'/gm,
+        /^[ \t]*import (?:type )?\{([^}]+)\} from '(@vzn\/vx(?:\/config)?)'/gm,
       )) {
         const names = m[1]!.split(',').map((n) => n.trim().replace(/^type /, ''))
         if (!names.every((n) => schema.has(n))) continue
         schemaImports++
-        const starter = f.endsWith(path.join('vx', 'docs', 'cli.md')) && STARTER.includes(m[0])
-        if (m[2] === '@vzn/vx' && !starter) offenders.push(`${path.relative(repo, f)}: ${m[0]}`)
+        if (m[2] === '@vzn/vx') offenders.push(`${path.relative(repo, f)}: ${m[0].trim()}`)
       }
     }
     expect(offenders).toEqual([])

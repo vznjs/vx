@@ -25,8 +25,10 @@ $ vx info
 <small>Linux x64, cgroup v1 · vx 69617eb · 2026-10-23</small>
 
 CPUs have the same trap. A CI job with 2 cores on a 32-core host still
-reads 32. A runner that starts 32 tasks there gets 2 cores of work
-done, slower. vx shows `workers 2 — cgroup CPU quota 2 of 32 cores`.
+reads 32.
+
+A runner that starts 32 tasks there gets 2 cores of work done, slower.
+vx shows `workers 2 — cgroup CPU quota 2 of 32 cores`.
 
 ```mermaid
 flowchart LR
@@ -42,8 +44,10 @@ flowchart LR
 | v1 | `cpu.cfs_quota_us` / `cpu.cfs_period_us` | quota `-1` = none |
 
 A parent cgroup's limit binds too, so vx walks up to the root and keeps
-the tightest. It rounds up: a 1.5-core quota gets 2 workers. Memory works
-the same way. macOS has no cgroups, so the machine's numbers stand.
+the tightest. It rounds up: a 1.5-core quota gets 2 workers.
+
+Memory works the same way. macOS has no cgroups, so the machine's
+numbers stand.
 
 ## When you know better
 

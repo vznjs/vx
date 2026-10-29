@@ -418,6 +418,49 @@ it('says why for each worker whose job ended, a success too', async () => {
   }
 }, 10_000)
 
+// A job list is paged at 100 and a matrix holds 256: a job past the first
+// page that failed went unseen, and its worker held its size's max.
+it('reads every page of a run with more than 100 jobs', async () => {
+  const ids = Array.from({ length: 101 }, (_, i) => `small#${i + 1}`)
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const url = new URL(req.url)
+      if (url.pathname.endsWith('/dispatches')) return Response.json({ workflow_run_id: 7 })
+      if (url.pathname === '/repos/o/r/actions/runs/7/jobs') {
+        const page = Number(url.searchParams.get('page') ?? '1')
+        const per = Number(url.searchParams.get('per_page') ?? '30')
+        const jobs = ids.map((name) =>
+          name === 'small#101'
+            ? { name, status: 'completed', conclusion: 'failure', steps: [] }
+            : { name, status: 'in_progress', conclusion: null },
+        )
+        return Response.json({
+          total_count: jobs.length,
+          jobs: jobs.slice((page - 1) * per, page * per),
+        })
+      }
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const why: string[] = []
+    const adapter = github()
+    for (const id of ids) void adapter.spawn(spawn(id, 'small', (w) => why.push(`${id}: ${w}`)))
+    for (let i = 0; i < 40 && why.length === 0; i++) await Bun.sleep(100)
+    expect(why).toEqual(['small#101: job failure'])
+    await adapter.close?.()
+  } finally {
+    await server.stop(true)
+  }
+}, 10_000)
+
 it("dispatches on the base branch once a merged PR's branch is gone", async () => {
   // Before: a PR merged mid-run, its branch was deleted, GitHub answered
   // 422 "No ref found" and every worker of the dispatch failed (2026-10-22).

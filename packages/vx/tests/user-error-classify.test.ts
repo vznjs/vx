@@ -76,6 +76,21 @@ describe('isDiskFull and the refusal hint', () => {
     expect(fsRefusalHint(errno('EACCES'))).toBe('a path vx must write is not writable by this user')
   })
 
+  // `vx info --cache-dir=/proc` read: "EACCES: permission denied, scandir
+  // '/proc/1/task/1/fdinfo' — a path vx must write is not writable".
+  it('a refused listing or stat is a read, and is called one', () => {
+    const at = (syscall: string) => Object.assign(errno('EACCES'), { syscall })
+    expect(
+      ['scandir', 'stat', 'lstat', 'readlink', 'open'].map((s) => fsRefusalHint(at(s))),
+    ).toEqual([
+      'a path vx must read is not readable by this user',
+      'a path vx must read is not readable by this user',
+      'a path vx must read is not readable by this user',
+      'a path vx must read is not readable by this user',
+      'a path vx must write is not writable by this user',
+    ])
+  })
+
   it('a permission code is a refusal too', () => {
     for (const code of ['EACCES', 'EPERM', 'EROFS']) expect(isFsRefusal(errno(code))).toBe(true)
   })

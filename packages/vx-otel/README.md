@@ -77,7 +77,7 @@ Options override env, the `endpoint` option included over a signal's own variabl
 otel({
   endpoint: 'https://collector.example.com',
   serviceName: 'my-monorepo',
-  headers: { authorization: 'Bearer …' },
+  headers: { authorization: `Bearer ${process.env.OTLP_TOKEN}` },
   metrics: true, // default
   logs: true, // default: each executed task's output tail
   timeoutMs: 15_000, // default: per request
@@ -99,7 +99,7 @@ otel({
   span status `ERROR`;
 - a child `vx.task` span per task — `cicd.pipeline.task.name`,
   `cicd.pipeline.task.run.result` (the convention's enum: `success` for a
-  run or a hit, `failure`, `timeout`, `skip`, `cancellation`), vx's own
+  run or a hit, `failure`, `timeout` (vx's own `timeout`, or a server's readiness wait), `skip`, `cancellation`), vx's own
   status as `vx.task.status`, `vx.cache.source` (miss/local/remote, or none for a task that never ran),
   on a hit `vx.cache.restored` (`true` when it restored outputs, `false` when they were already up to date),
   `vx.task.hash`, duration, CPU ms, peak RSS, and on a skipped task its root
@@ -156,7 +156,7 @@ measured `vx.task.cpu_time` (ms) and `vx.task.peak_memory` (bytes), on a
 hit `vx.task.time_saved` (ms), `vx.task.admission_held` (ms) when an
 `admit` policy held it, `vx.task.queued` (ms) when it waited for a
 worker, `vx.task.artifact_size` (bytes), `vx.task.cache_save` and
-`vx.task.cache_fetch` (ms); a skipped task sends none. While a task runs, its process tree is sampled
+`vx.task.cache_fetch` (ms); a skipped task, or one a stop aborted, sends none. While a task runs, its process tree is sampled
 each second: `vx.task.cpu_usage` (cores busy since the last sample, 1 =
 one core) and `vx.task.memory` (resident bytes). Sampling runs only while
 metrics export; a remote task, or a task under 1 s, has no samples.

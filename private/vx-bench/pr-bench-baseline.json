@@ -2,6 +2,6 @@
   "linux-x64": {
     "cold": 1.12,
     "restore": 0.86,
-    "noop": 0.93
+    "noop": 1.14
   }
 }

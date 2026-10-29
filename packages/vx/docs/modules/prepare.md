@@ -40,6 +40,7 @@ export interface PreparedRun {
   hintProjects: ReadonlyMap<string, ProjectEntry> // a typo's measure: every project when a `pkg#task` named none loaded
   anyProjectConfig: boolean // some package has a vx.config.* at all, whatever the scope
   taskless: (name: string) => boolean // a workspace project that declares no task
+  unlockedConfig: () => string | undefined // a config the lock lacks, so the fix is `vx lock`; asked only by a refusal
   fingerprintWatch: FingerprintWatch // the claimed root files: has a task rewritten one? (fingerprint-watch.md)
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache // per-run memo of `git ls-files`, by project dir

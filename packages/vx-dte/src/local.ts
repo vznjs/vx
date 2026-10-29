@@ -48,6 +48,9 @@ export function local(options: LocalOptions = {}): DteAdapter {
         stdin: 'ignore',
         stdout: stdout ? 'pipe' : 'ignore',
         stderr: 'pipe',
+        // Its own group, which close signals whole: SIGTERM to the shell
+        // alone left the install it started writing into a removed tree.
+        detached: helper,
       }),
     )
     if (helper) {
@@ -133,9 +136,12 @@ export function local(options: LocalOptions = {}): DteAdapter {
       // still running is stopped.
       relay?.stop()
       relay = undefined
-      for (const p of helpers) p.kill('SIGTERM')
+      for (const p of helpers) group(p, 'SIGTERM')
       const grace = setTimeout(() => {
-        for (const p of procs) p.kill('SIGKILL')
+        for (const p of procs) {
+          if (helpers.has(p)) group(p, 'SIGKILL')
+          else p.kill('SIGKILL')
+        }
       }, 5_000)
       await Promise.allSettled([...pending])
       await Promise.all([...procs].map((p) => p.exited))
@@ -160,6 +166,15 @@ export function local(options: LocalOptions = {}): DteAdapter {
         ).unref()
       }
     },
+  }
+}
+
+/** Signal `p`'s process group: a helper leads its own (`detached`). */
+function group(p: Bun.Subprocess, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-p.pid, signal)
+  } catch {
+    // quiet: the group is gone
   }
 }
 

@@ -33,10 +33,13 @@ flowchart LR
 
 ## A key has eleven parts
 
-A key is an xxh3 hash, seed-chained across eleven parts. Each part goes
-in under its own label (`task:`, `config:`, `upstream:`, `plugin:`,
-`inputs:`, …), with lengths and `\0` separators so two layouts never
-collide. The parts, as [Caching](../../caching/) numbers them:
+A key is an xxh3 hash, seed-chained across eleven parts.
+
+Each part goes in under its own label (`task:`, `config:`, `upstream:`,
+`plugin:`, `inputs:`, …), with lengths and `\0` separators so two
+layouts never collide.
+
+The parts, as [Caching](../../caching/) numbers them:
 
 1. The key-derivation sentinel (`CACHE_VERSION`), so a change to how
    keys are derived is never served by an older entry.
@@ -64,18 +67,22 @@ of packages.
 
 One `git ls-files -s -v` reads every path and its blob id from the
 index. One `git status --porcelain -uall` beside it lists dirty and
-untracked files. An index id is trusted only when it matches the disk,
-so four prunes run against it:
+untracked files.
+
+An index id is trusted only when it matches the disk, so four prunes run
+against it:
 
 1. a dirty path;
 2. a `skip-worktree` or `assume-unchanged` path;
 3. a path a clean filter could rewrite;
 4. an id whose blob is not the size the index recorded for the file.
 
-A repo whose config weakens git's stat check
-(`core.trustctime=false`, `core.checkStat=minimal`) trusts no index id
-at all. Pruned files are hashed the way git would hash them. Finding
-clean filters costs one `git var -l` and a stat per attributes file.
+A repo whose config weakens git's stat check (`core.trustctime=false`,
+`core.checkStat=minimal`) trusts no index id at all. Pruned files are
+hashed the way git would hash them.
+
+Finding clean filters costs one `git var -l` and a stat per attributes
+file.
 
 ## A commit never changes a key
 
@@ -104,7 +111,8 @@ commit, everything hits.
 | `.vx/projects.lock.json` | `vx lock` itself must not re-key the world.                                |
 | Ignored files            | `src/**` skips them. Name one outright (`.env.local`) to hash it.          |
 
-A variable that changes the output goes under `inputs.env`. A shared root
-file goes under `inputs.workspaceFiles`. When a key changes,
-[`vx why`](../why-did-this-rerun/) names the part. More at
-[vznjs.github.io/vx](https://vznjs.github.io/vx/).
+A variable that changes the output goes under `inputs.env`. A shared
+root file goes under `inputs.workspaceFiles`. When a key changes, [`vx
+why`](../why-did-this-rerun/) names the part.
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

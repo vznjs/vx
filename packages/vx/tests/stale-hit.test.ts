@@ -239,8 +239,9 @@ describe('stale cache hits', () => {
     },
     TIMEOUT,
   )
-  // Every spelling git reads as false (A-33).
-  for (const off of ['false', 'no', 'off', '0']) {
+  // Every spelling git reads as false (A-33), the empty value and a zero
+  // integer included.
+  for (const off of ['false', 'no', 'off', '0', '', '00']) {
     it(
       `under core.fileMode=${off} an executable bit still re-keys the task`,
       async () => {

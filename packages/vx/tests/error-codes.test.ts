@@ -3,11 +3,12 @@
 // branches on the code instead of parsing prose. stderr and the exit code
 // stay as they were.
 import { readdirSync, readFileSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { errorCode, errorDocument, UserError, wantsJson } from '../src/util/index.js'
+import { LOCKFILE_VERSION } from '../src/workspace/index.js'
 import { docsIn } from './helpers/docs-pages.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
@@ -150,7 +151,7 @@ describe('a refusal under --format json', () => {
     const refused = (why: string): [number, string, string] => [
       1,
       `✗ vx lock  lock not written\n\n  ${why}\n`,
-      'VX_E_REFUSED',
+      'VX_E_LOCK',
     ]
     expect(said).toEqual({
       cycle: refused('dependsOn cycle: p#x -> p#y -> p#x — remove one edge of the loop'),
@@ -167,12 +168,193 @@ describe('a refusal under --format json', () => {
         expect.stringMatching(
           /^✗ vx lock  lock not written\n\n  packages\/p\/vx\.config\.mjs:1:59\n/,
         ),
-        'VX_E_REFUSED',
+        'VX_E_LOCK',
       ],
     })
     // Two vx spawns per refused graph, one after another: a loaded CI
     // runner took past bun's 5 s default.
   }, 30_000)
+
+  // An agent's next step for each is `vx lock`: one code says so, where
+  // VX_E_REFUSED named nothing to branch on (2026-10-28).
+  it('a missing, broken or stale lock is VX_E_LOCK', async () => {
+    const lockFile = path.join(root, '.vx', 'projects.lock.json')
+    Bun.spawnSync([process.execPath, REAL_BIN, 'lock'], { cwd: root, stderr: 'pipe' })
+    const kept = await Bun.file(lockFile).text()
+    // The real bin: vx-locked.ts would write the lock this test breaks.
+    const runWith = async (text: string | null): Promise<string> => {
+      if (text === null) await rm(lockFile, { force: true })
+      else await Bun.write(lockFile, text)
+      const p = Bun.spawnSync([process.execPath, REAL_BIN, 'run', 'build', '--all', '--dry=json'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(p.exitCode).toBe(1)
+      return (JSON.parse(p.stdout.toString()) as { error: { code: string } }).error.code
+    }
+    try {
+      expect({
+        none: await runWith(null),
+        notJson: await runWith('{'),
+        notObject: await runWith('[]'),
+        version: await runWith(JSON.stringify({ version: LOCKFILE_VERSION - 1, projects: {} })),
+      }).toEqual({
+        none: 'VX_E_LOCK',
+        notJson: 'VX_E_LOCK',
+        notObject: 'VX_E_LOCK',
+        version: 'VX_E_LOCK',
+      })
+    } finally {
+      await Bun.write(lockFile, kept)
+    }
+  }, 30_000)
+
+  // A config's own throw (or a plugin factory's, run as the config loads)
+  // read as a vx defect: VX_E_INTERNAL, whose fix is to file a vx bug
+  // (2026-10-28).
+  it("a config that throws is VX_E_CONFIG, naming the file and the throw's line", async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-throws-', workspaceFile: false })
+    try {
+      await Bun.write(
+        path.join(ws, '.vx/workspace.mjs'),
+        `const plugin = () => { throw new Error('plugin(): issuer must be a URL') }\nexport default { plugins: [plugin()] }\n`,
+      )
+      const r = await vx(['show', '--format', 'json'], ws)
+      const doc = JSON.parse(r.stdout) as { error: { code: string; message: string } }
+      expect([r.code, doc.error.code, r.stderr.replaceAll(ws, '<root>')]).toEqual([
+        1,
+        'VX_E_CONFIG',
+        expect.stringContaining(
+          'Workspace config <root>/.vx/workspace.mjs threw: plugin(): issuer must be a URL',
+        ),
+      ])
+      expect(r.stderr).toContain('.vx/workspace.mjs:1:')
+      expect(r.stderr).not.toContain('    at ')
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
+
+  // The verb may be the broken workspace's own: the JSON said only
+  // VX_E_UNKNOWN_COMMAND, and the line naming the load failure was cut
+  // (2026-10-28).
+  it('an unknown verb under a workspace that does not load is VX_E_CONFIG, saying why', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-verb-', workspaceFile: false })
+    try {
+      await Bun.write(path.join(ws, '.vx/workspace.mjs'), 'export default { plugins: 5 }\n')
+      const r = await vx(['boom', '--format', 'json'], ws)
+      const { code, message } = (
+        JSON.parse(r.stdout) as { error: { code: string; message: string } }
+      ).error
+      expect([r.code, code, message.replaceAll(ws, '<root>')]).toEqual([
+        1,
+        'VX_E_CONFIG',
+        expect.stringContaining(
+          'unknown command: boom; .vx/workspace failed to load: <root>/.vx/workspace.mjs',
+        ),
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
+
+  it('a workspace config that does not load is VX_E_CONFIG, however it fails', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-load-', workspaceFile: false })
+    const codeOf = async (source: string): Promise<string> => {
+      await Bun.write(path.join(ws, '.vx/workspace.mjs'), source)
+      const r = await vx(['show', '--format', 'json'], ws)
+      expect(r.code).toBe(1)
+      return (JSON.parse(r.stdout) as { error: { code: string } }).error.code
+    }
+    try {
+      expect({
+        syntax: await codeOf('syntax error here(\n'),
+        notObject: await codeOf('export default 5\n'),
+        missingImport: await codeOf("import x from './nope.mjs'\nexport default {}\n"),
+        thrownValue: await codeOf('throw 5\n'),
+        rejected: await codeOf("await Promise.reject(new Error('x'))\nexport default {}\n"),
+        exits: await codeOf('process.exit(0)\nexport default {}\n'),
+        rejectedDefault: await codeOf("export default Promise.reject(new Error('x'))\n"),
+      }).toEqual({
+        syntax: 'VX_E_CONFIG',
+        notObject: 'VX_E_CONFIG',
+        missingImport: 'VX_E_CONFIG',
+        thrownValue: 'VX_E_CONFIG',
+        rejected: 'VX_E_CONFIG',
+        exits: 'VX_E_CONFIG',
+        rejectedDefault: 'VX_E_CONFIG',
+      })
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  // A broken index is git failing, not a missing repository: it read
+  // VX_E_REFUSED and told the user to `git init` (2026-10-28).
+  it('a git that fails in a work tree is VX_E_GIT, naming git and its words', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-git-' })
+    try {
+      await addProject(
+        ws,
+        'a',
+        `export default { tasks: { b: { exec: { command: 'true' }, inputs: { files: ['**'] }, cache: { outputs: { files: [] } } } } }\n`,
+      )
+      const first = await vx(['run', 'b', '--all', '--dry'], ws)
+      expect([first.code, first.stderr]).toEqual([0, ''])
+      await Bun.write(
+        path.join(ws, '.git', 'index'),
+        'not an index, but long enough to be read as one',
+      )
+      // The real bin: vx-locked.ts would re-lock over the broken index.
+      const p = Bun.spawnSync([process.execPath, REAL_BIN, 'run', 'b', '--all', '--dry=json'], {
+        cwd: ws,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const r = { code: p.exitCode, stdout: p.stdout.toString() }
+      const { code, message } = (
+        JSON.parse(r.stdout) as { error: { code: string; message: string } }
+      ).error
+      expect([r.code, code, message.includes('git init'), message]).toEqual([
+        1,
+        'VX_E_GIT',
+        false,
+        expect.stringContaining('git ls-files failed (exit 128)'),
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  // SQLite's `unable to open database file` reached every verb as a stack
+  // and VX_E_INTERNAL; only an fd shortage was named (2026-10-28).
+  it('a cache index SQLite cannot open is VX_E_FS, naming the file', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-db-' })
+    try {
+      await addProject(ws, 'a', `export default { tasks: { b: { exec: { command: 'true' } } } }\n`)
+      const db = path.join(ws, '.vx', 'cache', 'cache.db')
+      await rm(db, { recursive: true, force: true })
+      await mkdir(db, { recursive: true })
+      const r = await vx(['last', '--format', 'json'], ws)
+      const { code, message } = (
+        JSON.parse(r.stdout) as { error: { code: string; message: string } }
+      ).error
+      expect([
+        r.code,
+        code,
+        message.replaceAll(ws, '<root>'),
+        r.stderr.includes('    at '),
+      ]).toEqual([
+        1,
+        'VX_E_FS',
+        expect.stringContaining('the cache index <root>/.vx/cache/cache.db could not be opened'),
+        false,
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
 
   it('every reading verb answers its refusals with a code too', async () => {
     expect({
@@ -268,12 +450,57 @@ describe('a refusal under --format json', () => {
     })
   }, 30_000)
 
+  // A task that never ran is no history, not a malformed id: it read
+  // VX_E_REFUSED and told the user how to spell a task id (2026-10-28).
+  it('`vx last --log` of a task that never ran is VX_E_NO_HISTORY', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-log-' })
+    try {
+      await addProject(
+        ws,
+        'a',
+        `export default { tasks: { b: { exec: { command: 'true' } }, c: { exec: { command: 'true' } } } }\n`,
+      )
+      expect((await vx(['run', 'b', '--all'], ws)).code).toBe(0)
+      const r = await vx(['last', '--log', 'a#c', '--format', 'json'], ws)
+      expect([r.code, JSON.parse(r.stdout).error]).toEqual([
+        1,
+        {
+          code: 'VX_E_NO_HISTORY',
+          message: 'vx last: no recorded run of a#c',
+          docs: 'https://vznjs.github.io/vx/cli/#vx_e_no_history',
+        },
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
     const plain = await vx(['run', 'nope', '--all'])
     const forwarded = await vx(['run', 'nope', '--all', '--', '--dry=json'])
     expect([plain.code, plain.stdout, forwarded.code, forwarded.stdout]).toEqual([1, '', 1, ''])
     expect(plain.stderr).toContain('no projects declare task(s): nope')
   })
+
+  // A run-id prefix two runs share answered VX_E_REFUSED, a plugin's or a
+  // check's code: an agent could not tell it from either.
+  it('a run-id prefix several runs share is VX_E_AMBIGUOUS', async () => {
+    const ran = await makeWorkspace({ prefix: 'vx-error-codes-prefix-' })
+    try {
+      await addProject(
+        ran,
+        'a',
+        `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+      )
+      for (let i = 0; i < 2; i++) expect((await vx(['run', 'a#build'], ran)).code).toBe(0)
+      expect({
+        last: await refusal(['last', '0', '--format', 'json'], ran),
+        why: await refusal(['why', 'a#build', '--run', '0', '--format', 'json'], ran),
+      }).toEqual({ last: 'VX_E_AMBIGUOUS', why: 'VX_E_AMBIGUOUS' })
+    } finally {
+      await rm(ran, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
 
 describe('errorCode', () => {
@@ -332,6 +559,15 @@ describe('every core code has a section that says what to do', () => {
   it('a heading per code the source names, and none it does not', () => {
     expect(thrown.size).toBeGreaterThan(10)
     expect(headed.toSorted()).toEqual([...thrown].toSorted())
+  })
+
+  // The schema an agent reads named 14 of 21 codes (2026-10-28).
+  it('schemas/error.json names every code', () => {
+    const schema = JSON.parse(
+      readFileSync(path.resolve(import.meta.dir, '..', 'schemas', 'error.json'), 'utf8'),
+    ) as { properties: { error: { properties: { code: { description: string } } } } }
+    const named = schema.properties.error.properties.code.description.match(/VX_E_[A-Z_]+/g)
+    expect(named?.toSorted()).toEqual(headed.toSorted())
   })
 
   it('the error document links the section; a plugin code links nothing', () => {

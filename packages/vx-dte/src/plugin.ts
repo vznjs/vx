@@ -693,7 +693,9 @@ export function dte(options: DteOptions = {}) {
           ++index
           const id = nextId(s.name)
           const a = spawnOf(s, id, index)
-          void Promise.resolve(adapter.spawn(a)).catch((err: unknown) =>
+          // A sync throw too: `spawn` may return void, and one thrown here
+          // escaped the plan's timer and ended the process.
+          void new Promise<void>((done) => done(adapter.spawn(a))).catch((err: unknown) =>
             o.failed(id, err instanceof Error ? err.message : String(err)),
           )
         }

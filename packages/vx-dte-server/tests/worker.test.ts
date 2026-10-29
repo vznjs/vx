@@ -63,14 +63,20 @@ const join = (env: Env, run: string, token?: string, origin = 'https://relay.exa
     env,
   )
 
-it('routes each run to its own object, which checks tokens', async () => {
+it('routes each run to its own object', async () => {
+  issuer()
   let env: Env
   const ns = namespace(() => env)
-  env = { RELAY: ns, ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml' }
-  expect((await join(env, A)).status).toBe(401)
-  expect((await join(env, A)).status).toBe(401)
-  expect((await join(env, B)).status).toBe(401)
-  expect(ns.made).toEqual([await sessionKey(A, undefined), await sessionKey(B, undefined)])
+  env = { RELAY: ns, ALLOW: `${ISS}:o/r:.gitlab-ci.yml`, AUDIENCE: 'vx-dte-server' }
+  const token = await job(1)
+  // 426, past the token: no websocket here to join on.
+  expect([
+    (await join(env, A, token)).status,
+    (await join(env, A, token)).status,
+    (await join(env, B, token)).status,
+  ]).toEqual([426, 426, 426])
+  const run = { iss: ISS, run: ['1'] }
+  expect(ns.made).toEqual([await sessionKey(A, run), await sessionKey(B, run)])
   const res = await worker.fetch(new Request('https://relay.example.com/health'), env)
   expect([res.status, await res.json()]).toEqual([
     404,
@@ -78,16 +84,36 @@ it('routes each run to its own object, which checks tokens', async () => {
   ])
 })
 
-it('gives the same run id of two repositories two objects', async () => {
+// Each object a request wakes is billed, and a host's daily limit refuses
+// every run past it: one with no good token woke one, so anyone could
+// spend the relay's quota.
+it('refuses a request without a good token at the door, waking no object', async () => {
+  issuer()
   let env: Env
   const ns = namespace(() => env)
-  env = { RELAY: ns, ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml' }
-  const unsigned = (project: number) =>
-    `${b64({ alg: 'RS256' })}.${b64({ iss: 'https://gitlab.com', project_id: project })}.x`
-  await join(env, R, unsigned(1))
-  await join(env, R, unsigned(2))
-  await join(env, R, unsigned(1))
-  const run = (project: string) => sessionKey(R, { iss: 'https://gitlab.com', run: [project] })
+  env = { RELAY: ns, ALLOW: `${ISS}:o/r:.gitlab-ci.yml`, AUDIENCE: 'vx-dte-server' }
+  const good = await job(1)
+  const forged = `${good.slice(0, good.lastIndexOf('.'))}.${'A'.repeat(342)}`
+  const refused = async (token?: string) => {
+    const res = await join(env, A, token)
+    return [res.status, ((await res.json()) as { error: string }).error]
+  }
+  expect([await refused(), await refused(forged)]).toEqual([
+    [401, 'no bearer token'],
+    [401, 'bad signature'],
+  ])
+  expect(ns.made).toEqual([])
+})
+
+it('gives the same run id of two repositories two objects', async () => {
+  issuer()
+  let env: Env
+  const ns = namespace(() => env)
+  env = { RELAY: ns, ALLOW: `${ISS}:o/r:.gitlab-ci.yml`, AUDIENCE: 'vx-dte-server' }
+  await join(env, R, await job(1))
+  await join(env, R, await job(2))
+  await join(env, R, await job(1))
+  const run = (project: string) => sessionKey(R, { iss: ISS, run: [project] })
   expect(ns.made).toEqual([await run('1'), await run('2')])
 })
 
@@ -100,9 +126,11 @@ it('names why the host refused a run', async () => {
           Promise.reject(new Error('Exceeded allowed duration in Durable Objects free tier.')),
       }),
     },
-    ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml',
+    ALLOW: `${ISS}:o/r:.gitlab-ci.yml`,
+    AUDIENCE: 'vx-dte-server',
   }
-  const res = await join(refused, A)
+  issuer()
+  const res = await join(refused, A, await job(1))
   expect([res.status, await res.json()]).toEqual([
     503,
     {
@@ -218,7 +246,8 @@ afterEach(() => {
   globalThis.fetch = realFetch
 })
 
-it('takes its own URL as the audience when AUDIENCE is not set', async () => {
+/** ISS serves its keys. */
+function issuer(): void {
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input)
     if (url === `${ISS}/.well-known/openid-configuration`) {
@@ -227,17 +256,24 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
     if (url === `${ISS}/jwks`) return Response.json({ keys: [{ ...jwk, kid: 'k1' }] })
     return new Response(null, { status: 404 })
   }) as typeof fetch
+}
+
+/** A token of a job of o/r's `.gitlab-ci.yml`, in GitLab project `project`. */
+const job = (project: number, aud = 'vx-dte-server') =>
+  sign({
+    iss: ISS,
+    aud,
+    exp: Date.now() / 1000 + 300,
+    project_id: project,
+    project_path: 'o/r',
+    ci_config_ref_uri: 'issuer.example/o/r//.gitlab-ci.yml@refs/heads/main',
+  })
+
+it('takes its own URL as the audience when AUDIENCE is not set', async () => {
+  issuer()
   let env: Env
   env = { RELAY: namespace(() => env), ALLOW: `${ISS}:o/r:.gitlab-ci.yml` }
-  const token = (aud: string) =>
-    sign({
-      iss: ISS,
-      aud,
-      exp: Date.now() / 1000 + 300,
-      project_id: 1,
-      project_path: 'o/r',
-      ci_config_ref_uri: 'issuer.example/o/r//.gitlab-ci.yml@refs/heads/main',
-    })
+  const token = (aud: string) => job(1, aud)
   const mine = await join(env, C, await token('https://relay.example.com'))
   const other = await join(env, D, await token('https://other.example.com'))
   const elsewhere = await join(

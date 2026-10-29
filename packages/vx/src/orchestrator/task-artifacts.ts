@@ -171,15 +171,32 @@ export async function cacheFacts(
   await Promise.all(
     remotes.map(async (r) => {
       if (r.plugin === undefined || r.remote.lend === undefined || !r.read) return
-      const got = await r.remote.lend().catch((err: unknown) => {
-        // Said: unsaid, the run's workers went without this remote and no line said why.
-        const message = thrownMessage(err)
-        sayRemoteFault(
-          r,
-          new Error(`lend of ${r.plugin}'s access failed: ${message}`, { cause: err }),
-        )
-        return undefined
-      })
+      // Through a promise, and checked: a plugin's synchronous throw skipped
+      // the catch and rejected every remote's answer, and a `null` or a
+      // numeric token met `.token` as a TypeError.
+      const got = await Promise.resolve()
+        .then(() => r.remote.lend!())
+        .then((answer: unknown) => {
+          if (answer === undefined) return undefined
+          if (typeof answer !== 'object' || answer === null)
+            throw new Error(
+              `it answered ${answer === null ? 'null' : typeof answer}, not { token, expiresAt? }`,
+            )
+          const { token, expiresAt: ends } = answer as { token?: unknown; expiresAt?: unknown }
+          if (typeof token !== 'string') throw new Error('it answered a token that is not a string')
+          if (ends !== undefined && !(typeof ends === 'number' && Number.isFinite(ends)))
+            throw new Error('it answered an expiresAt that is not a time in ms')
+          return { token, ...(ends === undefined ? {} : { expiresAt: ends }) }
+        })
+        .catch((err: unknown) => {
+          // Said: unsaid, the run's workers went without this remote and no line said why.
+          const message = thrownMessage(err)
+          sayRemoteFault(
+            r,
+            new Error(`lend of ${r.plugin}'s access failed: ${message}`, { cause: err }),
+          )
+          return undefined
+        })
       if (got === undefined) return
       lent[r.plugin] = got.token
       if (got.expiresAt !== undefined) expiresAt = Math.min(expiresAt ?? Infinity, got.expiresAt)

@@ -13,13 +13,19 @@ import { resolveSetting, runRules } from '../settings.js'
 import {
   refusalNotice,
   DOT_VX_GITATTRIBUTES,
+  fsRefusalHint,
+  isFsRefusal,
+  isOutOfFds,
   isUserError,
+  maskedLine,
   relPosix,
   type RefusalParts,
   type UserError,
   secretMask,
   ui,
   sayNotice,
+  refuseSymlink,
+  writeNoFollow,
 } from '../util/index.js'
 import {
   ConfigsRefused,
@@ -32,6 +38,7 @@ import {
   lockKey,
   readLockfile,
   buildPackageGraph,
+  checkBracketLiterals,
   checkDependencyRules,
   computeNestedProjectDirs,
   writeLockfile,
@@ -170,6 +177,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     })
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
     out.loaded = true
+    checkBracketLiterals(root, projects.values())
     const names = new Set<string>()
     for (const entry of projects.values()) {
       const tasks = Object.entries(entry.config.tasks ?? {})
@@ -279,9 +287,17 @@ function notWritten(
   parts: RefusalParts | undefined,
   also: readonly UserError[] = [],
 ): void {
-  ui.print('err', refusalNotice('vx lock', message, parts, { headline: 'lock not written' }))
+  // Masked: a config's own throw is its author's text, and quotes what
+  // it read (L-11). bin.ts masks what reaches it; this is printed here.
+  ui.print(
+    'err',
+    refusalNotice('vx lock', maskedLine(message), parts, { headline: 'lock not written' }),
+  )
   for (const e of also.slice(0, ALSO_SHOWN))
-    ui.print('err', refusalNotice('vx lock', e.message, e.parts, { headline: 'also refused' }))
+    ui.print(
+      'err',
+      refusalNotice('vx lock', maskedLine(e.message), e.parts, { headline: 'also refused' }),
+    )
   const more = also.length - ALSO_SHOWN
   if (more > 0)
     sayNotice('error', 'vx lock', `${more} more configs refused; fix these, then run vx lock again`)
@@ -368,11 +384,37 @@ async function writeLock(
     })
     return 1
   }
+  // The copies first: one that cannot be written leaves the lock as it was,
+  // not a new lock beside stale copies and a stack.
+  for (const r of reviews) refuseSymlink(r.file)
+  const blocked = (
+    await Promise.all(
+      reviews.map((r) =>
+        writeNoFollow(r.file, r.text).then(
+          () => null,
+          (err: unknown): { file: string; err: NodeJS.ErrnoException } => {
+            if (typeof (err as NodeJS.ErrnoException).code !== 'string' || isOutOfFds(err))
+              throw err
+            return { file: r.file, err: err as NodeJS.ErrnoException }
+          },
+        ),
+      ),
+    )
+  ).filter((b) => b !== null)
+  if (blocked.length > 0) {
+    const first = blocked[0]!
+    notWritten('', {
+      headline: `${blocked.length === 1 ? 'a review copy' : 'review copies'} could not be written`,
+      // The code and the copy's path: the message names the temp the write renames.
+      what: blocked.map((b) => `${b.err.code}: ${relPosix(root, b.file)}`),
+      fix: isFsRefusal(first.err)
+        ? fsRefusalHint(first.err)
+        : `remove what stands at ${relPosix(root, first.file)}, then run vx lock again`,
+    })
+    return 1
+  }
   await writeLockfile(root, check.fresh)
-  await Promise.all([
-    ...reviews.map((r) => Bun.write(r.file, r.text)),
-    writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES),
-  ])
+  await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
   // A second config beside the one read was edited and nothing changed.

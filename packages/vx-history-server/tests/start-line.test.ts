@@ -14,6 +14,7 @@ async function start(env: Record<string, string>): Promise<string> {
       env: {
         ...process.env,
         ALLOW: 'https://token.actions.githubusercontent.com:o/r:ci.yml',
+        AUDIENCE: 'https://history.example',
         ...env,
       },
       stdout: 'pipe',

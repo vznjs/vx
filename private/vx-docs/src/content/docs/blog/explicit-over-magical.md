@@ -66,10 +66,13 @@ Only the task's author knows what it depends on.
 | File missing from the list      | the old output is restored    | a stale hit: green, silent, wrong  |
 
 Tracing makes the second kind, because one run never sees every file a
-task can read. Listing inputs lets you err toward the first. For the
-second, the [sandbox](../the-sandbox/) helps: give it reads no wider
-than the inputs, and the `notes.md` read above fails the run and names
-the path. [`vx why`](../why-did-this-rerun/) explains any re-run.
+task can read. Listing inputs lets you err toward the first.
+
+For the second, the [sandbox](../the-sandbox/) helps: give it reads no
+wider than the inputs, and the `notes.md` read above fails the run and
+names the path.
+
+[`vx why`](../why-did-this-rerun/) explains any re-run.
 
 ## Explicit everywhere
 
@@ -77,9 +80,10 @@ the path. [`vx why`](../why-did-this-rerun/) explains any re-run.
 - `dependsOn` is explicit. `^task` skips a package without that task.
 - Past the essential allowlist every task gets (`PATH`, `HOME`, `CI`,
   `NODE_OPTIONS` and a few more), env reaches a task only through
-  `exec.env`. A variable that only has to be present goes under
-  `passThrough`. One that changes the output also goes under
-  `inputs.env`, which puts it in the key.
+  `exec.env`.
+- A variable that only has to be present goes under `passThrough`. One
+  that changes the output also goes under `inputs.env`, which puts it in
+  the key.
 - The sandbox reads nothing from `cache`. What a task may *touch* and
   what *changes its key* are separate lists.
 

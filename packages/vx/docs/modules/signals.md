@@ -111,6 +111,15 @@ SIGHUP handler, here or in `vx watch`: a handler replaces the inherited
 terminal closed (2026-10-08). `hangupIgnored` (`util-hangup.md`) reads
 the disposition once, before the first handler.
 
+Ctrl-Z (SIGTSTP) stops the terminal's foreground group, which is vx's
+alone: a task runs in its own session, so vx stopped and its tasks ran
+on, an interactive one still reading the terminal the shell had taken
+back. The handler SIGSTOPs every task group (`pauseTree`, straight to
+the group: a Linux sandbox's watcher passes one signal and is gone, so
+there it stops bwrap and the command blocks once its pipe fills), then
+vx itself; SIGCONT (`fg`, `bg`) continues them. Proven in
+`tests/signal-handling.test.ts` ("Ctrl-Z (SIGTSTP) during vx run").
+
 The two registries stay with `run()`, which hands them to the runner
 around every spawn; this module only reads them when a signal lands.
 `remove()` runs in `run()`'s finally so repeated runs in one process (a

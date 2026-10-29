@@ -85,7 +85,7 @@ describe('queueTimeoutMs', () => {
       const deadline = Date.now() + 3_000
       while (fake.executesCancelled === cancelled && Date.now() < deadline) await Bun.sleep(5)
       expect([settled, fake.executesCancelled - cancelled]).toEqual([
-        'ExecutorFallback: vx-reapi: no worker started the action within queueTimeoutMs (300ms); its operation was cancelled',
+        'ExecutorFallback: no worker started the action within queueTimeoutMs (300ms); its operation was cancelled',
         1,
       ])
     } finally {

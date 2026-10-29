@@ -4,7 +4,7 @@
 
 import type { InputStability } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
-import { inputStabilityEnv, LOCK_INVALID, lockEntryBroken } from '../workspace/index.js'
+import { EMPTY_LOCK, inputStabilityEnv, LOCK_INVALID, lockEntryBroken } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -65,7 +65,7 @@ import { admitTasks, taintTracker } from './admission.js'
 import { settleProbedHit, unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
 import { executeArgsOf, type RunScope } from './execute-args.js'
 import { excludedTaint } from './excluded-keys.js'
-import { keyUpstream } from './upstream.js'
+import { dependedOn, keyUpstream } from './upstream.js'
 import {
   busLogger,
   createEventBus,
@@ -104,7 +104,7 @@ import type { AffectedReason } from './affected-tasks.js'
 import { namesRemote, openRemotes, prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
 import { terminateChildren } from './signals.js'
-import { runStop } from './run-stop.js'
+import { CYCLE_INTERRUPT, runStop } from './run-stop.js'
 import {
   hasPooledExecutor,
   placeTasks,
@@ -139,6 +139,7 @@ import {
   sessionEnd,
   takeHeldServers,
 } from './persistent.js'
+import { serverKey } from './persistent-task.js'
 import { writeRunProfile } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { commandWindows } from './command-windows.js'
@@ -676,7 +677,10 @@ async function runOnBus(
   // `run.timeout` (ms), for any task WITHOUT its own `exec.timeout`.
   const taskTimeoutDefault = options.timeout
 
+  // The held servers this run took over, spared by a `CYCLE_INTERRUPT`.
+  const handed = new Set<ReturnType<typeof Bun.spawn>>()
   const stop = runStop({
+    handed: (child) => handed.has(child),
     log,
     cache,
     external: options.signal,
@@ -1103,8 +1107,7 @@ async function runOnBus(
     const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes)
     // Each task that ran tainted, and the task at the root of it.
     const taintedRan = new Map<string, string>()
-    const dependedOn = new Set<string>()
-    for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
+    const depended = dependedOn(nodes.values())
 
     // Why a task missed, for a sink: a read of the history per miss, so only
     // when a sink exists.
@@ -1151,7 +1154,7 @@ async function runOnBus(
       nestedDirsByProject,
       downloadModeOf: download.modeOf,
       shortCircuit,
-      dependedOn,
+      dependedOn: depended,
       holders,
     })
     const buildExecuteArgs = (
@@ -1231,6 +1234,7 @@ async function runOnBus(
       heldBefore.kept.delete(node.id)
       if (hasEnded(server.child)) return undefined
       server.handOver()
+      handed.add(server.child)
       server.out.bus = bus
       serverOuts.set(node.id, server.out)
       persistentRegistry.set(node.id, server.child)
@@ -1288,9 +1292,12 @@ async function runOnBus(
         const skip = platformSkip(node)
         if (skip !== undefined) return Promise.resolve(skip)
         const kept = keepServer(node)
-        return kept !== undefined
-          ? Promise.resolve(kept)
-          : executeWithDedup(node, keyUpstream(node, upstream))
+        if (kept === undefined) return executeWithDedup(node, keyUpstream(node, upstream))
+        // Keyed as a started server is: a cached dependant folds its key,
+        // and without it an edit to the server's sources hit stale.
+        return Promise.resolve(
+          serverKey(argsOf(node, keyUpstream(node, upstream), true, false)),
+        ).then((hash) => (hash === undefined ? kept : { ...kept, hash }))
       },
       // An unkeyed group runs nothing, and a restore-tier hit whose tree is
       // current restores nothing: settled in place, unless a taint may ride
@@ -1349,8 +1356,11 @@ async function runOnBus(
     // signal loop) and embedders that manage lifecycle themselves — both
     // expect run() to return, not block on a server.
     const foreground = options.log === undefined && (options.handleSignals ?? true)
-    // An aborted run's children are already being torn down: nothing to hold.
-    const hold = options.holdPersistent === true && !stop.signal.aborted
+    // An aborted run's children are already being torn down: nothing to
+    // hold, but the servers a `CYCLE_INTERRUPT` spared.
+    const hold =
+      options.holdPersistent === true &&
+      (!stop.signal.aborted || stop.signal.reason === CYCLE_INTERRUPT)
     const { keepAlive, crashed: crashedPersistent } = await disposeServers({
       registry: persistentRegistry,
       nodes,
@@ -1855,6 +1865,7 @@ async function unresolvedHint(prepared: {
   declaredElsewhere: readonly string[]
   anyProjectConfig: boolean
   taskless: (name: string) => boolean
+  unlockedConfig: () => string | undefined
 }): Promise<string> {
   const elsewhere = elsewhereHint(prepared.declaredElsewhere)
   const near = didYouMean(
@@ -1872,13 +1883,20 @@ async function unresolvedHint(prepared: {
 }
 
 /**
- * The first-run case, told apart from a typo: no project in the workspace
- * has a `vx.config.*` at all, so no name could have resolved. Reached only
- * on the error path.
+ * The first-run case, told apart from a typo: the lock holds no project,
+ * so no name could have resolved. Said of the lock, the only thing a run
+ * reads: "no directory holds a vx.config" was false beside configs never
+ * locked. A config written after the lock is no first run: its fix is
+ * `vx lock`. Reached only on the error path.
  */
-async function initHint(prepared: { anyProjectConfig: boolean }): Promise<string> {
+async function initHint(prepared: {
+  anyProjectConfig: boolean
+  unlockedConfig: () => string | undefined
+}): Promise<string> {
   if (prepared.anyProjectConfig) return ''
-  return ' No directory holds a vx.config — run `vx init` to write them, then `vx lock`.'
+  const unlocked = prepared.unlockedConfig()
+  if (unlocked !== undefined) return ` ${unlocked} is not in the lock yet — run \`vx lock\`.`
+  return ` ${EMPTY_LOCK}.`
 }
 
 /**

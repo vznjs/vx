@@ -73,6 +73,10 @@ export function lockEntryBroken(root: string): boolean {
   return false
 }
 
+/** What a run or `vx show` says when the lock holds no project. */
+export const EMPTY_LOCK =
+  'The lock holds no project — write a vx.config (`vx init`), then run `vx lock`'
+
 /** What a run says when there is no lock to read. */
 export const NO_LOCK = 'no lock: run `vx lock`'
 
@@ -99,7 +103,10 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
     text = await file.text()
     parsed = JSON.parse(text)
   } catch {
-    throw new UserError(`${LOCKFILE_NAME} is not valid JSON — re-run \`vx lock\` or delete it`)
+    throw new UserError(
+      `${LOCKFILE_NAME} is not valid JSON — re-run \`vx lock\` or delete it`,
+      'VX_E_LOCK',
+    )
   }
   // `Array.isArray` is not redundant with the `typeof` check: `typeof [] ===
   // 'object'` and `[] !== null`, so an array sails through and the NEXT check
@@ -109,20 +116,24 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   // already guards this explicitly, which is what makes the omission here an
   // inconsistency rather than an oversight.
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new UserError(`${LOCKFILE_NAME} must be a JSON object — re-run \`vx lock\``)
+    throw new UserError(`${LOCKFILE_NAME} must be a JSON object — re-run \`vx lock\``, 'VX_E_LOCK')
   }
   const lock = parsed as { version?: unknown; projects?: unknown }
   if (lock.version !== LOCKFILE_VERSION) {
     throw new UserError(
       `${LOCKFILE_NAME} has unsupported version ${String(lock.version)} ` +
         `(this vx expects ${LOCKFILE_VERSION}) — re-run \`vx lock\``,
+      'VX_E_LOCK',
     )
   }
   // Same trap, and this one is worse than a bad message: an ARRAY of entries is
   // ACCEPTED, because `Object.entries` happily walks it — yielding a project
   // at directory "0".
   if (typeof lock.projects !== 'object' || lock.projects === null || Array.isArray(lock.projects)) {
-    throw new UserError(`${LOCKFILE_NAME}: \`projects\` must be an object — re-run \`vx lock\``)
+    throw new UserError(
+      `${LOCKFILE_NAME}: \`projects\` must be an object — re-run \`vx lock\``,
+      'VX_E_LOCK',
+    )
   }
   for (const [dir, entry] of Object.entries(lock.projects)) {
     // A run joins the key onto the root: `../x` ran a project outside it.
@@ -141,7 +152,10 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
       config === null ||
       Array.isArray(config)
     ) {
-      throw new UserError(`${LOCKFILE_NAME}: entry for "${dir}" is malformed — re-run \`vx lock\``)
+      throw new UserError(
+        `${LOCKFILE_NAME}: entry for "${dir}" is malformed — re-run \`vx lock\``,
+        'VX_E_LOCK',
+      )
     }
   }
   digests.set(parsed as Lockfile, xxh3hex(text))
@@ -217,6 +231,7 @@ export function frozenProjectConfigs(
       throw new UserError(
         `${LOCKFILE_NAME} has no entry for "${meta.name}" (${relPosix(root, meta.configPath)}) — ` +
           'run `vx lock`',
+        'VX_E_LOCK',
       )
     }
     return entry.config

@@ -22,6 +22,7 @@ export function readTimings(file: string, warn: (m: string) => void): Record<str
   try {
     parsed = JSON.parse(text)
   } catch {
+    // quiet: not JSON is not a timings file, which the warning below says
     parsed = undefined
   }
   const tasks = (parsed as { version?: unknown; tasks?: unknown } | undefined)?.tasks
@@ -80,7 +81,8 @@ export function writeTimings(
  */
 export function warnUnignored(file: string, root: string, warn: (m: string) => void): void {
   const rel = path.relative(root, file)
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return
+  // `..x.json` is a name inside the root, not a step out of it.
+  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return
   const p = Bun.spawnSync({
     cmd: ['git', 'check-ignore', '-q', '--', rel],
     cwd: root,

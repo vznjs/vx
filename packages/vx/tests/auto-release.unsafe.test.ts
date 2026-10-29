@@ -25,6 +25,7 @@ interface Step {
 }
 interface Job {
   if?: string
+  environment?: string
   permissions?: Record<string, string>
   steps?: Step[]
 }
@@ -75,7 +76,7 @@ describe('auto-release.yml', () => {
       ],
     ])
     const checkout = job?.steps?.find((s) => s.uses?.startsWith('actions/checkout@'))
-    expect(checkout?.with).toEqual({ ref: 'main', 'fetch-depth': 0 })
+    expect(checkout?.with).toEqual({ ref: 'main', 'fetch-depth': 0, 'persist-credentials': false })
   })
 
   it('holds only the grants it uses, and none at the top', () => {
@@ -107,5 +108,35 @@ describe('auto-release.yml', () => {
     const release = text('release.yml')
     expect(release).not.toContain('github.event.release')
     expect(release).toContain('${{ inputs.tag }}')
+  })
+})
+
+// A dispatch builds whatever `ref`/`tag` names: any token with
+// `actions: write` (every pull request's DTE run holds one) could publish
+// a branch's code to npm with provenance, or attest it as a release.
+describe('the publishing workflows', () => {
+  const checkouts = (file: string): unknown[] =>
+    Object.values(parse(file).jobs ?? {}).flatMap((j) =>
+      (j.steps ?? [])
+        .filter((s) => s.uses?.startsWith('actions/checkout'))
+        .map((s) => s.with?.['ref']),
+    )
+
+  it('check out a release tag only', () => {
+    expect(checkouts('release.yml')).toEqual([
+      'refs/tags/${{ inputs.tag }}',
+      'refs/tags/${{ inputs.tag }}',
+    ])
+    expect(checkouts('npm.yml')).toEqual([
+      "${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}",
+      "${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}",
+    ])
+  })
+
+  // npm's trusted publisher, bound to this environment, takes a token
+  // only from a job the environment's branch rule admitted.
+  it('publish to npm from the npm environment', () => {
+    const jobs = Object.values(parse('npm.yml').jobs ?? {})
+    expect(jobs.map((j) => j.environment)).toEqual(['npm', 'npm'])
   })
 })

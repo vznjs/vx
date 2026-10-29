@@ -465,9 +465,7 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
       fake.onExecute = () => ({
         response: { status: { code: 13, message: 'boom' }, message: 'why', serverLogs: {} },
       })
-      expect(await refusal(run(request()))).toContain(
-        'vx-reapi: pkg#gen execution failed: boom — why',
-      )
+      expect(await refusal(run(request()))).toContain('pkg#gen execution failed: boom — why')
       fake.onExecute = () => ({
         response: {
           status: { code: 13, message: 'boom' },
@@ -476,9 +474,7 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
       })
       expect(await refusal(run(request()))).toContain('--- server log worker ---\nworker said no')
       fake.onExecute = () => ({ response: { message: 'nothing' } })
-      expect(await refusal(run(request()))).toContain(
-        'vx-reapi: pkg#gen returned no ActionResult: nothing',
-      )
+      expect(await refusal(run(request()))).toContain('pkg#gen returned no ActionResult: nothing')
     })
   })
 
@@ -497,11 +493,7 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
       const refused = await refusal(
         run(request({ onStdout: (c: string) => (out += c), onStderr: (c: string) => (err += c) })),
       )
-      expect([refused, out, err]).toEqual([
-        'vx-reapi: pkg#gen execution failed: timed out',
-        'half',
-        'stuck',
-      ])
+      expect([refused, out, err]).toEqual(['pkg#gen execution failed: timed out', 'half', 'stuck'])
     })
   })
 
@@ -518,7 +510,7 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
     ]) {
       fake.onExecute = () => ({ response: { status: { code: 4, message: 'timed out' }, result } })
       await withExecutor(async (run, warns) => {
-        expect(await refusal(run(request()))).toBe('vx-reapi: pkg#gen execution failed: timed out')
+        expect(await refusal(run(request()))).toBe('pkg#gen execution failed: timed out')
         // Read in vain, and said (2026-10-23: no fault is silent).
         expect(warns).toEqual([
           expect.stringMatching(/^\[vx\] vx-reapi: pkg#gen's std(out|err) could not be read \(/),
@@ -537,7 +529,7 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
       },
     })
     await withExecutor(async (run, warns) => {
-      expect(await refusal(run(request()))).toBe('vx-reapi: pkg#gen execution failed: boom')
+      expect(await refusal(run(request()))).toBe('pkg#gen execution failed: boom')
       expect(warns).toEqual([
         expect.stringMatching(/^\[vx\] vx-reapi: the server log worker could not be read \(/),
       ])
@@ -750,7 +742,7 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs', () => {
         ],
       })
       expect(await refusal(run(withUp('up-gone')))).toContain(
-        'vx-reapi: upstream lib#build outputs evicted from the remote store (1 blob) and never materialised locally',
+        'upstream lib#build outputs evicted from the remote store (1 blob) and never materialised locally',
       )
     })
   })
@@ -939,7 +931,7 @@ describe.if(CHUNKING_SUPPORTED)('a server refusal (F-11)', () => {
     })
     expect(got).toEqual([
       true,
-      'vx-reapi: pkg#gen: the remote server failed the call — 7 PERMISSION_DENIED: injected PERMISSION_DENIED',
+      'pkg#gen: the remote server failed the call — 7 PERMISSION_DENIED: injected PERMISSION_DENIED',
     ])
   })
 
@@ -951,10 +943,7 @@ describe.if(CHUNKING_SUPPORTED)('a server refusal (F-11)', () => {
         (e: Error) => [isUserError(e), e.message],
       ),
     )
-    expect(got).toEqual([
-      false,
-      'vx-reapi: pkg#gen reached the remote executor with no described inputs',
-    ])
+    expect(got).toEqual([false, 'pkg#gen reached the remote executor with no described inputs'])
   })
 })
 
@@ -1149,7 +1138,7 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
   it('an operation that ends in an error refuses with its message', async () => {
     fake.onExecute = () => ({ opError: { code: 9, message: 'precondition' } })
     expect(await withExecutor((run) => refusal(run(request())))).toContain(
-      'vx-reapi: execution failed for pkg#gen: precondition',
+      'execution failed for pkg#gen: precondition',
     )
   })
 })
@@ -1367,7 +1356,7 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs, the edges', () => {
     })
     fake.fail('Read', 5) // NOT_FOUND
     expect(await withExecutor((run) => refusal(run(withUpstream(upstream('up-race')))))).toBe(
-      `vx-reapi: upstream lib#build tree ${tree.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
+      `upstream lib#build tree ${tree.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
     )
   })
 

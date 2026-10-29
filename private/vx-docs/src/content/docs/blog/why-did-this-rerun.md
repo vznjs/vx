@@ -32,14 +32,14 @@ packages/b#build — run 01a16ac6-3270-70fe-aad8-7c5385ba6c66
 
 ```mermaid
 flowchart RL
-  A[app#build: upstream changed] --> L[lib#build: upstream changed]
+  A[packages/app#build: upstream changed] --> L[packages/lib#build: file changed]
   L --> F[file packages/lib/src/index.ts]
   style F stroke:#c6f84e,stroke-width:2px
 ```
 
-```
+```ansi
   root cause:
-    app#build ← lib#build ← file packages/lib/src/index.ts
+    packages/app#build ← packages/lib#build ← file packages/lib/src/index.ts
 ```
 
 ## It only reads the cache database

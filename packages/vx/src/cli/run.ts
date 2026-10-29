@@ -2,7 +2,7 @@ import { statSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { flagHint, refuse, seeHelp } from './help.js'
+import { anchoredSpecError, flagHint, refuse, seeHelp } from './help.js'
 import {
   planRun,
   run as runOrchestrator,
@@ -272,6 +272,12 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
         return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
       out.verbosity = n
     } else if (a === '--dry') {
+      // As `--continue`'s mode: `--dry json` read `json` as a task, and the
+      // run said no project declares it.
+      const next = before[i + 1]
+      if (next === 'pretty' || next === 'json') {
+        return { ...out, error: `--dry takes its format with '=': --dry=${next}` }
+      }
       out.dry = 'pretty'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
@@ -440,20 +446,22 @@ export async function resolveRunOptions(
   scopeOut?: { affectedBase?: string },
 ): Promise<RunOptions | { error: string; code?: string } | { nothingSelected: string }> {
   for (const t of tasks) {
-    const idx = t.indexOf('#')
-    if (idx >= 0) {
-      const project = t.slice(0, idx)
-      const task = t.slice(idx + 1)
-      if (!project) {
-        return {
-          // A bare name runs in the cwd project: `--all` is every project.
-          error: `missing project name before '#' in "${t}" (vx ${verb} ${task} --all runs it in every project)`,
-        }
-      }
-      if (!task) {
-        return {
-          error: `missing task name after '#' in "${t}" (vx show ${project} lists the tasks)`,
-        }
+    // A blank name (`vx run --all ''`) otherwise reached the orchestrator,
+    // which refuses it in the embedder API's words.
+    if (t.trim() === '')
+      return { error: `empty task name ${JSON.stringify(t)} (vx show lists the tasks)` }
+    // A bare name runs in the cwd project: `--all` is every project.
+    const error = anchoredSpecError(
+      t,
+      (task) => `vx ${verb} ${task} --all runs it in every project`,
+    )
+    if (error !== undefined) return { error }
+    // No config can declare a padded name (taskNameProblem): `'build '` was
+    // reported as "no projects declare task(s): build", its space unseen.
+    const task = t.slice(t.indexOf('#') + 1)
+    if (task.trim() !== task) {
+      return {
+        error: `task name ${JSON.stringify(task)} has surrounding whitespace (vx show lists the tasks)`,
       }
     }
   }

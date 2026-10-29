@@ -107,12 +107,8 @@ export interface RunOptions {
 type Fd = 'inherit' | 'ignore' | 'pipe' | number
 
 /** A child's descriptors 0–2: vx's own for a task that holds the terminal. */
-function taskStdio(
-  terminal: boolean | undefined,
-  stdin: 'ignore' | 'pipe',
-  pipes: TaskPipes,
-): [Fd, Fd, Fd] {
-  return terminal === true ? ['inherit', 'inherit', 'inherit'] : [stdin, ...pipes.stdio]
+function taskStdio(terminal: boolean | undefined, pipes: TaskPipes): [Fd, Fd, Fd] {
+  return terminal === true ? ['inherit', 'inherit', 'inherit'] : [pipes.stdin, ...pipes.stdio]
 }
 
 const O_NONBLOCK = 0o4000
@@ -181,6 +177,14 @@ function realPipes(): Int32Array | undefined {
   return fds
 }
 
+/** One pipe, `[read, write]`, both close-on-exec, or undefined as {@link realPipes}. */
+function heldPipe(): Int32Array | undefined {
+  const calls = linuxPipeCalls()
+  if (calls === null) return undefined
+  const fds = new Int32Array(2)
+  return calls.pipe2(calls.ptr(fds), O_CLOEXEC) === 0 ? fds : undefined
+}
+
 /**
  * A task's stdout and stderr. Bun's `'pipe'` is a socketpair, and Linux
  * opens `/dev/stdout` through `/proc/self/fd/1`, which a socket refuses
@@ -189,25 +193,35 @@ function realPipes(): Int32Array | undefined {
  * Linux vx makes the pipes (`pipe2` through `bun:ffi`) and hands the child
  * the write ends. macOS opens `/dev/fd/N` as a dup of the descriptor,
  * which a socket allows, so Bun's pipe stays there.
+ *
+ * `held`: stdin is a pipe vx keeps open and never writes (a persistent
+ * task's, schema.md), for the same reason: `cat /dev/stdin` on Bun's
+ * socketpair failed with ENXIO instead of blocking. Otherwise `'ignore'`.
  */
 export class TaskPipes {
+  /** Descriptor 0 for `Bun.spawn`'s `stdio`. */
+  readonly stdin: number | 'pipe' | 'ignore'
   /** Descriptors 1 and 2 for `Bun.spawn`'s `stdio`. */
   readonly stdio: readonly [number | 'pipe', number | 'pipe']
   readonly #read: readonly number[]
+  readonly #stdinWrite: number | undefined
 
-  constructor(terminal?: boolean) {
+  constructor(terminal?: boolean, held?: boolean) {
     const fds = terminal === true ? undefined : realPipes()
     this.stdio = fds === undefined ? ['pipe', 'pipe'] : [fds[1]!, fds[3]!]
     this.#read = fds === undefined ? [] : [fds[0]!, fds[2]!]
+    const inFds = held === true && terminal !== true ? heldPipe() : undefined
+    this.stdin = held !== true ? 'ignore' : inFds === undefined ? 'pipe' : inFds[0]!
+    this.#stdinWrite = inFds?.[1]
   }
 
   /**
-   * Close vx's copies of the write ends once the spawn has returned or
-   * thrown: the child holds its own, and one left here is a writer the
-   * reader's EOF would wait for.
+   * Close vx's copies of the child's ends once the spawn has returned or
+   * thrown: the child holds its own, and a write end left here is a writer
+   * the reader's EOF would wait for.
    */
   spawned(): void {
-    for (const fd of this.stdio) if (typeof fd === 'number') closeSync(fd)
+    for (const fd of [this.stdin, ...this.stdio]) if (typeof fd === 'number') closeSync(fd)
   }
 
   /** The child's stdout and stderr. */
@@ -227,10 +241,12 @@ export class TaskPipes {
    * Close the read ends, once both streams have ended or been cancelled.
    * Bun reads a dup of each, but takes it on the stream's first pull: a
    * number closed before then was reused by the next spawn's pipe, and
-   * the stream read THAT (probed, Bun 1.4.2).
+   * the stream read THAT (probed, Bun 1.4.2). The held stdin's write end
+   * goes with them: its reader has exited by then.
    */
   close(): void {
     for (const fd of this.#read) closeSync(fd)
+    if (this.#stdinWrite !== undefined) closeSync(this.#stdinWrite)
   }
 }
 
@@ -246,9 +262,24 @@ export class TaskPipes {
 function keepTerminalModes(): (() => void) | undefined {
   const saved = stty('-g')
   if (saved === undefined) return undefined
-  return () => {
+  const restore = (): void => {
+    if (!owed.delete(restore)) return
     if (stty('-g') !== saved) stty(saved)
   }
+  owed.add(restore)
+  return restore
+}
+
+/** The modes of every task still holding the terminal, owed back on its exit. */
+const owed = new Set<() => void>()
+
+/**
+ * Put the terminal back now for every task still holding it: vx is
+ * exiting without waiting for them (a second signal, signals.ts), so the
+ * restore on each task's exit never runs.
+ */
+export function restoreTerminalModes(): void {
+  for (const restore of [...owed]) restore()
 }
 
 function stty(arg: string): string | undefined {
@@ -715,8 +746,11 @@ export class PersistentReadyError extends Error {
 }
 
 export interface PersistentSpawn {
-  /** Underlying Bun subprocess so the orchestrator can SIGTERM it later. */
-  child: ReturnType<typeof Bun.spawn>
+  /**
+   * Underlying Bun subprocess so the orchestrator can SIGTERM it later;
+   * undefined when the spawn itself failed and `ready` has rejected.
+   */
+  child: ReturnType<typeof Bun.spawn> | undefined
   /**
    * Resolves once the task is considered "ready":
    *   - immediately on successful spawn when no `readyWhen` is given,
@@ -772,7 +806,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const readyRe = opts.readyWhen !== undefined ? new RegExp(opts.readyWhen) : undefined
 
   let child: ReturnType<typeof Bun.spawn>
-  const pipes = new TaskPipes(opts.terminal)
+  const pipes = new TaskPipes(opts.terminal, true)
   const restoreModes = opts.terminal === true ? keepTerminalModes() : undefined
   try {
     const signalFd = opts.signalChannel === true
@@ -794,7 +828,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
           // The one-shot spawn below keeps 'ignore', so a task that reads
           // stdin can never hang CI.
           stdio: [
-            ...taskStdio(opts.terminal, 'pipe', pipes),
+            ...taskStdio(opts.terminal, pipes),
             ...(signalFd ? ['pipe' as const] : []),
             ...(guard === undefined ? [] : [guard]),
           ],
@@ -821,7 +855,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
           ? err.message
           : String(err)
     return {
-      child: undefined as unknown as ReturnType<typeof Bun.spawn>,
+      child: undefined,
       ready: Promise.reject(
         new PersistentReadyError(`failed to spawn persistent task: ${message}`, 'spawn'),
       ),
@@ -1020,7 +1054,12 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
  * working directory in place is the shell, without it the directory; Bun's
  * own text names the rest.
  */
-export function spawnFailureText(err: unknown, cwd: string, what = 'task'): string {
+export function spawnFailureText(
+  err: unknown,
+  cwd: string,
+  what = 'task',
+  command?: string,
+): string {
   if (isExecutableMissing(err)) {
     // Bun names `sh` in the ENOENT a missing directory gives too.
     return existsSync(cwd)
@@ -1028,8 +1067,26 @@ export function spawnFailureText(err: unknown, cwd: string, what = 'task'): stri
       : `[vx] failed to spawn ${what}: its working directory ${cwd} does not exist\n`
   }
   const message = err instanceof Error ? err.message : String(err)
-  const hint = isOutOfFds(err) ? ` — ${OUT_OF_FDS_HINT}` : ''
+  const hint = isOutOfFds(err)
+    ? ` — ${OUT_OF_FDS_HINT}`
+    : command !== undefined && (err as NodeJS.ErrnoException | undefined)?.code === 'E2BIG'
+      ? ` — ${argTooLongHint(command)}`
+      : ''
   return `[vx] failed to spawn ${what}: ${message}${hint}\n`
+}
+
+/**
+ * A task's command, the args after `--` folded in, is ONE argument to
+ * `sh -c`, and Linux caps one argument at 128 KiB (MAX_ARG_STRLEN), far
+ * below the argv total: a file list forwarded to a linter failed with a
+ * bare E2BIG, which reads as "too many files" and names no way out.
+ */
+function argTooLongHint(command: string): string {
+  const kib = Math.ceil(Buffer.byteLength(command) / 1024)
+  return (
+    `the command, with the args after --, is ${kib} KiB, and one argument to sh -c may hold at ` +
+    `most 128 KiB on Linux: pass a long list through a file the tool reads (xargs, a response file)`
+  )
 }
 
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
@@ -1045,10 +1102,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
         ...SH_ARGV0,
         cwd: opts.cwd,
         env: opts.env as Record<string, string>,
-        stdio: [
-          ...taskStdio(opts.terminal, 'ignore', pipes),
-          ...(guard === undefined ? [] : [guard]),
-        ],
+        stdio: [...taskStdio(opts.terminal, pipes), ...(guard === undefined ? [] : [guard])],
         // Its own session and process group, so a kill reaches what it
         // forked (kill-tree.ts). A terminal handed over is not this
         // session's controlling one, so no read stops the group.
@@ -1057,7 +1111,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     )
   } catch (err) {
     pipes.close()
-    const stderr = spawnFailureText(err, opts.cwd)
+    const stderr = spawnFailureText(err, opts.cwd, 'task', fullCommand)
     opts.onStderr?.(stderr)
     return { exitCode: 127, durationMs: Date.now() - start, stdout: '', stderr, spawnFailed: true }
   } finally {
@@ -1268,11 +1322,17 @@ export class BoundedCapture {
    * The same output under tighter bounds. What this capture already
    * dropped is counted in the new one's dropped line: pushed through
    * `chunks()`, the old line fell into the new middle with its count.
+   * `through` maps each side's chunks before the new cut (the store's
+   * mask), so the cut cannot split a value first.
    */
-  rebound(headChars: number, tailChars: number): BoundedCapture {
+  rebound(
+    headChars: number,
+    tailChars: number,
+    through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
+  ): BoundedCapture {
     const to = new BoundedCapture(headChars, tailChars)
-    for (const c of this.head) to.push(c.text, c.err)
-    for (const c of this.tail) to.push(c.text, c.err)
+    for (const c of through(this.head)) to.push(c.text, c.err)
+    for (const c of through(this.tail)) to.push(c.text, c.err)
     to.dropped += this.dropped
     return to
   }

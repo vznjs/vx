@@ -631,6 +631,46 @@ describe('OtelSink end-to-end', () => {
     ])
   })
 
+  it('charts no task a stop aborted: never ran, or ran in part', async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    const rec = (r: Record<string, unknown>) =>
+      sink.onRecord({ v: 3, runId: 'r', ...r } as TelemetryRecord)
+    rec({ kind: 'run.start', run: RUN, total: 3, ts: 0, startedAt: 0 })
+    const end = (taskId: string, extra: Partial<TaskTelemetry>) => ({
+      kind: 'task.end',
+      taskId,
+      project: 'a',
+      task: taskId.slice(2),
+      exitCode: 0,
+      ts: 900,
+      ...extra,
+    })
+    rec({ kind: 'task.start', taskId: 'a#build', project: 'a', task: 'build', ts: 0 })
+    rec(end('a#build', { status: 'success', cacheSource: 'miss', durationMs: 900 }))
+    // Ctrl-C: one killed mid-run, one that never started (0 ms, as core sends it).
+    rec({ kind: 'task.start', taskId: 'a#test', project: 'a', task: 'test', ts: 100 })
+    rec(end('a#test', { status: 'aborted', cacheSource: 'none', exitCode: 130, durationMs: 800 }))
+    rec(end('a#lint', { status: 'aborted', cacheSource: 'none', exitCode: 130, durationMs: 0 }))
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    type Metric = {
+      name: string
+      gauge?: { dataPoints: { attributes: { key: string; value: { stringValue?: string } }[] }[] }
+    }
+    const metrics = (
+      calls.find((c) => c.url === 'http://c/v1/metrics')!.body as {
+        resourceMetrics: { scopeMetrics: { metrics: Metric[] }[] }[]
+      }
+    ).resourceMetrics[0]!.scopeMetrics[0]!.metrics
+    const charted = metrics
+      .find((m) => m.name === 'vx.task.duration')!
+      .gauge!.dataPoints.map(
+        (p) => p.attributes.find((a) => a.key === 'cicd.pipeline.task.name')!.value.stringValue,
+      )
+    expect(charted).toEqual(['a#build'])
+  })
+
   it("splits a large run's task points across requests, the run's own metrics in the first only", async () => {
     const { cfg, calls } = mkConfig()
     const sink = new OtelSink(cfg)
@@ -1129,7 +1169,7 @@ describe('OTLP losslessness', () => {
 
   // F-12: the semconv attribute is an enum; vx's status went out verbatim.
   it('maps each vx status onto the cicd.pipeline.task.run.result enum, and keeps it', () => {
-    const { timedOut: _, ...untimed } = FULL_TASK
+    const { timedOut: _, notReady: __, ...untimed } = FULL_TASK
     const got = (
       [
         ['success', false],
@@ -1157,6 +1197,21 @@ describe('OTLP losslessness', () => {
       ['timeout', 'failed'],
       ['skip', 'skipped'],
       ['cancellation', 'aborted'],
+    ])
+  })
+
+  // Core labels a server whose readiness wait ran out "timed out", as a
+  // one-shot task's deadline; the enum said failure.
+  it("maps a persistent task's readiness timeout to timeout, its other refusals to failure", () => {
+    const { timedOut: _, notReady: __, ...untimed } = FULL_TASK
+    const result = (notReady: 'timeout' | 'exited' | 'spawn') =>
+      attrMap(taskSpanAttributes({ ...untimed, status: 'failed', notReady }, TASK_RUN) as never)[
+        'cicd.pipeline.task.run.result'
+      ]
+    expect([result('timeout'), result('exited'), result('spawn')]).toEqual([
+      'timeout',
+      'failure',
+      'failure',
     ])
   })
 
@@ -2006,6 +2061,18 @@ describe('config the sweep left unpinned', () => {
     ).toEqual(['off', 'off', 'on'])
   })
 
+  // A disabled SDK exports nothing, so a bad endpoint it would never use
+  // is nothing to warn about: the scheme check warned before it was read.
+  it('OTEL_SDK_DISABLED declines in silence', () => {
+    const warns: string[] = []
+    const c = resolveOtelConfig(
+      {},
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'localhost:4318', OTEL_SDK_DISABLED: 'true' },
+      (m) => void warns.push(m),
+    )
+    expect([c, warns]).toEqual([undefined, []])
+  })
+
   it('each signal reads its own headers variable; options top env for endpoint and name', () => {
     const c = resolveOtelConfig(
       { logsEndpoint: 'http://opt/logs', serviceName: 'svc-opt' },
@@ -2734,6 +2801,32 @@ describe('live mode', () => {
       1,
       ['vx.task', 'vx.task', 'vx.task'],
     ])
+  })
+
+  // A start queued its record and sent nothing: with no task ended and no
+  // sample taken, a long first task showed the run as not started.
+  it('a start is sent while the task still runs', async () => {
+    const { cfg, calls } = mkConfig({ live: true, liveBatchMs: 20, metricsEnabled: false })
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 3,
+      kind: 'task.start',
+      runId: 'run-1',
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      ts: 1001,
+    } as TelemetryRecord)
+    await Bun.sleep(80)
+    expect(eventNames(calls)).toEqual(['vx.run.start', 'vx.task.start'])
   })
 
   it('without it, nothing leaves before the run ends', async () => {

@@ -710,8 +710,32 @@ export function formatKeptLines(node: TaskNode, text: string, colors: ColorSuppo
   const prefix = `${paintTaskId(node, colors)} ${paint('', '│', colors, { dim: true })} `
   return text
     .split('\n')
-    .map((line) => `${prefix}${line}\n`)
+    .map((line) => `${prefix}${lastRedraw(line)}\n`)
     .join('')
+}
+
+// eslint-disable-next-line no-control-regex -- ESC is the point
+const LINE_RESET = /\r|\x1b\[[12]K|\x1b\[[01]?G/g
+// eslint-disable-next-line no-control-regex -- ESC is the point
+const TRAILING_RESETS = /(?:\r|\x1b\[[12]K|\x1b\[[01]?G)+$/
+// eslint-disable-next-line no-control-regex -- ESC is the point
+const SGR = /\x1b\[[0-9;]*m/g
+
+/**
+ * What a line shows once its redraws have played: the text after its last
+ * `\r`, line erase (`CSI 1K`/`2K`) or move to column 1 (`CSI G`), with the
+ * colours set before it. Written after an id prefix, a dev server's redraw
+ * (`\x1b[2K\x1b[1Gbuilt in 30ms`, a `10%\r100%` progress line) erased or
+ * overwrote the prefix on a terminal. A reset that ends the line, as in
+ * CRLF, redraws nothing.
+ */
+function lastRedraw(line: string): string {
+  if (!line.includes('\r') && !line.includes('\x1b')) return line
+  const text = line.replace(TRAILING_RESETS, '')
+  let cut = -1
+  for (const m of text.matchAll(LINE_RESET)) cut = m.index + m[0].length
+  if (cut === -1) return text
+  return (text.slice(0, cut).match(SGR) ?? []).join('') + text.slice(cut)
 }
 
 /**

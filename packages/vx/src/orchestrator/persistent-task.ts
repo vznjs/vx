@@ -13,7 +13,7 @@ import {
   wrapSandboxedCommand,
 } from '../exec/index.js'
 import type { TaskOutcome } from '../graph/index.js'
-import { maskedEmitter, secretMask, testTimerMs } from '../util/index.js'
+import { maskedStreams, secretMask, testTimerMs } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import {
@@ -32,6 +32,29 @@ import { forgetUndeclaredWrites, isAborted, taskEnv, taskTimeoutMs } from './tas
 
 /** How long a server may take to match `readyWhen` before vx says it waits. */
 const READY_NOTICE_MS = 10_000
+
+/**
+ * A server is keyed on its inputs like any task, so a cached dependant
+ * behind a dev server re-runs when the server's sources change; with none
+ * it has no key and the dependant always runs (A-17). A server the watch
+ * loop keeps up is keyed too: its dependant folds the key either way.
+ */
+export function serverKey(args: ExecuteArgs): Promise<string | undefined> | string | undefined {
+  if (args.noDependants === true) return undefined
+  return (
+    args.upfrontKey ??
+    computeTaskHash({
+      node: args.node,
+      upstream: args.upstream,
+      workspaceRoot: args.workspaceRoot,
+      cache: args.cache,
+      forwardArgs: args.forwardArgs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+    })
+  )
+}
 
 /**
  * Persistent task: dev server / file watcher / daemon. Spawn, wait
@@ -56,23 +79,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
   const env = taskEnv(node, step, args.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  // Keyed on its inputs like any task, so a cached dependant behind a dev
-  // server re-runs when the server's sources change; with none it has no
-  // key and the dependant always runs (A-17).
-  const hash =
-    args.noDependants === true
-      ? undefined
-      : (args.upfrontKey ??
-        (await computeTaskHash({
-          node,
-          upstream: args.upstream,
-          workspaceRoot: args.workspaceRoot,
-          cache: args.cache,
-          forwardArgs: args.forwardArgs,
-          nestedProjectDirs: args.nestedProjectDirs,
-          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-          ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        })))
+  const hash = await serverKey(args)
 
   // Every dependant starts it where it runs (`ServerSpec`): nothing to spawn
   // here, and nothing that ran (2026-10-22: nothing runs on a
@@ -148,14 +155,14 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     (t) => log.taskStdout(node, t),
     (t) => log.taskStderr(node, t),
   )
-  const serverOut = serverSecrets && maskedEmitter(serverSecrets, ends.onStdout!)
-  const serverErr = serverSecrets && maskedEmitter(serverSecrets, ends.onStderr!)
+  // Masked as one: a stream's held tail goes out before the other's next chunk.
+  const serverMasked = serverSecrets && maskedStreams(serverSecrets, ends.onStdout!, ends.onStderr!)
   const persistentOpts: Parameters<typeof runPersistent>[0] = {
     command,
     cwd: node.projectDir,
     env,
-    onStdout: serverOut ? (chunk) => serverOut.push(chunk) : ends.onStdout!,
-    onStderr: serverErr ? (chunk) => serverErr.push(chunk) : ends.onStderr!,
+    onStdout: serverMasked ? serverMasked.out : ends.onStdout!,
+    onStderr: serverMasked ? serverMasked.err : ends.onStderr!,
     ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
     ...(args.track !== undefined
       ? { onSpawn: (pid: number) => void args.track!(node.id, pid) }
@@ -242,12 +249,11 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // A shell that exited before ready can leave its group running
     // (`server & …; exit`): never registered, so no teardown reached it,
     // and it held its port against the next `vx watch` cycle's server.
-    if (err instanceof PersistentReadyError && err.reason === 'exited')
-      await terminateChildren(() => [spawn.child])
+    if (err instanceof PersistentReadyError && err.reason === 'exited' && spawn.child !== undefined)
+      await terminateChildren(() => [spawn.child!])
     // What the masked streams hold back (a tail that could begin a secret)
     // belongs above vx's own line: left to the idle flush, it came after it.
-    serverOut?.end()
-    serverErr?.end()
+    serverMasked?.end()
     // A server the run's stop killed while it started is aborted, as any
     // task the stop kills (item 962): it read `failed (never ready:
     // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
@@ -308,7 +314,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       // A server that traps the TERM and exits 0 still timed out, as a
       // one-shot task that does so reports 143 (X-116).
       exitCode:
-        ready?.reason === 'timeout'
+        ready?.reason === 'timeout' && spawn.child !== undefined
           ? (await spawn.child.exited) || signalExitCode('SIGTERM')
           : (ready?.exitCode ?? 1),
       durationMs: spawn.readyMs(),
@@ -332,13 +338,15 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
     }
   }
-  args.persistentRegistry?.set(node.id, spawn.child)
+  // Ready, so it spawned: only a failed spawn has no child.
+  const child = spawn.child!
+  args.persistentRegistry?.set(node.id, child)
   forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
   if (mayWriteFingerprint(node, args.workspaceRoot, args.fingerprintWatch?.names ?? [])) {
     args.fingerprintWatch?.wrote()
   }
   // Ready by its clean exit (a setup step): nothing is running any more.
-  const exited = spawn.child.exitCode
+  const exited = child.exitCode
   return {
     node,
     status: 'success',

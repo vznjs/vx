@@ -835,10 +835,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     const blockedRestores = new Map<string, string | undefined>()
     const heldRelease = new Set<string>()
     const blockOf = (id: string): void => {
-      if (inRestoreTier(id) && continueMode !== 'always') {
+      if (inRestoreTier(id)) {
         for (const dep of (nodes.get(id) as TaskNode).deps) {
           const u = outcomes.get(dep)
-          if (u?.status === 'failed' || u?.status === 'aborted') {
+          if (continueMode !== 'always' && (u?.status === 'failed' || u?.status === 'aborted')) {
             blockedRestores.set(id, dep)
             break
           }
@@ -923,11 +923,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       }
       if (inRestoreTier(id)) return false
       const node = nodes.get(id) as TaskNode
-      // `always` runs past a FAILURE only. Under it a skipped dep is one
-      // `exec.platforms` left off this machine (or a dependant of one): no
-      // failure, and what depends on it is skipped in every mode.
+      // `always` runs past a failed upstream, never past one that did not
+      // run on this platform: under it, a skip has no other cause.
       if (continueMode === 'always')
-        return node.deps.some((d) => outcomes.get(d)?.status === 'skipped')
+        return node.deps.some(
+          (d) => outcomes.get(d)?.status === 'skipped' || blockedRestores.has(d),
+        )
       return node.deps.some((d) => {
         const u = outcomes.get(d)
         // `aborted` propagates even though it is counted nowhere: the
@@ -1057,9 +1058,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         if (!settlesIdle && willSkip(id)) {
           // The root of the block: a failed or aborted upstream names
           // itself; a skipped one hands down its own root.
-          const blocker = upstream.find(
-            (u) => u !== undefined && (u.status === 'failed' || u.status === 'aborted'),
-          )
+          const blocker =
+            continueMode === 'always'
+              ? undefined
+              : upstream.find(
+                  (u) => u !== undefined && (u.status === 'failed' || u.status === 'aborted'),
+                )
           const viaSkip = upstream.find((u) => u !== undefined && u.status === 'skipped')
           const viaRestore = node.deps.find((d) => blockedRestores.has(d))
           const blockedBy =
@@ -1256,11 +1260,22 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     }
 
     // A held server's answer: the dependants it found go on the restore
-    // lane, and the server is idle when they were all of them.
+    // lane, and the server is idle when they were all of them. One whose
+    // deps all settled is already on the exec queue, running, or done:
+    // pushed again it ran twice (its server skipped, the exec lane full).
     const answer = (id: string, found: readonly string[]): void => {
       if (resolved || !unanswered.delete(id)) return
       for (const d of found) {
-        if (promoted.has(d) || outcomes.has(d) || !inRestoreTier(d)) continue
+        // In `readyAt`: already queued, released to the exec queue when its
+        // server was skipped before this answer. On both lanes it ran twice.
+        if (
+          promoted.has(d) ||
+          outcomes.has(d) ||
+          readyAt.has(d) ||
+          pending.get(d) === 0 ||
+          !inRestoreTier(d)
+        )
+          continue
         promoted.add(d)
         restoreReady.push(d)
         readyAt.set(d, Date.now())

@@ -37,10 +37,12 @@ export function scriptCommand(
   body: string,
   scripts: Readonly<Record<string, unknown>> = {},
   pnp = false,
+  /** `runsScriptHooks`: false where the manager runs no `pre` / `post` hook. */
+  hooks = true,
 ): string {
   if (pnp) return yarnRun(name)
   const hook = (h: string): string | undefined =>
-    !LIFECYCLE.test(h) && usable(scripts[h]) ? scripts[h] : undefined
+    hooks && !LIFECYCLE.test(h) && usable(scripts[h]) ? scripts[h] : undefined
   const parts = [hook(`pre${name}`), body, hook(`post${name}`)]
   if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return yarnRun(name)
   return foldScriptHooks(parts[0], body, parts[2])

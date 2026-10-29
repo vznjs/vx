@@ -74,6 +74,25 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
     ])
   })
 
+  // A 256 MiB blob named as the duration grew the process 330 MiB: it
+  // was read whole for a record of some 20 bytes.
+  it('reads no duration record past its cap, and says so', async () => {
+    const said: string[] = []
+    cache.close()
+    cache = new ReapiRemoteCache({ endpoint: fake.endpoint, onWarn: (m) => said.push(m) })
+    const big = fake.put(new Uint8Array(1025).fill(0x31))
+    entry('k-dur-big', 'a', { stdout_digest: big })
+    const before = fake.calls.length
+    expect(await restored('k-dur-big')).toEqual(['a', undefined])
+    const asked = fake.calls.slice(before).map((c) => JSON.stringify(c.request))
+    expect(asked.filter((r) => r.includes(big.hash))).toEqual([])
+    expect(said).toEqual([
+      expect.stringMatching(
+        /^\[vx\] vx-reapi: reading a task duration at .* failed: its record is 1025 bytes, over 1024/,
+      ),
+    ])
+  })
+
   it('an upload that looks up or batches in vain says so, and still uploads', async () => {
     const said: string[] = []
     cache.close()

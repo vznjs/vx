@@ -37,6 +37,7 @@ import {
   readFileSync,
   readlinkSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -63,6 +64,7 @@ import {
 import { watchTree } from './proc-sample.js'
 import {
   BUN_GLOB_WILDCARDS,
+  ESSENTIAL_ENV,
   executablePath,
   helperEnv,
   taskShell,
@@ -242,6 +244,16 @@ export function unavailableReason(exitCode: number | null, stderr: string): stri
   return `a sandboxed \`true\` failed (exit ${exitCode}): ${stderr.slice(0, 200)}${hint}`
 }
 
+/** vx's values of the variables every task gets (`ESSENTIAL_ENV`). */
+function essentialEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const name of ESSENTIAL_ENV) {
+    const value = process.env[name]
+    if (value !== undefined) env[name] = value
+  }
+  return env
+}
+
 async function trySandboxedTrue(
   SandboxManager: SrtModule['SandboxManager'],
   weakerNested: boolean,
@@ -254,6 +266,8 @@ async function trySandboxedTrue(
     )
     const proc = Bun.spawn([taskShell(), '-c', wrapped], {
       argv0: 'sh',
+      // What a task gets of vx's env: the probe is a sandboxed `true`.
+      env: essentialEnv(),
       stdout: 'ignore',
       stderr: 'pipe',
       stdin: 'ignore',
@@ -451,8 +465,39 @@ function trackTaskTmpdir(dir: string): void {
   if (tmpdirExitHooked) return
   tmpdirExitHooked = true
   process.on('exit', () => {
-    for (const d of liveTaskTmpdirs) rmSync(d, { recursive: true, force: true })
+    for (const d of liveTaskTmpdirs) removeTaskTmpdir(d)
   })
+}
+
+/**
+ * Remove a task's temp directory; never throws. The task may leave it
+ * unremovable: a read-only directory in it (EACCES), or a straggler still
+ * writing (ENOTEMPTY). Thrown, either failed a task that had passed, as a
+ * worker fault under dte. A read-only one is made writable and the remove
+ * retried; what still stands is left to the exit hook's last try.
+ */
+function removeTaskTmpdir(dir: string): boolean {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+      return true
+    } catch {
+      if (attempt === 2) return false
+      ownerWritable(dir)
+    }
+  }
+}
+
+/** Give the owner write and search on every directory under `dir`, which a recursive remove needs. */
+function ownerWritable(dir: string): void {
+  try {
+    const st = lstatSync(dir)
+    if (!st.isDirectory()) return
+    if ((st.mode & 0o700) !== 0o700) chmodSync(dir, (st.mode & 0o7777) | 0o700)
+    for (const name of readdirSync(dir)) ownerWritable(path.join(dir, name))
+  } catch {
+    // gone, or not this user's: the retry says
+  }
 }
 
 /** Whether SRT is up in this process — set by `initSandbox`, cleared by `resetSandbox`. */
@@ -610,11 +655,91 @@ function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
     // SRT's dependency check says so
   }
   try {
-    paths.socatPath = executablePath('socat')
+    paths.socatPath = envCutSocat(executablePath('socat'))
   } catch {
     // SRT's dependency check says so
   }
   return paths
+}
+
+/**
+ * socat behind a wrapper that `exec`s it with the essential env only.
+ * SRT spawns its host bridge (`socat UNIX-LISTEN:… TCP:localhost:…`) with
+ * no `env`, so it held vx's whole environment for the run, readable from
+ * its `/proc/<pid>/environ` by any unsandboxed task beside it, the hole
+ * `hideEnvFromTasks` closes for vx itself. SRT takes no env for it, and
+ * narrowing `process.env` around `initialize` would hand a task spawned
+ * meanwhile the narrowed one. The same path runs socat inside the
+ * sandbox, so the wrapper keeps `SOCAT_DEFAULT_LISTEN_IP` (`hostHasIpv6`).
+ * It lives in this user's own 0700 directory, named by its content, and
+ * no exit hook removes it: SRT's dependency check reads the path its live
+ * config holds, and a per-process one an emitted `exit` reaped left the
+ * next probe "socat not executable" while the process went on (B-93's
+ * shape). A host where it cannot run (`/tmp` mounted noexec) keeps the
+ * bare socat.
+ */
+const socatWrappers = new Map<string, string>()
+function envCutSocat(socat: string): string {
+  const known = socatWrappers.get(socat)
+  // One stat per init: a wrapper someone removed is made again.
+  if (known !== undefined && (known === socat || existsSync(known))) return known
+  let wrapper = socat
+  try {
+    const keep = [...ESSENTIAL_ENV, 'SOCAT_DEFAULT_LISTEN_IP']
+      .map((n) => `\${${n}+"${n}=$${n}"}`)
+      .join(' ')
+    const body = `#!/bin/sh\nexec ${shellQuote(executablePath('env'))} -i ${keep} ${shellQuote(socat)} "$@"\n`
+    const file = ownWrapper(body)
+    if (
+      Bun.spawnSync([file, '-V'], { env: helperEnv(), stdout: 'ignore', stderr: 'ignore' })
+        .exitCode === 0
+    ) {
+      wrapper = file
+    }
+  } catch {
+    // no private directory or no `env`: the bare socat, as before
+  }
+  socatWrappers.set(socat, wrapper)
+  return wrapper
+}
+
+/**
+ * `body` as an executable in `vx-socat-<uid>/` under the OS temp dir,
+ * written once (to a temp, then renamed, so a process beside this one
+ * never runs half of it) and checked byte for byte before it is used.
+ * Anything else at the names (another owner, group or other bits, a
+ * link, other bytes) is refused.
+ */
+function ownWrapper(body: string): string {
+  const uid = process.getuid!()
+  const dir = path.join(os.tmpdir(), `vx-socat-${uid}`)
+  try {
+    mkdirSync(dir, { mode: 0o700 })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  const d = lstatSync(dir)
+  if (!d.isDirectory() || d.uid !== uid || (d.mode & 0o077) !== 0) {
+    throw new Error(`${dir} is not this user's own directory`)
+  }
+  const file = path.join(dir, `socat-${xxh3hex(body).slice(0, 16)}`)
+  const ok = (): boolean => {
+    const f = lstatSync(file, { throwIfNoEntry: false })
+    return (
+      f !== undefined &&
+      f.isFile() &&
+      f.uid === uid &&
+      (f.mode & 0o777) === 0o500 &&
+      readFileSync(file, 'utf8') === body
+    )
+  }
+  if (ok()) return file
+  const tmp = `${file}.${process.pid}`
+  rmSync(tmp, { force: true })
+  writeFileSync(tmp, body, { mode: 0o500, flag: 'wx' })
+  renameSync(tmp, file)
+  if (!ok()) throw new Error(`${file} is not this user's wrapper`)
+  return file
 }
 
 /**
@@ -1844,7 +1969,8 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
  */
 export function releaseBridges(tag: string): void {
   const tmp = taskTmpdir(tag)
-  if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
+  // One that will not go stays tracked, for the exit hook.
+  if (liveTaskTmpdirs.has(tmp) && removeTaskTmpdir(tmp)) liveTaskTmpdirs.delete(tmp)
   if (liveServers.delete(tag)) {
     // A server's wrap stays counted until it stops: one stopped server
     // kept every later task's stubs in the workspace until the reset.
@@ -2922,6 +3048,7 @@ function straceState(): Promise<{ form: false | 'plain' | 'seccomp'; why: string
 async function probeStrace(): Promise<{ form: false | 'plain' | 'seccomp'; why: string }> {
   try {
     const p = Bun.spawn([executablePath('strace'), '--version'], {
+      env: helperEnv(),
       stdout: 'pipe',
       stderr: 'ignore',
     })
@@ -2995,7 +3122,7 @@ async function traceRefusal(
       '--',
       executablePath('true'),
     ],
-    { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe' },
+    { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe', env: helperEnv() },
   )
   const err = await new Response(p.stderr).text()
   const line = err.split('\n').find((l) => STRACE_OWN_ERROR.test(l))

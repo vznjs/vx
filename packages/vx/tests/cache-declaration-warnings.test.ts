@@ -8,7 +8,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { run } from './helpers/orchestrator.js'
+import { lock, run } from './helpers/orchestrator.js'
+import { run as runLocked } from '../src/orchestrator/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 let root: string
@@ -32,9 +33,10 @@ function logger(lines: string[]) {
   }
 }
 
-async function runTask(task: string): Promise<string[]> {
+/** `relock: false` runs on the lock as it stands, as a run does. */
+async function runTask(task: string, relock = true): Promise<string[]> {
   const lines: string[] = []
-  const summary = await run({
+  const summary = await (relock ? run : runLocked)({
     cwd: root,
     tasks: [task],
     projects: ['app'],
@@ -241,6 +243,39 @@ describe('cache declarations that match nothing', () => {
     // glob did, so the artifact is NOT empty and nothing is said. Reading
     // only `outputFiles` here would warn about a task that saved outputs.
     expect((await runTask('wsfound')).filter((l) => l.includes('cache.outputs'))).toEqual([])
+  })
+
+  it('a bracket glob naming a file that exists says to escape it', async () => {
+    // `src/[id].txt` is a character class, so it matches `src/i.txt` or
+    // `src/d.txt`, never the route-style file beside it: the key stops
+    // following that file and an edit to it replays the old output. When
+    // the pattern read literally names something on disk, the warning
+    // gives the escaped spelling. `vx lock` refuses such a glob while the
+    // path exists (lock-bracket-literal.test.ts), so here it is made after
+    // the lock, as a run that trusts the lock meets it.
+    const app = path.join(root, 'packages', 'app')
+    await writeFile(
+      path.join(app, 'vx.config.mjs'),
+      `export default { tasks: {
+        route: { exec: { command: "mkdir -p 'out/[slug]' && echo x > 'out/[slug]/page.js'" },
+          inputs: { files: ['src/[id].txt'] }, cache: { outputs: { files: ['out/[slug]/**'] } } },
+        // A bracket glob naming nothing on disk keeps the plain warning.
+        cls: { exec: { command: 'true' },
+          inputs: { files: ['lib/[ab].txt'] }, cache: { outputs: { files: ['build/[ab]/**'] } } },
+      } }\n`,
+    )
+    await lock(root)
+    await writeFile(path.join(app, 'src', '[id].txt'), 'x\n')
+    expect(await runTask('route', false)).toEqual([
+      "[vx] app#route: inputs matched no files (src/[id].txt) — the key will not change when this project's source does — " +
+        '[ starts a character class and src/[id].txt exists: write src/\\[id\\].txt to name it',
+      '[vx] app#route: cache.outputs matched no files (out/[slug]/**) — an empty artifact is saved; a later hit restores nothing — ' +
+        '[ starts a character class and out/[slug] exists: write out/\\[slug\\]/** to name it',
+    ])
+    expect(await runTask('cls', false)).toEqual([
+      "[vx] app#cls: inputs matched no files (lib/[ab].txt) — the key will not change when this project's source does",
+      '[vx] app#cls: cache.outputs matched no files (build/[ab]/**) — an empty artifact is saved; a later hit restores nothing',
+    ])
   })
 
   it('matching globs and a deliberate empty output list say nothing (control)', async () => {

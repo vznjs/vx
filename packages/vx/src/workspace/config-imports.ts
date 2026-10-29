@@ -508,6 +508,14 @@ export interface ConfigImportOwnersArgs {
   changed: readonly string[]
   /** Already-selected projects; their configs need no scan. */
   skip: ReadonlySet<string>
+  /** The workspace config files: one of `changed` they import is {@link ConfigImportOwners.workspace}. */
+  workspaceConfigs?: readonly string[]
+}
+
+export interface ConfigImportOwners {
+  owners: Set<string>
+  /** A changed file a workspace config imports, which can re-key any task. */
+  workspace?: string
 }
 
 const TS_EXT = new Set(['.ts', '.mts', '.cts'])
@@ -516,9 +524,11 @@ const TS_EXT = new Set(['.ts', '.mts', '.cts'])
 const RESOLVED_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.json']
 
 /** Projects whose config file transitively imports one of `changed`. */
-export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set<string>> {
+export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<ConfigImportOwners> {
   const selected = new Set<string>()
-  if (a.changed.length === 0 || a.skip.size === a.projects.length) return selected
+  const wsConfigs = a.workspaceConfigs ?? []
+  if (a.changed.length === 0) return { owners: selected }
+  if (a.skip.size === a.projects.length && wsConfigs.length === 0) return { owners: selected }
   const workspaceRoot = await realpath(a.workspaceRoot).catch(() => a.workspaceRoot)
 
   const roots = new Map<string, string>() // abs config path → project name
@@ -529,7 +539,10 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
       roots.set(await realpath(cfg).catch(() => path.resolve(cfg)), p.name)
     }),
   )
-  if (roots.size === 0) return selected
+  const wsRoots = new Set(
+    await Promise.all(wsConfigs.map((f) => realpath(f).catch(() => path.resolve(f)))),
+  )
+  if (roots.size === 0 && wsRoots.size === 0) return { owners: selected }
 
   // target → the files that import it. Reversed up front so one BFS from the
   // changed set answers every root at once, instead of a walk per root.
@@ -538,7 +551,7 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
   const visited = new Set<string>()
   // A level at a time, its files read together: one awaited read per
   // config put 5,000 of them 200 ms behind (D-23).
-  let frontier = [...roots.keys()]
+  let frontier = [...roots.keys(), ...wsRoots]
   while (frontier.length > 0) {
     const read = await Promise.all(
       frontier.map(async (file) => {
@@ -570,17 +583,21 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
     }
   }
 
+  let workspace: string | undefined
   const seen = new Set<string>()
-  const walk = [...a.changed.map((rel) => path.resolve(workspaceRoot, rel))]
+  // Each entry carries the changed file it came from, to name the one that
+  // reaches a workspace config.
+  const walk = a.changed.map((rel) => [path.resolve(workspaceRoot, rel), rel] as const)
   while (walk.length > 0) {
-    const file = walk.pop()!
+    const [file, from] = walk.pop()!
     if (seen.has(file)) continue
     seen.add(file)
     const owner = roots.get(file)
     if (owner !== undefined) selected.add(owner)
-    for (const importer of importedBy.get(file) ?? []) walk.push(importer)
+    if (wsRoots.has(file)) workspace ??= from
+    for (const importer of importedBy.get(file) ?? []) walk.push([importer, from])
   }
-  return selected
+  return workspace === undefined ? { owners: selected } : { owners: selected, workspace }
 }
 
 /**

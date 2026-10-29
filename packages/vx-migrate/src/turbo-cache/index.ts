@@ -271,19 +271,21 @@ export function resolveTurboCacheConfig(
   if (file.enabled === false && options.url === undefined && options.token === undefined)
     return undefined
   const fromFile = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+  // Empty is unset, as Turbo reads it: a fork's pull request gets `''` for a
+  // secret, and `${{ vars.TURBO_API }}` is `''` for an unset variable.
+  const set = (name: string): string | undefined => env[name] || undefined
   // A Vercel build hands Turbo its cache as VERCEL_ARTIFACTS_TOKEN and
   // _OWNER (the team id), taken where TURBO_TOKEN with a team is not set
   // (Turbo's `override_env.rs`); unread, turboCache() declined on Vercel.
-  const turboPair = env['TURBO_TOKEN'] && (env['TURBO_TEAMID'] || env['TURBO_TEAM'])
+  const turboPair = set('TURBO_TOKEN') && (set('TURBO_TEAMID') || set('TURBO_TEAM'))
   const vercel =
-    !turboPair && env['VERCEL_ARTIFACTS_TOKEN'] && env['VERCEL_ARTIFACTS_OWNER']
-      ? { token: env['VERCEL_ARTIFACTS_TOKEN'], teamId: env['VERCEL_ARTIFACTS_OWNER'] }
-      : { token: undefined, teamId: turboPair ? undefined : env['VERCEL_ARTIFACTS_OWNER'] }
-  // Empty is unset, as Turbo reads it: a fork's pull request gets `''` for a secret.
-  const given = (options.token ?? env['TURBO_TOKEN'] ?? vercel.token) || undefined
+    !turboPair && set('VERCEL_ARTIFACTS_TOKEN') && set('VERCEL_ARTIFACTS_OWNER')
+      ? { token: set('VERCEL_ARTIFACTS_TOKEN'), teamId: set('VERCEL_ARTIFACTS_OWNER') }
+      : { token: undefined, teamId: turboPair ? undefined : set('VERCEL_ARTIFACTS_OWNER') }
+  const given = (options.token ?? set('TURBO_TOKEN') ?? vercel.token) || undefined
   // OIDC sits under the variables and over the config files.
-  const idTokenUrl = env['ACTIONS_ID_TOKEN_REQUEST_URL'] || undefined
-  const idTokenBearer = env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] || undefined
+  const idTokenUrl = set('ACTIONS_ID_TOKEN_REQUEST_URL')
+  const idTokenBearer = set('ACTIONS_ID_TOKEN_REQUEST_TOKEN')
   const exchanges =
     options.oidc !== undefined &&
     given === undefined &&
@@ -292,12 +294,12 @@ export function resolveTurboCacheConfig(
   const token = given ?? (exchanges ? undefined : fromFile(local.token) || undefined)
   const teamId =
     options.teamId ??
-    env['TURBO_TEAMID'] ??
+    set('TURBO_TEAMID') ??
     vercel.teamId ??
     fromFile(local.teamId) ??
     fromFile(file.teamId)
   const teamSlug =
-    options.teamSlug ?? env['TURBO_TEAM'] ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
+    options.teamSlug ?? set('TURBO_TEAM') ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
   // Turbo's own default when a token or a team is set and no URL is:
   // Vercel's hosted Remote Cache. A token alone is a configured cache, as it
   // is for `turbo`; a URL or a team without one asks the OS keychain at
@@ -307,8 +309,8 @@ export function resolveTurboCacheConfig(
   const [rawUrl, urlFrom] =
     options.url !== undefined
       ? [options.url, 'turboCache() option "url"']
-      : env['TURBO_API'] !== undefined
-        ? [env['TURBO_API'], 'TURBO_API']
+      : set('TURBO_API') !== undefined
+        ? [set('TURBO_API'), 'TURBO_API']
         : fromFile(local.apiUrl) !== undefined
           ? [fromFile(local.apiUrl), '.turbo/config.json apiUrl']
           : fromFile(file.apiUrl) !== undefined
@@ -335,7 +337,7 @@ export function resolveTurboCacheConfig(
   const fault = token === undefined ? null : headerValueFault(token)
   if (fault !== null)
     throw new Error(
-      `vx/turbo-cache: the token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
+      `turboCache(): the token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
     )
   const preflight =
     options.preflight ??
@@ -361,7 +363,7 @@ export function resolveTurboCacheConfig(
     if (bytes < MIN_SIGNATURE_KEY_LENGTH) {
       if (options.signatureKey !== undefined || file.longerSignatureKey === true)
         throw new Error(
-          `vx/turbo-cache: signatureKey must be at least ${MIN_SIGNATURE_KEY_LENGTH} bytes`,
+          `turboCache(): signatureKey must be at least ${MIN_SIGNATURE_KEY_LENGTH} bytes`,
         )
       warn(
         `TURBO_REMOTE_CACHE_SIGNATURE_KEY is ${bytes} bytes; ${MIN_SIGNATURE_KEY_LENGTH} or more is safe (Turbo enforces it under futureFlags.longerSignatureKey)`,
@@ -400,7 +402,7 @@ export function resolveTurboCacheConfig(
 function truthy(v: string | undefined, name: string): boolean | undefined {
   if (v === undefined || v === '') return undefined
   if (!/^(1|0|true|false)$/.test(v))
-    throw new Error(`vx/turbo-cache: ${name} should be 1 or 0, got ${JSON.stringify(v)}`)
+    throw new Error(`turboCache(): ${name} should be 1 or 0, got ${JSON.stringify(v)}`)
   return v === '1' || v === 'true'
 }
 
@@ -412,7 +414,7 @@ function seconds(v: unknown, name: string): number | undefined {
   if (v === undefined || v === null || v === '') return undefined
   const n = typeof v === 'string' ? Number(v) : v
   if (typeof n !== 'number' || !Number.isInteger(n) || n < 0)
-    throw new Error(`vx/turbo-cache: ${name} must be whole seconds ≥ 0, got ${JSON.stringify(v)}`)
+    throw new Error(`turboCache(): ${name} must be whole seconds ≥ 0, got ${JSON.stringify(v)}`)
   return n * 1000
 }
 
@@ -995,7 +997,7 @@ function refuseBadNumbers(options: TurboCacheOptions): void {
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
   refuseBadNumbers(options)
-  const scope = remoteScope('turbo-cache', options.scope)
+  const scope = remoteScope('turboCache', options.scope)
   // The run's layer and warn, for `teardown` to revoke an exchanged token.
   let opened: { layer: TurboRemoteCache; warn: (m: string) => void } | undefined
   return definePlugin(import.meta, {

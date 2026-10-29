@@ -328,9 +328,10 @@ export function binaryFromTarball(tgz: Uint8Array): Uint8Array {
 /**
  * The binary of `pkg@spec`, verified: the registry document's signature,
  * then the tarball's integrity, then the extraction, each refusing before
- * the next step runs. Null when the release is `current`, the version of
- * the vx being replaced; `announce` hears the version before the download
- * starts.
+ * the next step runs. A signed version other than the one asked, or as
+ * `latest` one below `current`, is refused. Null when the release is
+ * `current`, the version of the vx being replaced; `announce` hears the
+ * version before the download starts.
  */
 export async function releaseBinary(
   pkg: string,
@@ -350,6 +351,11 @@ export async function releaseBinary(
     )
   }
   if (release.version === current) return null
+  if (spec === 'latest' && Bun.semver.order(release.version, current) < 0) {
+    throw new UserError(
+      `vx upgrade: the registry's latest ${pkg} is ${release.version}, below this vx's ${current} — nothing replaced; to go back, ask for it: vx upgrade v${release.version}`,
+    )
+  }
   announce(release.version)
   return binaryFromTarball(await downloadVerified(release, registry))
 }
@@ -446,13 +452,34 @@ export interface ManagedInstall {
 
 const FIELDS = ['devDependencies', 'dependencies', 'optionalDependencies'] as const
 
+/** `file` as a JSON object, or null where there is none; one that is not JSON is refused. */
 function readJson(file: string): Record<string, unknown> | null {
+  let text: string
   try {
-    // A byte-order mark is stripped, as every package manager strips it.
-    const v: unknown = JSON.parse(readFileSync(file, 'utf8').replace(/^﻿/, ''))
-    return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
+    text = readFileSync(file, 'utf8')
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR') return null
+    throw new UserError(`vx upgrade: could not read ${file} (${(err as Error).message})`)
+  }
+  let v: unknown
+  try {
+    // A byte-order mark is stripped, as npm strips it.
+    v = JSON.parse(text.replace(/^\uFEFF/, ''))
+  } catch (err) {
+    // Read as absent, it sent the user to "no package.json lists vx".
+    throw new UserError(
+      `vx upgrade: ${file} is not JSON (${(err as Error).message}) — fix it, then run vx upgrade again`,
+    )
+  }
+  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
+}
+
+function lockText(file: string): string {
+  try {
+    return readFileSync(file, 'utf8')
   } catch {
-    return null
+    return ''
   }
 }
 
@@ -603,6 +630,14 @@ export function upgradeArgv(install: ManagedInstall, version: string): string[] 
   // pnpm refuses an `add` at a workspace's root without saying it means the root.
   if (manager === 'pnpm' && existsSync(path.join(install.cwd, 'pnpm-workspace.yaml')))
     argv.push('--workspace-root')
+  // Yarn 1 refuses one there without -W; Berry, whose lockfile carries
+  // `__metadata`, has no such flag.
+  if (
+    manager === 'yarn' &&
+    readJson(path.join(install.cwd, 'package.json'))?.['workspaces'] !== undefined &&
+    !lockText(path.join(install.cwd, 'yarn.lock')).includes('__metadata:')
+  )
+    argv.push('-W')
   return argv
 }
 

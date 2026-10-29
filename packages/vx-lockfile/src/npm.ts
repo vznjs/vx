@@ -108,11 +108,15 @@ function workspaceMatcher(root: unknown): (p: string) => boolean {
   const ws = record(root)?.['workspaces']
   const list = Array.isArray(ws) ? ws : record(ws)?.['packages']
   if (!Array.isArray(list)) return () => false
-  const glob = (g: string) => new Bun.Glob(g.replace(/^\.\//, '').replace(/\/+$/, ''))
+  // Matched against the manifest's path, as npm globs `<pattern>/package.json`.
+  const glob = (g: string): Bun.Glob =>
+    new Bun.Glob(`${g.replace(/^\.\//, '').replace(/\/+$/, '')}/package.json`)
   const strings = list.filter((g): g is string => typeof g === 'string')
   const include = strings.filter((g) => !g.startsWith('!')).map(glob)
   const exclude = strings.filter((g) => g.startsWith('!')).map((g) => glob(g.slice(1)))
-  return (p) => include.some((g) => g.match(p)) && !exclude.some((g) => g.match(p))
+  return (p) =>
+    include.some((g) => g.match(`${p}/package.json`)) &&
+    !exclude.some((g) => g.match(`${p}/package.json`))
 }
 
 /**

@@ -41,7 +41,8 @@ export interface Store {
   init(): Promise<void>
   fold(repo: Repo, ref: string, now: number, reports: readonly Report[]): Promise<void>
   read(repo: Repo, refs: readonly string[], hashes: readonly string[]): Promise<Map<string, Timing>>
-  sweep(before: number): Promise<number>
+  sweptAt(): Promise<number>
+  sweep(before: number, now: number): Promise<number>
 }
 == type Timing (src/store.ts)
 export interface Timing {

@@ -27,6 +27,51 @@ export function minimatchToVx(glob: string, negated: boolean): string | null {
   return out.includes('\0') || /[?@+*!]\(/.test(out) ? null : out
 }
 
+// A group no extglob kind opens and no backslash escapes.
+const BARE_GROUP = /(?<![\\?@+*!])\(([^()]*)\)/g
+
+/**
+ * An Nx glob's bare groups in vx's grammar, or null when one has no safe
+ * form. Nx's native glob reads `(a|b)` as `{a,b}` and `(a)` as `a`, so
+ * `dist/*.(js|map)` is the two extensions there; vx and minimatch read the
+ * parentheses as literal text, and the glob matched nothing. Turbo's
+ * grammar has no such group, so this is the Nx adapter's alone.
+ */
+export function nxBareGroups(glob: string): string | null {
+  if (!glob.includes('(')) return glob
+  let unsafe = false
+  const out = glob.replace(BARE_GROUP, (_whole, body: string) => {
+    const alts = body.split('|')
+    if (alts.some((a) => /[{},]/.test(a))) unsafe = true
+    return alts.length === 1 ? alts[0]! : `{${alts.join(',')}}`
+  })
+  return unsafe ? null : out
+}
+
+/** A segment (or brace arm) holding `**` and other text: `**.ts`, `a**`. */
+const glued = (seg: string): boolean => seg.includes('**') && /[^*]/.test(seg)
+
+/** Does `glob` glue `**` to other text, which core refuses? */
+export const hasGluedGlobstar = (glob: string): boolean =>
+  glob
+    .replace(/^!/, '')
+    .split(/[/{},]/)
+    .some(glued)
+
+/**
+ * A glued `**` as minimatch and Nx's matcher (globset, literal separator)
+ * read it: `*`, one level.
+ */
+export function gluedGlobstarAsStar(glob: string): string {
+  const neg = glob.startsWith('!') ? '!' : ''
+  return (
+    neg +
+    glob
+      .slice(neg.length)
+      .replace(/[^/{},]+/g, (seg) => (glued(seg) ? seg.replace(/\*{2,}/g, '*') : seg))
+  )
+}
+
 /**
  * `list` without a literal that one of its `!` entries takes back, and
  * without a repeat. Turbo, Nx and vx all subtract an exclusion wherever it

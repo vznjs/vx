@@ -427,8 +427,10 @@ async function lockWorkspace(root: string): Promise<{ code: number; said: string
     p.exited,
   ])
   // A success's warnings print above the report; a refusal is said whole.
+  // A success is a report row, matched as text: the colour FORCE_COLOR
+  // gave the child would hide its `✓ vx lock` mark from that match.
   if (code === 0) process.stderr.write(err)
-  return { code, said: code === 0 ? out : out + err }
+  return { code, said: code === 0 ? Bun.stripANSI(out) : out + err }
 }
 
 /** A report row: what the tool did, e.g. `['ran', 'bun add -d …']`. */

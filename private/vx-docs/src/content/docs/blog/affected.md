@@ -55,10 +55,13 @@ only `package.json`.
 ## Which base it compares to
 
 Name one with `--affected=main`, or let vx pick. On a pull request,
-`github()` gives the PR's base commit. Elsewhere vx uses the merge base
-with your base branch (`origin/HEAD`, else `main` or `master`, or
-`baseBranch` in `.vx/workspace.ts`). On the base branch itself, run
-`--all`: the cache skips what did not change.
+`github()` gives the PR's base commit.
+
+Elsewhere vx uses the merge base with your base branch (`origin/HEAD`,
+else `main` or `master`, or `baseBranch` in `.vx/workspace.ts`).
+
+On the base branch itself, run `--all`: the cache skips what did not
+change.
 
 CI needs no history for this. On `main` the current commit is enough.
 On a branch, vx fetches the base commit and the commits down to where

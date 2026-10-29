@@ -909,6 +909,36 @@ describe('LocalHistoryProvider', () => {
     }
   })
 
+  it('an invocation that recorded no row still bounds the window', async () => {
+    // A run of only a group records its header and no task row (X-50).
+    // At the window's oldest slot it left no first row to start from, and
+    // the window read the whole table.
+    const cache = makeCache()
+    try {
+      const r = (hash: string, status: RunRecord['status'], startedAt: number) =>
+        mkRun({ hash, project: 'pkg', task: 'test', status, durationMs: 100, startedAt })
+      const bundle = (runId: string, at: number, runs: RunRecord[]) =>
+        cache.recordRunBundle({
+          runs: runs.map((x) => ({ ...x, runId })),
+          invocation: mkInvocation(runId, at),
+        })
+      bundle('i1', 1000, [r('a', 'failed', 1000)])
+      bundle('i2', 2000, [])
+      bundle('i3', 3000, [r('b', 'success', 3000)])
+      const db = cache.dbHandle()
+      const h = (await new LocalHistoryProvider(db, 2).loadFor(['pkg#test'])).get('pkg#test')!
+      expect([h.runs, h.successRate]).toEqual([1, 1])
+      // Control: the window that reaches i1 counts its failure.
+      const wide = (await new LocalHistoryProvider(db, 3).loadFor(['pkg#test'])).get('pkg#test')!
+      expect([wide.runs, wide.successRate]).toEqual([2, 0.5])
+      // A window of only an empty invocation holds no row.
+      bundle('i4', 4000, [])
+      expect((await new LocalHistoryProvider(db, 1).loadFor(['pkg#test'])).size).toBe(0)
+    } finally {
+      cache.close()
+    }
+  })
+
   it('the default window is the last 50 invocations', async () => {
     const cache = makeCache()
     try {

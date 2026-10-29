@@ -300,6 +300,13 @@ it('says a timings file git does not ignore re-keys the tasks over it', async ()
   warnUnignored(file, root, (m) => said.push(m))
   warnUnignored(path.join(os.tmpdir(), 'elsewhere.json'), root, (m) => said.push(m))
   expect(said).toHaveLength(1)
+  // A name that starts with `..` is in the workspace; it read as outside it.
+  const dotted = path.join(root, '..vx-timings.json')
+  await writeFile(dotted, '{}')
+  warnUnignored(dotted, root, (m) => said.push(m))
+  expect(said.slice(1)).toEqual([
+    '[vx] vx-history: timings file ..vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore',
+  ])
 })
 
 // A chain's weight is its durations summed: two `1e308`s from a CI cache's

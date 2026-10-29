@@ -4,7 +4,7 @@
 
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay, serveRelay, TokenError, type RelayServer } from '@vzn/vx-dte-server'
-import { join, RelayError, unsent } from '../src/wire.js'
+import { join, RelayError, unsent, type RelayMessage } from '../src/wire.js'
 import { answer, servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -943,6 +943,21 @@ it('gives up on a relay that answers nothing in 10 s in all, and names it', asyn
   expect(performance.now() - at).toBeLessThan(11_000)
 }, 25_000)
 
+// A token that could not be had was said as a relay that never answered,
+// "no answer in 10 s", with the relay up and never asked, after asking
+// the token's source, which tries again itself, three more times.
+it('says a token it could not get as that, not as a relay that did not answer', async () => {
+  const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
+  servers.push(s)
+  let asked = 0
+  const token = (): Promise<string> => (
+    asked++,
+    Promise.reject(new Error("GitHub's OIDC token: 403"))
+  )
+  const err = await join(s.url, R, 'orchestrator', null, token).catch((e: unknown) => e)
+  expect([(err as Error).message, asked]).toEqual(["GitHub's OIDC token: 403", 1])
+})
+
 // 2026-10-23: a remote fault is at least a warning. Every send the
 // orchestrator and a worker make unawaited dropped its error.
 it('a send the relay would not take is said; one to a participant it lost is not', () => {
@@ -1013,3 +1028,31 @@ it('ends what waits on a socket when it leaves, so its process can end', async (
     'left',
   ])
 }, 10_000)
+// An ack still owed to a worker the relay then lost: the next send to it
+// read the intake `forget` dropped and its TypeError was taken for a
+// closed socket, so the send resolved and its body went again to nobody
+// every heartbeat. A send to one the relay no longer knows is a 404 its
+// caller may ignore, and nothing of it goes again.
+it('sends to a worker lost while an ack to it was owed as to any lost one', async () => {
+  const frames: string[] = []
+  const served = servedRelay({ heartbeatMs: 500 }, (f) => (frames.push(f), f))
+  try {
+    const o = await join(served.url, R2, 'orchestrator', null, undefined)
+    const a = await join(served.url, R2, 'worker', null, undefined)
+    await o.poll()
+    await a.send('orchestrator', 'done')
+    await a.leave()
+    const got: RelayMessage[] = []
+    while (!got.some((m) => (m.body as { type?: string } | null)?.type === 'lost'))
+      got.push(...(await o.poll()))
+    // Within half a heartbeat of 'done': its ack is still owed.
+    const err = await o.send(a.id, 'next').catch((e: unknown) => e)
+    expect([err instanceof RelayError, (err as RelayError).status]).toEqual([true, 404])
+    const sent = frames.length
+    await Bun.sleep(1_200)
+    expect(frames.slice(sent).filter((f) => f.includes(a.id))).toEqual([])
+    await o.leave()
+  } finally {
+    await served.stop()
+  }
+})

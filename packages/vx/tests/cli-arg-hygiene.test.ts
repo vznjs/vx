@@ -213,11 +213,19 @@ describe('numeric flags take a plain decimal integer only', () => {
 describe('vx cache clean value parsing', () => {
   it('parses duration units case-insensitively, like sizes always have', () => {
     expect(parseDuration('30D')).toBe(parseDuration('30d'))
-    expect(parseDuration('5M')).toBe(parseDuration('5m'))
+    expect(parseDuration('5MS')).toBe(parseDuration('5ms'))
     expect(parseDuration('2H')).toBe(parseDuration('2h'))
     expect(parseDuration('30S')).toBe(parseDuration('30s'))
     // The control the asymmetry was measured against.
     expect(parseSize('1GB')).toBe(parseSize('1gb'))
+  })
+
+  // `M` is a month to systemd and minutes to `m`: `--older-than 1M` read
+  // as 1 minute empties the cache of someone who meant a month.
+  it('refuses M, a month to some tools, minutes only as m', () => {
+    expect(parseDuration('1M')).toBeNull()
+    expect(parsePruneArgs(['--older-than', '1M']).error).toMatch(/--older-than/)
+    expect(parseDuration('1m')).toBe(60_000)
   })
 
   it('rejects a duration whose digits cannot round-trip', () => {

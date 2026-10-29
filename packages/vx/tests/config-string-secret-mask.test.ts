@@ -32,7 +32,7 @@ beforeEach(async () => {
   t: {
     description: 'deploys ${TOKEN} ${PAT}',
     exec: { command: 'true', env: { secret: ['GH_PAT'] } },
-    inputs: { files: ['package.json'], runtime: ['echo ${TOKEN} $STAMP', 'echo ${PAT} $STAMP'] },
+    inputs: { files: ['package.json'], runtime: ['echo ${TOKEN} $(cat stamp)', 'echo ${PAT} $(cat stamp)'] },
     cache: {
       outputs: { files: [] },
     },
@@ -55,6 +55,7 @@ beforeEach(async () => {
   expect(lock.stderr.toString()).toBe('')
   process.env.API_TOKEN = TOKEN
   process.env.GH_PAT = PAT
+  await Bun.write(stamp(), '0')
 })
 afterEach(async () => {
   for (const [name, value] of [
@@ -77,6 +78,7 @@ function vx(args: string[], env: Record<string, string> = {}): string {
   return p.stdout.toString() + p.stderr.toString()
 }
 
+const stamp = (): string => path.join(root, 'packages', 'app', 'stamp')
 const leaks = (text: string): boolean => text.includes(TOKEN) || text.includes(PAT)
 
 it('vx show masks every string of the task', () => {
@@ -89,7 +91,7 @@ it('vx show masks every string of the task', () => {
       '  command         true',
       '  env.secret      GH_PAT',
       '  inputs.files    package.json',
-      '  inputs.runtime  echo *** $STAMP, echo *** $STAMP',
+      '  inputs.runtime  echo *** $(cat stamp), echo *** $(cat stamp)',
       '  outputs.files',
       '',
     ].join('\n'),
@@ -109,7 +111,7 @@ it('vx show masks every string of the task', () => {
   }
   expect([json.config.description, json.config.inputs.runtime]).toEqual([
     'deploys *** ***',
-    ['echo *** $STAMP', 'echo *** $STAMP'],
+    ['echo *** $(cat stamp)', 'echo *** $(cat stamp)'],
   ])
 }, 20_000)
 
@@ -161,22 +163,25 @@ globalThis.RegExp = new Proxy(Native, {
 }, 20_000)
 
 it("vx why names a runtime probe's row masked, and the history holds no value", async () => {
-  vx(['run', 't', '--all'], { STAMP: '1' })
-  vx(['run', 't', '--all'], { STAMP: '2' })
+  // A probe sees only the essential env, so the change it answers is a file's.
+  await Bun.write(stamp(), '1')
+  vx(['run', 't', '--all'])
+  await Bun.write(stamp(), '2')
+  vx(['run', 't', '--all'])
   const why = JSON.parse(vx(['why', 'app#t', '--format', 'json'])) as {
     diff: { entries: Array<{ change: string; kind: string; name: string }> }
   }
   expect(why.diff.entries.map((e) => `${e.change} ${e.kind} ${e.name}`)).toEqual([
-    'changed runtime echo *** $STAMP',
-    'changed runtime echo *** $STAMP (2)',
+    'changed runtime echo *** $(cat stamp)',
+    'changed runtime echo *** $(cat stamp) (2)',
   ])
   const pretty = vx(['why', 'app#t'])
   expect(pretty.split('\n').filter((l) => l.startsWith('    changed runtime'))).toEqual([
     expect.stringMatching(
-      /^ {4}changed runtime {2}echo \*\*\* \$STAMP {2}[0-9a-f]{16} → [0-9a-f]{16}$/,
+      /^ {4}changed runtime {2}echo \*\*\* \$\(cat stamp\) {2}[0-9a-f]{16} → [0-9a-f]{16}$/,
     ),
     expect.stringMatching(
-      /^ {4}changed runtime {2}echo \*\*\* \$STAMP \(2\) {2}[0-9a-f]{16} → [0-9a-f]{16}$/,
+      /^ {4}changed runtime {2}echo \*\*\* \$\(cat stamp\) \(2\) {2}[0-9a-f]{16} → [0-9a-f]{16}$/,
     ),
   ])
   expect(leaks(pretty)).toBe(false)

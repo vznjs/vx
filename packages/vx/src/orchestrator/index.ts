@@ -2,6 +2,7 @@
 // through here (enforced by tests/module-boundaries.test.ts).
 
 export { run, planRun, nxProjectTarget, projectNamed } from './run.js'
+export { CYCLE_INTERRUPT } from './run-stop.js'
 export {
   namesRemote,
   openRemotes,

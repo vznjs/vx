@@ -543,12 +543,12 @@ const MAX_TIMER_MS = 2 ** 31 - 1
 
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
   // A zero or non-number bound stopped every action the moment it began
-  // executing.
+  // executing. One past the longest timer is held to it (MAX_TIMER_MS).
   for (const key of ['executeTimeoutMs', 'queueTimeoutMs'] as const) {
     const ms = opts[key]
     if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
       throw new Error(
-        `@vzn/vx-reapi: ${key} must be a positive number of ms (got ${JSON.stringify(ms)})`,
+        `reapi(): ${key} must be a positive number of ms (got ${typeof ms === 'number' ? String(ms) : JSON.stringify(ms)})`,
       )
     }
   }
@@ -557,8 +557,13 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   // One Capabilities round trip per executor, not per task — the answer
   // cannot change mid-run, and a 400-task graph would otherwise ask 400 times.
   let capsPromise: ReturnType<ReapiClient['capabilities']> | undefined
+  // A failed ask is not kept: one call past its deadline failed every later
+  // task of the run with the same error.
   const capabilitiesOnce = (): ReturnType<ReapiClient['capabilities']> =>
-    (capsPromise ??= client.capabilities())
+    (capsPromise ??= client.capabilities().catch((err: unknown) => {
+      capsPromise = undefined
+      throw err
+    }))
   const executor: TaskExecutor = {
     name: 'vx/reapi',
     remote: true,
@@ -575,9 +580,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // status is turned into one by `namedRefusal`), so the scheduler
       // prints it plainly instead of "internal error in <task>".
       if (req.inputs === undefined) {
-        throw new Error(
-          `vx-reapi: ${req.taskId} reached the remote executor with no described inputs`,
-        )
+        throw new Error(`${req.taskId} reached the remote executor with no described inputs`)
       }
 
       // A key that already has an execution record needs no worker at all:
@@ -802,7 +805,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             const gone = await client.findMissingBlobs(referenced)
             if (gone.length > 0) {
               throw new UserError(
-                `vx-reapi: upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob${gone.length === 1 ? '' : 's'}) and never materialised locally — re-run it (e.g. --force)`,
+                `upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob${gone.length === 1 ? '' : 's'}) and never materialised locally — re-run it (e.g. --force)`,
               )
             }
             const files = (record.output_files ?? []).map((f) => ({
@@ -826,7 +829,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                   // real and silently dropping the graft is the same wrong-result
                   // hazard as an evicted file.
                   throw new UserError(
-                    `vx-reapi: upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
+                    `upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
                   )
                 }
                 const decodedTree = decodeTreeWithBytes(treeBlob)
@@ -917,6 +920,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       })
       const actionDigest = sha256(actionBytes)
 
+      // The action id lets a server group this action's CAS/AC traffic in its
+      // UI; named before the upload, which is most of that traffic.
+      client.nameAction(actionDigest.hash)
       const caps = await capabilitiesOnce()
       const upload: Blob[] = [
         ...tree.blobs,
@@ -925,9 +931,6 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       ]
       await client.uploadBlobs(upload, caps.maxBatchBytes)
 
-      // The action id lets a server group this action's CAS/AC traffic in its
-      // UI; set before Execute so the streaming call carries it too.
-      client.actionId = actionDigest.hash
       // `exec.timeout` rides the Action so the SERVER can enforce it, but a
       // server that ignores it — or has stopped making progress at all —
       // leaves the client waiting forever, and the operation stream is no
@@ -1008,14 +1011,14 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // the operation, still has the task given back.
           if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           throw executorFallback(
-            `vx-reapi: no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its operation was cancelled`,
+            `no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its operation was cancelled`,
           )
         }
         if (stall.signal.aborted) {
           // Closing the stream alone left the action on its worker.
           if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           throw new UserError(
-            `vx-reapi: ${req.taskId} was still executing ${stallAfter}ms after the worker ` +
+            `${req.taskId} was still executing ${stallAfter}ms after the worker ` +
               `started it and the server never reported a result — giving up on the remote ` +
               `operation. Raise exec.timeout (or the plugin's executeTimeoutMs) if the task ` +
               `is legitimately this slow; otherwise the remote is not making progress.`,
@@ -1028,7 +1031,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       }
       if (op.error !== undefined && (op.error.code ?? 0) !== 0) {
         throw new UserError(
-          `vx-reapi: execution failed for ${req.taskId}: ${op.error.message ?? `code ${op.error.code}`}`,
+          `execution failed for ${req.taskId}: ${op.error.message ?? `code ${op.error.code}`}`,
         )
       }
       const decoded = decodeExecuteResponse(op)
@@ -1058,14 +1061,14 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         }
         const logs = await fetchServerLogs(client, decoded.serverLogs, warn)
         throw new UserError(
-          `vx-reapi: ${req.taskId} execution failed: ${decoded.status.message || `code ${decoded.status.code}`}` +
+          `${req.taskId} execution failed: ${decoded.status.message || `code ${decoded.status.code}`}` +
             (decoded.message === undefined ? '' : ` — ${decoded.message}`) +
             logs,
         )
       }
       if (result === undefined) {
         throw new UserError(
-          `vx-reapi: ${req.taskId} returned no ActionResult${decoded.message === undefined ? '' : `: ${decoded.message}`}`,
+          `${req.taskId} returned no ActionResult${decoded.message === undefined ? '' : `: ${decoded.message}`}`,
         )
       }
       // The worker id is REPORTED, not logged: it rides `ExecuteResult.where`
@@ -1242,9 +1245,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   }
   const run = executor.execute.bind(executor)
   executor.execute = (req) =>
-    run(req).catch((err: unknown) => {
-      throw namedRefusal(req.taskId, err)
-    })
+    client
+      .inAction(() => run(req))
+      .catch((err: unknown) => {
+        throw namedRefusal(req.taskId, err)
+      })
   return executor
 }
 
@@ -1258,7 +1263,7 @@ function namedRefusal(taskId: string, err: unknown): unknown {
   if (isUserError(err) || !(err instanceof Error)) return err
   const status = err as Error & { code?: unknown; details?: unknown }
   if (typeof status.code !== 'number' || typeof status.details !== 'string') return err
-  return new UserError(`vx-reapi: ${taskId}: the remote server failed the call — ${err.message}`)
+  return new UserError(`${taskId}: the remote server failed the call — ${err.message}`)
 }
 
 /**
@@ -1499,7 +1504,7 @@ export async function materialiseOutputs(
   const missing = (what: string, hash: string, abs?: string): void => {
     if (!wholeTreeCapture || req.replay === true || (abs !== undefined && isDeclared(abs))) {
       throw new UserError(
-        `vx-reapi: ${req.taskId} declared output ${what} is missing from the CAS (${hash.slice(0, 12)}) — re-run it (e.g. --force)`,
+        `${req.taskId} declared output ${what} is missing from the CAS (${hash.slice(0, 12)}) — re-run it (e.g. --force)`,
       )
     }
     warn(`[vx] vx-reapi: output ${what} missing from CAS (${hash.slice(0, 12)})`)
@@ -1700,13 +1705,25 @@ class Fence {
     this.checked.add(dir)
   }
 
-  /** A link whose target, read from where it stands, stays under the root. */
+  /**
+   * A link whose target, read from where it stands, stays under the root,
+   * placed only where a declared output lands: through an earlier link it
+   * planted a hook or replaced another project's file.
+   */
   async symlink(target: string, abs: string, created: string[] | undefined): Promise<void> {
     const to = path.resolve(path.dirname(abs), target)
     if (target.includes('\0') || (to !== this.root && !to.startsWith(this.root + path.sep))) {
       throw this.refuse(`${abs} -> ${target}`)
     }
+    await this.landing(abs)
     await placeSymlink(target, abs, created)
+    // A link re-placed at `abs` moves every directory under it: a memo
+    // judged through the old one let the next write land through the new.
+    for (const memo of [this.realDirs, this.checked]) {
+      for (const dir of memo.keys()) {
+        if (dir === abs || dir.startsWith(abs + path.sep)) memo.delete(dir)
+      }
+    }
     this.links.push({ abs, target })
   }
 
@@ -1733,7 +1750,7 @@ class Fence {
 
   private refuse(what: string): UserError {
     return new UserError(
-      `vx-reapi: the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${this.root}`,
+      `the server returned an output outside the workspace (${what}) — refused; nothing is written outside ${this.root}`,
     )
   }
 }
@@ -1887,7 +1904,7 @@ async function materialiseTree(
   const room = await freeEntries(destDir)
   if (expands > room) {
     throw new UserError(
-      `vx-reapi: the server's Tree for ${destDir} expands to ${expands < 1e6 ? expands : expands.toPrecision(2)} entries, more than the ${room} this file system has free — refused`,
+      `the server's Tree for ${destDir} expands to ${expands < 1e6 ? expands : expands.toPrecision(2)} entries, more than the ${room} this file system has free — refused`,
     )
   }
 

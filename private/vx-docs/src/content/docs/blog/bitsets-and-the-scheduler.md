@@ -26,23 +26,27 @@ flowchart LR
 vx needs to know how much work sits below each task. Each task gets a
 row of bits, one per task, all in one `Uint32Array` (1.3 MB at 3,270
 tasks). A union is a bitwise OR and a count is a popcount.
+
 `--filter '...app'` and `--affected` use the same rows. A filter seeded
-by one or two packages (`app...`) searches from them instead, since
-that is cheaper.
+by one or two packages (`app...`) searches from them instead, since that
+is cheaper.
 
 ## A finished task touches only its neighbours
 
 Ready tasks sit in a binary max-heap, most work below first. When a task
 finishes, vx counts down its direct dependents and pushes the ones that
-hit zero. Nothing rescans the graph. `@vzn/vx-history` swaps
-the count for durations learned from past runs.
+hit zero. Nothing rescans the graph.
+
+`@vzn/vx-history` swaps the count for durations learned from past runs.
 
 ## Restores never take a build's slot
 
 vx checks the local cache for every stable task before the run. Misses
 own the workers. Hits go to their own lane, capped at twice the worker
-count, since a restore is disk work. `--concurrency 1` stays serial. A
-task whose key must wait for an upstream joins neither tier.
+count, since a restore is disk work.
+
+`--concurrency 1` stays serial. A task whose key must wait for an
+upstream joins neither tier.
 
 ## Memory limits come from a plugin
 

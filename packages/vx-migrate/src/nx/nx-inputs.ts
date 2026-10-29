@@ -7,8 +7,10 @@
 // (`dependentTasksOutputFiles`) is nothing; `externalDependencies` is a todo saying
 // so. Extracted from `buildTask` in item 606.
 
+import path from 'node:path'
 import { nxWorkspacePath, underProject, withProjectDir } from './nx-outputs.js'
-import { minimatchToVx } from '../glob-grammar.js'
+import type { TrackedKinds } from '../tracked-outputs.js'
+import { gluedGlobstarAsStar, minimatchToVx, nxBareGroups } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 
 export interface NxInputs {
@@ -76,6 +78,8 @@ export function expandNxInputs(
     readonly rel: string
     readonly name: string
     readonly outputs?: readonly string[]
+    /** git's tracked files by directory; unknown, every output counts as ignored. */
+    readonly tracked?: (rel: string) => TrackedKinds
     /** The root package.json's dependency names: every task's key holds them. */
     readonly rootDeps?: ReadonlySet<string>
   },
@@ -106,9 +110,24 @@ export function expandNxInputs(
         }
         // Nx's file map skips gitignored files, so it hashes nothing here
         // either: a changed `dist` file is a cache hit under Nx 23.3 (YL-1).
+        // An output git tracks (a generator writing into `src`) is hashed,
+        // and dropping it keyed `build` on no file (stale hit, 2026-10-28).
         const lit = withProjectDir(p, at.rel, false)
-        if (neg === '' && at.outputs?.some((o) => lit === o || lit.startsWith(`${o}/`))) return
-        const g = minimatchToVx(p, neg !== '')
+        const ignored = (o: string): boolean => {
+          if (at.tracked === undefined) return true
+          const dir = path.posix.dirname(o)
+          return (
+            at.tracked(o).files.length === 0 &&
+            !at.tracked(dir).files.includes(dir === '.' ? o : o.slice(dir.length + 1))
+          )
+        }
+        if (
+          neg === '' &&
+          at.outputs?.some((o) => (lit === o || lit.startsWith(`${o}/`)) && ignored(o))
+        )
+          return
+        const bare = nxBareGroups(p)
+        const g = bare === null ? null : minimatchToVx(gluedGlobstarAsStar(bare), neg !== '')
         if (g === null) {
           todos.push(`input ${JSON.stringify(entry)}: glob syntax vx cannot take — map manually`)
           return

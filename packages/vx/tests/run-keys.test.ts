@@ -110,6 +110,43 @@ it('an upstream edit, an env value, a config edit and a dirty edit each run what
   expect(await readFile(path.join(root, 'packages', 'b', 'out.txt'), 'utf8')).toBe('b3\n')
 }, 120_000)
 
+// One edited file moved every key's token, so the whole graph was keyed
+// again: 22 ms of a 120 ms run at 200 tasks, where Turbo took 109
+// (2026-10-28). Only the edited task and the tasks folding its key derive.
+it('an edit derives again only the keys it reaches', async () => {
+  const pkg = path.join(root, 'packages', 'c')
+  await mkdir(path.join(pkg, 'src'), { recursive: true })
+  await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'c' }))
+  await writeFile(path.join(pkg, 'vx.config.mjs'), config('c'))
+  await writeFile(path.join(pkg, 'src', 'x.txt'), 'c1\n')
+  git('add', '-A')
+  git('commit', '-qm', 'c')
+  build()
+  build()
+  const derived = async (edit: string, text: string): Promise<number> => {
+    await writeFile(path.join(root, 'packages', edit, 'src', 'x.txt'), text)
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'run', 'build', '--all'],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1', VX_DEBUG_TIMING: '1' },
+    })
+    if (p.exitCode !== 0) throw new Error(p.stdout.toString() + p.stderr.toString())
+    const m = /^\s*task hash\s+\S+\s+(\d+)$/m.exec(p.stderr.toString())
+    return m === null ? 0 : Number(m[1])
+  }
+  expect(await derived('b', 'b2\n')).toBe(1)
+  expect(await derived('c', 'c2\n')).toBe(1)
+  expect(await derived('a', 'a2\n')).toBe(2)
+  expect((await runs()).slice(3)).toEqual(['b', 'c', 'a', 'b'])
+  // The keys an edit derived are the keys a full derivation makes: with the
+  // memo gone, nothing runs.
+  const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+  db.query("DELETE FROM fold_memo WHERE task_id LIKE char(0) || 'run%'").run()
+  db.close()
+  build()
+  expect((await runs()).length).toBe(7)
+}, 120_000)
+
 it('a run with a keyless task remembers no keys', async () => {
   await writeFile(
     path.join(root, 'packages', 'a', 'vx.config.mjs'),

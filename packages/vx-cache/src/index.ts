@@ -20,7 +20,7 @@ import {
 } from '@vzn/vx'
 
 export interface VxCacheOptions {
-  /** The server's base URL (`https://cache.example.com`), or `VX_CACHE_URL`. */
+  /** The server's base URL (`https://cache.example.com`; http only to this machine), or `VX_CACHE_URL`. */
   url?: string
   /** The CI issuer whose tokens the server takes, as they name it (`https://token.actions.githubusercontent.com`). */
   issuer: string
@@ -59,6 +59,7 @@ function expiryOf(jwt: string): number {
     ).exp
     return typeof exp === 'number' ? exp * 1000 : 0
   } catch {
+    // quiet: an unreadable exp is no known expiry; the server refuses the token
     return 0
   }
 }
@@ -160,6 +161,7 @@ async function refusal(res: Response): Promise<Error> {
       const message = (JSON.parse(text) as { message?: unknown }).message
       said = typeof message === 'string' ? message : text
     } catch {
+      // quiet: not JSON, so the text is what it said
       said = text
     }
   } catch {
@@ -181,6 +183,18 @@ async function jsonOf(res: Response, path: string, max: number): Promise<unknown
       `${path} answered ${res.status} with ${type}, not JSON: is the url a vx-cache server?`,
     )
   }
+}
+
+/**
+ * A redirect, never followed: fetch drops only `Authorization` on one to
+ * another origin, so `headers` (a proxy's secret) went where a 307 named.
+ */
+async function redirected(res: Response, from: string): Promise<Error> {
+  await res.body?.cancel()
+  const to = res.headers.get('location')
+  return new Error(
+    `HTTP ${res.status}${to === null ? '' : ` to ${new URL(to, from).href}`}: not followed, as it would carry the server's headers; name the server's own URL`,
+  )
 }
 
 /** A deadline that names itself: the runtime's own abort says only "The operation timed out." */
@@ -370,6 +384,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   private asking: Promise<string> | undefined
+  /** A failed ask was said: the requests that shared it say nothing. */
+  private tokenFailed = false
 
   /**
    * One answer from GitHub's OIDC endpoint, asked again after a 5xx, a 429
@@ -449,12 +465,21 @@ export class VxCacheLayer implements RemoteCacheLayer {
       streamed?: boolean
     } = {},
   ): Promise<Response | undefined> {
-    const bearer = await this.bearer()
+    let bearer: string
+    try {
+      bearer = await this.bearer()
+    } catch (err) {
+      // The requests waiting on one ask share its failure: the first says it.
+      if (this.tokenFailed) return undefined
+      this.tokenFailed = true
+      throw err
+    }
     const ms = init.timeoutMs ?? this.config.timeoutMs
     const controller = new AbortController()
     const answer = setTimeout(() => controller.abort(new Error(`no answer within ${ms} ms`)), ms)
     answer.unref()
-    let res = await this.fetchImpl(`${this.config.url}${path}`, {
+    const url = `${this.config.url}${path}`
+    let res = await this.fetchImpl(url, {
       method: init.method ?? 'POST',
       headers: {
         ...this.config.headers,
@@ -464,7 +489,12 @@ export class VxCacheLayer implements RemoteCacheLayer {
       },
       ...(init.body === undefined ? {} : { body: init.body }),
       signal: controller.signal,
+      redirect: 'manual',
     })
+    if (res.status >= 300 && res.status < 400) {
+      clearTimeout(answer)
+      throw await redirected(res, url)
+    }
     // Any answer's, a refusal's too: one refused for its size by a server
     // whose limits fell mid-run names them for the next check and upload.
     this.limits = limitsNamed(res) ?? this.limits
@@ -475,7 +505,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (init.write === true && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
-      if (!first) return undefined
+      // The first says it; an unread body would hold its connection.
+      if (!first) {
+        await res.body?.cancel()
+        return undefined
+      }
       throw new Error(
         `${(await refusal(res)).message}: the write was refused (this job reads only); writes off for this run, reads go on`,
       )
@@ -483,7 +517,10 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
-      if (!first) return undefined
+      if (!first) {
+        await res.body?.cancel()
+        return undefined
+      }
       throw new Error(
         `${(await refusal(res)).message}: ${bearer === '' ? 'a read with no token was refused' : `the token was refused (this workspace names ${this.config.repository} at ${this.config.issuer})`}; remote cache off for this run`,
       )
@@ -519,6 +556,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     })())
     // A failed ask is asked again by the next check: kept, two failures
     // while a server restarted failed every read of the run (2026-10-26).
+    // quiet: the awaited ask rethrows it; this only forgets it
     asked.catch(() => {
       if (this.asked === asked) this.asked = undefined
     })
@@ -711,6 +749,17 @@ function namedOf(options: VxCacheOptions): { issuer: string; repository: string 
 /** The longest delay a timer holds. */
 const MAX_TIMER_MS = 2 ** 31 - 1
 
+/**
+ * https, or http to this machine: every request carries the CI token, and
+ * http:// to another host sent it in clear.
+ */
+function secure(url: string): boolean {
+  if (/^https:\/\/\S/.test(url)) return true
+  if (!/^http:\/\/\S/.test(url)) return false
+  const host = URL.parse(url)?.hostname
+  return host === '127.0.0.1' || host === '[::1]' || host === 'localhost'
+}
+
 /** Options over `VX_CACHE_URL`; `undefined`: no server named. */
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
@@ -721,8 +770,10 @@ export function resolveVxCacheConfig(
   if (url === undefined || url === '') return undefined
   // Named as the workspace set it: a bad VX_CACHE_URL was refused as `url`.
   const from = options.url === undefined ? 'VX_CACHE_URL' : 'url'
-  if (!/^https?:\/\//.test(url))
-    throw new UserError(`vxCache(): ${from} must be http(s), got ${url}`)
+  if (!secure(url))
+    throw new UserError(
+      `vxCache(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${url}`,
+    )
   // Each route is the url's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
     throw new UserError(`vxCache(): ${from} is the server's base, without /v1: ${url.slice(0, -3)}`)

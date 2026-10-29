@@ -209,6 +209,15 @@ export async function sandboxRequestFor(
         `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
     )
   }
+  // The runtime reports a refused touch one line per record: a path holding
+  // a line break arrived split, and an undeclared write to the project's own
+  // file was judged as outside it, with the wrong hint.
+  if (/[\n\r]/.test(home)) {
+    throw new UserError(
+      `exec.sandbox: ${home} holds a line break, which the sandbox runtime's reports cannot ` +
+        `carry, so a refused touch is misreported — rename the directory, or run the task without exec.sandbox`,
+    )
+  }
   // Bun's realpath throws ENOENT on a path holding a backslash, and SRT
   // mounts no path it cannot resolve: the task saw no project and ran in
   // $HOME.
@@ -235,8 +244,10 @@ export async function sandboxRequestFor(
   // Pre-create what the task said it will write — after the grants are
   // resolved, which refuses one that leaves the project through a link
   // before anything is created along it (item 1003).
-  const walls = [
-    ...nested,
+  // The repository's and vx's own walls are sealed: no write grant may
+  // reach inside them either. A nested project is not: a grant into it is
+  // as explicit as one into a sibling.
+  const sealed = [
     path.join(workspaceRoot, '.git'),
     path.join(workspaceRoot, '.vx', 'cache'),
     ...(cacheDir !== undefined &&
@@ -244,6 +255,7 @@ export async function sandboxRequestFor(
       ? [cacheDir]
       : []),
   ].map(toRealPath)
+  const walls = [...nested.map(toRealPath), ...sealed]
   const resolved = resolveSandboxConfig(sandbox, node.projectDir, walls)
   // Made before the walls judge the binds: a directory grant naming nothing
   // yet (`dist/`, `dist/**`) was judged as a file, its bind its parent, and
@@ -251,7 +263,7 @@ export async function sandboxRequestFor(
   const placeholders = await prepareOutputsForBind(node.projectDir, sandbox.allow?.write ?? [])
   let config: ResolvedSandboxConfig
   try {
-    config = wallOff(resolved, workspaceRoot, walls)
+    config = wallOff(resolved, workspaceRoot, walls, sealed)
   } catch (err) {
     await sweepPlaceholders(placeholders)
     throw err
@@ -276,6 +288,7 @@ export async function sandboxRequestFor(
     baseDenyRead: [
       ...(process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot]),
       ...(await credentialStores(workspaceRoot, config.allowWrite)),
+      ...(await vxStores(workspaceRoot, config.allowWrite, cacheDir)),
     ],
     // …but only denials INSIDE the project are worth reporting. A task
     // bumping into the wall is the sandbox working, not a finding: the
@@ -540,20 +553,23 @@ async function fileOnPath(from: string, to: string): Promise<string> {
  * punched (`punchWalls`); a write grant whose bind would hold one — a file
  * grant binds its directory on Linux, so `write: ['out.txt']` in a root
  * project bound the whole workspace writable, `.git` included — is
- * refused, as there is no writable bind that leaves a wall out. A glob's
+ * refused, as there is no writable bind that leaves a wall out. One
+ * inside a sealed wall (`.git/hooks/`, vx's store) is refused too: a
+ * hook planted there runs unsandboxed at the next commit. A glob's
  * hits already stop at the walls (`resolveSandboxConfig` takes them).
  */
 function wallOff(
   config: ResolvedSandboxConfig,
   workspaceRoot: string,
   walls: readonly string[],
+  sealed: readonly string[],
 ): ResolvedSandboxConfig {
   const home = toRealPath(workspaceRoot)
   for (const bind of bindableWrites(config.allowWrite)) {
     // A bind outside the workspace is the user's own path (`/tmp/x`,
     // `~/.cache/y`), spelled there on purpose; only one inside is judged.
     if (!atOrUnder(bind, home)) continue
-    const wall = walls.find((w) => atOrUnder(w, bind))
+    const wall = walls.find((w) => atOrUnder(w, bind)) ?? sealed.find((w) => atOrUnder(bind, w))
     if (wall === undefined) continue
     throw new UserError(
       `exec.sandbox.allow.write: the grant binding ${bind} would make ${wall} writable — another ` +
@@ -674,8 +690,26 @@ export const CREDENTIAL_STORES = [
   '.codex/auth.json',
 ]
 
-/** The stores present on this host, learned once per home. */
-let presentStores: { home: string; paths: string[] } | undefined
+/**
+ * Each store's path: under `home`, and again where `$XDG_CONFIG_HOME` or
+ * `$XDG_DATA_HOME` moves a `.config` or `.local/share` one. A task sees
+ * both, so a CLI reads its login there. A relative value is no XDG path.
+ */
+export function credentialStorePaths(home: string): string[] {
+  const moved = [
+    ['.config/', process.env['XDG_CONFIG_HOME']],
+    ['.local/share/', process.env['XDG_DATA_HOME']],
+  ] as const
+  const out = new Set(CREDENTIAL_STORES.map((rel) => path.join(home, rel)))
+  for (const rel of CREDENTIAL_STORES)
+    for (const [prefix, dir] of moved)
+      if (dir !== undefined && path.isAbsolute(dir) && rel.startsWith(prefix))
+        out.add(path.join(dir, rel.slice(prefix.length)))
+  return [...out]
+}
+
+/** The stores present on this host, learned once per home and XDG pair. */
+let presentStores: { at: string; paths: string[] } | undefined
 
 /**
  * The credential stores to deny, less any that holds the workspace, and
@@ -690,16 +724,37 @@ async function credentialStores(
   writes: readonly string[],
 ): Promise<string[]> {
   const home = homedir()
-  if (presentStores?.home !== home) {
-    presentStores = {
-      home,
-      paths: CREDENTIAL_STORES.map((rel) => path.join(home, rel)).filter((p) => existsSync(p)),
-    }
+  const at = `${home}\0${process.env['XDG_CONFIG_HOME']}\0${process.env['XDG_DATA_HOME']}`
+  if (presentStores?.at !== at) {
+    presentStores = { at, paths: credentialStorePaths(home).filter((p) => existsSync(p)) }
   }
   const stores = presentStores.paths.filter(
     (p) => workspaceRoot !== p && !workspaceRoot.startsWith(p + path.sep),
   )
   return (await Promise.all(stores.map((p) => denyAround(toRealPath(p), writes)))).flat()
+}
+
+/**
+ * vx's own stores outside the workspace: `~/.vx`, which holds every
+ * repository's shared store (`resolveStoreRoot`), and a cache directory
+ * configured outside it. The rest of home stays readable, so without this
+ * a task with no grant read every project's cached outputs, around the
+ * cross-project wall and its own key. One inside the workspace is denied
+ * with it already.
+ */
+async function vxStores(
+  workspaceRoot: string,
+  writes: readonly string[],
+  cacheDir: string | undefined,
+): Promise<string[]> {
+  const root = toRealPath(workspaceRoot)
+  // HOME first, as `resolveStoreRoot` reads it.
+  const home = process.env['HOME'] || homedir()
+  const stores = [path.join(home, '.vx'), ...(cacheDir === undefined ? [] : [cacheDir])]
+    .filter((p) => existsSync(p))
+    .map(toRealPath)
+    .filter((p) => !atOrUnder(root, p) && !atOrUnder(p, root))
+  return (await Promise.all(stores.map((p) => denyAround(p, writes)))).flat()
 }
 
 /** `dir` denied, or its entries no write grant lies under or at when one is inside it. */

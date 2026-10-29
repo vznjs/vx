@@ -26,7 +26,7 @@ it('refuses a bad option as a UserError', () => {
     'UserError: vxCache() option "timeoutMs" must be',
   )
   expect(nameOf(() => resolveVxCacheConfig({ ...NAMED, url: 'c.example' }, {}))).toBe(
-    'UserError: vxCache(): url must be http(s), got c.example',
+    'UserError: vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got c.example',
   )
   expect(nameOf(() => resolveVxCacheConfig({ ...NAMED, url: 'https://c.example/v1' }, {}))).toBe(
     "UserError: vxCache(): url is the server's base, without /v1: https://c.example",

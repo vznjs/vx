@@ -541,6 +541,32 @@ describe('affectedProjects', () => {
     expect(await select()).toEqual(['a', 'sub'])
   })
 
+  it('a manifest a discover plugin makes a project of selects the project above it', async () => {
+    // No config: the plugin reads `packages/a/sub/package.json`, so that
+    // file is what made `sub` a project, and `a` lost `sub`'s files.
+    await mkdir(path.join(root, 'packages/a/sub'), { recursive: true })
+    await writeFile(path.join(root, 'packages/a/sub/data.txt'), 'data')
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'sub')
+    const sub: ProjectMeta = {
+      name: 'sub',
+      dir: path.join(root, 'packages/a/sub'),
+      configPath: null,
+    }
+    const select = () =>
+      affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: [...projects, sub] }).then(
+        (s) => [...s].sort(),
+      )
+    const manifest = path.join(root, 'packages/a/sub/package.json')
+    await writeFile(manifest, JSON.stringify({ name: 'sub' }))
+    expect(await select()).toEqual(['a', 'sub'])
+    // A manifest the base had already: an edit is sub's alone.
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'sub manifest')
+    await writeFile(manifest, JSON.stringify({ name: 'sub', version: '1.0.0' }))
+    expect(await select()).toEqual(['sub'])
+  })
+
   it('ignores changes outside any project directory', async () => {
     await writeFile(path.join(root, 'README.md'), 'top-level edit')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
@@ -1070,6 +1096,21 @@ describe('affectedProjects', () => {
           )
         })
 
+        it('an object that is no list, and a list that throws as it is read, are refused by name', async () => {
+          // `typeof {} === 'object'` passed the guard, and the `for…of` threw
+          // "is not iterable": an internal error naming neither.
+          expect(await refusal({ a: true })).toBe(
+            "plugin 'org/pm' failed in fingerprint: returned an object, not a list of project names",
+          )
+          const lazy = (function* () {
+            yield 'a'
+            throw new Error('lockfile unreadable')
+          })()
+          expect(await refusal(lazy)).toBe(
+            "plugin 'org/pm' failed in fingerprint: lockfile unreadable",
+          )
+        })
+
         it('a name that is not a string is refused, rather than added as one', async () => {
           expect(await refusal([1])).toBe(
             "plugin 'org/pm' failed in fingerprint: affected project a number is not a name",
@@ -1362,6 +1403,33 @@ describe('defaultAffectedBase', () => {
       await expect(defaultAffectedBase(root, 'develop')).rejects.toThrow(
         'no default on the base branch (develop)',
       )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  // A CI checkout of a pushed commit is detached (GitLab, Buildkite, a sha
+  // checkout): the base branch was HEAD itself, nothing ran, exit 0.
+  it('a detached HEAD the base branch holds is on it: no default', async () => {
+    const root = await repo('vx-affected-detached-', 'main')
+    try {
+      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      await writeFile(path.join(root, 'a'), 'y')
+      await git(root, 'commit', '-q', '-am', 'two')
+      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      await git(root, 'checkout', '-q', '--detach')
+      await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
+        'no default on the base branch (main)',
+      )
+      // A rerun of an older commit of it.
+      await git(root, 'checkout', '-q', '--detach', 'HEAD~1')
+      await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
+        'no default on the base branch (main)',
+      )
+      // CONTROL: a detached commit of its own (a PR's merge checkout) has the default.
+      await writeFile(path.join(root, 'a'), 'z')
+      await git(root, 'commit', '-q', '-am', 'three')
+      expect(await defaultAffectedBase(root, undefined)).toBe('origin/main')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -1676,6 +1744,28 @@ describe('affectedProjects: config import closures', () => {
         `import './internal.mjs'\nexport const P=2\n`,
       ),
     ).toEqual(['lib', 'x'])
+  })
+
+  it('a file the workspace config imports selects every project, like the config', async () => {
+    // Its plugins shape every resolved config, and they see what it
+    // imports: an edit there re-keyed every task and selected none.
+    await mkdir(path.join(root, '.vx'), { recursive: true })
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { DESC } from './desc.mjs'\nexport default { plugins: [], DESC }\n`,
+    )
+    await writeFile(
+      path.join(root, '.vx/desc.mjs'),
+      `import { DEEP } from '../shared/deep.mjs'\nexport const DESC = DEEP\n`,
+    )
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'workspace config')
+    expect(await editThenSelect('tools/build-helper.mjs', `export const helper = 2\n`)).toEqual([])
+    expect(await editThenSelect('shared/deep.mjs', `export const DEEP = 2\n`)).toEqual([
+      'app',
+      'lib',
+      'x',
+    ])
   })
 
   it("PIN: through the config's own helper file to an orphan", async () => {

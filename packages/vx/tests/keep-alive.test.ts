@@ -556,6 +556,16 @@ describe('a persistent server that dies before the run stops it', () => {
     })
   }, 20_000)
 
+  // Dead within a few ms of its spawn, the server was not yet reaped when
+  // the graph ended: nothing gave Bun a turn, so `exitCode` still read
+  // null, the footer said `1 success` with the server `running`, over a
+  // red exit (20 of 20 runs).
+  it('a requested server that dies at once fails the footer it exits on', async () => {
+    await addProject(root, 'app', crashing('echo READY; exit 3'))
+    const r = await run(root, ['srv'])
+    expect([r.code, r.pinned, r.tally]).toEqual([1, [], '1 failed · 1 total'])
+  }, 20_000)
+
   // WD-10: its output block closed `running` under the line naming its exit.
   it("a crashed dependency-only server's output block closes failed", async () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; echo dying; touch gone; exit 3'))

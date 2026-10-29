@@ -36,12 +36,14 @@ import {
   shellArgv,
   slashBraceExpansions,
   braceAlternatives,
+  ESSENTIAL_ENV,
   splitNegations,
   staticPrefix,
   stripTrailingSlash,
   taskGlob,
   UserError,
   writableUnder,
+  withoutWorkspaceBins,
 } from '../util/index.js'
 import { GitFilesCache, listingEnv, runGitLsFiles } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
@@ -144,8 +146,8 @@ export interface ResolveInputsArgs {
    * by `projectDir + '\0' + command`. Shared across a run's tasks so a
    * project's command runs once even across build/test/lint and across
    * the hash + sandbox-baseline resolveInputs calls. The key is sound
-   * ONLY because the probe runs in vx's own ambient environment, never a
-   * task's `exec.env` (`runRuntimeCommand`): two tasks with different
+   * ONLY because every probe runs in one environment, vx's essentials,
+   * never a task's `exec.env` (`runRuntimeCommand`): two tasks with different
    * `define`s share one value. Threading the task env in would have to
    * widen this key too, or task A's probe becomes task B's key component.
    */
@@ -289,6 +291,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             runtimeDecl,
             args.projectDir,
             projectBinDirs(args.projectDir, args.workspaceRoot),
+            args.workspaceRoot,
             args.runtimeCache,
             args.runtimeScope === undefined
               ? `${args.projectDir}\0`
@@ -298,6 +301,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             wsRuntimeDecl,
             args.workspaceRoot,
             [path.join(args.workspaceRoot, 'node_modules', '.bin')],
+            args.workspaceRoot,
             args.workspaceRuntimeCache,
             args.runtimeScope === undefined ? '' : `\0${args.runtimeScope}\0`,
           ),
@@ -419,6 +423,7 @@ function resolveWorkspaceFiles(args: {
       args.workspaceRoot,
       reach,
       (rel) => accept(rel) && !excludedByDeclaration(rel) && !own(rel),
+      args.gitFilesCache?.vxDirs,
     )
     return extra.length === 0 ? kept : mergeSorted(kept, extra)
   })
@@ -433,14 +438,18 @@ async function resolveWorkspaceFilesOver(
   excluded: (rel: string) => boolean,
 ): Promise<string[]> {
   const candidates: string[] = []
-  for (const rel of gitFiles) {
-    if (!isPositive(rel)) continue
-    if (excluded(rel)) continue
-    candidates.push(path.resolve(args.workspaceRoot, rel))
-  }
   // Same OID-trust shortcut as project files: a clean-per-status
   // tracked file necessarily exists on disk.
   const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
+  const mayHold = mayHoldMatch(positive)
+  for (const rel of gitFiles) {
+    if (isPositive(rel)) {
+      if (!excluded(rel)) candidates.push(path.resolve(args.workspaceRoot, rel))
+    } else if (mayHold(rel) && !excluded(rel)) {
+      const abs = path.resolve(args.workspaceRoot, rel)
+      if (dirLinkInput(abs, oids)) candidates.push(abs)
+    }
+  }
   return candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
 }
 
@@ -527,6 +536,16 @@ function isInputOnDisk(abs: string): boolean {
   }
 }
 
+/** vx's values of `ESSENTIAL_ENV`: the one environment every probe gets. */
+function probeEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const name of ESSENTIAL_ENV) {
+    const value = process.env[name]
+    if (value !== undefined) env[name] = value
+  }
+  return env
+}
+
 /** The task's `node_modules/.bin` directories, as `taskBinDirs` gives its PATH. */
 function projectBinDirs(projectDir: string, workspaceRoot: string): string[] {
   const own = path.join(projectDir, 'node_modules', '.bin')
@@ -551,9 +570,16 @@ export function answerRuntime(
         command,
         workspaceRoot,
         [path.join(workspaceRoot, 'node_modules', '.bin')],
+        workspaceRoot,
         undefined,
       )
-    : runRuntimeCommand(command, projectDir, projectBinDirs(projectDir, workspaceRoot), undefined)
+    : runRuntimeCommand(
+        command,
+        projectDir,
+        projectBinDirs(projectDir, workspaceRoot),
+        workspaceRoot,
+        undefined,
+      )
 }
 
 function resolveEnvValues(
@@ -568,10 +594,13 @@ function resolveEnvValues(
  * work — "shell is the API"). Returns trimmed stdout+stderr. A non-zero
  * exit is a hard UserError naming the command (fail-loud, like git).
  *
- * The probe inherits vx's AMBIENT environment on purpose — not the task's
- * `exec.env.define` / `passThrough`, which describe the command's
- * environment, not the machine's. That is what lets the run-scoped memo
- * key on (projectDir, command) alone; see `runtimeCache`.
+ * The probe sees the essential environment every task sees
+ * (`ESSENTIAL_ENV`), from vx's own — never the task's `exec.env`, which
+ * describes the command, not the machine, and never the rest of vx's: a
+ * child is dumpable after its exec, so an unsandboxed task read every
+ * secret vx holds from the probe's `/proc/<pid>/environ`. One env for
+ * every probe is what lets the run-scoped memo key on (projectDir,
+ * command) alone; see `runtimeCache`.
  *
  * Its PATH does lead with the task's own `node_modules/.bin` directories
  * (`binDirs`), as the task's does: `tsc --version` otherwise keyed the
@@ -582,9 +611,11 @@ async function runRuntimeCommand(
   command: string,
   cwd: string,
   binDirs: readonly string[],
+  workspaceRoot: string,
   owner: RuntimeMemo | undefined,
 ): Promise<string> {
-  const ambient = process.env['PATH']
+  // As a task's (exec/env.ts): no member's bin inherited from `npm run`.
+  const ambient = withoutWorkspaceBins(process.env['PATH'] ?? '', workspaceRoot)
   // As the task's PATH does (exec/env.ts): a dir holding the delimiter
   // splits into an entry relative to the probe's cwd.
   const PATH = [...binDirs.filter((dir) => !dir.includes(path.delimiter)), ambient]
@@ -597,7 +628,7 @@ async function runRuntimeCommand(
     // `node_modules/.bin`, so a dependency's `sh` bin ran every probe (J-69).
     proc = Bun.spawn(shellArgv(command), {
       cwd,
-      env: { ...process.env, PATH },
+      env: { ...probeEnv(), PATH },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -733,6 +764,7 @@ async function resolveRuntimeValues(
   commands: readonly string[],
   cwd: string,
   binDirs: readonly string[],
+  workspaceRoot: string,
   memo: Map<string, Promise<string>> | undefined,
   memoKeyPrefix: string,
 ): Promise<Array<[string, string]>> {
@@ -743,7 +775,7 @@ async function resolveRuntimeValues(
       const key = `${memoKeyPrefix}${cmd}`
       let p = memo?.get(key)
       if (p === undefined) {
-        p = runRuntimeCommand(cmd, cwd, binDirs, memo)
+        p = runRuntimeCommand(cmd, cwd, binDirs, workspaceRoot, memo)
         memo?.set(key, p)
       }
       return [cmd, await p] as [string, string]
@@ -1666,16 +1698,21 @@ function outright(reach: { prefixes: readonly string[]; literals: readonly strin
  * a generated client (`node_modules/.prisma/client/**`) too; skipping
  * installs here folded such an entry to nothing, silently. lstat, not
  * `exists()`: that answers false for a directory. Never memoized: a
- * dependency writes these mid-run.
+ * dependency writes these mid-run. Nothing under `vxDirs` (the run's cache
+ * directory) is read: an ignored prefix over a `cache.dir` there walked the
+ * index each run writes, and the task never hit.
  */
 function ignoredInputs(
   root: string,
   reach: readonly string[],
   accept: (rel: string) => boolean,
+  vxDirs: readonly string[] = [],
 ): string[] {
   const found = new Set<string>()
+  const vxOwn = (abs: string) => vxDirs.some((d) => abs === d || abs.startsWith(d + path.sep))
   for (const entry of reach) {
     const abs = path.resolve(root, entry)
+    if (vxOwn(abs)) continue
     const st = lstatSync(abs, { throwIfNoEntry: false })
     if (st === undefined) continue
     if (!st.isDirectory()) {
@@ -1691,7 +1728,7 @@ function ignoredInputs(
       const full = `${entry}/${rel.split(path.sep).join('/')}`
       if (!accept(full)) continue
       const file = path.join(abs, rel)
-      if (isInputOnDisk(file)) found.add(file)
+      if (!vxOwn(file) && isInputOnDisk(file)) found.add(file)
     }
   }
   return [...found].sort()
@@ -1758,6 +1795,8 @@ interface FilesPlan {
   ownOutput: (rel: string) => boolean
   positiveGlobs: Bun.Glob[]
   isPositive: (rel: string) => boolean
+  /** Whether a positive glob may match a path under `rel` (`mayHoldMatch`). */
+  mayHold: (rel: string) => boolean
   /** The literal entries, each naming one path (see `unanswered`). */
   literals: string[]
   /** The directories a positive entry reaches; see `InputListing`. */
@@ -1770,9 +1809,9 @@ interface FilesPlan {
    */
   verdicts: Map<string, boolean>
   /**
-   * Whether a path is an input but for the task's own outputs: one git
-   * tracks stays an input (`committedFiles`), so the key sees an edit to a
-   * committed file an output glob reaches.
+   * Whether a path is under the task's own outputs, and no exclude takes it
+   * back: one git tracks is an input (`committedFiles`) whether or not a
+   * positive glob reaches it, since a hit writes the artifact's copy over it.
    */
   ownOnly: Map<string, boolean>
 }
@@ -1803,8 +1842,9 @@ function filesPlan(
       else positive.push(entry)
     }
   }
+  // Outputs alone still make a plan: a committed file under them is keyed.
   const plan =
-    positive.length === 0
+    positive.length === 0 && splitNegations(ownOutputs).positive.length === 0
       ? null
       : {
           positive,
@@ -1815,6 +1855,7 @@ function filesPlan(
           ownOutput: outputMatcher(ownOutputs),
           positiveGlobs: asTrees(positive).map(globFor),
           isPositive: throughLinks(positive, anyTaskGlob(asTrees(positive))),
+          mayHold: mayHoldMatch(positive),
           ...reachOf(positive),
           verdicts: new Map<string, boolean>(),
           ownOnly: new Map<string, boolean>(),
@@ -1844,6 +1885,49 @@ function throughLinks(
     for (let i = 1; i <= parts.length; i++) through.add(parts.slice(0, i).join('/'))
   }
   return through.size === 0 ? isPositive : (rel) => isPositive(rel) || through.has(rel)
+}
+
+/**
+ * Whether a positive glob may match a path under `rel`, by each
+ * alternative's fixed prefix and depth (a `**` reaches any depth). A link
+ * below a glob's fixed prefix is listed as one path too: `src/**\/*.txt`
+ * over `src/v -> ../shared` matched the link's name, not what the task
+ * read through it, and an edit there was a hit (2026-10-28). Such a path
+ * that is a link to a directory is an input (`dirLinkInput`). Generous on
+ * purpose: a wrong yes costs one lookup, and folds a linked directory.
+ */
+function mayHoldMatch(positive: readonly string[]): (rel: string) => boolean {
+  const reach = asTrees(positive.flatMap(braceAlternatives)).map((g) => {
+    const prefix = staticPrefix(g)
+    return {
+      prefix: prefix === '.' ? '' : `${prefix}/`,
+      deep: g.includes('**'),
+      depth: g.split('/').length,
+    }
+  })
+  return (rel) => {
+    let depth: number | undefined
+    for (const r of reach) {
+      if (!rel.startsWith(r.prefix) || rel.length === r.prefix.length) continue
+      if (r.deep || (depth ??= rel.split('/').length) < r.depth) return true
+    }
+    return false
+  }
+}
+
+/**
+ * Whether `abs`, a path a glob may reach below, is a link to a directory.
+ * A trusted index OID answers for a tracked file with no syscall: only a
+ * link's (`120000:`) or an untracked path's is looked at.
+ */
+function dirLinkInput(abs: string, oids: ReadonlyMap<string, string> | undefined): boolean {
+  const oid = oids?.get(abs)
+  if (oid !== undefined && !oid.startsWith('120000:')) return false
+  try {
+    return lstatSync(abs).isSymbolicLink() && statSync(abs).isDirectory()
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -1913,7 +1997,7 @@ function inPlan(plan: FilesPlan, rel: string): boolean {
 function ownOnly(plan: FilesPlan, rel: string): boolean {
   let own = plan.ownOnly.get(rel)
   if (own === undefined) {
-    own = plan.ownOutput(rel) && plan.isPositive(rel) && !plan.isExcluded(rel)
+    own = plan.ownOutput(rel) && !plan.isExcluded(rel)
     plan.ownOnly.set(rel, own)
   }
   return own
@@ -1977,6 +2061,7 @@ async function resolveFiles(
           plan,
           nested,
           ownWsOutput,
+          args.gitFilesCache,
         ),
         listing: listingFor(args, gitFiles, plan, nested, ownWsOutput),
       }
@@ -2024,14 +2109,21 @@ async function resolveFiles(
   const candidates: string[] = []
   const verdicts = plan.verdicts
   const committed = committedFiles(args.gitFilesCache, args.projectDir)
+  const oids = args.gitFilesCache?.oidsFor(args.projectDir)
   for (const rel of gitFiles) {
     let input = verdicts.get(rel)
     if (input === undefined) {
       input = isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
       verdicts.set(rel, input)
     }
-    if ((!input && !ownOnly(plan, rel)) || nested(rel) || ownWsOutput(rel)) continue
+    if (nested(rel) || ownWsOutput(rel)) continue
     const abs = base === undefined ? path.resolve(args.projectDir, rel) : base + rel
+    if (!input && !ownOnly(plan, rel)) {
+      if (plan.mayHold(rel) && !isExcluded(rel) && !ownOutput(rel) && dirLinkInput(abs, oids)) {
+        candidates.push(abs)
+      }
+      continue
+    }
     if (!input && !committed(abs)) continue
     candidates.push(abs)
   }
@@ -2043,7 +2135,6 @@ async function resolveFiles(
   // per-file syscalls. Paths without an OID keep the probe:
   // `git ls-files -s` can surface staged entries whose working-tree
   // file is gone; the hasher would otherwise throw ENOENT.
-  const oids = args.gitFilesCache?.oidsFor(args.projectDir)
   const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs))
   // Git's slice comes sorted and a common prefix keeps it so: one pass
   // proves it instead of a sort per task.
@@ -2055,7 +2146,15 @@ async function resolveFiles(
   }
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
   return {
-    files: withIgnored(args.projectDir, resolved, reach, plan, nested, ownWsOutput),
+    files: withIgnored(
+      args.projectDir,
+      resolved,
+      reach,
+      plan,
+      nested,
+      ownWsOutput,
+      args.gitFilesCache,
+    ),
     listing: listingFor(args, gitFiles, plan, nested, ownWsOutput),
   }
 }
@@ -2068,12 +2167,14 @@ function withIgnored(
   plan: FilesPlan,
   nested: (rel: string) => boolean,
   ownWsOutput: (rel: string) => boolean,
+  cache: GitFilesCache | undefined,
 ): string[] {
   if (reach.length === 0) return [...resolved]
   const extra = ignoredInputs(
     projectDir,
     reach,
     (rel) => inPlan(plan, rel) && !nested(rel) && !ownWsOutput(rel),
+    cache?.vxDirs,
   )
   return extra.length === 0 ? [...resolved] : mergeSorted(resolved, extra)
 }

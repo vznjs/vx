@@ -9,6 +9,7 @@
 // as a general key/value cache.
 
 import { createHash } from 'node:crypto'
+import * as grpc from '@grpc/grpc-js'
 import { type ActionResult, type Digest, ReapiClient, type ReapiOptions } from './wire.js'
 import { ui } from '@vzn/vx'
 
@@ -69,6 +70,12 @@ function decodeDuration(raw: Uint8Array | undefined): number | undefined {
   return typeof parsed.durationMs === 'number' ? parsed.durationMs : undefined
 }
 
+/**
+ * A duration record vx writes is some 20 bytes; a blob past this is not
+ * one, and is never read: a 256 MiB one was held whole for its number.
+ */
+const DURATION_BYTES = 1024
+
 /** Artifacts up to this size are batch-uploaded without a FindMissingBlobs probe. */
 const SMALL_PUT_BYTES = 256 * 1024
 
@@ -79,6 +86,12 @@ export class ReapiRemoteCache {
   private readonly onWarn: (message: string) => void
   /** What was said already: a fault every hit meets is said once a run. */
   private readonly said = new Set<string>()
+  /**
+   * The action cache's refusal of a write, which stands for the run: a
+   * read-only key or an AC with updates off refuses every save the same
+   * way, and each one uploaded its whole artifact before it was refused.
+   */
+  private refused: Error | undefined
 
   constructor(opts: ReapiOptions) {
     this.client = new ReapiClient(opts)
@@ -178,7 +191,15 @@ export class ReapiRemoteCache {
     // The duration is metadata: a read of it that fails (retries spent, a
     // blob failing its digest) leaves it unknown, where it made core drop a
     // valid hit as a miss (F-21).
-    if ((result.stdout_digest?.size_bytes ?? 0) > 0) {
+    const size = Number(result.stdout_digest?.size_bytes ?? 0)
+    if (size > DURATION_BYTES) {
+      this.warn(
+        'reading a task duration',
+        new Error(`its record is ${size} bytes, over ${DURATION_BYTES}: not read`),
+      )
+      return undefined
+    }
+    if (size > 0) {
       const raw = await this.client.readBlob(result.stdout_digest!).catch((err: unknown) => {
         this.warn('reading a task duration', err)
         return null
@@ -195,6 +216,7 @@ export class ReapiRemoteCache {
    * stream.
    */
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
+    if (this.refused !== undefined) throw this.refused
     // An entry is immutable, and UpdateActionResult replaces one: the
     // lookup runs beside the upload (CAS writes are idempotent), so a key
     // stored already costs no round trip of its own and keeps its result.
@@ -238,11 +260,19 @@ export class ReapiRemoteCache {
     ) {
       return
     }
-    await this.client.updateActionResult(action, {
-      exit_code: 0,
-      output_files: [{ path: ARTIFACT_PATH, digest, is_executable: false }],
-      stdout_raw: encodeDuration(meta.durationMs),
-    })
+    await this.client
+      .updateActionResult(action, {
+        exit_code: 0,
+        output_files: [{ path: ARTIFACT_PATH, digest, is_executable: false }],
+        stdout_raw: encodeDuration(meta.durationMs),
+      })
+      .catch((err: unknown) => {
+        const code = (err as { code?: unknown } | null)?.code
+        if (code === grpc.status.PERMISSION_DENIED || code === grpc.status.UNIMPLEMENTED) {
+          this.refused = err as Error
+        }
+        throw err
+      })
   }
 
   close(): void {

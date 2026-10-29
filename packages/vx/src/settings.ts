@@ -47,7 +47,7 @@ export const SETTINGS: readonly Setting[] = [
     path: 'baseBranch',
     kind: { type: 'string' },
     default: "origin/HEAD's branch, then main, then master",
-    doc: 'The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`.',
+    doc: 'The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`. Named alone: `main`, not `origin/main`.',
   },
   {
     path: 'affectedBase',

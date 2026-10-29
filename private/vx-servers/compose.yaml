@@ -4,20 +4,25 @@
 # The relay of @vzn/vx-dte on :8080, the cache on :8081, the timings on
 # :8082 (DTE_PORT, CACHE_PORT, HISTORY_PORT move them). Each reads its
 # settings from your shell or a .env beside this file, as its README
-# names them. Put TLS in front of each: CI tokens are bearer tokens.
+# names them, each under its service's prefix (DTE_ALLOW is the relay's
+# ALLOW, CACHE_AUDIENCE the cache's AUDIENCE): one .env holds all three,
+# and each server is reached at its own URL. Put TLS in front of each: CI
+# tokens are bearer tokens.
 services:
   dte:
     build: ../../packages/vx-dte-server
-    command: [--allow, '${DTE_ALLOW:-}', --audience, '${DTE_AUDIENCE:-}']
+    environment:
+      - ALLOW=${DTE_ALLOW:-}
+      - AUDIENCE=${DTE_AUDIENCE:-}
     # Stores nothing: after a restart, vx-dte joins each run in flight again.
     ports: ['${DTE_PORT:-8080}:8080']
     restart: unless-stopped
   cache:
     build: { context: ../.., dockerfile: packages/vx-cache-server/Dockerfile }
     environment:
-      - ALLOW
-      - AUDIENCE
-      - READ_ACCESS
+      - ALLOW=${CACHE_ALLOW:-}
+      - AUDIENCE=${CACHE_AUDIENCE:-}
+      - READ_ACCESS=${CACHE_READ_ACCESS:-}
       - S3_BUCKET
       - S3_ENDPOINT
       - S3_REGION
@@ -31,9 +36,9 @@ services:
   history:
     build: { context: ../.., dockerfile: packages/vx-history-server/Dockerfile }
     environment:
-      - ALLOW
-      - AUDIENCE
-      - READ_ACCESS
+      - ALLOW=${HISTORY_ALLOW:-}
+      - AUDIENCE=${HISTORY_AUDIENCE:-}
+      - READ_ACCESS=${HISTORY_READ_ACCESS:-}
       - TIMING_DAYS
     volumes: ['history:/data']
     ports: ['${HISTORY_PORT:-8082}:8080']

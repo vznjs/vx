@@ -195,17 +195,19 @@ const textOf = (file: string): Promise<string> =>
 /**
  * Everything the mapping reads: the root's and each package's
  * `turbo.json` / `turbo.jsonc`, every package manifest, the root's,
- * `.yarnrc.yml` and the microfrontends configs.
+ * `.yarnrc.yml`, `.npmrc`, `pnpm-workspace.yaml` and the microfrontends configs.
  */
 async function run(root: string, projects: readonly ProjectMeta[]): Promise<AdoptionRun> {
   const dirs = [root, ...projects.map((m) => m.dir)]
-  const [metas, configs, yarnrc, rootManifest] = await Promise.all([
+  const [metas, configs, yarnrc, rootManifest, hookConfigs] = await Promise.all([
     withManifests(projects),
     Promise.all(
       dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
     ),
     textOf(path.join(root, '.yarnrc.yml')),
     textOf(path.join(root, 'package.json')),
+    // Whether the manager runs `pre` / `post` hooks, so whether they fold.
+    Promise.all(['.npmrc', 'pnpm-workspace.yaml'].map((f) => textOf(path.join(root, f)))),
   ])
   const envNames = envNamesThatMap(configs, envNamesNow())
   // The tsconfigs a `tsc` script reads are the mapping's inputs too.
@@ -225,8 +227,7 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       ...configs,
       yarnrc,
       // Whether pnpm or npm runs a script's `pre` / `post` hooks (`runsScriptHooks`).
-      await textOf(path.join(root, '.npmrc')),
-      await textOf(path.join(root, 'pnpm-workspace.yaml')),
+      ...hookConfigs,
       // Its dependencies are global inputs, a member or not; its `packageManager` names who runs hooks.
       rootManifest,
       JSON.stringify(microfrontendsConfigs(root, dirs)),

@@ -80,8 +80,9 @@ export interface VxHistoryOptions {
    */
   readonly file?: string
   /**
-   * A vx-history server's URL (`@vzn/vx-history-server`), or
-   * `VX_HISTORY_URL`. On a CI job with a token (GitHub's OIDC, or GitLab's
+   * A vx-history server's https URL (`@vzn/vx-history-server`; http only to
+   * this machine), or `VX_HISTORY_URL`. On a CI job with a token (GitHub's
+   * OIDC, or GitLab's
    * `VX_HISTORY_TOKEN`) each run asks it for its tasks' numbers, without
    * waiting, and sends its own timings once at its end.
    */
@@ -275,6 +276,17 @@ function namedOf(issuer: unknown, repository: unknown): Named {
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
+/**
+ * https, or http to this machine: every request carries the CI token, and
+ * http:// to another host sent it in clear.
+ */
+function secure(url: string): boolean {
+  if (/^https:\/\/\S/.test(url)) return true
+  if (!/^http:\/\/\S/.test(url)) return false
+  const host = URL.parse(url)?.hostname
+  return host === '127.0.0.1' || host === '[::1]' || host === 'localhost'
+}
+
 /** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
 function serverUrlOf(
   option: string | undefined,
@@ -284,8 +296,10 @@ function serverUrlOf(
   if (url === undefined || url === '') return undefined
   // Named as the workspace set it: a bad VX_HISTORY_URL was refused as `url`.
   const from = option === undefined ? 'VX_HISTORY_URL' : 'url'
-  if (!/^https?:\/\//.test(url))
-    throw new UserError(`vxHistory(): ${from} must be http(s), got ${url}`)
+  if (!secure(url))
+    throw new UserError(
+      `vxHistory(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${url}`,
+    )
   // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
     throw new UserError(
@@ -330,7 +344,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     (resources === null || typeof resources !== 'object' || Array.isArray(resources))
   ) {
     throw new UserError(
-      `vxHistory() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
+      `vxHistory() option "resources" must be false or an object, got ${typeof resources === 'number' ? String(resources) : (JSON.stringify(resources) ?? String(resources))}`,
     )
   }
   // A misspelt key inside was read as unset, unsaid. Values stay `any`:
