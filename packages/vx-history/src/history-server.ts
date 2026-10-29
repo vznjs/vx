@@ -17,6 +17,8 @@ export interface ServerTiming {
 
 /** Every request's deadline: a run never waits on history longer. */
 const DEADLINE_MS = 10_000
+/** Tries of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
+const ATTEMPTS = 3
 
 /** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
 export function serverUrlOf(
@@ -75,6 +77,15 @@ const deadline = (): AbortSignal => {
   return c.signal
 }
 
+/**
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
+ * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
+ * overwrote the line before (core's `printable`, L-31).
+ */
+const printable = (s: string): string =>
+  // oxlint-disable-next-line no-control-regex
+  s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
   const text = (await res.text().catch(() => '')).slice(0, 2048)
@@ -85,8 +96,21 @@ async function refusal(res: Response): Promise<Error> {
   } catch {
     // not JSON: the text is what it said
   }
-  said = said.replace(/\s+/g, ' ').trim().slice(0, 200)
+  said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
+}
+
+/** A 200's JSON; one that is none (a website's page) names the likely fault, the url. */
+async function jsonOf(res: Response, path: string): Promise<unknown> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    const type = res.headers.get('content-type') ?? 'no content type'
+    throw new Error(
+      `${path} answered ${res.status} with ${type}, not JSON: is the url a vx-history server?`,
+    )
+  }
 }
 
 /** A JWT's `exp` in ms; 0 when it names none. */
@@ -108,22 +132,6 @@ interface Limits {
   readonly maxQueryHashes: number
 }
 
-/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
-export function proxyHeaders(
-  headers: Record<string, string | undefined> | undefined,
-): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [name, value] of Object.entries(headers ?? {})) {
-    if (value === undefined) continue
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`vxHistory(): headers cannot set "${name}"`)
-    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`vxHistory(): header "${name}" must be one line of text`)
-    out[name] = value
-  }
-  return out
-}
-
 export class HistoryServer {
   private token: Promise<string> | undefined
   private held: { jwt: string; exp: number } | undefined
@@ -135,6 +143,7 @@ export class HistoryServer {
     private readonly env: Record<string, string | undefined> = Bun.env,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly headers: Readonly<Record<string, string>> = {},
+    private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
   ) {}
 
   /** Whether the run has a token to send: with none it reads only. */
@@ -157,10 +166,7 @@ export class HistoryServer {
       if (ask === undefined || ask === '') return { jwt: this.env.VX_HISTORY_TOKEN ?? '', exp: 0 }
       const u = new URL(ask)
       u.searchParams.set('audience', new URL(this.url).origin)
-      const res = await this.fetchImpl(u, {
-        headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
-        signal: deadline(),
-      })
+      const res = await this.askGithub(u)
       if (!res.ok) throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res)).message}`)
       const jwt = ((await res.json()) as { value?: unknown }).value
       if (typeof jwt !== 'string' || jwt === '') throw new Error("GitHub's OIDC endpoint: no token")
@@ -171,18 +177,70 @@ export class HistoryServer {
     return this.token
   }
 
+  /**
+   * One answer, asked again while `again(status)` (`undefined`: no answer)
+   * holds, up to three tries, 1 s then 2 s apart: the upload is sent once, at the run's end,
+   * and one 503 there, or from GitHub's OIDC endpoint (as vx-cache asks
+   * it, #4571), lost the run's timings.
+   */
+  private async tried(
+    send: () => Promise<Response>,
+    again: (status: number | undefined) => boolean,
+  ): Promise<Response> {
+    for (let attempt = 1; ; attempt++) {
+      let res: Response | undefined
+      let failure: unknown
+      try {
+        res = await send()
+      } catch (err) {
+        failure = err
+      }
+      if (!again(res?.status)) {
+        if (res === undefined) throw failure
+        return res
+      }
+      if (attempt === ATTEMPTS) {
+        if (res === undefined) throw failure
+        return res
+      }
+      await res?.body?.cancel()
+      await this.wait(1000 * attempt)
+    }
+  }
+
+  /** GitHub's OIDC endpoint: a 4xx is final. */
+  private askGithub(ask: URL): Promise<Response> {
+    return this.tried(
+      () =>
+        this.fetchImpl(ask, {
+          headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
+          signal: deadline(),
+        }),
+      (status) => status === undefined || status === 429 || status >= 500,
+    )
+  }
+
   private async call(path: string, body?: unknown): Promise<Response> {
     const bearer = this.writes ? await this.bearer() : ''
-    const res = await this.fetchImpl(`${this.url}${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        ...this.headers,
-        ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: deadline(),
-    })
+    const json = body === undefined ? undefined : JSON.stringify(body)
+    // A 500 is the server's own failure, maybe after the fold: sent again, a
+    // run would count twice. The edge's 502, 503 and 504 and a 429 come
+    // before it. No answer is not asked again: a server down or misnamed
+    // would add seconds to every run's end.
+    const res = await this.tried(
+      () =>
+        this.fetchImpl(`${this.url}${path}`, {
+          method: json === undefined ? 'GET' : 'POST',
+          headers: {
+            ...this.headers,
+            ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
+            ...(json === undefined ? {} : { 'content-type': 'application/json' }),
+          },
+          ...(json === undefined ? {} : { body: json }),
+          signal: deadline(),
+        }),
+      (status) => status !== undefined && (status === 429 || (status >= 502 && status <= 504)),
+    )
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
       const err = await refusal(res)
@@ -197,7 +255,10 @@ export class HistoryServer {
   /** `/v1/capabilities`, asked once a run, and again after a failed ask: nothing is guessed. */
   private limitsNow(): Promise<Limits> {
     const asked = (this.limits ??= (async () => {
-      const body = (await (await this.call('/v1/capabilities')).json()) as Partial<Limits> | null
+      const body = (await jsonOf(
+        await this.call('/v1/capabilities'),
+        '/v1/capabilities',
+      )) as Partial<Limits> | null
       const n = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0)
       const limits = {
         maxUploadTimings: n(body?.maxUploadTimings),
@@ -227,7 +288,7 @@ export class HistoryServer {
           refs,
           hashes: hashes.slice(i * per, (i + 1) * per),
         })
-        const body = (await res.json()) as { timings?: unknown } | null
+        const body = (await jsonOf(res, '/v1/timings/query')) as { timings?: unknown } | null
         if (typeof body?.timings !== 'object' || body.timings === null) {
           throw new Error('the query answered no `timings` object')
         }

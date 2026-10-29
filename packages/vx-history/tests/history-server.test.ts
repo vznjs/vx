@@ -11,7 +11,7 @@ import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { allowOf, type Issuer, issuer, NAMED } from './issuer.js'
-import { HistoryServer, proxyHeaders, serverUrlOf, timingOf } from '../src/history-server.js'
+import { HistoryServer, serverUrlOf, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
 
 let iss: Issuer
@@ -76,6 +76,21 @@ describe('HistoryServer', () => {
     )
   })
 
+  // A server's words reach the terminal: an ESC in them retitled it and
+  // overwrote the line vx printed before them.
+  it("writes the controls in a server's words as escapes", async () => {
+    const said = JSON.stringify({ message: '\x1b]0;PWNED\x07\x1b[2K\rall good' })
+    const client = new HistoryServer(
+      'https://history.test',
+      NAMED,
+      { VX_HISTORY_TOKEN: 't' },
+      (() => Promise.resolve(new Response(said, { status: 500 }))) as unknown as typeof fetch,
+    )
+    await expect(client.query(['refs/heads/main'], ['a1'])).rejects.toThrow(
+      'HTTP 500: \\x1b]0;PWNED\\x07\\x1b[2K all good',
+    )
+  })
+
   it("says a refusal with the server's own words", async () => {
     const read = await iss.sign('read', new URL(url).origin)
     const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: read })
@@ -92,6 +107,26 @@ describe('HistoryServer', () => {
     await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
       `HTTP 403: the token is of ${NAMED.repository} at ${NAMED.issuer}, not acme/other at ${NAMED.issuer}`,
     )
+  })
+
+  // A URL of a website answers any path 200 with its page: JSON.parse's
+  // "Unrecognized token '<'" named no fault.
+  it('says a 200 that is no JSON is not a history server', async () => {
+    const site = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }),
+    })
+    try {
+      const client = new HistoryServer(site.url.origin, NAMED, {})
+      await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+        new Error(
+          '/v1/capabilities answered 200 with text/html, not JSON: is the url a vx-history server?',
+        ),
+      )
+    } finally {
+      await site.stop(true)
+    }
   })
 
   it('says why a read with no token was refused, and what lets it in', async () => {
@@ -138,6 +173,110 @@ describe('HistoryServer', () => {
     }
   })
 
+  // One 503 from GitHub's OIDC endpoint lost the run's timings: the upload
+  // asks for the token at the run's end, once (vx-cache asks again, #4571).
+  it("asks GitHub's OIDC endpoint again after a 5xx or 429, never after a 4xx", async () => {
+    const exp = Math.floor(Date.now() / 1000) + 3600
+    const jwt = `h.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.s`
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.example/token',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 't',
+    }
+    const clientOf = (answers: (number | 'reset')[]) => {
+      const asked: string[] = []
+      const fake = (async (input: string | URL) => {
+        const u = new URL(String(input))
+        if (u.hostname === 'oidc.example') {
+          const a = answers.shift() ?? 200
+          asked.push(String(a))
+          if (a === 'reset') throw new Error('connection reset')
+          return a === 200 ? Response.json({ value: jwt }) : new Response('no', { status: a })
+        }
+        if (u.pathname === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+        return new Response(null, { status: 204 })
+      }) as typeof fetch
+      const waits: number[] = []
+      const client = new HistoryServer('https://h.example', NAMED, env, fake, {}, async (ms) => {
+        waits.push(ms)
+      })
+      return { client, asked, waits }
+    }
+    const blips = clientOf([503, 'reset', 200])
+    await blips.client.upload(new Map([['a', { durationMs: 1 }]]))
+    expect([blips.asked, blips.waits]).toEqual([
+      ['503', 'reset', '200'],
+      [1000, 2000],
+    ])
+    const busy = clientOf([429, 502, 500])
+    await expect(busy.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      "GitHub's OIDC endpoint: HTTP 500: no",
+    )
+    expect(busy.asked).toEqual(['429', '502', '500'])
+    const refused = clientOf([403])
+    await expect(refused.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      "GitHub's OIDC endpoint: HTTP 403: no",
+    )
+    expect(refused.asked).toEqual(['403'])
+  })
+
+  // One 503 from the server's edge at the run's end lost every timing the
+  // run measured. A 500 is the server's own failure, maybe after the fold:
+  // sent again, a run would count twice.
+  it('sends a request again after a 429, 502, 503 or 504, never after a 500 or no answer', async () => {
+    const clientOf = (answers: (number | 'reset')[]) => {
+      const sent: string[] = []
+      const fake = (async (input: string | URL) => {
+        const u = new URL(String(input))
+        if (u.pathname === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+        const a = answers.shift() ?? 200
+        sent.push(`${u.pathname} ${a}`)
+        if (a === 'reset') throw new Error('connection reset')
+        if (a !== 200) return new Response('busy', { status: a })
+        return u.pathname === '/v1/timings/query'
+          ? Response.json({ timings: { a: { durationMs: 5 } } })
+          : new Response(null, { status: 204 })
+      }) as typeof fetch
+      const waits: number[] = []
+      const client = new HistoryServer(
+        'https://h.example',
+        NAMED,
+        { VX_HISTORY_TOKEN: 'jwt' },
+        fake,
+        {},
+        async (ms) => {
+          waits.push(ms)
+        },
+      )
+      return { client, sent, waits }
+    }
+    const up = clientOf([503, 504, 200])
+    await up.client.upload(new Map([['a', { durationMs: 1 }]]))
+    expect([up.sent, up.waits]).toEqual([
+      ['/v1/timings/upload 503', '/v1/timings/upload 504', '/v1/timings/upload 200'],
+      [1000, 2000],
+    ])
+    const gone = clientOf(['reset'])
+    await expect(gone.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      'connection reset',
+    )
+    expect(gone.sent).toEqual(['/v1/timings/upload reset'])
+    const read = clientOf([429, 502, 200])
+    expect(await read.client.query(['refs/heads/main'], ['a'])).toEqual(
+      new Map([['a', { durationMs: 5 }]]),
+    )
+    const down = clientOf([504, 504, 504])
+    await expect(down.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      'HTTP 504: busy',
+    )
+    const failed = clientOf([500])
+    await expect(failed.client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      'HTTP 500: busy',
+    )
+    expect(failed.sent).toEqual(['/v1/timings/upload 500'])
+  })
+
   // 2026-10-25: a proxy in front of the server (an Access service token).
   it('sends headers on every request, never over the CI token', async () => {
     const seen: Headers[] = []
@@ -145,8 +284,7 @@ describe('HistoryServer', () => {
       seen.push(new Headers(init.headers))
       return new Response(JSON.stringify({ maxUploadTimings: 10, maxQueryHashes: 10, rows: [] }))
     }) as unknown as typeof fetch
-    const headers = proxyHeaders({ 'CF-Access-Client-Id': 'id', 'X-Unset': undefined })
-    expect(headers).toEqual({ 'CF-Access-Client-Id': 'id' })
+    const headers = { 'CF-Access-Client-Id': 'id' }
     const client = new HistoryServer(
       'https://h.example',
       NAMED,
@@ -163,8 +301,6 @@ describe('HistoryServer', () => {
         h.get('vx-issuer'),
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', null, null])
-    for (const bad of [{ Authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
-      expect(() => proxyHeaders(bad)).toThrow('vxHistory(): ')
   })
 
   it('reads with no token from a public server, sending none', async () => {

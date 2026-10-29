@@ -102,8 +102,15 @@ function run(cmd, cmdArgs) {
     process.stderr.write(`${base}: failed to launch (${err.message})\n`)
     process.exit(1)
   })
-  // Mirror the child's exit; a signal death maps to the POSIX 128+signo code.
+  // Mirror the child's exit. A stop signal vx died of is mirrored by dying
+  // of it: a shell running vx in a script stops on Ctrl-C only when its
+  // child died of SIGINT, and an exit 130 ran the script's next line. The
+  // POSIX 128+signo code is the rest, and the fallback should it not land.
   child.on('exit', (code, signal) => {
+    if (signal === 'SIGINT' || signal === 'SIGTERM' || signal === 'SIGHUP') {
+      process.removeAllListeners(signal)
+      process.kill(process.pid, signal)
+    }
     process.exit(signal ? 128 + (osConstants.signals[signal] ?? 1) : (code ?? 0))
   })
 }

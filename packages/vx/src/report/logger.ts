@@ -41,6 +41,7 @@ import {
   tailText,
   type Tail,
   detectColors,
+  envFlagOn,
   type ColorSupport,
   ui,
 } from '../util/index.js'
@@ -168,11 +169,6 @@ export interface OutputView {
   ci?: boolean
 }
 
-/** CI=0 / CI=false count as "not CI" — several vendors use CI=true. */
-function truthyEnv(v: string | undefined): boolean {
-  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
-}
-
 // ── GitHub Actions workflow-command escaping ────────────────────────
 // The runner parses `::`-prefixed LINES out of the log, so anything
 // interpolated into one has to be encoded or it changes the command's shape.
@@ -215,8 +211,8 @@ export function resolveOutputView(
   },
   env: Record<string, string | undefined> = process.env,
 ): OutputView {
-  const ci = truthyEnv(env['CI'])
-  const gha = truthyEnv(env['GITHUB_ACTIONS'])
+  const ci = envFlagOn(env['CI'])
+  const gha = envFlagOn(env['GITHUB_ACTIONS'])
   const mk = (mode: OutputView['mode']): OutputView => ({
     mode,
     ...(gha ? { gha: true } : {}),
@@ -465,6 +461,11 @@ export function defaultLogger(
   }
   const printsKept = (tail: { outcome?: TaskOutcome }): boolean =>
     flushedPersistent && tail.outcome !== undefined && view.mode !== 'errors-only'
+  // A server writing before this run started its task is one an earlier run
+  // left running (`vx watch` keeps its dev server): it streams as a kept
+  // one, live above the rows. Buffered as a task yet to run, it was never shown.
+  const heldOver = (node: TaskNode): boolean =>
+    node.config.exec?.persistent !== undefined && view.mode !== 'errors-only'
 
   const refresh = (forced: boolean): void => {
     if (statusDead) return
@@ -640,7 +641,16 @@ export function defaultLogger(
     }
     writer.write(chunk)
   }
+  // A live-streamed task's partial line ends before vx's own: a row or a
+  // block written after it (a step that ends while the task streams) was
+  // glued to it, `building...      time status  cache    task`.
+  const endStreamLine = (): void => {
+    if (!streamMidLine) return
+    taskWrite('\n')
+    streamMidLine = false
+  }
   const emitLine = (line: string): void => {
+    endStreamLine()
     taskWrite(`${line}\n`)
     lineEmitted = true
   }
@@ -658,6 +668,7 @@ export function defaultLogger(
   // write so a stray newline doesn't sneak into the output.
   const emitBlock = (block: string): void => {
     if (block.length === 0) return
+    endStreamLine()
     const lead = lineEmitted || streamedSinceBlock ? '\n' : ''
     taskWrite(`${lead}${block}\n`)
     lineEmitted = false
@@ -745,7 +756,12 @@ export function defaultLogger(
     stepEnd(id, { durationMs, ok }) {
       steps.delete(id)
       if (durationMs < STEP_SHOWN_MS) return
-      if (ok ? view.mode !== 'none' && view.mode !== 'errors-only' : view.mode !== 'none')
+      // `hash-only` is one line per task: only a step that failed adds one.
+      if (
+        ok
+          ? view.mode !== 'none' && view.mode !== 'errors-only' && view.mode !== 'hash-only'
+          : view.mode !== 'none'
+      )
         emitRow(formatStepLine(id, durationMs, ok, colors))
       refresh(true)
     },
@@ -892,6 +908,7 @@ export function defaultLogger(
         else appendTail(tail.out, chunk)
         return
       }
+      if (heldOver(node)) return streamKept(node, chunk)
       pushChunk(node.id, chunk, false)
     },
     taskStderr(node, chunk) {
@@ -908,6 +925,7 @@ export function defaultLogger(
         else appendTail(tail.err, chunk)
         return
       }
+      if (heldOver(node)) return streamKept(node, chunk)
       pushChunk(node.id, chunk, true)
     },
     taskComplete(node, outcome) {

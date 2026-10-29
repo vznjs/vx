@@ -256,11 +256,17 @@ function renderWorkers(
   ]
   let coreMs = 0
   let cpuMs = 0
+  // Over the workers that report a booking only: an executor may report
+  // none, and counting that as 0 read as tasks booking nothing.
+  let bookedCoreMs = 0
   let bookedMs = 0
   for (const m of machines) {
     coreMs += m.cores * m.onlineMs
     cpuMs += m.cpuAvg * m.onlineMs
-    bookedMs += (m.bookedAvg ?? 0) * m.onlineMs
+    if (m.bookedAvg !== undefined) {
+      bookedCoreMs += m.cores * m.onlineMs
+      bookedMs += m.bookedAvg * m.onlineMs
+    }
     lines.push(
       `| ${[
         escapeMarkdownCell(escapeInline(m.name)),
@@ -290,13 +296,15 @@ function renderWorkers(
     lines.push(
       `| this machine | ok |  |  |  |  |  | ${tasksCell(here.length - failed, failed)} |  |  |  |  |`,
       '',
-      `${ran.length} executed: ${ran.length - here.length} on workers, ${here.length} on this machine: ${here.map((t) => escapeInline(t.taskId)).join(', ')}.`,
+      `${ran.length} executed: ${ran.length - here.length} on workers, ${here.length} on this machine: ${here.map((t) => escapeMarkdownCell(escapeInline(t.taskId))).join(', ')}.`,
     )
   }
   if (coreMs > 0)
     lines.push(
       '',
-      `Over their online time, tasks booked ${pct(bookedMs / coreMs)} of the workers' cores and used ${pct(cpuMs / coreMs)}.`,
+      bookedCoreMs > 0
+        ? `Over their online time, tasks booked ${pct(bookedMs / bookedCoreMs)} of the workers' cores and used ${pct(cpuMs / coreMs)}.`
+        : `Over their online time, tasks used ${pct(cpuMs / coreMs)} of the workers' cores.`,
     )
   return lines
 }

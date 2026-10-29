@@ -104,6 +104,38 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
     expect(r).toBe(refused('out\0.txt'))
   })
 
+  // One subtree named twice per level: 41 directories that expand to 2^41
+  // paths, which no file system here can hold. The walk wrote them until
+  // the disk or the run gave out.
+  it('a Tree that expands past the free inodes is refused before a write', async () => {
+    const levels: Directory[] = [
+      {
+        files: [{ name: 'f', digest: blob('x'), is_executable: false }],
+        directories: [],
+        symlinks: [],
+      },
+    ]
+    for (let i = 1; i <= 40; i++) {
+      const digest = sha256(encodeDirectory(levels[i - 1]!))
+      levels.push({
+        files: [],
+        directories: [
+          { name: 'a', digest },
+          { name: 'b', digest },
+        ],
+        symlinks: [],
+      })
+    }
+    const [top, ...children] = [...levels].reverse()
+    const r = await run({
+      output_directories: [{ path: 'dist', tree_digest: tree(top!, children) }],
+    })
+    expect(r).toMatch(
+      /^vx\/reapi: the server's Tree for .*dist expands to 3\.3e\+12 entries, more than the \d+ this file system has free — refused$/,
+    )
+    expect(existsSync(path.join(cwd, 'dist'))).toBe(false)
+  })
+
   it('a Tree name of `..`', async () => {
     const up: Directory = {
       files: [{ name: 'new', digest: blob('pwned'), is_executable: false }],
@@ -265,6 +297,41 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
     })
     expect(await run({ output_directories: [{ path: 'bin', tree_digest: d }] })).toBe('written')
     expect((await stat(path.join(cwd, 'bin', 'tool'))).mode & 0o7777).toBe(0o755)
+  })
+
+  it('modes come back minus the umask, as a local build or a core restore gives them', async () => {
+    // A server's 0777 was written world-writable under umask 022, and an
+    // executable 0755 world-readable under umask 077.
+    const d = tree({
+      files: [
+        {
+          name: 'open',
+          digest: blob('o'),
+          is_executable: false,
+          node_properties: { unixMode: 0o777 },
+        },
+      ],
+      directories: [],
+      symlinks: [],
+    })
+    const result = {
+      output_files: [{ path: 'run.sh', digest: blob('#!/bin/sh\n'), is_executable: true }],
+      output_directories: [{ path: 'bin', tree_digest: d }],
+    }
+    const modes: number[] = []
+    for (const mask of [0o022, 0o077]) {
+      const saved = process.umask(mask)
+      try {
+        expect(await run(result)).toBe('written')
+      } finally {
+        process.umask(saved)
+      }
+      modes.push((await stat(path.join(cwd, 'bin', 'open'))).mode & 0o7777)
+      modes.push((await stat(path.join(cwd, 'run.sh'))).mode & 0o7777)
+      await rm(path.join(cwd, 'bin'), { recursive: true })
+      await rm(path.join(cwd, 'run.sh'))
+    }
+    expect(modes.map((m) => m.toString(8))).toEqual(['755', '755', '700', '700'])
   })
 
   it('CONTROL: links and files that stay inside are written', async () => {

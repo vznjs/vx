@@ -71,8 +71,9 @@ Bun resolves a package only by its root `index.*`, ignoring `main` and
 
 `--no-install` keeps Bun from auto-installing a bare import no
 `node_modules` provides: a helper a config imports fetched the package
-from the registry and ran it (L-22; the config file itself was already
-refused before evaluation). The npm launcher's source fallback passes
+from the registry and ran it (L-22). The loader now refuses a static
+bare import in the config and in each file it imports before evaluation;
+the flag still covers what no scan sees, a computed `import()`. The npm launcher's source fallback passes
 both flags; a compiled binary never auto-installs. `bun src/bin.ts` is
 not the shebang here either.
 

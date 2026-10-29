@@ -78,10 +78,10 @@ it('vx lock --check is described as what it does', () => {
   const text = verbHelpText('lock')
   const at = text.indexOf('  vx lock --check')
   expect(text.slice(at, text.indexOf('\n\n', at)).split('\n')).toEqual([
-    '  vx lock --check      Audit the lock: a full re-evaluation compared against the',
-    '                       frozen objects, and the graph rules. Exits 1 on drift (e.g.',
-    '                       configs that read env vars). Run it before the run in CI.',
-    '                       With --format json it prints',
+    '  vx lock --check      Audit the lock: re-evaluate every config here and compare',
+    '                       it with the frozen object, find a config added or gone, and',
+    '                       check the graph rules. Exits 1 on drift (e.g. configs that read env',
+    '                       vars). Run it before the run in CI. With --format json it prints',
     '                       {upToDate, audited, notAudited, problems}.',
   ])
 })

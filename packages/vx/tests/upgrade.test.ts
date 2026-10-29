@@ -31,6 +31,7 @@ import {
   replaceBinary,
   startedVersion,
   upgradeArgv,
+  upgradeCmd,
   upgradeGlobal,
   upgradeManaged,
   upgradeOnlyGlobal,
@@ -531,6 +532,32 @@ describe('versionSpec', () => {
     ])
     expect(() => versionSpec('../../evil')).toThrow('vx upgrade: ../../evil is not a version')
   })
+
+  // A TAG no release has is usage, refused before anything else is asked:
+  // from source it was "only the compiled binary upgrades itself", and on a
+  // binary VX_E_REFUSED after the install was found.
+  it('a bad TAG is usage, refused first', async () => {
+    const refused = (fn: () => unknown): Promise<unknown> =>
+      Promise.resolve()
+        .then(fn)
+        .then(
+          () => 'accepted',
+          (err: UserError) => ({ code: err.code, message: err.message }),
+        )
+    expect([
+      await refused(() => versionSpec('nope')),
+      await refused(() => upgradeCmd(['nope'])),
+    ]).toEqual([
+      {
+        code: 'VX_E_USAGE',
+        message: 'vx upgrade: nope is not a version (expected v<major>.<minor>.<patch>)',
+      },
+      {
+        code: 'VX_E_USAGE',
+        message: 'vx upgrade: nope is not a version (expected v<major>.<minor>.<patch>)',
+      },
+    ])
+  })
 })
 
 describe('managedInstall', () => {
@@ -615,6 +642,17 @@ describe('managedInstall', () => {
       '--save-dev',
       '--workspace-root',
     ])
+  })
+
+  it("a sibling directory whose name extends the tree's is not the tree", async () => {
+    // `/w/app-old` starts with `/w/app`: its package.json was taken for the
+    // install, and the upgrade ran in a project that does not own this vx.
+    const parent = await tree({ 'app-old/package.json': lists('devDependencies') })
+    const root = path.join(parent, 'app')
+    await mkdir(root, { recursive: true })
+    expect(() => managedInstall(path.join(root, BIN), path.join(parent, 'app-old'))).toThrow(
+      /no package\.json from .* up lists @vzn\/vx/,
+    )
   })
 
   it('moves every @vzn/vx-* plugin the manifest lists to the same release, in one install', async () => {
@@ -704,6 +742,24 @@ describe('startedVersion', () => {
     expect(startedVersion(await fake('ok', 'echo "vx 9.9.9"'))).toBe('vx 9.9.9')
     expect(startedVersion(await fake('failed', 'echo "vx 9.9.9"; exit 1'))).toBeNull()
     expect(startedVersion(await fake('other', 'echo "bun 1.4.2"'))).toBeNull()
+  })
+
+  it('is null for a binary the OS will not run, so the rollback can run', async () => {
+    // A new binary on a noexec mount, or one without its execute bit, made
+    // the spawn throw EACCES: the upgrade crashed with the new binary in
+    // place and the old one never put back.
+    const bin = await fake('noexec', 'echo "vx 9.9.9"')
+    await chmod(bin, 0o644)
+    expect([startedVersion(bin), startedVersion(dir)]).toEqual([null, null])
+    const dest = await fake('noexec-dest', 'echo "vx 0.0.1"')
+    await expect(
+      replaceBinary(
+        dest,
+        () => Promise.resolve(new TextEncoder().encode('#!/bin/sh\necho "vx 0.0.2"\n')),
+        () => startedVersion(path.join(dir, 'no-such-vx')) !== null,
+      ),
+    ).rejects.toThrow('the previous vx is back in place')
+    expect(startedVersion(dest)).toBe('vx 0.0.1')
   })
 
   it('gives up on a binary that does not answer, so the rollback can run', async () => {
@@ -984,6 +1040,26 @@ describe('vx upgrade (CLI)', () => {
   })
 })
 
+describe('vx upgrade (CLI), a tag that is no version', () => {
+  it('is refused as such, before the compiled-binary guard', async () => {
+    // `vx upgrade lastest` said "runs from source" (or, from npx, "runs from a
+    // package-manager cache"), never that the tag was the mistake.
+    const runtime = path.join(dir, 'bun-copy-3')
+    await copyFile(process.execPath, runtime)
+    await chmod(runtime, 0o755)
+    const proc = Bun.spawn({
+      cmd: [runtime, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'upgrade', 'lastest'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const code = await proc.exited
+    expect([code, await new Response(proc.stderr).text()]).toEqual([
+      1,
+      noticed('vx upgrade: lastest is not a version (expected v<major>.<minor>.<patch>)\n'),
+    ])
+  })
+})
+
 describe('relock', () => {
   // 2026-10-18: an upgrade locks with the new vx; a failed lock says to run it.
   const workspace = async (name: string, lock: string): Promise<{ root: string; bin: string }> => {
@@ -1009,6 +1085,19 @@ describe('relock', () => {
     const err = spyOn(process.stderr, 'write').mockImplementation(() => true)
     try {
       await relock(bin, root)
+      expect(err.mock.calls.map((c) => String(c[0])).join('')).toContain('run vx lock')
+    } finally {
+      err.mockRestore()
+    }
+  })
+
+  it('a new vx that is not there says to run vx lock, and the upgrade stands', async () => {
+    // An npm global install has no `<prefix>/lib/node_modules/.bin/vx`: the
+    // spawn's ENOENT reached the user as a crash after a finished upgrade.
+    const { root } = await workspace('relock-missing', 'exit 0')
+    const err = spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      await relock(path.join(root, 'node_modules', '.bin', 'vx'), root)
       expect(err.mock.calls.map((c) => String(c[0])).join('')).toContain('run vx lock')
     } finally {
       err.mockRestore()

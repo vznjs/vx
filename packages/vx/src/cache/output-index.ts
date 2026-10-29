@@ -75,7 +75,15 @@ export class OutputIndex {
    */
   private readonly held = new Map<string, readonly OutputFileRow[]>()
 
-  constructor(private readonly db: Database) {
+  /**
+   * `memo` false: a cache directory this run cannot write. A restore still
+   * serves the hit, but its stamps and directory snapshots are not queued:
+   * the next lookup flushed them and failed its task (SQLITE_READONLY).
+   */
+  constructor(
+    private readonly db: Database,
+    private readonly memo = true,
+  ) {
     this.insertOutputFile = lazyStatement(
       this.db,
       `
@@ -271,6 +279,7 @@ export class OutputIndex {
     prefixes: readonly string[],
     holds?: (files: readonly string[]) => boolean,
   ): Promise<void> {
+    if (!this.memo) return
     const rows: Array<[string, number]> = []
     const files: string[] = []
     let overCap = false
@@ -352,6 +361,7 @@ export class OutputIndex {
    * Written with the directory snapshots, in one transaction.
    */
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
+    if (!this.memo) return
     const rows = this.rowsOf(hash)
     const stamps: Array<[string, number, number]> = []
     for (const e of rows) {

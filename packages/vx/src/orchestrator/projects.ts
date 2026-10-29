@@ -86,9 +86,17 @@ export async function loadWorkspacePlugins(
       branch.refs = [...new Set(facts.refs)]
     }
   }
-  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) =>
-    validateWorkspace(workspaceConfig, `.vx/workspace (after plugin '${plugin.name}')`),
-  )
+  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) => {
+    const at = `.vx/workspace (after plugin '${plugin.name}')`
+    validateWorkspace(workspaceConfig, at)
+    // The run takes `plugins` from the file: an edited list validated and was dropped.
+    const now = workspaceConfig.plugins
+    if (now?.length !== list?.length || now?.some((p, i) => p !== list![i])) {
+      throw new UserError(
+        `${at}: \`plugins\` is fixed before the config stage, so an edit to it would change nothing — declare plugins in .vx/workspace`,
+      )
+    }
+  })
   return { workspaceConfig, plugins, branch }
 }
 
@@ -184,7 +192,8 @@ interface LoadProjectsBase {
   projectMetas: readonly ProjectMeta[]
   /**
    * Projects whose configs must load — `'all'`, or names (unknown and
-   * config-less ones are ignored). With `closure`, each seed's transitive
+   * config-less ones are ignored, unless a configured project's closure
+   * reaches them, as in the `'all'` load). With `closure`, each seed's transitive
    * package dependencies load too, which bounds `^task` frontier
    * expansion; a `pkg#task` dependsOn entry pulls its project in either
    * way, since the package graph cannot see the cross form.
@@ -276,7 +285,17 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     for (const dep of packageGraph.transitiveDeps(name)) consider(dep)
   }
   const seedAll = (): Iterable<string> => configured.map((m) => m.name)
-  const seeds = args.seeds === 'all' ? seedAll() : [...args.seeds]
+  // A named config-less seed loads only where the `'all'` load would load
+  // it: a configured project's closure reaches it. Seeded as itself, it got
+  // a default build `vx show` listed nowhere and no run of the workspace had
+  // (`vx run lone#build` ran a group no dependant reaches).
+  const configuredNames = new Set(configured.map((m) => m.name))
+  const seedable = (name: string): boolean =>
+    configuredNames.has(name) ||
+    (graph !== null &&
+      metaByName.has(name) &&
+      graph.transitiveDependents(name).some((d) => configuredNames.has(d)))
+  const seeds = args.seeds === 'all' ? seedAll() : [...args.seeds].filter(seedable)
   for (const seed of seeds) consider(seed)
   if (graph !== null && pending.length < metaByName.size) {
     for (const seed of args.seeds === 'all' ? seedAll() : seeds) {
@@ -349,6 +368,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         // the loader accepts from a user, and the refusal names both the
         // config file and the plugin whose edit broke it.
         const where = meta.configPath ?? `${meta.name} (no config file)`
+        const name = config.name
         await applyProjectHooks(
           plugins,
           config,
@@ -361,12 +381,17 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
             projects: args.projectMetas,
             lock: args.lock === true,
           },
-          (plugin) =>
-            validateProjectConfig(
-              config,
-              `${where} (after plugin '${plugin.name}')`,
-              meta.configPath,
-            ),
+          (plugin) => {
+            const at = `${where} (after plugin '${plugin.name}')`
+            validateProjectConfig(config, at, meta.configPath)
+            // Projects are named and edged before any config loads: a new
+            // `name` here validated, and the project kept its old one.
+            if (config.name !== name) {
+              throw new UserError(
+                `${at}: project "${meta.name}" is named before the project stage, so \`name: ${JSON.stringify(config.name)}\` cannot rename it — a plugin names a project in its \`discover\` hook`,
+              )
+            }
+          },
         )
       }
       const built = withDefaultBuild(config)

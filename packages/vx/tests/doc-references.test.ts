@@ -90,6 +90,56 @@ describe('every relative link in the docs resolves', () => {
   })
 })
 
+// Module pages named `refuseUnlessIgnored` and `getFailures` long after
+// each was renamed (`refuseOverlaps`, `runFailures`): a path law sees the
+// file, not the name in it.
+describe('every camelCase name a module page quotes is in the source', () => {
+  // Names that are no symbol here: placeholders, other packages', SRT's,
+  // config fields of other tools, and names a page says are gone.
+  const NOT_SYMBOLS = new Set([
+    'absoluteDirs',
+    'absolutePath',
+    'assertBunSupportsChunking',
+    'eventSink',
+    'fileHash',
+    'generateFilesystemArgs',
+    'globalInputs',
+    'globalPassThrough',
+    'hostValue',
+    'installDeps',
+    'nA',
+    'outputsHash',
+    'queueTimeoutMs',
+    'readableStream',
+    'typeRoots',
+  ])
+  it('each one is a word of src/, tests/ or scripts/', () => {
+    const words = new Set<string>()
+    for (const dir of ['src', 'tests', 'scripts']) {
+      for (const ext of ['.ts', '.json']) {
+        for (const f of walk(path.join(pkg, dir), ext)) {
+          if (f === import.meta.path) continue
+          for (const w of readFileSync(f, 'utf8').match(/[A-Za-z_$][\w$]*/g) ?? []) words.add(w)
+        }
+      }
+    }
+    const missing: string[] = []
+    const pages = [
+      ...walk(path.join(pkg, 'docs', 'modules'), '.md'),
+      path.join(pkg, 'docs', 'caching.md'),
+    ]
+    for (const page of pages) {
+      for (const m of readFileSync(page, 'utf8').matchAll(/`([^`\n]+)`/g)) {
+        for (const id of m[1]!.match(/\b[a-z]+[A-Z][\w$]*/g) ?? []) {
+          if (!words.has(id) && !NOT_SYMBOLS.has(id))
+            missing.push(`${path.relative(pkg, page)}: ${id}`)
+        }
+      }
+    }
+    expect(missing).toEqual([])
+  })
+})
+
 describe('docs/README.md § Repository layout follows src/', () => {
   it('tabulates exactly the module directories, and states their count', () => {
     const readme = readFileSync(path.join(pkg, 'docs', 'README.md'), 'utf8')

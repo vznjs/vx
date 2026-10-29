@@ -104,7 +104,15 @@ it(
     })
     gitIn(root)('add', '-A')
     gitIn(root)('commit', '-q', '-m', 'fixture')
-    const r = await run({ cwd: root, tasks: ['lib#fmt', 'app#read'], log, handleSignals: false })
+    // Two slots: the tasks wait on each other, and a one-core runner's
+    // default of one slot ran one forever, waiting for the other.
+    const r = await run({
+      cwd: root,
+      tasks: ['lib#fmt', 'app#read'],
+      log,
+      handleSignals: false,
+      concurrency: 2,
+    })
     expect(r.ok).toBe(true)
     expect(lines.filter((l) => l.startsWith('[vx] app#read:'))).toEqual([
       '[vx] app#read: `packages/lib/src/a.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',

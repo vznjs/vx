@@ -92,11 +92,14 @@ referenced by `dependsOn`, by `inputs.tasks`, and by the CLI
 could not spell is refused at load: an empty one, one with surrounding
 whitespace, one holding `#` (the project separator) or `*` (a pattern),
 and one starting with `^` (dependencies' tasks) or `!` (a negation).
+A task or project name holding a control character (`ESC`, `\r`) is
+refused too: vx prints names raw, and one could retitle the terminal.
 
 `tags` label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
 Each is a non-empty string a tag filter can name, or it is refused at
-load: no surrounding whitespace, no `*` (a pattern), and no ending in
+load: no surrounding whitespace, no `*` (a pattern), no control
+character (`vx show` prints tags raw), and no ending in
 `...` (a dependency walk) or `[<ref>]` (a git range). A
 `project` plugin may set or edit them (`nx()` gives each project its Nx
 `tags` unless the vx.config has its own). A tag is in no cache key: it
@@ -227,9 +230,9 @@ number is refused by `vx lock`. Omitted → no limit.
 build: { exec: { command: 'tsc -b', timeout: '2m' } }
 ```
 
-- For a **normal task**, `timeout` bounds the total run time, counted
-  from the spawn (a sandbox's setup, its wrap included, is vx's, not the
-  task's). A task
+- For a **normal task**, `timeout` bounds each attempt's run time,
+  counted from its spawn (a sandbox's setup, its wrap included, is vx's,
+  not the task's); a [retry](#retries-optional) gets the whole limit again. A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
   teardown, which is reported `aborted`.)
@@ -488,7 +491,9 @@ Semantics:
 - **Not started when nothing needs it.** A persistent task you did not
   request, whose every dependant is a confirmed cache hit, local or
   remote, is never spawned: a fully cached `vx run e2e` does not boot the server
-  `e2e` depends on, and the server is in no outcome or count. Behind a
+  `e2e` depends on, and the server is in no outcome or count. A group
+  between them that nobody requested (`env: { dependsOn: ['dev'] }`) is
+  passed through for local hits. Behind a
   remote cache, the server waits for the remote's answer on the
   dependants the local store missed, and starts at the first miss. It starts
   if one of those hits turns out to need running (its artifact went),
@@ -698,7 +703,9 @@ split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
 those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
-then masked in the same places.
+then masked in the same places. A token a plugin's OS keychain answered
+(`ctx.secret`) is masked in vx's own lines too (a plugin's warning, an
+error).
 
 Two `node_modules/.bin` directories are prepended to `PATH` so
 installed tools (`oxlint`, `vite`, etc.) run by name: the
@@ -865,7 +872,10 @@ is taken as one and only warns when it matches nothing.
 
 The wildcards are `*`, `**`, `?`, a character class `[ab]` (`[a-z]`,
 `[!a]`) and a brace set `{a,b}`, which matches what its alternatives
-match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`. A
+match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`, and
+`{src,lib}` is the two directory trees, as `['src', 'lib']` is; the
+spellings fold per alternative (`{./src,lib}/**` is `src/**` plus
+`lib/**`), in inputs and outputs alike. A
 backslash escapes: a route directory (Next.js, SvelteKit, Astro) is
 `app/\[id\]/**`; bare, `app/[id]/**` is the class that matches `app/i`
 and `app/d`, never the route. An input brace of one alternative (`{b}.ts`) is refused at `vx
@@ -949,7 +959,11 @@ watch` re-runs it on an edit there.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
-  upstream-hash propagation.
+  upstream-hash propagation. An entry rooted inside a nested project
+  (`dist/**` when `dist/` holds its own config) would key nothing, so
+  `vx lock` refuses it (`VX_E_NESTED_INPUT`): depend on that project's
+  task, or name its files in `inputs.workspaceFiles`. `**`, a sibling
+  and a `!` entry are fine.
 
 ##### `inputs.workspaceFiles` (optional, default `[]`)
 
@@ -1007,8 +1021,8 @@ Env var names whose host values are folded into the cache key.
 - Listing a name here does NOT forward it to the child process.
 
 To both forward AND track, list it in both places. Yes, the
-double-declaration is mild noise; a preset helper
-(`envTracked('NODE_ENV')`) can sugar it.
+double-declaration is mild noise; vx ships no helper for it, but a
+config is TypeScript, so a function of your own can return both lists.
 
 Names are exact: a wildcard (`NEXT_PUBLIC_*`) is refused, and so is
 Turbo's `!NAME` exclusion, here, in `exec.env.passThrough` and in
@@ -2460,10 +2474,11 @@ a user meets most:
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `did not export a default object`                                                                                                     | Forgot `export default`, or exported a non-object; a function (Vite's `defineConfig(() => …)` shape) adds that it is one and to export what it returns (D-110).                                                                |
 | `tasks must be an object keyed by task name`                                                                                          | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                  |
-| `<path> is <what> — a config must be JSON data, because the cache key is built from its JSON`                                                 | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
+| `<path> is <what> — a config must be JSON data, because the cache key is built from its JSON`                                         | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
 | `<level> has unknown field "<key>"`                                                                                                   | Typo'd / unsupported key (see below).                                                                                                                                                                                          |
 | `<level> must be an object (fields: <fields>), not an array`                                                                          | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                       |
 | `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first`                     | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above). |
+| `<file> imports '<name>', which no node_modules above it provides; install the workspace's dependencies first`                        | The same, in a file the config imports by relative path (a preset), looked up from that file.                                                                                                                                  |
 | `cannot find '<name>' — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set <remedy>` | The same, with a `.pnp.cjs` at or above the config: the install is there and Bun cannot read it, so the remedy is `nodeLinker: node-modules` in `.yarnrc.yml` and `yarn install` (D-109).                                      |
 | `tasks.<name> must be an object`                                                                                                      | The task value is null / a string / etc.; a string (package.json's `name: 'command'`) adds the `{ exec: { command } }` it goes in.                                                                                             |
 | `exec must be an object with a command string`                                                                                        | `exec` is malformed.                                                                                                                                                                                                           |

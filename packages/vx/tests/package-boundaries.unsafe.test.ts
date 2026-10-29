@@ -178,6 +178,7 @@ describe('package boundaries', () => {
       // outputs reach, as core's save does.
       'outputDirPrefixes',
       'outputsOverlap',
+      'packageManagerPath',
       'planRun',
       'prepareRun',
       'pruneOrphanPersistentNotes',
@@ -195,6 +196,9 @@ describe('package boundaries', () => {
       'sampleTrees',
       // Widened 2026-10-22: a DTE worker builds a task's sandbox on its own OS.
       'sandboxRequestFor',
+      // Widened 2026-10-28: `@vzn/vx-dte`'s github() refuses to hand a
+      // worker, as a shown dispatch input, a value core would mask.
+      'secretNamed',
       'splitTaskId',
       // Widened 2026-10-24: a DTE worker takes back the placeholders as core does.
       'sweepPlaceholders',

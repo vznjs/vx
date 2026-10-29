@@ -57,7 +57,7 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
   )
   expect(yml).toContain('name: ${{ matrix.worker }}')
   expect(yml).toContain('VX_DTE_WORKER: ${{ matrix.worker }}')
-  expect(yml).toContain("with: { ref: '${{ inputs.sha }}' }")
+  expect(yml).toContain("with: { ref: '${{ inputs.sha }}', persist-credentials: false }")
   expect(yml).toContain(
     '      - run: bun install --frozen-lockfile\n      - run: bun vx dte worker\n',
   )
@@ -88,7 +88,7 @@ it('github({ runsOn }) names a size its runner; pnpm gets its setup step', async
   const yml = await readFile(path.join(root, '.github/workflows/w.yml'), 'utf8')
   expect(yml).toContain(`'{"small":"ubuntu-latest-16-cores","mac":"macos-latest"}'`)
   expect(yml).toContain(
-    '      - uses: pnpm/action-setup@v4\n      - run: pnpm install --frozen-lockfile\n',
+    '      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0\n      - run: pnpm install --frozen-lockfile\n',
   )
 })
 
@@ -108,6 +108,37 @@ it('writes workflows that parse as YAML', async () => {
   expect(steps.some((s) => s.run?.startsWith('jq -r'))).toBe(true)
 })
 
+// A tag is its maintainer's to move (or whoever takes their account), and
+// checkout writes the job's token (actions: write on the run) into
+// .git/config for every later step: the rules this repo's own workflows
+// keep (supply-chain.unsafe.test.ts).
+it('pins every action it writes to a commit SHA and keeps the token out of checkout', async () => {
+  for (const lock of ['bun.lock', 'pnpm-lock.yaml']) {
+    await rm(root, { recursive: true, force: true })
+    await mkdir(root, { recursive: true })
+    await writeFile(path.join(root, lock), '')
+    expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+    for (const file of [WORKFLOW, '.github/workflows/ci.yml']) {
+      const yml = await readFile(path.join(root, file), 'utf8')
+      const uses = [...yml.matchAll(/^\s*(?:-\s*)?uses:\s*(\S+)(.*)$/gm)]
+      expect(uses.length).toBeGreaterThan(1)
+      expect(
+        uses
+          .filter((m) => !/@[0-9a-f]{40}$/.test(m[1]!) || !/^\s*# v\d+\.\d+\.\d+$/.test(m[2]!))
+          .map((m) => m[0].trim()),
+      ).toEqual([])
+      const doc = Bun.YAML.parse(yml) as {
+        jobs: Record<string, { steps: { uses?: string; with?: Record<string, unknown> }[] }>
+      }
+      const checkouts = Object.values(doc.jobs)
+        .flatMap((j) => j.steps)
+        .filter((s) => s.uses?.startsWith('actions/checkout@'))
+      expect(checkouts.length).toBe(1)
+      for (const c of checkouts) expect(c.with?.['persist-credentials']).toBe(false)
+    }
+  }
+})
+
 // CI reads its files at the repository's root: a workspace in a
 // subdirectory got them in its own, which no CI reads (2026-10-25).
 it('writes the CI files at the repository’s root, running in the workspace’s directory', async () => {
@@ -124,13 +155,13 @@ it('writes the CI files at the repository’s root, running in the workspace’s
     const yml = await readFile(path.join(root, file), 'utf8')
     expect(yml).toContain('    defaults:\n      run:\n        working-directory: ws\n')
     expect(yml).toContain(
-      '      - uses: pnpm/action-setup@v4\n        with: { package_json_file: ws/package.json }\n',
+      '      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0\n        with: { package_json_file: ws/package.json }\n',
     )
   }
   const relay = 'https://relay.example.com'
   expect(await at({ relay, workers: sizes, adapter: gitlab() })).toBe(0)
   const ci = await readFile(path.join(root, '.gitlab-ci.yml'), 'utf8')
-  expect(ci).toContain("  before_script:\n    - cd 'ws'\n    - pnpm install --frozen-lockfile\n")
+  expect(ci).toContain("    - cd 'ws'\n    - pnpm install --frozen-lockfile\n")
   expect(ci).toContain("    - git checkout -q FETCH_HEAD\n    - cd 'ws'\n")
 })
 
@@ -160,7 +191,7 @@ it('gitlab() writes one pipeline file: the run, and a job per size only its trig
   expect(ci).toContain('  id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }\n')
   expect(ci).toContain('    - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE\n')
   // No task runs on the orchestrator: vx and the plugins only.
-  expect(ci).toContain("  before_script:\n    - bun install --frozen-lockfile --filter './'\n")
+  expect(ci).toContain("    - bun install --frozen-lockfile --filter './'\n  script:\n")
   expect(ci).toContain("      variables: { VX_TASKS: '--all' }\n")
   expect(ci).toContain('# Name the tasks in the vx job')
   expect(ci).toContain('    - git fetch -q --depth 1 origin $VX_DTE_SHA\n')
@@ -179,6 +210,45 @@ it('gitlab() writes one pipeline file: the run, and a job per size only its trig
   expect(printed.join('')).toContain(
     'The relay at https://relay.example.com must admit these workflows.',
   )
+})
+
+it('gitlab() says to let a developer set pipeline variables, which its trigger passes', async () => {
+  // Before: a project made since GitLab 17.7 lets no one set them, so every
+  // trigger was refused, 400 "Insufficient permissions to set pipeline variables".
+  const { next } = await gitlab().init!({
+    workspaceRoot: root,
+    dir: '',
+    relay: 'https://relay.example.com',
+    sizes: [{ name: 'small', max: 4 }],
+    manager: 'bun',
+    tasks: { main: '', change: '' },
+  })
+  expect(next.join('\n')).toContain(
+    'Settings > CI/CD > Variables: set "Minimum role to use pipeline variables" to Developer',
+  )
+})
+
+it('gitlab() jobs add git to an image that lacks it, as oven/bun does', async () => {
+  // Before: oven/bun has no git, so the run failed "a DTE run needs a git
+  // commit" and each worker's `git fetch` was "command not found".
+  const ci = (
+    await gitlab().init!({
+      workspaceRoot: root,
+      dir: '',
+      relay: 'https://relay.example.com',
+      sizes: [{ name: 'small', max: 4 }],
+      manager: 'bun',
+      tasks: { main: '', change: '' },
+    })
+  ).files['.gitlab-ci.yml']!
+  // By digest: a tag is its publisher's to move (oven/bun's moved on 2026-10-22).
+  expect(ci).toMatch(/\n {2}image: oven\/bun:1\.4\.4@sha256:[0-9a-f]{64}\n/)
+  const git =
+    '    - command -v git || (apt-get update -qq && apt-get install -qq -y --no-install-recommends git)\n'
+  expect(ci).toContain(
+    `  before_script:\n${git}    - bun install --frozen-lockfile --filter './'\n`,
+  )
+  expect(ci).toContain(`  before_script:\n${git}    - git fetch -q --depth 1 origin $VX_DTE_SHA\n`)
 })
 
 it("gitlab()'s ALLOW names the origin's GitLab, a self-managed one too", async () => {
@@ -366,7 +436,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(relay)}, workers: { sma
     }).stderr.toString()
   }
   await workspace('relay.example.com')
-  expect(said({})).toContain('dte(): relay must be http(s), got relay.example.com')
+  expect(said({})).toContain('dte() option "relay" must be an http(s) URL, got "relay.example.com"')
   await workspace('https://relay.example.com')
   expect(said({ VX_DTE_RELAY: 'relay.example.com' })).toStartWith(
     '✗ vx dte  vx dte worker: VX_DTE_RELAY must be http(s), got relay.example.com\n',
@@ -401,4 +471,124 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RUN',
   ])
+})
+
+interface Step {
+  name?: string
+  if?: string
+  run?: string
+  env?: Record<string, string>
+}
+const workflowOf = async (
+  file: string,
+): Promise<{
+  on: { workflow_dispatch?: { inputs: Record<string, { required: boolean; default?: string }> } }
+  permissions?: Record<string, string>
+  jobs: Record<string, { steps: Step[]; permissions?: Record<string, string> }>
+}> => Bun.YAML.parse(await readFile(path.join(root, file), 'utf8')) as never
+
+/** Runs a step's script as GitHub runs one (`bash -e`), its API at `api`. */
+async function step(s: Step, api: string, env: Record<string, string>): Promise<number> {
+  const proc = Bun.spawn(['bash', '-e', '-c', s.run!], {
+    env: { PATH: process.env['PATH']!, GITHUB_API_URL: api, GITHUB_REPOSITORY: 'o/r', ...env },
+    stdout: 'ignore',
+    stderr: 'ignore',
+  })
+  return await proc.exited
+}
+
+// An orchestrator that died where it could not cancel (the API limit
+// spent, a SIGKILL) left its queued workers to start for no one, each
+// holding a runner for its whole setup (2026-10-28).
+it("github()'s worker first reads its run's attempt and cancels its own run once that is over", async () => {
+  await writeFile(path.join(root, 'bun.lock'), '')
+  expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+  const wf = await workflowOf(WORKFLOW)
+  expect(wf.on.workflow_dispatch!.inputs['parent']).toEqual({ required: false, default: '' })
+  // Cancelling its own run.
+  expect(wf.permissions?.['actions']).toBe('write')
+  const first = wf.jobs['worker']!.steps[0]!
+  expect(first.if).toBe("inputs.parent != ''")
+  let status = 'in_progress'
+  let refuse = false
+  let refusePost = false
+  const calls: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const p = new URL(req.url).pathname
+      calls.push(`${req.method} ${p} ${req.headers.get('authorization')}`)
+      if (refuse) return new Response('API rate limit exceeded', { status: 403 })
+      if (req.method === 'POST') return new Response(null, { status: refusePost ? 403 : 202 })
+      return Response.json({ id: 55, status })
+    },
+  })
+  const api = `http://127.0.0.1:${server.port}`
+  // The step's env, as GitHub fills its expressions.
+  const env = { GH_TOKEN: 'ght', PARENT: '55/attempts/2', GITHUB_RUN_ID: '90' }
+  try {
+    expect(await step(first, api, env)).toBe(0)
+    expect(calls).toEqual(['GET /repos/o/r/actions/runs/55/attempts/2 Bearer ght'])
+    calls.length = 0
+    refuse = true
+    // An API that answers nothing leaves the worker to the relay, which
+    // turns away a worker of a run it no longer holds.
+    expect(await step(first, api, env)).toBe(0)
+    calls.length = 0
+    refuse = false
+    status = 'completed'
+    // Its later steps run only until the cancel lands, seconds later.
+    expect(await step(first, api, env)).toBe(0)
+    expect(calls).toEqual([
+      'GET /repos/o/r/actions/runs/55/attempts/2 Bearer ght',
+      'POST /repos/o/r/actions/runs/90/cancel Bearer ght',
+    ])
+    // A worker that cannot cancel itself fails: it would work for no one.
+    refusePost = true
+    expect(await step(first, api, env)).not.toBe(0)
+  } finally {
+    await server.stop(true)
+  }
+  expect(Object.keys(first.env ?? {}).toSorted()).toEqual(['GH_TOKEN', 'PARENT'])
+})
+
+// github() lists each run it dispatched in RUNNER_TEMP for this step: a
+// run cancelled or timed out may die before it closes (2026-10-28: no
+// workflow had the step that list was written for).
+it("github()'s run cancels the worker runs it listed when its job is cancelled", async () => {
+  await writeFile(path.join(root, 'bun.lock'), '')
+  expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+  const wf = await workflowOf('.github/workflows/ci.yml')
+  const steps = wf.jobs['vx']!.steps
+  const last = steps.at(-1)!
+  expect(last.if).toBe('cancelled()')
+  const calls: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      calls.push(`${req.method} ${new URL(req.url).pathname} ${req.headers.get('authorization')}`)
+      return new Response(null, { status: calls.length === 1 ? 409 : 202 })
+    },
+  })
+  const temp = path.join(root, 'temp')
+  await mkdir(temp)
+  try {
+    const env = { GITHUB_TOKEN: 'ght', RUNNER_TEMP: temp }
+    // No worker dispatched: nothing to cancel.
+    expect(await step(last, `http://127.0.0.1:${server.port}`, env)).toBe(0)
+    expect(calls).toEqual([])
+    await writeFile(
+      path.join(temp, 'vx-dte-runs'),
+      '/repos/o/r/actions/runs/1\n/repos/o/r/actions/runs/2\n',
+    )
+    expect(await step(last, `http://127.0.0.1:${server.port}`, env)).toBe(0)
+    expect(calls).toEqual([
+      'POST /repos/o/r/actions/runs/1/cancel Bearer ght',
+      'POST /repos/o/r/actions/runs/2/cancel Bearer ght',
+    ])
+  } finally {
+    await server.stop(true)
+  }
 })

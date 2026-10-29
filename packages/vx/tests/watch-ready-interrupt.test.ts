@@ -118,3 +118,34 @@ it('an edit during other work does not stop the cycle', async () => {
     await rm(marks, { recursive: true, force: true })
   }
 }, 40_000)
+
+// A dev server that writes a file in its project as it boots (Vite's
+// timestamped config bundle, a route tree, a pid) and is not yet ready:
+// its write is an edit, the edit stopped the cycle, the next server wrote
+// it again, and the loop restarted it for good, never ready (16 restarts
+// in 3 s). A path that stopped the last such cycle and is written again
+// by the next is the server's own: it stops no further cycle.
+it("a waiting server's own boot write does not restart it for good", async () => {
+  root = await makeWorkspace({ prefix: 'vx-watch-ready-' })
+  outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-ready-marks-'))
+  const pids = path.join(outside, 'pids')
+  const dir = await addProject(
+    root,
+    'web',
+    `export default { tasks: { dev: { exec: {
+      command: 'echo $$ >> ${pids}; date +%s%N > stamp.txt; exec sleep 1000',
+      persistent: { readyWhen: 'READY' },
+    } } } }`,
+  )
+  watch = startWatch(root, ['--all'], {}, 'dev')
+  const w = watch
+  await until(() => w.out().includes('watching '), 'the watching marker')
+  await writeFile(path.join(dir, 'edit.txt'), 'edit\n')
+  await until(async () => (await lines('pids')).length >= 2, 'the restarted server')
+  await Bun.sleep(2000)
+  const settled = (await lines('pids')).length
+  await Bun.sleep(1000)
+  expect([settled <= 3, (await lines('pids')).length]).toEqual([true, settled])
+  w.proc.kill('SIGTERM')
+  expect(await w.proc.exited).toBe(0)
+}, 40_000)

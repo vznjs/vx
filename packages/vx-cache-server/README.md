@@ -33,13 +33,13 @@ ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://gitla
 ```
 
 Only jobs of a workflow it names get in; any other job is refused. With
-`ALLOW` empty, every request is refused. A job writes its branch's own
+`ALLOW` empty, the server does not start (a Worker refuses every request). A job writes its branch's own
 scope, which only runs of that branch read:
 
 - A push writes its branch, so a run of `main` writes `main`.
-- A pull request writes its head branch: its work never reaches `main`'s
-  runs.
-- A merge queue's run (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`)
+- A pull request writes its merge ref, `refs/pull/<n>/merge`, never a
+  branch: its work never reaches `main`'s runs, nor a branch a fork names.
+- A merge queue's (`merge_group`) run (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`)
   writes its base branch, since queued code is about to land.
 - A `pull_request_target` run writes nothing: it may run a fork's code.
 
@@ -80,7 +80,8 @@ builds and runs all three (`docker compose up -d`).
 `MAX_CHECK_HASHES` (lookups, hashes × scopes, a check makes; default
 500, 6 on Workers) and
 `MAX_UPLOAD_BYTES` (default 100 MB, one artifact) set
-the limits. Every check names them to clients (`vx-max-*`), and
+the limits. Every `/v1/artifacts` answer, a refusal too, names them to
+clients (`vx-max-*`), and
 `GET /v1/capabilities` too.
 
 ## On Cloudflare Workers
@@ -105,7 +106,8 @@ artifact never changes, so after R2 serves it once, that data center
 answers it without R2 (free on every plan). Whether R2 holds an
 artifact (a check, a `HEAD`, an upload's skip) is asked of R2 alone: the
 data center's copy can outlive R2's, and a writer told "held" there
-would skip an upload another data center then cannot read.
+would skip an upload another data center then cannot read. An upload
+drops the copy in the data center it reaches: R2 had let those bytes go.
 
 ## Expiry
 
