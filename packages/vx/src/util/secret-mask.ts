@@ -67,6 +67,8 @@ export function heldSecrets(): number {
 export interface SecretMask {
   /** `text` with every secret value replaced. */
   mask(text: string): string
+  /** Where `mask` replaces a value in `text`: `[start, end)` pairs, in order. */
+  spans(text: string): Array<[start: number, end: number]>
   /**
    * A mask for a stream of chunks: a value split across two chunks is
    * still caught, by holding back only a tail that could begin one until
@@ -157,6 +159,13 @@ export function secretMask(
   }
   return {
     mask,
+    spans(text) {
+      const out: Array<[number, number]> = []
+      pattern.lastIndex = 0
+      for (let m = pattern.exec(text); m !== null; m = pattern.exec(text))
+        out.push([m.index, m.index + m[0].length])
+      return out
+    },
     maskCut(head, tail) {
       let h = head.length - partialTail(head)
       pattern.lastIndex = 0
