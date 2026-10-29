@@ -993,6 +993,24 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
   ])
 })
 
+// The cache and history servers took this in c4d2ce089c; the relay did not.
+it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', () => {
+  const said = (port: string) => {
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--no-auth', '--port', port],
+      // A port it took binds and serves: end it rather than hang.
+      { stderr: 'pipe', timeout: 2000 },
+    )
+    return [cli.exitCode, Bun.stripANSI(cli.stderr.toString())]
+  }
+  expect(['0x50', '1e1', ' 80', '80.0'].map(said)).toEqual([
+    [2, '✗ vx-dte-server  --port: not a port: 0x50\n'],
+    [2, '✗ vx-dte-server  --port: not a port: 1e1\n'],
+    [2, '✗ vx-dte-server  --port: not a port:  80\n'],
+    [2, '✗ vx-dte-server  --port: not a port: 80.0\n'],
+  ])
+}, 20_000)
+
 // A host join whose upgrade Bun refused (no Sec-WebSocket-Key) still made
 // its session: its host had no socket and no drop time, so it never
 // lapsed, and every later join of that id was refused 4409.
