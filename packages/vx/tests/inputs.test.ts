@@ -539,7 +539,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
         inputs: { files },
         ownOutputs: [],
         nestedProjectDirs: [],
-      }).then((got) => got.files.map((f) => path.relative(projectDir, f)).sort())
+      }).then((got) => got.files.map((f) => relPosix(projectDir, f)).sort())
     expect(await resolve(['src/*:*.txt'])).toEqual(['src/a:b.txt', 'src/x:y.txt'])
     expect(await resolve(['src/a:b.txt', 'src/x:y.txt'])).toEqual(['src/a:b.txt', 'src/x:y.txt'])
     expect(await resolve(['src/**', '!src/a:b.txt'])).toEqual(['src/c.txt', 'src/x:y.txt'])
