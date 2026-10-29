@@ -94,7 +94,7 @@ export function fileMemo(): (abs: string) => boolean
 // unfinished chain and the unfinished work spread over the workers. The
 // same pass lists `blocked`: up to one task per worker that an unfinished
 // dependency holds back, ranked as the scheduler ranks
-// (computeReverseDepCount, once per run), each `by` the running task its
+// (the run's `reverseDepCounts`, read back with the graph), each `by` the running task its
 // longest chain waits on, else that dependency; `blockedBy`, per running
 // task, the tasks not started that depend on it directly. A running task
 // past its p50 costs zero: an ETA of zero with tasks running is the region's
@@ -108,6 +108,7 @@ export function createForecast(
   p50s: ReadonlyMap<string, number>,
   concurrency: number,
   downstream?: ReadonlyMap<string, number>, // each task's `blocks`; `blocksCounts(nodes)` by default
+  rank?: ReadonlyMap<string, number>, // the scheduler's baseline; `computeReverseDepCount(nodes)` by default
 ): Forecast
 // every task's count of the tasks downstream of it, groups not counted
 export function blocksCounts(nodes: ReadonlyMap<string, TaskNode>): Map<string, number>

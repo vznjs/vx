@@ -156,6 +156,18 @@ export function computeReverseDepCount(
   /** Count only these dependents (the exec tier); every one when absent. */
   counted?: ReadonlyMap<string, unknown>,
 ): Map<string, number> {
+  return reverseDepCountsOver(nodes, [counted])[0]!
+}
+
+/**
+ * `computeReverseDepCount` once per entry of `counted`, from ONE closure:
+ * the closure is the cost (~100 ms at 11k nodes, 2026-10-29), each count
+ * one popcount pass over it.
+ */
+export function reverseDepCountsOver(
+  nodes: ReadonlyMap<string, TaskNode>,
+  counted: ReadonlyArray<ReadonlyMap<string, unknown> | undefined>,
+): Map<string, number>[] {
   // Exact transitive-dependent COUNTS need closure SETS (diamonds
   // double-count under naive summing). Set-of-strings closures are
   // O(N²) entries and took 8.5s on a 1090-package, 100-layer repo;
@@ -216,10 +228,13 @@ export function computeReverseDepCount(
     for (let j = offset[i]!; j < offset[i + 1]!; j++) rev[k++] = pos[dependents[j]!]!
   }
   const words = (tail + 31) >>> 5
-  const mask = new Uint32Array(words)
-  if (counted === undefined) mask.fill(0xffffffff)
-  else
-    for (let t = 0; t < tail; t++) if (counted.has(ids[topo[t]!]!)) mask[t >>> 5]! |= 1 << (t & 31)
+  const masks = counted.map((only) => {
+    const mask = new Uint32Array(words)
+    if (only === undefined) mask.fill(0xffffffff)
+    else
+      for (let t = 0; t < tail; t++) if (only.has(ids[topo[t]!]!)) mask[t >>> 5]! |= 1 << (t & 31)
+    return mask
+  })
 
   // Reverse-topo sweeps, one per block of `span` words: every node's
   // closure restricted to the block's positions, its count summed over
@@ -228,7 +243,7 @@ export function computeReverseDepCount(
   // makes, took 77 ms; a block of ~256 KB took 37 (2026-10-29). A
   // dependent past the block holds no bit in it, so its edge is skipped.
   const span = Math.max(1, Math.min(words, Math.floor(65536 / Math.max(1, tail))))
-  const total = new Int32Array(tail)
+  const totals = masks.map(() => new Int32Array(tail))
   const closure = new Uint32Array(tail * span)
   for (let w0 = 0; w0 < words; w0 += span) {
     const width = Math.min(words, w0 + span) - w0
@@ -245,24 +260,30 @@ export function computeReverseDepCount(
         for (let w = rw > w0 ? rw - w0 : 0; w < width; w++)
           closure[base + w]! |= closure[rbase + w]!
       }
-      let count = 0
-      for (let w = t >>> 5 > w0 ? (t >>> 5) - w0 : 0; w < width; w++) {
-        let v = closure[base + w]! & mask[w0 + w]!
-        if (v === 0) continue
-        v = v - ((v >>> 1) & 0x55555555)
-        v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
-        count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+      for (let m = 0; m < masks.length; m++) {
+        const mask = masks[m]!
+        let count = 0
+        for (let w = t >>> 5 > w0 ? (t >>> 5) - w0 : 0; w < width; w++) {
+          let v = closure[base + w]! & mask[w0 + w]!
+          if (v === 0) continue
+          v = v - ((v >>> 1) & 0x55555555)
+          v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
+          count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+        }
+        totals[m]![t]! += count
       }
-      total[t]! += count
     }
   }
-  const counts = new Map<string, number>()
-  for (let t = 0; t < tail; t++) counts.set(ids[topo[t]!]!, total[t]!)
-  // Cycle-stranded nodes (never topo-visited) can't occur — the graph
-  // builder rejects cycles — but a missing Map entry would silently
-  // sort as undefined, so default them defensively to 0.
-  for (const id of ids) if (!counts.has(id)) counts.set(id, 0)
-  return counts
+  const all = totals.map((total) => {
+    const counts = new Map<string, number>()
+    for (let t = 0; t < tail; t++) counts.set(ids[topo[t]!]!, total[t]!)
+    // Cycle-stranded nodes (never topo-visited) can't occur — the graph
+    // builder rejects cycles — but a missing Map entry would silently
+    // sort as undefined, so default them defensively to 0.
+    for (const id of ids) if (!counts.has(id)) counts.set(id, 0)
+    return counts
+  })
+  return all
 }
 
 /**
