@@ -103,6 +103,15 @@ function proxyHeaders(
 const scopeOf = (ref: string): string =>
   new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
 
+/**
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
+ * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
+ * overwrote the line before (core's `printable`, L-31).
+ */
+const printable = (s: string): string =>
+  // oxlint-disable-next-line no-control-regex
+  s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
   let said = ''
@@ -117,7 +126,7 @@ async function refusal(res: Response): Promise<Error> {
   } catch {
     // quiet: the status alone still names the refusal
   }
-  said = said.replace(/\s+/g, ' ').trim().slice(0, 200)
+  said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
