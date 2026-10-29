@@ -14,7 +14,7 @@ import {
   parseCachePolicy,
   zstdContentSize,
 } from '../src/cache/cache.js'
-import { decodedTar } from '../src/cache/zstd.js'
+import { decodedTar, STREAM_DECODE_FROM } from '../src/cache/zstd.js'
 import { UserError, xxh3hex } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -1179,6 +1179,70 @@ describe('Cache storage (v10)', () => {
       await expect(ingest).rejects.toThrow('Cannot use a closed database')
       const left = (await readdir(dir, { recursive: true })).filter((f) => f.includes('.tmp-'))
       expect([name, left]).toEqual([name, []])
+    }
+  })
+
+  // A download may come chunked with no Content-Length (vx-cache-server's
+  // PROTOCOL.md), so a body cut short ends as cleanly as a whole one. Past
+  // STREAM_DECODE_FROM it takes the streamed path, through a temp file.
+  it('ingest() refuses a large body cut short with no length named, and keeps none of it', async () => {
+    await mkdir(projectDir, { recursive: true })
+    const outFile = path.join(projectDir, 'dist', 'big.bin')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    const noise = new Uint8Array(6 * 1024 * 1024)
+    for (let at = 0; at < noise.length; at += 65_536)
+      crypto.getRandomValues(noise.subarray(at, at + 65_536))
+    await writeFile(outFile, noise)
+    await cache.save({
+      hash: 'h-cut',
+      projectDir,
+      outputFiles: [outFile],
+      entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
+    })
+    const bytes = storedArtifact(cache, 'h-cut')!
+    expect(bytes.byteLength).toBeGreaterThan(STREAM_DECODE_FROM)
+    const chunked = (b: Uint8Array): Response => {
+      let at = 0
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(c) {
+            if (at >= b.length) return c.close()
+            c.enqueue(b.slice(at, (at += 65_536)))
+          },
+        }),
+      )
+    }
+    for (const [name, store] of [
+      ['tar', TAR_STORE],
+      ['tree', undefined],
+    ] as const) {
+      const dir = path.join(workspaceRoot, `cut-${name}`)
+      const other = new Cache(dir, undefined, undefined, undefined, undefined, undefined, store)
+      try {
+        for (const keep of [1, bytes.length >> 1, bytes.length - 1]) {
+          await expect(
+            other.ingest('h-cut', chunked(bytes.subarray(0, keep)), {
+              taskId: 'pkg#build',
+              command: 'tsc',
+              durationMs: 1,
+            }),
+          ).rejects.toThrow(CorruptArtifactError)
+          expect([name, keep, await other.get('h-cut')]).toEqual([name, keep, null])
+        }
+        const left = (await readdir(dir, { recursive: true })).filter(
+          (f) => f.includes('h-cut') || f.includes('.tmp-'),
+        )
+        expect([name, left]).toEqual([name, []])
+        // The control: the whole body, chunked the same, is taken.
+        await other.ingest('h-cut', chunked(bytes), {
+          taskId: 'pkg#build',
+          command: 'tsc',
+          durationMs: 1,
+        })
+        expect((await other.get('h-cut'))?.hash).toBe('h-cut')
+      } finally {
+        other.close()
+      }
     }
   })
 
