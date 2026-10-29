@@ -42,6 +42,19 @@ import { outcomeLabel, outcomeWord, ranNoCache, skippedReason } from './events.j
 import { fileMemo, linkPaths } from './path-links.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
+// Ends any colour a task's output left on, so vx's own lines below never
+// take it (a task killed mid-write leaves one open).
+export const RESET = '\x1b[0m'
+
+/** Whether `text`'s last colour code sets a style rather than resetting it. */
+export function leavesStyle(text: string): boolean {
+  const at = text.lastIndexOf('\x1b[')
+  if (at < 0) return false
+  const sgr = /^\[([\d;]*)m/.exec(text.slice(at + 1, at + 64))
+  // Not a colour code (a cursor move): look no further, as a reset costs nothing.
+  if (sgr === null) return true
+  return sgr[1] !== '' && sgr[1] !== '0'
+}
 
 const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
 // Identity hues (`identityColor`) are outside the status palette (green /
@@ -160,6 +173,7 @@ function pushStreamSection(
     lines.push(droppedNote(lost, colors))
   }
   pushBodyLines(lines, text)
+  if (leavesStyle(text)) lines.push(`${lines.pop()}${RESET}`)
   lines.push('')
 }
 
@@ -204,6 +218,8 @@ function pushOutputSection(
     if (!l.err || !colors.enabled) lines.push(text)
     else lines.push(l.text.includes('\x1b') ? text : paint(ERROR, text, colors))
   }
+  const styled = output.findLast((c) => c.text.includes('\x1b['))
+  if (styled !== undefined && leavesStyle(styled.text)) lines.push(`${lines.pop()}${RESET}`)
   lines.push('')
 }
 
@@ -712,7 +728,10 @@ export function formatKeptLines(node: TaskNode, text: string, colors: ColorSuppo
   const prefix = `${paintTaskId(node, colors)} ${paint('', '│', colors, { dim: true })} `
   return text
     .split('\n')
-    .map((line) => `${prefix}${lastRedraw(line)}\n`)
+    .map((line) => {
+      const shown = lastRedraw(line)
+      return `${prefix}${shown}${leavesStyle(shown) ? RESET : ''}\n`
+    })
     .join('')
 }
 

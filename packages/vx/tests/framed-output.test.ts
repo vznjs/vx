@@ -4,6 +4,7 @@ import path from 'node:path'
 import {
   formatFrameClose,
   formatFrameOpen,
+  formatKeptLines,
   formatPersistentList,
   formatPersistentTailBlock,
   formatTaskBlock,
@@ -281,6 +282,27 @@ describe('formatTaskBlock', () => {
         'Finished in 327ms.\n' +
         '\n' +
         '└─ @vzn/vx#lint ── (327ms) success\n',
+    )
+  })
+
+  // A task killed mid-write, or one that never resets, left its colour on:
+  // the frame's close and the summary below it took the task's background.
+  it("a colour the task left open ends with its output, not on vx's lines", () => {
+    const out = formatTaskBlock(node('a#build', 'x'), outcome('a#build', 'failed'), {
+      output: [{ text: '\x1b[41mERROR\n', err: false }],
+    })
+    expect(out).toContain('\x1b[41mERROR\x1b[0m\n\n└─ a#build')
+    const plain = formatTaskBlock(node('a#build', 'x'), outcome('a#build', 'failed'), {
+      output: [{ text: 'ERROR\n', err: false }],
+    })
+    expect(plain).not.toContain('\x1b')
+    const srv = persistentNode('a#dev', 'x')
+    const tail = formatPersistentTailBlock(srv, outcome('a#dev', 'success'), {
+      stdout: '\x1b[41mERROR\n',
+    })
+    expect(tail).toContain('\x1b[41mERROR\x1b[0m\n')
+    expect(formatKeptLines(srv, '\x1b[41mERROR\nok', { enabled: false })).toBe(
+      'a#dev │ \x1b[41mERROR\x1b[0m\na#dev │ ok\n',
     )
   })
 

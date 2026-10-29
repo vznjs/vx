@@ -258,6 +258,18 @@ describe('defaultLogger visibility matrix — focused', () => {
     )
   })
 
+  it('a colour the streamed task left open ends before the frame close', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    const n = mkNode('one#test', { requested: true })
+    log.taskStart?.(n)
+    log.taskStdout(n, '\x1b[41mERR\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    expect(out.text()).toBe(
+      '┌─ one#test > $ noop\n\x1b[41mERR\n\x1b[0m└─ one#test ── (100ms) success\n\n',
+    )
+  })
+
   // It opened no frame, so a frame close for it closed nothing.
   it('requested task the stop kept from starting → a `not run` row, no frame close', () => {
     const out = sink()
