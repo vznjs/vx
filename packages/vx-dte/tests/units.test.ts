@@ -3158,6 +3158,10 @@ it('refuses options it does not read and workers it cannot start', () => {
   expect(refusal(() => dte({}))).toBe(
     'dte(): with no adapter, set relay: the workers that join it run the tasks',
   )
+  // A .mjs config's bare `dte()` read `options.headers` and threw a TypeError.
+  expect(refusal(() => (dte as (o?: unknown) => unknown)())).toBe(
+    'dte(): with no adapter, set relay: the workers that join it run the tasks',
+  )
   expect(refusal(() => dte({ relay: 'http://relay.test' }))).toBe('taken')
   expect(refusal(() => dte({ workers: { s: { cpu: 2, memory: '8GB' } }, adapter }))).toBe('taken')
   expect(refusal(() => local({ prepar: 'x' } as never))).toContain(

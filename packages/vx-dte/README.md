@@ -752,7 +752,7 @@ real time in the run summary and the footer's `ideal` line, and
 
 ## API
 
-- `dte(options: DteOptions)` is the plugin. `DteOptions` is
+- `dte(options?: DteOptions)` is the plugin. `DteOptions` is
   `{ workers?, adapter?, relay?, local?, token?, scheduler?, unmeasured?, headers? }`.
   `headers` go on every dial to the relay, the orchestrator's and each
   worker's (redials too), for a proxy in front of it, such as a

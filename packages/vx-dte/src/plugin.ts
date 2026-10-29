@@ -149,7 +149,7 @@ function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
   return out
 }
 
-export function dte(options: DteOptions) {
+export function dte(options: DteOptions = {}) {
   refuseUnknownOptions('dte()', options, KEYS)
   const headers = proxyHeaders(options.headers)
   const how: Strategy = { ...DEFAULT_STRATEGY }
