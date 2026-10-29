@@ -808,6 +808,15 @@ export async function mapTurboWorkspace(
   // A workspace with no Turbo config answered with a bare ENOENT and a stack
   // (item 1043): turbo() declared in the wrong repo, or its file removed.
   const rootFile = await onlyConfigFile(root, root)
+  // Turbo reads its root config from the file TURBO_ROOT_TURBO_JSON names,
+  // against the cwd (vercel/turborepo#9087); reading the root's in its
+  // place ran another task graph than `turbo run`.
+  const named = Bun.env['TURBO_ROOT_TURBO_JSON']
+  if (named && (rootFile === null || path.resolve(named) !== rootFile)) {
+    throw new UserError(
+      `TURBO_ROOT_TURBO_JSON names ${path.resolve(named)}: turbo() reads only the workspace root's turbo.json or turbo.jsonc — unset it, or move that config to the root`,
+    )
+  }
   if (rootFile === null) {
     throw new UserError(
       `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from .vx/workspace.ts`,

@@ -81,6 +81,7 @@ Rules:
 - `TURBO_FORCE=true` (or `1`), `turbo run --force`, turns every cache read off through the workspace's `cache.policy`: each task runs and refreshes the local cache. The remote is written only where `.vx/workspace.ts`'s own `cache.policy` names it, so a laptop's forced run never writes the cache CI reads; `vx run --force` is the flag. A `--cache-policy` or `VX_CACHE_POLICY` replaces the workspace's policy, this included.
 - `TURBO_SCM_BASE`, the base `turbo run --affected` compares with, is the run's base commit (`setBranch({ base })`): a bare `vx run build --affected` compares with the same ref. With it unset on GitHub Actions (`GITHUB_ACTIONS`), Turbo's own base applies: a pull request's `GITHUB_BASE_REF`, else the push event's `before` from `GITHUB_EVENT_PATH`.
 - Turbo hashes each package's `microfrontends.json` (or `.jsonc`) into every task, or the one file `VC_MICROFRONTENDS_CONFIG_FILE_NAME` names; so does `turbo()`.
+- `TURBO_ROOT_TURBO_JSON`, Turbo's root config path (against the cwd), is refused when it names another file than the workspace root's `turbo.json` or `turbo.jsonc`: `turbo()` reads only that one.
 - Turbo 2.11's `global` block (`futureFlags.globalConfiguration`) is read as the `globalDependencies`, `globalEnv` and `globalPassThroughEnv` it replaces, except that a task's `!` input takes a `global.inputs` file back, as Turbo prepends them to each task's inputs.
 - An unknown Turbo key is a todo naming it; `extends` is accepted and ignored (the overlay order above is what it means).
 
