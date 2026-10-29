@@ -2172,8 +2172,9 @@ breaking footer).
   directory that withholds a permission 0755 grants, and a hit gives
   each directory it makes that mode, minus the umask as a file's
   (`tests/restore-dir-mode.test.ts`); a directory that stands is left as
-  it is. A rename into one of this user's that withholds its own write
-  (`chmod 555`) gives it owner write for the commit, then its mode back.
+  it is. A rename, or a tree entry's copy-out, into one of this user's
+  that withholds its own write (`chmod 555`) gives it owner write for the
+  commit, then its mode back.
   A v48 artifact keeps none.
 - **v47 → v48**: stored bytes wrong under a key the change does not move
   (2026-10-18). A task glob is a standard glob again: `[...]` is a
