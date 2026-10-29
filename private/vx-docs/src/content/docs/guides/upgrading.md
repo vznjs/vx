@@ -13,6 +13,10 @@ first; its text is that footer: what changed and what to do.
 
 SCHEMA_VERSION is v51: the first run after upgrading resets the index (run history goes; artifacts stay).
 
+## vx-devtools: read issuer keys through the Worker shared cache
+
+OidcOptions.fetchJson is called as fetchJson(url, fresh): fresh is true for a reload of keys already read, which must reach the issuer. A fetchJson that took one argument still works.
+
 ## report: one grid for both task lists, with cost and place
 
 Logger.taskStart is called as taskStart(node, info?) with info.waitedMs, and the task:start event carries waitedMs: a logger or bus subscriber that matched on their exact shape takes the new field.

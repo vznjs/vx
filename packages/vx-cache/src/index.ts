@@ -68,6 +68,8 @@ function expiryOf(jwt: string): number {
 const LEND_MARGIN_MS = 5 * 60_000
 /** Tries of GitHub's OIDC endpoint before the remote turns off (`askOnce`). */
 const ASK_ATTEMPTS = 3
+/** A connection that dropped, not a server that answered: an upload is sent again. */
+const RESET = new Set(['ECONNRESET', 'EPIPE', 'ECONNREFUSED'])
 /** Uploads open at once; more wait. */
 const IN_FLIGHT = 4
 
@@ -800,18 +802,28 @@ export class VxCacheLayer implements RemoteCacheLayer {
   private async upload(item: { hash: string; body: Blob }): Promise<void | false> {
     // Queued before the remote or its writes were turned off.
     if (this.disabled || this.writesRefused) return false
-    // Sent again after a 5xx or a 429, up to three tries, as the token's ask:
-    // the server failing to read GitHub's keys once lost a DTE worker's entry
-    // (2026-10-29). A PUT names its hash, so a second one stores the same bytes.
+    // Sent again after a 5xx, a 429 or a reset connection, up to three tries,
+    // as the token's ask: the server failing to read GitHub's keys once, and
+    // one ECONNRESET, each lost a DTE worker's entry (2026-10-29). A PUT
+    // names its hash, so a second one stores the same bytes. A deadline is
+    // not retried: the upload already had its time.
     for (let attempt = 1; ; attempt++) {
-      const res = await this.request(`/v1/artifacts/${item.hash}`, {
-        method: 'PUT',
-        body: item.body,
-        headers: { 'content-type': 'application/octet-stream' },
-        timeoutMs: this.config.uploadTimeoutMs,
-        write: true,
-        paced: true,
-      })
+      let res: Response | undefined
+      try {
+        res = await this.request(`/v1/artifacts/${item.hash}`, {
+          method: 'PUT',
+          body: item.body,
+          headers: { 'content-type': 'application/octet-stream' },
+          timeoutMs: this.config.uploadTimeoutMs,
+          write: true,
+          paced: true,
+        })
+      } catch (err) {
+        if (!RESET.has((err as { code?: unknown }).code as string) || attempt === ASK_ATTEMPTS)
+          throw err
+        await this.wait(1000 * attempt)
+        continue
+      }
       if (res === undefined) return false
       if (res.ok) return
       if ((res.status !== 429 && res.status < 500) || attempt === ASK_ATTEMPTS)
