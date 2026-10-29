@@ -968,15 +968,6 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
 }
 
 /**
- * Declare in `.vx/workspace.ts`; the local store stays the floor beneath it:
- *
- * ```ts
- * plugins: [turboCache({ url: 'https://cache.example.com', token: process.env.CACHE_TOKEN })]
- * ```
- *
- * Declines with no URL, team or token, so it is safe to leave declared.
- */
-/**
  * The number options, refused at the call: in the `cache` hook a laptop
  * with no remote named passed what failed the first CI run.
  */
@@ -994,6 +985,15 @@ function refuseBadNumbers(options: TurboCacheOptions): void {
   }
 }
 
+/**
+ * Declare in `.vx/workspace.ts`; the local store stays the floor beneath it:
+ *
+ * ```ts
+ * plugins: [turboCache({ url: 'https://cache.example.com', token: process.env.CACHE_TOKEN })]
+ * ```
+ *
+ * Declines with no URL, team or token, so it is safe to leave declared.
+ */
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
   refuseBadNumbers(options)
