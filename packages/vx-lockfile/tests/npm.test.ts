@@ -201,6 +201,36 @@ describe('every input the npm digest must read', () => {
     }
   })
 
+  // vercel/turborepo#4824 (its fixture workspace-peer-dependency.json): a
+  // workspace linked under a registry name (`eslint` → packages/c) that a
+  // registry package and a workspace both peer on. It resolved to no
+  // package and the closure failed; it is a link, the bump moves only a.
+  it('a peer on a workspace linked under a registry name is that workspace', () => {
+    const text = (v: string) =>
+      doc({
+        'node_modules/a': { resolved: 'packages/a', link: true },
+        'node_modules/b': { resolved: 'packages/b', link: true },
+        'node_modules/eslint': { resolved: 'packages/c', link: true },
+        'node_modules/eslint-plugin-turbo': {
+          version: v,
+          resolved: `https://r/e-${v}.tgz`,
+          integrity: `sha-${v}`,
+          peerDependencies: { eslint: '>6.6.0' },
+        },
+        'packages/a': {
+          dependencies: { eslint: '^0.0.0-workspace', 'eslint-plugin-turbo': '^1.9.3' },
+        },
+        'packages/b': { peerDependencies: { eslint: '*' } },
+        'packages/c': { name: 'eslint', version: '0.0.0-workspace' },
+      })
+    const links = importerLinks(parseLockfile(text('1.9.3')))
+    expect([links.get('packages/a'), links.get('packages/b')]).toEqual([
+      { deps: { eslint: 'packages/c' }, peers: {} },
+      { deps: {}, peers: { eslint: 'packages/c' } },
+    ])
+    expect(movedDirs(text('1.9.3'), text('1.9.4'))).toEqual(['packages/a'])
+  })
+
   it.each([
     ['version', { version: '1.0.1' }],
     ['resolved', { resolved: 'https://mirror/x-1.0.0.tgz' }],
