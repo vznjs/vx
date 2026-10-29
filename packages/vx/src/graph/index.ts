@@ -18,6 +18,7 @@ export {
 } from './folds.js'
 export { DEFAULT_BUILD, isDefaultBuild } from './default-build.js'
 export { computeReverseDepCount } from './priorities.js'
+export { reverseDepCounts, type ReverseDepCounts } from './counts.js'
 export { criticalPath } from './critical-path.js'
 export { taskDefinition, taskDefinitions } from './definition.js'
 export {
