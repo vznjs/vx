@@ -2464,9 +2464,10 @@ message is that plugin's or check's: do what it says.
 
 #### `VX_E_FS`
 
-The file system refused a write: permissions, a full disk. The message
-names the path. Free space (`vx cache clean --max-size <size>` trims the
-cache) or grant the write, then re-run.
+The file system refused a write: permissions, a full disk, a file where
+the cache directory goes. The message names the path. Free space
+(`vx cache clean --max-size <size>` trims the cache), grant the write,
+or move the file away, then re-run.
 
 #### `VX_E_FDS`
 
