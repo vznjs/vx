@@ -705,6 +705,31 @@ function didYouMean(
   return best !== undefined ? `. Did you mean tag:${best}?` : `. Tags: ${listed(known)}`
 }
 
+/**
+ * The patterns a comma list names, or one when it is none. A comma inside
+ * a glob's braces is no list (`./packages/{a,b}`), and a braced directory
+ * list (Turbo's `{cli,docs}`) is one braced directory each: split at every
+ * comma, it hinted `--filter {cli --filter docs}`.
+ */
+function commaList(pattern: string): string[] {
+  const braced = pattern.length > 2 && pattern.startsWith('{') && pattern.endsWith('}')
+  const body = braced ? pattern.slice(1, -1) : pattern
+  const parts: string[] = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i <= body.length; i++) {
+    const c = body[i]
+    if (c === '{') depth++
+    else if (c === '}') depth--
+    else if (i === body.length || (c === ',' && depth === 0)) {
+      const part = body.slice(start, i)
+      if (part !== '') parts.push(braced ? `{${part}}` : part)
+      start = i + 1
+    }
+  }
+  return parts
+}
+
 /** `. Did you mean @acme/app?` for the first unmatched pattern within two edits of a project name. */
 function didYouMeanProject(
   unmatched: readonly string[],
@@ -725,7 +750,7 @@ function didYouMeanProject(
       return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'
     }
     // Nx's `--projects=a,b`: the edit distance hinted the first name alone.
-    const parts = pattern.split(',').filter((p) => p !== '')
+    const parts = commaList(pattern)
     if (parts.length > 1) {
       return `. A filter is one pattern: ${parts.map((p) => `--filter ${p}`).join(' ')}`
     }
