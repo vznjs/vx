@@ -103,11 +103,11 @@ build: {
 
     $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
 
-    ├─ OUTPUT ──────────────────────────────────────────────────
+    ├─ OUTPUT ────────────────────────────────────────────────────
 
     mkdir: cannot create directory 'dist': Read-only file system
 
-    ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+    ├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────
 
     mkdir(/repo/packages/app/dist) = a write no grant covers  [/repo/packages/app/dist]
 
@@ -126,11 +126,11 @@ build: {
 
     $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
 
-    ├─ OUTPUT ──────────────────────────────────────────────────
+    ├─ OUTPUT ────────────────────────────────────────────────────
 
     cat: tsconfig.json: No such file or directory
 
-    ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+    ├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────
 
     openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]
 

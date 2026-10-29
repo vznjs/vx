@@ -624,8 +624,37 @@ const POST_EXIT_DRAIN_MS = 250
  * run; the line makes the loss visible.
  */
 export const POST_EXIT_CUT_LINE =
-  `\n[vx] output after the task's shell exited was cut: a process it left running ` +
+  `[vx] output after the task's shell exited was cut: a process it left running ` +
   `still held its stdout/stderr ${POST_EXIT_DRAIN_MS} ms later\n`
+
+/**
+ * A task's two output callbacks, wrapped to learn whether its output so far
+ * ends mid-line, so a line vx adds after it (`POST_EXIT_CUT_LINE`) breaks
+ * the line only then: a newline always before it printed a blank line under
+ * the task's last line. An absent callback stays absent (nothing decodes).
+ */
+export function lineEnds(
+  onStdout?: (chunk: string) => void,
+  onStderr?: (chunk: string) => void,
+): {
+  onStdout?: (chunk: string) => void
+  onStderr?: (chunk: string) => void
+  /** `text` on a line of its own. */
+  own(text: string): string
+} {
+  let mid = false
+  const track =
+    (f: (chunk: string) => void) =>
+    (chunk: string): void => {
+      if (chunk.length > 0) mid = !chunk.endsWith('\n')
+      f(chunk)
+    }
+  return {
+    ...(onStdout && { onStdout: track(onStdout) }),
+    ...(onStderr && { onStderr: track(onStderr) }),
+    own: (text) => (mid ? `\n${text}` : text),
+  }
+}
 
 /**
  * After the direct child has exited, wait for the stdout/stderr readers to
@@ -995,12 +1024,12 @@ export function spawnFailureText(err: unknown, cwd: string, what = 'task'): stri
   if (isExecutableMissing(err)) {
     // Bun names `sh` in the ENOENT a missing directory gives too.
     return existsSync(cwd)
-      ? `\n[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
-      : `\n[vx] failed to spawn ${what}: its working directory ${cwd} does not exist\n`
+      ? `[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
+      : `[vx] failed to spawn ${what}: its working directory ${cwd} does not exist\n`
   }
   const message = err instanceof Error ? err.message : String(err)
   const hint = isOutOfFds(err) ? ` — ${OUT_OF_FDS_HINT}` : ''
-  return `\n[vx] failed to spawn ${what}: ${message}${hint}\n`
+  return `[vx] failed to spawn ${what}: ${message}${hint}\n`
 }
 
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
@@ -1040,9 +1069,10 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const timeout = armTimeout(proc, opts.timeoutMs)
   const ac = new AbortController()
   const [out, err] = pipes.streams(proc)
+  const ends = lineEnds(opts.onStdout, opts.onStderr)
   const streams = Promise.all([
-    streamToString(out, opts.onStdout, ac.signal, opts.capture?.stdout ?? true),
-    streamToString(err, opts.onStderr, ac.signal, opts.capture?.stderr ?? true),
+    streamToString(out, ends.onStdout, ac.signal, opts.capture?.stdout ?? true),
+    streamToString(err, ends.onStderr, ac.signal, opts.capture?.stderr ?? true),
   ]).finally(() => pipes.close())
   // Gate on the child's own exit, not on stream EOF: an orphaned grandchild
   // can keep the pipe open past the child's exit (a timeout SIGTERM leaves the
@@ -1057,8 +1087,9 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   if (timeout.timedOut()) ac.abort()
   else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
-  if (cut) opts.onStderr?.(POST_EXIT_CUT_LINE)
-  const stderr = cut ? streamed + POST_EXIT_CUT_LINE : streamed
+  const cutLine = ends.own(POST_EXIT_CUT_LINE)
+  if (cut) opts.onStderr?.(cutLine)
+  const stderr = cut ? streamed + cutLine : streamed
   opts.liveChildren?.delete(proc)
   releaseGroup(proc)
   const exited = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)

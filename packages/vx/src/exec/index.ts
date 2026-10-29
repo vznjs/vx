@@ -9,6 +9,7 @@ export {
   VX_RUN_WORKSPACE_ENV,
 } from './env.js'
 export {
+  lineEnds,
   runCommand,
   runPersistent,
   PersistentReadyError,

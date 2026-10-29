@@ -568,7 +568,7 @@ describe('defaultLogger status line integration', () => {
     log.taskComplete(dev, mkOutcome(dev, 'success'))
     // [0] is the region's leading blank separator, [1] the header; the pin is [2].
     expect(regionRows(s.chunks[s.chunks.length - 1]!)[2]).toBe(
-      ' ▸         running          web#dev',
+      ' ▸         running                  web#dev',
     )
     log.runEnd?.()
   })
@@ -588,7 +588,9 @@ describe('defaultLogger status line integration', () => {
     gone.serverExit = 3
     log.taskStart?.(mkNode('web#e2e'))
     const rows = regionRows(s.chunks[s.chunks.length - 1]!)
-    expect(rows.filter((r) => r.includes('▸'))).toEqual([' ▸         running          web#api'])
+    expect(rows.filter((r) => r.includes('▸'))).toEqual([
+      ' ▸         running                  web#api',
+    ])
     log.runEnd?.()
   })
 
@@ -697,6 +699,27 @@ describe('formatStatusRegion', () => {
     ])
   })
 
+  // A pinned server's row and a step's row carried no `blocked` cell, so
+  // their ids sat eight columns left of the header's `task` and of every
+  // running task's id.
+  it('every row puts its id under the header’s task column', () => {
+    const lines = formatStatusRegion({
+      ...base,
+      pinnedPersistent: ['web#dev'],
+      slots: [slot('a#build')],
+      steps: [slot('vx:keys')],
+      size: 1,
+    })
+    const col = lines[1]!.indexOf('task')
+    expect(
+      [lines[2]!, lines[3]!, lines[4]!].map((l) =>
+        l.indexOf(
+          l.includes('web#dev') ? 'web#dev' : l.includes('a#build') ? 'a#build' : 'vx:keys',
+        ),
+      ),
+    ).toEqual([col, col, col])
+  })
+
   // The list never folds: every running task has its row, the summary below.
   it('every running task has a row, past the terminal height too', () => {
     const slots = Array.from({ length: 30 }, (_, i) => slot(`p#t${i}`))
@@ -801,8 +824,8 @@ describe('formatStatusRegion', () => {
     expect(lines).toEqual([
       '',
       '      time status  cache    blocked task',
-      ' ▸         running          web#dev',
-      ' ▸         running          api#dev',
+      ' ▸         running                  web#dev',
+      ' ▸         running                  api#dev',
       '',
       ...SUMMARY,
     ])
@@ -1157,4 +1180,22 @@ describe('the task log opens with one blank line', () => {
       })
     }
   }
+})
+
+// On a colour terminal hash-only's lines were bare white: the only lines of
+// the run with no colour. Plain, the bytes are what they were.
+describe('--output-logs hash-only', () => {
+  const line = (enabled: boolean): string => {
+    const s = pipe()
+    const log = defaultLogger({ enabled }, { mode: 'hash-only' }, s)
+    const n = mkNode('app#build')
+    log.taskComplete(n, mkOutcome(n, 'failed'))
+    return s.text().trim()
+  }
+  it('paints the word in its outcome colour and the key dim', () => {
+    expect(line(false)).toBe('failed app#build abcdef0123456789')
+    const painted = line(true)
+    expect(painted).toStartWith('\x1b[38;2;239;68;68mfailed\x1b[0m ')
+    expect(painted).toEndWith('\x1b[2mabcdef0123456789\x1b[0m')
+  })
 })

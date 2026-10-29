@@ -51,7 +51,7 @@ $ GITHUB_ACTIONS=true CI=true vx run build --filter packages/c --force
 ::stop-commands::95fb31f4-10a0-4d85-8a5d-1a444d8bb4de
 ┌─ packages/a#build > success
 $ bun build src/index.ts --outdir dist
-├─ OUTPUT ──────────────────────────────────────────────────
+├─ OUTPUT ────────────────────────────────────────────────────
 Bundled 1 module in 3ms
   index.js  78 bytes  (entry point)
 └─ packages/a#build ── (7ms) success

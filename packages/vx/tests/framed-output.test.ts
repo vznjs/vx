@@ -5,6 +5,7 @@ import {
   formatFrameClose,
   formatFrameOpen,
   formatPersistentList,
+  formatPersistentTailBlock,
   formatTaskBlock,
   formatTaskExecutedLine,
   formatTaskHitLine,
@@ -239,13 +240,11 @@ describe('the compact one-liners', () => {
     // The dim code, not a hue: which colour `miss` takes is free to change,
     // that it is DIM is the claim (it is the quiet half of the row).
     expect(painted).toContain('\x1b[2mmiss\x1b[0m')
-    // A skipped row has no cache word at all. An empty cell must emit no
-    // escape, so the only empty dim pair in the line is the blank TIME
-    // cell — two would mean the cache cell painted nothing, visibly
-    // identical and wrong.
+    // A skipped row has no cache word and no time. An empty cell emits no
+    // escape: neither its blank time cell nor its blank cache cell.
     const skipped = formatTaskSkippedLine(node('@vzn/vx#fmt', 'oxfmt .'), on)
     const emptyDim = '\x1b[2m\x1b[0m' // counted by split: a regex literal here trips no-control-regex
-    expect(skipped.split(emptyDim).length - 1).toBe(1)
+    expect(skipped.split(emptyDim).length - 1).toBe(0)
   })
 })
 
@@ -261,7 +260,7 @@ describe('formatTaskBlock', () => {
         '\n' +
         '$ oxlint .\n' +
         '\n' +
-        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ────────────────────────────────────────────────────\n' +
         '\n' +
         'Found 0 warnings and 0 errors.\n' +
         'Finished in 327ms.\n' +
@@ -353,7 +352,7 @@ describe('formatTaskBlock', () => {
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > restored-local • abcdef01\n' +
-        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ────────────────────────────────────────────────────\n' +
         '\n' +
         'Found 0 warnings and 0 errors.\n' +
         '\n' +
@@ -406,7 +405,7 @@ describe('formatTaskBlock', () => {
         '\n' +
         '$ tsc\n' +
         '\n' +
-        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ────────────────────────────────────────────────────\n' +
         '\n' +
         'error TS1234: oops\n' +
         '\n' +
@@ -433,11 +432,11 @@ describe('formatTaskBlock', () => {
         '\n' +
         '$ sleep 3 && mkdir -p dist && touch dist/index.js\n' +
         '\n' +
-        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ────────────────────────────────────────────────────\n' +
         '\n' +
         'touch: dist/index.js: Operation not permitted\n' +
         '\n' +
-        '├─ SANDBOX VIOLATIONS (2) ──────────────────────────────────\n' +
+        '├─ SANDBOX VIOLATIONS (2) ────────────────────────────────────\n' +
         '\n' +
         'touch(32784) deny(1) sysctl-read kern.iossupportversion\n' +
         'touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js\n' +
@@ -564,9 +563,43 @@ describe('formatTaskBlock', () => {
     expect(out).toContain('\x1b[1m')
     expect(out).toMatch(/\[38;2;\d+;\d+;\d+m/)
   })
+
+  // A task the stop killed mid-output gets a frame (the trap's cleanup
+  // lines). Its footer word printed bare white and its header dim, though
+  // its row is orange: both ends now paint it as the row does.
+  it('an aborted frame paints `aborted` orange at both ends, as its row', () => {
+    const orange = '\x1b[38;2;249;115;22m'
+    const out = formatTaskBlock(
+      node('app#dev', 'sleep 9'),
+      outcome('app#dev', 'aborted', { durationMs: 40, exitCode: 130 }),
+      { output: [{ text: 'cleaning up\n', err: false }] },
+      { enabled: true },
+    )
+    const lines = out.split('\n')
+    expect([
+      lines[0]!.endsWith(`${orange}aborted\x1b[0m`),
+      lines.at(-2)!.endsWith(`${orange}aborted\x1b[0m`),
+    ]).toEqual([true, true])
+  })
 })
 
 describe('persistent task framing', () => {
+  it('a capped tail counts what it dropped in the right number', () => {
+    const tail = (n: number): string =>
+      formatPersistentTailBlock(
+        persistentNode('app#dev', 'vite'),
+        outcome('app#dev', 'success'),
+        { stdout: 'ready\n' },
+        { stdout: n },
+      )
+        .split('\n')
+        .find((l) => l.startsWith('…'))!
+    expect([tail(1), tail(2)]).toEqual([
+      '… 1 earlier character dropped',
+      '… 2 earlier characters dropped',
+    ])
+  })
+
   it('marks both frame ends with ▸ and closes as running, not success', () => {
     const n = persistentNode('@vzn/vx-docs#dev', 'astro dev')
     const open = formatFrameOpen(n)
@@ -705,7 +738,7 @@ describe('persistent task framing', () => {
       }),
     )
     expect(noted).toBe(
-      '├─ SANDBOX ─────────────────────────────────────────────────\n' +
+      '├─ SANDBOX ───────────────────────────────────────────────────\n' +
         '\n' +
         `${note}\n` +
         '\n' +
@@ -728,7 +761,7 @@ describe('persistent task framing', () => {
       }),
     )
     expect(close).toBe(
-      '├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────\n' +
+      '├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────\n' +
         '\n' +
         'bun(49255) deny(1) file-read-data /repo/packages/vx\n' +
         '\n' +
