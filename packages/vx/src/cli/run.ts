@@ -1,3 +1,5 @@
+import { statSync } from 'node:fs'
+import path from 'node:path'
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { flagHint, refuse, seeHelp } from './help.js'
@@ -18,7 +20,7 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { envFlagOn, parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
+import { envFlagOn, hasControl, parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
 import { formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -296,6 +298,13 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}` }
     } else if (a !== undefined) {
+      // A config may not declare such a name (`taskNameProblem`); a pasted
+      // newline was refused as an unknown task, printed raw.
+      if (hasControl(a))
+        return {
+          ...out,
+          error: `task ${JSON.stringify(a)} holds a control character, which no task name may hold — retype it`,
+        }
       out.tasks.push(a)
     }
   }
@@ -481,7 +490,10 @@ export async function resolveRunOptions(
   } else if (parsed.all) {
     projects = undefined
   } else {
-    const cwdProject = await findCwdSelection(cwd)
+    const cwdProject = await findCwdSelection(
+      cwd,
+      parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
+    )
     if (!cwdProject) {
       const nx = await nxTargetHint(tasks, cwd)
       if (nx !== null) return { error: nx }
@@ -544,6 +556,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
 
   const cwd = process.cwd()
+  if (parsed.profile !== undefined) {
+    const problem = profileProblem(cwd, parsed.profile)
+    if (problem !== undefined) return refuse('run', args, problem, 'VX_E_USAGE')
+  }
   let tasks = [...parsed.tasks]
   let picked: string | undefined
 
@@ -672,6 +688,17 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return refuse('run', args, summary.refused, unknown ? 'VX_E_UNKNOWN_TASK' : 'VX_E_REFUSED')
   }
   return summary.ok ? 0 : 1
+}
+
+/**
+ * Why `--profile` cannot write `target`, or undefined. Asked before the
+ * run: a directory named as the file died with EISDIR only after it. A
+ * missing parent is no fault: the write makes it (item 993).
+ */
+function profileProblem(cwd: string, target: string): string | undefined {
+  if (statSync(path.resolve(cwd, target), { throwIfNoEntry: false })?.isDirectory() === true)
+    return `--profile: ${target} is a directory — name a file, e.g. --profile=${path.join(target, 'profile.json')}`
+  return undefined
 }
 
 /** Whether `CI` names a CI run, as detectCi reads it. */

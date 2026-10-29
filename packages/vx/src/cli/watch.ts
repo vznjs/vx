@@ -166,7 +166,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // No lock yet is no project yet: the first cycle fails saying so, and
   // the lock `vx lock` writes is the event that arms the set.
   let unlocked = false
-  const allProjects = await discoverCliProjects(workspaceRoot).catch((err: unknown) => {
+  const stageLoad: CliLoadOptions = opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}
+  const allProjects = await discoverCliProjects(workspaceRoot, stageLoad).catch((err: unknown) => {
     if (!(err instanceof Error) || err.message !== NO_LOCK) throw err
     unlocked = true
     return []
@@ -295,7 +296,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       // set. The scope is the one resolved at start; a new project joins
       // it only as a dependency of it.
       rediscover: async () => {
-        const all = await discoverCliProjects(workspaceRoot)
+        const all = await discoverCliProjects(workspaceRoot, load)
         const sweep = await sweepConfigs(all, workspaceRoot, load, opts.tasks)
         const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
         return {
