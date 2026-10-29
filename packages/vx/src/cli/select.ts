@@ -694,6 +694,11 @@ function didYouMeanProject(
     if (typed === '//') {
       return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'
     }
+    // Nx's `--projects=a,b`: the edit distance hinted the first name alone.
+    const parts = pattern.split(',').filter((p) => p !== '')
+    if (parts.length > 1) {
+      return `. A filter is one pattern: ${parts.map((p) => `--filter ${p}`).join(' ')}`
+    }
     const best = nearest(typed, names)
     if (best !== undefined) return `. Did you mean ${best}?`
     const bare = byBare.has(typed) ? typed : nearest(typed, byBare.keys())

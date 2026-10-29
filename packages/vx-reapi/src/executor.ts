@@ -103,12 +103,19 @@ async function decomposeOutputDir(
   const seen = new Set<string>()
 
   // Every transitive child of `dir`, which is what a Tree message must carry.
-  const descendants = (dir: Directory, acc: Directory[] = []): Directory[] => {
+  // Each once: a subtree a Tree names under many names was walked per name,
+  // 2^depth from a Tree of depth+1 directories.
+  const descendants = (
+    dir: Directory,
+    acc: Directory[] = [],
+    had = new Set<string>(),
+  ): Directory[] => {
     for (const d of dir.directories) {
       const child = byDigest.get(d.digest.hash)
-      if (child === undefined) continue
+      if (child === undefined || had.has(d.digest.hash)) continue
+      had.add(d.digest.hash)
       acc.push(child)
-      descendants(child, acc)
+      descendants(child, acc, had)
     }
     return acc
   }

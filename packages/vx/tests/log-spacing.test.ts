@@ -91,7 +91,7 @@ it('a row printed while a live task sits mid-line starts its own line', () => {
   log.runStart?.({ total: 1, concurrency: 1, requestedCount: 1 })
   log.taskStart?.(node)
   log.taskStdout(node, 'building...')
-  // A step the run did not wait on (`vx:prefetch`) ends while it streams.
+  // A step ends while it streams: a held server streams through the run's tail steps.
   log.stepStart?.('vx:prefetch')
   log.stepEnd?.('vx:prefetch', { durationMs: 500, ok: true })
   log.runDone?.()

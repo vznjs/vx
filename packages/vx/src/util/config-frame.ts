@@ -18,7 +18,7 @@ const HEAD = /^(\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s)(?:: (task
  */
 export function configErrorFrame(message: string, cwd: string): string | undefined {
   const head = HEAD.exec(message)
-  if (head === null) return undefined
+  if (head === null) return positionFrame(message, cwd)
   const [, file, fieldPath, colon] = head as unknown as [string, string, string?, string?]
   const rest = message.slice(head[0].length)
   // The field the refusal is about, past the path that leads to it:
@@ -35,6 +35,37 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
   }
   const at = locate(source, segments)
   if (at === undefined) return undefined
+  return framed(file, source, at, message.slice(file.length), cwd)
+}
+
+// The loader's `Project config <file>:<line>:<col>: …`: a syntax error,
+// placed by Bun, in the config itself.
+const POSITION =
+  /^(?:Project|Workspace) config (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s):(\d+):(\d+)(: [^]*)$/
+
+function positionFrame(message: string, cwd: string): string | undefined {
+  const pos = POSITION.exec(message)
+  if (pos === null) return undefined
+  const [, file, line, col, rest] = pos as unknown as [string, string, string, string, string]
+  let source: string
+  try {
+    source = readFileSync(file, 'utf8')
+  } catch {
+    return undefined
+  }
+  const at = { line: Number(line), col: Math.max(1, Number(col)) }
+  if (at.line < 1 || at.line > source.split('\n').length) return undefined
+  return framed(file, source, at, rest, cwd)
+}
+
+/** `<file>:<line>:<col><rest>` relative to `cwd`, over the source lines up to `at`. */
+function framed(
+  file: string,
+  source: string,
+  at: { line: number; col: number },
+  rest: string,
+  cwd: string,
+): string {
   const lines = source.split('\n')
   // Relative to where the user stands, unless that means climbing out.
   const rel = path.relative(cwd, file)
@@ -50,7 +81,7 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
     .replace(/\t/g, '  ')
     .replace(/\S/g, ' ')
   frame.push(`  ${' '.repeat(width)} | ${lead}^`)
-  return `${shown}:${at.line}:${at.col}${message.slice(file.length)}\n\n${frame.join('\n')}`
+  return `${shown}:${at.line}:${at.col}${rest}\n\n${frame.join('\n')}`
 }
 
 /**
