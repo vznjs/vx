@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
 import { taskDefinition, taskDefinitions } from '../src/graph/definition.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { LocalHistoryProvider } from '../src/history/index.js'
@@ -88,7 +88,7 @@ afterEach(() => {
 })
 
 const read = (n: TaskNode) =>
-  new LocalHistoryProvider(cache.dbHandle(), undefined, undefined, taskDefinitions([n]))
+  new LocalHistoryProvider(indexDb(cache), undefined, undefined, taskDefinitions([n]))
 
 it('a changed command or env.define reads no old timings, an inputs edit keeps them', async () => {
   for (const kept of [BEFORE, INPUTS_EDITED]) {
@@ -104,7 +104,7 @@ it('a changed command or env.define reads no old timings, an inputs edit keeps t
     expect((await h.loadFor(['p#t'])).size).toBe(0)
   }
   // CONTROL: a reader given no definitions reads the row whatever it is of.
-  expect([...(await new LocalHistoryProvider(cache.dbHandle()).p50sFor(['p#t']))]).toEqual([
+  expect([...(await new LocalHistoryProvider(indexDb(cache)).p50sFor(['p#t']))]).toEqual([
     ['p#t', 4_000],
   ])
 })

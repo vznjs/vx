@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { Cache, type StoreOptions } from '../src/cache/index.js'
+import { indexDb, Cache, type StoreOptions } from '../src/cache/index.js'
 import { parseSettingValue } from '../src/settings.js'
 
 const SMALL = new TextEncoder().encode('small output\n')
@@ -166,7 +166,7 @@ describe.each(combos)('cache.store %o', (store) => {
     await pinned.release()
     expect(form(path.join(root, 'o'))).toBe(form(path.join(root, 'c')))
     const size = (c: Cache): number =>
-      (c.dbHandle().query('SELECT size_bytes AS s FROM entries').get() as { s: number }).s
+      (indexDb(c).query('SELECT size_bytes AS s FROM entries').get() as { s: number }).s
     expect(size(other)).toBe(size(cache))
     if (store.decompress) expect(size(other)).toBeGreaterThan(bytes.byteLength)
     cache.close()
@@ -403,8 +403,7 @@ it('an ingested tree counts the bytes it holds, as a saved tree does', async () 
   await b.ingest(HASH, pinned.body, { taskId: 'p#build', command: 'build', durationMs: 1 })
   await pinned.release()
   const size = (c: Cache): number =>
-    (c.dbHandle().query('SELECT size_bytes FROM entries').get() as { size_bytes: number })
-      .size_bytes
+    (indexDb(c).query('SELECT size_bytes FROM entries').get() as { size_bytes: number }).size_bytes
   expect(size(b)).toBe(size(a))
   expect(size(b)).toBeGreaterThanOrEqual(hex.length)
   a.close()

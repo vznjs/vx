@@ -68,23 +68,16 @@ describe('the package API contract (versioning-1.0.md)', () => {
     expect(live).toBe(readFileSync(RECORD, 'utf8'))
   })
 
-  // Core owns every read and write of cache.db (2026-10-29): a plugin passes
-  // parsers and core stores (`lockfileClaim`'s memo). The surface below is
-  // what the façade already hands out — `Cache.dbHandle()`, which
-  // @vzn/vx-history and @vzn/vx-dte read history through, and the stores
-  // built on a handle — and it only shrinks: a new export that takes or
-  // returns a `Database` fails here.
-  it('the façade hands out no database surface beyond the one it has', () => {
+  // Core owns every read and write of cache.db (2026-10-29): a plugin
+  // stores or reads only through a narrow core API that returns plain data
+  // (`localHistory`, `lockfileClaim`'s memo), never a handle. A façade type
+  // that takes or returns a `Database` fails here.
+  it('the façade hands out no database', () => {
     const touching: string[] = []
     for (const [id, text] of surfaceOf(path.join(ROOT, 'src', 'index.ts'), ROOT)) {
       const lines = text.filter((l) => /\bDatabase\b|bun:sqlite|\bsqlite\b/i.test(l))
       for (const l of lines) touching.push(`${id}: ${l.trim()}`)
     }
-    expect(touching).toEqual([
-      'class Cache (src/cache/cache.ts): dbHandle(): Database',
-      'class FoldMemo (src/cache/fold-memo.ts): private readonly db: Database,',
-      'class LocalHistoryProvider (src/history/history.ts): private readonly db: Database,',
-      'class RemoteHits (src/cache/remote-hits.ts): private readonly db: Database,',
-    ])
+    expect(touching).toEqual([])
   })
 })

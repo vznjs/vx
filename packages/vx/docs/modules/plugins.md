@@ -27,7 +27,7 @@ export default { plugins: [vxHistory()] }
 scheduler, moved to `@vzn/vx-history` on 2026-09-10; it had been
 core's opt-in `predictive` mode until 2026-09-02 and a subpath export of
 core until the move. What core keeps is what a plugin needs from the
-façade: `LocalHistoryProvider` and the `HistoryTable` types for a
+façade: `localHistory` (rows, never a handle on cache.db) and the `HistoryTable` types for a
 `schedule` plugin, `RemoteCacheLayer` for a cache plugin (core layers
 it), the `TaskExecutor` contract for an executor.
 

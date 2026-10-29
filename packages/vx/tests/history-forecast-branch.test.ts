@@ -6,7 +6,7 @@ import { Database } from 'bun:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
 import { LocalHistoryProvider } from '../src/history/index.js'
 
 let dir: string
@@ -85,7 +85,7 @@ const forecast = async (
   branch: string | null | undefined,
   c: Cache = cache,
 ): Promise<number | undefined> => {
-  const provider = new LocalHistoryProvider(c.dbHandle(), undefined, branch)
+  const provider = new LocalHistoryProvider(indexDb(c), undefined, branch)
   const p50 = (await provider.p50sFor(['p#t'])).get('p#t')
   // Every reader forecasts alike; loadFor answers only a task with runs in its window.
   expect((await provider.resourcesFor(['p#t'])).get('p#t')?.p50DurationMs).toBe(p50)
@@ -231,7 +231,7 @@ cache.close()
 
 it("reads the default branch's imported timing between this branch and any branch", async () => {
   for (const ms of [40, 50, 60]) record('other', 't', ms)
-  const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+  const provider = new LocalHistoryProvider(indexDb(cache), undefined, 'feature')
   await provider.p50sFor(['p#t'])
   expect(provider.lackedBranchHistory).toBe(true)
   expect(provider.hasImported('abc')).toBe(false)
@@ -245,16 +245,15 @@ it("reads the default branch's imported timing between this branch and any branc
 })
 
 it('a repeat import of one commit adds no row, from any worktree', async () => {
-  const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+  const provider = new LocalHistoryProvider(indexDb(cache), undefined, 'feature')
   provider.importTimings('abc', new Map([['p#t', 7]]))
   const other = new Cache(path.join(dir, 'cache-2'), undefined, undefined, undefined, 'open', store)
   try {
-    new LocalHistoryProvider(other.dbHandle(), undefined, 'x').importTimings(
+    new LocalHistoryProvider(indexDb(other), undefined, 'x').importTimings(
       'abc',
       new Map([['p#t', 9]]),
     )
-    const n = cache
-      .dbHandle()
+    const n = indexDb(cache)
       .query("SELECT COUNT(*) AS n FROM task_durations WHERE source = 'remote'")
       .get() as { n: number }
     expect(n.n).toBe(1)
@@ -267,7 +266,7 @@ it('a repeat import of one commit adds no row, from any worktree', async () => {
 // A server's `1e400` parsed as Infinity, stored, and every later run's
 // schedule failed on a NaN weight: the row is INSERT OR IGNORE, so forever.
 it('keeps no non-finite or negative timing or need', async () => {
-  const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+  const provider = new LocalHistoryProvider(indexDb(cache), undefined, 'feature')
   provider.importTimings(
     'abc',
     new Map([
@@ -293,7 +292,7 @@ it('keeps no non-finite or negative timing or need', async () => {
 // A fresh CI machine has no run of a task: its need is the default
 // branch's, imported with the timings, so `vx-dte` packs it.
 it("a task never run here takes its need from the default branch's import", async () => {
-  const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+  const provider = new LocalHistoryProvider(indexDb(cache), undefined, 'feature')
   expect(await provider.resourcesFor(['p#t'])).toEqual(new Map())
   provider.importTimings(
     'abc',
@@ -322,10 +321,9 @@ it("a task never run here takes its need from the default branch's import", asyn
 // crowded producer's reads low. Main's blob carried that forward for each
 // shard that hit, and the next run packed them as tight (357d3aa).
 it("a hit's producer use gives way to the default branch's measured need", async () => {
-  const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+  const provider = new LocalHistoryProvider(indexDb(cache), undefined, 'feature')
   record('feature', 't', 1, true)
-  cache
-    .dbHandle()
+  indexDb(cache)
     .query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, cpu_ms, size_bytes, created_at, accessed_at)
        VALUES ('h${seq}', 'p', 't', 'x', 0, 10000, 3000, 0, 0, 0)`,

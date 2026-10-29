@@ -29,7 +29,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
 import type { Logger } from '../src/report/index.js'
 import {
   cacheKeyDiff,
@@ -267,7 +267,7 @@ describe('a skipped row is a task of the run, never an execution', () => {
   beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-dilute-'))
     cache = new Cache(dir)
-    db = cache.dbHandle()
+    db = indexDb(cache)
   })
   afterEach(async () => {
     cache.close()
@@ -318,7 +318,7 @@ describe('a row with no cache key is not evidence about inputs', () => {
   beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-nokey-'))
     cache = new Cache(dir)
-    db = cache.dbHandle()
+    db = indexDb(cache)
   })
   afterEach(async () => {
     cache.close()

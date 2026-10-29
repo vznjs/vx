@@ -3,7 +3,7 @@
 // cache.db's `failures` (cache/run-notes.ts), the newest 50 failed runs kept.
 
 import type { Database } from 'bun:sqlite'
-import { type Cache, keepRunNotes, keptFailures } from '../cache/index.js'
+import { indexDb, type Cache, keepRunNotes, keptFailures } from '../cache/index.js'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
 import { PASS_STATUSES } from '../history/index.js'
@@ -67,7 +67,7 @@ export function writeRunFailures(
   }
   if (failures.length === 0) return
   try {
-    keepRunNotes(cache.dbHandle(), runId, { failures })
+    keepRunNotes(indexDb(cache), runId, { failures })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     warn(`[vx] failed tasks' output not kept: ${message} — the verdict above stands`)

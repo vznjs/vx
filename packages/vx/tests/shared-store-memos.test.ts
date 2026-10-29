@@ -7,7 +7,7 @@ import { Database } from 'bun:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { Cache, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache, type RunRecord } from '../src/cache/index.js'
 import { detectFlaky, flakyTasks } from '../src/history/index.js'
 
 let dir: string
@@ -74,11 +74,11 @@ it('a key that passed in one worktree and fails in another is flaky there', () =
   const b = worktree('b')
   a.recordRuns([outcome('success')])
   const cand = { project: 'p', task: 't', hash: 'K', status: 'failed' as const, attempts: 1 }
-  expect(detectFlaky(b.dbHandle(), [cand])).toEqual([
+  expect(detectFlaky(indexDb(b), [cand])).toEqual([
     { ...cand, taskId: 'p#t', passes: 1, failures: 1 },
   ])
   b.recordRuns([outcome('failed')])
-  expect(flakyTasks(a.dbHandle())).toEqual([
+  expect(flakyTasks(indexDb(a))).toEqual([
     { taskId: 'p#t', project: 'p', task: 't', keys: 1, passes: 1, failures: 1 },
   ])
 })
@@ -102,7 +102,7 @@ it("a hit is kept only as its key's first pass: a warm run on passed keys writes
     { status: 'success', hash: 'J' },
   ])
   b.recordRuns([outcome('failed')])
-  expect(flakyTasks(a.dbHandle())).toEqual([
+  expect(flakyTasks(indexDb(a))).toEqual([
     { taskId: 'p#t', project: 'p', task: 't', keys: 1, passes: 1, failures: 1 },
   ])
 })

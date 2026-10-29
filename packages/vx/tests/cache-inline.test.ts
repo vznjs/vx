@@ -4,6 +4,7 @@
 // writes its entry rows, with no temp and no rename. Each row here is one of
 // the design's tests; the numbers are its own.
 
+import { indexDb } from '../src/cache/index.js'
 import { Database } from 'bun:sqlite'
 import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
@@ -163,7 +164,7 @@ describe('3: one key moving file → inline → file', () => {
       const oldBytes = await readFile(file)
       // Another version's open dropped the row: the file is row-less, and
       // the inline save moves it aside as it would a row's.
-      cache.dbHandle().query('DELETE FROM entries').run()
+      indexDb(cache).query('DELETE FROM entries').run()
       await save(cache, 'aaaaaaaaaaaaaaaa', 'small')
       expect([isInline(cache, 'aaaaaaaaaaaaaaaa'), files()]).toEqual([true, []])
       // An older vx, which knows no inline table, writes the key's file again.
@@ -371,7 +372,7 @@ describe('8: prune over inline artifacts', () => {
     try {
       await save(cache, 'h1', 'one')
       await save(cache, 'h2', 'two')
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       db.query("UPDATE entries SET accessed_at = 1 WHERE hash = 'h1'").run()
       const two = storedArtifact(cache, 'h2')!.byteLength
       const one = storedArtifact(cache, 'h1')!.byteLength
@@ -410,7 +411,7 @@ describe('8: prune over inline artifacts', () => {
       for (const h of ['00000000000000a1', '00000000000000a2', '00000000000000a3']) {
         await save(cache, h, h)
       }
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       db.query('DELETE FROM entries').run()
       const at = db.query('UPDATE artifacts SET at = ? WHERE hash = ?')
       at.run(Date.now() - 3 * 24 * HOUR, '00000000000000a1') // past the age limit
@@ -449,7 +450,7 @@ describe('8: prune over inline artifacts', () => {
     })
     try {
       await save(cache, '00000000000000a1', 'adopted')
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       db.query('DELETE FROM entries').run()
       db.query('UPDATE artifacts SET at = ?').run(Date.now() - 3 * 24 * HOUR)
       const target = cache as unknown as { reapOrphans: (...a: unknown[]) => Promise<unknown> }
@@ -523,7 +524,7 @@ describe('12: the inline table’s own layout sentinel', () => {
     })
     try {
       expect([err.mock.calls.length, out.mock.calls.length]).toEqual([0, 0])
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       expect([
         db.query('SELECT count(*) AS n FROM artifacts').get(),
         db.query("SELECT value FROM artifacts_meta WHERE key = 'layout'").get(),
@@ -570,8 +571,8 @@ describe('12: the inline table’s own layout sentinel', () => {
     const cache = open()
     try {
       expect([
-        cache.dbHandle().query('SELECT count(*) AS n FROM store.artifacts').get(),
-        cache.dbHandle().query("SELECT value FROM store.artifacts_meta WHERE key = 'layout'").get(),
+        indexDb(cache).query('SELECT count(*) AS n FROM store.artifacts').get(),
+        indexDb(cache).query("SELECT value FROM store.artifacts_meta WHERE key = 'layout'").get(),
       ]).toEqual([{ n: 0 }, { value: 'a2' }])
     } finally {
       cache.close()
@@ -590,7 +591,7 @@ describe('12: the inline table’s own layout sentinel', () => {
     })
     try {
       expect(
-        own.dbHandle().query("SELECT value FROM main.artifacts_meta WHERE key = 'layout'").get(),
+        indexDb(own).query("SELECT value FROM main.artifacts_meta WHERE key = 'layout'").get(),
       ).toEqual({ value: 'a2' })
     } finally {
       own.close()

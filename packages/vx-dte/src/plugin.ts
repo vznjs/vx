@@ -2,7 +2,7 @@ import path from 'node:path'
 import {
   definePlugin,
   hostPlatform,
-  LocalHistoryProvider,
+  localHistory,
   PLATFORMS,
   refuseUnknownOptions,
   taskDefinitions,
@@ -436,12 +436,10 @@ export function dte(options: DteOptions = {}) {
       const read = async (): Promise<void> => {
         if (orchestrator === undefined) return
         try {
-          peaks = await new LocalHistoryProvider(
-            ctx.localCache.dbHandle(),
-            undefined,
-            ctx.branch,
-            taskDefinitions(graph.values()),
-          ).resourcesFor(ids)
+          peaks = await localHistory(ctx.localCache, {
+            branch: ctx.branch,
+            defs: taskDefinitions(graph.values()),
+          }).resourcesFor(ids)
           tails = undefined
         } catch (err) {
           ctx.warn(
