@@ -190,28 +190,39 @@ function deadline(ms: number): AbortSignal {
   return controller.signal
 }
 
+/** A download's least pace: at 1 MiB a second, a 60 MB artifact is in within a minute. */
+const FLOOR_BYTES_PER_S = 1024 * 1024
+
 /**
- * A download's deadline: `ms` for the answer, then `ms` between its body's
- * bytes. A whole-body deadline failed a big artifact still arriving at a
- * steady pace (a 30 s cut, CI 2026-10-25); core judges whether running
- * the task beats the rest of the wait.
+ * A download's deadline: `ms` for the answer, then at least
+ * `FLOOR_BYTES_PER_S` over each `ms` of its body. A whole-body deadline
+ * failed a big artifact still arriving at a steady pace (a 30 s cut, CI
+ * 2026-10-25); a gap-only one let a trickle hold a run 19 minutes (a byte
+ * now and then reset it, CI 2026-10-28). Core judges whether running the
+ * task beats the rest of the wait.
  */
 function streamed(res: Response, controller: AbortController, ms: number): Response {
   if (res.body === null) return res
-  let timer: Timer | undefined
-  const rearm = () => {
-    clearTimeout(timer)
-    timer = setTimeout(() => controller.abort(new Error(`no bytes for ${ms} ms`)), ms)
-    timer.unref()
-  }
-  rearm()
+  const floor = (FLOOR_BYTES_PER_S * ms) / 1000
+  let got = 0
+  const window = setInterval(() => {
+    if (got < floor)
+      controller.abort(
+        new Error(
+          got === 0 ? `no bytes in ${ms} ms` : `${got} bytes in ${ms} ms, under 1 MiB a second`,
+        ),
+      )
+    got = 0
+  }, ms)
+  window.unref()
+  controller.signal.addEventListener('abort', () => clearInterval(window), { once: true })
   const body = res.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, out) {
-        rearm()
+        got += chunk.byteLength
         out.enqueue(chunk)
       },
-      flush: () => clearTimeout(timer),
+      flush: () => clearInterval(window),
     }),
   )
   return new Response(body, {
