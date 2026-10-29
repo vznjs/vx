@@ -115,6 +115,29 @@ snapshots:
       2,
     )}\n`,
   },
+  // With `install-links=true` npm copies the directory instead and records
+  // it as `resolved: "file:vendor/dep"`, no integrity: the copy is what a
+  // task reads, and a fresh install takes the directory as it is now.
+  'npm install-links': {
+    file: 'package-lock.json',
+    text: `${JSON.stringify(
+      {
+        name: 'r',
+        lockfileVersion: 3,
+        requires: true,
+        packages: {
+          '': { name: 'r', workspaces: ['packages/*'] },
+          'node_modules/dep': { version: '1.0.0', resolved: 'file:vendor/dep' },
+          'node_modules/lib': { resolved: 'packages/lib', link: true },
+          'node_modules/other': { resolved: 'packages/other', link: true },
+          'packages/lib': { version: '1.0.0', dependencies: { dep: 'file:../../vendor/dep' } },
+          'packages/other': { version: '1.0.0' },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  },
   // pnpm links a `link:` directory that is no importer; the lockfile
   // records only its path.
   'pnpm link:': {
@@ -137,6 +160,45 @@ importers:
         version: link:../../vendor/dep
 
   packages/other: {}
+`,
+  },
+  // An override to a `link:` directory reached only through a package:
+  // pnpm writes the link in the snapshot, root-relative, and no importer
+  // names it, so its content was never read and an edit moved no key.
+  'pnpm link: override': {
+    file: 'pnpm-lock.yaml',
+    spec: '1.0.0',
+    text: `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+overrides:
+  inner: link:./vendor/dep
+
+importers:
+
+  .: {}
+
+  packages/lib:
+    dependencies:
+      dep:
+        specifier: 1.0.0
+        version: 1.0.0
+
+  packages/other: {}
+
+packages:
+
+  dep@1.0.0:
+    resolution: {integrity: sha512-dep}
+
+snapshots:
+
+  dep@1.0.0:
+    dependencies:
+      inner: link:vendor/dep
 `,
   },
   // Yarn berry links a `portal:` directory; its entry records no hash.
@@ -210,7 +272,9 @@ for (const row of [
   'pnpm',
   'bun',
   'npm',
+  'npm install-links',
   'pnpm link:',
+  'pnpm link: override',
   'yarn portal:',
   'yarn link:',
   'yarn',
