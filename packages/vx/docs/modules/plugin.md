@@ -167,6 +167,6 @@ export interface BranchFacts {
   refs?: readonly string[] // the refs a remote reads, in order; unset, git's (cacheRefs)
 }
 export interface ConfigContext extends WorkspaceHookContext {
-  setBranch(facts: BranchFacts): void // a later plugin's field wins; a bad scope or ref is refused
+  setBranch(facts: BranchFacts): void // a later plugin's field wins; a bad scope, base or ref is refused
 }
 ```

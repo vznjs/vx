@@ -103,6 +103,13 @@ it("a plugin's trusted run has no scope, whatever git names", async () => {
     'setBranch: refs must be a list of refs',
   )
   await expect(facts("{ refs: 'refs/heads/main' }")).rejects.toThrow('setBranch: refs')
+  // `--affected` reads the base into its `...[<base>]` filter: 42 diffed
+  // from a commit named "42", and '' or 'a]b' broke the filter's syntax.
+  for (const base of ['42', "''", "'a]b'", "'a b'"]) {
+    await expect(facts(`{ base: ${base} }`)).rejects.toThrow(
+      "plugin 'org/ci' failed in config: setBranch: base must be a commit or a ref",
+    )
+  }
 })
 
 it("VX_CACHE_SCOPE beats a plugin's scope, which beats git's; git's needs a cache plugin", () => {
