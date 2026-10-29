@@ -483,7 +483,8 @@ wire forwarders attach beside it). What renders:
   chunk, a line at a time across the two: a chunk on one stream waits
   while the other's line is open (dash writes its `/dev/tty` error in
   pieces, and a stdout write landed inside it), at most 50 ms and
-  64 KiB, then goes with the open line broken. Outside focused
+  64 KiB, then goes as written: a newline vx added would be the
+  stream's own text when a hit replays it. Outside focused
   streaming, the default logger buffers the
   chunks per-task and dumps the full body as a framed block on task
   completion. No per-line prefix, no interleaving between concurrent

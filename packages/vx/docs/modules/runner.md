@@ -98,7 +98,7 @@ export function armTimeout(proc, timeoutMs): { timedOut(): boolean; settle(): Pr
 export const POST_EXIT_CUT_LINE: string
 // The two output callbacks merged a line at a time: a chunk on one stream
 // waits while the other's line is open, at most OPEN_LINE_WAIT_MS (50) and
-// OPEN_LINE_HOLD_CHARS (64 KiB), then goes with that line broken; `end()`
+// OPEN_LINE_HOLD_CHARS (64 KiB), then goes as written (no newline added); `end()`
 // lets it go at the exit. `own(text)` breaks the line before vx's note only
 // when the output ends mid-line.
 export const OPEN_LINE_WAIT_MS = 50

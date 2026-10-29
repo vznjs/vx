@@ -726,9 +726,11 @@ export const OPEN_LINE_HOLD_CHARS = 64 * 1024
  * pieces took a stdout write inside it: `sh: /dev/ttyNO-TTY\n\n` (CI,
  * 2026-10-29). So a chunk on one stream waits while the other's line is
  * open, and goes once that line ends; what of a chunk follows its last
- * newline goes after the held output. A line still open when the hold
- * passes `OPEN_LINE_WAIT_MS`, `OPEN_LINE_HOLD_CHARS` or `end` is broken
- * with a newline first, as `own` breaks one before vx's line. A stream
+ * newline goes after the held output. Past `OPEN_LINE_WAIT_MS`,
+ * `OPEN_LINE_HOLD_CHARS` or `end` it goes as written, the line unbroken:
+ * a newline put there became the stream's own text, and a hit replays
+ * each stream to its own descriptor (`2> log` read one the task never
+ * wrote). `own` breaks the line before vx's own text only. A stream
  * writing alone is never held, so a task that writes one stream pays a
  * comparison per chunk. An absent callback stays absent (nothing decodes).
  */
@@ -764,17 +766,17 @@ export function lineEnds(
     if (s === undefined) return
     const left = heldAt + OPEN_LINE_WAIT_MS - performance.now()
     if (left > 0) arm(left)
-    else release(s, true)
+    else release(s)
   }
   const write = (s: 0 | 1, text: string): void => {
     open = text.endsWith('\n') ? undefined : s
     sinks[s]?.(text)
   }
-  const release = (s: 0 | 1, broken: boolean): void => {
+  const release = (s: 0 | 1): void => {
     const text = held[s]!
     if (text.length === 0) return
     held[s] = ''
-    write(s, broken ? `\n${text}` : text)
+    write(s, text)
   }
   const push = (s: 0 | 1, chunk: string): void => {
     if (chunk.length === 0) return
@@ -783,16 +785,16 @@ export function lineEnds(
       const nl = held[other]!.length === 0 ? -1 : chunk.lastIndexOf('\n')
       if (nl === -1 || nl === chunk.length - 1) {
         write(s, chunk)
-        if (nl !== -1) release(other, false)
+        if (nl !== -1) release(other)
         return
       }
       write(s, chunk.slice(0, nl + 1))
-      release(other, false)
+      release(other)
       return push(s, chunk.slice(nl + 1))
     }
     if (held[s]!.length === 0) heldAt = performance.now()
     held[s] += chunk
-    if (held[s]!.length > OPEN_LINE_HOLD_CHARS) return release(s, true)
+    if (held[s]!.length > OPEN_LINE_HOLD_CHARS) return release(s)
     if (timer === undefined) arm(OPEN_LINE_WAIT_MS)
   }
   return {
@@ -802,8 +804,8 @@ export function lineEnds(
     end: () => {
       clearTimeout(timer)
       timer = undefined
-      release(0, true)
-      release(1, true)
+      release(0)
+      release(1)
     },
   }
 }

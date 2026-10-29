@@ -1889,14 +1889,17 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
     ])
   })
 
-  it('a line still open at the end is broken before the held stream goes', () => {
+  // A newline added here was the held stream's own text: a hit replays
+  // each stream to its own descriptor, and `2> log` read one the task
+  // never wrote (secret-mask.test.ts, CI 2026-10-29).
+  it('a line still open at the end lets the held stream go as written', () => {
     const { got, ends } = merged()
     ends.onStderr!('prompt? ')
     ends.onStdout!('out\n')
     ends.end()
     expect(got).toEqual([
       ['err', 'prompt? '],
-      ['out', '\nout\n'],
+      ['out', 'out\n'],
     ])
     // Nothing held: the end adds nothing.
     const control = merged()
@@ -1915,7 +1918,7 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
     ])
   })
 
-  it('what waits is bounded: past OPEN_LINE_HOLD_CHARS it goes, the open line broken', () => {
+  it('what waits is bounded: past OPEN_LINE_HOLD_CHARS it goes as written', () => {
     const { got, ends } = merged()
     ends.onStderr!('waiting')
     const big = 'x'.repeat(OPEN_LINE_HOLD_CHARS)
@@ -1924,12 +1927,12 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
     ends.onStdout!('y')
     expect(got).toEqual([
       ['err', 'waiting'],
-      ['out', `\n${big}y`],
+      ['out', `${big}y`],
     ])
     ends.end()
   })
 
-  it('and in time: held OPEN_LINE_WAIT_MS, it goes, the open line broken', async () => {
+  it('and in time: held OPEN_LINE_WAIT_MS, it goes as written', async () => {
     const { got, ends } = merged()
     ends.onStderr!('compiling…')
     ends.onStdout!('progress\n')
@@ -1937,7 +1940,7 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
     await Bun.sleep(OPEN_LINE_WAIT_MS * 4)
     expect(got).toEqual([
       ['err', 'compiling…'],
-      ['out', '\nprogress\n'],
+      ['out', 'progress\n'],
     ])
     ends.end()
   })
@@ -1954,7 +1957,7 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
         onStderr: (t) => got.push(t),
       })
       // Read at once: the wait's timer would bring it after the capture was stored.
-      expect(got.join('')).toBe('prompt? \nout\n')
+      expect(got.join('')).toBe('prompt? out\n')
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }
