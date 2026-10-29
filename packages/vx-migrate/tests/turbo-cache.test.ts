@@ -796,6 +796,44 @@ describe('vx run with turboCache() layered over the local cache', () => {
     }
   })
 
+  // TURBO_FORCE aside, turbo() leaves cache.policy to the workspace: a
+  // TURBO_REMOTE_ONLY (vercel/turborepo#969) set for Turbo keeps the local
+  // cache under vx, and the run says nothing of it.
+  it('TURBO_REMOTE_ONLY, TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY leave cache.policy unset', async () => {
+    const names = ['TURBO_REMOTE_ONLY', 'TURBO_CACHE', 'TURBO_REMOTE_CACHE_READ_ONLY']
+    const saved = names.map((n) => process.env[n])
+    const policy = async (env: Record<string, string>) => {
+      for (const n of names) delete process.env[n]
+      Object.assign(process.env, env)
+      const ws: WorkspaceConfig = {}
+      const warned: string[] = []
+      await turbo().config!(ws, {
+        workspaceRoot: root,
+        warn: (m) => warned.push(m),
+        setBranch: () => {},
+      })
+      return [ws.cache?.policy ?? null, warned.length]
+    }
+    try {
+      expect([
+        await policy({ TURBO_REMOTE_ONLY: 'true' }),
+        await policy({ TURBO_REMOTE_ONLY: '1' }),
+        await policy({ TURBO_CACHE: 'remote:rw' }),
+        await policy({ TURBO_REMOTE_CACHE_READ_ONLY: 'true' }),
+      ]).toEqual([
+        [null, 0],
+        [null, 0],
+        [null, 0],
+        [null, 0],
+      ])
+    } finally {
+      names.forEach((n, i) => {
+        if (saved[i] === undefined) delete process.env[n]
+        else process.env[n] = saved[i]
+      })
+    }
+  })
+
   it('a turbo() run under TURBO_FORCE runs its tasks and leaves the remote alone', async () => {
     const ws = await mkdtemp(path.join(tmpdir(), 'vx-turbo-force-'))
     const saved = process.env['TURBO_FORCE']
