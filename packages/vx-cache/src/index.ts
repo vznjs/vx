@@ -606,14 +606,19 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   async has(hash: string): Promise<ArtifactInfo | null> {
-    return (await this.hasMany([hash])).get(hash) ?? null
+    return (await this.hasMany([hash]))?.get(hash) ?? null
   }
 
-  /** One check of the run's refs' scopes, in order: each hash answers the first that holds it. */
-  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>> {
+  /**
+   * One check of the run's refs' scopes, in order: each hash answers the
+   * first that holds it. Null once the layer is off: no answer, which core
+   * keeps apart from "none held" (an empty map rewrote every key it asked
+   * as a miss in `remote_hits`, and the next run fetched none of them).
+   */
+  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
     const held = new Map<string, ArtifactInfo>()
     this.sayUnsaid()
-    if (this.disabled || this.refs.length === 0) return held
+    if (this.disabled || this.refs.length === 0) return null
     const scopes = this.refs.map(scopeOf)
     const ask = [...new Set(hashes)]
     let limits: Limits | undefined
@@ -622,7 +627,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     } catch (err) {
       // A refusal turned the layer off: each waiter shares it, the first says it.
       if (this.disabled && err instanceof Error) {
-        if (this.said.has(err)) return held
+        if (this.said.has(err)) return null
         this.said.add(err)
       }
       throw err

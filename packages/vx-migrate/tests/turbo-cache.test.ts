@@ -582,7 +582,8 @@ describe('TurboRemoteCache against the spec server', () => {
       'has-a': null,
       'has-b': null,
       get: null,
-      hasMany: new Map(),
+      // No answer: an empty map rewrote every key it asked as a miss.
+      hasMany: null,
       put: false,
     }
     const names = ['has-a', 'has-b', 'get', 'hasMany', 'put']
@@ -614,7 +615,9 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await c.get('aa11')).toBeNull()
     // Not sent, so core counts no upload.
     expect(await c.put('ee55', new Blob(['x']), { durationMs: 1 })).toBe(false)
-    expect(await c.hasMany(['aa11'])).toEqual(new Map())
+    // No answer, not "none held": core rewrites the keys a has-many
+    // answers (`remote_hits`), and an empty map forgot every hit.
+    expect(await c.hasMany(['aa11'])).toBeNull()
     expect(srv.seen.length).toBe(n) // no further requests
   })
 })

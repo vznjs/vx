@@ -9,7 +9,11 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## exec: hand plugins a signal Bun names only by number
+## vx-cache: answer no has-many once the remote is off
+
+VxCacheLayer.hasMany now resolves null, not an empty map, once the remote is off for the run. A caller of the layer itself treats null as "cannot say"; core already does.
+
+## exec: keep numeric signals, forward args into compounds
 
 RunResult.signal is string | number: an executor or telemetry plugin that reads it must accept a number for a signal with no name.
 
