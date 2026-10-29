@@ -125,3 +125,57 @@ it("an outcome's waited, outputs, blocks and flaky record reach its RunRecord", 
     flakyFailures: 2,
   })
 })
+
+// `--force` re-runs a key the cache already holds and keeps that entry
+// as it is, so the save wrote nothing to count: the row's `outputs` was
+// blank on every forced miss (2026-10-29, solid-js#build). The kept
+// entry holds the same bytes.
+it('a forced miss over a kept entry still reports its outputs', async () => {
+  await addProject(
+    root,
+    'p',
+    `export default {
+      tasks: {
+        gen: {
+          exec: { command: 'mkdir -p out && printf 12345 > out/x.txt' },
+          inputs: { files: ['vx.config.mjs'] },
+          cache: { outputs: { files: ['out/**'] } },
+        },
+      },
+    }
+    `,
+  )
+  expect((await run({ cwd: root, tasks: ['gen'], log: quiet })).ok).toBe(true)
+  const forced = await run({ cwd: root, tasks: ['gen'], log: quiet, cacheFlags: { force: true } })
+  expect(forced.ok).toBe(true)
+  expect(forced.outcomes[0]).toMatchObject({ status: 'success', outputBytes: 5 })
+  expect(rows()[1]![0]).toMatchObject({ status: 'success', output_bytes: 5 })
+}, 20_000)
+
+// A miss that saves nothing (here: downstream of a task with no `cache`
+// block, so it has no key to save under) still wrote its outputs, and its
+// row's `outputs` says how much: blank, it read as nothing written
+// (2026-10-29, solid-js#build after solid-js#link).
+it('a miss that saves nothing still reports the outputs it wrote', async () => {
+  await addProject(
+    root,
+    'p',
+    `export default {
+      tasks: {
+        link: { exec: { command: 'true' } },
+        gen: {
+          exec: { command: 'mkdir -p out && printf 1234567 > out/x.txt' },
+          dependsOn: ['link'],
+          inputs: { files: ['vx.config.mjs'] },
+          cache: { outputs: { files: ['out/**'] } },
+        },
+      },
+    }
+    `,
+  )
+  const r = await run({ cwd: root, tasks: ['gen'], log: quiet })
+  expect(r.ok).toBe(true)
+  const gen = r.outcomes.find((o) => o.node.id === 'p#gen')!
+  expect(gen.saved).toBeUndefined()
+  expect(gen).toMatchObject({ status: 'success', outputBytes: 7 })
+}, 20_000)
