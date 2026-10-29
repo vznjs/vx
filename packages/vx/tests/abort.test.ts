@@ -79,6 +79,38 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 20_000)
 
+  // Turbo #6210: a task that ends well after the stop readied its
+  // dependents, and the walk started them.
+  it('a task that exits 0 after the stop starts none of its dependents', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            slow: { exec: { command: "trap 'exit 0' TERM; echo $$ > pid.txt; while :; do sleep 0.05; done" } },
+            after: { dependsOn: ['slow'], exec: { command: 'echo ran > after.txt' } },
+          },
+        }
+      `,
+    )
+    const ac = new AbortController()
+    const running = run({
+      cwd: root,
+      tasks: ['after'],
+      projects: ['app'],
+      log: silent,
+      handleSignals: false,
+      signal: ac.signal,
+    })
+    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    ac.abort()
+    const r = await running
+    expect(r.ok).toBe(false)
+    expect(r.outcomes.find((o) => o.node.id === 'app#after')?.status).toBe('aborted')
+    expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
+  }, 20_000)
+
   it('the summary a sink hears counts the aborted tasks, which its task list leaves out', async () => {
     // Aborted tasks are not real runs and stay out of `tasks`; without the
     // count a stopped run reads as a failure with nothing failed (item 851).
