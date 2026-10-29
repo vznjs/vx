@@ -17,7 +17,7 @@ it('a content-type header is not sent over the JSON body, and says so once', () 
     (m) => warns.push(m),
   )
   expect(c?.headers).toEqual({ 'x-team': 'core' })
-  expect(c?.signalHeaders.traces).toEqual({ 'x-team': 'core' })
+  expect(c?.signalHeaders?.traces).toEqual({ 'x-team': 'core' })
   expect(warns).toEqual([
     '[vx] vx-otel: header "content-type" names the body\'s type, and vx-otel sends OTLP/HTTP JSON (application/json) — not sent',
   ])
