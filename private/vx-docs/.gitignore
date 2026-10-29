@@ -33,6 +33,5 @@ dist/
 # The resized images, built by `build.images` (scripts/build-images.ts)
 /public/_img/
 
-# The benchmark data, written by `bench.data` (scripts/bench-data.ts) from
-# the @vzn/vx-bench#bench.* rows
-/src/data/
+# What `bench.data` gathers (scripts/bench-data.ts); src/data/bench.json is its committed copy
+/measured/
