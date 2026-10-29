@@ -7,9 +7,10 @@
 // run-failures.ts keeps failed output: files, not cache.db, so the index
 // layout stays as it was. A run with none writes nothing.
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { isFsRefusal } from '../util/index.js'
+import { trimKept } from './run-failures.js'
 
 /** Runs whose steps (or warnings) are kept; run ids are UUIDv7, so names sort by age. */
 const KEPT = 50
@@ -38,10 +39,7 @@ function keep(
     const tmp = `${file}.${process.pid}.tmp`
     writeFileSync(tmp, JSON.stringify(value))
     renameSync(tmp, file)
-    const names = readdirSync(dir)
-      .filter((n) => n.endsWith('.json'))
-      .sort()
-    for (const n of names.slice(0, -KEPT)) rmSync(path.join(dir, n), { force: true })
+    trimKept(dir, KEPT)
   } catch (err) {
     if (!isFsRefusal(err)) throw err
     warn(

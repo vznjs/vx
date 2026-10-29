@@ -40,7 +40,8 @@ in the index:
 
 ```ts
 writeRunFailures(cacheDir, runId, outcomes, warn): void // at run end; only when an outcome carries failedOutput; newest 50 kept; a refused write warns
-runFailures(cacheDir, db, runId?): RunFailures | null // default the latest failed run
+runFailures(cacheDir, db, runId?): RunFailures | null // default the latest failed run; a torn file reads as none kept, a runId with a path part names no file
+trimKept(dir, kept): void // the newest `kept` runs' files, and a crashed writer's temp once its run is older than them (steps/, warnings/ too)
 taskLog(cacheDir, db, taskId, runId?): TaskLog | null // default the latest run that recorded the task
 
 export interface RunFailures {
