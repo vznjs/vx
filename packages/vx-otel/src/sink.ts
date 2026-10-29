@@ -215,18 +215,28 @@ async function postOnce(
     if (!res.ok) {
       const refused = new Error(`HTTP ${res.status}${detail(text)}`)
       if (!RETRYABLE_STATUS.has(res.status)) throw refused
-      const after = Number(res.headers.get('retry-after'))
-      throw new OtlpRetryable(refused, Number.isFinite(after) && after > 0 ? after * 1000 : 0)
+      throw new OtlpRetryable(refused, retryAfterMs(res.headers.get('retry-after')))
     }
     // OTLP's other silent loss: a 200 whose body says part of the export
     // was dropped (over quota, past a limit). Success at the transport,
     // missing data in the collector.
     const rejected = partialSuccess(text)
-    if (rejected !== undefined) throw new Error(rejected)
+    if (rejected !== undefined) throw rejected
   } finally {
     clearTimeout(timer)
     deadline?.removeEventListener('abort', onDeadline)
   }
+}
+
+/**
+ * A `Retry-After` in ms, or 0: seconds, or an HTTP date (RFC 9110), which
+ * `Number()` read as NaN and the retry came at the default delay.
+ */
+function retryAfterMs(value: string | null): number {
+  if (value === null) return 0
+  const seconds = Number(value)
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now()
+  return Number.isFinite(ms) && ms > 0 ? ms : 0
 }
 
 /** One line of a collector's error body, bounded — it is remote text. */
@@ -235,12 +245,16 @@ function detail(body: string): string {
   return line === '' ? '' : `: ${line.slice(0, 200)}`
 }
 
+/** An export the collector accepted whole, with a word about it. */
+class OtlpWarning extends Error {}
+
 /**
- * The OTLP `partialSuccess` shape, when it says something was dropped: the
- * rejected counts are int64-as-string, and a response with the field present
- * but everything zero is a plain success (the spec's own example).
+ * The OTLP `partialSuccess` shape, when it says something: the rejected
+ * counts are int64-as-string, and a response with the field present but
+ * everything zero is a plain success (the spec's own example). Counts of
+ * zero with a message is the spec's warning: the export was accepted.
  */
-function partialSuccess(body: string): string | undefined {
+function partialSuccess(body: string): Error | undefined {
   if (!body.includes('partialSuccess')) return undefined
   let parsed: unknown
   try {
@@ -255,9 +269,10 @@ function partialSuccess(body: string): string | undefined {
     .map((k) => [k, Number(ps[k] ?? 0)] as const)
     .filter(([, n]) => Number.isFinite(n) && n > 0)
   const message = typeof ps['errorMessage'] === 'string' ? ps['errorMessage'].trim() : ''
-  if (counts.length === 0 && message === '') return undefined
+  if (counts.length === 0)
+    return message === '' ? undefined : new OtlpWarning(detail(message).slice(2))
   const what = counts.map(([k, n]) => `${n} ${k.replace('rejected', '').toLowerCase()}`).join(', ')
-  return `the collector dropped part of the export: ${what === '' ? 'some of it' : what}${detail(message)}`
+  return new Error(`the collector dropped part of the export: ${what}${detail(message)}`)
 }
 
 function genId(bytes: number): string {
@@ -301,6 +316,8 @@ export class OtelSink implements TelemetrySink {
   private pumping: Promise<void> | undefined
   private window: ReturnType<typeof setTimeout> | undefined
   private readonly warned = new Set<OtelSignal>()
+  /** Signals whose collector warned about an export it accepted (`partialSuccess`). */
+  private readonly cautioned = new Set<OtelSignal>()
   private summary: RunSummaryRecord | undefined
   private uploaded = false
   // Core's own bounded capture buffer, so which task's output survives a
@@ -721,21 +738,27 @@ export class OtelSink implements TelemetrySink {
       ...this.cfg.signalHeaders[signal],
       ...(gzip ? { 'content-encoding': 'gzip' } : {}),
     }
-    const failed = (
-      await Promise.all(
-        bodies.map((body) =>
-          // Through a promise, so a transport that throws before it awaits is caught too.
-          Promise.resolve()
-            .then(() =>
-              this.postFor(signal)(url, body, headers, this.deadline, this.cfg.tls[signal]),
-            )
-            .then(
-              () => undefined,
-              (err: unknown) => (err instanceof Error ? err.message : String(err)),
-            ),
-        ),
+    const answers = await Promise.all(
+      bodies.map((body) =>
+        // Through a promise, so a transport that throws before it awaits is caught too.
+        Promise.resolve()
+          .then(() => this.postFor(signal)(url, body, headers, this.deadline, this.cfg.tls[signal]))
+          .then(
+            () => undefined,
+            (err: unknown) => err,
+          ),
+      ),
+    )
+    const failed = answers
+      .filter((e) => e !== undefined && !(e instanceof OtlpWarning))
+      .map((e) => (e instanceof Error ? e.message : String(e)))
+    const said = answers.find((e) => e instanceof OtlpWarning)
+    if (failed.length === 0 && said !== undefined && !this.cautioned.has(signal)) {
+      this.cautioned.add(signal)
+      this.cfg.warn?.(
+        `[vx-otel] the collector at ${shownUrl(url)} accepted the export and warned: ${said.message}`,
       )
-    ).filter((m) => m !== undefined)
+    }
     // export is fully optional — a down collector never affects a run
     if (failed.length === 0 || this.warned.has(signal)) return
     this.warned.add(signal)
