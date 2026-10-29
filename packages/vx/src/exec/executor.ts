@@ -490,8 +490,13 @@ export function assertExecuteResult(
     if (n !== undefined && !(typeof n === 'number' && Number.isFinite(n) && n >= 0))
       fail(`${key} is ${shown(n)} (expected a non-negative number)`)
   }
-  if (r['signal'] !== undefined && typeof r['signal'] !== 'string')
-    fail(`signal is ${typeof r['signal']} (expected a string)`)
+  const signal = r['signal']
+  if (
+    signal !== undefined &&
+    typeof signal !== 'string' &&
+    !(typeof signal === 'number' && Number.isInteger(signal) && signal > 0)
+  )
+    fail(`signal is ${shown(signal)} (expected a name or a signal number)`)
   if (r['timedOut'] !== undefined && typeof r['timedOut'] !== 'boolean')
     fail(`timedOut is ${typeof r['timedOut']} (expected a boolean)`)
   const machine = r['machine']

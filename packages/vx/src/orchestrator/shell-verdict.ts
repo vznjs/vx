@@ -22,7 +22,7 @@ export function shellVerdict(args: {
   cwd: string
   bins: string[]
   /** The signal that killed the child when the runner saw one (`RunResult.signal`). */
-  signal?: string | undefined
+  signal?: string | number | undefined
   /** A sandboxed task's view: whether a file is hidden from it (no grant reads it). */
   hidden?: ((file: string) => boolean) | undefined
 }): string | undefined {
@@ -84,7 +84,10 @@ function fileVerdict(file: string): string {
 }
 
 /** The signal behind an exit above 128, from the runner's own report or the code alone. */
-function signalVerdict(code: number, signal: string | undefined): string | undefined {
+function signalVerdict(code: number, signal: string | number | undefined): string | undefined {
+  if (typeof signal === 'number') {
+    return `[vx] exit ${code} is how the shell reports a death by signal ${signal}: the process was killed by that signal`
+  }
   const signals = osConstants.signals as Partial<Record<string, number>>
   let name: string | undefined
   let num: number | undefined

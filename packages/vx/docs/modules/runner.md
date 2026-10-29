@@ -16,7 +16,7 @@ export interface RunResult {
   durationMs: number
   stdout: string // retained text, or '' when `capture.stdout` is false
   stderr: string // retained text, or '' when `capture.stderr` is false
-  signal?: string // the signal that killed the child (Bun's signalCode)
+  signal?: string | number // the signal that killed the child (Bun's signalCode: its name, or its number when it has none)
   timedOut?: boolean // vx's own `timeoutMs` timer fired: a real `failed`, not an `aborted` shutdown
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
   peakRssBytes?: number // maxRSS (bytes), only when it rose above vx's own RSS high-water mark
@@ -149,7 +149,8 @@ export class TaskPipes {
   the command resolves, inside the shell; `argv0` keeps `$0` the `sh`
   it always was.
 - **`exec`:** a plain `word args…` command runs as `exec word args…`, so
-  the program replaces the shell. A shell builtin keeps the shell, and so
+  the program replaces the shell. A shell builtin keeps the shell (each
+  one bash's `compgen -b` lists, bash-only `pushd` among them), and so
   does a bash reserved word that may open one line (`[[`, `time`):
   macOS's `sh` is bash, and `exec [[ -f x ]]` there was
   `exec: [[: not found`, exit 127 (B-56).

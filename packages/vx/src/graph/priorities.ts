@@ -301,11 +301,16 @@ export function mergePriorities(
   // Baseline reverse-deps counts are bounded by N; scale the override so
   // it sorts above the baseline for any node it covers, and add the
   // baseline as a tie-break for parity within the override set.
+  // The lowest weight maps to one SCALE, not to 0: a weight of 0 (a p50
+  // that rounds to 0 ms) or below otherwise tied or sank under the
+  // unscored nodes it is meant to outrank.
   const SCALE = 1 << 20
+  let lo = 0
+  for (const w of overrides.values()) if (w < lo) lo = w
   const out = new Map(baseline)
   for (const [id, w] of overrides) {
     const b = baseline.get(id) ?? 0
-    out.set(id, w * SCALE + b)
+    out.set(id, (w - lo + 1) * SCALE + b)
   }
   return out
 }

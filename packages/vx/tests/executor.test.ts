@@ -292,6 +292,14 @@ describe('assertExecuteResult — what a plugin executor may resolve', () => {
     expect(refusal({ ...ok, changed: ['a.txt'] })).toBe('ACCEPTED')
   })
 
+  // Bun reports a signal with no name (Linux's real-time ones) by number.
+  it('a signal by name or by number is accepted', () => {
+    expect([refusal({ ...ok, signal: 'SIGTERM' }), refusal({ ...ok, signal: 34 })]).toEqual([
+      'ACCEPTED',
+      'ACCEPTED',
+    ])
+  })
+
   // The optional fields went unchecked: a `where` object lost the whole
   // run's history to a bind error naming no executor, a string `cpuMs`
   // reached telemetry and history as text, and a `null` violation failed
@@ -303,7 +311,8 @@ describe('assertExecuteResult — what a plugin executor may resolve', () => {
       refusal({ ...ok, cpuMs: '5' }),
       refusal({ ...ok, cpuMs: Number.NaN }),
       refusal({ ...ok, peakRssBytes: -1 }),
-      refusal({ ...ok, signal: 15 }),
+      refusal({ ...ok, signal: true }),
+      refusal({ ...ok, signal: 1.5 }),
       refusal({ ...ok, timedOut: 'yes' }),
       refusal({ ...ok, machine: 8 }),
       refusal({ ...ok, machine: { cores: 'x', memoryBytes: 1 } }),
@@ -316,7 +325,8 @@ describe('assertExecuteResult — what a plugin executor may resolve', () => {
       says('cpuMs is 5 (expected a non-negative number)'),
       says('cpuMs is NaN (expected a non-negative number)'),
       says('peakRssBytes is -1 (expected a non-negative number)'),
-      says('signal is number (expected a string)'),
+      says('signal is true (expected a name or a signal number)'),
+      says('signal is 1.5 (expected a name or a signal number)'),
       says('timedOut is string (expected a boolean)'),
       says('machine is not an object'),
       says('machine.cores is x (expected a positive number)'),

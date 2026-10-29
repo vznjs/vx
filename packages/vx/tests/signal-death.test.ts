@@ -36,6 +36,9 @@ describe('a task killed by a signal', () => {
             // an inner sh dies; the outer shell reports 139 with no signal
             // (a subshell's $$ is still the outer shell's pid).
             segv: { exec: { command: "sh -c 'kill -SEGV $$'; exit $?" } },
+            // Linux's SIGRTMIN: a signal with a number and no name.
+            rt: { exec: { command: 'kill -34 $$' } },
+            rtdev: { exec: { command: 'kill -34 $$', persistent: { readyWhen: 'up' } } },
             slow: { exec: { command: 'sleep 5', timeout: '300ms' } },
             partial: { exec: { command: 'printf half; sleep 5', timeout: '300ms' } },
             whole: { exec: { command: 'echo whole; sleep 5', timeout: '300ms' } },
@@ -68,6 +71,21 @@ describe('a task killed by a signal', () => {
     expect(r.text).toContain(
       `[vx] exit 139 is 128 + 11, the shell's report of a death by SIGSEGV in the last command (or that command exited 139 itself): the program crashed in native code`,
     )
+  })
+
+  // Bun reports a signal with no name by its number alone; the runner
+  // dropped it, and the exit read as nothing.
+  it.if(process.platform === 'linux')('a signal with no name is named by its number', () => {
+    const want =
+      '[vx] exit 162 is how the shell reports a death by signal 34: the process was killed by that signal'
+    const r = vx(root, ['run', 'rt', '--all'])
+    const dev = vx(root, ['run', 'rtdev', '--all'])
+    expect([r.code, r.text.includes(want), dev.code, dev.text.includes(want)]).toEqual([
+      1,
+      true,
+      1,
+      true,
+    ])
   })
 
   // CONTROL: vx's own timeout is a SIGTERM the task already explains.

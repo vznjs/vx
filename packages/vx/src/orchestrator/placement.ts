@@ -322,6 +322,8 @@ export function placeTasks(
     if (node.config.exec?.interactive === true && sole === undefined) {
       placements.executors.set(node.id, floor)
       here(node)
+      // Its servers run here with it: carried, none started under it.
+      for (const s of serversBehind(nodes, node)) heldHere.add(s.id)
       continue
     }
     const wants: readonly string[] | undefined = node.config.exec?.platforms

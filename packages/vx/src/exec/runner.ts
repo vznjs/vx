@@ -36,10 +36,11 @@ export interface RunResult {
   durationMs: number
   stdout: string
   stderr: string
-  /** The signal that killed the child, if any (Bun's `signalCode`).
+  /** The signal that killed the child, if any (Bun's `signalCode`): its
+   *  name, or its number when it has none (Linux's real-time signals).
    *  SIGINT/SIGTERM here means a Ctrl-C / shutdown teardown — the
    *  orchestrator reverts such a task to aborted, not failed. */
-  signal?: string
+  signal?: string | number
   /** True when vx's own `timeout` timer fired and SIGTERMed the child.
    *  Distinguishes a timeout (a real `failed`) from a Ctrl-C shutdown
    *  SIGTERM (which the orchestrator reverts to `aborted`). */
@@ -319,10 +320,13 @@ export function shellQuote(arg: string): string {
  * `<<X` in a comment or quotes opens no heredoc, and a quote in a body
  * opens nothing (X-110).
  */
-function shellShape(command: string): { comment: number; body: boolean[] } {
+function shellShape(command: string): { comment: number; body: boolean[]; subshell: boolean } {
   const lines = command.split('\n')
   const body = lines.map(() => false)
   const pending: Array<{ delim: string; tabs: boolean }> = []
+  // Per open `(`: does it open a subshell, not `$(`, `$((`, `<(` or `f()`.
+  const parens: boolean[] = []
+  let subshell = false
   let quote = ''
   let comment = -1
   let atWordStart = true
@@ -386,9 +390,16 @@ function shellShape(command: string): { comment: number; body: boolean[] } {
         continue
       }
     }
+    if (c === '(') {
+      const prev = command[i - 1] ?? ''
+      parens.push(!/[$<>\w]/.test(prev) && !(prev === '(' && parens.at(-1) === false))
+    } else if (c === ')') {
+      const opened = parens.pop()
+      if (i === command.length - 1) subshell = opened === true
+    }
     atWordStart = /[\s;&|()<>]/.test(c)
   }
-  return { comment, body }
+  return { comment, body, subshell }
 }
 
 /**
@@ -420,10 +431,19 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
     // ran the args as a command of their own: `--watch: not found`. Kept
     // when an odd run of backslashes ends it: that escapes what follows.
     const escaped = (/\\+$/.exec(trimmed)?.[0].length ?? 0) % 2 === 1
-    // So did one that ends in a lone `;` or `&`: the args go before it.
-    // An escaped one (find's `-exec … \;`) is a word, and takes them after.
-    if (/(?:^|[^;&|<>\\])(?:\\\\)*[;&]$/.test(trimmed)) {
-      const head = trimmed.slice(0, -1).trimEnd()
+    // So did one that ends in a lone `;` or `&` (or a case arm's `;;`): the
+    // args go before it. An escaped one (find's `-exec … \;`) is a word,
+    // and takes them after.
+    const sep = /(?:^|[^;&|<>\\])(?:\\\\)*(;;|[;&])$/.exec(trimmed)?.[1]
+    // After a compound command's closer they were a syntax error
+    // (`(cmd) --fix`, `fi --fix`): they go to the last command inside it.
+    // A closer word counts only where a command starts, after a separator.
+    const closer = shape.subshell
+      ? ')'
+      : /(?:^|[^\\])(?:\\\\)*[;&\n][ \t]*(fi|done|esac|\})$/.exec(trimmed)?.[1]
+    const end = sep ?? closer
+    if (end !== undefined) {
+      const head = trimmed.slice(0, -end.length).trimEnd()
       return `${withForwardArgs(head, args)}${trimmed.slice(head.length)}`
     }
     return `${escaped ? command : trimmed} ${quoted}`
@@ -487,6 +507,28 @@ const SHELL_BUILTINS = new Set([
   'let',
   'declare',
   'typeset',
+  // The rest of bash's builtins, as `compgen -b` lists them.
+  'bg',
+  'bind',
+  'caller',
+  'compgen',
+  'complete',
+  'compopt',
+  'dirs',
+  'disown',
+  'enable',
+  'fc',
+  'fg',
+  'getopts',
+  'help',
+  'history',
+  'logout',
+  'mapfile',
+  'popd',
+  'pushd',
+  'readarray',
+  'shopt',
+  'suspend',
   // bash's reserved words that may open a one-line command; macOS's `sh`
   // is bash, and `exec [[ … ]]` there is "exec: [[: not found".
   '[[',
@@ -1173,7 +1215,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     durationMs: Date.now() - start,
     stdout,
     stderr,
-    ...(typeof proc.signalCode === 'string' ? { signal: proc.signalCode } : {}),
+    ...(proc.signalCode != null ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(cut ? { leftRunning: true } : {}),
     ...resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor),

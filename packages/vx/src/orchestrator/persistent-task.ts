@@ -302,7 +302,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
         command: step.command,
         cwd: node.projectDir,
         bins: taskBinDirs(node, args.workspaceRoot),
-        signal: typeof signal === 'string' ? signal : undefined,
+        signal: signal ?? undefined,
         hidden: serverSandbox && ((f: string) => !sandboxReads(serverSandbox, f)),
       })
       if (verdict !== undefined)

@@ -279,6 +279,21 @@ describe('placeTasks — a servers executor carries persistent dependencies', ()
     expect(p.servers.get('a#test')?.map((n) => n.id)).toEqual(['s#db'])
   })
 
+  // An interactive task runs here without asking any executor, and the
+  // server it depends on was carried all the same: never started here,
+  // so the task ran with no server under it.
+  it('runs the server here when an interactive dependant stays here', () => {
+    const p = placeTasks(
+      graph(
+        node('s#db', { persistent: {} }),
+        node('a#test', {}, ['s#db']),
+        node('c#ui', { interactive: true }, ['s#db']),
+      ),
+      [remote('dte', { servers: true }), floor],
+    )
+    expect([where(p, 'a#test'), where(p, 'c#ui'), p.carried.size]).toEqual(['dte', 'local', 0])
+  })
+
   it('carries no sandboxed or requested server: those stay here with their dependants', () => {
     const requested = { ...node('s#dev', { persistent: {} }), requested: true } as TaskNode
     const p = placeTasks(

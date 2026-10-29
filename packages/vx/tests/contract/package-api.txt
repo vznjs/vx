@@ -1694,7 +1694,7 @@ export interface RunResult {
   durationMs: number
   stdout: string
   stderr: string
-  signal?: string
+  signal?: string | number
   timedOut?: boolean
   cpuMs?: number
   peakRssBytes?: number

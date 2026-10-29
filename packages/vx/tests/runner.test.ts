@@ -264,6 +264,20 @@ describe('runCommand', () => {
     })
     expect(result.exitCode).toBe(143)
   })
+
+  // Linux numbers real-time signals past the named table (34 is SIGRTMIN),
+  // and Bun reports such a death by number alone.
+  it.if(process.platform === 'linux')(
+    'reports a signal that has no name by its number',
+    async () => {
+      const result = await runCommand({
+        command: 'kill -34 $$',
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+      })
+      expect([result.exitCode, result.signal]).toEqual([162, 34])
+    },
+  )
 })
 
 // Retaining a stream costs its full byte size in heap for the whole task, so
@@ -904,6 +918,28 @@ describe('withForwardArgs', () => {
     expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
   })
 
+  // Appended after a compound command's closer, the args were a syntax
+  // error: `(echo a) --fix` and `if …; fi --fix` ran nothing. They go to
+  // the last command inside it, as before a trailing `;`.
+  it.each([
+    ['a subshell', '(echo args:)', 'args: --fix a b\n'],
+    ['a subshell after a command', 'cd . && (echo args: )', 'args: --fix a b\n'],
+    ['a brace group', '{ echo args:; }', 'args: --fix a b\n'],
+    ['an if', 'if true; then echo args:; fi', 'args: --fix a b\n'],
+    ['an if over lines', 'if true\nthen echo args:\nfi\n', 'args: --fix a b\n'],
+    ['a for loop', 'for x in args:; do echo $x; done', 'args: --fix a b\n'],
+    ['a case', 'case a in a) echo args:;; esac', 'args: --fix a b\n'],
+    ['a case over lines', 'case a in\na) echo args:\nesac', 'args: --fix a b\n'],
+    ['control: a command substitution', 'echo $(echo args:)', 'args: --fix a b\n'],
+    ['control: an arithmetic expansion', 'echo $((1+1))', '2 --fix a b\n'],
+    ['control: a closer word as an argument', 'echo done', 'done --fix a b\n'],
+    ['control: a parameter expansion', 'x=args:; echo ${x}', 'args: --fix a b\n'],
+    ['control: a quoted paren', "echo '(a)'", '(a) --fix a b\n'],
+    ['control: an escaped paren', 'echo \\(a\\)', '(a) --fix a b\n'],
+  ])('%s', (_name, command, printed) => {
+    expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
+  })
+
   it('leaves the command alone with no args', () => {
     expect(withForwardArgs('echo hi # c', [])).toBe('echo hi # c')
     expect(withForwardArgs('echo hi # c', undefined)).toBe('echo hi # c')
@@ -1232,6 +1268,14 @@ describe('execWrap — grandchild-orphan mitigation', () => {
       const r = Bun.spawnSync(['bash', '-c', execWrap(command)], { stderr: 'pipe' })
       expect([command, r.exitCode]).toEqual([command, 0])
     }
+  })
+
+  // Every builtin bash itself lists, read from bash: `exec pushd x` is
+  // "exec: pushd: not found" there, where the bare command ran.
+  it('leaves every bash builtin alone', () => {
+    const listed = Bun.spawnSync(['bash', '-c', 'compgen -b']).stdout.toString().trim().split('\n')
+    expect(listed.length).toBeGreaterThan(40)
+    expect(listed.filter((b) => execWrap(`${b} x`) !== `${b} x`)).toEqual([])
   })
 
   it('leaves compound commands and env-assignments to the shell', () => {

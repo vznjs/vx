@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## exec: hand plugins a signal Bun names only by number
+
+RunResult.signal is string | number: an executor or telemetry plugin that reads it must accept a number for a signal with no name.
+
 ## land the second mega branch of open PRs
 
 CACHE_VERSION is vx-cache-v50: every cached task misses once after upgrading.
