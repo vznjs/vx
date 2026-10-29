@@ -172,3 +172,42 @@ describe('cache-hit replay keeps both streams in order', () => {
     expect(replay.seen).toEqual(expected)
   })
 })
+
+// Turbo #6167 (non-UTF-8 logs) and #7175 (a last line with no newline).
+describe('cache-hit replay of bytes that are not UTF-8, ending mid-line', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-replay-raw-' })
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            emit: {
+              exec: { command: 'sh emit.sh' },
+              inputs: { files: ['emit.sh'] }, cache: { outputs: { files: [] } },
+            },
+          },
+        }
+      `,
+    )
+    await writeFile(path.join(dir, 'emit.sh'), "printf 'x\\377\\376y\\nlast'\n")
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('the hit replays what the live run streamed, the unterminated line too', async () => {
+    const opts = { cwd: root, tasks: ['emit'], projects: ['app'], handleSignals: false }
+    const live = capturing()
+    expect((await run({ ...opts, log: live.log })).ok).toBe(true)
+    const streamed = live.out.join('')
+    expect(streamed).toMatch(/^x.+y\nlast$/su)
+
+    const replay = capturing()
+    const r2 = await run({ ...opts, log: replay.log })
+    expect(r2.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+    expect(replay.out.join('')).toBe(streamed)
+  })
+})
