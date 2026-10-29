@@ -1968,8 +1968,10 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
     try {
       const got: [string, string][] = []
       // `sleep` orders the writes across the two pipes, as dash's
-      // back-to-back writes landed on CI; under OPEN_LINE_WAIT_MS, so the
-      // hold, not its bound, is what is driven.
+      // back-to-back writes landed on CI. The bound is lengthened so the
+      // hold, not its bound, is what is driven: on a loaded macOS runner
+      // the two sleeps outlasted 50 ms and the line went unbroken.
+      process.env['VX_TEST_OPEN_LINE_WAIT'] = '5s'
       const result = await runCommand({
         command:
           "printf 'sh: 1: ' >&2; sleep 0.01; printf 'NO-TTY\\n'; sleep 0.01; " +
@@ -1979,6 +1981,7 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
         onStdout: (t) => got.push(['out', t]),
         onStderr: (t) => got.push(['err', t]),
       })
+      delete process.env['VX_TEST_OPEN_LINE_WAIT']
       expect(result.exitCode).toBe(0)
       // Each line and the streams that wrote into it.
       const lines: { text: string; from: Set<string> }[] = [{ text: '', from: new Set() }]
@@ -1989,7 +1992,6 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
           lines.at(-1)!.text += piece
           lines.at(-1)!.from.add(from)
         }
-      // A loaded box may break the open line (the wait's bound): never mix it.
       expect(lines.filter((l) => l.from.size > 1).map((l) => l.text)).toEqual([])
       expect(lines.map((l) => l.text).filter((t) => t !== '')).toContain('NO-TTY')
       expect(

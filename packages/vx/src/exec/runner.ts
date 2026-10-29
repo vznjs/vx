@@ -14,6 +14,7 @@ import {
   isOutOfFds,
   killGraceMs,
   OUT_OF_FDS_HINT,
+  testTimerMs,
   helperEnv,
   type SecretMask,
 } from '../util/index.js'
@@ -745,6 +746,9 @@ export function lineEnds(
   /** Lets what waits go: the task's streams ended. */
   end(): void
 } {
+  // A test lengthens it to drive the hold itself on a loaded runner, where
+  // a `sleep` between two writes outlasted 50 ms (macOS CI, PR #4867).
+  const waitMs = testTimerMs('OPEN_LINE_WAIT', OPEN_LINE_WAIT_MS)
   const sinks = [onStdout, onStderr]
   /** The stream whose line is open (0 stdout, 1 stderr). */
   let open: 0 | 1 | undefined
@@ -764,7 +768,7 @@ export function lineEnds(
     timer = undefined
     const s = held[0]!.length > 0 ? 0 : held[1]!.length > 0 ? 1 : undefined
     if (s === undefined) return
-    const left = heldAt + OPEN_LINE_WAIT_MS - performance.now()
+    const left = heldAt + waitMs - performance.now()
     if (left > 0) arm(left)
     else release(s)
   }
@@ -795,7 +799,7 @@ export function lineEnds(
     if (held[s]!.length === 0) heldAt = performance.now()
     held[s] += chunk
     if (held[s]!.length > OPEN_LINE_HOLD_CHARS) return release(s)
-    if (timer === undefined) arm(OPEN_LINE_WAIT_MS)
+    if (timer === undefined) arm(waitMs)
   }
   return {
     ...(onStdout && { onStdout: (chunk: string) => push(0, chunk) }),
