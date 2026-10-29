@@ -1348,6 +1348,13 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
 }
 
 /**
+ * A `!` take-back names what is NOT an output (core's restore gate reads
+ * it): requested, `!dist/cache/**` was the path `!dist/cache`, and as a
+ * matcher `Bun.Glob('!x')` matches every path but `x`.
+ */
+const isOutputGlob = (glob: string): boolean => !glob.startsWith('!')
+
+/**
  * vx declares output GLOBS; REAPI `output_paths` are LITERAL paths. The
  * mapping the design doc prescribes: each glob contributes the deepest
  * literal prefix above its first wildcard (`dist/**` → `dist`,
@@ -1358,13 +1365,6 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
  * would return no outputs with no error anywhere. An escaped segment
  * (`\[id\]`, a route directory) is literal: the path names it unescaped.
  */
-/**
- * A `!` take-back names what is NOT an output (core's restore gate reads
- * it): requested, `!dist/cache/**` was the path `!dist/cache`, and as a
- * matcher `Bun.Glob('!x')` matches every path but `x`.
- */
-const isOutputGlob = (glob: string): boolean => !glob.startsWith('!')
-
 export function globToOutputPath(glob: string): string {
   return literalHead(glob).path
 }
