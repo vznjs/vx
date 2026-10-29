@@ -9,7 +9,7 @@ import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { yarn } from '../src/index.js'
-import { importerDigests, parseLockfile } from '../src/yarn.js'
+import { importerDigests, importerLinks, parseLockfile } from '../src/yarn.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -710,5 +710,91 @@ describe('every input the yarn digest must read', () => {
     expect(swapped).not.toBe(text)
     expect(digests(crlf)).toEqual(digests(text))
     expect(digests(swapped)).toEqual(digests(text))
+  })
+})
+
+// vercel/turborepo#4755 and #6723 (their fixtures berry-protocol-collision.lock
+// and yarn4-mixed-protocol.lock): a workspace that one package names with a
+// bare or `npm:` range and another with `workspace:*`, all on one key. Turbo
+// refused the bare one and rewrote the `npm:` one to the registry.
+describe('yarn(): one key holding a workspace under several protocols', () => {
+  it.each([
+    [
+      'a bare range (Yarn 3)',
+      `__metadata:
+  version: 6
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  dependencies:
+    c: "*"
+  languageName: unknown
+  linkType: soft
+
+"b@workspace:packages/b":
+  version: 0.0.0-use.local
+  resolution: "b@workspace:packages/b"
+  dependencies:
+    c: "workspace:*"
+  languageName: unknown
+  linkType: soft
+
+"c@*, c@workspace:*, c@workspace:packages/c":
+  version: 0.0.0-use.local
+  resolution: "c@workspace:packages/c"
+  languageName: unknown
+  linkType: soft
+
+"prune-edge@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "prune-edge@workspace:."
+  languageName: unknown
+  linkType: soft
+`,
+      'packages',
+    ],
+    [
+      'an `npm:` range (Yarn 4)',
+      `__metadata:
+  version: 8
+  cacheKey: 10c0
+
+"a@workspace:pkgs/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:pkgs/a"
+  dependencies:
+    c: "npm:*"
+  languageName: unknown
+  linkType: soft
+
+"b@workspace:pkgs/b":
+  version: 0.0.0-use.local
+  resolution: "b@workspace:pkgs/b"
+  dependencies:
+    c: "workspace:*"
+  languageName: unknown
+  linkType: soft
+
+"c@npm:*, c@workspace:*, c@workspace:pkgs/c":
+  version: 0.0.0-use.local
+  resolution: "c@workspace:pkgs/c"
+  languageName: unknown
+  linkType: soft
+
+"yarn4-test@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "yarn4-test@workspace:."
+  languageName: unknown
+  linkType: soft
+`,
+      'pkgs',
+    ],
+  ])('%s links the workspace for every package that names it', (_, text, dir) => {
+    const links = importerLinks(parseLockfile(text))
+    expect([links.get(`${dir}/a`)?.deps, links.get(`${dir}/b`)?.deps]).toEqual([
+      { c: `${dir}/c` },
+      { c: `${dir}/c` },
+    ])
   })
 })
