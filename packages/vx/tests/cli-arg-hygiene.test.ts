@@ -146,6 +146,14 @@ describe('vx watch rejects flags it cannot honor', () => {
     expect(stderr).toContain('--verbosity')
   })
 
+  it("names --poll as vx watch's when vx run is given it", () => {
+    // The edit-distance hint offered `--all`, a different flag.
+    expect(parseRunArgs(['build', '--poll']).error).toBe(
+      'unknown flag: --poll (a vx watch flag: vx watch --poll <task>)',
+    )
+    expect(parseRunArgs(['build', '--poll'], 'watch').poll).toBe(true)
+  })
+
   it('still parses --verbosity for vx run', () => {
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
   })

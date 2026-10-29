@@ -33,11 +33,12 @@ import {
   maskedCommand,
   paint,
   printable,
+  ruleWidth,
   ui,
   type ColorSupport,
 } from '../util/index.js'
 import { neverStarted } from './summary.js'
-import { outcomeLabel, ranNoCache, skippedReason } from './events.js'
+import { outcomeLabel, outcomeWord, ranNoCache, skippedReason } from './events.js'
 import { fileMemo, linkPaths } from './path-links.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
@@ -47,8 +48,6 @@ const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
 // red / yellow / cyan) so a task id can never read as an outcome. Each
 // half of an id hashes its own name: same project, same hue; same target,
 // same hue, in every run, list and region row.
-// Section rules + the summary rule share one frame width.
-const FRAME_WIDTH = 60
 
 const SUCCESS = '#22c55e' // green-500 — success / fresh
 const WARN = '#eab308' // yellow-500 — skipped
@@ -135,6 +134,13 @@ export function formatTaskBlock(
   return lines.join('\n') + '\n'
 }
 
+/** What a bounded capture dropped from its head, so a capped log never reads as whole. */
+function droppedNote(lost: number, colors: ColorSupport): string {
+  return paint('', `… ${lost} earlier character${lost === 1 ? '' : 's'} dropped`, colors, {
+    dim: true,
+  })
+}
+
 /**
  * One `├─ <LABEL>` section of captured output, with the head-dropped notice
  * when the capture was bounded. Shared by the task frame and the persistent
@@ -151,7 +157,7 @@ function pushStreamSection(
   if (text.trim().length === 0) return
   lines.push(sectionLine(title, color, colors), '')
   if (lost > 0) {
-    lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
+    lines.push(droppedNote(lost, colors))
   }
   pushBodyLines(lines, text)
   lines.push('')
@@ -175,7 +181,7 @@ function pushOutputSection(
   if (output.every((c) => c.text.trim().length === 0)) return
   lines.push(sectionLine('OUTPUT', '', colors), '')
   if (lost > 0) {
-    lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
+    lines.push(droppedNote(lost, colors))
   }
   const body: Array<{ text: string; err: boolean }> = []
   let open: { parts: string[]; err: boolean } | null = null
@@ -211,8 +217,8 @@ function pushOutputSection(
 function sectionLine(title: string, color: string, colors: ColorSupport): string {
   const corner = (s: string) => paint('', s, colors, { dim: true })
   const label = paint(color, title, colors, { bold: true })
-  const width = Math.min(FRAME_WIDTH, colors.columns ?? FRAME_WIDTH)
-  const rule = corner('─'.repeat(Math.max(1, width - 4 - title.length)))
+  // As wide as the footer's rule, so the frames and the footer line up.
+  const rule = corner('─'.repeat(Math.max(1, ruleWidth(colors) - 4 - title.length)))
   return `${corner('├─')} ${label} ${rule}`
 }
 
@@ -401,6 +407,21 @@ export function formatTaskHitLine(
   onPath = false,
 ): string {
   return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath)
+}
+
+/**
+ * The `--output-logs hash-only` line: outcome word, task id, cache key —
+ * absent for a task that never computed one (skipped, uncacheable). The
+ * word in its outcome's colour, the key dim.
+ */
+export function formatTaskHashLine(
+  node: TaskNode,
+  o: TaskOutcome,
+  colors: ColorSupport = NO_COLOR,
+): string {
+  const color = o.status === 'aborted' ? ABORTED : statusOf(o).color
+  const key = o.hash === undefined ? '' : ` ${paint('', o.hash, colors, { dim: true })}`
+  return `${paint(color, outcomeWord(o), colors)} ${paintTaskId(node, colors)}${key}`
 }
 
 /** Compact one-liner for an executed task in broad mode. */
@@ -726,6 +747,8 @@ function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
       return paint(ERROR, word, colors, { bold: true })
     case 'skipped':
       return paint(WARN, word, colors)
+    case 'aborted':
+      return paint(ABORTED, word, colors)
     default:
       return dim(word)
   }
@@ -751,12 +774,10 @@ function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
       return paint(ERROR, word, colors, { bold: true })
     case 'skipped':
       return paint(WARN, word, colors)
-    case 'cache-hit':
-    case 'cache-hit-remote':
-    case 'success':
-      return paint('', word, colors, { dim: true })
+    case 'aborted':
+      return paint(ABORTED, word, colors)
     default:
-      return o.status
+      return paint('', word, colors, { dim: true })
   }
 }
 

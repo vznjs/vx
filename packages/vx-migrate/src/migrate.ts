@@ -151,10 +151,8 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     ui.say('info', USAGE, 'out')
     return 0
   }
-  if (parsed.error) {
-    ui.say('error', `vx-migrate: ${parsed.error}`)
-    return 1
-  }
+  // Thrown, so the bin answers it as JSON too when that was asked.
+  if (parsed.error) throw new UserError(parsed.error, 'VX_E_USAGE')
   const reads: LoadReads = new Map()
   // An Nx repo with no package.json (Nx pinned in `.nx/installation`):
   // nothing is installable, so its configs run on core alone.

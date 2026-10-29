@@ -190,7 +190,7 @@ export async function runSetup(
   }
   // The bare usage said nothing of what was wrong with the line typed.
   const wrong = (what: string): never => {
-    throw new UserError(`${what}\n${usage}`)
+    throw new UserError(`${what}\n${usage}`, 'VX_E_USAGE')
   }
   if (argv[0] === undefined) wrong(`missing the CI: vx setup ${ci}`)
   if (argv[0] !== ci) wrong(`unknown CI: ${argv[0]} (this workspace sets up ${ci})`)

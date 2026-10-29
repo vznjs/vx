@@ -20,7 +20,7 @@ interface DocsArgs {
   error?: string
 }
 
-function parseDocsArgs(args: readonly string[]): DocsArgs {
+export function parseDocsArgs(args: readonly string[]): DocsArgs {
   const out: DocsArgs = { terms: [], limit: DEFAULT_LIMIT, json: false }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!

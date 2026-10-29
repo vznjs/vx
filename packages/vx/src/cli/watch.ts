@@ -15,7 +15,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
-import { seeHelp } from './help.js'
+import { refuse, seeHelp } from './help.js'
 import {
   fingerprintClaims,
   forwardedSignal,
@@ -51,7 +51,6 @@ import {
   printable,
   restartTimings,
   sayNotice,
-  sayLine,
   ui,
 } from '../util/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
@@ -108,16 +107,16 @@ export function watchRefusal(parsed: RunArgs): string | null {
 
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args, 'watch')
-  if (parsed.error) {
-    sayNotice('error', 'vx watch', `${parsed.error}${seeHelp('watch')}`)
-    return 1
-  }
+  if (parsed.error) return refuse('watch', args, `${parsed.error}${seeHelp('watch')}`, 'VX_E_USAGE')
 
   const refused = watchRefusal(parsed)
-  if (refused !== null) {
-    sayLine('error', `${refused}${seeHelp('watch')}`, 'vx watch')
-    return 1
-  }
+  if (refused !== null)
+    return refuse(
+      'watch',
+      args,
+      `${refused.replace(/^vx watch: /, '')}${seeHelp('watch')}`,
+      'VX_E_USAGE',
+    )
   if (parsed.tasks.length === 0) {
     sayNotice(
       'error',

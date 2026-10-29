@@ -280,6 +280,7 @@ export function dte(options: DteOptions = {}) {
     if (extra !== undefined)
       throw new UserError(
         `vx dte init: ${extra.startsWith('-') ? 'unknown flag' : 'unexpected argument'}: ${extra} (see \`vx dte --help\`)`,
+        'VX_E_USAGE',
       )
     const root = ctx.workspaceRoot
     if (adapter === undefined)
@@ -336,14 +337,17 @@ export function dte(options: DteOptions = {}) {
           }
           if (argv[0] === 'init') return init(argv.slice(1), ctx)
           // The bare usage said nothing of what was wrong with the line typed.
-          if (argv[0] === undefined) throw new UserError(`missing subcommand\n${USAGE}`)
-          if (argv[0] !== 'worker') throw new UserError(`unknown subcommand: ${argv[0]}\n${USAGE}`)
+          if (argv[0] === undefined)
+            throw new UserError(`missing subcommand\n${USAGE}`, 'VX_E_USAGE')
+          if (argv[0] !== 'worker')
+            throw new UserError(`unknown subcommand: ${argv[0]}\n${USAGE}`, 'VX_E_USAGE')
           if (argv.length > 1)
             throw new UserError(
               `vx dte worker: ${argv[1]!.startsWith('-') ? 'unknown flag' : 'unexpected argument'}: ${argv[1]} (see \`vx dte --help\`)`,
+              'VX_E_USAGE',
             )
           const run = runOf()
-          const relay = process.env['VX_DTE_RELAY'] ?? options.relay
+          const relay = process.env['VX_DTE_RELAY'] || options.relay
           // Only what is missing: with VX_DTE_RUN set, the old line still asked for it.
           if (run === undefined || relay === undefined) {
             const missing = [

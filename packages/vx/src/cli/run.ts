@@ -199,7 +199,9 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
         out.excludeDependencies = [...new Set([...out.excludeDependencies, ...names])]
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
-      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
+      // Whitespace named a directory in spaces; `VX_CACHE_DIR` and `cache.dir` refuse it.
+      if (v === undefined || v.trim() === '')
+        return { ...out, error: `--cache-dir requires a path` }
       // Unlike every other value flag, a cache dir is an arbitrary
       // string — nothing about its shape rejects a swallowed flag. An
       // unquoted empty shell var (`--cache-dir $EMPTY --force`) would
@@ -296,7 +298,10 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       out.affected = ''
     } else if (a?.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
-    } else if (verb === 'watch' && a === '--poll') {
+    } else if (a === '--poll') {
+      // The edit-distance hint offered vx run `--all`, a different flag.
+      if (verb === 'run')
+        return { ...out, error: `unknown flag: --poll (a vx watch flag: vx watch --poll <task>)` }
       out.poll = true
     } else if (a !== undefined && settingFlagOf(a) !== undefined) {
       const { s: set, name } = settingFlagOf(a)!

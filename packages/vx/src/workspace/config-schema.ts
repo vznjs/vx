@@ -210,7 +210,8 @@ function validateSettingValue(value: unknown, path: string, where: string): void
   const untyped =
     (kind.type === 'concurrency' && typeof value === 'string' && !value.endsWith('%')) ||
     (kind.type === 'int' && typeof value !== 'number') ||
-    (kind.type === 'bool' && typeof value !== 'boolean')
+    (kind.type === 'bool' && typeof value !== 'boolean') ||
+    (kind.type === 'size' && value === 'false')
   if (untyped || parseSettingValue(kind, value) === null) {
     throw new UserError(settingRefusal(path, where, value, shown(value)))
   }

@@ -70,14 +70,24 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--sql': ['SELECT * FROM runs'],
   '--stats': [],
   '--live': [],
+  '--limit': ['2'],
 }
-/** A flag that only rides with another on one verb: `last --branch` needs `--stats`. */
+/** A flag that only rides with another on one verb: `last --branch` needs `--stats`, `--follow` needs `--live`. */
 const VERB_ARGV: Readonly<Record<string, readonly string[]>> = {
   'last --branch': ['main', '--stats'],
   'last --follow': ['--live'],
 }
 
 describe('verbFlags is what each verb accepts', () => {
+  it('every verb with a flag of its own has its parser in PARSE', () => {
+    // `vx docs --limit` and `vx upgrade --global` were held by none of the
+    // laws below, and the CLI contract recorded no value for --limit.
+    const missing = CORE_VERBS.filter(
+      (v) => verbFlags(v).some((f) => f !== '--help') && PARSE[v] === undefined,
+    )
+    expect(missing).toEqual([])
+  })
+
   it('completes no flag the verb refuses', () => {
     // `vx watch` completed exactly the flags its help line says it refuses; `show` offered `--run --list`,
     // `lock` `--frozen`, `run` `--check` — all read from prose that names
@@ -116,6 +126,19 @@ describe('verbFlags is what each verb accepts', () => {
       if (verb === 'run') named.delete('--poll')
       // Bun's own flags on init's vx-migrate spawn, not ones init takes.
       if (verb === 'init') for (const f of ['--no-install', '--silent']) named.delete(f)
+      // The package managers' install flags and a binary's --version probe.
+      if (verb === 'upgrade')
+        for (const f of [
+          '--save-dev',
+          '--save',
+          '--save-optional',
+          '--save-prod',
+          '--dev',
+          '--optional',
+          '--workspace-root',
+          '--version',
+        ])
+          named.delete(f)
       expect(named.size).toBeGreaterThan(0)
       for (const f of named) if (!verbFlags(verb).includes(f)) missing.push(`${verb} ${f}`)
     }

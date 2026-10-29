@@ -845,7 +845,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     - `scale`, how many workers: `plan` (above), `backlog` (cores for
       what is ready or running, Spark's dynamic allocation).
       `tests/sim.test.ts` plays main's runs with each.
-- `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
+- `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (unset or empty,
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
   `VX_DTE_WORKER` (its name). It is
   described only by the cores and memory its machine reports. It exits 0

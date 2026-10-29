@@ -1,6 +1,6 @@
 // The relay on Cloudflare Workers (src/worker.ts): what the README's Deploy
 // to Cloudflare button reads, and `bunx wrangler deploy` from this directory.
-// Each run is one Durable Object, held in its own storage.
+// Each run is one Durable Object, which writes no storage.
 {
   "name": "vx-dte-server",
   "main": "src/worker.ts",
@@ -8,7 +8,8 @@
   // The relay's URL until a domain is added.
   "workers_dev": true,
   // Who may take part, a plain var each deploy sets from this file: fill it
-  // in your copy. Empty, the relay refuses every run with "set ALLOW".
+  // in your copy. Empty, the relay refuses every run with "this relay's
+  // ALLOW is empty: it admits no run".
   "vars": { "ALLOW": "" },
   "durable_objects": {
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],

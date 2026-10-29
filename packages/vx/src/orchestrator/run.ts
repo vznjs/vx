@@ -459,7 +459,8 @@ async function runOnBus(
   // name the task; the check is on the root so both shapes are caught.
   // Compared canonical: a root reached through a symlink (`run({ cwd })`,
   // macOS's /var/folders) and the inner vx's realpath'd cwd are one tree.
-  const outerRoot = process.env[VX_RUN_WORKSPACE_ENV]
+  // Empty is unset: resolved, '' named the cwd.
+  const outerRoot = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
     await teardown()
     prepared.cache.close()

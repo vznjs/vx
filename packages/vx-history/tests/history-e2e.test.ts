@@ -273,6 +273,15 @@ describe('vx-history plugin end to end', () => {
         [1, '✗ vx history  --format must be pretty or json (got xml)\n\n  see vx history --help\n'],
         [1, '✗ vx history  --format requires a value: pretty or json\n\n  see vx history --help\n'],
       ])
+      // A flag the verb does not take is a usage refusal, as core's are.
+      const badJson = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format=json', '--nope'],
+        cwd: root,
+      })
+      expect([badJson.exitCode, JSON.parse(badJson.stdout.toString()).error.code]).toEqual([
+        1,
+        'VX_E_USAGE',
+      ])
       // `vx completions` offers `--help` for every plugin verb; it was refused.
       for (const flag of ['--help', '-h']) {
         const help = Bun.spawnSync({
