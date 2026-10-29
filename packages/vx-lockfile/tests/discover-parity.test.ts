@@ -1035,6 +1035,37 @@ importers:
     ])
   })
 
+  it('a manifest whose `keywords` is no string array reads like any other (Turbo #161)', async () => {
+    const lock = `lockfileVersion: '9.0'
+
+importers:
+
+  .: {}
+
+  packages/lib: {}
+
+  packages/web:
+    dependencies:
+      lib:
+        specifier: workspace:*
+        version: link:../lib
+`
+    for (const keywords of ['a, b', null, 7, { a: 1 }, [1, 'x']]) {
+      const projects = await metas({
+        'packages/web': {
+          name: 'web',
+          version: '1.0.0',
+          keywords,
+          dependencies: { lib: 'workspace:*' },
+        } as never,
+        'packages/lib': { name: 'lib', version: '1.0.0', keywords } as never,
+      })
+      expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', lock, projects)).order).toEqual([
+        'web → lib',
+      ])
+    }
+  })
+
   it('yarn packs a `file:` directory, a copy that is no link to the workspace package', async () => {
     const projects = await metas({
       'packages/app': { name: 'app', version: '1.0.0', dependencies: { a: 'file:../real-a' } },
