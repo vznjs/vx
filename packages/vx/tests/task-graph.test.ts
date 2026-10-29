@@ -308,6 +308,32 @@ describe('buildTaskGraph', () => {
     expect(splitTaskId('build#build:prod')).toEqual(['build', 'build:prod'])
   })
 
+  // Another runner ran only the first entry of a dependsOn list, or let one
+  // `^` entry stand for every other.
+  it('every dependsOn entry is an edge, each ^name reaching the projects that declare it', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('a', {
+          t1: cmd('1'),
+          t2: cmd('2'),
+          t3: cmd('3'),
+          t4: { ...cmd('4'), dependsOn: ['t1', 't2', 't3', '^gen1', '^gen2'] },
+        }),
+        project('b', { gen2: cmd('b2') }),
+        project('c', { gen1: cmd('c1') }),
+      ),
+      packageGraph: packageGraph({ a: ['b', 'c'] }),
+      requested: [{ project: 'a', task: 't4' }],
+    })
+    expect([...nodes.get('a#t4')!.deps].sort()).toEqual([
+      'a#t1',
+      'a#t2',
+      'a#t3',
+      'b#gen2',
+      'c#gen1',
+    ])
+  })
+
   it('names an unknown pkg#task target as such, not as a missing same-project task', () => {
     expect(() =>
       buildTaskGraph({
