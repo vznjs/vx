@@ -51,15 +51,16 @@ const DIRFD = '(?:AT_FDCWD|\\d+)(?:<(.*?)>)?, '
 // The rest of the call: an `execve`'s argv strings may hold a `)`
 // (`sh -c "f()"`), so it reads to the result at the line's end.
 const ARGS = '.*'
+// The result, at the line's end: an argv string may hold `) = -1 ENOENT`
+// itself, and a call that succeeded read as denied.
+const FAILED = '\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)(?: \\([^)]*\\))?\\s*$'
 const STRACE_DONE_RE = new RegExp(
-  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}${ARGS}\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
+  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}${ARGS}\\)${FAILED}`,
 )
 const STRACE_UNFINISHED_RE = new RegExp(
   `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}${ARGS}<unfinished`,
 )
-const STRACE_RESUMED_RE = new RegExp(
-  `^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>.*?=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
-)
+const STRACE_RESUMED_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>.*?${FAILED}`)
 /**
  * The calls that ask whether a path is there rather than read it. A
  * `chdir` creates nothing: one into a directory the host lacks (`mkdir -p`

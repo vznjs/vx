@@ -25,7 +25,8 @@ spawn (`runSandboxed`, `wrapSandboxedCommand`, the macOS profile rules).
 Three companions hold the rest, split 2026-09-09 as pure code motion:
 
 - `sandbox-violations.ts` — the Linux strace pass (`deniedCalls`,
-  `parseStraceViolations`), the seatbelt record description, and the
+  `parseStraceViolations`; a call's result is read at its line's end,
+  never from an argv string that spells one), the seatbelt record description, and the
   report filters (`reportableViolations`: inside the project or a
   withheld linked package, minus loopback noise, minus the task's
   `ignore`).
