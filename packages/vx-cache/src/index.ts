@@ -107,6 +107,42 @@ const scopeOf = (ref: string): string =>
   new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
 
 /**
+ * A body's first `max` bytes as text, the rest cancelled unread, and
+ * whether there was more: an answer is read no further than vx needs, so
+ * a server's endless one cannot fill this machine's memory.
+ */
+async function upTo(res: Response, max: number): Promise<{ text: string; over: boolean }> {
+  const reader = res.body?.getReader()
+  if (reader === undefined) return { text: '', over: false }
+  const parts: Uint8Array[] = []
+  let n = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    parts.push(value)
+    n += value.byteLength
+    if (n > max) {
+      // quiet: the answer is refused for its size; its cancel adds nothing
+      await reader.cancel().catch(() => {})
+      return { text: Buffer.concat(parts).subarray(0, max).toString('utf8'), over: true }
+    }
+  }
+  return { text: Buffer.concat(parts).toString('utf8'), over: false }
+}
+
+/** A JSON answer of at most `max` bytes; past it, a refusal that says so. */
+async function jsonUpTo(res: Response, max: number, what: string): Promise<unknown> {
+  const { text, over } = await upTo(res, max)
+  if (over) throw new Error(`${what} answered over ${max} bytes`)
+  return JSON.parse(text)
+}
+
+/** Capabilities and a CI token are a few hundred bytes: room to spare. */
+const SMALL_ANSWER_BYTES = 64 * 1024
+/** A check's answer per hash asked: a hash, a size and a scope in JSON are under 150 bytes. */
+const CHECK_BYTES_PER_HASH = 512
+
+/**
  * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
  * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
  * overwrote the line before (core's `printable`, L-31).
@@ -119,7 +155,7 @@ const printable = (s: string): string =>
 async function refusal(res: Response): Promise<Error> {
   let said = ''
   try {
-    const text = (await res.text()).slice(0, 2048)
+    const { text } = await upTo(res, 2048)
     try {
       const message = (JSON.parse(text) as { message?: unknown }).message
       said = typeof message === 'string' ? message : text
@@ -134,8 +170,9 @@ async function refusal(res: Response): Promise<Error> {
 }
 
 /** A 200's JSON; one that is none (a website's page) names the likely fault, the url. */
-async function jsonOf(res: Response, path: string): Promise<unknown> {
-  const text = await res.text()
+async function jsonOf(res: Response, path: string, max: number): Promise<unknown> {
+  const { text, over } = await upTo(res, max)
+  if (over) throw new Error(`${path} answered over ${max} bytes`)
   try {
     return JSON.parse(text)
   } catch {
@@ -153,28 +190,39 @@ function deadline(ms: number): AbortSignal {
   return controller.signal
 }
 
+/** A download's least pace: at 1 MiB a second, a 60 MB artifact is in within a minute. */
+const FLOOR_BYTES_PER_S = 1024 * 1024
+
 /**
- * A download's deadline: `ms` for the answer, then `ms` between its body's
- * bytes. A whole-body deadline failed a big artifact still arriving at a
- * steady pace (a 30 s cut, CI 2026-10-25); core judges whether running
- * the task beats the rest of the wait.
+ * A download's deadline: `ms` for the answer, then at least
+ * `FLOOR_BYTES_PER_S` over each `ms` of its body. A whole-body deadline
+ * failed a big artifact still arriving at a steady pace (a 30 s cut, CI
+ * 2026-10-25); a gap-only one let a trickle hold a run 19 minutes (a byte
+ * now and then reset it, CI 2026-10-28). Core judges whether running the
+ * task beats the rest of the wait.
  */
 function streamed(res: Response, controller: AbortController, ms: number): Response {
   if (res.body === null) return res
-  let timer: Timer | undefined
-  const rearm = () => {
-    clearTimeout(timer)
-    timer = setTimeout(() => controller.abort(new Error(`no bytes for ${ms} ms`)), ms)
-    timer.unref()
-  }
-  rearm()
+  const floor = (FLOOR_BYTES_PER_S * ms) / 1000
+  let got = 0
+  const window = setInterval(() => {
+    if (got < floor)
+      controller.abort(
+        new Error(
+          got === 0 ? `no bytes in ${ms} ms` : `${got} bytes in ${ms} ms, under 1 MiB a second`,
+        ),
+      )
+    got = 0
+  }, ms)
+  window.unref()
+  controller.signal.addEventListener('abort', () => clearInterval(window), { once: true })
   const body = res.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, out) {
-        rearm()
+        got += chunk.byteLength
         out.enqueue(chunk)
       },
-      flush: () => clearTimeout(timer),
+      flush: () => clearInterval(window),
     }),
   )
   return new Response(body, {
@@ -358,7 +406,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     try {
       const res = await this.askOnce(ask)
       if (!res.ok) throw await refusal(res)
-      jwt = ((await res.json()) as { value?: unknown }).value
+      jwt = ((await jsonUpTo(res, SMALL_ANSWER_BYTES, 'it')) as { value?: unknown } | null)?.value
       if (typeof jwt !== 'string' || jwt === '') throw new Error('no token in its answer')
     } catch (err) {
       this.disabled = true
@@ -461,7 +509,10 @@ export class VxCacheLayer implements RemoteCacheLayer {
       const res = await this.request('/v1/capabilities', { method: 'GET' })
       if (res === undefined) return undefined
       if (res.status !== 200) throw await refusal(res)
-      const body = (await jsonOf(res, '/v1/capabilities')) as Record<string, unknown> | null
+      const body = (await jsonOf(res, '/v1/capabilities', SMALL_ANSWER_BYTES)) as Record<
+        string,
+        unknown
+      > | null
       const named = limitsOf((k) => body?.[k])
       if (named === undefined) this.limitsUnnamed(`/v1/capabilities (HTTP ${res.status})`)
       return named
@@ -566,7 +617,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (res === undefined) return new Map()
     if (res.status !== 200) throw await refusal(res)
     if (limitsNamed(res) === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
-    const body = (await jsonOf(res, '/v1/artifacts')) as Record<string, unknown> | null
+    const body = (await jsonOf(
+      res,
+      '/v1/artifacts',
+      SMALL_ANSWER_BYTES + hashes.length * CHECK_BYTES_PER_HASH,
+    )) as Record<string, unknown> | null
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       throw new Error('the check answered no object of hashes')
     }

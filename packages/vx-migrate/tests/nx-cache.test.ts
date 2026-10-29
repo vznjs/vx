@@ -70,7 +70,7 @@ describe('resolveNxCacheConfig', () => {
     const server = { NX_SELF_HOSTED_REMOTE_CACHE_SERVER: 'https://c.example' }
     expect(
       [{ NX_SKIP_REMOTE_CACHE: 'true' }, { NX_DISABLE_REMOTE_CACHE: 'true' }].map(
-        (e) => resolveNxCacheConfig({ server: 'https://o' }, { ...server, ...e })?.server,
+        (e) => resolveNxCacheConfig({ url: 'https://o' }, { ...server, ...e })?.url,
       ),
     ).toEqual(['https://o', 'https://o'])
     expect(
@@ -81,17 +81,17 @@ describe('resolveNxCacheConfig', () => {
           NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: 't',
         },
       ),
-    ).toEqual({ server: 'https://c.example', accessToken: 't', timeoutMs: 30_000, retries: 1 })
-    expect(resolveNxCacheConfig({ server: 'https://o' }, {})).toEqual({
-      server: 'https://o',
+    ).toEqual({ url: 'https://c.example', token: 't', timeoutMs: 30_000, retries: 1 })
+    expect(resolveNxCacheConfig({ url: 'https://o' }, {})).toEqual({
+      url: 'https://o',
       timeoutMs: 30_000,
       retries: 1,
     })
   })
 
   it('refuses a server with no http(s) scheme, naming where it came from', () => {
-    expect(() => resolveNxCacheConfig({ server: 'cache.example.com' }, {})).toThrow(
-      'nxCache() option "server" must be an http(s) URL, got "cache.example.com"',
+    expect(() => resolveNxCacheConfig({ url: 'cache.example.com' }, {})).toThrow(
+      'nxCache() option "url" must be an http(s) URL, got "cache.example.com"',
     )
     expect(() =>
       resolveNxCacheConfig({}, { NX_SELF_HOSTED_REMOTE_CACHE_SERVER: 'cache.example.com' }),
@@ -108,19 +108,17 @@ describe('resolveNxCacheConfig', () => {
       }
     }
     const MSG =
-      'nxCache() option "server" carries credentials (user:pass@); pass them as the accessToken instead'
+      'nxCache() option "url" carries credentials (user:pass@); pass them as the token instead'
     const ENV =
-      'NX_SELF_HOSTED_REMOTE_CACHE_SERVER carries credentials (user:pass@); pass them as the accessToken instead'
+      'NX_SELF_HOSTED_REMOTE_CACHE_SERVER carries credentials (user:pass@); pass them as the token instead'
     expect([
-      refusal(() => resolveNxCacheConfig({ server: 'https://u:p@c.example' }, {})),
+      refusal(() => resolveNxCacheConfig({ url: 'https://u:p@c.example' }, {})),
       refusal(() =>
         resolveNxCacheConfig({}, { NX_SELF_HOSTED_REMOTE_CACHE_SERVER: 'https://u@c.example/' }),
       ),
     ]).toEqual([MSG, ENV])
     // CONTROL: the same host without userinfo resolves.
-    expect(resolveNxCacheConfig({ server: 'https://c.example' }, {})?.server).toBe(
-      'https://c.example',
-    )
+    expect(resolveNxCacheConfig({ url: 'https://c.example' }, {})?.url).toBe('https://c.example')
   })
 })
 
@@ -130,8 +128,8 @@ describe('NxRemoteCache against the spec server', () => {
     srv = nxServer()
   })
   afterAll(() => srv.stop())
-  const cache = (accessToken = TOKEN) =>
-    new NxRemoteCache(resolveNxCacheConfig({ server: srv.url, accessToken }, {})!)
+  const cache = (token = TOKEN) =>
+    new NxRemoteCache(resolveNxCacheConfig({ url: srv.url, token }, {})!)
 
   it('put → get round trip; a miss is 404 → null; a second put of the same hash is the spec’s 409 and fine', async () => {
     const c = cache()
@@ -171,7 +169,7 @@ describe('NxRemoteCache against the spec server', () => {
       )
     }) as unknown as typeof fetch
     const c = new NxRemoteCache(
-      { server: 'http://nx.invalid', accessToken: '', timeoutMs: 1_000, retries: 0 },
+      { url: 'http://nx.invalid', token: '', timeoutMs: 1_000, retries: 0 },
       streamed,
     )
     expect(await c.has('aa11')).not.toBeNull()
@@ -257,7 +255,7 @@ describe('vx run with nxCache() layered over the local cache', () => {
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(
-        [`nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)} })`],
+        [`nxCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)} })`],
         `import { nxCache } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
       ),
     )

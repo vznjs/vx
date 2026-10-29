@@ -19,6 +19,8 @@ import {
 } from '../history/index.js'
 import {
   currentBranch,
+  type LiveSnapshot,
+  liveSocketPath,
   exitSignal,
   resolveRunId,
   runFailures,
@@ -29,7 +31,7 @@ import {
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
-import { outcomeWord } from '../report/index.js'
+import { outcomeWord, type WireEvent } from '../report/index.js'
 import {
   detectColors,
   ERROR,
@@ -66,6 +68,10 @@ interface LastArgs {
   cacheDir?: string
   /** `--sql <query>`: the history's rows a read-only query selects. */
   sql?: string
+  /** `--live`: the run in progress, from the run itself. */
+  live?: boolean
+  /** `--follow`: with `--live`, the run's events from now to its end. */
+  follow?: boolean
   error?: string
 }
 
@@ -116,6 +122,14 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     if (a === '--stats') {
       out.stats = true
+      continue
+    }
+    if (a === '--live') {
+      out.live = true
+      continue
+    }
+    if (a === '--follow') {
+      out.follow = true
       continue
     }
     if (a === '--sql' || a.startsWith('--sql=')) {
@@ -172,6 +186,19 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     if (out.runId !== undefined)
       return { ...out, error: `unexpected argument: ${a}${seeHelp('last')}` }
     out.runId = a
+  }
+  if (out.follow === true && out.live !== true) {
+    return { ...out, error: `--follow needs --live${seeHelp('last')}` }
+  }
+  if (out.live === true) {
+    const other = [out.runId, out.list, out.failed, out.log, out.stats, out.branch, out.sql]
+    if (bareLog || other.some((v) => v !== undefined)) {
+      return {
+        ...out,
+        error: `--live combines only with --follow, --format and --cache-dir${seeHelp('last')}`,
+      }
+    }
+    return out
   }
   if (out.sql !== undefined) {
     const other = [out.runId, out.list, out.failed, out.log, out.stats, out.branch]
@@ -376,6 +403,123 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
   )
   process.stdout.write(`${lines.join('\n')}\n`)
   return 0
+}
+
+/** How long a run has to answer before `--live` gives up on it. */
+const LIVE_ANSWER_MS = 5_000
+
+/**
+ * `--live`: ask the run in progress (orchestrator/run-live.ts) for its
+ * snapshot, and with `--follow` print its events until it lets go. The
+ * history is not opened: the run itself answers.
+ */
+async function printLive(
+  root: string,
+  follow: boolean,
+  format: 'pretty' | 'json',
+): Promise<number> {
+  const none = (): never => {
+    throw refusal(
+      { tone: 'info', headline: 'no run in progress', fix: 'vx last' },
+      {
+        code: 'VX_E_NO_HISTORY',
+        message: 'vx last: no run in progress — `vx last` reads the last one',
+      },
+    )
+  }
+  let buffered = ''
+  let snapshot: LiveSnapshot | undefined
+  let settle!: (answered: boolean) => void
+  const done = new Promise<boolean>((resolve) => (settle = resolve))
+  const line = (text: string): void => {
+    if (snapshot === undefined) {
+      snapshot = JSON.parse(text) as LiveSnapshot
+      if (format === 'json') process.stdout.write(`${text}\n`)
+      else process.stdout.write(`${formatLive(snapshot).join('\n')}\n`)
+      return
+    }
+    if (format === 'json') process.stdout.write(`${text}\n`)
+    else process.stdout.write(formatLiveEvent(JSON.parse(text) as WireEvent))
+  }
+  try {
+    await Bun.connect({
+      unix: liveSocketPath(root),
+      socket: {
+        open(sock) {
+          sock.write(follow ? 'follow\n' : 'snapshot\n')
+        },
+        data(_sock, chunk) {
+          buffered += chunk.toString()
+          for (let at = buffered.indexOf('\n'); at !== -1; at = buffered.indexOf('\n')) {
+            line(buffered.slice(0, at))
+            buffered = buffered.slice(at + 1)
+          }
+        },
+        close() {
+          settle(snapshot !== undefined)
+        },
+        error() {
+          settle(snapshot !== undefined)
+        },
+      },
+    })
+  } catch {
+    // ENOENT, ECONNREFUSED: no run listens there (a killed run's socket).
+    none()
+  }
+  const timer = follow
+    ? undefined
+    : setTimeout(() => settle(snapshot !== undefined), LIVE_ANSWER_MS)
+  const answered = await done
+  clearTimeout(timer)
+  if (!answered) none()
+  return 0
+}
+
+function formatLive(s: LiveSnapshot): string[] {
+  const count = (status: string): number => s.tasks.filter((t) => t.status === status).length
+  const running = count('running')
+  const waiting = count('waiting')
+  const failed = count('failed')
+  const lines = [
+    `run ${s.live.runId} — running ${fmtMs(s.live.elapsedMs)}`,
+    `  $ ${s.live.command}`,
+    `  ${running} running · ${s.tasks.length - running - waiting} ended${failed > 0 ? ` · ${failed} failed` : ''} · ${waiting} waiting`,
+    '',
+  ]
+  const width = Math.max(...s.tasks.map((t) => t.status.length), 7)
+  const idWidth = Math.max(...s.tasks.map((t) => t.taskId.length), 0)
+  const now = s.live.startedAt + s.live.elapsedMs
+  for (const t of s.tasks) {
+    const ms =
+      t.durationMs !== null ? t.durationMs : t.startedAt !== null ? now - t.startedAt : null
+    lines.push(
+      `  ${t.status.padEnd(width)}  ${ms === null ? t.taskId : `${t.taskId.padEnd(idWidth)}  ${fmtMs(ms)}`}`,
+    )
+  }
+  if (s.warnings.length > 0) {
+    lines.push('', '  warnings', ...s.warnings.flatMap((w) => w.split('\n').map((l) => `    ${l}`)))
+  }
+  return lines
+}
+
+/** One followed event as a line: a task's output prefixed by its id, an end, a warning. */
+function formatLiveEvent(e: WireEvent): string {
+  switch (e.kind) {
+    case 'task:stdout':
+    case 'task:stderr':
+      return e.chunk
+        .replace(/\n$/, '')
+        .split('\n')
+        .map((l) => `${e.taskId} │ ${l}\n`)
+        .join('')
+    case 'task:complete':
+      return `${outcomeWord(e.outcome)}  ${e.outcome.taskId}  ${fmtMs(e.outcome.durationMs)}\n`
+    case 'run:status':
+      return 'warn' in e ? `warn  ${Bun.stripANSI(e.line)}\n` : ''
+    default:
+      return ''
+  }
 }
 
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
@@ -613,6 +757,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
   if (parsed.error !== undefined) throw new UserError(`vx last: ${parsed.error}`, 'VX_E_USAGE')
 
   const root = await findWorkspaceRoot(process.cwd())
+  if (parsed.live === true) return await printLive(root, parsed.follow === true, parsed.format)
   const cacheDir = await cliCacheDir(root, parsed.cacheDir)
   const cache = Cache.inspect(cacheDir)
   try {

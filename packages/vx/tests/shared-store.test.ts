@@ -524,7 +524,7 @@ describe('repoIdOf', () => {
     }
     const dry = vx('--dry', '--format', 'json')
     const wet = vx('--format', 'json')
-    expect(dry).toEqual(['0', wet[1]!.replace('"dryRun":false', '"dryRun":true'), ''])
+    expect(dry).toEqual(['0', wet[1]!.replace('"dry":false', '"dry":true'), ''])
     expect(JSON.parse(wet[1]!)).toMatchObject({ evicted: 1 })
   })
 

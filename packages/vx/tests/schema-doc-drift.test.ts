@@ -565,6 +565,12 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(`{ plugins: [Promise.resolve(${plugin('p', '{ setup() {} }')})] }`),
   ],
   [
+    "plugins[<i>] is plugins[<j>] again (plugin '<name>') — declare a plugin once",
+    workspaceConfig(
+      `(() => { const p = ${plugin('p', '{ setup() {} }')}; return { plugins: [p, p] } })()`,
+    ),
+  ],
+  [
     'plugins[<i>].name overrides the package name',
     workspaceConfig(`{ plugins: [{ ...${plugin('p', '{ setup() {} }')}, name: "q" }] }`),
   ],

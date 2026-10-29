@@ -699,6 +699,33 @@ describe('tieredReverseDepCount', () => {
     })
   })
 
+  it('an exec task under a restore blocks what that restore feeds (item 963)', async () => {
+    // r restores at once but releases e2 only once e1 has run, so e1 blocks
+    // e2 as surely as an edge would. Counted over the exec tier alone, e1
+    // ranked 0 and the idle x ran first, holding e2 behind both.
+    const m = nodes(node('x#b'), node('e1#b'), node('r#b', ['e1#b']), node('e2#b', ['r#b']))
+    const tier = new Set(['r#b'])
+    expect(Object.fromEntries(tieredReverseDepCount(m, tier))).toEqual({
+      'x#b': 0,
+      'e1#b': 1,
+      'e2#b': 0,
+      'r#b': 1,
+    })
+    const order: string[] = []
+    await runGraph({
+      nodes: m,
+      concurrency: 1,
+      restoreTier: tier,
+      execute: async (n) => {
+        order.push(n.id)
+        return n.id === 'r#b'
+          ? { node: n, status: 'cache-hit', exitCode: 0, durationMs: 0, hash: `h-${n.id}` }
+          : success(n)
+      },
+    })
+    expect(order.indexOf('e1#b')).toBeLessThan(order.indexOf('x#b'))
+  })
+
   it('the exec task behind a chain of restores starts before the idle restores (C-51)', async () => {
     const order: string[] = []
     await runGraph({
@@ -1365,6 +1392,44 @@ describe('runGraph restore-tier (local short-circuit)', () => {
         },
       })
       expect(calls).toContain('api#dev')
+    })
+
+    // Fail-fast and a stop finished it `skipped` / `aborted`: an outcome for
+    // a server the run was never going to start.
+    it('has no outcome when fail-fast stops the run before it is due', async () => {
+      const out = await runGraph({
+        nodes: new Map([...graph(), ['x#fail', node('x#fail')]]),
+        concurrency: 4,
+        restoreTier: tier,
+        continueMode: 'never',
+        execute: async (n) => {
+          if (n.id === 'x#fail') return failed(n)
+          if (n.id === 'db#migrate') await new Promise((r) => setTimeout(r, 20))
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(out.get('x#fail')?.status).toBe('failed')
+      expect(out.has('api#dev')).toBe(false)
+      expect(out.get('web#ci')?.status).toBe('skipped')
+    })
+
+    it('has no outcome when the run is stopped before it is due', async () => {
+      const controller = new AbortController()
+      const out = await runGraph({
+        nodes: graph(),
+        concurrency: 4,
+        restoreTier: tier,
+        signal: controller.signal,
+        execute: async (n) => {
+          if (n.id === 'db#migrate') {
+            controller.abort()
+            await new Promise((r) => setTimeout(r, 20))
+          }
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(out.has('api#dev')).toBe(false)
+      expect(out.get('web#ci')?.status).toBe('aborted')
     })
 
     it('is skipped as before when its own dependency failed', async () => {

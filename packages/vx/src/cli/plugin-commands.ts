@@ -52,7 +52,7 @@ async function workspacePlugins(cwd: string): Promise<
   | {
       workspaceRoot: string
       cacheDir: string
-      storeRoot: Promise<string | null>
+      storeRoot: () => Promise<string | null>
       workspaceConfig: WorkspaceConfig | null
       concurrency: number
       plugins: readonly VxPlugin[]
@@ -104,8 +104,10 @@ export async function resolvePluginCommand(
   const declaredVerbs = new Set<string>()
   for (const plugin of ws.plugins) {
     for (const declared of Object.keys(plugin.commands ?? {})) declaredVerbs.add(declared)
-    const command = plugin.commands?.[verb]
-    if (command === undefined) continue
+    // Own keys only: `vx toString` found Object.prototype's and crashed.
+    const commands = plugin.commands
+    if (commands === undefined || !Object.hasOwn(commands, verb)) continue
+    const command = commands[verb]!
     return {
       plugin,
       command,
@@ -161,7 +163,7 @@ async function verbCache(
     ws.workspaceRoot,
     undefined,
     'open',
-    await ws.storeRoot,
+    await ws.storeRoot(),
   )
   const remotes: ResolvedRemote[] = []
   await resolveCache(ws.plugins, {
@@ -221,7 +223,7 @@ async function verbArtifacts(
     ws.workspaceRoot,
     undefined,
     'open',
-    await ws.storeRoot,
+    await ws.storeRoot(),
   )
   const remotes: ResolvedRemote[] = []
   const cache = await resolveCache(ws.plugins, {

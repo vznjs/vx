@@ -428,4 +428,20 @@ describe('buildInputTree', () => {
     const top = decodeDirectory(tree.blobs.find((b) => b.digest.hash === tree.root.hash)!.data)
     expect(top.files.map((f) => f.is_executable)).toEqual([false])
   })
+
+  // An upstream's output on disk that is also a declared input (a codegen
+  // file under `src/**`) is named twice; it was read and counted twice.
+  it('a path named twice is read once and counted once', async () => {
+    await writeFile(path.join(root, 'twice.ts'), 'x')
+    const read: string[] = []
+    const tree = await buildInputTree({
+      workspaceRoot: root,
+      paths: ['twice.ts', 'twice.ts'],
+      readFile: async (abs) => {
+        read.push(path.basename(abs))
+        return new Uint8Array(await Bun.file(abs).arrayBuffer())
+      },
+    })
+    expect([read, tree.fileCount]).toEqual([['twice.ts'], 1])
+  })
 })

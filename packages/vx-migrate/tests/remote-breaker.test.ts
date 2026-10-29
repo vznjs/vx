@@ -108,10 +108,7 @@ describe('a hung server costs three deadlines, not one per request', () => {
 
   it('turboCache()', async () => {
     const c = new TurboRemoteCache(
-      resolveTurboCacheConfig(
-        { apiUrl: hung.url.origin, token: 't', timeoutMs: 50, retries: 0 },
-        {},
-      )!,
+      resolveTurboCacheConfig({ url: hung.url.origin, token: 't', timeoutMs: 50, retries: 0 }, {})!,
     )
     expect(await count(() => c.has('abc'))).toEqual([
       ...Array(3).fill('no answer within 50 ms'),
@@ -121,10 +118,7 @@ describe('a hung server costs three deadlines, not one per request', () => {
 
   it('nxCache()', async () => {
     const c = new NxRemoteCache(
-      resolveNxCacheConfig(
-        { server: hung.url.origin, accessToken: '', timeoutMs: 50, retries: 0 },
-        {},
-      )!,
+      resolveNxCacheConfig({ url: hung.url.origin, token: '', timeoutMs: 50, retries: 0 }, {})!,
     )
     expect(await count(() => c.get('abc'))).toEqual([
       ...Array(3).fill('no answer within 50 ms'),
@@ -159,7 +153,7 @@ describe('a hit whose body stalls past the deadline is an outage too', () => {
   it('turboCache()', async () => {
     const c = new TurboRemoteCache(
       resolveTurboCacheConfig(
-        { apiUrl: stalled.url.origin, token: 't', timeoutMs: 50, retries: 0 },
+        { url: stalled.url.origin, token: 't', timeoutMs: 50, retries: 0 },
         {},
       )!,
     )
@@ -171,10 +165,7 @@ describe('a hit whose body stalls past the deadline is an outage too', () => {
 
   it('nxCache()', async () => {
     const c = new NxRemoteCache(
-      resolveNxCacheConfig(
-        { server: stalled.url.origin, accessToken: '', timeoutMs: 50, retries: 0 },
-        {},
-      )!,
+      resolveNxCacheConfig({ url: stalled.url.origin, token: '', timeoutMs: 50, retries: 0 }, {})!,
     )
     expect(await count(() => c.get('abc'))).toEqual([
       ...Array(3).fill('no answer within 50 ms'),
@@ -202,12 +193,12 @@ describe('a GET body read no further is cancelled', () => {
   }
   const turbo = (f: typeof fetch) =>
     new TurboRemoteCache(
-      resolveTurboCacheConfig({ apiUrl: 'http://cache.test', token: 't', retries: 0 }, {})!,
+      resolveTurboCacheConfig({ url: 'http://cache.test', token: 't', retries: 0 }, {})!,
       f,
     ).get('abc')
   const nx = (f: typeof fetch) =>
     new NxRemoteCache(
-      resolveNxCacheConfig({ server: 'http://cache.test', accessToken: '', retries: 0 }, {})!,
+      resolveNxCacheConfig({ url: 'http://cache.test', token: '', retries: 0 }, {})!,
       f,
     ).get('abc')
 
@@ -224,7 +215,7 @@ describe('a GET body read no further is cancelled', () => {
       new TurboRemoteCache(
         resolveTurboCacheConfig(
           {
-            apiUrl: 'http://cache.test',
+            url: 'http://cache.test',
             token: 't',
             teamId: 'team_1',
             signatureKey: 'k'.repeat(40),

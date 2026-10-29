@@ -260,6 +260,27 @@ describe('ctx.cache', () => {
     ])
   })
 
+  // The local store keeps a name under its plain key, scope or not: a
+  // scoped hasMany matched those against the scope's keys and found none,
+  // answering absent (with an `undefined` member) for what get returns.
+  it('a scoped hasMany finds what the local store holds, as get does', async () => {
+    const remote = wire({ batch: true })
+    const c = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: 'pr-1',
+    })
+    await c.put('x', bytes('mine'))
+    remote.store.clear()
+    remote.calls.length = 0
+    expect(text(await c.get('x'))).toBe('mine')
+    expect(await c.has('x')).toBe(true)
+    expect(await c.hasMany(['x', 'y'])).toEqual(new Set(['x']))
+    expect(await c.hasMany(['x', 'y'], false)).toEqual(new Set(['x']))
+    expect(remote.calls).toEqual(['hasMany 1', 'hasMany 1'])
+  })
+
   it('hasMany is one probe per layer, and null when a remote cannot batch', async () => {
     const remote = wire({ batch: true })
     const c = pluginCache('org/a', {

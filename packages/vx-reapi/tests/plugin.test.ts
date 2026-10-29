@@ -200,6 +200,30 @@ describe('reapi(): the endpoint is checked where it is set', () => {
     ])
   })
 
+  // A URL copied with its trailing slash was refused as "not host[:port]",
+  // where every other vx plugin strips it.
+  it('takes a trailing slash off the endpoint, as the other plugins do', () => {
+    const served = (endpoint: string, env?: string): string | undefined =>
+      withoutReapiEnv(() => {
+        if (env !== undefined) Bun.env['VX_REAPI_ENDPOINT'] = env
+        const p = reapi(env === undefined ? { endpoint } : {})
+        try {
+          return (p.cache?.(ctx([])) as { endpoint?: string } | undefined)?.endpoint
+        } finally {
+          void p.teardown?.()
+        }
+      })
+    expect([
+      served('grpc://cache.test:9092/'),
+      served('', 'grpcs://cache.test//'),
+      outcome('grpcs://10.0.0.5:443/'),
+    ]).toEqual([
+      'grpc://cache.test:9092',
+      'grpcs://cache.test',
+      'vx/reapi: `reapi({ endpoint })` is "grpcs://10.0.0.5:443", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
+    ])
+  })
+
   // Bun's TLS refuses an IP address as the server name, so a TLS endpoint
   // at an IP failed every request ("Setting the TLS ServerName to an IP
   // address is not permitted") and the remote was never reached.

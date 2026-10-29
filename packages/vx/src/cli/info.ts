@@ -125,8 +125,9 @@ export function renderInfo(f: InfoFacts, colors: ColorSupport = { enabled: false
   return ui.report('vx info', rows).lines(colors).join('\n')
 }
 
-/** `812 (1.2 GB)`. */
+/** `812 (1.2 GB)`, or why the index cannot be read and its fix. */
 function describeEntries(f: InfoFacts): string {
+  if (f.cacheIndexError !== null) return `unreadable: ${f.cacheIndexError}`
   return `${f.cacheEntries} (${formatBytes(f.cacheBytes)})`
 }
 

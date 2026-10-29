@@ -6,12 +6,13 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
-import { afterAll, beforeAll, describe, expect, it, setSystemTime } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, setSystemTime, spyOn } from 'bun:test'
+import { Cache, taskDefinitions, type TaskNode } from '@vzn/vx'
 import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { allowOf, type Issuer, issuer, NAMED } from './issuer.js'
-import { HistoryServer, serverUrlOf, timingOf } from '../src/history-server.js'
+import { HistoryServer, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
 
 let iss: Issuer
@@ -56,6 +57,33 @@ describe('HistoryServer', () => {
     ])
     const got = await client.query(['refs/heads/feature', 'refs/heads/main'], ['a1', 'none'])
     expect(got).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
+  })
+
+  // A run of groups alone has no hash to ask for: it still asked the
+  // server's limits, and warned when the server was down.
+  it('asks nothing for no hashes, as it sends nothing for no timings', async () => {
+    const asked: string[] = []
+    const none = (async (u: string) => {
+      asked.push(u)
+      throw new Error('connection refused')
+    }) as unknown as typeof fetch
+    const client = new HistoryServer(url, NAMED, {}, none)
+    expect(await client.query(['refs/heads/main'], [])).toEqual(new Map())
+    await client.upload(new Map())
+    expect(asked).toEqual([])
+  })
+
+  it('takes no duration that a chain of them could sum past a number', async () => {
+    const answer = (async (u: string) =>
+      String(u).endsWith('/v1/capabilities')
+        ? Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+        : Response.json({
+            timings: { big: { durationMs: 1e308 }, ok: { durationMs: 5 } },
+          })) as unknown as typeof fetch
+    const client = new HistoryServer(url, NAMED, {}, answer)
+    expect(await client.query(['refs/heads/main'], ['big', 'ok'])).toEqual(
+      new Map([['ok', { durationMs: 5 }]]),
+    )
   })
 
   // A blip on the run's first call, the query, kept the run's upload
@@ -133,6 +161,20 @@ describe('HistoryServer', () => {
     const client = new HistoryServer(url, NAMED, {})
     await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
       'HTTP 401: no bearer token: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)',
+    )
+  })
+
+  // A CI job with no token was told it was off CI: its fix is its token.
+  it("names a CI job's missing token as the fix, not READ_ACCESS", async () => {
+    const said = (env: Record<string, string>) =>
+      new HistoryServer(url, NAMED, env)
+        .query(['refs/heads/main'], ['p1'])
+        .catch((e: Error) => e.message)
+    expect(await said({ GITLAB_CI: 'true' })).toBe(
+      'HTTP 401: no bearer token: a read with no CI token was refused (name an id_tokens entry VX_HISTORY_TOKEN)',
+    )
+    expect(await said({ GITHUB_ACTIONS: 'true' })).toBe(
+      'HTTP 401: no bearer token: a read with no CI token was refused (give the job `permissions: id-token: write`)',
     )
   })
 
@@ -341,6 +383,19 @@ describe('HistoryServer', () => {
     expect(timingOf(ran as never)?.durationMs).toBe(75_000)
   })
 
+  // A worker's share rounds to 0 at 0.0005 of a core: cores came out
+  // Infinity (NaN with no CPU time), JSON sent null, and the server
+  // refused the whole upload — every task's timing lost.
+  it('sends no cores it cannot count, so one task never costs the upload', () => {
+    const ran = { status: 'success', durationMs: 1000, peakRssBytes: 1024 } as const
+    for (const cpuMs of [0, 500])
+      expect(timingOf({ ...ran, cpuMs, cpuShare: 0 } as never)).toEqual({
+        durationMs: 1000,
+        rssBytes: 1024,
+      })
+    expect(timingOf({ ...ran, cpuMs: 500, cpuShare: 0.5 } as never)?.cores).toBe(1)
+  })
+
   it('refuses a workspace that names a server but no issuer or repository', () => {
     expect(() => vxHistory({ url: 'https://h.example', repository: 'acme/app' })).toThrow(
       "vxHistory(): issuer must be the CI issuer's URL",
@@ -350,15 +405,92 @@ describe('HistoryServer', () => {
     )
   })
 
-  it('reads the URL over VX_HISTORY_URL', () => {
-    expect(serverUrlOf(undefined, {})).toBeUndefined()
-    expect(serverUrlOf(undefined, { VX_HISTORY_URL: 'https://h.example/' })).toBe(
-      'https://h.example',
-    )
-    expect(() => serverUrlOf('h.example', {})).toThrow('vxHistory(): url must be http(s)')
-    expect(() => serverUrlOf('https://h.example/v1/', {})).toThrow(
+  // The ordering was computed twice, on the local history and again when
+  // the server's numbers landed, and each pass named the bad assumption.
+  it('names an assumption it drops once a run, with the server re-ranking', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-history-assume-'))
+    const cache = new Cache(dir)
+    const fake = spyOn(globalThis, 'fetch').mockImplementation((async (u: string) => {
+      if (String(u).endsWith('/v1/capabilities'))
+        return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+      const hash = [...taskDefinitions([node]).values()][0]!
+      return Response.json({ timings: { [hash]: { durationMs: 50 } } })
+    }) as never)
+    const node = {
+      id: 'a#build',
+      projectName: 'a',
+      projectDir: dir,
+      taskName: 'build',
+      config: { exec: { command: 'true' } },
+      deps: [],
+      requested: true,
+    } as unknown as TaskNode
+    try {
+      const warned: string[] = []
+      const refined: Promise<unknown>[] = []
+      const plugin = vxHistory({
+        url: 'https://h.example',
+        ...NAMED,
+        assume: { 'a#build': Number(undefined) },
+      })
+      await plugin.schedule!(new Map([['a#build', node]]), {
+        warn: (m: string) => warned.push(m),
+        workspaceRoot: dir,
+        localCache: cache,
+        branch: 'main',
+        refs: ['refs/heads/main'],
+        refine: (p: Promise<unknown>) => refined.push(p),
+      } as never)
+      expect(refined).toHaveLength(1)
+      expect(await refined[0]).toBeInstanceOf(Map)
+      expect(warned).toEqual([
+        '[vx] vx-history: assume ignores "a#build" — each must be a number of ms from 0 to 2^53',
+      ])
+    } finally {
+      fake.mockRestore()
+      cache.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reads the URL over VX_HISTORY_URL, refusing one no request can carry', async () => {
+    const saved = Bun.env.VX_HISTORY_URL
+    const warned: string[] = []
+    const setup = (o: Parameters<typeof vxHistory>[0]) =>
+      vxHistory(o).setup!({ ci: false, warn: (m: string) => warned.push(m) } as never)
+    try {
+      Bun.env.VX_HISTORY_URL = 'h.example'
+      await expect(setup({ ...NAMED }) as Promise<unknown>).rejects.toThrow(
+        'vxHistory(): url must be http(s), got h.example',
+      )
+      await setup({ ...NAMED, url: 'https://h.example/' })
+      Bun.env.VX_HISTORY_URL = 'https://h.example/'
+      await setup({})
+      expect(warned).toEqual([
+        '[vx] vx-history: VX_HISTORY_URL names a server, but vxHistory() names no issuer and repository: the server is not asked',
+      ])
+    } finally {
+      if (saved === undefined) delete Bun.env.VX_HISTORY_URL
+      else Bun.env.VX_HISTORY_URL = saved
+    }
+  })
+
+  // It was checked only in a run's `setup`: `vx show`, `vx info` and a
+  // `--dry` plan took the config, and every run then failed on it.
+  it('refuses a url no request can carry when the config is evaluated', () => {
+    const refusal = (o: Parameters<typeof vxHistory>[0]): string => {
+      try {
+        vxHistory({ ...NAMED, ...o })
+        return 'taken'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect(refusal({ url: 'h.example' })).toBe('vxHistory(): url must be http(s), got h.example')
+    expect(refusal({ url: 'https://h.example/v1' })).toBe(
       "vxHistory(): url is the server's base, without /v1: https://h.example",
     )
+    expect(refusal({ url: 'https://h.example/' })).toBe('taken')
   })
 })
 
@@ -382,6 +514,22 @@ describe('vx run with vxHistory({ url })', () => {
         `export default { plugins: [vxHistory({ url: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
     )
     Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: root })
+    // A branch with a commit: an unborn one names no ref to read.
+    Bun.spawnSync({
+      cmd: [
+        'git',
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@t',
+        'commit',
+        '-q',
+        '--allow-empty',
+        '-m',
+        'x',
+      ],
+      cwd: root,
+    })
   })
   afterAll(async () => {
     for (const k of Object.keys(Bun.env)) if (!(k in saved)) delete Bun.env[k]
@@ -427,6 +575,22 @@ describe('vx run with vxHistory({ url })', () => {
           `export default { plugins: [vxHistory({ url: ${JSON.stringify(dead)}, ...${JSON.stringify(NAMED)} })] }\n`,
       )
       Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      // A branch with a commit: an unborn one names no ref to read.
+      Bun.spawnSync({
+        cmd: [
+          'git',
+          '-c',
+          'user.name=t',
+          '-c',
+          'user.email=t@t',
+          'commit',
+          '-q',
+          '--allow-empty',
+          '-m',
+          'x',
+        ],
+        cwd: other,
+      })
       const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
       Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
       const cli = Bun.spawnSync({
@@ -449,6 +613,198 @@ describe('vx run with vxHistory({ url })', () => {
       await rm(other, { recursive: true, force: true })
     }
   }, 30_000)
+
+  // The upload waited for teardown, which core bounds (3 s): a run that
+  // outlived its OIDC token spent the bound on a new token and the PUT,
+  // and its timings were dropped behind core's generic warning.
+  it('starts the upload once the run ends, before any teardown', async () => {
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-early-'))
+    const plugin = await mkdtemp(path.join(tmpdir(), 'vx-history-before-'))
+    let arrived: boolean | undefined
+    const sentBefore = seen.length
+    const uploaded = () => seen.slice(sentBefore).some((r) => r.path === '/v1/timings/upload')
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      // Declared first, so its teardown runs before vx-history's.
+      ;(globalThis as { __vxHistoryBefore?: unknown }).__vxHistoryBefore = async () => {
+        for (let i = 0; i < 100 && !uploaded(); i++) await Bun.sleep(10)
+        arrived = uploaded()
+      }
+      await Bun.write(path.join(plugin, 'package.json'), '{ "name": "before" }\n')
+      await Bun.write(
+        path.join(plugin, 'index.mjs'),
+        `import { definePlugin } from ${JSON.stringify(path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'index.ts'))}\n` +
+          'export default definePlugin(import.meta, { teardown: () => globalThis.__vxHistoryBefore() })\n',
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import before from ${JSON.stringify(path.join(plugin, 'index.mjs'))}\n` +
+          `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [before, vxHistory({ url: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      const r = await run({ cwd: other, tasks: ['build'], handleSignals: false })
+      expect([r.outcomes.map((o) => o.status), arrived]).toEqual([['success'], true])
+    } finally {
+      delete (globalThis as { __vxHistoryBefore?: unknown }).__vxHistoryBefore
+      await rm(other, { recursive: true, force: true })
+      await rm(plugin, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('says how many timings it dropped when the server does not answer in time', async () => {
+    const slow = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => {
+        const at = new URL(req.url).pathname
+        if (at === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 100, maxQueryHashes: 100 })
+        if (at === '/v1/timings/query') return Response.json({ timings: {} })
+        return new Promise<Response>(() => {})
+      },
+    })
+    const hung = `http://127.0.0.1:${slow.port}`
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-hung-'))
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory({ url: ${JSON.stringify(hung)}, ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+      Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
+      const cli = Bun.spawn({
+        cmd: [process.execPath, bin, 'run', 'build', '--all'],
+        cwd: other,
+        env: { ...Bun.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [out, err, code] = await Promise.all([
+        new Response(cli.stdout).text(),
+        new Response(cli.stderr).text(),
+        cli.exited,
+      ])
+      const said = `${out}${err}`.split('\n').filter((l) => /teardown|vx-history/.test(l))
+      expect([code, said]).toEqual([
+        0,
+        [
+          `[vx] vx-history: the timings of 1 task were not sent to the history server at ${hung}: no answer in the 2000 ms a teardown waits`,
+        ],
+      ])
+    } finally {
+      await slow.stop(true)
+      await rm(other, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  // Core bounds a teardown (3 s): an upload first held the timings file's
+  // write behind it, and a server slower than the bound cost the file.
+  it('writes the timings file while the history server is slow to take the upload', async () => {
+    const slow = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req) => {
+        const at = new URL(req.url).pathname
+        if (at === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 100, maxQueryHashes: 100 })
+        if (at === '/v1/timings/query') return Response.json({ timings: {} })
+        return new Promise<Response>(() => {})
+      },
+    })
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-slow-'))
+    Bun.env.VX_TEST_TEARDOWN_TIMEOUT = '300ms'
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory({ url: ${JSON.stringify(`http://127.0.0.1:${slow.port}`)}, file: 'timings.json', ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      const r = await run({ cwd: other, tasks: ['build'], handleSignals: false })
+      expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+      const written = (await Bun.file(path.join(other, 'timings.json'))
+        .json()
+        .catch(() => undefined)) as { tasks?: Record<string, number> } | undefined
+      expect(Object.keys(written?.tasks ?? {})).toEqual(['pkg#build'])
+    } finally {
+      delete Bun.env.VX_TEST_TEARDOWN_TIMEOUT
+      await slow.stop(true)
+      await rm(other, { recursive: true, force: true })
+    }
+  })
+
+  // A run that names no ref (a detached HEAD, no default branch) asks
+  // nothing: `main` was guessed, reading a branch the repository may lack.
+  it('asks nothing when the run reads no ref', async () => {
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-norefs-'))
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory({ url: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      const git = (...args: string[]) =>
+        Bun.spawnSync({
+          cmd: ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', ...args],
+          cwd: other,
+        })
+      git('init', '-q', '-b', 'feat')
+      git('commit', '-q', '--allow-empty', '-m', 'x')
+      git('checkout', '-q', '--detach')
+      const before = seen.length
+      await run({ cwd: other, tasks: ['build'], handleSignals: false })
+      expect(seen.slice(before).filter((r) => r.path === '/v1/timings/query')).toEqual([])
+    } finally {
+      await rm(other, { recursive: true, force: true })
+    }
+  })
+
+  // A workspace naming no issuer and repository never asks the server
+  // VX_HISTORY_URL names, so how that URL is spelled cannot fail its run.
+  it('runs when VX_HISTORY_URL is malformed and the workspace names no server', async () => {
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-env-'))
+    Bun.env.VX_HISTORY_URL = 'https://h.example/v1'
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory()] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      const r = await run({ cwd: other, tasks: ['build'], handleSignals: false })
+      expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+    } finally {
+      delete Bun.env.VX_HISTORY_URL
+      await rm(other, { recursive: true, force: true })
+    }
+  })
 
   // `main` was assumed: a repository whose trunk is another branch read
   // no trunk's numbers on any branch.

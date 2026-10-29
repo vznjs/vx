@@ -67,6 +67,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--list': [],
   '--failed': [],
   '--log': ['a#build'],
+  '--sql': ['SELECT * FROM runs'],
   '--stats': [],
 }
 /** A flag that only rides with another on one verb: `last --branch` needs `--stats`. */

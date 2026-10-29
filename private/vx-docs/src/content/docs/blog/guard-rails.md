@@ -16,7 +16,7 @@ sandboxed task writes one file it wasn't allowed to:
 $ vx run packages/d#gen
 ┌─ packages/d#gen > $ mkdir -p dist && echo ok > dist/out.js && echo x > ../shared.txt
 /usr/bin/sh: 1: cannot create ../shared.txt: Read-only file system
-├─ SANDBOX ─────────────────────────────────────────────────
+├─ SANDBOX ───────────────────────────────────────────────────
 
 vx: the sandbox refused writes outside the project, which are not reported as violations: …/demo/packages/shared.txt. If the task needs one, grant its directory, e.g. `allow: { write: ['../'] }`.
 └─ packages/d#gen ── (44ms) failed (exit 2)

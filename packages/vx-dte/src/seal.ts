@@ -8,7 +8,7 @@
 
 import { createHash } from 'node:crypto'
 import { type Bytes, type CipherState, Handshake, MAX_PLAINTEXT } from './noise.js'
-import { unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
+import { RelayError, unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
 import { ui } from '@vzn/vx'
 
 /**
@@ -90,8 +90,14 @@ export function githubProof(
 ): Proof {
   const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer } = process.env
   const repo = process.env['GITHUB_REPOSITORY_ID']
-  if (!url || !bearer || !repo)
-    throw new Error('not a GitHub Actions job with id-token: write (ACTIONS_ID_TOKEN_REQUEST_URL)')
+  if (!url || !bearer || !repo) {
+    const missing = Object.entries({
+      ACTIONS_ID_TOKEN_REQUEST_URL: url,
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer,
+      GITHUB_REPOSITORY_ID: repo,
+    }).flatMap(([k, v]) => (v ? [] : [k]))
+    throw new Error(`not a GitHub Actions job with id-token: write (${missing.join(', ')})`)
+  }
   const aud = (parts: readonly string[]): string =>
     `vx-dte:${createHash('sha256').update(parts.join('\0')).digest('base64url')}`
   // GitHub's keys, read once for every check.
@@ -345,7 +351,9 @@ export function sealOrchestrator(
     resumed: (f) => me.resumed(f),
     async send(to, body) {
       const s = sessions.get(to)
-      if (s === undefined) throw new Error(`no session with ${to}`)
+      // Lost or never admitted: the relay's own answer for a peer it does
+      // not know, which a caller takes as gone, not as a refused send.
+      if (s === undefined) throw new RelayError(404, `no session with ${to}`)
       await s.send(body, (sealed) => me.send(to, sealed))
     },
     async poll(signal) {

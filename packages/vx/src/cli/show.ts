@@ -19,6 +19,7 @@ import {
   nearMatches,
   relPosix,
   secretMask,
+  type SecretMask,
   UserError,
   sayNotice,
   ui,
@@ -301,8 +302,24 @@ function projectDir(root: string, meta: ProjectMeta): string {
  * description) (L-11).
  */
 function shownTask(task: TaskConfig): TaskConfig {
-  const secrets = secretMask([process.env, task.exec?.env?.define], task.exec?.env?.secret)
+  const env = task.exec?.env
+  const secrets =
+    env?.define === undefined && (env?.secret ?? []).length === 0
+      ? envMask()
+      : secretMask([process.env, env?.define], env?.secret)
   return secrets === null ? task : (maskStrings(task, secrets.mask) as TaskConfig)
+}
+
+let envOnly: SecretMask | null | undefined
+
+/**
+ * The mask of a task that defines and names no variable: vx's own env's,
+ * built once. Built per task, its pattern was 10 of `vx show build`'s
+ * 58 ms over 100 projects.
+ */
+function envMask(): SecretMask | null {
+  if (envOnly === undefined) envOnly = secretMask([process.env])
+  return envOnly
 }
 
 function maskStrings(value: unknown, mask: (text: string) => string): unknown {

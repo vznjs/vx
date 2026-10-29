@@ -20,20 +20,6 @@ const DEADLINE_MS = 10_000
 /** Tries of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
 const ATTEMPTS = 3
 
-/** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
-export function serverUrlOf(
-  option: string | undefined,
-  env: Record<string, string | undefined> = Bun.env,
-): string | undefined {
-  const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
-  if (url === undefined || url === '') return undefined
-  if (!/^https?:\/\//.test(url)) throw new Error(`vxHistory(): url must be http(s), got ${url}`)
-  // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
-  if (url.endsWith('/v1'))
-    throw new Error(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
-  return url
-}
-
 /** The issuer and repository a workspace names, as a key holds them: the issuer's URL with no trailing slash, `org/name` lowercased. */
 export interface Named {
   readonly issuer: string
@@ -48,10 +34,12 @@ const hasToken = (env: Record<string, string | undefined>): boolean =>
 /** A task the run ran and that succeeded, as the server takes its timing; else undefined. */
 export function timingOf(o: TaskOutcome): ServerTiming | undefined {
   if (o.status !== 'success') return undefined
-  const cores =
+  const need =
     o.cpuMs === undefined || o.durationMs <= 0
       ? undefined
       : o.cpuMs / (o.durationMs * (o.cpuShare ?? 1))
+  // A share rounded to 0 divides by it, and the server refuses the upload.
+  const cores = need !== undefined && Number.isFinite(need) ? need : undefined
   return {
     durationMs: Math.max(0, aloneMs(o)),
     ...(cores === undefined ? {} : { cores }),
@@ -71,10 +59,11 @@ function aloneMs(o: TaskOutcome): number {
   return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
 }
 
-const deadline = (): AbortSignal => {
+/** {@link DEADLINE_MS}, or `stop` first. */
+const deadline = (stop?: AbortSignal): AbortSignal => {
   const c = new AbortController()
   setTimeout(() => c.abort(new Error(`no answer within ${DEADLINE_MS} ms`)), DEADLINE_MS).unref()
-  return c.signal
+  return stop === undefined ? c.signal : AbortSignal.any([c.signal, stop])
 }
 
 /**
@@ -156,7 +145,7 @@ export class HistoryServer {
    * again a minute before it ends (it lives minutes, a run can outlive it),
    * else `VX_HISTORY_TOKEN`.
    */
-  private bearer(): Promise<string> {
+  private bearer(signal?: AbortSignal): Promise<string> {
     const held = this.held
     if (held !== undefined && (held.exp === 0 || Date.now() < held.exp - 60_000)) {
       return Promise.resolve(held.jwt)
@@ -166,7 +155,7 @@ export class HistoryServer {
       if (ask === undefined || ask === '') return { jwt: this.env.VX_HISTORY_TOKEN ?? '', exp: 0 }
       const u = new URL(ask)
       u.searchParams.set('audience', new URL(this.url).origin)
-      const res = await this.askGithub(u)
+      const res = await this.askGithub(u, signal)
       if (!res.ok) throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res)).message}`)
       const jwt = ((await res.json()) as { value?: unknown }).value
       if (typeof jwt !== 'string' || jwt === '') throw new Error("GitHub's OIDC endpoint: no token")
@@ -209,19 +198,19 @@ export class HistoryServer {
   }
 
   /** GitHub's OIDC endpoint: a 4xx is final. */
-  private askGithub(ask: URL): Promise<Response> {
+  private askGithub(ask: URL, signal?: AbortSignal): Promise<Response> {
     return this.tried(
       () =>
         this.fetchImpl(ask, {
           headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
-          signal: deadline(),
+          signal: deadline(signal),
         }),
       (status) => status === undefined || status === 429 || status >= 500,
     )
   }
 
-  private async call(path: string, body?: unknown): Promise<Response> {
-    const bearer = this.writes ? await this.bearer() : ''
+  private async call(path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
+    const bearer = this.writes ? await this.bearer(signal) : ''
     const json = body === undefined ? undefined : JSON.stringify(body)
     // A 500 is the server's own failure, maybe after the fold: sent again, a
     // run would count twice. The edge's 502, 503 and 504 and a 429 come
@@ -237,16 +226,20 @@ export class HistoryServer {
             ...(json === undefined ? {} : { 'content-type': 'application/json' }),
           },
           ...(json === undefined ? {} : { body: json }),
-          signal: deadline(),
+          signal: deadline(signal),
         }),
       (status) => status !== undefined && (status === 429 || (status >= 502 && status <= 504)),
     )
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
       const err = await refusal(res)
-      throw new Error(
-        `${err.message}: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)`,
-      )
+      const fix =
+        this.env.GITHUB_ACTIONS === 'true'
+          ? 'give the job `permissions: id-token: write`'
+          : this.env.GITLAB_CI === 'true'
+            ? 'name an id_tokens entry VX_HISTORY_TOKEN'
+            : 'off CI, a server reads only with READ_ACCESS=public'
+      throw new Error(`${err.message}: a read with no CI token was refused (${fix})`)
     }
     if (!res.ok) throw await refusal(res)
     return res
@@ -280,6 +273,7 @@ export class HistoryServer {
     refs: readonly string[],
     hashes: readonly string[],
   ): Promise<Map<string, ServerTiming>> {
+    if (hashes.length === 0) return new Map()
     const per = (await this.limitsNow()).maxQueryHashes
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
@@ -297,7 +291,11 @@ export class HistoryServer {
     )
     const out = new Map<string, ServerTiming>()
     for (const [hash, t] of parts.flat()) {
-      if (typeof t?.durationMs !== 'number' || !(t.durationMs >= 0)) continue
+      if (
+        typeof t?.durationMs !== 'number' ||
+        !(t.durationMs >= 0 && t.durationMs <= Number.MAX_SAFE_INTEGER)
+      )
+        continue
       out.set(hash, {
         durationMs: t.durationMs,
         ...(typeof t.cores === 'number' ? { cores: t.cores } : {}),
@@ -307,13 +305,13 @@ export class HistoryServer {
     return out
   }
 
-  /** The run's timings, by task definition hash, in uploads of at most `maxUploadTimings`. */
-  async upload(timings: ReadonlyMap<string, ServerTiming>): Promise<void> {
+  /** The run's timings, by task definition hash, in uploads of at most `maxUploadTimings`; `stop` abandons them. */
+  async upload(timings: ReadonlyMap<string, ServerTiming>, stop?: AbortSignal): Promise<void> {
     if (timings.size === 0) return
     const per = (await this.limitsNow()).maxUploadTimings
     const all = [...timings].map(([hash, t]) => ({ hash, ...t }))
     for (let i = 0; i < all.length; i += per) {
-      await this.call('/v1/timings/upload', { timings: all.slice(i, i + per) })
+      await this.call('/v1/timings/upload', { timings: all.slice(i, i + per) }, stop)
     }
   }
 }

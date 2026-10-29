@@ -83,7 +83,7 @@ younger than an hour is taken, and only file names vx writes. Your own
 
 ```sh frame="terminal"
 $ vx cache clean --max-size 50M --dry --format json
-{"dryRun":true,"evicted":467,"bytesFreed":45907968,"orphans":0,"orphanBytes":0}
+{"dry":true,"evicted":467,"bytesFreed":45907968,"orphans":0,"orphanBytes":0}
 ```
 
 A clean waits for a running `vx run` on the same workspace. If another

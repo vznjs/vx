@@ -4,14 +4,18 @@
 
 The integration seam. A plugin is `definePlugin(import.meta, hooks)`
 — its name is the name of the package it is defined in, read from the
-nearest `package.json` and stamped where the workspace loader checks,
-never a field — with at least one capability; `defineWorkspace({
+nearest `package.json` that has a name (a nameless one, such as the
+`{ "type": "module" }` a dual build writes into `dist/esm/`, is passed) and
+stamped where the workspace loader checks, never a field — with at least
+one capability; `defineWorkspace({
 plugins: [...] })` activates it. Core
 consults capabilities at fixed points and otherwise ignores plugins —
 behavior lives in the plugin package (vite-style), not in core. A
 `package.json` that does not parse is refused naming the file (X-20),
 and a key on the plugin that names no hook (`excutor`) is refused by
-the workspace schema with the nearest hook hinted (X-19).
+the workspace schema with the nearest hook hinted (X-19). The hooks are a
+plain object: a class instance is refused, since its methods live on its
+prototype and the copy `definePlugin` makes would drop them.
 
 A factory that takes options calls `refuseUnknownOptions('name()',
 options, kinds)` first: Bun strips a config's types, so a misspelt option
@@ -22,7 +26,7 @@ misread or threw a bare TypeError. It refuses the key as core refuses an
 unknown config field, naming the allowed keys and the nearest one, and a
 value of the wrong kind naming the kind. `kinds` is a
 `PluginOptionKinds<Options>`: each option with the one kind its type
-allows (`'any'` for a union of kinds), derived from the interface, so the
+allows (`'array'` for a list, `'any'` for a union of kinds), derived from the interface, so the
 type checker refuses a missing option, an extra one or a wrong kind.
 Every first-party factory calls it. Its third argument was a list of
 names until 0.0.397; it is the kinds record since.
@@ -136,7 +140,8 @@ a run explorer's record on this API and reads it back through a verb.
   and a throwing `admit` (or one that answers a Promise, or anything not
   `true`, `false` or `undefined`) admits from then
   on. An async hook's rejection counts as its throw. `ctx.on` with a
-  hook name it does not know fails the load (H-16).
+  hook name it does not know fails the load (H-16), as does a handler (or
+  a `ctx.bus.subscribe` subscriber) that is not a function.
 - `teardown()` and every telemetry sink's `flush()` ARE invoked at
   end-of-run, each under try/catch and a time bound — plugins may rely
   on them to drain buffers. A run a SIGINT/SIGTERM/SIGHUP stops is no
@@ -167,6 +172,6 @@ export interface BranchFacts {
   refs?: readonly string[] // the refs a remote reads, in order; unset, git's (cacheRefs)
 }
 export interface ConfigContext extends WorkspaceHookContext {
-  setBranch(facts: BranchFacts): void // a later plugin's field wins; a bad scope or ref is refused
+  setBranch(facts: BranchFacts): void // a later plugin's field wins; a bad scope, base or ref is refused
 }
 ```
