@@ -1,14 +1,24 @@
 // The Bun server: an S3-compatible bucket, and nothing else.
 
 import { createServer, type AddressInfo } from 'node:net'
-import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test'
 import { oidcAuth } from '@vzn/vx-devtools'
-import { s3Blobs } from '../src/bun.js'
+import { listen, s3Blobs } from '../src/bun.js'
 import { blobName } from '../src/store.js'
 import { createCacheServer, limitsFrom } from '../src/server.js'
 import { conformance, scopeOf } from './conformance.js'
 import { fakeS3, type FakeS3 } from './fake-s3.js'
-import { ALLOW, GITHUB, type Issuer, issuer, JOBS, MAIN_JOB, NAMED, REPO } from './issuer.js'
+import {
+  ALLOW,
+  ALLOW_VAR,
+  GITHUB,
+  type Issuer,
+  issuer,
+  JOBS,
+  MAIN_JOB,
+  NAMED,
+  REPO,
+} from './issuer.js'
 
 const LIMITS = { maxCheckHashes: 50, maxUploadBytes: 7 * 1024 * 1024 }
 
@@ -27,7 +37,7 @@ beforeAll(async () => {
     authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
     limits: LIMITS,
   })
-  server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: handle })
+  server = listen(handle, '127.0.0.1', 0)
   token = await iss.sign(MAIN_JOB, server.url.origin)
 })
 
@@ -169,6 +179,23 @@ it('names ALLOW when it cannot be read', () => {
   ])
 })
 
+it('refuses to start with ALLOW empty: it would refuse every request', () => {
+  for (const allow of [undefined, '', ' ']) {
+    const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+      env: { ...process.env, S3_BUCKET: 'b', ...(allow === undefined ? {} : { ALLOW: allow }) },
+      stderr: 'pipe',
+      // Started, it would listen until killed.
+      timeout: 10_000,
+    })
+    const [said, usage] = cli.stderr.toString().split('\n')
+    expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+      2,
+      '✗ vx-cache-server  set ALLOW',
+      'usage: vx-cache-server',
+    ])
+  }
+})
+
 it('refuses an empty --port: Number of it is 0, a random port', () => {
   const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', ''], {
     env: { ...process.env, S3_BUCKET: 'b', ALLOW: '' },
@@ -185,7 +212,7 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
 it('refuses to start with no S3 credentials', () => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(S3|AWS)_/.test(k)))
   const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
-    env: { ...env, S3_BUCKET: 'b', ALLOW: '' },
+    env: { ...env, S3_BUCKET: 'b', ALLOW: ALLOW_VAR },
     stdout: 'pipe',
     stderr: 'pipe',
     timeout: 3000,
@@ -260,4 +287,54 @@ it('takes no size the bucket did not state', async () => {
   } finally {
     unsized.close()
   }
+})
+
+// The bucket's fault is not the server's: a 500 said the server broke,
+// where the bucket an operator runs is what to look at.
+it("answers a bucket that cannot be read 502, naming the bucket's answer", async () => {
+  const down = async (): Promise<never> => {
+    throw new Error('the bucket answered HEAD 503')
+  }
+  const handle = createCacheServer({
+    blobs: { get: down, size: down, put: down },
+    authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
+  })
+  const headers = {
+    ...NAMED,
+    authorization: `Bearer ${await iss.sign(MAIN_JOB, 'http://x.test')}`,
+    'vx-scope': scopeOf('refs/heads/main'),
+  }
+  const said = async (path: string, init: RequestInit = {}) => {
+    const res = await handle(new Request(`http://x.test${path}`, { headers, ...init }))
+    return [res.status, await res.json()]
+  }
+  const logged = spyOn(console, 'error').mockImplementation(() => {})
+  const bucket = {
+    code: 'bad_gateway',
+    message: 'the bucket could not be read: the bucket answered HEAD 503',
+  }
+  expect([
+    await said('/v1/artifacts/ab'),
+    await said('/v1/artifacts', {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ hashes: ['ab'], scopes: [scopeOf('refs/heads/main')] }),
+    }),
+    await said('/v1/artifacts/ab', {
+      method: 'PUT',
+      headers: { ...headers, 'content-length': '1' },
+      body: 'x',
+    }),
+  ]).toEqual([
+    [502, bucket],
+    [502, bucket],
+    [502, bucket],
+  ])
+  // The operator sees it too: a 502 is no client's to fix.
+  expect(logged.mock.calls.map(([line]) => line)).toEqual([
+    `vx-cache-server: GET /v1/artifacts/ab: ${bucket.message}`,
+    `vx-cache-server: POST /v1/artifacts: ${bucket.message}`,
+    `vx-cache-server: PUT /v1/artifacts/ab: ${bucket.message}`,
+  ])
+  logged.mockRestore()
 })

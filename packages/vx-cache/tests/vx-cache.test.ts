@@ -451,7 +451,7 @@ describe('GitHub OIDC', () => {
       fetch: async (req) => {
         asked++
         const status = answers.shift() ?? 403
-        if (status !== 200) return new Response('busy', { status })
+        if (status !== 200) return Response.json({ message: 'not this time' }, { status })
         const audience = new URL(req.url).searchParams.get('audience')!
         return Response.json({ value: await iss.sign(BRANCH_JOB, audience) })
       },
@@ -476,7 +476,7 @@ describe('GitHub OIDC', () => {
         async () => {},
       )
       await expect(refused.put('b2', new Blob(['y']), { durationMs: 1 })).rejects.toThrow(
-        "GitHub's OIDC endpoint: HTTP 403; remote cache off for this run",
+        "GitHub's OIDC endpoint: HTTP 403: not this time; remote cache off for this run",
       )
       expect(asked).toBe(4)
     } finally {
@@ -678,6 +678,31 @@ describe('config', () => {
       expect(await c.has('ab13')).toEqual({ size: 1 })
     } finally {
       await srv.stop()
+    }
+  })
+
+  // A URL of a website answers any path 200 with its page: JSON.parse's
+  // "Unrecognized token '<'" named no fault.
+  it('says a 200 that is no JSON is not a vx-cache server', async () => {
+    const site = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }),
+    })
+    try {
+      const c = new VxCacheLayer(
+        resolveVxCacheConfig({ ...NAMED, url: site.url.origin }, {})!,
+        fetch,
+        {},
+      )
+      c.refs = [MAIN]
+      await expect(c.has('ab14')).rejects.toThrow(
+        new Error(
+          '/v1/capabilities answered 200 with text/html, not JSON: is the url a vx-cache server?',
+        ),
+      )
+    } finally {
+      await site.stop(true)
     }
   })
 

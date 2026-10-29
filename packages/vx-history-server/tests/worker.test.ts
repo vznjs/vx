@@ -13,7 +13,7 @@ let mf: Miniflare
 let base: URL
 let iss: Issuer
 
-async function start(bindings: Record<string, unknown>): Promise<Miniflare> {
+async function start(bindings: Record<string, unknown>, db = true): Promise<Miniflare> {
   const built = await Bun.build({
     entrypoints: [path.join(import.meta.dir, '..', 'src', 'worker.ts')],
     target: 'browser',
@@ -24,7 +24,7 @@ async function start(bindings: Record<string, unknown>): Promise<Miniflare> {
       modules: true,
       script: await built.outputs[0]!.text(),
       compatibilityDate: '2026-10-01',
-      d1Databases: ['DB'],
+      d1Databases: db ? ['DB'] : [],
       bindings: { AUDIENCE: AUD, ...bindings },
       // The issuer's keys, served to the Worker's fetch without a network.
       outboundService: async (req: Request) =>
@@ -87,5 +87,31 @@ it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS i
     } finally {
       await other.dispose()
     }
+  }
+})
+
+// A deploy that bound no database answered the runtime's TypeError.
+it('refuses every request, naming the binding, while no D1 database is bound as DB', async () => {
+  const other = await start({ ALLOW: allowVarOf() }, false)
+  try {
+    const res = await other.dispatchFetch(new URL('/v1/timings/query', await other.ready), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        issuer: GITHUB,
+        repository: REPO,
+        refs: ['refs/heads/main'],
+        hashes: [],
+      }),
+    })
+    expect([res.status, await res.json()]).toEqual([
+      500,
+      {
+        code: 'internal_error',
+        message: 'no D1 database is bound as DB: bind one in wrangler.jsonc (d1_databases)',
+      },
+    ])
+  } finally {
+    await other.dispose()
   }
 })

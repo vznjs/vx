@@ -72,7 +72,10 @@ it('routes each run to its own object, which checks tokens', async () => {
   expect((await join(env, B)).status).toBe(401)
   expect(ns.made).toEqual([await sessionKey(A, undefined), await sessionKey(B, undefined)])
   const res = await worker.fetch(new Request('https://relay.example.com/health'), env)
-  expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
+  expect([res.status, await res.json()]).toEqual([
+    404,
+    { error: 'no route GET /health: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)' },
+  ])
 })
 
 it('gives the same run id of two repositories two objects', async () => {
@@ -237,7 +240,22 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
   expect([mine.status, other.status, await other.json(), elsewhere.status]).toEqual([
     426,
     401,
-    { error: 'wrong audience' },
+    {
+      error:
+        "the token's aud is https://other.example.com, not this relay's https://relay.example.com: ask CI for a token for https://relay.example.com, or set the relay's audience",
+    },
     426,
+  ])
+})
+
+// A deploy that bound no Durable Object threw the runtime's TypeError: a bare 500.
+it('refuses every join with a 403 naming the binding while no RELAY is bound', async () => {
+  const res = await join({ ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml' } as Env, A)
+  expect([res.status, await res.json()]).toEqual([
+    403,
+    {
+      error:
+        'this relay has no Durable Object bound as RELAY: bind RelayRun in wrangler.jsonc (durable_objects)',
+    },
   ])
 })

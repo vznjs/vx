@@ -47,7 +47,7 @@ declare const caches: {
 declare const WebSocketPair: new () => { 0: Socket; 1: Socket }
 
 export interface Env {
-  readonly RELAY: DurableObjectNamespace
+  readonly RELAY?: DurableObjectNamespace
   /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow`, space separated. */
   readonly ALLOW?: string
   /** The `aud` every token must name; unset, the URL the relay is reached at. */
@@ -126,9 +126,19 @@ const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const session = SESSION.exec(new URL(req.url).pathname)?.[1]
-    if (session === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
+    if (session === undefined) {
+      const error = `no route ${req.method} ${new URL(req.url).pathname.slice(0, 200)}: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`
+      return Response.json({ error }, { status: 404 })
+    }
     const refused = allowRefusal(env.ALLOW)
     if (refused !== undefined) return refuse(req, 403, refused)
+    // Unbound, the runtime's TypeError was a bare 500, which a client waits out.
+    if (env.RELAY === undefined)
+      return refuse(
+        req,
+        403,
+        'this relay has no Durable Object bound as RELAY: bind RelayRun in wrangler.jsonc (durable_objects)',
+      )
     const token = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1]
     const claimed = token === undefined ? undefined : claimedRun(token)
     const stub = env.RELAY.get(env.RELAY.idFromName(await sessionKey(session, claimed)))
