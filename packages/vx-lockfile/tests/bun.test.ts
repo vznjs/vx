@@ -466,6 +466,27 @@ describe('every input the digest must read', () => {
     expect(movedDirs(text('24a971c', 's1'), text('24a971c', 's2'))).toEqual(['packages/a'])
   })
 
+  it('a workspace named like a package another package nests: the nested one moves only who reaches it (vercel/turborepo#14871)', () => {
+    // Turbo's bun-v2-workspace-name-shadow fixture: workspace `ms`, and
+    // `debug/ms` from npm under debug. web links the workspace `ms`.
+    const text = (v: string) =>
+      doc(
+        `"": { "name": "root" },
+    "apps/web": { "name": "web", "dependencies": { "debug": "4.4.3", "ms": "workspace:*" } },
+    "packages/ms": { "name": "ms", "version": "0.0.0-local" }`,
+        `"debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" } }, "sha512-debug"],
+    "ms": ["ms@workspace:packages/ms"],
+    "web": ["web@workspace:apps/web"],
+    "debug/ms": ["ms@${v}", "", {}, "sha512-ms${v}"]`,
+        `\n  "configVersion": 1,`,
+      )
+    expect(importerLinks(parseLockfile(text('2.1.3'))).get('apps/web')).toEqual({
+      deps: { ms: 'packages/ms' },
+      peers: {},
+    })
+    expect(movedDirs(text('2.1.3'), text('2.1.4'))).toEqual(['apps/web'])
+  })
+
   it('an entry that is not a package tuple is passed over, not a crash', () => {
     const text = doc(`"": { "name": "ws" }`, `"odd": 5, "also": [7]`)
     expect([...digests(text).keys()]).toEqual(['.'])
