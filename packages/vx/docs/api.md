@@ -172,6 +172,12 @@ export class BoundedCapture {
 
 function · `src/workspace/config-schema.ts`
 
+A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
+branch and a laptop on it reads (2026-10-17). The repository's
+identity, not a remote's local name, so a clone whose `origin` is a fork
+names the fork. A name may hold characters a scope may not; each
+becomes `_`.
+
 ```ts
 export function branchCacheScope(repo: string, branch: string): string
 ```
@@ -585,7 +591,7 @@ function · `src/orchestrator/plugin.ts`
 
 The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
 The name is read from the package the calling module belongs to — the
-nearest `package.json` above it — and stamped where the workspace loader
+nearest `package.json` above it that has a name — and stamped where the workspace loader
 checks for it, so a plugin cannot be named anything but its package.
 
 ```ts

@@ -2673,7 +2673,7 @@ describe('execute-task edges', () => {
     expect([o.status, o.exitCode, stderr.join('')]).toEqual([
       'failed',
       127,
-      '\n[vx] failed to spawn task: EMFILE: too many open files, socketpair — the process is out of file descriptors; raise the limit (ulimit -n 4096) and re-run\n',
+      '[vx] failed to spawn task: EMFILE: too many open files, socketpair — the process is out of file descriptors; raise the limit (ulimit -n 4096) and re-run\n',
     ])
     // Control: a shell that ran and did not find the word keeps its line.
     stderr.length = 0

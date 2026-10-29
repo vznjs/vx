@@ -98,7 +98,11 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
   // `process.env`, not `Bun.env`, for core's reason (exec/sandbox-runtime.ts):
   // an embedder that replaces the env object leaves `Bun.env` on the old one.
   const from = options.endpoint !== undefined ? '`reapi({ endpoint })`' : 'VX_REAPI_ENDPOINT'
-  const endpoint = (options.endpoint ?? process.env['VX_REAPI_ENDPOINT'])?.trim()
+  // A trailing slash is stripped, as every other plugin strips its URL's; a
+  // socket path is the file system's to read.
+  const given = (options.endpoint ?? process.env['VX_REAPI_ENDPOINT'])?.trim()
+  const endpoint =
+    given?.startsWith('unix') === true ? given : given?.replace(/^(.*[^/:])\/+$/, '$1')
   if (endpoint === undefined || endpoint === '') return undefined
   assertEndpoint(endpoint, from)
   // A secrets file's trailing newline sent a name no blob is under, and

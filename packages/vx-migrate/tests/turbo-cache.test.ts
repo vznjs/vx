@@ -275,8 +275,8 @@ describe('resolveTurboCacheConfig', () => {
     expect(MIN_SIGNATURE_KEY_LENGTH).toBe(32)
   })
 
-  // Each names where the URL came from: TURBO_API was refused as an
-  // url option the workspace never set.
+  // Each names where the URL came from: TURBO_API was refused as a `url`
+  // option the workspace never set.
   it('refuses a url with no http(s) scheme, naming options, TURBO_API or turbo.json', () => {
     expect(() => resolveTurboCacheConfig({ url: 'cache.example.com', token: 't' }, {})).toThrow(
       'turboCache() option "url" must be an http(s) URL, got "cache.example.com"',

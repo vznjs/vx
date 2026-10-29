@@ -47,6 +47,7 @@ import type { SandboxConfig } from '../config.js'
 import {
   armTimeout,
   drainOrAbort,
+  lineEnds,
   POST_EXIT_CUT_LINE,
   shellQuote,
   withForwardArgs,
@@ -2106,8 +2107,9 @@ async function runSandboxedOnce(
   let partial = ''
   let straceSpoke = false
   const [out, err] = pipes.streams(proc)
+  const ends = lineEnds(args.onStdout, args.onStderr)
   const streams = Promise.all([
-    streamToString(out, args.onStdout, ac.signal, args.capture?.stdout ?? true),
+    streamToString(out, ends.onStdout, ac.signal, args.capture?.stdout ?? true),
     streamToString(
       err,
       (chunk) => {
@@ -2116,7 +2118,7 @@ async function runSandboxedOnce(
         const lines = (partial + chunk).split('\n')
         partial = (lines.pop() ?? '').slice(0, 512)
         if (lines.some((l) => STRACE_OWN_ERROR.test(l))) straceSpoke = true
-        args.onStderr?.(chunk)
+        ends.onStderr?.(chunk)
       },
       ac.signal,
       args.capture?.stderr ?? true,
@@ -2133,8 +2135,9 @@ async function runSandboxedOnce(
   if (timeout.timedOut()) ac.abort()
   else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
-  if (cut) args.onStderr?.(POST_EXIT_CUT_LINE)
-  const stderr = cut ? streamed + POST_EXIT_CUT_LINE : streamed
+  const cutLine = ends.own(POST_EXIT_CUT_LINE)
+  if (cut) args.onStderr?.(cutLine)
+  const stderr = cut ? streamed + cutLine : streamed
   args.liveChildren?.delete(proc)
   releaseGroup(proc)
   closeSignalChannel(proc)

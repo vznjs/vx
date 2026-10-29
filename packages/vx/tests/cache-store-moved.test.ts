@@ -73,5 +73,5 @@ it('a dry prune names what the real prune takes', async () => {
   const a = await moved('hello from the clone\n'.repeat(50))
   const dry = vx(a, 'cache', 'clean', '--max-size', '1B', '--dry', '--format', 'json')
   const wet = vx(a, 'cache', 'clean', '--max-size', '1B', '--format', 'json')
-  expect(dry).toEqual(['0', wet[1]!.replace('"dryRun":false', '"dryRun":true'), ''])
+  expect(dry).toEqual(['0', wet[1]!.replace('"dry":false', '"dry":true'), ''])
 }, 30_000)

@@ -441,4 +441,25 @@ describe('materialiseOutputs writes nothing through a link into an undeclared pl
     expect(r).toBe(refused(path.join(cwd, 'dist', 'a', 'post-checkout')))
     expect(existsSync(path.join(ws, '.git', 'hooks', 'post-checkout'))).toBe(false)
   })
+
+  // `Bun.Glob('!dist/*.map')` matches every path it does not name, so a
+  // root project's take-back declared the whole workspace to the landing
+  // check, and the hook was written.
+  it('a ! take-back does not declare where a write through a link lands', async () => {
+    await mkdir(path.join(ws, '.git', 'hooks'), { recursive: true })
+    const hooks: Directory = {
+      files: [{ name: 'post-checkout', digest: blob('#!/bin/sh\npwned\n'), is_executable: true }],
+      directories: [],
+      symlinks: [],
+    }
+    const r = await run(
+      {
+        output_symlinks: [{ path: 'dist/a', target: '../.git/hooks' }],
+        output_directories: [{ path: 'dist/a', tree_digest: tree(hooks) }],
+      },
+      { ...req(['dist/**', '!dist/*.map']), cwd: ws },
+    )
+    expect(r).toBe(refused(path.join(ws, 'dist', 'a', 'post-checkout')))
+    expect(existsSync(path.join(ws, '.git', 'hooks', 'post-checkout'))).toBe(false)
+  })
 })

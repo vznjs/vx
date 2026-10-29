@@ -1172,9 +1172,11 @@ type OptionKind<V> = [V] extends [string]
       ? 'boolean'
       : [V] extends [(...args: never[]) => unknown]
         ? 'function'
-        : [V] extends [object]
-          ? 'object'
-          : 'any'
+        : [V] extends [readonly unknown[]]
+          ? 'array'
+          : [V] extends [object]
+            ? 'object'
+            : 'any'
 == type OutcomeView (src/report/events.ts)
 export interface OutcomeView {
   taskId: string
@@ -1407,7 +1409,7 @@ export interface ProjectMeta {
 export interface PruneOptions {
   olderThanMs?: number
   maxBytes?: number
-  dryRun?: boolean
+  dry?: boolean
 }
 == type PruneResult (src/cache/layer.ts)
 export interface PruneResult {

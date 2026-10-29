@@ -34,7 +34,7 @@ vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--pl
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
-vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--live [--follow]] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [TAG] [-g|--global]
 vx docs <query> [--limit N] [--format pretty|json]
 vx completions bash|zsh|fish
@@ -1554,7 +1554,7 @@ bound clears the cache. It operates on the entries and
 vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache clean ... --dry                    # Say what either policy would reap; delete nothing.
-vx cache clean ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
+vx cache clean ... --format json            # { dry, evicted, bytesFreed, orphans, orphanBytes }
 vx cache clean ... --cache-dir <path>       # The cache a run with the same flag uses.
 vx cache clean                              # No bound: clear the whole cache (below).
 vx cache clean --global                     # Also clear every other repository's store.
@@ -1721,7 +1721,7 @@ $ vx cache clean --global --dry
 
 It waits for a `vx run` on this workspace to finish first (the run's
 lock), as a trim does. With `--format json` it prints
-`{ dryRun, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
+`{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 
 ### Exit codes
@@ -2327,7 +2327,10 @@ without `--dry`, or with `--plugin`, is refused (`VX_E_USAGE`).
 a small runnable plugin for that seam (`executor`, `cache`,
 `telemetry`, `schedule`, `admit`, `commands`, `project`, `graph`,
 `key`), and `plugins/<seam>.test.ts`, which drives it through `run()`
-(`bun test`, with `@vzn/vx` installed). It prints the line that
+(`bun test`, with `@vzn/vx` installed). A plugin is named by the
+nearest `package.json`; when that one has no name (a monorepo root
+often has none), it also writes `plugins/package.json` naming the
+plugins `workspace-plugins`, or `definePlugin` would refuse them. It prints the line that
 declares it in the workspace file a run reads (`.vx/workspace.ts` when
 there is none). The templates are TypeScript, so `--mjs` with
 `--plugin` is refused, and so is a second seam. An existing file is refused without
@@ -2429,8 +2432,9 @@ its `package.json`), else by its directory; `vx show --format json` lists them.
 
 #### `VX_E_NO_HISTORY`
 
-`vx why` / `vx last` find no recorded run for what they were asked. Run
-the task once (`vx run <task>`); history is this checkout's own.
+`vx why` / `vx last` find no recorded run for what they were asked, or
+`vx last --live` no run in progress. Run the task once (`vx run <task>`);
+history is this checkout's own.
 
 #### `VX_E_AMBIGUOUS`
 
@@ -3025,7 +3029,7 @@ run before it; nor does a `vx watch` cycle one stopped.
 ### Usage
 
 ```
-vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--live [--follow]] [--format pretty|json] [--cache-dir <path>]
 ```
 
 ### Examples
@@ -3071,6 +3075,8 @@ vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 | `--stats [<task>]`      | per-task numbers over the last 50 runs                                                |
 | `--branch <name>`       | the branch `--stats` forecasts from                                                   |
 | `--sql <query>`         | the rows one read-only `SELECT` over the history selects                              |
+| `--live`                | the run in progress: what runs, what ended, what waits, its warnings                  |
+| `--follow`              | with `--live`, the run's events from now to its end                                   |
 | `--format pretty\|json` | `json` for scripts and agents, below                                                  |
 | `--cache-dir <path>`    | read the cache a run with the same flag uses                                          |
 
@@ -3179,6 +3185,55 @@ a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ tas
 p50DurationMs, p99DurationMs, successRate, hitRate, failureMode,
 maxPeakRssBytes, maxCpuParallelism }`, `null` where nothing was
 measured.
+
+### `--live`
+
+`vx last --live` asks the run in progress on this workspace, from another
+shell, while it runs: an agent that started `vx run` in the background
+reads what runs, what already ended and what waits, without waiting for
+the end (the history holds a run only once it ended).
+
+```
+$ vx last --live
+run 019a2f3c-5b1e-7c2d-9a40-1f3e5d7c8b21 — running 4.21s
+  $ vx run a#all
+  1 running · 2 ended · 1 waiting
+
+  running  a#slow   4.12s
+  success  a#lost   9ms
+  success  a#quick  8ms
+  waiting  a#after
+
+  warnings
+    [vx] a#lost: inputs.files matched no files …
+```
+
+With `--format json` it prints `{ live, tasks, warnings }`: `live` is
+`{ runId, command, pid, startedAt, elapsedMs }`, each task
+`{ taskId, status, startedAt, durationMs }` (`status` is `running`,
+`waiting` or the status it ended with; times epoch ms, `null` where not
+yet known), running first, then what ended, then what waits. Groups are
+not listed.
+
+`--follow` prints the same snapshot, then each of the run's events until
+it ends: a task's output as `app#test │ <line>`, each end as
+`success  app#test  1.20s`, each warning as `warn  …`. With
+`--format json` the snapshot line is followed by one event per line,
+each with a `kind`: `task:start`, `task:stdout`, `task:stderr`,
+`task:complete`, `run:status`, `step:start`, `step:end`, `run:end`,
+and last `run:done` (the run's wire events).
+
+No run in progress is `no run in progress` (exit 1, `VX_E_NO_HISTORY`),
+a run killed with its socket left included. A run that does not answer
+within 5 s reads the same.
+
+**What it costs a run.** Nothing is written. The run listens on a unix
+socket beside its run lock (in this user's own temp directory, so no
+other user reaches it) while it holds the lock, and keeps only when each
+task started; the snapshot is built when asked. Output is not kept: it
+reaches a follower only while one is attached, and a follower that falls
+1 MiB behind is let go, so a stuck reader never holds the run. `--live`
+combines only with `--follow`, `--format` and `--cache-dir`.
 
 ### `--sql`
 
@@ -3439,13 +3494,13 @@ Frame anatomy:
 
 $ bun test
 
-├─ OUTPUT ──────────────────────────────────────────────────
+├─ OUTPUT ────────────────────────────────────────────────────
 
 2 pass
 error: expected 3, got 2
 1 fail
 
-├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────
 
 write ../shared/notes.txt
 

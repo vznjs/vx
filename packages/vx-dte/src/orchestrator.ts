@@ -1076,6 +1076,9 @@ export class Orchestrator {
       // Its worker was lost meanwhile: the task went back to the queue.
       if (a.busy.get(task) !== job) return
       if (sent) {
+        // Its cores back while it still counts as begun, which `unhold` reads;
+        // then not begun, so `retry` holds no fault against its worker.
+        this.unhold(a, job)
         a.started.delete(task)
         const again = this.retry(a, job, `could not read ${head.unread.join(', ')}`)
         if (again !== undefined) {

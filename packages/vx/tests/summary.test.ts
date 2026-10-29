@@ -25,6 +25,22 @@ function outcome(id: string, status: TaskOutcome['status'], exitCode = 0): TaskO
 }
 
 describe('formatRunSummary', () => {
+  it('a run of every project paints no escape pair around an empty remainder', () => {
+    const lines = formatRunSummary(
+      [outcome('a#x', 'success')],
+      10,
+      { enabled: true },
+      {
+        version: '1.2.3',
+        packageCount: 2,
+        workspaceProjectCount: 2,
+        remoteCacheEnabled: false,
+      },
+    )
+    // eslint-disable-next-line no-control-regex -- ESC is the point
+    expect(lines.filter((l) => /\x1b\[[0-9;]*m\x1b\[0m/.test(l))).toEqual([])
+  })
+
   it('all successful, no cache hits', () => {
     const lines = formatRunSummary([outcome('a#x', 'success'), outcome('b#x', 'success')], 1234)
     expect(lines).toEqual([

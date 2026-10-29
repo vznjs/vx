@@ -276,7 +276,10 @@ exec-tier tasks that depend on it. Its dependents do wait on its deps:
 one that finishes early releases them once its own deps have settled,
 so `dependsOn` order holds through a hit (released at its own finish,
 an `e2e` ran beside the `db:migrate` two edges up; item 963). An exec-tier task's count is the
-exact closure over the exec tier alone; a restore's is the sum over its
+exact closure over the exec tier, each restore dep read as the exec
+tasks that restore waits on (`e1 → r → e2` holds `e2` until `e1` ran,
+so `e1` counts `e2`; counted over the exec tier alone it ranked 0 behind
+every idle task, about 1 ms more at 3,000 tasks); a restore's is the sum over its
 direct exec-tier dependents of one plus theirs, plus the rank of each
 restore that depends on it, since that one releases its dependents only
 after it (C-51: `r1 → r2 → e` ranked `r1` 0, behind every idle restore,
