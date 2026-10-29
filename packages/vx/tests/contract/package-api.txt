@@ -5,6 +5,7 @@ export class BoundedCapture {
     private readonly tailChars = CAPTURE_TAIL_CHARS,
   ) {}
   push(text: string, err = false): void
+  rebound(headChars: number, tailChars: number): BoundedCapture
   chunks(): CapturedChunk[]
   text(): string
 }
@@ -77,6 +78,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
   }): Promise<void>
@@ -379,6 +381,8 @@ export function notice(p: NoticeParts): Block
 export function outputDirPrefixes(globs: readonly string[]): string[] | null
 == function outputsOverlap (src/graph/task-graph.ts)
 export function outputsOverlap(rawA: string, rawB: string): boolean
+== function packageManagerPath (src/exec/env.ts)
+export function packageManagerPath(root: string): string | null
 == function planRun (src/orchestrator/run.ts)
 export async function planRun(options: RunOptions): Promise<RunPlan>
 == function prepareRun (src/orchestrator/prepare.ts)
@@ -431,6 +435,8 @@ export async function sandboxRequestFor(
   nested: readonly string[] = [],
   cacheDir?: string,
 ): Promise<SandboxRequest>
+== function secretNamed (src/util/secret-mask.ts)
+export function secretNamed(name: string): boolean
 == function splitTaskId (src/util/task-id.ts)
 export function splitTaskId(id: string): [project: string, task: string]
 == function status (src/util/ui.ts)
@@ -501,6 +507,7 @@ export interface ArtifactRun {
   readonly cpuMs?: number
   readonly peakRssBytes?: number
   readonly env?: Readonly<Record<string, string | undefined>>
+  readonly secret?: readonly string[]
   readonly absent?: boolean
 }
 == type ArtifactTask (src/orchestrator/task-artifacts.ts)
@@ -653,6 +660,7 @@ export interface CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     absent?: boolean
@@ -712,6 +720,7 @@ export type CacheStatus =
   | 'no-cache'
   | 'group'
   | 'not-started'
+  | 'skipped'
 == type CaptureConfig (src/exec/runner.ts)
 export interface CaptureConfig {
   stdout?: boolean
@@ -1243,6 +1252,8 @@ export interface PlannedTask {
   download?: 'deferred'
   remoteBytes?: number
   affected?: AffectedReason
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
+  blockedBy?: string
 }
 == type PlanPrediction (src/orchestrator/plan.ts)
 export interface PlanPrediction {
@@ -1353,6 +1364,7 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry>
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
+  taskless: (name: string) => boolean
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

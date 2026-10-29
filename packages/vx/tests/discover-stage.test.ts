@@ -249,6 +249,11 @@ describe('discover stage', () => {
       '"g#en": the name holds "#" — vx addresses a task as <name>#<task>',
     ],
     [
+      'the root\'s name "//" away from the root',
+      () => [{ dir: 'tools/gen', name: '//' }],
+      '"//" at tools/gen: "//" names the workspace root',
+    ],
+    [
       'a malformed entry',
       () => [{ dir: 1 } as never],
       'expected { dir: string, name?: string, deps?: string[], reach?: string[] }',

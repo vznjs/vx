@@ -31,6 +31,7 @@ import {
   replaceBinary,
   startedVersion,
   upgradeArgv,
+  upgradeCmd,
   upgradeGlobal,
   upgradeManaged,
   upgradeOnlyGlobal,
@@ -531,6 +532,32 @@ describe('versionSpec', () => {
     ])
     expect(() => versionSpec('../../evil')).toThrow('vx upgrade: ../../evil is not a version')
   })
+
+  // A TAG no release has is usage, refused before anything else is asked:
+  // from source it was "only the compiled binary upgrades itself", and on a
+  // binary VX_E_REFUSED after the install was found.
+  it('a bad TAG is usage, refused first', async () => {
+    const refused = (fn: () => unknown): Promise<unknown> =>
+      Promise.resolve()
+        .then(fn)
+        .then(
+          () => 'accepted',
+          (err: UserError) => ({ code: err.code, message: err.message }),
+        )
+    expect([
+      await refused(() => versionSpec('nope')),
+      await refused(() => upgradeCmd(['nope'])),
+    ]).toEqual([
+      {
+        code: 'VX_E_USAGE',
+        message: 'vx upgrade: nope is not a version (expected v<major>.<minor>.<patch>)',
+      },
+      {
+        code: 'VX_E_USAGE',
+        message: 'vx upgrade: nope is not a version (expected v<major>.<minor>.<patch>)',
+      },
+    ])
+  })
 })
 
 describe('managedInstall', () => {
@@ -715,6 +742,24 @@ describe('startedVersion', () => {
     expect(startedVersion(await fake('ok', 'echo "vx 9.9.9"'))).toBe('vx 9.9.9')
     expect(startedVersion(await fake('failed', 'echo "vx 9.9.9"; exit 1'))).toBeNull()
     expect(startedVersion(await fake('other', 'echo "bun 1.4.2"'))).toBeNull()
+  })
+
+  it('is null for a binary the OS will not run, so the rollback can run', async () => {
+    // A new binary on a noexec mount, or one without its execute bit, made
+    // the spawn throw EACCES: the upgrade crashed with the new binary in
+    // place and the old one never put back.
+    const bin = await fake('noexec', 'echo "vx 9.9.9"')
+    await chmod(bin, 0o644)
+    expect([startedVersion(bin), startedVersion(dir)]).toEqual([null, null])
+    const dest = await fake('noexec-dest', 'echo "vx 0.0.1"')
+    await expect(
+      replaceBinary(
+        dest,
+        () => Promise.resolve(new TextEncoder().encode('#!/bin/sh\necho "vx 0.0.2"\n')),
+        () => startedVersion(path.join(dir, 'no-such-vx')) !== null,
+      ),
+    ).rejects.toThrow('the previous vx is back in place')
+    expect(startedVersion(dest)).toBe('vx 0.0.1')
   })
 
   it('gives up on a binary that does not answer, so the rollback can run', async () => {

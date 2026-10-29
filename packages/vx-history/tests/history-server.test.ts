@@ -6,12 +6,13 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
-import { afterAll, beforeAll, describe, expect, it, setSystemTime } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, setSystemTime, spyOn } from 'bun:test'
+import { Cache, taskDefinitions, type TaskNode } from '@vzn/vx'
 import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { allowOf, type Issuer, issuer, NAMED } from './issuer.js'
-import { HistoryServer, proxyHeaders, serverUrlOf, timingOf } from '../src/history-server.js'
+import { HistoryServer, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
 
 let iss: Issuer
@@ -58,6 +59,33 @@ describe('HistoryServer', () => {
     expect(got).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
   })
 
+  // A run of groups alone has no hash to ask for: it still asked the
+  // server's limits, and warned when the server was down.
+  it('asks nothing for no hashes, as it sends nothing for no timings', async () => {
+    const asked: string[] = []
+    const none = (async (u: string) => {
+      asked.push(u)
+      throw new Error('connection refused')
+    }) as unknown as typeof fetch
+    const client = new HistoryServer(url, NAMED, {}, none)
+    expect(await client.query(['refs/heads/main'], [])).toEqual(new Map())
+    await client.upload(new Map())
+    expect(asked).toEqual([])
+  })
+
+  it('takes no duration that a chain of them could sum past a number', async () => {
+    const answer = (async (u: string) =>
+      String(u).endsWith('/v1/capabilities')
+        ? Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+        : Response.json({
+            timings: { big: { durationMs: 1e308 }, ok: { durationMs: 5 } },
+          })) as unknown as typeof fetch
+    const client = new HistoryServer(url, NAMED, {}, answer)
+    expect(await client.query(['refs/heads/main'], ['big', 'ok'])).toEqual(
+      new Map([['ok', { durationMs: 5 }]]),
+    )
+  })
+
   // A blip on the run's first call, the query, kept the run's upload
   // from ever asking again: the run's timings were lost.
   it('asks for the limits again after a failed ask', async () => {
@@ -73,6 +101,21 @@ describe('HistoryServer', () => {
     await client.upload(new Map([['c1', { durationMs: 3 }]]))
     expect(await client.query(['refs/heads/main'], ['c1'])).toEqual(
       new Map([['c1', { durationMs: 3 }]]),
+    )
+  })
+
+  // A server's words reach the terminal: an ESC in them retitled it and
+  // overwrote the line vx printed before them.
+  it("writes the controls in a server's words as escapes", async () => {
+    const said = JSON.stringify({ message: '\x1b]0;PWNED\x07\x1b[2K\rall good' })
+    const client = new HistoryServer(
+      'https://history.test',
+      NAMED,
+      { VX_HISTORY_TOKEN: 't' },
+      (() => Promise.resolve(new Response(said, { status: 500 }))) as unknown as typeof fetch,
+    )
+    await expect(client.query(['refs/heads/main'], ['a1'])).rejects.toThrow(
+      'HTTP 500: \\x1b]0;PWNED\\x07\\x1b[2K all good',
     )
   })
 
@@ -92,6 +135,26 @@ describe('HistoryServer', () => {
     await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
       `HTTP 403: the token is of ${NAMED.repository} at ${NAMED.issuer}, not acme/other at ${NAMED.issuer}`,
     )
+  })
+
+  // A URL of a website answers any path 200 with its page: JSON.parse's
+  // "Unrecognized token '<'" named no fault.
+  it('says a 200 that is no JSON is not a history server', async () => {
+    const site = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }),
+    })
+    try {
+      const client = new HistoryServer(site.url.origin, NAMED, {})
+      await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+        new Error(
+          '/v1/capabilities answered 200 with text/html, not JSON: is the url a vx-history server?',
+        ),
+      )
+    } finally {
+      await site.stop(true)
+    }
   })
 
   it('says why a read with no token was refused, and what lets it in', async () => {
@@ -249,8 +312,7 @@ describe('HistoryServer', () => {
       seen.push(new Headers(init.headers))
       return new Response(JSON.stringify({ maxUploadTimings: 10, maxQueryHashes: 10, rows: [] }))
     }) as unknown as typeof fetch
-    const headers = proxyHeaders({ 'CF-Access-Client-Id': 'id', 'X-Unset': undefined })
-    expect(headers).toEqual({ 'CF-Access-Client-Id': 'id' })
+    const headers = { 'CF-Access-Client-Id': 'id' }
     const client = new HistoryServer(
       'https://h.example',
       NAMED,
@@ -267,8 +329,6 @@ describe('HistoryServer', () => {
         h.get('vx-issuer'),
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', null, null])
-    for (const bad of [{ Authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
-      expect(() => proxyHeaders(bad)).toThrow('vxHistory(): ')
   })
 
   it('reads with no token from a public server, sending none', async () => {
@@ -309,6 +369,19 @@ describe('HistoryServer', () => {
     expect(timingOf(ran as never)?.durationMs).toBe(75_000)
   })
 
+  // A worker's share rounds to 0 at 0.0005 of a core: cores came out
+  // Infinity (NaN with no CPU time), JSON sent null, and the server
+  // refused the whole upload — every task's timing lost.
+  it('sends no cores it cannot count, so one task never costs the upload', () => {
+    const ran = { status: 'success', durationMs: 1000, peakRssBytes: 1024 } as const
+    for (const cpuMs of [0, 500])
+      expect(timingOf({ ...ran, cpuMs, cpuShare: 0 } as never)).toEqual({
+        durationMs: 1000,
+        rssBytes: 1024,
+      })
+    expect(timingOf({ ...ran, cpuMs: 500, cpuShare: 0.5 } as never)?.cores).toBe(1)
+  })
+
   it('refuses a workspace that names a server but no issuer or repository', () => {
     expect(() => vxHistory({ url: 'https://h.example', repository: 'acme/app' })).toThrow(
       "vxHistory(): issuer must be the CI issuer's URL",
@@ -318,15 +391,92 @@ describe('HistoryServer', () => {
     )
   })
 
-  it('reads the URL over VX_HISTORY_URL', () => {
-    expect(serverUrlOf(undefined, {})).toBeUndefined()
-    expect(serverUrlOf(undefined, { VX_HISTORY_URL: 'https://h.example/' })).toBe(
-      'https://h.example',
-    )
-    expect(() => serverUrlOf('h.example', {})).toThrow('vxHistory(): url must be http(s)')
-    expect(() => serverUrlOf('https://h.example/v1/', {})).toThrow(
+  // The ordering was computed twice, on the local history and again when
+  // the server's numbers landed, and each pass named the bad assumption.
+  it('names an assumption it drops once a run, with the server re-ranking', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-history-assume-'))
+    const cache = new Cache(dir)
+    const fake = spyOn(globalThis, 'fetch').mockImplementation((async (u: string) => {
+      if (String(u).endsWith('/v1/capabilities'))
+        return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+      const hash = [...taskDefinitions([node]).values()][0]!
+      return Response.json({ timings: { [hash]: { durationMs: 50 } } })
+    }) as never)
+    const node = {
+      id: 'a#build',
+      projectName: 'a',
+      projectDir: dir,
+      taskName: 'build',
+      config: { exec: { command: 'true' } },
+      deps: [],
+      requested: true,
+    } as unknown as TaskNode
+    try {
+      const warned: string[] = []
+      const refined: Promise<unknown>[] = []
+      const plugin = vxHistory({
+        url: 'https://h.example',
+        ...NAMED,
+        assume: { 'a#build': Number(undefined) },
+      })
+      await plugin.schedule!(new Map([['a#build', node]]), {
+        warn: (m: string) => warned.push(m),
+        workspaceRoot: dir,
+        localCache: cache,
+        branch: 'main',
+        refs: [],
+        refine: (p: Promise<unknown>) => refined.push(p),
+      } as never)
+      expect(refined).toHaveLength(1)
+      expect(await refined[0]).toBeInstanceOf(Map)
+      expect(warned).toEqual([
+        '[vx] vx-history: assume ignores "a#build" — each must be a number of ms from 0 to 2^53',
+      ])
+    } finally {
+      fake.mockRestore()
+      cache.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reads the URL over VX_HISTORY_URL, refusing one no request can carry', async () => {
+    const saved = Bun.env.VX_HISTORY_URL
+    const warned: string[] = []
+    const setup = (o: Parameters<typeof vxHistory>[0]) =>
+      vxHistory(o).setup!({ ci: false, warn: (m: string) => warned.push(m) } as never)
+    try {
+      Bun.env.VX_HISTORY_URL = 'h.example'
+      await expect(setup({ ...NAMED }) as Promise<unknown>).rejects.toThrow(
+        'vxHistory(): url must be http(s), got h.example',
+      )
+      await setup({ ...NAMED, url: 'https://h.example/' })
+      Bun.env.VX_HISTORY_URL = 'https://h.example/'
+      await setup({})
+      expect(warned).toEqual([
+        '[vx] vx-history: VX_HISTORY_URL names a server, but vxHistory() names no issuer and repository: the server is not asked',
+      ])
+    } finally {
+      if (saved === undefined) delete Bun.env.VX_HISTORY_URL
+      else Bun.env.VX_HISTORY_URL = saved
+    }
+  })
+
+  // It was checked only in a run's `setup`: `vx show`, `vx info` and a
+  // `--dry` plan took the config, and every run then failed on it.
+  it('refuses a url no request can carry when the config is evaluated', () => {
+    const refusal = (o: Parameters<typeof vxHistory>[0]): string => {
+      try {
+        vxHistory({ ...NAMED, ...o })
+        return 'taken'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect(refusal({ url: 'h.example' })).toBe('vxHistory(): url must be http(s), got h.example')
+    expect(refusal({ url: 'https://h.example/v1' })).toBe(
       "vxHistory(): url is the server's base, without /v1: https://h.example",
     )
+    expect(refusal({ url: 'https://h.example/' })).toBe('taken')
   })
 })
 

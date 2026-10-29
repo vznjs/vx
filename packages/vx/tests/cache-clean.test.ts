@@ -144,6 +144,20 @@ describe('vx cache clean with no bound clears the cache', () => {
   )
 
   it(
+    'a trim of a directory vx never wrote makes nothing there',
+    async () => {
+      // Opened to find nothing, it got an index and a `*` .gitignore that
+      // hid the user's files from git.
+      const dir = path.join(root, 'notes')
+      await Bun.write(path.join(dir, 'keep.txt'), 'mine')
+      const r = await vx(['cache', 'clean', '--older-than', '30d', '--cache-dir', 'notes'])
+      expect(r).toEqual({ code: 0, out: '› vx cache clean  nothing to free\n', err: '' })
+      expect(readdirSync(dir)).toEqual(['keep.txt'])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'refuses a cache.dir that holds the workspace config',
     async () => {
       await Bun.write(path.join(root, '.vx', 'cache.db'), '')

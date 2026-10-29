@@ -12,7 +12,7 @@ import type { TaskExecutor } from '../src/exec/executor.js'
 import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { type Logger } from '../src/report/index.js'
-import { run } from './helpers/orchestrator.js'
+import { planRun, run } from './helpers/orchestrator.js'
 import { placeTasks, terminalHolders } from '../src/orchestrator/placement.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
 
@@ -127,6 +127,22 @@ describe('terminalHolders', () => {
     )
   })
 
+  // Told to make the server depend on its own dependant, the user wrote a cycle.
+  it('refuses an interactive dependant of the server without advising a cycle', () => {
+    let message = ''
+    try {
+      terminalHolders(
+        graph(server('a#dev'), node('a#gen', {}, ['a#dev']), ask('a#e2e', ['a#gen'])),
+        true,
+      )
+    } catch (err) {
+      message = (err as Error).message
+    }
+    expect(message).toBe(
+      'a#dev is persistent and interactive, so it holds the terminal until the run ends, and a#e2e, which depends on it, would ask for it too: run it on its own',
+    )
+  })
+
   it('takes an interactive task the server depends on, through a plain one', () => {
     expect(
       terminalHolders(
@@ -171,6 +187,8 @@ describe('the scheduler holds the terminal for one task', () => {
     expect(await trace()).toEqual(['a#one', 'c#two'])
   })
 })
+
+const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 
 describe('a run', () => {
   let root: string
@@ -251,4 +269,21 @@ describe('a run', () => {
       said: ['said-a', 'said-b', 'said-c'],
     })
   }, 20_000)
+
+  // `--dry` previews the run on the same terminal: it planned two
+  // interactive servers the run refuses before any task starts.
+  it('--dry on a TTY refuses what the run refuses', async () => {
+    await project('a', 'interactive: true, persistent: {},')
+    await project('b', 'interactive: true, persistent: {},')
+    const said = (tty: boolean) =>
+      planRun({ cwd: root, tasks: ['go'], log: quiet, ...(tty ? { tty: true } : {}) }).then(
+        (p) => p.tasks.map((t) => t.node.id).sort(),
+        (e: Error) => e.message,
+      )
+    expect(await said(true)).toBe(
+      'a#go and b#go are persistent and interactive: a server holds the terminal until the run ends, so one run can hold one — run them in separate terminals',
+    )
+    // CONTROL: off a TTY nothing holds the terminal, and the plan stands.
+    expect(await said(false)).toEqual(['a#go', 'b#go'])
+  })
 })
