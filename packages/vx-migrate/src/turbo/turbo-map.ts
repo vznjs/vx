@@ -74,6 +74,8 @@ interface TurboJson {
   /** Turbo 2.11 `futureFlags.globalConfiguration`: the global lists live here. */
   global?: { inputs?: string[]; env?: string[]; passThroughEnv?: string[]; envMode?: unknown }
   envMode?: unknown
+  /** Turbo 2.11.6: the package's labels, which `--filter tag:` selects by. */
+  tags?: string[]
 }
 
 const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -175,7 +177,8 @@ const KNOWN_TASK_KEYS = new Set([
   // watch` keeps it up and restarts it only when its config changes or it
   // dies, so either value maps to nothing.
   'interruptible',
-  // Labels: Turbo keeps them out of the hash and the behaviour.
+  // Turbo 2.11.6 selects a task by them (`--filter tag:`); vx tags are a
+  // project's, so only the package's own `tags` map (`packageTags`).
   'tags',
   // Turbo parses it for external CI tooling and acts on nothing.
   'experimentalCI',
@@ -207,6 +210,8 @@ export interface TurboMappedTask {
 export interface TurboMappedProject {
   name: string
   dir: string
+  /** The package's turbo.json `tags`, its vx project tags. */
+  tags?: string[]
   tasks: TurboMappedTask[]
 }
 
@@ -376,6 +381,7 @@ const TOP_LISTS = [
   'globalPassThroughEnv',
   'globalDotEnv',
   'extends',
+  'tags',
 ]
 const GLOBAL_LISTS = ['inputs', 'env', 'passThroughEnv']
 const TASK_LISTS = ['dependsOn', 'outputs', 'env', 'passThroughEnv', 'with', 'dotEnv']
@@ -424,6 +430,16 @@ function checkTurboShape(cfg: unknown, label: string): void {
         if (d[k] !== undefined && typeof d[k] !== 'string') refuse(`${at}.${k}`, 'a string')
     }
   }
+}
+
+/**
+ * A package's top-level turbo.json `tags`, which Turbo 2.11.6's `--filter
+ * tag:<label>` selects every task of the package by, as vx's `tag:` does a
+ * project's. Its own file only: Turbo inherits no package tag, and the
+ * root's label the root package. Blank ones dropped, as vx refuses them.
+ */
+function packageTags(cfg: TurboJson | undefined): string[] {
+  return [...new Set((cfg?.tags ?? []).filter((t) => t.trim() !== ''))]
 }
 
 function tasksOf(cfg: TurboJson): Record<string, TurboTask> {
@@ -1380,7 +1396,8 @@ export async function mapTurboWorkspace(
       tasks.push(mapped)
     }
     excludeSiblingOutputs(resolveSharedOutputs(tasks))
-    projects.push({ name: meta.name, dir: meta.dir, tasks })
+    const tags = packageTags(meta === rootMeta ? rootCfg : files.get(meta.name))
+    projects.push({ name: meta.name, dir: meta.dir, ...(tags.length > 0 ? { tags } : {}), tasks })
   }
 
   // Turbo 2.11's `dependencyOutputs` input hashes the named files after

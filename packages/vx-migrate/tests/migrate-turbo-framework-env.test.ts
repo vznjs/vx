@@ -84,6 +84,22 @@ describe('migrateTurbo: a framework Turbo infers', () => {
     })
   })
 
+  it('infers Next only for the package that depends on next (vercel/turborepo#14188)', async () => {
+    // `other` spells a NEXT_PUBLIC_ name and builds, but has no next dependency.
+    const other = metas.find((m) => m.name === 'other')!
+    other.packageJson = { name: 'other', scripts: { build: 'tsc' } } as never
+    const git = (...a: string[]) => Bun.spawnSync(['git', ...a], { cwd: root })
+    git('init', '-q')
+    git('add', '-A')
+    const p = await migrateTurbo(root, metas)
+    const t = p.projects.find((x) => x.name === 'other')!.tasks[0]!.task as {
+      inputs: { env?: unknown }
+      exec: { env?: { passThrough?: unknown } }
+    }
+    expect([t.inputs.env, t.exec.env?.passThrough]).toEqual([undefined, undefined])
+    expect(p.notes.filter((n) => n.includes('in other'))).toEqual([])
+  })
+
   it('without git lists only the literal names', async () => {
     expect((await env()).env).toEqual([
       { raw: '...globalEnvInputs' },

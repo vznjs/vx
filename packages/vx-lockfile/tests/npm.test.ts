@@ -175,6 +175,16 @@ describe('workspace digests (npm)', () => {
     )
     expect(() => parseLockfile('nope')).toThrow(/JSON Parse error/)
   })
+
+  it('refuses a v2+ lockfile whose packages are only in the legacy tree (vercel/turborepo#13993)', () => {
+    // Read as empty, a bump in the legacy `dependencies` tree moved no key.
+    expect(() =>
+      parseLockfile('{"lockfileVersion":2,"dependencies":{"foo":{"version":"1.0.0"}}}'),
+    ).toThrow(/only in the legacy `dependencies` tree/)
+    // An empty or absent legacy tree is no such lockfile.
+    expect(() => parseLockfile('{"lockfileVersion":2,"dependencies":{}}')).not.toThrow()
+    expect(() => parseLockfile('{"lockfileVersion":3}')).not.toThrow()
+  })
 })
 
 // What moves a digest, one input at a time (item 798's rows for bun.lock):

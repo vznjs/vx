@@ -86,6 +86,7 @@ export async function migrateTurbo(
     return {
       name: p.name,
       dir: p.dir,
+      ...(p.tags !== undefined ? { tags: p.tags } : {}),
       importLines: [
         ...(readsManifest ? [MANIFEST_IMPORT] : []),
         ...(sealed
