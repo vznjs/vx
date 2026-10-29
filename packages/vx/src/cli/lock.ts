@@ -33,6 +33,7 @@ import {
   readLockfile,
   buildPackageGraph,
   checkDependencyRules,
+  computeNestedProjectDirs,
   writeLockfile,
   type Lockfile,
   type ProjectMeta,
@@ -185,12 +186,19 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         buildPackageGraph(out.all, taskEdgesFrom(projects)),
       )
     const rules = runRules(workspaceConfig)
+    const nameOf = new Map(out.all.map((m) => [m.dir, m.name]))
     const nodes = buildTaskGraph({
       projects,
       packageGraph: buildPackageGraph(out.all),
       requested: expandRequested([...names], [...projects.keys()], projects, isDefaultBuild),
       workspaceRoot: root,
       rules,
+      nestedProjects: new Map(
+        [...computeNestedProjectDirs(out.all)].map(([name, dirs]) => [
+          name,
+          dirs.map((dir) => ({ name: nameOf.get(dir)!, dir })),
+        ]),
+      ),
     })
     if (hasHook(plugins, 'graph'))
       await applyGraphStage(plugins, nodes, {

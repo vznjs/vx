@@ -23,6 +23,7 @@ import {
   type RemoteOpenContext,
   type VxPlugin,
   refuseUnknownOptions,
+  UserError,
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
@@ -296,17 +297,23 @@ export function resolveTurboCacheConfig(
   // Vercel's hosted Remote Cache. A token alone is a configured cache, as it
   // is for `turbo`; a URL or a team without one asks the OS keychain at
   // `open`; none of them is the declined, local run.
-  const apiUrl = (
-    options.apiUrl ??
-    env['TURBO_API'] ??
-    fromFile(local.apiUrl) ??
-    fromFile(file.apiUrl) ??
-    (token || teamId || teamSlug ? VERCEL_API : undefined)
-  )?.replace(/\/+$/, '')
+  // Each source with its name: TURBO_API was refused as an `apiUrl`
+  // option the workspace never set.
+  const [rawUrl, urlFrom] =
+    options.apiUrl !== undefined
+      ? [options.apiUrl, 'turboCache() option "apiUrl"']
+      : env['TURBO_API'] !== undefined
+        ? [env['TURBO_API'], 'TURBO_API']
+        : fromFile(local.apiUrl) !== undefined
+          ? [fromFile(local.apiUrl), '.turbo/config.json apiUrl']
+          : fromFile(file.apiUrl) !== undefined
+            ? [fromFile(file.apiUrl), 'turbo.json remoteCache.apiUrl']
+            : [token || teamId || teamSlug ? VERCEL_API : undefined, 'apiUrl']
+  const apiUrl = rawUrl?.replace(/\/+$/, '')
   if (!apiUrl) return undefined
   // With no scheme every request failed on its own, as a bare "Invalid URL".
   if (!/^https?:\/\//.test(apiUrl))
-    throw new Error(`vx/turbo-cache: apiUrl must be http(s), got ${apiUrl}`)
+    throw new UserError(`${urlFrom} must be an http(s) URL, got ${JSON.stringify(apiUrl)}`)
   const oidc =
     options.oidc === undefined
       ? undefined
@@ -316,8 +323,8 @@ export function resolveTurboCacheConfig(
   if (URL.canParse(apiUrl)) {
     const u = new URL(apiUrl)
     if (u.username !== '' || u.password !== '')
-      throw new Error(
-        'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead',
+      throw new UserError(
+        `${urlFrom} carries credentials (user:pass@); pass them as the token instead`,
       )
   }
   const fault = token === undefined ? null : headerValueFault(token)
@@ -347,16 +354,6 @@ export function resolveTurboCacheConfig(
       )
   }
   const retries = options.retries ?? 1
-  // A NaN never reaches the bound, and the request would be resent forever.
-  if (!Number.isInteger(retries) || retries < 0)
-    throw new Error(`vx/turbo-cache: retries must be a whole number ≥ 0, got ${retries}`)
-  // 0 is no deadline, as Turbo reads it; a negative or non-number one made
-  // AbortSignal.timeout throw on every request.
-  for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
-    const ms = options[name]
-    if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms >= 0))
-      throw new Error(`vx/turbo-cache: ${name} must be ms ≥ 0 (0: none), got ${JSON.stringify(ms)}`)
-  }
   return {
     apiUrl,
     ...(token !== undefined ? { token } : {}),
@@ -945,8 +942,27 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
  *
  * Declines with no URL, team or token, so it is safe to leave declared.
  */
+/**
+ * The number options, refused at the call: in the `cache` hook a laptop
+ * with no remote named passed what failed the first CI run.
+ */
+function refuseBadNumbers(options: TurboCacheOptions): void {
+  // A NaN never reaches the bound, and the request would be resent forever.
+  const { retries } = options
+  if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
+    throw new UserError(`turboCache() option "retries" must be a whole number ≥ 0, got ${retries}`)
+  // 0 is no deadline, as Turbo reads it; a negative or non-number one made
+  // AbortSignal.timeout throw on every request.
+  for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
+    const ms = options[name]
+    if (ms !== undefined && !(Number.isFinite(ms) && ms >= 0))
+      throw new UserError(`turboCache() option "${name}" must be ms ≥ 0 (0: none), got ${ms}`)
+  }
+}
+
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
+  refuseBadNumbers(options)
   const scope = remoteScope('turbo-cache', options.scope)
   // The run's layer and warn, for `teardown` to revoke an exchanged token.
   let opened: { layer: TurboRemoteCache; warn: (m: string) => void } | undefined

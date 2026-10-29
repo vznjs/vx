@@ -1,3 +1,4 @@
+import path from 'node:path'
 import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
@@ -292,6 +293,12 @@ export interface BuildGraphOptions {
   workspaceRoot?: string
   /** The workspace's `run.rules`; each is on unless set to `false`. */
   rules?: GraphRules | undefined
+  /**
+   * By project name, every project rooted inside its dir (absolute dirs).
+   * Given with `workspaceRoot` and unlocked (`vx lock`), an `inputs.files`
+   * entry rooted inside one is refused (`refuseNestedInputs`).
+   */
+  nestedProjects?: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>
 }
 
 /**
@@ -738,7 +745,48 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   }
 
   checkGraph(nodes, options.workspaceRoot, options.rules)
+  if (options.nestedProjects !== undefined && options.rules?.locked !== true)
+    refuseNestedInputs(nodes, options.nestedProjects, options.workspaceRoot)
   return nodes
+}
+
+/**
+ * Refuse an `inputs.files` entry rooted inside a project nested in the
+ * task's own: every file it can match belongs to that project, which a
+ * project's globs never reach, so the entry keys nothing and an edit there
+ * hits (a `dist/**` over a build output holding its own config was dropped
+ * from the key in silence). Judged by each brace alternative's fixed
+ * prefix: `**` or a sibling reaches past the nested dir and is fine.
+ */
+function refuseNestedInputs(
+  nodes: ReadonlyMap<string, TaskNode>,
+  nested: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>,
+  workspaceRoot: string | undefined,
+): void {
+  for (const n of nodes.values()) {
+    const inner = nested.get(n.projectName)
+    if (inner === undefined || inner.length === 0 || isGroupTask(n)) continue
+    for (const g of positives(n.config.inputs?.files)) {
+      for (const alt of braceAlternatives(g)) {
+        const prefix = staticPrefix(alt)
+        if (prefix === '.' || prefix === '') continue
+        const abs = path.join(n.projectDir, prefix)
+        const hit = inner.find((p) => abs === p.dir || abs.startsWith(p.dir + path.sep))
+        if (hit === undefined) continue
+        const rel =
+          workspaceRoot === undefined
+            ? hit.name
+            : relPosix(workspaceRoot, path.join(n.projectDir, alt.replace(/^\.\//, '')))
+        throw new UserError(
+          `${n.id} reads ${JSON.stringify(g)} in inputs.files, which lies inside the project ` +
+            `${hit.name}: a project's globs never reach another project's files, so it keys ` +
+            `nothing. Depend on a ${hit.name} task, or name the files in inputs.workspaceFiles ` +
+            `(${JSON.stringify(rel)}).`,
+          'VX_E_NESTED_INPUT',
+        )
+      }
+    }
+  }
 }
 
 /** The ids of the tasks that reach `target` along `deps`, itself included. */
