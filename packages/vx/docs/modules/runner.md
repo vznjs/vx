@@ -16,7 +16,7 @@ export interface RunResult {
   durationMs: number
   stdout: string // retained text, or '' when `capture.stdout` is false
   stderr: string // retained text, or '' when `capture.stderr` is false
-  signal?: string // the signal that killed the child (Bun's signalCode)
+  signal?: string | number // the signal that killed the child (Bun's signalCode: its name, or its number when it has none)
   timedOut?: boolean // vx's own `timeoutMs` timer fired: a real `failed`, not an `aborted` shutdown
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
   peakRssBytes?: number // maxRSS (bytes), only when it rose above vx's own RSS high-water mark

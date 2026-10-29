@@ -60,7 +60,7 @@ export class Usage {
   record(
     r: {
       readonly exitCode: number
-      readonly signal?: string | undefined
+      readonly signal?: string | number | undefined
       readonly timedOut?: boolean | undefined
       readonly durationMs: number
       readonly cpuMs?: number | undefined

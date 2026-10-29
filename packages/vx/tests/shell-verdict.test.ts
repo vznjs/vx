@@ -300,6 +300,12 @@ describe('shellVerdict', () => {
     )
   })
 
+  it('a signal the runner saw by number alone is named by its number', () => {
+    expect(shellVerdict({ code: 162, command: 'x', cwd, bins, signal: 34 })).toBe(
+      '[vx] exit 162 is how the shell reports a death by signal 34: the process was killed by that signal',
+    )
+  })
+
   it('a signal name the platform does not know gets no line', () => {
     expect(
       shellVerdict({ code: 137, command: 'x', cwd, bins, signal: 'SIGNOTREAL' }),

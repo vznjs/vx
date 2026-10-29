@@ -264,6 +264,20 @@ describe('runCommand', () => {
     })
     expect(result.exitCode).toBe(143)
   })
+
+  // Linux numbers real-time signals past the named table (34 is SIGRTMIN),
+  // and Bun reports such a death by number alone.
+  it.if(process.platform === 'linux')(
+    'reports a signal that has no name by its number',
+    async () => {
+      const result = await runCommand({
+        command: 'kill -34 $$',
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+      })
+      expect([result.exitCode, result.signal]).toEqual([162, 34])
+    },
+  )
 })
 
 // Retaining a stream costs its full byte size in heap for the whole task, so

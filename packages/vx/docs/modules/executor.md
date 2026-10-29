@@ -156,7 +156,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   never a TypeError inside core. The optional fields are held to their
   types too: each violation an object with a string `line`, `where` a
   non-empty string, `cpuMs` / `peakRssBytes` non-negative numbers,
-  `signal` a string, `timedOut` a boolean, `machine` positive `cores`,
+  `signal` a name or a positive integer (Bun's number for a signal with
+  no name), `timedOut` a boolean, `machine` positive `cores`,
   non-negative `memoryBytes` and an optional positive `cpuShare` (a
   `where` object lost the run's history to a bind error). `where` is the
   executor-reported placement label (a REAPI worker id); absent = this

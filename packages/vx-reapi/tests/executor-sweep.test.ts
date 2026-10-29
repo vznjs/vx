@@ -1100,7 +1100,7 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
     }
     const cancelled = fake.executesCancelled
     const from = fake.calls.length
-    const ended = (r: { exitCode: number; signal?: string }) => [r.exitCode, r.signal]
+    const ended = (r: { exitCode: number; signal?: string | number }) => [r.exitCode, r.signal]
     try {
       const stopped = await withExecutor(async (run) =>
         ended(

@@ -36,10 +36,11 @@ export interface RunResult {
   durationMs: number
   stdout: string
   stderr: string
-  /** The signal that killed the child, if any (Bun's `signalCode`).
+  /** The signal that killed the child, if any (Bun's `signalCode`): its
+   *  name, or its number when it has none (Linux's real-time signals).
    *  SIGINT/SIGTERM here means a Ctrl-C / shutdown teardown — the
    *  orchestrator reverts such a task to aborted, not failed. */
-  signal?: string
+  signal?: string | number
   /** True when vx's own `timeout` timer fired and SIGTERMed the child.
    *  Distinguishes a timeout (a real `failed`) from a Ctrl-C shutdown
    *  SIGTERM (which the orchestrator reverts to `aborted`). */
@@ -1173,7 +1174,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     durationMs: Date.now() - start,
     stdout,
     stderr,
-    ...(typeof proc.signalCode === 'string' ? { signal: proc.signalCode } : {}),
+    ...(proc.signalCode != null ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(cut ? { leftRunning: true } : {}),
     ...resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor),
