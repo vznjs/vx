@@ -981,19 +981,32 @@ describe('affectedProjects', () => {
         expect([...out]).toEqual(['b'])
       })
 
-      it('the claims are never loaded when no root file changed', async () => {
-        // Loading them evaluates the workspace file; the diff that touches
-        // no lockfile — nearly every one — must not pay for it.
+      it('a diff inside the projects reads an unchanged claimed file once, and asks nothing', async () => {
+        // A file the lockfile names may sit inside a project, so the claims
+        // load for any diff; the lockfile the diff does not name is the same
+        // bytes at the base, so it is parsed once and never read from git.
         const loaded = { count: 0 }
+        await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv1\n')
+        await git(root, 'add', '.')
+        await git(root, 'commit', '-q', '-m', 'add lockfile')
         await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
+        const parsed: string[] = []
         const out = await affectedProjects({
           workspaceRoot: root,
           since: 'HEAD',
           projects,
-          fingerprintClaims: claimOf(['b'], loaded),
+          fingerprintClaims: async () => ({
+            ...(await claimOf(['b'], loaded)()),
+            extraFiles: (_file: string, bytes: Uint8Array) => {
+              parsed.push(new TextDecoder().decode(bytes))
+              return []
+            },
+          }),
         })
         expect([...out]).toEqual(['a'])
-        expect(loaded.count).toBe(0)
+        expect(loaded.count).toBe(1)
+        expect(parsed).toEqual(['lockfileVersion: 9\nv1\n'])
+        expect(asked).toEqual([])
       })
 
       it('a claimed root file that is no lockfile is asked about too (item 961)', async () => {
