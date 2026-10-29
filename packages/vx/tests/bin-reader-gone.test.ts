@@ -63,6 +63,42 @@ describe('bin.ts: a reader that leaves does not fail the run', () => {
     await rm(root, { recursive: true, force: true })
   })
 
+  // vercel/turborepo#14868, vercel/turborepo#14880: a listing, `info`,
+  // `--version` or an error report into a reader already gone. The reader
+  // leaves before vx writes a byte, so every write meets the closed pipe.
+  const intoGone = (args: string[], fd: 1 | 2) =>
+    Bun.spawnSync(
+      [
+        'bash',
+        '-c',
+        `set -o pipefail; { sleep 0.3; "$@" ${fd === 1 ? '2>&3' : '2>&1 >/dev/null'}; } 3>&2 | true`,
+        'sh',
+        process.execPath,
+        BIN,
+        ...args,
+      ],
+      { cwd: root, stdout: 'ignore', stderr: 'pipe', env: { ...process.env, NO_COLOR: '1' } },
+    )
+  it.each([
+    ['show'],
+    ['show', '--format', 'json'],
+    ['info'],
+    ['--version'],
+    ['help'],
+    ['run', 'first', '--all', '--dry=json'],
+  ])(
+    '`vx %s` into a reader already gone exits 0 and says nothing',
+    (...args) => {
+      const p = intoGone(args, 1)
+      expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
+    },
+    30_000,
+  )
+  it('an error report into a reader already gone exits with its own code, without a stack', () => {
+    const p = intoGone(['run', 'nosuchtask', '--all'], 2)
+    expect([p.exitCode, p.stderr.toString()]).toEqual([1, ''])
+  }, 30_000)
+
   it('exits with its own verdict, without a stack, saves, and releases its lock', async () => {
     const r = await vxIntoHead(root)
     expect(r.err).not.toContain('EPIPE')
