@@ -27,6 +27,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadline, MAX_TIMER_MS } from '../remote-deadline.js'
+import { checkRemoteUrl } from '../remote-url.js'
 import { refusal } from '../remote-refusal.js'
 import { keyedByRef, readScopes, remoteScope, type RemoteScope } from './scope.js'
 import { OutageBreaker } from '../remote-breaker.js'
@@ -318,22 +319,11 @@ export function resolveTurboCacheConfig(
             : [token || teamId || teamSlug ? VERCEL_API : undefined, 'url']
   const url = rawUrl?.replace(/\/+$/, '')
   if (!url) return undefined
-  // With no scheme every request failed on its own, as a bare "Invalid URL".
-  if (!/^https?:\/\//.test(url))
-    throw new UserError(`${urlFrom} must be an http(s) URL, got ${JSON.stringify(url)}`)
+  checkRemoteUrl(url, urlFrom)
   const oidc =
     options.oidc === undefined
       ? undefined
       : oidcSettings(options.oidc, url === VERCEL_API, teamId ?? teamSlug)
-  // The URL is printed in every refusal line, so a `user:pass@` in it would
-  // leak to the log. Credentials go in the token.
-  if (URL.canParse(url)) {
-    const u = new URL(url)
-    if (u.username !== '' || u.password !== '')
-      throw new UserError(
-        `${urlFrom} carries credentials (user:pass@); pass them as the token instead`,
-      )
-  }
   const fault = token === undefined ? null : headerValueFault(token)
   if (fault !== null)
     throw new Error(
@@ -1000,6 +990,10 @@ function refuseBadNumbers(options: TurboCacheOptions): void {
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
   refuseBadNumbers(options)
+  // At the call too, as vxCache() checks its url: in the hook alone, a verb
+  // that opens no cache (`vx show`) took a url every run then failed on.
+  const url = options.url?.replace(/\/+$/, '')
+  if (url) checkRemoteUrl(url, 'turboCache() option "url"')
   const scope = remoteScope('turboCache', options.scope)
   // The run's layer and warn, for `teardown` to revoke an exchanged token.
   let opened: { layer: TurboRemoteCache; warn: (m: string) => void } | undefined
