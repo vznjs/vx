@@ -195,6 +195,8 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: '@vzn/vx-cache-server', link: '/plugins/vx-cache-server/' },
         { label: '@vzn/vx-history-server', link: '/plugins/vx-history-server/' },
         { label: '@vzn/vx-devtools', link: '/plugins/vx-devtools/' },
+        { label: '@vzn/vx-dte', link: '/plugins/vx-dte/' },
+        { label: '@vzn/vx-dte-server', link: '/plugins/vx-dte-server/' },
       ],
     },
     {
