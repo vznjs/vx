@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v49'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v50'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -2156,6 +2156,11 @@ breaking footer).
 
 ### History
 
+- **v49 → v50**: stored bytes wrong under a key the change does not move
+  (2026-10-29). Two branches each took v49 for one of the two changes
+  below: a store written by one lacks the other's (brace alternatives
+  read alone, or `dirModes` in the sidecar), and a v50 read would trust
+  it. A v49 entry is never read.
 - **v48 → v49**: stored bytes wrong under a key the change does not move
   (2026-10-28). Each brace alternative is read alone: `{dist,lib}` is the
   two trees, and `{./dist,lib}/**` drops the `./`. An output glob folds

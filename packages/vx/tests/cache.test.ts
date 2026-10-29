@@ -555,7 +555,7 @@ describe('Cache.key', () => {
     const files = byKind('file')
     expect(files.map((r) => r.name).sort()).toEqual(['one.txt', 'two.txt'])
     // Total rows = sum of every component above.
-    expect(byKind('format')).toEqual([{ name: 'cache-version', hash: 'vx-cache-v49' }])
+    expect(byKind('format')).toEqual([{ name: 'cache-version', hash: 'vx-cache-v50' }])
     expect(sink.length).toBe(1 + 1 + 1 + 2 + 1 + 1 + 1 + 2)
   })
 

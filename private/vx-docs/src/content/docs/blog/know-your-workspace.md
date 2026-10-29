@@ -26,7 +26,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         .vx/cache (242 KB, this workspace's run history)
   cache store       ~/.vx/3c8e043b65dcb173/cache (164 KB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v49 · index schema v49
+  cache versions    keys vx-cache-v50 · index schema v49
   cache entries     18 (5.8 KB)
   task runs (24h)   61 (40 cache hits: 40 up-to-date, 0 restored)
   flaky tasks       2 — packages/a#flip (2 of 4 runs failed on unchanged inputs); packages/a#e2e (1 of 2 runs failed)
