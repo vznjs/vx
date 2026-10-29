@@ -64,6 +64,10 @@ describe('an empty command in any spelling', () => {
         `${CFG}: tasks.t.exec.command must be a non-empty string`,
       )
     }
+    // An `exec` with no command at all is refused the same way, never run as a no-op.
+    expect(taskRefusal({ exec: {} })).toBe(
+      `${CFG}: tasks.t.exec.command must be a non-empty string`,
+    )
     // CONTROL: a command with text around whitespace stands.
     expect(taskRefusal({ exec: { command: ' true ' } })).toBeNull()
   })
