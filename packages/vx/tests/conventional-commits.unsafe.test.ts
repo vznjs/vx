@@ -30,7 +30,27 @@ it("the PR's title is a Conventional Commits header", () => {
 // A mega branch's own commit made before this row knew mega branches; its
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
-const KNOWN = new Set(['92f8f41369c5c8ebe41934bb31c8eeddda32b1a1'])
+const KNOWN = new Set([
+  '92f8f41369c5c8ebe41934bb31c8eeddda32b1a1',
+  // The second mega branch's, made before the row held it: `style`, a type the row does not take.
+  '9f41d72685a623eccfff8dd8a49dda186e273029',
+  // The second mega branch's, made before the row held it: 73 chars.
+  'c5358fbd580ce677ea0a3c8a6a73f2930ab57cfc',
+  // The second mega branch's, made before the row held it: 73 chars.
+  'eb5d140c535e81a10e0866f130481efd96bc2aaa',
+  // The second mega branch's, made before the row held it: 72 chars.
+  '19f7794f03db4adcab11bf4c63b9be304710765b',
+  // The second mega branch's, made before the row held it: 74 chars.
+  '03b5f2b96e21e06835e47d3a5d64a01c56fac53b',
+  // The second mega branch's, made before the row held it: 72 chars.
+  'f242774d84b4eb544ae20ee6b21771698b0fa547',
+  // The second mega branch's, made before the row held it: 73 chars.
+  'e61b3fff6e0f3d450ec219225cca093dd9f4793e',
+  // The second mega branch's, made before the row held it: 73 chars.
+  'a8df2225a47b612e2ff63cd1831d436b3a926132',
+  // The second mega branch's, made before the row held it: 72 chars.
+  'a2d4705b49ed44cdf594ba47ed8060eb3d380aae',
+])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {
   if (base === '' || head === '') return
