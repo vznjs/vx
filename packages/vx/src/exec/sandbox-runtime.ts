@@ -1314,6 +1314,12 @@ export interface SandboxViolation {
   hint?: true
   /** Absolute, when `target` is a path at all. */
   path?: string
+  /**
+   * Linux: the directory holding a link on the path the task opened, not
+   * in the sandbox, so the link was not there: a grant of `path` alone
+   * leaves it hidden.
+   */
+  via?: string
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 

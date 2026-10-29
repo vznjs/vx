@@ -423,7 +423,8 @@ export async function parseStraceViolations(
     // libs / /proc / /sys / etc. probes are not interesting violations.
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
     // Skip paths the user explicitly allowed (and their descendants).
-    if (isUnderAny(abs, allowAbs) && !hiddenByLink(lexical, abs, mounted, denyAnchors)) continue
+    const via = lexical === abs ? undefined : hiddenLink(lexical, abs, mounted, denyAnchors)
+    if (isUnderAny(abs, allowAbs) && via === undefined) continue
     if (underGlob(abs, pendingWrites)) continue
     if (read === true && !undeclared(abs)) continue
     // A hidden path answers ENOENT, as a missing one does: a probe
@@ -455,6 +456,7 @@ export async function parseStraceViolations(
             // does not keep, and `access` may ask either — so either list
             // can silence it.
             ignorable: ['read', 'write'],
+            ...(via === undefined ? {} : { via }),
           },
     )
   }
@@ -462,8 +464,10 @@ export async function parseStraceViolations(
 }
 
 /**
- * A granted file the task could not open because a link on the path it
- * opened is not in the sandbox. A grant is mounted at its real path and
+ * The directory holding a link on the path the task opened, when that
+ * directory is not in the sandbox, so the link is not there either: what
+ * a fix must grant beside the target. A granted file the task could not
+ * open this way was dropped as granted. A grant is mounted at its real path and
  * bwrap mounts no link, so `read: ['config.json']` over `config.json ->
  * conf/real.json` bound the target and left the name the task opens out;
  * judged by its real path, the ENOENT was granted and dropped, and a tool
@@ -472,26 +476,25 @@ export async function parseStraceViolations(
  * is missing outside the sandbox too, and outside the deny anchor the
  * host is mounted, links and all.
  */
-function hiddenByLink(
+function hiddenLink(
   lexical: string,
   real: string,
   mounted: Set<string>,
   anchors: readonly string[],
-): boolean {
-  if (lexical === real || !existsSync(real)) return false
+): string | undefined {
+  if (!existsSync(real)) return undefined
   let at = lexical
-  const links: string[] = []
   for (let up = path.dirname(at); up !== at; at = up, up = path.dirname(at)) {
     try {
-      if (lstatSync(at).isSymbolicLink()) links.push(at)
+      if (!lstatSync(at).isSymbolicLink()) continue
     } catch {
       // Not on the host by this spelling: no link to judge here.
+      continue
     }
+    const holder = toRealPath(up)
+    if (anchors.some((a) => atOrUnder(holder, a)) && !isUnderAny(holder, mounted)) return holder
   }
-  return links.some((l) => {
-    const holder = toRealPath(path.dirname(l))
-    return anchors.some((a) => atOrUnder(holder, a)) && !isUnderAny(holder, mounted)
-  })
+  return undefined
 }
 
 /**

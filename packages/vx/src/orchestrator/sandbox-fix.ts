@@ -31,7 +31,8 @@ function isCredential(abs: string): boolean {
  */
 function grantPath(abs: string, projectDir: string): string {
   const rel = path.relative(projectDir, abs)
-  if (rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)) return rel
+  if (rel === '') return '.'
+  if (!rel.startsWith('..') && !path.isAbsolute(rel)) return rel
   const home = os.homedir()
   return abs.startsWith(home + path.sep) ? `~/${abs.slice(home.length + 1)}` : abs
 }
@@ -109,6 +110,9 @@ export function sandboxFix(
     else if (kind === 'read') {
       const grant = grantPath(v.path, projectDir)
       fix.read.add(grant)
+      // The link the task opened lies in a directory the sandbox lacks: the
+      // target alone stays unreachable, and the fix named it again forever.
+      if (v.via !== undefined) fix.read.add(grantPath(v.via, projectDir))
       if (keyed !== undefined && inProject(grant) && !keyed(grant)) fix.inputs.add(grant)
     } else {
       const isDir =

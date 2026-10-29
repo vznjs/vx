@@ -226,6 +226,7 @@ export interface SandboxViolation {
   target?: string
   hint?: true // vx's own note, shown but never counted (B-20)
   path?: string
+  via?: string // Linux: the unmounted directory holding a link the task opened through
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 export interface SandboxedRunResult extends RunResult {
