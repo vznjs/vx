@@ -90,9 +90,11 @@ const MATRIX_MAX = 256
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
   const workflow = options.workflow ?? 'vx-worker.yml'
-  if (workflow === '' || workflow.includes('/'))
+  // GitHub reads no workflow in a subdirectory, and `vx dte init` writes
+  // the run's own ci.yml beside it: the same name wrote one over the other.
+  if (workflow === '' || workflow.includes('/') || workflow === 'ci.yml')
     throw new UserError(
-      `github() option "workflow" must be a file name in .github/workflows, such as vx-worker.yml, got ${JSON.stringify(workflow)}`,
+      `github() option "workflow" must be a file name in .github/workflows other than ci.yml, such as vx-worker.yml, got ${JSON.stringify(workflow)}`,
     )
   const handed = handedEnv(options.env ?? {})
   // The workers one demand starts, by size: one dispatch each.

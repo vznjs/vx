@@ -863,7 +863,8 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of
   one workflow, one dispatch per size and demand (at most 256 workers,
   a matrix's limit). `GithubOptions` is `{ workflow?, runsOn?, env? }`:
-  `workflow` defaults to `vx-worker.yml`; `runsOn` is the runner label
+  `workflow` defaults to `vx-worker.yml`, a file name in
+  `.github/workflows` other than `ci.yml`, the run's own; `runsOn` is the runner label
   of each size, which `vx dte init` writes; `env` is variables every
   worker gets (one-line strings, no secret-named one: the worker job's
   log shows them), sent as the

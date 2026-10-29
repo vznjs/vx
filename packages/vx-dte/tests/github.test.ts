@@ -122,14 +122,16 @@ it('hands its workers the variables env names, as the env input', async () => {
 })
 
 // An empty or pathed workflow dispatched to a URL GitHub answers 404, and
-// the run said to commit a workflow file that was there all along.
+// the run said to commit a workflow file that was there all along; ci.yml
+// is init's own file for the run, which the workers' workflow replaced.
 it('refuses a workflow that is not a file name in .github/workflows', () => {
   for (const [workflow, got] of [
     ['', '""'],
     ['.github/workflows/w.yml', '".github/workflows/w.yml"'],
+    ['ci.yml', '"ci.yml"'],
   ] as const)
     expect(() => github({ workflow })).toThrow(
-      `github() option "workflow" must be a file name in .github/workflows, such as vx-worker.yml, got ${got}`,
+      `github() option "workflow" must be a file name in .github/workflows other than ci.yml, such as vx-worker.yml, got ${got}`,
     )
   expect(() => github({ workflow: 'workers.yml' })).not.toThrow()
 })
