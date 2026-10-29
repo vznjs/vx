@@ -160,9 +160,7 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
   const out = new Map<string, LockfileImporter>()
   const viaLayout = (from: string, name: string): string | undefined => {
     const key = resolve(lock, from, name)
-    const id = key === undefined ? '' : lock.packages.get(key)!.id
-    const at = id.indexOf('@workspace:')
-    return at === -1 ? undefined : id.slice(at + '@workspace:'.length) || '.'
+    return key === undefined ? undefined : workspaceOf(lock.packages.get(key)!.id)
   }
   for (const dir of lock.workspaces.keys()) {
     const from = importerFrom(lock, dir)
@@ -209,6 +207,16 @@ function workspaceSpecTarget(
   if (rest.startsWith('.')) return joinPosix(dir, rest)
   const alias = ALIAS.exec(rest)
   return alias === null ? undefined : lock.workspaceDirs.get(alias[1]!)
+}
+
+/**
+ * The workspace dir a package id installs: `b@workspace:packages/b`, or
+ * the root, which Bun 1.4 writes `root@root:`.
+ */
+function workspaceOf(id: string): string | undefined {
+  const at = id.indexOf('@workspace:', 1)
+  if (at !== -1) return id.slice(at + '@workspace:'.length) || '.'
+  return id.endsWith('@root:') ? '.' : undefined
 }
 
 /**
@@ -334,9 +342,8 @@ export function importerDigests(
   // live on its importer — so the node points at the importer: what a
   // project can import through workspace package B is B's whole reach.
   for (const [p, e] of lock.packages) {
-    const at = e.id.indexOf('@workspace:')
-    if (at === -1) continue
-    const target = importers.get(e.id.slice(at + '@workspace:'.length) || '.')
+    const dir = workspaceOf(e.id)
+    const target = dir === undefined ? undefined : importers.get(dir)
     if (target !== undefined) edges[index.get(p)!]!.push(target)
   }
   const digests = reachDigests({ material, edges })
