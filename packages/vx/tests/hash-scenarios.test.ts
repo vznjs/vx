@@ -423,3 +423,27 @@ describe('refused at vx lock (Turbo, Nx)', () => {
     expect(refusal(inputs)).toContain(message)
   })
 })
+
+// vx lists untracked inputs through git (`ls-files --others
+// --exclude-standard`), so git's own rules decide what is ignored. Turbo's
+// walker reimplemented them and got each of these wrong once.
+describe("untracked inputs follow git's ignore rules", () => {
+  it(
+    "a project's `!` line takes a file back from the root's rule (vercel/turborepo#13221)",
+    async () => {
+      const root = await workspace(
+        "{ files: ['src/**'] }",
+        { '.gitignore': '!important.log\n', 'src/a.txt': 'a\n' },
+        { '.gitignore': '.vx/cache/\n*.log\n' },
+      )
+      await writeFile(at(root, 'src/important.log'), 'v1\n')
+      await writeFile(at(root, 'src/other.log'), 'v1\n')
+      const k0 = await key(root)
+      await writeFile(at(root, 'src/other.log'), 'v2\n')
+      expect(await key(root)).toBe(k0)
+      await writeFile(at(root, 'src/important.log'), 'v2\n')
+      expect(await key(root)).not.toBe(k0)
+    },
+    TIMEOUT,
+  )
+})
