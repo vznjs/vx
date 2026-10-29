@@ -107,6 +107,21 @@ describe('pnpm(): excludeLinksFromLockfile', () => {
     await expect(discover()).rejects.toThrow("does not list packages/b's dependency on c")
   })
 
+  it('reads the setting from a CRLF lockfile, as from an LF one', async () => {
+    // A Windows checkout (`core.autocrlf`) writes CRLF: the setting's block
+    // read by its `\n` heading alone was not found, and the run refused a
+    // lockfile `pnpm install` writes unchanged.
+    await writeFile(
+      path.join(root, 'pnpm-lock.yaml'),
+      lockfile(true, '3.0.1').replace(/\n/g, '\r\n'),
+    )
+    expect(await discover()).toEqual([
+      { dir: 'packages/a', deps: ['packages/b', 'packages/c'] },
+      { dir: 'packages/b', deps: [] },
+      { dir: 'packages/c', deps: [] },
+    ])
+  })
+
   it("a bump in a linked package's dependencies re-keys the project linking it", () => {
     const digests = (exclude: boolean, isOdd: string) =>
       importerDigests(parseLockfile(lockfile(exclude, isOdd)))
