@@ -544,7 +544,7 @@ REPL, a watch mode that reads keys. Turbo's `interactive`.
   to the run's end, so other tasks may run once it is spawned (their
   output goes to the same terminal), a run may hold one, and every
   other interactive task must be its dependency. A run that breaks
-  either is refused before any task runs.
+  either is refused before any task runs, and so is its `--dry`.
 - **Off a TTY** (CI, a pipe) it runs as any task: stdin is empty, or
   a pipe vx holds for a persistent one, and it runs beside others.
   A prompt there reads end of input; it never hangs.
