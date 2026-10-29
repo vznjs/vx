@@ -377,7 +377,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     a glob's fixed prefix (`src/**/*.ts` over `src/v -> ../shared`,
     `**/*.ts` over `lib -> ../shared`) is an input the same way whenever
     the glob could match a path under it: its name alone matched no
-    pattern, and an edit behind it was a hit (2026-10-28).
+    pattern, and an edit behind it was a hit (2026-10-28). So is one
+    in a gitignored directory an entry names (`gen/**/*.ts` over
+    `gen/v -> ../shared`), which the walk on disk meets the same way.
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.
