@@ -70,22 +70,35 @@ export interface Registry {
  * a sequential publish can fail partway (a transient registry error, an
  * earlier abort), and npm refuses to republish a version, so a re-run skips
  * what landed and completes the set instead of dying on the first one.
+ * A platform package or `@vzn/vx` that fails stops the run: what follows
+ * depends on it. A plugin that fails does not stop the other plugins, which
+ * depend only on `@vzn/vx` (v0.0.648: a new plugin npm held no trusted
+ * publisher for kept every plugin after it at 0.0.646); the run fails after
+ * them, naming the first.
  */
 export function publishAll(
-  packages: Readonly<Array<{ name: string; dir: string }>>,
+  packages: Readonly<Array<{ name: string; dir: string; plugin?: boolean }>>,
   version: string,
   registry: Registry,
   log: (line: string) => void,
 ): void {
-  for (const { name, dir } of packages) {
+  let failed: unknown
+  for (const { name, dir, plugin } of packages) {
     log(`::group::npm publish ${name}@${version} (${dir})`)
     if (registry.has(`${name}@${version}`)) {
       log(`${name}@${version} already on the registry — skipping`)
+    } else if (plugin === true) {
+      try {
+        registry.publish(dir)
+      } catch (e) {
+        failed ??= e
+      }
     } else {
       registry.publish(dir)
     }
     log('::endgroup::')
   }
+  if (failed !== undefined) throw failed
 }
 
 /** Where npm serves `name@version`'s tarball. */
@@ -247,7 +260,7 @@ function publish(os: Os, version: string): void {
     const { name } = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
       name: string
     }
-    return { name, dir }
+    return { name, dir, plugin: rel.startsWith('plugins/') }
   })
   const npm = npmBin()
   // No NODE_AUTH_TOKEN: npm exchanges the job's OIDC token for a
