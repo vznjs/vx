@@ -2,6 +2,7 @@
 
 import { createServer, type AddressInfo } from 'node:net'
 import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test'
+import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { oidcAuth } from '@vzn/vx-devtools'
 import { listen, s3Blobs } from '../src/bun.js'
 import { blobName } from '../src/store.js'
@@ -225,6 +226,66 @@ it('refuses to start without AUDIENCE', () => {
     2,
     '✗ vx-cache-server  set AUDIENCE: the aud a CI token names, the URL clients reach this server at',
   ])
+})
+
+// jose matches aud exactly: AUDIENCE with a pasted newline refused every
+// token as the wrong audience. The Workers entry trims it
+// (worker.test.ts); so does this one. The issuer is on loopback, as the
+// image's smoke test serves it, so the spawned server reaches its keys.
+it('reads AUDIENCE without the blanks around it', async () => {
+  const { privateKey, publicKey } = await generateKeyPair('RS256')
+  const jwks = { keys: [{ ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }] }
+  const keys = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (req) =>
+      new URL(req.url).pathname === '/.well-known/openid-configuration'
+        ? Response.json({ jwks_uri: new URL('/keys', req.url).href })
+        : Response.json(jwks),
+  })
+  const at = keys.url.origin
+  const cli = Bun.spawn(
+    ['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0', '--host', '127.0.0.1'],
+    {
+      env: {
+        ...process.env,
+        S3_BUCKET: 'b',
+        S3_ENDPOINT: s3.url,
+        S3_ACCESS_KEY_ID: 'a',
+        S3_SECRET_ACCESS_KEY: 's',
+        ALLOW: `${at}:${REPO}:.gitlab-ci.yml`,
+        AUDIENCE: ' https://cache.example\n',
+      },
+      stdout: 'pipe',
+    },
+  )
+  try {
+    const line = new TextDecoder().decode((await cli.stdout.getReader().read()).value)
+    const base = /on (\S+)/.exec(line)![1]!
+    const token = await new SignJWT({
+      project_path: REPO,
+      ci_config_ref_uri: `${at.replace(/^https?:\/\//, '')}/${REPO}//.gitlab-ci.yml@refs/heads/main`,
+      ref_path: 'refs/heads/main',
+    })
+      .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
+      .setIssuer(at)
+      .setAudience('https://cache.example')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(privateKey)
+    const res = await fetch(new URL('/v1/capabilities', base), {
+      headers: {
+        authorization: `Bearer ${token}`,
+        'vx-issuer': scopeOf(at),
+        'vx-repository': scopeOf(REPO),
+      },
+    })
+    expect(res.status).toBe(200)
+  } finally {
+    cli.kill()
+    await cli.exited
+    await keys.stop(true)
+  }
 })
 
 it('refuses an empty --port: Number of it is 0, a random port', () => {
