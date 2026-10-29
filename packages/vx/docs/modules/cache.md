@@ -213,7 +213,7 @@ export class Cache implements CacheLayer {
 export interface PruneOptions {
   olderThanMs?: number // ms-epoch cutoff; entries with accessed_at < this are evicted
   maxBytes?: number // after age pruning, evict LRU until total <= maxBytes
-  dryRun?: boolean // pick victims and count orphans, delete nothing
+  dry?: boolean // pick victims and count orphans, delete nothing
 }
 
 export interface PruneResult {

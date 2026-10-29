@@ -1395,7 +1395,7 @@ export interface ProjectMeta {
 export interface PruneOptions {
   olderThanMs?: number
   maxBytes?: number
-  dryRun?: boolean
+  dry?: boolean
 }
 == type PruneResult (src/cache/layer.ts)
 export interface PruneResult {

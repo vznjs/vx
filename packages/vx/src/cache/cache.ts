@@ -3173,7 +3173,7 @@ export class Cache implements CacheLayer {
     // orphan rows in either order: landed first, the cascade takes them;
     // landed after, the flush's own entry check drops them (item 628).
     this.outputs.flushOutputDirs()
-    const { olderThanMs, maxBytes, dryRun = false } = options
+    const { olderThanMs, maxBytes, dry = false } = options
     if (olderThanMs === undefined && maxBytes === undefined) {
       throw new Error('prune: pass at least one of `olderThanMs` or `maxBytes`')
     }
@@ -3203,7 +3203,7 @@ export class Cache implements CacheLayer {
     // Promise.all over the unlinks. The hash list binds as one `json_each`
     // parameter, so a huge eviction stays under any build's bound-parameter
     // ceiling.
-    if (dryRun) {
+    if (dry) {
       return { evicted: victims.size, bytesFreed, orphans: picked.files.length, orphanBytes }
     }
     if (victims.size > 0 || stale.length > 0) {
