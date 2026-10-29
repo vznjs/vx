@@ -424,6 +424,24 @@ describe('nx()', () => {
     TIMEOUT,
   )
 
+  // Nx finds projects by a walk that honours every `.gitignore` (and
+  // `.nxignore`): an ignore edited outside any project root moves the graph,
+  // and the snapshot kept the old project list until the next commit.
+  it(
+    'an edited .gitignore, at the root or between project roots, re-exports',
+    async () => {
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(1)
+      await appendFile(path.join(root, '.gitignore'), 'packages/legacy/\n')
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(2)
+      await appendFile(path.join(root, 'packages', '.gitignore'), 'legacy/\n')
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(3)
+    },
+    TIMEOUT,
+  )
+
   it(
     'a touch alone, or a stray file at the root, does not re-export',
     async () => {
@@ -517,9 +535,7 @@ describe('nx()', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'lib', private: true }),
       )
-      expect((await lockWarnings()).join('\n')).toContain(
-        'Nx project(s) ws have no workspace package',
-      )
+      expect((await lockWarnings()).join('\n')).toContain('Nx project ws has no workspace package')
       const plan = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
       expect(plan.tasks[0]!.node.config.exec?.command).toBe('echo lint-ran > lint.log')

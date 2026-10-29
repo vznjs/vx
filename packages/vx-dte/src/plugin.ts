@@ -77,6 +77,12 @@ export interface DteAdapter {
   report?(warn: (message: string) => void): void
   /** Its workers prove themselves by their CI identity (GitHub OIDC): the run makes no secret for them. */
   readonly keyless?: boolean
+  /**
+   * A keyless adapter's: the CI runs (GitHub workflow run ids) whose jobs
+   * alone may join as its workers; `undefined` admits any job of the
+   * repository.
+   */
+  workerRuns?(): ReadonlySet<string> | undefined
   /** A worker's name in a job its CI started for several, when `VX_DTE_WORKER` is unset. */
   workerId?(): string | undefined
   /** The run's id when `VX_DTE_RUN` is unset, in a CI job it starts workers from; none elsewhere. */
@@ -126,13 +132,13 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   headers: 'object',
 }
 
+// A typo in a size or in `unmeasured` (`maxx`) was dropped, and the size ran uncapped.
 const SIZE_KEYS: PluginOptionKinds<WorkerSize> = {
   max: 'number',
   cpu: 'number',
   memory: 'any',
   platform: 'string',
 }
-
 const UNMEASURED_KEYS: PluginOptionKinds<NonNullable<DteOptions['unmeasured']>> = {
   cpu: 'number',
   memory: 'any',
@@ -146,49 +152,46 @@ function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new UserError(`dte(): headers cannot set "${name}"`)
+      throw new UserError(`dte() option "headers" cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new UserError(`dte(): header "${name}" must be one line of text`)
+      throw new UserError(
+        `dte() option "headers.${name}" must be one line of text (its value is not printed)`,
+      )
     out[name] = value
   }
   return out
 }
 
-export function dte(options: DteOptions) {
+export function dte(options: DteOptions = {}) {
   refuseUnknownOptions('dte()', options, KEYS)
   const headers = proxyHeaders(options.headers)
   const how: Strategy = { ...DEFAULT_STRATEGY }
   for (const [layer, choice] of Object.entries(options.scheduler ?? {})) {
     const choices = STRATEGIES[layer as keyof Strategy] as readonly string[] | undefined
-    if (choices === undefined || !choices.includes(choice as string))
+    if (choices === undefined)
       throw new UserError(
-        `dte(): scheduler.${layer} ${choices === undefined ? `is no layer: the layers are ${Object.keys(STRATEGIES).join(', ')}` : `is one of ${choices.join(', ')}`}`,
+        `dte() option "scheduler" has no layer ${JSON.stringify(layer)} (layers: ${Object.keys(STRATEGIES).join(', ')})`,
       )
+    if (!choices.includes(choice as string))
+      refuse(`scheduler.${layer}`, `one of ${choices.join(', ')}`, choice)
     ;(how as unknown as Record<string, unknown>)[layer] = choice
   }
   const sizes = Object.entries(options.workers ?? {}).map(([name, s]) => {
-    // A typo read as unset: `maxx: 2` started workers uncapped.
-    refuseUnknownOptions(`dte(): workers.${name}`, s, SIZE_KEYS)
-    const memory = bytes(s?.memory)
-    if (
-      !(
-        (s?.max === undefined || (Number.isInteger(s.max) && s.max >= 0)) &&
-        Number.isInteger(s?.cpu) &&
-        s.cpu >= 1
-      ) ||
-      memory === undefined
-    ) {
-      throw new UserError(
-        `dte(): workers.${name} needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any`,
-      )
-    }
+    const at = `workers.${name}`
+    refuseUnknownOptions(`dte() option "${at}"`, s, SIZE_KEYS)
+    if (!(Number.isInteger(s?.cpu) && s.cpu >= 1)) refuse(`${at}.cpu`, 'a whole number ≥ 1', s?.cpu)
+    const memory = bytes(s.memory)
+    if (memory === undefined)
+      refuse(`${at}.memory`, "bytes above 0 or a size such as '8GB'", s.memory)
+    if (!(s.max === undefined || (Number.isInteger(s.max) && s.max >= 0)))
+      refuse(`${at}.max`, 'a whole number ≥ 0', s.max)
     if (s.platform !== undefined && !PLATFORMS.includes(s.platform))
-      throw new UserError(`dte(): workers.${name}.platform is one of ${PLATFORMS.join(', ')}`)
+      refuse(`${at}.platform`, `one of ${PLATFORMS.join(', ')}`, s.platform)
     return {
       name,
       max: s.max ?? Infinity,
       cpu: s.cpu,
-      memory,
+      memory: memory!,
       platform: s.platform ?? hostPlatform(),
     }
   })
@@ -226,7 +229,9 @@ export function dte(options: DteOptions) {
   }
   // With no scheme the run failed in the executor as a bare "Invalid URL".
   if (options.relay !== undefined && !/^https?:\/\//.test(options.relay)) {
-    throw new UserError(`dte(): relay must be http(s), got ${options.relay}`)
+    throw new UserError(
+      `dte() option "relay" must be an http(s) URL, got ${JSON.stringify(options.relay)}`,
+    )
   }
   // On GitHub Actions with none given, one for the relay's URL.
   const token = async (relay: string): Promise<string | undefined> =>
@@ -267,7 +272,7 @@ export function dte(options: DteOptions) {
     if (k !== undefined && ups !== undefined) {
       const { writeWarmUps } = await import('./warm-ups.js')
       await writeWarmUps(k.cache, k.root, learned, ups).catch((err: unknown) =>
-        k.warn(`dte: warm-ups not kept: ${err instanceof Error ? err.message : String(err)}`),
+        k.warn(`[vx] dte: warm-ups not kept: ${err instanceof Error ? err.message : String(err)}`),
       )
     }
     learned = new Map()
@@ -286,7 +291,10 @@ export function dte(options: DteOptions) {
   const init = async (args: readonly string[], ctx: CommandContext): Promise<number> => {
     const extra = args.find((a) => a !== '--dry' && a !== '--force')
     if (extra !== undefined)
-      throw new UserError(`vx dte init: unknown argument ${extra}; it takes --dry and --force`)
+      throw new UserError(
+        `vx dte init: ${extra.startsWith('-') ? 'unknown flag' : 'unexpected argument'}: ${extra} (see \`vx dte --help\`)`,
+        'VX_E_USAGE',
+      )
     const root = ctx.workspaceRoot
     if (adapter === undefined)
       throw new UserError(
@@ -333,7 +341,7 @@ export function dte(options: DteOptions) {
   return definePlugin(import.meta, {
     commands: {
       dte: {
-        description: 'dte init: write the CI of a DTE run; dte worker: run tasks for a DTE run',
+        description: "Write a DTE run's CI (dte init) or run its tasks (dte worker).",
         async run(argv, ctx) {
           // Asked for, the usage is an answer: `vx dte --help` exited 1 (2026-10-26).
           if (argv.some((a) => a === '--help' || a === '-h') || argv[0] === 'help') {
@@ -342,26 +350,31 @@ export function dte(options: DteOptions) {
           }
           if (argv[0] === 'init') return init(argv.slice(1), ctx)
           // The bare usage said nothing of what was wrong with the line typed.
-          if (argv[0] === undefined) throw new UserError(`missing subcommand\n${USAGE}`)
-          if (argv[0] !== 'worker') throw new UserError(`unknown subcommand: ${argv[0]}\n${USAGE}`)
+          if (argv[0] === undefined)
+            throw new UserError(`missing subcommand\n${USAGE}`, 'VX_E_USAGE')
+          if (argv[0] !== 'worker')
+            throw new UserError(`unknown subcommand: ${argv[0]}\n${USAGE}`, 'VX_E_USAGE')
           if (argv.length > 1)
-            throw new UserError(`vx dte worker takes no arguments: ${argv.slice(1).join(' ')}`)
+            throw new UserError(
+              `vx dte worker: ${argv[1]!.startsWith('-') ? 'unknown flag' : 'unexpected argument'}: ${argv[1]} (see \`vx dte --help\`)`,
+              'VX_E_USAGE',
+            )
           const run = runOf()
-          const relay = process.env['VX_DTE_RELAY'] ?? options.relay
+          const relay = process.env['VX_DTE_RELAY'] || options.relay
           // Only what is missing: with VX_DTE_RUN set, the old line still asked for it.
           if (run === undefined || relay === undefined) {
             const missing = [
               ...(run === undefined ? ['VX_DTE_RUN'] : []),
               ...(relay === undefined ? ['VX_DTE_RELAY or dte({ relay })'] : []),
             ]
-            throw new UserError(`vx dte worker needs ${missing.join(', and ')}`)
+            throw new UserError(`vx dte worker: needs ${missing.join(', and ')}`)
           }
           if (!/^https?:\/\//.test(relay))
             throw new UserError(`vx dte worker: VX_DTE_RELAY must be http(s), got ${relay}`)
           const secret = givenSecret()
           if (secret === undefined && !onGitHub()) {
             throw new UserError(
-              'vx dte worker needs VX_DTE_SECRET, the run’s, or a GitHub Actions job with id-token: write',
+              'vx dte worker: needs VX_DTE_SECRET, the run’s, or a GitHub Actions job with id-token: write',
             )
           }
           const [{ runWorker }, seal] = await Promise.all([
@@ -416,7 +429,7 @@ export function dte(options: DteOptions) {
           tails = undefined
         } catch (err) {
           ctx.warn(
-            `dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,
+            `[vx] dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,
           )
         }
       }
@@ -427,7 +440,7 @@ export function dte(options: DteOptions) {
           (m) => void (learned = m),
           (err: unknown) =>
             ctx.warn(
-              `dte: no warm-ups learned: ${err instanceof Error ? err.message : String(err)}`,
+              `[vx] dte: no warm-ups learned: ${err instanceof Error ? err.message : String(err)}`,
             ),
         )
       const guess = changedSinceParent(ctx.workspaceRoot).then(async (changed) => {
@@ -476,7 +489,10 @@ export function dte(options: DteOptions) {
       let proof: Proof | undefined
       if (secret === undefined) {
         if ((adapter === undefined || adapter.keyless === true) && onGitHub())
-          proof = seal.githubProof()
+          proof = seal.githubProof(
+            undefined,
+            adapter?.workerRuns === undefined ? undefined : () => adapter.workerRuns!(),
+          )
         else if (adapter === undefined)
           throw new UserError(
             'dte(): with no adapter, set VX_DTE_SECRET here and on each worker, or run on GitHub Actions with id-token: write',
@@ -525,7 +541,7 @@ export function dte(options: DteOptions) {
         // (2026-10-23).
         faulted: () => onChange(true),
         stalled: (waiting) =>
-          ctx.warn(`dte(): no task began or ended for a minute; waiting on\n${waiting}`),
+          ctx.warn(`[vx] dte(): no task began or ended for a minute; waiting on\n${waiting}`),
         warn: ctx.warn,
       })
       orchestrator = o
@@ -784,9 +800,13 @@ export function dte(options: DteOptions) {
   })
 }
 
-/** A GitHub Actions job that may ask for OIDC tokens. */
+/** A GitHub Actions job that may ask for OIDC tokens: all githubProof() reads. */
 function onGitHub(): boolean {
-  return Boolean(process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] && process.env['GITHUB_REPOSITORY_ID'])
+  return Boolean(
+    process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] &&
+    process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] &&
+    process.env['GITHUB_REPOSITORY_ID'],
+  )
 }
 
 /** `VX_DTE_SECRET`: the run's, given. */
@@ -852,11 +872,19 @@ const PLACED = { cores: 1, memory: 0 }
 
 function unmeasuredOf(u: DteOptions['unmeasured']): Need {
   if (u === undefined) return FRESH
-  refuseUnknownOptions('dte(): unmeasured', u, UNMEASURED_KEYS)
+  refuseUnknownOptions('dte() option "unmeasured"', u, UNMEASURED_KEYS)
+  if (!(typeof u.cpu === 'number' && u.cpu > 0 && Number.isFinite(u.cpu)))
+    refuse('unmeasured.cpu', 'a number above 0', u.cpu)
   const memory = bytes(u.memory)
-  if (!(typeof u.cpu === 'number' && u.cpu > 0) || memory === undefined)
-    throw new UserError("dte(): unmeasured needs cpu > 0 and memory such as '4GB'")
-  return { cores: u.cpu, memory }
+  if (memory === undefined)
+    refuse('unmeasured.memory', "bytes above 0 or a size such as '4GB'", u.memory)
+  return { cores: u.cpu, memory: memory! }
+}
+
+/** A `dte()` option it cannot use, named with the value as written (a NaN as NaN, not null). */
+function refuse(option: string, want: string, got: unknown): never {
+  const said = typeof got === 'number' ? String(got) : (JSON.stringify(got) ?? String(got))
+  throw new UserError(`dte() option "${option}" must be ${want}, got ${said}`)
 }
 
 /** What a task asks of a worker, from its history. */
@@ -926,16 +954,16 @@ function givenRun(): string | undefined {
  * working tree's changes included: none when git cannot say (no parent, a
  * shallow clone), and the run waits for its misses as before.
  */
-async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
+export async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
   try {
     const proc = Bun.spawn({
-      cmd: ['git', 'diff', '--name-only', '--relative', '--no-renames', 'HEAD^', '--'],
+      cmd: ['git', 'diff', '--name-only', '-z', '--relative', '--no-renames', 'HEAD^', '--'],
       cwd: workspaceRoot,
       stdout: 'pipe',
       stderr: 'ignore',
     })
     const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-    return exit === 0 ? out.split('\n').filter((l) => l !== '') : []
+    return exit === 0 ? out.split('\0').filter((l) => l !== '') : []
     // quiet: a local git read; no files is the answer
   } catch {
     return []

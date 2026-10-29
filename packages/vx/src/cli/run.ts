@@ -1,3 +1,5 @@
+import { statSync } from 'node:fs'
+import path from 'node:path'
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { anchoredSpecError, flagHint, refuse, seeHelp } from './help.js'
@@ -18,7 +20,14 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { detectColors, parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
+import {
+  detectColors,
+  envFlagOn,
+  hasControl,
+  parseDecimalInt,
+  sayNotice,
+  sayLine,
+} from '../util/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
 import { formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -63,7 +72,7 @@ export interface RunArgs {
   poll?: true
   forwardArgs: string[]
   verbosity: number
-  dry: 'text' | 'json' | undefined
+  dry: 'pretty' | 'json' | undefined
   profile: string | undefined
   /**
    * `--affected[=<base>]`. When undefined the flag wasn't passed.
@@ -153,7 +162,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
         return {
           ...out,
-          error: `--filter requires a value (a project name, glob or path, e.g. --filter app)`,
+          error: `--filter requires a value: a project name, glob or path, e.g. --filter app`,
         }
       out.filters.push(v)
     } else if (a === '--all') {
@@ -173,19 +182,26 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       // half the callers mean. Reject and name both explicit forms; the
       // sibling value flags (--retries=, --timeout=, --cache-dir=)
       // reject an empty `=` value the same way.
-      if (raw === '') {
+      const names = raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+      // `=,` named nothing and ran every edge, as `=` would have.
+      if (names.length === 0) {
         return {
           ...out,
           error: `--exclude-dependencies= needs a value — pass bare --exclude-dependencies to drop every dependsOn edge, or omit the flag to keep them`,
         }
       }
-      out.excludeDependencies = raw
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
+      // Repeated, the last list replaced the earlier ones, so their
+      // edges ran; `--filter` adds up the same way.
+      if (out.excludeDependencies !== 'all')
+        out.excludeDependencies = [...new Set([...out.excludeDependencies, ...names])]
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
-      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
+      // Whitespace named a directory in spaces; `VX_CACHE_DIR` and `cache.dir` refuse it.
+      if (v === undefined || v.trim() === '')
+        return { ...out, error: `--cache-dir requires a path` }
       // Unlike every other value flag, a cache dir is an arbitrary
       // string — nothing about its shape rejects a swallowed flag. An
       // unquoted empty shell var (`--cache-dir $EMPTY --force`) would
@@ -205,7 +221,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       if (v === undefined)
         return {
           ...out,
-          error: `${name} requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)`,
+          error: `${name} requires a value: a spec like local:r, local:rw, remote:, or local:,remote:rw`,
         }
       // A spec with no segment at all applies NOTHING, so `--cache-policy=`
       // (an empty shell var, or someone reaching for "no cache") left
@@ -241,7 +257,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
     } else if (a?.startsWith('--continue=')) {
       const v = a.slice('--continue='.length)
       if (v === '') {
-        return { ...out, error: `--continue= requires a mode (never, deps-ok, or always)` }
+        return { ...out, error: `--continue= requires a mode: never, deps-ok, or always` }
       }
       if (v !== 'never' && v !== 'deps-ok' && v !== 'always') {
         return { ...out, error: `--continue must be never, deps-ok, or always (got ${v})` }
@@ -250,7 +266,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
     } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
       const v = a === '--verbosity' ? before[++i] : a.slice('--verbosity='.length)
       if (v === undefined || v === '')
-        return { ...out, error: `--verbosity requires a value (a non-negative integer)` }
+        return { ...out, error: `--verbosity requires a value: a non-negative integer` }
       const n = parseDecimalInt(v)
       if (n === null)
         return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
@@ -259,17 +275,21 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       // As `--continue`'s mode: `--dry json` read `json` as a task, and the
       // run said no project declares it.
       const next = before[i + 1]
-      if (next === 'text' || next === 'json') {
+      if (next === 'pretty' || next === 'json') {
         return { ...out, error: `--dry takes its format with '=': --dry=${next}` }
       }
-      out.dry = 'text'
+      out.dry = 'pretty'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
       if (fmt === '') {
-        return { ...out, error: `--dry= requires a format (text or json); bare --dry prints text` }
+        return {
+          ...out,
+          error: `--dry= requires a format: pretty or json; bare --dry prints pretty`,
+        }
       }
-      if (fmt !== 'text' && fmt !== 'json') {
-        return { ...out, error: `--dry must be text or json (got ${fmt})` }
+      // The values every --format takes.
+      if (fmt !== 'pretty' && fmt !== 'json') {
+        return { ...out, error: `--dry must be pretty or json (got ${fmt})` }
       }
       out.dry = fmt
     } else if (a === '--profile') {
@@ -284,16 +304,19 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       out.affected = ''
     } else if (a?.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
-    } else if (verb === 'watch' && a === '--poll') {
+    } else if (a === '--poll') {
+      // The edit-distance hint offered vx run `--all`, a different flag.
+      if (verb === 'run')
+        return { ...out, error: `unknown flag: --poll (a vx watch flag: vx watch --poll <task>)` }
       out.poll = true
     } else if (a !== undefined && settingFlagOf(a) !== undefined) {
       const { s: set, name } = settingFlagOf(a)!
       const v = a === name ? before[++i] : a.slice(name.length + 1)
       if (v === undefined || v === '')
-        return { ...out, error: `${name} requires a value (${kindHint(set.kind)})` }
-      // A string takes any word, so `--branch $EMPTY --dry` named the branch
-      // `--dry` and the "dry" run executed; every other kind refuses it.
-      if (a === name && set.kind.type === 'string' && v.startsWith('-'))
+        return { ...out, error: `${name} requires a value: ${kindHint(set.kind)}` }
+      // A string's shape rejects nothing, so the space form would swallow
+      // the next flag as the value, as `--cache-dir` would above.
+      if (set.kind.type === 'string' && a === name && v.startsWith('-'))
         return {
           ...out,
           error: `${name} requires a value (got flag ${v}; a value that starts with - needs ${name}=${v})`,
@@ -304,6 +327,13 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}` }
     } else if (a !== undefined) {
+      // A config may not declare such a name (`taskNameProblem`); a pasted
+      // newline was refused as an unknown task, printed raw.
+      if (hasControl(a))
+        return {
+          ...out,
+          error: `task ${JSON.stringify(a)} holds a control character, which no task name may hold — retype it`,
+        }
       out.tasks.push(a)
     }
   }
@@ -420,7 +450,11 @@ export async function resolveRunOptions(
     // which refuses it in the embedder API's words.
     if (t.trim() === '')
       return { error: `empty task name ${JSON.stringify(t)} (vx show lists the tasks)` }
-    const error = anchoredSpecError(t, (task) => `vx ${verb} ${task} runs it in every project`)
+    // A bare name runs in the cwd project: `--all` is every project.
+    const error = anchoredSpecError(
+      t,
+      (task) => `vx ${verb} ${task} --all runs it in every project`,
+    )
     if (error !== undefined) return { error }
     // No config can declare a padded name (taskNameProblem): `'build '` was
     // reported as "no projects declare task(s): build", its space unseen.
@@ -458,6 +492,7 @@ export async function resolveRunOptions(
           filterStrings,
           parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
           affectedFilter,
+          verb,
         )
       : undefined
   if (resolved !== undefined && 'error' in resolved) return resolved
@@ -486,16 +521,16 @@ export async function resolveRunOptions(
   } else if (parsed.all) {
     projects = undefined
   } else {
-    const cwdProject = await findCwdSelection(cwd)
+    const cwdProject = await findCwdSelection(
+      cwd,
+      parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
+    )
     if (!cwdProject) {
       const nx = await nxTargetHint(tasks, cwd)
       if (nx !== null) return { error: nx }
       return {
         error: `not inside a project: run from a project directory, or pass --all or --filter <pattern>${seeHelp(verb)}`,
       }
-    }
-    if (cwdProject.unlockedConfig !== undefined) {
-      return { error: `${cwdProject.unlockedConfig} is not in the lock yet — run \`vx lock\`` }
     }
     projects = [cwdProject.name]
     discovered = cwdProject.discovered
@@ -552,6 +587,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
 
   const cwd = process.cwd()
+  if (parsed.profile !== undefined) {
+    const problem = profileProblem(cwd, parsed.profile)
+    if (problem !== undefined) return refuse('run', args, problem, 'VX_E_USAGE')
+  }
   let tasks = [...parsed.tasks]
   let picked: string | undefined
 
@@ -682,7 +721,18 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   return summary.ok ? 0 : 1
 }
 
-/** CI=0 and CI=false are "not CI": several vendors set CI=true. */
+/**
+ * Why `--profile` cannot write `target`, or undefined. Asked before the
+ * run: a directory named as the file died with EISDIR only after it. A
+ * missing parent is no fault: the write makes it (item 993).
+ */
+function profileProblem(cwd: string, target: string): string | undefined {
+  if (statSync(path.resolve(cwd, target), { throwIfNoEntry: false })?.isDirectory() === true)
+    return `--profile: ${target} is a directory — name a file, e.g. --profile=${path.join(target, 'profile.json')}`
+  return undefined
+}
+
+/** Whether `CI` names a CI run, as detectCi reads it. */
 export function onCI(v: string | undefined): boolean {
-  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
+  return envFlagOn(v)
 }

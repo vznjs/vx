@@ -118,7 +118,7 @@ describe('--continue=always never caches a task built behind a failure', () => {
 describe('--continue=always carries the taint through a restore-tier hit', () => {
   it('a dependent of a hit whose dep failed is not saved, so a healthy run rebuilds it', async () => {
     const dir = path.join(root, 'packages', 'p')
-    // `gen` has no cache, so its key folds its project's tree: it lives
+    // `gen` has no cache, so its key includes its project's tree: it lives
     // apart from what `pack` and `ship` write, and its flag and its output
     // sit outside the workspace, so failing moves no key: `pack` stays a
     // local hit and the healthy run asks for the same `ship` key.

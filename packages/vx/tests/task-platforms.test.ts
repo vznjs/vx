@@ -8,7 +8,8 @@ import { Cache } from '../src/cache/index.js'
 import { hostPlatform } from '../src/exec/index.js'
 import { type Logger } from '../src/report/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { lock, run } from './helpers/orchestrator.js'
+import { lock, planRun, run } from './helpers/orchestrator.js'
+import { formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
 import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
@@ -58,16 +59,39 @@ describe('exec.platforms', () => {
     expect(r.ok).toBe(true)
     expect(by.get('app#other')?.status).toBe('skipped')
     expect(by.get('app#other')?.otherPlatform).toEqual({ needs: [OTHER], host: HOST })
-    expect([by.get('app#after')?.status, by.get('app#after')?.blockedBy]).toEqual([
-      'skipped',
-      'app#other',
-    ])
+    // No failure blocked it: its exit is the platform skip's 0, not a failure's 1.
+    expect([
+      by.get('app#after')?.status,
+      by.get('app#after')?.blockedBy,
+      by.get('app#after')?.exitCode,
+      by.get('app#other')?.exitCode,
+    ]).toEqual(['skipped', 'app#other', 0, 0])
     expect(by.get('app#here')?.status).toBe('success')
     expect(await Bun.file(path.join(dir, 'other.txt')).exists()).toBe(false)
     expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
     expect(lines.filter((l) => l.includes('skipped on'))).toEqual([
       `[vx] skipped on ${HOST}, with what depends on them: app#other needs ${OTHER}`,
     ])
+  })
+
+  // `--continue=always` runs a FAILURE's dependants; a platform skip is no
+  // failure, and its dependant ran with nothing beneath it and turned the
+  // run red.
+  it('skips the dependants under --continue=always too', async () => {
+    const dir = await addProject(root, 'app', CONFIG)
+    const r = await run({
+      cwd: dir,
+      tasks: ['after', 'here'],
+      continueMode: 'always',
+      log: logger([]),
+    })
+    const by = new Map(r.outcomes.map((o) => [o.node.id, o]))
+    expect(r.ok).toBe(true)
+    expect([by.get('app#after')?.status, by.get('app#after')?.blockedBy]).toEqual([
+      'skipped',
+      'app#other',
+    ])
+    expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
   })
 
   // `--continue=always` runs past a FAILED upstream; a platform skip is
@@ -108,6 +132,57 @@ describe('exec.platforms', () => {
         `run a target that holds only ${HOST} tasks, or one DTE run with a worker of each platform`,
     )
     expect(await Bun.file(path.join(dir, 'here.txt')).exists()).toBe(false)
+  })
+
+  // `--dry` previews the run: it said "would exec" for a task the run skips
+  // and for what depends on it, and on CI it exited 0 where the run refuses.
+  it('--dry plans the skip the run makes, and says why', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      CONFIG.replace('tasks: {', "tasks: {\n    all: { dependsOn: ['after', 'here'] },"),
+    )
+    const plan = await planRun({ cwd: dir, tasks: ['all'], log: logger([]) })
+    const json = JSON.parse(formatPlanJson(plan)) as {
+      tasks: { id: string; cacheStatus: string; otherPlatform?: unknown; blockedBy?: string }[]
+    }
+    expect(
+      json.tasks
+        .map((t) => ({
+          id: t.id,
+          cacheStatus: t.cacheStatus,
+          ...(t.otherPlatform !== undefined ? { otherPlatform: t.otherPlatform } : {}),
+          ...(t.blockedBy !== undefined ? { blockedBy: t.blockedBy } : {}),
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    ).toEqual([
+      { id: 'app#after', cacheStatus: 'skipped', blockedBy: 'app#other' },
+      { id: 'app#all', cacheStatus: 'skipped', blockedBy: 'app#other' },
+      { id: 'app#here', cacheStatus: 'no-cache' },
+      { id: 'app#other', cacheStatus: 'skipped', otherPlatform: { needs: [OTHER], host: HOST } },
+    ])
+    const text = formatPlanText(plan)
+    expect(text.split('\n').filter((l) => l.includes('skipped'))).toEqual([
+      expect.stringMatching(new RegExp(`^  ·  app#(after|other) +skipped — `)),
+      expect.stringMatching(new RegExp(`^  ·  app#(after|other) +skipped — `)),
+      '3 task(s) planned, 1 no-cache, 2 skipped.',
+    ])
+    expect(text).toContain(`skipped — needs ${OTHER}, this is ${HOST}`)
+    expect(text).toContain('skipped — blocked by app#other')
+  })
+
+  it('--dry refuses on CI as the run does', async () => {
+    const dir = await addProject(root, 'app', CONFIG)
+    process.env['CI'] = 'true'
+    const said = await planRun({ cwd: dir, tasks: ['after', 'here'], log: logger([]) }).then(
+      () => 'planned',
+      (e: Error) => e.message,
+    )
+    expect(said).toBe(
+      `on CI every task runs or the run fails, and this task cannot run on ${HOST}:\n` +
+        `  app#other needs ${OTHER}\n` +
+        `run a target that holds only ${HOST} tasks, or one DTE run with a worker of each platform`,
+    )
   })
 
   it('routes a task to an executor that runs one of its platforms, on that platform', async () => {

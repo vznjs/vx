@@ -1,6 +1,7 @@
 // Formatters for `--dry` (human / JSON).
 
 import type { AffectedReason, CacheStatus, RunPlan } from '../orchestrator/index.js'
+import { skippedReason } from '../report/index.js'
 import {
   formatBytes,
   formatElapsed,
@@ -26,7 +27,12 @@ import {
  *   predicted: ~1.20s wall · ~1.20s total execution
  */
 export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false }): string {
-  const real = plan.tasks.filter((t) => t.cacheStatus !== 'group')
+  // A group the platform skip reaches is still a group: it runs nothing.
+  const real = plan.tasks.filter(
+    (t) =>
+      t.cacheStatus !== 'group' &&
+      (t.cacheStatus !== 'skipped' || t.node.config.exec !== undefined),
+  )
   const dim = (s: string): string => paint('', s, c, { dim: true })
   if (real.length === 0) return `${dim('No tasks planned.')}\n`
 
@@ -40,11 +46,16 @@ export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false
   let nocache = 0
   let noop = 0
   let idle = 0
+  let platform = 0
   for (const t of real) {
     // `@noop`: the run succeeds it without running, whatever its key says.
-    const skipped = t.executor === 'noop'
+    const skipped = t.executor === 'noop' && t.cacheStatus !== 'skipped'
     const sym = skipped ? '·' : symbolFor(t.cacheStatus)
-    const desc = skipped ? 'noop — would not run' : describe(t.cacheStatus)
+    const desc = skipped
+      ? 'noop — would not run'
+      : t.cacheStatus === 'skipped'
+        ? `skipped — ${skippedReason(t)}`
+        : describe(t.cacheStatus)
     const shortHash = t.hash ? t.hash.slice(0, 8) : ''
     const executes = !skipped && (t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache')
     const eta = executes && t.p50Ms !== undefined ? `  ~${formatElapsed(t.p50Ms)}` : ''
@@ -72,6 +83,7 @@ export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false
     else if (t.cacheStatus === 'miss') miss++
     else if (t.cacheStatus === 'no-cache') nocache++
     else if (t.cacheStatus === 'not-started') idle++
+    else if (t.cacheStatus === 'skipped') platform++
   }
 
   const hitParts: string[] = []
@@ -88,6 +100,7 @@ export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false
   if (nocache > 0) summary.push(`${nocache} no-cache`)
   if (noop > 0) summary.push(`${noop} noop`)
   if (idle > 0) summary.push(`${idle} not started`)
+  if (platform > 0) summary.push(`${platform} skipped`)
   lines.push('')
   lines.push(dim(summary.join(', ') + '.'))
 
@@ -163,6 +176,8 @@ export interface PlanTaskJson {
   download?: 'deferred'
   description?: string
   affected?: AffectedReason
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
+  blockedBy?: string
 }
 
 /** `affectedBase`: the ref a bare `--affected` guessed (or was given), so a reader knows what the diff was against. */
@@ -171,39 +186,37 @@ export function formatPlanJson(
   affectedBase?: string,
 ): string {
   return (
-    JSON.stringify(
-      {
-        ...(affectedBase !== undefined ? { affectedBase } : {}),
-        tasks: plan.tasks.map((t): PlanTaskJson => {
-          const description = shownDescription(t)
-          return {
-            id: t.node.id,
-            project: t.node.projectName,
-            task: t.node.taskName,
-            hash: t.hash,
-            cacheStatus: t.cacheStatus,
-            deps: t.deps,
-            ...(t.p50Ms !== undefined ? { p50Ms: t.p50Ms } : {}),
-            ...(t.executor !== undefined ? { executor: t.executor } : {}),
-            ...(t.download !== undefined ? { download: t.download } : {}),
-            ...(description !== undefined ? { description } : {}),
-            ...(t.affected !== undefined ? { affected: t.affected } : {}),
-          }
-        }),
-        ...(plan.predicted !== undefined ? { predicted: plan.predicted } : {}),
-        // The gate's refusals belong on the SCRIPTING surface too: a CI job
-        // asking "did --cache-download=none actually defer anything, and if not
-        // why" reads this, not the human table. (This object enumerates its
-        // fields deliberately — the plan's internal shape is not the wire —
-        // which is exactly why a new PlannedTask field does not appear here
-        // for free, and why `download` above had to be added by hand.)
-        ...(plan.downloadDowngrades !== undefined
-          ? { downloadDowngrades: plan.downloadDowngrades }
-          : {}),
-      },
-      null,
-      2,
-    ) + '\n'
+    JSON.stringify({
+      ...(affectedBase !== undefined ? { affectedBase } : {}),
+      tasks: plan.tasks.map((t): PlanTaskJson => {
+        const description = shownDescription(t)
+        return {
+          id: t.node.id,
+          project: t.node.projectName,
+          task: t.node.taskName,
+          hash: t.hash,
+          cacheStatus: t.cacheStatus,
+          deps: t.deps,
+          ...(t.p50Ms !== undefined ? { p50Ms: t.p50Ms } : {}),
+          ...(t.executor !== undefined ? { executor: t.executor } : {}),
+          ...(t.download !== undefined ? { download: t.download } : {}),
+          ...(description !== undefined ? { description } : {}),
+          ...(t.affected !== undefined ? { affected: t.affected } : {}),
+          ...(t.otherPlatform !== undefined ? { otherPlatform: t.otherPlatform } : {}),
+          ...(t.blockedBy !== undefined ? { blockedBy: t.blockedBy } : {}),
+        }
+      }),
+      ...(plan.predicted !== undefined ? { predicted: plan.predicted } : {}),
+      // The gate's refusals belong on the SCRIPTING surface too: a CI job
+      // asking "did --cache-download=none actually defer anything, and if not
+      // why" reads this, not the human table. (This object enumerates its
+      // fields deliberately — the plan's internal shape is not the wire —
+      // which is exactly why a new PlannedTask field does not appear here
+      // for free, and why `download` above had to be added by hand.)
+      ...(plan.downloadDowngrades !== undefined
+        ? { downloadDowngrades: plan.downloadDowngrades }
+        : {}),
+    }) + '\n'
   )
 }
 
@@ -215,6 +228,7 @@ const HUE: Record<CacheStatus, string> = {
   'no-cache': WARN,
   group: '',
   'not-started': '',
+  skipped: '',
 }
 
 function symbolFor(s: CacheStatus): string {
@@ -231,6 +245,8 @@ function symbolFor(s: CacheStatus): string {
       return '○'
     case 'not-started':
       return '−'
+    case 'skipped':
+      return '·'
   }
 }
 
@@ -248,5 +264,7 @@ function describe(s: CacheStatus): string {
       return 'group task'
     case 'not-started':
       return 'not started (unneeded)'
+    case 'skipped':
+      return 'skipped'
   }
 }

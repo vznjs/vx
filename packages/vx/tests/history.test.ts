@@ -883,6 +883,32 @@ describe('LocalHistoryProvider', () => {
     }
   })
 
+  it('an invocation that recorded no task row does not widen the window to the whole table', async () => {
+    // A run whose every outcome is a group or aborted writes its header and
+    // no `runs` row. As the oldest invocation of the window it had no MIN(id),
+    // and the window fell back to every row ever recorded.
+    const cache = makeCache()
+    try {
+      const r = (hash: string, status: RunRecord['status'], durationMs: number, at: number) =>
+        mkRun({ hash, project: 'pkg', task: 'test', status, durationMs, startedAt: at })
+      const bundle = (runId: string, at: number, runs: RunRecord[]) =>
+        cache.recordRunBundle({
+          runs: runs.map((x) => ({ ...x, runId })),
+          invocation: mkInvocation(runId, at),
+        })
+      bundle('i1', 1000, [r('a', 'failed', 9000, 1000)])
+      bundle('i2', 2000, [])
+      bundle('i3', 3000, [r('c', 'success', 100, 3000)])
+      bundle('i4', 4000, [r('d', 'success', 100, 4000)])
+      const h = (await new LocalHistoryProvider(cache.dbHandle(), 3).loadFor(['pkg#test'])).get(
+        'pkg#test',
+      )!
+      expect([h.runs, h.successRate, h.p99DurationMs]).toEqual([2, 1, 100])
+    } finally {
+      cache.close()
+    }
+  })
+
   it('an invocation that recorded no row still bounds the window', async () => {
     // A run of only a group records its header and no task row (X-50).
     // At the window's oldest slot it left no first row to start from, and
@@ -1031,7 +1057,7 @@ describe('LocalHistoryProvider', () => {
 
 // Retention ran in every handle's close, a reading verb's included: `vx
 // last --list` over month-old runs emptied the history it listed, and
-// `vx cache clean --dry-run` pruned it (item 1004).
+// `vx cache clean --dry` pruned it (item 1004).
 describe('a reading handle prunes no history', () => {
   let dir: string | undefined
   afterEach(() => {

@@ -37,7 +37,7 @@ it('says a token GitHub would not give once, to the requests waiting on it', asy
     c.put('a3', new Blob(['y']), { durationMs: 1 }),
   ])
   expect(settled.filter((s) => s.status === 'rejected').map((s) => String(s.reason))).toEqual([
-    "Error: GitHub's OIDC endpoint: HTTP 403; remote cache off for this run",
+    "Error: GitHub's OIDC endpoint: HTTP 403: no; remote cache off for this run",
   ])
   expect(asked).toBe(1)
   expect(await c.has('a4')).toBeNull()

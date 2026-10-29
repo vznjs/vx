@@ -210,6 +210,81 @@ describe('the file between machines', () => {
   )
 })
 
+// Two hand-edited 1e308s on one chain summed to Infinity, and core
+// refuses a weight that is not finite: an ordering hint failed the run.
+it(
+  'durations whose chain sums past a number are dropped, not a failed run',
+  async () => {
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    await mkdir(path.join(root, 'a'), { recursive: true })
+    await writeFile(
+      path.join(root, 'a', 'vx.config.mjs'),
+      "export default { name: 'a', tasks: { build: { exec: { command: 'true' } }, test: { dependsOn: ['build'], exec: { command: 'true' } } } }\n",
+    )
+    await writeFile(
+      path.join(root, 'timings.json'),
+      '{"version":1,"tasks":{"a#build":1e308,"a#test":1e308}}',
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 'timings.json', assume: { 'a#build': Number.MAX_VALUE } })] }\n",
+    )
+    const said: string[] = []
+    const summary = await run({
+      cwd: root,
+      tasks: ['test'],
+      handleSignals: false,
+      log: silent(said),
+    })
+    expect([summary.ok, said.filter((m) => m.includes('schedule'))]).toEqual([true, []])
+    expect(readTimings(path.join(root, 'timings.json'), () => {})).toEqual({
+      'a#build': expect.any(Number),
+      'a#test': expect.any(Number),
+    })
+  },
+  TIMEOUT,
+)
+
+// A failed rewrite (a read-only cache mount, a path through a file)
+// surfaced as core's bare `failed in teardown: EEXIST: mkdir …`, naming
+// neither the timings file nor that only the file was lost.
+it(
+  'a timings file it cannot write is named, and the run is not failed',
+  async () => {
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    await mkdir(path.join(root, 'a'), { recursive: true })
+    await writeFile(
+      path.join(root, 'a', 'vx.config.mjs'),
+      "export default { name: 'a', tasks: { build: { exec: { command: 'true' } } } }\n",
+    )
+    await writeFile(path.join(root, 'blocker'), '')
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 'blocker/timings.json' })] }\n",
+    )
+    const said: string[] = []
+    const summary = await run({
+      cwd: root,
+      tasks: ['build'],
+      handleSignals: false,
+      log: silent(said),
+    })
+    expect(summary.ok).toBe(true)
+    const file = path.join(root, 'blocker', 'timings.json')
+    expect(
+      said.filter((m) => m.includes('vx-history')).map((m) => m.split(/: E[A-Z]+:/)[0]),
+    ).toEqual([
+      `[vx] vx-history: timings file ${file} not read`,
+      `[vx] vx-history: timings file ${file} not written`,
+    ])
+  },
+  TIMEOUT,
+)
+
 // The README's `.vx-timings.json` sat untracked at the root, where a root
 // project's `**` keyed it: each rewrite missed the next run, unsaid.
 it('says a timings file git does not ignore re-keys the tasks over it', async () => {
@@ -233,3 +308,84 @@ it('says a timings file git does not ignore re-keys the tasks over it', async ()
     '[vx] vx-history: timings file ..vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore',
   ])
 })
+
+// A chain's weight is its durations summed: two `1e308`s from a CI cache's
+// file (or `assume`) summed to Infinity, and core refused the weight —
+// `failed in schedule` — so an ordering hint failed every run.
+it(
+  'a duration no run takes is dropped, from the file and from assume: the run stays green',
+  async () => {
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await writeFile(path.join(root, '.gitignore'), 't.json\n')
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      "export default { name: 'a', tasks: { build: { exec: { command: 'true' } }, test: { dependsOn: ['build'], exec: { command: 'true' } }, lint: { dependsOn: ['test'], exec: { command: 'true' } } } }\n",
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 't.json', assume: { 'a#lint': 1e308 } })] }\n",
+    )
+    await writeFile(
+      path.join(root, 't.json'),
+      '{"version":1,"tasks":{"a#build":1e308,"a#test":1e308,"a#x":5}}',
+    )
+    const warnings: string[] = []
+    const summary = await run({
+      cwd: root,
+      tasks: ['lint'],
+      concurrency: 1,
+      handleSignals: false,
+      log: silent(warnings),
+    })
+    expect([summary.ok, warnings.filter((w) => w.includes('vx-history'))]).toEqual([
+      true,
+      ['[vx] vx-history: assume ignores "a#lint" — each must be a number of ms from 0 to 2^53'],
+    ])
+    // The rewrite keeps no such duration either.
+    const kept = readTimings(path.join(root, 't.json'), () => {})
+    expect([kept['a#build'] !== undefined && kept['a#build'] < 1e6, kept['a#x']]).toEqual([true, 5])
+  },
+  TIMEOUT,
+)
+
+// The rewrite was of the file as the run read it before ordering: a time
+// another writer (a run in another worktree sharing the file) put there
+// while this run ran was lost, though a task this run did not see keeps
+// its time.
+it(
+  'the rewrite keeps a time written to the file while the run ran',
+  async () => {
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await writeFile(path.join(root, '.gitignore'), 't.json\n')
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
+    // The task is the other writer.
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `export default { name: 'a', tasks: { build: { exec: { command: ${JSON.stringify(`printf '{"version":1,"tasks":{"b#build":42}}' > ../../t.json`)} } } } }\n`,
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 't.json' })] }\n",
+    )
+    await writeFile(path.join(root, 't.json'), '{"version":1,"tasks":{"c#build":7}}')
+    const summary = await run({ cwd: root, tasks: ['build'], handleSignals: false, log: silent() })
+    expect(summary.ok).toBe(true)
+    expect(Object.keys(readTimings(path.join(root, 't.json'), () => {}))).toEqual([
+      'a#build',
+      'b#build',
+      'c#build',
+    ])
+  },
+  TIMEOUT,
+)

@@ -265,8 +265,44 @@ describe('vx why names the task with no inputs that keeps a key from hitting', (
       const why = await vx(root, ['why', 'app#build'])
       expect(why.code).toBe(0)
       expect(verdict(why.out)).toBe(
-        'verdict    never cached: its key folds app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate',
+        'verdict    never cached: its key includes app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate',
       )
+    },
+    TIMEOUT,
+  )
+})
+
+// A run with `--exclude-dependencies` keys the dropped dependency but saves
+// nothing built on it (the summary says `not saved`); the next run on the
+// key read "its save failed, or it was pruned since".
+describe('vx why after a run that left a dependency out', () => {
+  it(
+    'names --exclude-dependencies, not a failed save or a prune',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-why-excluded-', git: false })
+      try {
+        const app = path.join(root, 'packages', 'app')
+        await mkdir(app, { recursive: true })
+        await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
+        await writeFile(path.join(app, 'a.txt'), 'a')
+        await writeFile(
+          path.join(app, 'vx.config.mjs'),
+          `export default { tasks: {
+            build: { exec: { command: 'true' }, inputs: { files: ['a.txt'] }, cache: { outputs: { files: [] } } },
+            test: { dependsOn: ['build'], exec: { command: 'true' }, inputs: { files: ['a.txt'] }, cache: { outputs: { files: [] } } },
+          } }`,
+        )
+        const git = gitIn(root)
+        git('init', '-q')
+        git('add', '-A')
+        await vx(root, ['run', 'app#test', '--exclude-dependencies'])
+        await vx(root, ['run', 'app#test', '--exclude-dependencies'])
+        expect(verdict((await vx(root, ['why', 'app#test'])).out)).toBe(
+          'verdict    cache key unchanged — the previous run on this key built on a dependency it left out (app#build, --exclude-dependencies), so it saved nothing and there was nothing to hit',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )

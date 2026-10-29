@@ -27,6 +27,8 @@ export interface PlannedTask {
   download?: 'deferred' // outputs would stay remote (`--cache-download`)
   remoteBytes?: number // what restoring its remote hit downloads, when the remote sized it
   affected?: AffectedReason // why `--affected` kept this requested task (affected-tasks.md)
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string } // a `skipped` task's own platforms, and this machine's
+  blockedBy?: string // a `skipped` task's root: the task off this machine's platform it depends on
 }
 
 export interface PlanPrediction {
@@ -59,6 +61,7 @@ export interface PlanArgs {
   history?: HistoryProvider // p50s and the prediction; absent, no footer
   executorOf?: (id: string) => string | undefined // placement labels (`placement.md`)
   restorable?: ReadonlySet<string> // what the run would restore ahead of its deps on a local hit
+  otherPlatform?: ReadonlyMap<string, readonly string[]> // tasks `exec.platforms` leave this machine out of, each → its platforms
 }
 
 export async function plan(args: PlanArgs): Promise<RunPlan>
@@ -86,7 +89,7 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
    `ranNoCache` (`events.ts`), the predicate every run surface labels by,
    so the plan and the run agree.
    A server the run would leave idle (`idleServers`: not requested, and
-   every dependant a `restorable` local hit) → `'not-started'`; `planRun`
+   every dependant a `restorable` hit, local or remote, through unrequested groups) → `'not-started'`; `planRun`
    fills `restorable` by the run's own gates (`shouldShortCircuit`,
    stable keys, `restoreTierExclusions`) only when a server could idle
    (WD-17).

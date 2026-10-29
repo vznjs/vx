@@ -74,7 +74,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
-import { UserError } from '../util/index.js'
+import { UserError, writableUnder } from '../util/index.js'
 import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
 import {
   TarFormatError,
@@ -140,6 +140,7 @@ class EntrySum {
  */
 class SumCheck {
   private readonly sum = new EntrySum()
+  private readonly names = new Set<string>()
   private seen: boolean = false
   /** The entry's body, hashed as the caller reads it; null for the sum entry itself (checked here). */
   async body(
@@ -157,6 +158,10 @@ class SumCheck {
   enter(name: string): boolean {
     if (this.seen) throw new TarFormatError(`entry ${name} follows the artifact's checksum`)
     if (name === SUM_ENTRY) return true
+    // vx never packs a name twice, and a restore staged both: their renames
+    // ran together, so which body landed was a race the index never saw.
+    if (this.names.has(name)) throw new ArchiveSecurityError(`archive holds ${name} twice`)
+    this.names.add(name)
     this.sum.entry(name)
     return false
   }
@@ -567,7 +572,10 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
     plan.inputs.map(async (i) => {
       if (!(i.body instanceof Blob)) return
       const to = path.join(dir, i.name)
-      await Bun.write(to, i.body)
+      // The tar form's refusal (`tarPackInto`): an output that grew or shrank
+      // since the plan's stat is not the file its row describes.
+      const n = await Bun.write(to, i.body)
+      if (n !== i.size) throw new TarFormatError(`${i.name}: ${n} bytes, ${i.size} declared`)
       const at = new Date(times[i.name]![1])
       await utimes(to, at, at)
     }),
@@ -646,7 +654,7 @@ class ScanFold {
 
   sidecar(text: string): void {
     const parsed = JSON.parse(text) as MetaFile
-    this.files = parsed.files ?? {}
+    this.files = filesOf(parsed)
     this.dirs = dirsOf(parsed)
     this.links = linksOf(parsed)
     this.dirModes = dirModesOf(parsed)
@@ -757,6 +765,37 @@ export function scanTarBytes(tar: Uint8Array): ArtifactScan {
   return fold.result()
 }
 
+/** The largest millisecond count a Date holds (ECMA-262 §21.4.1.1). */
+const DATE_MAX_MS = 8.64e15
+
+/**
+ * The sidecar's stats, each an integer mode in 0..0o7777 and an integer
+ * mtime a Date holds: one taken as is reached the index, and its restore
+ * threw a TypeError out of `utimesSync` after renames had begun.
+ */
+function filesOf(meta: MetaFile): MetaFile['files'] {
+  const raw: unknown = meta.files
+  if (raw === undefined || raw === null) return {}
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ArchiveSecurityError('archive sidecar files is not a map')
+  }
+  for (const [name, pair] of Object.entries(raw as Record<string, unknown>)) {
+    if (
+      !Array.isArray(pair) ||
+      !Number.isInteger(pair[0]) ||
+      pair[0] < 0 ||
+      pair[0] > 0o7777 ||
+      !Number.isInteger(pair[1]) ||
+      Math.abs(pair[1]) > DATE_MAX_MS
+    ) {
+      throw new ArchiveSecurityError(
+        `archive sidecar has a bad stat for ${name}: ${JSON.stringify(pair)}`,
+      )
+    }
+  }
+  return raw as MetaFile['files']
+}
+
 /**
  * The sidecar's directory names, each held to the rules a file entry's
  * name is (the sidecar is as attacker-reachable as the tar), and only
@@ -819,22 +858,6 @@ function throughLink(
     if (links.has(at)) return at
   }
   return undefined
-}
-
-/**
- * Whether a restore may write at `real`: under `realBase` and not in its
- * `.git`, in any case (a case-insensitive disk reads `.GIT` as `.git`). The
- * entry names are held to this lexically (`OUTPUT_NEVER`); this holds the
- * path a link on the way resolves to (vercel/turborepo#14808). Only the
- * base's own: a deeper `.git` (a submodule under `gen/**`, a build's
- * `dist/.git`) is an output an entry may name, and refused only once it
- * existed on disk, a restore failed by what the last run left.
- */
-function writable(real: string, realBase: string): boolean {
-  if (real === realBase) return true
-  if (!real.startsWith(realBase + path.sep)) return false
-  const top = real.slice(realBase.length + 1).split(path.sep, 1)[0]!
-  return top.toLowerCase() !== '.git'
 }
 
 /**
@@ -946,7 +969,7 @@ export async function extractArtifactStream(
         const text = await textOf(body)
         fold?.sidecar(text)
         const parsed = JSON.parse(text) as MetaFile
-        meta = parsed.files ?? {}
+        meta = filesOf(parsed)
         dirs = dirsOf(parsed)
         links = linksOf(parsed)
         dirModes = dirModesOf(parsed)
@@ -1028,7 +1051,7 @@ export async function extractArtifactStream(
       }
       // Lexical: a write through a link is judged where it resolves, so an
       // alias chain into .git gets no further than this link would.
-      if (!writable(at, path.resolve(bound))) {
+      if (!writableUnder(at, path.resolve(bound))) {
         throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)
       }
       await x.stageLink(name, dest.base, target, to)
@@ -1278,7 +1301,7 @@ class Extractor {
       )
       if (real !== null) {
         const realBase = await this.realBaseOf(base)
-        if (!writable(real, realBase)) {
+        if (!writableUnder(real, realBase)) {
           throw await linkOutError(baseResolved, probe, realBase)
         }
         return
@@ -1307,7 +1330,7 @@ class Extractor {
     if (err.code !== 'EEXIST' && err.code !== 'ENOENT' && err.code !== 'ELOOP') throw err
     const real = await resolveThrough(dir)
     const realBase = await this.realBaseOf(base)
-    if (!writable(real, realBase)) {
+    if (!writableUnder(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
     // What stands there without a link on the way (a file named like the
@@ -1830,7 +1853,7 @@ class Extractor {
     checked.add(dir)
     const realBase = await this.realBaseOf(base)
     const real = await realOf(dir, true)
-    if (!writable(real, realBase)) {
+    if (!writableUnder(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
   }
@@ -1856,7 +1879,7 @@ class Extractor {
     for (const [dir, { base, placed }] of landed) {
       const realBase = await this.realBaseOf(base)
       const real = await realOf(dir, true).catch(() => null)
-      if (real === null || writable(real, realBase)) continue
+      if (real === null || writableUnder(real, realBase)) continue
       await Promise.allSettled(placed.map((p) => rm(p, { recursive: true, force: true })))
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
@@ -2001,7 +2024,7 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
   for (const part of path.relative(base, probe).split(path.sep)) {
     dir = path.join(dir, part)
     real = await resolveThrough(dir)
-    if (!writable(real, realBase)) break
+    if (!writableUnder(real, realBase)) break
   }
   if (real.startsWith(realBase + path.sep)) {
     return new UserError(

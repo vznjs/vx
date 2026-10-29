@@ -32,7 +32,7 @@ export interface RunArgs {
   poll?: true // vx watch --poll (watch.poll)
   forwardArgs: string[] // everything after `--`
   verbosity: number
-  dry: 'text' | 'json' | undefined
+  dry: 'pretty' | 'json' | undefined
   profile: string | undefined // 'profile.json' default
   affected: string | undefined // '' = default base; else ref
   error?: string // parser-error message
@@ -87,12 +87,12 @@ refusal points at: `vx watch` reads the same flags, M-58):
 
 After parsing, `resolveRunOptions` builds the orchestrator's `projects` field:
 
-| Condition                                  | `projects`                       |
-| ------------------------------------------ | -------------------------------- |
-| Every positional is anchored (`pkg#task`)  | `undefined` (no scope needed)    |
-| Any bare positional + `filters.length > 0` | `resolveFilters(...)` result     |
-| Any bare positional + `--all`              | `undefined` (every project)      |
-| Any bare positional + default              | `[findCwdProject(cwd)]` or error |
+| Condition                                  | `projects`                                                                                                                |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Every positional is anchored (`pkg#task`)  | `undefined` (no scope needed)                                                                                             |
+| Any bare positional + `filters.length > 0` | `resolveFilters(...)` result                                                                                              |
+| Any bare positional + `--all`              | `undefined` (every project)                                                                                               |
+| Any bare positional + default              | `[findCwdProject(cwd)]` or error; a config between cwd and that project the lock lacks is refused ("not in the lock yet") |
 
 `--affected[=<base>]` adds a `...[<base>]` filter — the changed
 projects and their dependents, the candidates (#446) — put first in
@@ -131,7 +131,7 @@ If `--dry` is set:
    scheduler.
 2. Pick a formatter from `cli/plan-format.ts`:
    - `--dry=json` → `formatPlanJson(plan, affectedBase)` → stdout.
-   - `--dry=text` (default) → `formatPlanText(plan)` → stdout.
+   - `--dry=pretty` (default) → `formatPlanText(plan)` → stdout.
 3. A requested name that matched no project (`plan.unresolvedTasks`),
    or an empty plan → exits 1 with `no projects declare task(s): …`
    (plus `Did you mean <task>?` when a declared task, or for `pkg#task`

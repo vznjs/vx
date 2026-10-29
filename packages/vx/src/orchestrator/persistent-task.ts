@@ -4,6 +4,7 @@
 
 import type { ExecConfig } from '../config.js'
 import {
+  lineEnds,
   PersistentReadyError,
   releaseBridges,
   runPersistent,
@@ -147,21 +148,21 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // is matched on the raw chunks, before this. Its held tail is flushed by
   // the idle timer: a server never ends on the way to a flush.
   const serverSecrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
-  const serverMasked =
-    serverSecrets &&
-    maskedStreams(
-      serverSecrets,
-      (t) => log.taskStdout(node, t),
-      (t) => log.taskStderr(node, t),
-    )
   // A server writes until the run stops it: its window stays open.
   args.commandWindows?.open(node.id, node.projectDir, commandWriteReach(node, args.workspaceRoot))
+  // Whether the server's output ends mid-line, for vx's never-ready note.
+  const ends = lineEnds(
+    (t) => log.taskStdout(node, t),
+    (t) => log.taskStderr(node, t),
+  )
+  // Masked as one: a stream's held tail goes out before the other's next chunk.
+  const serverMasked = serverSecrets && maskedStreams(serverSecrets, ends.onStdout!, ends.onStderr!)
   const persistentOpts: Parameters<typeof runPersistent>[0] = {
     command,
     cwd: node.projectDir,
     env,
-    onStdout: serverMasked ? serverMasked.out : (chunk) => log.taskStdout(node, chunk),
-    onStderr: serverMasked ? serverMasked.err : (chunk) => log.taskStderr(node, chunk),
+    onStdout: serverMasked ? serverMasked.out : ends.onStdout!,
+    onStderr: serverMasked ? serverMasked.err : ends.onStderr!,
     ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
     ...(args.track !== undefined
       ? { onSpawn: (pid: number) => void args.track!(node.id, pid) }
@@ -250,6 +251,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // and it held its port against the next `vx watch` cycle's server.
     if (err instanceof PersistentReadyError && err.reason === 'exited' && spawn.child !== undefined)
       await terminateChildren(() => [spawn.child!])
+    // What the masked streams hold back (a tail that could begin a secret)
+    // belongs above vx's own line: left to the idle flush, it came after it.
+    serverMasked?.end()
     // A server the run's stop killed while it started is aborted, as any
     // task the stop kills (item 962): it read `failed (never ready:
     // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
@@ -270,7 +274,10 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // The task's OWN stream, not the process's: the frame is where a
     // reader looks for why a task failed, and a run with a custom logger
     // (an embedder) never saw a bare stderr write at all.
-    log.taskStderr(node, `\n[vx] ${node.id}: persistent task failed to become ready: ${message}\n`)
+    log.taskStderr(
+      node,
+      ends.own(`[vx] ${node.id}: persistent task failed to become ready: ${message}\n`),
+    )
     // A server is never traced, so the sandbox's refusals reach no report:
     // a dev server that died on a file outside its grants read only as the
     // tool's own "not found" (2026-10-03). Said for a sandboxed server that
@@ -338,11 +345,14 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   if (mayWriteFingerprint(node, args.workspaceRoot, args.fingerprintWatch?.names ?? [])) {
     args.fingerprintWatch?.wrote()
   }
+  // Ready by its clean exit (a setup step): nothing is running any more.
+  const exited = child.exitCode
   return {
     node,
     status: 'success',
     exitCode: 0,
     durationMs: spawn.readyMs(),
+    ...(exited === null ? {} : { serverExit: exited }),
     ...(hash !== undefined ? { hash } : {}),
     wallclockStartNs,
     wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,

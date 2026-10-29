@@ -6,6 +6,8 @@
 // form was a hundred identical lines before the first frame (2026-09-11).
 // Shared by `turbo()` and `nx()` since the second one existed.
 
+import { taskNameProblem } from '@vzn/vx'
+
 /** What both mappers' projects have in common: a name and tasks with todos. */
 interface MappedProject {
   readonly name: string
@@ -39,25 +41,49 @@ export function collectGaps(
   return { notes, todos, live }
 }
 
-/** At `vx lock` every gap; on a run only the live notes. */
+/**
+ * At `vx lock` every gap; on a run only the live notes. Each says `[vx]`
+ * first, as every plugin warning does, then the package's short name.
+ */
 export function warnGaps(
   warn: (line: string) => void,
   pluginName: string,
   gaps: Gaps,
   lock: boolean,
 ): void {
-  for (const note of gaps.live) warn(`[${pluginName}] ${note}`)
+  const tag = `[vx] ${pluginName.replace(/^@vzn\//, '')}:`
+  for (const note of gaps.live) warn(`${tag} ${note}`)
   if (!lock) return
-  for (const note of gaps.notes) warn(`[${pluginName}] ${note}`)
+  for (const note of gaps.notes) warn(`${tag} ${note}`)
   for (const [todo, ids] of gaps.todos) {
     if (ids.length === 1) {
-      warn(`[${pluginName}] ${ids[0]}: ${todo}`)
+      warn(`${tag} ${ids[0]}: ${todo}`)
       continue
     }
     const names = [...new Set(ids.map((id) => id.slice(id.indexOf('#') + 1)))]
     const packages = new Set(ids.map((id) => id.slice(0, id.indexOf('#'))))
     warn(
-      `[${pluginName}] ${ids.length} task(s) (${names.join(', ')} across ${packages.size} package(s)): ${todo}`,
+      `${tag} ${ids.length} tasks (${names.join(', ')} across ${packages.size} package${packages.size === 1 ? '' : 's'}): ${todo}`,
     )
   }
+}
+
+/**
+ * A task whose name the schema refuses (`lint#fix`, `^up`) becomes a TODO,
+ * as the scripts migrator does (item 1033): written as a task, core
+ * refused the whole config on the next command.
+ */
+export function refuseTaskNames(
+  projects: readonly { tasks: { name: string; todos: string[]; task: object | null }[] }[],
+  what: string,
+): void {
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const why = t.task === null ? null : taskNameProblem(t.name)
+      if (why === null) continue
+      t.task = null
+      t.todos = [
+        `${what} ${JSON.stringify(t.name)} not migrated: its name ${why} — rename it, or add it by hand under another name`,
+      ]
+    }
 }

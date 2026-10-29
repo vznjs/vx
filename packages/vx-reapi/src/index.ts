@@ -93,7 +93,11 @@ export interface ReapiPluginOptions extends Partial<
  */
 function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
   const from = '`reapi({ endpoint })`'
-  const endpoint = options.endpoint?.trim()
+  // A trailing slash is stripped, as every other plugin strips its URL's; a
+  // socket path is the file system's to read.
+  const given = options.endpoint?.trim()
+  const endpoint =
+    given?.startsWith('unix') === true ? given : given?.replace(/^(.*[^/:])\/+$/, '$1')
   if (endpoint === undefined || endpoint === '') return undefined
   assertEndpoint(endpoint, from)
   // A secrets file's trailing newline sent a name no blob is under, and
@@ -198,25 +202,41 @@ const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
 }
 
 /**
- * `headers` and `platform` map names to strings. A value read from an unset
- * variable (`process.env.KEY!`) is undefined: the header check read it as
- * the text "undefined", and grpc-js then spun on every call until its
- * deadline (15 s each, no word of why), and a platform value reached the
- * worker as "undefined".
+ * The number options, checked at the call: the client and the executor
+ * refused a bad one only once an endpoint was set, so a laptop passed what
+ * failed the first CI run, and a NaN read as `null`.
  */
-function refuseNonStringValues(name: 'headers' | 'platform', map: object | undefined): void {
-  for (const [key, value] of Object.entries(map ?? {})) {
-    if (typeof value === 'string') continue
-    throw new UserError(
-      `reapi() option "${name}" must map each name to a string — ${JSON.stringify(key)} is ${JSON.stringify(value) ?? String(value)} (an unset environment variable?)`,
-    )
+function refuseBadNumbers(options: ReapiPluginOptions): void {
+  const refuse = (name: string, v: unknown, want: string): never => {
+    throw new UserError(`reapi() option "${name}" must be ${want}, got ${String(v)}`)
+  }
+  for (const name of [
+    'callTimeoutMs',
+    'metaTimeoutMs',
+    'executeTimeoutMs',
+    'queueTimeoutMs',
+  ] as const) {
+    const v = options[name]
+    if (v !== undefined && !(Number.isFinite(v) && v > 0))
+      refuse(name, v, 'a positive number of ms')
+  }
+  for (const name of ['chunkBytes', 'capacity'] as const) {
+    const v = options[name]
+    if (v !== undefined && !(Number.isInteger(v) && v > 0))
+      refuse(name, v, 'a whole number above 0')
   }
 }
 
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
-  refuseNonStringValues('headers', options.headers)
-  refuseNonStringValues('platform', options.platform)
+  refuseBadNumbers(options)
+  // An unset variable as a value was sent as an empty one on every action.
+  for (const key of ['platform', 'headers'] as const)
+    for (const [name, value] of Object.entries(options[key] ?? {}))
+      if (typeof value !== 'string')
+        throw new UserError(
+          `reapi() option "${key}.${name}" must be a string, got ${key === 'headers' && value !== undefined ? typeof value : String(value)}`,
+        )
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {

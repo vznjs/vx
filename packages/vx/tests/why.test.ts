@@ -111,6 +111,49 @@ describe('vx why (e2e)', () => {
   )
 
   it(
+    'a bare task name reads its own rows, never every pair of the history',
+    async () => {
+      // Every statement vx prepares, logged by a preload: the walk over
+      // every distinct (project, task) sorted the whole run history (24 of
+      // 26 ms at 58k rows) to resolve a name one task's rows answer.
+      const log = path.join(root, 'sql.log')
+      const preload = path.join(root, 'sql-log.ts')
+      await writeFile(
+        preload,
+        `import { Database } from 'bun:sqlite'
+import { appendFileSync } from 'node:fs'
+const proto = Database.prototype as any
+for (const m of ['query', 'prepare']) {
+  const orig = proto[m]
+  proto[m] = function (sql: string, ...rest: unknown[]) {
+    appendFileSync(${JSON.stringify(log)}, sql.replace(/\\s+/g, ' ') + '\\n')
+    return orig.call(this, sql, ...rest)
+  }
+}
+`,
+      )
+      const sqlFor = async (args: string[]): Promise<string[]> => {
+        await rm(log, { force: true })
+        const p = Bun.spawnSync([process.execPath, '--preload', preload, BIN, ...args], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        expect(p.stdout.toString() + p.stderr.toString()).toContain('build')
+        return readFileSync(log, 'utf8')
+          .split('\n')
+          .filter((s) => s.includes(' FROM runs'))
+      }
+      const everyPair = (sql: string[]): boolean =>
+        sql.some((s) => s.includes('SELECT DISTINCT project, task FROM runs'))
+      expect(everyPair(await sqlFor(['why', 'build']))).toBe(false)
+      // Control: a miss still lists every pair, for its suggestions.
+      expect(everyPair(await sqlFor(['why', 'buld']))).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
     '--format json emits the machine shape (why + component diff)',
     async () => {
       const r = await vx(root, ['why', 'app#build', '--format', 'json'])
@@ -366,6 +409,9 @@ describe('parseWhyArgs', () => {
     const want = '--filter requires a value: a project name, glob or path (see `vx show --help`)'
     expect(parseShowArgs(['--filter', '--format', 'json']).error).toBe(want)
     expect(parseShowArgs(['--filter']).error).toBe(want)
+    // An empty `=` was taken, and the run said `filter "" names no project`.
+    expect(parseShowArgs(['--filter=']).error).toBe(want)
+    expect(parseShowArgs(['--filter=app']).filters).toEqual(['app'])
   })
 
   it('refuses an anchored target with no project or no task, as vx run does', () => {
@@ -398,20 +444,34 @@ describe('parseWhyArgs', () => {
     // the space form refusing a flag-shaped value.
     expect(parseWhyArgs(['build', '--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parseWhyArgs(['build', '--cache-dir=y/z']).cacheDir).toBe('y/z')
-    expect(parseWhyArgs(['build', '--cache-dir']).error).toMatch(/requires a path/)
-    expect(parseWhyArgs(['build', '--cache-dir=']).error).toMatch(/requires a path/)
-    expect(parseWhyArgs(['build', '--cache-dir', '--format']).error).toMatch(/got flag/)
+    expect(parseWhyArgs(['build', '--cache-dir']).error).toBe(
+      '--cache-dir requires a path (see `vx why --help`)',
+    )
+    expect(parseWhyArgs(['build', '--cache-dir=']).error).toBe(
+      '--cache-dir requires a path (see `vx why --help`)',
+    )
+    expect(parseWhyArgs(['build', '--cache-dir', '--format']).error).toMatch(
+      /got flag .* \(see `vx why --help`\)$/,
+    )
     expect(parseWhyArgs(['--format', 'xml']).error).toBe(
       '--format must be pretty or json (got xml) (see `vx why --help`)',
     )
     expect(parseWhyArgs(['--run=']).error).toBe(
-      '--run requires a run id (`vx last --list` shows them)',
+      '--run requires a run id (`vx last --list` shows them) (see `vx why --help`)',
     )
     expect(parseWhyArgs(['a', 'b']).error).toBe('unexpected argument: b (see `vx why --help`)')
   })
 
+  it('--run takes no flag as its run id', () => {
+    // `vx why build --run --format json` read `--format` as the run id
+    // and `json` as an extra positional.
+    expect(parseWhyArgs(['build', '--run', '--format', 'json']).error).toBe(
+      '--run requires a run id (got flag --format; `vx last --list` shows them) (see `vx why --help`)',
+    )
+  })
+
   it.each([
-    ['--run', '--run requires a run id (`vx last --list` shows them)'],
+    ['--run', '--run requires a run id (`vx last --list` shows them) (see `vx why --help`)'],
     ['--format', '--format requires a value: pretty or json (see `vx why --help`)'],
   ])('names %s when its value is omitted, instead of calling it unknown', (flag, expected) => {
     // A trailing flag used to consume a non-existent argv slot, fall through
@@ -433,10 +493,10 @@ describe('parseWhyArgs', () => {
     // id and refused `json` as an extra argument; `--run --format=json`
     // looked up a run named `--format=json`. No run id starts with `-`.
     expect(parseWhyArgs(['build', '--run', '--format', 'json']).error).toBe(
-      '--run requires a run id (got flag --format; `vx last --list` shows them)',
+      '--run requires a run id (got flag --format; `vx last --list` shows them) (see `vx why --help`)',
     )
     expect(parseWhyArgs(['--run', '--format=json', 'build']).error).toBe(
-      '--run requires a run id (got flag --format=json; `vx last --list` shows them)',
+      '--run requires a run id (got flag --format=json; `vx last --list` shows them) (see `vx why --help`)',
     )
     expect(parseWhyArgs(['build', '--run', 'r1']).runId).toBe('r1')
   })
@@ -824,7 +884,12 @@ describe('vx why after a run of only a group (X-50)', () => {
     const root = await makeWorkspace()
     try {
       // No config: `lib` has only the default `build`, a group, whose `^build` needs an edge source.
-      await writeEdges(root)
+      // A configured dependant gives a config-less package its default build.
+      await writeEdges(root, { app: ['lib'] })
+      const app = path.join(root, 'packages', 'app')
+      await mkdir(app, { recursive: true })
+      await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
+      await writeFile(path.join(app, 'vx.config.mjs'), 'export default { tasks: {} }\n')
       const lib = path.join(root, 'packages', 'lib')
       await mkdir(lib, { recursive: true })
       await writeFile(path.join(lib, 'package.json'), JSON.stringify({ name: 'lib' }))
@@ -1005,6 +1070,13 @@ describe('vx why — an input another task rewrites', () => {
           '  changed during a run:\n    packages/lib/src/gen.txt  while app#build ran\n',
         )
         expect(r.out).toContain('a task that writes a file a key reads re-keys it every run')
+        // The `written` row is padded with the kinds it stands beside: a
+        // lone `file` kind left it one column of its own.
+        const own = (await vx(root, ['why', 'lib#check'])).out.split('\n')
+        expect(own.slice(own.indexOf('  what to do:') + 1, -1)).toEqual([
+          `    file     ${WHAT_TO_DO['file']}`,
+          '    written  a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files',
+        ])
         const j = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out)
         expect(j.writers).toEqual([
           { taskId: 'lib#check', file: 'packages/lib/src/gen.txt', writers: ['app#build'] },
@@ -1014,6 +1086,88 @@ describe('vx why — an input another task rewrites', () => {
         await writeFile(path.join(libDir, 'src', 'gen.txt'), 'hand\n')
         const later = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out)
         expect(later.writers).toEqual([])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+describe('vx why — a task that never records a key', () => {
+  it(
+    'a second run of a persistent task is not called its first, and says why nothing compares',
+    async () => {
+      const root = await makeWorkspace()
+      try {
+        await writeFile(
+          path.join(root, 'packages', 'app', 'vx.config.mjs'),
+          `export default { tasks: { dev: { exec: { command: 'true', persistent: {} } } } }`,
+        )
+        await vx(root, ['run', 'app#dev'])
+        await vx(root, ['run', 'app#dev'])
+        const r = await vx(root, ['why', 'app#dev'])
+        expect(r.code).toBe(0)
+        const lines = r.out.split('\n')
+        expect(lines[1]).toMatch(/^ {2}this run {3}\S+ · success · executed · no key$/)
+        expect(lines.slice(2)).toEqual([
+          '  previous   (none with a cache key)',
+          '  verdict    this task recorded no cache key (skipped, or a persistent task) — nothing to compare',
+          '',
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+describe('vx why — an upstream that is a group', () => {
+  it(
+    'follows the moved key through the group to the file, and advises no verb on the group',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-why-group-', git: false })
+      try {
+        await writeEdges(root, { app: ['lib'] })
+        const configs: Array<[string, string]> = [
+          [
+            'app',
+            `export default { tasks: {
+              prep: { dependsOn: ['^build'] },
+              test: { dependsOn: ['prep'], exec: { command: 'true' }, inputs: { files: ['a.txt'] }, cache: { outputs: { files: [] } } },
+            } }`,
+          ],
+          [
+            'lib',
+            `export default { tasks: {
+              build: { exec: { command: 'true' }, inputs: { files: ['a.txt'] }, cache: { outputs: { files: [] } } },
+            } }`,
+          ],
+        ]
+        for (const [name, config] of configs) {
+          const dir = path.join(root, 'packages', name)
+          await mkdir(dir, { recursive: true })
+          await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+          await writeFile(path.join(dir, 'a.txt'), name)
+          await writeFile(path.join(dir, 'vx.config.mjs'), config)
+        }
+        const git = gitIn(root)
+        git('init', '-q')
+        git('add', '-A')
+        expect((await vx(root, ['run', 'app#test'])).code).toBe(0)
+        await writeFile(path.join(root, 'packages', 'lib', 'a.txt'), 'changed')
+        expect((await vx(root, ['run', 'app#test'])).code).toBe(0)
+
+        const j = JSON.parse((await vx(root, ['why', 'app#test', '--format', 'json'])).out) as {
+          roots: { chain: string[]; entries: { name: string }[] }[]
+        }
+        expect(j.roots.map((r) => [r.chain.join(' <- '), r.entries.map((e) => e.name)])).toEqual([
+          ['app#test <- app#prep <- lib#build', ['packages/lib/a.txt']],
+        ])
+        const r = await vx(root, ['why', 'app#test'])
+        expect(r.out).toContain('app#test ← app#prep ← lib#build ← file packages/lib/a.txt')
+        expect(r.out).not.toContain('vx why app#prep')
       } finally {
         await rm(root, { recursive: true, force: true })
       }

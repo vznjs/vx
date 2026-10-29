@@ -494,7 +494,7 @@ describe('repoIdOf', () => {
     }
     const info = vx('info')
     expect(info).toMatch(/cache entries\s+1 \(/)
-    expect(vx('cache', 'clean', '--max-size', '1B', '--dry-run')).toMatch(
+    expect(vx('cache', 'clean', '--max-size', '1B', '--dry')).toMatch(
       /^0 › vx cache clean {2}would free [^\n]+\n\n {2}1 entry\n/,
     )
     expect(vx('cache', 'clean', '--max-size', '1B')).toMatch(
@@ -522,9 +522,9 @@ describe('repoIdOf', () => {
       })
       return [String(p.exitCode), p.stdout.toString(), p.stderr.toString()]
     }
-    const dry = vx('--dry-run', '--format', 'json')
+    const dry = vx('--dry', '--format', 'json')
     const wet = vx('--format', 'json')
-    expect(dry).toEqual(['0', wet[1]!.replace('"dryRun":false', '"dryRun":true'), ''])
+    expect(dry).toEqual(['0', wet[1]!.replace('"dry":false', '"dry":true'), ''])
     expect(JSON.parse(wet[1]!)).toMatchObject({ evicted: 1 })
   })
 

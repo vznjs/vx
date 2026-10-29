@@ -4,11 +4,12 @@
 
 import { terminalSubscriber, type RunEventSubscriber } from '../report/index.js'
 import type { Logger } from '../report/index.js'
-import { settleWithin, teardownTimeoutMs } from '../util/index.js'
+import { settleWithin, teardownTimeoutMs, thrownMessage } from '../util/index.js'
 import type { OutputContext, VxPlugin } from './plugin.js'
 
 const REQUIRED = ['status', 'taskStdout', 'taskStderr', 'taskComplete'] as const
 const OPTIONAL = [
+  'warn',
   'runStart',
   'taskStart',
   'runEnd',
@@ -27,7 +28,10 @@ function checkLogger(value: unknown): Logger {
   const missing = REQUIRED.filter((k) => typeof o[k] !== 'function')
   if (missing.length > 0) throw new Error(`output Logger has no ${missing.join(', ')}`)
   const wrong = OPTIONAL.filter((k) => o[k] !== undefined && typeof o[k] !== 'function')
-  if (wrong.length > 0) throw new Error(`output Logger's ${wrong.join(', ')} must be functions`)
+  if (wrong.length > 0)
+    throw new Error(
+      `output Logger's ${wrong.join(', ')} must be ${wrong.length === 1 ? 'a function' : 'functions'}`,
+    )
   return value as Logger
 }
 
@@ -56,9 +60,7 @@ export async function claimOutput(
       if (!arrived) throw new Error(`did not answer within ${ms} ms`)
       if (logger !== undefined) return { logger: checkLogger(logger), owner: plugin.name }
     } catch (err) {
-      ctx.warn(
-        `[vx] plugin '${plugin.name}' output: ${err instanceof Error ? err.message : String(err)}; vx renders the run`,
-      )
+      ctx.warn(`[vx] plugin '${plugin.name}' output: ${thrownMessage(err)}; vx renders the run`)
     }
   }
   return undefined
@@ -80,7 +82,7 @@ export function guardedOutput(
     fallback({
       kind: 'run:status',
       warn: true,
-      line: `[vx] plugin '${claimed.owner}' output failed: ${err instanceof Error ? err.message : String(err)}; vx renders the rest of the run`,
+      line: `[vx] plugin '${claimed.owner}' output failed: ${thrownMessage(err)}; vx renders the rest of the run`,
     })
   }
   // An `async` method's rejection reached no one: an unhandled rejection

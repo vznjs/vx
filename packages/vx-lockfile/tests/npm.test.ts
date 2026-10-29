@@ -132,6 +132,21 @@ describe('workspace digests (npm)', () => {
     for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
   })
 
+  it("the root's and a workspace's own version move no digest: npm installs nothing new", () => {
+    // A release bump of the root's version re-keyed every task in the
+    // workspace, the root's digest being in every key, with node_modules
+    // unchanged. Bun and pnpm record no importer version.
+    const bump = (text: string): string => {
+      const doc = JSON.parse(text)
+      doc.packages[''].version = '2.0.0'
+      doc.packages['packages/b'].version = '1.0.1'
+      return JSON.stringify(doc, null, 2)
+    }
+    const before = digests(lock())
+    const after = digests(bump(lock()))
+    for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
+  })
+
   it('refuses what is not an npm v2+ lockfile', () => {
     expect(() => parseLockfile('{"name":"x"}')).toThrow(/no lockfileVersion/)
     expect(() => parseLockfile('{"lockfileVersion":1,"dependencies":{}}')).toThrow(
@@ -230,6 +245,52 @@ describe('every input the npm digest must read', () => {
       })
     expect(movedDirs(link('packages/gone-1'), link('packages/gone-2'))).toEqual(['packages/a'])
   })
+  // A root that names no `workspaces` has none: every entry outside
+  // node_modules is a `file:` directory npm links. Each was taken for a
+  // workspace, so its content was never hashed and an edit in it replayed
+  // the root's stale output.
+  it('with no workspaces, a `file:` directory is content, not a workspace', () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        '': { name: 'r', version: '1.0.0', dependencies: { dep: 'file:vendor/dep' } },
+        'node_modules/dep': { resolved: 'vendor/dep', link: true },
+        'vendor/dep': { version: '1.0.0' },
+      },
+    })
+    const lock = parseLockfile(text)
+    const one = importerDigests(lock, new Map([['vendor/dep', 'v1']]))
+    const two = importerDigests(lock, new Map([['vendor/dep', 'v2']]))
+    expect({
+      fileDirs: lock.fileDirs,
+      importers: [...one.keys()],
+      moved: one.get('.') !== two.get('.'),
+    }).toEqual({ fileDirs: ['vendor/dep'], importers: ['.'], moved: true })
+  })
+  // npm honours a `!` workspace glob. Read as a glob of its own, it
+  // matched every other path, so a `file:` directory was a workspace and
+  // its content was never hashed (the shape npm 10.9 wrote).
+  it('a `!` workspace glob excludes; it does not make every other entry a workspace', () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        '': { name: 'r', workspaces: ['packages/*', '!packages/x'] },
+        'node_modules/a': { resolved: 'packages/a', link: true },
+        'node_modules/dep': { resolved: 'vendor/dep', link: true },
+        'packages/a': { version: '1.0.0', dependencies: { dep: 'file:../../vendor/dep' } },
+        'vendor/dep': { version: '1.0.0' },
+      },
+    })
+    const lock = parseLockfile(text)
+    const one = importerDigests(lock, new Map([['vendor/dep', 'v1']]))
+    const two = importerDigests(lock, new Map([['vendor/dep', 'v2']]))
+    expect({
+      fileDirs: lock.fileDirs,
+      importers: [...one.keys()].sort(),
+      moved: one.get('packages/a') !== two.get('packages/a'),
+    }).toEqual({ fileDirs: ['vendor/dep'], importers: ['.', 'packages/a'], moved: true })
+  })
+
   // Item 1073's class, npm's side: two workspaces that link each other,
   // each on its own is-number. Swapping which one reaches 7.0.0 gives
   // their nodes the same lines unless each folds its own path — both are
@@ -326,7 +387,7 @@ describe('npm() declared', () => {
 
   it('refuses an unknown scope', () => {
     expect(() => npm({ scope: 'x' as never })).toThrow(
-      /npm\(\) scope must be 'project' or 'workspace'/,
+      /npm\(\) option "scope" must be 'project' or 'workspace', got/,
     )
   })
 })

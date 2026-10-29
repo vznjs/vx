@@ -35,7 +35,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       pathspecs depend on which projects the task graph holds.
  │    2. Read .vx/projects.lock.json: the project directories `vx lock`
  │       found (every directory holding a vx.config.*, git's ignore
- │       rules applied) and their configs. Each locked config file is
+ │       rules applied, none under node_modules) and their configs. Each locked config file is
  │       stat'ed; one gone is refused ("run `vx lock`").
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the
  │       .vx/workspace.{ts,mts,js,mjs,cts,cjs} the root lookup found (baseBranch /
@@ -312,13 +312,16 @@ terminal and a task succeeding or failing. Read it alongside
        task plus the `invocations` header row (command, git/CI/host
        context, counts). Group + aborted tasks skipped; a run
        a signal stopped records only the tasks that finished, with no
-       header row, so `vx last` does not list it.
+       header row, so `vx last` does not list it. A stop in the
+       keep-alive wait (step 8), the usual end of `vx run dev`, is no
+       such stop: the run is recorded ok.
     5. Telemetry: emit the RunSummaryRecord to every active sink +
        await their flush (crash-isolated; skipped when no sink).
     6. Drain background remote prefetches/uploads; cache.close();
        sandbox teardown when any task was sandboxed.
     7. Return { ok, outcomes }; ok = every task ended success or a
-       cache hit (any failed/skipped/aborted → ok = false → exit 1),
+       cache hit or a platform skip (any other failed/skipped/aborted →
+       ok = false → exit 1),
        and no persistent child exited on its own before the run
        stopped it.
     8. FOREGROUND ONLY: if the user requested persistent tasks (dev
@@ -446,9 +449,11 @@ independent tasks already in flight finish, and unrelated tasks not yet
 started still run. `--continue=never` stops dispatch at the first
 failure; `--continue=always` runs dependents too
 ([`cli.md` § Failure propagation](./cli.md#failure-propagation----continue)). The
-overall exit code is 1 if any task ended in `failed`, `skipped` or
-`aborted` status, or a persistent child exited before the run stopped
-it.
+overall exit code is 1 if any task ended in `failed`, `skipped` (a
+platform skip, and what it blocks, aside) or `aborted` status, or a
+persistent child exited before the run stopped it. A task's own
+`exitCode` agrees: a platform skip and what it blocks record 0, a skip
+behind a failure 1.
 
 ## Output capture and rendering
 
@@ -638,7 +643,7 @@ deliberate side effect: `inputs.runtime` / `workspaceRuntime`
 probe commands DO run, because predicting a key requires resolving
 them — keep runtime inputs side-effect-free.
 
-- `--dry[=text|json]` → text (default) or JSON list of predicted
+- `--dry[=pretty|json]` → pretty (default) or JSON list of predicted
   outcomes per task: `hit-local`, `hit-remote`, `miss`, `no-cache`,
   `group`. Formatter: `cli/plan-format.ts:formatPlanText` /
   `formatPlanJson`. When the workspace declares more than one executor,

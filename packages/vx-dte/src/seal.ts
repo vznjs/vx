@@ -8,7 +8,7 @@
 
 import { createHash } from 'node:crypto'
 import { type Bytes, type CipherState, Handshake, MAX_PLAINTEXT } from './noise.js'
-import { unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
+import { RelayError, unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
 import { ui } from '@vzn/vx'
 
 /**
@@ -52,8 +52,14 @@ export async function oidcToken(url: string, bearer: string, audience: string): 
       headers: { authorization: `bearer ${bearer}` },
       signal: AbortSignal.timeout(Math.max(1, until - performance.now())),
     }).catch((err: unknown) => (err instanceof Error ? err.message : String(err)))
-    if (typeof res !== 'string' && res.ok) return ((await res.json()) as { value: string }).value
-    const why = typeof res === 'string' ? res : String(res.status)
+    if (typeof res !== 'string' && res.ok) {
+      // quiet: a body that is not JSON holds no token, said below
+      const value = ((await res.json().catch(() => null)) as { value?: unknown } | null)?.value
+      if (typeof value !== 'string' || value === '')
+        throw new Error("GitHub's OIDC token: no token in its answer")
+      return value
+    }
+    const why = typeof res === 'string' ? res : await refusedWith(res)
     const again = typeof res === 'string' || res.status >= 500 || res.status === 429
     const pause = 250 * 2 ** (attempt - 1)
     if (!again || attempt >= 3 || performance.now() + pause >= until)
@@ -62,16 +68,38 @@ export async function oidcToken(url: string, bearer: string, audience: string): 
   }
 }
 
+/** A refusal by its status and GitHub's own `message`, bounded: a 403 said why the token was refused. */
+async function refusedWith(res: Response): Promise<string> {
+  // quiet: a body that is not JSON leaves the status to name the refusal
+  const body = (await res.json().catch(() => null)) as { message?: unknown } | null
+  const said =
+    typeof body?.message === 'string' ? body.message.replace(/\s+/g, ' ').trim().slice(0, 200) : ''
+  return `HTTP ${res.status}${said === '' ? '' : `: ${said}`}`
+}
+
 /**
  * Keyless on GitHub Actions: a side signs by an OIDC token whose audience
  * is the digest of what it signs, and checks one as GitHub's and of this
  * repository (`GITHUB_REPOSITORY_ID`). No secret is stored anywhere.
+ * `runs`, the orchestrator's: the workflow runs it dispatched, whose jobs
+ * alone are its workers (a run's id is a dispatch input anyone who reads
+ * the repository's Actions sees); `undefined` admits any job of the
+ * repository, as workers that join on their own are.
  */
-export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proof {
+export function githubProof(
+  fetchJson?: (url: string) => Promise<unknown>,
+  runs?: () => ReadonlySet<string> | undefined,
+): Proof {
   const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer } = process.env
   const repo = process.env['GITHUB_REPOSITORY_ID']
-  if (!url || !bearer || !repo)
-    throw new Error('not a GitHub Actions job with id-token: write (ACTIONS_ID_TOKEN_REQUEST_URL)')
+  if (!url || !bearer || !repo) {
+    const missing = Object.entries({
+      ACTIONS_ID_TOKEN_REQUEST_URL: url,
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer,
+      GITHUB_REPOSITORY_ID: repo,
+    }).flatMap(([k, v]) => (v ? [] : [k]))
+    throw new Error(`not a GitHub Actions job with id-token: write (${missing.join(', ')})`)
+  }
   const aud = (parts: readonly string[]): string =>
     `vx-dte:${createHash('sha256').update(parts.join('\0')).digest('base64url')}`
   // GitHub's keys, read once for every check, and again for a key not
@@ -108,7 +136,9 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
         createVerifier({
           allow: [{ issuer: GITHUB }],
           audience: aud(parts),
-          runClaims: { [GITHUB]: ['repository_id'] },
+          runClaims: {
+            [GITHUB]: runs === undefined ? ['repository_id'] : ['repository_id', 'run_id'],
+          },
           fetchJson: (u) =>
             once(u, fresh).catch((err: unknown) => {
               unread = err
@@ -122,7 +152,10 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
           throw err
         })
         .then(
-          (t) => t.run[0] === repo,
+          (t) => {
+            const mine = runs?.()
+            return t.run[0] === repo && (mine === undefined || mine.has(t.run[1]!))
+          },
           () => {
             if (unread !== undefined) throw unread
             return false
@@ -300,9 +333,9 @@ export function sealOrchestrator(
   me: Participant,
   run: string,
   proof: Proof,
-  warn: (message: string) => void = (m) => ui.say('warn', `[vx] ${m}`),
+  warn: (message: string) => void = (m) => ui.say('warn', m),
 ): Participant {
-  const unsent = (what: string, to: string) => unsentBy(warn, what, to)
+  const unsent = (what: string, to: string) => unsentBy((m) => warn(`[vx] ${m}`), what, to)
   const sessions = new Map<string, Session>()
   /** A worker's first message, read: its info, and this side's answer. */
   const admit = async (
@@ -340,7 +373,9 @@ export function sealOrchestrator(
     resumed: (f) => me.resumed(f),
     async send(to, body) {
       const s = sessions.get(to)
-      if (s === undefined) throw new Error(`no session with ${to}`)
+      // Lost or never admitted: the relay's own answer for a peer it does
+      // not know, which a caller takes as gone, not as a refused send.
+      if (s === undefined) throw new RelayError(404, `no session with ${to}`)
       await s.send(body, (sealed) => me.send(to, sealed))
     },
     async poll(signal) {
@@ -358,7 +393,7 @@ export function sealOrchestrator(
             )
             if (got === undefined || typeof got === 'string') {
               const reason = got ?? `its key is not the run’s: ${proof.mismatch}`
-              warn(`dte: refused a worker: ${reason}`)
+              warn(`[vx] dte: refused a worker: ${reason}`)
               await me.send(id, { type: 'refused', reason }).catch(unsent('refused', id))
               await me.remove(id).catch(unsent('remove', id))
               continue

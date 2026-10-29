@@ -13,6 +13,7 @@ import {
   formatBytes,
   formatElapsed,
   gradientRule,
+  identityColor,
   paint,
   SUCCESS,
   ui,
@@ -117,8 +118,8 @@ export interface SummaryStats {
   overMs?: number
   /** A run of groups only: their names, so `0 tasks` says why. */
   emptyGroups?: readonly string[]
-  /** Each finished task's cache bucket by its key and its id (its run bytes), so its remote traffic can move it. */
-  buckets?: ReadonlyMap<string, CacheBucket>
+  /** Each finished task's id and cache bucket by its key and its id (its run bytes), so its remote traffic can move it. */
+  buckets?: ReadonlyMap<string, TaskBucket>
 }
 
 /** The cache bar segment a finished task fills before its remote traffic is weighed. */
@@ -130,6 +131,12 @@ export type CacheBucket =
   | 'restoredRemote'
   | 'saved'
   | 'notSaved'
+
+/** A finished task's id and cache bucket, as `SummaryStats.buckets` holds them. */
+export interface TaskBucket {
+  task: string
+  bucket: CacheBucket
+}
 
 /** A finished task's own cache bucket; none for a group, a skip or an abort. */
 export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
@@ -154,7 +161,9 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
   }
 }
 
-type Buckets = Record<CacheBucket | 'uploaded' | 'uploading' | 'remoteFailed', number>
+type RemoteState = 'uploaded' | 'uploading' | 'remoteFailed'
+const REMOTE_RANK: Record<RemoteState, number> = { uploaded: 0, uploading: 1, remoteFailed: 2 }
+type Buckets = Record<CacheBucket | RemoteState, number>
 
 /**
  * The cache bar's segments, each task in one (2026-10-15). With layers
@@ -181,13 +190,20 @@ function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets
     remoteFailed: 0,
   }
   if (layers?.remote !== true || stats.buckets === undefined) return b
-  for (const [hash, k] of layers.traffic.keys) {
-    const from = stats.buckets.get(hash)
+  // A task's traffic may sit under its key (its entry) and its id (its run
+  // bytes): it moves once, to the strongest state of the two.
+  const moved = new Map<string, RemoteState>()
+  for (const [key, k] of layers.traffic.keys) {
+    const from = stats.buckets.get(key)
     // Still running: it counts once it ends.
     if (from === undefined) continue
-    b[from]--
-    b[k.failures.length > 0 ? 'remoteFailed' : k.uploading > 0 ? 'uploading' : 'uploaded']++
+    const state: RemoteState =
+      k.failures.length > 0 ? 'remoteFailed' : k.uploading > 0 ? 'uploading' : 'uploaded'
+    const prior = moved.get(from.task)
+    if (prior === undefined) b[from.bucket]--
+    if (prior === undefined || REMOTE_RANK[state] > REMOTE_RANK[prior]) moved.set(from.task, state)
   }
+  for (const state of moved.values()) b[state]++
   return b
 }
 
@@ -313,10 +329,10 @@ export function formatSummarySection(
     const wsTotal = context.workspaceProjectCount
     if (wsTotal !== undefined && wsTotal > 0) {
       const width = barWidth(colors)
-      const cells = Math.min(
-        width,
-        Math.max(1, Math.round((context.packageCount / wsTotal) * width)),
-      )
+      const cells =
+        context.packageCount === 0
+          ? 0
+          : Math.min(width, Math.max(1, Math.round((context.packageCount / wsTotal) * width)))
       const bar =
         paint(WARN, '▰'.repeat(cells), colors) +
         paint('', '▱'.repeat(width - cells), colors, { dim: true })
@@ -533,14 +549,20 @@ function formatOver(ms: number): string {
 
 /**
  * The `--verbosity 1` per-task table (`RunOptions.summaryTable`). Groups are
- * left out as the footer leaves them: a group ran no command.
+ * left out as the footer leaves them: a group ran no command. Painted in the
+ * list's vocabulary: header bold violet, ids in their hues, status in its
+ * state colour, rule and durations dim.
  */
-export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[] {
+export function formatOutcomeTable(
+  outcomes: readonly TaskOutcome[],
+  colors: ColorSupport = NO_COLOR,
+): string[] {
   const rows = outcomes
     .filter((o) => !isGroupTask(o.node))
     .map((o) => {
       const v = projectOutcome(o)
-      return { task: v.taskId, status: outcomeLabel(v), duration: `${v.durationMs}ms` }
+      const status = neverStarted(o) ? 'not run' : outcomeLabel(v)
+      return { o, task: v.taskId, status, duration: `${v.durationMs}ms` }
     })
   if (rows.length === 0) return []
   const widths = {
@@ -548,15 +570,41 @@ export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[] {
     status: Math.max(6, ...rows.map((r) => r.status.length)),
     duration: Math.max(8, ...rows.map((r) => r.duration.length)),
   }
-  const line = (task: string, status: string, duration: string) =>
-    `${task.padEnd(widths.task)}  ${status.padEnd(widths.status)}  ${duration.padStart(widths.duration)}`
-  const header = line('TASK', 'STATUS', 'DURATION')
+  const pad = (text: string, width: number) => ' '.repeat(Math.max(0, width - text.length))
+  const header = `${'TASK'.padEnd(widths.task)}  ${'STATUS'.padEnd(widths.status)}  ${'DURATION'.padStart(widths.duration)}`
+  const dim = (t: string) => paint('', t, colors, { dim: true })
   return [
     '',
-    header,
-    '-'.repeat(header.length),
-    ...rows.map((r) => line(r.task, r.status, r.duration)),
+    paint(TABLE_HEADER, header, colors, { bold: true }),
+    dim('-'.repeat(header.length)),
+    ...rows.map((r) => {
+      const { node } = r.o
+      const id =
+        node.projectName !== undefined && node.taskName !== undefined
+          ? paint(identityColor(node.projectName), node.projectName, colors) +
+            dim('#') +
+            paint(identityColor(node.taskName), node.taskName, colors)
+          : r.task
+      const status = paint(tableStatusColor(r.o), r.status, colors)
+      return `${id}${pad(r.task, widths.task)}  ${status}${pad(r.status, widths.status)}  ${pad(r.duration, widths.duration)}${dim(r.duration)}`
+    }),
   ]
+}
+
+/** violet-400, as the task list's header. */
+const TABLE_HEADER = '#a78bfa'
+
+function tableStatusColor(o: TaskOutcome): string {
+  switch (o.status) {
+    case 'failed':
+      return ERROR
+    case 'skipped':
+      return WARN
+    case 'aborted':
+      return neverStarted(o) ? NOT_RUN : ABORTED
+    default:
+      return SUCCESS
+  }
 }
 
 // Local byte formatter — the orchestrator can't import cli/format.ts
@@ -631,13 +679,14 @@ export function formatRunSummary(
 }
 
 /** Each finished task's cache bucket by its key and by its id. */
-function bucketsOf(outcomes: readonly TaskOutcome[]): Map<string, CacheBucket> {
-  const out = new Map<string, CacheBucket>()
+function bucketsOf(outcomes: readonly TaskOutcome[]): Map<string, TaskBucket> {
+  const out = new Map<string, TaskBucket>()
   for (const o of outcomes) {
     const bucket = cacheBucketOf(o)
     if (bucket === undefined) continue
-    if (o.hash !== undefined) out.set(o.hash, bucket)
-    out.set(o.node.id, bucket)
+    const entry = { task: o.node.id, bucket }
+    if (o.hash !== undefined) out.set(o.hash, entry)
+    out.set(o.node.id, entry)
   }
   return out
 }

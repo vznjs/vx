@@ -181,6 +181,20 @@ describe('resolveOtelConfig', () => {
     ).toBe(true)
   })
 
+  // With every signal off the sink exported nothing, yet a run still paid
+  // for it: the exporter loaded, and core built the telemetry it reads.
+  it('declines when no signal is left to export', () => {
+    const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' }
+    const off = { OTEL_TRACES_EXPORTER: 'none', OTEL_METRICS_EXPORTER: 'none' }
+    expect([
+      resolveOtelConfig({}, { ...base, ...off, OTEL_LOGS_EXPORTER: 'none' }),
+      resolveOtelConfig({ metrics: false, logs: false }, { ...base, ...off }),
+      resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://c/t', ...off }),
+    ]).toEqual([undefined, undefined, undefined])
+    // CONTROL: one signal left exports.
+    expect(resolveOtelConfig({}, { ...base, ...off })?.logsEnabled).toBe(true)
+  })
+
   // Item 928: fetch refuses a header no request can carry and QUOTES its
   // value in the error the export warning printed — an auth secret.
   it('a header value no request can carry is dropped by name, its value unprinted', () => {
@@ -2256,7 +2270,7 @@ describe('the standard OTLP env a pipeline already sets', () => {
       [],
     ])
     expect(warns).toEqual([
-      '[vx] vx-otel: compression "zstd" is not gzip or none — sent uncompressed',
+      '[vx] vx-otel: OTEL_EXPORTER_OTLP_COMPRESSION "zstd" is not gzip or none — sent uncompressed',
     ])
   })
 

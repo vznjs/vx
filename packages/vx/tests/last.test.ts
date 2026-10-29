@@ -9,6 +9,7 @@ import { parseLastArgs } from '../src/cli/last.js'
 import { formatRunList, formatTaskRows } from '../src/cli/last.js'
 import type { RunSummaryRow } from '../src/history/index.js'
 import { noticed } from './helpers/notice.js'
+import { ERROR, paint } from '../src/util/index.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -43,6 +44,9 @@ const APP_CONFIG = `
       after: {
         dependsOn: ['boom'],
         exec: { command: 'echo never' },
+      },
+      "it's boom": {
+        exec: { command: 'exit 4' },
       },
     },
   }
@@ -257,6 +261,17 @@ describe('vx last (e2e)', () => {
   )
 
   it(
+    'the re-run line quotes a task id a shell would split',
+    async () => {
+      // Joined bare, `app#it's boom` pasted as an unclosed quote.
+      await vx(root, ['run', "it's boom", '--all'])
+      const lines = (await vx(root, ['last'])).out.trimEnd().split('\n')
+      expect(lines.at(-1)).toBe(`  re-run what failed: vx run 'app#it'\\''s boom'`)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task killed by a signal replays with the exit code and the signal it stands for',
     async () => {
       const r1 = await vx(root, ['run', 'killed', '--all'])
@@ -412,6 +427,42 @@ describe('vx last tells a restored hit from an up-to-date one (e2e)', () => {
   )
 })
 
+// The run printed its rows as they finished; the replay read the history
+// newest first and listed a dependency below the task that waited on it.
+describe('vx last lists rows in the order the run recorded them (e2e)', () => {
+  it(
+    'a dependency before its dependant, in the pretty rows and the JSON alike',
+    async () => {
+      const root = await makeWorkspace()
+      try {
+        await writeFile(
+          path.join(root, 'packages', 'app', 'vx.config.mjs'),
+          `export default { tasks: {
+            one: { exec: { command: 'true' } },
+            two: { dependsOn: ['one'], exec: { command: 'true' } },
+            three: { dependsOn: ['two'], exec: { command: 'true' } },
+          } }`,
+        )
+        await vx(root, ['run', 'app#three'])
+        const rows = (await vx(root, ['last'])).out
+          .split('\n')
+          .filter((l) => /^ {2}success /.test(l))
+          .map((l) => l.trim().split(/\s+/)[1])
+        const json = JSON.parse((await vx(root, ['last', '--format', 'json'])).out) as {
+          tasks: { task: string }[]
+        }
+        expect([rows, json.tasks.map((t) => t.task)]).toEqual([
+          ['app#one', 'app#two', 'app#three'],
+          ['one', 'two', 'three'],
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('parseLastArgs', () => {
   it('parses runId, --list in both forms, --format; rejects garbage', () => {
     expect(parseLastArgs([]).format).toBe('pretty')
@@ -423,10 +474,24 @@ describe('parseLastArgs', () => {
       'a run id and --failed do not combine: replay 01a0 (see `vx last --help`)',
     )
     expect(parseLastArgs(['--list=0']).error).toMatch(/from 1 to 500/)
+    // An empty `=` value said "(got )", naming nothing.
+    expect(parseLastArgs(['--list=']).error).toBe(
+      '--list= requires a count from 1 to 500; bare --list shows 10 (see `vx last --help`)',
+    )
     // The ceiling: 500 is taken, 501 is refused.
     expect([parseLastArgs(['--list=500']).list, parseLastArgs(['--list=501']).error]).toEqual([
       500,
       '--list must be a whole number from 1 to 500 (got 501) (see `vx last --help`)',
+    ])
+    // `Number()` read these as 100, 16, 5 and 5; an empty `=` said "(got )".
+    expect(
+      ['1e2', '0x10', '5.0', ' 5', ''].map((v) => parseLastArgs([`--list=${v}`]).error),
+    ).toEqual([
+      '--list must be a whole number from 1 to 500 (got 1e2) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got 0x10) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got 5.0) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got  5) (see `vx last --help`)',
+      '--list= requires a count from 1 to 500; bare --list shows 10 (see `vx last --help`)',
     ])
     expect(parseLastArgs(['--format', 'json']).format).toBe('json')
     expect(parseLastArgs(['--format=pretty']).format).toBe('pretty')
@@ -501,6 +566,15 @@ describe('parseLastArgs', () => {
       'a run id and --list do not combine: replay 0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d, or list runs (see `vx last --help`)',
       undefined,
     ])
+  })
+
+  it('an empty word is no run id, task or log, as vx why reads one', () => {
+    // '' is the start of every run id: it replayed the only run, or said
+    // it is the start of all of them.
+    expect(parseLastArgs([''])).toEqual({ format: 'pretty' })
+    expect(parseLastArgs(['--stats', ''])).toEqual({ format: 'pretty', stats: true })
+    // `--log=` was refused while `--log ''` read every task's log as ''.
+    expect(parseLastArgs(['--log', '']).error).toBe(parseLastArgs(['--log=']).error)
   })
 })
 
@@ -595,6 +669,28 @@ describe('formatTaskRows', () => {
     expect(formatTaskRows([row('t')])[1]).not.toContain('remote')
   })
 
+  // A platform skip and what it blocked are no failure (the run exits 0),
+  // and the replay read `after p#mac failed` under an `ok` header.
+  it('a skip behind another platform says so, not that its blocker failed', () => {
+    const lines = formatTaskRows([
+      row('mac', { status: 'skipped', exitCode: 0, cached: false, hash: '' }),
+      row('macdep', { status: 'skipped', exitCode: 1, blockedBy: 'p#mac', hash: '' }),
+      row('boom', { status: 'failed', exitCode: 3 }),
+      row('after', { status: 'skipped', exitCode: 1, blockedBy: 'p#boom', hash: '' }),
+      row('fast', { status: 'skipped', exitCode: 1, hash: '' }),
+    ])
+    const reason = (task: string): string => {
+      const line = lines.find((l) => l.includes(`p#${task} `))!
+      return line.slice(line.indexOf('ms') + 2).trim()
+    }
+    expect([reason('mac'), reason('macdep'), reason('after'), reason('fast')]).toEqual([
+      'no-cache  needs another platform',
+      'after p#mac skipped: needs another platform',
+      'after p#boom failed',
+      '',
+    ])
+  })
+
   it('names where an executor ran a task, and nothing for one run here', () => {
     expect(formatTaskRows([row('t', { placement: 'small#1' })])[1]).toMatch(/#t@small#1 /)
     expect(formatTaskRows([row('t')])[1]).not.toContain('@')
@@ -618,6 +714,13 @@ describe('formatTaskRows', () => {
     expect(shown).toEqual(Array.from({ length: 16 }, (_, i) => String(i)))
     expect(lines.at(-1)).toBe(
       '  … +14 more cache hits (the 16 slowest restores shown) — vx last --format json lists every row',
+    )
+  })
+
+  it('one hit past sixteen folds as a hit, not hits', () => {
+    const lines = formatTaskRows(Array.from({ length: 17 }, (_, i) => hit(i, i)))
+    expect(lines.at(-1)).toBe(
+      '  … +1 more cache hit (the 16 slowest restores shown) — vx last --format json lists every row',
     )
   })
 
@@ -645,6 +748,14 @@ describe('vx last --list rows', () => {
     restoredLocalCount: 0,
     restoredRemoteCount: 0,
     ...o,
+  })
+
+  // The replay's header paints its failed count red; the list dimmed it
+  // with the hits, so a failed run's count read as noise.
+  it('paints the failed count as the replay header does', () => {
+    const c = { enabled: true }
+    const [row] = formatRunList([{ inv: inv({ exitOk: false, failedCount: 2 }), id: 'r' }], c)
+    expect(row).toContain(paint(ERROR, ' · 2 failed', c))
   })
 
   it('aligns the counts, duration and command across runs whose counts differ', () => {

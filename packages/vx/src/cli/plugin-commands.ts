@@ -18,7 +18,14 @@ import type {
   TaskArtifacts,
 } from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
-import { machineParallelism, maskedLine, SecretBroker, ui } from '../util/index.js'
+import {
+  machineParallelism,
+  maskedLine,
+  SecretBroker,
+  thrownMessage,
+  ui,
+  UserError,
+} from '../util/index.js'
 import { resolveSetting } from '../settings.js'
 
 export interface ResolvedPluginCommand {
@@ -52,7 +59,7 @@ async function workspacePlugins(cwd: string): Promise<
   | {
       workspaceRoot: string
       cacheDir: string
-      storeRoot: Promise<string | null>
+      storeRoot: () => Promise<string | null>
       workspaceConfig: WorkspaceConfig | null
       concurrency: number
       plugins: readonly VxPlugin[]
@@ -72,7 +79,7 @@ async function workspacePlugins(cwd: string): Promise<
     const { loadCliWorkspace } = await import('./workspace-config.js')
     ws = await loadCliWorkspace(workspaceRoot)
   } catch (err) {
-    return { loadError: err instanceof Error ? err.message : String(err) }
+    return { loadError: thrownMessage(err) }
   }
   return {
     workspaceRoot,
@@ -104,10 +111,10 @@ export async function resolvePluginCommand(
   const declaredVerbs = new Set<string>()
   for (const plugin of ws.plugins) {
     for (const declared of Object.keys(plugin.commands ?? {})) declaredVerbs.add(declared)
-    // Own keys only: `commands` is a plain object, and `vx constructor` ran
-    // `Object` as the plugin's verb.
-    if (plugin.commands === undefined || !Object.hasOwn(plugin.commands, verb)) continue
-    const command = plugin.commands[verb]!
+    // Own keys only: `vx toString` found Object.prototype's and crashed.
+    const commands = plugin.commands
+    if (commands === undefined || !Object.hasOwn(commands, verb)) continue
+    const command = commands[verb]!
     return {
       plugin,
       command,
@@ -163,7 +170,7 @@ async function verbCache(
     ws.workspaceRoot,
     undefined,
     'open',
-    await ws.storeRoot,
+    await ws.storeRoot(),
   )
   const remotes: ResolvedRemote[] = []
   await resolveCache(ws.plugins, {
@@ -190,7 +197,7 @@ async function verbArtifacts(
   facts?: () => CacheFacts | undefined,
 ): Promise<TaskArtifacts> {
   const [
-    { Cache, FULL_CACHE_POLICY },
+    { Cache, FULL_CACHE_POLICY, parseCachePolicy },
     {
       cacheRefs,
       namesRemote,
@@ -206,9 +213,29 @@ async function verbArtifacts(
     import('../orchestrator/index.js'),
     import('./run.js'),
   ])
-  const asked = workspaceCachePolicy(ws.workspaceConfig) ?? FULL_CACHE_POLICY
+  // `VX_CACHE_POLICY` beats the workspace's `cache.policy`, as it does for a
+  // run, refused as `parseRunArgs` refuses it (cli/run.ts).
+  const envSpec = process.env['VX_CACHE_POLICY'] || undefined
+  let asked: CachePolicy
+  if (envSpec === undefined) {
+    asked = workspaceCachePolicy(ws.workspaceConfig) ?? FULL_CACHE_POLICY
+  } else {
+    if (!envSpec.split(',').some((seg) => seg.trim().length > 0))
+      throw new UserError(
+        'VX_CACHE_POLICY needs a spec like local:r, local:rw, remote:, or local:,remote:rw',
+        'VX_E_USAGE',
+      )
+    try {
+      asked = parseCachePolicy(envSpec)
+    } catch (err) {
+      throw new UserError(
+        `VX_CACHE_POLICY: ${err instanceof Error ? err.message : String(err)}`,
+        'VX_E_USAGE',
+      )
+    }
+  }
   const policy: CachePolicy =
-    onCI(process.env['CI']) || namesRemote(ws.workspaceConfig?.cache?.policy)
+    onCI(process.env['CI']) || namesRemote(envSpec ?? ws.workspaceConfig?.cache?.policy)
       ? asked
       : { ...asked, remoteWrite: false }
   const scope = resolveCacheScope(
@@ -223,7 +250,7 @@ async function verbArtifacts(
     ws.workspaceRoot,
     undefined,
     'open',
-    await ws.storeRoot,
+    await ws.storeRoot(),
   )
   const remotes: ResolvedRemote[] = []
   const cache = await resolveCache(ws.plugins, {
@@ -302,8 +329,30 @@ export async function pluginCommandHelp(cwd = process.cwd()): Promise<string[]> 
     for (const [verb, command] of Object.entries(plugin.commands ?? {})) {
       if (seen.has(verb)) continue
       seen.add(verb)
-      lines.push(`  vx ${verb.padEnd(17)} ${command.description} (${plugin.name})`)
+      lines.push(
+        ...helpLines(`  vx ${verb.padEnd(17)} `, `${command.description} (${plugin.name})`),
+      )
     }
   }
+  return lines
+}
+
+/**
+ * One help entry: `head` then `text` wrapped at word breaks under the
+ * column `head` ends at, at core's reference width, so a plugin's long
+ * description reads as core's own entries do.
+ */
+function helpLines(head: string, text: string, width = 88): string[] {
+  const indent = ' '.repeat(head.length)
+  const lines: string[] = []
+  let line = head
+  for (const word of text.split(/\s+/)) {
+    const fresh = line === head || line === indent
+    if (!fresh && line.length + 1 + word.length > width) {
+      lines.push(line)
+      line = indent + word
+    } else line += fresh ? word : ` ${word}`
+  }
+  lines.push(line)
   return lines
 }

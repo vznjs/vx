@@ -9,22 +9,16 @@ import { reapi } from '../src/index.js'
 
 it('a header value that is not a string is refused at the factory', () => {
   expect(() => reapi({ headers: { 'x-api-key': undefined as never } })).toThrow(
-    new Error(
-      'reapi() option "headers" must map each name to a string — "x-api-key" is undefined (an unset environment variable?)',
-    ),
+    new Error('reapi() option "headers.x-api-key" must be a string, got undefined'),
   )
   expect(() => reapi({ headers: { 'x-n': 1 as never } })).toThrow(
-    new Error(
-      'reapi() option "headers" must map each name to a string — "x-n" is 1 (an unset environment variable?)',
-    ),
+    new Error('reapi() option "headers.x-n" must be a string, got number'),
   )
 })
 
 it('a platform value that is not a string is refused at the factory', () => {
   expect(() => reapi({ platform: { 'container-image': undefined as never } })).toThrow(
-    new Error(
-      'reapi() option "platform" must map each name to a string — "container-image" is undefined (an unset environment variable?)',
-    ),
+    new Error('reapi() option "platform.container-image" must be a string, got undefined'),
   )
 })
 

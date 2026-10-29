@@ -9,6 +9,7 @@ export {
   VX_RUN_WORKSPACE_ENV,
 } from './env.js'
 export {
+  lineEnds,
   runCommand,
   restoreTerminalModes,
   runPersistent,
@@ -20,6 +21,7 @@ export {
   type CaptureConfig,
   execWord,
   maskCaptured,
+  isDroppedOutputChunk,
   BoundedCapture,
   type CapturedChunk,
 } from './runner.js'

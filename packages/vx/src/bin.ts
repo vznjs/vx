@@ -25,7 +25,7 @@ async function main(): Promise<void> {
       // ~7 ms, half of this verb (2026-10-02). A reader gone (EPIPE) is no
       // failure of the line.
       // Handed off, it says which vx ran and which one handed it the call.
-      const from = process.env['VX_HANDED_OFF']
+      const from = process.env['VX_HANDED_OFF'] || undefined
       const where = from === undefined ? '' : ` (${vxPath()}, handed off from ${from})`
       // Painted as every other line; piped, the same words a script reads.
       // Decided here, not by util's `detectColors`: the util barrel was the
@@ -90,9 +90,10 @@ async function main(): Promise<void> {
     // on. Everything else gets the full stack so internal bugs are
     // debuggable.
     if (isUserError(err)) {
-      // A message that names its verb (`vx why: …`) is that verb's; any
-      // other is the verb typed. A config refusal shows its line.
-      const named = /^(vx [a-z][\w-]*): /.exec(err.message)
+      // A message that names its verb (`vx why: …`, a plugin's `vx dte
+      // worker: …`) is that verb's; any other is the verb typed. A config
+      // refusal shows its line.
+      const named = /^(vx [a-z][\w-]*(?: [a-z][\w-]*)?): /.exec(err.message)
       const typed = /^[a-z][\w-]*$/.test(argv[0] ?? '') ? `vx ${argv[0]}` : 'vx'
       const block = refusalNotice(
         named?.[1] ?? typed,

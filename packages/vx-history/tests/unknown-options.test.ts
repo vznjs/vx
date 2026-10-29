@@ -15,7 +15,15 @@ const refusal = (make: () => unknown): string => {
 
 it('a misspelt option is refused, naming the nearest one', () => {
   expect(refusal(() => vxHistory({ windw: 5 } as never))).toBe(
-    'vxHistory() has unknown option "windw" (allowed: assume, defaultBranch, file, headers, issuer, memory, repository, reservations, resources, url, window) \u2014 did you mean window?',
+    'vxHistory() has unknown option "windw" (allowed: assume, file, headers, issuer, memory, repository, reservations, resources, url, window) \u2014 did you mean window?',
+  )
+})
+
+// The default branch is the workspace's `baseBranch`, which every
+// remote reads: a second name for it here could only disagree.
+it('defaultBranch is refused: baseBranch names the default branch', () => {
+  expect(refusal(() => vxHistory({ defaultBranch: 'trunk' } as never))).toContain(
+    'unknown option "defaultBranch"',
   )
 })
 
@@ -43,4 +51,33 @@ it('an empty file is refused: it named the workspace root', () => {
     'vxHistory() option "file" must be a path, got ""',
   )
   expect(refusal(() => vxHistory({ file: '.vx/timings.json' }))).toBe('taken')
+})
+
+// Only the top level was checked: `resources: { headrom }` packed on the
+// default headroom, and `{ cpu: 2 }` reserved no cores, both unsaid.
+it('a misspelt key inside resources or a reservation is refused', () => {
+  expect(refusal(() => vxHistory({ resources: { headrom: 1.5 } as never }))).toBe(
+    'vxHistory() option "resources" has unknown option "headrom" (allowed: headroom) — did you mean headroom?',
+  )
+  expect(refusal(() => vxHistory({ reservations: { 'a#b': { cpu: 2 } as never } }))).toBe(
+    'vxHistory() option "reservations["a#b"]" has unknown option "cpu" (allowed: cpus, memory) — did you mean cpus?',
+  )
+  expect(
+    refusal(() => vxHistory({ reservations: { 'a#b': { cpus: 2, memory: Number('x') } } })),
+  ).toBe('taken')
+})
+
+// A header it cannot send was refused once a server was named, so a
+// laptop passed what failed the first CI run. A value is never printed.
+it('a header it cannot send is refused at the call, with no url named', () => {
+  expect(refusal(() => vxHistory({ headers: { Authorization: 'x' } }))).toBe(
+    'vxHistory() option "headers" cannot set "Authorization"',
+  )
+  expect(refusal(() => vxHistory({ headers: { 'a b': 'x' } }))).toBe(
+    'vxHistory() option "headers" cannot set "a b"',
+  )
+  expect(refusal(() => vxHistory({ headers: { a: 'x\ny' } }))).toBe(
+    'vxHistory() option "headers.a" must be one line of text (its value is not printed)',
+  )
+  expect(refusal(() => vxHistory({ headers: { a: 'x', b: undefined } }))).toBe('taken')
 })

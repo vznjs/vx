@@ -52,7 +52,7 @@ moved into the graph on 2026-10-16 so `vx lock`'s input-overlap rule
 reads it too — one copy of the rule, so what the key folds and what the
 sandbox and the lock believe it folds cannot drift. The hash path passes each upstream with its hash as the
 unit; the graph walk passes a structural stand-in (a task's id, which
-its key folds; a group's sorted member ids as `keyUpstream` reads them,
+its key includes; a group's sorted member ids as `keyUpstream` reads them,
 since two groups over the same members hash alike and excluding either
 excludes both).
 

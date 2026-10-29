@@ -1,11 +1,12 @@
 import type { TaskNode } from '../graph/index.js'
 import type { Logger } from './logger.js'
 
-// A prefix that may yet complete as a CSI or OSC sequence. An escape cut
-// at a chunk's end is held for the next chunk: stripped alone, its
-// remainder (`1m`) reached the log as text.
+// A prefix that may yet complete as a CSI, OSC or charset sequence
+// (`tput sgr0` writes `\x1b(B`). An escape cut at a chunk's end is held for
+// the next chunk: stripped alone, its remainder (`1m`, `B`) reached the log
+// as text.
 // eslint-disable-next-line no-control-regex -- ESC is the point
-const PARTIAL_ESCAPE = /^\x1b(?:\[[0-?]*[ -/]*|\][^\x07\x1b]*\x1b?)?$/
+const PARTIAL_ESCAPE = /^\x1b(?:\[[0-?]*[ -/]*|\][^\x07\x1b]*\x1b?|[ -/]+)?$/
 
 /**
  * `sink` with terminal escapes stripped from task output. Tasks run with

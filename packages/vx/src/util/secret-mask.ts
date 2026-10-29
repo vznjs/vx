@@ -23,6 +23,7 @@ const NOT_SECRET = /_(FILE|PATH|DIR)$|^GIT_CONFIG_KEY_\d+$/i
  */
 const secretNames = new Map<string, boolean>()
 
+/** Whether vx masks a variable's value by its name alone (`NPM_TOKEN`, not `NPM_TOKEN_FILE`). */
 export function secretNamed(name: string): boolean {
   let secret = secretNames.get(name)
   if (secret === undefined) {
@@ -45,6 +46,23 @@ const URL_PASSWORD = /[a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:([^\s/@]+)@/gi
 const MIN_SECRET_CHARS = 6
 
 export const MASKED = '***'
+
+/**
+ * Secrets this process holds that no environment names: a plugin's
+ * keychain answers (`ctx.secret`). A server's reply that echoed one
+ * printed it whole in the warning, beside masked task output.
+ */
+const held = new Set<string>()
+
+/** `value` is masked wherever this process's secrets are, from now on. */
+export function holdSecret(value: string): void {
+  held.add(value)
+}
+
+/** How many values `holdSecret` holds: a mask built with fewer is stale. */
+export function heldSecrets(): number {
+  return held.size
+}
 
 export interface SecretMask {
   /** `text` with every secret value replaced. */
@@ -101,6 +119,8 @@ export function secretMask(
     }
     for (const name of named) add(source[name])
   }
+  // This process's secrets: the environment's and the held ones.
+  if (sources.includes(process.env)) for (const value of held) add(value)
   if (values.size === 0) return null
   // Longest first, so a value holding another is replaced whole.
   const sorted = [...values].sort((a, b) => b.length - a.length)

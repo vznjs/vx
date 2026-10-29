@@ -23,6 +23,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { foldScriptHooks } from '@vzn/vx'
+import { shellQuote } from './nx-command.js'
 
 const YARN_RUN_BUILTIN = /(^|&&|\|\||;|\(|\|)\s*run\s/
 const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
@@ -39,12 +40,17 @@ export function scriptCommand(
   /** `runsScriptHooks`: false where the manager runs no `pre` / `post` hook. */
   hooks = true,
 ): string {
-  if (pnp) return `yarn run ${name}`
+  if (pnp) return yarnRun(name)
   const hook = (h: string): string | undefined =>
     hooks && !LIFECYCLE.test(h) && usable(scripts[h]) ? scripts[h] : undefined
   const parts = [hook(`pre${name}`), body, hook(`post${name}`)]
-  if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return `yarn run ${name}`
+  if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return yarnRun(name)
   return foldScriptHooks(parts[0], body, parts[2])
+}
+
+/** `yarn run <name>`, the name one shell word: `a b` ran script `a` with an argument. */
+export function yarnRun(name: string): string {
+  return `yarn run ${shellQuote(name)}`
 }
 
 /**

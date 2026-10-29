@@ -26,7 +26,11 @@ const CASES = [
   },
   { make: bun, files: ['bun.lock'], settings: ['bunfig.toml', '.npmrc'] },
   { make: npm, files: ['npm-shrinkwrap.json', 'package-lock.json'], settings: ['.npmrc'] },
-  { make: yarn, files: ['yarn.lock'], settings: ['.yarnrc.yml', '.yarnrc', 'package.json'] },
+  {
+    make: yarn,
+    files: ['yarn.lock'],
+    settings: ['.yarnrc.yml', '.yarnrc', '.npmrc', 'package.json'],
+  },
 ] as const
 
 /** One run's key for a task at the root: a fresh context, as core hands each run. */

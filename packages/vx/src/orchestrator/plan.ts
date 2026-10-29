@@ -17,6 +17,7 @@ import { ranNoCache } from '../report/index.js'
 import { idleServers, isGroupTask, runGraph, type TaskNode } from '../graph/index.js'
 import type { AffectedReason } from './affected-tasks.js'
 import type { HistoryProvider } from '../history/index.js'
+import { hostPlatform } from '../exec/index.js'
 import { computeGroupKey, computeTaskHash } from './task-hash.js'
 import { dependedOn, keyedOutcome, keylessServer, keyUpstream } from './upstream.js'
 
@@ -27,6 +28,7 @@ export type CacheStatus =
   | 'no-cache' // task opts out of caching (no `cache` block) or --no-cache
   | 'group' // no `exec`; just an aggregator
   | 'not-started' // a server every dependant of which restores early: the run never spawns it
+  | 'skipped' // `exec.platforms` leave this machine out, or a task it depends on is skipped
 
 export interface PlannedTask {
   node: TaskNode
@@ -58,6 +60,10 @@ export interface PlannedTask {
   remoteBytes?: number
   /** Why `--affected` kept this requested task; absent without `--affected` and on a dependency it pulled in. */
   affected?: AffectedReason
+  /** A `skipped` task's own platforms, and this machine's. */
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
+  /** A `skipped` task's root: the task off this machine's platform it depends on. */
+  blockedBy?: string
 }
 
 /**
@@ -121,10 +127,13 @@ export interface PlanArgs {
   executorOf?: (id: string) => string | undefined
   /**
    * The tasks the run's short-circuit would restore ahead of their deps on
-   * a local hit (stable key, no workspace-output reach). A server whose
-   * every dependant is one of those and a local hit is never spawned.
+   * a hit (stable key, no workspace-output reach). A server whose every
+   * dependant is one of those and a hit, local or remote, is never spawned:
+   * the run holds it for the remote's answer (`held-servers.ts`).
    */
   restorable?: ReadonlySet<string>
+  /** Tasks whose `exec.platforms` leave this machine out (`placement.ts`), each → its platforms. */
+  otherPlatform?: ReadonlyMap<string, readonly string[]>
 }
 
 /**
@@ -209,7 +218,10 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
 
   if (args.restorable !== undefined) {
     const restoreTier = new Set(
-      [...args.restorable].filter((id) => cacheStatusById.get(id) === 'hit-local'),
+      [...args.restorable].filter((id) => {
+        const status = cacheStatusById.get(id)
+        return status === 'hit-local' || status === 'hit-remote'
+      }),
     )
     const dependents = new Map<string, string[]>()
     for (const node of args.nodes.values())
@@ -218,6 +230,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       cacheStatusById.set(id, 'not-started')
   }
 
+  const skips = platformSkips(args.nodes, args.otherPlatform)
   const tasks: PlannedTask[] = []
   for (const id of args.nodes.keys()) {
     const o = outcomes.get(id)
@@ -227,11 +240,12 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
     tasks.push({
       node,
       hash: o.hash ?? '',
-      cacheStatus: cacheStatusById.get(id) ?? 'no-cache',
+      cacheStatus: skips.has(id) ? 'skipped' : (cacheStatusById.get(id) ?? 'no-cache'),
       deps: node.deps,
       ...(executor !== undefined ? { executor } : {}),
       ...(args.downloadOf?.(id) === 'deferred' ? { download: 'deferred' as const } : {}),
       ...(remoteBytesById.has(id) ? { remoteBytes: remoteBytesById.get(id)! } : {}),
+      ...skips.get(id),
     })
   }
 
@@ -257,6 +271,48 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
     }
   }
   return { tasks, ...downgradeField(args) }
+}
+
+/**
+ * What the run skips here, as its scheduler does: a task its `exec.platforms`
+ * leave this machine out of, and every task that depends on one, named by
+ * the root of the block. In every `--continue` mode: a skip is no failure.
+ */
+function platformSkips(
+  nodes: ReadonlyMap<string, TaskNode>,
+  otherPlatform: ReadonlyMap<string, readonly string[]> | undefined,
+): Map<string, Pick<PlannedTask, 'otherPlatform' | 'blockedBy'>> {
+  const skips = new Map<string, Pick<PlannedTask, 'otherPlatform' | 'blockedBy'>>()
+  if (otherPlatform === undefined || otherPlatform.size === 0) return skips
+  const host = hostPlatform()
+  const settled = new Set<string>()
+  const visit = (id: string): void => {
+    const stack = [id]
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1]!
+      if (settled.has(top)) {
+        stack.pop()
+        continue
+      }
+      const node = nodes.get(top)!
+      const open = node.deps.filter((d) => !settled.has(d))
+      if (open.length > 0) {
+        stack.push(...open)
+        continue
+      }
+      stack.pop()
+      settled.add(top)
+      const needs = otherPlatform.get(top)
+      if (needs !== undefined) {
+        skips.set(top, { otherPlatform: { needs, host } })
+        continue
+      }
+      const via = node.deps.find((d) => skips.has(d))
+      if (via !== undefined) skips.set(top, { blockedBy: skips.get(via)!.blockedBy ?? via })
+    }
+  }
+  for (const id of nodes.keys()) visit(id)
+  return skips
 }
 
 /** Carried onto the plan only when the gate actually refused something. */

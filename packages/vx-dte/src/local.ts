@@ -92,6 +92,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
         const add = await run(
           ['git', 'worktree', 'add', '-q', '--detach', dir, a.commit],
           a.workspaceRoot,
+          { ...process.env, GIT_INDEX_FILE: undefined },
         )
         if (add.code !== 0) throw new Error(`git worktree add: ${errorLine(add.err)}`)
         trees.push({ root: a.workspaceRoot, dir })
@@ -105,6 +106,9 @@ export function local(options: LocalOptions = {}): DteAdapter {
         })
         const at = path.join(dir, (await new Response(prefix.stdout).text()).trim())
         const env: Record<string, string | undefined> = { ...process.env, ...a.env }
+        // The worktree is a repository of its own: a hook's index or
+        // repository would stand in for it.
+        for (const name of GIT_REPO_ENV) delete env[name]
         // A cache dir the workspace names, relative, would name each
         // worktree's own store, where the run cannot read what it saved.
         if (a.cacheDir !== undefined) env['VX_CACHE_DIR'] = a.cacheDir
@@ -219,6 +223,31 @@ export async function loopbackRelay(): Promise<{ url: string; stop(): void }> {
     },
   }
 }
+
+/**
+ * What `git rev-parse --local-env-vars` names: variables that tie a
+ * process to one repository and its index. A git hook sets
+ * `GIT_INDEX_FILE` (and, in a linked worktree, `GIT_DIR`); a worktree add
+ * under them wrote its checkout to the hook's index, or failed on a
+ * relative one, and a worker read the hook's repository.
+ */
+const GIT_REPO_ENV = [
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_CONFIG',
+  'GIT_CONFIG_PARAMETERS',
+  'GIT_CONFIG_COUNT',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_IMPLICIT_WORK_TREE',
+  'GIT_GRAFT_FILE',
+  'GIT_INDEX_FILE',
+  'GIT_NO_REPLACE_OBJECTS',
+  'GIT_REPLACE_REF_BASE',
+  'GIT_PREFIX',
+  'GIT_SHALLOW_FILE',
+  'GIT_COMMON_DIR',
+]
 
 /** The argv that runs this vx: the binary when compiled, else Bun and its entry. */
 function vx(): string[] {

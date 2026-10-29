@@ -910,6 +910,32 @@ describe('exec.persistent (e2e)', () => {
     TIMEOUT,
   )
 
+  // The outcome says the child is gone, so no label calls it running: a
+  // setup step's exit 0 at ready, and a crash while the graph runs.
+  it(
+    'a server that exited on its own carries its exit on its outcome',
+    async () => {
+      await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: {
+          migrate: { exec: { command: 'echo migrated', persistent: { readyWhen: 'READY' } } },
+          srv: { exec: { command: 'echo READY; sleep 0.1; exit 3', persistent: { readyWhen: 'READY' } } },
+          e2e: { dependsOn: ['migrate', 'srv'], exec: { command: 'sleep 0.6' } },
+        } }`,
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['e2e'],
+        projects: ['app'],
+        log: silentLogger(fixture),
+      })
+      const exit = (id: string) => r.outcomes.find((o) => o.node.id === id)?.serverExit
+      expect([exit('app#migrate'), exit('app#srv')]).toEqual([0, 3])
+    },
+    TIMEOUT,
+  )
+
   it(
     '--dry gives a server no task depends on no key, as the run derives none',
     async () => {
@@ -938,3 +964,38 @@ describe('exec.persistent (e2e)', () => {
     TIMEOUT,
   )
 })
+
+// vx's note opens a line of its own, and only that: its leading newline
+// printed a blank line under the server's last line in the frame.
+it(
+  'the never-ready note follows a server’s last line with no blank line',
+  async () => {
+    const fixture = await makeWorkspace()
+    try {
+      await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: { dev: { exec: {
+          command: 'echo starting; exit 3',
+          persistent: { readyWhen: 'READY' },
+        } } } }`,
+      )
+      let text = ''
+      const log: Logger = {
+        status() {},
+        taskStdout(_, chunk) {
+          text += chunk
+        },
+        taskStderr(_, chunk) {
+          text += chunk
+        },
+        taskComplete() {},
+      }
+      await run({ cwd: fixture.root, tasks: ['dev'], log }).catch(() => {})
+      expect(text).toStartWith('starting\n[vx] app#dev: persistent task failed to become ready')
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)

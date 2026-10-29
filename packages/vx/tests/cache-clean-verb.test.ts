@@ -66,7 +66,7 @@ describe('vx cache clean', () => {
       const old = new Date(Date.now() - 2 * 60 * 60 * 1000)
       await utimes(orphan, old, old)
 
-      const dry = await vx(root, ['cache', 'clean', '--max-size', '1B', '--dry-run'])
+      const dry = await vx(root, ['cache', 'clean', '--max-size', '1B', '--dry'])
       expect({ code: dry.code, err: dry.err }).toEqual({ code: 0, err: '' })
       expect(dry.out).toMatch(
         /^› vx cache clean {2}would free \d+ B \(dry run\)\n\n {2}1 entry · 1 orphaned artifact\n$/,

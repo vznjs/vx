@@ -12,6 +12,7 @@ import {
   flakyNote,
   pathNote,
   whereNote,
+  formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
   type OutputChunk,
@@ -29,8 +30,8 @@ import {
   formatSummarySection,
   neverStarted,
   ranUnsaved,
-  type CacheBucket,
   type RunContext,
+  type TaskBucket,
 } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 import {
@@ -41,6 +42,7 @@ import {
   tailText,
   type Tail,
   detectColors,
+  envFlagOn,
   type ColorSupport,
   ui,
 } from '../util/index.js'
@@ -168,11 +170,6 @@ export interface OutputView {
   ci?: boolean
 }
 
-/** CI=0 / CI=false count as "not CI" — several vendors use CI=true. */
-function truthyEnv(v: string | undefined): boolean {
-  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
-}
-
 // ── GitHub Actions workflow-command escaping ────────────────────────
 // The runner parses `::`-prefixed LINES out of the log, so anything
 // interpolated into one has to be encoded or it changes the command's shape.
@@ -215,8 +212,8 @@ export function resolveOutputView(
   },
   env: Record<string, string | undefined> = process.env,
 ): OutputView {
-  const ci = truthyEnv(env['CI'])
-  const gha = truthyEnv(env['GITHUB_ACTIONS'])
+  const ci = envFlagOn(env['CI'])
+  const gha = envFlagOn(env['GITHUB_ACTIONS'])
   const mk = (mode: OutputView['mode']): OutputView => ({
     mode,
     ...(gha ? { gha: true } : {}),
@@ -381,7 +378,7 @@ export function defaultLogger(
   let notSaved = 0
   let skippedCount = 0
   // Each finished task's cache bucket by its key: its remote traffic moves it.
-  const buckets = new Map<string, CacheBucket>()
+  const buckets = new Map<string, TaskBucket>()
   // The graph is done and vx's own closing steps run: the region stays,
   // footer and step rows, until the footer replaces it (2026-10-15).
   let tail = false
@@ -408,7 +405,8 @@ export function defaultLogger(
   // deferred to runEnd (owner: '✗ line, continue, all full frames at
   // the end'). 'full'/CI keeps frames inline.
   const deferredFailures: string[] = []
-  const pinnedPersistent: string[] = []
+  // Each ready server's outcome: one whose child has exited (`serverExit`) is no longer pinned.
+  const pinnedPersistent: TaskOutcome[] = []
   let flushedFailures = false
   // A persistent task (dev server, watcher, daemon) is the one task kind
   // nothing bounds: a one-shot command's output ends when it exits, but a
@@ -471,9 +469,21 @@ export function defaultLogger(
   const heldOver = (node: TaskNode): boolean =>
     node.config.exec?.persistent !== undefined && view.mode !== 'errors-only'
 
+  // A forced refresh the region has not been built for yet: the build
+  // takes the forecast pass the event asked for.
+  let forcePending = false
+  // The region is built when the writer draws it (`setRegion`'s function
+  // form), from the state as it is then: the events a forced-redraw floor
+  // coalesces build nothing.
   const refresh = (forced: boolean): void => {
     if (statusDead) return
-    let force = forced
+    const first = forecastFn === undefined && graphForecast !== undefined && !tail && !stopping
+    forcePending ||= forced || first
+    writer.setRegion(buildRegion, { force: forced || first })
+  }
+  const buildRegion = (): readonly string[] => {
+    let force = forcePending
+    forcePending = false
     const now = Date.now()
     // A task its executor still holds has not begun: its clock starts at
     // the first frame a machine runs it.
@@ -577,26 +587,25 @@ export function defaultLogger(
     const shownSteps: WorkerSlot[] = []
     for (const [id, startedMs] of steps)
       if (now - startedMs >= STEP_SHOWN_MS) shownSteps.push({ id, startedMs })
-    writer.setRegion(
-      formatStatusRegion(
-        {
-          pinnedPersistent,
-          // Every running task has a row: one beyond the slots follows them.
-          slots: [...slots, ...slotQueue],
-          size: slots.length,
-          ...(blocked !== undefined && !stopping ? { next: blocked } : {}),
-          ...(blockedBy !== undefined && !stopping ? { blockedBy } : {}),
-          ...(stopping ? { stopping } : {}),
-          ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
-          nowMs: Date.now(),
-          summaryLines,
-          ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
-          ...(expected !== undefined ? { expected } : {}),
-          ...(critical !== undefined ? { critical } : {}),
-        },
-        colors,
-      ),
-      { force },
+    return formatStatusRegion(
+      {
+        pinnedPersistent: pinnedPersistent
+          .filter((o) => o.serverExit === undefined)
+          .map((o) => o.node.id),
+        // Every running task has a row: one beyond the slots follows them.
+        slots: [...slots, ...slotQueue],
+        size: slots.length,
+        ...(blocked !== undefined && !stopping ? { next: blocked } : {}),
+        ...(blockedBy !== undefined && !stopping ? { blockedBy } : {}),
+        ...(stopping ? { stopping } : {}),
+        ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
+        nowMs: Date.now(),
+        summaryLines,
+        ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
+        ...(expected !== undefined ? { expected } : {}),
+        ...(critical !== undefined ? { critical } : {}),
+      },
+      colors,
     )
   }
   const tick = (): void => {
@@ -645,7 +654,16 @@ export function defaultLogger(
     }
     writer.write(chunk)
   }
+  // A live-streamed task's partial line ends before vx's own: a row or a
+  // block written after it (a step that ends while the task streams) was
+  // glued to it, `building...      time status  cache    task`.
+  const endStreamLine = (): void => {
+    if (!streamMidLine) return
+    taskWrite('\n')
+    streamMidLine = false
+  }
   const emitLine = (line: string): void => {
+    endStreamLine()
     taskWrite(`${line}\n`)
     lineEmitted = true
   }
@@ -663,6 +681,7 @@ export function defaultLogger(
   // write so a stray newline doesn't sneak into the output.
   const emitBlock = (block: string): void => {
     if (block.length === 0) return
+    endStreamLine()
     const lead = lineEmitted || streamedSinceBlock ? '\n' : ''
     taskWrite(`${lead}${block}\n`)
     lineEmitted = false
@@ -750,7 +769,12 @@ export function defaultLogger(
     stepEnd(id, { durationMs, ok }) {
       steps.delete(id)
       if (durationMs < STEP_SHOWN_MS) return
-      if (ok ? view.mode !== 'none' && view.mode !== 'errors-only' : view.mode !== 'none')
+      // `hash-only` is one line per task: only a step that failed adds one.
+      if (
+        ok
+          ? view.mode !== 'none' && view.mode !== 'errors-only' && view.mode !== 'hash-only'
+          : view.mode !== 'none'
+      )
         emitRow(formatStepLine(id, durationMs, ok, colors))
       refresh(true)
     },
@@ -1003,7 +1027,7 @@ export function defaultLogger(
           // A persistent task's outcome arrives at READY; the child
           // keeps running until the orchestrator SIGTERMs it at run
           // end — pin it so its liveness stays visible.
-          pinnedPersistent.push(node.id)
+          pinnedPersistent.push(outcome)
           // …and capture what it writes from here on. A live-streaming
           // node already owns the terminal, so buffering it would emit
           // its output twice.
@@ -1023,8 +1047,9 @@ export function defaultLogger(
         }
         const bucket = cacheBucketOf(outcome)
         if (bucket !== undefined) {
-          if (outcome.hash !== undefined) buckets.set(outcome.hash, bucket)
-          buckets.set(node.id, bucket)
+          const entry = { task: node.id, bucket }
+          if (outcome.hash !== undefined) buckets.set(outcome.hash, entry)
+          buckets.set(node.id, entry)
         }
         switch (outcome.status) {
           case 'success':
@@ -1070,8 +1095,7 @@ export function defaultLogger(
           // The word carries the outcome (skips/failures included); the
           // key is what this mode exists to show — absent for a task
           // that never computed one (skipped, uncacheable).
-          const key = outcome.hash === undefined ? '' : ` ${outcome.hash}`
-          emitLine(`${outcomeWord(outcome)} ${node.id}${key}`)
+          emitLine(formatTaskHashLine(node, outcome, colors))
           return
         }
         case 'errors-only':

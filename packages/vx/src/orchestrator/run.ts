@@ -2,6 +2,7 @@
 // run with caching. Each step delegates to a single-purpose sibling file
 // so the layers can be swapped without touching the others.
 
+import type { InputStability } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { EMPTY_LOCK, inputStabilityEnv, LOCK_INVALID, lockEntryBroken } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
@@ -53,6 +54,7 @@ import {
   detectColors,
   type ColorSupport,
   SecretBroker,
+  thrownMessage,
   type ui,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
@@ -82,9 +84,16 @@ import {
 } from '../report/index.js'
 import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
 import { keepsFailures, reportOf, RunKeeper } from './run-report.js'
-import { buildAdmission, executorDemand, resolveExecutors, teardownPlugins } from './plugin-host.js'
+import {
+  buildAdmission,
+  executorDemand,
+  executorLabel,
+  resolveExecutors,
+  teardownPlugins,
+} from './plugin-host.js'
 import { createSteps } from './steps.js'
-import { writeRunSteps } from './run-steps.js'
+import { liveSocketOf, serveLive } from './run-live.js'
+import { writeRunSteps, writeRunWarnings } from './run-steps.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
 import { assembleRunSummary } from './telemetry.js'
@@ -216,7 +225,13 @@ function invocationMask(nodes: Iterable<TaskNode>): (command: string) => string 
  * often a token (`-- --token=…`), and the line reached an OTLP span and
  * the GitHub job summary verbatim (item 1057). Local history (`vx last`) keeps the whole line, on this machine.
  */
-export function invocationCommand(argv: readonly string[]): string {
+export function invocationCommand(line: readonly string[] | string): string {
+  // A line is shell-quoted (the CLI's): its words as written, so `'a b'`
+  // counts one argument, not the two a split at blanks made.
+  const argv =
+    typeof line === 'string'
+      ? (line.match(/(?:[^\s'"\\]|\\.|'[^']*'|"(?:[^"\\]|\\.)*")+/g) ?? [])
+      : line
   const sep = argv.indexOf('--')
   if (sep === -1) return argv.join(' ')
   const rest = argv.length - sep - 1
@@ -330,8 +345,14 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // bytes as written, as the cache holds them: it formats its own output.
   const render = terminalSubscriber(terminal === null || colors.enabled ? sink : plainOutput(sink))
   let unsubscribeTerminal = bus.subscribe(render)
+  // What the run warned of, no task's: the footer repeats it (`warn`).
+  const warned: string[] = []
+  const unsubscribeWarned = bus.subscribe((e) => {
+    if (e.kind === 'run:status' && 'warn' in e) warned.push(e.line)
+  })
   const detach = (): void => {
     unsubscribeTerminal()
+    unsubscribeWarned()
     terminal?.settle()
   }
   // A plugin's `output` renders the run from its start; core's renderer
@@ -350,7 +371,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // vx's own steps are timed only where something renders them.
     const showsSteps =
       terminal !== null ? terminal.showsSteps : options.log?.stepStart !== undefined
-    const summary = await runOnBus(options, bus, colors, terminal, showsSteps, takeOutput)
+    const summary = await runOnBus(options, bus, warned, colors, terminal, showsSteps, takeOutput)
     if (summary.persistent === undefined) return summary
     // Servers handed back still running still write: `vx watch dev` printed
     // none of its server's log while it idled, the renderer gone with this
@@ -372,17 +393,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 async function runOnBus(
   options: RunOptions,
   bus: EventBus,
+  warned: readonly string[],
   colors: ColorSupport,
   terminal: DefaultLogger | null,
   showsSteps: boolean,
   takeOutput?: (claimed: { logger: Logger; owner: string }) => void,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
-  // What the run warned of, no task's: the footer repeats it (`warn`).
-  const warned: string[] = []
-  bus.subscribe((e) => {
-    if (e.kind === 'run:status' && 'warn' in e) warned.push(e.line)
-  })
   const steps = createSteps(log, showsSteps)
   const { step, stepSync } = steps
   // A server's output goes through a cell of its own: a later watch cycle
@@ -399,7 +416,6 @@ async function runOnBus(
   }
 
   const prepared = await step('vx:load', () => prepareRun(options, log))
-  options = withRunSettings(options, prepared.workspaceConfig)
   mark('plugin stages')
   // Every exit from here tears the plugins down: their capability
   // factories ran in prepareRun, and teardown is what releases what those
@@ -414,6 +430,27 @@ async function runOnBus(
     const plugins = prepared.plugins.filter((p) => p !== except)
     await teardownPlugins(plugins, warnOf(log), report, step)
   }
+  // The setting variables are read before any task, so a bad value is
+  // refused here, not mid-run; an embedder's (the CLI refuses it first)
+  // threw past the teardown and the cache close.
+  let inputStability: { run: InputStability; workspace?: InputStability }
+  let cleanOutputs: boolean | undefined
+  try {
+    options = withRunSettings(options, prepared.workspaceConfig)
+    inputStability = {
+      run: inputStabilityEnv(),
+      ...(prepared.workspaceConfig?.cache?.inputStability !== undefined
+        ? { workspace: prepared.workspaceConfig.cache.inputStability }
+        : {}),
+    }
+    cleanOutputs = resolveSetting('cache.outputs.clean', prepared.workspaceConfig).value as
+      | boolean
+      | undefined
+  } catch (err) {
+    await teardown()
+    prepared.cache.close()
+    throw err
+  }
   // A task whose command re-enters `vx run` in the workspace running it
   // is refused. When the inner run reaches this task again it forks a run
   // per run until the machine gives out; when it does not (`ci` shelling
@@ -423,7 +460,8 @@ async function runOnBus(
   // name the task; the check is on the root so both shapes are caught.
   // Compared canonical: a root reached through a symlink (`run({ cwd })`,
   // macOS's /var/folders) and the inner vx's realpath'd cwd are one tree.
-  const outerRoot = process.env[VX_RUN_WORKSPACE_ENV]
+  // Empty is unset: resolved, '' named the cwd.
+  const outerRoot = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
     await teardown()
     prepared.cache.close()
@@ -539,7 +577,6 @@ async function runOnBus(
   }
   const {
     workspaceRoot,
-    workspaceConfig,
     cacheDir,
     cache,
     nodes,
@@ -639,17 +676,6 @@ async function runOnBus(
 
   // `run.timeout` (ms), for any task WITHOUT its own `exec.timeout`.
   const taskTimeoutDefault = options.timeout
-  // Read once, before any task: a bad value is refused here, not mid-run.
-  const inputStability = {
-    run: inputStabilityEnv(),
-    ...(workspaceConfig?.cache?.inputStability !== undefined
-      ? { workspace: workspaceConfig.cache.inputStability }
-      : {}),
-  }
-
-  const cleanOutputs = resolveSetting('cache.outputs.clean', workspaceConfig).value as
-    | boolean
-    | undefined
 
   // The held servers this run took over, spared by a `CYCLE_INTERRUPT`.
   const handed = new Set<ReturnType<typeof Bun.spawn>>()
@@ -678,11 +704,13 @@ async function runOnBus(
   // because the normal path closes before the persistent-task wait —
   // holding the handle open for a dev server's whole lifetime would be
   // worse.
+  let live: ReturnType<typeof serveLive> | undefined
   let cacheClosed = false
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
     cacheClosed = true
     cache.close()
+    live?.unlisten()
     // Released with the handle: before a persistent task's wait, on every
     // exit path (see run-lock.ts for why a run holds one at all). AWAITED:
     // fired and forgotten, the release lost the race with the CLI's exit —
@@ -702,6 +730,16 @@ async function runOnBus(
       }),
     ),
   )
+  // Answers `vx last --live` while the lock is held (run-live.ts).
+  live = serveLive({
+    socketPath: liveSocketOf(releaseRunLock.path),
+    bus,
+    runId,
+    command: maskInvocation(invocationCommand(options.command ?? process.argv.slice(1))),
+    startedAt: Date.now(),
+    nodes: () => nodes.values(),
+    warnings: () => warned,
+  })
   try {
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
@@ -772,9 +810,7 @@ async function runOnBus(
         // token after `--` to every sink verbatim (C-67).
         // Masked as the stored line is: a flag's secret value sits before
         // the `--` the count covers (L-44).
-        command: maskInvocation(
-          invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
-        ),
+        command: maskInvocation(invocationCommand(options.command ?? process.argv.slice(1))),
         requestedTasks: options.tasks,
         cachePolicy: formatCachePolicy(policy),
         concurrency,
@@ -1235,6 +1271,13 @@ async function runOnBus(
         keeper?.taskDone(o)
         log.taskComplete(o.node, o)
         demand.finished(o.node.id)
+        // A server that dies while the graph runs is no longer running:
+        // its pin stayed `running` under the line naming its exit.
+        const server = o.status === 'success' ? persistentRegistry.get(o.node.id) : undefined
+        if (server !== undefined && o.serverExit === undefined)
+          void server.exited.then((code) => {
+            if (code !== 0 && !graphOver && !stop.signal.aborted) o.serverExit = code
+          })
       },
       // A crash a hand-broken lock entry caused is named as that; asked
       // only here, so a run that does not crash pays nothing.
@@ -1446,8 +1489,12 @@ async function runOnBus(
     // read `ok` over the exit 1 and fed the flaky list a pass (X-23).
     const historyAfterWait = keepAlive.children.length > 0 && !hold && stop.stoppedBy === undefined
     // A failed task's output, for `vx last` and an agent (run-failures.ts).
-    const recordFailures = (final: readonly TaskOutcome[]): void =>
-      writeRunFailures(prepared.cacheDir, runId, final, warnOf(log))
+    // A cache directory this user cannot write keeps none of the run's
+    // records: the run's one notice said so.
+    const keeps = prepared.localCache.readOnlyNotice() === null
+    const recordFailures = (final: readonly TaskOutcome[]): void => {
+      if (keeps) writeRunFailures(prepared.cacheDir, runId, final, warnOf(log))
+    }
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
         recordHistory(() => cache.recordRunBundle(records))
@@ -1457,9 +1504,10 @@ async function runOnBus(
       // Stopped: not a run `vx last` lists (item 854), but what finished is
       // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
-      stepSync('vx:history', () =>
-        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs)),
-      )
+      stepSync('vx:history', () => {
+        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs))
+        recordFailures(ended)
+      })
     }
     mark('record history')
     // Drain any still-in-flight background prefetches before closing the
@@ -1486,7 +1534,10 @@ async function runOnBus(
       await prefetchDone
       await Promise.all([cache.drainUploads?.(), keeper?.settled()])
     })
-    writeRunSteps(prepared.cacheDir, runId, steps.ended, warnOf(log))
+    if (keeps) {
+      writeRunSteps(prepared.cacheDir, runId, steps.ended, warnOf(log))
+      writeRunWarnings(prepared.cacheDir, runId, warned, warnOf(log))
+    }
     // An upload that failed after the rows went in: its row says so too.
     if (prepared.localCache.uploads.failed > 0 && stop.stoppedBy === undefined && !historyAfterWait)
       recordHistory(() => recordLateRemoteErrors(prepared.localCache, records.runs, runId))
@@ -1553,9 +1604,13 @@ async function runOnBus(
     // own output follows.
     // The footer replaces the live region in place.
     log.runDone?.()
-    if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
+    if (options.summaryTable === true)
+      for (const line of formatOutcomeTable(list, colors)) log.status(line)
+    // A run a signal stopped records nothing `vx last` opens: no id to copy.
+    const footerContext =
+      stop.stoppedBy === undefined ? runContext : { ...runContext, runId: undefined }
     if (options.footer !== false)
-      for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
+      for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
 
     // Edge case the summary already reported: the user requested a
     // persistent task (dev server / watcher). The run is "done" in every
@@ -1635,6 +1690,7 @@ async function runOnBus(
     // floor for a throw a later change adds, not a path a row can drive.
     log.runEnd?.()
     log.runDone?.()
+    live?.dispose()
     stop.detach()
     // Plugins installed at the top of run() get their bus subscriptions
     // released here. Idempotent; safe even if installPlugins threw.
@@ -1692,8 +1748,8 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const reasons = new Map<string, AffectedReason>()
   const prepared = await prepareRun({ ...options, affectedReasons: reasons }, log)
-  options = withRunSettings(options, prepared.workspaceConfig)
   try {
+    options = withRunSettings(options, prepared.workspaceConfig)
     if (prepared.unresolvedTasks.length > 0) {
       return {
         tasks: [],
@@ -1713,6 +1769,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     if (prepared.empty !== null) return { tasks: [] }
     // The plan orders nothing, but it refuses what the run would refuse.
     await prepared.priorities()
+    terminalHolders(prepared.nodes, options.tty === true)
     // Its own mark: a dry run's plan (every task's hash, the cache lookups,
     // the history p50s) was booked under `close`, the next mark, and read
     // as 105 ms of closing a cache at 1,000 projects (item 601).
@@ -1742,7 +1799,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // line would carry the same label. Resolving the executors here is
       // the same plugin-factory call `prepareRun` already makes for the
       // cache capability, so plan mode gains no new class of side effect.
-      ...(await planExecutorOf(prepared, log, options.download ?? 'all')),
+      ...(await planExecutorOf(prepared, log, options.download ?? 'all', detectCi(process.env).ci)),
       ...(await planRestorable(prepared, policy, options.forwardArgs)),
     })
     mark('plan')
@@ -1813,6 +1870,7 @@ async function unresolvedHint(prepared: {
   hintProjects: ReadonlyMap<string, ProjectEntry>
   declaredElsewhere: readonly string[]
   anyProjectConfig: boolean
+  taskless: (name: string) => boolean
   unlockedConfig: () => string | undefined
 }): Promise<string> {
   const elsewhere = elsewhereHint(prepared.declaredElsewhere)
@@ -1820,6 +1878,7 @@ async function unresolvedHint(prepared: {
     prepared.unresolvedTasks,
     prepared.hintProjects,
     prepared.declaredElsewhere,
+    prepared.taskless,
   )
   const init = await initHint(prepared)
   const lock =
@@ -1856,7 +1915,8 @@ async function initHint(prepared: {
 function didYouMean(
   unresolved: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,
-  elsewhere: readonly string[] = [],
+  elsewhere: readonly string[],
+  taskless: (name: string) => boolean,
 ): string {
   const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
   // What a bare name can select: a default `build` is no match (X-102).
@@ -1898,6 +1958,12 @@ function didYouMean(
     if (!isLiteralPattern(proj) && !projects.has(proj)) {
       lists.add(
         `\`${spec}\` names one project, not a pattern: run \`${task}\` with --filter '${proj}' instead.`,
+      )
+      continue
+    }
+    if (taskless(proj)) {
+      lists.add(
+        `${proj} has no vx config, and no configured project depends on it: it has no tasks.`,
       )
       continue
     }
@@ -2008,9 +2074,7 @@ function executorFaults(warn: (line: string) => void): ExecutorFault {
     const k = `${e.name}\0${what}`
     if (said.has(k)) return
     said.add(k)
-    warn(
-      `[vx] executor '${e.name}': ${what}() threw: ${err instanceof Error ? err.message : String(err)} — left out`,
-    )
+    warn(`[vx] ${executorLabel(e)}: ${what}() threw: ${thrownMessage(err)} — left out`)
   }
 }
 

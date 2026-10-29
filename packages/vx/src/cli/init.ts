@@ -66,7 +66,16 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
       if (seam === undefined || !Object.hasOwn(PLUGIN_TEMPLATES, seam)) {
         return {
           ...out,
-          error: `--plugin takes a hook: one of ${seams}${seam === undefined || seam === '' ? '' : ` (got '${seam}')`}${seeHelp('init')}`,
+          error:
+            seam === undefined || seam === ''
+              ? `--plugin requires a value: one of ${seams}${seeHelp('init')}`
+              : `--plugin must be one of ${seams} (got ${seam})${seeHelp('init')}`,
+        }
+      }
+      if (out.plugin !== undefined && out.plugin !== seam) {
+        return {
+          ...out,
+          error: `--plugin takes one hook; run vx init --plugin once per hook${seeHelp('init')}`,
         }
       }
       out.plugin = seam
@@ -182,7 +191,9 @@ export function initInstalls(
 ): { argv: string[]; cwd: string | null }[] {
   const out: { argv: string[]; cwd: string | null }[] = []
   if (globalAt !== version) {
-    const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1] ?? 'bun'
+    // Yarn 2+ has no `yarn global`: Bun, which vx needs anyway, as with no runner.
+    const ua = /^(npm|pnpm|yarn|bun)\/(\d+)/.exec(userAgent ?? '')
+    const runner = ua === null || (ua[1] === 'yarn' && Number(ua[2]) >= 2) ? 'bun' : ua[1]!
     const manager = runner as ManagedInstall['manager']
     out.push({ argv: upgradeArgv({ manager, scope: 'global', cwd: '' }, version), cwd: null })
   }
@@ -282,10 +293,37 @@ async function install(
   return steps.map((s) => s.argv.join(' '))
 }
 
+const PLUGINS_MANIFEST = `${JSON.stringify({ name: 'workspace-plugins', private: true }, null, 2)}\n`
+
+/** Whether the nearest package.json above `dir` has a name, as `definePlugin` needs. */
+function ownerNamed(dir: string): boolean {
+  for (let d = dir; ; d = path.dirname(d)) {
+    let text: string
+    try {
+      text = readFileSync(path.join(d, 'package.json'), 'utf8').replace(/^﻿/, '')
+    } catch {
+      if (path.dirname(d) === d) return false
+      continue
+    }
+    try {
+      const name = (JSON.parse(text) as { name?: unknown } | null)?.name
+      return typeof name === 'string' && name !== ''
+    } catch {
+      return false
+    }
+  }
+}
+
 /** Write `plugins/<seam>.ts` and its test under `root`: the workspace root, else the cwd. */
 async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promise<number> {
   const template = PLUGIN_TEMPLATES[seam]!
+  // `definePlugin` names the plugin by the nearest package.json, and a
+  // monorepo root often has no name: the plugin refused to load.
+  const manifest: [string, string][] = ownerNamed(path.join(root, 'plugins'))
+    ? []
+    : [[path.join('plugins', 'package.json'), PLUGINS_MANIFEST]]
   const files = [
+    ...manifest,
     [path.join('plugins', `${seam}.ts`), template.plugin],
     [path.join('plugins', `${seam}.test.ts`), template.test],
   ] as const
@@ -298,7 +336,14 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
     }
   }
   if (!args.dry) {
-    await mkdir(path.join(root, 'plugins'), { recursive: true })
+    await mkdir(path.join(root, 'plugins'), { recursive: true }).catch(
+      (err: NodeJS.ErrnoException) => {
+        if (err.code !== 'EEXIST' && err.code !== 'ENOTDIR') throw err
+        throw new UserError(
+          `vx init: cannot write ${files[0][0]}: plugins is a file, not a directory; move it and re-run`,
+        )
+      },
+    )
     for (const [rel, text] of files) await Bun.write(path.join(root, rel), text)
   }
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
@@ -370,6 +415,7 @@ async function starter(
   if (args.mode !== undefined) {
     throw new UserError(
       `vx init: --${args.mode} answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here`,
+      'VX_E_USAGE',
     )
   }
   // A source checkout installs nothing, so it declares the plugin only where one is.
@@ -418,6 +464,8 @@ async function starter(
     return 0
   }
   const rows: ui.FieldRow[] = [['from', 'no turbo.json or nx.json: one project, the root']]
+  // The files are root-relative: a root above the cwd is named, or they read as written here.
+  if (root !== process.cwd()) rows.push(['root', root])
   if (args.dry) rows.push(['dry run', 'nothing written'])
   if (installs.length > 0) rows.push(['install', ...installs])
   if (files.length > 0) rows.push(['files', ...files.map((f) => f.path)])
@@ -431,7 +479,15 @@ async function starter(
   for (const f of files) refuseSymlink(path.join(root, f.path))
   const ran = await install(pkgRoot, false, plugins)
   if (ran.length > 0) rows.push(['installed', ...ran])
-  for (const f of files) await writeNoFollow(path.join(root, f.path), f.contents)
+  for (const f of files) {
+    await writeNoFollow(path.join(root, f.path), f.contents).catch((err: NodeJS.ErrnoException) => {
+      // writeNoFollow's mkdir of a parent that is a file says EEXIST.
+      if (err.code !== 'ENOTDIR' && err.code !== 'EEXIST') throw err
+      throw new UserError(
+        `vx init: cannot write ${f.path}: ${path.dirname(f.path)} is a file, not a directory; move it and re-run`,
+      )
+    })
+  }
   for (const f of replaced) await unlink(path.join(root, f))
   // The lock that follows loads the workspace file just written.
   workspaceFileWritten()
@@ -441,7 +497,8 @@ async function starter(
     lock.code === 0 ? next : `fix the above, then vx lock and ${next}`,
   ])
   ui.print('out', ui.report(`vx init ${VERSION}`, rows))
-  return 0
+  // A run reads only the lock: init without one is not done, as vx-migrate exits.
+  return lock.code === 0 ? 0 : 1
 }
 
 /**

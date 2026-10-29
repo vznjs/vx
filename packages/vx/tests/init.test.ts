@@ -10,6 +10,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { migrateCommand, parseInitArgs } from '../src/cli/init.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
+import { definePlugin } from '../src/index.js'
 import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -99,6 +100,17 @@ describe('parseInitArgs', () => {
       'keep',
       '--native and --keep are two answers to one question; pass one (see `vx init --help`)',
       '--keep does not combine with --plugin (see `vx init --help`)',
+    ])
+  })
+
+  it('a second --plugin is refused, not dropped', () => {
+    // `--plugin executor --plugin cache` wrote the cache plugin alone.
+    expect([
+      parseInitArgs(['--plugin', 'executor', '--plugin=cache']).error,
+      parseInitArgs(['--plugin', 'cache', '--plugin', 'cache']).plugin,
+    ]).toEqual([
+      '--plugin takes one hook; run vx init --plugin once per hook (see `vx init --help`)',
+      'cache',
     ])
   })
 
@@ -252,14 +264,14 @@ describe('vx init --plugin <hook>', () => {
         expect([bad.code, bad.err]).toEqual([
           1,
           noticed(
-            `vx init: --plugin takes a hook: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope') (see \`vx init --help\`)\n`,
+            `vx init: --plugin must be one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got nope) (see \`vx init --help\`)\n`,
           ),
         ])
         const empty = await vx(root, ['init', '--plugin='])
         expect([empty.code, empty.err]).toEqual([
           1,
           noticed(
-            `vx init: --plugin takes a hook: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (see \`vx init --help\`)\n`,
+            `vx init: --plugin requires a value: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (see \`vx init --help\`)\n`,
           ),
         ])
         // "Seam" is vx's own word for its design; users write hooks.
@@ -273,6 +285,36 @@ describe('vx init --plugin <hook>', () => {
         expect(dry.code).toBe(0)
         expect(existsSync(path.join(root, 'plugins', 'graph.ts'))).toBe(false)
         expect(existsSync(path.join(root, 'plugins', 'key.ts'))).toBe(true)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a plugin scaffolded under a root package.json with no name loads',
+    async () => {
+      // A monorepo root often has no name. The plugin took the root's
+      // package as its own and `definePlugin` refused it: the scaffold's
+      // own "Declare it" step failed the next verb.
+      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-plugin-noname-'))
+      try {
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ private: true }))
+        const ok = await vx(root, ['init', '--plugin', 'key'])
+        expect([ok.code, ok.err]).toEqual([0, ''])
+        expect(ok.out.split('\n')[0]).toBe(
+          'wrote plugins/package.json and plugins/key.ts and plugins/key.test.ts',
+        )
+        // What the scaffolded module's `definePlugin(import.meta, …)` reads.
+        expect(definePlugin({ dir: path.join(root, 'plugins') }, { setup() {} }).name).toBe(
+          'workspace-plugins',
+        )
+        // CONTROL: a named root keeps its name for the plugin and gets no manifest.
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+        await rm(path.join(root, 'plugins'), { recursive: true })
+        expect((await vx(root, ['init', '--plugin', 'key'])).code).toBe(0)
+        expect(existsSync(path.join(root, 'plugins', 'package.json'))).toBe(false)
       } finally {
         await rm(root, { recursive: true, force: true })
       }

@@ -146,6 +146,14 @@ describe('vx watch rejects flags it cannot honor', () => {
     expect(stderr).toContain('--verbosity')
   })
 
+  it("names --poll as vx watch's when vx run is given it", () => {
+    // The edit-distance hint offered `--all`, a different flag.
+    expect(parseRunArgs(['build', '--poll']).error).toBe(
+      'unknown flag: --poll (a vx watch flag: vx watch --poll <task>)',
+    )
+    expect(parseRunArgs(['build', '--poll'], 'watch').poll).toBe(true)
+  })
+
   it('still parses --verbosity for vx run', () => {
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
   })
@@ -239,11 +247,13 @@ describe('vx cache clean value parsing', () => {
     expect(parsePruneArgs(['--older-than', '30D']).error).toBeUndefined()
   })
 
-  it('--dry-run rides along either policy flag and alone is a clear', () => {
-    expect(parsePruneArgs(['--older-than=30d', '--dry-run']).dryRun).toBe(true)
-    expect(parsePruneArgs(['--dry-run', '--max-size', '1G']).dryRun).toBe(true)
-    expect(parsePruneArgs(['--older-than=30d']).dryRun).toBeUndefined()
-    expect(parsePruneArgs(['--dry-run']).error).toBeUndefined()
+  it('--dry rides along either policy flag and alone is a clear', () => {
+    expect(parsePruneArgs(['--older-than=30d', '--dry']).dry).toBe(true)
+    expect(parsePruneArgs(['--dry', '--max-size', '1G']).dry).toBe(true)
+    expect(parsePruneArgs(['--older-than=30d']).dry).toBeUndefined()
+    expect(parsePruneArgs(['--dry']).error).toBeUndefined()
+    // One name for a rehearsal on every verb: vx run and vx init spell it --dry.
+    expect(parsePruneArgs(['--dry-run']).error).toContain('unknown flag: --dry-run')
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--cache-dir=x', '--max-size=1G']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir']).error).toMatch(/requires a path/)
@@ -307,10 +317,10 @@ describe('value flags accept the = form', () => {
       "--output-logs must be one of 'full', 'errors-only', 'hash-only', 'none' (got loud)",
     )
     expect(parseRunArgs(['build', '--output-logs=']).error).toBe(
-      "--output-logs requires a value (one of 'full', 'errors-only', 'hash-only', 'none')",
+      "--output-logs requires a value: one of 'full', 'errors-only', 'hash-only', 'none'",
     )
     expect(parseRunArgs(['build', '--output-logs']).error).toBe(
-      "--output-logs requires a value (one of 'full', 'errors-only', 'hash-only', 'none')",
+      "--output-logs requires a value: one of 'full', 'errors-only', 'hash-only', 'none'",
     )
   })
 
@@ -319,23 +329,23 @@ describe('value flags accept the = form', () => {
       "--cache-download must be one of 'all', 'toplevel', 'none' (got some)",
     )
     expect(parseRunArgs(['build', '--cache-download']).error).toBe(
-      "--cache-download requires a value (one of 'all', 'toplevel', 'none')",
+      "--cache-download requires a value: one of 'all', 'toplevel', 'none'",
     )
     expect(parseRunArgs(['build', '--cache-download=']).error).toBe(
-      "--cache-download requires a value (one of 'all', 'toplevel', 'none')",
+      "--cache-download requires a value: one of 'all', 'toplevel', 'none'",
     )
     expect(parseRunArgs(['build', '--continue=sometimes']).error).toBe(
       '--continue must be never, deps-ok, or always (got sometimes)',
     )
     expect(parseRunArgs(['build', '--continue=']).error).toBe(
-      '--continue= requires a mode (never, deps-ok, or always)',
+      '--continue= requires a mode: never, deps-ok, or always',
     )
   })
 
   it('--verbosity=', () => {
     expect(parseRunArgs(['build', '--verbosity=2']).verbosity).toBe(2)
     expect(parseRunArgs(['build', '--verbosity=']).error).toBe(
-      '--verbosity requires a value (a non-negative integer)',
+      '--verbosity requires a value: a non-negative integer',
     )
   })
 
@@ -376,7 +386,85 @@ describe('a refused value says what the flag takes (E-36)', () => {
     ).toEqual([
       "--concurrency must be a positive integer, or a share of the cores like '50%' (got 0)",
       '--verbosity must be a non-negative integer (got high)',
-      '--dry must be text or json (got yaml)',
+      '--dry must be pretty or json (got yaml)',
     ])
+  })
+})
+
+describe('a task argument with a control character is refused by name', () => {
+  // `vx run $'build\n'` said "no projects declare task(s): build" with the
+  // newline printed raw, then "Did you mean build?": the one fault, a
+  // byte no task name holds, went unsaid.
+  it('names the byte escaped, in a bare and an anchored task', () => {
+    expect(parseRunArgs(['build\n']).error).toBe(
+      'task "build\\n" holds a control character, which no task name may hold — retype it',
+    )
+    expect(parseRunArgs(['app#lint\x01']).error).toBe(
+      'task "app#lint\\u0001" holds a control character, which no task name may hold — retype it',
+    )
+    expect(parseRunArgs(['watch\t'], 'watch').error).toBe(
+      'task "watch\\t" holds a control character, which no task name may hold — retype it',
+    )
+  })
+
+  it('a forwarded argument may hold one (control)', () => {
+    expect(parseRunArgs(['build', '--', 'a\nb'])).toMatchObject({
+      tasks: ['build'],
+      forwardArgs: ['a\nb'],
+    })
+    expect(parseRunArgs(['build:prod', 'app#e2e']).error).toBeUndefined()
+  })
+})
+
+describe('--profile names a file, checked before the run', () => {
+  let stderr: string
+  const origCwd = process.cwd()
+  let tmp: string
+
+  beforeEach(async () => {
+    stderr = ''
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vx-profile-'))
+    process.chdir(tmp)
+  })
+
+  afterEach(async () => {
+    process.chdir(origCwd)
+    vi.restoreAllMocks()
+    await fs.rm(tmp, { recursive: true, force: true })
+  })
+
+  // A directory died with EISDIR at write time, after the whole run.
+  it('refuses a directory', async () => {
+    await fs.mkdir(path.join(tmp, 'out'))
+    expect(await run(['run', 'build', '--profile=out'])).toBe(1)
+    expect(stderr).toContain(
+      '--profile: out is a directory — name a file, e.g. --profile=out/profile.json',
+    )
+  })
+
+  it('a file in an existing directory goes on to the run (control)', async () => {
+    // No workspace here: the run's own refusal, thrown, is the next fault.
+    const thrown = await run(['run', 'build', '--profile=p.json']).catch((e: Error) => e.message)
+    expect(thrown).toContain('.vx/workspace.ts')
+    expect(stderr).not.toContain('--profile:')
+  })
+})
+
+describe('a string value flag does not swallow the next flag', () => {
+  it('--branch <flag> is refused, as vx last --branch refuses it', () => {
+    // `vx run build --branch $EMPTY --dry` ran the build for real, recorded
+    // under a branch named `--dry`.
+    for (const verb of ['run', 'watch'] as const) {
+      expect(parseRunArgs(['build', '--branch', '--dry'], verb).error).toBe(
+        '--branch requires a value (got flag --dry; a value that starts with - needs --branch=--dry)',
+      )
+    }
+    expect(parseRunArgs(['build', '--branch=-x']).settings['run.branch']).toBe('-x')
+    expect(parseRunArgs(['build', '--branch', 'main']).settings['run.branch']).toBe('main')
   })
 })

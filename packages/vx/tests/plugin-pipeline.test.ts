@@ -188,6 +188,10 @@ describe('config stage', () => {
       expect(await refusal('ws.cache = { dir: 42 }')).toBe(
         `${where}: \`cache.dir\` must be a non-blank string (got 42)`,
       )
+      // The list is fixed before the stage: an edit validated and was dropped.
+      expect(await refusal('ws.plugins.pop()')).toBe(
+        `${where}: \`plugins\` is fixed before the config stage, so an edit to it would change nothing — declare plugins in .vx/workspace`,
+      )
       // CONTROL: a valid edit passes the same check.
       expect(await refusal("ws.run.timeout = '5s'")).toBeUndefined()
     },
@@ -210,7 +214,7 @@ describe('config stage', () => {
           (e: unknown) => (e as Error).message,
         )
       }
-      const refused = `${LOCK_REFUSED}.vx/workspace (after plugin 'org/broken'): \`plugins\` is fixed before the config stage runs — a plugin cannot add, drop or reorder plugins`
+      const refused = `${LOCK_REFUSED}.vx/workspace (after plugin 'org/broken'): \`plugins\` is fixed before the config stage, so an edit to it would change nothing — declare plugins in .vx/workspace`
       expect(await refusal('ws.plugins.length = 0')).toBe(refused)
       expect(await refusal('ws.plugins.reverse()')).toBe(refused)
       expect(await refusal('delete ws.plugins')).toBe(refused)
@@ -403,6 +407,19 @@ describe('project stage', () => {
   )
 
   it(
+    'a project-stage edit of `name` is refused, naming the plugin: the stage runs after naming',
+    async () => {
+      // The edit validated and was dropped: the project kept its name.
+      await pkg('a', build)
+      await workspace([pluginSource('org/renamer', `{ project(config) { config.name = 'b' } }`)])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        'vx.config.mjs (after plugin \'org/renamer\'): project "a" is named before the project stage, so `name: "b"` cannot rename it — a plugin names a project in its `discover` hook',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     "a plugin's output is judged against the project's own config file, not the refusal's label",
     async () => {
       // The label `<path> (after plugin 'org/x')` was read as the config
@@ -463,7 +480,7 @@ describe('project stage', () => {
       // dir there, and which spelling discovery reports is not this row's.
       const message = err?.message ?? ''
       expect(message.slice(message.indexOf('/packages/a/vx.config.mjs'))).toBe(
-        `/packages/a/vx.config.mjs (after plugin 'org/map'): tasks.build.exec.sandbox is an instance of Map — a config must be JSON data, because the cache key folds its JSON`,
+        `/packages/a/vx.config.mjs (after plugin 'org/map'): tasks.build.exec.sandbox is an instance of Map — a config must be JSON data, because the cache key is built from its JSON`,
       )
     },
     TIMEOUT,
@@ -617,6 +634,29 @@ describe('graph stage', () => {
   )
 
   it(
+    'a node whose id is not its projectName#taskName is refused by name',
+    async () => {
+      // A copy under a new id kept the old taskName: the key read the id,
+      // `--exclude-dependencies=build` the name, and dropped the copy's edge.
+      await pkg('a', build)
+      await workspace([
+        pluginSource(
+          'org/copy',
+          `{ graph(nodes) {
+            const n = nodes.get('a#build')
+            nodes.set('a#gen', { ...n, id: 'a#gen', deps: [] })
+            n.deps.push('a#gen')
+          } }`,
+        ),
+      ])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        `plugin 'org/copy' failed in graph: a#gen's id is "a#gen", not its projectName#taskName (a#build)`,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task config a plugin breaks is refused, naming the plugin and the field',
     async () => {
       // Unchecked, the misspelled field left the task without a command:
@@ -662,6 +702,34 @@ describe('graph stage', () => {
       expect((globalThis as unknown as { __vxRequested: string[] }).__vxRequested).toEqual([
         'a#test',
       ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a named task a plugin drops is gone from an --affected run too, not a TypeError',
+    async () => {
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([pluginSource('org/drop', `{ graph(nodes) { nodes.delete('a#build') } }`)])
+      const changes = {
+        projects: new Set(['b']),
+        changed: ['packages/b/x'],
+        paths: new Map([['b', ['x']]]),
+        whole: new Set<string>(),
+      }
+      const ids = async (affected?: typeof changes): Promise<string[]> =>
+        (
+          await planRun({
+            cwd: root,
+            tasks: ['a#build', 'b#build'],
+            ...(affected !== undefined ? { affected } : {}),
+            log: silent(),
+          })
+        ).tasks.map((t) => t.node.id)
+      // CONTROL: the run without the diff plans what the hook left.
+      expect(await ids()).toEqual(['b#build'])
+      expect(await ids(changes)).toEqual(['b#build'])
     },
     TIMEOUT,
   )
@@ -1725,6 +1793,12 @@ describe('plugin-host, called directly', () => {
         await said(`projectName: 'a', taskName: 'x', projectDir: 'packages/a'`),
         await said(`projectName: 'a', projectDir: dir`),
         await said(`projectName: '', taskName: 'x', projectDir: dir`),
+        // Ran in, keyed and cleaned outputs under a directory no project
+        // owns, past the hard project boundary.
+        await said(
+          `projectName: 'a', taskName: 'x', projectDir: dir.slice(0, dir.lastIndexOf('/'))`,
+        ),
+        await said(`id: 'zz#x', projectName: 'zz', taskName: 'x', projectDir: dir`),
         // CONTROL: the whole node runs.
         await said(`projectName: 'a', taskName: 'x', projectDir: dir`),
       ]).toEqual([
@@ -1732,6 +1806,8 @@ describe('plugin-host, called directly', () => {
         `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectDir is "packages/a", not an absolute path`,
         `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's taskName is undefined, not a name`,
         `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectName is "", not a name`,
+        `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectDir is packages, not project a's directory packages/a`,
+        `${LOCK_REFUSED}plugin 'org/add' failed in graph: zz#x's project zz is not a project in this workspace`,
         'a#build success, a#x success',
       ])
     },
@@ -1792,6 +1868,29 @@ describe('plugin-host, called directly', () => {
         first: true,
         next: true,
         said: ["[vx] plugin 'org/boom' failed in admit: boom; admitting every task from here on"],
+      })
+    })
+
+    it('an answer that is not true, false or undefined is named once and admits from then on', () => {
+      // `0` admitted beside a running task and `42` too, with no word: a
+      // policy that answered a count enforced nothing.
+      const said: string[] = []
+      const admit = buildAdmission(
+        [
+          testPlugin('org/count', { admit: (_t, ctx) => ctx.running.length as never }),
+          testPlugin('org/forty', { admit: () => 42 as never }),
+        ],
+        graph,
+        2,
+        (m) => said.push(m),
+      )!
+      expect({ first: admit('b', busy), next: admit('b', busy), said }).toEqual({
+        first: true,
+        next: true,
+        said: [
+          "[vx] plugin 'org/count' failed in admit: returned a number, not true or false; admitting every task from here on",
+          "[vx] plugin 'org/forty' failed in admit: returned a number, not true or false; admitting every task from here on",
+        ],
       })
     })
   })

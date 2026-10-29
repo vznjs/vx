@@ -70,7 +70,7 @@ it('a bad assumption is said once, when the server re-ranks the run too', async 
     // The server's numbers did re-rank: the second ordering ran.
     expect(late).toEqual([expect.any(Map)])
     expect(warned.filter((m) => m.includes('assume'))).toEqual([
-      '[vx] vx-history: assume ignores "b#build" — each must be a finite number of ms',
+      '[vx] vx-history: assume ignores "b#build" — each must be a number of ms from 0 to 2^53',
     ])
   } finally {
     cache.close()

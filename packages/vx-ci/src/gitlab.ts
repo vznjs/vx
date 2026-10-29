@@ -47,7 +47,8 @@ export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined 
  * `refs`, what a remote reads (2026-10-25): a merge train's only its
  * target branch; any other its own ref (the tag, else a merge request's
  * source branch, else the branch), then
- * a merge request's target, then the default branch.
+ * a merge request's or external pull request's target, then the default
+ * branch.
  */
 function gitlabBranch(
   env: Readonly<Record<string, string | undefined>>,
@@ -56,7 +57,10 @@ function gitlabBranch(
   const value = (key: string): string | undefined => env[key] || undefined
   const head = (b: string | undefined) => (b === undefined ? undefined : `refs/heads/${b}`)
   const tag = value('CI_COMMIT_TAG')
-  const target = head(value('CI_MERGE_REQUEST_TARGET_BRANCH_NAME'))
+  const target = head(
+    value('CI_MERGE_REQUEST_TARGET_BRANCH_NAME') ??
+      value('CI_EXTERNAL_PULL_REQUEST_TARGET_BRANCH_NAME'),
+  )
   const train = value('CI_MERGE_REQUEST_EVENT_TYPE') === 'merge_train'
   const refs = [
     ...new Set(

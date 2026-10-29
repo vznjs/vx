@@ -30,8 +30,12 @@ interface CliWorkspace {
   /** What a plugin's `config` stage said of the branch: its cache scope and base commit. */
   branch: BranchFacts
   cacheDir: string
-  /** The shared store a run opens `cacheDir` with (`resolveStoreRoot`), asked on load. */
-  storeRoot: Promise<string | null>
+  /**
+   * The shared store a run opens `cacheDir` with (`resolveStoreRoot`), asked
+   * on first call: with no remote, the answer is a git spawn, and a verb that
+   * never opens the store (help, show, last) paid it.
+   */
+  storeRoot: () => Promise<string | null>
 }
 
 export const warnToStderr = (message: string): void => {
@@ -48,7 +52,7 @@ export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorksp
     plugins,
     branch,
     cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig),
-    storeRoot: resolveStoreRoot(workspaceRoot, workspaceConfig),
+    storeRoot: () => resolveStoreRoot(workspaceRoot, workspaceConfig),
   }
 }
 
@@ -57,9 +61,27 @@ export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorksp
  * plugin `discover` stage, with the cache dir the run uses. No lock is
  * `NO_LOCK`.
  */
-export async function discoverCliProjects(root: string): Promise<ProjectMeta[]> {
-  const { plugins, cacheDir } = await loadCliWorkspace(root)
-  return await discoverProjects(root, lockReader(root), plugins, cacheDir, warnToStderr)
+export async function discoverCliProjects(
+  root: string,
+  load: CliLoadOptions = {},
+): Promise<ProjectMeta[]> {
+  const ws = await loadCliWorkspace(root)
+  return await discoverProjects(
+    root,
+    lockReader(root),
+    ws.plugins,
+    stageCacheDir(ws, load),
+    warnToStderr,
+  )
+}
+
+/**
+ * The cache dir a plugin stage is told: `--cache-dir` resolved against the
+ * working directory as the run resolves it (prepare.ts), else the
+ * workspace's. The run reuses what these stages answered.
+ */
+export function stageCacheDir(ws: { cacheDir: string }, load: CliLoadOptions): string {
+  return load.cacheDir === undefined ? ws.cacheDir : path.resolve(process.cwd(), load.cacheDir)
 }
 
 /**
@@ -106,7 +128,9 @@ export function parseCacheDirFlag(
  */
 export function namedCacheDir(override: string): string {
   const dir = path.resolve(process.cwd(), override)
-  if (!existsSync(dir)) throw new UserError(`--cache-dir ${override}: no such directory (${dir})`)
+  if (!existsSync(dir)) {
+    throw new UserError(`--cache-dir ${override}: no such directory (${dir})`, 'VX_E_USAGE')
+  }
   return dir
 }
 
@@ -149,7 +173,7 @@ export async function loadCliProjects(
 ): Promise<Map<string, ProjectEntry>> {
   const ws = await loadCliWorkspace(workspaceRoot)
   const { plugins } = ws
-  const cacheDir = opts.cacheDir ?? ws.cacheDir
+  const cacheDir = stageCacheDir(ws, opts)
   const loaded = await loadProjects({
     workspaceRoot,
     cacheDir,

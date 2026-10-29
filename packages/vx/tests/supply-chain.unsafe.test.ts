@@ -201,6 +201,23 @@ describe('the supply chain', () => {
     ).toEqual([])
   })
 
+  // A tag is its publisher's to move: oven/bun:1.4.4-slim was pushed
+  // again on 2026-10-22, so the same Dockerfile built another base. Each
+  // image is a digest, its tag beside it for a reader and an updater.
+  it('builds every image from a base pinned by digest', () => {
+    const images = ['packages', 'private'].flatMap((top) =>
+      [...new Bun.Glob('*/{Dockerfile,compose.yaml}').scanSync(path.join(ROOT, top))].flatMap((f) =>
+        [
+          ...readFileSync(path.join(ROOT, top, f), 'utf8').matchAll(
+            /^\s*(?:FROM|image:)\s+(?:--platform=\S+\s+)?(\S+)/gm,
+          ),
+        ].map((m) => `${top}/${f}: ${m[1]}`),
+      ),
+    )
+    expect(images.length).toBeGreaterThan(3)
+    expect(images.filter((i) => !/:[\w.-]+@sha256:[0-9a-f]{64}$/.test(i))).toEqual([])
+  })
+
   // A write the workflow grants reaches every job, one added later
   // included; each job names the writes it needs, as npm.yml and
   // auto-release.yml do. An OIDC token writes nothing of the repo's.

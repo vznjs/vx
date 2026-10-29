@@ -24,6 +24,7 @@
 import path from 'node:path'
 import { BUN_GLOB_WILDCARDS, relPosix, UserError } from '../util/index.js'
 import type { PackageGraph } from './package-graph.js'
+import { canonicalDir } from './canonical-dir.js'
 import type { ProjectMeta } from './workspace.js'
 
 export interface ParsedFilter {
@@ -54,7 +55,7 @@ export interface ParsedFilter {
   pathGlob?: Bun.Glob
   /** `./a/**`'s `a`: a trailing `**` matches zero dirs, and `Bun.Glob` does not (D-84). */
   pathGlobBase?: Bun.Glob
-  /** The workspace root `pathGlob` is relative to. */
+  /** The workspace root a path form is relative to. */
   pathRoot?: string
   /** `//`: the project at `matcher` itself, never the ones under it. */
   exactDir?: true
@@ -67,7 +68,12 @@ export interface ParsedFilter {
   dirFallback?: ParsedFilter
 }
 
-export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
+export function parseFilter(
+  raw: string,
+  workspaceRoot: string,
+  /** The filter as typed, when `raw` is the `./` reading of a name (`dirFallback`). */
+  typed = raw,
+): ParsedFilter {
   let s = raw
   const negate = s.startsWith('!')
   if (negate) s = s.slice(1)
@@ -185,6 +191,13 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     if (pathForm.trim() === '') throw new UserError(`filter "${raw}" names no project`)
     isPath = true
     matcher = path.resolve(workspaceRoot, pathForm)
+    // `../` (pnpm's cwd-relative sibling) climbed out of the root, and
+    // every project sat under the directory it named: all of them ran.
+    const up = path.relative(workspaceRoot, matcher)
+    if (up === '..' || up.startsWith(`..${path.sep}`))
+      throw new UserError(
+        `filter "${typed}" names a directory outside the workspace root: a path filter is relative to the root`,
+      )
     // `./packages/*` — pnpm's and Turbo's spelling for "every package under
     // packages": a glob over the root-relative project dir. Resolved
     // against the workspace root like the literal form.
@@ -203,7 +216,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
   // 23.2.1), and `-p 'apps/*'` matched nothing here.
   const dirFallback =
     !isPath && s.includes('/') && !s.startsWith('@')
-      ? parseFilter(`./${s}`, workspaceRoot)
+      ? parseFilter(`./${s}`, workspaceRoot, raw)
       : undefined
 
   return {
@@ -216,7 +229,8 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     isPath,
     matcher,
     ...(dirFallback !== undefined ? { dirFallback } : {}),
-    ...(pathGlob !== undefined ? { pathGlob, pathRoot: workspaceRoot } : {}),
+    ...(isPath ? { pathRoot: workspaceRoot } : {}),
+    ...(pathGlob !== undefined ? { pathGlob } : {}),
     ...(pathGlobBase !== undefined ? { pathGlobBase } : {}),
     ...(gitSince !== undefined ? { gitSince } : {}),
     ...(sinceViaDeps ? { sinceViaDeps: true as const } : {}),
@@ -264,7 +278,13 @@ function matchSelector(
     // pnpm read it: `.` is the root project, never every project under the
     // root, and `./packages/app` leaves the examples nested in it (D-43).
     // A directory that is no project keeps the "at or under" reading.
-    const exact = projects.find((p) => p.dir === filter.matcher)
+    // A link to a project's directory (`./widgets/a -> ../submodules/a`)
+    // names that project, which discovery holds at its real directory.
+    let exact = projects.find((p) => p.dir === filter.matcher)
+    if (exact === undefined && filter.pathRoot !== undefined) {
+      const real = canonicalDir(filter.pathRoot, filter.matcher)
+      if (real !== null && real !== filter.matcher) exact = projects.find((p) => p.dir === real)
+    }
     if (exact !== undefined) return [exact.name]
     if (filter.exactDir === true) return out
     const prefix = filter.matcher + path.sep

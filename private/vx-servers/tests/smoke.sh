@@ -20,7 +20,7 @@ docker compose up -d --build --quiet-pull
 for svc in dte cache history; do
   ready=
   for _ in $(seq 50); do
-    if docker compose logs "$svc" 2>&1 | grep -q "vx-$svc-server on"; then ready=1; break; fi
+    if docker compose logs "$svc" 2>&1 | grep -q "vx-$svc-server  listening on"; then ready=1; break; fi
     sleep 0.2
   done
   if [ -z "$ready" ]; then

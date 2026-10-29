@@ -17,6 +17,7 @@ import {
   machineMemoryBytes,
   ui,
   machineParallelism,
+  packageManagerPath,
   sampleTrees,
   sandboxRequestFor,
   sweepPlaceholders,
@@ -69,12 +70,7 @@ export async function runWorker(opts: {
   const tree = base.tree
   // Never an output, as core never cleans one: the checkout is the run's
   // commit, so this is the run's tracked set.
-  const tracked = new Set(
-    Bun.spawnSync(['git', 'ls-files', '-z'], { cwd: opts.root })
-      .stdout.toString()
-      .split('\0')
-      .filter(Boolean),
-  )
+  const tracked = trackedFiles(opts.root)
   const cores = machineParallelism()
   const memory = machineMemoryBytes()
   const info: WorkerInfo = {
@@ -191,6 +187,7 @@ export async function runWorker(opts: {
             ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
             ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
             env: m.env,
+            ...(m.secret === undefined ? {} : { secret: m.secret }),
             // The run's own key is this run's alone; `key` as the probe found it.
             ...(k === m.runKey || (k === m.key && m.absent === true) ? { absent: true } : {}),
           },
@@ -893,6 +890,7 @@ export async function changedTracked(
       '--no-renames',
       base,
       '--',
+      // Literal: a project at `p*` named its sibling `pa`'s files.
       m.project === '' ? '.' : `:(literal)${m.project}`,
     ],
     {
@@ -909,6 +907,21 @@ export async function changedTracked(
   return out
     .split('\0')
     .filter((f) => f !== '' && !output(f) && !m.nested.some((n) => f.startsWith(`${n}/`)))
+}
+
+/** The checkout's tracked files, relative to `root`; none outside git. */
+export function trackedFiles(root: string): Set<string> {
+  const r = Bun.spawnSync(['git', 'ls-files', '-z'], { cwd: root, stderr: 'pipe' })
+  if (r.exitCode === 0) return new Set(r.stdout.toString().split('\0').filter(Boolean))
+  const repo = Bun.spawnSync(['git', 'rev-parse', '--git-dir'], {
+    cwd: root,
+    stdout: 'ignore',
+    stderr: 'ignore',
+  })
+  if (repo.exitCode !== 0) return new Set()
+  // A repository git cannot list (a corrupt index): read as none tracked,
+  // clearing a task's outputs deleted its committed files.
+  throw new Error(`git ls-files: ${r.stderr.toString().trim()}`)
 }
 
 /** Memory a task can take: Linux's MemAvailable counts the page cache it may reclaim, free memory does not. */
@@ -936,6 +949,11 @@ export function localEnv(
   // By path: a plain replace moved `/ws2` and `/private/ws` with `/ws`.
   const out: Record<string, string | undefined> = swapRoots({ ...env }, [[remoteRoot, root]])
   // Sent only when the task's `env.define` names it: its value, as keyed.
+  // Else this machine's manager, as core sets it on a local task.
+  if (!('npm_execpath' in out)) {
+    const manager = packageManagerPath(root)
+    if (manager !== null) out['npm_execpath'] = manager
+  }
   for (const k of HOST_ENV) if (!(k in out)) out[k] = process.env[k]
   const bins = (out['PATH'] ?? '').split(':').filter((p) => p === root || p.startsWith(`${root}/`))
   out['PATH'] = [...bins, process.env['PATH'] ?? ''].join(':')

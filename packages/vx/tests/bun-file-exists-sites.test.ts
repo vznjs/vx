@@ -14,11 +14,11 @@ const SRC = path.resolve(import.meta.dir, '..', 'src')
 const FILE_PATH_SITES: Record<string, number> = {
   'cli/init.ts': 1, // a starter file already there
   'cli/lock.ts': 1, // a vx.lock.json left beside no config
-  'cli/plugin-templates.ts': 2, // the cache example's has() and get(): artifact file paths
-  'handoff.ts': 4, // a package.json, .git/HEAD, a worktree's .git file, a .vx/workspace.*
+  'cli/plugin-templates.ts': 3, // the cache example's has() and get(): artifact file paths; a test's ran.txt
+  'handoff.ts': 6, // a package.json, .git/HEAD (twice), a worktree's .git file, its commondir, a .vx/workspace.*
   'orchestrator/doctor.ts': 1, // the lockfile
   'orchestrator/projects.ts': 1, // a locked config a run reads is still there (X-144)
-  'workspace/affected.ts': 1, // a file to read bytes from
+  'workspace/affected.ts': 2, // a file to read bytes from; a removed project's config
   'workspace/load-reads.ts': 1, // a root file: manifest, fingerprint file, workspace config
   'workspace/lockfile.ts': 1, // the lockfile
   'workspace/migration.ts': 3, // workspace config candidates; write targets; .vx/.gitignore

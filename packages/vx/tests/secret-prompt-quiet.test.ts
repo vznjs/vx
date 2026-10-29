@@ -37,7 +37,7 @@ it('nothing is drawn while a secret prompt waits for its answer', async () => {
   const out = tty()
   const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, { forceFloorMs: 0 })
   log.stepStart?.('vx:load')
-  await until(() => /running internal vx:load/.test(out.text()))
+  await until(() => /running internal +vx:load/.test(out.text()))
   log.stepEnd?.('vx:load', { durationMs: 300, ok: true })
   let during = ''
   const broker = new SecretBroker(
@@ -58,8 +58,8 @@ it('nothing is drawn while a secret prompt waits for its answer', async () => {
   log.stepStart?.('vx:open')
   expect(await broker.for('p').secret({ key: 'k', prompt: 'Token: ' })).toBe('tok')
   expect(during).toBe('')
-  await until(() => /running internal vx:open/.test(out.text()))
-  expect(out.text()).toMatch(/running internal vx:open/)
+  await until(() => /running internal +vx:open/.test(out.text()))
+  expect(out.text()).toMatch(/running internal +vx:open/)
   log.stepEnd?.('vx:open', { durationMs: 600, ok: true })
   log.runStart?.({ total: 0, concurrency: 1 })
   log.runDone?.()
@@ -69,7 +69,7 @@ it('CONTROL: without the hold the ticker keeps drawing over the prompt line', as
   const out = tty()
   const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, { forceFloorMs: 0 })
   log.stepStart?.('vx:load')
-  await until(() => /running internal vx:load/.test(out.text()))
+  await until(() => /running internal +vx:load/.test(out.text()))
   log.stepEnd?.('vx:load', { durationMs: 300, ok: true })
   const at = out.text().length
   await Bun.sleep(400)

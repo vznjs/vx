@@ -51,6 +51,7 @@ export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<
 export function defaultAffectedBase(
   workspaceRoot: string,
   baseBranch: string | undefined,
+  instead?: string, // the verb's way to take every project instead (`vx show` has no --all)
 ): Promise<string>
 /** The merge base of `ref` and HEAD, or undefined; a shallow clone fetches it
  *  (no blobs). The façade's, for a plugin reading the base branch's history. */

@@ -205,7 +205,30 @@ describe('a failed exchange leaves the run local, and says why without a token',
         u.pathname.endsWith('/oauth/token')
           ? Response.json({ error: 'invalid_grant' }, { status: 400 })
           : undefined,
-      'the token exchange (api.vercel.com) answered HTTP 400',
+      'the token exchange (api.vercel.com) answered HTTP 400: invalid_grant',
+    ],
+    [
+      // RFC 6749's error fields say why, and never carry a token.
+      'the exchange refuses, saying why',
+      (u: URL) =>
+        u.pathname.endsWith('/oauth/token')
+          ? Response.json(
+              { error: 'invalid_grant', error_description: 'audience not allowed' },
+              { status: 400 },
+            )
+          : undefined,
+      'the token exchange (api.vercel.com) answered HTTP 400: invalid_grant: audience not allowed',
+    ],
+    [
+      'GitHub refuses, saying why',
+      (u: URL) =>
+        u.pathname === '/idtoken'
+          ? Response.json(
+              { message: 'Unable to get ACTIONS_ID_TOKEN_REQUEST_URL' },
+              { status: 403 },
+            )
+          : undefined,
+      "GitHub's OIDC endpoint (pipelines.actions.example) answered HTTP 403: Unable to get ACTIONS_ID_TOKEN_REQUEST_URL",
     ],
     [
       'the exchange sends no token',
@@ -228,23 +251,27 @@ describe('a failed exchange leaves the run local, and says why without a token',
 
   it('a revoke the server refuses throws for teardown’s warning, quoting no token', async () => {
     const w = world((u) =>
-      u.pathname.endsWith('/revoke') ? new Response(null, { status: 500 }) : undefined,
+      u.pathname.endsWith('/revoke')
+        ? Response.json({ error: 'server_error' }, { status: 500 })
+        : undefined,
     )
     const c = cache({ oidc: true }, GH_ENV, w.fetchImpl)
     await c.open(ctx().c)
-    expect(await message(c.revoke())).toBe('revoking at api.vercel.com answered HTTP 500')
+    expect(await message(c.revoke())).toBe(
+      'revoking at api.vercel.com answered HTTP 500: server_error',
+    )
   })
 })
 
 describe('another server', () => {
   it('needs its tokenUrl, and revokes only where revokeUrl names it', async () => {
     expect(() =>
-      resolveTurboCacheConfig({ apiUrl: 'https://cache.example', oidc: true }, GH_ENV),
+      resolveTurboCacheConfig({ url: 'https://cache.example', oidc: true }, GH_ENV),
     ).toThrow("turboCache(): oidc needs tokenUrl for a cache that is not Vercel's")
     const w = world()
     const c = cache(
       {
-        apiUrl: 'https://cache.example',
+        url: 'https://cache.example',
         oidc: { tokenUrl: 'https://auth.example/oauth/token', params: { resource: 'cache' } },
       },
       GH_ENV,

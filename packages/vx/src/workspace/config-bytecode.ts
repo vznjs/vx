@@ -29,6 +29,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -165,6 +166,12 @@ export async function buildCompiled(
   const tmp = path.join(dir, `.tmp-${process.pid}-${Date.now()}`)
   try {
     mkdirSync(tmp, { recursive: true })
+    // Ignored by git under a cache dir elsewhere, where no `.vx/.gitignore` is written.
+    try {
+      writeFileSync(path.join(dir, '.gitignore'), '*\n', { flag: 'wx' })
+    } catch {
+      // there already: the user's or an earlier run's
+    }
     const built = await Bun.build({
       entrypoints: [configPath],
       target: 'bun',

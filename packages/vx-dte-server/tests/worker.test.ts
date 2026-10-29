@@ -78,7 +78,10 @@ it('routes each run to its own object', async () => {
   const run = { iss: ISS, run: ['1'] }
   expect(ns.made).toEqual([await sessionKey(A, run), await sessionKey(B, run)])
   const res = await worker.fetch(new Request('https://relay.example.com/health'), env)
-  expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
+  expect([res.status, await res.json()]).toEqual([
+    404,
+    { error: 'no route GET /health: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)' },
+  ])
 })
 
 // Each object a request wakes is billed, and a host's daily limit refuses
@@ -153,6 +156,16 @@ it('refuses every join with a 403 while ALLOW admits no one, waking no object', 
     const res = await join(env, A)
     expect([res.status, await res.json()]).toEqual([403, { error }])
   }
+})
+
+// No object bound: each join threw "Cannot read properties of
+// undefined", a 500 a client retries until its deadline.
+it('refuses every join with a 403, saying why, while RELAY is unbound', async () => {
+  const res = await join({ ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml' } as Env, A)
+  expect([res.status, await res.json()]).toEqual([
+    403,
+    { error: 'RELAY: bind the RelayRun Durable Object as RELAY (wrangler.jsonc durable_objects)' },
+  ])
 })
 
 // Hibernated, an object is built again from its sockets: it writes no storage.
@@ -273,7 +286,10 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
   expect([mine.status, other.status, await other.json(), elsewhere.status]).toEqual([
     426,
     401,
-    { error: 'wrong audience' },
+    {
+      error:
+        "the token's aud is https://other.example.com, not this relay's https://relay.example.com: ask CI for a token for https://relay.example.com, or set the relay's audience",
+    },
     426,
   ])
 })

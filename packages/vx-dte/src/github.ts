@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
-import { refuseUnknownOptions, UserError, ui, type PluginOptionKinds } from '@vzn/vx'
+import { refuseUnknownOptions, secretNamed, UserError, ui, type PluginOptionKinds } from '@vzn/vx'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
 import { printable } from './printable.js'
 
@@ -22,6 +22,13 @@ export interface GithubOptions {
    * for this commit. An undefined one is left out.
    */
   readonly env?: Readonly<Record<string, string | undefined>>
+}
+
+interface Job {
+  readonly name: string
+  readonly status: string
+  readonly conclusion: string | null
+  readonly steps?: readonly { name: string; conclusion: string | null }[]
 }
 
 const KEYS: PluginOptionKinds<GithubOptions> = {
@@ -52,6 +59,13 @@ const WATCH_MAX_MS = 30_000
 /** A dispatch the API limit refused waits for its reset only this long: the worker is `starting` meanwhile. */
 const DISPATCH_WAIT_MS = 5 * 60_000
 
+/**
+ * A cancel the API limit refused waits for its reset only this long: a
+ * worker run left queued starts for no one, then reads its run is over
+ * and cancels itself (the workflow's first step, `parent`).
+ */
+const CANCEL_WAIT_MS = 60_000
+
 /** When a refused answer's API limit resets (epoch ms), or undefined for a refusal that is no limit. */
 function limitReset(res: Response): number | undefined {
   if (res.status !== 403 && res.status !== 429) return undefined
@@ -70,17 +84,18 @@ function limitReset(res: Response): number | undefined {
 const resetsAt = (at: number): string =>
   `; the repository's API limit resets at ${new Date(at).toISOString()}`
 
-/** A workflow run's job, as its jobs list says it. */
-interface Job {
-  name: string
-  status: string
-  conclusion: string | null
-  steps?: { name: string; conclusion: string | null }[]
-}
+/** The jobs a matrix makes in one workflow run at most: one dispatch's workers. */
+const MATRIX_MAX = 256
 
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
   const workflow = options.workflow ?? 'vx-worker.yml'
+  // GitHub reads no workflow in a subdirectory, and `vx dte init` writes
+  // the run's own ci.yml beside it: the same name wrote one over the other.
+  if (workflow === '' || workflow.includes('/') || workflow === 'ci.yml')
+    throw new UserError(
+      `github() option "workflow" must be a file name in .github/workflows other than ci.yml, such as vx-worker.yml, got ${JSON.stringify(workflow)}`,
+    )
   const handed = handedEnv(options.env ?? {})
   // The workers one demand starts, by size: one dispatch each.
   const waves = new Map<string, WorkerSpawn[]>()
@@ -96,92 +111,117 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const watched = new Map<string, Map<string, WorkerSpawn>>()
   let watch: ReturnType<typeof setTimeout> | undefined
   let closed = false
-  // Each jobs page's answer and ETag: asked with it, an unchanged answer is a
+  // Each run's jobs answer's ETag: asked with it, an unchanged answer is a
   // 304, which the API limit does not count.
-  const etags = new Map<string, { tag: string; some: Job[]; total: number }>()
+  const etags = new Map<string, string>()
   // No jobs are asked before this (epoch ms): the API limit is spent.
   let held = 0
+  // The workflow runs whose jobs are this run's workers, by id: a run's id
+  // is a dispatch input anyone who reads the repository's Actions sees, so
+  // a job of any other run is no worker of it. A dispatch that named no
+  // run (an API that answers 204) leaves it unbound.
+  const workerRuns = new Set<string>()
+  let unbound = false
   // Workers the run no longer needs: a run of only these is cancelled.
   const cancelled = new Set<string>()
   // A poll or cancel that failed is said, each cause once (2026-10-23: no
   // fault is silent): a job that ended badly went unseen, a run held runners.
-  let warn = (m: string): void => ui.say('warn', `[vx] ${m}`)
+  let warn = (m: string): void => ui.say('warn', m)
   const said = new Set<string>()
   const runOf = (run: string): string => `workflow run ${run.slice(run.lastIndexOf('/') + 1)}`
   const failed = (what: string, why: string): void => {
-    const m = `github(): ${what} failed: ${why}`
+    const m = `[vx] github(): ${what} failed: ${why}`
     if (said.has(m)) return
     said.add(m)
     warn(m)
   }
-  /** A cancel's answer: 202, or 409 for a run already finished; anything else is said. */
+  /**
+   * A cancel's answer: 202, or 409 for a run already finished; anything
+   * else is said. One the spent API limit refused is asked again at its
+   * reset, when that comes within `CANCEL_WAIT_MS`.
+   */
   const cancelOf = async (run: string): Promise<void> => {
-    const res = await call(`${run}/cancel`, { method: 'POST' }).catch((err: unknown) => {
-      failed(`cancelling ${runOf(run)}`, err instanceof Error ? err.message : String(err))
-      return undefined
-    })
-    if (res === undefined || res.ok || res.status === 409) return
-    failed(
-      `cancelling ${runOf(run)}`,
-      `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}`,
-    )
+    const end = Date.now() + CANCEL_WAIT_MS
+    for (;;) {
+      const res = await call(`${run}/cancel`, { method: 'POST' }).catch((err: unknown) => {
+        failed(`cancelling ${runOf(run)}`, err instanceof Error ? err.message : String(err))
+        return undefined
+      })
+      if (res === undefined || res.ok || res.status === 409) return
+      // quiet: the status is said below either way; the body only adds to it
+      const text = printable((await res.text().catch(() => '')).slice(0, 200))
+      const reset = limitReset(res)
+      if (reset !== undefined && reset <= end) {
+        await Bun.sleep(Math.max(0, reset - Date.now()))
+        continue
+      }
+      failed(
+        `cancelling ${runOf(run)}`,
+        `${res.status} ${text}${reset === undefined ? '' : resetsAt(reset)}`,
+      )
+      return
+    }
   }
   /** Cancels `run` once none of its workers is still needed. */
   const letGo = (run: string, workers: ReadonlyMap<string, WorkerSpawn>): void => {
     if (![...workers.keys()].every((id) => cancelled.has(id))) return
     watched.delete(run)
-    runs.splice(runs.indexOf(run), 1)
+    // Let go already (a cancel while its dispatch wrote RUNNER_TEMP).
+    const i = runs.indexOf(run)
+    if (i < 0) return
+    runs.splice(i, 1)
     const p = cancelOf(run).finally(() => pending.delete(p))
     pending.add(p)
+  }
+  /**
+   * Every page of `run`'s jobs: a wave of more than 100 workers is a run of
+   * more than 100 jobs. Undefined when unread, or when a one-page run has
+   * not changed since the last read (a 304 costs no API limit).
+   */
+  const jobsOf = async (run: string): Promise<Job[] | undefined> => {
+    const all: Job[] = []
+    for (let page = 1; ; page++) {
+      const tag = page === 1 ? etags.get(run) : undefined
+      const res = await call(
+        `${run}/jobs?per_page=100&page=${page}`,
+        tag === undefined ? {} : { headers: { 'if-none-match': tag } },
+      ).catch((err: unknown) => {
+        failed(`reading ${runOf(run)}'s jobs`, err instanceof Error ? err.message : String(err))
+        return undefined
+      })
+      if (res === undefined || res.status === 304) return undefined
+      if (!res.ok) {
+        const reset = limitReset(res)
+        if (reset !== undefined) held = Math.max(held, reset)
+        failed(
+          `reading ${runOf(run)}'s jobs`,
+          `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}${reset === undefined ? '' : resetsAt(reset)}`,
+        )
+        return undefined
+      }
+      const body = (await res.json().catch((err: unknown) => {
+        failed(
+          `reading ${runOf(run)}'s jobs`,
+          `no JSON: ${err instanceof Error ? err.message : String(err)}`,
+        )
+        return undefined
+      })) as { jobs?: Job[] } | null | undefined
+      if (body === undefined) return undefined
+      const jobs = body?.jobs ?? []
+      all.push(...jobs)
+      // A first page's tag says nothing of the next: only a run of one page is asked by it.
+      const etag = res.headers.get('etag')
+      if (page === 1 && etag !== null && jobs.length < 100) etags.set(run, etag)
+      else etags.delete(run)
+      if (jobs.length < 100) return all
+    }
   }
   const look = (ms: number): void => {
     watch = setTimeout(() => {
       void Promise.all(
         [...watched].map(async ([run, workers]) => {
-          // Paged at 100, and a matrix holds 256: a job on a later page that
-          // failed went unseen.
-          const jobs: Job[] = []
-          for (let page = 1; ; page++) {
-            const url = `${run}/jobs?per_page=100&page=${page}`
-            const seen = etags.get(url)
-            const res = await call(
-              url,
-              seen === undefined ? {} : { headers: { 'if-none-match': seen.tag } },
-            ).catch((err: unknown) => {
-              failed(
-                `reading ${runOf(run)}'s jobs`,
-                err instanceof Error ? err.message : String(err),
-              )
-              return undefined
-            })
-            if (res === undefined) return
-            let some: Job[]
-            let total: number
-            if (res.status === 304 && seen !== undefined) ({ some, total } = seen)
-            else if (!res.ok) {
-              const reset = limitReset(res)
-              if (reset !== undefined) held = Math.max(held, reset)
-              failed(
-                `reading ${runOf(run)}'s jobs`,
-                `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}${reset === undefined ? '' : resetsAt(reset)}`,
-              )
-              return
-            } else {
-              const body = ((await res.json().catch((err: unknown) => {
-                failed(
-                  `reading ${runOf(run)}'s jobs`,
-                  `no JSON: ${err instanceof Error ? err.message : String(err)}`,
-                )
-                return null
-              })) ?? {}) as { jobs?: Job[]; total_count?: number }
-              some = body.jobs ?? []
-              total = body.total_count ?? 0
-              const tag = res.headers.get('etag')
-              if (tag !== null) etags.set(url, { tag, some, total })
-            }
-            jobs.push(...some)
-            if (some.length < 100 || jobs.length >= total) break
-          }
+          const jobs = await jobsOf(run)
+          if (jobs === undefined) return
           for (const j of jobs) {
             const a = workers.get(j.name)
             if (a === undefined || j.status !== 'completed') continue
@@ -243,6 +283,11 @@ export function github(options: GithubOptions = {}): DteAdapter {
             sha,
             size,
             workers: JSON.stringify(workers.map((a) => a.id)),
+            // This run's attempt: a worker that starts after it ended
+            // cancels its own workflow run instead of working for no one.
+            ...(env['GITHUB_RUN_ID'] === undefined
+              ? {}
+              : { parent: `${env['GITHUB_RUN_ID']}/attempts/${env['GITHUB_RUN_ATTEMPT'] ?? '1'}` }),
             ...(options.env === undefined ? {} : { env: handed }),
           },
         }),
@@ -269,27 +314,31 @@ export function github(options: GithubOptions = {}): DteAdapter {
         throw new Error(`github(): dispatching ${workflow}: ${res.status} ${text}${fix}`)
       }
     }
-    if (res.status === 200) {
-      const id = ((await res.json()) as { workflow_run_id?: number }).workflow_run_id
-      if (id !== undefined) {
-        const run = `/repos/${repo}/actions/runs/${id}`
-        runs.push(run)
-        const mine = new Map(workers.map((a) => [a.id, a]))
-        watched.set(run, mine)
-        if (watch === undefined && !closed) look(WATCH_FIRST_MS)
-        // For the job's last step, which cancels them when this process
-        // dies before close() (a kill, an OOM, the job's timeout).
-        if (env['RUNNER_TEMP'])
-          await appendFile(path.join(env['RUNNER_TEMP'], RUNS_FILE), `${run}\n`)
-        // Let go while this dispatch was in flight: cancel() knew no run.
-        if (!closed) letGo(run, mine)
-      }
+    const id =
+      res.status === 200
+        ? ((await res.json()) as { workflow_run_id?: number }).workflow_run_id
+        : undefined
+    if (id === undefined) {
+      unbound = true
+      return
     }
+    workerRuns.add(String(id))
+    const run = `/repos/${repo}/actions/runs/${id}`
+    runs.push(run)
+    const mine = new Map(workers.map((a) => [a.id, a]))
+    watched.set(run, mine)
+    if (watch === undefined && !closed) look(WATCH_FIRST_MS)
+    // For the job's last step, which cancels them when this process
+    // dies before close() (a kill, an OOM, the job's timeout).
+    if (env['RUNNER_TEMP']) await appendFile(path.join(env['RUNNER_TEMP'], RUNS_FILE), `${run}\n`)
+    // Let go while this dispatch was in flight: cancel() knew no run.
+    if (!closed) letGo(run, mine)
   }
   return {
     // Loaded only by `vx dte init`: a run never needs it.
     init: async (setup) => (await import('./init.js')).githubInit(options, setup),
     keyless: true,
+    workerRuns: () => (unbound ? undefined : workerRuns),
     report(w) {
       warn = w
     },
@@ -311,19 +360,21 @@ export function github(options: GithubOptions = {}): DteAdapter {
           workers.set(id, worker(id, id.slice(0, id.lastIndexOf('#'))))
         runs.push(run)
         watched.set(run, workers)
+        workerRuns.add(run.slice(run.lastIndexOf('/') + 1))
       }
       if (watched.size > 0 && watch === undefined) look(WATCH_FIRST_MS)
     },
     spawn(a) {
       const wave = waves.get(a.size)
-      if (wave !== undefined) {
+      // A full wave dispatches as it is; the next worker starts another.
+      if (wave !== undefined && wave.length < MATRIX_MAX) {
         wave.push(a)
         return
       }
       const workers = [a]
       waves.set(a.size, workers)
       queueMicrotask(() => {
-        waves.delete(a.size)
+        if (waves.get(a.size) === workers) waves.delete(a.size)
         const p = dispatch(a.size, workers)
           .catch((err: unknown) => {
             const why = err instanceof Error ? err.message : String(err)
@@ -368,7 +419,9 @@ export async function githubRelayToken(relay: string): Promise<string | undefine
 
 /**
  * `env` as the workflow's input: each name a variable's, each value one
- * line, since the workflow writes each as a line of `GITHUB_ENV`.
+ * line, since the workflow writes each as a line of `GITHUB_ENV`. No
+ * secret: a dispatch's inputs are shown with its run, and the worker
+ * job's log prints each step's env unmasked.
  */
 function handedEnv(env: Readonly<Record<string, string | undefined>>): string {
   const out: Record<string, string> = {}
@@ -377,6 +430,10 @@ function handedEnv(env: Readonly<Record<string, string | undefined>>): string {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || typeof value !== 'string' || /[\r\n]/.test(value))
       throw new UserError(
         `github(): env ${JSON.stringify(name)}: a variable's name, and a string of one line`,
+      )
+    if (secretNamed(name))
+      throw new UserError(
+        `github(): env ${JSON.stringify(name)} is a secret, which the worker job's log would show: give it to that job from secrets in its workflow`,
       )
     out[name] = value
   }

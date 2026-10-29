@@ -13,13 +13,16 @@ import {
   executablePath,
   gitEnv,
   gitSpawnRefusal,
+  hasControl,
   isExecutableMissing,
   isOutOfFds,
+  printable,
   refusal,
   relPosix,
   UserError,
 } from '../util/index.js'
 import { gitTop, WORKSPACE_CONFIG_FILENAMES, workspaceFile, workspaceRootOf } from '../handoff.js'
+import { canonicalDir } from './canonical-dir.js'
 import { parseFilter } from './filter.js'
 import { repoIdOf } from './repo-id.js'
 
@@ -193,7 +196,11 @@ export function linkDiscoveredEdges(
         // one that does not), so a target naming one needs no other check:
         // a plugin hands project dirs as they are, absolute, and resolving
         // and judging each of 5,000 edges was ~15 ms at 1,000 projects.
-        const name = byDir.get(target) ?? byDir.get(path.resolve(root, target))
+        let name = byDir.get(target) ?? byDir.get(path.resolve(root, target))
+        if (name === undefined) {
+          const real = canonicalDir(root, path.resolve(root, target))
+          if (real !== null) name = byDir.get(real)
+        }
         if (name === undefined) {
           const rel = relPosix(root, path.resolve(root, target))
           const where = `plugin '${edge.by}' gave project "${edge.meta.name}" an edge to ${target}`
@@ -244,9 +251,10 @@ export interface ProjectConfigs {
 /**
  * Every project directory under `root`, for `vx lock` (a run reads the
  * lock and never walks). In git: `git ls-files` over the config names,
- * tracked and untracked, git's ignore rules applied, and each nested
- * repository's own listing. Outside git: a walk
- * that skips dot-directories and `node_modules`. A config at or under a
+ * tracked and untracked, git's ignore rules applied, none under
+ * `node_modules`, and each nested repository's own listing. Outside git: a walk
+ * that skips `node_modules` and vx's own `.vx`, and enters every other
+ * dot-directory, as git lists `.github/actions/x`. A config at or under a
  * nested `.vx/workspace.*` belongs to that workspace and is left out.
  * Where a directory holds several, `PROJECT_CONFIG_FILENAMES` order picks
  * the first that is a file.
@@ -256,9 +264,8 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
   const rels = inGit ? await gitConfigs(root) : await scanConfigs(root)
   const nested: string[] = []
   for (const rel of rels) {
-    const at = rel.lastIndexOf('.vx/workspace.')
-    if (at > 0 && rel[at - 1] === '/' && rel.lastIndexOf('/') === at + 3)
-      nested.push(rel.slice(0, at - 1))
+    const at = rel.lastIndexOf('/.vx/')
+    if (at > 0 && WORKSPACE_RANK.has(rel.slice(at + 1))) nested.push(rel.slice(0, at))
   }
   if (inGit) nested.push(...(await unlistedNested(root, rels, nested)))
   const byDir = new Map<string, string[]>()
@@ -305,7 +312,7 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     .filter((f): f is ConfigDir => f !== null)
     .sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0))
   const configured = new Set(configs.map((c) => c.dir))
-  // On disk too: git lists a tracked copy deleted from the worktree.
+  // On disk only: git lists a tracked copy deleted with its project.
   const strayReviews = (
     await Promise.all(
       reviewed
@@ -386,10 +393,11 @@ async function gitConfigs(root: string): Promise<string[]> {
       ':(glob)**/vx.config.*',
       ':(glob)**/.vx/workspace.*',
       `:(glob)**/${REVIEW_FILE}`,
+      NOT_INSTALLS,
     ]),
-    gitZ(root, ['ls-files', '-z', '--stage']),
+    gitZ(root, ['ls-files', '-z', '--stage', '--', NOT_INSTALLS]),
     // An embedded repository is the one untracked entry git lists as `dir/`.
-    gitZ(root, ['ls-files', '-z', '--others', '--exclude-standard']),
+    gitZ(root, ['ls-files', '-z', '--others', '--exclude-standard', '--', NOT_INSTALLS]),
   ])
   // A submodule's `.git` is a file, an embedded repository's a directory.
   const isRepo = (rel: string): Promise<boolean> =>
@@ -412,6 +420,13 @@ async function gitConfigs(root: string): Promise<string[]> {
   const prefixed = inner.flatMap((files, i) => files.map((f) => `${nested[i]}/${f}`))
   return [...configs, ...prefixed]
 }
+
+/**
+ * An install is no project, tracked or not, as the walk outside git skips
+ * it: a repo whose .gitignore does not name `node_modules` listed each
+ * installed package's vx.config as one.
+ */
+const NOT_INSTALLS = ':(exclude,glob)**/node_modules/**'
 
 /** `git <args>`'s NUL-separated output at `cwd`. */
 async function gitZ(cwd: string, args: string[]): Promise<string[]> {
@@ -442,7 +457,7 @@ async function gitZ(cwd: string, args: string[]): Promise<string[]> {
     .filter((p) => p !== '')
 }
 
-/** The config paths under `root` outside git, root-relative: no dot-directory, no `node_modules`. */
+/** The config paths under `root` outside git, root-relative: none under `node_modules`, `.git` or `.vx`. */
 async function scanConfigs(root: string): Promise<string[]> {
   const out: string[] = []
   const walk = async (rel: string): Promise<void> => {
@@ -460,8 +475,7 @@ async function scanConfigs(root: string): Promise<string[]> {
     for (const e of entries) {
       const child = rel === '' ? e.name : `${rel}/${e.name}`
       if (CONFIG_RANK.has(e.name) || e.name === REVIEW_FILE) out.push(child)
-      else if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
-        below.push(child)
+      else if (e.isDirectory() && !SCAN_SKIPS.has(e.name)) below.push(child)
     }
     await Promise.all(below.map(walk))
   }
@@ -469,9 +483,12 @@ async function scanConfigs(root: string): Promise<string[]> {
   return out
 }
 
+// `.vx` holds vx's state (the cache), which a checkout ignores.
+const SCAN_SKIPS = new Set(['node_modules', '.git', '.vx'])
+
 async function workspaceFileIn(root: string, rel: string): Promise<boolean> {
   const names = await readdir(path.join(root, rel, '.vx')).catch(() => [] as string[])
-  return names.some((n) => n.startsWith('workspace.'))
+  return names.some((n) => WORKSPACE_RANK.has(`.vx/${n}`))
 }
 
 /** How each project got its name, when not by its path: `config`, or the plugin's name. */
@@ -539,14 +556,24 @@ export async function discoveredProject(
     const bad = nameFault(name)
     if (bad !== null) throw new UserError(`${where} ${JSON.stringify(name)}: ${bad}`)
   }
-  const dir = path.resolve(root, entry.dir)
+  let dir = path.resolve(root, entry.dir)
   const rel = relPosix(root, dir)
   const named = name === undefined ? '' : ` "${name}"`
   if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
     throw new UserError(`${where}${named} at ${dir}: outside the workspace root`)
   }
   const shown = rel === '' ? '.' : rel
-  const meta = known.get(dir)
+  // Refused once the stage ended too, but naming no plugin and saying to set a `name`.
+  if (name === ROOT_NAME && rel !== '') {
+    throw new UserError(`${where} "//" at ${shown}: "//" names the workspace root`)
+  }
+  let meta = known.get(dir)
+  if (meta === undefined) {
+    // Only a directory no project holds is resolved: a locked one is
+    // already real, and a realpath per entry is a syscall per project.
+    dir = canonicalDir(root, dir) ?? dir
+    meta = known.get(dir)
+  }
   if (meta !== undefined) {
     const from = namedBy.get(meta)
     if (name === undefined || name === meta.name || from === 'config') return { meta, added: false }
@@ -577,6 +604,8 @@ function nameFault(name: string): string | null {
   if (name.trim() !== name) return 'the name has surrounding whitespace'
   // A task is `<project>#<task>` split at the first `#`.
   if (name.includes('#')) return 'the name holds "#" — vx addresses a task as <name>#<task>'
+  // Printed raw by the status line and summary: `ESC ]0;` retitled the terminal.
+  if (hasControl(name)) return 'the name holds a control character'
   const why = projectNameProblem(name)
   return why === null ? null : `the name ${why}`
 }
@@ -627,7 +656,7 @@ export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMe
     const fault = namedBy.has(meta) ? null : nameFault(meta.name)
     if (fault !== null) {
       throw new UserError(
-        `${rel}: a project is named by its path unless named, and ${fault.replace('the name', 'this one')} — set \`name\` in its vx.config`,
+        `${printable(rel)}: a project is named by its path unless named, and ${fault.replace('the name', 'this one')} — set \`name\` in its vx.config`,
       )
     }
     const next = metas[i + 1]

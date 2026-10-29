@@ -116,6 +116,35 @@ describe('applyMigration', () => {
     )
   })
 
+  it('refuses a plan that writes outside the root, and writes nothing', async () => {
+    const out = path.join(path.dirname(root), `${path.basename(root)}-out`)
+    mkdirSync(path.join(root, 'app'))
+    mkdirSync(out)
+    try {
+      const rel = path.relative(root, out)
+      expect(
+        await refusal(() =>
+          apply(
+            plan([
+              ['app', []],
+              [rel, [task('build', exec('tsc'))]],
+            ]),
+          ),
+        ),
+      ).toBe(`${rel}/vx.config.ts: outside the workspace root`)
+      expect(existsSync(path.join(out, 'vx.config.ts'))).toBe(false)
+      expect(existsSync(path.join(root, 'app', 'vx.config.ts'))).toBe(false)
+      const extra = {
+        ...plan([['app', []]]),
+        extraFiles: [{ relPath: 'a/../../x.ts', contents: '' }],
+      }
+      expect(await refusal(() => apply(extra))).toBe('a/../../x.ts: outside the workspace root')
+      expect(existsSync(path.join(path.dirname(root), 'x.ts'))).toBe(false)
+    } finally {
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
   it('writes a config for a project with no tasks too, and no workspace file beside a .js one', async () => {
     mkdirSync(path.join(root, '.vx'), { recursive: true })
     writeFileSync(path.join(root, '.vx/workspace.js'), 'export default { plugins: [] }\n')

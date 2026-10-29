@@ -323,6 +323,33 @@ describe('Plugin API', () => {
     )
   })
 
+  it('a handler that is not a function fails the load, as an unknown hook does', async () => {
+    // It was taken, then threw at the first event, and that switched the
+    // whole plugin off mid-run: its other handlers went quiet with it.
+    const said = (setup: (ctx: Record<string, never>) => void): Promise<string | undefined> =>
+      installPlugins({
+        plugins: [{ name: 'org/handler', setup: setup as never }],
+        bus: createEventBus(),
+        workspaceRoot: '/ws',
+        cacheDir: '/ws/.vx/cache',
+        warn: () => {},
+      }).then(
+        () => undefined,
+        (e: unknown) => (e as Error).message,
+      )
+    expect([
+      await said((ctx) =>
+        (ctx as never as { on: (h: string, f: unknown) => void }).on('onRunEnd', undefined),
+      ),
+      await said((ctx) =>
+        (ctx as never as { bus: { subscribe: (f: unknown) => void } }).bus.subscribe(null),
+      ),
+    ]).toEqual([
+      "plugin 'org/handler' failed in setup: ctx.on: the handler for 'onRunEnd' is undefined, not a function",
+      "plugin 'org/handler' failed in setup: ctx.bus.subscribe: the subscriber is null, not a function",
+    ])
+  })
+
   it('without a warn callback the disable still reaches the operator', async () => {
     // The default is stderr on purpose: `installPlugins` is called
     // outside a run too, and a plugin that silently stops observing is

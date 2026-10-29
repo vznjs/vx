@@ -17,36 +17,8 @@ export interface ServerTiming {
 
 /** Every request's deadline: a run never waits on history longer. */
 const DEADLINE_MS = 10_000
-/** Tries of GitHub's OIDC endpoint before the run's history goes unsent (`askGithub`). */
-const ASK_ATTEMPTS = 3
-
-/**
- * https, or http to this machine: every request carries the CI token, and
- * http:// to another host sent it in clear.
- */
-function secure(url: string): boolean {
-  if (/^https:\/\/\S/.test(url)) return true
-  if (!/^http:\/\/\S/.test(url)) return false
-  const host = URL.parse(url)?.hostname
-  return host === '127.0.0.1' || host === '[::1]' || host === 'localhost'
-}
-
-/** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
-export function serverUrlOf(
-  option: string | undefined,
-  env: Record<string, string | undefined> = Bun.env,
-): string | undefined {
-  const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
-  if (url === undefined || url === '') return undefined
-  if (!secure(url))
-    throw new Error(
-      `vxHistory(): url must be https (http only to 127.0.0.1, ::1 or localhost), got ${url}`,
-    )
-  // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
-  if (url.endsWith('/v1'))
-    throw new Error(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
-  return url
-}
+/** Tries of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
+const ATTEMPTS = 3
 
 /** The issuer and repository a workspace names, as a key holds them: the issuer's URL with no trailing slash, `org/name` lowercased. */
 export interface Named {
@@ -70,6 +42,7 @@ export function timingOf(o: TaskOutcome): ServerTiming | undefined {
     o.cpuMs === undefined || o.durationMs <= 0
       ? undefined
       : Math.min(o.cpuMs / (o.durationMs * (o.cpuShare ?? 1)), o.whereCores ?? Infinity)
+  // A share rounded to 0 divides by it, and the server refuses the upload.
   const cores = need !== undefined && Number.isFinite(need) ? need : undefined
   return {
     durationMs: Math.max(0, aloneMs(o)),
@@ -90,10 +63,11 @@ function aloneMs(o: TaskOutcome): number {
   return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
 }
 
-const deadline = (): AbortSignal => {
+/** {@link DEADLINE_MS}, or `stop` first. */
+const deadline = (stop?: AbortSignal): AbortSignal => {
   const c = new AbortController()
   setTimeout(() => c.abort(new Error(`no answer within ${DEADLINE_MS} ms`)), DEADLINE_MS).unref()
-  return c.signal
+  return stop === undefined ? c.signal : AbortSignal.any([c.signal, stop])
 }
 
 /**
@@ -118,6 +92,19 @@ async function refusal(res: Response): Promise<Error> {
   }
   said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
+}
+
+/** A 200's JSON; one that is none (a website's page) names the likely fault, the url. */
+async function jsonOf(res: Response, path: string): Promise<unknown> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    const type = res.headers.get('content-type') ?? 'no content type'
+    throw new Error(
+      `${path} answered ${res.status} with ${type}, not JSON: is the url a vx-history server?`,
+    )
+  }
 }
 
 /**
@@ -156,22 +143,6 @@ interface Limits {
   readonly maxQueryHashes: number
 }
 
-/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
-export function proxyHeaders(
-  headers: Record<string, string | undefined> | undefined,
-): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [name, value] of Object.entries(headers ?? {})) {
-    if (value === undefined) continue
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`vxHistory(): headers cannot set "${name}"`)
-    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`vxHistory(): header "${name}" must be one line of text`)
-    out[name] = value
-  }
-  return out
-}
-
 export class HistoryServer {
   private token: Promise<string> | undefined
   private held: { jwt: string; exp: number } | undefined
@@ -198,7 +169,7 @@ export class HistoryServer {
    * again a minute before it ends (it lives minutes, a run can outlive it),
    * else `VX_HISTORY_TOKEN`.
    */
-  private bearer(): Promise<string> {
+  private bearer(signal?: AbortSignal): Promise<string> {
     const held = this.held
     if (held !== undefined && (held.exp === 0 || Date.now() < held.exp - 60_000)) {
       return Promise.resolve(held.jwt)
@@ -208,7 +179,7 @@ export class HistoryServer {
       if (ask === undefined || ask === '') return { jwt: this.env.VX_HISTORY_TOKEN ?? '', exp: 0 }
       const u = new URL(ask)
       u.searchParams.set('audience', new URL(this.url).origin)
-      const res = await this.askGithub(u)
+      const res = await this.askGithub(u, signal)
       if (!res.ok) throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res)).message}`)
       const jwt = ((await res.json()) as { value?: unknown }).value
       if (typeof jwt !== 'string' || jwt === '') throw new Error("GitHub's OIDC endpoint: no token")
@@ -220,24 +191,28 @@ export class HistoryServer {
   }
 
   /**
-   * One answer from GitHub's OIDC endpoint, asked again after a 5xx, a 429
-   * or none, up to three tries, as vx-cache asks it: the upload asks once,
-   * at the run's end, and one 503 lost the run's timings. A 4xx is final.
+   * One answer, asked again while `again(status)` (`undefined`: no answer)
+   * holds, up to three tries, 1 s then 2 s apart: the upload is sent once, at the run's end,
+   * and one 503 there, or from GitHub's OIDC endpoint (as vx-cache asks
+   * it, #4571), lost the run's timings.
    */
-  private async askGithub(ask: URL): Promise<Response> {
+  private async tried(
+    send: () => Promise<Response>,
+    again: (status: number | undefined) => boolean,
+  ): Promise<Response> {
     for (let attempt = 1; ; attempt++) {
       let res: Response | undefined
       let failure: unknown
       try {
-        res = await this.fetchImpl(ask, {
-          headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
-          signal: deadline(),
-        })
+        res = await send()
       } catch (err) {
         failure = err
       }
-      if (res !== undefined && res.status !== 429 && res.status < 500) return res
-      if (attempt === ASK_ATTEMPTS) {
+      if (!again(res?.status)) {
+        if (res === undefined) throw failure
+        return res
+      }
+      if (attempt === ATTEMPTS) {
         if (res === undefined) throw failure
         return res
       }
@@ -246,27 +221,52 @@ export class HistoryServer {
     }
   }
 
-  private async call(path: string, body?: unknown): Promise<Response> {
-    const bearer = this.writes ? await this.bearer() : ''
+  /** GitHub's OIDC endpoint: a 4xx is final. */
+  private askGithub(ask: URL, signal?: AbortSignal): Promise<Response> {
+    return this.tried(
+      () =>
+        this.fetchImpl(ask, {
+          headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
+          signal: deadline(signal),
+        }),
+      (status) => status === undefined || status === 429 || status >= 500,
+    )
+  }
+
+  private async call(path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
+    const bearer = this.writes ? await this.bearer(signal) : ''
+    const json = body === undefined ? undefined : JSON.stringify(body)
+    // A 500 is the server's own failure, maybe after the fold: sent again, a
+    // run would count twice. The edge's 502, 503 and 504 and a 429 come
+    // before it. No answer is not asked again: a server down or misnamed
+    // would add seconds to every run's end.
     const url = `${this.url}${path}`
-    const res = await this.fetchImpl(url, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        ...this.headers,
-        ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: deadline(),
-      redirect: 'manual',
-    })
+    const res = await this.tried(
+      () =>
+        this.fetchImpl(url, {
+          method: json === undefined ? 'GET' : 'POST',
+          headers: {
+            ...this.headers,
+            ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
+            ...(json === undefined ? {} : { 'content-type': 'application/json' }),
+          },
+          ...(json === undefined ? {} : { body: json }),
+          signal: deadline(signal),
+          redirect: 'manual',
+        }),
+      (status) => status !== undefined && (status === 429 || (status >= 502 && status <= 504)),
+    )
     if (res.status >= 300 && res.status < 400) throw await redirected(res, url)
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
       const err = await refusal(res)
-      throw new Error(
-        `${err.message}: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)`,
-      )
+      const fix =
+        this.env.GITHUB_ACTIONS === 'true'
+          ? 'give the job `permissions: id-token: write`'
+          : this.env.GITLAB_CI === 'true'
+            ? 'name an id_tokens entry VX_HISTORY_TOKEN'
+            : 'off CI, a server reads only with READ_ACCESS=public'
+      throw new Error(`${err.message}: a read with no CI token was refused (${fix})`)
     }
     if (res.status === 401) {
       // The bare "HTTP 401: wrong audience" named neither what was sent nor what to check.
@@ -283,7 +283,10 @@ export class HistoryServer {
   /** `/v1/capabilities`, asked once a run, and again after a failed ask: nothing is guessed. */
   private limitsNow(): Promise<Limits> {
     const asked = (this.limits ??= (async () => {
-      const body = (await (await this.call('/v1/capabilities')).json()) as Partial<Limits> | null
+      const body = (await jsonOf(
+        await this.call('/v1/capabilities'),
+        '/v1/capabilities',
+      )) as Partial<Limits> | null
       const n = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0)
       const limits = {
         maxUploadTimings: n(body?.maxUploadTimings),
@@ -306,7 +309,7 @@ export class HistoryServer {
     refs: readonly string[],
     hashes: readonly string[],
   ): Promise<Map<string, ServerTiming>> {
-    if (this.refused) return new Map()
+    if (hashes.length === 0 || this.refused) return new Map()
     const per = (await this.limitsNow()).maxQueryHashes
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
@@ -315,7 +318,7 @@ export class HistoryServer {
           refs,
           hashes: hashes.slice(i * per, (i + 1) * per),
         })
-        const body = (await res.json()) as { timings?: unknown } | null
+        const body = (await jsonOf(res, '/v1/timings/query')) as { timings?: unknown } | null
         if (typeof body?.timings !== 'object' || body.timings === null) {
           throw new Error('the query answered no `timings` object')
         }
@@ -339,13 +342,13 @@ export class HistoryServer {
     return out
   }
 
-  /** The run's timings, by task definition hash, in uploads of at most `maxUploadTimings`. */
-  async upload(timings: ReadonlyMap<string, ServerTiming>): Promise<void> {
+  /** The run's timings, by task definition hash, in uploads of at most `maxUploadTimings`; `stop` abandons them. */
+  async upload(timings: ReadonlyMap<string, ServerTiming>, stop?: AbortSignal): Promise<void> {
     if (timings.size === 0 || this.refused) return
     const per = (await this.limitsNow()).maxUploadTimings
     const all = [...timings].map(([hash, t]) => ({ hash, ...t }))
     for (let i = 0; i < all.length; i += per) {
-      await this.call('/v1/timings/upload', { timings: all.slice(i, i + per) })
+      await this.call('/v1/timings/upload', { timings: all.slice(i, i + per) }, stop)
     }
   }
 }

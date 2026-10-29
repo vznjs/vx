@@ -19,7 +19,7 @@ for _ in $(seq 50); do [ -s tests/docker/.allow ] && break; sleep 0.1; done
 name=$(docker run -d --network host -e ALLOW="$(cat tests/docker/.allow)" -e AUDIENCE="$VX_HISTORY_SMOKE" "$tag" --port "$port" --host 127.0.0.1)
 ready=
 for _ in $(seq 50); do
-  if docker logs "$name" 2>&1 | grep -q "vx-history-server on"; then ready=1; break; fi
+  if docker logs "$name" 2>&1 | grep -q "vx-history-server  listening on"; then ready=1; break; fi
   sleep 0.2
 done
 if [ -z "$ready" ]; then

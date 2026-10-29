@@ -15,6 +15,7 @@ import {
   buildPackageGraph,
   configuredBaseBranch,
   defaultAffectedBase,
+  findProjectConfigs,
   findWorkspaceRoot,
   type FingerprintClaims,
   lockKey,
@@ -52,6 +53,7 @@ import {
   discoverCliProjects,
   loadCliProjects,
   loadCliWorkspace,
+  stageCacheDir,
 } from './workspace-config.js'
 
 /**
@@ -120,7 +122,7 @@ async function workspaceFingerprintClaims(
   const claims = fingerprintClaims(ws.plugins)
   const ctx = {
     workspaceRoot: root,
-    cacheDir: load.cacheDir ?? ws.cacheDir,
+    cacheDir: stageCacheDir(ws, load),
     warn: (m: string) => ui.say('warn', maskedLine(m)),
     projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
   }
@@ -131,8 +133,8 @@ async function workspaceFingerprintClaims(
   }
 }
 
-async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
-  return await discoverCliProjects(await findWorkspaceRoot(cwd))
+async function loadWorkspaceProjects(cwd: string, load: CliLoadOptions): Promise<ProjectMeta[]> {
+  return await discoverCliProjects(await findWorkspaceRoot(cwd), load)
 }
 
 export async function findCwdProject(cwd: string): Promise<string | null> {
@@ -144,25 +146,19 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
  * reuse (`RunOptions.discovered`): discovering again ran every `discover`
  * hook twice (`nx()`'s graph load and worktree key among them).
  */
-export async function findCwdSelection(cwd: string): Promise<{
-  name: string
-  discovered: { root: string; projects: ProjectMeta[] }
-  /** A vx.config in the cwd's own directory the lock does not hold, root-relative. */
-  unlockedConfig?: string
-} | null> {
+export async function findCwdSelection(
+  cwd: string,
+  load: CliLoadOptions = {},
+): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await discoverCliProjects(root)
+  const projects = await discoverCliProjects(root, load)
   const abs = path.resolve(cwd)
-  const within = (dirOf: (p: ProjectMeta) => string): { meta: ProjectMeta; dir: string } | null => {
-    let best: { meta: ProjectMeta; dir: string } | null = null
+  const within = (dirOf: (p: ProjectMeta) => string): { name: string; dir: string } | null => {
+    let best: { name: string; dir: string } | null = null
     for (const p of projects) {
       const dir = dirOf(p)
-      if (
-        (abs === dir || abs.startsWith(dir + path.sep)) &&
-        dir.length > (best?.dir.length ?? -1)
-      ) {
-        best = { meta: p, dir }
-      }
+      if ((abs === dir || abs.startsWith(dir + path.sep)) && dir.length > (best?.dir.length ?? -1))
+        best = { name: p.name, dir }
     }
     return best
   }
@@ -180,18 +176,45 @@ export async function findCwdSelection(cwd: string): Promise<{
         return p.dir
       }
     })
-  if (found === null) return null
-  const selection = { name: found.meta.name, discovered: { root, projects } }
-  // A config the lock has not seen in the cwd's own directory: the run
-  // fell under the parent project (ran ROOT's build, exit 0) or the
-  // config-less project's nothing ("run `vx init`"). Only a cwd that is
-  // not a locked config's directory pays the stats; nothing is evaluated.
-  const { configPath } = found.meta
-  if (found.dir === abs && typeof configPath === 'string' && configPath !== '') return selection
-  const config = PROJECT_CONFIG_FILENAMES.find((n) => fs.existsSync(path.join(abs, n)))
-  return config === undefined
-    ? selection
-    : { ...selection, unlockedConfig: relPosix(root, path.join(abs, config)) }
+  await refuseUnlockedConfig(root, abs, found?.dir ?? null)
+  return found === null ? null : { name: found.name, discovered: { root, projects } }
+}
+
+/**
+ * A config `vx lock` would find between the cwd and the project placing it
+ * (the root, when none does): a config written after the lock is no project
+ * yet, so a run from its directory ran the locked project above it (the
+ * root's `build` for a new member) or said "not inside a project". One
+ * readdir per directory between them, none from a project's own; the
+ * listing that judges a config found is paid only when one is.
+ */
+async function refuseUnlockedConfig(
+  root: string,
+  abs: string,
+  placed: string | null,
+): Promise<void> {
+  const top = placed ?? root
+  if (abs !== top && !abs.startsWith(top + path.sep)) return
+  for (let dir = abs; ; dir = path.dirname(dir)) {
+    if (dir === placed) return
+    let names: string[]
+    try {
+      names = fs.readdirSync(dir)
+    } catch {
+      names = []
+    }
+    const file = PROJECT_CONFIG_FILENAMES.find((n) => names.includes(n))
+    if (file !== undefined) {
+      const { configs } = await findProjectConfigs(root)
+      const config = configs.find((c) => c.dir === dir)
+      if (config !== undefined) {
+        throw new UserError(
+          `${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``,
+        )
+      }
+    }
+    if (dir === root || dir === path.dirname(dir)) return
+  }
 }
 
 export type FilterResolution =
@@ -266,7 +289,12 @@ function refusalOf(err: unknown): Refusal {
  * else a plugin's (`setBranch`: a pull request's base commit), else the
  * merge base with `baseBranch`.
  */
-export async function affectedFilterFor(cwd: string, affected: string): Promise<string | Refusal> {
+export async function affectedFilterFor(
+  cwd: string,
+  affected: string,
+  /** What the verb does instead on the base branch (`defaultAffectedBase`). */
+  instead?: string,
+): Promise<string | Refusal> {
   const root = await findWorkspaceRoot(cwd)
   let base = affected || ((settingEnv('affectedBase') as string | undefined) ?? '')
   if (base === '') {
@@ -274,7 +302,7 @@ export async function affectedFilterFor(cwd: string, affected: string): Promise<
     try {
       base =
         ws.branch.base ??
-        (await defaultAffectedBase(root, configuredBaseBranch(ws.workspaceConfig)))
+        (await defaultAffectedBase(root, configuredBaseBranch(ws.workspaceConfig), instead))
     } catch (err) {
       if (!isUserError(err)) throw err
       return refusalOf(err)
@@ -289,9 +317,11 @@ export async function resolveFilters(
   load: CliLoadOptions = {},
   /** The raw filter `--affected` became: its diff is kept per path for the run. */
   affected?: string,
+  /** The verb a warning names: `vx show` and `vx watch` select as a run does. */
+  verb: 'run' | 'show' | 'watch' = 'run',
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await loadWorkspaceProjects(cwd)
+  const projects = await loadWorkspaceProjects(cwd, load)
   let parsed: ReturnType<typeof parseFilter>[]
   try {
     parsed = raw.map((r) => parseFilter(r, root))
@@ -416,10 +446,11 @@ export async function resolveFilters(
     onEmptyWalk: (f, matched) => {
       if (f.negate) return
       const which = matched.join(', ')
+      const several = matched.length > 1
       emptyWalks.push(
         f.onlyDeps
-          ? `filter "${f.raw}" matched ${which}, which depends on no project`
-          : `filter "${f.raw}" matched ${which}, and no project depends on it`,
+          ? `filter "${f.raw}" matched ${which}, which ${several ? 'depend' : 'depends'} on no project`
+          : `filter "${f.raw}" matched ${which}, and no project depends on ${several ? 'them' : 'it'}`,
       )
     },
   })
@@ -431,14 +462,15 @@ export async function resolveFilters(
     // Every pattern matched and an exclusion took them all back: "no
     // projects matched filter(s): one, !one" read as a typo of `one`.
     const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
-    const excluded = `${negations.join(', ')} excluded every project the other filters matched`
+    // With no include the base is every project: there is no "other filter".
+    const excluded = `${negations.join(', ')} excluded every project${includes.length > 0 ? ' the other filters matched' : ''}`
     if (
       unmatched.length === 0 &&
       includes.length > 0 &&
       includes.every((f) => f.gitSince !== undefined)
     ) {
       if (includes.every((f) => emptyDiffs.has(f))) {
-        const refs = includes.map((f) => f.gitSince).join(', ')
+        const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
         // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
         // the branch under test) can never mark anything affected, and this
         // exit-0 note was the only sign (CI persona, 2026-09-16). Say so.
@@ -464,18 +496,19 @@ export async function resolveFilters(
     }
     // One line, not a warning per pattern and then an error saying the same:
     // the patterns are in the error, and the nearest project name is the
-    // hint a typo needs.
-    return {
-      error: `no projects matched filter(s): ${raw.join(', ')}${didYouMean(unmatched, projects, tags)}`,
-    }
+    // hint a typo needs. Only the ones that matched nothing: `app !app apq` named
+    // app, and `--affected` a `...[<base>]` nobody typed.
+    const hint =
+      (await unlockedHint(root, parsed, unmatched)) ?? didYouMean(unmatched, projects, tags)
+    return { error: `no projects matched filter(s): ${unmatched.join(', ')}${hint}` }
   }
   // Something matched, so the run proceeds; a pattern that matched nothing
   // alongside it is still worth a line — it is probably a typo.
   for (const f of unmatched)
     sayNotice(
       'warn',
-      'vx run',
-      `filter "${f}" matched no projects${didYouMean([f], projects, tags)}`,
+      `vx ${verb}`,
+      `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f])) ?? didYouMean([f], projects, tags)}`,
     )
   // Each include is a union: what `--filter other` selected runs its tasks
   // whether or not the `--affected` diff reaches them, and an exclude
@@ -529,7 +562,7 @@ export async function pickTask(
   /** The projects `--filter` / `--affected` selected; every project when absent. */
   only?: ReadonlySet<string>,
 ): Promise<PickedTask | null | 'interrupted'> {
-  const projects = await loadWorkspaceProjects(cwd)
+  const projects = await loadWorkspaceProjects(cwd, load)
   // The staged load: a task a `project` plugin gave a config-less package
   // is on the menu, as it is in a run.
   const staged = await loadCliProjects(await findWorkspaceRoot(cwd), projects, 'all', load)
@@ -625,12 +658,33 @@ export async function pickTask(
 }
 
 /**
- * A pattern's name without its operators. In one pass `^\.\.\.`
- * anchored to the string's start, so `!...apq` kept its dots.
+ * `. packages/c/vx.config.ts is not in the lock yet — run \`vx lock\``
+ * for an unmatched `./dir` filter naming a directory `vx lock` would make
+ * a project: a config written after the lock is none yet, and "Projects:
+ * …" without it read as a typo of the path. Asked on the refusal's path only.
  */
-function typedName(pattern: string): string {
-  return pattern.replace(/^!/, '').replace(/^\.\.\.|\.\.\.$|\^/g, '')
+async function unlockedHint(
+  root: string,
+  parsed: readonly ReturnType<typeof parseFilter>[],
+  unmatched: readonly string[],
+): Promise<string | undefined> {
+  const dirs = parsed
+    .filter((f) => f.isPath && f.pathGlob === undefined && unmatched.includes(f.raw))
+    .map((f) => f.matcher)
+  if (dirs.length === 0) return undefined
+  const { configs } = await findProjectConfigs(root)
+  const config = configs.find((c) => dirs.includes(c.dir))
+  if (config === undefined) return undefined
+  return `. ${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``
 }
+
+/** A pattern as a name: its `[<since>]` and graph operators aside. */
+// `^\.\.\.` anchored in one alternation with `!` kept `!...apq`'s dots.
+const typedName = (pattern: string): string =>
+  pattern
+    .replace(/\[[^\]]*\]$/, '')
+    .replace(/^!/, '')
+    .replace(/^\.\.\.|\.\.\.$|\^/g, '')
 
 /** The hint for the first unmatched pattern: a near tag for a `tag:` one, else a near project name. */
 function didYouMean(
@@ -660,10 +714,15 @@ function didYouMeanProject(
     if (bare !== n) byBare.set(bare, [...(byBare.get(bare) ?? []), n])
   }
   for (const pattern of unmatched) {
-    const typed = typedName(pattern.replace(/\[[^\]]*\]$/, ''))
+    const typed = typedName(pattern)
     // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
     if (typed === '//') {
       return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'
+    }
+    // Nx's `--projects=a,b`: the edit distance hinted the first name alone.
+    const parts = pattern.split(',').filter((p) => p !== '')
+    if (parts.length > 1) {
+      return `. A filter is one pattern: ${parts.map((p) => `--filter ${p}`).join(' ')}`
     }
     const best = nearest(typed, names)
     if (best !== undefined) return `. Did you mean ${best}?`

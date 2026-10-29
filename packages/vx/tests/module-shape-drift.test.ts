@@ -266,11 +266,15 @@ describe('a module page lists the functions the module exports', () => {
     const src = read('src/history/metrics.ts')
     const exported = [...src.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]!)
     // What "a reader over another store" reimplements: the functions over
-    // the Database. `diffKeyComponents` (item 703) is the join alone.
+    // the Database. `diffKeyComponents` (item 703) is the join alone;
+    // `upstreamTask` reads a row's name.
     const overStore = [...src.matchAll(/^export (?:async )?function (\w+)\(\s*db: Database/gm)].map(
       (m) => m[1]!,
     )
-    expect(exported.filter((f) => !overStore.includes(f))).toEqual(['diffKeyComponents'])
+    expect(exported.filter((f) => !overStore.includes(f))).toEqual([
+      'diffKeyComponents',
+      'upstreamTask',
+    ])
     const doc = read('docs/modules/metrics.md')
     const block = /```ts\n([\s\S]*?)```/.exec(doc)
     expect(block).not.toBeNull()

@@ -19,7 +19,7 @@ import { defineWorkspace } from '@vzn/vx/config'
 import { turboCache } from '@vzn/vx-migrate'
 
 export default defineWorkspace({
-  plugins: [turboCache({ apiUrl: 'http://127.0.0.1:9', token: 'demo' })],
+  plugins: [turboCache({ url: 'http://127.0.0.1:9', token: 'demo' })],
 })
 ```
 

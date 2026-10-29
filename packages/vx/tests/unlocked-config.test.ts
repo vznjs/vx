@@ -28,9 +28,11 @@ async function vx(cwd: string, args: string[]): Promise<{ code: number; text: st
 it(
   'naming a task in a config the lock has not seen asks for `vx lock`',
   async () => {
-    const root = await makeWorkspace({ prefix: 'vx-unlocked-config-', edges: {} })
+    // `d` depends on `c`: a configured dependant gives config-less `c` its default build.
+    const root = await makeWorkspace({ prefix: 'vx-unlocked-config-', edges: { d: ['c'] } })
     try {
       const dir = await addProject(root, 'c', {})
+      await addProject(root, 'd', { config: 'export default { tasks: {} }\n' })
       expect((await vx(root, ['lock'])).code).toBe(0)
       // CONTROL: with no config, `c#build` names the default build.
       expect((await vx(root, ['run', 'c#build'])).code).toBe(0)

@@ -5,6 +5,7 @@
 // plugin's to check first, so the keychain is always the last source.
 
 import { type SecretTerminal, terminalOf } from './hidden-prompt.js'
+import { holdSecret } from './secret-mask.js'
 
 /** What `ctx.secret` is asked: the entry's name, and the question to ask on a terminal. */
 export interface SecretRequest {
@@ -114,7 +115,10 @@ export class SecretBroker {
     let storeDown = false
     try {
       const stored = await this.store.get(entry)
-      if (stored) return stored
+      if (stored) {
+        holdSecret(stored)
+        return stored
+      }
     } catch {
       // No keychain (headless Linux without libsecret).
       storeDown = true
@@ -124,6 +128,7 @@ export class SecretBroker {
     const asked = this.prompting.then(() => this.ask(req.key, req.prompt!))
     this.prompting = asked.catch(() => undefined)
     const answer = await asked
+    holdSecret(answer)
     try {
       await this.store.set({ ...entry, value: answer })
     } catch (err) {

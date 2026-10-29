@@ -2,7 +2,7 @@
   "verbs": {
     "cache": [
       "--cache-dir",
-      "--dry-run",
+      "--dry",
       "--format",
       "--global",
       "--help",
@@ -39,10 +39,13 @@
       "--branch",
       "--cache-dir",
       "--failed",
+      "--follow",
       "--format",
       "--help",
       "--list",
+      "--live",
       "--log",
+      "--sql",
       "--stats"
     ],
     "lock": [
@@ -126,7 +129,6 @@
       "json",
       "pretty"
     ],
-    "cache --global": [],
     "cache --max-size": [
       "10K",
       "1G",
@@ -139,6 +141,15 @@
       "1d",
       "30m",
       "30s"
+    ],
+    "docs --format": [
+      "json",
+      "pretty"
+    ],
+    "docs --limit": [
+      "1",
+      "10",
+      "2"
     ],
     "info --cache-dir": [
       "*"
@@ -162,7 +173,9 @@
       "schedule",
       "telemetry"
     ],
-    "last --branch": [],
+    "last --branch": [
+      "*"
+    ],
     "last --cache-dir": [
       "*"
     ],
@@ -176,6 +189,9 @@
       "2"
     ],
     "last --log": [
+      "*"
+    ],
+    "last --sql": [
       "*"
     ],
     "lock --format": [
@@ -231,7 +247,7 @@
     ],
     "run --dry": [
       "json",
-      "text"
+      "pretty"
     ],
     "run --exclude-dependencies": [
       "*"
@@ -254,7 +270,12 @@
       "10",
       "2"
     ],
-    "run --schedule": [],
+    "run --schedule": [
+      "critical-path",
+      "direct-dependents",
+      "most-work",
+      "ready-order"
+    ],
     "run --timeout": [
       "12h",
       "1d",
@@ -342,7 +363,12 @@
       "10",
       "2"
     ],
-    "watch --schedule": [],
+    "watch --schedule": [
+      "critical-path",
+      "direct-dependents",
+      "most-work",
+      "ready-order"
+    ],
     "watch --timeout": [
       "12h",
       "1d",

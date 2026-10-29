@@ -39,7 +39,7 @@ and `onWarn` for a degraded-but-recovered call; `reapi()` refuses those four,
 reading files and warning through vx. With no endpoint configured (or a blank
 one) the plugin **declines** and costs nothing, so it is
 safe to leave declared. An endpoint that is not `host[:port]`, with an
-optional `grpc(s)://` or `http(s)://` scheme, or a gRPC resolver target
+optional `grpc(s)://` or `http(s)://` scheme (a trailing `/` is dropped), or a gRPC resolver target
 (`unix:`, `unix-abstract:`, `dns:`, `ipv4:`, `ipv6:`), is refused at startup
 with a line naming the setting. So is a TLS endpoint at an IP address:
 Bun's TLS refuses an IP as the server name, so name the server by host
@@ -51,9 +51,10 @@ where a build runs merely by being configured for caching). `execute` is
 a boolean: a string (`process.env.X`) is refused. `instanceName`, like
 the endpoint, is trimmed, and a blank one is unset. `headers`
 adds gRPC metadata to every call: a hosted server's API key goes there
-(`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`); a value
-that is not a string, such as an unset variable's, is refused when the
-plugin is declared, as is one in `platform`.
+(`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`); a name
+gRPC metadata cannot carry (a space, a `-bin` suffix) is refused at startup,
+and a header or `platform` value that is no string (an unset variable) as
+`reapi()` is called.
 `toolName` and `toolVersion` (default `vx`, `0.0.0`) fill each call's
 `RequestMetadata.tool_details`, and `correlatedInvocationsId` groups several
 runs as one build in a server's UI.
@@ -104,7 +105,7 @@ See Bun [#30342](https://github.com/oven-sh/bun/issues/30342) and
 [#26915](https://github.com/oven-sh/bun/issues/26915), largely fixed by
 [#31584](https://github.com/oven-sh/bun/pull/31584) — which is why the ceiling
 _rose_ from ~64 KB on Bun 1.3.x to ~216 KB on 1.4.0 rather than the hang going
-away. Hence **Bun >= 1.4.4** is required (core's own floor, the package's
+away. Hence **Bun >= 1.4.4** is required (core's own minimum, the package's
 `engines.bun`), and the plugin refuses to start on anything older with a
 named error: the alternative is a wedged upload with nothing for a user to
 act on.
@@ -140,18 +141,19 @@ entirely: the outputs are already in the CAS, and stdout replays from
 the record. `--force` bypasses it.
 
 The input tree is read after the key was taken, so each file's bytes are
-held to the git blob id the key folded for it. A file edited or removed
+held to the git blob id the key hashed for it. A file edited, removed or
+replaced by a directory
 in between (an edit mid-run under `vx watch`) still runs, but the
 execution is not recorded under a key that no longer describes it; the
 record once replayed the edited outputs on every machine after the file
-was restored. The input root holds exactly the files the key folded: core
+was restored. The input root holds exactly the files the key hashed: core
 keys no package file, so a project's `package.json` is in it only as a
 listed input (`@vzn/vx-lockfile` lists it on every cached task).
 
 This matters most under `--cache-download=none`, where deferral leaves no
 local cache entry behind, so vx's own probe misses on every later run
 and the record is what makes the second run cheap. Records are checked
-against the CAS first (`FindMissingBlobs`) — the action cache and the
+against the CAS first (`FindMissingBlobs`, the outputs and a stdout blob) — the action cache and the
 CAS evict independently, so a record that outlived its blobs falls
 through to a real execution rather than "succeeding" with nothing.
 The replay itself is a cache read too: a transport failure reading the
@@ -168,7 +170,7 @@ An UPSTREAM's evicted blobs get the opposite answer, because there is
 nothing to fall through to. When a dependency's outputs live only in
 the CAS — vx grafts them by reference precisely because no local copy
 exists — and those blobs are gone, the action cannot be built with the
-inputs its key claims. vx fails the task and names the upstream rather
+inputs its key names. vx fails the task and names the upstream rather
 than shipping the action without them: a command that tolerates the
 absence exits 0, and that successful-but-wrong result would be cached
 under a key asserting those bytes were present. Which upstream bytes a
@@ -181,7 +183,7 @@ Bringing a task's OWN outputs back gets the same treatment. Core's
 contract is that once an executor returns, the declared outputs are on
 disk, because the ordinary save path then tars whatever it finds — so
 an output blob that cannot be fetched is a hole that would be cached
-under a key claiming a complete build. Under a literal capture the
+under a key that stands for a complete build. Under a literal capture the
 worker returns only what `output_paths` named, so every returned file
 is a declared output and an unfetchable one fails the task. The
 exception is a glob whose FIRST segment is a wildcard (`*.js`): it has
@@ -236,7 +238,9 @@ the OS follows it, through the links the result placed), a
 directory that resolves out through a link, and a file or link that
 lands, through one, where no declared glob names are refused before anything
 is written through them; a link standing at an output file is replaced, never written
-through; a Tree file's setuid and setgid bits are dropped.
+through; a Tree file's setuid and setgid bits are dropped. A Tree may name
+one subtree many times; one that expands to more paths than the file
+system has free inodes is refused before anything is written.
 
 ## Artifacts stream
 
@@ -313,7 +317,8 @@ executed again on the same budget.
 Once a worker reports EXECUTING, the task's `exec.timeout` (or
 `executeTimeoutMs`) bounds the wait, and the bound holds across a
 re-attach: firing during the backoff between a dropped stream and its
-`WaitExecution`, it ends the task there rather than being lost.
+`WaitExecution`, it ends the task there rather than being lost. Past it
+the operation is cancelled too (a refused cancel is a warning).
 The run stopping (Ctrl-C, an embedder's abort) or the task's `exec.timeout`
 closes the stream and cancels the operation with `CancelOperation`, and an
 action not yet submitted is not sent. The task then ends as a killed local
@@ -340,12 +345,14 @@ A status the server answers with and no retry heals (PERMISSION_DENIED on
 Execute, a refused upload) fails the task with a line naming the task and
 the status, never as a vx "internal error".
 
-A failed READ is never a failed task. The execution-record lookup is a
+A failed RECORD read is never a failed task. The execution-record lookup is a
 shortcut past the worker, so a transport error there means "no usable record"
 and the task executes normally, with a warning naming why. The UPSTREAM record
 reads are the deliberate exception — those decide whether a dependency's bytes
 exist at all, and carrying on past a failure there is how an action runs
-without its inputs and caches the result.
+without its inputs and caches the result. A fresh execution's stdout or
+stderr that cannot be read fails the task, as a declared output does
+(above): those are the task's result, not a shortcut.
 
 ## Tests
 
@@ -391,13 +398,15 @@ Protocol features in use, not just reachable:
   hung one.
 - **`Action.platform`** (v2.2) alongside `Command.platform` for older
   servers.
-- **`NodeProperties`** — `unix_mode` and `mtime` on tree nodes.
+- **`NodeProperties`** — `unix_mode` and `mtime` on tree nodes; a mode (and
+  `is_executable`) lands as its permission bits minus the process umask.
 - **Output directories** via the `Tree` blob an `OutputDirectory.tree_digest`
   addresses, plus **output symlinks** (a v2.0 server's
   `output_file_symlinks` / `output_directory_symlinks` when it sends only
   those). A tree's small files are fetched
   together across its directories (`BatchReadBlobs`, 64 MiB at a time),
-  not one call per directory.
+  not one call per directory; the result's own output files, 64 MiB at a
+  time too.
 - **Upload minimality** — `FindMissingBlobs` first (split so no request
   passes a 4 MiB message), then batched blobs while they fit the server's
   budget and ByteStream beyond it.

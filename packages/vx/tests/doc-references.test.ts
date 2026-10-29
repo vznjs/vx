@@ -90,6 +90,139 @@ describe('every relative link in the docs resolves', () => {
   })
 })
 
+// Module pages named `refuseUnlessIgnored` and `getFailures` long after
+// each was renamed (`refuseOverlaps`, `runFailures`): a path law sees the
+// file, not the name in it.
+describe('every camelCase name a module page quotes is in the source', () => {
+  // Names that are no symbol here: placeholders, other packages', SRT's,
+  // config fields of other tools, and names a page says are gone.
+  const NOT_SYMBOLS = new Set([
+    'absoluteDirs',
+    'absolutePath',
+    'assertBunSupportsChunking',
+    'eventSink',
+    'fileHash',
+    'generateFilesystemArgs',
+    'globalInputs',
+    'globalPassThrough',
+    'hostValue',
+    'installConfig',
+    'installDeps',
+    'nA',
+    'outputsHash',
+    'queueTimeoutMs',
+    'readableStream',
+    'typeRoots',
+    'vxCache',
+  ])
+  it('each one is a word of src/, tests/ or scripts/', () => {
+    const words = new Set<string>()
+    for (const dir of ['src', 'tests', 'scripts']) {
+      for (const ext of ['.ts', '.json']) {
+        for (const f of walk(path.join(pkg, dir), ext)) {
+          if (f === import.meta.path) continue
+          for (const w of readFileSync(f, 'utf8').match(/[A-Za-z_$][\w$]*/g) ?? []) words.add(w)
+        }
+      }
+    }
+    const missing: string[] = []
+    const pages = [
+      ...walk(path.join(pkg, 'docs', 'modules'), '.md'),
+      path.join(pkg, 'docs', 'caching.md'),
+    ]
+    for (const page of pages) {
+      for (const m of readFileSync(page, 'utf8').matchAll(/`([^`\n]+)`/g)) {
+        for (const id of m[1]!.match(/\b[a-z]+[A-Z][\w$]*/g) ?? []) {
+          if (!words.has(id) && !NOT_SYMBOLS.has(id))
+            missing.push(`${path.relative(pkg, page)}: ${id}`)
+        }
+      }
+    }
+    expect(missing).toEqual([])
+  })
+})
+
+// migration.md's contract block declared `vxInvocation` for months after
+// the function was deleted: a page's `ts` block is read as the API.
+describe("every declaration a module page's ts block shows is in src/", () => {
+  it('each function, class, interface, type and const it declares exists', () => {
+    const declared = new Set<string>()
+    for (const f of walk(path.join(pkg, 'src'), '.ts')) {
+      for (const m of readFileSync(f, 'utf8').matchAll(
+        /\b(?:function|class|interface|type|const|let)\s+([A-Za-z_]\w*)/g,
+      )) {
+        declared.add(m[1]!)
+      }
+    }
+    const missing: string[] = []
+    let shown = 0
+    for (const page of walk(path.join(pkg, 'docs', 'modules'), '.md')) {
+      for (const block of readFileSync(page, 'utf8').matchAll(/```ts\n([\s\S]*?)```/g)) {
+        for (const m of block[1]!.matchAll(
+          /\b(?:function|class|interface|type|const)\s+([A-Za-z_]\w*)/g,
+        )) {
+          shown++
+          if (!declared.has(m[1]!)) missing.push(`${path.relative(pkg, page)}: ${m[1]}`)
+        }
+      }
+    }
+    expect(shown).toBeGreaterThan(100)
+    expect(missing).toEqual([])
+  })
+})
+
+// placement.md showed planExecutorOf without its `ci` parameter and
+// summary.md formatOutcomeTable without `colors`, each added after the page
+// was written: the name law sees a function, not how it is called.
+describe("a module page's ts block gives each function the parameters src does", () => {
+  const uncomment = (t: string): string =>
+    t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  /** The top-level parameter count of the list opening at `open` (a `(`). */
+  const arity = (t: string, open: number): number | null => {
+    let depth = 0
+    let count = 0
+    let any = false
+    for (let i = open; i < t.length; i++) {
+      const c = t[i]!
+      if ('({[<'.includes(c)) depth++
+      else if (')}]'.includes(c) || (c === '>' && t[i - 1] !== '=')) {
+        depth--
+        if (depth === 0) return any ? count + 1 - (/,\s*$/.test(t.slice(open + 1, i)) ? 1 : 0) : 0
+      } else if (depth === 1 && c === ',') count++
+      else if (depth === 1 && !/\s/.test(c)) any = true
+    }
+    return null
+  }
+  const decl = /\bfunction\s+(\w+)\s*(?:<[^(]*?>)?\(/g
+  it('each documented function has as many parameters as its one declaration', () => {
+    const counts = new Map<string, number[]>()
+    for (const f of walk(path.join(pkg, 'src'), '.ts')) {
+      const t = uncomment(readFileSync(f, 'utf8'))
+      for (const m of t.matchAll(/export (?:async )?function\s+(\w+)\s*(?:<[^(]*?>)?\(/g)) {
+        const n = arity(t, m.index! + m[0].length - 1)
+        if (n !== null) counts.set(m[1]!, [...(counts.get(m[1]!) ?? []), n])
+      }
+    }
+    const wrong: string[] = []
+    let compared = 0
+    for (const page of walk(path.join(pkg, 'docs', 'modules'), '.md')) {
+      for (const block of readFileSync(page, 'utf8').matchAll(/```ts\n([\s\S]*?)```/g)) {
+        const b = uncomment(block[1]!)
+        for (const m of b.matchAll(decl)) {
+          const src = counts.get(m[1]!)
+          const n = arity(b, m.index! + m[0].length - 1)
+          if (src === undefined || src.length !== 1 || n === null) continue
+          compared++
+          if (src[0] !== n)
+            wrong.push(`${path.relative(pkg, page)}: ${m[1]} shows ${n}, has ${src[0]}`)
+        }
+      }
+    }
+    expect(compared).toBeGreaterThan(100)
+    expect(wrong).toEqual([])
+  })
+})
+
 describe('docs/README.md § Repository layout follows src/', () => {
   it('tabulates exactly the module directories, and states their count', () => {
     const readme = readFileSync(path.join(pkg, 'docs', 'README.md'), 'utf8')

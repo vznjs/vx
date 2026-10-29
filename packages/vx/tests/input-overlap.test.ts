@@ -81,7 +81,7 @@ describe('vx lock refuses inputs that read another task’s outputs', () => {
     expect(refusal(app({ build, test: task(['**'], ['coverage/**']) }))).toBe(
       'app#test reads "**" in inputs.files, which matches app#build\'s output "dist/**" — ' +
         "a task's key must not read the outputs of a task it does not depend on, or whose " +
-        'key it already folds. Exclude it: add "!dist/**" to app#test\'s inputs.files, or ' +
+        'key it already includes. Exclude it: add "!dist/**" to app#test\'s inputs.files, or ' +
         "depend on app#build and leave it out of app#test's inputs.tasks, so its key " +
         'hashes those bytes instead.',
     )
@@ -127,7 +127,7 @@ describe('vx lock refuses inputs that read another task’s outputs', () => {
     ).toBe(
       'app#build reads "**" in inputs.files, which matches g#gen\'s output "app/gen/**" — ' +
         "a task's key must not read the outputs of a task it does not depend on, or whose " +
-        'key it already folds. Exclude it: add "!gen/**" to app#build\'s inputs.files, or ' +
+        'key it already includes. Exclude it: add "!gen/**" to app#build\'s inputs.files, or ' +
         "depend on g#gen and leave it out of app#build's inputs.tasks, so its key " +
         'hashes those bytes instead.',
     )

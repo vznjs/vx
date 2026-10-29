@@ -69,7 +69,8 @@ const ROOT_GRAPH_FILE =
 export interface NxPluginOptions {
   /**
    * Where `nx.json` lives. Defaults to the workspace root; a repo whose Nx
-   * workspace sits elsewhere names the directory here.
+   * workspace sits elsewhere names the directory here, relative to the workspace
+   * root or absolute.
    */
   readonly root?: string
   /**
@@ -111,6 +112,11 @@ function refuseExecutors(executors: NxExecutors | undefined): void {
 /** The plugin: the adoption skeleton over `mapNxWorkspace`, one mapping per run. */
 export function nx(options: NxPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('nx()', options, NX_PLUGIN_KEYS)
+  if (options.root === '') throw new UserError('nx() option "root" is a directory, not empty')
+  // Against the workspace root, as vx reads every path: against the cwd,
+  // `vx run` from a package dir read another directory.
+  const rootOf = (workspaceRoot: string): string =>
+    options.root === undefined ? workspaceRoot : path.resolve(workspaceRoot, options.root)
   refuseExecutors(options.executors)
   // One graph load per RUN, shared by `discover` and `project`: the run
   // hands both stages the same projects array (discover's, grown by what
@@ -134,7 +140,7 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
   return adoptionPlugin(
     import.meta,
     async (ctx) => {
-      const root = options.root ?? ctx.workspaceRoot
+      const root = rootOf(ctx.workspaceRoot)
       return mapAll(
         root,
         ctx.projects,
@@ -146,7 +152,7 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
     options.root === undefined ? ['nx.json'] : [],
     {
       async config(workspace, ctx) {
-        const root = options.root ?? ctx.workspaceRoot
+        const root = rootOf(ctx.workspaceRoot)
         const nxBaseCommit = Bun.env['NX_BASE']?.trim()
         if (nxBaseCommit) ctx.setBranch({ base: nxBaseCommit })
         if (workspace.baseBranch === undefined) {
@@ -174,7 +180,7 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
       // project, by its package.json name or else its Nx name; a name a
       // project already holds stays unattached, and the mapping says so.
       async discover(ctx) {
-        const root = options.root ?? ctx.workspaceRoot
+        const root = rootOf(ctx.workspaceRoot)
         const members = await memberProjects(ctx.workspaceRoot)
         // Core's status is the workspace's: a root elsewhere asks git itself.
         const changes = options.root === undefined ? () => ctx.worktreeChanges() : undefined
@@ -369,9 +375,9 @@ async function nxReads(
     String(process.env['NX_LOAD_DOT_ENV_FILES']),
     JSON.stringify(installed),
     await yarnrcText(root),
-    // Whether the manager runs `pre` / `post` hooks, so whether they fold.
+    // Whether the manager runs a script's `pre` / `post` hooks (`runsScriptHooks`).
     ...(await Promise.all(
-      ['.npmrc', 'pnpm-workspace.yaml'].map((f) => textOf(path.join(root, f))),
+      ['package.json', '.npmrc', 'pnpm-workspace.yaml'].map((f) => textOf(path.join(root, f))),
     )),
     ...notes,
   ]
@@ -418,7 +424,7 @@ async function index(
   }
   if (unattached.length > 0) {
     notes.push(
-      `Nx project(s) ${unattached.join(', ')} have no workspace package to attach targets to ` +
+      `${unattached.length === 1 ? 'Nx project' : 'Nx projects'} ${unattached.join(', ')} ${unattached.length === 1 ? 'has' : 'have'} no workspace package to attach targets to ` +
         '(a package holds the name, or the directory is gone) — run those targets with nx',
     )
   }
@@ -578,10 +584,14 @@ async function graphInputKey(
   // stray write at the root (a report, a log) is not, and counting it
   // re-exported the graph on every run after it.
   // A `project.json` anywhere: a new one is a project no root lists yet.
+  // A `.gitignore` anywhere too: Nx's project walk honours each one, so an
+  // edit between project roots hides or shows a project.
   const roots = dirs.map((d) => relPosix(root, d))
   const graphFile = (p: string): boolean =>
     p === 'project.json' ||
     p.endsWith('/project.json') ||
+    p === '.gitignore' ||
+    p.endsWith('/.gitignore') ||
     roots.some((r) => r === '' || p.startsWith(`${r}/`)) ||
     (!p.includes('/') && ROOT_GRAPH_FILE.test(p))
   const listed = [

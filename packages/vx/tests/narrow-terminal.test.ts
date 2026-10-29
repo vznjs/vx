@@ -62,4 +62,21 @@ describe('on a terminal narrower than the footer', () => {
       for (const row of rows.slice(1)) expect(row.length).toBe(62)
     }
   })
+
+  // One frame width: a task frame's section rule ran two columns short of
+  // the footer's rule and bars under it (60 against 62).
+  it.each([undefined, 40, 61, 200])(
+    'a frame’s section rule is as wide as the footer’s (%p)',
+    (columns) => {
+      const colors = columns === undefined ? { enabled: false } : { enabled: false, columns }
+      const block = formatTaskBlock(
+        node('b#build'),
+        outcome('b#build', 'failed'),
+        { output: [{ text: 'boom\n', err: true }] },
+        colors,
+      )
+      const rule = block.split('\n').find((l) => l.startsWith('├─'))!
+      expect(rule.length).toBe(furniture(footer(columns))[0]!.length)
+    },
+  )
 })

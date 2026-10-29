@@ -114,6 +114,7 @@ describe('the package manager', () => {
   it('adds at the workspace root: pnpm -w, Yarn 1 -W, Berry without', async () => {
     const root = await tmp('vx-adopt-argv-')
     try {
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages: []\n')
       await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n')
       const yarn1 = installArgv(root, 'yarn', ['@vzn/vx'])
       await writeFile(path.join(root, 'yarn.lock'), '__metadata:\n  version: 8\n')
@@ -138,6 +139,7 @@ describe('the package manager', () => {
   it('removes at the workspace root: pnpm -w, Yarn 1 -W, Berry without', async () => {
     const root = await tmp('vx-adopt-rm-')
     try {
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages: []\n')
       await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n')
       const yarn1 = removeArgv(root, 'yarn', ['@vzn/vx-migrate'])
       await writeFile(path.join(root, 'yarn.lock'), '__metadata:\n  version: 8\n')
@@ -615,6 +617,28 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         ])
         expect(keep.err).toContain('vx-migrate: install: ')
         expect(wet.err).toBe('vx-migrate: --format json prints the plan, so it needs --dry\n')
+        // Asked for JSON, a refusal is the error document on stdout too, as
+        // core's are: `vx init --dry --format json` hands a Turbo repo here.
+        await writeFile(path.join(root, 'turbo.json'), '{ not json')
+        const broken = await migrate(root, env, ['--dry', '--format', 'json'])
+        expect(
+          [wet, broken].map((r) => [
+            r.code,
+            JSON.parse(r.out).error.code,
+            r.out.split('\n').length,
+          ]),
+        ).toEqual([
+          [1, 'VX_E_USAGE', 2],
+          [1, 'VX_E_REFUSED', 2],
+        ])
+        expect(JSON.parse(wet.out)).toEqual({
+          ok: false,
+          error: {
+            code: 'VX_E_USAGE',
+            message: 'vx-migrate: --format json prints the plan, so it needs --dry',
+            docs: 'https://vznjs.github.io/vx/cli/#vx_e_usage',
+          },
+        })
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -762,6 +786,7 @@ describe('install when PATH holds an unrunnable manager', () => {
     await chmod(path.join(root, 'real', 'pnpm'), 0o755)
     await writeFile(path.join(root, 'ws', 'package.json'), '{"name":"ws"}')
     await writeFile(path.join(root, 'ws', 'pnpm-lock.yaml'), '')
+    await writeFile(path.join(root, 'ws', 'pnpm-workspace.yaml'), 'packages: []\n')
     await writeFile(
       path.join(root, 'probe.ts'),
       `import { install } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/adopt.ts'))}

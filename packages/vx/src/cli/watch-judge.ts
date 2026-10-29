@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { filesBehind } from '../cache/index.js'
-import { ui, xxh3 } from '../util/index.js'
+import { printable, ui, xxh3 } from '../util/index.js'
 import { gitIgnored, gitSpeller } from './watch-filter.js'
 import { modifiedBefore } from './watch-fs.js'
 
@@ -199,6 +199,11 @@ export class ChangeJudge {
     return false
   }
 
+  /** Whether git tracked `abs` when the loop armed; false when git could not answer. */
+  trackedAtArm(abs: string): boolean {
+    return this.ctx.trackedAtArm?.has(gitSpeller(this.ctx.workspaceRoot)(abs)) === true
+  }
+
   /** `spell` (git's spelling, see `gitSpeller`) given: a held server's write counts outside a cycle too. */
   private writtenDuringLastCycle(abs: string, spell?: (p: string) => string): boolean {
     // A server the last cycle left running is still that cycle's: its
@@ -278,6 +283,9 @@ export class ChangeJudge {
       firstIsFile = !isDirectory(p)
     }
     if (first === undefined && gone !== undefined) [first, firstAbs] = gone
+    // A path is anyone's bytes, and a file named `ESC ]0;…` printed raw
+    // in `changed …` retitled the terminal.
+    if (first !== undefined) first = printable(first)
     this.pending.clear()
     this.changed = changed
     const more = (live > 0 ? live : goneCount) - 1

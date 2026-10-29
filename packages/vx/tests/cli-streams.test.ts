@@ -86,7 +86,7 @@ describe('a verb prints its product alone on stdout over an aged index', () => {
     'the products that open no index: cache clean --format json, completions',
     () => {
       aged()
-      const prune = vx('cache', 'clean', '--max-size', '1G', '--dry-run', '--format', 'json')
+      const prune = vx('cache', 'clean', '--max-size', '1G', '--dry', '--format', 'json')
       expect([prune[0], json(prune[1])]).toEqual([0, true])
       const comp = vx('completions', 'bash')
       expect([comp[0], comp[1].includes('complete'), comp[2]]).toEqual([0, true, ''])

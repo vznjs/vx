@@ -97,7 +97,7 @@ describe('resolveTurboCacheConfig', () => {
   it('reads an empty TURBO_API, TURBO_TEAM, TURBO_TEAMID or VERCEL_ARTIFACTS_OWNER as unset, as Turbo does', () => {
     // CI hands `''` for a missing secret or variable (vercel/turborepo#6929).
     expect(
-      resolveTurboCacheConfig({}, { TURBO_TOKEN: 't', TURBO_TEAM: 'acme', TURBO_API: '' })?.apiUrl,
+      resolveTurboCacheConfig({}, { TURBO_TOKEN: 't', TURBO_TEAM: 'acme', TURBO_API: '' })?.url,
     ).toBe('https://vercel.com/api')
     const local = { apiUrl: 'https://c.example', teamId: 'team_x', teamSlug: 'linked' }
     expect(
@@ -107,20 +107,20 @@ describe('resolveTurboCacheConfig', () => {
         {},
         local,
       ),
-    ).toMatchObject({ apiUrl: 'https://c.example', teamId: 'team_x', teamSlug: 'linked' })
+    ).toMatchObject({ url: 'https://c.example', teamId: 'team_x', teamSlug: 'linked' })
   })
 
   it('reads options over Turbo’s environment, strips a trailing slash, declines without url, team or token', () => {
     expect(resolveTurboCacheConfig({}, {})).toBeUndefined()
     // A URL with no token is kept: the layer's `open` asks the OS keychain.
-    expect(resolveTurboCacheConfig({ apiUrl: 'https://c.example' }, {})?.token).toBeUndefined()
+    expect(resolveTurboCacheConfig({ url: 'https://c.example' }, {})?.token).toBeUndefined()
     expect(resolveTurboCacheConfig({}, { TURBO_TOKEN: '', TURBO_TEAM: 'acme' })).toMatchObject({
-      apiUrl: 'https://vercel.com/api',
+      url: 'https://vercel.com/api',
       teamSlug: 'acme',
     })
     // A token alone is Vercel's hosted cache, as it is for `turbo`.
-    expect(resolveTurboCacheConfig({ token: 't' }, {})?.apiUrl).toBe('https://vercel.com/api')
-    expect(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't', TURBO_TEAM: 'acme' })?.apiUrl).toBe(
+    expect(resolveTurboCacheConfig({ token: 't' }, {})?.url).toBe('https://vercel.com/api')
+    expect(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't', TURBO_TEAM: 'acme' })?.url).toBe(
       'https://vercel.com/api',
     )
     expect(
@@ -129,7 +129,7 @@ describe('resolveTurboCacheConfig', () => {
         { TURBO_API: 'https://c.example/', TURBO_TOKEN: 't', TURBO_TEAM: 'acme' },
       ),
     ).toEqual({
-      apiUrl: 'https://c.example',
+      url: 'https://c.example',
       token: 't',
       teamSlug: 'acme',
       timeoutMs: 30_000,
@@ -139,16 +139,16 @@ describe('resolveTurboCacheConfig', () => {
     })
     expect(
       resolveTurboCacheConfig(
-        { apiUrl: 'https://o', token: 'o' },
+        { url: 'https://o', token: 'o' },
         { TURBO_API: 'x', TURBO_TOKEN: 'y' },
-      )?.apiUrl,
+      )?.url,
     ).toBe('https://o')
   })
   // Turbo's own order: turbo.json under the environment under the flags.
   it('turbo.json’s remoteCache is read below the environment; `enabled: false` declines', () => {
     const file = { apiUrl: 'https://file.example/', teamId: 'team_file', teamSlug: 'file' }
     const pick = (c: ReturnType<typeof resolveTurboCacheConfig>) =>
-      c && [c.apiUrl, c.teamId, c.teamSlug]
+      c && [c.url, c.teamId, c.teamSlug]
     expect([
       pick(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't' }, file)),
       pick(
@@ -163,7 +163,7 @@ describe('resolveTurboCacheConfig', () => {
           file,
         ),
       ),
-      pick(resolveTurboCacheConfig({ apiUrl: 'https://opt.example', token: 't' }, {}, file)),
+      pick(resolveTurboCacheConfig({ url: 'https://opt.example', token: 't' }, {}, file)),
       pick(resolveTurboCacheConfig({}, {}, file)),
       pick(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't' }, { ...file, enabled: false })),
       pick(resolveTurboCacheConfig({ token: 't' }, {}, { ...file, enabled: false })),
@@ -219,7 +219,7 @@ describe('resolveTurboCacheConfig', () => {
       return new Response(null, { status: 404 })
     }) as unknown as typeof fetch
     for (const timeoutMs of [0, 1000]) {
-      const c = resolveTurboCacheConfig({ apiUrl: 'https://c', token: 't', timeoutMs }, {})!
+      const c = resolveTurboCacheConfig({ url: 'https://c', token: 't', timeoutMs }, {})!
       await new TurboRemoteCache(c, seen).has('ab')
     }
     expect(signals.map((s) => s instanceof AbortSignal)).toEqual([false, true])
@@ -235,7 +235,7 @@ describe('resolveTurboCacheConfig', () => {
       local: Parameters<typeof resolveTurboCacheConfig>[3] = {},
     ) => {
       const c = resolveTurboCacheConfig({}, env, { teamId: 'team_json' }, local)
-      return c && [c.apiUrl, c.token, c.teamId ?? null]
+      return c && [c.url, c.token, c.teamId ?? null]
     }
     const vercel = { VERCEL_ARTIFACTS_TOKEN: 'vt', VERCEL_ARTIFACTS_OWNER: 'team_v' }
     const local = { apiUrl: 'https://link.example', teamId: 'team_link', token: 'lt' }
@@ -275,9 +275,11 @@ describe('resolveTurboCacheConfig', () => {
       },
     )
     const slug = resolveTurboCacheConfig({}, { TURBO_TEAM: '' }, { teamSlug: 'acme' })
-    expect([c && [c.apiUrl, c.teamId], v && [v.apiUrl, v.token, v.teamId], slug?.teamSlug]).toEqual(
-      [['https://c.example', 'team_json'], ['https://vercel.com/api', 'vt', 'team_v'], 'acme'],
-    )
+    expect([c && [c.url, c.teamId], v && [v.url, v.token, v.teamId], slug?.teamSlug]).toEqual([
+      ['https://c.example', 'team_json'],
+      ['https://vercel.com/api', 'vt', 'team_v'],
+      'acme',
+    ])
   })
 
   // Turbo signs only under `remoteCache.signature: true`: a short env key
@@ -296,40 +298,40 @@ describe('resolveTurboCacheConfig', () => {
       resolveTurboCacheConfig({ teamId: 'team_1', signatureKey: 'o'.repeat(32) }, env, {})
         ?.signatureKey,
     ]).toEqual([undefined, undefined, 'k'.repeat(32), undefined, 'o'.repeat(32)])
-    // TURBO_SIGNATURE sits above turbo.json either way.
+    // Turbo maps no TURBO_SIGNATURE (`turborepo-config/src/env.rs`): read here,
+    // `0` skipped the verify turbo.json asks for and `yes` failed the run.
     expect([
       key({}, { ...env, TURBO_SIGNATURE: '1' }),
       key({ signature: true }, { ...env, TURBO_SIGNATURE: 'false' }),
-      key({ signature: true }, { ...env, TURBO_SIGNATURE: '' }),
-    ]).toEqual(['k'.repeat(32), undefined, 'k'.repeat(32)])
-    expect(() => key({}, { ...env, TURBO_SIGNATURE: 'yes' })).toThrow(
-      'turboCache(): TURBO_SIGNATURE should be 1 or 0, got "yes"',
-    )
+      key({}, { ...env, TURBO_SIGNATURE: 'yes' }),
+    ]).toEqual([undefined, 'k'.repeat(32), undefined])
   })
 
-  it('a signature key must be Turbo’s minimum length and come with a team id', () => {
+  it('a signatureKey option must be at least 32 bytes', () => {
     expect(() =>
       resolveTurboCacheConfig(
-        { apiUrl: 'https://u', token: 't', signatureKey: 'short', teamId: 'team_1' },
+        { url: 'https://u', token: 't', signatureKey: 'short', teamId: 'team_1' },
         {},
       ),
     ).toThrow(/at least 32 bytes/)
-    expect(() =>
-      resolveTurboCacheConfig({ apiUrl: 'https://u', token: 't', signatureKey: KEY }, {}),
-    ).toThrow(/needs teamId/)
     expect(MIN_SIGNATURE_KEY_LENGTH).toBe(32)
   })
 
-  it('refuses an apiUrl with no http(s) scheme, from options or TURBO_API', () => {
-    expect(() => resolveTurboCacheConfig({ apiUrl: 'cache.example.com', token: 't' }, {})).toThrow(
-      'turboCache(): apiUrl must be http(s), got cache.example.com',
+  // Each names where the URL came from: TURBO_API was refused as a `url`
+  // option the workspace never set.
+  it('refuses a url with no http(s) scheme, naming options, TURBO_API or turbo.json', () => {
+    expect(() => resolveTurboCacheConfig({ url: 'cache.example.com', token: 't' }, {})).toThrow(
+      'turboCache() option "url" must be an http(s) URL, got "cache.example.com"',
     )
     expect(() =>
       resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'cache.example.com/' }),
-    ).toThrow('turboCache(): apiUrl must be http(s), got cache.example.com')
+    ).toThrow('TURBO_API must be an http(s) URL, got "cache.example.com"')
+    expect(() =>
+      resolveTurboCacheConfig({ token: 't' }, {}, { apiUrl: 'cache.example.com' }),
+    ).toThrow('turbo.json remoteCache.apiUrl must be an http(s) URL, got "cache.example.com"')
   })
 
-  it('refuses an apiUrl carrying user:pass@, from options or TURBO_API (gaps §8 L232)', () => {
+  it('refuses an url carrying user:pass@, from options or TURBO_API (gaps §8 L232)', () => {
     const refusal = (f: () => unknown): string => {
       try {
         f()
@@ -339,16 +341,17 @@ describe('resolveTurboCacheConfig', () => {
       }
     }
     const MSG =
-      'turboCache(): apiUrl carries credentials (user:pass@); pass them as the token instead'
+      'turboCache() option "url" carries credentials (user:pass@); pass them as the token instead'
+    const ENV = 'TURBO_API carries credentials (user:pass@); pass them as the token instead'
     expect([
-      refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u:p@c.example', token: 't' }, {})),
-      refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u@c.example', token: 't' }, {})),
+      refusal(() => resolveTurboCacheConfig({ url: 'https://u:p@c.example', token: 't' }, {})),
+      refusal(() => resolveTurboCacheConfig({ url: 'https://u@c.example', token: 't' }, {})),
       refusal(() =>
         resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'https://:p@c.example/' }),
       ),
-    ]).toEqual([MSG, MSG, MSG])
+    ]).toEqual([MSG, MSG, ENV])
     // CONTROL: the same host without userinfo resolves.
-    expect(resolveTurboCacheConfig({ apiUrl: 'https://c.example', token: 't' }, {})?.apiUrl).toBe(
+    expect(resolveTurboCacheConfig({ url: 'https://c.example', token: 't' }, {})?.url).toBe(
       'https://c.example',
     )
   })
@@ -384,7 +387,7 @@ describe('TurboRemoteCache against the spec server', () => {
   ) =>
     new TurboRemoteCache(
       resolveTurboCacheConfig(
-        { apiUrl: srv.url, token: TOKEN, teamId: 'team_1', teamSlug: 'acme', ...extra },
+        { url: srv.url, token: TOKEN, teamId: 'team_1', teamSlug: 'acme', ...extra },
         {},
       )!,
       fetch,
@@ -522,7 +525,7 @@ describe('TurboRemoteCache against the spec server', () => {
           const tag = await artifactTag(Buffer.from(${JSON.stringify(KEY)}), 'ab90', 'team_1', new Blob([body]))
           const fetchImpl = async () => new Response(body, { headers: { 'x-artifact-tag': tag } })
           const config = resolveTurboCacheConfig(
-            { apiUrl: 'http://turbo.invalid', token: 't', teamId: 'team_1', signatureKey: ${JSON.stringify(KEY)} },
+            { url: 'http://turbo.invalid', token: 't', teamId: 'team_1', signatureKey: ${JSON.stringify(KEY)} },
             {},
           )
           const got = await new TurboRemoteCache(config, fetchImpl, ${JSON.stringify(dir)}).get('ab90')
@@ -555,7 +558,7 @@ describe('TurboRemoteCache against the spec server', () => {
           }),
         )) as unknown as typeof fetch
       const config = resolveTurboCacheConfig(
-        { apiUrl: 'http://turbo.invalid', token: TOKEN, teamId: 'team_1', signatureKey: KEY },
+        { url: 'http://turbo.invalid', token: TOKEN, teamId: 'team_1', signatureKey: KEY },
         {},
       )!
       const c = new TurboRemoteCache(config, untagged, tempDir)
@@ -635,7 +638,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
       path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(
         [
-          `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, teamSlug: 'acme' })`,
+          `turboCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, teamSlug: 'acme' })`,
         ],
         `import { turboCache } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
       ),

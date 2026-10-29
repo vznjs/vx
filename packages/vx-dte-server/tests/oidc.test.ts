@@ -120,6 +120,41 @@ describe('a CI OIDC token', () => {
     ])
   })
 
+  // The claim was cut at its first `@`, so a workflow file named with one
+  // (`ci@x.yml`) was refused whatever ALLOW said; an issuer written in ALLOW
+  // with a trailing slash matched no token's iss, so it admitted nothing.
+  it('is accepted for a workflow file whose name holds an @, and an issuer ALLOW ends with /', async () => {
+    const GH = 'https://token.actions.githubusercontent.com'
+    const verify = createVerifier({
+      allow: parseAllow(`${GH}:org/app:ci@x.yml ${ISS}/:group/app:.gitlab-ci.yml`),
+      audience: AUD,
+      now: () => now,
+      fetchJson: async (url) =>
+        url.endsWith('/.well-known/openid-configuration')
+          ? { jwks_uri: url.replace('/.well-known/openid-configuration', '/jwks') }
+          : { keys: [{ ...jwk, kid: 'k1' }] },
+    })
+    const asked = async (claims: Record<string, unknown>) =>
+      verify(await sign(claims)).then(
+        () => 'ok',
+        (e: TokenError) => e.message,
+      )
+    expect([
+      await asked({
+        iss: GH,
+        aud: AUD,
+        exp: now + 300,
+        repository_id: '5',
+        repository: 'org/app',
+        job_workflow_ref: 'org/app/.github/workflows/ci@x.yml@refs/heads/main',
+      }),
+      await asked({
+        ...good,
+        ci_config_ref_uri: 'gitlab.example/group/app//.gitlab-ci.yml@refs/heads/main',
+      }),
+    ]).toEqual(['ok', 'ok'])
+  })
+
   it('reads ALLOW’s entries from the right, since an issuer holds colons', () => {
     expect(
       parseAllow(
@@ -137,6 +172,10 @@ describe('a CI OIDC token', () => {
       'vznjs/vx:ci.yml is not issuer:owner/repo:workflow',
     )
     expect(() => parseAllow('https://x.dev:vx:ci.yml')).toThrow('is not issuer:owner/repo:workflow')
+    // Well formed, so "is not issuer:owner/repo:workflow" sent its author to the wrong part.
+    expect(() => parseAllow('http://x.dev:o/r:ci.yml')).toThrow(
+      new Error('http://x.dev:o/r:ci.yml: the issuer is https://, not http://x.dev'),
+    )
     expect(() => parseAllow('https://x.dev:o/r:a.yml,https://x.dev:o/s:a.yml')).toThrow(
       'entries are space separated',
     )
@@ -152,16 +191,24 @@ describe('a CI OIDC token', () => {
       401,
       'alg is not RS256',
     ])
-    expect(await refusal(verify(await sign(other)))).toEqual([401, 'untrusted issuer'])
+    expect(await refusal(verify(await sign(other)))).toEqual([
+      401,
+      "issuer https://evil.example is not in this relay's ALLOW: add issuer:owner/repo:workflow for it",
+    ])
     expect(await refusal(verify(await sign(good, { kid: 'k2' })))).toEqual([
       401,
       'unknown signing key',
     ])
     expect(await refusal(verify(await sign({ ...good, aud: 'x' })))).toEqual([
       401,
-      'wrong audience',
+      `the token's aud is x, not this relay's ${AUD}: ask CI for a token for ${AUD}, or set the relay's audience`,
     ])
     expect(await refusal(verify(await sign({ ...good, exp: now - 61 })))).toEqual([401, 'expired'])
+    // A token with no exp never expired: it lacks the claim.
+    expect(await refusal(verify(await sign({ ...good, exp: undefined })))).toEqual([
+      401,
+      'no exp claim',
+    ])
     expect(await refusal(verify(await sign({ ...good, nbf: now + 61 })))).toEqual([
       401,
       'not yet valid',

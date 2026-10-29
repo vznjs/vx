@@ -1,4 +1,4 @@
-import { existsSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { isUserError, UserError, xxh3hex } from '../util/index.js'
@@ -92,19 +92,72 @@ function serveHeldSources(): void {
         contents: heldSources.get(HELD_QUERY.exec(args.path)![1]!)!.source,
         loader: /\.[cm]?ts\?/.test(args.path) ? 'ts' : 'js',
       }))
+      build.onLoad({ filter: PLAIN_CONFIG }, (args) => {
+        const loader = /\.[cm]?ts$/.test(args.path) ? 'ts' : 'js'
+        const held = heldPaths.get(args.path) ?? heldByRealPath(args.path)
+        if (held !== undefined) {
+          held.served = true
+          return { contents: heldSources.get(held.hash)!.source, loader }
+        }
+        // A config no load holds now, imported by another module. `onLoad`
+        // cannot decline it, so it is served as Bun reads it, and what
+        // `onLoad` cannot carry (CommonJS, not UTF-8) is Bun's own load.
+        const bytes = readFileSync(args.path)
+        const source = servableSource(bytes, loader)
+        if (source !== null) return { contents: source, loader }
+        const native = JSON.stringify(`${args.path}?vx-bust=${xxh3hex(bytes)}`)
+        return {
+          contents: `import * as m from ${native}\nexport * from ${native}\nexport default m.default\n`,
+          loader: 'js',
+        }
+      })
     },
   })
 }
 
-function holdSource(hash: string, source: string): void {
+function holdSource(hash: string, source: string, plain: Held | null, configPath: string): void {
   const held = heldSources.get(hash)
   if (held === undefined) heldSources.set(hash, { source, uses: 1 })
   else held.uses++
+  if (plain !== null) heldPaths.set(configPath, plain)
 }
 
-function releaseSource(hash: string): void {
+function releaseSource(hash: string, plain: Held | null, configPath: string): void {
   const held = heldSources.get(hash)!
   if (--held.uses === 0) heldSources.delete(hash)
+  if (plain !== null) heldPaths.delete(configPath)
+}
+
+// Served under `?vx-held=`, a config was a second module beside the plain
+// path an import cycle reaches back to, and its `import.meta.url` carried
+// the query, unlike the worker's. So it is imported under its own path,
+// and `served` says whether this load's bytes were what Bun evaluated:
+// unset, the registry held the path already (a config another imported,
+// maybe older bytes), and only a query evaluates afresh.
+interface Held {
+  hash: string
+  served: boolean
+  /** Learned only when `onLoad` misses: Bun hands it the real path. */
+  real?: string | null
+}
+const heldPaths = new Map<string, Held>()
+
+const PLAIN_CONFIG = /[\\/]vx\.config\.[cm]?[jt]s$/
+
+// A realpath for every config was 7–10 ms on 1,000 (2026-10-28); only a
+// path reached through a link misses, so only a miss pays it.
+function heldByRealPath(real: string): Held | undefined {
+  for (const [configPath, held] of heldPaths) {
+    if (held.real === undefined) {
+      try {
+        held.real = realpathSync(configPath)
+      } catch {
+        held.real = null
+      }
+    }
+    if (held.real === real) return held
+  }
+  return undefined
 }
 
 const utf8 = new TextDecoder('utf-8', { fatal: true })
@@ -145,8 +198,11 @@ async function loadDefaultExport(
   bytes: Uint8Array,
   /** The workspace root, where the load may run the config's bytecode bundle (config-bytecode.ts). */
   compiledRoot?: string,
+  /** File texts read for the refusal, kept across one load's configs. */
+  reads = new Map<string, Promise<string>>(),
 ): Promise<unknown> {
-  refuseUnprovidedImports(bytes, configPath, kind)
+  const text = new TextDecoder().decode(bytes)
+  refuseUnprovided(text, configPath, configPath, kind)
   // No random bust for `vx lock`: a project config reaches this import
   // only on its FIRST load in the process, so nothing is cached under the
   // URL yet, and a repeat load (the one that could replay an evaluation
@@ -163,10 +219,12 @@ async function loadDefaultExport(
     )
   }
   const hash = xxh3hex(bytes)
+  const plain: Held | null =
+    source !== null && !literal && PLAIN_CONFIG.test(configPath) ? { hash, served: false } : null
   const specifier = `${configPath}?vx-${literal ? 'literal' : source !== null ? 'held' : 'bust'}=${hash}`
   if (source !== null) {
     serveHeldSources()
-    holdSource(hash, source)
+    holdSource(hash, source, plain, configPath)
   }
   let ns: { default?: unknown }
   let compiled: { default?: unknown } | null | undefined
@@ -186,9 +244,18 @@ async function loadDefaultExport(
     // The worker's budget, here too: a top-level await that never settled
     // while a timer kept the loop alive hung `vx run` for good, silently
     // (D-66).
+    await refuseUnprovidedClosure(text, configPath, kind, reads)
     const budget = evalBudgetMs()
     ns = (await Promise.race([
-      import(specifier),
+      plain === null
+        ? import(specifier)
+        : import(configPath).then(
+            (ns: unknown) => (plain.served ? ns : import(specifier)),
+            (err: unknown) => {
+              if (plain.served) throw err
+              return import(specifier)
+            },
+          ),
       new Promise<never>((_, reject) => {
         deadline = setTimeout(
           () =>
@@ -213,7 +280,7 @@ async function loadDefaultExport(
   } finally {
     clearTimeout(deadline)
     unguard()
-    if (source !== null) releaseSource(hash)
+    if (source !== null) releaseSource(hash, plain, configPath)
   }
   const mod = defaultOf(ns, kind, configPath)
   if (compiledRoot !== undefined && loaded !== undefined) {
@@ -280,27 +347,58 @@ function pnpAbove(dir: string): boolean {
  * evaluation: left to Bun, a workspace with no `node_modules` would have
  * the package auto-installed from the registry first (config-imports.ts),
  * and a config must never download. The message keeps the shape Bun's own
- * refusal has, with the remedy.
+ * refusal has, with the remedy. `source` is `file`'s: the config's own,
+ * or one it reaches.
  */
-function refuseUnprovidedImports(bytes: Uint8Array, configPath: string, kind: string): void {
-  const loader = /\.[cm]?ts$/.test(configPath) ? 'ts' : 'js'
-  const missing = unprovidedBareImports(
-    new TextDecoder().decode(bytes),
-    path.dirname(configPath),
-    loader,
-  )
+function refuseUnprovided(source: string, file: string, configPath: string, kind: string): void {
+  const loader = /\.[cm]?tsx?$/.test(file) ? 'ts' : 'js'
+  const missing = unprovidedBareImports(source, path.dirname(file), loader)
   if (missing.length === 0) return
+  const own = file === configPath
+  const what = own
+    ? `cannot find '${missing[0]}'`
+    : `${file} imports '${missing[0]}', which no node_modules above it provides`
   // Under Yarn Plug'n'Play the dependencies ARE installed, into a
   // `.pnp.cjs` Bun does not read: "install them first" sent the user to a
   // `yarn install` that changed nothing (D-109).
-  if (pnpAbove(path.dirname(configPath))) {
+  if (pnpAbove(path.dirname(file))) {
     throw new UserError(
-      `${kind} config ${configPath}: cannot find '${missing[0]}' — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set \`nodeLinker: node-modules\` in .yarnrc.yml and run \`yarn install\``,
+      `${kind} config ${configPath}: ${what} — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set \`nodeLinker: node-modules\` in .yarnrc.yml and run \`yarn install\``,
     )
   }
   throw new UserError(
-    `${kind} config ${configPath}: cannot find '${missing[0]}' — no node_modules above the config provides it; install the workspace's dependencies first`,
+    `${kind} config ${configPath}: ${what}${own ? ' — no node_modules above the config provides it' : ''}; install the workspace's dependencies first`,
   )
+}
+
+const RELATIVE_IMPORT = /["']\.\.?\//
+const SCRIPT = /\.[cm]?[jt]sx?$/
+
+/**
+ * The same refusal for each script the config reaches by relative import:
+ * a preset's bare import was installed and run where the config's own was
+ * refused (L-22; `--no-install` holds only the shebang, not `bun src/bin.ts`
+ * or an embedder). Only a source evaluation pays: a fresh bundle resolved
+ * every import it holds. `reads` keeps each file's text for the load's other
+ * configs: a preset a thousand configs share is read once.
+ */
+async function refuseUnprovidedClosure(
+  source: string,
+  configPath: string,
+  kind: string,
+  reads: Map<string, Promise<string>>,
+): Promise<void> {
+  if (!RELATIVE_IMPORT.test(source)) return
+  const read = (file: string): Promise<string> => {
+    let text = reads.get(file)
+    if (text === undefined) reads.set(file, (text = Bun.file(file).text()))
+    return text
+  }
+  for (const file of await configImports(configPath, source, read)) {
+    if (!SCRIPT.test(file)) continue
+    const text = await read(file).catch(() => null)
+    if (text !== null) refuseUnprovided(text, file, configPath, kind)
+  }
 }
 
 /**
@@ -490,6 +588,7 @@ export async function loadProjectConfigs(configPaths: readonly string[]): Promis
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
+  const reads = new Map<string, Promise<string>>()
   const loadOne = async (entry: (typeof prepared)[number]): Promise<ProjectConfig> => {
     const { configPath, bytes } = entry
     // A REPEAT load in this process re-evaluates in a worker, because the
@@ -497,12 +596,16 @@ export async function loadProjectConfigs(configPaths: readonly string[]): Promis
     // config-eval.ts. A FIRST load keeps the in-process import.
     const repeat = loadedConfigs.has(configPath)
     loadedConfigs.add(configPath)
-    if (repeat) refuseUnprovidedImports(bytes, configPath, 'Project')
+    if (repeat) {
+      const text = new TextDecoder().decode(bytes)
+      refuseUnprovided(text, configPath, configPath, 'Project')
+      await refuseUnprovidedClosure(text, configPath, 'Project', reads)
+    }
     const mod = repeat
       ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
           throw loadFailure(err, configPath, 'Project')
         })
-      : await loadDefaultExport(configPath, 'Project', bytes)
+      : await loadDefaultExport(configPath, 'Project', bytes, undefined, reads)
     // Before anything reads through them: a replaced `Array.prototype.includes`
     // turned the JSON-data walk's own check into "a cyclic reference".
     const changed = repeat
@@ -783,12 +886,14 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'Transpiler',
   'build',
   'color',
+  'connect',
   'deepEquals',
   'env',
   'file',
   'gunzipSync',
   'hash',
   'inspect',
+  'listen',
   'main',
   'nanoseconds',
   'pathToFileURL',

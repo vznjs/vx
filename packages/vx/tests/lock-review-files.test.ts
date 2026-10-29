@@ -2,7 +2,7 @@
 // beside each project's config for review (2026-10-14), and
 // `.vx/.gitattributes` so GitHub collapses the machine lock.
 
-import { rm } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -75,6 +75,22 @@ it('vx lock --check fails on a stale or missing review copy', async () => {
   expect(vx(r, 'lock', '--check').code).toBe(0)
 })
 
+it('vx lock --check names a review copy it cannot read, not a missing one', async () => {
+  // A directory in the copy's place read as "has no packages/a/vx.lock.json".
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-unread-' }))
+  const dir = await addProject(r, 'a', { config: CONFIG })
+  expect(vx(r, 'lock').code).toBe(0)
+  await rm(path.join(dir, 'vx.lock.json'))
+  await mkdir(path.join(dir, 'vx.lock.json'))
+  const unread = vx(r, 'lock', '--check')
+  expect([unread.code, unread.err]).toEqual([
+    1,
+    noticed(
+      `vx lock --check: "a" (packages/a/vx.lock.json) could not be read (EISDIR) — remove it and run 'vx lock'\n`,
+    ),
+  ])
+})
+
 it('vx lock --check fails on a review copy whose config is gone', async () => {
   // Its config deleted, the project kept (its package.json): the copy
   // still showed reviewers tasks nothing runs, and the audit passed.
@@ -121,6 +137,20 @@ it('vx lock --check names a review copy left where no project is', async () => {
     ),
   ])
   await rm(path.join(gone, 'vx.lock.json'))
+  expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
+})
+
+it('a committed project removed from disk leaves no stray copy to delete', async () => {
+  // `rm -rf packages/b` before `git rm`: git still lists its copy, which
+  // is already gone, and `vx lock` told the user to delete it.
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-removed-' }))
+  await addProject(r, 'a', { config: CONFIG })
+  const dir = await addProject(r, 'b', { config: CONFIG })
+  expect(vx(r, 'lock').code).toBe(0)
+  gitIn(r)('add', '-A')
+  gitIn(r)('commit', '-qm', 'locked')
+  await rm(dir, { recursive: true })
+  expect(vx(r, 'lock')).toMatchObject({ code: 0, err: '' })
   expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
 })
 
@@ -194,4 +224,38 @@ it('vx lock --check reads a review copy as JSON: a formatter may lay it out its 
   const file = path.join(dir, 'vx.lock.json')
   await Bun.write(file, JSON.stringify(JSON.parse((await text(file))!)))
   expect(vx(r, 'lock', '--check').code).toBe(0)
+})
+
+// A review copy is vx's own output, never read: a re-lock that rewrote
+// every one (a new vx, a format change) selected every project under
+// --affected, while no key moved. One inside a project's sources is a file.
+it('a changed review copy selects nothing under --affected', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-aff-', edges: {} }))
+  const cfg = `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['**'] } } } }\n`
+  const dir = await addProject(r, 'a', { config: cfg, files: { 'src/vx.lock.json': '1' } })
+  expect(vx(r, 'lock').code).toBe(0)
+  gitIn(r)('add', '-A')
+  gitIn(r)('commit', '-q', '-m', 'init')
+  await Bun.write(path.join(dir, 'vx.lock.json'), '{}\n')
+  const none = vx(r, 'show', '--affected=HEAD')
+  expect(none.err).toContain('nothing affected since HEAD')
+  await Bun.write(path.join(dir, 'src/vx.lock.json'), '2')
+  expect(vx(r, 'show', '--affected=HEAD').out).toContain('packages/a')
+})
+
+// `.vx/.gitattributes` and `.vx/.gitignore` are vx's too, and no key reads
+// them: under a root project, an edit to one selected that project whole.
+it('vx-written files under .vx select no root project under --affected', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-root-', edges: {} }))
+  await Bun.write(
+    path.join(r, 'vx.config.mjs'),
+    `export default { tasks: { check: { exec: { command: 'true' }, inputs: { files: ['**'] } } } }\n`,
+  )
+  expect(vx(r, 'lock').code).toBe(0)
+  await Bun.write(path.join(r, '.vx', '.gitignore'), '/cache\n/tmp\n')
+  gitIn(r)('add', '-A')
+  gitIn(r)('commit', '-q', '-m', 'init')
+  await Bun.write(path.join(r, '.vx', '.gitattributes'), 'x\n')
+  await Bun.write(path.join(r, '.vx', '.gitignore'), '/cache\n')
+  expect(vx(r, 'show', '--affected=HEAD').err).toContain('nothing affected since HEAD')
 })

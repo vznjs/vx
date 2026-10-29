@@ -106,10 +106,15 @@ export function parseAllow(list: string): Allowed[] {
       const w = e.lastIndexOf(':')
       const r = e.lastIndexOf(':', w - 1)
       const [issuer, repository, workflow] = [e.slice(0, r), e.slice(r + 1, w), e.slice(w + 1)]
-      if (r < 0 || !issuer.startsWith('https://') || !repository.includes('/') || workflow === '') {
+      // An entry missing a part splits elsewhere: its issuer is then no URL.
+      const url = /^[a-z][a-z0-9+.-]*:\/\/[^/]/i.test(issuer)
+      if (r < 0 || !url || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
-      return { issuer, repository, workflow }
+      if (!issuer.startsWith('https://'))
+        throw new Error(`${e}: the issuer is https://, not ${issuer}`)
+      // A token's iss has no trailing slash: one written in ALLOW matched none.
+      return { issuer: issuer.replace(/\/+$/, ''), repository, workflow }
     })
 }
 
@@ -185,7 +190,12 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     if (alg !== 'RS256') throw new TokenError('alg is not RS256', 401)
     const ofIssuer = opts.allow.filter((a) => a.issuer === iss)
     if (typeof iss !== 'string' || ofIssuer.length === 0) {
-      throw new TokenError('untrusted issuer', 401)
+      throw new TokenError(
+        typeof iss === 'string'
+          ? `issuer ${iss.slice(0, 200)} is not in this relay's ALLOW: add issuer:owner/repo:workflow for it`
+          : 'the token names no issuer (iss)',
+        401,
+      )
     }
     let claims: JWTPayload
     try {
@@ -196,7 +206,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
         return verifyWith(token, iss, true)
       })
     } catch (err) {
-      throw refusal(err, iss)
+      throw refusal(err, iss, opts.audience)
     }
     let ofRepo = ofIssuer
     if (ofIssuer.some((a) => a.repository !== undefined)) {
@@ -212,12 +222,17 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       const claim = workflowClaimOf(iss)
       const ref = claims[claim]
       if (typeof ref !== 'string') throw new TokenError(`no ${claim} claim`, 403)
-      const workflow = ref.replace(/@.*$/, '')
       const repo = String(claims[repositoryClaimOf(iss)])
-      if (
-        !ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository ?? repo, a.workflow!)))
-      ) {
-        throw new TokenError(`workflow ${workflow} is not in this relay's ALLOW`, 403)
+      // The path is the claim up to an `@` that a ref follows: a file name may hold `@` too.
+      const named = ofRepo.some((a) => {
+        const p = `${workflowPath(iss, a.repository ?? repo, a.workflow!)}@`
+        return same(ref.slice(0, p.length), p)
+      })
+      if (!named) {
+        throw new TokenError(
+          `workflow ${ref.replace(/@.*$/, '')} is not in this relay's ALLOW`,
+          403,
+        )
       }
     }
     const run = (opts.runClaims?.[iss] ?? runClaimsOf(iss)).map((c) => {
@@ -232,7 +247,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
 }
 
 /** What jose's refusal of a token says, as the relay answers it. */
-function refusal(err: unknown, iss: string): TokenError {
+function refusal(err: unknown, iss: string, audience: string): TokenError {
   if (err instanceof TokenError) return err
   // A refetch of the keys for a kid not held failed: the network, not the token.
   if (!(err instanceof errors.JOSEError) || err instanceof errors.JWKSInvalid)
@@ -243,9 +258,14 @@ function refusal(err: unknown, iss: string): TokenError {
     return new TokenError('bad signature', 401)
   if (err instanceof errors.JWTExpired) return new TokenError('expired', 401)
   if (err instanceof errors.JWTClaimValidationFailed) {
-    if (err.claim === 'aud') return new TokenError('wrong audience', 401)
+    if (err.claim === 'aud')
+      return new TokenError(
+        `the token's aud is ${[err.payload.aud ?? 'unset'].flat().join(', ')}, not this relay's ${audience}: ask CI for a token for ${audience}, or set the relay's audience`,
+        401,
+      )
     if (err.claim === 'nbf') return new TokenError('not yet valid', 401)
-    if (err.claim === 'exp') return new TokenError('expired', 401)
+    if (err.claim === 'exp')
+      return new TokenError(err.reason === 'missing' ? 'no exp claim' : 'expired', 401)
   }
   return new TokenError('not a JWT', 401)
 }

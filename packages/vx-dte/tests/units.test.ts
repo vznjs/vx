@@ -1,4 +1,5 @@
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readdir,
@@ -18,12 +19,13 @@ import {
   localEnv,
   runWorker,
   swapRoots,
+  trackedFiles,
   treeMeter,
 } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
-import { bytes, homeOf, needOf, pace } from '../src/plugin.js'
-import { hostPlatform, type Platform, UserError } from '@vzn/vx'
+import { bytes, changedSinceParent, homeOf, needOf, pace } from '../src/plugin.js'
+import { hostPlatform, isUserError, type Platform, UserError } from '@vzn/vx'
 import {
   type CacheFacts,
   type CapturedChunk,
@@ -40,6 +42,7 @@ import { plan, planTasks, tailsMs } from '../src/planner.js'
 import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder, ToWorker, WiredResult } from '../src/messages.js'
+import { snapshot } from '../src/tree.js'
 import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -59,10 +62,20 @@ const tmp = async (): Promise<string> => {
  *  withheld where git cannot diff the task's project. */
 const checkout = async (): Promise<string> => {
   const d = await tmp()
-  const git = (...a: string[]) =>
-    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: d })
+  // Each step checked: a fixture git refused read as a save withheld.
+  const git = (...a: string[]) => {
+    const r = Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], {
+      cwd: d,
+      stderr: 'pipe',
+    })
+    if (r.exitCode !== 0) throw new Error(`git ${a[0]}: ${r.stderr.toString()}`)
+  }
+  // A tracked file, as a worker's checkout has: of an empty tree, CI's git
+  // (2.56) took no snapshot, so every save was withheld; 2.43 took one.
+  await writeFile(path.join(d, 'README'), '')
   git('init', '-q')
-  git('commit', '-q', '--allow-empty', '-m', 'i')
+  git('add', 'README')
+  git('commit', '-q', '-m', 'i')
   return d
 }
 
@@ -116,6 +129,30 @@ it('a worker runs the orchestrator’s env with its own root, host names and PAT
     for (const [k, v] of Object.entries(saved))
       if (v === undefined) delete process.env[k]
       else process.env[k] = v
+  }
+})
+
+// Core sets it to the workspace's manager on every local task; a worker
+// gave the one its own process happened to have (`bun vx dte worker`: bun),
+// or none in the Docker image, where `npm-run-all` then looked for npm.
+it("a worker names the workspace's package manager in npm_execpath, as a local run does", async () => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-dte-pm-')))
+  const saved = process.env['npm_execpath']
+  try {
+    await writeFile(path.join(root, 'package.json'), '{"packageManager":"pnpm@9.0.0"}')
+    await mkdir(path.join(root, 'node_modules/.bin'), { recursive: true })
+    await writeFile(path.join(root, 'node_modules/.bin/pnpm'), '#!/bin/sh\n')
+    await chmod(path.join(root, 'node_modules/.bin/pnpm'), 0o755)
+    process.env['npm_execpath'] = '/elsewhere/bun'
+    expect(localEnv({ PATH: '/usr/bin' }, '/orc/ws', root)['npm_execpath']).toBe(
+      path.join(root, 'node_modules/.bin/pnpm'),
+    )
+    // A task's own `define` still wins.
+    expect(localEnv({ npm_execpath: '/mine' }, '/orc/ws', root)['npm_execpath']).toBe('/mine')
+  } finally {
+    if (saved === undefined) delete process.env['npm_execpath']
+    else process.env['npm_execpath'] = saved
+    await rm(root, { recursive: true, force: true })
   }
 })
 
@@ -204,7 +241,9 @@ it('a send to a worker the relay would not take is said', async () => {
       undefined,
     )
     for (let i = 0; i < 40 && said.length === 0; i++) await Bun.sleep(50)
-    expect(said).toEqual([`dte: sending refused to ${worker.id} failed: relay: 503 overloaded`])
+    expect(said).toEqual([
+      `[vx] dte: sending refused to ${worker.id} failed: relay: 503 overloaded`,
+    ])
     await o.close()
   } finally {
     await served.stop()
@@ -1976,6 +2015,163 @@ it('sends a dependency a worker could not read over the remotes’ copy, and the
   }
 })
 
+// A worker ended its task and held it no more while this machine sent a
+// dependency it could not read again, longer than a lease: the lease
+// ending meanwhile called the worker faulty and gave the task to another.
+for (const sent of [true, false])
+  it(`a task ended while its dependency is sent again keeps no lease (${sent ? 'sent' : 'not sent'})`, async () => {
+    const beat = 300
+    const faults: string[] = []
+    const h = await harness(new Map([node('t')]), undefined, beat, undefined, undefined, {
+      faulted: () => faults.push('faulted'),
+    })
+    // Past the lease of 3 heartbeats.
+    h.store.artifacts.resend = async () => (await Bun.sleep(4 * beat), sent)
+    try {
+      const a = await h.worker(1)
+      await Bun.sleep(50)
+      const ran = h.o.execute(h.req('t'))
+      expect(await a.batches()).toEqual([['t']])
+      await a.begin('t')
+      const b = await h.worker(1)
+      await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
+      const until = performance.now() + 6 * beat
+      const toB: string[] = []
+      while (performance.now() < until)
+        for (const m of await b.poll()) toB.push((m.body as { type: string }).type)
+      expect(toB.filter((t) => t === 'batch')).toEqual([])
+      expect(faults).toEqual([])
+      if (sent) expect(await a.batches()).toEqual([['t']])
+      else expect((await ran).exitCode).toBe(1)
+    } finally {
+      await h.stop()
+    }
+  })
+
+// Its worker lost meanwhile, the task went back to the queue, and the end
+// that waited on the resend still resolved it: it ran again on another
+// worker for a run that had moved on.
+it('a task whose worker is lost while its dependency is sent again ends once', async () => {
+  const h = await harness(new Map([node('t')]))
+  let sending!: () => void
+  const sent = new Promise<void>((r) => (sending = r))
+  h.store.artifacts.resend = async () => (await sent, false)
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    let ends = 0
+    const ran = h.o.execute(h.req('t')).then((r) => (ends++, r))
+    expect(await a.batches()).toEqual([['t']])
+    await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
+    await Bun.sleep(100)
+    await a.leave()
+    for (let i = 0; i < 50 && h.o.where('t') === undefined; i++) await Bun.sleep(20)
+    expect(h.o.where('t')).toBeNull()
+    sending()
+    await Bun.sleep(100)
+    expect(ends).toBe(0)
+    expect(h.o.where('t')).toBeNull()
+    const b = await h.worker(1)
+    expect(await b.batches()).toEqual([['t']])
+    await b.finish('t', b.orders[0]!.runKey)
+    expect((await ran).exitCode).toBe(0)
+  } finally {
+    await h.stop()
+  }
+})
+
+// A batch the relay refused failed its task and left it booked on its
+// worker, with no lease to end it: the worker's cores were gone for the
+// run, and the next task waited on them for good.
+it('a task whose batch the relay refused leaves its worker’s cores free', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  const me = (h.o as unknown as { o: { me: { send: (to: string, b: unknown) => Promise<void> } } })
+    .o.me
+  const send = me.send.bind(me)
+  let refuse = true
+  me.send = async (to, body) => {
+    if (refuse && (body as { type: string }).type === 'batch') {
+      refuse = false
+      throw new RelayError(413, 'relay send: 413 too large')
+    }
+    return send(to, body)
+  }
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(
+      await t1.then(
+        () => '',
+        (e: Error) => e.message,
+      ),
+    ).toBe('relay send: 413 too large')
+    expect(h.o.where('t1')).toBeUndefined()
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t2']])
+  } finally {
+    await h.stop()
+  }
+})
+
+it('a refused batch fails only its own tasks, not those of a part sent before it', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  const me = (h.o as unknown as { o: { me: { send: (to: string, b: unknown) => Promise<void> } } })
+    .o.me
+  const send = me.send.bind(me)
+  let batches = 0
+  me.send = async (to, body) => {
+    if ((body as { type: string }).type === 'batch' && ++batches === 2)
+      throw new RelayError(413, 'relay send: 413 too large')
+    return send(to, body)
+  }
+  // Each order past half the batch limit: two parts.
+  const big = (id: string) => ({ ...h.req(id), env: { BIG: 'x'.repeat(300 * 1024) } })
+  try {
+    const a = await h.worker(2)
+    await Bun.sleep(50)
+    let first = 'pending'
+    void h.o.execute(big('t1')).then(
+      () => (first = 'ended'),
+      (e: Error) => (first = e.message),
+    )
+    const t2 = h.o.execute(big('t2')).then(
+      () => '',
+      (e: Error) => e.message,
+    )
+    expect(await a.batches()).toEqual([['t1']])
+    expect(await t2).toBe('relay send: 413 too large')
+    expect(first).toBe('pending')
+    expect(h.o.where('t1')).toBeNull()
+  } finally {
+    await h.stop()
+  }
+})
+
+// A task sent again over a dependency it could not read left its cores
+// booked on its worker for the rest of the run: the summary's booked avg
+// climbed while the worker sat idle.
+it('a task sent again over a dependency it could not read gives its booked cores back', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const ran = h.o.execute(h.req('t'))
+    expect(await a.batches()).toEqual([['t']])
+    await a.begin('t')
+    await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
+    expect(await a.batches()).toEqual([['t']])
+    await a.begin('t')
+    await a.finish('t')
+    expect((await ran).exitCode).toBe(0)
+    const before = h.o.machines()[0]!.bookedAvg!
+    await Bun.sleep(300)
+    expect(h.o.machines()[0]!.bookedAvg).toBeLessThan(before)
+  } finally {
+    await h.stop()
+  }
+})
+
 // Two dependants of one dependency fail to read it together: the first's
 // end sent it again and ran it again, the second's found the key sent and
 // failed its task, though the copy it could not read was now replaced.
@@ -3258,9 +3454,12 @@ it('places an unmeasured task on any free core, and sizes the run by 2 cores and
     [2, 4e9],
     [2, 4e9],
   ])
-  expect(
-    refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } })),
-  ).toContain('unmeasured needs cpu > 0')
+  expect(refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } }))).toBe(
+    'dte() option "unmeasured.cpu" must be a number above 0, got 0',
+  )
+  expect(refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 1, memory: 'lots' } }))).toBe(
+    `dte() option "unmeasured.memory" must be bytes above 0 or a size such as '4GB', got "lots"`,
+  )
 })
 
 it('reads memory as bytes or with a unit', () => {
@@ -3284,34 +3483,53 @@ const refusal = (make: () => unknown): string => {
   }
 }
 
+// Worded as vxCache() and vxHistory() word the same refusal; a value is never printed.
+it('refuses a header it cannot send, never printing a value', () => {
+  const relay = 'https://r'
+  expect(refusal(() => dte({ relay, headers: { authorization: 'x' } }))).toBe(
+    'dte() option "headers" cannot set "authorization"',
+  )
+  expect(refusal(() => dte({ relay, headers: { a: 'x\ny' } }))).toBe(
+    'dte() option "headers.a" must be one line of text (its value is not printed)',
+  )
+})
+
 it('refuses options it does not read and workers it cannot start', () => {
   const adapter = local()
   const W = { s: { cpu: 1, memory: '1GB' } }
   expect(refusal(() => dte({ workers: W, adapter, relays: 'x' } as never))).toContain(
     'dte() has unknown option "relays"',
   )
+  // Each names the field and the value it got: one line for three fields named none.
   expect(refusal(() => dte({ workers: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
-    "dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
+    'dte() option "workers.s.cpu" must be a whole number ≥ 1, got 0',
   )
   expect(
     refusal(() => dte({ workers: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter })),
-  ).toBe("dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any")
+  ).toBe(
+    `dte() option "workers.s.memory" must be bytes above 0 or a size such as '8GB', got "8 lots"`,
+  )
+  expect(refusal(() => dte({ workers: { s: { max: 1.5, cpu: 1, memory: '1GB' } }, adapter }))).toBe(
+    'dte() option "workers.s.max" must be a whole number ≥ 0, got 1.5',
+  )
   expect(
     refusal(() =>
       dte({ workers: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } }, adapter }),
     ),
-  ).toBe('dte(): workers.s.platform is one of linux-x64, linux-arm64, darwin-x64, darwin-arm64')
+  ).toBe(
+    'dte() option "workers.s.platform" must be one of linux-x64, linux-arm64, darwin-x64, darwin-arm64, got "win32-x64"',
+  )
   // A size's typo was read as nothing: `maxx: 2` started workers uncapped.
   expect(
     refusal(() => dte({ workers: { s: { maxx: 2, cpu: 1, memory: '1GB' } as never }, adapter })),
   ).toBe(
-    'dte(): workers.s has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
+    'dte() option "workers.s" has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
   )
   expect(
     refusal(() =>
       dte({ relay: 'https://r', unmeasured: { cpu: 1, memory: '1GB', mem: 1 } as never }),
     ),
-  ).toContain('dte(): unmeasured has unknown option "mem"')
+  ).toContain('dte() option "unmeasured" has unknown option "mem"')
   expect(
     refusal(() =>
       dte({
@@ -3321,12 +3539,16 @@ it('refuses options it does not read and workers it cannot start', () => {
     ),
   ).toBe('taken')
   expect(refusal(() => dte({ workers: W, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
-    'dte(): scheduler.order is one of critical-path, graphene, fifo',
+    'dte() option "scheduler.order" must be one of critical-path, graphene, fifo, got "lifo"',
   )
   expect(refusal(() => dte({ workers: W, adapter, scheduler: { pace: 'x' } as never }))).toBe(
-    'dte(): scheduler.pace is no layer: the layers are order, place, book, scale',
+    'dte() option "scheduler" has no layer "pace" (layers: order, place, book, scale)',
   )
   expect(refusal(() => dte({}))).toBe(
+    'dte(): with no adapter, set relay: the workers that join it run the tasks',
+  )
+  // A .mjs config's bare `dte()` read `options.headers` and threw a TypeError.
+  expect(refusal(() => (dte as (o?: unknown) => unknown)())).toBe(
     'dte(): with no adapter, set relay: the workers that join it run the tasks',
   )
   expect(refusal(() => dte({ relay: 'http://relay.test' }))).toBe('taken')
@@ -3347,6 +3569,105 @@ it('refuses options it does not read and workers it cannot start', () => {
   )
   // A plain Error printed a stack under VX_E_INTERNAL (2026-10-28).
   expect(() => docker({} as never)).toThrow(UserError)
+})
+
+// A run from a git hook inherits the hook's GIT_INDEX_FILE / GIT_DIR. The
+// worktree add then wrote the new tree's index over the one being
+// committed (the staged change was gone), and every worker in its own
+// worktree read the hook's index and repository, not its own.
+// A hook in the main worktree sets a relative GIT_INDEX_FILE alone; one in
+// a linked worktree sets both, absolute.
+for (const hook of ['main', 'linked'] as const)
+  it(`local() makes its worktrees and workers under no git hook index or repository (${hook} worktree hook)`, async () => {
+    const repo = await realpath(await tmp())
+    const git = (...args: string[]) => {
+      const p = Bun.spawnSync(['git', '-c', 'commit.gpgsign=false', ...args], {
+        cwd: repo,
+        env: { ...process.env, GIT_INDEX_FILE: undefined, GIT_DIR: undefined },
+      })
+      if (p.exitCode !== 0) throw new Error(p.stderr.toString())
+      return p.stdout.toString().trim()
+    }
+    git('init', '-q')
+    git('config', 'user.email', 't@vx.local')
+    git('config', 'user.name', 't')
+    await writeFile(path.join(repo, 'a.txt'), 'a')
+    git('add', 'a.txt')
+    git('commit', '-qm', 'init')
+    await writeFile(path.join(repo, 'staged.txt'), 's')
+    git('add', 'staged.txt')
+    const commit = git('rev-parse', 'HEAD')
+    const seen = path.join(await tmp(), 'env.txt')
+    const saved = { index: process.env['GIT_INDEX_FILE'], dir: process.env['GIT_DIR'] }
+    if (hook === 'main') process.env['GIT_INDEX_FILE'] = '.git/index'
+    else {
+      process.env['GIT_INDEX_FILE'] = path.join(repo, '.git', 'index')
+      process.env['GIT_DIR'] = path.join(repo, '.git')
+    }
+    // The prepare records the worker's env and fails, so no worker starts.
+    const adapter = local({ prepare: `env > ${JSON.stringify(seen)}; exit 1` })
+    let failed = ''
+    try {
+      await adapter.spawn({
+        run: R,
+        relay: 'http://127.0.0.1:9',
+        size: 's',
+        max: 1,
+        cpu: 1,
+        memory: 1e9,
+        index: 1,
+        id: 's#1',
+        workspaceRoot: repo,
+        commit,
+        env: {},
+        exited: () => {},
+      })
+    } catch (err) {
+      failed = (err as Error).message
+    } finally {
+      if (saved.index === undefined) delete process.env['GIT_INDEX_FILE']
+      else process.env['GIT_INDEX_FILE'] = saved.index
+      if (saved.dir === undefined) delete process.env['GIT_DIR']
+      else process.env['GIT_DIR'] = saved.dir
+      await adapter.close?.()
+    }
+    expect(failed).toStartWith('prepare exited 1')
+    expect(git('diff', '--cached', '--name-only')).toBe('staged.txt')
+    const env = await readFile(seen, 'utf8')
+    expect(env).not.toMatch(/^GIT_(INDEX_FILE|DIR)=/m)
+  }, 20_000)
+
+it('a worker size or unmeasured with a key dte() does not read is refused', () => {
+  // A typo of max left the size uncapped, without a word.
+  const adapter = local()
+  expect(
+    refusal(() => dte({ workers: { s: { cpu: 1, memory: '1GB', maxx: 2 } as never }, adapter })),
+  ).toBe(
+    'dte() option "workers.s" has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
+  )
+  expect(
+    refusal(() =>
+      dte({ relay: 'https://r', unmeasured: { cpu: 1, memory: '1GB', cpus: 2 } as never }),
+    ),
+  ).toBe(
+    'dte() option "unmeasured" has unknown option "cpus" (allowed: cpu, memory) — did you mean cpu?',
+  )
+})
+
+it('docker() with no options says what it needs, as a user error', () => {
+  // A bare docker() threw a TypeError reading options.image: a crash, not a setting to fix.
+  for (const options of [undefined, {}, { image: '' }]) {
+    let err: unknown
+    try {
+      docker(options as never)
+    } catch (e) {
+      err = e
+    }
+    expect([isUserError(err), (err as Error).message]).toEqual([
+      true,
+      "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
+    ])
+  }
 })
 
 it('a run that is not distributed loads none of it', async () => {
@@ -4116,6 +4437,174 @@ it('names a tracked file a task changed as the workspace does, in a repository s
   expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
 })
 
+// A worker clears what an earlier task left under a task's outputs, but
+// never a tracked file. A git that could not list them (a corrupt index)
+// read as none tracked, and committed files under `gen/**` were deleted.
+it('refuses a checkout whose tracked files git cannot list', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  await mkdir(path.join(ws, 'a/gen'), { recursive: true })
+  await writeFile(path.join(ws, 'a/gen/g.txt'), '1\n')
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  expect(trackedFiles(ws)).toEqual(new Set(['a/gen/g.txt']))
+  await writeFile(path.join(ws, '.git/index'), 'not an index')
+  expect(() => trackedFiles(ws)).toThrow(/git ls-files/)
+  // Outside git nothing is tracked.
+  expect(trackedFiles(await tmp())).toEqual(new Set())
+})
+
+// A pathspec is a glob unless told otherwise: a project at `p*` named its
+// sibling `pa`'s changed files as its own, and its entry was withheld.
+it('names only the tracked files under a project whose directory has glob characters', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  for (const d of ['p*', 'pa']) {
+    await mkdir(path.join(ws, d), { recursive: true })
+    await writeFile(path.join(ws, d, 'in.txt'), '1\n')
+  }
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  await writeFile(path.join(ws, 'pa/in.txt'), '2\n')
+  const outputs = { files: [], workspaceFiles: [] }
+  const m = { project: 'p*', nested: [], outputs } as unknown as RunOrder
+  expect(await changedTracked(ws, 'HEAD', m, names('p*', outputs))).toEqual([])
+})
+
+// git quotes a path with a quote, a non-ASCII byte or a newline unless
+// asked for NUL-separated names: `"a/\303\251.ts"` started with no
+// project's directory, and the forecast missed the task it changed.
+it('names a changed path as it is, whatever bytes it holds', async () => {
+  const ws = await tmp()
+  await mkdir(path.join(ws, 'a'), { recursive: true })
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  git('init', '-q')
+  await writeFile(path.join(ws, 'a/x.ts'), '1\n')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  const odd = ['a/é.ts', 'a/q"uote.ts', 'a/new\nline.ts']
+  for (const f of odd) await writeFile(path.join(ws, f), '1\n')
+  git('add', '-A')
+  git('commit', '-qm', 'ii')
+  expect((await changedSinceParent(ws)).toSorted()).toEqual(odd.toSorted())
+})
+
+// `git stash create` writes a commit, and git refuses one with no identity
+// (a CI runner with none configured): the snapshot fell back to HEAD, and
+// the run's workers checked out a tree without its uncommitted changes.
+it('snapshots the uncommitted changes in a checkout with no git identity', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'commit.gpgsign=false', ...a], { cwd: ws })
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  await writeFile(path.join(ws, 'f.txt'), '1\n')
+  git('add', '-A')
+  git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
+  git('config', 'user.name', '')
+  git('config', 'user.email', '')
+  await writeFile(path.join(ws, 'f.txt'), '2\n')
+  const { tree } = await snapshot(ws)
+  expect(tree).not.toBe('')
+  expect(git('rev-parse', `${tree}:f.txt`)).toBe(git('hash-object', 'f.txt'))
+})
+
+// `git stash create` cannot save a tree holding an intent-to-add entry
+// (`git add -N`): the snapshot fell back to HEAD, without the changes.
+it('snapshots every tracked file as it is on disk, deletions, modes and intent-to-add too', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  for (const f of ['gone.txt', 'mode.sh', 'mod.txt']) await writeFile(path.join(ws, f), '1\n')
+  await symlink('mod.txt', path.join(ws, 'link'))
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  await rm(path.join(ws, 'gone.txt'))
+  await chmod(path.join(ws, 'mode.sh'), 0o755)
+  await writeFile(path.join(ws, 'mod.txt'), '2\n')
+  await rm(path.join(ws, 'link'))
+  await symlink('mode.sh', path.join(ws, 'link'))
+  await writeFile(path.join(ws, 'new.txt'), 'new\n')
+  git('add', '-N', 'new.txt')
+  await writeFile(path.join(ws, 'untracked.txt'), 'u\n')
+  const { commit, tree } = await snapshot(ws)
+  expect(git('rev-parse', `${commit}^{tree}`)).toBe(tree)
+  expect(git('ls-tree', '-r', tree).replace(/ [0-9a-f]{40}/g, '')).toBe(
+    [
+      '120000 blob\tlink',
+      '100644 blob\tmod.txt',
+      '100755 blob\tmode.sh',
+      '100644 blob\tnew.txt',
+    ].join('\n'),
+  )
+  for (const f of ['mod.txt', 'mode.sh', 'new.txt'])
+    expect(git('rev-parse', `${tree}:${f}`)).toBe(git('hash-object', f))
+  expect(git('cat-file', 'blob', `${tree}:link`)).toBe('mode.sh')
+  // The index and the working tree are as they were.
+  expect(git('status', '--porcelain')).toBe(
+    ['D gone.txt', ' M link', ' M mod.txt', ' M mode.sh', ' A new.txt', '?? untracked.txt'].join(
+      '\n',
+    ),
+  )
+})
+
 // A git that failed answered "nothing changed", and the task's rewrite of
 // a tracked file was saved under its clean key.
 it('a diff git cannot answer names the project as changed, never nothing', async () => {
@@ -4590,8 +5079,8 @@ it('removes a worker’s removed outputs only where no link leads elsewhere', as
     expect(await readdir(path.join(ws, 'other/src'))).toEqual(['index.ts'])
     expect(await readdir(outside)).toEqual(['victim'])
     expect(said).toEqual([
-      'dte: t: kept pkg/dist/in/src/index.ts, which the worker removed: a link on its path leads elsewhere',
-      'dte: t: kept pkg/dist/out/victim, which the worker removed: a link on its path leads elsewhere',
+      '[vx] dte: t: kept pkg/dist/in/src/index.ts, which the worker removed: a link on its path leads elsewhere',
+      '[vx] dte: t: kept pkg/dist/out/victim, which the worker removed: a link on its path leads elsewhere',
     ])
   } finally {
     await o.close()

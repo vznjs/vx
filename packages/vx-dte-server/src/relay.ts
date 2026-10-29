@@ -137,7 +137,7 @@ interface Participant {
   /** The relay's own notices it could not push yet. */
   queue: Message[]
   socket?: RelaySocket | undefined
-  /** When its socket dropped with no `leave`: it is gone `graceMs` on. */
+  /** When its socket dropped with no `leave`, or it joined: it is gone `graceMs` on. */
   droppedAt?: number
   /** A participant that joined on its socket: what that socket says first. */
   hello?: string
@@ -414,8 +414,9 @@ export function createRelay(opts: RelayOptions): Relay {
       // No one reads the host's.
       info: role === 'peer' ? (body.info ?? null) : null,
       queue: [],
-      // Its socket has yet to attach: one that never does (its upgrade
-      // failed, its client went) is gone a grace on, as a dropped one.
+      // Let in before its socket opens: a client gone in between never
+      // opens it, and its host held the run for good (Bun's refused
+      // upgrade too). Its socket's `attach` clears this.
       droppedAt: Date.now(),
     }
     session.byId.set(p.id, p)
@@ -470,10 +471,14 @@ export function createRelay(opts: RelayOptions): Relay {
     sweep()
     const url = new URL(req.url)
     const m = /^\/v1\/sessions\/([^/]+)\/socket$/.exec(url.pathname)
-    if (m === null) throw new HttpError(404, 'no such route')
+    if (m === null)
+      throw new HttpError(
+        404,
+        `no route ${req.method} ${url.pathname.slice(0, 200)}: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`,
+      )
     const sessionId = m[1]!
     if (!SESSION_ID.test(sessionId)) throw new HttpError(400, 'session id is not a random UUID')
-    if (req.method !== 'GET') throw new HttpError(405, 'wrong method')
+    if (req.method !== 'GET') throw new HttpError(405, 'this route takes GET')
     const token = await authorize(req, opts.verify)
     // A session is its id within its repository, so another tenant that learns
     // an id cannot open it first.
@@ -488,10 +493,10 @@ export function createRelay(opts: RelayOptions): Relay {
       const p = await enter(key, req, url, parse(asked))
       p.hello = JSON.stringify({ joined: { id: p.id, heartbeatMs } })
       const res = opts.upgrade(key, p.id, req, protocol)
-      // No socket comes, so neither does a redial or a `leave`: kept, a host
-      // so joined held its run's id forever.
+      // No socket will ever attach it, so no drop time would lapse it: a
+      // host's session kept refusing every later host 409.
       const session = sessions.get(key)
-      if (res.status !== 101 && session?.byId.get(p.id) === p) drop(session, p)
+      if (res.status !== 101 && session?.byId.get(p.id) === p) drop(session, p, true, true)
       return res
     }
     const session = sessions.get(key)
@@ -557,12 +562,13 @@ export function createRelay(opts: RelayOptions): Relay {
           const id = `refused-${crypto.randomUUID()}`
           refusals.set(id, err)
           const res = opts.upgrade('', id, req, protocol)
-          // No socket will attach to take it (Bun's upgrade fails on a
-          // request with no websocket key): kept, one leaked per request.
+          // Never attached, it would be held for good: one per request, no token needed.
           if (res.status !== 101) refusals.delete(id)
           return res
         }
-        return Response.json(errorBody(err), { status: err.status })
+        // The one route takes GET: a 405 names it, as HTTP has it.
+        const allow = err.status === 405 ? { headers: { allow: 'GET' } } : {}
+        return Response.json(errorBody(err), { status: err.status, ...allow })
       }
     },
     attach(key, id, socket) {

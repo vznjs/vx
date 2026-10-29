@@ -97,6 +97,25 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }
     },
   ],
+  [
+    "<file> imports '<name>', which no node_modules above it provides; install the workspace's dependencies first",
+    // The same import one relative hop away, in a preset.
+    async () => {
+      const dir = scratchDir()
+      await Bun.write(path.join(dir, 'preset.ts'), "export { preset } from 'nope-pkg'\n")
+      const file = path.join(dir, 'vx.config.ts')
+      await Bun.write(
+        file,
+        "import { preset } from './preset.ts'\nexport default { tasks: {}, ...preset }\n",
+      )
+      try {
+        await loadProjectConfig(file)
+        return null
+      } catch (err) {
+        return (err as Error).message
+      }
+    },
+  ],
   ['tasks must be an object keyed by task name', () => validated({ tasks: [ok] })],
   [
     "cannot find '<name>' — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set <remedy>",
@@ -118,7 +137,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     },
   ],
   [
-    '<path> is <what> — a config must be JSON data, because the cache key folds its JSON',
+    '<path> is <what> — a config must be JSON data, because the cache key is built from its JSON',
     () => validated({ tasks: { b: { ...ok, description: () => 'b' } } }),
   ],
   ['<level> has unknown field "<key>"', () => validated({ tasks: { b: { ...ok, caches: {} } } })],
@@ -559,6 +578,12 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     // definePlugin" — it had (D-159).
     'plugins[<i>] is a Promise — await the factory that returns the plugin',
     workspaceConfig(`{ plugins: [Promise.resolve(${plugin('p', '{ setup() {} }')})] }`),
+  ],
+  [
+    "plugins[<i>] is plugins[<j>] again (plugin '<name>') — declare a plugin once",
+    workspaceConfig(
+      `(() => { const p = ${plugin('p', '{ setup() {} }')}; return { plugins: [p, p] } })()`,
+    ),
   ],
   [
     'plugins[<i>].name overrides the package name',

@@ -194,6 +194,24 @@ describe('the compiled binary hands off', () => {
     expect(await localVx(nested, standalone, true)).toBeNull()
   })
 
+  // The launcher's `[ -z "${VX_HANDED_OFF-}" ]` reads empty as unset; the
+  // binary read it as handed off and stayed global.
+  it('an empty VX_HANDED_OFF is no hand-off yet, as the launcher reads it', async () => {
+    const was = process.env['VX_HANDED_OFF']
+    try {
+      process.env['VX_HANDED_OFF'] = ''
+      expect(await localVx(repo, standalone, true)).toBe(
+        path.join(repo, 'node_modules', '.bin', 'vx'),
+      )
+      // Control: a set one stops the hop.
+      process.env['VX_HANDED_OFF'] = '/elsewhere/vx'
+      expect(await localVx(repo, standalone, true)).toBeNull()
+    } finally {
+      if (was === undefined) delete process.env['VX_HANDED_OFF']
+      else process.env['VX_HANDED_OFF'] = was
+    }
+  })
+
   it("from a submodule to the superproject's install", async () => {
     const sub = path.join(repo, 'mods', 'sub')
     mkdirSync(sub, { recursive: true })
@@ -242,5 +260,28 @@ describe('the compiled binary hands off', () => {
       7,
       `local [${process.execPath}] run a b`,
     ])
+  })
+
+  // A shell running `vx run` in a script stops on Ctrl-C only when its
+  // child DIED of SIGINT; handed off, vx exited 130 and the script ran
+  // its next line (cli.md § Exit codes: vx dies of the signal).
+  it('dies of the stop signal the local vx died of', () => {
+    const bin = path.join(root, 'dies', 'vx')
+    exe(bin, 'kill -s "$1" $$\nexit 9')
+    const handed = (sig: string) =>
+      Bun.spawnSync({
+        cmd: [
+          process.execPath,
+          '-e',
+          `const { handOff } = await import(${JSON.stringify(HANDOFF)}); await handOff(${JSON.stringify(bin)}, [${JSON.stringify(sig)}])`,
+        ],
+        env: { PATH: process.env['PATH'] ?? '' },
+      })
+    for (const sig of ['INT', 'TERM', 'HUP']) {
+      const p = handed(sig)
+      expect(`${p.exitCode} ${p.signalCode}`).toBe(`null SIG${sig}`)
+    }
+    // Any other signal keeps the shell's code.
+    expect(handed('USR1').exitCode).toBe(128 + os.constants.signals.SIGUSR1)
   })
 })

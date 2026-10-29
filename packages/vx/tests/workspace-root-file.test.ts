@@ -56,11 +56,53 @@ it('a worktree, whose .git is a file, is its own top-level', async () => {
   expect(await found('repo')).toBe('VX_E_NO_WORKSPACE')
 })
 
+it("a submodule's worktree, its gitdir under .git/modules, is its own top-level too", async () => {
+  await file('repo/.git', `gitdir: ${shared}/super/.git/modules/sub/worktrees/repo\n`)
+  await file('super/.git/modules/sub/worktrees/repo/commondir', '../..\n')
+  expect(await found('repo')).toBe('VX_E_NO_WORKSPACE')
+})
+
 it('a submodule walks on to its superproject, and no further', async () => {
   await file('super/.git/HEAD', 'ref: refs/heads/main\n')
   await file('super/.vx/workspace.ts')
   await file('super/mods/sub/.git', 'gitdir: ../../.git/modules/mods/sub\n')
   expect(await found('super/mods/sub')).toBe('super')
+})
+
+it('an embedded repository walks on to the workspace that lists it, unless git ignores it', async () => {
+  // `vx lock` lists an embedded repository's configs as the outer
+  // workspace's (findProjectConfigs), so a run from inside one must find
+  // that workspace: its own `.git` stopped the walk, "no .vx/workspace.ts".
+  const git = (cwd: string, ...args: string[]) =>
+    expect(Bun.spawnSync(['git', '-C', path.join(shared, cwd), ...args]).exitCode).toBe(0)
+  git('.', 'init', '-q', 'outer')
+  await file('outer/.vx/workspace.ts')
+  await mkdir(path.join(shared, 'outer/vendor/lib/src'), { recursive: true })
+  await mkdir(path.join(shared, 'outer/vendor/kept/src'), { recursive: true })
+  git('outer/vendor', 'init', '-q', 'lib')
+  git('outer/vendor', 'init', '-q', 'kept')
+  await file('outer/.gitignore', '/vendor/kept/\n')
+  // A worktree inside the checkout is another checkout, its own top-level.
+  await file('outer/wt/.git', `gitdir: ${shared}/outer/.git/worktrees/wt\n`)
+  expect([
+    await found('outer/vendor/lib/src'),
+    await found('outer/vendor/kept/src'),
+    await found('outer/wt'),
+  ]).toEqual(['outer', 'VX_E_NO_WORKSPACE', 'VX_E_NO_WORKSPACE'])
+})
+
+// The directory reached `git check-ignore` as a pathspec: `:kept` is
+// pathspec magic, so git asked about `kept`, and an ignored repository
+// walked on into the workspace that ignores it.
+it('an ignored embedded repository named like pathspec magic stops the walk', async () => {
+  const git = (cwd: string, ...args: string[]) =>
+    expect(Bun.spawnSync(['git', '-C', path.join(shared, cwd), ...args]).exitCode).toBe(0)
+  git('.', 'init', '-q', 'outer')
+  await file('outer/.vx/workspace.ts')
+  await mkdir(path.join(shared, 'outer/:kept/src'), { recursive: true })
+  git('outer', 'init', '-q', ':kept')
+  await file('outer/.gitignore', '/:kept/\n')
+  expect(await found('outer/:kept/src')).toBe('VX_E_NO_WORKSPACE')
 })
 
 it('a submodule whose own .git is a directory walks on to its superproject too', async () => {
@@ -93,8 +135,11 @@ it('a submodule whose own .git is a directory walks on to its superproject too',
   git('super', 'add', '-A')
   git('super', 'commit', '-q', '-m', 'super')
   expect(await found('super/mods/sub')).toBe('super')
-  // CONTROL: a repository the superproject does not track is its own top-level.
+  // CONTROL: a repository the superproject neither tracks nor lists is its
+  // own top-level. Ignored, as one git lists untracked is the workspace's
+  // (the embedded-repository walk above).
   await file('super/other/package.json', JSON.stringify({ name: 'other' }))
+  await file('super/.gitignore', '/other/\n')
   git('super/other', 'init', '-q')
   expect(await found('super/other')).toBe('VX_E_NO_WORKSPACE')
 })

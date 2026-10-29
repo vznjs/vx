@@ -53,6 +53,13 @@ does not):
 is one of its inputs), `project`, `package`, `named` or `selected`, and
 `via` is the `dependsOn` chain that carried the change.
 
+## While a run is in progress
+
+```sh
+vx last --live --format json            # what runs, what ended, what waits, warnings so far
+vx last --live --follow --format json   # then each event (output included), one per line, until the run ends
+```
+
 ## When a task fails
 
 ```sh
@@ -60,6 +67,7 @@ vx last --failed --format json   # the last failed run; a failed row has output 
 vx last --log app#build          # one task's output: a failure's, or its cached log
 ```
 
+`warnings` holds what the run warned of (absent when nothing).
 A failed row's `output` is the task's output as plain text (secrets masked)
 and `locations` the files it names as `{ file, line?, col? }`. Read those
 files, fix, and re-run the same command: cached tasks that passed replay from the cache.
@@ -77,7 +85,14 @@ vx last --stats --format json            # per task: p50 (the live estimate's), 
 vx last --stats --branch main --format json  # p50 from main's timings
 vx last --stats app#build --format json  # one task; a task name covers every project
 vx last --list --format json             # recent runs, newest first
+vx last --sql "SELECT name, sql FROM sqlite_schema" --format json  # the history's tables
 ```
+
+Any other question (one task's memory trend, failures per project, which
+inputs a key folded) is one read-only query: `vx last --sql "<SELECT>"
+--format json` prints `{ rows }`. `runs` holds one row per task per run
+(duration, cache hit, cpu, memory, attempts, failure reasons),
+`invocations` one per run; join on `run_id`. Times are epoch ms.
 
 ## Workspace health
 

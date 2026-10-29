@@ -32,11 +32,13 @@ import {
   identityColor,
   maskedCommand,
   paint,
+  printable,
+  ruleWidth,
   ui,
   type ColorSupport,
 } from '../util/index.js'
 import { neverStarted } from './summary.js'
-import { outcomeLabel, ranNoCache, skippedReason } from './events.js'
+import { outcomeLabel, outcomeWord, ranNoCache, skippedReason } from './events.js'
 import { fileMemo, linkPaths } from './path-links.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
@@ -46,8 +48,6 @@ const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
 // red / yellow / cyan) so a task id can never read as an outcome. Each
 // half of an id hashes its own name: same project, same hue; same target,
 // same hue, in every run, list and region row.
-// Section rules + the summary rule share one frame width.
-const FRAME_WIDTH = 60
 
 const SUCCESS = '#22c55e' // green-500 — success / fresh
 const WARN = '#eab308' // yellow-500 — skipped
@@ -99,8 +99,11 @@ export function formatTaskBlock(
 
   const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('', s, colors, { dim: true })
-  const header = formatBlockHeader(outcome, colors)
-  const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
+  // A ready server's frame reads as the live one does: marked, and running.
+  const mark = persistentMark(node, colors)
+  const running = mark !== '' && outcome.status === 'success' && outcome.serverExit === undefined
+  const header = running ? paint(ACCENT, 'running', colors) : formatBlockHeader(outcome, colors)
+  const lines: string[] = [`${corner('┌─')} ${mark}${idPainted} ${corner('>')} ${header}`]
 
   // The command section shows what actually ran — executed tasks
   // (success and failed). Cache hits normally skip it (the stored
@@ -126,9 +129,16 @@ export function formatTaskBlock(
   lines.push(...violationSection(outcome, colors))
 
   lines.push(
-    `${corner('└─')} ${idPainted}${whereNote(outcome, colors)} ${corner('──')}${formatBlockFooter(outcome, colors)}`,
+    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${running ? runningFooter(outcome, colors) : formatBlockFooter(outcome, colors)}`,
   )
   return lines.join('\n') + '\n'
+}
+
+/** What a bounded capture dropped from its head, so a capped log never reads as whole. */
+function droppedNote(lost: number, colors: ColorSupport): string {
+  return paint('', `… ${lost} earlier character${lost === 1 ? '' : 's'} dropped`, colors, {
+    dim: true,
+  })
 }
 
 /**
@@ -147,7 +157,7 @@ function pushStreamSection(
   if (text.trim().length === 0) return
   lines.push(sectionLine(title, color, colors), '')
   if (lost > 0) {
-    lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
+    lines.push(droppedNote(lost, colors))
   }
   pushBodyLines(lines, text)
   lines.push('')
@@ -171,7 +181,7 @@ function pushOutputSection(
   if (output.every((c) => c.text.trim().length === 0)) return
   lines.push(sectionLine('OUTPUT', '', colors), '')
   if (lost > 0) {
-    lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
+    lines.push(droppedNote(lost, colors))
   }
   const body: Array<{ text: string; err: boolean }> = []
   let open: { parts: string[]; err: boolean } | null = null
@@ -207,8 +217,8 @@ function pushOutputSection(
 function sectionLine(title: string, color: string, colors: ColorSupport): string {
   const corner = (s: string) => paint('', s, colors, { dim: true })
   const label = paint(color, title, colors, { bold: true })
-  const width = Math.min(FRAME_WIDTH, colors.columns ?? FRAME_WIDTH)
-  const rule = corner('─'.repeat(Math.max(1, width - 4 - title.length)))
+  // As wide as the footer's rule, so the frames and the footer line up.
+  const rule = corner('─'.repeat(Math.max(1, ruleWidth(colors) - 4 - title.length)))
   return `${corner('├─')} ${label} ${rule}`
 }
 
@@ -399,6 +409,21 @@ export function formatTaskHitLine(
   return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath)
 }
 
+/**
+ * The `--output-logs hash-only` line: outcome word, task id, cache key —
+ * absent for a task that never computed one (skipped, uncacheable). The
+ * word in its outcome's colour, the key dim.
+ */
+export function formatTaskHashLine(
+  node: TaskNode,
+  o: TaskOutcome,
+  colors: ColorSupport = NO_COLOR,
+): string {
+  const color = o.status === 'aborted' ? ABORTED : statusOf(o).color
+  const key = o.hash === undefined ? '' : ` ${paint('', o.hash, colors, { dim: true })}`
+  return `${paint(color, outcomeWord(o), colors)} ${paintTaskId(node, colors)}${key}`
+}
+
 /** Compact one-liner for an executed task in broad mode. */
 export function formatTaskExecutedLine(
   node: TaskNode,
@@ -547,7 +572,7 @@ export function formatFrameOpen(
 ): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
   const cmd = shownCommand(node, forwardArgs)
-  const mark = isPersistentNode(node) ? `${paint(ACCENT, '▸', colors)} ` : ''
+  const mark = persistentMark(node, colors)
   return `${corner('┌─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
 }
 
@@ -567,7 +592,9 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // VERBATIM: a violation is evidence, and evidence that has been rewritten
   // for display is not the thing the sandbox reported. The outcome keeps
   // every record for telemetry.
-  const body = [...new Set(vlines)]
+  // Verbatim but for control bytes: a denied path is anyone's bytes, and
+  // one named `ESC ]0;…` retitled the terminal (the `\xNN` is still exact).
+  const body = [...new Set(vlines)].map(printable)
   // Red, not amber: a violation fails the task, so it reads as a failure.
   // vx's note, after the evidence: the grants that would have allowed it.
   // A read the output depends on is a key input too; the sandbox never
@@ -584,12 +611,16 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
           ...(fix.inputs !== undefined
             ? [
                 dim(
-                  `and, if the output depends on them, inputs.files: [${fix.inputs.map((p) => `'${p}'`).join(', ')}]`,
+                  `and, if the output depends on them, inputs.files: [${fix.inputs.map((p) => `'${printable(p)}'`).join(', ')}]`,
                 ),
               ]
             : []),
           ...(fix.withheld !== undefined
-            ? [dim(`credential path, grant it only on purpose: ${fix.withheld.join(', ')}`)]
+            ? [
+                dim(
+                  `credential path, grant it only on purpose: ${fix.withheld.map(printable).join(', ')}`,
+                ),
+              ]
             : []),
           '',
         ]
@@ -610,14 +641,13 @@ export function formatFrameClose(
   colors: ColorSupport = NO_COLOR,
 ): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
-  const persistent = isPersistentNode(node)
-  const mark = persistent ? `${paint(ACCENT, '▸', colors)} ` : ''
+  const mark = persistentMark(node, colors)
   // A persistent task's child keeps running past this "ready" outcome,
   // so the close reads `running` (accent), not `success` — the ▸ marks
   // both ends of the frame as a long-lived task.
   const tail =
-    persistent && outcome.status === 'success'
-      ? ` ${paint('', `(${formatElapsed(outcome.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
+    mark !== '' && outcome.status === 'success' && outcome.serverExit === undefined
+      ? runningFooter(outcome, colors)
       : formatBlockFooter(outcome, colors)
   const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${tail}`
   const violations = violationSection(outcome, colors)
@@ -633,8 +663,12 @@ function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string {
   )
 }
 
-function isPersistentNode(node: TaskNode): boolean {
-  return node.config.exec?.persistent !== undefined
+function persistentMark(node: TaskNode, colors: ColorSupport): string {
+  return node.config.exec?.persistent !== undefined ? `${paint(ACCENT, '▸', colors)} ` : ''
+}
+
+function runningFooter(o: TaskOutcome, colors: ColorSupport): string {
+  return ` ${paint('', `(${formatElapsed(o.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
 }
 
 /**
@@ -737,6 +771,8 @@ function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
       return paint(ERROR, word, colors, { bold: true })
     case 'skipped':
       return paint(WARN, word, colors)
+    case 'aborted':
+      return paint(ABORTED, word, colors)
     default:
       return dim(word)
   }
@@ -762,12 +798,10 @@ function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
       return paint(ERROR, word, colors, { bold: true })
     case 'skipped':
       return paint(WARN, word, colors)
-    case 'cache-hit':
-    case 'cache-hit-remote':
-    case 'success':
-      return paint('', word, colors, { dim: true })
+    case 'aborted':
+      return paint(ABORTED, word, colors)
     default:
-      return o.status
+      return paint('', word, colors, { dim: true })
   }
 }
 
@@ -779,7 +813,7 @@ function sandboxFixLine(f: NonNullable<TaskOutcome['sandboxFix']>): string | und
   const fix = Object.entries(f).filter(([k]) => k !== 'withheld' && k !== 'inputs')
   if (fix.length === 0) return undefined
   const parts = fix.map(
-    ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${p}'`).join(', ')}]`,
+    ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${printable(p)}'`).join(', ')}]`,
   )
   return `exec.sandbox.allow: { ${parts.join(', ')} }`
 }

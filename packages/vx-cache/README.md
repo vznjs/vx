@@ -37,15 +37,17 @@ export default {
   names both by their hashes (`vx-issuer`, `vx-repository`), and the
   server refuses a token of another repository.
 - `timeoutMs` (default 30 000) bounds each read and query, and
-  `uploadTimeoutMs` (default 60 000) each upload, each from 1 to
-  2 147 483 647 ms (a timer fires any other at once). A download is bounded
-  the same way until its answer, then only while no bytes arrive: a big
-  artifact still coming in is not cut off.
+  `uploadTimeoutMs` (default 60 000) each upload. A download is bounded
+  the same way until its answer, then must bring at least 1 MiB a second
+  over each `timeoutMs`: a big artifact still coming in is not cut off,
+  and one trickling in is. Each is ms above 0 and up to 2³¹−1 (the
+  longest a timer holds), or `vxCache()` refuses it.
 - `headers` are sent on every request to the server, for a proxy in
   front of it, such as a Cloudflare Access service token:
   `headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
 'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET }`. An
-  unset value is left out; `authorization` stays the CI token's. A
+  unset value is left out; `authorization`, `content-type`, `content-length`
+  and the `vx-*` names stay the request's own (setting one is refused). A
   redirect is not followed (it would carry them on): it fails the
   request, naming where it pointed. A DTE
   worker sends them too, so give its job the same secrets.
@@ -59,8 +61,10 @@ decides whether the job gets in; it writes its own branch.
   and asked again before it ends; after a 5xx, a 429 or no answer
   from GitHub it is asked again, three tries in all, before the remote
   turns off. The job needs
-  `permissions: id-token: write`; without it (`GITHUB_ACTIONS` is set
-  but no token comes), the plugin warns and the job reads only.
+  `permissions: id-token: write`, which sets
+  `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`;
+  without it (`GITHUB_ACTIONS` is set but no token comes), the plugin
+  warns and the job reads only.
 - On GitLab, name an `id_tokens` entry `VX_CACHE_TOKEN` with the
   server's origin as `aud`; without it (`GITLAB_CI` is set but no
   token comes), the plugin warns and the job reads only.
@@ -72,7 +76,8 @@ first read, said once, and the run stays local.
 A run that hands tasks to other jobs lends them its token (core's
 `lend()`), and they read and write with it: a job started from another
 workflow would carry a token that writes nowhere the run reads. A job
-uses a lent token over its own and never lends one on.
+uses a lent token over its own and never lends one on, nor any once
+its remote is off for the run.
 
 A refused token is said once and turns the remote off for the run; a
 refused write (a job that reads only) turns off writes alone. Any other
@@ -87,12 +92,18 @@ a run reads git's branch and the default branch only), and the first ref
 holding a hash answers it; its download names that ref. A run that reads
 no ref says so and stays local. The run asks the server's limits once
 (`/v1/capabilities`) and checks in chunks of its `maxCheckHashes`
-lookups, all at once. Each
+lookups, all at once; a run reading more refs than one check takes
+(Workers' default is 6) spreads each hash's scopes over several. It
+keeps to the limits each `/v1/artifacts` answer names, a refusal's too,
+so a server restarted with lower ones refuses one check, not the run's. Each
 upload is one artifact by `PUT`, up to four at once: its bytes reach the
 bucket untouched by the server's code (a batch, split by that code, ran
 out of Workers' CPU). While the server names no limits (said once),
 checks go one hash at a time: no limit is guessed. An artifact over the server's upload limit is not sent: it
-is said once.
+is said once. An answer is read no further than its use: 64 KiB for the
+capabilities or a token, 512 bytes a hash for a check, a refusal's first
+2 KiB; a longer one is refused, so a server's endless answer cannot fill
+memory.
 
 Task timings are not this plugin's: `@vzn/vx-history` keeps them.
 

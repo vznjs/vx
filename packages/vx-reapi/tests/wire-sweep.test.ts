@@ -89,6 +89,26 @@ describe.if(CHUNKING_SUPPORTED)('what every call carries', () => {
     ]).toEqual([refused('authorization'), refused('x-token'), '(no refusal)'])
   })
 
+  // grpc-js refused such a KEY on every call too: the cache degraded every
+  // request to a miss, and the executor said the server could not be reached.
+  it('a header name gRPC metadata cannot carry is refused at construction', () => {
+    const refusal = (headers: Record<string, string>): string => {
+      try {
+        new ReapiClient({ endpoint: fake.endpoint, headers }).close()
+        return '(no refusal)'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    const refused = (k: string) =>
+      `reapi: header name ${JSON.stringify(k)} is not one gRPC metadata can carry (lowercase letters, digits, "-", "_" and ".", not ending "-bin")`
+    expect([
+      refusal({ 'x api key': 'k' }),
+      refusal({ 'x-token-bin': 'k' }),
+      refusal({ 'X-BuildBuddy-API-Key': 'k' }),
+    ]).toEqual([refused('x api key'), refused('x-token-bin'), '(no refusal)'])
+  })
+
   it('RequestMetadata is protobuf’s own encoding, empty fields omitted; headers ride along', async () => {
     await using(
       {

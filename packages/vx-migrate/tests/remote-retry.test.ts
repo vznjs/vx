@@ -1,8 +1,8 @@
 // Turbo's resend rule (`turborepo-api-client/src/retry.rs`), as both cache
 // wires apply it: which answers are resent, after how long, how often.
 import { describe, expect, it } from 'bun:test'
-import { resolveNxCacheConfig } from '../src/nx-cache/index.js'
-import { resolveTurboCacheConfig } from '../src/turbo-cache/index.js'
+import { nxCache } from '../src/nx-cache/index.js'
+import { turboCache } from '../src/turbo-cache/index.js'
 import { Cooldown, withRetry } from '../src/remote-retry.js'
 
 type Answer = Response | Error
@@ -207,22 +207,22 @@ describe('the retries option', () => {
     }
   }
   // A NaN never reaches the bound: the request would be resent forever.
+  // Refused at the call, with no remote named: a laptop passes nothing
+  // the first CI run fails on.
   it('is a whole number ≥ 0 on both wires', () => {
-    const turbo = (retries: number) =>
-      refusal(() => resolveTurboCacheConfig({ apiUrl: 'http://t', token: 't', retries }, {}))
-    const nx = (retries: number) =>
-      refusal(() => resolveNxCacheConfig({ server: 'http://n', retries }, {}))
+    const turbo = (retries: number) => refusal(() => turboCache({ retries }))
+    const nx = (retries: number) => refusal(() => nxCache({ retries }))
     expect([NaN, -1, 1.5, 0, 3].map(turbo)).toEqual([
-      'turboCache(): retries must be a whole number ≥ 0, got NaN',
-      'turboCache(): retries must be a whole number ≥ 0, got -1',
-      'turboCache(): retries must be a whole number ≥ 0, got 1.5',
+      'turboCache() option "retries" must be a whole number ≥ 0, got NaN',
+      'turboCache() option "retries" must be a whole number ≥ 0, got -1',
+      'turboCache() option "retries" must be a whole number ≥ 0, got 1.5',
       '(no refusal)',
       '(no refusal)',
     ])
     expect([NaN, -1, 1.5, 0, 3].map(nx)).toEqual([
-      'nxCache(): retries must be a whole number ≥ 0, got NaN',
-      'nxCache(): retries must be a whole number ≥ 0, got -1',
-      'nxCache(): retries must be a whole number ≥ 0, got 1.5',
+      'nxCache() option "retries" must be a whole number ≥ 0, got NaN',
+      'nxCache() option "retries" must be a whole number ≥ 0, got -1',
+      'nxCache() option "retries" must be a whole number ≥ 0, got 1.5',
       '(no refusal)',
       '(no refusal)',
     ])

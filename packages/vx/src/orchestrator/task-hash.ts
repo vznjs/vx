@@ -22,6 +22,7 @@ import {
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { GROUP_VIA } from '../history/index.js'
 import {
   isUserError,
   keysSorted,
@@ -400,6 +401,24 @@ async function resolveKeyInput(
   const upstreamHashes = upstreamPairs.map(([, hash]) => hash)
   // hash → upstream task id, for capture-row naming only (not folded).
   const upstreamIds = new Map(upstreamPairs.map(([id, hash]) => [hash, id]))
+  // A group records no run and keeps no fingerprints, so `vx why` could not
+  // see past one: each folded group's members are captured as rows of their
+  // own, named through it. Rows only, never folded: the group's hash already
+  // folds theirs.
+  if (args.captureInto !== undefined) {
+    const folded = new Set(upstreamPairs.map(([id]) => id))
+    for (const g of args.upstream) {
+      if (g.groupUpstream === undefined || !folded.has(g.node.id)) continue
+      for (const m of expandGroupUpstream(g.groupUpstream)) {
+        if (m.hash === undefined) continue
+        args.captureInto.push({
+          kind: 'upstream',
+          name: `${g.node.id}${GROUP_VIA}${m.node.id}`,
+          hash: m.hash,
+        })
+      }
+    }
+  }
   // The DEPENDENCY closure, groups expanded — for the executor's input root.
   // Deliberately NOT the filtered set above: `inputs.tasks` says which
   // upstream KEYS this task's key folds, and what a task may READ is

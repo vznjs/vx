@@ -1751,9 +1751,9 @@ describe('vx init — the generated build is not a cached no-op', () => {
         `bun add -d ${all} && vx lock && vx run compile --all`,
         `yarn add -D -W ${all} && vx lock && vx run compile --all`,
         `yarn add -D ${all} && vx lock && vx run compile --all`,
-        `pnpm add -D -w ${all} && vx lock && vx run compile --all`,
-        'pnpm add -D -w @vzn/vx && vx lock && vx run compile --all',
-        'pnpm add -D -w @vzn/vx@0.0.633 && vx lock && vx run compile --all',
+        `pnpm add -D ${all} && vx lock && vx run compile --all`,
+        'pnpm add -D @vzn/vx && vx lock && vx run compile --all',
+        'pnpm add -D @vzn/vx@0.0.633 && vx lock && vx run compile --all',
       ])
     } finally {
       if (ua === undefined) delete process.env['npm_config_user_agent']

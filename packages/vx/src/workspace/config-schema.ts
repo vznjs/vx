@@ -28,6 +28,7 @@ import {
   anyTaskGlob,
   asTrees,
   isLiteralPattern,
+  hasControl,
   parseDependencySpec,
   DependencySpecError,
 } from '../util/index.js'
@@ -55,13 +56,6 @@ export function isCacheScope(v: unknown): v is string {
   return typeof v === 'string' && /^[\w.@/:-]{1,128}$/.test(v)
 }
 
-/**
- * A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
- * branch and a laptop on it reads (2026-10-17). The repository's
- * identity, not a remote's local name, so a clone whose `origin` is a fork
- * names the fork. A name may hold characters a scope may not; each
- * becomes `_`.
- */
 const BASE_BRANCH_RULE = "must be a branch name like 'main'"
 
 /**
@@ -80,6 +74,13 @@ function isBaseBranch(value: unknown): value is string {
   )
 }
 
+/**
+ * A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
+ * branch and a laptop on it reads (2026-10-17). The repository's
+ * identity, not a remote's local name, so a clone whose `origin` is a fork
+ * names the fork. A name may hold characters a scope may not; each
+ * becomes `_`.
+ */
 export function branchCacheScope(repo: string, branch: string): string {
   return `${repo.toLowerCase()}:${branch}`.replace(/[^\w.@/:-]/g, '_').slice(0, 128)
 }
@@ -89,16 +90,16 @@ export function cacheScopeError(source = 'VX_CACHE_SCOPE'): string {
   return `${source} ${CACHE_SCOPE_RULE}`
 }
 
-/** Why `VX_CACHE_SCOPE` is refused, as the run's error. */
-export function cacheScopeEnvError(): UserError {
-  return new UserError(cacheScopeError())
+/** Why `VX_CACHE_SCOPE` (`got`) is refused, as the run's error: usage, as every `VX_*` value is. */
+export function cacheScopeEnvError(got: string): UserError {
+  return new UserError(`${cacheScopeError()} (got ${got})`, 'VX_E_USAGE')
 }
 
 /** `baseBranch`: `VX_BASE_BRANCH`, else the workspace's; undefined lets git name it. */
 export function configuredBaseBranch(workspace: WorkspaceConfig | null): string | undefined {
   const env = settingEnv('baseBranch')
   if (env !== undefined && !isBaseBranch(env)) {
-    throw new UserError(`VX_BASE_BRANCH ${BASE_BRANCH_RULE}`, 'VX_E_USAGE')
+    throw new UserError(`VX_BASE_BRANCH ${BASE_BRANCH_RULE} (got ${env as string})`, 'VX_E_USAGE')
   }
   return (env as string | undefined) ?? workspace?.baseBranch
 }
@@ -253,7 +254,8 @@ function validateSettingValue(value: unknown, path: string, where: string): void
   const untyped =
     (kind.type === 'concurrency' && typeof value === 'string' && !value.endsWith('%')) ||
     (kind.type === 'int' && typeof value !== 'number') ||
-    (kind.type === 'bool' && typeof value !== 'boolean')
+    (kind.type === 'bool' && typeof value !== 'boolean') ||
+    (kind.type === 'size' && value === 'false')
   if (untyped || parseSettingValue(kind, value) === null) {
     throw new UserError(settingRefusal(path, where, value, shown(value)))
   }
@@ -278,11 +280,13 @@ function validateSettingsExtra(config: WorkspaceConfig, configPath: string): voi
 /**
  * A refused value as a message quotes it. A workspace file is evaluated
  * in-process and no JSON rule precedes its schema, so a value here may be
- * one `JSON.stringify` throws on (`30n`) or drops (a symbol): the refusal
- * became a TypeError with a stack.
+ * one `JSON.stringify` throws on (`30n`), drops (a symbol) or misnames
+ * (`Infinity` as null): the refusal became a TypeError with a stack.
  */
 function shown(v: unknown): string {
-  return typeof v === 'bigint' ? `${v}n` : (JSON.stringify(v) ?? String(v))
+  if (typeof v === 'bigint') return `${v}n`
+  if (typeof v === 'number' && !Number.isFinite(v)) return String(v)
+  return JSON.stringify(v) ?? String(v)
 }
 
 /** A `plugins` entry that stands for no plugin: `undefined`, `null` or `false`. */
@@ -305,18 +309,24 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     }
     const verbOwners = new Map<string, string>()
     const fileClaimants = new Map<string, { name: string; at: number }>()
+    const seenAt = new Map<object, number>()
     for (const [i, p] of (config.plugins as readonly unknown[]).entries()) {
       // A factory that declines returns nothing, and `cond && plugin()` is
       // false: both are skipped, as Vite skips them.
       if (isSkippedPlugin(p)) continue
       if (p === null || typeof p !== 'object') {
         // Nx's nx.json lists plugins by module name (`'@nx/vite/plugin'`);
-        // a vx plugin is the value its package's function returns.
+        // a vx plugin is the value its package's function returns, and
+        // `plugins: [otel]` is that function, not called.
         throw new UserError(
           `${configPath}: \`plugins[${i}]\` must be an object` +
             (typeof p === 'string'
               ? ` — a plugin is what its package's function returns (\`nx()\` from \`@vzn/vx-migrate\`), not a module name`
-              : ''),
+              : typeof p === 'function'
+                ? p.name === ''
+                  ? ' — it is a function; call the factory that returns the plugin'
+                  : ` — it is the function '${p.name}'; call it: ${p.name}()`
+                : ''),
         )
       }
       // The loose schema's shape (unknown-typed hooks) plus the one retired
@@ -344,6 +354,15 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           `${configPath}: \`plugins[${i}].name\` overrides the package name ('${String(plug.name)}' over '${pkg}') — a plugin's name is its package name; drop the field`,
         )
       }
+      // One instance twice (two presets sharing it) ran its setup, its
+      // handlers and its telemetry sinks twice. Two instances stay two.
+      const first = seenAt.get(p)
+      if (first !== undefined) {
+        throw new UserError(
+          `${configPath}: \`plugins[${i}]\` is \`plugins[${first}]\` again (plugin '${pkg}') — declare a plugin once`,
+        )
+      }
+      seenAt.set(p, i)
       // A misspelled hook (`excutor`, `setUp`) was never called and never
       // said: tasks ran here with the plugin's executor unheard (X-19).
       for (const key of Object.keys(plug)) {
@@ -509,6 +528,12 @@ export function validateProjectConfig(
         `${configPath}: \`name\` must be a non-empty string with no surrounding whitespace and no "#" (a task is <name>#<task>)`,
       )
     }
+    // Printed raw by the status line and summary: `ESC ]0;` retitled the terminal.
+    if (hasControl(name)) {
+      throw new UserError(
+        `${configPath}: \`name\` ${JSON.stringify(name)} holds a control character — rename the project`,
+      )
+    }
     const why = projectNameProblem(name)
     if (why !== null) {
       throw new UserError(
@@ -529,6 +554,12 @@ export function validateProjectConfig(
       throw new UserError(
         `${configPath}: tag ${JSON.stringify(tag)} ${why} — \`--filter tag:<name>\` could not ` +
           `name it. Rename the tag.`,
+      )
+    }
+    // Printed raw by `vx show`, as a name is.
+    if (hasControl(tag)) {
+      throw new UserError(
+        `${configPath}: tag ${JSON.stringify(tag)} holds a control character — rename the tag`,
       )
     }
   }
@@ -581,9 +612,7 @@ export function validateProjectConfig(
       }
       const retries = (exec as { retries?: unknown }).retries
       if (retries !== undefined) {
-        if (typeof retries !== 'number' || !Number.isInteger(retries) || retries < 0) {
-          throw new UserError(`${where}.exec.retries must be a non-negative integer`)
-        }
+        validateSettingValue(retries, 'run.retries', `${where}.exec.retries`)
       }
       const remote = (exec as { remote?: unknown }).remote
       if (remote !== undefined && typeof remote !== 'boolean' && remote !== 'only') {
@@ -1105,7 +1134,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       files: "the task's `inputs.files`",
       output: '`outputs.files`',
       env: "the task's `inputs.env`",
-      dependencies: "the task's `dependsOn` (an upstream's key folds into this one)",
+      dependencies: "the task's `dependsOn` (an upstream's key goes into this one)",
       enabled: 'no field: a task with a `cache` block caches, one without runs every time',
     },
   ],
@@ -1655,7 +1684,9 @@ export function taskNameProblem(name: string): string | null {
           ? "holds '*', which makes it a pattern"
           : name.startsWith('^') || name.startsWith('!')
             ? `starts with '${name[0]}', which names dependencies' tasks or negates`
-            : null
+            : hasControl(name)
+              ? 'holds a control character'
+              : null
 }
 
 /**

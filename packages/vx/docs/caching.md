@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v49'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v50'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -131,7 +131,7 @@ over (in order):
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
    settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
-   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, the root `package.json`'s `workspaces.nohoist` and `installConfig`)
+   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, `.npmrc`, the root `package.json`'s `workspaces.nohoist` and `installConfig`)
    and folds each whole into every task.
 
    The run reads each claimed root file once, before any task. A task
@@ -369,7 +369,8 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     whose static directory passes through a link (`lib/**` over
     `lib -> ../shared`) takes the link as an input: git lists a linked
     directory as the link alone, so the glob matched nothing and an
-    edit behind it was a hit (2026-10-25). A link to a directory below
+    edit behind it was a hit (2026-10-25); each brace alternative counts
+    alone (`{lib,src}/**`). A link to a directory below
     a glob's fixed prefix (`src/**/*.ts` over `src/v -> ../shared`,
     `**/*.ts` over `lib -> ../shared`) is an input the same way whenever
     the glob could match a path under it: its name alone matched no
@@ -1098,7 +1099,7 @@ the same selection `inputs.tasks` applies at hash time
 `selectFoldedDeps`); every other link target inside the root is
 withheld, so an import of a sibling the key never sees fails and is
 reported instead of caching a result an edit there would not re-run.
-Any exec task counts, cached or not: its key folds its project's files
+Any exec task counts, cached or not: its key includes its project's files
 through its `inputs`, and one with no `inputs` is keyless, so a key that
 folds it is never stored or read. A persistent task counts the same way,
 so a cached e2e behind a dev server keyed on its sources re-runs when
@@ -1293,12 +1294,14 @@ any task, then restores what it holds and runs the rest without saving
 it. An empty one has nothing to serve and fails the run before any task:
 `cache directory <path> is not writable (EACCES: …)`, with
 `--cache-dir <path>` as the way out. `vx cache clean` is refused the
-same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
+same way (its `--dry` only reads, and reads). The readers (`vx show`, `why`,
 `last`, `info`) open such a directory read-only and go on.
 Where the directory cannot be created at all (a read-only checkout with
 no cache yet) a run says `cannot create cache directory <path>
-(EACCES: …)`, naming the workspace `cache.dir` field and `--cache-dir`;
-the readers and `vx cache clean` find no cache and go on.
+(EACCES: …)` (`VX_E_FS`), naming the workspace `cache.dir` field and
+`--cache-dir`; a file where the directory or a parent of it goes is
+named as the one to move away. The readers and `vx cache clean` find no
+cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out
 of room is `[vx] cache save failed: ENOSPC …` (the task's work ran, the
@@ -1381,7 +1384,7 @@ root) and it holds everything, shared with no other workspace:
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
 ├── failures/<runId>.json                   a failed run's task output and the files it
-│                                           names (`vx last --format json`, getFailures);
+│                                           names (`vx last --format json`, runFailures);
 │                                           the newest 50 kept
 └── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
     ├── outputs/<rel>                       declared output files, project-relative (when any),
@@ -1526,6 +1529,9 @@ non-negative numbers; anything else in a foreign sidecar is dropped.
 save (`outputs/dist/empty`, `workspace-outputs/gen/empty` under
 `outputs.workspaceFiles`): a tar of regular files cannot hold them, and
 a hit makes each one, so the tree a hit leaves is the one the miss left.
+A miss's clean removes the empty directories it finds under the outputs
+too, so one an older build left is not saved as this run's, and a hit
+removes one the entry does not hold, as it removes a stray file.
 Each name is held to a file entry's rules and to the declared outputs,
 and is reached only through directories that stay in the project. Its
 index row is the path with a trailing slash (`dist/empty/`); the
@@ -1563,10 +1569,15 @@ one leading out of the workspace, fails the save by name, as the config
 spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
 followed). An output directory that is a symlink (`dist -> real-out`) is
-followed by the clean as by the save and restore, so its target is the
+followed by the clean as by the save and restore, named by a glob
+(`dist/**`) or a literal (`dist`) alike, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5). The clean prunes the directories it emptied (before a miss it keeps
+nothing is deleted through it (X-5). So does one, in either scope, that
+resolves into a `.git` (any case) or the root's `.vx`: for the root
+project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
+under `dist/**` had the clean delete the repository. A recorded row
+reached through such a link is never removed either. The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
 task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
@@ -1657,7 +1668,7 @@ and stamp are one write transaction, so another version's open waits
 rather than landing between them; an index already current is opened
 without the lock.
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
-says why (item 896; `vx cache clean --dry-run` previews the reset
+says why (item 896; `vx cache clean --dry` previews the reset
 instead, item 1083).
 That open prints nothing (2026-10-06: the cache is vx's to
 keep). The artifacts stay: each is indexed again from its own bytes
@@ -2145,8 +2156,17 @@ breaking footer).
 
 ### History
 
+- **v49 → v50**: stored bytes wrong under a key the change does not move
+  (2026-10-29). Two branches each took v49 for one of the two changes
+  below: a store written by one lacks the other's (brace alternatives
+  read alone, or `dirModes` in the sidecar), and a v50 read would trust
+  it. A v49 entry is never read.
 - **v48 → v49**: stored bytes wrong under a key the change does not move
-  (2026-10-28). A hit made each missing output directory with mkdir's
+  (2026-10-28). Each brace alternative is read alone: `{dist,lib}` is the
+  two trees, and `{./dist,lib}/**` drops the `./`. An output glob folds
+  as its text, so a v48 entry for `outputs: ['{dist,lib}']` holds an empty
+  artifact under the unchanged key and would restore nothing.
+  A hit made each missing output directory with mkdir's
   default, so `chmod 700 dist/keys` came back 0755 after `rm -rf dist` or
   on a fresh checkout, and every user could read the files it kept to
   its owner. The sidecar now keeps `dirModes`, the mode of each output

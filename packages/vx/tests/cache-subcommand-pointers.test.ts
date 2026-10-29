@@ -38,13 +38,23 @@ it('list, ls, gc and purge name the verb that answers them', async () => {
   ])
 })
 
+it('a clean flag typed without clean names the whole clean command', async () => {
+  stderr = ''
+  expect([await run(['cache', '--older-than', '30d']), stderr]).toEqual([
+    1,
+    noticed(
+      'vx cache: missing subcommand before --older-than. Did you mean `vx cache clean --older-than 30d`? (see `vx cache --help`)\n',
+    ),
+  ])
+})
+
 it("an Object.prototype name is a word no runner uses, not that object's source", async () => {
   // The pointer table is a plain object: `vx cache constructor` printed
   // "— function Object() { [native code] }".
   const clean = (sub: string): [number, string] => [
     1,
     noticed(
-      `vx cache: unknown subcommand: ${sub}. The subcommand is clean (see \`vx cache --help\`)\n`,
+      `vx cache: unknown subcommand: ${sub}. Its one subcommand is \`vx cache clean\` (see \`vx cache --help\`)\n`,
     ),
   ]
   expect([await said('constructor'), await said('toString'), await said('__proto__')]).toEqual([
@@ -58,7 +68,7 @@ it('a word no runner uses still names clean (control)', async () => {
   expect(await said('bogus')).toEqual([
     1,
     noticed(
-      'vx cache: unknown subcommand: bogus. The subcommand is clean (see `vx cache --help`)\n',
+      'vx cache: unknown subcommand: bogus. Its one subcommand is `vx cache clean` (see `vx cache --help`)\n',
     ),
   ])
 })

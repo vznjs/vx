@@ -65,7 +65,9 @@ AUDIENCE=https://history.example.com \
 bunx @vzn/vx-history-server --db vx-history.sqlite --port 8080
 ```
 
-It prints the address it listens on, `vx-history-server on http://0.0.0.0:8080/`.
+```ansi
+[38;2;34;197;94m✓[0m [1mvx-history-server[0m  listening on [38;2;6;182;212mhttp://0.0.0.0:8080/[0m
+```
 
 `--db` (default `vx-history.sqlite`), `--port` (default 8080) and
 `--host` (default `0.0.0.0`) set the file and where it listens.
@@ -170,7 +172,7 @@ Those options, and `assume` for tasks it has never seen, are on its
 
 | Setting | Default | What it sets |
 | --- | --- | --- |
-| `ALLOW` | empty: refuse every request | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
+| `ALLOW` | required (a Worker without it refuses every request) | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
 | `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token reads a repository `ALLOW` names, and writes nothing |
 | `AUDIENCE` | Workers: the URL it is reached at. Bun and Docker: required | the `aud` a CI token must name |
 | `TIMING_DAYS` | 30 | days a task's row is kept after its last report |
@@ -179,8 +181,8 @@ On Workers, each setting is a var in `wrangler.jsonc`.
 
 ## What it keeps
 
-One row per issuer, repository, branch and task hash, stored as they
-are, so the table reads plainly. Each report updates the row:
+One row per issuer, repository, branch and task, each stored plainly,
+so the table reads as it is. Each report updates the row:
 
 - `durationMs` and `cores`: `old × 0.7 + new × 0.3`. A task that got
   slower is followed within about three runs, and one odd run moves it

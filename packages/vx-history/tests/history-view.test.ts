@@ -1,7 +1,8 @@
 // `vx history`'s pretty table as a pure function (item 805): who is listed,
 // the count of who is not, and the unit breaks of the p50 and the peak.
 import { describe, expect, it } from 'bun:test'
-import { renderHistory, type HistoryRow } from '../src/history-view.js'
+import { ui } from '@vzn/vx'
+import { historyBlock, renderHistory, type HistoryRow } from '../src/history-view.js'
 import { resourceEstimates, withDeclared } from '../src/index.js'
 
 const MB = 1024 * 1024
@@ -41,6 +42,13 @@ describe('renderHistory', () => {
     ).toContain('  2 tasks with no execution in the window reserve nothing\n')
   })
 
+  // `reservations: { 'a#t': { memory: 0 } }` (or a bad entry) declares
+  // nothing: its cell read ` (declared)`, an amount left blank.
+  it('a declared reservation of nothing says so', () => {
+    const text = table([row({ id: 'a#t', runs: 0, reservation: {}, declared: true })])
+    expect(cells(text, 'a#t')).toEqual(['a#t', '0', '—', '—', '—', '— (declared)'])
+  })
+
   it.each([
     [999, '999ms'],
     [1000, '1.00s'],
@@ -60,6 +68,14 @@ describe('renderHistory', () => {
     [1024 * MB, '1.0 GB'],
   ])('a peak of %d bytes reads %s', (bytes, shown) => {
     expect(cells(table([row({ id: 'a#t', maxPeakRssBytes: bytes })]), 'a#t')[3]).toBe(shown)
+  })
+
+  // `concurrency: 1` printed `budgets 1 cores`, beside a column that
+  // says `1 core`.
+  it('a budget of one core says core', () => {
+    expect(renderHistory([], 20, { cpus: 1, memory: 1024 }, true)).toStartWith(
+      'history: last 20 runs · budgets 1 core (the default worker count;',
+    )
   })
 
   it('the memory budget says where it came from', () => {
@@ -115,5 +131,26 @@ describe('the README sample', () => {
       })
     })
     expect(shown).toBe(renderHistory(rows, 20, { cpus: 4, memory: 13_567 }, false))
+  })
+})
+
+// The table printed plain white on a colour terminal: core's tables paint
+// their header dim and each task id in its hue, and say a fact dim.
+describe('on a colour terminal', () => {
+  const budgets = { cpus: 4, memory: 1024 }
+  const paintedLines = (text: string): string[] => text.trimEnd().split('\n')
+
+  it('paints every line; piped, it is the plain table', () => {
+    const rows = [row({ id: 'a#t', runs: 2, p50DurationMs: 1200 }), row({ id: 'b#t', runs: 0 })]
+    const block = historyBlock(rows, 20, budgets, true)
+    const painted = ui.render([block], { enabled: true })
+    for (const line of paintedLines(painted)) expect(line).toContain('\x1b[')
+    expect(painted).toContain(ui.inline(ui.id('a#t'), { enabled: true }))
+    expect(ui.render([block], { enabled: false })).toBe(renderHistory(rows, 20, budgets, true))
+  })
+
+  it('paints the line that says nothing ran', () => {
+    const painted = ui.render([historyBlock([], 20, budgets, true)], { enabled: true })
+    for (const line of paintedLines(painted)) expect(line).toContain('\x1b[')
   })
 })

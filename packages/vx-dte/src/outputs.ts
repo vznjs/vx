@@ -2,7 +2,7 @@
 // clears before it runs the task, so an earlier task's files under them
 // are not saved as this one's.
 
-import { lstat, readdir } from 'node:fs/promises'
+import { lstat, readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { outputDirPrefixes, restorableOutput } from '@vzn/vx'
 
@@ -44,11 +44,35 @@ export async function outputFiles(
         }
       }
     }
+    /**
+     * Whether the tree at `rel` is where it says, under `base`: the walk
+     * follows a link only at its start (a nested one is an entry), and a
+     * worker deletes what it names. `dist -> ../victim` for `dist/**`
+     * deleted a file out of the project, and `dist -> .git` the repository,
+     * as core measured (`containedIn`, `refuseDirLinkedOut`), which refuses
+     * the task's save there too.
+     */
+    const lies = async (realBase: string | undefined, rel: string): Promise<boolean> => {
+      const at = path.join(root, base, rel)
+      // quiet: nothing there is nothing to walk
+      const st = await stat(at).catch(() => undefined)
+      if (st === undefined) return true
+      const dir = st.isDirectory() ? rel : path.dirname(rel)
+      // quiet: a tree that will not resolve is left alone
+      const real = await realpath(path.join(root, base, dir)).catch(() => undefined)
+      if (real === undefined || realBase === undefined) return false
+      if (real === path.join(realBase, dir)) return true
+      if (real !== realBase && !real.startsWith(realBase + path.sep)) return false
+      const parts = real.slice(realBase.length + 1).split(path.sep)
+      return !parts.some((p) => p.toLowerCase() === '.git') && parts[0]?.toLowerCase() !== '.vx'
+    }
     // Only the trees the globs can reach: walking the whole project for
     // each task cost a worker 450 ms a task in a project of 9000 output
     // dirs (2026-10-25). Root-anchored or escaping globs keep the walk.
     const dirs = outputDirPrefixes(globs.filter((g) => !g.startsWith('!'))) ?? ['']
-    await Promise.all(dirs.map(walk))
+    // quiet: a base that will not resolve holds no outputs; `lies` refuses it
+    const realBase = await realpath(path.join(root, base)).catch(() => undefined)
+    await Promise.all(dirs.map(async (d) => (await lies(realBase, d)) && walk(d)))
   }
   await scan(project, outputs.files, 'project')
   await scan('', outputs.workspaceFiles, 'workspace')

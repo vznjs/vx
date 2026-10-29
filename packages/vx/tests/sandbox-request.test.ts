@@ -977,7 +977,7 @@ describe("a link to the task's own project, or to a directory holding it, is not
       link: 'node_modules/@x/ui',
     })
     expect(line).toBe(
-      'vx: @x/app#test read `packages/ui` through `node_modules/@x/ui`, and its key folds no task ' +
+      'vx: @x/app#test read `packages/ui` through `node_modules/@x/ui`, and its key includes no task ' +
         'of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
         'reaches one (`^build` where @x/ui#build keys its sources, or a `source` task: ' +
         '`@x/ui#source`), or grant and key the files yourself (`allow.read` plus ' +

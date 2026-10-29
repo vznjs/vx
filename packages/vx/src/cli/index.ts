@@ -3,7 +3,7 @@
 
 import { VERSION } from '../version.js'
 import { checkSettingsEnv } from '../settings.js'
-import { CORE_VERBS, flagHint, printHelp, refusedWord, seeHelp } from './help.js'
+import { CORE_VERBS, flagHint, printHelp, refuse, refusedWord, seeHelp } from './help.js'
 import {
   detectColors,
   errorDocument,
@@ -15,6 +15,7 @@ import {
   maskedLine,
   nearest,
   refusalNotice,
+  thrownMessage,
   ui,
   UserError,
   wantsJson,
@@ -102,13 +103,21 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
     }
     case '--help':
     case '-h':
+      if (rest.length > 0) return dispatch('help', rest)
       await printHelp(await (await plugins()).pluginCommandHelp())
       return 0
     case 'help': {
-      // `vx help run` is the same question as `vx run --help`. A plugin verb
-      // owns its own help, so anything but a core verb gets the whole
-      // reference, which lists the plugin verbs.
-      const verb = rest[0]
+      // `vx help run` is the same question as `vx run --help`, and so is
+      // `vx help <plugin verb>`: a plugin verb owns its own help.
+      const [verb, extra] = rest
+      if (extra !== undefined) {
+        return refuse(
+          'help',
+          rest,
+          `${refusedWord(extra)}: ${extra}${flagHint('help', extra)} (see \`vx help\`)`,
+          'VX_E_USAGE',
+        )
+      }
       const core = verb !== undefined && (CORE_VERBS as readonly string[]).includes(verb)
       if (verb !== undefined && !core) {
         // A name that is no verb here is the typo `vx rnu` is, not a request
@@ -116,22 +125,23 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         const resolved = await (await plugins()).resolvePluginCommand(verb)
         const unknown = resolved === null || 'declaredVerbs' in resolved
         if (unknown && verb.startsWith('-')) {
-          sayNotice(
-            'error',
-            'vx help',
+          return refuse(
+            'help',
+            rest,
             `unknown flag: ${verb}${flagHint('help', verb)} (see \`vx help\`)`,
+            'VX_E_USAGE',
           )
-          return 1
         }
         if (unknown) {
           const declared = resolved === null ? [] : resolved.declaredVerbs
-          sayNotice(
-            'error',
-            'vx help',
+          return refuse(
+            'help',
+            rest,
             `unknown command: ${verb}${didYouMeanVerb(verb, declared)} (see \`vx help\`)`,
+            'VX_E_UNKNOWN_COMMAND',
           )
-          return 1
         }
+        if (resolved !== null && !('loadError' in resolved)) return dispatch(verb, ['--help'])
       }
       await printHelp(await (await plugins()).pluginCommandHelp(), core ? verb : undefined)
       return 0
@@ -142,12 +152,12 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       // takes no more of is refused, as every other verb refuses one.
       const extra = rest[0]
       if (extra !== undefined) {
-        sayNotice(
-          'error',
-          'vx version',
+        return refuse(
+          'version',
+          rest,
           `${refusedWord(extra)}: ${extra}${flagHint('version', extra)}${seeHelp('version')}`,
+          'VX_E_USAGE',
         )
-        return 1
       }
       // Painted, and the same words piped: a script reads `vx <version>`.
       process.stdout.write(
@@ -194,7 +204,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
           // A verb's own refusal is its one line; anything else is the
           // plugin's crash, named as every other stage names one.
           if (isUserError(err)) throw err
-          const message = err instanceof Error ? err.message : String(err)
+          const message = thrownMessage(err)
           throw new UserError(
             `plugin '${resolved.plugin.name}' failed in command '${command}': ${message}`,
           )
@@ -224,7 +234,9 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         json = text.split('\n')[0]!,
       ): number => {
         sayNotice(tone, 'vx', text.replace(/^vx: /, '').trimEnd())
-        if (wantsJson(rest)) process.stdout.write(errorDocument(code, maskedLine(json)))
+        // `vx --format json` puts the flag where the verb goes.
+        if (wantsJson([command, ...rest]))
+          process.stdout.write(errorDocument(code, maskedLine(json)))
         return 1
       }
       const loadNote =
@@ -252,12 +264,13 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         // provided by PLUGINS (declared in .vx/workspace.ts), never by core.
         // We keep this neutral hint for the common muscle-memory verbs, but
         // core names no specific plugin package: any package can provide
-        // these.
+        // these. The notice prints a line per fact, so each line is a
+        // whole sentence.
         return unknown(
-          `vx: '${command}' is not a vx core command.\n` +
-            `  vx core runs tasks in-process. A dashboard, remote cache, and\n` +
-            `  distributed execution come from plugins — not core. See the plugin\n` +
-            `  guide: https://vznjs.github.io/vx/docs/plugins/\n`,
+          `vx: \`${command}\` is not a vx core command.\n` +
+            `  vx core runs tasks in-process.\n` +
+            `  A dashboard, remote cache and distributed execution come from plugins, not core.\n` +
+            `  See the plugin guide: https://vznjs.github.io/vx/docs/plugins/\n`,
         )
       }
       // One line, as a verb's own unknown flag or subcommand gets; the full

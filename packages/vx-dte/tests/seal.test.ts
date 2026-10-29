@@ -11,7 +11,7 @@ import {
   sealOrchestrator,
   secretProof,
 } from '../src/seal.js'
-import { join, type Participant, type RelayMessage } from '../src/wire.js'
+import { join, RelayError, type Participant, type RelayMessage } from '../src/wire.js'
 import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -206,7 +206,7 @@ it('a token it could not check refuses the worker by that cause, and says it', a
   expect(await o.poll()).toEqual([])
   const reason = 'its token could not be checked: GitHub keys: HTTP 503'
   expect((await until(a)).map((m) => m.body)).toEqual([{ type: 'refused', reason }])
-  expect(said).toEqual([`dte: refused a worker: ${reason}`])
+  expect(said).toEqual([`[vx] dte: refused a worker: ${reason}`])
 })
 
 it('loses a worker whose body the relay changed, and drops one it replays', async () => {
@@ -231,6 +231,19 @@ it('loses a worker whose body the relay changed, and drops one it replays', asyn
   )
   await a.send('orchestrator', { type: 'start', task: 'w' })
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+})
+
+// A send to a worker already lost failed as a plain Error: the run's batch
+// still chained to that worker took it for a refusal and failed tasks
+// that had already gone back to the queue, some running elsewhere.
+it('a send to a worker it lost is refused as one the relay does not know (404)', async () => {
+  const { o, a } = await pair()
+  await until(o)
+  await a.leave()
+  expect((await until(o)).map((m) => (m.body as { type: string }).type)).toEqual(['lost'])
+  const err = await o.send(a.id, { type: 'batch' }).catch((e: unknown) => e)
+  expect(err).toBeInstanceOf(RelayError)
+  expect((err as RelayError).status).toBe(404)
 })
 
 it('loses a worker whose body the relay spliced from two, each part sealed', async () => {
@@ -393,6 +406,19 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
   }
 })
 
+it('names exactly the GitHub variables a proof lacks', () => {
+  process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'http://127.0.0.1:1/token?v=1'
+  delete process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
+  delete process.env['GITHUB_REPOSITORY_ID']
+  try {
+    expect(() => githubProof()).toThrow(
+      /^not a GitHub Actions job with id-token: write \(ACTIONS_ID_TOKEN_REQUEST_TOKEN, GITHUB_REPOSITORY_ID\)$/,
+    )
+  } finally {
+    delete process.env['ACTIONS_ID_TOKEN_REQUEST_URL']
+  }
+})
+
 // Each check made a verifier of its own over keys read once per process,
 // so a key GitHub rotated in was never read: every token it signed was
 // refused as a key mismatch.
@@ -488,6 +514,58 @@ it('says a token check GitHub’s keys could not answer, never a key mismatch', 
   }
 })
 
+// A run's id is a dispatch input, which anyone who reads the repository's
+// Actions sees: a job of this repository that is none of the runs the
+// orchestrator dispatched (a branch's own dispatch of vx-worker.yml) joined
+// main's run as a worker, and got its task env and its cache's write.
+it('admits only a worker of a workflow run the orchestrator dispatched, when it names them', async () => {
+  const pair = (await crypto.subtle.generateKey(
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: 'SHA-256',
+    },
+    true,
+    ['sign', 'verify'],
+  )) as CryptoKeyPair
+  const jwk = await crypto.subtle.exportKey('jwk', pair.publicKey)
+  const ISS = 'https://token.actions.githubusercontent.com'
+  const b64 = (v: unknown): string => Buffer.from(JSON.stringify(v)).toString('base64url')
+  const aud = (parts: string[]): string =>
+    `vx-dte:${new Bun.CryptoHasher('sha256').update(parts.join('\0')).digest('base64url')}`
+  const tokenOf = async (claims: object): Promise<string> => {
+    const head = `${b64({ alg: 'RS256', kid: 'k1' })}.${b64({ iss: ISS, aud: aud(['join', R3, 'n']), exp: Date.now() / 1000 + 300, repository_id: '11', ...claims })}`
+    const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', pair.privateKey, Buffer.from(head))
+    return `${head}.${Buffer.from(sig).toString('base64url')}`
+  }
+  const keys = async (url: string): Promise<unknown> =>
+    url.endsWith('/openid-configuration')
+      ? { jwks_uri: `${ISS}/jwks` }
+      : { keys: [{ ...jwk, kid: 'k1' }] }
+  process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'http://127.0.0.1:1/token?v=1'
+  process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] = 'req-token'
+  process.env['GITHUB_REPOSITORY_ID'] = '11'
+  try {
+    let runs: Set<string> | undefined = new Set(['5'])
+    const proof = githubProof(keys, () => runs)
+    const parts = ['join', R3, 'n']
+    expect(await proof.check!(await tokenOf({ run_id: '5' }), parts)).toBe(true)
+    expect(await proof.check!(await tokenOf({ run_id: '6' }), parts)).toBe(false)
+    expect(await proof.check!(await tokenOf({}), parts)).toBe(false)
+    // A dispatch that named no run: any job of this repository, as before.
+    runs = undefined
+    expect(await proof.check!(await tokenOf({ run_id: '6' }), parts)).toBe(true)
+  } finally {
+    for (const k of [
+      'ACTIONS_ID_TOKEN_REQUEST_URL',
+      'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+      'GITHUB_REPOSITORY_ID',
+    ])
+      delete process.env[k]
+  }
+})
+
 // PR #4146, 2026-10-23: one 503 from GitHub's token endpoint ended small#2
 // before it joined.
 it('asks GitHub for an OIDC token again after a 5xx, three tries at most, never after a 4xx', async () => {
@@ -510,10 +588,28 @@ it('asks GitHub for an OIDC token again after a 5xx, three tries at most, never 
   expect(calls).toBe(3)
   calls = 0
   fail = [503, 503, 503, 503]
-  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow("GitHub's OIDC token: 503")
+  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow("GitHub's OIDC token: HTTP 503")
   expect(calls).toBe(3)
   calls = 0
   fail = [401]
-  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow("GitHub's OIDC token: 401")
+  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow("GitHub's OIDC token: HTTP 401")
   expect(calls).toBe(1)
+})
+
+// A refusal said only its status, and an answer with no token returned
+// undefined, which the relay then refused as no token at all.
+it("says GitHub's own words when it refuses a token, and an answer that holds none", async () => {
+  let answer = (): Response => Response.json({ message: 'audience not allowed' }, { status: 403 })
+  const issuer = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => answer() })
+  stops.push(async () => {
+    await issuer.stop(true)
+  })
+  const url = `http://127.0.0.1:${issuer.port}/token?v=1`
+  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow(
+    "GitHub's OIDC token: HTTP 403: audience not allowed",
+  )
+  answer = () => Response.json({})
+  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow(
+    "GitHub's OIDC token: no token in its answer",
+  )
 })

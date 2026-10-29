@@ -217,6 +217,48 @@ describe('renderJobSummary', () => {
       }),
     )
     expect(here).toContain('1 on this machine: a#\\*x\\*.')
+    // A line break in a task id ended the line: `# y` became a heading.
+    const broken = renderJobSummary(
+      summary([task({ taskId: 'a#x\n# y' }), task({ taskId: 'b#y', where: 'w' })], {
+        machines: [{ ...m, name: 'w', done: 1, onlineMs: 1, busyMs: 1, cpuAvg: 0, utilization: 0 }],
+      }),
+    )
+    expect(broken).toContain('1 on this machine: a#x # y.')
+  })
+
+  it('a worker with no booked cores is not read as 0% booked', () => {
+    const m = {
+      name: 'w',
+      status: 'online',
+      cores: 4,
+      memoryBytes: 16e9,
+      memoryPeakBytes: 1e9,
+      memoryAvgBytes: 5e8,
+      done: 1,
+      failed: 0,
+      onlineMs: 10_000,
+      busyMs: 10_000,
+      cpuPeak: 4,
+      cpuAvg: 2,
+      utilization: 0.5,
+    }
+    const unbooked = renderJobSummary(
+      summary([task({ where: 'w' })], { machines: [m, { ...m, name: 'v' }] }),
+    )
+    expect(unbooked).toContain("Over their online time, tasks used 50% of the workers' cores.")
+    expect(unbooked).not.toContain('booked 0%')
+    // Booked share over the workers that report one.
+    const mixed = renderJobSummary(
+      summary([task({ where: 'w' })], {
+        machines: [
+          { ...m, bookedAvg: 3 },
+          { ...m, name: 'v' },
+        ],
+      }),
+    )
+    expect(mixed).toContain(
+      "Over their online time, tasks booked 75% of the workers' cores and used 50%.",
+    )
   })
 
   it('failures head the table and get a callout section', () => {
@@ -373,7 +415,26 @@ describe('github() activation', () => {
       const full = await run(MAX_JOB_SUMMARY_BYTES - 10)
       expect(full.size).toBe(MAX_JOB_SUMMARY_BYTES - 10)
       expect(full.warns).toEqual([
-        `vx-ci: ${path.join(dir, `summary-${MAX_JOB_SUMMARY_BYTES - 10}.md`)} already holds ${MAX_JOB_SUMMARY_BYTES - 10} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
+        `[vx] vx-ci: ${path.join(dir, `summary-${MAX_JOB_SUMMARY_BYTES - 10}.md`)} already holds ${MAX_JOB_SUMMARY_BYTES - 10} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
+      ])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Every plugin warning says `[vx]` first: this one said `vx-ci:` alone.
+  it('a summary it cannot write is warned with the [vx] tag', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-gh-sum-'))
+    try {
+      const warns: string[] = []
+      const sink = github({ summaryFile: dir })!.telemetry!({
+        ...ctx,
+        warn: (m: string) => warns.push(m),
+      }) as GithubSummarySink
+      sink.onRunSummary!(summary([task({ taskId: 'a#build' })]))
+      await sink.flush!()
+      expect(warns.map((w) => w.slice(0, w.indexOf(dir) + dir.length))).toEqual([
+        `[vx] vx-ci: could not write the job summary to ${dir}`,
       ])
     } finally {
       await rm(dir, { recursive: true, force: true })

@@ -370,7 +370,7 @@ export class Orchestrator {
 
   async execute(req: ExecuteRequest): Promise<ExecuteResult> {
     if (this.lost !== undefined) throw new Error(this.lost)
-    // A worker runs the run's tree: a file its key folds that the tree
+    // A worker runs the run's tree: a file its key includes that the tree
     // lacks (untracked) is not there, and the output it saved under that
     // key was a stale hit for the next run (2026-10-24).
     if (req.inputs !== undefined && req.inputs.files.length > 0) {
@@ -902,6 +902,9 @@ export class Orchestrator {
           cwd: path.relative(this.o.root, req.cwd),
           project: node === undefined ? '' : path.relative(this.o.root, node.projectDir),
           env,
+          ...(node?.config.exec?.env?.secret === undefined
+            ? {}
+            : { secret: [...node.config.exec.env.secret] }),
           ...(req.timeoutMs === undefined ? {} : { timeoutMs: req.timeoutMs }),
           outputs: {
             files: [...req.outputs.files],
@@ -948,6 +951,7 @@ export class Orchestrator {
     )
     const sandboxes = sandboxed && !a.sandboxes ? sandboxConfigs(nodes) : undefined
     if (sandboxed) a.sandboxes = true
+    const pending = new Set(jobs)
     a.chain = a.chain
       .then(async () => {
         for (const [i, part] of parts(orders, BATCH_BYTES).entries()) {
@@ -977,14 +981,24 @@ export class Orchestrator {
           await this.o.me.send(a.id, batch)
           a.usage.messagesIn++
           a.usage.bytesIn += bytesOf(batch)
-          for (const { job } of part) this.lease(job)
+          for (const { job } of part) {
+            this.lease(job)
+            pending.delete(job)
+          }
         }
       })
       .catch((err: unknown) => {
         // The relay refused the send (the worker is gone): the loss notice
         // puts the tasks back.
         if (err instanceof RelayError && err.status === 404) return
-        for (const { job } of orders) job.reject(err)
+        // One its worker never got leaves its booking there: held with no
+        // lease to end it, the worker's cores were gone for the run. One
+        // sent before runs there, and ends as any; one its worker's loss
+        // put back is the queue's.
+        for (const job of pending)
+          if (a.busy.get(job.req.taskId) === job && this.retry(a, job, 'not sent') !== undefined)
+            job.reject(err)
+        this.pumpSoon()
       })
   }
 
@@ -1088,7 +1102,7 @@ export class Orchestrator {
   }
 
   private readonly warn = (m: string): void =>
-    this.o.warn === undefined ? ui.say('warn', `[vx] ${m}`) : this.o.warn(m)
+    (this.o.warn ?? ((l) => ui.say('warn', l)))(`[vx] ${m}`)
 
   /** Worker `a` began `task`: from now its cores are booked. */
   private begun(a: Worker, task: string): void {
@@ -1107,18 +1121,25 @@ export class Orchestrator {
     // upload): sent again from this machine, the task runs again. Taken as
     // the task's failure, it failed every run, the remote saying it held the
     // key (2026-10-25).
-    if (
-      head.unread !== undefined &&
-      (await this.resend(job, head.unread)) &&
-      a.busy.get(task) === job
-    ) {
-      a.started.delete(task)
-      const again = this.retry(a, job, `could not read ${head.unread.join(', ')}`)
-      if (again !== undefined) {
-        this.queue.unshift(again)
-        this.pumpSoon()
+    // Ended there, it is in no `held` again: a lease running on through a
+    // slow resend called its worker faulty and gave the task to another.
+    delete job.leaseUntil
+    if (head.unread !== undefined) {
+      const sent = await this.resend(job, head.unread)
+      // Its worker was lost meanwhile: the task went back to the queue.
+      if (a.busy.get(task) !== job) return
+      if (sent) {
+        // Its cores back while it still counts as begun, which `unhold` reads;
+        // then not begun, so `retry` holds no fault against its worker.
+        this.unhold(a, job)
+        a.started.delete(task)
+        const again = this.retry(a, job, `could not read ${head.unread.join(', ')}`)
+        if (again !== undefined) {
+          this.queue.unshift(again)
+          this.pumpSoon()
+        }
+        return
       }
-      return
     }
     const endAt = performance.now()
     this.traceTask(a, job, head, endAt)

@@ -47,7 +47,7 @@ declare const caches: {
 declare const WebSocketPair: new () => { 0: Socket; 1: Socket }
 
 export interface Env {
-  readonly RELAY: DurableObjectNamespace
+  readonly RELAY?: DurableObjectNamespace
   /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow`, space separated. */
   readonly ALLOW?: string
   /** The `aud` every token must name; unset, the URL the relay is reached at. */
@@ -141,9 +141,19 @@ function verifierOf(env: Env, req: Request): ReturnType<typeof createVerifier> {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const session = SESSION.exec(new URL(req.url).pathname)?.[1]
-    if (session === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
+    if (session === undefined) {
+      const error = `no route ${req.method} ${new URL(req.url).pathname.slice(0, 200)}: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`
+      return Response.json({ error }, { status: 404 })
+    }
     const refused = allowRefusal(env.ALLOW)
     if (refused !== undefined) return refuse(req, 403, refused)
+    if (env.RELAY === undefined) {
+      return refuse(
+        req,
+        403,
+        'RELAY: bind the RelayRun Durable Object as RELAY (wrangler.jsonc durable_objects)',
+      )
+    }
     // Checked here, before any object: each one a request wakes is billed,
     // and a host's daily limit then refuses every run, so a request with
     // no good token spent the relay's quota.

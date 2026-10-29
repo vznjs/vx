@@ -83,7 +83,7 @@ it('a push to the default branch keeps the default keys', async () => {
   expect(await branchOf(actions('refs/heads/main', 'main'))).toEqual({ refs: ['refs/heads/main'] })
 })
 
-it("a pull request writes to its head branch's scope, as a push to it does, and names its base", async () => {
+it("a pull request writes to its head branch's scope, reads its merge ref first, and names its base", async () => {
   const file = await event({
     pull_request: {
       number: 42,
@@ -100,7 +100,7 @@ it("a pull request writes to its head branch's scope, as a push to it does, and 
   expect(await branchOf(pr)).toEqual({
     scope: 'vznjs/vx:feat/x',
     base: 'abc123',
-    refs: ['refs/heads/feat/x', 'refs/heads/release', 'refs/heads/main'],
+    refs: ['refs/pull/42/merge', 'refs/heads/feat/x', 'refs/heads/release', 'refs/heads/main'],
   })
   expect(await branchOf(actions('refs/heads/feat/x', 'feat/x'))).toEqual({
     scope: 'vznjs/vx:feat/x',
@@ -238,6 +238,18 @@ it('an unknown default branch gets its own scope', async () => {
       GITHUB_EVENT_PATH: path.join(dir, 'none'),
     }),
   ).toBe('vznjs/vx:main')
+})
+
+it("the workspace's baseBranch names the default branch, as it does for the refs", async () => {
+  const unknown = {
+    ...actions('refs/heads/trunk', 'trunk'),
+    GITHUB_EVENT_PATH: path.join(dir, 'none'),
+  }
+  expect(await branchOf(unknown, {}, 'trunk')).toEqual({ refs: ['refs/heads/trunk'] })
+  expect(await scopeOf(actions('refs/heads/main', 'main'))).toBeUndefined()
+  expect((await branchOf(actions('refs/heads/main', 'main'), {}, 'trunk')).scope).toBe(
+    'vznjs/vx:main',
+  )
 })
 
 it('outside Actions, or with cacheScope: false, names nothing', async () => {

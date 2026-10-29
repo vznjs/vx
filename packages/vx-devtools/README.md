@@ -27,6 +27,9 @@ option.
   (Turbo's spec's `Error`); `notAllowed(allow)` its `405`, naming the methods in `Allow`.
 - `hashPart(text)` is what a server stores in place of an issuer, a repository name or a scope: the first
   128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
+- `statusLine(tone, name, text)` is the line a server prints when it starts (`'ok'`) or refuses to
+  (`'err'`): `✓ vx-cache-server  listening on …`, painted as vx's own status lines (NO_COLOR, then
+  FORCE_COLOR, then a terminal whose `TERM` is not `dumb`), with any lines after the first dim.
 
 ```ts
 export class Refusal extends Error {
@@ -76,14 +79,16 @@ export function oidcTokenAuth(
   checkout's origin names (2026-10-25). One `ALLOW` does not name is
   `403`, and so is one other than the request names.
 - The token's workflow (`job_workflow_ref` on GitHub, `ci_config_ref_uri`
-  on GitLab, up to its `@`) must be one an entry names for that
+  on GitLab, up to the `@` before its ref) must be one an entry names for that
   repository: any other is `403`.
 - With `readAccess: 'public'` (`READ_ACCESS`), a request with no token
   reads the repository it names when `ALLOW` names it (else `403`), and
   writes nothing. Any other value than `public` or unset throws.
-- A token writes its branch (a `pull_request` run's head branch on GitHub;
-  a `merge_group` run's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
-  ref, else `ref`; GitLab's `ref_path`). A `pull_request_target`,
-  `issue_comment` or `workflow_run` run writes nothing: its `ref` is the
-  base while it may run a pull request's code. Nor does a `pull_request`
-  run whose head branch has its base branch's name.
+- A token writes its `ref` (GitLab's `ref_path`): a `pull_request` run
+  its merge ref, `refs/pull/<n>/merge`, never its `head_ref`, which a fork
+  names; a `merge_group` run its base branch for a
+  `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>` ref. A
+  `pull_request_target`, `issue_comment` or `workflow_run` run writes
+  nothing: its `ref` is the base while it may run a pull request's code.
+  Nor does a GitLab merge request pipeline unless `source_project_path` (GitLab
+  19.5+) names its own project: a fork's runs in the parent project.

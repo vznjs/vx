@@ -23,12 +23,12 @@ re-exports it for readers that reach it here: `GitFilesCache`,
 the `GitEnumeration` type.
 
 ```ts
-/** Does `cache` declare this changed path an input? A project-relative
+/** Does `task` declare this changed path an input? A project-relative
  *  path is matched against `inputs.files`, a workspace-relative one
  *  against `inputs.workspaceFiles`; own outputs and negations apply.
  *  null skips that half. `--affected`'s per-task seed. */
 export function declaresInput(
-  cache: CacheConfig,
+  task: TaskConfig,
   projectRel: string | null,
   workspaceRel: string | null,
 ): boolean
@@ -36,7 +36,7 @@ export function declaresInput(
 /** May `inputs.workspaceFiles` name a file under `dir` (workspace-relative)?
  *  By the positive entries' static prefixes. A changed nested repository is
  *  one path for all its files; `--affected` asks this of it. */
-export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolean
+export function workspaceFilesReachInto(task: TaskConfig, dir: string): boolean
 
 /** Paths a task names outright (literals, globs' fixed prefixes): `files`
  *  project-relative, `workspaceFiles` root-relative. `vx watch` judges a
@@ -92,6 +92,7 @@ export type ProjectFilesCache = Map<
 // One git listing a task's input files were filtered from.
 export interface InputListing {
   root: string // project dir, or the workspace root for `workspaceFiles`
+  workspaceRoot: string // where git's location variables point; a nested repo's root is listed without them
   listed: readonly string[] // root-relative, as git listed them
   isInput: (rel: string) => boolean // the declaration's verdict
   nested: (rel: string) => boolean // inside a nested project
@@ -210,7 +211,11 @@ export async function cleanOutputPaths(args: {
 }): Promise<void>
 // Remove the `.vx-tmp-*` restore temps a killed run left beside the
 // exact-file outputs; a temp whose writer is alive stays.
-export function sweepRestoreTemps(base: string, outputs: readonly string[]): void
+export function sweepRestoreTemps(
+  base: string,
+  outputs: readonly string[],
+  committed?: (abs: string) => boolean,
+): void
 // Remove the `.vx/tmp/<pid>-0` staging a killed run left; a live run's
 // stays. Once per run.
 export function sweepStaging(workspaceRoot: string): void

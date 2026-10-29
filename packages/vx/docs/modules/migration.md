@@ -99,10 +99,6 @@ export function foldScriptHooks(
 // Why `name` cannot be a task's (the schema's rule), or null: a mapper
 // leaves such a script out with a TODO.
 export function taskNameProblem(name: string): string | null
-
-// Core-internal (src/workspace/index.ts): how the user runs vx, for a
-// `next` row — the runner in `npm_config_user_agent`, else `vx`.
-export function vxInvocation(userAgent: string | undefined, installed: boolean): string
 ```
 
 ## Rules
@@ -149,6 +145,8 @@ export function vxInvocation(userAgent: string | undefined, installed: boolean):
   migration of a workspace with no scripts still writes the workspace
   file and shows a worked example (or `emptyReason`); a migration with
   nothing to convert is an error.
+- A plan that names a file outside the root (a project dir, an
+  `extraFiles` path) is refused before anything is written.
 - `quoteTsLiteral` escapes backslash, quote and raw newlines — a value with
   an embedded newline (legal JSON) must round-trip through the loader.
 

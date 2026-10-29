@@ -96,7 +96,9 @@ export function paint(
   colors: ColorSupport,
   opts: PaintOptions = {},
 ): string {
-  if (!colors.enabled) return text
+  // Empty text paints nothing: an escape pair around no text is bytes and no
+  // mark (a full bar's empty remainder).
+  if (!colors.enabled || text === '') return text
   let prefix = ''
   if (opts.bold) prefix += BOLD
   if (opts.dim) prefix += DIM

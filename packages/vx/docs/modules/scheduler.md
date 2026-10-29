@@ -48,7 +48,7 @@ export interface TaskOutcome {
   avgRssBytes?: number // sampled: mean resident memory
   groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
   unkeyed?: true // ran over inputs its key no longer describes: no save, nor by a dependant (A-12)
-  keylessBy?: string // the task with no `inputs` its key folds (or itself): no read, no save
+  keylessBy?: string // the task with no `inputs` its key includes (or itself): no read, no save
   cacheOff?: true // the run's policy read and wrote nothing: a run of it is no-cache, not a miss
   blockedBy?: string // skipped: the failed or aborted task at the root of the block
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string } // skipped: its `exec.platforms` leave this machine out
@@ -56,6 +56,7 @@ export interface TaskOutcome {
   failedOutput?: string // failed command: its output log (output-log.ts), first 8 KiB + last 56 KiB, masked
   runLog?: string // run keeps bytes in a remote and this task saved no entry: its whole output log, masked
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
+  serverExit?: number // ready persistent task whose child exited on its own mid-run (a setup step's 0 at ready, a crash's code): no label calls it running
   inputMoved?: string // failed by inputStability.severity 'error': the input that changed ('' unnamed)
   where?: string // executor-reported placement, when not this host
   carried?: true // a persistent task each dependant's executor starts where it runs: nothing ran here
@@ -126,11 +127,13 @@ export function deadServerBehind(
   id: string,
 ): string | undefined
 
-// Persistent tasks nobody asked for whose every dependant is a restore-tier hit.
+// Persistent tasks nobody asked for whose every dependant is a restore-tier hit,
+// or an unrequested group only such hits stand behind (those groups go in `groups`).
 export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
   dependents: ReadonlyMap<string, string[]>,
   restoreTier: ReadonlySet<string> | undefined,
+  groups?: Set<string>,
 ): Set<string>
 
 // Thrown by `execute` for a restore-tier task with nothing to restore.
@@ -173,7 +176,12 @@ dispatching, asking no admission policy and taking no slot. A demoted
 dependant starts it, and that dependant runs once it is ready. Once
 every dependant has an outcome it settles with none of its own and
 releases them, so it is never spawned and the returned map lacks it.
-Its own deps still run first and a failed one skips it as before.
+Its own deps still run first and a failed one skips it as before; a
+stop or fail-fast leaves it with no outcome.
+A group neither requested nor surfaced that stands only between such a
+server and its hits is idle with it: it waits the same way, settles
+with no outcome once every hit above it has one, and a demotion above
+it wakes it and the server.
 A `heldServers` server does not dispatch until its promise answers: the
 dependants it names join the restore lane, and it is idle when every
 dependant is then in the tier, else it dispatches as usual
@@ -271,9 +279,10 @@ exec-tier tasks that depend on it. Its dependents do wait on its deps:
 one that finishes early releases them once its own deps have settled,
 so `dependsOn` order holds through a hit (released at its own finish,
 an `e2e` ran beside the `db:migrate` two edges up; item 963). An exec-tier task's count is the
-exact closure over the exec tier, where an exec task under a restore
-counts that restore's exec dependents as its own (`e1 → r → e2` ranked
-`e1` 0 behind every idle task while `e2` waited on it); a restore's is the sum over its
+exact closure over the exec tier, each restore dep read as the exec
+tasks that restore waits on (`e1 → r → e2` holds `e2` until `e1` ran,
+so `e1` counts `e2`; counted over the exec tier alone it ranked 0 behind
+every idle task, about 1 ms more at 3,000 tasks); a restore's is the sum over its
 direct exec-tier dependents of one plus theirs, plus the rank of each
 restore that depends on it, since that one releases its dependents only
 after it (C-51: `r1 → r2 → e` ranked `r1` 0, behind every idle restore,
@@ -296,7 +305,7 @@ dependents get `skipped`, through a restore-tier hit between them too
 (the hit stays a `cache-hit`, its key being its deps' inputs, and passes
 the block down with the root); unrelated tasks continue; the promise
 resolves only after every task has _some_ outcome (an idle server
-excepted, above). This is Turbo's
+and its groups excepted, above). This is Turbo's
 middle `--continue` setting, `deps-ok`, as the default; `never` stops
 dispatch at the first failure (in-flight tasks finish, everything not
 yet started — restores included — completes `skipped`); `always` runs

@@ -62,6 +62,8 @@ export interface RunOrder {
   cwd: string
   project: string
   env: Record<string, string>
+  /** Its `exec.env.secret`: the names in `env` whose values its saved output masks. */
+  secret?: string[]
   timeoutMs?: number
   outputs: { files: string[]; workspaceFiles: string[] }
   /** Its recorded peak: the worker starts it when that much is free. */
@@ -75,7 +77,7 @@ export interface RunOrder {
   sandbox?: { config: SandboxConfig; keyed?: string[] }
   /** Its persistent dependencies (`ServerSpec`), `cwd` workspace-relative: the worker starts each once. */
   servers?: ServerOrder[]
-  /** The runtime probes its key folds, as the orchestrator answered them: the worker's must answer the same. */
+  /** The runtime probes its key includes, as the orchestrator answered them: the worker's must answer the same. */
   runtime?: RuntimeOrder[]
 }
 
@@ -196,7 +198,7 @@ export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout
 
 /**
  * Names whose value is the worker's own: the orchestrator sends one only
- * when a task's `env.define` sets it, a value its key folds.
+ * when a task's `env.define` sets it, a value its key includes.
  */
 export const HOST_ENV = [
   'HOME',

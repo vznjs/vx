@@ -99,6 +99,43 @@ export function withoutTakenBack<T>(entries: readonly T[]): T[] {
 }
 
 /**
+ * Could a path match both globs? False only when, before either reaches a
+ * wildcard, a segment of one differs from the other's; a literal also
+ * matches its directory's files, as a `!` entry takes them back.
+ */
+function mayOverlap(a: string, b: string): boolean {
+  const wild = /[*?{}[\]\\]/
+  const sa = a.replace(/^\.\//, '').split('/')
+  const sb = b.replace(/^\.\//, '').split('/')
+  for (let i = 0; i < Math.min(sa.length, sb.length); i++) {
+    if (wild.test(sa[i]!) || wild.test(sb[i]!)) return true
+    if (sa[i] !== sb[i]) return false
+  }
+  return true
+}
+
+/**
+ * Two lists core reads as one, each with its own `!` entries: Turbo
+ * subtracts a task's exclusions from the task's own inputs only, and a
+ * `globalDependencies` exclusion from the global hash only. One list in
+ * vx subtracts every `!` from every entry, so each list loses an exclusion
+ * that may reach a positive entry of the other: it keys more files (a
+ * missed hit), where kept it keyed fewer (a stale one).
+ */
+export function apartTakeBacks<T>(a: readonly T[], b: readonly T[]): [T[], T[]] {
+  const positives = (l: readonly T[]) =>
+    l.flatMap((e) => (typeof e === 'string' && !e.startsWith('!') ? [e] : []))
+  const keep = (l: readonly T[], other: readonly string[]) =>
+    l.filter(
+      (e) =>
+        typeof e !== 'string' ||
+        !e.startsWith('!') ||
+        !other.some((p) => mayOverlap(e.slice(1), p)),
+    )
+  return [keep(a, positives(b)), keep(b, positives(a))]
+}
+
+/**
  * A path from the file system as a task glob that names only itself: a dir
  * named `my{app}` read as a brace matched `myapp` instead, and `app/[id]` a
  * class. `*` and `?` stay, since the schema reads `\*` as a Windows

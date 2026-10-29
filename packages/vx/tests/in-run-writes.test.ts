@@ -314,7 +314,7 @@ describe('a task that rewrites the lockfile a plugin folds', () => {
       await writeFile(path.join(root, 'seed.txt'), 'A')
       await runTask(['app#build', 'app#pack'])
       expect(status.filter((l) => l.includes('pnpm-lock.yaml'))).toEqual([
-        '[vx] a task rewrote `pnpm-lock.yaml` during the run, which a plugin folds into every key: nothing keyed before it is restored or saved from here on',
+        '[vx] a task rewrote `pnpm-lock.yaml` during the run, which a plugin puts into every key: nothing keyed before it is restored or saved from here on',
       ])
       await runTask('app#build')
       expect(status.filter((l) => l.includes('pnpm-lock.yaml'))).toEqual([])

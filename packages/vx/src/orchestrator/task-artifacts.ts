@@ -8,12 +8,12 @@ import {
   type CacheLayer,
   type ResolvedRemote,
   resolveOutputTree,
-  resolveWorkspaceOutputs,
+  resolveWorkspaceOutputTree,
   sayRemoteFault,
 } from '../cache/index.js'
 import type { CapturedChunk } from '../exec/index.js'
-import { secretMask } from '../util/index.js'
-import { decodeOutputLog, encodeOutputLog } from './output-log.js'
+import { secretMask, thrownMessage } from '../util/index.js'
+import { decodeOutputLog, encodeOutputLog, maskedOutputLog } from './output-log.js'
 
 /** The task a `TaskArtifacts` call names: where its outputs are and what ran. */
 export interface ArtifactTask {
@@ -45,6 +45,8 @@ export interface ArtifactRun {
   readonly peakRssBytes?: number
   /** Its environment: a secret value in it is masked out of the stored output. */
   readonly env?: Readonly<Record<string, string | undefined>>
+  /** Its `exec.env.secret`: names in `env` whose values are masked whatever the name. */
+  readonly secret?: readonly string[]
   /** No remote held the key when the run asked: its upload asks none first. */
   readonly absent?: boolean
 }
@@ -92,19 +94,19 @@ export interface TaskArtifacts {
 export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArtifacts {
   return {
     async save(key, task, run) {
-      const [tree, wsFiles] = await Promise.all([
+      const [tree, wsTree] = await Promise.all([
         resolveOutputTree({
           projectDir: task.projectDir,
           outputs: task.outputs.files,
           nestedProjectDirs: [...(task.nestedProjectDirs ?? [])],
         }),
-        resolveWorkspaceOutputs({ workspaceRoot, outputs: task.outputs.workspaceFiles }),
+        resolveWorkspaceOutputTree({ workspaceRoot, outputs: task.outputs.workspaceFiles }),
       ])
       const mine = (f: string) => task.others?.has(f) !== true
       const files = tree.files.filter(mine)
-      const ws = wsFiles.filter(mine)
-      const mask = secretMask([process.env, run.env ?? {}])
-      const log = encodeOutputLog(run.output, mask === null ? undefined : (t) => mask.mask(t))
+      const ws = wsTree.files.filter(mine)
+      const mask = secretMask([process.env, run.env ?? {}], run.secret)
+      const log = mask === null ? encodeOutputLog(run.output) : maskedOutputLog(run.output, mask)
       await cache.save({
         hash: key,
         projectDir: task.projectDir,
@@ -112,6 +114,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
         ...(tree.emptyDirs.length > 0 ? { outputDirs: tree.emptyDirs } : {}),
         workspaceRoot,
         ...(ws.length > 0 ? { workspaceOutputFiles: ws } : {}),
+        ...(wsTree.emptyDirs.length > 0 ? { workspaceOutputDirs: wsTree.emptyDirs } : {}),
         ...(run.absent === true ? { absent: true } : {}),
         entry: {
           taskId: task.id,
@@ -187,7 +190,7 @@ export async function cacheFacts(
         })
         .catch((err: unknown) => {
           // Said: unsaid, the run's workers went without this remote and no line said why.
-          const message = err instanceof Error ? err.message : String(err)
+          const message = thrownMessage(err)
           sayRemoteFault(
             r,
             new Error(`lend of ${r.plugin}'s access failed: ${message}`, { cause: err }),

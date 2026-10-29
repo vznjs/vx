@@ -19,9 +19,18 @@ describe('parseAllow', () => {
       `${GITHUB}:acme/app`,
       `${GITHUB}:acme:ci.yml`,
       `${GITHUB}:acme/app:`,
-      'http://x.example:acme/app:ci.yml',
     ])
-      expect(() => parseAllow(bad)).toThrow(`${bad} is not issuer:owner/repo:workflow`)
+      expect(() => parseAllow(bad)).toThrow(new Error(`${bad} is not issuer:owner/repo:workflow`))
+    // Well formed, so "is not issuer:owner/repo:workflow" sent its author to the wrong part.
+    for (const [bad, issuer] of [
+      ['http://x.example:acme/app:ci.yml', 'http://x.example'],
+      // Plain HTTP to another host, behind loopback's spelling.
+      ['http://127.0.0.1:80@x.example:acme/app:ci.yml', 'http://127.0.0.1:80@x.example'],
+      ['http://127.0.0.1.x.example:acme/app:ci.yml', 'http://127.0.0.1.x.example'],
+    ] as const)
+      expect(() => parseAllow(bad)).toThrow(
+        new Error(`${bad}: the issuer is https://, not ${issuer} (plain http only on 127.0.0.1)`),
+      )
     // One grammar on every server: a comma is not a separator, and an entry
     // that holds one is refused rather than read as a workflow named `ci.yml,`.
     expect(() => parseAllow(`${GITHUB}:acme/app:ci.yml,${GITHUB}:acme/web:ci.yml`)).toThrow(

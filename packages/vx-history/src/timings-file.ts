@@ -39,7 +39,9 @@ export function readTimings(file: string, warn: (m: string) => void): Record<str
   }
   const out: Record<string, number> = {}
   for (const [id, ms] of Object.entries(tasks)) {
-    if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) out[id] = ms
+    // Bounded so no chain of them sums past a number: core refuses a
+    // weight that is not finite, and the run failed on a hint.
+    if (typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER) out[id] = ms
   }
   return out
 }

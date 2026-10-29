@@ -92,5 +92,5 @@ export function nonJsonPaths(value: unknown): NonJsonValue[] {
 
 /** The refusal every path gives. */
 export function nonJsonMessage(configPath: string, found: NonJsonValue): string {
-  return `${configPath}: ${found.path} is ${found.is} — a config must be JSON data, because the cache key folds its JSON`
+  return `${configPath}: ${found.path} is ${found.is} — a config must be JSON data, because the cache key is built from its JSON`
 }

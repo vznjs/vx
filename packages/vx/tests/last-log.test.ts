@@ -31,6 +31,7 @@ export default { tasks: {
   bad: { exec: { command: 'echo boom; exit 3' } },
   quiet: { exec: { command: 'true' }, inputs, cache },
   mute: { exec: { command: 'exit 4' } },
+  unsaved: { exec: { command: 'echo unsaved' }, inputs, cache },
 } }
 `,
   )
@@ -126,6 +127,10 @@ it('a task no run recorded, or one outside the run named, is refused', () => {
     err: noticed('vx last: no recorded run of a#nope\n'),
   })
   expect(vx('last', runIds['bad']!, '--log', 'a#build').code).toBe(1)
+  // No history of it, as `--stats` and `vx why` say it: it was VX_E_REFUSED.
+  expect(JSON.parse(vx('last', '--log', 'a#nope', '--format', 'json').out).error.code).toBe(
+    'VX_E_NO_HISTORY',
+  )
 })
 
 it('--log with no value reads the positional argument as the task', () => {
@@ -154,4 +159,28 @@ it('--log takes a bare task name: the one project that ran it, else the ones to 
     out: '',
     err: noticed('vx last: "build" ran in 2 projects — pick one:\n  a#build\n  b#build\n'),
   })
+})
+
+it('a cached task whose run saved no entry says so, not that it is uncached', () => {
+  expect(vx('run', 'a#unsaved', '--cache-policy', 'local:r').code).toBe(0)
+  expect(vx('last', '--log', 'a#unsaved')).toEqual({
+    code: 0,
+    out: '',
+    err: noticed(
+      'vx last: a#unsaved ended success, and its entry is not in the cache: the run did not save it, or it was pruned since\n',
+      'info',
+    ),
+  })
+})
+
+// An entry saved before masking, or by another machine, can hold a value
+// this machine's env names a secret: a hit's replay masks it, and so does
+// the log `vx last` reads from the entry.
+it("a cached task's log masks this process's secret values, as its replay does", () => {
+  const p = Bun.spawnSync({
+    cmd: [process.execPath, BIN, 'last', '--log', 'a#build'],
+    cwd: root,
+    env: { ...process.env, PROBE_TOKEN: 'built-ok' },
+  })
+  expect([p.exitCode, p.stdout.toString()]).toEqual([0, '***\n'])
 })

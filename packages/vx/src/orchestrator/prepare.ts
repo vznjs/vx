@@ -10,7 +10,15 @@
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { beginRun, mark, nearest, relPosix, type SecretBroker, UserError } from '../util/index.js'
+import {
+  beginRun,
+  mark,
+  nearest,
+  relPosix,
+  type SecretBroker,
+  thrownMessage,
+  UserError,
+} from '../util/index.js'
 import {
   Cache,
   type CacheLayer,
@@ -169,6 +177,8 @@ export interface PreparedRun {
    * mistaken for a workspace vx was never set up in.
    */
   anyProjectConfig: boolean
+  /** A workspace project that declares no task: no config, and nothing configured reaches it. */
+  taskless: (name: string) => boolean
   /**
    * With no config in the lock, one a directory holds anyway (root-relative):
    * written after `vx lock`, so the fix is `vx lock`, not `vx init`. Asked
@@ -419,6 +429,12 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // name, never by count: a config-less project counts as loaded, so a
   // scope holding one hid an unloaded declarer (X-129, X-182).
   const partialLoad = projectsWithConfigs.some((m) => !projects.has(m.name))
+  // Asked on a refusal only: a scope never loads a config-less project
+  // nothing configured reaches.
+  const taskless = (name: string): boolean =>
+    !projects.has(name) &&
+    projectMetas.some((m) => m.name === name) &&
+    !projectsWithConfigs.some((m) => m.name === name)
 
   // Boundary geometry considers every workspace project, loaded or not,
   // config or not: `--affected` gives a changed path to the deepest project
@@ -436,9 +452,20 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // A dependant's `^build` still reaches it, and `lib#build` names it.
   const requested = expandRequested(tasks, candidateProjects, projects, isDefaultBuild)
   let unresolvedTasks = unresolvedRequests(tasks, candidateProjects, projects, isDefaultBuild)
+  // A diff that changed only config-less projects loads none of them: no
+  // candidate to ask, so every bare name is still to judge, or a typo ran
+  // nothing, exit 0.
+  if (options.selectedByDiff === true && candidateProjects.length === 0)
+    unresolvedTasks = [...new Set([...tasks.filter((t) => !t.includes('#')), ...unresolvedTasks])]
   refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
+  // A scope that loaded no candidate judged no bare name: each is unresolved.
   if (options.projects !== undefined && options.selectedByDiff !== true)
-    refuseUnlockedScope(unresolvedTasks, candidateProjects, projects, projectMetas, workspaceRoot)
+    refuseUnlockedScope(
+      candidateProjects.length === 0 ? tasks : unresolvedTasks,
+      options.projects,
+      projectMetas,
+      workspaceRoot,
+    )
   if (options.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
     // A name a loaded project declares is no typo, whether or not the load
     // was whole: an unaffected dependency loaded for the closure declared
@@ -579,6 +606,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
+      taskless,
       unlockedConfig: () => unlockedConfigOf(projectsWithConfigs, projectMetas, workspaceRoot),
       fingerprintWatch,
       nestedDirsByProject,
@@ -859,6 +887,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
+      taskless,
       unlockedConfig: () => unlockedConfigOf(projectsWithConfigs, projectMetas, workspaceRoot),
       fingerprintWatch,
       nestedDirsByProject,
@@ -948,9 +977,11 @@ function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>
   const stack = [...roots]
   while (stack.length > 0) {
     const id = stack.pop()!
-    if (keep.has(id)) continue
+    // A `pkg#task` the user named is kept, though a hook may have dropped it.
+    const node = nodes.get(id)
+    if (node === undefined || keep.has(id)) continue
     keep.add(id)
-    stack.push(...nodes.get(id)!.deps)
+    stack.push(...node.deps)
   }
   for (const [id, n] of nodes) {
     if (!keep.has(id)) nodes.delete(id)
@@ -1004,7 +1035,7 @@ function unlockedConfigOf(
 function refuseUnlockedConfig(
   tasks: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,
-  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+  metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
   workspaceRoot: string,
 ): void {
   for (const spec of tasks) {
@@ -1013,7 +1044,7 @@ function refuseUnlockedConfig(
     const name = spec.slice(0, at)
     const entry = projects.get(name)
     if (entry === undefined || !isDefaultBuild(entry.config.tasks?.[spec.slice(at + 1)])) continue
-    const config = unlockedConfig(name, projects, metas)
+    const config = unlockedConfig(name, metas)
     if (config === undefined) continue
     throw new UserError(
       `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
@@ -1029,15 +1060,16 @@ function refuseUnlockedConfig(
  */
 function refuseUnlockedScope(
   unresolved: readonly string[],
-  candidates: readonly string[],
-  projects: ReadonlyMap<string, ProjectEntry>,
-  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+  selected: readonly string[],
+  metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
   workspaceRoot: string,
 ): void {
   const spec = unresolved.find((t) => !t.includes('#'))
   if (spec === undefined) return
-  for (const name of candidates) {
-    const config = unlockedConfig(name, projects, metas)
+  // The selection, not the loaded projects: a scope loads no config-less
+  // member nothing configured reaches, and that is the one to ask about.
+  for (const name of selected) {
+    const config = unlockedConfig(name, metas)
     if (config === undefined) continue
     throw new UserError(
       `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
@@ -1048,15 +1080,13 @@ function refuseUnlockedScope(
 /** The config file in a project's directory the lock holds none for. */
 function unlockedConfig(
   name: string,
-  projects: ReadonlyMap<string, ProjectEntry>,
-  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+  metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
 ): string | undefined {
-  const entry = projects.get(name)
-  if (entry === undefined) return undefined
-  const locked = metas.find((m) => m.name === name)?.configPath
-  if (typeof locked === 'string' && locked !== '') return undefined
-  const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(entry.dir, n)))
-  return config === undefined ? undefined : path.join(entry.dir, config)
+  const meta = metas.find((m) => m.name === name)
+  if (meta === undefined) return undefined
+  if (typeof meta.configPath === 'string' && meta.configPath !== '') return undefined
+  const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(meta.dir, n)))
+  return config === undefined ? undefined : path.join(meta.dir, config)
 }
 
 /**
@@ -1083,7 +1113,7 @@ export async function openRemotes(
     } catch (err) {
       entry.read = false
       entry.write = false
-      const e = err instanceof Error ? err : new Error(String(err))
+      const e = err instanceof Error ? err : new Error(thrownMessage(err))
       entry.onError?.(e)
       closed = true
     }

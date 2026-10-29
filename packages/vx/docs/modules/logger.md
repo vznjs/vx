@@ -113,7 +113,7 @@ export function createForecast(
 ## View resolution (priority order)
 
 1. Explicit `--output-logs` → that mode.
-2. Truthy `CI` env (`CI=0` / `CI=false` excluded) → `full`.
+2. Truthy `CI` env (`CI=0` and `CI=false`, in any case, excluded) → `full`.
 3. CLI-detected flow (`RunOptions.flow`) → `focused` or `broad`.
 4. Nothing (programmatic callers) → `full`.
 
@@ -179,7 +179,8 @@ as the run proceeds so the region becomes the summary when the run
 ends. A failure logs a permanent one-liner the moment it lands
 (`formatFailureLine`) and the full frame replays at `runEnd`. The
 region is rewritten in place, throttled with forced redraws on task
-events. At `runEnd` (the graph is done) its worker rows go and it
+events, and built (forecast pass, summary, rows) only when the writer
+draws it, from the state then. At `runEnd` (the graph is done) its worker rows go and it
 keeps the footer and vx's own step rows (`tail`) until `runDone`, just
 before the final footer prints, removes it for good. A stop
 (`runStop`) keeps the region: running rows read `aborting` with their

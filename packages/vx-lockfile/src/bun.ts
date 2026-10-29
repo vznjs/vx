@@ -160,9 +160,7 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
   const out = new Map<string, LockfileImporter>()
   const viaLayout = (from: string, name: string): string | undefined => {
     const key = resolve(lock, from, name)
-    const id = key === undefined ? '' : lock.packages.get(key)!.id
-    const at = id.indexOf('@workspace:')
-    return at === -1 ? undefined : id.slice(at + '@workspace:'.length) || '.'
+    return key === undefined ? undefined : workspaceOf(lock.packages.get(key)!.id)
   }
   for (const dir of lock.workspaces.keys()) {
     const from = importerFrom(lock, dir)
@@ -211,10 +209,29 @@ function workspaceSpecTarget(
   return alias === null ? undefined : lock.workspaceDirs.get(alias[1]!)
 }
 
-/** The node_modules path a workspace resolves from: its own name, or the root's ''. */
+/**
+ * The workspace dir a package id installs: `b@workspace:packages/b`, or
+ * the root, which Bun 1.4 writes `root@root:`.
+ */
+function workspaceOf(id: string): string | undefined {
+  const at = id.indexOf('@workspace:', 1)
+  if (at !== -1) return id.slice(at + '@workspace:'.length) || '.'
+  return id.endsWith('@root:') ? '.' : undefined
+}
+
+/**
+ * The node_modules path a workspace resolves from: its own name, `./<name>`
+ * when a root package holds that name, or the root's ''. Bun 1.4 writes no
+ * root entry for such a workspace and nests its own dependencies under
+ * `./<name>/`: resolved from `<name>`, they were the root package's.
+ */
 function importerFrom(lock: Lockfile, dir: string): string {
   if (dir === '.') return ''
-  for (const [name, wsDir] of lock.workspaceDirs) if (wsDir === dir) return name
+  for (const [name, wsDir] of lock.workspaceDirs) {
+    if (wsDir !== dir) continue
+    const held = lock.packages.get(name)
+    return held === undefined || held.id === `${name}@workspace:${dir}` ? name : `./${name}`
+  }
   return ''
 }
 
@@ -331,9 +348,8 @@ export function importerDigests(
   // live on its importer — so the node points at the importer: what a
   // project can import through workspace package B is B's whole reach.
   for (const [p, e] of lock.packages) {
-    const at = e.id.indexOf('@workspace:')
-    if (at === -1) continue
-    const target = importers.get(e.id.slice(at + '@workspace:'.length) || '.')
+    const dir = workspaceOf(e.id)
+    const target = dir === undefined ? undefined : importers.get(dir)
     if (target !== undefined) edges[index.get(p)!]!.push(target)
   }
   const digests = reachDigests({ material, edges })

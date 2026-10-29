@@ -48,6 +48,7 @@ import type { SandboxConfig } from '../config.js'
 import {
   armTimeout,
   drainOrAbort,
+  lineEnds,
   POST_EXIT_CUT_LINE,
   shellQuote,
   withForwardArgs,
@@ -2016,11 +2017,25 @@ const TRACER_RETRY_LINE =
  * declared, so a second run redoes, not doubles, it.
  */
 export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
-  const { tracerFailed, ranMs, ...first } = await runSandboxedOnce(args)
+  // Whether the first attempt's output, both streams, ended mid-line: the
+  // notice starts its own line (it read `…/strace: bare[vx] the sandbox's…`).
+  let midLine = false
+  const seen =
+    (on: ((chunk: string) => void) | undefined) =>
+    (chunk: string): void => {
+      if (chunk.length > 0) midLine = !chunk.endsWith('\n')
+      on?.(chunk)
+    }
+  const { tracerFailed, ranMs, ...first } = await runSandboxedOnce({
+    ...args,
+    onStdout: seen(args.onStdout),
+    onStderr: seen(args.onStderr),
+  })
   // A stopping run has killed the children it holds; a retry would be one
   // spawned after that kill.
   if (!tracerFailed || args.signal?.aborted === true) return first
-  args.onStderr?.(TRACER_RETRY_LINE)
+  const notice = (midLine ? '\n' : '') + TRACER_RETRY_LINE
+  args.onStderr?.(notice)
   // `timeout` bounds the task's whole run (schema.md), so the retry gets
   // what the first attempt left of it, not a fresh window.
   const {
@@ -2036,7 +2051,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     ...second,
     durationMs: first.durationMs + second.durationMs,
     stdout: first.stdout + second.stdout,
-    stderr: first.stderr + TRACER_RETRY_LINE + second.stderr,
+    stderr: first.stderr + notice + second.stderr,
   }
 }
 
@@ -2220,8 +2235,9 @@ async function runSandboxedOnce(
   let partial = ''
   let straceSpoke = false
   const [out, err] = pipes.streams(proc)
+  const ends = lineEnds(args.onStdout, args.onStderr)
   const streams = Promise.all([
-    streamToString(out, args.onStdout, ac.signal, args.capture?.stdout ?? true),
+    streamToString(out, ends.onStdout, ac.signal, args.capture?.stdout ?? true),
     streamToString(
       err,
       (chunk) => {
@@ -2230,7 +2246,7 @@ async function runSandboxedOnce(
         const lines = (partial + chunk).split('\n')
         partial = (lines.pop() ?? '').slice(0, 512)
         if (lines.some((l) => STRACE_OWN_ERROR.test(l))) straceSpoke = true
-        args.onStderr?.(chunk)
+        ends.onStderr?.(chunk)
       },
       ac.signal,
       args.capture?.stderr ?? true,
@@ -2247,8 +2263,9 @@ async function runSandboxedOnce(
   if (timeout.timedOut()) ac.abort()
   else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
-  if (cut) args.onStderr?.(POST_EXIT_CUT_LINE)
-  const stderr = cut ? streamed + POST_EXIT_CUT_LINE : streamed
+  const cutLine = ends.own(POST_EXIT_CUT_LINE)
+  if (cut) args.onStderr?.(cutLine)
+  const stderr = cut ? streamed + cutLine : streamed
   args.liveChildren?.delete(proc)
   releaseGroup(proc)
   closeSignalChannel(proc)

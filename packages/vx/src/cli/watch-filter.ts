@@ -33,8 +33,13 @@ export function isIgnoredWatchPath(rel: string): boolean {
   const segments = rel.split(path.sep)
   for (let i = 1; i <= segments.length; i++) if (isIgnoredDir(segments.slice(0, i))) return true
   if (IGNORED_SUFFIXES.some((suf) => rel.endsWith(suf))) return true
+  const last = segments.length - 1
+  // The cache's first save writes `.vx/.gitignore`, which ignores only the
+  // `.vx/cache` and `.vx/tmp` already skipped: a watched root project ran
+  // one more cycle for it.
+  if (segments[last] === '.gitignore' && segments[last - 1] === '.vx') return true
   // `vx lock`'s review copy: no input, so a re-lock is no cycle.
-  return segments[segments.length - 1] === 'vx.lock.json'
+  return segments[last] === 'vx.lock.json'
 }
 
 /**
@@ -55,7 +60,7 @@ export function makeWatchIgnore(
   inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>> = new Map(),
   /** What git tracked at the arm (`gitFiles`): never an output, so an edit there is one. */
   tracked?: ReadonlySet<string>,
-): (base: string, filename: string) => boolean {
+): (base: string, filename: string, dir?: boolean) => boolean {
   // Watchers report under the real root; a cache dir named through a link
   // (`VX_CACHE_DIR`, macOS `/var` -> `/private/var`) is matched as its target.
   const cacheAbs = realThrough(path.resolve(cacheDir))
@@ -104,9 +109,49 @@ export function makeWatchIgnore(
             .filter((g) => g.startsWith('!'))
             .map((g) => outputContainer(g.slice(1)))
             .filter((c) => c !== ''),
+          asTrees(globs.filter((g) => !g.startsWith('!'))).map(reach),
+          ownTrees(globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))),
         ] as const,
     ),
   )
+  // A directory the poller skips is one whose files it never samples: an
+  // output container that also holds inputs (tsc's `.js` beside `.ts`,
+  // `src/**/*.js` out of `src/**/*.ts`) is walked, or `--poll` never saw
+  // the edit the native watcher ran.
+  const mayHoldInput = (abs: string): boolean =>
+    read.some(([dir, , , , reaches, trees]) => {
+      if (abs !== dir && !abs.startsWith(dir + path.sep)) return false
+      const rel = abs
+        .slice(dir.length + 1)
+        .split(path.sep)
+        .join('/')
+      if (trees.some((t) => rel === t || rel.startsWith(`${t}/`))) return false
+      const depth = rel === '' ? 0 : rel.split('/').length
+      return reaches.some(
+        ([p, max]) =>
+          depth < max &&
+          (p === '' ||
+            rel === '' ||
+            p === rel ||
+            p.startsWith(`${rel}/`) ||
+            rel.startsWith(`${p}/`)),
+      )
+    })
+  let trackedDirs: Set<string> | undefined
+  const holdsTracked = (abs: string): boolean => {
+    if (tracked === undefined) return false
+    if (trackedDirs === undefined) {
+      trackedDirs = new Set()
+      for (const f of tracked)
+        for (
+          let p = path.dirname(f);
+          !trackedDirs.has(p) && p !== path.dirname(p);
+          p = path.dirname(p)
+        )
+          trackedDirs.add(p)
+    }
+    return trackedDirs.has(abs)
+  }
   const isInput = (abs: string): boolean =>
     read.some(([dir, globs, not, containers]) => {
       if (!abs.startsWith(dir + path.sep)) return false
@@ -118,11 +163,12 @@ export function makeWatchIgnore(
       if (not.some((g) => g.match(rel))) return false
       return !containers.some((c) => c === rel || c.startsWith(`${rel}/`))
     })
-  return (base, filename) => {
+  return (base, filename, dir = false) => {
     if (isIgnoredWatchPath(filename)) return true
     const abs = path.resolve(base, filename)
     if (abs === cacheAbs || abs.startsWith(cacheAbs + path.sep)) return true
     if (isInput(abs)) return false
+    if (dir && (mayHoldInput(abs) || holdsTracked(abs))) return false
     // Core never cleans or saves a file git tracks and keys it under the
     // task's own output glob (2026-10-14); a submodule is listed as its
     // gitlink alone, so a path under a tracked one counts.
@@ -142,6 +188,23 @@ export function makeWatchIgnore(
     }
     return false
   }
+}
+
+/**
+ * Where a glob's matches can lie: under its static prefix (`''` for the
+ * project's top), no deeper than its segment count when it has no `**`.
+ */
+function reach(glob: string): readonly [prefix: string, maxDepth: number] {
+  const p = staticPrefix(glob)
+  return [p === '.' || p === '/' ? '' : p, glob.includes('**') ? Infinity : glob.split('/').length]
+}
+
+/** The directories a task's own outputs cover whole (`dist/**`, `dist`): none of its inputs lie there. */
+function ownTrees(globs: readonly string[]): string[] {
+  return asTrees(globs).flatMap((g) => {
+    const p = staticPrefix(g)
+    return p !== '.' && p !== '/' && g === `${p}/**` ? [p] : []
+  })
 }
 
 /** `p` with its longest existing prefix realpath'd: the cache dir may not exist yet. */

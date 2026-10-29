@@ -25,6 +25,7 @@
     "schemaVersion",
     "cacheEntries",
     "cacheBytes",
+    "cacheIndexError",
     "settings",
     "orphans",
     "runs24h",
@@ -69,7 +70,7 @@
       "required": ["count", "source", "cores", "cpuQuota"],
       "properties": {
         "count": { "type": "integer" },
-        "source": { "enum": ["workspace", "cgroup", "cores"] },
+        "source": { "enum": ["env", "workspace", "cgroup", "cores"] },
         "cores": { "type": "integer" },
         "cpuQuota": { "type": ["number", "null"] }
       }
@@ -92,6 +93,10 @@
     "schemaVersion": { "type": "string" },
     "cacheEntries": { "type": "integer" },
     "cacheBytes": { "type": "integer" },
+    "cacheIndexError": {
+      "type": ["string", "null"],
+      "description": "Why the cache index cannot be read, with the fix; null when it reads. While set, the counts it holds read 0."
+    },
     "settings": {
       "type": "object",
       "description": "every setting (docs/schema.md § Settings) by path, as a run with no flags takes it: its variable as written, else .vx/workspace's value, else null with source default",

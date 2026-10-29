@@ -57,6 +57,8 @@ describe('vx last names a retried task’s attempts', () => {
           const cells = l.trim().split(/\s{2,}/)
           return [cells[0], cells[1], cells.at(-1)]
         })
+        // The order is the summary's (ends, durations), not this row's.
+        .toSorted((a, b) => String(a[1]).localeCompare(String(b[1])))
       expect(rows).toEqual([
         ['failed (exit 4)', 'app#boom', '2 attempts'],
         ['success', 'app#flaky', '2 attempts'],

@@ -16,8 +16,8 @@ import {
   committedFiles,
   OUTPUT_DIRS_OVER_CAP,
   outputWalkTakes,
-  resolveOutputs,
-  resolveWorkspaceOutputs,
+  resolveOutputTree,
+  resolveWorkspaceOutputTree,
   sweepRestoreTemps,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
@@ -120,7 +120,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
   // The walk that found the tree stale, handed to the clean when nothing
   // was awaited between them: the clean's own walk would only repeat it
   // (X-161).
-  let walked: { proj: string[]; ws: string[] } | undefined
+  let walked: { proj: Tree; ws: Tree } | undefined
   if (anyOutputs) {
     const expected = hit.outputRows ?? []
     if (expected.length > 0) {
@@ -131,23 +131,38 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         .filter((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
         .map((e) => ({ ...e, path: e.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
       const endGlob = span('output glob')
-      const actualAbs = await resolveOutputs({
+      const projTree = await resolveOutputTree({
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
       })
-      const actualWsAbs = await resolveWorkspaceOutputs({
+      const wsTree = await resolveWorkspaceOutputTree({
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
       })
       endGlob()
+      const actualAbs = projTree.files
+      const actualWsAbs = wsTree.files
+      // An empty directory is an entry row (`dist/empty/`): one the entry
+      // does not hold is a stray, as a file is. A directory row with a row
+      // under it is one kept for its mode (`DIR_MODE`), and the walk lists
+      // no such directory: only the files and empty directories it holds.
       const setsMatch = (
         actual: readonly string[],
         exp: ReadonlyArray<{ path: string }>,
       ): boolean => {
-        const expSet = new Set(exp.map((e) => e.path).filter((p) => !p.endsWith('/')))
+        const held = new Set<string>()
+        for (const { path: p } of exp) {
+          for (let i = p.lastIndexOf('/', p.length - 2); i > 0; i = p.lastIndexOf('/', i - 1))
+            held.add(p.slice(0, i + 1))
+        }
+        const expSet = new Set(
+          exp.map((e) => e.path).filter((p) => !p.endsWith('/') || !held.has(p)),
+        )
         return actual.length === expSet.size && actual.every((r) => expSet.has(r))
       }
+      const dirRels = (root: string, dirs: readonly string[]): string[] =>
+        dirs.map((d) => `${relPosix(root, d)}/`)
       // A stray a dependant's glob could have added is not a stray; a path
       // this entry recorded is never dropped, even where that glob covers
       // the whole tree (strapi's shape: both on `dist`).
@@ -159,6 +174,12 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       const actualWsRels = actualWsAbs
         .map((p) => relPosix(args.workspaceRoot, p))
         .filter((rel) => expectedWsRels.has(rel) || !isAddition(rel))
+      const actualDirRels = dirRels(node.projectDir, projTree.emptyDirs).filter(
+        (rel) => expectedRels.has(rel) || !isAddition(rel.slice(0, -1)),
+      )
+      const actualWsDirRels = dirRels(args.workspaceRoot, wsTree.emptyDirs).filter(
+        (rel) => expectedWsRels.has(rel) || !isAddition(rel.slice(0, -1)),
+      )
       const rowsPresent = (
         actual: readonly string[],
         exp: ReadonlyArray<{ path: string }>,
@@ -168,8 +189,9 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       }
       const treeMatches = additive
         ? rowsPresent(actualRels, projExpected) && rowsPresent(actualWsRels, wsExpected)
-        : setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)
-      if (!treeMatches) walked = { proj: actualAbs, ws: actualWsAbs }
+        : setsMatch([...actualRels, ...actualDirRels], projExpected) &&
+          setsMatch([...actualWsRels, ...actualWsDirRels], wsExpected)
+      if (!treeMatches) walked = { proj: projTree, ws: wsTree }
       if (treeMatches) {
         const endStat = span('output stat')
         skipRestore =
@@ -207,17 +229,19 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     const expected = hit.outputRows ?? []
     if (expected.length === 0) {
       const endGlob = span('output glob')
-      const actual = await resolveOutputs({
+      const actual = await resolveOutputTree({
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
       })
-      const actualWs = await resolveWorkspaceOutputs({
+      const actualWs = await resolveWorkspaceOutputTree({
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
       })
       endGlob()
-      skipRestore = actual.length === 0 && actualWs.length === 0
+      skipRestore =
+        actual.files.length + actual.emptyDirs.length + actualWs.files.length === 0 &&
+        actualWs.emptyDirs.length === 0
       walked = { proj: actual, ws: actualWs }
     }
   }
@@ -249,34 +273,42 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     let foundWsRels: string[] = []
     let staleRels: string[] = []
     let staleWsRels: string[] = []
+    let staleDirs: string[] = []
+    let staleWsDirs: string[] = []
     if (!additive) {
-      sweepRestoreTemps(node.projectDir, outputs)
-      sweepRestoreTemps(args.workspaceRoot, wsOutputs)
+      sweepRestoreTemps(node.projectDir, outputs, cleanArgs.committed)
+      sweepRestoreTemps(args.workspaceRoot, wsOutputs, wsCleanArgs.committed)
       if (outputs.length > 0) {
-        const abs = walked?.proj ?? (await resolveOutputs(cleanArgs))
-        foundRels = abs.map((f) => relPosix(node.projectDir, f))
+        const tree = walked?.proj ?? (await resolveOutputTree(cleanArgs))
+        foundRels = tree.files.map((f) => relPosix(node.projectDir, f))
         const blocking = inTheWay(foundRels, heldRels)
         staleRels = notHeld(foundRels, heldRels).filter((f) => !blocking.has(f))
-        if (blocking.size > 0) {
+        const dirs = splitDirs(node.projectDir, tree.emptyDirs, heldRels)
+        staleDirs = dirs.stale
+        if (blocking.size > 0 || dirs.blocking.length > 0) {
           await cleanOutputPaths({
             projectDir: node.projectDir,
             rels: [...blocking],
             outputs,
             committed: cleanArgs.committed,
+            emptyDirs: dirs.blocking,
           })
         }
       }
       if (wsOutputs.length > 0) {
-        const abs = walked?.ws ?? (await resolveWorkspaceOutputs(wsCleanArgs))
-        foundWsRels = abs.map((f) => relPosix(args.workspaceRoot, f))
+        const tree = walked?.ws ?? (await resolveWorkspaceOutputTree(wsCleanArgs))
+        foundWsRels = tree.files.map((f) => relPosix(args.workspaceRoot, f))
         const blocking = inTheWay(foundWsRels, heldWsRels)
         staleWsRels = notHeld(foundWsRels, heldWsRels).filter((f) => !blocking.has(f))
-        if (blocking.size > 0) {
+        const dirs = splitDirs(args.workspaceRoot, tree.emptyDirs, heldWsRels)
+        staleWsDirs = dirs.stale
+        if (blocking.size > 0 || dirs.blocking.length > 0) {
           await cleanOutputPaths({
             projectDir: args.workspaceRoot,
             rels: [...blocking],
             outputs: wsOutputs,
             committed: wsCleanArgs.committed,
+            emptyDirs: dirs.blocking,
           })
         }
       }
@@ -285,10 +317,11 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       files: outputs,
       workspaceFiles: wsOutputs,
     })
-    if (staleRels.length > 0) {
+    if (staleRels.length > 0 || staleDirs.length > 0) {
       await cleanOutputPaths({
         projectDir: node.projectDir,
         rels: staleRels,
+        emptyDirs: staleDirs,
         outputs,
         committed: cleanArgs.committed,
         // A stale file in an output directory the entry holds empty takes
@@ -300,10 +333,11 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         ),
       })
     }
-    if (staleWsRels.length > 0) {
+    if (staleWsRels.length > 0 || staleWsDirs.length > 0) {
       await cleanOutputPaths({
         projectDir: args.workspaceRoot,
         rels: staleWsRels,
+        emptyDirs: staleWsDirs,
         outputs: wsOutputs,
         committed: wsCleanArgs.committed,
         keep: new Set(
@@ -486,6 +520,31 @@ function inTheWay(found: readonly string[], held: readonly string[]): Set<string
 }
 
 /** The found outputs the entry does not hold: the stale ones, once it has restored. */
+type Tree = { files: string[]; emptyDirs: string[] }
+
+/**
+ * The empty directories found under the outputs (absolute) that the entry
+ * does not hold, as rels: one where it holds a file blocks that file's
+ * rename and goes first, the rest go after the restore, as a miss's clean
+ * takes them.
+ */
+function splitDirs(
+  root: string,
+  emptyDirs: readonly string[],
+  held: readonly string[],
+): { blocking: string[]; stale: string[] } {
+  const heldKeys = new Set(held.map(fold))
+  const blocking: string[] = []
+  const stale: string[] = []
+  for (const d of emptyDirs) {
+    const rel = relPosix(root, d)
+    if (heldKeys.has(fold(`${rel}/`))) continue
+    if (heldKeys.has(fold(rel))) blocking.push(rel)
+    else stale.push(rel)
+  }
+  return { blocking, stale }
+}
+
 function notHeld(found: readonly string[], held: readonly string[]): string[] {
   const keep = new Set(held.map(fold))
   return found.filter((f) => !keep.has(fold(f)))

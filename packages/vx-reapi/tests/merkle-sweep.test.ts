@@ -360,6 +360,35 @@ describe('buildInputTree', () => {
     expect(dangling(tree.root.hash, tree.blobs)).toEqual([])
   })
 
+  // An upstream Tree may name one subtree under many names: each was rebuilt
+  // per name, 2^depth times from a Tree of depth+1 directories.
+  it('a grafted subtree named many times is rebuilt once', async () => {
+    let reads = 0
+    const leaf: Directory = { files: [], directories: [], symlinks: [] }
+    const levels = [leaf]
+    for (let i = 1; i <= 16; i++) {
+      const below = { name: '', digest: sha256(encodeDirectory(levels[i - 1]!)) }
+      levels.push({
+        files: [],
+        directories: [
+          { ...below, name: 'a' },
+          { ...below, name: 'b' },
+        ],
+        symlinks: [],
+      })
+    }
+    Object.defineProperty(leaf, 'files', { get: () => (reads++, []) })
+    const [top, ...children] = [...levels].reverse()
+    reads = 0
+    const tree = await buildInputTree({
+      workspaceRoot: root,
+      paths: [],
+      treeGrafts: [{ path: 'out', root: top!, children }],
+    })
+    expect(reads).toBeLessThanOrEqual(2)
+    expect(dangling(tree.root.hash, tree.blobs)).toEqual([])
+  })
+
   it('a graft wins over a disk directory of the same name', async () => {
     await mkdir(path.join(root, 'out'), { recursive: true })
     await writeFile(path.join(root, 'out', 'stale.txt'), 'stale')
@@ -398,5 +427,21 @@ describe('buildInputTree', () => {
     const tree = await buildInputTree({ workspaceRoot: root, paths: ['grp.sh'] })
     const top = decodeDirectory(tree.blobs.find((b) => b.digest.hash === tree.root.hash)!.data)
     expect(top.files.map((f) => f.is_executable)).toEqual([false])
+  })
+
+  // An upstream's output on disk that is also a declared input (a codegen
+  // file under `src/**`) is named twice; it was read and counted twice.
+  it('a path named twice is read once and counted once', async () => {
+    await writeFile(path.join(root, 'twice.ts'), 'x')
+    const read: string[] = []
+    const tree = await buildInputTree({
+      workspaceRoot: root,
+      paths: ['twice.ts', 'twice.ts'],
+      readFile: async (abs) => {
+        read.push(path.basename(abs))
+        return new Uint8Array(await Bun.file(abs).arrayBuffer())
+      },
+    })
+    expect([read, tree.fileCount]).toEqual([['twice.ts'], 1])
   })
 })

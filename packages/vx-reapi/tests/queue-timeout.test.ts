@@ -50,13 +50,17 @@ const request = (): ExecuteRequest =>
   }) as unknown as ExecuteRequest
 
 /** What the execute settled as: its exit code, or the rejection's name and message. */
-async function settle(stages: string[], hold: Promise<void>): Promise<string> {
+async function settle(
+  stages: string[],
+  hold: Promise<void>,
+  opts: Parameters<typeof reapiExecutor>[1] = { queueTimeoutMs: 300 },
+): Promise<string> {
   fake.onExecute = () => ({ stages, hold, response: { result: { exit_code: 0 } } })
   const client = new ReapiClient({ endpoint: fake.endpoint })
   try {
     // Not `expect(…).rejects`: it holds a call that needs gRPC I/O (item 827).
     return await Promise.race([
-      reapiExecutor(client, { queueTimeoutMs: 300 })
+      reapiExecutor(client, opts)
         .execute(request())
         .then(
           (r) => `exit ${r.exitCode}`,
@@ -92,5 +96,14 @@ describe('queueTimeoutMs', () => {
   it('stops counting once a worker starts it', async () => {
     // Control: the same bound, an action that runs past it once started.
     expect(await settle(['QUEUED', 'EXECUTING'], Bun.sleep(700))).toBe('exit 0')
+  })
+
+  // A timer past 2^31-1 ms fires after 1 ms: a bound of a month, meant as
+  // "wait", cancelled every action as it was queued, or as it started.
+  it('waits out a bound longer than a timer holds', async () => {
+    expect([
+      await settle(['QUEUED'], Bun.sleep(100), { queueTimeoutMs: 3e9 }),
+      await settle(['QUEUED', 'EXECUTING'], Bun.sleep(100), { executeTimeoutMs: 3e9 }),
+    ]).toEqual(['exit 0', 'exit 0'])
   })
 })

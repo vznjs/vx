@@ -594,7 +594,7 @@ describe('yarn() declared', () => {
 
   it('refuses an unknown scope', () => {
     expect(() => yarn({ scope: 'x' as never })).toThrow(
-      /yarn\(\) scope must be 'project' or 'workspace'/,
+      /yarn\(\) option "scope" must be 'project' or 'workspace', got/,
     )
   })
 })

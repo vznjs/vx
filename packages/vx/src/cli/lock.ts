@@ -40,6 +40,7 @@ import {
   buildPackageGraph,
   checkBracketLiterals,
   checkDependencyRules,
+  computeNestedProjectDirs,
   writeLockfile,
   type Lockfile,
   type ProjectMeta,
@@ -130,6 +131,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
   const resolved = new Map<string, ProjectConfig>()
   const out: GraphCheck = {
     broken: null,
+    loaded: false,
     fresh: { version: LOCKFILE_VERSION, projects: {} },
     all: [],
     tasked,
@@ -174,6 +176,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       lock: true,
     })
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
+    out.loaded = true
     checkBracketLiterals(root, projects.values())
     const names = new Set<string>()
     for (const entry of projects.values()) {
@@ -191,12 +194,19 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         buildPackageGraph(out.all, taskEdgesFrom(projects)),
       )
     const rules = runRules(workspaceConfig)
+    const nameOf = new Map(out.all.map((m) => [m.dir, m.name]))
     const nodes = buildTaskGraph({
       projects,
       packageGraph: buildPackageGraph(out.all),
       requested: expandRequested([...names], [...projects.keys()], projects, isDefaultBuild),
       workspaceRoot: root,
       rules,
+      nestedProjects: new Map(
+        [...computeNestedProjectDirs(out.all)].map(([name, dirs]) => [
+          name,
+          dirs.map((dir) => ({ name: nameOf.get(dir)!, dir })),
+        ]),
+      ),
     })
     if (hasHook(plugins, 'graph'))
       await applyGraphStage(plugins, nodes, {
@@ -223,6 +233,8 @@ interface GraphCheck {
   /** A graph rule's refusal, or a config that does not load; null when sound. */
   broken: string | null
   brokenParts?: RefusalParts
+  /** Every config loaded and resolved: `broken`, if set, is a graph rule's refusal. */
+  loaded: boolean
   /** The other configs that do not load, past `broken`. */
   alsoBroken?: readonly UserError[]
   /** The lock the configs evaluate to here. */
@@ -505,7 +517,16 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     }
     return problems.length === 0 ? 0 : 1
   }
-  const lock = await readLockfile(root)
+  // A lock that does not read is drift `vx lock` fixes, as a missing one
+  // is: the audit answers it in its own shape, not as a refusal.
+  let lock: Lockfile | null
+  try {
+    lock = await readLockfile(root)
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    if (!json) sayNotice('error', 'vx lock --check', err.message)
+    return answer([err.message])
+  }
   if (!lock) {
     const problem = `no ${LOCKFILE_NAME} at ${root} — run \`vx lock\` first`
     if (!json) sayNotice('error', 'vx lock --check', problem)
@@ -520,7 +541,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       locked === undefined
         ? `${rel} is not in the lock — run 'vx lock'`
         : locked.file !== fresh.file
-          ? `${rel} is not the ${locked.file} the lock holds for ${dir} — run 'vx lock'`
+          ? `${rel} is not the ${locked.file} the lock holds for ${dir === '.' ? 'the workspace root project' : dir} — run 'vx lock'`
           : !Bun.deepEquals(fresh.config, locked.config, true)
             ? `${rel} evaluates differently from the lock here — its config, a file ` +
               `it imports, or the environment it reads changed; run 'vx lock'`
@@ -529,23 +550,39 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     failures.push(problem)
     drifted.add(dir)
   }
-  if (broken !== null) failures.push(broken)
-  if (check.reviewFiles && broken === null) {
+  if (broken !== null && check.loaded) failures.push(broken)
+  // Each config that does not load, as `vx lock` names them: a CI fixing
+  // one at a time re-ran the gate once per broken config.
+  const refused: { message: string; parts?: RefusalParts }[] =
+    broken === null || check.loaded
+      ? []
+      : [
+          { message: broken, ...(check.brokenParts ? { parts: check.brokenParts } : {}) },
+          ...(check.alsoBroken ?? []).map((e) => ({
+            message: e.message,
+            ...(e.parts ? { parts: e.parts } : {}),
+          })),
+        ]
+  if (check.reviewFiles && check.loaded) {
     // A project the lock already fails is named once.
     const stale = await Promise.all(
       reviewsOf(
         metas.filter((m) => !drifted.has(lockKey(root, m.dir))),
         check.resolved,
       ).map(async (r) => {
+        // Only a missing copy is "has no": a directory in its place, or one
+        // this user cannot read, read as missing too.
         const text = await Bun.file(r.file)
           .text()
-          .catch(() => null)
+          .catch((err: NodeJS.ErrnoException) => (err.code === 'ENOENT' ? null : err))
         // Compared as JSON: a formatter may lay the copy out its own way.
-        if (text !== null && sameJson(text, r.config)) return null
+        if (typeof text === 'string' && sameJson(text, r.config)) return null
         const rel = relPosix(root, r.file)
         return text === null
           ? `"${r.name}" has no ${rel} — run 'vx lock'`
-          : `"${r.name}" (${rel}) is not what its config resolves to here — run 'vx lock'`
+          : typeof text !== 'string'
+            ? `"${r.name}" (${rel}) could not be read (${text.code ?? text.message}) — remove it and run 'vx lock'`
+            : `"${r.name}" (${rel}) is not what its config resolves to here — run 'vx lock'`
       }),
     )
     for (const f of stale) if (f !== null) failures.push(f)
@@ -553,13 +590,20 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   }
   // A config that does not load evaluated none: every locked project
   // read as gone, the healthy ones too.
-  for (const dir of broken === null ? Object.keys(lock.projects) : []) {
+  for (const dir of check.loaded ? Object.keys(lock.projects) : []) {
     if (!Object.hasOwn(check.fresh.projects, dir)) {
-      failures.push(`the lock holds ${dir}, which has no vx.config now — run 'vx lock'`)
+      const what = dir === '.' ? 'the workspace root project' : dir
+      failures.push(`the lock holds ${what}, which has no vx.config now — run 'vx lock'`)
     }
   }
-  if (json) return answer(failures)
-  if (failures.length > 0) {
+  if (json)
+    // Root-relative, as every other problem: the loader names the absolute path.
+    return answer([
+      ...refused.map((r) => r.message.split(`${root}${path.sep}`).join('')),
+      ...failures,
+    ])
+  if (failures.length + refused.length > 0) {
+    for (const r of refused) ui.print('err', refusalNotice('vx lock --check', r.message, r.parts))
     for (const f of failures) sayNotice('error', 'vx lock --check', f)
     return 1
   }

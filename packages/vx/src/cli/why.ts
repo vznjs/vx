@@ -14,6 +14,7 @@ import {
   inputWriters,
   latestRunId,
   rootCauses,
+  upstreamTask,
   whyDidThisRerun,
 } from '../history/index.js'
 import { resolveRunId } from '../orchestrator/index.js'
@@ -68,7 +69,7 @@ export const WHAT_TO_DO: Readonly<Record<string, string>> = {
   config:
     "the task's evaluated config changed (its vx.config or a file it imports); `vx show <that task>` prints it as it is now",
   upstream: "a dependency's key moved; `vx why <that task>` says why",
-  plugin: "a key plugin's material changed; that plugin decides what it folds",
+  plugin: "a key plugin's material changed; that plugin decides what goes into the key",
   platform: 'it ran on another platform; each of its `exec.platforms` keeps its own entry',
   format:
     'vx keys tasks differently since an upgrade; every cached task misses once, nothing to fix',
@@ -87,14 +88,12 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     // got two different diagnoses depending on how it was typed.
     if (a === '--run' || a.startsWith('--run=')) {
       const rv = a === '--run' ? args[++i] : a.slice(6)
-      if (rv === undefined || rv === '')
-        return { ...out, error: '--run requires a run id (`vx last --list` shows them)' }
-      // No run id starts with `-`: `--run $EMPTY --format json` took
-      // `--format` as the id and then refused `json`.
-      if (a === '--run' && rv.startsWith('-'))
+      // A run id is hex: one opening with `-` is the next flag, swallowed.
+      const flag = a === '--run' && rv?.startsWith('-') === true ? `got flag ${rv}; ` : ''
+      if (rv === undefined || rv === '' || flag !== '')
         return {
           ...out,
-          error: `--run requires a run id (got flag ${rv}; \`vx last --list\` shows them)`,
+          error: `--run requires a run id (${flag}\`vx last --list\` shows them)${seeHelp('why')}`,
         }
       out.runId = rv
       continue
@@ -107,7 +106,7 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     }
     const cd = parseCacheDirFlag(args, i)
     if (cd !== null) {
-      if ('error' in cd) return { ...out, error: cd.error }
+      if ('error' in cd) return { ...out, error: `${cd.error}${seeHelp('why')}` }
       out.cacheDir = cd.cacheDir
       i = cd.next
       continue
@@ -177,6 +176,25 @@ async function resolveTarget(
       .query('SELECT 1 FROM runs WHERE project = ? AND task = ? ORDER BY id DESC LIMIT 1')
       .get(project, task)
     if (hit !== null) return target
+  } else {
+    // A bare name reads only its own task's rows: the DISTINCT over every
+    // pair sorted the whole history (24 of 26 ms at 58k rows), and its list
+    // serves only the miss's suggestions below.
+    const matches = (
+      db.query('SELECT DISTINCT project FROM runs WHERE task = ? ORDER BY project').all(target) as {
+        project: string
+      }[]
+    ).map((r) => `${r.project}#${target}`)
+    if (matches.length === 1) return matches[0]!
+    if (matches.length > 1) {
+      const here = await cwdProject()
+      if (here !== null && matches.includes(`${here}#${target}`)) return `${here}#${target}`
+      throw new UserError(
+        `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
+          matches.map((m) => `  ${m}`).join('\n'),
+        'VX_E_AMBIGUOUS',
+      )
+    }
   }
   const pairs = db
     .query('SELECT DISTINCT project, task FROM runs ORDER BY project, task')
@@ -198,17 +216,6 @@ async function resolveTarget(
       'VX_E_NO_HISTORY',
     )
   }
-  const matches = ids.filter((id) => id.endsWith(`#${target}`))
-  if (matches.length === 1) return matches[0]!
-  if (matches.length > 1) {
-    const here = await cwdProject()
-    if (here !== null && matches.includes(`${here}#${target}`)) return `${here}#${target}`
-    throw new UserError(
-      `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
-        matches.map((m) => `  ${m}`).join('\n'),
-      'VX_E_AMBIGUOUS',
-    )
-  }
   throw new UserError(
     `vx why: no recorded runs for task "${target}"${suggest(target, ids, invoked)}`,
     'VX_E_NO_HISTORY',
@@ -220,6 +227,27 @@ const fmtWhen = (ms: number): string => new Date(ms).toISOString()
 /** ` · up-to-date` or ` · restored` on a hit, as the run's summary said it; nothing otherwise. */
 function restoredWord(r: { restored: boolean | null }): string {
   return r.restored === null ? '' : r.restored ? ' · restored' : ' · up-to-date'
+}
+
+/**
+ * One run of the task, the same for `this run` and `previous`. A hit's
+ * status (`cache-hit`, `cache-hit-remote`) already names it and its tier,
+ * and `up-to-date` / `restored` says what it did to the disk; only an
+ * executed run needs the word. A skipped task never ran and has no key: it
+ * read `skipped · executed · key ` (item 898).
+ */
+function runFacts(r: {
+  startedAt: number
+  status: string
+  cacheHit: boolean | null
+  restored: boolean | null
+  hash: string
+}): string {
+  const ran = r.cacheHit === false && r.status !== 'skipped'
+  return (
+    `${fmtWhen(r.startedAt)} · ${r.status}${restoredWord(r)}${ran ? ' · executed' : ''}` +
+    (r.hash === '' ? ' · no key' : ` · key ${r.hash}`)
+  )
 }
 
 export async function whyCmd(args: readonly string[]): Promise<number> {
@@ -241,7 +269,13 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     )
     let runId: string | null
     if (parsed.runId !== undefined) {
-      runId = resolveRunId(db, parsed.runId, 'vx why')
+      // A stopped run keeps rows but no header (item 854), and `vx last
+      // --log` prints its id, so the whole id is taken from its rows too.
+      runId =
+        resolveRunId(db, parsed.runId, 'vx why') ??
+        (db.query('SELECT 1 FROM runs WHERE run_id = ? LIMIT 1').get(parsed.runId) !== null
+          ? parsed.runId
+          : null)
       // An unknown id read as a known run missing the task (X-18).
       if (runId === null) {
         throw new UserError(
@@ -283,7 +317,9 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     // A group records no run: the graph names what it gathers.
     const unrecorded = diff.entries.filter(
       (e) =>
-        e.kind === 'upstream' && e.change === 'changed' && !cacheKeyDiff(db, runId, e.name).found,
+        e.kind === 'upstream' &&
+        e.change === 'changed' &&
+        !cacheKeyDiff(db, runId, upstreamTask(e.name)).found,
     )
     const groups = unrecorded.length > 0 ? await groupMembers(root, taskId) : new Map()
     const roots = rootCauses(db, runId, taskId, diff.entries, groups)
@@ -300,22 +336,17 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const head = (text: string): string => paint('', text, c, { bold: true })
     const t = why.thisRun!
     lines.push(`${ui.inline(ui.id(taskId), c)}${dim(` — run ${runId}`)}`)
-    // A hit's status (`cache-hit`, `cache-hit-remote`) already names it and
-    // its tier, and `up-to-date` / `restored` says what it did to the disk;
-    // only an executed run needs the word. A skipped task never ran and has
-    // no key: it read `skipped · executed · key ` (item 898).
-    const ran = t.cacheHit === false && t.status !== 'skipped'
-    lines.push(
-      `  ${dim('this run')}   ${fmtWhen(t.startedAt)} · ${t.status}${restoredWord(t)}` +
-        `${ran ? ' · executed' : ''}${t.hash === '' ? ' · no key' : ` · key ${t.hash}`}`,
-    )
-    if (why.previousRun == null) {
+    lines.push(`  ${dim('this run')}   ${runFacts(t)}`)
+    if (why.previousRun == null && t.hash === '') {
+      // Only keyed runs are compared: a persistent task's tenth run read
+      // as its first, and the note saying why went unprinted.
+      lines.push(`  ${dim('previous')}   (none with a cache key)`)
+      lines.push(`  ${dim('verdict')}    ${why.note}`)
+    } else if (why.previousRun == null) {
       lines.push(`  ${dim('previous')}   (none — first recorded run of this task)`)
     } else {
       const p = why.previousRun
-      lines.push(
-        `  ${dim('previous')}   ${fmtWhen(p.startedAt)} · ${p.status}${restoredWord(p)} · key ${p.hash}`,
-      )
+      lines.push(`  ${dim('previous')}   ${runFacts(p)}`)
       // The key moved and the diff says by what: the verdict names it, so
       // an env-only change reads as one line, not "inputs differ" above a
       // table to scan.
@@ -375,30 +406,37 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         }
       }
       const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
+      // An upstream row names the task to ask next: the command, not a
+      // placeholder to fill in from the row above. A group records no run,
+      // so `vx why` on one refuses: its members are asked instead.
+      const upstream = upstreamTodo(
+        diff.entries.filter((e) => e.kind === 'upstream'),
+        unrecorded,
+      )
       const kinds = [...new Set([...diff.entries.map((e) => e.kind), ...rootKinds])].filter(
-        (k) => k in WHAT_TO_DO && !(k === 'upstream' && roots.length > 0),
+        (k) =>
+          k in WHAT_TO_DO && !(k === 'upstream' && (roots.length > 0 || upstream.length === 0)),
       )
       if (kinds.length > 0) {
         lines.push('', `  ${head('what to do')}:`)
-        // An upstream row names the task to ask next: the command, not a
-        // placeholder to fill in from the row above.
-        const upstream = diff.entries.filter((e) => e.kind === 'upstream')
+        // Its own column: a root cause's kind and the `written` row are
+        // not in the table above, and overflowed its width.
+        const todoW = Math.max(kindW, ...kinds.map((k) => k.length), writers.length > 0 ? 7 : 0)
         for (const k of kinds) {
           if (k === 'upstream') {
-            for (const todo of upstreamTodo(upstream, unrecorded))
-              lines.push(`    ${dim(k.padEnd(kindW))}  ${todo}`)
+            for (const todo of upstream) lines.push(`    ${dim(k.padEnd(todoW))}  ${todo}`)
             continue
           }
           const todo =
             k === 'config'
               ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
               : WHAT_TO_DO[k]
-          lines.push(`    ${dim(k.padEnd(kindW))}  ${todo}`)
+          lines.push(`    ${dim(k.padEnd(todoW))}  ${todo}`)
         }
         if (writers.length > 0) {
           // A task re-writing a file a key reads moves that key every run:
           // the miss is right, and only moving the write ends it.
-          lines.push(`    ${dim('written'.padEnd(kindW))}  ${WRITTEN_TODO}`)
+          lines.push(`    ${dim('written'.padEnd(todoW))}  ${WRITTEN_TODO}`)
         }
       }
     } else if (why.hashChanged === true) {
@@ -425,12 +463,18 @@ type DiffEntry = ReturnType<typeof cacheKeyDiff>['entries'][number]
 function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffEntry[]): string[] {
   const out: string[] = []
   const groups = new Set(unrecorded.map((e) => e.name))
-  const moved = upstream.filter((e) => e.change === 'changed' && !groups.has(e.name))
+  const moved = [
+    ...new Set(
+      upstream
+        .filter((e) => e.change === 'changed' && !groups.has(e.name))
+        .map((e) => upstreamTask(e.name)),
+    ),
+  ]
   if (moved.length > 0)
     out.push(
       WHAT_TO_DO['upstream']!.replace(
         '`vx why <that task>`',
-        moved.map((e) => `\`vx why ${e.name}\``).join(', '),
+        moved.map((n) => `\`vx why ${n}\``).join(', '),
       ),
     )
   for (const g of groups)

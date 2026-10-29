@@ -346,7 +346,7 @@ describe('placeTasks — an exclusive executor leaves this machine nothing', () 
       'it declined the task',
     )
     expect(refuses([probed], [{ ...dte, runtime: false }, floor])).toThrow(
-      'its key folds a runtime probe, which it does not check',
+      'its key includes a runtime probe, which it does not check',
     )
     const dev = { ...node('s#dev', { persistent: {} }), requested: true } as TaskNode
     expect(refuses([dev])).toThrow(

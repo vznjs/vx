@@ -249,7 +249,7 @@ describe('vx show (e2e)', () => {
         'inputs.files: src/**/*.ts',
         'inputs.workspaceFiles: tsconfig.base.json',
         'inputs.runtime: node -v',
-        'outputs.files',
+        'outputs.files: none',
       ])
     },
     TIMEOUT,
@@ -492,8 +492,9 @@ describe('vx info (e2e)', () => {
       expect(r.out).toMatch(/^  memory +\d/m)
       // The runtime probe's verdict for this host, with the declared count:
       // the fixture declares none, so an unavailable runtime fails nothing.
+      // Where strace cannot trace (a sandboxed shard), vx info says so.
       expect(r.out).toMatch(
-        /^  sandbox +(available \(0 tasks declare exec\.sandbox\)|unavailable — .+; 0 tasks declare exec\.sandbox)$/m,
+        /^  sandbox +(available \(0 tasks declare exec\.sandbox\)(, untraced — .+)?|unavailable — .+; 0 tasks declare exec\.sandbox)$/m,
       )
       const json = await vx(root, ['info', '--format=json'])
       expect(json.code).toBe(0)
@@ -731,6 +732,13 @@ describe('parseShowArgs', () => {
     )
   })
 
+  // `--filter=` refused as `vx run --filter=` is, not as a filter naming no project.
+  it('an empty --filter= is a missing value', () => {
+    expect(parseShowArgs(['--filter=']).error).toBe(
+      '--filter requires a value: a project name, glob or path (see `vx show --help`)',
+    )
+  })
+
   it('rejects unknown flags and extra positionals', () => {
     expect(parseShowArgs(['--bogus']).error).toBe('unknown flag: --bogus (see `vx show --help`)')
     expect(parseShowArgs(['a', 'b']).error).toBe('unexpected argument: b (see `vx show --help`)')
@@ -797,6 +805,7 @@ describe('vx info — the rendered rows', () => {
     schemaVersion: 'v28',
     cacheEntries: 0,
     cacheBytes: 0,
+    cacheIndexError: null,
     settings: {},
     orphans: { artifacts: 0, bytes: 0 },
     runs24h: 5,
@@ -807,6 +816,19 @@ describe('vx info — the rendered rows', () => {
     lockError: null,
     sandbox: { available: true, reason: '', declared: 1, untraced: null },
   }
+
+  it('one cache hit is a hit, not hits', () => {
+    const row = (f: Partial<InfoFacts>): string | undefined =>
+      renderInfo({ ...healthy, ...f })
+        .split('\n')
+        .find((l) => l.startsWith('  task runs (24h)'))
+    expect(row({ runs24h: 1, hits24h: 1, restored24h: 0 })).toBe(
+      '  task runs (24h)   1 (1 cache hit: 1 up-to-date, 0 restored)',
+    )
+    expect(row({ runs24h: 1, hits24h: 0, restored24h: 0 })).toBe(
+      '  task runs (24h)   1 (0 cache hits)',
+    )
+  })
 
   it('names each setting a variable or the workspace changed, and where', () => {
     const out = renderInfo({
@@ -1011,9 +1033,17 @@ describe('vx info — the workers and memory rows', () => {
     expect(describeWorkers({ count: 8, source: 'workspace', cores: 4, cpuQuota: 2 })).toBe(
       '8 — .vx/workspace.ts (4 cores, cgroup CPU quota 2)',
     )
+    // A one-core machine has a core, not cores.
+    expect(describeWorkers({ count: 2, source: 'workspace', cores: 1, cpuQuota: null })).toBe(
+      '2 — .vx/workspace.ts (1 core)',
+    )
     // A quota that does not bind (wider than the cores) is still named.
     expect(describeWorkers({ count: 4, source: 'cores', cores: 4, cpuQuota: 6 })).toBe(
       '4 — the CPU count, cgroup CPU quota 6',
+    )
+    // `VX_RUN_CONCURRENCY`'s count was named "the CPU count".
+    expect(describeWorkers({ count: 2, source: 'env', cores: 8, cpuQuota: null })).toBe(
+      '2 — VX_RUN_CONCURRENCY (8 cores)',
     )
   })
 

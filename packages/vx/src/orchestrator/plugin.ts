@@ -26,6 +26,7 @@ import {
   nearest,
   type PluginSecrets,
   SecretBroker,
+  thrownMessage,
   ui,
   UserError,
 } from '../util/index.js'
@@ -87,7 +88,7 @@ export interface VxPlugin {
    * (with no config; named by `name`, else its path). A project named by
    * its path takes `name`; one its config names keeps that name, and a
    * different name from an earlier plugin is refused, as is a directory
-   * outside the root. Two projects of one name are refused once the stage
+   * outside the root and the name `//` away from it. Two projects of one name are refused once the stage
    * ends. `deps` and `reach` from every plugin union then; a target that is
    * no project is refused.
    */
@@ -102,7 +103,7 @@ export interface VxPlugin {
    * applied on top of it live. A project with NO config file (a
    * `discover` plugin added it) is loaded too, as `{ tasks: {} }`, so a
    * plugin can give it tasks; with no `project` plugin such a project is
-   * never visited.
+   * never visited. Its `name` is fixed by then: a change is refused.
    */
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
 
@@ -163,7 +164,7 @@ export interface VxPlugin {
    * on this machine, with the tasks running here right now. Return `false`
    * to hold it until something finishes (it is asked again then). Asked
    * many times per run, so it must be cheap and synchronous; a throw, or
-   * an answer that is a Promise, is reported once and the plugin admits
+   * an answer that is a Promise or not a boolean or undefined, is reported once and the plugin admits
    * from then on — a policy never
    * breaks a run. Restore-tier hits, tasks on an executor pool and groups
    * hold no local resources: never asked, never in `ctx.running`. When
@@ -470,7 +471,7 @@ export interface FingerprintClaim {
    * by `--affected` with the file's bytes at the base ref and in the
    * working tree (`null` where it does not exist). Return `undefined` to
    * select every project — the answer a claimant gives when it cannot
-   * tell.
+   * tell. A name that is not one of `ctx.projects` is refused.
    */
   affected(
     change: FingerprintChange,
@@ -636,7 +637,7 @@ export interface PluginHookHandlers {
 }
 
 export interface Plugin {
-  /** Logged on errors; the convention is `'org/plugin-name'`. */
+  /** The plugin's package name (`definePlugin` sets it), logged on errors. */
   readonly name: string
   /**
    * Called once at the start of every run. Register hooks via
@@ -665,10 +666,15 @@ export interface PluginOrigin {
 
 const packageNameByDir = new Map<string, string>()
 
-/** The name of the nearest `package.json` above `dir` — the one that owns it. */
+/** The name of the nearest named `package.json` above `dir` — the one that owns it. */
 function pluginPackageName(dir: string): string {
   const memo = packageNameByDir.get(dir)
   if (memo !== undefined) return memo
+  // A package.json with no `name` below the package root is no package:
+  // dual builds (tshy) write `{ "type": "module" }` into `dist/esm/`. The
+  // walk passes it, as Vite's package lookup does; with no named one
+  // above, the nearest is refused.
+  let nameless: string | undefined
   for (let d = dir; ;) {
     let text: string | undefined
     try {
@@ -689,18 +695,22 @@ function pluginPackageName(dir: string): string {
         )
       }
       const name = pkg?.name
-      if (typeof name !== 'string' || name.length === 0) {
+      if (name === undefined) nameless ??= path.join(d, 'package.json')
+      else if (typeof name !== 'string' || name.length === 0) {
         throw new UserError(
           `definePlugin: ${path.join(d, 'package.json')} has no name — a plugin is a package, and its name is the package's`,
         )
+      } else {
+        packageNameByDir.set(dir, name)
+        return name
       }
-      packageNameByDir.set(dir, name)
-      return name
     }
     const parent = path.dirname(d)
     if (parent === d) {
       throw new UserError(
-        `definePlugin: no package.json above ${dir} — a plugin is a package, and its name is the package's`,
+        nameless === undefined
+          ? `definePlugin: no package.json above ${dir} — a plugin is a package, and its name is the package's`
+          : `definePlugin: ${nameless} has no name — a plugin is a package, and its name is the package's`,
       )
     }
     d = parent
@@ -710,10 +720,24 @@ function pluginPackageName(dir: string): string {
 /**
  * The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
  * The name is read from the package the calling module belongs to — the
- * nearest `package.json` above it — and stamped where the workspace loader
+ * nearest `package.json` above it that has a name — and stamped where the workspace loader
  * checks for it, so a plugin cannot be named anything but its package.
  */
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin {
+  // The hooks are copied by spread, which takes own fields only: a class
+  // instance's methods stayed on its prototype and the plugin loaded
+  // without them, saying nothing.
+  const proto: unknown =
+    hooks !== null && typeof hooks === 'object' ? Object.getPrototypeOf(hooks) : undefined
+  if (proto !== Object.prototype && proto !== null) {
+    const got =
+      hooks === null || typeof hooks !== 'object'
+        ? String(hooks)
+        : `a ${(hooks as object).constructor?.name || 'class instance'}`
+    throw new UserError(
+      `definePlugin: the hooks must be a plain object ({ setup() { … } }), got ${got}`,
+    )
+  }
   if ('name' in hooks) {
     throw new UserError(`definePlugin: a plugin's name is its package name — drop the 'name' field`)
   }
@@ -735,9 +759,11 @@ type OptionKind<V> = [V] extends [string]
       ? 'boolean'
       : [V] extends [(...args: never[]) => unknown]
         ? 'function'
-        : [V] extends [object]
-          ? 'object'
-          : 'any'
+        : [V] extends [readonly unknown[]]
+          ? 'array'
+          : [V] extends [object]
+            ? 'object'
+            : 'any'
 
 /**
  * Every option a factory takes, each with the one kind its type allows
@@ -769,7 +795,8 @@ export function refuseUnknownOptions<T>(
   const known = kinds as Readonly<Record<string, string>>
   const names = Object.keys(known)
   for (const [key, value] of Object.entries(options)) {
-    const kind = known[key]
+    // Own keys only: the record's prototype answers `constructor`.
+    const kind = Object.hasOwn(known, key) ? known[key] : undefined
     if (kind === undefined) {
       const near = nearest(key, names)
       throw new UserError(
@@ -781,12 +808,14 @@ export function refuseUnknownOptions<T>(
     const ok =
       kind === 'object'
         ? value !== null && typeof value === 'object' && !Array.isArray(value)
-        : typeof value === kind
+        : kind === 'array'
+          ? Array.isArray(value)
+          : typeof value === kind
     if (!ok) {
       const got =
         typeof value === 'function' ? 'a function' : (JSON.stringify(value) ?? String(value))
       throw new UserError(
-        `${factory} option "${key}" must be ${kind === 'object' ? 'an' : 'a'} ${kind}, got ${got}`,
+        `${factory} option "${key}" must be ${kind === 'object' || kind === 'array' ? 'an' : 'a'} ${kind}, got ${got}`,
       )
     }
   }
@@ -864,7 +893,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       if (disabled.has(plugin)) return
       disabled.add(plugin)
       warn(
-        `[vx] plugin '${plugin.name}' threw in ${where}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx] plugin '${plugin.name}' threw in ${where}; disabled for this run: ${thrownMessage(err)}`,
       )
     }
     const ctx: PluginContext = {
@@ -881,6 +910,11 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       bus: {
         emit: (event) => bus.emit(event),
         subscribe(subscriber) {
+          if (typeof subscriber !== 'function') {
+            throw new Error(
+              `ctx.bus.subscribe: the subscriber is ${subscriber === null ? 'null' : typeof subscriber}, not a function`,
+            )
+          }
           // Isolated like an `on` handler: the bus itself swallows a throw.
           const dispose = bus.subscribe((event) => {
             if (disabled.has(plugin)) return
@@ -903,6 +937,12 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
         if (!Object.hasOwn(HOOK_NAMES, hook)) {
           throw new Error(
             `ctx.on: unknown hook '${String(hook)}' (one of ${Object.keys(HOOK_NAMES).join(', ')})`,
+          )
+        }
+        // Taken, it threw at the first event and switched the whole plugin off.
+        if (typeof handler !== 'function') {
+          throw new Error(
+            `ctx.on: the handler for '${hook}' is ${handler === null ? 'null' : typeof handler}, not a function`,
           )
         }
         const onFail = (err: unknown): void => fail(hook, err)
@@ -961,9 +1001,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       throw new PluginSetupError(
         plugin,
         // Masked at the source, as plugin-host.ts's `safe()` does (L-11).
-        maskedLine(
-          `plugin '${plugin.name}' failed in setup: ${err instanceof Error ? err.message : String(err)}`,
-        ),
+        maskedLine(`plugin '${plugin.name}' failed in setup: ${thrownMessage(err)}`),
         // The plugin's own code survives, as `safe()` keeps it.
         errorCode(err) === 'VX_E_INTERNAL' ? 'VX_E_REFUSED' : errorCode(err),
       )

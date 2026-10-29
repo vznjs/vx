@@ -832,7 +832,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       const link = layout === 'root' ? 'node_modules/@x/ui' : 'packages/x-app/node_modules/@x/ui'
       const expected = [
         `openat(${linkPath[layout]}/src/index.js) = -1 ENOENT  [${realpathSync(ui)}/src/index.js]`,
-        `vx: @x/app#test read \`packages/x-ui\` through \`${link}\`, and its key folds no task ` +
+        `vx: @x/app#test read \`packages/x-ui\` through \`${link}\`, and its key includes no task ` +
           'of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
           'reaches one (`^build` where @x/ui#build keys its sources, or a `source` task: ' +
           '`@x/ui#source`), or grant and key the files yourself (`allow.read` plus ' +
@@ -1013,7 +1013,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         expect(r?.status).toBe('failed')
         expect(r?.sandboxViolationLines?.at(-1)).toBe(
           'vx: @x/app#test read `packages/x-core` through `packages/x-ui/node_modules/@x/core`, ' +
-            'and its key folds no task of @x/core, so an edit there would not re-run it. Add a ' +
+            'and its key includes no task of @x/core, so an edit there would not re-run it. Add a ' +
             '`dependsOn` edge that reaches one (`^build` where @x/core#build keys its sources, or ' +
             'a `source` task: `@x/core#source`), or grant and key the files yourself ' +
             '(`allow.read` plus `inputs.workspaceFiles`).',
@@ -1940,6 +1940,21 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
     } finally {
       yields.mockRestore()
     }
+  })
+
+  // The report line is printed verbatim, and `cStringPath` decodes the
+  // `\033` strace wrote: a file named `ESC ]0;…` retitled the terminal.
+  it('writes a control byte of a denied path as \\xNN in the line, raw in the target', async () => {
+    const ws = path.join(dir, 'ws')
+    const produced = await produce(
+      String.raw`1 openat(AT_FDCWD, "${ws}/x\033]0;t\007\ry", 0) = -1 ENOENT (x)`,
+    )
+    expect(produced.map((v) => [v.line, v.target])).toEqual([
+      [
+        `openat(${ws}/x\\x1b]0;t\\x07\\x0dy) = -1 ENOENT  [${ws}/x\\x1b]0;t\\x07\\x0dy]`,
+        `${ws}/x\x1b]0;t\x07\ry`,
+      ],
+    ])
   })
 
   it('marks an openat ignorable by either list, since the trace lacks its flags', async () => {

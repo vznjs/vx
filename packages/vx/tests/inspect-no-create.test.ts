@@ -16,7 +16,7 @@ const VERBS = [
   ['last'],
   ['info'],
   ['why', 'app#build'],
-  ['cache', 'clean', '--older-than', '1d', '--dry-run'],
+  ['cache', 'clean', '--older-than', '1d', '--dry'],
   // Not a reading verb, but with no cache there is nothing for it to
   // delete, and opening one to find that out made it.
   ['cache', 'clean', '--older-than', '1d'],
@@ -76,7 +76,7 @@ describe('a reading verb makes nothing on disk', () => {
   it(
     'a prune with no cache prunes nothing and exits 0, dry or not',
     async () => {
-      const dry = await vx(root, ['cache', 'clean', '--max-size', '1G', '--dry-run'])
+      const dry = await vx(root, ['cache', 'clean', '--max-size', '1G', '--dry'])
       const real = await vx(root, ['cache', 'clean', '--max-size', '1G'])
       expect([dry, real]).toEqual([
         { code: 0, out: '› vx cache clean  nothing to free (dry run)\n', err: '' },

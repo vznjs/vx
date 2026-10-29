@@ -91,6 +91,11 @@ export interface InfoFacts {
   cacheEntries: number
   cacheBytes: number
   /**
+   * Why the cache index cannot be read (a file SQLite cannot open, and its
+   * fix); null when it reads. While set, the counts it holds read zero.
+   */
+  cacheIndexError: string | null
+  /**
    * Every setting (src/settings.ts) as a run with no flags takes it: its
    * variable's value, else the workspace's (after the `config` stage),
    * else null with source `default` (docs/schema.md names each default).
@@ -179,43 +184,62 @@ async function collectWorkspaceInfo(
   const metas = held ? await discoverProjects(root, lock, plugins, cacheDir, warn) : []
   const storeRoot =
     opts.cacheDir === undefined ? await resolveStoreRoot(root, workspaceConfig) : null
-  const cache = new Cache(cacheDir, undefined, undefined, undefined, 'inspect', storeRoot)
-  let stats
-  let orphans
-  let flaky: FlakyTask[]
+  // The index is read first and alone: one SQLite cannot read is a fact
+  // of the report, with its fix, not a refusal of it — the doctor is where
+  // a broken setup is diagnosed.
+  let stats: ReturnType<Cache['stats']> = {
+    entryCount: 0,
+    totalBytes: 0,
+    runCountLast24h: 0,
+    hitCountLast24h: 0,
+    restoredCountLast24h: 0,
+  }
+  let orphans = { orphans: 0, orphanBytes: 0 }
+  let flaky: FlakyTask[] = []
+  let indexError: string | null = null
+  let indexStore: string | undefined
+  try {
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, 'inspect', storeRoot)
+    try {
+      indexStore = cache.storeDir
+      stats = cache.stats()
+      orphans = await cache.orphanStats()
+      flaky = flakyTasks(cache.dbHandle())
+    } finally {
+      cache.close()
+    }
+  } catch (err) {
+    // An index of another schema is refused as by every reading verb: this
+    // vx reads nothing in it, and the next run resets it.
+    if (!isUserError(err) || err.code === 'VX_E_CACHE_VERSION') throw err
+    indexError = err.message
+  }
   let taskCount = 0
   let sandboxed = 0
+  // The run path's load — the lock, a plugin's `project` stage counted —
+  // so the doctor's task count is the number a run would see. No lock, or
+  // one a run would refuse, counts zero: broken configs are `vx lock`'s
+  // to report.
   try {
-    stats = cache.stats()
-    orphans = await cache.orphanStats()
-    flaky = flakyTasks(cache.dbHandle())
-    // The run path's load — the lock, a plugin's `project` stage counted —
-    // so the doctor's task count is the number a run would see. No lock, or
-    // one a run would refuse, counts zero: broken configs are `vx lock`'s
-    // to report.
-    try {
-      const loaded = await loadProjects({
-        workspaceRoot: root,
-        cacheDir,
-        plugins,
-        projectMetas: metas,
-        seeds: 'all',
-        closure: false,
-        configs: lock,
-        warn,
-      })
-      for (const p of loaded.projects.values()) {
-        const tasks = p.config.tasks ?? {}
-        taskCount += Object.keys(tasks).length
-        for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
-      }
-    } catch (err) {
-      if (!isUserError(err)) throw err
-      taskCount = 0
-      sandboxed = 0
+    const loaded = await loadProjects({
+      workspaceRoot: root,
+      cacheDir,
+      plugins,
+      projectMetas: metas,
+      seeds: 'all',
+      closure: false,
+      configs: lock,
+      warn,
+    })
+    for (const p of loaded.projects.values()) {
+      const tasks = p.config.tasks ?? {}
+      taskCount += Object.keys(tasks).length
+      for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
     }
-  } finally {
-    cache.close()
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    taskCount = 0
+    sandboxed = 0
   }
 
   const lockPresent = await Bun.file(lockfilePath(root)).exists()
@@ -225,11 +249,11 @@ async function collectWorkspaceInfo(
   const git = gitVersion()
   const statusCache = gitStatusCache(root)
   const sandbox = { ...(await probing), declared: sandboxed }
-  const cacheStore = cache.storeDir ?? storeRoot
+  const cacheStore = indexStore ?? storeRoot
   return {
     vx: VERSION,
     vxPath: vxPath(),
-    handedOffFrom: process.env['VX_HANDED_OFF'] ?? null,
+    handedOffFrom: process.env['VX_HANDED_OFF'] || null,
     // An unsupported Bun does not stop a run, it makes the run's ANSWERS
     // wrong (util/bun-version.ts measures which). The row a reader already
     // consults for "is my setup sane" is where that belongs: a warning on
@@ -266,6 +290,7 @@ async function collectWorkspaceInfo(
     schemaVersion: SCHEMA_VERSION,
     cacheEntries: stats.entryCount,
     cacheBytes: stats.totalBytes,
+    cacheIndexError: indexError,
     settings: settingsFact(workspaceConfig),
     // A row-less artifact is indexed again only when its task asks for its
     // key; the rest only `vx cache clean` reclaims (after an upgrade's
@@ -349,7 +374,7 @@ function memoryFact(): InfoFacts['memory'] {
  * the warm run (STATUS, waves 5 and the 2026-09-03 refutations) — the
  * status walk's cost is git's own, and vx already overlaps it.
  */
-function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
+export function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
   try {
     const p = Bun.spawnSync({
       cmd: [executablePath('git'), 'config', '--get-regexp', '^core\\.(fsmonitor|untrackedcache)$'],
@@ -361,9 +386,25 @@ function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
     // exit 1 is git's "no key matched": both off, still an answer.
     if (p.exitCode !== 0 && p.exitCode !== 1) return null
     const out = p.exitCode === 0 ? new TextDecoder().decode(p.stdout) : ''
-    const on = (key: string): boolean =>
-      new RegExp(`^core\\.${key} (true|1|yes|on)$`, 'im').test(out)
-    return { fsmonitor: on('fsmonitor'), untrackedCache: on('untrackedcache') }
+    // The last value set wins, as git reads it (a global `true` under a
+    // repo's `false` is off), and a key with no `=` is true.
+    const last = new Map<string, string | null>()
+    for (const line of out.split('\n')) {
+      if (line === '') continue
+      const sp = line.indexOf(' ')
+      last.set(
+        (sp === -1 ? line : line.slice(0, sp)).toLowerCase(),
+        sp === -1 ? null : line.slice(sp + 1),
+      )
+    }
+    const on = (key: string, hook: boolean): boolean => {
+      const v = last.get(`core.${key}`)
+      if (v === undefined) return false
+      if (v === null || /^(true|yes|on|1)$/i.test(v)) return true
+      // core.fsmonitor may name a hook command instead of a boolean.
+      return hook && v !== '' && !/^(false|no|off|0)$/i.test(v)
+    }
+    return { fsmonitor: on('fsmonitor', true), untrackedCache: on('untrackedcache', false) }
   } catch {
     return null
   }

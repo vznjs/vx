@@ -103,11 +103,11 @@ build: {
 
     $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
 
-    ├─ OUTPUT ──────────────────────────────────────────────────
+    ├─ OUTPUT ────────────────────────────────────────────────────
 
     mkdir: cannot create directory 'dist': Read-only file system
 
-    ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+    ├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────
 
     mkdir(/repo/packages/app/dist) = a write no grant covers  [/repo/packages/app/dist]
 
@@ -126,11 +126,11 @@ build: {
 
     $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
 
-    ├─ OUTPUT ──────────────────────────────────────────────────
+    ├─ OUTPUT ────────────────────────────────────────────────────
 
     cat: tsconfig.json: No such file or directory
 
-    ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+    ├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────
 
     openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]
 
@@ -216,7 +216,7 @@ a one-shot sandboxed task to see what it was refused.
 - **`File exists` or `Not a directory` from the task's own `mkdir`.** A write grant with no trailing slash is a file (`mkdir -p coverage` reads the first, `mkdir -p coverage/lcov` the second). Write `'coverage/'`.
 - **A file the task creates later is refused on Linux** ("Read-only file system"). A glob with a file part (`*.log`, `gen/**/*.ts`) is matched when the task starts. Grant its directory (`'gen/'`; `'dist/**'` grants the directory too). A temp directory the tool makes and removes in the package (`.*.tmp/**`) needs only the glob: nothing written there is kept.
 - **`bun build --compile --target=…` fails on a fresh machine** ("Network error downloading executable", then "Failed to extract executable"). Bun fetches the target's runtime from npm into its cache. Grant `network: ['registry.npmjs.org']` and `write: ['~/.bun/install/cache/', '.*.tmp/**']`.
-- **`read packages/ui through packages/app/node_modules/@x/ui, and its key folds no task of @x/ui`.** The task imports a sibling its key never sees. Depend on a command task of it (`dependsOn: ['^source']`, or `^build`), or grant and key the files yourself.
+- **`read packages/ui through packages/app/node_modules/@x/ui, and its key includes no task of @x/ui`.** The task imports a sibling its key never sees. Depend on a command task of it (`dependsOn: ['^source']`, or `^build`), or grant and key the files yourself.
 
 ---
 

@@ -42,6 +42,7 @@ export { exitSignal, shellQuote } from '../exec/index.js'
 export { forwardedSignal } from './signals.js'
 // `vx cache clean` waits for a run on the workspace before it evicts.
 export { acquireRunLock } from './run-lock.js'
+export { type LiveSnapshot, liveSocketPath } from './run-live.js'
 export type { RunPlan, PlannedTask, PlanPrediction, CacheStatus } from './plan.js'
 export {
   cacheFacts,
@@ -145,7 +146,7 @@ export {
   type TaskLog,
   taskLog,
 } from './run-failures.js'
-export { type RunStep, runSteps } from './run-steps.js'
+export { type RunStep, runSteps, runWarnings } from './run-steps.js'
 export { resolveRunId, shortRunId } from './run-id.js'
 export { collectInfo, type CollectInfoOptions, type InfoFacts } from './doctor.js'
 export { localFloor, type LocalFloor } from './local-floor.js'

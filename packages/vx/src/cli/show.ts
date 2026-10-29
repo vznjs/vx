@@ -19,6 +19,7 @@ import {
   nearMatches,
   relPosix,
   secretMask,
+  type SecretMask,
   UserError,
   sayNotice,
   ui,
@@ -57,17 +58,16 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     let format: string | undefined
     if (a === '--format') format = args[++i] ?? ''
     else if (a.startsWith('--format=')) format = a.slice('--format='.length)
-    else if (a === '--filter') {
-      const v = args[++i]
+    else if (a === '--filter' || a.startsWith('--filter=')) {
+      const v = a === '--filter' ? args[++i] : a.slice('--filter='.length)
       // `--filter --format json` took `--format` as the pattern; no filter opens with `--`.
-      if (v === undefined || v === '' || v.startsWith('--'))
+      if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
         return {
           ...out,
           error: `--filter requires a value: a project name, glob or path${seeHelp('show')}`,
         }
       out.filters.push(v)
-    } else if (a.startsWith('--filter=')) out.filters.push(a.slice('--filter='.length))
-    else if (a === '--affected') out.affected = ''
+    } else if (a === '--affected') out.affected = ''
     else if (a.startsWith('--affected=')) out.affected = a.slice('--affected='.length)
     else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('show', a)}${seeHelp('show')}` }
@@ -160,12 +160,16 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     const raw = [...parsed.filters]
     let affected: string | undefined
     if (parsed.affected !== undefined) {
-      const f = await affectedFilterFor(process.cwd(), parsed.affected)
+      const f = await affectedFilterFor(
+        process.cwd(),
+        parsed.affected,
+        'drop --affected to list them all',
+      )
       if (typeof f === 'object') throw new UserError(`vx show: ${f.error}`, f.code ?? 'VX_E_USAGE')
       affected = f
       raw.unshift(f)
     }
-    const r = await resolveFilters(process.cwd(), raw, {}, affected)
+    const r = await resolveFilters(process.cwd(), raw, {}, affected, 'show')
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
     if ('empty' in r) sayNotice('info', 'vx show', r.empty)
     selected = new Set('empty' in r ? [] : r.names)
@@ -299,8 +303,24 @@ function projectDir(root: string, meta: ProjectMeta): string {
  * description) (L-11).
  */
 function shownTask(task: TaskConfig): TaskConfig {
-  const secrets = secretMask([process.env, task.exec?.env?.define], task.exec?.env?.secret)
+  const env = task.exec?.env
+  const secrets =
+    env?.define === undefined && (env?.secret ?? []).length === 0
+      ? envMask()
+      : secretMask([process.env, env?.define], env?.secret)
   return secrets === null ? task : (maskStrings(task, secrets.mask) as TaskConfig)
+}
+
+let envOnly: SecretMask | null | undefined
+
+/**
+ * The mask of a task that defines and names no variable: vx's own env's,
+ * built once. Built per task, its pattern was 10 of `vx show build`'s
+ * 58 ms over 100 projects.
+ */
+function envMask(): SecretMask | null {
+  if (envOnly === undefined) envOnly = secretMask([process.env])
+  return envOnly
 }
 
 function maskStrings(value: unknown, mask: (text: string) => string): unknown {
@@ -346,11 +366,7 @@ function renderList(
     }
   })
   if (format === 'json') {
-    return `${JSON.stringify(
-      rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })),
-      null,
-      2,
-    )}\n`
+    return `${JSON.stringify(rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })))}\n`
   }
   if (rows.length === 0) return ''
   const anyTags = rows.some((r) => r.tags.length > 0)
@@ -454,8 +470,9 @@ function taskReport(name: string, dir: string, taskName: string, task: TaskConfi
 function taskRows(raw: TaskConfig): ui.FieldRow[] {
   const task = shownTask(raw)
   const rows: ui.FieldRow[] = []
+  // An empty list is a value: a bare label read as a cut-off line.
   const list = (xs: readonly string[] | undefined): string | undefined =>
-    xs === undefined ? undefined : xs.join(', ')
+    xs === undefined ? undefined : xs.length === 0 ? 'none' : xs.join(', ')
   const add = (label: string, value: string | number | boolean | undefined): void => {
     if (value !== undefined) rows.push([label, String(value)])
   }

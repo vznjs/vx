@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { configImportOwners, unprovidedBareImports } from '../src/workspace/config-imports.js'
-import { loadProjectConfig } from '../src/workspace/project-loader.js'
+import { loadProjectConfig, loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 
 describe('unprovidedBareImports', () => {
   let dir: string
@@ -503,6 +503,60 @@ describe('a config importing what no node_modules provides', () => {
     const want = "cannot find 'nope-pkg' — no node_modules above the config provides it"
     expect(await refusal()).toContain(want)
     expect(await refusal()).toContain(want)
+  })
+
+  describe("in a file the config imports, the file's own path named", () => {
+    const want = (file: string): string =>
+      `${file} imports 'nope-pkg', which no node_modules above it provides`
+    beforeEach(async () => {
+      await writeFile(path.join(dir, 'preset.mjs'), "export { preset } from './deep/preset.mjs'\n")
+      await mkdir(path.join(dir, 'deep'))
+      await writeFile(
+        path.join(dir, 'deep', 'preset.mjs'),
+        "import p from 'nope-pkg'\nexport const preset = { description: String(p) }\n",
+      )
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        "import { preset } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: 'true' }, ...preset } } }\n",
+      )
+    })
+    const refusal = (load: Promise<unknown>): Promise<string | undefined> =>
+      load.then(
+        () => undefined,
+        (e: unknown) => (e as Error).message,
+      )
+
+    it('a project config, first load and repeat', async () => {
+      const real = await realpath(dir)
+      const file = path.join(dir, 'vx.config.mjs')
+      expect(await refusal(loadProjectConfig(file))).toContain(
+        want(path.join(real, 'deep', 'preset.mjs')),
+      )
+      expect(await refusal(loadProjectConfig(file))).toContain(
+        want(path.join(real, 'deep', 'preset.mjs')),
+      )
+    })
+
+    it('the workspace config', async () => {
+      const real = await realpath(dir)
+      await mkdir(path.join(dir, '.vx'))
+      await writeFile(
+        path.join(dir, '.vx', 'workspace.mjs'),
+        "import { preset } from '../preset.mjs'\nexport default { ...preset }\n",
+      )
+      expect(await refusal(loadWorkspaceConfig(dir))).toContain(
+        want(path.join(real, 'deep', 'preset.mjs')),
+      )
+    })
+
+    it("CONTROL: a node_modules above the importing file provides it, whatever the config's", async () => {
+      const pkg = path.join(dir, 'deep', 'node_modules', 'nope-pkg')
+      await mkdir(pkg, { recursive: true })
+      await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'nope-pkg' }))
+      await writeFile(path.join(pkg, 'index.js'), "export default 'from the package'\n")
+      const config = await loadProjectConfig(path.join(dir, 'vx.config.mjs'))
+      expect(config.tasks?.['build']?.description).toBe('from the package')
+    })
   })
 
   it('CONTROL: a provided package evaluates', async () => {

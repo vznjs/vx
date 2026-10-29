@@ -2,7 +2,7 @@
 // `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and the limits are vars in
 // it (README.md § On Cloudflare Workers).
 
-import { type Authorize, errorJson, oidcAuth, parseAllow } from '@vzn/vx-devtools'
+import { type Authorize, errorJson, oidcAuth, parseAllow, Refusal } from '@vzn/vx-devtools'
 import { createCacheServer, DEFAULT_LIMITS, type Limits, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
@@ -16,6 +16,7 @@ export interface R2Bucket {
 interface WorkersCache {
   match(key: Request): Promise<Response | undefined>
   put(key: Request, res: Response): Promise<void>
+  delete(key: Request): Promise<boolean>
 }
 declare const caches: { open(name: string): Promise<WorkersCache> }
 export interface Context {
@@ -27,7 +28,7 @@ declare const FixedLengthStream: new (length: number) => {
 }
 
 export interface Env {
-  readonly BLOBS: R2Bucket
+  readonly BLOBS?: R2Bucket
   /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow` entries, space separated. */
   readonly ALLOW?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
@@ -44,19 +45,31 @@ const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${n
 
 /**
  * R2, read through the data center's cache: an artifact never changes
- * under its name, so a copy needs no expiry of its own. The server has
+ * under its name while R2 holds it, so a copy needs no expiry of its own;
+ * an upload drops the copy, of bytes R2 has since let go. The server has
  * checked the token and named the object before a read reaches here.
  */
 
 export function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
   return {
     async put(name, body, size) {
-      // R2 takes a stream of known length; this one errors at any other, so
-      // R2 never keeps a short body. The runtime holds a request's body to
-      // its Content-Length, so a failure here is R2's (or a client gone):
-      // it was answered 400, "the body is not N bytes", for a whole body.
+      // R2 takes a stream of known length; this one errors at any other.
       const fixed = new FixedLengthStream(size)
-      await Promise.all([bucket.put(name, fixed.readable), body.pipeTo(fixed.writable)])
+      const piped = body.pipeTo(fixed.writable)
+      const [stored, read] = await Promise.allSettled([bucket.put(name, fixed.readable), piped])
+      // A body of another length fails the pipe and R2's read of it with
+      // one error. R2 failing of its own is the bucket's fault (a 502),
+      // never the client's 400, though its stream's cancel fails the pipe.
+      if (
+        stored.status === 'rejected' &&
+        (read.status === 'fulfilled' || stored.reason !== read.reason)
+      )
+        throw stored.reason
+      if (read.status === 'rejected')
+        throw new Refusal(400, `the body is not ${size} bytes: ${String(read.reason)}`)
+      // R2 takes a name only once it holds none: a copy here is of bytes
+      // R2 expired, a corrupt one too, and outlived the new ones a year.
+      await (await cache).delete(keyOf(name))
     },
     get: async (name) => {
       const key = keyOf(name)
@@ -113,6 +126,10 @@ let made: { key: string; authorize: Authorize; limits: Limits } | undefined
 
 export default {
   async fetch(req: Request, env: Env, ctx: Context): Promise<Response> {
+    // A deploy's mistake, not R2's outage: unbound, every read was a 502.
+    if (env.BLOBS === undefined) {
+      return errorJson(500, 'BLOBS: bind an R2 bucket as BLOBS (wrangler.jsonc r2_buckets)')
+    }
     const key = [
       env.ALLOW,
       env.AUDIENCE,
@@ -123,6 +140,13 @@ export default {
     if (made?.key !== key) {
       let allow
       let limits
+      // wrangler.jsonc may write a var as JSON: a list reached parseAllow.
+      if (env.ALLOW !== undefined && typeof env.ALLOW !== 'string') {
+        return errorJson(
+          500,
+          'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
+        )
+      }
       try {
         allow = parseAllow(env.ALLOW ?? '')
       } catch (err) {
@@ -134,7 +158,9 @@ export default {
         authorize = oidcAuth({
           allow,
           readAccess: env.READ_ACCESS,
-          ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
+          // jose matches aud exactly: a pasted newline refused every
+          // token as the wrong audience.
+          ...(env.AUDIENCE ? { audience: env.AUDIENCE.trim() } : {}),
         })
       } catch (err) {
         return errorJson(500, (err as Error).message)

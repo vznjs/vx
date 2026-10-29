@@ -20,6 +20,7 @@ latestRunId(db, taskId): string | null              // the run a caller without 
 whyDidThisRerun(db, runId, taskId): WhyDidThisRerun // this run vs the previous one
 cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components moved
 rootCauses(db, runId, taskId, entries, groups?): RootCause[] // under moved upstreams (through groups), the tasks whose own inputs moved
+upstreamTask(name): string                           // the task an upstream row names, past a group (GROUP_VIA)
 inputWriters(db, root, taskId, entries, roots): InputWriter[] // tasks running when a moved input file last changed (stats it)
 loadEntryInputs(db, entryHash): TaskInputComponent[] // one entry's key components, [] when none
 diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
@@ -80,6 +81,8 @@ which its output never shows, in `<cacheDir>/steps/<runId>.json` for
 ```ts
 writeRunSteps(cacheDir, runId, steps, warn): void // at run end; nothing when no step ran; newest 50 kept; a refused write warns
 runSteps(cacheDir, runId): RunStep[] // [] when the run kept none
+writeRunWarnings(cacheDir, runId, warnings, warn): void // the run's warnings, colour stripped, beside its steps
+runWarnings(cacheDir, runId): string[] // [] when it said none or they are gone
 
 export interface RunStep {
   id: string // 'vx:prefetch'
@@ -98,7 +101,7 @@ naming them), and `shortRunId(db, id)` is the shortest unique prefix, at
 least 13 characters, `vx last --list` prints. `vx why` and `vx last`
 take ids through it.
 
-Every function but `diffKeyComponents` takes an open `bun:sqlite`
+Every function but `diffKeyComponents` and `upstreamTask` takes an open `bun:sqlite`
 `Database` (the caller owns the `Cache` lifecycle — `cache.dbHandle()`),
 returns JSON-safe shapes (bigint spans as decimal strings, like
 `WireEvent.timeUnixNano`), and never throws on a missing row:
@@ -120,7 +123,9 @@ case it is.
   this run ran beside one too and saved nothing either), or
   the previous run executed and succeeded and no entry holds the key (its
   save failed or was pruned: no row records a failed save, only this
-  trace; a previous policy that wrote nothing is named instead).
+  trace; a previous policy that wrote nothing is named instead, and so
+  is a `blocked_by` that run has no row of: the dependency
+  `--exclude-dependencies` left out).
   Only when none applies does it name `--no-cache` / `--force` (item
   1009), and only with no recorded policy: a recorded one that read the
   cache rules the flags out, and the note says vx cannot name the cause

@@ -38,8 +38,8 @@ import {
   taskNameProblem,
 } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
-import { ownerOf, runsScriptHooks, type Owner } from './script-command.js'
 import { relPosix } from './paths.js'
+import { type Owner, ownerOf, runsScriptHooks } from './script-command.js'
 
 /**
  * Task names that conventionally never exit. Every mapper guesses the same
@@ -129,19 +129,24 @@ const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepubli
 /**
  * The script a command delegates to when it is NOTHING but a package-manager
  * invocation of another script: `npm run x`, `pnpm x`, `yarn run x`, `bun run
- * x`, plus npm's bare `npm test` / `npm start`. Flags, arguments or a chain
- * make it a real command again, which is left verbatim.
+ * x`, plus npm's bare `npm test` / `npm start` / `npm stop`. npm's aliases
+ * (`run-script`, `rum`, `urn`; `t`, `tst`) and pnpm's (`run-script`; `t`,
+ * `tst`) are the same commands: read verbatim, `npm run-script build` built
+ * again beside the `build` task. Flags, arguments or a chain make it a real
+ * command again, which is left verbatim.
  */
 export function delegatedScript(command: string): string | null {
   const m =
-    /^(?:(?:npm run|(pnpm|pn|yarn|bun)(?: (run))?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
+    /^(?:(?:npm (?:run|run-script|rum|urn)|(pnpm|pn|yarn|bun)(?: (run|run-script))?) ([^\s&|;<>()$`'"\\]+)|npm (test|t|tst|start|stop))$/.exec(
       command.trim(),
     )
   if (m === null) return null
-  if (m[4] !== undefined) return m[4]
+  if (m[4] !== undefined) return m[4] === 't' || m[4] === 'tst' ? 'test' : m[4]
   const [, alias, run, name] = m
   // `pn` is pnpm's own short name (pnpm 11; pnpm/pnpm's scripts run it).
   const manager = alias === 'pn' ? 'pnpm' : alias
+  if (run === 'run-script' && manager !== 'pnpm') return null
+  if (manager === 'pnpm' && run === undefined && (name === 't' || name === 'tst')) return 'test'
   // Bare, the manager's own command wins over a script of that name:
   // `bun test` is Bun's test runner and `bun build` its bundler, never the
   // `test` / `build` script, and a group over the script ran the wrong

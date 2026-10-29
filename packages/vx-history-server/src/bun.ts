@@ -4,7 +4,7 @@
 
 import { Database } from 'bun:sqlite'
 import { parseArgs } from 'node:util'
-import { oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
+import { oidcTokenAuth, parseAllow, statusLine } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
 import { createHistoryServer } from './server.js'
 import { type Db, sqliteStore } from './store.js'
@@ -43,10 +43,13 @@ function main(argv: string[]): void {
     return
   }
   const env = Bun.env
-  // Number('') is 0: `--port "$PORT"` with PORT unset bound a random port.
-  const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
+  // Digits only: Number('') is 0, a random port for `--port "$PORT"` with
+  // PORT unset, and Number read 0x50 as 80 and 1e1 as 10.
+  const port = /^\d+$/.test(values.port) ? Number(values.port) : Number.NaN
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
+  // Bun.serve reads '' as localhost: unreachable from another host or container.
+  if (values.host.trim() === '') fail(`--host: needs an address, got '${values.host}'`)
   let allow
   let timingDays
   try {
@@ -54,6 +57,8 @@ function main(argv: string[]): void {
   } catch (err) {
     fail(`ALLOW: ${(err as Error).message}`)
   }
+  // An empty one started a server that refused every request.
+  if (allow.length === 0) fail(`set ALLOW\n${USAGE}`)
   try {
     timingDays = timingDaysOf(env.TIMING_DAYS)
   } catch (err) {
@@ -84,14 +89,14 @@ function main(argv: string[]): void {
     ...(timingDays === undefined ? {} : { timingDays }),
   })
   const server = Bun.serve({ hostname: values.host, port, fetch: handle })
-  console.log(`vx-history-server on ${server.url.href}`)
+  process.stdout.write(statusLine('ok', 'vx-history-server', `listening on ${server.url.href}`))
   const stop = (): void => void server.stop().then(() => process.exit(0))
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
 }
 
 function fail(message: string): never {
-  process.stderr.write(`${message}\n`)
+  process.stderr.write(statusLine('err', 'vx-history-server', message))
   process.exit(2)
 }
 

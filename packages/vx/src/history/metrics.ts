@@ -294,7 +294,9 @@ export interface RunDetail {
 }
 
 export function getRun(db: Database, runId: string): RunDetail | null {
-  const tasks = listRuns(db, { runId, limit: 100_000 })
+  // In the order the run recorded them, as it printed them: `listRuns` is
+  // newest first, and the replay listed a dependency below its dependant.
+  const tasks = listRuns(db, { runId, limit: 100_000 }).reverse()
   if (tasks.length === 0) return null
   const startedAt = Math.min(...tasks.map((t) => t.startedAt))
   const endedAt = Math.max(...tasks.map((t) => t.endedAt))
@@ -410,7 +412,7 @@ function unchangedKeyNote(
   db: Database,
   runId: string,
   this_: { hash: string; status: string; cacheHit: number | null; startedAt: number },
-  prev: { status: string; cacheHit: number | null; runId: string | null },
+  prev: { status: string; cacheHit: number | null; runId: string | null; blockedBy: string | null },
 ): string {
   if (this_.cacheHit === null) {
     return 'cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown'
@@ -424,8 +426,12 @@ function unchangedKeyNote(
       p: string
     } | null
   )?.p
+  // `--no-cache` reads and writes nothing, `--force` writes: each named
+  // apart, or a `--no-cache` run was told it had passed `--force`.
   if (policy !== undefined && !readsCache(policy)) {
-    return 'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)'
+    return writesCache(policy)
+      ? 'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)'
+      : 'cache key unchanged — re-executed because this run did not use the cache (--no-cache, or a --cache-policy without read or write)'
   }
   // `get` answers null, not undefined, for no row.
   const createdAt = (
@@ -479,6 +485,18 @@ function unchangedKeyNote(
     if (prevPolicy !== undefined && !writesCache(prevPolicy)) {
       return 'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit'
     }
+    // A task that passed behind a dependency its run never recorded: the
+    // one `--exclude-dependencies` left out, keyed but not run, so nothing
+    // built on it was saved (excluded-keys.ts).
+    if (
+      prev.blockedBy !== null &&
+      prev.runId !== null &&
+      db
+        .query('SELECT 1 FROM runs WHERE run_id = ? AND project = ? AND task = ?')
+        .get(prev.runId, ...splitTaskId(prev.blockedBy)) === null
+    ) {
+      return `cache key unchanged — the previous run on this key built on a dependency it left out (${prev.blockedBy}, --exclude-dependencies), so it saved nothing and there was nothing to hit`
+    }
     return 'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'
   }
   return 'cache key unchanged — re-executed on the same key though this run read the cache; vx cannot name the cause'
@@ -503,7 +521,7 @@ export function latestRunId(db: Database, taskId: string): string | null {
 function keylessNote(taskId: string, keylessBy: string): string {
   return keylessBy === taskId
     ? 'never cached: this task declares no `inputs`, so each run derives a new key; declare its `inputs`'
-    : `never cached: its key folds ${keylessBy}, which declares no \`inputs\`, so each run derives a new key; declare inputs on ${keylessBy}`
+    : `never cached: its key includes ${keylessBy}, which declares no \`inputs\`, so each run derives a new key; declare inputs on ${keylessBy}`
 }
 
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun {
@@ -541,7 +559,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
   const prev = db
     .query(
       `SELECT hash, status, cache_hit AS cacheHit, restored, started_at AS startedAt,
-              run_id AS runId
+              run_id AS runId, blocked_by AS blockedBy
        FROM runs WHERE project = ? AND task = ? AND id < ? AND ${KEYED_RUNS_SQL}
        ORDER BY id DESC LIMIT 1`,
     )
@@ -553,6 +571,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
         restored: number | null
         startedAt: number
         runId: string | null
+        blockedBy: string | null
       }
     | undefined
   // …and this run must have one too, or there is nothing to compare.
@@ -590,7 +609,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
           ? 'this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only'
           : this_.keylessBy === taskId
             ? 'this task declares no `cache` block — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs`'
-            : `this task declares no \`cache\` block — it runs on every invocation; its key folds ${this_.keylessBy}, which declares no \`inputs\`, so each run derives a new key and every task that depends on it misses; declare inputs on ${this_.keylessBy}`
+            : `this task declares no \`cache\` block — it runs on every invocation; its key includes ${this_.keylessBy}, which declares no \`inputs\`, so each run derives a new key and every task that depends on it misses; declare inputs on ${this_.keylessBy}`
         : this_.keylessBy !== null
           ? keylessNote(taskId, this_.keylessBy)
           : prev && prev.hash !== this_.hash
@@ -885,6 +904,18 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   }
 }
 
+/**
+ * Joins a group and a task under it in an `upstream` row's name: a group
+ * records no run, so its dependant's key names its members through it.
+ */
+export const GROUP_VIA = ' \u2190 '
+
+/** The task an `upstream` row names: the last one, past any group it came through. */
+export function upstreamTask(name: string): string {
+  const i = name.lastIndexOf(GROUP_VIA)
+  return i < 0 ? name : name.slice(i + GROUP_VIA.length)
+}
+
 export interface RootCause {
   /** From the asked task down to the one whose own inputs moved. */
   chain: string[]
@@ -909,12 +940,16 @@ export function rootCauses(
   const seen = new Set([taskId])
   const walk = (chain: string[], moved: CacheKeyDiff['entries']): void => {
     for (const e of moved) {
-      if (e.kind !== 'upstream' || seen.has(e.name)) continue
-      seen.add(e.name)
-      const next = [...chain, e.name]
-      const d = cacheKeyDiff(db, runId, e.name)
+      if (e.kind !== 'upstream') continue
+      const task = upstreamTask(e.name)
+      if (seen.has(task)) continue
+      seen.add(task)
+      const next = [...chain, ...e.name.split(GROUP_VIA)]
+      const d = cacheKeyDiff(db, runId, task)
+      // A group: its members carry the walk, named in the key through it
+      // (`group ← task`) or, in a row that names the group alone, by the graph.
       if (!d.found) {
-        const members = groups.get(e.name) ?? []
+        const members = groups.get(task) ?? []
         walk(
           next,
           members.map((name) => ({ ...e, name })),

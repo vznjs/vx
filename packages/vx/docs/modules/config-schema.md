@@ -22,7 +22,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
 // A cache scope's rule, for `VX_CACHE_SCOPE` and a plugin's `setBranch`, and that variable's refusal
 export function isCacheScope(v: unknown): v is string
 export function branchCacheScope(repo: string, branch: string): string // `<owner>/<repo>:<branch>`, sanitized to a valid scope
-export function cacheScopeEnvError(): UserError
+export function cacheScopeEnvError(got: string): UserError
 // The same refusal as text, naming its source
 export function cacheScopeError(source?: string): string
 // `baseBranch`: `VX_BASE_BRANCH`, else the workspace's; a bad variable throws
@@ -67,7 +67,7 @@ rules (a plugin may not shadow a core verb; a verb has one owner, a package).
   `Object.prototype` nor `null` and is not an array — and
   `validateProjectConfig` refuses the first one before the schema,
   after the file's path: "tasks.build.description is a function — a
-  config must be JSON data, because the cache key folds its JSON". An `undefined`
+  config must be JSON data, because the cache key is built from its JSON". An `undefined`
   PROPERTY is allowed (JSON drops it, the schema reads it as absent, conditional
   spreads write it). The config worker (config-eval.ts) runs the same
   function, embedded by its source text

@@ -32,6 +32,7 @@ import type {
   TaskLog,
   PlanPrediction,
   RunPlan,
+  RunStep,
 } from '../src/orchestrator/index.js'
 import type {
   CacheKeyDiff,
@@ -80,6 +81,10 @@ const CONFIG = (dep: boolean) => `export default {
       exec: { command: 'test -f ../../flag || { echo src/a.txt:1:2; exit 1; }' },
       inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
+    // Waits for a file: a run in progress, for vx last --live.
+    hold: { exec: { command: 'while [ ! -f ../../go ]; do sleep 0.05; done' } },
+    // Inputs that match nothing: a warning, which vx last keeps.
+    lost: { exec: { command: 'true' }, inputs: { files: ['nowhere/**'] }, cache: { outputs: { files: [] } } },
   },
 }`
 
@@ -143,9 +148,13 @@ function vx(args: string[]): { code: number; out: string; err: string } {
   return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
 }
 
+// Every document as printed: a script reads one line per document.
+const printed: { what: string; out: string }[] = []
+
 function json(verb: string, args: string[]): void {
   const r = vx([verb, ...args, '--format', 'json'])
   if (r.code !== 0) throw new Error(`vx ${verb} ${args.join(' ')}: ${r.code}\n${r.err}`)
+  printed.push({ what: `vx ${verb} ${args.join(' ')}`, out: r.out })
   outputs[verb]!.push(JSON.parse(r.out))
 }
 
@@ -173,7 +182,17 @@ beforeAll(async () => {
   await unlink(path.join(root, 'flag'))
   expect(vx(['run', 'lib#flaky', '--force']).code).toBe(1)
 
-  for (const a of [[], ['kitchen'], ['bare'], ['kitchen#all'], ['build']]) json('show', a)
+  // A task no selected project declares lists none: `[]`, which both the
+  // list and the task-list branch held, so it matched two `oneOf` branches.
+  for (const a of [
+    [],
+    ['kitchen'],
+    ['bare'],
+    ['kitchen#all'],
+    ['build'],
+    ['build', '--filter', 'bare'],
+  ])
+    json('show', a)
   json('info', [])
   json('why', ['app#build'])
   json('why', ['app#fail'])
@@ -182,12 +201,49 @@ beforeAll(async () => {
   json('last', ['--failed'])
   json('last', ['--log', 'app#fail'])
   json('last', ['--stats'])
+  expect(vx(['run', 'lib#lost']).code).toBe(0)
+  json('last', [])
+  const held = Bun.spawn({
+    cmd: [process.execPath, BIN, 'run', 'lib#hold'],
+    cwd: root,
+    env: { ...process.env, NO_COLOR: '1' },
+  })
+  for (let i = 0; i < 400 && vx(['last', '--live']).code !== 0; i++) await Bun.sleep(50)
+  json('last', ['--live'])
+  await writeFile(path.join(root, 'go'), '')
+  expect(await held.exited).toBe(0)
+  json('last', ['--sql', 'SELECT project, task, cpu_ms, remote_error FROM runs'])
   // The flaky task passes again: the replayed failure names that run (`fixedIn`).
   await writeFile(path.join(root, 'flag'), '')
   expect(vx(['run', 'lib#flaky', '--force']).code).toBe(0)
   json('last', ['--failed'])
+  // What only a sandbox, a moved input or a remote prefetch writes, kept
+  // beside the failed run as a run that had them keeps it.
+  const failedRun = (outputs['last']!.at(-1) as { invocation: { runId: string } }).invocation.runId
+  const cacheDir = path.join(root, '.vx', 'cache')
+  const kept = path.join(cacheDir, 'failures', `${failedRun}.json`)
+  const stored = JSON.parse(readFileSync(kept, 'utf8')) as { tasks: Record<string, unknown>[] }
+  for (const t of stored.tasks) {
+    t['inputMoved'] = 'src/a.txt'
+    t['sandboxFix'] = {
+      read: ['/r'],
+      write: ['/w'],
+      network: ['h'],
+      systemInfo: ['s'],
+      withheld: ['/c'],
+      inputs: ['src/b.txt'],
+    }
+  }
+  await writeFile(kept, JSON.stringify(stored))
+  await mkdir(path.join(cacheDir, 'steps'), { recursive: true })
+  await writeFile(
+    path.join(cacheDir, 'steps', `${failedRun}.json`),
+    JSON.stringify([{ id: 'vx:prefetch', durationMs: 3, ok: true }]),
+  )
+  json('last', ['--failed'])
   const dry = vx(['run', 'build', '--filter', 'app...', '--dry=json'])
   expect(dry.code).toBe(0)
+  printed.push({ what: 'vx run --dry=json', out: dry.out })
   outputs['plan']!.push(JSON.parse(dry.out))
   // What a workspace with two executors and a remote shows, built by hand:
   // the fields only those plugins provoke.
@@ -218,6 +274,20 @@ beforeAll(async () => {
               },
             },
             { node: node('a#ci'), hash: 'k2', cacheStatus: 'group', deps: ['a#build'] },
+            {
+              node: node('a#mac'),
+              hash: 'k3',
+              cacheStatus: 'skipped',
+              deps: [],
+              otherPlatform: { needs: ['darwin-arm64'], host: 'linux-x64' },
+            },
+            {
+              node: node('a#app'),
+              hash: 'k4',
+              cacheStatus: 'skipped',
+              deps: ['a#mac'],
+              blockedBy: 'a#mac',
+            },
           ],
           downloadDowngrades: [{ taskId: 'a#build', reason: 'a dependant reads its outputs' }],
         },
@@ -234,9 +304,9 @@ beforeAll(async () => {
   // A config that does not load: \`vx info\` names it.
   await addProject(root, 'broken', { config: 'export default { tasks: 1 }' })
   json('info', [])
-  json('cache', ['clean', '--max-size', '1K', '--dry-run'])
+  json('cache', ['clean', '--max-size', '1K', '--dry'])
   json('cache', ['clean', '--max-size', '1K'])
-  json('cache', ['clean', '--dry-run'])
+  json('cache', ['clean', '--dry'])
   // A refusal: exit 1, and the error document on stdout.
   const refused = vx(['show', 'nope', '--format', 'json'])
   if (refused.code !== 1) throw new Error(`vx show nope: ${refused.code}\n${refused.err}`)
@@ -311,6 +381,12 @@ afterAll(async () => {
 const VERBS = ['show', 'info', 'why', 'last', 'cache', 'lock', 'init', 'docs', 'plan', 'error']
 
 describe('read verbs hold their --format json to a checked-in schema', () => {
+  it('print each document on one line', () => {
+    expect(printed.length).toBeGreaterThan(0)
+    const multi = printed.filter(({ out }) => out.trimEnd().includes('\n')).map((p) => p.what)
+    expect(multi).toEqual([])
+  })
+
   it('ships one schema per read verb, and nothing else', () => {
     expect(readdirSync(SCHEMAS).sort()).toEqual(VERBS.map((v) => `${v}.json`).sort())
   })
@@ -331,6 +407,15 @@ describe('read verbs hold their --format json to a checked-in schema', () => {
     const { vx: _, ...missing } = facts
     expect(validate(s, missing)).toEqual(['$: missing vx'])
     expect(validate(s, { ...facts, projects: 1.5 })).toEqual(['$.projects: number is not integer'])
+  })
+
+  // `VX_RUN_CONCURRENCY` set, the workers' source is `env`: the schema
+  // refused what `vx info --json` printed.
+  it('info: the workers count from the variable conforms', () => {
+    const facts = outputs['info']![0] as { workers: Record<string, unknown> }
+    expect(
+      validate(schema('info'), { ...facts, workers: { ...facts.workers, source: 'env' } }),
+    ).toEqual([])
   })
 
   it('every object a schema declares closes its key set', () => {
@@ -379,6 +464,7 @@ describe('each schema object is its source type', () => {
         schemaVersion: true,
         cacheEntries: true,
         cacheBytes: true,
+        cacheIndexError: true,
         settings: true,
         orphans: true,
         runs24h: true,
@@ -452,7 +538,10 @@ describe('each schema object is its source type', () => {
       keys<TaskLog>({ runId: true, taskId: true, status: true, source: true, output: true }),
     )
     expect(def('last', 'task')).toEqual(
-      keys<RunSummaryRow & Pick<TaskFailure, 'output' | 'locations' | 'fixedIn'>>({
+      keys<
+        RunSummaryRow &
+          Pick<TaskFailure, 'inputMoved' | 'output' | 'locations' | 'sandboxFix' | 'fixedIn'>
+      >({
         runId: true,
         project: true,
         task: true,
@@ -478,11 +567,26 @@ describe('each schema object is its source type', () => {
         notReady: true,
         remoteError: true,
         forwarded: true,
+        inputMoved: true,
         attempts: true,
         output: true,
         locations: true,
+        sandboxFix: true,
         fixedIn: true,
       }),
+    )
+    expect(def('last', 'task', 'properties', 'sandboxFix')).toEqual(
+      keys<NonNullable<TaskFailure['sandboxFix']>>({
+        read: true,
+        write: true,
+        network: true,
+        systemInfo: true,
+        withheld: true,
+        inputs: true,
+      }),
+    )
+    expect(props('last', 'oneOf', '0', 'properties', 'steps', 'items')).toEqual(
+      keys<RunStep>({ id: true, durationMs: true, ok: true }),
     )
   })
 
@@ -554,8 +658,8 @@ describe('each schema object is its source type', () => {
 
   it('cache', () => {
     expect(def('cache', 'prune')).toEqual(
-      keys<PruneResult & { dryRun: boolean }>({
-        dryRun: true,
+      keys<PruneResult & { dry: boolean }>({
+        dry: true,
         evicted: true,
         bytesFreed: true,
         orphans: true,
@@ -563,7 +667,7 @@ describe('each schema object is its source type', () => {
       }),
     )
     expect(def('cache', 'clear')).toEqual(
-      keys<ClearResult>({ dryRun: true, cleared: true, bytesFreed: true }),
+      keys<ClearResult>({ dry: true, cleared: true, bytesFreed: true }),
     )
   })
 
@@ -581,6 +685,8 @@ describe('each schema object is its source type', () => {
         download: true,
         description: true,
         affected: true,
+        otherPlatform: true,
+        blockedBy: true,
       }),
     )
     expect(props('plan', 'properties', 'predicted')).toEqual(

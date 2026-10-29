@@ -8,9 +8,11 @@
 import type { ExecConfig } from '../config.js'
 import {
   localExecutor,
+  PersistentReadyError,
   releaseBridges,
   resetSandbox,
   runPersistent,
+  signalExitCode,
   type ExecuteRequest,
   type ExecuteResult,
   type ServerSpec,
@@ -97,6 +99,7 @@ export function localFloor(
       ...(spec.timeoutMs === undefined ? {} : { timeoutMs: spec.timeoutMs }),
       ...(signalChannel ? { signalChannel } : {}),
     })
+    // A spawn that threw hands back no child, only a rejected `ready`.
     if (spawn.child === undefined) void gone()
     else {
       children.push(spawn.child)
@@ -105,6 +108,14 @@ export function localFloor(
     try {
       await spawn.ready
     } catch (err) {
+      // A shell that exited before ready can leave its group running
+      // (`server & …; exit`), holding the port of the one the next task starts.
+      if (
+        err instanceof PersistentReadyError &&
+        err.reason === 'exited' &&
+        spawn.child !== undefined
+      )
+        await terminateChildren(() => [spawn.child!])
       const why = err instanceof Error ? err.message : String(err)
       const said = (heard ?? '').trimEnd()
       throw new Error(said === '' ? why : `${why}; its output:\n${said}`)
@@ -113,7 +124,7 @@ export function localFloor(
     // Ready, so it spawned: only a failed spawn has no child.
     return spawn.child!
   }
-  const serve = (spec: ServerSpec, root: string): Promise<unknown> => {
+  const serve = (spec: ServerSpec, root: string): Promise<ReturnType<typeof Bun.spawn>> => {
     let up = servers.get(spec.taskId)
     if (up === undefined) {
       up = start(spec, root)
@@ -125,9 +136,33 @@ export function localFloor(
   }
   return {
     async execute(req) {
+      // A stop while a server is not yet ready ends the wait: one that never
+      // prints its `readyWhen` line held the task, and a worker's shutdown
+      // waits on its tasks before `close()` stops the servers. The aborted
+      // request then reads as one stopped before its spawn.
+      const signal = req.signal
+      const stopped =
+        signal === undefined
+          ? undefined
+          : new Promise<void>((resolve) => {
+              if (signal.aborted) resolve()
+              else signal.addEventListener('abort', () => resolve(), { once: true })
+            })
       for (const spec of req.servers ?? []) {
+        if (signal?.aborted === true) break
         try {
-          await serve(spec, req.workspaceRoot)
+          const up = serve(spec, req.workspaceRoot)
+          const child = await (stopped === undefined ? up : Promise.race([up, stopped]))
+          // One that crashed after it was ready serves nobody: the task ran
+          // against nothing and failed on its own "connection refused". A
+          // clean exit is a setup step that did its work (runPersistent).
+          const died = child === undefined ? null : (child.exitCode ?? child.signalCode)
+          if (died !== null && died !== 0) {
+            const code = typeof died === 'number' ? died : signalExitCode(died)
+            const text = `${spec.taskId}, which ${req.taskId} depends on, exited with code ${code} after it was ready\n`
+            req.onStderr(text)
+            return { exitCode: 1, durationMs: 0, stdout: '', stderr: text, violations: [] }
+          }
         } catch (err) {
           const why = err instanceof Error ? err.message : String(err)
           const text = `${spec.taskId}, which ${req.taskId} depends on, did not start: ${why}\n`

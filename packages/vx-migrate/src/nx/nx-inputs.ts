@@ -26,8 +26,15 @@ export interface NxInputs {
    * representable in vx" (walked the Nx path, 2026-09-20).
    */
   readonly runtimeCmds: string[]
-  /** `^name` / `{ input, dependencies | projects }`: whose `name` to fold. */
-  readonly upstream: Array<{ readonly name: string; readonly of: 'deps' | readonly string[] }>
+  /**
+   * `^name` / `{ input, dependencies | projects }`: whose `name` to fold;
+   * `depsOf`, the listed projects' dependencies' rather than theirs.
+   */
+  readonly upstream: Array<{
+    readonly name: string
+    readonly of: 'deps' | readonly string[]
+    readonly depsOf?: true
+  }>
   /** `{ dependentTasksOutputFiles }` globs: keyed only through a `dependsOn` edge. */
   readonly dependentOutputs: string[]
 }
@@ -134,7 +141,7 @@ export function expandNxInputs(
             ? null
             : underProject(g, at.rel)
         if (own === null) into.wsFiles.push(neg + withProjectDir(g, at.rel, true))
-        else into.files.push(neg + withProjectDir(own, at.rel, true))
+        else into.files.push(neg + (own === '' ? '**/*' : withProjectDir(own, at.rel, true)))
         return
       }
       // Bare string = named-input reference.
@@ -218,17 +225,26 @@ export function expandNxInputs(
         // Nx 23 still reads the pre-17 spellings `projects: "dependencies"`
         // (`^input`) and `projects: "self"` (the project's own); taken as
         // project names, each was a todo and the input was dropped.
-        if (o.dependencies === true || o.projects === 'dependencies') {
+        const listed =
+          o.projects !== undefined && o.projects !== 'self' && o.projects !== 'dependencies'
+        if (o.projects === 'dependencies' || (o.dependencies === true && !listed)) {
           into.upstream.push({ name: o.input, of: 'deps' })
           return
         }
-        if (o.projects !== undefined && o.projects !== 'self') {
+        if (listed) {
           const of = typeof o.projects === 'string' ? [o.projects] : o.projects
           if (!Array.isArray(of) || !of.every((p) => typeof p === 'string')) {
             todos.push(`input ${JSON.stringify(entry)} not representable in vx`)
             return
           }
-          into.upstream.push({ name: o.input, of: of as string[] })
+          // Beside `projects`, Nx 24 reads `dependencies: true` as those
+          // projects' dependencies and Nx 23 as this project's: read as
+          // this project's alone, a listed project's dependency edit was a
+          // hit under Nx 24. Both are keyed, never less than either.
+          if (o.dependencies === true) {
+            into.upstream.push({ name: o.input, of: 'deps' })
+            into.upstream.push({ name: o.input, of: of as string[], depsOf: true })
+          } else into.upstream.push({ name: o.input, of: of as string[] })
           return
         }
         expand(o.input, seen)

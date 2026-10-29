@@ -241,7 +241,7 @@ describe('vx-history plugin end to end', () => {
       expect(c.declared).toBe(true)
       const pretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
       expect(pretty.exitCode).toBe(0)
-      const text = pretty.stdout.toString()
+      const text = Bun.stripANSI(pretty.stdout.toString())
       expect(text).toContain('budgets')
       expect(text).toMatch(/a#build\s+1\s+\S+\s+\d+ MB\s+\S+\s+\d+ MB$/m)
       expect(text).toMatch(/b#build\s+1\s+\S+\s+—\s+\S+\s+—$/m)
@@ -252,6 +252,36 @@ describe('vx-history plugin end to end', () => {
       })
       expect(bad.exitCode).not.toBe(0)
       expect(bad.stderr.toString()).toContain('unknown flag: --nope')
+      // Worded as core verbs word theirs: a positional is no flag, and a
+      // bad --format says what it takes as `vx last --format xml` does.
+      const said = (args: string[]) => {
+        const r = Bun.spawnSync({
+          cmd: [process.execPath, CORE_BIN, 'history', ...args],
+          cwd: root,
+          env: { ...process.env, NO_COLOR: '1' },
+        })
+        return [r.exitCode, Bun.stripANSI(r.stderr.toString())]
+      }
+      expect([
+        said(['--nope']),
+        said(['extra']),
+        said(['--format', 'xml']),
+        said(['--format']),
+      ]).toEqual([
+        [1, '✗ vx history  unknown flag: --nope\n\n  see vx history --help\n'],
+        [1, '✗ vx history  unexpected argument: extra\n\n  see vx history --help\n'],
+        [1, '✗ vx history  --format must be pretty or json (got xml)\n\n  see vx history --help\n'],
+        [1, '✗ vx history  --format requires a value: pretty or json\n\n  see vx history --help\n'],
+      ])
+      // A flag the verb does not take is a usage refusal, as core's are.
+      const badJson = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format=json', '--nope'],
+        cwd: root,
+      })
+      expect([badJson.exitCode, JSON.parse(badJson.stdout.toString()).error.code]).toEqual([
+        1,
+        'VX_E_USAGE',
+      ])
       // `vx completions` offers `--help` for every plugin verb; it was refused.
       for (const flag of ['--help', '-h']) {
         const help = Bun.spawnSync({
@@ -263,6 +293,44 @@ describe('vx-history plugin end to end', () => {
           'Usage: vx history [--format pretty|json]',
         ])
       }
+    },
+    TIMEOUT,
+  )
+
+  // A run reads only the rows of a task as it is now (`taskDefinitions`);
+  // the verb read every definition's, so it showed a reservation the run
+  // no longer packs.
+  it(
+    '`vx history` shows a task whose command changed with none of its old rows',
+    async () => {
+      const config = (command: string) =>
+        `export default { tasks: { build: { exec: { command: ${JSON.stringify(command)} } }, other: { exec: { command: 'true' } } } }\n`
+      await pkg('a', config('true'))
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['vxHistory()']),
+      )
+      const r1 = await run({
+        cwd: root,
+        tasks: ['build', 'other'],
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(r1.ok).toBe(true)
+      await pkg('a', config('true # changed'))
+      Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'lock'], cwd: root })
+      const json = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+        cwd: root,
+      })
+      expect(json.exitCode).toBe(0)
+      const runs = Object.fromEntries(
+        (JSON.parse(json.stdout.toString()) as { tasks: { id: string; runs: number }[] }).tasks.map(
+          (t) => [t.id, t.runs],
+        ),
+      )
+      expect(runs).toEqual({ 'a#build': 0, 'a#other': 1 })
     },
     TIMEOUT,
   )
@@ -308,7 +376,7 @@ describe('vx-history plugin end to end', () => {
       const mb = (a.maxPeakRssBytes! * 2) / (1024 * 1024)
       expect(a.reservation).toEqual({ memory: Math.ceil(mb / 64) * 64 })
       const pretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
-      expect(pretty.stdout.toString()).toContain(' · 8192 MB (the memory option)\n')
+      expect(Bun.stripANSI(pretty.stdout.toString())).toContain(' · 8192 MB (the memory option)\n')
       // The same history with learning off and no memory option: nothing is
       // learned, and the budget says where it came from.
       await Bun.write(
@@ -323,7 +391,46 @@ describe('vx-history plugin end to end', () => {
       const offOut = JSON.parse(off.stdout.toString()) as typeof out
       expect(offOut.tasks.find((t) => t.id === 'a#build')!.reservation).toBeNull()
       const offPretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
-      expect(offPretty.stdout.toString()).toContain(' MB (what this process may use)\n')
+      expect(Bun.stripANSI(offPretty.stdout.toString())).toContain(
+        ' MB (what this process may use)\n',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '`vx history` reads a task as it is now, as the schedule does',
+    async () => {
+      // The hog's command is replaced: the run reads only the new
+      // definition's rows and reserves nothing, so the verb shows none.
+      const hog =
+        'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(50); console.log(b.length)"'
+      const build = (command: string): string =>
+        `export default { tasks: { build: { exec: { command: ${JSON.stringify(command)} } } } }\n`
+      await pkg('a', build(hog))
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['vxHistory({ memory: 4096 })']),
+      )
+      const r = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      expect(r.ok).toBe(true)
+      await pkg('a', build('true'))
+      Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'lock'], cwd: root })
+      const json = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+        cwd: root,
+      })
+      const out = JSON.parse(json.stdout.toString()) as {
+        tasks: { id: string; runs: number; maxPeakRssBytes: number | null; reservation: unknown }[]
+      }
+      const { id, runs, maxPeakRssBytes, reservation } = out.tasks[0]!
+      expect({ id, runs, maxPeakRssBytes, reservation }).toEqual({
+        id: 'a#build',
+        runs: 0,
+        maxPeakRssBytes: null,
+        reservation: null,
+      })
     },
     TIMEOUT,
   )
@@ -433,7 +540,7 @@ describe('vx-history plugin end to end', () => {
       expect(summary.ok).toBe(true)
       expect(log.started[0]).toBe('b#build')
       expect(lines.filter((l) => l.includes('vx-history'))).toEqual([
-        '[vx] vx-history: assume ignores "a#build", "a#test" — each must be a finite number of ms',
+        '[vx] vx-history: assume ignores "a#build", "a#test" — each must be a number of ms from 0 to 2^53',
       ])
     },
     TIMEOUT,

@@ -212,7 +212,10 @@ describe('signal handling during vx run (e2e)', () => {
       // Each user's locks sit in a directory of their own (L-47).
       const uid = process.getuid?.()
       const lockRoot = uid === undefined ? tmp : path.join(tmp, `vx-runs-${uid}`)
-      const locks = readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-'))
+      // `<lock>.sock` beside it is the run's `vx last --live` socket.
+      const locks = readdirSync(lockRoot).filter(
+        (n) => n.startsWith('vx-run-') && !n.endsWith('.sock'),
+      )
       expect(locks.length).toBe(1)
       expect(readdirSync(path.join(lockRoot, locks[0]!))).toEqual([
         expect.stringMatching(new RegExp(`^h-${proc.pid}-`)),
@@ -230,7 +233,9 @@ describe('signal handling during vx run (e2e)', () => {
       // nothing (the directory's removal was skipped). macOS CI left one
       // once (item 867).
       const left = readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-'))
-      expect(left.map((n) => [n, readdirSync(path.join(lockRoot, n))])).toEqual([])
+      expect(
+        left.map((n) => [n, n.endsWith('.sock') ? 'socket' : readdirSync(path.join(lockRoot, n))]),
+      ).toEqual([])
     } finally {
       await rm(tmp, { recursive: true, force: true })
     }
@@ -752,7 +757,8 @@ describe('signal handling during vx run (e2e)', () => {
       }
       expect(await vx('run', 'quick', '--all').exited).toBe(0)
       expect(await list()).toEqual(['ok'])
-      const proc = vx('run', 'slow', 'done', '--all')
+      // Two slots: a one-core runner's one slot held `done` behind `slow`.
+      const proc = vx('run', 'slow', 'done', '--all', '--concurrency', '2')
       await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       await waitForContent(path.join(dir, 'done.txt'), 'done\n', 10_000)
       await Bun.sleep(300)
@@ -767,6 +773,83 @@ describe('signal handling during vx run (e2e)', () => {
       const tasks = db.query('SELECT task FROM runs ORDER BY id').all() as { task: string }[]
       db.close()
       expect(tasks.map((t) => t.task)).toEqual(['quick', 'done'])
+    },
+    TIMEOUT,
+  )
+
+  // The Ctrl-C that ends `vx run dev` lands after the graph, in the
+  // keep-alive wait, and is the usual end of a dev session: its record
+  // stays (keep-alive.test.ts), but it read FAILED over a server row that
+  // read `success`, the server's own 130 from the stop counted as a crash.
+  it(
+    'a Ctrl-C in the keep-alive wait records the run ok, not FAILED',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: {
+        quick: { exec: { command: 'true' } },
+        dev: { exec: { command: 'echo $$ > pid.txt; echo Listening; exec sleep 30', persistent: { readyWhen: 'Listening' } } },
+      } }`,
+      )
+      const vx = (...args: string[]) =>
+        Bun.spawn([process.execPath, BIN, ...args], {
+          cwd: fixture.root,
+          env: { ...process.env },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+      const list = async (): Promise<string[]> => {
+        const p = vx('last', '--list')
+        const out = await new Response(p.stdout).text()
+        await p.exited
+        return out
+          .trim()
+          .split('\n')
+          .map((l) => l.split(/\s+/)[0]!)
+      }
+      expect(await vx('run', 'quick', '--all').exited).toBe(0)
+      const proc = vx('run', 'dev', '--all')
+      const out = new Response(proc.stdout).text()
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      // The summary is out: the run sits in the keep-alive wait.
+      const deadline = Date.now() + 10_000
+      while (!(await Bun.file(path.join(fixture.root, '.vx', 'cache', 'cache.db')).exists())) {
+        if (Date.now() > deadline) throw new Error('no cache db')
+        await Bun.sleep(20)
+      }
+      await Bun.sleep(500)
+      proc.kill('SIGINT')
+      expect(await proc.exited).toBe(130)
+      expect(await out).toContain('app#dev running')
+      expect(await list()).toEqual(['ok', 'ok'])
+    },
+    TIMEOUT,
+  )
+
+  // The footer's `run <id>` is the id `vx last` opens; a stopped run
+  // records none, and the id it printed answered "no recorded run".
+  it(
+    "a Ctrl-C'd run's footer names no run id",
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: { slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } } } }`,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
+        cwd: fixture.root,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      proc.kill('SIGINT')
+      const out = await new Response(proc.stdout).text()
+      expect(await proc.exited).toBe(130)
+      const info = out.split('\n').find((l) => l.trimStart().startsWith('info'))
+      expect(info).toBeDefined()
+      expect(info).not.toContain(' run ')
     },
     TIMEOUT,
   )

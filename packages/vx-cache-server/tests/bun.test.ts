@@ -1,8 +1,9 @@
 // The Bun server: an S3-compatible bucket, and nothing else.
 
-import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { createServer, type AddressInfo } from 'node:net'
+import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test'
 import { oidcAuth } from '@vzn/vx-devtools'
-import { s3Blobs } from '../src/bun.js'
+import { listen, s3Blobs } from '../src/bun.js'
 import { blobName } from '../src/store.js'
 import { createCacheServer, limitsFrom } from '../src/server.js'
 import { conformance, scopeOf } from './conformance.js'
@@ -36,7 +37,7 @@ beforeAll(async () => {
     authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
     limits: LIMITS,
   })
-  server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: handle })
+  server = listen(handle, '127.0.0.1', 0)
   token = await iss.sign(MAIN_JOB, server.url.origin)
 })
 
@@ -90,6 +91,15 @@ it('reads the limits from the environment, and refuses one that is not a count',
   expect(limitsFrom({ MAX_CHECK_HASHES: '9', MAX_UPLOAD_BYTES: '' })).toEqual({ maxCheckHashes: 9 })
   expect(() => limitsFrom({ MAX_CHECK_HASHES: '1.5' })).toThrow(
     'MAX_CHECK_HASHES: not a whole number above 0: 1.5',
+  )
+})
+
+// wrangler.jsonc writes a var as JSON: a number was skipped, and the
+// default limit served in its place.
+it('reads a limit a Worker var gives as a number, and refuses another type', () => {
+  expect(limitsFrom({ MAX_UPLOAD_BYTES: 5 })).toEqual({ maxUploadBytes: 5 })
+  expect(() => limitsFrom({ MAX_UPLOAD_BYTES: [5] })).toThrow(
+    'MAX_UPLOAD_BYTES: not a whole number above 0: [5]',
   )
 })
 
@@ -156,10 +166,10 @@ it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--bogus'], {
     stderr: 'pipe',
   })
-  const [said, usage] = cli.stderr.toString().split('\n')
+  const [said, usage] = Bun.stripANSI(cli.stderr.toString()).split('\n')
   expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
     2,
-    "Unknown option '--bogus'",
+    "✗ vx-cache-server  Unknown option '--bogus'",
     'usage: vx-cache-server',
   ])
 })
@@ -170,24 +180,50 @@ it('names ALLOW when it cannot be read', () => {
       env: { ...process.env, S3_BUCKET: 'b', ALLOW: allow },
       stderr: 'pipe',
     })
-    return [cli.exitCode, cli.stderr.toString()]
+    return [cli.exitCode, Bun.stripANSI(cli.stderr.toString())]
   }
   expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
-    [2, 'ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
-    [2, 'ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
+    [2, '✗ vx-cache-server  ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
+    [2, '✗ vx-cache-server  ALLOW: https://x:acme:ci.yml is not issuer:owner/repo:workflow\n'],
   ])
+})
+
+it('refuses to start with ALLOW empty: it would refuse every request', () => {
+  for (const allow of [undefined, '', ' ']) {
+    const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+      env: { ...process.env, S3_BUCKET: 'b', ...(allow === undefined ? {} : { ALLOW: allow }) },
+      stderr: 'pipe',
+      // Started, it would listen until killed.
+      timeout: 10_000,
+    })
+    const [said, usage] = Bun.stripANSI(cli.stderr.toString()).split('\n')
+    expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+      2,
+      '✗ vx-cache-server  set ALLOW',
+      'usage: vx-cache-server',
+    ])
+  }
 })
 
 // Unset, the audience was the origin the request named, its Host header:
 // a token minted for another service was taken by sending its host.
 it('refuses to start without AUDIENCE', () => {
   const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
-    env: { ...process.env, S3_BUCKET: 'b', ALLOW: '', AUDIENCE: '' },
+    env: {
+      ...process.env,
+      S3_BUCKET: 'b',
+      S3_ACCESS_KEY_ID: 'a',
+      S3_SECRET_ACCESS_KEY: 's',
+      ALLOW: ALLOW_VAR,
+      AUDIENCE: '',
+    },
     stderr: 'pipe',
+    // Started, it would listen until killed.
+    timeout: 10_000,
   })
-  expect([cli.exitCode, cli.stderr.toString().split('\n')[0]]).toEqual([
+  expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString()).split('\n')[0]]).toEqual([
     2,
-    'set AUDIENCE: the aud a CI token names, the URL clients reach this server at',
+    '✗ vx-cache-server  set AUDIENCE: the aud a CI token names, the URL clients reach this server at',
   ])
 })
 
@@ -196,7 +232,196 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     env: { ...process.env, S3_BUCKET: 'b', ALLOW: '' },
     stderr: 'pipe',
   })
-  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+  expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString())]).toEqual([
+    2,
+    '✗ vx-cache-server  --port: not a port: \n',
+  ])
+})
+
+// With no S3 credentials the server listened, said so, and answered every
+// request 502: a deploy looked up while it could serve nothing.
+it('refuses to start with no S3 credentials', () => {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(S3|AWS)_/.test(k)))
+  const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+    env: { ...env, S3_BUCKET: 'b', ALLOW: ALLOW_VAR },
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: 3000,
+  })
+  expect([
+    cli.exitCode,
+    Bun.stripANSI(cli.stdout.toString()),
+    Bun.stripANSI(cli.stderr.toString()),
+  ]).toEqual([2, '', expect.stringMatching(/^✗ vx-cache-server {2}S3: Missing S3 credentials\./)])
+})
+
+// Bun's fetch asks for gzip and inflates what it is sent, so a bucket (or
+// a proxy before it) that compressed an answer named the compressed
+// Content-Length as the artifact's size: a check and a download said
+// fewer bytes than the artifact holds.
+it('reads sizes off the bytes as stored, never a compressed answer', async () => {
+  const bytes = 'vx '.repeat(10_000)
+  const gzipping = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      if (!/gzip/.test(req.headers.get('accept-encoding') ?? '')) {
+        return new Response(req.method === 'HEAD' ? null : bytes, {
+          headers: { 'content-length': String(bytes.length) },
+        })
+      }
+      const z = Bun.gzipSync(bytes)
+      return new Response(req.method === 'HEAD' ? null : z, {
+        headers: { 'content-encoding': 'gzip', 'content-length': String(z.byteLength) },
+      })
+    },
+  })
+  try {
+    const blobs = s3Blobs(
+      new Bun.S3Client({
+        endpoint: gzipping.url.href,
+        bucket: 'b',
+        accessKeyId: 'a',
+        secretAccessKey: 's',
+      }),
+    )
+    const got = (await blobs.get('x'))!
+    expect([got.size, (await new Response(got.body).text()).length, await blobs.size('x')]).toEqual(
+      [bytes.length, bytes.length, bytes.length],
+    )
+  } finally {
+    await gzipping.stop(true)
+  }
+})
+
+// Number(null) is 0: a HEAD naming no Content-Length was an artifact of
+// 0 bytes to a check and a HEAD. A download sent chunked still serves:
+// Bun frames a streamed answer itself.
+it('takes no size the bucket did not state', async () => {
+  const unsized = createServer((sock) =>
+    sock.once('data', () =>
+      sock.end('HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n\r\n'),
+    ),
+  )
+  await new Promise<void>((r) => unsized.listen(0, '127.0.0.1', r))
+  try {
+    const blobs = s3Blobs(
+      new Bun.S3Client({
+        endpoint: `http://127.0.0.1:${(unsized.address() as AddressInfo).port}`,
+        bucket: 'b',
+        accessKeyId: 'a',
+        secretAccessKey: 's',
+      }),
+    )
+    await expect(blobs.size('x')).rejects.toThrow('the bucket answered HEAD with no Content-Length')
+    expect(await new Response((await blobs.get('x'))!.body).text()).toBe('abc')
+  } finally {
+    unsized.close()
+  }
+})
+
+// The bucket's fault is not the server's: a 500 said the server broke,
+// where the bucket an operator runs is what to look at.
+it("answers a bucket that cannot be read 502, naming the bucket's answer", async () => {
+  const down = async (): Promise<never> => {
+    throw new Error('the bucket answered HEAD 503')
+  }
+  const handle = createCacheServer({
+    blobs: { get: down, size: down, put: down },
+    authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
+  })
+  const headers = {
+    ...NAMED,
+    authorization: `Bearer ${await iss.sign(MAIN_JOB, 'http://x.test')}`,
+    'vx-scope': scopeOf('refs/heads/main'),
+  }
+  const said = async (path: string, init: RequestInit = {}) => {
+    const res = await handle(new Request(`http://x.test${path}`, { headers, ...init }))
+    return [res.status, await res.json()]
+  }
+  const logged = spyOn(console, 'error').mockImplementation(() => {})
+  const bucket = {
+    code: 'bad_gateway',
+    message: 'the bucket could not be read: the bucket answered HEAD 503',
+  }
+  expect([
+    await said('/v1/artifacts/ab'),
+    await said('/v1/artifacts', {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ hashes: ['ab'], scopes: [scopeOf('refs/heads/main')] }),
+    }),
+    await said('/v1/artifacts/ab', {
+      method: 'PUT',
+      headers: { ...headers, 'content-length': '1' },
+      body: 'x',
+    }),
+  ]).toEqual([
+    [502, bucket],
+    [502, bucket],
+    [502, bucket],
+  ])
+  // The operator sees it too: a 502 is no client's to fix.
+  expect(logged.mock.calls.map(([line]) => line)).toEqual([
+    `vx-cache-server: GET /v1/artifacts/ab: ${bucket.message}`,
+    `vx-cache-server: POST /v1/artifacts: ${bucket.message}`,
+    `vx-cache-server: PUT /v1/artifacts/ab: ${bucket.message}`,
+  ])
+  logged.mockRestore()
+})
+
+// A failed request logged the bare error, no server name, method or route,
+// beside the history server's `vx-history-server: <method> <path>: <why>`.
+it('logs a request it failed with its name, method and path', async () => {
+  const errors: string[] = []
+  const logged = console.error
+  console.error = (...args: unknown[]) => void errors.push(args.join(' '))
+  try {
+    const res = await createCacheServer({
+      blobs: { put: async () => {}, get: async () => null, size: async () => null },
+      // A fault of the server's own (not the bucket's 502): its 500.
+      authorize: async () => {
+        throw new Error('the check broke')
+      },
+    })(new Request('http://x.test/v1/artifacts/abc', { method: 'HEAD' }))
+    expect(res.status).toBe(500)
+  } finally {
+    console.error = logged
+  }
+  expect(errors).toEqual(['vx-cache-server: HEAD /v1/artifacts/abc: Error: the check broke'])
+})
+it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', () => {
+  const said = (port: string) => {
+    const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', port], {
+      env: { ...process.env, S3_BUCKET: 'b', ALLOW: '', AUDIENCE: 'https://cache.example' },
+      stderr: 'pipe',
+      // A port it took binds and serves: end it rather than hang.
+      timeout: 2000,
+    })
+    return [cli.exitCode, Bun.stripANSI(cli.stderr.toString())]
+  }
+  expect(['0x50', '1e1', ' 80', '80.0'].map(said)).toEqual([
+    [2, '✗ vx-cache-server  --port: not a port: 0x50\n'],
+    [2, '✗ vx-cache-server  --port: not a port: 1e1\n'],
+    [2, '✗ vx-cache-server  --port: not a port:  80\n'],
+    [2, '✗ vx-cache-server  --port: not a port: 80.0\n'],
+  ])
+}, 20_000)
+
+it("refuses an empty --host: Bun bound '' to localhost alone", () => {
+  const cli = Bun.spawnSync(
+    ['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0', '--host', ''],
+    {
+      env: { ...process.env, S3_BUCKET: 'b', ALLOW: '', AUDIENCE: 'https://cache.example' },
+      stderr: 'pipe',
+      // A host it took binds and serves: end it rather than hang.
+      timeout: 2000,
+    },
+  )
+  expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString())]).toEqual([
+    2,
+    "✗ vx-cache-server  --host: needs an address, got ''\n",
+  ])
 })
 
 // The bucket's outage is not the server's fault nor the client's: every
@@ -243,9 +468,27 @@ it('answers 502 naming the bucket on every route while the bucket fails', async 
       ),
     ]
     expect(await Promise.all(answers.map(async (r) => [r.status, await r.json()]))).toEqual([
-      [502, { code: 'bad_gateway', message: 'the bucket answered GET 500' }],
-      [502, { code: 'bad_gateway', message: 'the bucket answered HEAD 500' }],
-      [502, { code: 'bad_gateway', message: 'the bucket answered HEAD 500' }],
+      [
+        502,
+        {
+          code: 'bad_gateway',
+          message: 'the bucket could not be read: the bucket answered GET 500',
+        },
+      ],
+      [
+        502,
+        {
+          code: 'bad_gateway',
+          message: 'the bucket could not be read: the bucket answered HEAD 500',
+        },
+      ],
+      [
+        502,
+        {
+          code: 'bad_gateway',
+          message: 'the bucket could not be read: the bucket answered HEAD 500',
+        },
+      ],
     ])
     expect((await ask('HEAD', '/v1/artifacts/ab')).status).toBe(502)
   } finally {
@@ -276,7 +519,7 @@ it('takes a check longer than MAX_UPLOAD_BYTES, and answers every refusal itself
   )
   try {
     const reader = cli.stdout.getReader()
-    const line = new TextDecoder().decode((await reader.read()).value)
+    const line = Bun.stripANSI(new TextDecoder().decode((await reader.read()).value))
     const base = /on (\S+)/.exec(line)![1]!
     const hashes = Array.from({ length: 40 }, (_, i) => i.toString(16).padStart(64, 'a'))
     const check = await fetch(new URL('/v1/artifacts', base), {

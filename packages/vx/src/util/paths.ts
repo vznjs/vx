@@ -364,20 +364,29 @@ export function stripTrailingSlash(p: string): string {
  * may not import `cache`, and a second copy is how the two would
  * disagree — which is exactly what item 441 measured about
  * `staticPrefix`.
+ *
+ * A brace is expanded first and each alternative read alone: as one
+ * pattern, `{src,lib}` never became the two trees and `{./src,lib}/**`
+ * kept a `./` no git path holds, so an edit under either was a stale hit
+ * and the same output glob saved an empty artifact.
  */
 export function asTrees(patterns: readonly string[]): string[] {
   const out: string[] = []
   for (const raw of patterns) {
-    const p = normalizeGlob(raw)
-    if (!namesOnePath(p)) {
-      out.push(p)
-      continue
+    const alternatives = raw.includes('{') ? braceAlternatives(raw) : [raw]
+    for (const alt of alternatives) {
+      const p = normalizeGlob(alt)
+      if (!namesOnePath(p)) {
+        out.push(p)
+        continue
+      }
+      const lit = stripTrailingSlash(p)
+      if (lit.length === 0) continue
+      out.push(lit, `${lit}/**`)
     }
-    const lit = stripTrailingSlash(p)
-    if (lit.length === 0) continue
-    out.push(lit, `${lit}/**`)
   }
-  return out
+  // Two alternatives can fold to one entry (`{./src,src}`).
+  return [...new Set(out)]
 }
 
 /**
@@ -438,6 +447,23 @@ export function outputMatcher(globs: readonly string[]): (rel: string) => boolea
  * `dist/.git/**` and `dist/sub/vx.lock.json` (2026-10-17).
  */
 const OUTPUT_NEVER = ['.git/**', '.vx/**', 'vx.lock.json']
+
+/**
+ * Whether vx may write or delete at `real`, a path a link on the way
+ * resolved: under `realBase` and not in its `.git`, in any case (a
+ * case-insensitive disk reads `.GIT` as `.git`). Names are held to
+ * `OUTPUT_NEVER` lexically; this holds where a link lands
+ * (vercel/turborepo#14808). Only the base's own: a deeper `.git` (a
+ * submodule under `gen/**`, a build's `dist/.git`) is an output an entry
+ * may name, and refused only once it existed on disk, a restore failed by
+ * what the last run left.
+ */
+export function writableUnder(real: string, realBase: string): boolean {
+  if (real === realBase) return true
+  if (!real.startsWith(realBase + path.sep)) return false
+  const top = real.slice(realBase.length + 1).split(path.sep, 1)[0]!
+  return top.toLowerCase() !== '.git'
+}
 
 /**
  * `OUTPUT_NEVER` relative to the workspace root, for `outputs.workspaceFiles`:
@@ -574,4 +600,10 @@ const CONTROL = /[\x00-\x1f\x7f-\x9f]/g
  */
 export function printable(s: string): string {
   return s.replace(CONTROL, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+}
+
+/** Whether `s` holds a C0/C1 control or DEL, which `printable` would escape. */
+export function hasControl(s: string): boolean {
+  // oxlint-disable-next-line no-control-regex
+  return /[\x00-\x1f\x7f-\x9f]/.test(s)
 }

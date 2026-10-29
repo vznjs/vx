@@ -19,7 +19,7 @@ import { vxHistory } from '@vzn/vx-history'
 export default { plugins: [vxHistory()] }
 ```
 
-`vxHistory({ window?, assume?, file?, defaultBranch?, url?, issuer?, repository?, headers?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
+`vxHistory({ window?, assume?, file?, url?, issuer?, repository?, headers?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
 
 `assume` is for the run that has no history: a fresh CI runner. It names durations (task id → ms) for tasks the history has not seen, so a long leaf task — a docs build, a cross-compile — starts first instead of last:
 
@@ -29,7 +29,7 @@ export default {
 }
 ```
 
-A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a finite non-negative number (`Number()` of an unset variable is NaN) is dropped with one warning naming its task ids; the rest still order the run. The example is vx's own docs build, once the 29 s tail of a 99 s cold gate: ready from the second second and started last (2026-09-10).
+A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a number of ms from 0 to 2^53 (`Number()` of an unset variable is NaN; a larger one summed along a chain past any number) is dropped with one warning naming its task ids; the rest still order the run. The example is vx's own docs build, once the 29 s tail of a 99 s cold gate: ready from the second second and started last (2026-09-10).
 
 ## Timings from a history server
 
@@ -38,17 +38,22 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 over `https://` (`http://` only to `127.0.0.1`, `::1` or `localhost`: every
 request carries the CI token).
 On a CI job with a token (GitHub's OIDC token, which needs
-`permissions: id-token: write`, or a GitLab `id_tokens` entry
+`permissions: id-token: write` to set `ACTIONS_ID_TOKEN_REQUEST_URL`
+and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, or a GitLab `id_tokens` entry
 `VX_HISTORY_TOKEN` with the server's origin as `aud`; a 5xx or 429 from
-GitHub's endpoint is asked again up to three times), each run asks it
+GitHub's endpoint, or a 429, 502, 503 or 504 from the server, is asked
+again up to three times), each run asks it
 for its tasks' numbers, by task definition, in the refs the run reads,
 as a remote cache does: its branch's, the branch it merges into, then
-the default branch's (`baseBranch`, else git's or the CI's). `defaultBranch`
-instead reads its branch's, then that branch's.
+the default branch's (`baseBranch`, else git's or the CI's). A run
+that reads no ref (a detached HEAD with no default branch) asks nothing.
 The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,
-with each worker's measurements. A task that shared a crowded worker's
+with each worker's measurements. The upload starts as the last task
+ends, beside core's own end of run, and the plugin's teardown waits at
+most 2 s more for it (core bounds a teardown at 3 s); one not done by
+then is dropped and said, with how many timings it held. A task that shared a crowded worker's
 cores is sent as long as it would have taken alone, and its cores at
 most its machine's, as local history keeps them. A refusal is said with the server's
 words; a refused token (401) also names the repository and issuer the
@@ -56,7 +61,8 @@ workspace declares and the audience it must carry, and the server is
 off for the rest of the run. A CI job with no token says so once (on GitHub Actions,
 `GITHUB_ACTIONS`, naming the permission).
 A run with no token (off CI) reads only, from a server whose
-`READ_ACCESS` is `public`, and sends nothing.
+`READ_ACCESS` is `public`, and sends nothing; a server refusing it
+names the fix for the CI it is on (`GITHUB_ACTIONS`, `GITLAB_CI`).
 `issuer` (the CI issuer's URL, as its tokens name it) and `repository`
 (`org/name` there) are required with a server: the run's one query
 names them, with its refs and every task hash, and nothing guesses
@@ -85,7 +91,7 @@ Each timing is of the task as it was: its command and `env.define`
 timings; editing its inputs, outputs or deps keeps them. A forecast
 reads this branch's last five timings first, then the newest the server
 answered, then any branch's, then `assume`. Of a timing the server
-answers vx keeps only what a server folds: a duration that is not a whole
+answers vx keeps only what a server would store: a duration that is not a whole
 count of ms skips the timing, cores not finite from 0 or RSS not a whole
 byte count are dropped (`1e400` parses as Infinity: kept, it failed every
 later run's schedule); core's history store keeps no such number either.
@@ -115,10 +121,12 @@ export default {
 ```
 
 The file is `{ "version": 1, "tasks": { "<task id>": <ms> } }`, keys
-sorted. A p50 recorded on this machine wins over it, and it wins over
+sorted; an entry that is not a number of ms from 0 to 2^53 is dropped. A p50 recorded on this machine wins over it, and it wins over
 `assume`; like `assume`, it never feeds the workspace median. A task the
-run did not see keeps its time. A file that is not one warns and is read
-as empty; `--dry` writes nothing.
+run did not see keeps its time, one another writer put there while the
+run ran included. A file that is not one warns and is read as empty, one
+it cannot write warns and the run goes on; `--dry` writes
+nothing.
 
 ## Reservations learned from history
 
@@ -147,18 +155,18 @@ plugins: [
     // MB. The default is the machine's total capped by the cgroup limit; set it to budget below either.
     memory: 8192,
     resources: { headroom: 1.5 },
-    // Declared by hand for what history cannot size (a first run); a declaration wins.
+    // Declared by hand for what history cannot size (a first run); a declared axis wins, one left out keeps what history learned.
     reservations: { 'app#e2e': { cpus: 2, memory: 4096 } },
   }),
 ]
 ```
 
-`window`, `memory` and `headroom` must each be a finite number above 0 (`window` a whole one). One that is not — `Number(process.env.X)` with `X` unset is NaN, and no reservation fits a NaN budget, so every task that reserved memory would wait for an idle machine — runs on its default, named in one warning per run and in `vx history`. So does a declared `reservations` axis (`cpus`, `memory`): one that is not a number above 0 reserves nothing on that axis (a NaN held its task alone and every reserving task beside it waited); `0` is taken as nothing, silently. An entry that is not an object (`{ "app#build": 2048 }`) reserves nothing and is named the same way.
+`window`, `memory` and `headroom` must each be a finite number above 0 (`window` a whole one). One that is not — `Number(process.env.X)` with `X` unset is NaN, and no reservation fits a NaN budget, so every task that reserved memory would wait for an idle machine — runs on its default, named in one warning per run and in `vx history`. So does a declared `reservations` axis (`cpus`, `memory`): one that is not a number above 0 is not declared, so the axis keeps what history learned (a NaN held its task alone and every reserving task beside it waited); `0` declares nothing on that axis, silently. An entry that is not an object (`{ "app#build": 2048 }`) declares nothing and is named the same way. A key other than `cpus` and `memory` there, or `headroom` in `resources`, is refused when the config loads, as a misspelt option is.
 
 `vx history [--format pretty|json]` (a verb this plugin adds; `--help`
 prints its usage) shows what it learned per task and the reservation it
-will pack, with the budgets it packs into. It reads each task as a run
-does: one whose command changed shows none of its old runs.
+will pack, with the budgets it packs into. Like a run, it reads
+each task as it is now: runs of an earlier command are not counted.
 
 ```
 $ vx history

@@ -7,7 +7,7 @@
 // warnings): what a plugin keeps here is a hint.
 
 import type { Database } from 'bun:sqlite'
-import { xxh3hex } from '../util/index.js'
+import { thrownMessage, xxh3hex } from '../util/index.js'
 import type { CachePolicy } from './policy.js'
 import { sayRemoteFault, type ResolvedRemote } from './remote-lane.js'
 import { scopedKey } from './scoped-cache.js'
@@ -108,7 +108,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
   // planning on no timings and no line said why.
   const said = new Map<ResolvedRemote, Set<string>>()
   const fault = (r: ResolvedRemote, op: string, what: string, err: unknown): void => {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = thrownMessage(err)
     const seen = said.get(r) ?? new Set<string>()
     said.set(r, seen)
     if (seen.has(`${op}\0${message}`)) return
@@ -220,7 +220,9 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       for (const name of names) byKey.set(readKey(name, scoped), name)
       const keys = [...byKey.keys()]
       const found = new Set<string>()
-      for (const key of localHas(names.map((n) => entryKey(plugin, n)))) found.add(byKey.get(key)!)
+      // The local store keys entries unscoped (`entryKey`), not by `readKey`.
+      const byLocal = new Map(names.map((n) => [entryKey(plugin, n), n]))
+      for (const key of localHas([...byLocal.keys()])) found.add(byLocal.get(key)!)
       for (const r of readers) {
         const ask = keys.filter((k) => !found.has(byKey.get(k)!))
         if (ask.length === 0) break

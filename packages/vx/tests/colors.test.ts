@@ -35,6 +35,12 @@ describe('paint', () => {
   it('returns plain text when no color and no formatting are given even if enabled', () => {
     expect(paint('', 'plain', { enabled: true })).toBe('plain')
   })
+
+  // The footer's projects bar painted its empty dim remainder when every
+  // project was in the run: an escape pair around no cell.
+  it('paints no escape pair around empty text', () => {
+    expect(paint('#22c55e', '', { enabled: true }, { bold: true, dim: true })).toBe('')
+  })
 })
 
 describe('detectColors', () => {

@@ -121,6 +121,7 @@ export interface ArtifactRun {
   readonly cpuMs?: number
   readonly peakRssBytes?: number
   readonly env?: Readonly<Record<string, string | undefined>>
+  readonly secret?: readonly string[]
   readonly absent?: boolean
 }
 ```
@@ -174,6 +175,12 @@ export class BoundedCapture {
 ## `branchCacheScope`
 
 function · `src/workspace/config-schema.ts`
+
+A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
+branch and a laptop on it reads (2026-10-17). The repository's
+identity, not a remote's local name, so a clone whose `origin` is a fork
+names the fork. A name may hold characters a scope may not; each
+becomes `_`.
 
 ```ts
 export function branchCacheScope(repo: string, branch: string): string
@@ -588,7 +595,7 @@ function · `src/orchestrator/plugin.ts`
 
 The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
 The name is read from the package the calling module belongs to — the
-nearest `package.json` above it — and stamped where the workspace loader
+nearest `package.json` above it that has a name — and stamped where the workspace loader
 checks for it, so a plugin cannot be named anything but its package.
 
 ```ts
@@ -1659,6 +1666,19 @@ export interface OutputView {
 }
 ```
 
+## `packageManagerPath`
+
+function · `src/exec/env.ts`
+
+The executable of the workspace's package manager: the root
+package.json's `packageManager`, else its lockfile, found on the root's
+`node_modules/.bin` and PATH. Learned once per root; null when the root
+names none or this machine has none.
+
+```ts
+export function packageManagerPath(root: string): string | null
+```
+
 ## `PERSISTENT_TODO`
 
 const · `src/workspace/migration.ts`
@@ -1686,6 +1706,8 @@ export interface PlannedTask {
   download?: 'deferred'
   remoteBytes?: number
   affected?: AffectedReason
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
+  blockedBy?: string
 }
 ```
 
@@ -1921,6 +1943,7 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry>
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
+  taskless: (name: string) => boolean
   unlockedConfig: () => string | undefined
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
@@ -2641,6 +2664,16 @@ export interface ScheduleHookContext extends BaseContext {
 }
 ```
 
+## `secretNamed`
+
+function · `src/util/secret-mask.ts`
+
+Whether vx masks a variable's value by its name alone (`NPM_TOKEN`, not `NPM_TOKEN_FILE`).
+
+```ts
+export function secretNamed(name: string): boolean
+```
+
 ## `SecretRequest`
 
 type · `src/util/secrets.ts`
@@ -2825,7 +2858,7 @@ export interface TaskHistory {
 class · `src/orchestrator/task-log-buffer.ts`
 
 Bounded per-run capture. `append` keeps a chunk LIST + running char count per
-task, evicting whole chunks from the head past `TASK_LOG_TAIL_CHARS` — no
+task, evicting from the head past `TASK_LOG_TAIL_CHARS` — no
 string concatenation until `drain`, so a cache-hit replay (one big chunk) is
 one array push, zero copies. `finish` decides retention; `drain` emits the
 bundle, failures first.
@@ -2937,6 +2970,7 @@ export interface TaskOutcome {
   failedOutput?: string
   runLog?: string
   notReady?: 'timeout' | 'exited' | 'spawn'
+  serverExit?: number
   inputMoved?: string
   where?: string
   carried?: true

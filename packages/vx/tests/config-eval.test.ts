@@ -964,7 +964,7 @@ describe('the evaluation deadline', () => {
 })
 
 describe('a config is JSON data, on every path (item 701)', () => {
-  const JSON_DATA = '— a config must be JSON data, because the cache key folds its JSON'
+  const JSON_DATA = '— a config must be JSON data, because the cache key is built from its JSON'
 
   it('the same file is refused by the first load and by the repeat load, with one message', async () => {
     // The defect: the first load validated the live object and refused the
@@ -1163,7 +1163,7 @@ describe('a config is JSON data, on every path (item 701)', () => {
     })
   }
 
-  it('a faithful config crosses both paths with the same JSON, the bytes its key folds', async () => {
+  it('a faithful config crosses both paths with the same JSON, the bytes its key includes', async () => {
     // Why item 701 moves no cache key: the rule only refuses, so a config
     // that passes is the object it was, and `hashTaskConfig` folds its
     // `JSON.stringify`. The literal is what 107a8f8b (before the rule)

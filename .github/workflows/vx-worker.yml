@@ -15,6 +15,8 @@ on:
       workers: { required: true }
       # The variables the run hands its workers (github({ env })), as a JSON object.
       env: { required: false, default: '{}' }
+      # The run's attempt, which a worker reads first.
+      parent: { required: false, default: '' }
 
 permissions:
   contents: read
@@ -23,6 +25,12 @@ permissions:
 jobs:
   worker:
     name: ${{ matrix.worker }}
+    # A job's permissions replace the workflow's, so it names all three.
+    permissions:
+      contents: read
+      id-token: write
+      # A worker of a run that is over cancels its own run.
+      actions: write
     runs-on: ${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}
     timeout-minutes: 25
     strategy:
@@ -34,6 +42,22 @@ jobs:
       VX_DTE_RELAY: ${{ inputs.relay }}
       VX_DTE_WORKER: ${{ matrix.worker }}
     steps:
+      # A run that ended without cancelling its workers (its API limit
+      # spent, a kill) left them queued, each to hold a runner through its
+      # setup for no one (2026-10-28): one that starts after its run
+      # cancels its own workflow run, its queued fellows with it. An API
+      # that answers nothing leaves it to the relay, which turns it away.
+      - name: Leave if the run is over
+        if: inputs.parent != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PARENT: ${{ inputs.parent }}
+        run: |
+          runs="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs"
+          status=$(curl -fsS -H "authorization: Bearer $GH_TOKEN" "$runs/$PARENT" | jq -r .status) || exit 0
+          [ "$status" = completed ] || exit 0
+          echo "::notice::run $PARENT is over: cancelling this one"
+          curl -fsS -o /dev/null -X POST -H "authorization: Bearer $GH_TOKEN" "$runs/$GITHUB_RUN_ID/cancel"
       # Spotlight indexes what the tasks write: 0.13-0.29 cores of a
       # 3-core Mac, and a fixed test workload ran 27.6 s on average with it
       # against 23.3 s without (2 runners each, 2026-10-24). In the

@@ -12,7 +12,7 @@ excerpt: 'vx cache clean keeps the cache at the size you pick, by age and by las
 last use. A store of 1,000 entries, 94 MB, capped at 50 MB:
 
 ```sh frame="terminal"
-$ vx cache clean --max-size 50M --dry-run
+$ vx cache clean --max-size 50M --dry
 › vx cache clean  would free 44 MB (dry run)
 
   467 entries
@@ -83,8 +83,8 @@ Your own `release.tar.zst` in a shared folder is never touched.
 ## For scripts and agents
 
 ```sh frame="terminal"
-$ vx cache clean --max-size 50M --dry-run --format json
-{"dryRun":true,"evicted":467,"bytesFreed":45907968,"orphans":0,"orphanBytes":0}
+$ vx cache clean --max-size 50M --dry --format json
+{"dry":true,"evicted":467,"bytesFreed":45907968,"orphans":0,"orphanBytes":0}
 ```
 
 A clean waits for a running `vx run` on the same workspace. If another

@@ -22,6 +22,7 @@ it("serves a read from R2 alone, the data center's copy from a read of its own",
   const cache = {
     match: async () => undefined,
     put: async (_key: Request, res: Response) => void copies.push(res),
+    delete: async () => false,
   }
   const later: Promise<unknown>[] = []
   const blobs = r2Blobs(bucket, Promise.resolve(cache), { waitUntil: (p) => void later.push(p) })

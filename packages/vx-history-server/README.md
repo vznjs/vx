@@ -4,7 +4,7 @@ Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 
 A server for the task timings a vx scheduler asks for, that you host. It
 keeps one row per task, already the numbers the scheduler uses (duration,
-CPU cores, peak memory), and folds each CI run's report into it: a
+CPU cores, peak memory), and merges each CI run's report into it: a
 history, not a log. It speaks the [vx-history protocol](./PROTOCOL.md)
 (`/v1`) on three backends that answer alike:
 
@@ -69,6 +69,9 @@ bunx wrangler login
 bunx wrangler deploy
 ```
 
+The Worker reads its D1 database as the binding `DB`, as `wrangler.jsonc`
+names it.
+
 ## API
 
 The same server as a `fetch` handler, over storage of your own
@@ -80,8 +83,8 @@ The same server as a `fetch` handler, over storage of your own
   `oidcTokenAuth` from `@vzn/vx-devtools`.
 - `sqliteStore(db: Db)` is the `Store` over a SQLite `Db`
   (`{ all(sql, params), run(sql, params) }`), as bun:sqlite and D1 are.
-  A `Store` folds `Report`s and reads `Timing`s, each of a `Repo`
+  A `Store` merges `Report`s and reads `Timing`s, each of a `Repo`
   (`{ issuer, repository }`) and a ref.
-- `WEIGHT` (0.3) and `RSS_DECAY` (0.9) are the fold's constants;
+- `WEIGHT` (0.3) and `RSS_DECAY` (0.9) are the merge's constants;
   `MAX_UPLOAD_TIMINGS`, `MAX_QUERY_HASHES` and `MAX_QUERY_REFS` its
   limits. A refusal is `errorJson` from `@vzn/vx-devtools`.

@@ -58,7 +58,7 @@ const PART = /^[0-9a-f]{32}$/
 
 /** The claim naming a token's repository, `org/name`. */
 const repoClaimOf = (iss: string): string => (iss === GITHUB ? 'repository' : 'project_path')
-/** The claim naming the workflow a token's job is defined in, up to its `@`. */
+/** The claim naming the workflow a token's job is defined in, up to the `@` before its ref. */
 const workflowClaimOf = (iss: string): string =>
   iss === GITHUB ? 'job_workflow_ref' : 'ci_config_ref_uri'
 
@@ -81,15 +81,24 @@ export function parseAllow(list: string): Allowed[] {
       const [issuer, repository, workflow] = [e.slice(0, r), e.slice(r + 1, w), e.slice(w + 1)]
       // Loopback over plain HTTP too: a server's own tests (its container's)
       // run an issuer beside it, and no one else reaches that address.
-      const https = /^(https:\/\/|http:\/\/127\.0\.0\.1[:/])/.test(issuer)
-      if (r < 0 || !https || !repository.includes('/') || workflow === '') {
+      // Its host, not its spelling: `http://127.0.0.1:80@x.example` is x.example.
+      const https =
+        issuer.startsWith('https://') ||
+        (issuer.startsWith('http://') && URL.parse(issuer)?.hostname === '127.0.0.1')
+      // An entry missing a part splits elsewhere: its issuer is then no URL.
+      const url = /^[a-z][a-z0-9+.-]*:\/\/[^/]/i.test(issuer)
+      if (r < 0 || !url || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
+      if (!https)
+        throw new Error(
+          `${e}: the issuer is https://, not ${issuer} (plain http only on 127.0.0.1)`,
+        )
       return { issuer, repository, workflow }
     })
 }
 
-/** What `workflowClaimOf(iss)` says, up to its `@`, for a job of `workflow` in `repository`. */
+/** What `workflowClaimOf(iss)` says, up to the `@` before its ref, for a job of `workflow` in `repository`. */
 function workflowPath(iss: string, repository: string, workflow: string): string {
   return iss === GITHUB
     ? `${repository}/.github/workflows/${workflow}`
@@ -105,35 +114,38 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
  * GitHub events that run in the base branch's context on a pull request's
  * behalf (design cache-signing-2026-10.md, "Events"): the token carries the
  * base's `ref` while the job may run the pull request's code, a fork's
- * included, which must never write the base. A `pull_request_target`
- * run's `head_ref` is also a branch name the fork chose, and the token
- * cannot tell a `workflow_run` a pull request started from one a push did.
+ * included, which must never write the base.
  */
 const ON_BEHALF = new Set(['pull_request_target', 'issue_comment', 'workflow_run'])
 
 /**
- * The scope a token writes: its branch. A GitHub pull request's run writes
- * its head branch (its `ref` is the merge ref the run's own reads never
- * name); a merge queue's run its base branch, which its code is about to
- * become (2026-10-25: "just strip it"); any other run its `ref`,
- * GitLab's its `ref_path`. Only a `pull_request` run takes its head
- * branch, and only a `merge_group` run's ref is renamed: anyone can push
- * a branch named like a queue ref. A run of an event in `ON_BEHALF` writes
- * nothing. Nor does a pull request whose head branch has its base
- * branch's name: only a fork's can.
+ * The scope a token writes: its `ref`, GitLab's `ref_path`. A GitHub pull
+ * request's run writes its merge ref, `refs/pull/<n>/merge`, never its
+ * `head_ref`: a fork names that, and no claim tells a fork's from the
+ * repository's own, so a fork's branch `release` wrote release. A merge
+ * queue's (`merge_group`) run writes its base branch, which its code is
+ * about to become (2026-10-25: "just strip it"); only its ref is renamed:
+ * anyone can push a branch named like a queue ref. A run of an event in
+ * `ON_BEHALF` writes nothing. A GitLab merge request pipeline writes its source branch
+ * only when `source_project_path` names its own project: a fork's runs in
+ * the parent project with the fork's branch as its `ref_path`, and a
+ * GitLab before 19.5 names no source project.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
+  if (iss !== GITHUB && claims['pipeline_source'] === 'merge_request_event') {
+    const own = (claim: string) => {
+      const p = claims[claim]
+      return typeof p === 'string' && same(p, String(claims['project_path']))
+    }
+    if (
+      !own('source_project_path') ||
+      (claims['job_project_path'] !== undefined && !own('job_project_path'))
+    )
+      return undefined
+  }
   const event = claims['event_name']
   if (ON_BEHALF.has(event as string)) return undefined
-  const head = event === 'pull_request' ? claims['head_ref'] : undefined
-  // Only a fork's head branch can share its base branch's name.
-  if (head !== undefined && head === claims['base_ref']) return undefined
-  const ref =
-    iss === GITHUB
-      ? typeof head === 'string' && head !== ''
-        ? `refs/heads/${head}`
-        : claims['ref']
-      : claims['ref_path']
+  const ref = iss === GITHUB ? claims['ref'] : claims['ref_path']
   if (typeof ref !== 'string' || !ref.startsWith('refs/') || ref.length > 512) return undefined
   const queued = iss === GITHUB && event === 'merge_group' ? QUEUE.exec(ref) : null
   return queued === null ? ref : `refs/heads/${queued[1]}`
@@ -215,7 +227,15 @@ export function oidcTokenAuth(
   opts: OidcOptions,
 ): (req: Request, named?: Repo) => Promise<Access | undefined> {
   const open = readAccessOf(opts)
-  const verify = tokenVerifier(opts)
+  const check = tokenVerifier(opts)
+  // A request is asked twice, before its body names the repository and
+  // after: its token is verified once.
+  const verified = new WeakMap<Request, Promise<Access>>()
+  const verify = (token: string, req: Request): Promise<Access> => {
+    let got = verified.get(req)
+    if (got === undefined) verified.set(req, (got = check(token, req)))
+    return got
+  }
   return async (req, asked) => {
     if (opts.allow.length === 0)
       throw new Refusal(401, 'ALLOW is empty: set it to the CI workflows this server serves')
@@ -262,6 +282,9 @@ const bearerOf = (req: Request): string | undefined =>
 
 /** A token checked: jose's checks, then ALLOW's repository and workflow, and the branch it may write. */
 function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Promise<Access> {
+  // A blank one is no origin a token names: every token was "wrong audience".
+  if (opts.audience !== undefined && opts.audience.trim() === '')
+    throw new Error('AUDIENCE: the aud CI tokens name, or unset, not blank')
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
   // jose keeps each issuer's keys, and refetches them for a key it lacks.
@@ -299,7 +322,12 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     // name it: one in ALLOW or in the token refused every token.
     const iss = typeof said === 'string' ? issuerOf(said) : undefined
     if (iss === undefined || !opts.allow.some((a) => issuerOf(a.issuer) === iss)) {
-      throw new Refusal(401, "an issuer this server's ALLOW does not name")
+      throw new Refusal(
+        401,
+        typeof said === 'string'
+          ? `issuer ${said.slice(0, 200)} is not in this server's ALLOW: add issuer:owner/repo:workflow for it`
+          : 'the token names no issuer (iss)',
+      )
     }
     const audience = opts.audience ?? new URL(req.url).origin
     let claims: JWTPayload
@@ -314,10 +342,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
         })
       ).payload
     } catch (err) {
-      throw refusal(err, iss, () => {
-        const aud = decodeJwt(token).aud
-        return `the token names ${[aud ?? 'none'].flat().join(', ')}, this server takes ${audience} (AUDIENCE)`
-      })
+      throw refusal(err, iss, audience)
     }
     const claim = repoClaimOf(iss)
     const named = claims[claim]
@@ -332,7 +357,9 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     const wclaim = workflowClaimOf(iss)
     const ran = claims[wclaim]
     if (typeof ran !== 'string') throw new Refusal(403, `no ${wclaim} claim`)
-    const workflow = ran.replace(/@.*$/, '')
+    // Cut at the `@` before the ref: GitLab's CI file may itself hold one
+    // (`.gitlab-ci.yml@group/project`, a file kept in another project).
+    const workflow = ran.replace(/@(?:refs\/.*)?$/, '')
     if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
       throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
     const repo = { issuer: iss, repository }
@@ -344,12 +371,8 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
 /** An issuer as a key names it: its URL, no trailing slash. */
 const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
 
-/**
- * What jose's refusal of a token says. A wrong audience names both: behind
- * a proxy that ends TLS a server is reached at `http://`, refusing every
- * token until AUDIENCE is set, and "wrong audience" alone did not say so.
- */
-function refusal(err: unknown, iss: string, audiences: () => string): Refusal {
+/** What jose's refusal of a token says. */
+function refusal(err: unknown, iss: string, audience: string): Refusal {
   if (err instanceof Refusal) return err
   // A refetch of the keys for a kid not held failed, or the issuer served
   // no key set: the issuer, not the token. A broken set read "not a JWT".
@@ -364,12 +387,19 @@ function refusal(err: unknown, iss: string, audiences: () => string): Refusal {
   if (err instanceof errors.JWSSignatureVerificationFailed) return new Refusal(401, 'bad signature')
   if (err instanceof errors.JWTExpired) return new Refusal(401, 'expired')
   if (err instanceof errors.JWTClaimValidationFailed) {
-    if (err.claim === 'aud') return new Refusal(401, `wrong audience: ${audiences()}`)
+    if (err.claim === 'aud')
+      return new Refusal(
+        401,
+        `the token's aud is ${audOf(err.payload)}, not this server's ${audience}: ask CI for a token for ${audience}, or set the server's AUDIENCE`,
+      )
     if (err.claim === 'nbf') return new Refusal(401, 'not yet valid')
+    if (err.reason === 'missing') return new Refusal(401, `no ${err.claim} claim`)
   }
   return new Refusal(401, 'not a JWT')
 }
 
+/** A token's `aud`, as a refusal names it: "wrong audience" alone left the fix to a guess. */
+const audOf = (claims: JWTPayload): string => [claims.aud ?? 'unset'].flat().join(', ')
 /** The issuer's keys out of reach, with why: a 503 and a missing jwks_uri read the same. */
 const keysUnread = (iss: string, err: unknown): Refusal =>
   new Refusal(

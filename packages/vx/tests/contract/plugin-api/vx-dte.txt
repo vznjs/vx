@@ -1,7 +1,7 @@
 == function docker (src/docker.ts)
 export function docker(options: DockerOptions): DteAdapter
 == function dte (src/plugin.ts)
-export function dte(options: DteOptions)
+export function dte(options: DteOptions = {})
 == function github (src/github.ts)
 export function github(options: GithubOptions = {}): DteAdapter
 == function gitlab (src/gitlab.ts)
@@ -22,6 +22,7 @@ export interface DteAdapter {
   init?(setup: DteSetup): Promise<DteInit>
   report?(warn: (message: string) => void): void
   readonly keyless?: boolean
+  workerRuns?(): ReadonlySet<string> | undefined
   workerId?(): string | undefined
   runId?(): string | undefined
   adopt?(worker: (id: string, size: string) => WorkerSpawn): void

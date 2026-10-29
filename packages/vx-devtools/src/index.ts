@@ -13,4 +13,5 @@ export {
   type Repo,
 } from './oidc.js'
 export { hashPart } from './hash-part.js'
+export { statusLine } from './terminal.js'
 export { errorJson, notAllowed, Refusal } from './refusal.js'

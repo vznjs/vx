@@ -48,6 +48,7 @@ describe('the ignore filter', () => {
     ['a nested .vx dir', 'packages/a/.vx/cache/x'],
     ['an editor swap file', 'packages/a/src/index.ts~'],
     ['a restore staging file', '.vx/tmp/l8q-0/1'],
+    ['the ignore file the cache writes', '.vx/.gitignore'],
   ])('ignores %s', (_label, rel) => {
     expect(isIgnoredWatchPath(rel.split('/').join(path.sep))).toBe(true)
   })
@@ -58,6 +59,7 @@ describe('the ignore filter', () => {
     ['a tsbuildinfo', 'packages/a/tsconfig.tsbuildinfo'],
     ['a root lockfile', 'pnpm-lock.yaml'],
     ['a config', 'packages/a/vx.config.ts'],
+    ['a project ignore file', 'packages/a/.gitignore'],
     // The segment rule is not a substring rule: a file whose NAME merely
     // contains an ignored word is real source and must still trigger.
     ['a file named after node_modules', 'packages/a/src/node_modules-shim.ts'],
@@ -113,6 +115,30 @@ describe("a path some task reads is never ignored as another task's output (item
       new Map([[dir, [['**/*', '!dist/**'], ['dist/**']]]]),
     )
     expect(read(dir, 'dist/a.js')).toBe(false)
+  })
+
+  it('the poller walks an output directory that holds inputs, and skips one that cannot', () => {
+    const dir = path.resolve('/w/app')
+    const skip = makeWatchIgnore(
+      '/w/.vx',
+      new Map([[dir, ['src/**/*.js', 'dist/**']]]),
+      new Map([[dir, [['src/**/*.ts', '!src/**/*.js', '!dist/**'], ['*.json']]]]),
+      new Set([path.join(dir, 'gen', 'keep.txt')]),
+    )
+    expect(skip(dir, 'src', true)).toBe(false)
+    expect(skip(dir, 'dist', true)).toBe(true)
+    expect(skip(dir, 'node_modules', true)).toBe(true)
+    // `*.json` reaches no subdirectory.
+    expect(skip(dir, 'out', true)).toBe(false)
+    const outOnly = makeWatchIgnore(
+      '/w/.vx',
+      new Map([[dir, ['out/**', 'gen/**']]]),
+      new Map([[dir, [['*.json']]]]),
+      new Set([path.join(dir, 'gen', 'keep.txt')]),
+    )
+    expect(outOnly(dir, 'out', true)).toBe(true)
+    // A tracked file under it is an edit, so the directory is walked.
+    expect(outOnly(dir, 'gen', true)).toBe(false)
   })
 })
 

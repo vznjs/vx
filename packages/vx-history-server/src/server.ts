@@ -55,6 +55,8 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
 
   // One request a run: every hash, each answered from the first ref that holds it.
   async function query(req: Request): Promise<Response> {
+    // No token, or a bad one, is refused before the body is read.
+    await authorize(req)
     const body = await readJson(req, MAX_QUERY_HASHES * 600 + 10_000)
     const issuer = field(body, 'issuer')
     const repository = field(body, 'repository')
@@ -121,7 +123,12 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
   return async (req) => {
     const path = new URL(req.url).pathname
     try {
-      if (new URL(req.url).search !== '') throw new Refusal(400, 'no query parameters')
+      const search = new URL(req.url).search
+      if (search !== '')
+        throw new Refusal(
+          400,
+          `this server takes no query parameters: drop ${search.slice(0, 200)} from the url`,
+        )
       if (path === '/v1/timings/upload') {
         if (req.method !== 'POST') return notAllowed('POST')
         const res = await upload(req)
@@ -136,7 +143,10 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
         await authorize(req)
         return Response.json(capabilities)
       }
-      return errorJson(404, 'no such route')
+      return errorJson(
+        404,
+        `no route ${req.method} ${path.slice(0, 200)}: name the server's base URL; it serves /v1/ (PROTOCOL.md)`,
+      )
     } catch (err) {
       if (err instanceof Refusal) return errorJson(err.status, err.message)
       // Never swallowed: the client warns with what the server says.
@@ -149,15 +159,17 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
 const field = (body: unknown, key: string): unknown =>
   typeof body === 'object' && body !== null ? (body as Record<string, unknown>)[key] : undefined
 
+// A lone surrogate is stored as bytes that read back as U+FFFD: the row
+// answers to a hash no client asked for.
 const isOpaque = (s: unknown): s is string =>
-  typeof s === 'string' && s.length > 0 && s.length <= MAX_STRING
+  typeof s === 'string' && s.length > 0 && s.length <= MAX_STRING && !/\p{Cs}/u.test(s)
 
 const isCount = (n: unknown): n is number =>
   typeof n === 'number' && Number.isSafeInteger(n) && n >= 0
 
 async function readJson(req: Request, max: number): Promise<unknown> {
   if (!/^application\/json\b/i.test(req.headers.get('content-type') ?? '')) {
-    throw new Refusal(400, 'the body is application/json')
+    throw new Refusal(400, 'send the body as Content-Type: application/json')
   }
   if (Number(req.headers.get('content-length') ?? 0) > max) {
     throw new Refusal(413, `the body is at most ${max} bytes`)

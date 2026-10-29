@@ -15,7 +15,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
-import { seeHelp } from './help.js'
+import { refuse, seeHelp } from './help.js'
 import {
   fingerprintClaims,
   forwardedSignal,
@@ -24,7 +24,13 @@ import {
   type RunOptions,
   shellQuote,
 } from '../orchestrator/index.js'
-import { findWorkspaceRoot, LOCKFILE_NAME, NO_LOCK, type ProjectMeta } from '../workspace/index.js'
+import {
+  findWorkspaceRoot,
+  LOCKFILE_NAME,
+  NO_LOCK,
+  type ProjectMeta,
+  WORKSPACE_CONFIG_FILENAMES,
+} from '../workspace/index.js'
 import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './workspace-config.js'
 import { resolveSetting } from '../settings.js'
 import {
@@ -39,12 +45,34 @@ import {
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
-import { hangupIgnored, maskedLine, restartTimings, sayNotice, sayLine, ui } from '../util/index.js'
+import {
+  hangupIgnored,
+  maskedLine,
+  printable,
+  restartTimings,
+  sayNotice,
+  ui,
+} from '../util/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
+import { isCacheHit } from '../graph/index.js'
+import { resolveOutputView } from '../report/index.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
 function sayCannot(what: string, err: unknown): void {
   sayNotice('warn', 'vx watch', `${what}: ${err instanceof Error ? err.message : String(err)}`)
+}
+
+/**
+ * One line for a cycle every task of which was a cache hit, where hits
+ * print no row: watch prints no footer, so such a cycle said nothing, and
+ * a failure the cycle before stayed the last outcome on screen.
+ */
+function sayAllCached(opts: RunOptions, outcomes: readonly { status: string }[]): void {
+  if (outcomes.length === 0 || !outcomes.every((o) => isCacheHit(o.status))) return
+  const mode = resolveOutputView(opts).mode
+  if (mode !== 'broad' && mode !== 'errors-only' && mode !== 'none') return
+  const n = outcomes.length
+  process.stdout.write(` ${n === 1 ? '1 task' : `${n} tasks`} cached, nothing ran\n`)
 }
 
 /** Wait this long after the last filesystem event before re-running. */
@@ -79,16 +107,16 @@ export function watchRefusal(parsed: RunArgs): string | null {
 
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args, 'watch')
-  if (parsed.error) {
-    sayNotice('error', 'vx watch', `${parsed.error}${seeHelp('watch')}`)
-    return 1
-  }
+  if (parsed.error) return refuse('watch', args, `${parsed.error}${seeHelp('watch')}`, 'VX_E_USAGE')
 
   const refused = watchRefusal(parsed)
-  if (refused !== null) {
-    sayLine('error', refused, 'vx watch')
-    return 1
-  }
+  if (refused !== null)
+    return refuse(
+      'watch',
+      args,
+      `${refused.replace(/^vx watch: /, '')}${seeHelp('watch')}`,
+      'VX_E_USAGE',
+    )
   if (parsed.tasks.length === 0) {
     sayNotice(
       'error',
@@ -162,28 +190,28 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // No lock yet is no project yet: the first cycle fails saying so, and
   // the lock `vx lock` writes is the event that arms the set.
   let unlocked = false
-  const allProjects = await discoverCliProjects(workspaceRoot).catch((err: unknown) => {
+  const stageLoad: CliLoadOptions = opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}
+  const allProjects = await discoverCliProjects(workspaceRoot, stageLoad).catch((err: unknown) => {
     if (!(err instanceof Error) || err.message !== NO_LOCK) throw err
     unlocked = true
     return []
   })
-  // `//#check` is the root project's task, under the name the run gives
-  // it (prepare.ts, D-39): taken literally, no project was in scope and
-  // the watch exited 1 after a green run.
-  const rootDir = path.resolve(workspaceRoot)
-  const rootName = allProjects.find((p) => path.resolve(p.dir) === rootDir)?.name
-  const anchored = opts.tasks
-    .filter((t) => t.includes('#'))
-    .map((t) => t.slice(0, t.indexOf('#')))
-    .map((p) => (p === '//' && rootName !== undefined ? rootName : p))
+  const anchored = opts.tasks.filter((t) => t.includes('#')).map((t) => t.slice(0, t.indexOf('#')))
   const named =
     anchored.length === opts.tasks.length
       ? new Set(anchored)
       : opts.projects === undefined
         ? undefined
         : new Set([...opts.projects, ...anchored])
+  // `//#check` is the root project's task, under the name the run gives
+  // it (prepare.ts, D-39): taken literally, no project was in scope and
+  // the watch exited 1 after a green run. Resolved per discovery: started
+  // with no lock, the root has no name until `vx lock` writes one.
+  const rootDir = path.resolve(workspaceRoot)
   const inScope = (all: readonly ProjectMeta[]): ProjectMeta[] =>
-    named === undefined ? [...all] : all.filter((p) => named.has(p.name))
+    named === undefined
+      ? [...all]
+      : all.filter((p) => named.has(p.name) || (named.has('//') && path.resolve(p.dir) === rootDir))
   const scope = inScope(allProjects)
 
   // Initial run — same code path as `vx run`.
@@ -218,6 +246,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   initial.held = runOrchestrator(initial.cycle.opts).then(
     (run) => {
       if (run.refused !== undefined) sayNotice('error', 'vx watch', run.refused)
+      sayAllCached(opts, run.outcomes)
       // A run that failed having run nothing refused to start: a requested
       // name no project declares (run() says which, with a "did you mean").
       // `vx run` exits 1 on it; `vx watch buidl` watched on, re-running the
@@ -292,7 +321,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       // set. The scope is the one resolved at start; a new project joins
       // it only as a dependency of it.
       rediscover: async () => {
-        const all = await discoverCliProjects(workspaceRoot)
+        const all = await discoverCliProjects(workspaceRoot, load)
         const sweep = await sweepConfigs(all, workspaceRoot, load, opts.tasks)
         const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
         return {
@@ -424,6 +453,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   /** What stopped a cycle that waited on a server's readiness; the loop runs it next. */
   let interruptedBy: string | undefined
   let interruptTimer: ReturnType<typeof setTimeout> | null = null
+  /** The server's own writes among the paths that stopped the last cycle waiting on readiness. */
+  let stoppedLast = new Set<string>()
   // Judged on settled state one window later, as an idle edit is, and only
   // if the cycle still waits on readiness alone by then.
   const interruptIfWaiting = (): void => {
@@ -435,12 +466,26 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       if (c === undefined || c.interrupted || !c.waitsOnReadiness() || stop.aborted) return
       const label = changes.judge()
       if (label === undefined) return
+      // What a server writes in its project as it boots (a timestamped
+      // config bundle, a route tree) is an edit: it stopped the cycle, the
+      // next server wrote it again, and the loop restarted it for good,
+      // never ready. A path that stopped the last such cycle, untracked
+      // and in a waiting server's project, is that server's own write.
+      const dirs = c.serverDirs()
+      const own = changes.changed.filter(
+        (p) => !changes.trackedAtArm(p) && dirs.some((d) => p.startsWith(d + path.sep)),
+      )
+      const again = own.length === changes.changed.length && own.every((p) => stoppedLast.has(p))
+      stoppedLast = new Set(own)
+      if (again) return
       interruptedBy = label
       c.interrupt()
     }, DEBOUNCE_MS)
   }
   let windowOpened = 0
 
+  const hasWorkspaceFile = (): boolean =>
+    WORKSPACE_CONFIG_FILENAMES.some((n) => fs.existsSync(path.join(workspaceRoot, n)))
   const lockAbs = path.join(workspaceRoot, LOCKFILE_NAME)
   const lockStamp = (): string => {
     try {
@@ -461,7 +506,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         sayNotice(
           'warn',
           'vx watch',
-          `${path.relative(workspaceRoot, abs)} changed; runs read the lock, so run \`vx lock\` to apply it`,
+          `${printable(path.relative(workspaceRoot, abs))} changed; runs read the lock, so run \`vx lock\` to apply it`,
         )
   }
   const trigger = (label: string, abs: string): void => {
@@ -504,11 +549,28 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             lockAtRun = lockStamp()
             const relocked = lockAtRun !== lockSeen
             lockSeen = lockAtRun
+            // The file marks the root, and `vx run` refuses without it; a
+            // cycle ran on with no workspace config, its plugins gone and
+            // its tasks named by path.
+            if (!hasWorkspaceFile()) {
+              process.stdout.write(`\nchanged ${label}\n`)
+              throw new Error(
+                `no .vx/workspace.ts in ${workspaceRoot}; restore it, or stop vx watch`,
+              )
+            }
             if (reread) await rearm(false)
             process.stdout.write('\n')
             ui.say('info', `changed ${label}`, 'out')
             if (!relocked) sayUnlocked(changes.changed)
             if (stop.aborted) break
+            // A file a `.gitignore` edit stops ignoring is an input from this
+            // cycle on, and was not on the arm's inventory: its deletion read
+            // as a file born and gone since, and ran nothing.
+            if (
+              atArm !== undefined &&
+              changes.changed.some((p) => path.basename(p) === '.gitignore')
+            )
+              for (const p of gitFiles(workspaceRoot)?.listed ?? []) atArm.listed.add(p)
             restartTimings()
             // On the mtime clock, as the arm is: from `Date.now()` a write the
             // run made within a tick of it carried an earlier mtime and read as
@@ -524,6 +586,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               interruptIfWaiting,
             )
             const cycle = await runOrchestrator(current.opts)
+            sayAllCached(opts, cycle.outcomes)
             lastTasks = current.tasks ?? lastTasks
             current = undefined
             held = cycle.persistent
@@ -553,7 +616,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config
         // was never an event.
-        if (reread && !stop.aborted) {
+        if (reread && !stop.aborted && hasWorkspaceFile()) {
           reread = false
           await rearm()
         }
@@ -561,6 +624,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         // after the run, under the label of what actually arrived.
         current = undefined
         if (stop.aborted) break
+        if (interruptedBy === undefined) stoppedLast = new Set()
         if (interruptedBy !== undefined) {
           label = interruptedBy
           interruptedBy = undefined
@@ -601,7 +665,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // unconditional segments AND this run's declared output containers. Read
   // through `isIgnoredPath` rather than captured, because `rearm` replaces
   // the filter when the selection changes.
-  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel), args.poll)
+  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel, true), args.poll)
   const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle =>
     pool.arm(dir, recursive, onEvent)
 
@@ -691,6 +755,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     // too: its edit can add an output or a `workspaceFiles` input.
     if (shapesWatchedSet(filename) || configImportFiles.includes(abs) || linkChanged(abs))
       reread = true
+    // Inside a project (any repo whose root is one) no import arm hears it.
+    if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
     trigger(`${proj.name} ${filename}`, abs)
   }
   const armProject = (proj: ProjectMeta): void => {
@@ -756,6 +822,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               configImportFiles.includes(abs)
             )
               reread = true
+            if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
             const owner = ownerOf(abs)
             trigger(
               owner === undefined
@@ -816,6 +883,17 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const importArms = new Map<string, WatchHandle>()
   let importNames = new Map<string, Set<string>>()
   const staleNamed = new Map<string, number>()
+  const sayStaleImport = (abs: string): void => {
+    // One line per save, not per event: a save is often two.
+    const now = Date.now()
+    if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
+    staleNamed.set(abs, now)
+    ui.say(
+      'warn',
+      `vx watch: ${printable(path.relative(workspaceRoot, abs))} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
+      'out',
+    )
+  }
   const armImports = (): void => {
     const inProject = (f: string): boolean => projectDirs.some((d) => f.startsWith(d + path.sep))
     const want = new Map<string, Set<string>>()
@@ -847,15 +925,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               trigger(`config import ${rel}`, abs)
               return
             }
-            // One line per save, not per event: a save is often two.
-            const now = Date.now()
-            if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
-            staleNamed.set(abs, now)
-            ui.say(
-              'warn',
-              `vx watch: ${rel} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
-              'out',
-            )
+            sayStaleImport(abs)
           }),
         )
         armedAs.set(dir, inodeOf(dir) ?? '')
@@ -975,7 +1045,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       dropMode()
       workspaceWide = next.workspaceWide
       armMode(next.projects)
-    } else if (!workspaceWide) {
+    } else if (workspaceWide) wide = next.projects
+    else {
       streamed = oneStream ? toStream(next.projects) : []
       const inStream = new Set(streamed.map((s) => s.proj))
       const own = next.projects.filter((p) => !inStream.has(p))

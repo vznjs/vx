@@ -9,7 +9,9 @@ import { snapshot } from '../src/tree.ts'
 // Mid-merge, `git stash create` refuses the unmerged index, and the run
 // took HEAD for its tree: workers ran HEAD's files under keys of the
 // working tree's, and saved them there, a stale hit for the next run.
-it('refuses a tree it cannot snapshot, not HEAD in its place', async () => {
+// Staged from the working tree into a copy of the index, the unmerged
+// file is snapshot as it is on disk.
+it('snapshots a mid-merge tree as it is on disk, not HEAD in its place', async () => {
   const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-tree-'))
   try {
     const git = (...a: string[]) =>
@@ -24,7 +26,7 @@ it('refuses a tree it cannot snapshot, not HEAD in its place', async () => {
           'commit.gpgsign=false',
           ...a,
         ],
-        { cwd: repo, stdout: 'ignore', stderr: 'ignore' },
+        { cwd: repo, stdout: 'pipe', stderr: 'ignore' },
       )
     git('init', '-q', '-b', 'main')
     await writeFile(path.join(repo, 'f'), 'a\n')
@@ -38,9 +40,9 @@ it('refuses a tree it cannot snapshot, not HEAD in its place', async () => {
     git('commit', '-qam', 'c')
     git('merge', 'x')
     await writeFile(path.join(repo, 'f'), 'resolved\n')
-    await expect(snapshot(repo)).rejects.toThrow(
-      'no snapshot of the tracked files (git stash create: f: ',
-    )
+    const { commit, tree } = await snapshot(repo)
+    expect(commit).not.toBe(git('rev-parse', 'HEAD').stdout.toString().trim())
+    expect(git('cat-file', 'blob', `${tree}:f`).stdout.toString()).toBe('resolved\n')
   } finally {
     await rm(repo, { recursive: true, force: true })
   }

@@ -20,10 +20,11 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { type Duration, type GeneratedProject, type GeneratedTask, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
+import { refuseTaskNames } from '../plugin-gaps.js'
 import { withoutTakenBack } from '../glob-grammar.js'
 import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
-import { runsScriptHooks, scriptCommand, yarnPnp, type Owner } from '../script-command.js'
+import { type Owner, runsScriptHooks, scriptCommand, yarnPnp, yarnRun } from '../script-command.js'
 import {
   ownFileTakeBacks,
   takingBack,
@@ -367,6 +368,8 @@ export async function mapNxWorkspace(
     const relRoot = normRel(node?.data?.root ?? '')
     if (node?.data?.targets === undefined) continue
     const dir = relRoot === '' || relRoot === '.' ? root : path.join(root, relRoot)
+    const rel = path.relative(root, dir)
+    if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) continue
     let pkg: PackageMeta['packageJson'] = { name: nodeName }
     try {
       pkg = (await Bun.file(path.join(dir, 'package.json')).json()) as PackageMeta['packageJson']
@@ -620,6 +623,7 @@ export async function mapNxWorkspace(
       `\`syncGenerators\` (${gens}) on ${n} task${n === 1 ? '' : 's'}: ` +
         `Nx runs them before those targets, and vx does not — ${syncAdvice}`,
     )
+  refuseTaskNames(projects, 'target')
   return { projects, notes }
 }
 
@@ -1219,10 +1223,11 @@ function mapCommand(
     // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
     // that refuses to load, so it is the placeholder with its todo.
     if (body !== undefined && body.length > 0) {
+      // Nx runs `<pm> run <script>`: the hooks fold only where the manager runs them.
       const command = scriptCommand(script, body, scripts, pnp, hooks)
       // `yarn run <name>` sets its own.
       const env =
-        command === `yarn run ${script}`
+        command === yarnRun(script)
           ? {}
           : npmScriptEnv(command, script, command !== body, manifest, manifestField, todos)
       return shell(command, undefined, { env, readyWhen: undefined })

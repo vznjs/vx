@@ -14,7 +14,7 @@ import path from 'node:path'
 import type { ProjectMeta, VxPlugin } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
 import { memberProjects, withManifests } from '../manifests.js'
-import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
+import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
@@ -38,7 +38,8 @@ const PERSISTENT_NOTE =
 export interface TurboPluginOptions {
   /**
    * Where turbo.json lives. Defaults to the workspace root; a repo whose
-   * turbo.json sits elsewhere names the directory here.
+   * turbo.json sits elsewhere names the directory here, relative to the workspace
+   * root or absolute.
    */
   readonly root?: string
 }
@@ -54,22 +55,27 @@ const TURBO_PLUGIN_KEYS: PluginOptionKinds<TurboPluginOptions> = {
  */
 export function turbo(options: TurboPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('turbo()', options, TURBO_PLUGIN_KEYS)
+  if (options.root === '') throw new UserError('turbo() option "root" is a directory, not empty')
+  // Against the workspace root, as vx reads every path: against the cwd,
+  // `vx run` from a package dir read another directory.
+  const rootOf = (workspaceRoot: string): string =>
+    options.root === undefined ? workspaceRoot : path.resolve(workspaceRoot, options.root)
   return adoptionPlugin(
     import.meta,
-    (ctx) => run(options.root ?? ctx.workspaceRoot, ctx.projects),
+    (ctx) => run(rootOf(ctx.workspaceRoot), ctx.projects),
     // At the workspace root only: a claim is a root name (a `root` elsewhere
     // is not claimed; its edits select as any unowned file does).
     options.root === undefined ? ['turbo.json', 'turbo.jsonc'] : [],
     {
       async config(workspace, ctx) {
-        const keys = await workspaceKeys(options.root ?? ctx.workspaceRoot)
+        const keys = await workspaceKeys(rootOf(ctx.workspaceRoot))
         if (workspace.run?.concurrency === undefined && keys.concurrency !== undefined)
           workspace.run = { ...workspace.run, concurrency: keys.concurrency }
         // `turbo run --affected` compares with TURBO_SCM_BASE when set, and
         // on GitHub Actions with what the event names.
         const base =
           Bun.env['TURBO_SCM_BASE']?.trim() ||
-          githubActionsBase(options.root ?? ctx.workspaceRoot, keys.remoteBaseFallback === true)
+          githubActionsBase(rootOf(ctx.workspaceRoot), keys.remoteBaseFallback === true)
         if (base) ctx.setBranch({ base })
       },
       // Turbo's packages are the package manager's members, each a project
@@ -220,8 +226,9 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
       yarnrc,
+      // Whether pnpm or npm runs a script's `pre` / `post` hooks (`runsScriptHooks`).
       ...hookConfigs,
-      // Its dependencies are global inputs, a member or not.
+      // Its dependencies are global inputs, a member or not; its `packageManager` names who runs hooks.
       rootManifest,
       JSON.stringify(microfrontendsConfigs(root, dirs)),
       // A config file added beside mapped tasks changes what an output may cover.

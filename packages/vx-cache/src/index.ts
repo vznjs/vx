@@ -34,7 +34,8 @@ export interface VxCacheOptions {
    * Headers every request to the server carries, for a proxy in front of
    * it (`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an
    * Access service token, 2026-10-25). An unset value is left out;
-   * `authorization` stays the CI token's.
+   * `authorization`, `content-type`, `content-length` and the `vx-*` names
+   * the request sets are refused.
    */
   headers?: Record<string, string | undefined>
 }
@@ -70,7 +71,20 @@ const ASK_ATTEMPTS = 3
 /** Uploads open at once; more wait. */
 const IN_FLIGHT = 4
 
-/** `headers` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
+/**
+ * The names a request sets itself: one of them in `headers`, in another
+ * case, was joined to the request's own value, and the server refused it.
+ */
+const WIRE_HEADERS = new Set([
+  'authorization',
+  'content-type',
+  'content-length',
+  'vx-issuer',
+  'vx-repository',
+  'vx-scope',
+])
+
+/** `headers` with unset values left out; a name or value no header can carry, or one the wire sets, refused. */
 function proxyHeaders(
   factory: string,
   headers: Record<string, string | undefined> | undefined,
@@ -78,10 +92,12 @@ function proxyHeaders(
   const out: Record<string, string> = {}
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`${factory}: headers cannot set "${name}"`)
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || WIRE_HEADERS.has(name.toLowerCase()))
+      throw new UserError(`${factory} option "headers" cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`${factory}: header "${name}" must be one line of text`)
+      throw new UserError(
+        `${factory} option "headers.${name}" must be one line of text (its value is not printed)`,
+      )
     out[name] = value
   }
   return out
@@ -90,6 +106,42 @@ function proxyHeaders(
 /** A ref's scope, an issuer or a repository on the wire: its SHA-256's first 128 bits in hex, never the value (2026-10-25). */
 const scopeOf = (ref: string): string =>
   new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
+
+/**
+ * A body's first `max` bytes as text, the rest cancelled unread, and
+ * whether there was more: an answer is read no further than vx needs, so
+ * a server's endless one cannot fill this machine's memory.
+ */
+async function upTo(res: Response, max: number): Promise<{ text: string; over: boolean }> {
+  const reader = res.body?.getReader()
+  if (reader === undefined) return { text: '', over: false }
+  const parts: Uint8Array[] = []
+  let n = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    parts.push(value)
+    n += value.byteLength
+    if (n > max) {
+      // quiet: the answer is refused for its size; its cancel adds nothing
+      await reader.cancel().catch(() => {})
+      return { text: Buffer.concat(parts).subarray(0, max).toString('utf8'), over: true }
+    }
+  }
+  return { text: Buffer.concat(parts).toString('utf8'), over: false }
+}
+
+/** A JSON answer of at most `max` bytes; past it, a refusal that says so. */
+async function jsonUpTo(res: Response, max: number, what: string): Promise<unknown> {
+  const { text, over } = await upTo(res, max)
+  if (over) throw new Error(`${what} answered over ${max} bytes`)
+  return JSON.parse(text)
+}
+
+/** Capabilities and a CI token are a few hundred bytes: room to spare. */
+const SMALL_ANSWER_BYTES = 64 * 1024
+/** A check's answer per hash asked: a hash, a size and a scope in JSON are under 150 bytes. */
+const CHECK_BYTES_PER_HASH = 512
 
 /**
  * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
@@ -104,7 +156,7 @@ const printable = (s: string): string =>
 async function refusal(res: Response): Promise<Error> {
   let said = ''
   try {
-    const text = (await res.text()).slice(0, 2048)
+    const { text } = await upTo(res, 2048)
     try {
       const message = (JSON.parse(text) as { message?: unknown }).message
       said = typeof message === 'string' ? message : text
@@ -117,6 +169,20 @@ async function refusal(res: Response): Promise<Error> {
   }
   said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
+}
+
+/** A 200's JSON; one that is none (a website's page) names the likely fault, the url. */
+async function jsonOf(res: Response, path: string, max: number): Promise<unknown> {
+  const { text, over } = await upTo(res, max)
+  if (over) throw new Error(`${path} answered over ${max} bytes`)
+  try {
+    return JSON.parse(text)
+  } catch {
+    const type = res.headers.get('content-type') ?? 'no content type'
+    throw new Error(
+      `${path} answered ${res.status} with ${type}, not JSON: is the url a vx-cache server?`,
+    )
+  }
 }
 
 /**
@@ -138,28 +204,39 @@ function deadline(ms: number): AbortSignal {
   return controller.signal
 }
 
+/** A download's least pace: at 1 MiB a second, a 60 MB artifact is in within a minute. */
+const FLOOR_BYTES_PER_S = 1024 * 1024
+
 /**
- * A download's deadline: `ms` for the answer, then `ms` between its body's
- * bytes. A whole-body deadline failed a big artifact still arriving at a
- * steady pace (a 30 s cut, CI 2026-10-25); core judges whether running
- * the task beats the rest of the wait.
+ * A download's deadline: `ms` for the answer, then at least
+ * `FLOOR_BYTES_PER_S` over each `ms` of its body. A whole-body deadline
+ * failed a big artifact still arriving at a steady pace (a 30 s cut, CI
+ * 2026-10-25); a gap-only one let a trickle hold a run 19 minutes (a byte
+ * now and then reset it, CI 2026-10-28). Core judges whether running the
+ * task beats the rest of the wait.
  */
 function streamed(res: Response, controller: AbortController, ms: number): Response {
   if (res.body === null) return res
-  let timer: Timer | undefined
-  const rearm = () => {
-    clearTimeout(timer)
-    timer = setTimeout(() => controller.abort(new Error(`no bytes for ${ms} ms`)), ms)
-    timer.unref()
-  }
-  rearm()
+  const floor = (FLOOR_BYTES_PER_S * ms) / 1000
+  let got = 0
+  const window = setInterval(() => {
+    if (got < floor)
+      controller.abort(
+        new Error(
+          got === 0 ? `no bytes in ${ms} ms` : `${got} bytes in ${ms} ms, under 1 MiB a second`,
+        ),
+      )
+    got = 0
+  }, ms)
+  window.unref()
+  controller.signal.addEventListener('abort', () => clearInterval(window), { once: true })
   const body = res.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, out) {
-        rearm()
+        got += chunk.byteLength
         out.enqueue(chunk)
       },
-      flush: () => clearTimeout(timer),
+      flush: () => clearInterval(window),
     }),
   )
   return new Response(body, {
@@ -215,6 +292,15 @@ const LIMIT_HEADERS: Record<keyof Limits, string> = {
 
 const count = (n: unknown): number | undefined =>
   typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : undefined
+
+const chunks = <T>(all: readonly T[], size: number): T[][] =>
+  Array.from({ length: Math.ceil(all.length / size) }, (_, i) =>
+    all.slice(i * size, (i + 1) * size),
+  )
+
+/** The limits an answer's `vx-max-*` headers name. */
+const limitsNamed = (res: Response): Limits | undefined =>
+  limitsOf((k) => Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
 
 /** Each limit, or undefined when one is missing or bad. */
 function limitsOf(read: (k: keyof Limits) => unknown): Limits | undefined {
@@ -335,12 +421,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
     let jwt: unknown
     try {
       const res = await this.askOnce(ask)
-      if (!res.ok) {
-        // Unread, its body would hold the connection.
-        await res.body?.cancel()
-        throw new Error(`HTTP ${res.status}`)
-      }
-      jwt = ((await res.json()) as { value?: unknown }).value
+      if (!res.ok) throw await refusal(res)
+      jwt = ((await jsonUpTo(res, SMALL_ANSWER_BYTES, 'it')) as { value?: unknown } | null)?.value
       if (typeof jwt !== 'string' || jwt === '') throw new Error('no token in its answer')
     } catch (err) {
       this.disabled = true
@@ -356,10 +438,12 @@ export class VxCacheLayer implements RemoteCacheLayer {
    * This job's token, for a job that runs this run's tasks
    * (`RemoteCacheLayer.lend`): its writes land where this run reads them.
    * GitHub's is asked again when it ends within five minutes. A token lent
-   * to this job is never lent on.
+   * to this job is never lent on, nor one once the remote is off: core
+   * lends while its policy reads, and a refused token lent was refused on
+   * every worker.
    */
   async lend(): Promise<LentAccess | undefined> {
-    if (this.lent?.() !== undefined) return undefined
+    if (this.disabled || this.lent?.() !== undefined) return undefined
     const jwt = await this.bearer(LEND_MARGIN_MS)
     if (jwt === '') return undefined
     const exp = this.github ? this.idToken!.exp : expiryOf(jwt)
@@ -411,6 +495,9 @@ export class VxCacheLayer implements RemoteCacheLayer {
       clearTimeout(answer)
       throw await redirected(res, url)
     }
+    // Any answer's, a refusal's too: one refused for its size by a server
+    // whose limits fell mid-run names them for the next check and upload.
+    this.limits = limitsNamed(res) ?? this.limits
     if (init.streamed === true) {
       clearTimeout(answer)
       res = streamed(res, controller, ms)
@@ -459,7 +546,10 @@ export class VxCacheLayer implements RemoteCacheLayer {
       const res = await this.request('/v1/capabilities', { method: 'GET' })
       if (res === undefined) return undefined
       if (res.status !== 200) throw await refusal(res)
-      const body = (await res.json()) as Record<string, unknown> | null
+      const body = (await jsonOf(res, '/v1/capabilities', SMALL_ANSWER_BYTES)) as Record<
+        string,
+        unknown
+      > | null
       const named = limitsOf((k) => body?.[k])
       if (named === undefined) this.limitsUnnamed(`/v1/capabilities (HTTP ${res.status})`)
       return named
@@ -484,12 +574,26 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   /** A refusal met while starting, which no call could throw: the next check or download does. */
   private unsaid: Error | undefined
+  /** Refusals a call threw: a check that waited on the start's ask threw it too. */
+  private readonly said = new WeakSet<object>()
 
   /** Throws the refusal met while starting, once. */
   private sayUnsaid(): void {
     const err = this.unsaid
     this.unsaid = undefined
-    if (err !== undefined) throw err
+    if (err !== undefined && !this.said.has(err)) {
+      this.said.add(err)
+      throw err
+    }
+  }
+
+  /**
+   * Core's `open`: called only when the run's policy reads or writes this
+   * remote, so a `--no-cache` run or a plan asks the server (and GitHub)
+   * nothing.
+   */
+  async open(): Promise<void> {
+    this.start()
   }
 
   /** Starts asking for the limits, so the first check need not wait for them. */
@@ -512,15 +616,30 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (this.disabled || this.refs.length === 0) return held
     const scopes = this.refs.map(scopeOf)
     const ask = [...new Set(hashes)]
-    const max = (await this.limitsNow())?.maxCheckHashes ?? scopes.length
-    const per = Math.max(1, Math.floor(max / scopes.length))
+    let limits: Limits | undefined
+    try {
+      limits = await this.limitsNow()
+    } catch (err) {
+      // A refusal turned the layer off: each waiter shares it, the first says it.
+      if (this.disabled && err instanceof Error) {
+        if (this.said.has(err)) return held
+        this.said.add(err)
+      }
+      throw err
+    }
+    const max = limits?.maxCheckHashes ?? scopes.length
+    // More refs than one check takes: each hash's scopes span several
+    // checks, the first in order holding it answering (a check of every
+    // scope at once was refused, every time).
+    const span = Math.min(scopes.length, max)
+    const per = Math.max(1, Math.floor(max / span))
+    const spans = chunks(scopes, span)
     const parts = await Promise.all(
-      Array.from({ length: Math.ceil(ask.length / per) }, (_, i) =>
-        this.check(scopes, ask.slice(i * per, (i + 1) * per)),
-      ),
+      chunks(ask, per).flatMap((some) => spans.map((s) => this.check(s, some))),
     )
     for (const part of parts)
       for (const [hash, { size, scope }] of part) {
+        if (held.has(hash)) continue
         held.set(hash, { size })
         this.found.set(hash, scope)
       }
@@ -535,10 +654,12 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const res = await this.json('/v1/artifacts', { hashes, scopes })
     if (res === undefined) return new Map()
     if (res.status !== 200) throw await refusal(res)
-    const named = limitsOf((k) => Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
-    if (named === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
-    else this.limits = named
-    const body = (await res.json()) as Record<string, unknown> | null
+    if (limitsNamed(res) === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
+    const body = (await jsonOf(
+      res,
+      '/v1/artifacts',
+      SMALL_ANSWER_BYTES + hashes.length * CHECK_BYTES_PER_HASH,
+    )) as Record<string, unknown> | null
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       throw new Error('the check answered no object of hashes')
     }
@@ -625,17 +746,8 @@ function namedOf(options: VxCacheOptions): { issuer: string; repository: string 
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
-/** The deadlines, each one a timer waits on: Bun fires a zero, NaN or past-2^31 one after 1 ms. */
-function deadlinesOf(options: VxCacheOptions): { timeoutMs: number; uploadTimeoutMs: number } {
-  const out = {
-    timeoutMs: options.timeoutMs ?? 30_000,
-    uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
-  }
-  for (const [key, ms] of Object.entries(out))
-    if (!(ms >= 1 && ms <= 2 ** 31 - 1))
-      throw new Error(`vxCache(): ${key} must be a number of ms from 1 to 2147483647, got ${ms}`)
-  return out
-}
+/** The longest delay a timer holds. */
+const MAX_TIMER_MS = 2 ** 31 - 1
 
 /**
  * https, or http to this machine: every request carries the CI token, and
@@ -654,20 +766,22 @@ export function resolveVxCacheConfig(
   env: Record<string, string | undefined> = Bun.env,
 ): ResolvedVxCacheConfig | undefined {
   const named = namedOf(options)
-  const deadlines = deadlinesOf(options)
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
+  // Named as the workspace set it: a bad VX_CACHE_URL was refused as `url`.
+  const from = options.url === undefined ? 'VX_CACHE_URL' : 'url'
   if (!secure(url))
-    throw new Error(
-      `vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got ${url}`,
+    throw new UserError(
+      `vxCache(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${url}`,
     )
   // Each route is the url's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
-    throw new Error(`vxCache(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
+    throw new UserError(`vxCache(): ${from} is the server's base, without /v1: ${url.slice(0, -3)}`)
   return {
     url,
     ...named,
-    ...deadlines,
+    timeoutMs: options.timeoutMs ?? 30_000,
+    uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
     headers: proxyHeaders('vxCache()', options.headers),
   }
 }
@@ -700,8 +814,17 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
  */
 export function vxCache(options: VxCacheOptions): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
+  // A NaN, zero or negative deadline aborted every request as it began,
+  // and so did one over 2³¹−1: Bun runs a timer it cannot hold after 1 ms.
+  for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
+    const ms = options[name]
+    if (ms !== undefined && !(ms > 0 && ms <= MAX_TIMER_MS))
+      throw new UserError(
+        `vxCache() option "${name}" must be a positive number of ms up to ${MAX_TIMER_MS}, got ${ms}`,
+      )
+  }
+  proxyHeaders('vxCache()', options.headers)
   namedOf(options)
-  deadlinesOf(options)
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveVxCacheConfig(options)
@@ -727,7 +850,6 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
       layer.refs = [...new Set(ctx.refs)]
       layer.lent = ctx.lent
       layer.warn = ctx.warn
-      layer.start()
       return layer
     },
   })

@@ -76,7 +76,25 @@ describe("a history server's answer", () => {
         `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
           `export default { plugins: [vxHistory({ url: ${JSON.stringify(srv.url.href.replace(/\/$/, ''))}, ...${JSON.stringify(NAMED)} })] }\n`,
       )
-      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: root })
+      // A branch with a commit: a run that reads no ref asks the server nothing.
+      for (const cmd of [
+        ['git', 'init', '-q', '-b', 'main'],
+        [
+          'git',
+          '-c',
+          'user.name=t',
+          '-c',
+          'user.email=t@t',
+          '-c',
+          'commit.gpgsign=false',
+          'commit',
+          '-q',
+          '--allow-empty',
+          '-m',
+          'i',
+        ],
+      ])
+        Bun.spawnSync({ cmd, cwd: root })
     })
     afterAll(async () => {
       await srv.stop(true)

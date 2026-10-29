@@ -112,6 +112,9 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
         read: ['**/*', '../../README.md', '../../skills/'],
         systemInfo: ['vfs.disk-space'],
         machLookup: ['com.apple.FSEvents'],
+        // A run a test starts serves `vx last --live` on a unix socket
+        // (run-live.ts); the sandbox refuses AF_UNIX without this.
+        unixSockets: true,
       },
     },
   },

@@ -294,7 +294,7 @@ describe('the caching page quotes what vx why says', () => {
     const notes = [...verdicts.matchAll(/(['`])((?:cache key|this task )(?:(?!\1)[^\\])*)\1/g)].map(
       (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)'),
     )
-    expect(notes.length).toBe(15)
+    expect(notes.length).toBe(17)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)
@@ -1601,7 +1601,9 @@ describe('an install at the workspace root names the flag pnpm and Yarn 1 requir
       path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'adopt.ts'),
       'utf8',
     )
-    expect(adopt).toContain("['pnpm', 'add', '-D', '-w', ...packages]")
+    // pnpm takes -w only inside a pnpm workspace, the root these lines name.
+    expect(adopt).toContain("['pnpm', 'add', '-D', ...pnpmRoot(root), ...packages]")
+    expect(adopt).toContain("'pnpm-workspace.yaml')) ? ['-w'] : []")
     expect(adopt).toContain("['yarn', 'add', '-D', '-W', ...packages]")
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const files = [

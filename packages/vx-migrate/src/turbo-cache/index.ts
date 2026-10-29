@@ -23,6 +23,7 @@ import {
   type RemoteOpenContext,
   type VxPlugin,
   refuseUnknownOptions,
+  UserError,
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
@@ -46,7 +47,7 @@ import {
 
 export interface TurboCacheOptions {
   /** Base URL of the cache server (`https://cache.example.com`), or `TURBO_API`; with a token and neither, Vercel's hosted cache, as for `turbo`. */
-  apiUrl?: string
+  url?: string
   /** Bearer token every request carries, or `TURBO_TOKEN`, OIDC, `.turbo/config.json`, then the OS keychain. */
   token?: string
   /**
@@ -56,7 +57,7 @@ export interface TurboCacheOptions {
    * its `tokenUrl`. The job needs `permissions: id-token: write`.
    */
   oidc?: true | TurboOidcOptions
-  /** `teamId` query parameter, or `TURBO_TEAMID`. Required with `signatureKey`. */
+  /** `teamId` query parameter, or `TURBO_TEAMID`; the signature folds it, `''` when unset, as Turbo's does. */
   teamId?: string
   /** `slug` query parameter (a team slug), or `TURBO_TEAM`. */
   teamSlug?: string
@@ -64,8 +65,10 @@ export interface TurboCacheOptions {
    * Sign uploads and verify downloads with Turbo's artifact signature
    * (HMAC-SHA256, `x-artifact-tag`), or `TURBO_REMOTE_CACHE_SIGNATURE_KEY`
    * where turbo.json sets `remoteCache.signature: true`, as Turbo reads it.
-   * At least 32 bytes, used raw. A download whose tag does not verify is a
-   * miss, never a restore.
+   * The option needs at least 32 bytes; the env key warns below that,
+   * refused only under turbo.json's `futureFlags.longerSignatureKey`, as
+   * in Turbo. Used raw. A download whose tag does not verify is a miss,
+   * never a restore.
    */
   signatureKey?: string
   /**
@@ -104,6 +107,8 @@ export interface TurboJsonRemoteCache {
   timeout?: unknown
   uploadTimeout?: unknown
   preflight?: unknown
+  /** turbo.json's `futureFlags.longerSignatureKey`, which `remoteCacheOf` hoists here. */
+  longerSignatureKey?: unknown
 }
 
 /** `.turbo/config.json`'s fields, under any of the spellings Turbo accepts. */
@@ -115,7 +120,7 @@ export interface TurboLocalConfig {
 }
 
 export interface TurboCacheConfig {
-  apiUrl: string
+  url: string
   /** Undefined: the layer's `open` exchanges OIDC or asks the OS keychain. */
   token?: string
   /** The job's OIDC exchange, when `oidc` is set and GitHub hands the job a token. */
@@ -249,7 +254,7 @@ function tagsEqual(expected: string, actual: string): boolean {
   return diff === 0
 }
 
-/** Where `turbo` itself sends a token with no `apiUrl`: Vercel's hosted Remote Cache. */
+/** Where `turbo` itself sends a token with no `url`: Vercel's hosted Remote Cache. */
 export const VERCEL_API = 'https://vercel.com/api'
 
 /** Resolve options over Turbo's environment; `undefined` = not configured. */
@@ -259,10 +264,11 @@ export function resolveTurboCacheConfig(
   file: TurboJsonRemoteCache = {},
   /** The repo's `.turbo/config.json` (`turbo link` writes it): below the environment, above turbo.json. */
   local: TurboLocalConfig = {},
+  warn: (message: string) => void = (m) => console.error(`[vx] plugin '@vzn/vx-migrate': ${m}`),
 ): TurboCacheConfig | undefined {
   // `enabled: false` turns Turbo's remote cache off whatever the env says;
   // options name a cache for vx alone, and win.
-  if (file.enabled === false && options.apiUrl === undefined && options.token === undefined)
+  if (file.enabled === false && options.url === undefined && options.token === undefined)
     return undefined
   const fromFile = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
   // Empty is unset, as Turbo reads it: a fork's pull request gets `''` for a
@@ -294,32 +300,38 @@ export function resolveTurboCacheConfig(
     fromFile(file.teamId)
   const teamSlug =
     options.teamSlug ?? set('TURBO_TEAM') ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
-  // Turbo's own default when a token or a team is set and no `apiUrl` is:
+  // Turbo's own default when a token or a team is set and no URL is:
   // Vercel's hosted Remote Cache. A token alone is a configured cache, as it
   // is for `turbo`; a URL or a team without one asks the OS keychain at
   // `open`; none of them is the declined, local run.
-  const apiUrl = (
-    options.apiUrl ??
-    set('TURBO_API') ??
-    fromFile(local.apiUrl) ??
-    fromFile(file.apiUrl) ??
-    (token || teamId || teamSlug ? VERCEL_API : undefined)
-  )?.replace(/\/+$/, '')
-  if (!apiUrl) return undefined
+  // Each source with its name: TURBO_API was refused as a `url`
+  // option the workspace never set.
+  const [rawUrl, urlFrom] =
+    options.url !== undefined
+      ? [options.url, 'turboCache() option "url"']
+      : set('TURBO_API') !== undefined
+        ? [set('TURBO_API'), 'TURBO_API']
+        : fromFile(local.apiUrl) !== undefined
+          ? [fromFile(local.apiUrl), '.turbo/config.json apiUrl']
+          : fromFile(file.apiUrl) !== undefined
+            ? [fromFile(file.apiUrl), 'turbo.json remoteCache.apiUrl']
+            : [token || teamId || teamSlug ? VERCEL_API : undefined, 'url']
+  const url = rawUrl?.replace(/\/+$/, '')
+  if (!url) return undefined
   // With no scheme every request failed on its own, as a bare "Invalid URL".
-  if (!/^https?:\/\//.test(apiUrl))
-    throw new Error(`turboCache(): apiUrl must be http(s), got ${apiUrl}`)
+  if (!/^https?:\/\//.test(url))
+    throw new UserError(`${urlFrom} must be an http(s) URL, got ${JSON.stringify(url)}`)
   const oidc =
     options.oidc === undefined
       ? undefined
-      : oidcSettings(options.oidc, apiUrl === VERCEL_API, teamId ?? teamSlug)
+      : oidcSettings(options.oidc, url === VERCEL_API, teamId ?? teamSlug)
   // The URL is printed in every refusal line, so a `user:pass@` in it would
   // leak to the log. Credentials go in the token.
-  if (URL.canParse(apiUrl)) {
-    const u = new URL(apiUrl)
+  if (URL.canParse(url)) {
+    const u = new URL(url)
     if (u.username !== '' || u.password !== '')
-      throw new Error(
-        'turboCache(): apiUrl carries credentials (user:pass@); pass them as the token instead',
+      throw new UserError(
+        `${urlFrom} carries credentials (user:pass@); pass them as the token instead`,
       )
   }
   const fault = token === undefined ? null : headerValueFault(token)
@@ -333,36 +345,34 @@ export function resolveTurboCacheConfig(
     file.preflight === true
   // Turbo signs only under `remoteCache.signature: true`; the env key alone
   // signs nothing there, and a short one here refused the whole cache.
-  // `TURBO_SIGNATURE` (1/true, 0/false) sits above turbo.json, as in Turbo.
-  const signing = truthy(env['TURBO_SIGNATURE'], 'TURBO_SIGNATURE') ?? file.signature === true
-  const signatureKey =
-    options.signatureKey ?? (signing ? set('TURBO_REMOTE_CACHE_SIGNATURE_KEY') : undefined)
+  const signing = file.signature === true
+  const envKey = signing ? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY'] || undefined : undefined
+  const signatureKey = options.signatureKey ?? envKey
+  // Turbo signs with no key as it fails every request: no usable remote. Read
+  // unsigned here, the bytes a signing repo refuses were restored.
+  if (signing && signatureKey === undefined) {
+    warn(
+      'turbo.json sets remoteCache.signature but TURBO_REMOTE_CACHE_SIGNATURE_KEY is unset: remote cache off for this run, as for turbo',
+    )
+    return undefined
+  }
   if (signatureKey !== undefined) {
-    if (Buffer.byteLength(signatureKey) < MIN_SIGNATURE_KEY_LENGTH) {
-      throw new Error(
-        `turboCache(): signatureKey must be at least ${MIN_SIGNATURE_KEY_LENGTH} bytes (Turbo's minimum)`,
+    const bytes = Buffer.byteLength(signatureKey)
+    // Turbo only warns about a short key unless `futureFlags.longerSignatureKey`
+    // is set; refusing it here failed a run Turbo runs.
+    if (bytes < MIN_SIGNATURE_KEY_LENGTH) {
+      if (options.signatureKey !== undefined || file.longerSignatureKey === true)
+        throw new Error(
+          `turboCache(): signatureKey must be at least ${MIN_SIGNATURE_KEY_LENGTH} bytes`,
+        )
+      warn(
+        `TURBO_REMOTE_CACHE_SIGNATURE_KEY is ${bytes} bytes; ${MIN_SIGNATURE_KEY_LENGTH} or more is safe (Turbo enforces it under futureFlags.longerSignatureKey)`,
       )
     }
-    if (!teamId)
-      throw new Error(
-        'turboCache(): signatureKey needs teamId — the team id is part of the signed message',
-      )
   }
   const retries = options.retries ?? 1
-  // A NaN never reaches the bound, and the request would be resent forever.
-  if (!Number.isInteger(retries) || retries < 0)
-    throw new Error(`turboCache(): retries must be a whole number ≥ 0, got ${retries}`)
-  // 0 is no deadline, as Turbo reads it; a negative or non-number one made
-  // AbortSignal.timeout throw on every request.
-  for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
-    const ms = options[name]
-    if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms >= 0))
-      throw new Error(
-        `turboCache(): ${name} must be ms ≥ 0 (0: none), got ${typeof ms === 'number' ? ms : JSON.stringify(ms)}`,
-      )
-  }
   return {
-    apiUrl,
+    url,
     ...(token !== undefined ? { token } : {}),
     ...(oidc !== undefined && exchanges
       ? { oidc: { ...oidc, idTokenUrl: idTokenUrl!, idTokenBearer: idTokenBearer! } }
@@ -482,6 +492,13 @@ export class TurboRemoteCache implements RemoteCacheLayer {
    * entry is immutable, so any other key is asked first.
    */
   private readonly absent = new Set<string>()
+  /**
+   * Keys whose GET this process answered 200. Core saves a key after its
+   * hit only when that hit did not restore (bad bytes, a tag that does not
+   * verify), so `put` sends it over the stored one: its HEAD saw 200 and
+   * kept the bad entry for every later run.
+   */
+  private readonly served = new Set<string>()
   private readonly key: Uint8Array | undefined
   readonly endpoint: string
   /** Undefined until `open` reads the keychain; a layer never opened (a plan) asks the server nothing. */
@@ -510,12 +527,12 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     private readonly maxSignedBody: number = MAX_SIGNED_BODY,
   ) {
     this.key = config.signatureKey === undefined ? undefined : Buffer.from(config.signatureKey)
-    this.endpoint = `${config.apiUrl}/v8/artifacts`
+    this.endpoint = `${config.url}/v8/artifacts`
     this.token = config.token
     const team = config.teamId ?? config.teamSlug
     this.keychainRemote = {
       key: team === undefined ? this.endpoint : `${this.endpoint}#${team}`,
-      label: remoteLabel(config.apiUrl, team),
+      label: remoteLabel(config.url, team),
       env: 'TURBO_TOKEN',
     }
   }
@@ -575,7 +592,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   }
 
   private url(pathname: string): string {
-    const u = new URL(`${this.config.apiUrl}/v8/artifacts${pathname}`)
+    const u = new URL(`${this.config.url}/v8/artifacts${pathname}`)
     // Turbo sends a team id only in Vercel's `team_` form (its API client's
     // `add_team_params`); a personal account's owner id is not one, and the
     // signature, which folds the id as given, is unaffected.
@@ -594,7 +611,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 
   /**
    * Turbo's preflight: an `OPTIONS` to the request's URL names the method
-   * and headers to come; the answer's `Location` (relative to `apiUrl`) is
+   * and headers to come; the answer's `Location` (relative to `url`) is
    * where the request goes, as given — a signed storage URL signs its own
    * query, so nothing is appended — and the token goes along only when
    * `Access-Control-Allow-Headers` admits `Authorization` (or `*`), so it
@@ -624,7 +641,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const location = res.headers.get('location')
     const allowed = res.headers.get('access-control-allow-headers') ?? ''
     return {
-      url: location === null ? url : new URL(location, this.config.apiUrl).toString(),
+      url: location === null ? url : new URL(location, this.config.url).toString(),
       auth:
         allowed.trim() === '*' ||
         allowed.split(',').some((h) => h.trim().toLowerCase() === 'authorization'),
@@ -795,6 +812,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       }
       throw await refusal(res)
     }
+    this.served.add(hash)
     const duration = Number(res.headers.get('x-artifact-duration'))
     const durationMs = Number.isFinite(duration) && duration > 0 ? duration : undefined
     if (this.key === undefined) return { body: res, durationMs }
@@ -849,7 +867,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false> {
     // Nothing sent, so no upload is counted.
     if (this.disabled || this.writesRefused) return false
-    if (!this.absent.has(hash)) {
+    if (!this.absent.has(hash) && !this.served.has(hash)) {
       // Part of the upload, so under its deadline. Any answer but 200 or 404
       // uploads: a lost store costs more. A server the HEAD cannot reach
       // fails the put, as the PUT would.
@@ -879,6 +897,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     // 204 stored the artifact and was counted a failed upload.
     if (!res.ok) throw await refusal(res)
     this.absent.delete(hash)
+    this.served.delete(hash)
   }
 }
 
@@ -915,8 +934,16 @@ function remoteCacheOf(root: string): TurboJsonRemoteCache {
       continue
     }
     try {
-      const rc = (Bun.JSONC.parse(text) as { remoteCache?: unknown } | null)?.remoteCache
-      return typeof rc === 'object' && rc !== null ? (rc as TurboJsonRemoteCache) : {}
+      const json = Bun.JSONC.parse(text) as {
+        remoteCache?: unknown
+        futureFlags?: { longerSignatureKey?: unknown }
+      } | null
+      const rc = json?.remoteCache
+      const longerSignatureKey = json?.futureFlags?.longerSignatureKey
+      return {
+        ...(typeof rc === 'object' && rc !== null ? (rc as TurboJsonRemoteCache) : {}),
+        ...(longerSignatureKey === undefined ? {} : { longerSignatureKey }),
+      }
       // quiet: a local config file: none read is none declared
     } catch {
       return {}
@@ -927,7 +954,7 @@ function remoteCacheOf(root: string): TurboJsonRemoteCache {
 
 /** Each option `TurboCacheOptions` names, with its kind: derived from the type, so the two cannot drift. */
 const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
-  apiUrl: 'string',
+  url: 'string',
   token: 'string',
   teamId: 'string',
   teamSlug: 'string',
@@ -941,16 +968,35 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
 }
 
 /**
+ * The number options, refused at the call: in the `cache` hook a laptop
+ * with no remote named passed what failed the first CI run.
+ */
+function refuseBadNumbers(options: TurboCacheOptions): void {
+  // A NaN never reaches the bound, and the request would be resent forever.
+  const { retries } = options
+  if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
+    throw new UserError(`turboCache() option "retries" must be a whole number ≥ 0, got ${retries}`)
+  // 0 is no deadline, as Turbo reads it; a negative or non-number one made
+  // AbortSignal.timeout throw on every request.
+  for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
+    const ms = options[name]
+    if (ms !== undefined && !(Number.isFinite(ms) && ms >= 0))
+      throw new UserError(`turboCache() option "${name}" must be ms ≥ 0 (0: none), got ${ms}`)
+  }
+}
+
+/**
  * Declare in `.vx/workspace.ts`; the local store stays the floor beneath it:
  *
  * ```ts
- * plugins: [turboCache({ apiUrl: 'https://cache.example.com', token: process.env.CACHE_TOKEN })]
+ * plugins: [turboCache({ url: 'https://cache.example.com', token: process.env.CACHE_TOKEN })]
  * ```
  *
  * Declines with no URL, team or token, so it is safe to leave declared.
  */
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
+  refuseBadNumbers(options)
   const scope = remoteScope('turboCache', options.scope)
   // The run's layer and warn, for `teardown` to revoke an exchanged token.
   let opened: { layer: TurboRemoteCache; warn: (m: string) => void } | undefined
@@ -961,6 +1007,7 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
         Bun.env,
         remoteCacheOf(ctx.workspaceRoot),
         localConfigOf(ctx.workspaceRoot),
+        (m) => ctx.warn(`[vx] plugin '@vzn/vx-migrate': ${m}`),
       )
       if (config === undefined) return undefined
       // A signed download waits in a temp until its tag checks: in vx's

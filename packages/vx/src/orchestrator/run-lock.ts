@@ -126,6 +126,9 @@ export interface RunLockOptions {
   signal?: AbortSignal | undefined
 }
 
+/** Releases a taken run lock; `path` is its directory (`runLockPath`). */
+export type RunLockRelease = (() => Promise<void>) & { readonly path: string }
+
 /**
  * The lock directory for a workspace root: stable across this user's runs,
  * private to this machine. Keyed by the REAL path: a CLI's cwd comes back
@@ -323,16 +326,18 @@ async function leave(lockDir: string, entry: string): Promise<void> {
 /**
  * Take the workspace's run lock, waiting for a live holder in another
  * process to release it. Resolves to the release function; the caller
- * runs it on every exit path.
+ * runs it on every exit path. It carries the lock's `path`, so a run's
+ * live socket beside it costs no second realpath and hash.
  */
 export async function acquireRunLock(
   workspaceRoot: string,
   opts: RunLockOptions,
-): Promise<() => Promise<void>> {
+): Promise<RunLockRelease> {
   const lockDir = runLockPath(workspaceRoot, opts.dir)
   // A task's own process (`vx cache clean` in a task) would wait for the
   // run that started it, which holds the lock until that task ends.
-  const outer = process.env[VX_RUN_WORKSPACE_ENV]
+  // Empty is unset: resolved, '' named the cwd.
+  const outer = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outer !== undefined && runLockPath(outer, opts.dir) === lockDir) {
     throw new UserError(
       `this vx runs inside task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} of a vx run on this workspace, which holds its run lock until it ends — run it before or after that run, not from one of its tasks`,
@@ -363,12 +368,13 @@ export async function acquireRunLock(
       if (takers.get(lockDir) === taker) takers.delete(lockDir)
     }
   }
+  const held: RunLockRelease = Object.assign(release, { path: lockDir })
   for (;;) {
-    if (opts.signal?.aborted === true) return async () => {}
+    if (opts.signal?.aborted === true) return Object.assign(async () => {}, { path: lockDir })
     const here = heldHere.get(lockDir) ?? 0
     if (here > 0) {
       heldHere.set(lockDir, here + 1)
-      return release
+      return held
     }
     let h: Holder | 'free' | null
     try {
@@ -379,7 +385,7 @@ export async function acquireRunLock(
         heldHere.set(lockDir, 1)
         takers.set(lockDir, entry)
         releaseOnExit()
-        return release
+        return held
       }
       h = await holder(lockDir)
       if (h === 'free') continue
@@ -402,7 +408,7 @@ export async function acquireRunLock(
       opts.log(
         `[vx] no run lock for this workspace (${(err as Error).message}${hint}) — another vx run on it at the same time may race this one`,
       )
-      return async () => {}
+      return Object.assign(async () => {}, { path: lockDir })
     }
     if (h !== null && !said && Date.now() - started >= SAY_AFTER_MS) {
       said = true

@@ -699,6 +699,33 @@ describe('tieredReverseDepCount', () => {
     })
   })
 
+  it('an exec task under a restore blocks what that restore feeds (item 963)', async () => {
+    // r restores at once but releases e2 only once e1 has run, so e1 blocks
+    // e2 as surely as an edge would. Counted over the exec tier alone, e1
+    // ranked 0 and the idle x ran first, holding e2 behind both.
+    const m = nodes(node('x#b'), node('e1#b'), node('r#b', ['e1#b']), node('e2#b', ['r#b']))
+    const tier = new Set(['r#b'])
+    expect(Object.fromEntries(tieredReverseDepCount(m, tier))).toEqual({
+      'x#b': 0,
+      'e1#b': 1,
+      'e2#b': 0,
+      'r#b': 1,
+    })
+    const order: string[] = []
+    await runGraph({
+      nodes: m,
+      concurrency: 1,
+      restoreTier: tier,
+      execute: async (n) => {
+        order.push(n.id)
+        return n.id === 'r#b'
+          ? { node: n, status: 'cache-hit', exitCode: 0, durationMs: 0, hash: `h-${n.id}` }
+          : success(n)
+      },
+    })
+    expect(order.indexOf('e1#b')).toBeLessThan(order.indexOf('x#b'))
+  })
+
   it('the exec task behind a chain of restores starts before the idle restores (C-51)', async () => {
     const order: string[] = []
     await runGraph({
@@ -964,6 +991,33 @@ describe('runGraph restore-tier (local short-circuit)', () => {
       }).toEqual({ status: 'skipped', blockedBy: 'q#check', ran: false })
     })
   }
+
+  it('a 50,000-deep chain of hits held behind its root is released without a stack overflow', async () => {
+    // Every hit restores before the root's exec ends, so each is held
+    // (item 963) and the root's finish releases the whole chain at once.
+    // Released by recursion, the walk threw RangeError at 30,000 hits and the
+    // run never resolved. The builder takes a 50,000-deep chain (item 737).
+    const DEPTH = 50_000
+    const chain = [node('p#t0')]
+    for (let i = 1; i < DEPTH; i++) chain.push(node(`p#t${i}`, [`p#t${i - 1}`]))
+    let restores = 0
+    let releaseRoot!: () => void
+    const rootHeld = new Promise<void>((r) => (releaseRoot = r))
+    const out = await runGraph({
+      nodes: nodes(...chain),
+      concurrency: 4,
+      restoreTier: new Set(chain.slice(1).map((n) => n.id)),
+      execute: async (n) => {
+        if (n.id === 'p#t0') {
+          await rootHeld
+          return success(n)
+        }
+        if (++restores === DEPTH - 1) releaseRoot()
+        return hit(n)
+      },
+    })
+    expect([out.size, out.get(`p#t${DEPTH - 1}`)?.status]).toEqual([DEPTH, 'cache-hit'])
+  })
 
   it("a failed dep of a restore-tier task skips the task's dependents, naming the root (item 963)", async () => {
     // The hit stays a hit (its key is its deps' inputs, not their outcome);
@@ -1312,6 +1366,114 @@ describe('runGraph restore-tier (local short-circuit)', () => {
       expect(finished.indexOf('web#e2e')).toBeGreaterThan(finished.indexOf('api#dev'))
     })
 
+    // A group between the server and its hits (`env: { dependsOn: ['dev'] }`)
+    // was a dependant outside the tier: a warm `vx run e2e` booted the server.
+    const grouped = () =>
+      nodes(
+        node('db#migrate'),
+        server('api#dev', ['db#migrate']),
+        { ...node('web#env', ['api#dev']), config: {}, requested: false },
+        { ...node('web#e2e', ['web#env']), requested: false },
+        { ...node('web#smoke', ['web#env']), requested: false },
+        node('web#ci', ['web#e2e', 'web#smoke']),
+      )
+
+    it('is never started behind a group only hits depend on', async () => {
+      const calls: string[] = []
+      const done: string[] = []
+      const out = await runGraph({
+        nodes: grouped(),
+        concurrency: 4,
+        restoreTier: tier,
+        execute: async (n) => {
+          calls.push(n.id)
+          if (n.id === 'db#migrate') await new Promise((r) => setTimeout(r, 30))
+          done.push(n.id)
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(calls.sort()).toEqual(['db#migrate', 'web#ci', 'web#e2e', 'web#smoke'])
+      expect([...out.keys()].sort()).toEqual(['db#migrate', 'web#ci', 'web#e2e', 'web#smoke'])
+      expect(done.indexOf('web#ci')).toBeGreaterThan(done.indexOf('db#migrate'))
+    })
+
+    it('starts behind a group when a hit above it is demoted', async () => {
+      const calls: string[] = []
+      const finished: string[] = []
+      let demote = true
+      const out = await runGraph({
+        nodes: grouped(),
+        concurrency: 4,
+        restoreTier: tier,
+        execute: async (n) => {
+          calls.push(n.id)
+          if (n.id === 'web#e2e' && demote) {
+            await new Promise((r) => setTimeout(r, 20))
+            demote = false
+            throw new RestoreDemoted(n.id)
+          }
+          finished.push(n.id)
+          return n.id === 'web#smoke' ? hit(n) : success(n)
+        },
+      })
+      expect(out.get('api#dev')?.status).toBe('success')
+      expect(out.get('web#env')?.status).toBe('success')
+      expect(out.get('web#e2e')?.status).toBe('success')
+      expect(finished.indexOf('web#e2e')).toBeGreaterThan(finished.indexOf('api#dev'))
+    })
+
+    it('starts behind a group a task outside the tier depends on (control)', async () => {
+      const calls: string[] = []
+      await runGraph({
+        nodes: grouped(),
+        concurrency: 4,
+        restoreTier: new Set(['web#e2e']),
+        execute: async (n) => {
+          calls.push(n.id)
+          return n.id === 'web#e2e' ? hit(n) : success(n)
+        },
+      })
+      expect(calls).toContain('api#dev')
+    })
+
+    // Fail-fast and a stop finished it `skipped` / `aborted`: an outcome for
+    // a server the run was never going to start.
+    it('has no outcome when fail-fast stops the run before it is due', async () => {
+      const out = await runGraph({
+        nodes: new Map([...graph(), ['x#fail', node('x#fail')]]),
+        concurrency: 4,
+        restoreTier: tier,
+        continueMode: 'never',
+        execute: async (n) => {
+          if (n.id === 'x#fail') return failed(n)
+          if (n.id === 'db#migrate') await new Promise((r) => setTimeout(r, 20))
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(out.get('x#fail')?.status).toBe('failed')
+      expect(out.has('api#dev')).toBe(false)
+      expect(out.get('web#ci')?.status).toBe('skipped')
+    })
+
+    it('has no outcome when the run is stopped before it is due', async () => {
+      const controller = new AbortController()
+      const out = await runGraph({
+        nodes: graph(),
+        concurrency: 4,
+        restoreTier: tier,
+        signal: controller.signal,
+        execute: async (n) => {
+          if (n.id === 'db#migrate') {
+            controller.abort()
+            await new Promise((r) => setTimeout(r, 20))
+          }
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(out.has('api#dev')).toBe(false)
+      expect(out.get('web#ci')?.status).toBe('aborted')
+    })
+
     it('is skipped as before when its own dependency failed', async () => {
       const out = await runGraph({
         nodes: graph(),
@@ -1400,6 +1562,31 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     })
     expect(calls.filter((c) => c === 'web#e2e')).toHaveLength(1)
     expect(out.get('web#e2e')).toBeDefined()
+  })
+
+  // The stop reached the scheduler only through a task's completion, and a
+  // held server waiting on the remote has none: Ctrl-C waited for the
+  // remote's answer, however long its timeout.
+  it('a stop while a held server waits on the remote ends the run at once', async () => {
+    const controller = new AbortController()
+    const out = await runGraph({
+      nodes: nodes(
+        {
+          ...node('api#dev'),
+          config: { exec: { command: 'serve', persistent: {} } },
+          requested: false,
+        },
+        { ...node('web#e2e', ['api#dev']), requested: false },
+      ),
+      concurrency: 2,
+      restoreTier: new Set(),
+      heldServers: new Map([['api#dev', new Promise<readonly string[]>(() => {})]]),
+      signal: controller.signal,
+      execute: async (n) => success(n),
+      reprioritize: () => queueMicrotask(() => controller.abort()),
+    })
+    expect(out.get('api#dev')?.status).toBe('aborted')
+    expect(out.get('web#e2e')?.status).toBe('aborted')
   })
 })
 
@@ -1601,7 +1788,7 @@ describe('runGraph — continueMode', () => {
     })
     expect(out.get('p#a')!.status).toBe('failed')
     // b executed (not skipped) and saw the failed upstream outcome —
-    // its key folds the upstream's INPUT hash, which failed outcomes
+    // its key includes the upstream's INPUT hash, which failed outcomes
     // carry (computed before exec), so caching stays sound.
     expect(out.get('p#b')!.status).toBe('success')
     expect(seenUpstream[0]![0]!.status).toBe('failed')

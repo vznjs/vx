@@ -16,7 +16,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { GitFilesCache, populateGitFilesCache, resolveInputs } from '../src/cache/inputs.js'
+import {
+  addedInput,
+  GitFilesCache,
+  populateGitFilesCache,
+  resolveInputs,
+} from '../src/cache/inputs.js'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const TIMEOUT = 60_000
@@ -132,6 +137,86 @@ describe('a project inside a nested repository', () => {
   )
 
   it(
+    "is listed by its own index when a hook's GIT_INDEX_FILE or GIT_DIR names the workspace's",
+    async () => {
+      // The project's own listing inherited a pre-commit hook's location
+      // variables and read the workspace repository's index: a file its own
+      // repository tracks under an ignore rule left the inputs (a stale hit).
+      const dirs = await fixture(root)
+      for (const sub of ['vendor/sub', 'vendor/nested']) {
+        const repo = path.join(root, sub)
+        await write(path.join(repo, '.gitignore'), '*.gen\n')
+        const project = sub === 'vendor/sub' ? 'b' : 'c'
+        await write(path.join(repo, project, 'src/keep.gen'), 'one')
+        git(repo, 'add', '-f', '.gitignore', `${project}/src/keep.gen`)
+        git(repo, 'commit', '-qm', 'gen')
+      }
+      for (const [name, value] of [
+        ['GIT_INDEX_FILE', path.join(root, '.git', 'index')],
+        ['GIT_DIR', path.join(root, '.git')],
+      ] as const) {
+        process.env[name] = value
+        try {
+          const memo = new GitFilesCache()
+          await populateGitFilesCache(root, [dirs.a, dirs.b, dirs.c], memo)
+          for (const dir of [dirs.b, dirs.c]) {
+            const resolved = await resolveInputs({
+              projectDir: dir,
+              workspaceRoot: root,
+              inputs: { files: ['src/**'] },
+              ownOutputs: ['dist/**'],
+              nestedProjectDirs: [],
+              gitFilesCache: memo,
+              envSource: {},
+            })
+            expect(resolved.files).toEqual([
+              path.join(dir, 'src/keep.gen'),
+              path.join(dir, 'src/x.txt'),
+            ])
+          }
+        } finally {
+          delete process.env[name]
+        }
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "sees a file added during the run by its own index under a hook's GIT_INDEX_FILE",
+    async () => {
+      // `addedInput`'s git listing inherited the hook's variables and read
+      // the workspace repository's index: a file the nested repository
+      // tracks under an ignore rule, added while the task ran, was not seen
+      // and the entry was saved under a key without it.
+      const dirs = await fixture(root)
+      const repo = path.join(root, 'vendor/sub')
+      await write(path.join(repo, '.gitignore'), '*.gen\n')
+      git(repo, 'add', '.gitignore')
+      git(repo, 'commit', '-qm', 'ignore')
+      const resolved = await resolveInputs({
+        projectDir: dirs.b,
+        workspaceRoot: root,
+        inputs: { files: ['src/**'] },
+        ownOutputs: ['dist/**'],
+        nestedProjectDirs: [],
+        envSource: {},
+      })
+      const listedAt = Date.now() - 1000
+      const added = path.join(dirs.b, 'src/keep.gen')
+      await write(added, 'one')
+      git(repo, 'add', '-f', 'b/src/keep.gen')
+      process.env['GIT_INDEX_FILE'] = path.join(root, '.git', 'index')
+      try {
+        expect(addedInput(resolved.listings, new Set(resolved.files), listedAt)).toBe(added)
+      } finally {
+        delete process.env['GIT_INDEX_FILE']
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a change to its source is a miss, not a stale hit',
     async () => {
       const dirs = await fixture(root)
@@ -235,6 +320,36 @@ describe('a nested repository inside a project', () => {
         path.join(a, 'vendor/lib/x.txt'),
         path.join(a, 'vendor/loose/y.txt'),
       ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "is listed by its own index when a hook's GIT_INDEX_FILE or GIT_DIR names the outer one",
+    async () => {
+      // A pre-commit hook runs vx with git's location variables set for the
+      // OUTER repository. The nested listing inherited them and read the outer
+      // index, so a file the nested repository tracks under an ignore rule
+      // fell out of the inputs: its edits were a stale hit.
+      const a = await vendoredFixture(root)
+      const lib = path.join(a, 'vendor/lib')
+      await write(path.join(lib, '.gitignore'), '*.gen\n')
+      await write(path.join(lib, 'keep.gen'), 'one')
+      git(lib, 'add', '-f', '.gitignore', 'keep.gen')
+      git(lib, 'commit', '-qm', 'gen')
+      for (const [name, value] of [
+        ['GIT_INDEX_FILE', path.join(root, '.git', 'index')],
+        ['GIT_DIR', path.join(root, '.git')],
+      ] as const) {
+        const memo = new GitFilesCache()
+        process.env[name] = value
+        try {
+          await populateGitFilesCache(root, [a], memo)
+        } finally {
+          delete process.env[name]
+        }
+        expect(memo.get(a)).toContain('vendor/lib/keep.gen')
+      }
     },
     TIMEOUT,
   )

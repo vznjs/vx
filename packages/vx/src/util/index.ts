@@ -22,9 +22,11 @@ export {
   gitFailure,
   notAWorkTree,
   OUT_OF_FDS_HINT,
+  thrownMessage,
   wantsJson,
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
+export { envFlagOn } from './env-flag.js'
 export {
   detectColors,
   dumbTerminal,
@@ -35,7 +37,7 @@ export {
   WARN,
   type ColorSupport,
 } from './colors.js'
-export { barWidth, gradientRule } from './report.js'
+export { barWidth, gradientRule, ruleWidth } from './report.js'
 import * as ui from './ui.js'
 export { refusalNotice, sayLine, sayNotice } from './refusal-notice.js'
 export { ui }
@@ -64,6 +66,7 @@ export {
   outputNever,
   restorableOutput,
   printable,
+  hasControl,
   relPosix,
   DOT_VX_GITATTRIBUTES,
   DOT_VX_GITIGNORE,
@@ -79,6 +82,7 @@ export {
   braceAlternatives,
   braceRange,
   BRACE_RANGE_LIMIT,
+  writableUnder,
 } from './paths.js'
 export {
   claimExitForSignal,
@@ -117,6 +121,7 @@ export {
 export { realPath, realpathOf } from './real-path.js'
 export { refuseSymlink, writeNoFollow } from './write-file.js'
 export {
+  heldSecrets,
   maskedCommand,
   maskedStreams,
   maskedLine,

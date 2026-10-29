@@ -57,11 +57,12 @@ export function refusal(
 }
 
 // A refusal that opens with the config that caused it: the schema's
-// `<file>: tasks.<name> …`, the loader's `<file> has unknown field …` and
-// its `Workspace config <file>: …` (a load that failed: a syntax error, a
-// missing import, no default object), which read VX_E_REFUSED (2026-10-28).
+// `<file>: tasks.<name> …`, the loader's `<file> has unknown field …`, and
+// its `Project config <file>: …` and `Workspace config at <file> …` (a load
+// that failed: a syntax error, a missing import, no default object), which
+// answered VX_E_REFUSED.
 const CONFIG_REFUSAL =
-  /^(?:(?:Workspace|Project) config (?:at )?)?\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
+  /^(?:(?:Project|Workspace) config (?:at )?)?\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
 
 /**
  * The stable code of anything `bin.ts` catches. A UserError's own, but
@@ -107,6 +108,30 @@ export function errorDocument(code: string, message: string): string {
     ? { docs: `https://vznjs.github.io/vx/cli/#${code.toLowerCase()}` }
     : {}
   return `${JSON.stringify({ ok: false, error: { code, message, ...docs } })}\n`
+}
+
+/**
+ * What a thrown value says, for a line that names its thrower. A plugin
+ * may throw anything: `String(err)` read `[object Object]` for an
+ * error-like `{ message }`, `undefined` for a bare `throw`, and itself threw
+ * on an object with no prototype. Never throws.
+ */
+export function thrownMessage(err: unknown): string {
+  try {
+    if (typeof err === 'string') return err === '' ? 'threw an empty string' : err
+    if (typeof err === 'object' && err !== null) {
+      const message = (err as { message?: unknown }).message
+      if (typeof message === 'string' && message !== '') return message
+      if (err instanceof Error) return `threw ${err.name} with no message`
+      const json = JSON.stringify(err)
+      if (json !== undefined) return `threw ${json.length > 200 ? `${json.slice(0, 200)}…` : json}`
+      return 'threw an object'
+    }
+    if (typeof err === 'bigint') return `threw ${err}n`
+    return `threw ${String(err)}`
+  } catch {
+    return 'threw an object'
+  }
 }
 
 /**

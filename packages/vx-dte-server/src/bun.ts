@@ -57,7 +57,7 @@ function main(argv: string[]): void {
     port,
     verify: noAuth ? undefined : createVerifier({ allow, audience }),
   })
-  console.log(`vx-dte-server on ${server.url}`)
+  process.stdout.write(statusLine('ok', `listening on ${server.url}`))
   const stop = (): void => {
     void server.stop().then(() => process.exit(0))
   }
@@ -66,7 +66,7 @@ function main(argv: string[]): void {
 }
 
 function fail(message: string): never {
-  process.stderr.write(`${message}\n`)
+  process.stderr.write(statusLine('err', message))
   process.exit(2)
 }
 
@@ -76,4 +76,28 @@ try {
   // parseArgs names the flag it refused, not the ones there are.
   const usage = (err as { code?: string }).code?.startsWith('ERR_PARSE_ARGS') ? `\n${USAGE}` : ''
   fail(`${err instanceof Error ? err.message : String(err)}${usage}`)
+}
+
+/**
+ * `✓ vx-dte-server  listening on …` / `✗ vx-dte-server  <why>`, painted as
+ * vx's status lines are (NO_COLOR, then FORCE_COLOR, then a terminal). The
+ * relay imports only jose, so this is @vzn/vx-devtools' `statusLine` kept
+ * here; usage lines under a refusal print dim.
+ */
+function statusLine(tone: 'ok' | 'err', text: string): string {
+  const stream = tone === 'ok' ? process.stdout : process.stderr
+  const env = process.env
+  const force = env['FORCE_COLOR']
+  const on = env['NO_COLOR']
+    ? false
+    : force !== undefined
+      ? force !== '0' && force !== 'false'
+      : stream.isTTY === true && env['TERM'] !== 'dumb'
+  const [head = '', ...rest] = text.split('\n')
+  const symbol = tone === 'ok' ? '✓' : '✗'
+  if (!on) return `${[`${symbol} vx-dte-server  ${head}`, ...rest].join('\n')}\n`
+  const hue = tone === 'ok' ? '34;197;94' : '239;68;68'
+  const url = head.replace(/(https?:\/\/\S+)/g, '\x1b[38;2;6;182;212m$1\x1b[0m')
+  const first = `\x1b[38;2;${hue}m${symbol}\x1b[0m \x1b[1mvx-dte-server\x1b[0m  ${url}`
+  return `${[first, ...rest.map((l) => (l === '' ? l : `\x1b[2m${l}\x1b[0m`))].join('\n')}\n`
 }

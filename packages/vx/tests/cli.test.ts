@@ -12,7 +12,7 @@ import os from 'node:os'
 import { planned } from './helpers/parity.js'
 import { makeWorkspace } from './helpers/workspace.js'
 import { writeLockClaim } from './helpers/plugin.js'
-import { editDistance, nearest } from '../src/util/index.js'
+import { CORE_VERBS, editDistance, nearest } from '../src/util/index.js'
 import { noticed } from './helpers/notice.js'
 
 describe('cli run()', () => {
@@ -122,7 +122,7 @@ describe('cli run()', () => {
       [
         1,
         noticed(
-          'vx cache: unknown subcommand: bogus. The subcommand is clean (see `vx cache --help`)\n',
+          'vx cache: unknown subcommand: bogus. Its one subcommand is `vx cache clean` (see `vx cache --help`)\n',
         ),
       ],
       [
@@ -169,6 +169,26 @@ describe('cli run()', () => {
       stderr:
         noticed('vx help: unknown command: rnu. Did you mean run? (see `vx help`)\n') +
         noticed('vx help: unknown command: no-such-verb (see `vx help`)\n'),
+    })
+  })
+
+  // `vx help run extra` printed run's help and exited 0, and `vx --help run`
+  // / `vx -h run` printed the whole reference: a word after the one verb was
+  // dropped, where `vx version extra` is refused.
+  it('`vx --help <verb>` is `vx help <verb>`, and a second word is refused', async () => {
+    expect(await run(['help', 'run'])).toBe(0)
+    const cut = stdout
+    for (const flag of ['--help', '-h']) {
+      stdout = ''
+      expect(await run([flag, 'run'])).toBe(0)
+      expect(stdout).toBe(cut)
+    }
+    stdout = ''
+    stderr = ''
+    expect(await run(['help', 'run', 'extra'])).toBe(1)
+    expect({ stdout, stderr }).toEqual({
+      stdout: '',
+      stderr: noticed('vx help: unexpected argument: extra (see `vx help`)\n'),
     })
   })
 
@@ -351,7 +371,7 @@ describe('cli run()', () => {
       ['show', '--formt'],
       ['why', 'x', '--rn', '1'],
       ['cache', 'clean', '--dry-rn'],
-      ['cache', 'clean', '--dry'],
+      ['cache', 'clean', '--dry-run'],
       ['run', 'build', '--dry-run'],
       ['run', 'build', '--concurency', '2'],
       ['info', '--json'],
@@ -390,10 +410,10 @@ describe('cli run()', () => {
       ).trimEnd(),
       'vx why: unknown flag: --rn (did you mean --run?) (see `vx why --help`)',
       noticed(
-        'vx cache clean: unknown flag: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
+        'vx cache clean: unknown flag: --dry-rn (did you mean --dry?) (see `vx cache --help`)',
       ).trimEnd(),
       noticed(
-        'vx cache clean: unknown flag: --dry (did you mean --dry-run?) (see `vx cache --help`)',
+        'vx cache clean: unknown flag: --dry-run (did you mean --dry?) (see `vx cache --help`)',
       ).trimEnd(),
       noticed(
         'vx run: unknown flag: --dry-run (did you mean --dry?) (see `vx run --help`)',
@@ -438,8 +458,14 @@ describe('cli run()', () => {
       process.chdir(origCwd)
       await rm(dir, { recursive: true, force: true })
     }
-    expect(stderr).toContain('plugin')
-    expect(stderr).not.toContain('unknown command')
+    // One fact a line, each sentence whole: the message's own line breaks
+    // once cut "See the plugin" from "guide: https://…".
+    expect(stderr).toBe(
+      `✗ vx  \`${cmd}\` is not a vx core command\n\n` +
+        '  vx core runs tasks in-process\n' +
+        '  A dashboard, remote cache and distributed execution come from plugins, not core\n' +
+        '  See the plugin guide: https://vznjs.github.io/vx/docs/plugins/\n',
+    )
     // Core must not name any specific service package.
     expect(stderr).not.toContain('vx-cloud')
     expect(stderr).not.toContain('@vzn/vx-cloud')
@@ -819,20 +845,31 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stderr).toContain('no projects matched filter(s): oen\n\n  fix  one\n')
   })
 
-  it('a `../` path filter is not a path form — refused loud, naming the pattern (parity L2)', async () => {
+  it('a path filter that climbs out of the root is refused, naming the pattern (parity L2)', async () => {
     // `./` is root-relative in vx by documented choice, so `../apps/*`
-    // (Turbo's cwd-relative sibling form) has no meaning here; it falls
-    // through to the name matcher and must say so, not select nothing
-    // quietly.
+    // (Turbo's cwd-relative sibling form) has no meaning here. `../` and
+    // `{..}` named the directory every project sits under, and all ran.
     let stderr = ''
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
       stderr += String(chunk)
       return true
     })
-    const code = await run(['run', '--filter', '../packages/*', 'hello'])
-    expect(code).not.toBe(0)
-    expect(stderr).toContain('no projects matched filter(s): ../packages/*')
+    const said: [string, number][] = []
+    for (const f of ['../packages/*', '../', '{..}']) {
+      stderr = ''
+      said.push([stderr, await run(['run', '--filter', f, 'hello'])])
+      said[said.length - 1]![0] = stderr.trim()
+    }
+    const refusal = (f: string) =>
+      noticed(
+        `vx run: filter "${f}" names a directory outside the workspace root: a path filter is relative to the root`,
+      ).trimEnd()
+    expect(said).toEqual([
+      [refusal('../packages/*'), 1],
+      [refusal('../'), 1],
+      [refusal('{..}'), 1],
+    ])
   })
 
   it('a filter that matched but walked to nothing, or names no project, says so (item 1030)', async () => {
@@ -886,6 +923,20 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       noticed(
         'vx run: no projects selected: !one excluded every project the other filters matched',
       ).trimEnd(),
+    ])
+  })
+
+  it('an exclusion alone that takes back every project names no other filter', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['run', '--filter', '!*', 'hello'])
+    expect([code, stderr.trim()]).toEqual([
+      1,
+      noticed('vx run: no projects selected: !* excluded every project').trimEnd(),
     ])
   })
 
@@ -1051,14 +1102,20 @@ describe('vx watch command (parser-side validation)', () => {
     )
   })
 
-  it('rejects watch with --dry', async () => {
+  it('rejects watch with --dry, and points at its help as every refusal does', async () => {
     expect(await run(['watch', 'build', '--dry'])).toBe(1)
-    expect(stderr).toContain('--dry is not supported in watch mode')
+    expect(stderr).toBe(
+      noticed('vx watch: --dry is not supported in watch mode (see `vx watch --help`)\n'),
+    )
   })
 
   it('rejects watch with --profile', async () => {
     expect(await run(['watch', 'build', '--profile'])).toBe(1)
-    expect(stderr).toContain('--profile is not supported')
+    expect(stderr).toBe(
+      noticed(
+        'vx watch: --profile is not supported in watch mode (would overwrite per cycle) (see `vx watch --help`)\n',
+      ),
+    )
   })
 
   it('surfaces parser errors with the watch prefix', async () => {
@@ -1561,7 +1618,7 @@ describe('parseRunArgs', () => {
     expect(run).toContain('Full reference: vx help')
     const cache = verbHelpText('cache')
     expect(cache).toContain('vx cache clean --older-than 30d')
-    expect(cache).toContain('--dry-run')
+    expect(cache).toContain('--dry')
     expect(cache).not.toContain('Selection (for run):')
     const last = verbHelpText('last')
     expect(last).toContain('--list[=N]')
@@ -1595,7 +1652,7 @@ describe('parseRunArgs', () => {
     ])
     expect(flagsIn(verbHelpText('cache'))).toEqual([
       '--cache-dir',
-      '--dry-run',
+      '--dry',
       '--format',
       '--global',
       '--max-size',
@@ -1661,6 +1718,13 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--cache-dir']).error).toBe('--cache-dir requires a path')
   })
 
+  it('--cache-dir refuses a path of only whitespace, as VX_CACHE_DIR and cache.dir do', () => {
+    // It made a directory named in spaces under the cwd.
+    for (const args of [['--cache-dir', '   '], ['--cache-dir=  ']]) {
+      expect(parseRunArgs(['build', ...args]).error).toBe('--cache-dir requires a path')
+    }
+  })
+
   it('--cache-dir rejects a flag-shaped value in the space form', () => {
     // `--cache-dir $EMPTY --force` with an unquoted empty var: the arg
     // vanishes and `--force` would become the cache directory.
@@ -1686,6 +1750,9 @@ describe('parseRunArgs', () => {
   it('--exclude-dependencies= (empty value) is rejected, not read as "exclude nothing"', () => {
     const r = parseRunArgs(['build', '--exclude-dependencies='])
     expect(r.error).toMatch(/--exclude-dependencies= needs a value/)
+    // A list of no names is the same empty value: `,` and ` ` dropped none.
+    for (const v of [',', ' ', ' , '])
+      expect(parseRunArgs(['build', `--exclude-dependencies=${v}`]).error).toBe(r.error)
     // Both unambiguous forms keep working.
     expect(parseRunArgs(['build', '--exclude-dependencies']).excludeDependencies).toBe('all')
     expect(parseRunArgs(['build', '--exclude-dependencies=a,b']).excludeDependencies).toEqual([
@@ -1810,6 +1877,21 @@ describe('parseRunArgs', () => {
     )
   })
 
+  it('repeated --exclude-dependencies flags add up, and the bare one drops every edge', () => {
+    const of = (...a: string[]) => parseRunArgs(['build', ...a]).excludeDependencies
+    expect([
+      of('--exclude-dependencies=gen', '--exclude-dependencies=lint,gen'),
+      of('--exclude-dependencies', '--exclude-dependencies=gen'),
+      of('--exclude-dependencies=gen', '--exclude-dependencies'),
+    ]).toEqual([['gen', 'lint'], 'all', 'all'])
+  })
+
+  it('--exclude-dependencies= with only commas is rejected like an empty value', () => {
+    expect(parseRunArgs(['build', '--exclude-dependencies=,']).error).toMatch(
+      /^--exclude-dependencies= needs a value/,
+    )
+  })
+
   it('parses --affected (no value) and --affected=<ref>', () => {
     expect(parseRunArgs(['build', '--affected']).affected).toBe('')
     expect(parseRunArgs(['build', '--affected=origin/main']).affected).toBe('origin/main')
@@ -1827,24 +1909,27 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--verbosity', '-1']).error).toMatch(/--verbosity must be/)
   })
 
-  it('parses --dry and --dry=json / --dry=text', () => {
-    expect(parseRunArgs(['build', '--dry']).dry).toBe('text')
-    expect(parseRunArgs(['build', '--dry=text']).dry).toBe('text')
+  it('parses --dry and --dry=json / --dry=pretty, the values every --format takes', () => {
+    expect(parseRunArgs(['build', '--dry']).dry).toBe('pretty')
+    expect(parseRunArgs(['build', '--dry=pretty']).dry).toBe('pretty')
     expect(parseRunArgs(['build', '--dry=json']).dry).toBe('json')
+    expect(parseRunArgs(['build', '--dry=text']).error).toBe(
+      '--dry must be pretty or json (got text)',
+    )
   })
 
   it('rejects invalid --dry=<format>', () => {
     expect(parseRunArgs(['build', '--dry=yaml']).error).toMatch(
-      /--dry must be text or json \(got yaml\)/,
+      /--dry must be pretty or json \(got yaml\)/,
     )
   })
 
   it('an empty `=` value is a missing value, not a bad one', () => {
     expect(parseRunArgs(['build', '--dry=']).error).toBe(
-      '--dry= requires a format (text or json); bare --dry prints text',
+      '--dry= requires a format: pretty or json; bare --dry prints pretty',
     )
     expect(parseRunArgs(['build', '--verbosity=']).error).toBe(
-      '--verbosity requires a value (a non-negative integer)',
+      '--verbosity requires a value: a non-negative integer',
     )
   })
 
@@ -1866,7 +1951,7 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--retries=1.5']).error).toMatch(/non-negative/)
     // Missing value.
     expect(parseRunArgs(['build', '--retries']).error).toBe(
-      '--retries requires a value (a non-negative integer)',
+      '--retries requires a value: a non-negative integer',
     )
   })
 
@@ -1879,7 +1964,7 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--timeout=-5']).error).toMatch(/must be a duration/)
     // Missing value.
     expect(parseRunArgs(['build', '--timeout']).error).toBe(
-      "--timeout requires a value (a duration like '500ms', '30s' or '5m', at most 24 days)",
+      "--timeout requires a value: a duration like '500ms', '30s' or '5m', at most 24 days",
     )
   })
 
@@ -1913,11 +1998,11 @@ describe('parseRunArgs', () => {
 
   it('rejects missing flag value', () => {
     expect(parseRunArgs(['build', '--filter']).error).toBe(
-      '--filter requires a value (a project name, glob or path, e.g. --filter app)',
+      '--filter requires a value: a project name, glob or path, e.g. --filter app',
     )
     // X-13: the next flag is no pattern (`--filter --dry` matched "--dry").
     expect(parseRunArgs(['build', '--filter', '--dry']).error).toBe(
-      '--filter requires a value (a project name, glob or path, e.g. --filter app)',
+      '--filter requires a value: a project name, glob or path, e.g. --filter app',
     )
     // Each value-taking flag says what the value is, not only that it is missing.
     expect(
@@ -1925,9 +2010,9 @@ describe('parseRunArgs', () => {
         (f) => parseRunArgs(['build', f]).error,
       ),
     ).toEqual([
-      "--concurrency requires a value (a positive integer, or a share of the cores like '50%')",
-      '--cache-policy requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)',
-      '--verbosity requires a value (a non-negative integer)',
+      "--concurrency requires a value: a positive integer, or a share of the cores like '50%'",
+      '--cache-policy requires a value: a spec like local:r, local:rw, remote:, or local:,remote:rw',
+      '--verbosity requires a value: a non-negative integer',
     ])
   })
 
@@ -2255,7 +2340,7 @@ describe('--dry parsing', () => {
   it('a format written with a space is refused with the = form, not read as a task', () => {
     // `vx run build --dry json` ran with `json` as a second task name and
     // failed with "no projects declare task(s): json" and a hint to re-lock.
-    for (const fmt of ['text', 'json'] as const) {
+    for (const fmt of ['pretty', 'json'] as const) {
       expect(parseRunArgs(['build', '--dry', fmt]).error).toBe(
         `--dry takes its format with '=': --dry=${fmt}`,
       )
@@ -2263,7 +2348,7 @@ describe('--dry parsing', () => {
     // A task name after a bare --dry is still a task name.
     const ok = parseRunArgs(['build', '--dry', 'test'])
     expect(ok.error).toBeUndefined()
-    expect(ok.dry).toBe('text')
+    expect(ok.dry).toBe('pretty')
     expect(ok.tasks).toEqual(['build', 'test'])
   })
 })
@@ -2316,6 +2401,22 @@ describe('unknown-flag hints reach three edits', () => {
   })
 })
 
+describe('a short flag gets a one-edit hint budget', () => {
+  it('--poll is not hinted --all, two edits on a four-letter word', () => {
+    // Two edits rewrite half of `poll`: the hint read as a fix and named
+    // a flag that runs every project.
+    expect(parseRunArgs(['build', '--poll']).error).toBe(
+      'unknown flag: --poll (a vx watch flag: vx watch --poll <task>)',
+    )
+    // CONTROL: one edit on a short word, two on a long one, still hint.
+    expect(parseRunArgs(['build', '--al']).error).toBe('unknown flag: --al (did you mean --all?)')
+    expect(parseRunArgs(['build', '--dy']).error).toBe('unknown flag: --dy (did you mean --dry?)')
+    expect(parseRunArgs(['build', '--concurency', '2']).error).toBe(
+      'unknown flag: --concurency (did you mean --concurrency?)',
+    )
+  })
+})
+
 describe('nearest', () => {
   it('holds its budget exactly: a distance past it is never inside it', () => {
     expect(editDistance('abcdefgh', 'abcdzzzzzz', 4)).toBe(4)
@@ -2334,6 +2435,21 @@ describe('nearest', () => {
     // CONTROL: a real typo of a short name still hints.
     expect(nearest('p1', ['p2'])).toBe('p2')
     expect(nearest('b', ['ab'])).toBe('ab')
+  })
+
+  // `vx test` and `vx ls` were hinted `last`, `vx lint`'s neighbour
+  // `vx log` was hinted `lock`: two edits rewrite half a short word.
+  it('a word of four letters or fewer gets one edit, or a swap of two letters', () => {
+    expect(nearest('test', CORE_VERBS)).toBeUndefined()
+    expect(nearest('ls', CORE_VERBS)).toBeUndefined()
+    expect(nearest('log', CORE_VERBS)).toBeUndefined()
+    expect(nearest('poll', ['all'])).toBeUndefined()
+    // CONTROL: one edit, a swap, and two edits on a longer word still hint.
+    expect(nearest('tun', CORE_VERBS)).toBe('run')
+    expect(nearest('rnu', CORE_VERBS)).toBe('run')
+    expect(nearest('oen', ['one'])).toBe('one')
+    expect(nearest('wtach', CORE_VERBS)).toBe('watch')
+    expect(nearest('chache', CORE_VERBS)).toBe('cache')
   })
 })
 

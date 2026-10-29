@@ -29,7 +29,7 @@ $ vx run packages/a#check
 export const a = (n: number) => n * 2
 export const extra = 1
 cat: notes.md: No such file or directory
-├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────
 
 openat(notes.md) = -1 ENOENT  [.../packages/a/notes.md]
 
