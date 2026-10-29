@@ -11,6 +11,7 @@
 // jose's to check: signature, algorithm, audience and times.
 
 import { hashPart } from './hash-part.js'
+import { Refusal } from './refusal.js'
 import {
   createRemoteJWKSet,
   customFetch,
@@ -19,16 +20,6 @@ import {
   jwtVerify,
   type JWTPayload,
 } from 'jose'
-
-/** A request refused: its HTTP status and what to fix. */
-export class Refusal extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 /** One entry of `ALLOW`: the jobs of one workflow file of one repository at one issuer. */
 export interface Allowed {
@@ -90,9 +81,15 @@ export function parseAllow(list: string): Allowed[] {
       const https =
         issuer.startsWith('https://') ||
         (issuer.startsWith('http://') && URL.parse(issuer)?.hostname === '127.0.0.1')
-      if (r < 0 || !https || !repository.includes('/') || workflow === '') {
+      // An entry missing a part splits elsewhere: its issuer is then no URL.
+      const url = /^[a-z][a-z0-9+.-]*:\/\/[^/]/i.test(issuer)
+      if (r < 0 || !url || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
+      if (!https)
+        throw new Error(
+          `${e}: the issuer is https://, not ${issuer} (plain http only on 127.0.0.1)`,
+        )
       return { issuer, repository, workflow }
     })
 }
@@ -308,7 +305,12 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
       throw new Refusal(401, 'not a JWT')
     }
     if (typeof iss !== 'string' || !opts.allow.some((a) => a.issuer === iss)) {
-      throw new Refusal(401, "an issuer this server's ALLOW does not name")
+      throw new Refusal(
+        401,
+        typeof iss === 'string'
+          ? `issuer ${iss.slice(0, 200)} is not in this server's ALLOW: add issuer:owner/repo:workflow for it`
+          : 'the token names no issuer (iss)',
+      )
     }
     const audience = opts.audience ?? new URL(req.url).origin
     let claims: JWTPayload
@@ -323,7 +325,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
         })
       ).payload
     } catch (err) {
-      throw refusal(err, iss)
+      throw refusal(err, iss, audience)
     }
     const claim = repoClaimOf(iss)
     const named = claims[claim]
@@ -353,7 +355,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
 const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
 
 /** What jose's refusal of a token says. */
-function refusal(err: unknown, iss: string): Refusal {
+function refusal(err: unknown, iss: string, audience: string): Refusal {
   if (err instanceof Refusal) return err
   // A refetch of the keys for a kid not held failed: the network, not the token.
   // Keys answered as JSON that is no key set (a proxy's error page) are the issuer's fault too.
@@ -368,12 +370,19 @@ function refusal(err: unknown, iss: string): Refusal {
   if (err instanceof errors.JWSSignatureVerificationFailed) return new Refusal(401, 'bad signature')
   if (err instanceof errors.JWTExpired) return new Refusal(401, 'expired')
   if (err instanceof errors.JWTClaimValidationFailed) {
-    if (err.claim === 'aud') return new Refusal(401, 'wrong audience')
+    if (err.claim === 'aud')
+      return new Refusal(
+        401,
+        `the token's aud is ${audOf(err.payload)}, not this server's ${audience}: ask CI for a token for ${audience}, or set the server's AUDIENCE`,
+      )
     if (err.claim === 'nbf') return new Refusal(401, 'not yet valid')
     if (err.reason === 'missing') return new Refusal(401, `no ${err.claim} claim`)
   }
   return new Refusal(401, 'not a JWT')
 }
+
+/** A token's `aud`, as a refusal names it: "wrong audience" alone left the fix to a guess. */
+const audOf = (claims: JWTPayload): string => [claims.aud ?? 'unset'].flat().join(', ')
 
 async function defaultFetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })

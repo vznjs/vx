@@ -79,5 +79,4 @@ The same server as a `fetch` handler, over storage of your own
   (`{ issuer, repository }`) and a ref.
 - `WEIGHT` (0.3) and `RSS_DECAY` (0.9) are the merge's constants;
   `MAX_UPLOAD_TIMINGS`, `MAX_QUERY_HASHES` and `MAX_QUERY_REFS` its
-  limits; `errorJson`
-  answers a refusal.
+  limits. A refusal is `errorJson` from `@vzn/vx-devtools`.
