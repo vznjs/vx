@@ -125,6 +125,24 @@ describe('a tool that is not on the PATH vx built', () => {
     )
   })
 
+  // A dev server whose tool sits in a sibling's bin is the commonest 127 of
+  // all, and its frame said only "exited before becoming ready (exit 127)".
+  it('a persistent task that exits 127 before ready gets the same line', async () => {
+    await writeFile(
+      path.join(root, 'packages', 'app', 'vx.config.mjs'),
+      `export default { tasks: { dev: { exec: { command: 'tsc --watch', persistent: { readyWhen: 'up' } } } } }\n`,
+    )
+    const r = vx(root, bin, ['run', 'dev', '--all'])
+    expect(r.code).toBe(1)
+    expect(r.text).toContain('exited before becoming ready (exit 127)')
+    const real = realpathSync(root)
+    const app = path.join(real, 'packages', 'app', 'node_modules', '.bin')
+    const rootBin = path.join(real, 'node_modules', '.bin')
+    expect(r.text).toContain(
+      `[vx] exit 127 is the shell's "command not found": tsc is not on this task's PATH — vx puts ${app} and ${rootBin} first and never a sibling project's bin; install it in this package or at the workspace root`,
+    )
+  })
+
   // CONTROL: the same tool at the root's bin runs, and no line is printed.
   it('the same tool at the root bin runs green with no line', async () => {
     await fakeTool(path.join(root, 'node_modules', '.bin'))

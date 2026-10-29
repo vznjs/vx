@@ -789,6 +789,45 @@ describe('a persistent task keeps an open stdin', () => {
     expect((await out).join('')).not.toContain('STDIN-ENDED')
   }, 20_000)
 
+  // The write end was closed once the server's OUTPUT ended, not the
+  // server: one that sends its output to a log (`exec >log 2>&1`, a
+  // daemon closing 1 and 2) saw stdin EOF at once and exited.
+  it('a server that sends its output elsewhere keeps its stdin', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: "echo $$ > pid.txt; exec >server.log 2>&1; cat; printf 'STDIN-%s\\n' ENDED > ended.txt",
+                persistent: {},
+              },
+            },
+          },
+        }
+      `,
+    )
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+      }),
+    )
+    const out = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const early = await Promise.race([proc.exited, Bun.sleep(500).then(() => 'running' as const)])
+    expect(early).toBe('running')
+    expect(isAlive(pid)).toBe(true)
+    expect(await Bun.file(path.join(dir, 'ended.txt')).exists()).toBe(false)
+    process.kill(proc.pid, 'SIGTERM')
+    expect(await proc.exited).toBe(143)
+    await out
+  }, 20_000)
+
   it('the stdin ends when vx is SIGKILLed, so a server that watches it goes too', async () => {
     // A `kill -9` of vx runs no teardown, and a persistent task survives
     // it (kill-tree.md, the known limit). The one exception is this pipe:

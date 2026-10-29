@@ -241,22 +241,23 @@ describe('shellVerdict', () => {
     )
   })
 
-  // CONTROL: a SIGINT/SIGTERM the runner saw is the abort path's (it reverts
-  // the task to aborted); the code alone (a pipeline's last command) is not.
-  it('a SIGTERM or SIGINT the runner saw gets no line; the code alone does', () => {
-    expect(
-      shellVerdict({ code: 143, command: 'node a.js', cwd, bins, signal: 'SIGTERM' }),
-    ).toBeUndefined()
-    expect(
-      shellVerdict({ code: 130, command: 'node a.js', cwd, bins, signal: 'SIGINT' }),
-    ).toBeUndefined()
+  // A SIGINT/SIGTERM the runner saw while the run was not stopping is a
+  // failure (item 1100), and the run's own stop never asks for a line
+  // (execute-task.ts): the line names it as the code alone does. It read
+  // nothing, while a pipeline's same 143 was explained.
+  it('a SIGTERM or SIGINT the runner saw is named as one from outside vx', () => {
+    expect(shellVerdict({ code: 143, command: 'node a.js', cwd, bins, signal: 'SIGTERM' })).toBe(
+      `[vx] exit 143 is how the shell reports a death by SIGTERM (${signalNumber['SIGTERM']}): something outside vx asked the process to stop (a runner's cancellation, a container stop, a kill)`,
+    )
+    expect(shellVerdict({ code: 130, command: 'node a.js', cwd, bins, signal: 'SIGINT' })).toBe(
+      `[vx] exit 130 is how the shell reports a death by SIGINT (2): something outside vx interrupted the process (a Ctrl-C reaching it, a kill -INT)`,
+    )
     expect(verdict(143, 'node a.js | tee log')).toContain(
       'something outside vx asked the process to stop',
     )
   })
 
-  // Each named signal's line, whole; SIGINT through the code alone, since
-  // the runner's own SIGINT is the abort path's.
+  // Each named signal's line, whole; SIGINT through the code alone too.
   it('every named signal has its own reason', () => {
     const why: [string, string][] = [
       [

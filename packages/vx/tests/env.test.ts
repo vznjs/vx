@@ -1,6 +1,7 @@
 import os from 'node:os'
 import path from 'node:path'
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { describe, expect, it } from 'bun:test'
 import {
   buildIsolatedEnv,
@@ -236,6 +237,39 @@ describe('buildIsolatedEnv', () => {
       workspaceRoot: '/r',
     })
     expect(own.PATH).toBe('/r/packages/b/node_modules/.bin')
+  })
+
+  // The root is canonical and a PATH entry need not be: one spelled through
+  // a symlink (macOS's /tmp, a linked home, a shell's $PWD) kept a
+  // sibling's bin on the task's PATH. Either side may be the link.
+  it('drops a workspace bin the inherited PATH spells through a symlink', async () => {
+    const top = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-env-link-')))
+    try {
+      const real = path.join(top, 'real')
+      const outside = path.join(top, 'outside', 'node_modules', '.bin')
+      await mkdir(path.join(real, 'packages', 'b', 'node_modules', '.bin'), { recursive: true })
+      await mkdir(outside, { recursive: true })
+      await symlink(real, path.join(top, 'link'))
+      const viaLink = path.join(top, 'link', 'packages', 'b', 'node_modules', '.bin')
+      const viaReal = path.join(real, 'packages', 'b', 'node_modules', '.bin')
+      const d = path.delimiter
+      for (const [root, entry] of [
+        [real, viaLink],
+        [path.join(top, 'link'), viaReal],
+      ] as const) {
+        const env = buildIsolatedEnv({
+          passThrough: [],
+          define: {},
+          source: { PATH: [entry, outside, '/usr/bin'].join(d) },
+          binPaths: [],
+          workspaceRoot: root,
+        })
+        // CONTROL: a bin outside the root stays, whatever its spelling.
+        expect(env.PATH!.split(d)).toEqual([outside, '/usr/bin'])
+      }
+    } finally {
+      await rm(top, { recursive: true, force: true })
+    }
   })
 
   it('binPaths prepend even after define overrides PATH', () => {

@@ -54,6 +54,7 @@ import {
   withForwardArgs,
   signalExitCode,
   stopSignal,
+  SANDBOXED_TASK,
   spawnFailureText,
   streamToString,
   resourceUsageToCpuRss,
@@ -2204,7 +2205,7 @@ async function runSandboxedOnce(
       rmSync(straceLog, { force: true })
       liveTempFiles.delete(straceLog)
     }
-    const stderr = spawnFailureText(err, args.cwd, 'sandboxed task')
+    const stderr = spawnFailureText(err, args.cwd, SANDBOXED_TASK, wrapped)
     args.onStderr?.(stderr)
     releaseBridges(tag)
     takeRecords()

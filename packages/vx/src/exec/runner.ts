@@ -241,11 +241,19 @@ export class TaskPipes {
    * Close the read ends, once both streams have ended or been cancelled.
    * Bun reads a dup of each, but takes it on the stream's first pull: a
    * number closed before then was reused by the next spawn's pipe, and
-   * the stream read THAT (probed, Bun 1.4.2). The held stdin's write end
-   * goes with them: its reader has exited by then.
+   * the stream read THAT (probed, Bun 1.4.2).
    */
   close(): void {
     for (const fd of this.#read) closeSync(fd)
+  }
+
+  /**
+   * Close the held stdin's write end, once the child has exited and its
+   * output has ended. Not with the output alone: a server that sends it
+   * to a log (`exec >log 2>&1`) ended its streams at once, read stdin EOF
+   * and exited.
+   */
+  closeStdin(): void {
     if (this.#stdinWrite !== undefined) closeSync(this.#stdinWrite)
   }
 }
@@ -847,13 +855,13 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     }
   } catch (err) {
     pipes.close()
+    pipes.closeStdin()
     // Bun names `sh` in the ENOENT a missing directory gives too.
+    // The command the shell was handed, a sandbox's wrap included.
     const message =
       isExecutableMissing(err) && !existsSync(opts.cwd)
         ? `its working directory ${opts.cwd} does not exist`
-        : err instanceof Error
-          ? err.message
-          : String(err)
+        : spawnErrorReason(err, opts.signalChannel === true ? SANDBOXED_TASK : 'task', opts.command)
     return {
       child: undefined,
       ready: Promise.reject(
@@ -960,6 +968,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const readers = Promise.all([consumeChunks(stdout, false), consumeChunks(stderr, true)]).finally(
     () => pipes.close(),
   )
+  void Promise.allSettled([readers, child.exited]).then(() => pipes.closeStdin())
 
   opts.liveChildren?.add(child)
   opts.onSpawn?.(child.pid)
@@ -1045,6 +1054,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   }
 }
 
+/** `spawnFailureText`'s `what` for a sandboxed task: its command is the sandbox's wrap of the task's. */
+export const SANDBOXED_TASK = 'sandboxed task'
+
 /**
  * What a task's frame says when `Bun.spawn` itself threw. The text goes
  * through `onStderr` AND onto the result: the orchestrator retains no
@@ -1066,13 +1078,18 @@ export function spawnFailureText(
       ? `[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
       : `[vx] failed to spawn ${what}: its working directory ${cwd} does not exist\n`
   }
+  return `[vx] failed to spawn ${what}: ${spawnErrorReason(err, what, command)}\n`
+}
+
+/** Bun's text for a spawn that threw, and the way out when the limit hit is a known one. */
+function spawnErrorReason(err: unknown, what: string, command: string | undefined): string {
   const message = err instanceof Error ? err.message : String(err)
   const hint = isOutOfFds(err)
     ? ` — ${OUT_OF_FDS_HINT}`
     : command !== undefined && (err as NodeJS.ErrnoException | undefined)?.code === 'E2BIG'
-      ? ` — ${argTooLongHint(command)}`
+      ? ` — ${argTooLongHint(command, what === SANDBOXED_TASK)}`
       : ''
-  return `[vx] failed to spawn ${what}: ${message}${hint}\n`
+  return `${message}${hint}`
 }
 
 /**
@@ -1081,10 +1098,11 @@ export function spawnFailureText(
  * below the argv total: a file list forwarded to a linter failed with a
  * bare E2BIG, which reads as "too many files" and names no way out.
  */
-function argTooLongHint(command: string): string {
+function argTooLongHint(command: string, wrapped: boolean): string {
   const kib = Math.ceil(Buffer.byteLength(command) / 1024)
+  const what = wrapped ? "with the args after -- and the sandbox's wrap" : 'with the args after --'
   return (
-    `the command, with the args after --, is ${kib} KiB, and one argument to sh -c may hold at ` +
+    `the command, ${what}, is ${kib} KiB, and one argument to sh -c may hold at ` +
     `most 128 KiB on Linux: pass a long list through a file the tool reads (xargs, a response file)`
   )
 }

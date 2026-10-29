@@ -66,7 +66,7 @@ export function restoreTerminalModes(): void
 export function shellQuote(arg: string): string
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 // POSIX "terminated by signal N" → exit 128+N (SIGINT → 130, SIGTERM → 143).
-export function signalExitCode(signal: string): number // 128 + signo; 130 fallback
+export function signalExitCode(signal: string | number): number // 128 + signo (Bun gives a bare number for an unnamed signal); 130 fallback for an unknown name
 // The signal a run's stop sends a task, from its abort reason (SIGINT,
 // else SIGTERM — a hang-up forwards SIGTERM, as `forwardedSignal`): a
 // task stopped before its spawn exits as if it had killed it.
@@ -80,7 +80,7 @@ export function streamToString(
 ): Promise<string>
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
-  floorBytes?: number, // ownRssHighWater(): a peak at or under it is inherited, not reported
+  floorBytes?: number | ((peak: number) => number), // ownRssHighWater(), or a function of the peak: a peak at or under it is inherited, not reported
 ): { cpuMs?: number; peakRssBytes?: number }
 
 // The inverse of signalExitCode: 137 → 'SIGKILL', and undefined below
@@ -101,6 +101,7 @@ export const POST_EXIT_CUT_LINE: string
 export function lineEnds(onStdout?, onStderr?): { onStdout?; onStderr?; own(text: string): string }
 export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<boolean>
 export function spawnFailureText(err: unknown, cwd: string, what?: string, command?: string): string // E2BIG with `command`: its size and the 128 KiB limit
+export const SANDBOXED_TASK = 'sandboxed task' // `what` for runSandboxed, whose `command` is the wrap: the hint says the wrap counts
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
 export function droppedOutputLine(dropped: number, headChars?: number, tailChars?: number): string
@@ -130,6 +131,7 @@ export class TaskPipes {
   spawned(): void // close vx's write ends once the spawn returned or threw
   streams(child): [stdout, stderr] // what streamToString reads
   close(): void // close the read ends once both streams ended or were cancelled
+  closeStdin(): void // a persistent task's held stdin: once the child exited AND its output ended
 }
 ```
 
@@ -173,7 +175,10 @@ export class TaskPipes {
   `runPersistent` alone hands its child a stdin pipe vx holds and never
   writes (on Linux a `pipe2` pipe too: `cat /dev/stdin` on the socketpair
   failed with ENXIO instead of blocking): a dev server that exits on stdin EOF (esbuild `--watch`) stays up
-  while vx lives, and sees EOF when vx exits (execution.md § Output
+  while vx lives, and sees EOF when vx exits. Its write end closes once the
+  child has exited and its output has ended, never on the output alone: a
+  server that sent its output to a log (`exec >log 2>&1`) ended its streams
+  at once, read EOF and exited (execution.md § Output
   capture and rendering). `terminal: true` (an `exec.interactive` task
   on a TTY) spawns either with `'inherit'` on all three: no stream, no
   capture, no callbacks. The terminal's modes are read with `stty -g`
@@ -212,7 +217,10 @@ The promise from `runCommand` always resolves (never rejects) with a
   through `onStderr` (the task's frame) as well as onto `stderr`: a
   missing `sh` says `[vx] vx runs each task with sh -c: failed to spawn
 'sh' (working dir: <cwd>). Install a POSIX sh and re-run.`, anything else
-  `[vx] failed to spawn task: <message>`. The orchestrator retains no
+  `[vx] failed to spawn task: <message>`, with the way out for an
+  `E2BIG` (the 128 KiB argument limit, a sandbox's wrap counted) or an
+  `EMFILE`; `runPersistent`'s `spawn` rejection carries the same reason.
+  The orchestrator retains no
   stderr, so a reason that only sat on the result reached nobody: a box
   without `sh` showed "failed (exit 127)" under a bare `$ <command>`
   (2026-09-16).
