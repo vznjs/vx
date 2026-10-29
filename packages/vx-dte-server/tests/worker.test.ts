@@ -145,13 +145,19 @@ it('refuses every join with a 403 while ALLOW admits no one, waking no object', 
   for (const [allow, error] of [
     [' ', "this relay's ALLOW is empty: it admits no run"],
     ['o/r', "this relay's ALLOW: o/r is not issuer:owner/repo:workflow"],
+    // wrangler.jsonc may write a var as a JSON list: "list.split is not a
+    // function", where the cache and history Workers name ALLOW's form.
+    [
+      ['https://gitlab.com:o/r:.gitlab-ci.yml'],
+      "this relay's ALLOW: one string of issuer:owner/repo:workflow entries, space separated",
+    ],
   ] as const) {
     const env: Env = {
       RELAY: {
         idFromName: (n) => n,
         get: () => ({ fetch: () => Promise.reject(new Error('woken')) }),
       },
-      ALLOW: allow,
+      ALLOW: allow as string,
     }
     const res = await join(env, A)
     expect([res.status, await res.json()]).toEqual([403, { error }])

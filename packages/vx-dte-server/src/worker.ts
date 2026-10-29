@@ -89,7 +89,11 @@ function allowRefusal(allow: string | undefined): string | undefined {
   if (allowChecked !== undefined && allowChecked.allow === allow) return allowChecked.why
   let why: string | undefined
   try {
-    if (parseAllow(allow ?? '').length === 0) why = "this relay's ALLOW is empty: it admits no run"
+    // wrangler.jsonc may write a var as JSON: a list reached parseAllow.
+    if (allow !== undefined && typeof allow !== 'string')
+      why = "this relay's ALLOW: one string of issuer:owner/repo:workflow entries, space separated"
+    else if (parseAllow(allow ?? '').length === 0)
+      why = "this relay's ALLOW is empty: it admits no run"
   } catch (err) {
     why = `this relay's ALLOW: ${(err as Error).message}`
   }
