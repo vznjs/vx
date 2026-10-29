@@ -744,6 +744,69 @@ describe('the recorded edges hold on specs a lockfile resolves past its layout',
       },
       edges: ['app → is-number'],
     },
+    // vercel/turborepo#854: a `file:` path to a workspace's directory lost
+    // its edge. Bun 1.4.4 and npm 10 link it as the workspace (lockfiles
+    // those installs wrote for b → a, `"a": "file:../a"`).
+    {
+      title: 'bun(): a `file:` path to a workspace links it',
+      make: bun,
+      file: 'bun.lock',
+      text: `{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "root",
+    },
+    "packages/a": {
+      "name": "a",
+      "version": "1.0.0",
+    },
+    "packages/b": {
+      "name": "b",
+      "version": "1.0.0",
+      "dependencies": {
+        "a": "file:../a",
+      },
+    },
+  },
+  "packages": {
+    "a": ["a@workspace:packages/a"],
+
+    "b": ["b@workspace:packages/b"],
+  }
+}
+`,
+      manifests: {
+        'packages/a': { name: 'a', version: '1.0.0' },
+        'packages/b': { name: 'b', version: '1.0.0', dependencies: { a: 'file:../a' } },
+      },
+      edges: ['b → a'],
+    },
+    {
+      title: 'npm(): a `file:` path to a workspace links it',
+      make: npm,
+      file: 'package-lock.json',
+      text: `{
+  "name": "root",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": { "name": "root", "workspaces": ["packages/*"] },
+    "node_modules/a": { "resolved": "packages/a", "link": true },
+    "node_modules/b": { "resolved": "packages/b", "link": true },
+    "packages/a": { "version": "1.0.0" },
+    "packages/b": { "version": "1.0.0", "dependencies": { "a": "file:../a" } }
+  }
+}
+`,
+      manifests: {
+        '.': { name: 'root', workspaces: ['packages/*'] },
+        'packages/a': { name: 'a', version: '1.0.0' },
+        'packages/b': { name: 'b', version: '1.0.0', dependencies: { a: 'file:../a' } },
+      },
+      edges: ['b → a'],
+    },
     {
       title: 'yarn(): a `link:` path links the workspace package it points at',
       make: yarn,
