@@ -55,7 +55,6 @@ import {
   realpathSync,
   statSync,
   utimesSync,
-  writeFileSync,
 } from 'node:fs'
 import type { Stats } from 'node:fs'
 import {
@@ -74,7 +73,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
-import { UserError, writableUnder } from '../util/index.js'
+import { ignoreDir, UserError, writableUnder } from '../util/index.js'
 import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
 import {
   TarFormatError,
@@ -1987,7 +1986,7 @@ async function stagingDir(root: string): Promise<string> {
   await mkdir(own, { recursive: true })
   // Ignored by git whatever `.vx/.gitignore` an older init committed.
   try {
-    writeFileSync(path.join(top, '.gitignore'), '*\n', { flag: 'wx' })
+    ignoreDir(top)
   } catch {
     // there already, or the restore fails on its first write anyway
   }

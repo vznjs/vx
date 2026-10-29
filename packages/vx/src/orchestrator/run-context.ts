@@ -13,7 +13,15 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { envFlagOn, executablePath, gitEnv, relPosix, ulid, xxh3hex } from '../util/index.js'
+import {
+  envFlagOn,
+  executablePath,
+  gitEnv,
+  ignoreDir,
+  relPosix,
+  ulid,
+  xxh3hex,
+} from '../util/index.js'
 import { resolveSetting } from '../settings.js'
 import { branchCacheScope, cacheScopeEnvError, isCacheScope } from '../workspace/index.js'
 import { VERSION } from '../version.js'
@@ -504,6 +512,12 @@ export function captureWorkspaceIdentity(
       salt = ulid()
       fs.mkdirSync(path.dirname(saltPath), { recursive: true })
       fs.writeFileSync(saltPath, salt + '\n')
+    }
+    try {
+      // On every capture: a salt an older vx wrote may sit unignored.
+      ignoreDir(path.dirname(saltPath))
+    } catch {
+      // read-only: the salt is still the identity
     }
     return { id: xxh3hex(salt), name: base, ...where }
   } catch {

@@ -13,6 +13,7 @@ import {
   normalizeRemoteUrl,
 } from '../src/orchestrator/run-context.js'
 import { GitFilesCache, populateGitFilesCache } from '../src/cache/inputs.js'
+import { xxh3hex } from '../src/util/index.js'
 
 /** The `git` spawns `fn` makes, by `Bun.spawnSync`. */
 function gitSpawnsIn(fn: () => void): number {
@@ -471,6 +472,39 @@ describe('captureWorkspaceIdentity', () => {
     expect(a.name).toBe(path.basename(dir))
     const salt = await Bun.file(path.join(dir, '.vx', 'cache', 'workspace-id')).text()
     expect(salt.trim().length).toBeGreaterThan(0)
+  })
+
+  // `.vx/.gitignore` names `/cache` only where init or the default cache
+  // wrote it; with the cache elsewhere (`VX_CACHE_DIR`) or a user's own
+  // `.vx/.gitignore`, the salt showed as an untracked file of vx's.
+  const untracked = (): string => {
+    const p = Bun.spawnSync({
+      cmd: ['git', '-C', dir, 'status', '--porcelain', '-uall'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(p.exitCode).toBe(0)
+    return new TextDecoder().decode(p.stdout)
+  }
+
+  it('the salt it writes is no untracked file, whatever `.vx/.gitignore` says', async () => {
+    git('init', '-q')
+    await mkdir(path.join(dir, '.vx'))
+    await writeFile(path.join(dir, '.vx', '.gitignore'), '/elsewhere\n')
+    git('add', '-A')
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init')
+    captureWorkspaceIdentity(dir, null)
+    expect(untracked()).toBe('')
+  })
+
+  it('a salt an older vx left unignored is ignored at the next capture', async () => {
+    git('init', '-q')
+    await mkdir(path.join(dir, '.vx', 'cache'), { recursive: true })
+    await writeFile(path.join(dir, '.vx', 'cache', 'workspace-id'), 'old-salt\n')
+    expect(untracked()).toBe('?? .vx/cache/workspace-id\n')
+    const id = captureWorkspaceIdentity(dir, null)
+    expect(id.id).toBe(xxh3hex('old-salt'))
+    expect(untracked()).toBe('')
   })
 
   it("takes the enumeration's remote URL with no spawn, and the salt for none (U-4)", async () => {

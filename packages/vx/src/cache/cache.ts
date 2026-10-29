@@ -55,6 +55,7 @@ import { createArtifactTables, createTables, inHashes, lazyStatement } from './s
 import {
   UserError,
   DOT_VX_GITIGNORE,
+  IGNORE_ALL,
   formatBytes,
   isDiskFull,
   isFsRefusal,
@@ -730,7 +731,6 @@ function ensurePrivateDir(dir: string): string | null {
 // ignored directory is skipped by the walk entirely. Only written when
 // absent, so a user's own file wins.
 const utf8 = new TextEncoder()
-const IGNORE_ALL = '*\n'
 
 /**
  * The ignore file that keeps `cacheDir` out of git, and its text. The
