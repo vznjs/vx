@@ -53,12 +53,10 @@ let made: { key: string; handle: (req: Request) => Promise<Response> } | undefin
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    // Unbound, the first query answered the runtime's TypeError.
-    if (env.DB === undefined)
-      return errorJson(
-        500,
-        'no D1 database is bound as DB: bind one in wrangler.jsonc (d1_databases)',
-      )
+    // A deploy's mistake: unbound, capabilities answered and every upload failed.
+    if (env.DB === undefined) {
+      return errorJson(500, 'DB: bind a D1 database as DB (wrangler.jsonc d1_databases)')
+    }
     const key = [env.ALLOW, env.AUDIENCE, env.READ_ACCESS, env.TIMING_DAYS].join('\0')
     if (made?.key !== key) {
       let allow

@@ -13,7 +13,7 @@ let mf: Miniflare
 let base: URL
 let iss: Issuer
 
-async function start(bindings: Record<string, unknown>, db = true): Promise<Miniflare> {
+async function start(bindings: Record<string, unknown>, d1Databases = ['DB']): Promise<Miniflare> {
   const built = await Bun.build({
     entrypoints: [path.join(import.meta.dir, '..', 'src', 'worker.ts')],
     target: 'browser',
@@ -24,7 +24,7 @@ async function start(bindings: Record<string, unknown>, db = true): Promise<Mini
       modules: true,
       script: await built.outputs[0]!.text(),
       compatibilityDate: '2026-10-01',
-      d1Databases: db ? ['DB'] : [],
+      d1Databases,
       bindings: { AUDIENCE: AUD, ...bindings },
       // The issuer's keys, served to the Worker's fetch without a network.
       outboundService: async (req: Request) =>
@@ -90,27 +90,22 @@ it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS i
   }
 })
 
-// A deploy that bound no database answered the runtime's TypeError.
-it('refuses every request, naming the binding, while no D1 database is bound as DB', async () => {
-  const other = await start({ ALLOW: allowVarOf() }, false)
+// No database bound: every request was a 500 naming "undefined", or a
+// capabilities 200 while every upload failed.
+it('refuses every request, saying why, while no D1 database is bound as DB', async () => {
+  const other = await start({ ALLOW: allowVarOf() }, [])
   try {
-    const res = await other.dispatchFetch(new URL('/v1/timings/query', await other.ready), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        issuer: GITHUB,
-        repository: REPO,
-        refs: ['refs/heads/main'],
-        hashes: [],
-      }),
-    })
-    expect([res.status, await res.json()]).toEqual([
-      500,
-      {
-        code: 'internal_error',
-        message: 'no D1 database is bound as DB: bind one in wrangler.jsonc (d1_databases)',
-      },
-    ])
+    for (const route of ['/v1/capabilities', '/v1/timings/query']) {
+      const res = await other.dispatchFetch(new URL(route, await other.ready), {
+        method: route === '/v1/capabilities' ? 'GET' : 'POST',
+        headers: { authorization: `Bearer ${await iss.sign('read', AUD)}` },
+      })
+      expect([route, res.status, ((await res.json()) as { message: string }).message]).toEqual([
+        route,
+        500,
+        'DB: bind a D1 database as DB (wrangler.jsonc d1_databases)',
+      ])
+    }
   } finally {
     await other.dispose()
   }
