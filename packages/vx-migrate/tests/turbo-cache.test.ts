@@ -280,13 +280,18 @@ describe('resolveTurboCacheConfig', () => {
     expect(MIN_SIGNATURE_KEY_LENGTH).toBe(32)
   })
 
-  it('refuses an apiUrl with no http(s) scheme, from options or TURBO_API', () => {
+  // Each names where the URL came from: TURBO_API was refused as an
+  // apiUrl option the workspace never set.
+  it('refuses an apiUrl with no http(s) scheme, naming options, TURBO_API or turbo.json', () => {
     expect(() => resolveTurboCacheConfig({ apiUrl: 'cache.example.com', token: 't' }, {})).toThrow(
-      'vx/turbo-cache: apiUrl must be http(s), got cache.example.com',
+      'turboCache() option "apiUrl" must be an http(s) URL, got "cache.example.com"',
     )
     expect(() =>
       resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'cache.example.com/' }),
-    ).toThrow('vx/turbo-cache: apiUrl must be http(s), got cache.example.com')
+    ).toThrow('TURBO_API must be an http(s) URL, got "cache.example.com"')
+    expect(() =>
+      resolveTurboCacheConfig({ token: 't' }, {}, { apiUrl: 'cache.example.com' }),
+    ).toThrow('turbo.json remoteCache.apiUrl must be an http(s) URL, got "cache.example.com"')
   })
 
   it('refuses an apiUrl carrying user:pass@, from options or TURBO_API (gaps §8 L232)', () => {
@@ -299,14 +304,15 @@ describe('resolveTurboCacheConfig', () => {
       }
     }
     const MSG =
-      'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead'
+      'turboCache() option "apiUrl" carries credentials (user:pass@); pass them as the token instead'
+    const ENV = 'TURBO_API carries credentials (user:pass@); pass them as the token instead'
     expect([
       refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u:p@c.example', token: 't' }, {})),
       refusal(() => resolveTurboCacheConfig({ apiUrl: 'https://u@c.example', token: 't' }, {})),
       refusal(() =>
         resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'https://:p@c.example/' }),
       ),
-    ]).toEqual([MSG, MSG, MSG])
+    ]).toEqual([MSG, MSG, ENV])
     // CONTROL: the same host without userinfo resolves.
     expect(resolveTurboCacheConfig({ apiUrl: 'https://c.example', token: 't' }, {})?.apiUrl).toBe(
       'https://c.example',

@@ -31,6 +31,7 @@ import {
   replaceBinary,
   startedVersion,
   upgradeArgv,
+  upgradeCmd,
   upgradeGlobal,
   upgradeManaged,
   upgradeOnlyGlobal,
@@ -552,6 +553,32 @@ describe('versionSpec', () => {
       '0.4.0-rc.1',
     ])
     expect(() => versionSpec('../../evil')).toThrow('vx upgrade: ../../evil is not a version')
+  })
+
+  // A TAG no release has is usage, refused before anything else is asked:
+  // from source it was "only the compiled binary upgrades itself", and on a
+  // binary VX_E_REFUSED after the install was found.
+  it('a bad TAG is usage, refused first', async () => {
+    const refused = (fn: () => unknown): Promise<unknown> =>
+      Promise.resolve()
+        .then(fn)
+        .then(
+          () => 'accepted',
+          (err: UserError) => ({ code: err.code, message: err.message }),
+        )
+    expect([
+      await refused(() => versionSpec('nope')),
+      await refused(() => upgradeCmd(['nope'])),
+    ]).toEqual([
+      {
+        code: 'VX_E_USAGE',
+        message: 'vx upgrade: nope is not a version (expected v<major>.<minor>.<patch>)',
+      },
+      {
+        code: 'VX_E_USAGE',
+        message: 'vx upgrade: nope is not a version (expected v<major>.<minor>.<patch>)',
+      },
+    ])
   })
 })
 

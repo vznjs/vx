@@ -101,7 +101,10 @@ export function versionSpec(tag: string | undefined): string {
   if (tag === undefined) return 'latest'
   const v = tag.startsWith('v') ? tag.slice(1) : tag
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v)) {
-    throw new UserError(`vx upgrade: ${tag} is not a version (expected v<major>.<minor>.<patch>)`)
+    throw new UserError(
+      `vx upgrade: ${tag} is not a version (expected v<major>.<minor>.<patch>)`,
+      'VX_E_USAGE',
+    )
   }
   return v
 }

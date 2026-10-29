@@ -115,13 +115,22 @@ function canonicaliseTree(graft: TreeGraft): { root: Digest; blobs: Blob[] } {
     if (sent !== undefined) byOldDigest.set(sent, child)
   })
   const blobs: Blob[] = []
+  // Once per old digest: a subtree the Tree names under many names was
+  // rebuilt per name, 2^depth times.
+  const rebuilt = new Map<string, Digest>()
   const rebuild = (dir: Directory): Digest => {
     const directories: DirectoryNode[] = dir.directories.map((d) => {
       const child = byOldDigest.get(d.digest.hash)
       // A child we cannot resolve keeps its original digest — the blob may
       // exist server-side under the worker's encoding even if we cannot
       // re-derive it. Better a possibly-dangling reference than a wrong one.
-      return child === undefined ? d : { name: d.name, digest: rebuild(child) }
+      if (child === undefined) return d
+      let digest = rebuilt.get(d.digest.hash)
+      if (digest === undefined) {
+        digest = rebuild(child)
+        rebuilt.set(d.digest.hash, digest)
+      }
+      return { name: d.name, digest }
     })
     const canonical: Directory = { files: dir.files, directories, symlinks: dir.symlinks }
     const data = encodeDirectory(canonical)
