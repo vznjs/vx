@@ -631,6 +631,31 @@ describe('vx run with vxHistory({ url })', () => {
     }
   })
 
+  // A workspace naming no issuer and repository never asks the server
+  // VX_HISTORY_URL names, so how that URL is spelled cannot fail its run.
+  it('runs when VX_HISTORY_URL is malformed and the workspace names no server', async () => {
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-env-'))
+    Bun.env.VX_HISTORY_URL = 'https://h.example/v1'
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory()] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      const r = await run({ cwd: other, tasks: ['build'], handleSignals: false })
+      expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+    } finally {
+      delete Bun.env.VX_HISTORY_URL
+      await rm(other, { recursive: true, force: true })
+    }
+  })
+
   // `main` was assumed: a repository whose trunk is another branch read
   // no trunk's numbers on any branch.
   it('asks in the refs the run reads: its branch, then baseBranch', async () => {
