@@ -80,6 +80,46 @@ afterEach(async () => {
 })
 
 describe('stale cache hits', () => {
+  // A runner that parsed `git status` lost every change once the repo set
+  // status colours or short status, and paths git quoted did not match.
+  it(
+    'repo git config for colour, short status and quoted paths still sees an edit',
+    async () => {
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'a/vx.config.mjs'),
+        `export default { tasks: { build: {
+           exec: { command: 'cat src/* > out.txt' },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+         } } }`,
+      )
+      const file = path.join(root, 'a/src/zaż "ó"\tx.txt')
+      await write(file, 'v1')
+      await write(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\n')
+      git(root, 'init', '-q')
+      for (const [k, v] of [
+        ['color.ui', 'always'],
+        ['color.status', 'always'],
+        ['color.diff', 'always'],
+        ['status.short', 'true'],
+        ['status.branch', 'true'],
+        ['core.quotePath', 'true'],
+      ])
+        git(root, 'config', k!, v!)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      expect(vx(root, 'lock')).not.toMatch(/✗/)
+      expect(vx(root, 'run', 'a#build')).not.toMatch(/up-to-date/)
+      expect(vx(root, 'run', 'a#build')).toMatch(/a#build[^\n]*up-to-date/)
+      await write(file, 'v2')
+      expect(vx(root, 'show', '--affected=HEAD')).toMatch(/^  a +a +1 task$/m)
+      expect(vx(root, 'run', 'a#build')).not.toMatch(/up-to-date/)
+      expect(await readFile(path.join(root, 'a/out.txt'), 'utf8')).toBe('v2')
+    },
+    TIMEOUT,
+  )
+
   it(
     'an edit to a committed file under its own output moves the key',
     async () => {

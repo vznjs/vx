@@ -46,3 +46,23 @@ it('in git, a config under node_modules is no project, tracked or untracked', as
   const { configs } = await findProjectConfigs(root)
   expect(configs.map((c) => relPosix(root, c.configPath))).toEqual(['packages/a/vx.config.mjs'])
 })
+
+// A build copies a package's files, its vx.config with them, into an
+// ignored output; a dot directory is a place like any other.
+it('in git, a config under an ignored directory is no project; one under a dot directory is', async () => {
+  const root = path.join(BASE, 'ignored')
+  write(root, {
+    '.vx/workspace.mjs': 'export default {}\n',
+    '.gitignore': 'dist/\n',
+    'packages/a/vx.config.mjs': CONFIG,
+    'packages/a/dist/vx.config.mjs': CONFIG,
+    'dist/copy/vx.config.mjs': CONFIG,
+    '.tools/gen/vx.config.mjs': CONFIG,
+  })
+  git(root, 'init', '-q')
+  const { configs } = await findProjectConfigs(root)
+  expect(configs.map((c) => relPosix(root, c.configPath)).sort()).toEqual([
+    '.tools/gen/vx.config.mjs',
+    'packages/a/vx.config.mjs',
+  ])
+})

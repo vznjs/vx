@@ -389,6 +389,42 @@ describe('names taken literally (Turbo, Nx disk expansion)', () => {
   })
 })
 
+describe('names a shell would read (Nx path escaping)', () => {
+  it(
+    'a $, quotes, a tab and an untracked $ name: each edit moves the key, each revert brings it back',
+    async () => {
+      const names = ['src/$id.tsx', 'src/sp ace "q" é.ts', 'src/t\tab.ts']
+      const root = await workspace(
+        "{ files: ['src/**'] }",
+        Object.fromEntries(names.map((n) => [n, 'v1'])),
+      )
+      await writeFile(at(root, 'src/untracked $u.ts'), 'v1')
+      const clean = await key(root)
+      for (const rel of [...names, 'src/untracked $u.ts']) {
+        await writeFile(at(root, rel), 'v2')
+        expect({ rel, moved: (await key(root)) !== clean }).toEqual({ rel, moved: true })
+        await writeFile(at(root, rel), 'v1')
+        expect({ rel, back: (await key(root)) === clean }).toEqual({ rel, back: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+describe('the workspace config (Nx namedInputs, nx.json)', () => {
+  it(
+    'an edit to .vx/workspace.mjs that changes no setting moves no task key',
+    async () => {
+      const root = await workspace("{ files: ['a.txt'] }", { 'a.txt': 'a' })
+      const clean = await key(root)
+      const file = path.join(root, '.vx', 'workspace.mjs')
+      await writeFile(file, `// an unrelated note\n${await Bun.file(file).text()}`)
+      expect(await key(root)).toBe(clean)
+    },
+    TIMEOUT,
+  )
+})
+
 describe('refused at vx lock (Turbo, Nx)', () => {
   const refusal = (inputs: InputsConfig): string => {
     try {

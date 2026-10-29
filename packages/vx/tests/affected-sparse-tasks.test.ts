@@ -121,6 +121,17 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
     const r = vx(root, 'run', 'test', '--filter', 'docs')
     expect([r.exitCode, r.out.includes('no projects declare task(s): test')]).toEqual([1, true])
   })
+
+  // A named project that lacks the task is skipped, not an error, and does
+  // not stop the named one that declares it.
+  it('a named scope runs the projects declaring the task; one that lacks it is no error', () => {
+    const r = vx(root, 'run', 'test', '--filter', 'docs', '--filter', 'app')
+    expect([r.exitCode, r.out.includes('app#test'), r.out.includes('docs#')]).toEqual([
+      0,
+      true,
+      false,
+    ])
+  })
 })
 
 // C-3: the guard judged a bare name against the whole workspace only when

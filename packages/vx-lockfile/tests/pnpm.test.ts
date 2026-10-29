@@ -13,6 +13,7 @@ import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { pnpm } from '../src/index.js'
 import { importerDigests, parseLockfile, recordedImporters } from '../src/pnpm.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
+import { editMemo, readMemo } from './helpers/memo.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 
@@ -257,6 +258,71 @@ describe('importer digests', () => {
     const before = digests(catalogV9(6))
     const after = digests(catalogV9(7))
     expect([...after.keys()].filter((k) => after.get(k) !== before.get(k))).toEqual(['packages/a'])
+  })
+
+  it('a catalog bump the root importer names moves the root and no project beside it', () => {
+    const rootNames = (major: 6 | 7) =>
+      catalogV9(major).replace(
+        '  .: {}',
+        `  .:\n    devDependencies:\n      is-number:\n        specifier: 'catalog:'\n        version: ${major}.0.0`,
+      )
+    const before = digests(rootNames(6))
+    const after = digests(rootNames(7))
+    expect([...after.keys()].filter((k) => after.get(k) !== before.get(k))).toEqual([
+      '.',
+      'packages/a',
+    ])
+  })
+
+  it('a snapshot dependency redirected, made optional or removed moves its dependant alone', () => {
+    // foo's own entry stays; only the edge under its snapshot changes.
+    const foo = '  foo@1.0.0:\n    dependencies:\n      bar: 2.0.0\n'
+    const base = v9()
+    expect(base).toContain(foo)
+    const edge = (field: string, v: string) =>
+      base.replace(foo, `  foo@1.0.0:\n    ${field}:\n      bar: ${v}\n`)
+    const shapes = {
+      redirected: [base, edge('dependencies', '2.0.1')],
+      'redirected, optional': [
+        edge('optionalDependencies', '2.0.0'),
+        edge('optionalDependencies', '2.0.1'),
+      ],
+      removed: [base, base.replace(foo, '  foo@1.0.0: {}\n')],
+    }
+    for (const [shape, [from, to]] of Object.entries(shapes)) {
+      const before = digests(from!)
+      const after = digests(to!)
+      expect({
+        shape,
+        moved: [...after.keys()].filter((k) => after.get(k) !== before.get(k)),
+      }).toEqual({
+        shape,
+        moved: ['packages/a'],
+      })
+    }
+  })
+
+  it('the platform reading the lockfile moves no digest', () => {
+    // A key from installed or platform-filtered entries differed between a
+    // macOS and a Linux machine on one lockfile.
+    const text = v9().replace(
+      '  baz@3.0.0:\n    resolution: {integrity: sha512-baz3.0.0}\n',
+      '  baz@3.0.0:\n    resolution: {integrity: sha512-baz3.0.0}\n    os: [darwin]\n    cpu: [arm64]\n',
+    )
+    expect(text).toContain('os: [darwin]')
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+    const arch = Object.getOwnPropertyDescriptor(process, 'arch')!
+    const under = (p: string, a: string) => {
+      Object.defineProperty(process, 'platform', { ...platform, value: p })
+      Object.defineProperty(process, 'arch', { ...arch, value: a })
+      try {
+        return [...digests(text)]
+      } finally {
+        Object.defineProperty(process, 'platform', platform)
+        Object.defineProperty(process, 'arch', arch)
+      }
+    }
+    expect(under('darwin', 'arm64')).toEqual(under('linux', 'x64'))
   })
 
   it("a `link:` dependency folds the linked importer's closure", () => {
@@ -717,12 +783,8 @@ describe('vx run with pnpm() declared', () => {
 
   it('a warm run reads the memo instead of parsing', async () => {
     await hashes()
-    const memoFile = path.join(root, '.vx', 'cache', 'lockfile-claims', 'pnpm-lock.yaml.json')
-    const memo = JSON.parse(await readFile(memoFile, 'utf8')) as {
-      version: number
-      lock: string
-      importers: Record<string, string>
-    }
+    const cacheDir = path.join(root, '.vx', 'cache')
+    const memo = readMemo(cacheDir, 'pnpm-lock.yaml')
     expect(Object.keys(memo.importers).sort()).toEqual([
       '.',
       'packages/a',
@@ -734,8 +796,9 @@ describe('vx run with pnpm() declared', () => {
     // same bytes would serve the module, and its memory, again) must key
     // on it — the proof the memo was read and the file not parsed.
     const before = await hashes()
-    memo.importers['packages/a'] = 'sentinel'
-    await writeFile(memoFile, JSON.stringify(memo))
+    editMemo(cacheDir, 'pnpm-lock.yaml', (m) => {
+      m.importers['packages/a'] = 'sentinel'
+    })
     await workspace('pnpm() /* fresh instance */')
     const planted = await hashes()
     expect(planted['a#build']).not.toBe(before['a#build'])
@@ -743,9 +806,9 @@ describe('vx run with pnpm() declared', () => {
     // A lockfile whose bytes changed ignores the stale memo.
     await writeFile(path.join(root, 'pnpm-lock.yaml'), v9({ pnpmfile: 'x' }))
     await workspace('pnpm() /* another */')
-    const fresh = JSON.parse(await readFile(memoFile, 'utf8')) as { lock: string }
+    const fresh = readMemo(cacheDir, 'pnpm-lock.yaml')
     await hashes()
-    const rewritten = JSON.parse(await readFile(memoFile, 'utf8')) as { lock: string }
+    const rewritten = readMemo(cacheDir, 'pnpm-lock.yaml')
     expect(rewritten.lock).not.toBe(fresh.lock)
   })
 })

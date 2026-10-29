@@ -2006,6 +2006,41 @@ describe('parseRunArgs', () => {
     expect(r.forwardArgs).toEqual(['--verbosity', '--no-cache'])
   })
 
+  // Other runners rewrote what they forwarded: a lone `0` dropped, a bare
+  // flag made `--flag=true`, camelCase turned kebab, a comma split into two
+  // values, a short option given an extra dash, a `--help` or `--base`
+  // taken as their own, a second `--` swallowed. Each word stays as typed.
+  it('forwards every word after `--` exactly as typed, a second `--` included', () => {
+    const words = [
+      '0',
+      '007',
+      '--flag',
+      '--fooBar=1',
+      '--output-dir',
+      '/x/y',
+      'a,b',
+      '-u',
+      '--help',
+      '--base=x',
+      '--verbose',
+      '--',
+      'two words',
+      `it's`,
+      '$HOME',
+      '',
+    ]
+    const r = parseRunArgs(['build', '--all', '--', ...words])
+    expect(r.error).toBeUndefined()
+    expect(r.all).toBe(true)
+    expect(r.tasks).toEqual(['build'])
+    expect(r.forwardArgs).toEqual(words)
+  })
+
+  it('takes an all-digit --affected value as a ref, not a number', () => {
+    expect(parseRunArgs(['build', '--affected=123']).affected).toBe('123')
+    expect(parseRunArgs(['build', '--affected=007']).affected).toBe('007')
+  })
+
   it('rejects unknown flag', () => {
     expect(parseRunArgs(['--bogus']).error).toMatch(/unknown flag/)
   })
@@ -2064,6 +2099,9 @@ describe('parseRunArgs', () => {
       '--skip-nx-cache',
       '--only',
       '--graph',
+      '--no-color',
+      '--parallel',
+      '--no-parallel',
     ])
       expect(parseRunArgs(['build', flag, 'x']).error).toMatch(
         new RegExp(`unknown flag: ${flag}\\b`),

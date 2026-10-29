@@ -497,6 +497,32 @@ describe('every input the digest must read', () => {
     expect(movedDirs(text('2.1.3'), text('2.1.4'))).toEqual(['apps/web'])
   })
 
+  it("a git dependency's short tuple: its commit and its own dependencies move what reaches it", () => {
+    // Bun 1.4 writes a git package as `[id, { deps }, commit]`: no registry
+    // field, so the metadata is the second slot, not the third.
+    const text = (commit: string, ms: string) =>
+      doc(
+        `"": { "name": "ws" }, "packages/a": { "name": "a", "dependencies": { "debug": "github:debug-js/debug#4.3.4" } }`,
+        `"a": ["a@workspace:packages/a"],
+    "debug": ["debug@github:debug-js/debug#${commit}", { "dependencies": { "ms": "2.1.2" } }, "debug-js-debug-${commit}"],
+    "ms": ["ms@${ms}", "", {}, "sha512-ms${ms}"]`,
+      )
+    expect(movedDirs(text('6add244', '2.1.2'), text('7bbe001', '2.1.2'))).toEqual(['packages/a'])
+    expect(movedDirs(text('6add244', '2.1.2'), text('6add244', '2.1.3'))).toEqual(['packages/a'])
+  })
+
+  it('an npm alias resolves by the name it is installed under', () => {
+    // `"alias-dev": "npm:typescript@5.0.4"` installs at `alias-dev`; the
+    // entry's id names the real package.
+    const text = (v: string) =>
+      doc(
+        `"": { "name": "ws" }, "packages/a": { "name": "a", "dependencies": { "alias-dev": "npm:typescript@${v}" } }`,
+        `"a": ["a@workspace:packages/a"],
+    "alias-dev": ["typescript@${v}", "", {}, "sha512-ts${v}"]`,
+      )
+    expect(movedDirs(text('5.0.4'), text('5.0.5'))).toEqual(['packages/a'])
+  })
+
   it('an entry that is not a package tuple is passed over, not a crash', () => {
     const text = doc(`"": { "name": "ws" }`, `"odd": 5, "also": [7]`)
     expect([...digests(text).keys()]).toEqual(['.'])

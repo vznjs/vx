@@ -302,6 +302,25 @@ describe('applyFilters', () => {
       expect(pick('c++')).toEqual(['c++'])
     })
 
+    it('a name matches whole: foo never selects foo-e2e, acme never @acme/acme-e2e', () => {
+      const named = [
+        mkProject('foo', `${ROOT}/packages/foo`),
+        mkProject('foo-e2e', `${ROOT}/packages/foo-e2e`),
+        mkProject('@acme/acme', `${ROOT}/packages/acme`),
+        mkProject('@acme/acme-e2e', `${ROOT}/packages/acme-e2e`),
+        mkProject('@s/a:b', `${ROOT}/packages/ab`),
+        mkProject('@s/a', `${ROOT}/packages/a`),
+      ]
+      const g = buildPackageGraph(named)
+      const pick = (f: string) =>
+        [...applyFilters({ filters: [parseFilter(f, ROOT)], projects: named, graph: g })].sort()
+      expect(pick('foo')).toEqual(['foo'])
+      expect(pick('foo*')).toEqual(['foo', 'foo-e2e'])
+      expect(pick('acme')).toEqual(['@acme/acme'])
+      expect(pick('@s/a:b')).toEqual(['@s/a:b'])
+      expect(pick('@s/a')).toEqual(['@s/a'])
+    })
+
     it("'@acme/*' still selects exactly the scope", () => {
       const filters = [parseFilter('@acme/*', ROOT)]
       expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })].sort()).toEqual([

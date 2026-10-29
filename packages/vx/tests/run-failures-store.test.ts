@@ -1,61 +1,28 @@
-// The failures/ files `vx last` reads beside cache.db: a file the disk left
-// torn (a rename that landed before its data, on power loss) made every
-// `vx last` throw a SyntaxError until 50 newer failed runs rotated it out,
-// and a crashed writer's temp file stayed for good.
-import { Database } from 'bun:sqlite'
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+// A failed run's kept output lives in cache.db's `failures` (v50), beside
+// the run's rows: `vx last` reads it back, `vx last --sql` can query it,
+// the newest 50 failed runs are kept, and nothing is written beside the
+// index.
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { Cache } from '../src/cache/index.js'
 import { runFailures, writeRunFailures } from '../src/orchestrator/run-failures.js'
 import type { TaskOutcome } from '../src/graph/index.js'
 
 let cacheDir: string
-let db: Database
+let cache: Cache
 beforeEach(() => {
   cacheDir = mkdtempSync(path.join(os.tmpdir(), 'vx-run-failures-'))
-  db = new Database(':memory:')
-  db.run('CREATE TABLE invocations (run_id TEXT, exit_ok INTEGER)')
-  db.run(
-    'CREATE TABLE runs (id INTEGER PRIMARY KEY, run_id TEXT, project TEXT, task TEXT, exit_code INTEGER, timed_out INTEGER, status TEXT)',
-  )
+  cache = new Cache(cacheDir)
 })
 afterEach(() => {
-  db.close()
+  cache.close()
   rmSync(cacheDir, { recursive: true, force: true })
 })
 
-const failed = (runId: string): void => {
-  db.run('INSERT INTO invocations VALUES (?, 0)', [runId])
-  db.run(
-    "INSERT INTO runs (run_id, project, task, exit_code, status) VALUES (?, 'a', 'b', 1, 'failed')",
-    [runId],
-  )
-}
-
-it('reads a torn failures file as a run that kept no output', () => {
-  failed('r1')
-  mkdirSync(path.join(cacheDir, 'failures'))
-  for (const torn of ['', '{"runId":"r1","tas', 'null']) {
-    writeFileSync(path.join(cacheDir, 'failures', 'r1.json'), torn)
-    expect(runFailures(cacheDir, db)?.tasks.map((t) => [t.taskId, t.output])).toEqual([['a#b', '']])
-  }
-})
-
-it('reads no file outside failures/ for a run id the caller typed', () => {
-  writeFileSync(
-    path.join(cacheDir, 'x.json'),
-    JSON.stringify({ tasks: [{ taskId: 'a#b', output: 'not this run', locations: [] }] }),
-  )
-  failed('../x')
-  expect(runFailures(cacheDir, db, '../x')?.tasks.map((t) => t.output)).toEqual([''])
-})
-
-it("removes a crashed writer's temp file once its run is past the newest 50", () => {
-  const dir = path.join(cacheDir, 'failures')
-  mkdirSync(dir)
-  writeFileSync(path.join(dir, '000-crashed.json.4242.tmp'), '{')
-  const outcome = {
+const outcome = (): TaskOutcome =>
+  ({
     node: {
       id: 'a#b',
       projectName: 'a',
@@ -66,9 +33,52 @@ it("removes a crashed writer's temp file once its run is past the newest 50", ()
     status: 'failed',
     exitCode: 1,
     inputMoved: 'src/a.ts',
-  } as unknown as TaskOutcome
-  for (let i = 1; i <= 50; i++)
-    writeRunFailures(cacheDir, `r${String(i).padStart(3, '0')}`, [outcome], () => {})
-  expect(readdirSync(dir)).not.toContain('000-crashed.json.4242.tmp')
-  expect(readdirSync(dir).length).toBe(50)
+  }) as unknown as TaskOutcome
+
+const failed = (runId: string): void => {
+  const db = cache.dbHandle()
+  db.run(
+    `INSERT INTO invocations (run_id, command, requested_tasks, cache_policy, concurrency,
+       started_at, ended_at, total_duration_ms, task_count, failed_count, hit_count,
+       hit_local_count, hit_remote_count, exit_ok, ci, vx_version)
+     VALUES (?, 'vx run b', '[]', 'full', 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 'test')`,
+    [runId],
+  )
+  db.run(
+    `INSERT INTO runs (hash, run_id, project, task, status, exit_code, duration_ms, started_at, ended_at)
+     VALUES ('', ?, 'a', 'b', 'failed', 1, 0, 0, 0)`,
+    [runId],
+  )
+  writeRunFailures(cache, runId, [outcome()], (m) => {
+    throw new Error(m)
+  })
+}
+
+it('a failed task reads back what its run kept, from cache.db only', () => {
+  failed('r1')
+  expect(runFailures(cache.dbHandle())?.tasks).toEqual([
+    { taskId: 'a#b', exitCode: 1, inputMoved: 'src/a.ts', output: '', locations: [] },
+  ])
+  expect(cache.dbHandle().query('SELECT run_id, task_id, input_moved FROM failures').all()).toEqual(
+    [{ run_id: 'r1', task_id: 'a#b', input_moved: 'src/a.ts' }],
+  )
+  expect(readdirSync(cacheDir)).not.toContain('failures')
+})
+
+it('a failed task its run kept nothing of reads empty output', () => {
+  failed('r1')
+  cache.dbHandle().run('DELETE FROM failures')
+  expect(runFailures(cache.dbHandle(), 'r1')?.tasks.map((t) => [t.taskId, t.output])).toEqual([
+    ['a#b', ''],
+  ])
+})
+
+it('keeps the newest 50 failed runs', () => {
+  for (let i = 1; i <= 52; i++) failed(`r${String(i).padStart(3, '0')}`)
+  const runs = cache
+    .dbHandle()
+    .query('SELECT DISTINCT run_id FROM failures ORDER BY run_id')
+    .all() as { run_id: string }[]
+  expect(runs.length).toBe(50)
+  expect([runs[0]!.run_id, runs[49]!.run_id]).toEqual(['r003', 'r052'])
 })

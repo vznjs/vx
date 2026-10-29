@@ -349,6 +349,15 @@ describe('formatTaskBlock', () => {
     expect(colored).toContain('\n\x1b[31mFAIL\x1b[0m x\n')
   })
 
+  it('blank lines inside a buffered frame are kept', () => {
+    const out = formatTaskBlock(
+      node('a#build', 'printf'),
+      outcome('a#build', 'success', { durationMs: 5 }),
+      { output: [{ text: 'l1\n\n\nl4\n', err: false }] },
+    )
+    expect(out).toContain('\nl1\n\n\nl4\n')
+  })
+
   it('whitespace-only stdout renders no stdout section', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#lint', 'oxlint .'),

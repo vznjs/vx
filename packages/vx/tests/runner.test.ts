@@ -224,6 +224,90 @@ describe('runCommand', () => {
     expect(result.stdout.trim()).toBe(`prefix: hello world with space it's`)
   })
 
+  it('a task writes into a pipe and reads no terminal, so it sends no terminal queries to replay', async () => {
+    const result = await runCommand({
+      command:
+        'if [ -t 1 ]; then echo out-tty; else echo out-pipe; fi; if [ -t 0 ]; then echo in-tty; else echo in-none; fi',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect(result.stdout).toBe('out-pipe\nin-none\n')
+  })
+
+  it('a forwarded arg reaches the command as one word, the shell expanding nothing in it', async () => {
+    const args = [
+      '--name=a b',
+      '$HOME',
+      ';echo PWNED',
+      '`id`',
+      '$(id)',
+      '*',
+      '',
+      '--foo=0x1',
+      "it's",
+    ]
+    const result = await runCommand({
+      command: `printf '[%s]\\n'`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '', HOME: '/nowhere' },
+      forwardArgs: args,
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toBe(args.map((a) => `[${a}]\n`).join(''))
+  })
+
+  it('forwards each arg as one literal word: globs, $, quotes, backticks, empty, digits', async () => {
+    const args = [
+      '*',
+      '$HOME',
+      '`id`',
+      `"q"`,
+      `'s'`,
+      '',
+      '--x=1 2',
+      '007',
+      '81919e4',
+      '--grep=@a\\|@b',
+    ]
+    const result = await runCommand({
+      command: `printf '[%s]'`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '', HOME: '/nowhere' },
+      forwardArgs: args,
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toBe(args.map((a) => `[${a}]`).join(''))
+  })
+
+  it('keeps a last line with no newline, on the live stream and in the result', async () => {
+    let live = ''
+    const result = await runCommand({
+      command: `printf 'line1\\nlast-no-newline'`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      onStdout: (chunk) => {
+        live += chunk
+      },
+    })
+    expect([result.stdout, live]).toEqual(['line1\nlast-no-newline', 'line1\nlast-no-newline'])
+  })
+
+  it('streams every line of a large output, the last one included', async () => {
+    let lines = 0
+    let tail = ''
+    const result = await runCommand({
+      command: 'seq 1 200000',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      capture: { stdout: false, stderr: false },
+      onStdout: (chunk) => {
+        for (let i = chunk.indexOf('\n'); i !== -1; i = chunk.indexOf('\n', i + 1)) lines++
+        tail = (tail + chunk).slice(-16)
+      },
+    })
+    expect([result.exitCode, lines, tail.endsWith('\n200000\n')]).toEqual([0, 200_000, true])
+  })
+
   it('reports cpuMs from rusage; a task lighter than this process has no peak on record', async () => {
     // Burn a tiny bit of CPU so cpuMs is observably > 0. The shell loop
     // peaks at ~2 MB, under this process's own mark, and Linux hands the
@@ -1375,6 +1459,20 @@ describe('runPersistent — the rows its sweep asked for', () => {
       'e�',
       false,
     ])
+  })
+
+  it('a readyWhen line on stderr alone makes the server ready', async () => {
+    const spawn = runPersistent({
+      command: `echo booting; echo 'listening on 3000' >&2; exec sleep 30`,
+      cwd: dir,
+      env: env(),
+      readyWhen: 'listening on',
+    })
+    try {
+      expect(await within(spawn.ready, 1_500)).toBe('ready')
+    } finally {
+      await stop(spawn)
+    }
   })
 
   it('is ready at once without readyWhen, and readyMs stays where it landed', async () => {

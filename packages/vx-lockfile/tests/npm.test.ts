@@ -296,6 +296,36 @@ describe('every input the npm digest must read', () => {
     expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['packages/a'])
   })
 
+  // A package that bundles its dependencies installs them as `inBundle`
+  // entries with a version and no resolved or integrity. Matched by
+  // name@version, the bundled copy could stand in for the registry entry
+  // of the same version and drop its integrity. By Node's walk it stands
+  // only for its parent's own reads.
+  it('a bundled copy stands in for no registry entry of the same version', () => {
+    const text = (o: { integrity?: string; bundled?: string } = {}) =>
+      doc({
+        'packages/a': { name: 'a', dependencies: { bar: '^1' } },
+        'packages/b': { name: 'b', dependencies: { pkg: '^1' } },
+        'node_modules/bar': {
+          version: '1.0.0',
+          resolved: 'https://r/bar-1.0.0.tgz',
+          integrity: o.integrity ?? 'sha512-bar',
+        },
+        'node_modules/pkg': {
+          version: '1.0.0',
+          resolved: 'https://r/pkg-1.0.0.tgz',
+          integrity: 'sha512-pkg',
+          bundleDependencies: ['bar'],
+          dependencies: { bar: '^1' },
+        },
+        'node_modules/pkg/node_modules/bar': { version: o.bundled ?? '1.0.0', inBundle: true },
+      })
+    expect({
+      registry: movedDirs(text(), text({ integrity: 'sha512-other' })),
+      bundled: movedDirs(text(), text({ bundled: '1.0.1' })),
+    }).toEqual({ registry: ['packages/a'], bundled: ['packages/b'] })
+  })
+
   it('an unresolved dependency and a dangling link still fold what they name', () => {
     const spec = (s: string) => doc({ 'packages/a': { name: 'a', dependencies: { ghost: s } } })
     expect(movedDirs(spec('^1'), spec('^2'))).toEqual(['packages/a'])

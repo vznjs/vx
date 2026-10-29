@@ -34,15 +34,14 @@ RootCause           // { chain: the asked task down to the root, entries: its ow
 InputWriter         // { taskId, file, writers: the tasks running when the file last changed }
 ```
 
-`run-failures.ts` beside it keeps a failed run's task output in
-`<cacheDir>/failures/<runId>.json` (caching.md § Storage layout), not
-in the index:
+`run-failures.ts` beside it keeps a failed run's task output as rows of
+cache.db's `failures` (caching.md § Schema), through
+`cache/run-notes.ts`:
 
 ```ts
-writeRunFailures(cacheDir, runId, outcomes, warn): void // at run end; only when an outcome carries failedOutput; newest 50 kept; a refused write warns
-runFailures(cacheDir, db, runId?): RunFailures | null // default the latest failed run; a torn file reads as none kept, a runId with a path part names no file
-trimKept(dir, kept): void // the newest `kept` runs' files, and a crashed writer's temp once its run is older than them (steps/, warnings/ too)
-taskLog(cacheDir, db, taskId, runId?): TaskLog | null // default the latest run that recorded the task
+writeRunFailures(cache, runId, outcomes, warn): void // at run end; only when an outcome carries failedOutput or inputMoved; newest 50 failed runs kept; a refused write warns
+runFailures(db, runId?): RunFailures | null // default the latest failed run; a failed task with no kept row reads output ''
+taskLog(db, taskId, runId?): TaskLog | null // default the latest run that recorded the task
 
 export interface RunFailures {
   runId: string
@@ -67,23 +66,26 @@ export interface TaskLog {
 }
 ```
 
-`taskLog` reads one task's output: a failed task's from the file, any
-other from the cache entry its key names (the log a hit replays, masked
-as it was), and nothing for an uncached pass or a skip. `vx last --log`
-answers from it.
+`taskLog` reads one task's output: a failed task's from its `failures`
+row, any other from the cache entry its key names (the log a hit
+replays, masked as it was), and nothing for an uncached pass or a skip.
+`vx last --log` answers from it.
 
-`runFailures` lists the run's failed `runs` rows and fills each from the
-file; `vx last --format json` answers from it.
+`runFailures` lists the run's failed `runs` rows and fills each from its
+`failures` row; `vx last --format json` answers from it.
 
-`run-steps.ts` keeps the steps a run did not wait on (`vx:prefetch`),
-which its output never shows, in `<cacheDir>/steps/<runId>.json` for
-`vx last`:
+`cache/run-notes.ts` holds the statements over `steps`, `warnings` and
+`failures`: what a run said that its `runs` rows do not hold. A run's
+steps it did not wait on (`vx:prefetch`), which its output never shows,
+and its warnings go in at run end, in one transaction; each table keeps
+the newest 50 runs that had any (run ids are UUIDv7, so they sort by
+age). `vx last --sql` reads them as it reads `runs`.
 
 ```ts
-writeRunSteps(cacheDir, runId, steps, warn): void // at run end; nothing when no step ran; newest 50 kept; a refused write warns
-runSteps(cacheDir, runId): RunStep[] // [] when the run kept none
-writeRunWarnings(cacheDir, runId, warnings, warn): void // the run's warnings, colour stripped, beside its steps
-runWarnings(cacheDir, runId): string[] // [] when it said none or they are gone
+keepRunNotes(db, runId, { steps?, warnings?, failures? }): void // one IMMEDIATE transaction, then the trim; nothing when all are empty
+keptSteps(db, runId): RunStep[] // [] when the run kept none
+keptWarnings(db, runId): string[] // [] when it said none or they are gone
+keptFailures(db, runId): Map<string, KeptFailure> // by task id
 
 export interface RunStep {
   id: string // 'vx:prefetch'

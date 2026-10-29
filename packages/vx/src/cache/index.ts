@@ -102,3 +102,13 @@ export {
 } from './plugin-cache.js'
 export { packRunOutputs, putRunEntry, runEntryName, writesRunStore } from './run-store.js'
 export { branchSource } from './run-history.js'
+export {
+  type KeptFailure,
+  keepRunNotes,
+  keptFailures,
+  keptSteps,
+  keptWarnings,
+  type RunNotes,
+  type RunStep,
+} from './run-notes.js'
+export { readLockfileMemo, writeLockfileMemo, type LockfileMemo } from './lockfile-memo.js'

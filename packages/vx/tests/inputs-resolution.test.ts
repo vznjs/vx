@@ -653,6 +653,26 @@ describe('the hard project boundary holds in both directions', () => {
     ])
   })
 
+  it('a gitignored directory named outright is read from disk, but not the nested project under it', async () => {
+    // A named ignored prefix (`gen/**` over an ignored `gen/`) is walked on
+    // disk, beside git's listing; that walk is where a nested project's
+    // files could leak into the parent's key.
+    await write(path.join(projectDir, '.gitignore'), 'gen/\n')
+    await write(path.join(projectDir, 'gen', 'own.txt'))
+    const nested = path.join(projectDir, 'gen', 'sub')
+    await write(path.join(nested, 'theirs.txt'))
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['gen/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [nested],
+    })
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('gen', 'own.txt')])
+  })
+
   it('resolveOutputs keeps the parent’s same-depth files while excluding the nested project', async () => {
     // `resolveOutputs` feeds `cleanOutputs`, which DELETES what it resolves, so
     // the over-exclusion direction is a correctness bug and the under-exclusion
@@ -1168,6 +1188,26 @@ describe('resolved file order is stable regardless of enumeration order', () => 
       path.join('src', 'b.ts'),
       path.join('src', 'c.ts'),
     ])
+  })
+
+  it('sorts by code unit, not by locale: the key is the same on every machine', async () => {
+    // A locale sort puts `a.ts` before `B.ts` and `_x.ts` anywhere the
+    // collation likes; code units put `B` (66) < `_` (95) < `a` (97).
+    for (const f of ['é.ts', '_x.ts', 'B.ts']) await write(path.join(projectDir, 'src', f), f)
+    const memo = new GitFilesCache()
+    memo.set(projectDir, ['src/a.ts', 'src/é.ts', 'src/_x.ts', 'src/B.ts'])
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+      gitFilesCache: memo,
+    })
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual(
+      ['src/B.ts', 'src/_x.ts', 'src/a.ts', 'src/é.ts'].map((f) => path.join(...f.split('/'))),
+    )
   })
 
   it('a workspaceFiles declaration is resolved once per run and snapshot', async () => {
