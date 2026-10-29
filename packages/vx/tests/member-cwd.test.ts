@@ -130,4 +130,20 @@ describe('running from inside a workspace member', () => {
     expect((await vx(a, ['run', 'build'])).code).toBe(0)
     expect((await readFile(path.join(a, 'ran.log'), 'utf8')).trim().split('\n')).toHaveLength(2)
   })
+
+  // vercel/turborepo#4956: a hit restored against the cwd, not the repo
+  // root, so a run from inside a package put outputs in the wrong place.
+  it('a hit from a subdirectory restores each output at its own project, nothing under the cwd', async () => {
+    expect((await vx(a, ['run', 'build'])).code).toBe(0)
+    await rm(path.join(a, 'out'), { recursive: true, force: true })
+    await rm(path.join(b, 'out'), { recursive: true, force: true })
+    const r = await vx(path.join(a, 'src'), ['run', 'build'])
+    expect(r.code).toBe(0)
+    expect([
+      await readFile(path.join(a, 'out', 'o.txt'), 'utf8'),
+      await readFile(path.join(b, 'out', 'o.txt'), 'utf8'),
+      await exists(path.join(a, 'src', 'out')),
+      (await readFile(path.join(a, 'ran.log'), 'utf8')).trim().split('\n').length,
+    ]).toEqual(['v1', 'v1', false, 1])
+  })
 })
