@@ -30,7 +30,7 @@ it("the PR's title is a Conventional Commits header", () => {
 // A mega branch's own commit made before this row knew mega branches; its
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
-const KNOWN = new Set(['92f8f4136'])
+const KNOWN = new Set(['92f8f41369c5c8ebe41934bb31c8eeddda32b1a1'])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {
   if (base === '' || head === '') return
@@ -43,7 +43,7 @@ it('every commit the PR adds has a Conventional Commits subject', () => {
       'git',
       'log',
       '--no-merges',
-      '--format=%h %s',
+      '--format=%H %s',
       `${base}..${head}`,
       ...landed.map((h) => `^${h}`),
     ],

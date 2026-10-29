@@ -8,9 +8,9 @@
         "sqlite statement": 714
       },
       "up-to-date run @25": {
-        "hash xxh3": 1041,
+        "hash xxh3": 1092,
         "spawn git": 3,
-        "sqlite statement": 45
+        "sqlite statement": 46
       },
       "restore run @25": {
         "hash xxh3": 84,
@@ -24,10 +24,10 @@
       },
       "one-edit run @25": {
         "hash blob update": 2,
-        "hash xxh3": 1230,
+        "hash xxh3": 909,
         "spawn git": 3,
         "spawn sh": 18,
-        "sqlite statement": 210
+        "sqlite statement": 211
       },
       "cold run @100": {
         "hash xxh3": 8056,
@@ -36,9 +36,9 @@
         "sqlite statement": 2746
       },
       "up-to-date run @100": {
-        "hash xxh3": 4191,
+        "hash xxh3": 4392,
         "spawn git": 3,
-        "sqlite statement": 125
+        "sqlite statement": 126
       },
       "restore run @100": {
         "hash xxh3": 309,
@@ -52,10 +52,10 @@
       },
       "one-edit run @100": {
         "hash blob update": 2,
-        "hash xxh3": 4855,
+        "hash xxh3": 3484,
         "spawn git": 3,
         "spawn sh": 68,
-        "sqlite statement": 715
+        "sqlite statement": 716
       }
     },
     "time": {

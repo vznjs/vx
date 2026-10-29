@@ -9,6 +9,7 @@ import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
 import { refuseUnknownOptions, UserError, ui, type PluginOptionKinds } from '@vzn/vx'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
+import { printable } from './wire.js'
 
 export interface GithubOptions {
   /** The workers' workflow file in `.github/workflows` (default `vx-worker.yml`). */
@@ -122,7 +123,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
     if (res === undefined || res.ok || res.status === 409) return
     failed(
       `cancelling ${runOf(run)}`,
-      `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+      `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}`,
     )
   }
   /** Cancels `run` once none of its workers is still needed. */
@@ -162,7 +163,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
               if (reset !== undefined) held = Math.max(held, reset)
               failed(
                 `reading ${runOf(run)}'s jobs`,
-                `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}${reset === undefined ? '' : resetsAt(reset)}`,
+                `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}${reset === undefined ? '' : resetsAt(reset)}`,
               )
               return
             } else {
@@ -247,7 +248,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
         }),
       })
       if (res.ok) break
-      const text = (await res.text()).slice(0, 200)
+      const text = printable((await res.text()).slice(0, 200))
       const reset = limitReset(res)
       if (reset !== undefined) {
         if (reset > end || closed)
