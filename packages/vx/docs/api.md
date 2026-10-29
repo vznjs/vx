@@ -2959,6 +2959,7 @@ export interface TaskOutcome {
   failedOutput?: string
   runLog?: string
   notReady?: 'timeout' | 'exited' | 'spawn'
+  serverExit?: number
   inputMoved?: string
   where?: string
   carried?: true

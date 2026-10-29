@@ -386,7 +386,9 @@ a launcher's `--package <name>` / `-p <name>` (`pnpm dlx --package
 netlify-cli netlify dev`, D-112). A
 script whose name no task may carry (`lint#fix`, `^up`; the schema's
 rule, item 1000) is left out with a TODO rather than written into a
-config every later command refuses, and a `__proto__` script is written
+config every later command refuses; a Turbo task, Nx target or Vite Task
+task of such a name is too, under `turbo()` and `nx()` as well as in the
+written configs, and a `__proto__` script is written
 as a computed key, since a literal `__proto__:` sets the prototype. An
 existing `.vx/workspace.*` in any extension the loader reads (`.mts`
 included) is kept, and `--force` REPLACES a package's config of another
