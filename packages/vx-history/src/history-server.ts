@@ -232,9 +232,13 @@ export class HistoryServer {
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
       const err = await refusal(res)
-      throw new Error(
-        `${err.message}: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)`,
-      )
+      const fix =
+        this.env.GITHUB_ACTIONS === 'true'
+          ? 'give the job `permissions: id-token: write`'
+          : this.env.GITLAB_CI === 'true'
+            ? 'name an id_tokens entry VX_HISTORY_TOKEN'
+            : 'off CI, a server reads only with READ_ACCESS=public'
+      throw new Error(`${err.message}: a read with no CI token was refused (${fix})`)
     }
     if (!res.ok) throw await refusal(res)
     return res

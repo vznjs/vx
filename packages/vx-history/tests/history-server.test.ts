@@ -164,6 +164,20 @@ describe('HistoryServer', () => {
     )
   })
 
+  // A CI job with no token was told it was off CI: its fix is its token.
+  it("names a CI job's missing token as the fix, not READ_ACCESS", async () => {
+    const said = (env: Record<string, string>) =>
+      new HistoryServer(url, NAMED, env)
+        .query(['refs/heads/main'], ['p1'])
+        .catch((e: Error) => e.message)
+    expect(await said({ GITLAB_CI: 'true' })).toBe(
+      'HTTP 401: no bearer token: a read with no CI token was refused (name an id_tokens entry VX_HISTORY_TOKEN)',
+    )
+    expect(await said({ GITHUB_ACTIONS: 'true' })).toBe(
+      'HTTP 401: no bearer token: a read with no CI token was refused (give the job `permissions: id-token: write`)',
+    )
+  })
+
   it("asks GitHub for a new token before the job's ends, once for parallel calls", async () => {
     let asks = 0
     const t0 = Date.now()
@@ -627,6 +641,31 @@ describe('vx run with vxHistory({ url })', () => {
       await run({ cwd: other, tasks: ['build'], handleSignals: false })
       expect(seen.slice(before).filter((r) => r.path === '/v1/timings/query')).toEqual([])
     } finally {
+      await rm(other, { recursive: true, force: true })
+    }
+  })
+
+  // A workspace naming no issuer and repository never asks the server
+  // VX_HISTORY_URL names, so how that URL is spelled cannot fail its run.
+  it('runs when VX_HISTORY_URL is malformed and the workspace names no server', async () => {
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-env-'))
+    Bun.env.VX_HISTORY_URL = 'https://h.example/v1'
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory()] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      const r = await run({ cwd: other, tasks: ['build'], handleSignals: false })
+      expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+    } finally {
+      delete Bun.env.VX_HISTORY_URL
       await rm(other, { recursive: true, force: true })
     }
   })

@@ -2847,7 +2847,7 @@ export interface TaskHistory {
 class · `src/orchestrator/task-log-buffer.ts`
 
 Bounded per-run capture. `append` keeps a chunk LIST + running char count per
-task, evicting whole chunks from the head past `TASK_LOG_TAIL_CHARS` — no
+task, evicting from the head past `TASK_LOG_TAIL_CHARS` — no
 string concatenation until `drain`, so a cache-hit replay (one big chunk) is
 one array push, zero copies. `finish` decides retention; `drain` emits the
 bundle, failures first.
@@ -2959,6 +2959,7 @@ export interface TaskOutcome {
   failedOutput?: string
   runLog?: string
   notReady?: 'timeout' | 'exited' | 'spawn'
+  serverExit?: number
   inputMoved?: string
   where?: string
   carried?: true

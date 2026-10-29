@@ -117,14 +117,17 @@ export function managerOf(root: string): PackageManager {
 function installLines(manager: PackageManager): readonly string[] {
   if (manager === 'bun') return ['bun install --frozen-lockfile']
   if (manager === 'pnpm') return ['pnpm install --frozen-lockfile']
-  if (manager === 'yarn') return ['corepack enable', 'yarn install --immutable']
+  // Yarn 1 ignores --immutable; Berry takes --frozen-lockfile as its alias.
+  if (manager === 'yarn') return ['corepack enable', 'yarn install --frozen-lockfile']
   return ['npm ci']
 }
 
-/** How a runner calls the workspace's own vx: Yarn's PnP has no `node_modules/.bin`. */
-function vxCommand(manager: PackageManager): string {
-  return manager === 'yarn' ? 'yarn vx' : 'bun vx'
-}
+/**
+ * How a runner calls the workspace's own vx, under every manager: Yarn
+ * Berry's `yarn vx` runs a bin with node whatever its shebang, and Bun
+ * reads no Plug'n'Play, so a Yarn workspace needs `node_modules` anyway.
+ */
+const VX = 'bun vx'
 
 /**
  * Writes what `init` returned. A file that exists with other bytes is kept
@@ -218,7 +221,9 @@ export function githubInit(options: GithubOptions, setup: DteSetup): DteInit {
   // A workspace in a subdirectory: CI files live at the repository's root,
   // and their commands run in the workspace.
   const inDir =
-    setup.dir === '' ? '' : `    defaults:\n      run:\n        working-directory: ${setup.dir}\n`
+    setup.dir === ''
+      ? ''
+      : `    defaults:\n      run:\n        working-directory: ${quoted(setup.dir)}\n`
   const install = [
     ...(setup.manager === 'pnpm'
       ? [pnpmAction(setup.dir)]
@@ -275,9 +280,8 @@ ${LEAVE_IF_OVER}      - uses: ${CHECKOUT}
           jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\\r\\n]") | not) then "\\(.key)=\\(.value)" else error("env \\(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
       - uses: ${SETUP_BUN}
 ${install.join('\n')}
-      - run: ${vxCommand(setup.manager)} dte worker
+      - run: ${VX} dte worker
 `
-  const vx = vxCommand(setup.manager)
   const named = setup.tasks.main !== '' && setup.tasks.change !== ''
   const run = `# Written by vx dte init: the run. main runs every task and fills the cache;
 # a pull request runs what it changed and its dependents. This job only
@@ -312,14 +316,14 @@ ${inDir}    permissions:
         with: { persist-credentials: false }
       - uses: ${SETUP_BUN}
 ${rootInstall(setup.manager, setup.dir).join('\n')}
-      - run: ${vx} lock --check
+      - run: ${VX} lock --check
 ${
   named
     ? ''
-    : `      # Name the tasks to run, as '${vx} run build test --affected': with
+    : `      # Name the tasks to run, as '${VX} run build test --affected': with
       # none named, vx fails, listing the workspace's tasks.
 `
-}      - run: ${vx} run \${{ github.event_name == 'pull_request' && '${both(setup.tasks.change, '--affected')}' || '${both(setup.tasks.main, '--all')}' }}
+}      - run: ${VX} run \${{ github.event_name == 'pull_request' && '${both(setup.tasks.change, '--affected')}' || '${both(setup.tasks.main, '--all')}' }}
 ${CANCEL_WORKERS}`
   const repo = setup.repository ?? '<owner>/<repo>'
   const files = { '.github/workflows/ci.yml': run, [`.github/workflows/${workflow}`]: text }
@@ -358,7 +362,7 @@ function rootInstall(manager: DteSetup['manager'], dir: string): string[] {
 function pnpmAction(dir: string): string {
   return dir === ''
     ? `      - uses: ${SETUP_PNPM}`
-    : `      - uses: ${SETUP_PNPM}\n        with: { package_json_file: ${dir}/package.json }`
+    : `      - uses: ${SETUP_PNPM}\n        with: { package_json_file: ${quoted(`${dir}/package.json`)} }`
 }
 
 /**
@@ -372,12 +376,22 @@ export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
       'vx dte init: gitlab() needs dte({ relay }) first, since each job asks its ID token for the relay: deploy one (https://vznjs.github.io/vx/docs/relay/) and name it',
     )
   const relay = setup.relay
-  const vx = vxCommand(setup.manager)
   const named = setup.tasks.main !== '' && setup.tasks.change !== ''
-  const root =
+  // oven/bun has no Node, npm or corepack; another manager's jobs run on
+  // Node's image, which has git too, and add Bun, which runs vx.
+  const install =
     setup.manager === 'bun'
-      ? ["bun install --frozen-lockfile --filter './'"]
-      : installLines(setup.manager)
+      ? installLines('bun')
+      : [
+          'npm install -g --silent bun@1.4',
+          ...(setup.manager === 'pnpm' ? ['corepack enable'] : []),
+          ...installLines(setup.manager),
+        ]
+  const image =
+    setup.manager === 'bun'
+      ? 'oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d'
+      : 'node:22.23.4@sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd'
+  const root = setup.manager === 'bun' ? ["bun install --frozen-lockfile --filter './'"] : install
   const lines = (l: readonly string[]): string => l.map((x) => `    - ${x}`).join('\n')
   // A workspace in a subdirectory: the job's commands run in it.
   const cd = setup.dir === '' ? [] : [`cd ${quoted(setup.dir)}`]
@@ -422,7 +436,7 @@ workflow:
 # The image needs Bun; a job adds git if it lacks it. By digest: a tag
 # can move under the same name.
 default:
-  image: oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d
+  image: ${image}
 
 vx:
   rules:
@@ -436,8 +450,8 @@ vx:
   before_script:
 ${lines([git, ...cd, ...root])}
   script:
-    - ${vx} lock --check
-    - ${vx} run $VX_TASKS
+    - ${VX} lock --check
+    - ${VX} run $VX_TASKS
 
 # A worker runs at the run's commit, which its branch may have moved past.
 .vx-worker:
@@ -447,8 +461,8 @@ ${lines([git, ...cd, ...root])}
 ${lines([git])}
     - git fetch -q --depth 1 origin $VX_DTE_SHA
     - git checkout -q FETCH_HEAD
-${lines([...cd, ...installLines(setup.manager)])}
-  script: [${vx} dte worker]
+${lines([...cd, ...install])}
+  script: [${VX} dte worker]
 ${workers.join('')}`.replace(/\n+$/, '\n')
   const next = nextSteps(
     relay,

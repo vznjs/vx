@@ -699,6 +699,33 @@ describe('tieredReverseDepCount', () => {
     })
   })
 
+  it('an exec task under a restore blocks what that restore feeds (item 963)', async () => {
+    // r restores at once but releases e2 only once e1 has run, so e1 blocks
+    // e2 as surely as an edge would. Counted over the exec tier alone, e1
+    // ranked 0 and the idle x ran first, holding e2 behind both.
+    const m = nodes(node('x#b'), node('e1#b'), node('r#b', ['e1#b']), node('e2#b', ['r#b']))
+    const tier = new Set(['r#b'])
+    expect(Object.fromEntries(tieredReverseDepCount(m, tier))).toEqual({
+      'x#b': 0,
+      'e1#b': 1,
+      'e2#b': 0,
+      'r#b': 1,
+    })
+    const order: string[] = []
+    await runGraph({
+      nodes: m,
+      concurrency: 1,
+      restoreTier: tier,
+      execute: async (n) => {
+        order.push(n.id)
+        return n.id === 'r#b'
+          ? { node: n, status: 'cache-hit', exitCode: 0, durationMs: 0, hash: `h-${n.id}` }
+          : success(n)
+      },
+    })
+    expect(order.indexOf('e1#b')).toBeLessThan(order.indexOf('x#b'))
+  })
+
   it('the exec task behind a chain of restores starts before the idle restores (C-51)', async () => {
     const order: string[] = []
     await runGraph({
