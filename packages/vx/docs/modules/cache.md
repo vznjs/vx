@@ -46,8 +46,8 @@ and key derivation logic live here.
   item 1004).
 - `run-notes.ts` — `keepRunNotes` / `keptSteps` / `keptWarnings` /
   `keptFailures`: what a run said beside its rows (`steps`, `warnings`,
-  `failures`), the newest 50 runs per table (metrics.md).
-- `lockfile-memo.ts` — `readLockfileMemo` / `writeLockfileMemo`: a
+  `failures`), the newest 50 runs per table (metrics.md), one `RunNotes`.
+- `lockfile-memo.ts` — `readLockfileMemo` / `writeLockfileMemo` over a `LockfileMemo`: a
   lockfile claimant's parse, one `lockfile_memos` row per file and
   claimant, on a connection of its own (lockfile-claim.md).
 - `schema.ts` — `createTables`: every table's DDL, the one place each is
