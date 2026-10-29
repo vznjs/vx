@@ -32,6 +32,10 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
+      scripts:
+        description: "Run this workflow commit's packages/vx/scripts against the tag (rebuilds a tag whose release scripts had a bug)."
+        type: boolean
+        default: false
       version:
         description: 'Version to build/publish (e.g. 1.2.3). Defaults to the release tag.'
         required: false
@@ -76,6 +80,11 @@ jobs:
           # A tag only: any token with actions: write can dispatch this.
           ref: ${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}
           persist-credentials: false
+      # Rebuilding an older tag whose release scripts had a bug (v0.0.647's
+      # darwin check compared a coloured --version): the tag's code builds and
+      # ships, and this workflow's commit supplies packages/vx/scripts.
+      - if: inputs.scripts
+        run: git fetch --depth=1 origin "$GITHUB_SHA" && git checkout FETCH_HEAD -- packages/vx/scripts
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -118,6 +127,11 @@ jobs:
           ref: ${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}
           persist-credentials: false
 
+      # Rebuilding an older tag whose release scripts had a bug (v0.0.647's
+      # darwin check compared a coloured --version): the tag's code builds and
+      # ships, and this workflow's commit supplies packages/vx/scripts.
+      - if: inputs.scripts
+        run: git fetch --depth=1 origin "$GITHUB_SHA" && git checkout FETCH_HEAD -- packages/vx/scripts
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
       # Node runs `npm publish`. No token: auth comes from the OIDC

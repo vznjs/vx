@@ -15,6 +15,10 @@ name: Release assets
 on:
   workflow_dispatch:
     inputs:
+      scripts:
+        description: "Run this workflow commit's packages/vx/scripts against the tag (rebuilds a tag whose release scripts had a bug)."
+        type: boolean
+        default: false
       tag:
         description: 'Tag of the draft release to build, attach binaries to and publish (e.g. v0.0.22).'
         required: true
@@ -53,6 +57,11 @@ jobs:
           ref: refs/tags/${{ inputs.tag }}
           persist-credentials: false
 
+      # Rebuilding an older tag whose release scripts had a bug (v0.0.647's
+      # darwin check compared a coloured --version): the tag's code builds and
+      # ships, and this workflow's commit supplies packages/vx/scripts.
+      - if: inputs.scripts
+        run: git fetch --depth=1 origin "$GITHUB_SHA" && git checkout FETCH_HEAD -- packages/vx/scripts
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
 
@@ -110,6 +119,11 @@ jobs:
           # attests nothing.
           ref: refs/tags/${{ inputs.tag }}
           persist-credentials: false
+      # Rebuilding an older tag whose release scripts had a bug (v0.0.647's
+      # darwin check compared a coloured --version): the tag's code builds and
+      # ships, and this workflow's commit supplies packages/vx/scripts.
+      - if: inputs.scripts
+        run: git fetch --depth=1 origin "$GITHUB_SHA" && git checkout FETCH_HEAD -- packages/vx/scripts
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
