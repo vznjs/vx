@@ -95,6 +95,11 @@ export default defineWorkspace({
 | `compression`     | `OTEL_EXPORTER_OTLP_COMPRESSION` (and `_<SIGNAL>_`) | `'none'`   |
 | `live`            | none: send each task as it ends        | `true`                  |
 
+An endpoint is `https://`, or `http://` to `127.0.0.1`, `::1` or
+`localhost`: a header is often the vendor's API key, and `http://` to
+another host would send it in clear. Any other endpoint is warned about
+and its signals are not exported.
+
 | Signal            | Carries                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.aborted_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.up_to_date_count`, `vx.run.restored_local_count`, `vx.run.restored_remote_count`, `vx.run.exit_ok`, `vx.cache.upload.*` (remote uploads, once settled), `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
