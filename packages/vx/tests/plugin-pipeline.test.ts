@@ -214,7 +214,7 @@ describe('config stage', () => {
           (e: unknown) => (e as Error).message,
         )
       }
-      const refused = `${LOCK_REFUSED}.vx/workspace (after plugin 'org/broken'): \`plugins\` is fixed before the config stage runs — a plugin cannot add, drop or reorder plugins`
+      const refused = `${LOCK_REFUSED}.vx/workspace (after plugin 'org/broken'): \`plugins\` is fixed before the config stage, so an edit to it would change nothing — declare plugins in .vx/workspace`
       expect(await refusal('ws.plugins.length = 0')).toBe(refused)
       expect(await refusal('ws.plugins.reverse()')).toBe(refused)
       expect(await refusal('delete ws.plugins')).toBe(refused)
