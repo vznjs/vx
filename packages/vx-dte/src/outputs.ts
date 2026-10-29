@@ -70,6 +70,7 @@ export async function outputFiles(
     // each task cost a worker 450 ms a task in a project of 9000 output
     // dirs (2026-10-25). Root-anchored or escaping globs keep the walk.
     const dirs = outputDirPrefixes(globs.filter((g) => !g.startsWith('!'))) ?? ['']
+    // quiet: a base that will not resolve holds no outputs; `lies` refuses it
     const realBase = await realpath(path.join(root, base)).catch(() => undefined)
     await Promise.all(dirs.map(async (d) => (await lies(realBase, d)) && walk(d)))
   }

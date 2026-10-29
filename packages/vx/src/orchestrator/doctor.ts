@@ -209,7 +209,9 @@ async function collectWorkspaceInfo(
       cache.close()
     }
   } catch (err) {
-    if (!isUserError(err)) throw err
+    // An index of another schema is refused as by every reading verb: this
+    // vx reads nothing in it, and the next run resets it.
+    if (!isUserError(err) || err.code === 'VX_E_CACHE_VERSION') throw err
     indexError = err.message
   }
   let taskCount = 0

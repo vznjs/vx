@@ -177,7 +177,7 @@ it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--bogus'], {
     stderr: 'pipe',
   })
-  const [said, usage] = cli.stderr.toString().split('\n')
+  const [said, usage] = Bun.stripANSI(cli.stderr.toString()).split('\n')
   expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
     2,
     "✗ vx-cache-server  Unknown option '--bogus'",
@@ -191,7 +191,7 @@ it('names ALLOW when it cannot be read', () => {
       env: { ...process.env, S3_BUCKET: 'b', ALLOW: allow },
       stderr: 'pipe',
     })
-    return [cli.exitCode, cli.stderr.toString()]
+    return [cli.exitCode, Bun.stripANSI(cli.stderr.toString())]
   }
   expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
     [2, '✗ vx-cache-server  ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
@@ -207,7 +207,7 @@ it('refuses to start with ALLOW empty: it would refuse every request', () => {
       // Started, it would listen until killed.
       timeout: 10_000,
     })
-    const [said, usage] = cli.stderr.toString().split('\n')
+    const [said, usage] = Bun.stripANSI(cli.stderr.toString()).split('\n')
     expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
       2,
       '✗ vx-cache-server  set ALLOW',
@@ -232,7 +232,7 @@ it('refuses to start without AUDIENCE', () => {
     // Started, it would listen until killed.
     timeout: 10_000,
   })
-  expect([cli.exitCode, cli.stderr.toString().split('\n')[0]]).toEqual([
+  expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString()).split('\n')[0]]).toEqual([
     2,
     '✗ vx-cache-server  set AUDIENCE: the aud a CI token names, the URL clients reach this server at',
   ])
@@ -303,7 +303,7 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     env: { ...process.env, S3_BUCKET: 'b', ALLOW: '' },
     stderr: 'pipe',
   })
-  expect([cli.exitCode, cli.stderr.toString()]).toEqual([
+  expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString())]).toEqual([
     2,
     '✗ vx-cache-server  --port: not a port: \n',
   ])
@@ -319,11 +319,11 @@ it('refuses to start with no S3 credentials', () => {
     stderr: 'pipe',
     timeout: 3000,
   })
-  expect([cli.exitCode, cli.stdout.toString(), cli.stderr.toString()]).toEqual([
-    2,
-    '',
-    expect.stringMatching(/^✗ vx-cache-server {2}S3: Missing S3 credentials\./),
-  ])
+  expect([
+    cli.exitCode,
+    Bun.stripANSI(cli.stdout.toString()),
+    Bun.stripANSI(cli.stderr.toString()),
+  ]).toEqual([2, '', expect.stringMatching(/^✗ vx-cache-server {2}S3: Missing S3 credentials\./)])
 })
 
 // Bun's fetch asks for gzip and inflates what it is sent, so a bucket (or
@@ -469,7 +469,7 @@ it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', 
       // A port it took binds and serves: end it rather than hang.
       timeout: 2000,
     })
-    return [cli.exitCode, cli.stderr.toString()]
+    return [cli.exitCode, Bun.stripANSI(cli.stderr.toString())]
   }
   expect(['0x50', '1e1', ' 80', '80.0'].map(said)).toEqual([
     [2, '✗ vx-cache-server  --port: not a port: 0x50\n'],
@@ -489,7 +489,7 @@ it("refuses an empty --host: Bun bound '' to localhost alone", () => {
       timeout: 2000,
     },
   )
-  expect([cli.exitCode, cli.stderr.toString()]).toEqual([
+  expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString())]).toEqual([
     2,
     "✗ vx-cache-server  --host: needs an address, got ''\n",
   ])
@@ -590,7 +590,7 @@ it('takes a check longer than MAX_UPLOAD_BYTES, and answers every refusal itself
   )
   try {
     const reader = cli.stdout.getReader()
-    const line = new TextDecoder().decode((await reader.read()).value)
+    const line = Bun.stripANSI(new TextDecoder().decode((await reader.read()).value))
     const base = /on (\S+)/.exec(line)![1]!
     const hashes = Array.from({ length: 40 }, (_, i) => i.toString(16).padStart(64, 'a'))
     const check = await fetch(new URL('/v1/artifacts', base), {

@@ -105,7 +105,7 @@ See Bun [#30342](https://github.com/oven-sh/bun/issues/30342) and
 [#26915](https://github.com/oven-sh/bun/issues/26915), largely fixed by
 [#31584](https://github.com/oven-sh/bun/pull/31584) — which is why the ceiling
 _rose_ from ~64 KB on Bun 1.3.x to ~216 KB on 1.4.0 rather than the hang going
-away. Hence **Bun >= 1.4.4** is required (core's own floor, the package's
+away. Hence **Bun >= 1.4.4** is required (core's own minimum, the package's
 `engines.bun`), and the plugin refuses to start on anything older with a
 named error: the alternative is a wedged upload with nothing for a user to
 act on.

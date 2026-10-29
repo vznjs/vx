@@ -92,7 +92,7 @@ it('vx show masks every string of the task', () => {
       '  env.secret      GH_PAT',
       '  inputs.files    package.json',
       '  inputs.runtime  echo *** $(cat stamp), echo *** $(cat stamp)',
-      '  outputs.files',
+      '  outputs.files   none',
       '',
     ].join('\n'),
   )

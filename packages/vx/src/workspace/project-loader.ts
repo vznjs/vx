@@ -347,9 +347,9 @@ function pnpAbove(dir: string): boolean {
  * evaluation: left to Bun, a workspace with no `node_modules` would have
  * the package auto-installed from the registry first (config-imports.ts),
  * and a config must never download. The message keeps the shape Bun's own
- * refusal has, with the remedy.
+ * refusal has, with the remedy. `source` is `file`'s: the config's own,
+ * or one it reaches.
  */
-/** `source` is `file`'s: the config's own, or one it reaches. */
 function refuseUnprovided(source: string, file: string, configPath: string, kind: string): void {
   const loader = /\.[cm]?tsx?$/.test(file) ? 'ts' : 'js'
   const missing = unprovidedBareImports(source, path.dirname(file), loader)

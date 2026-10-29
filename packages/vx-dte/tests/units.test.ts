@@ -62,10 +62,20 @@ const tmp = async (): Promise<string> => {
  *  withheld where git cannot diff the task's project. */
 const checkout = async (): Promise<string> => {
   const d = await tmp()
-  const git = (...a: string[]) =>
-    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: d })
+  // Each step checked: a fixture git refused read as a save withheld.
+  const git = (...a: string[]) => {
+    const r = Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], {
+      cwd: d,
+      stderr: 'pipe',
+    })
+    if (r.exitCode !== 0) throw new Error(`git ${a[0]}: ${r.stderr.toString()}`)
+  }
+  // A tracked file, as a worker's checkout has: of an empty tree, CI's git
+  // (2.56) took no snapshot, so every save was withheld; 2.43 took one.
+  await writeFile(path.join(d, 'README'), '')
   git('init', '-q')
-  git('commit', '-q', '--allow-empty', '-m', 'i')
+  git('add', 'README')
+  git('commit', '-q', '-m', 'i')
   return d
 }
 

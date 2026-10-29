@@ -53,7 +53,7 @@ it.each([
   [
     'a syntax error, by line and column',
     'export default { tasks: {}\n',
-    `${REFUSED}Project config <root>/p/vx.config.ts:1:27: Expected "}" but found end of file`,
+    framed(27, 'Expected "}" but found end of file'),
   ],
   [
     'named exports and no default',
