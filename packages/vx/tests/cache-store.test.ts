@@ -200,14 +200,17 @@ describe('cache.store.embeddings', () => {
 })
 
 describe('a tree hit', () => {
+  // Its size is held to its row's (tree-store-torn.test.ts): that check
+  // is free, the read a checksum takes is not.
   it('trusts the stored files: an edited one restores as edited, unchecked', async () => {
     const { cache, proj } = await saved({ embeddings: 0, decompress: true }, LARGE)
     const file = treeFile(path.join(root, 'c'))
     const st = statSync(file)
-    await writeFile(file, 'short')
+    const edited = 'e'.repeat(st.size)
+    await writeFile(file, edited)
     await utimes(file, st.atime, st.mtime)
     await cache.restoreOutputs(HASH, proj)
-    expect(await readFile(path.join(proj, 'out/a.bin'), 'utf8')).toBe('short')
+    expect(await readFile(path.join(proj, 'out/a.bin'), 'utf8')).toBe(edited)
     expect(readdirSync(path.dirname(path.dirname(path.dirname(file))))).not.toContain('.vx-sum')
     cache.close()
   })

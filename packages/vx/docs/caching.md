@@ -1416,8 +1416,11 @@ never a hard link: a later write to a restored output must not reach the
 store). A restore into outputs already on disk, a workspace output or a
 symlink takes the archive extractor, fed the tree packed back into its
 tar. An upload packs the tree into the tar.zst in the upload queue, off
-the save. A hit trusts the tree and checks none of its files: the store
-is vx's own, and a check could not stop a write to it. A tree no row names
+the save. A hit trusts the tree and checks none of its files' bytes: the store
+is vx's own, and a check could not stop a write to it. Each file's size
+is held to its row's, which costs no read: a file cut short at rest (a
+crash after its rename, before its data reached the disk) is a corrupt
+entry: a restore drops it and runs the task, and an upload refuses it. A tree no row names
 is an orphan the sweep reaps; only the archive form is adopted back
 after a `SCHEMA_VERSION` reset, as a tree's stdout lives in its row.
 
