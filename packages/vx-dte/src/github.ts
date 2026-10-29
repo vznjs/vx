@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
-import { refuseUnknownOptions, secretNamed, UserError, type PluginOptionKinds } from '@vzn/vx'
+import { refuseUnknownOptions, secretNamed, UserError, ui, type PluginOptionKinds } from '@vzn/vx'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
 import { printable } from './wire.js'
 
@@ -124,7 +124,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const cancelled = new Set<string>()
   // A poll or cancel that failed is said, each cause once (2026-10-23: no
   // fault is silent): a job that ended badly went unseen, a run held runners.
-  let warn = (m: string): void => void process.stderr.write(`[vx] ${m}\n`)
+  let warn = (m: string): void => ui.say('warn', `[vx] ${m}`)
   const said = new Set<string>()
   const runOf = (run: string): string => `workflow run ${run.slice(run.lastIndexOf('/') + 1)}`
   const failed = (what: string, why: string): void => {

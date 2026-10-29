@@ -33,13 +33,18 @@ import {
 } from '../orchestrator/index.js'
 import { outcomeWord, type WireEvent } from '../report/index.js'
 import {
+  detectColors,
+  ERROR,
   formatElapsed,
+  paint,
   parseDecimalInt,
   refusal,
   splitTaskId,
+  SUCCESS,
   UserError,
   sayNotice,
   ui,
+  type ColorSupport,
 } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
@@ -332,9 +337,14 @@ async function printStats(
     ]),
   ]
   const widths = rows[0]!.map((_, c) => Math.max(...rows.map((r) => r[c]!.length)))
-  const lines = rows.map((r) =>
+  const c = detectColors(process.stdout)
+  const lines = rows.map((r, i) =>
     r
-      .map((cell, c) => cell.padEnd(widths[c]!))
+      .map((cell, col) => {
+        const padded = col === r.length - 1 ? cell : cell.padEnd(widths[col]!)
+        if (i === 0) return paint('', padded, c, { dim: true })
+        return col === 0 ? `${ui.inline(ui.id(cell), c)}${padded.slice(cell.length)}` : padded
+      })
       .join('  ')
       .trimEnd(),
   )
@@ -581,14 +591,14 @@ const HITS_SHOWN = 16
  * The steps the run did not wait on (`vx:prefetch`), which its own output
  * never showed (2026-10-16): here for debugging, marked `internal`.
  */
-function formatStepRows(steps: readonly RunStep[]): string[] {
+function formatStepRows(steps: readonly RunStep[], c: ColorSupport): string[] {
   if (steps.length === 0) return []
   const idW = Math.max(...steps.map((s) => s.id.length), 4)
   return [
     '',
     ...steps.map(
       (s) =>
-        `  ${(s.ok ? 'success' : 'failed').padEnd(17)} ${s.id.padEnd(idW)}  ${fmtMs(s.durationMs).padStart(8)}  internal`,
+        `  ${paint(s.ok ? SUCCESS : ERROR, (s.ok ? 'success' : 'failed').padEnd(17), c)} ${paint('', s.id.padEnd(idW), c, { bold: true })}  ${paint('', `${fmtMs(s.durationMs).padStart(8)}  internal`, c, { dim: true })}`,
     ),
   ]
 }
@@ -602,7 +612,10 @@ function formatStepRows(steps: readonly RunStep[]): string[] {
  * row tells. `--format json` lists every row.
  */
 
-export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
+export function formatTaskRows(
+  tasks: readonly RunSummaryRow[],
+  c: ColorSupport = { enabled: false },
+): string[] {
   if (tasks.length === 0) return []
   const failed = tasks.filter((t) => t.status === 'failed')
   const hits = tasks.filter((t) => t.status !== 'failed' && t.cacheHit === true)
@@ -633,15 +646,26 @@ export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
         : t.cacheHit === true && t.restored !== null
           ? outcomeWord({ status: t.status as 'cache-hit', restored: t.restored })
           : t.status
+    const hue = t.status === 'failed' ? ERROR : t.status === 'skipped' ? '' : SUCCESS
     lines.push(
-      `  ${status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
-        `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-        reasonParts(t, skippedHere),
+      `  ${paint(hue, status.padEnd(17), c, { dim: hue === '' })} ${ui.inline(ui.id(id), c)}${' '.repeat(idW - id.length)}  ${fmtMs(t.durationMs).padStart(8)}` +
+        paint(
+          '',
+          `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
+            reasonParts(t, skippedHere),
+          c,
+          { dim: true },
+        ),
     )
   }
   if (folded) {
     lines.push(
-      `  … +${hits.length - HITS_SHOWN} more cache hits (the ${HITS_SHOWN} slowest restores shown) — vx last --format json lists every row`,
+      paint(
+        '',
+        `  … +${hits.length - HITS_SHOWN} more cache hits (the ${HITS_SHOWN} slowest restores shown) — vx last --format json lists every row`,
+        c,
+        { dim: true },
+      ),
     )
   }
   return lines
@@ -688,6 +712,7 @@ export function formatRunList(
     >
     id: string
   }[],
+  c: ColorSupport = { enabled: false },
 ): string[] {
   const rows = runs.map(({ inv, id }) => ({
     head: `${inv.exitOk ? 'ok    ' : 'FAILED'} ${fmtWhen(inv.startedAt)}`,
@@ -703,7 +728,7 @@ export function formatRunList(
   const msW = Math.max(...rows.map((r) => r.ms.length))
   return rows.map(
     (r) =>
-      `${r.head}  ${r.id.padEnd(idW)}  ${r.counts.padEnd(countsW)}  ${r.ms.padStart(msW)}  $ ${r.command}`,
+      `${paint(r.head.startsWith('ok') ? SUCCESS : ERROR, r.head.slice(0, 6), c)}${paint('', r.head.slice(6), c, { dim: true })}  ${paint('', r.id.padEnd(idW), c, { bold: true })}  ${paint('', `${r.counts.padEnd(countsW)}  ${r.ms.padStart(msW)}  $`, c, { dim: true })} ${r.command}`,
   )
 }
 
@@ -809,6 +834,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       }
       const lines = formatRunList(
         invocations.map((inv) => ({ inv, id: shortRunId(db, inv.runId) })),
+        detectColors(process.stdout),
       )
       process.stdout.write(`${lines.join('\n')}\n`)
       return 0
@@ -872,21 +898,27 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       return 0
     }
 
+    const c = detectColors(process.stdout)
+    const dim = (s: string): string => paint('', s, c, { dim: true })
     const lines: string[] = []
-    lines.push(`run ${inv.runId} — ${inv.exitOk ? 'ok' : 'FAILED'}`)
-    lines.push(`  $ ${inv.command}`)
     lines.push(
-      `  ${fmtWhen(inv.startedAt)} · ${fmtMs(inv.totalDurationMs)}` +
-        `${inv.branch !== null ? ` · ${inv.branch}` : ''}` +
-        `${inv.commitSha !== null ? ` @ ${inv.commitSha.slice(0, 8)}${inv.dirty === true ? '+dirty' : ''}` : ''}` +
-        `${inv.ci ? ` · CI${inv.ciProvider !== null ? ` (${inv.ciProvider})` : ''}` : ''}`,
+      `${paint('', 'run', c, { bold: true })} ${paint('', inv.runId, c, { bold: true })} ${dim('—')} ${inv.exitOk ? paint(SUCCESS, 'ok', c) : paint(ERROR, 'FAILED', c)}`,
+    )
+    lines.push(`  ${dim('$')} ${paint('', inv.command, c, { bold: true })}`)
+    lines.push(
+      dim(
+        `  ${fmtWhen(inv.startedAt)} · ${fmtMs(inv.totalDurationMs)}` +
+          `${inv.branch !== null ? ` · ${inv.branch}` : ''}` +
+          `${inv.commitSha !== null ? ` @ ${inv.commitSha.slice(0, 8)}${inv.dirty === true ? '+dirty' : ''}` : ''}` +
+          `${inv.ci ? ` · CI${inv.ciProvider !== null ? ` (${inv.ciProvider})` : ''}` : ''}`,
+      ),
     )
     lines.push(
-      `  ${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}` +
-        `${inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''}`,
+      dim(`  ${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`) +
+        `${inv.failedCount > 0 ? paint(ERROR, ` · ${inv.failedCount} failed`, c) : ''}`,
     )
-    lines.push(...formatTaskRows(detail?.tasks ?? []))
-    lines.push(...formatStepRows(runSteps(cacheDir, inv.runId)))
+    lines.push(...formatTaskRows(detail?.tasks ?? [], c))
+    lines.push(...formatStepRows(runSteps(cacheDir, inv.runId), c))
     const warnings = runWarnings(cacheDir, inv.runId)
     if (warnings.length > 0) {
       lines.push('', '  warnings', ...warnings.flatMap((w) => w.split('\n').map((l) => `    ${l}`)))
@@ -904,7 +936,9 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
           .filter((t) => t.forwarded === withArgs)
           .map((t) => shellQuote(`${t.project}#${t.task}`))
         if (ids.length > 0)
-          rerun.push(`  re-run what failed: vx run ${ids.join(' ')}${withArgs ? args : ''}`)
+          rerun.push(
+            `  ${dim('re-run what failed:')} ${paint('', `vx run ${ids.join(' ')}${withArgs ? args : ''}`, c, { bold: true })}`,
+          )
       }
       lines.push('', ...rerun)
     }

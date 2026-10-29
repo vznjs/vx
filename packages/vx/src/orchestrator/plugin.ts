@@ -26,6 +26,7 @@ import {
   type PluginSecrets,
   SecretBroker,
   thrownMessage,
+  ui,
   UserError,
 } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
@@ -824,7 +825,7 @@ export interface InstallPluginsArgs {
   cacheDir: string
   bus: EventBus
   /**
-   * Where plugin-throw warnings go. Defaults to console.error; passing
+   * Where plugin-throw warnings go. Defaults to `ui.say` on stderr; passing
    * a callback lets the orchestrator funnel into the framed-output
    * `run:status` channel.
    */
@@ -867,7 +868,7 @@ export class PluginSetupError extends UserError {
  */
 export async function installPlugins(args: InstallPluginsArgs): Promise<() => void> {
   const { plugins, bus, workspaceRoot, cacheDir } = args
-  const warn = args.warn ?? ((m) => console.error(m))
+  const warn = args.warn ?? ((m) => ui.say('warn', m))
   const secrets = args.secrets ?? new SecretBroker(args.ci ?? false, warn)
   const disposers: Array<() => void> = []
   // By object, not name: one package can export two plugins.

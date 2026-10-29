@@ -1706,6 +1706,13 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--cache-dir']).error).toBe('--cache-dir requires a path')
   })
 
+  it('--cache-dir refuses a path of only whitespace, as VX_CACHE_DIR and cache.dir do', () => {
+    // It made a directory named in spaces under the cwd.
+    for (const args of [['--cache-dir', '   '], ['--cache-dir=  ']]) {
+      expect(parseRunArgs(['build', ...args]).error).toBe('--cache-dir requires a path')
+    }
+  })
+
   it('--cache-dir rejects a flag-shaped value in the space form', () => {
     // `--cache-dir $EMPTY --force` with an unquoted empty var: the arg
     // vanishes and `--force` would become the cache directory.
@@ -2348,7 +2355,9 @@ describe('a short flag gets a one-edit hint budget', () => {
   it('--poll is not hinted --all, two edits on a four-letter word', () => {
     // Two edits rewrite half of `poll`: the hint read as a fix and named
     // a flag that runs every project.
-    expect(parseRunArgs(['build', '--poll']).error).toBe('unknown flag: --poll')
+    expect(parseRunArgs(['build', '--poll']).error).toBe(
+      'unknown flag: --poll (a vx watch flag: vx watch --poll <task>)',
+    )
     // CONTROL: one edit on a short word, two on a long one, still hint.
     expect(parseRunArgs(['build', '--al']).error).toBe('unknown flag: --al (did you mean --all?)')
     expect(parseRunArgs(['build', '--dy']).error).toBe('unknown flag: --dy (did you mean --dry?)')

@@ -40,14 +40,30 @@ const GRAMMAR = [
 /** Every lower-case word the CLI's source quotes or keys an object with. */
 function words(): Set<string> {
   const out = new Set<string>()
-  for (const dir of ['cli', 'util'])
-    for (const f of readdirSync(path.join(SRC, dir)))
-      if (f.endsWith('.ts')) {
-        const src = readFileSync(path.join(SRC, dir, f), 'utf8')
-        for (const m of src.matchAll(/'([a-z][a-z-]*)'|^\s+([a-z][a-z-]*): /gm))
-          out.add((m[1] ?? m[2])!)
-      }
+  // settings.ts spells the enums of the flags it names (`--schedule`).
+  const files = [
+    path.join(SRC, 'settings.ts'),
+    ...['cli', 'util'].flatMap((dir) =>
+      readdirSync(path.join(SRC, dir))
+        .filter((f) => f.endsWith('.ts'))
+        .map((f) => path.join(SRC, dir, f)),
+    ),
+  ]
+  for (const file of files)
+    for (const m of readFileSync(file, 'utf8').matchAll(/'([a-z][a-z-]*)'|^\s+([a-z][a-z-]*): /gm))
+      out.add((m[1] ?? m[2])!)
   return out
+}
+
+/** The flags a probe must pass beside the one probed, for the parser to judge that one. */
+function companions(verb: string, flag: string): string[] {
+  // A cache clean needs a policy; anything but that is the flag's own
+  // verdict. `--global` takes none: it clears every store.
+  if (verb === 'cache' && !['--older-than', '--max-size', '--global'].includes(flag))
+    return ['--max-size', '1G']
+  if (verb === 'last' && flag === '--branch') return ['--stats']
+  if (verb === 'last' && flag === '--follow') return ['--live']
+  return []
 }
 
 /** `verb --flag` → the values its parser takes, `*` for any. Bare flags that take no `=value` are left out. */
@@ -58,9 +74,7 @@ function flagValues(): Record<string, string[]> {
     const parse = PARSE[verb]!
     for (const flag of verbFlags(verb).sort()) {
       if (flag === '--help') continue
-      // A cache clean needs a policy; anything but that is the flag's own verdict.
-      const policy = verb === 'cache' && flag !== '--older-than' && flag !== '--max-size'
-      const extra = policy ? ['--max-size', '1G'] : []
+      const extra = companions(verb, flag)
       const needsValue = parse([flag, ...extra]) !== null
       const form = (v: string) => (needsValue ? [flag, v, ...extra] : [`${flag}=${v}`, ...extra])
       if (parse(form(SENTINEL)) === null) out[`${verb} ${flag}`] = ['*']
@@ -82,4 +96,14 @@ it('the verbs, their flags, the values each takes and the VX_ variables are what
     writeFileSync(RECORD, text)
   }
   expect(text).toBe(readFileSync(RECORD, 'utf8'))
+})
+
+it('a flag the record lists takes at least one value', () => {
+  // `run --schedule` (its words live in settings.ts), `last --branch` (it
+  // needs --stats) and the bare `cache --global` (refused beside the
+  // policy the probe added) were recorded as taking nothing.
+  const empty = Object.entries(flagValues())
+    .filter(([, v]) => v.length === 0)
+    .map(([k]) => k)
+  expect(empty).toEqual([])
 })

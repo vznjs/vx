@@ -14,7 +14,10 @@ const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
 let root: string
 let printed: string[]
 const write = process.stdout.write.bind(process.stdout)
+const noColor = process.env['NO_COLOR']
 beforeEach(async () => {
+  // The words, as a pipe reads them: a CI's env paints what is captured here.
+  process.env['NO_COLOR'] = '1'
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-init-'))
   printed = []
   process.stdout.write = ((chunk: string) => {
@@ -24,6 +27,8 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   process.stdout.write = write
+  if (noColor === undefined) delete process.env['NO_COLOR']
+  else process.env['NO_COLOR'] = noColor
   await rm(root, { recursive: true, force: true })
 })
 
@@ -235,7 +240,7 @@ it('keeps a workflow its owner changed unless --force, and says when it is up to
   expect(await readFile(path.join(root, WORKFLOW), 'utf8')).toBe('mine\n')
   expect(await init({ workers: sizes, adapter: github() }, '--dry')).toBe(0)
   expect(await readFile(path.join(root, WORKFLOW), 'utf8')).toBe('mine\n')
-  expect(printed.join('')).toContain('# .github/workflows/vx-worker.yml\n')
+  expect(printed.join('')).toContain('── .github/workflows/vx-worker.yml ──\n')
   expect(await init({ workers: sizes, adapter: github() }, '--force')).toBe(0)
   printed = []
   expect(await init({ workers: sizes, adapter: github() })).toBe(0)
@@ -474,6 +479,19 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     '✗ vx dte  unknown subcommand: bogus',
     '✗ vx dte  vx dte worker takes no arguments: --bogus',
   ])
+  // Each is a usage refusal, as core's are, for a reader of the JSON.
+  const code = (args: string[]) =>
+    JSON.parse(
+      Bun.spawnSync([process.execPath, CORE_BIN, 'dte', ...args, '--format=json'], {
+        cwd: root,
+        stderr: 'pipe',
+      }).stdout.toString(),
+    ).error.code
+  expect([code(['bogus']), code(['worker', '--bogus']), code(['init', '--x'])]).toEqual([
+    'VX_E_USAGE',
+    'VX_E_USAGE',
+    'VX_E_USAGE',
+  ])
 })
 
 it('a relay URL with no http(s) scheme is refused, named', async () => {
@@ -526,10 +544,13 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     said({}),
     said({ VX_DTE_RUN: crypto.randomUUID() }),
     said({ VX_DTE_RELAY: 'http://127.0.0.1:9' }),
+    // Empty is unset, as for VX_DTE_RUN, VX_DTE_SECRET and VX_DTE_WORKER.
+    said({ VX_DTE_RUN: crypto.randomUUID(), VX_DTE_RELAY: '' }),
   ]).toEqual([
     '✗ vx dte  vx dte worker needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RUN',
+    '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
   ])
   // A job without id-token: write has no ACTIONS_ID_TOKEN_REQUEST_TOKEN.
   expect(

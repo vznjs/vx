@@ -28,6 +28,7 @@ import {
   isUserError,
   normalizeGlob,
   restorableOutput,
+  ui,
   UserError,
   withForwardArgs,
 } from '@vzn/vx'
@@ -552,7 +553,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
     }
   }
   // No listener is no reason to say nothing.
-  const warn = opts.warn ?? ((m: string) => void process.stderr.write(`[vx] ${m}\n`))
+  const warn = opts.warn ?? ((m: string) => ui.say('warn', `[vx] ${m}`))
   // One Capabilities round trip per executor, not per task — the answer
   // cannot change mid-run, and a 400-task graph would otherwise ask 400 times.
   let capsPromise: ReturnType<ReapiClient['capabilities']> | undefined

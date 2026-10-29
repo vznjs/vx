@@ -15,7 +15,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
-import { seeHelp } from './help.js'
+import { refuse, seeHelp } from './help.js'
 import {
   fingerprintClaims,
   forwardedSignal,
@@ -51,7 +51,7 @@ import {
   printable,
   restartTimings,
   sayNotice,
-  sayLine,
+  ui,
 } from '../util/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
 import { isCacheHit } from '../graph/index.js'
@@ -107,16 +107,11 @@ export function watchRefusal(parsed: RunArgs): string | null {
 
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args, 'watch')
-  if (parsed.error) {
-    sayNotice('error', 'vx watch', `${parsed.error}${seeHelp('watch')}`)
-    return 1
-  }
+  if (parsed.error) return refuse('watch', args, `${parsed.error}${seeHelp('watch')}`, 'VX_E_USAGE')
 
   const refused = watchRefusal(parsed)
-  if (refused !== null) {
-    sayLine('error', refused, 'vx watch')
-    return 1
-  }
+  if (refused !== null)
+    return refuse('watch', args, refused.replace(/^vx watch: /, ''), 'VX_E_USAGE')
   if (parsed.tasks.length === 0) {
     sayNotice(
       'error',
@@ -165,7 +160,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // Said once the loop is down, the last line: written as the signal
   // landed, the aborted cycle's summary printed below it.
   const stopped = (): number => {
-    if (stop.signal.reason === 'SIGINT') process.stdout.write('\nvx watch: stopped\n')
+    if (stop.signal.reason === 'SIGINT') {
+      process.stdout.write('\n')
+      ui.say('info', 'vx watch: stopped', 'out')
+    }
     return 0
   }
   process.once('SIGTERM', () => stop.abort('SIGTERM'))
@@ -556,7 +554,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               )
             }
             if (reread) await rearm(false)
-            process.stdout.write(`\nchanged ${label}\n`)
+            process.stdout.write('\n')
+            ui.say('info', `changed ${label}`, 'out')
             if (!relocked) sayUnlocked(changes.changed)
             if (stop.aborted) break
             // A file a `.gitignore` edit stops ignoring is an input from this
@@ -884,8 +883,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     const now = Date.now()
     if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
     staleNamed.set(abs, now)
-    process.stdout.write(
+    ui.say(
+      'warn',
       `vx watch: ${printable(path.relative(workspaceRoot, abs))} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
+      'out',
     )
   }
   const armImports = (): void => {
@@ -996,11 +997,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
   const sayWatching = (count: number): void => {
     const tasks = lastTasks === undefined ? '' : ` · ${plural(lastTasks, 'task')}`
-    process.stdout.write(`watching ${plural(count, 'project')}${tasks}\n`)
+    ui.say('info', `watching ${plural(count, 'project')}${tasks}`, 'out')
   }
   const debugArms = resolveSetting('debug.watch', undefined).value === true
   const sayArmed = (count: number): void => {
-    if (debugArms) process.stderr.write(`vx watch: armed ${plural(count, 'project')}\n`)
+    if (debugArms) ui.say('info', `vx watch: armed ${plural(count, 'project')}`)
   }
 
   const rearm = async (say = true): Promise<void> => {

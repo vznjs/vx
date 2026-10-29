@@ -532,7 +532,7 @@ than run with the args unheard.
 | `--no-cache`                               | boolean        | off                                                            | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `--force`                                  | boolean        | off                                                            | Re-execute everything (skip cache reads); writes stay on. A key already stored is kept, and a remote that holds it is not sent it again. Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--cache-policy <spec>` (`--cache-policy`) | value          | `VX_CACHE_POLICY` / `cache.policy`                             | Per-layer read/write control. See below. An EMPTY spec (`--cache-policy=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `--cache-dir <path>`                       | value          | `VX_CACHE_DIR` / `cache.dir` / `~/.vx/<id>/cache`              | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats `VX_CACHE_DIR`, the workspace's `cache.dir` and the default; like them, the directory then holds the whole cache, shared through no store, for every cache the run opens, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. A directory this user cannot write into serves its hits and saves nothing, saying so once; an empty one fails the run before any task with `cache directory <path> is not writable (EACCES: …)`.                                                                                |
+| `--cache-dir <path>`                       | value          | `VX_CACHE_DIR` / `cache.dir` / `~/.vx/<id>/cache`              | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats `VX_CACHE_DIR`, the workspace's `cache.dir` and the default; like them, the directory then holds the whole cache, shared through no store, for every cache the run opens, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`, and both refuse one of only whitespace. A directory this user cannot write into serves its hits and saves nothing, saying so once; an empty one fails the run before any task with `cache directory <path> is not writable (EACCES: …)`.                                        |
 | `--retries <n>`                            | value          | `run.retries`, else `0`                                        | Re-run a failed task up to `n` more times; never a persistent one. A task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retries=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `--continue[=<mode>]`                      | value          | `deps-ok`                                                      | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `--timeout <duration>`                     | duration       | `run.timeout`, else none                                       | A task's time limit (`30s`, `10m`), for tasks without their own `exec.timeout`, which always wins. A runaway task is killed + `failed`. A bare number is refused naming the forms with units. Never affects cache keys. `--timeout=<duration>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -2446,11 +2446,12 @@ history is this checkout's own.
 
 #### `VX_E_CONFIG`
 
-A `vx.config.*` or `.vx/workspace.*` that does not load or is refused. The
-message names the file and the field; fix that field
-(`vx docs <field>` prints its reference). `vx info --format json` lists
-every config error at once. A project config's refusal is `vx lock`'s,
-not a run's: a run never evaluates one.
+A `vx.config.*` or `.vx/workspace.*` that does not load, throws or is
+refused. The message names the file and the field; fix that field
+(`vx docs <field>` prints its reference); a throw's stack on stderr
+names its line. `vx lock` names every project config that does not
+load at once. A project config's refusal is `vx lock`'s, not a run's: a
+run never evaluates one.
 
 #### `VX_E_CYCLE`
 
@@ -2777,7 +2778,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   `output`, `setup`, `commands`), or `none`. It reads the declarations: a plugin
   that declines a task at run time still lists its seam here.
 - `workers` is the count a run defaults to and where it comes from:
-  `.vx/workspace.ts`'s `run.concurrency` when set, else the cores this
+  `VX_RUN_CONCURRENCY` when set, else `.vx/workspace.ts`'s `run.concurrency`, else the cores this
   process may use — the CPU count, capped by the cgroup CPU quota a
   container runs under (`8 — the CPU count`, `2 — cgroup CPU quota 2 of
 8 cores`). `memory` is what a memory-packing policy budgets
@@ -2834,7 +2835,7 @@ below Bun 1.4.4), `git` (null when not
 found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
 git could not answer), `workspaceRoot`, `projects`, `tasks`,
 `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
-cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
+cpuQuota }`, the source one of `env` / `workspace` / `cgroup` / `cores`,
 `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes`
 (on disk: the index and run history), `cacheStore` (null when the cache

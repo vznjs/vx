@@ -9,6 +9,7 @@
 import { createHash } from 'node:crypto'
 import { type Bytes, type CipherState, Handshake, MAX_PLAINTEXT } from './noise.js'
 import { RelayError, unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
+import { ui } from '@vzn/vx'
 
 /**
  * What admits a side: the run's key (Noise's psk), or each side's CI
@@ -310,7 +311,7 @@ export function sealOrchestrator(
   me: Participant,
   run: string,
   proof: Proof,
-  warn: (message: string) => void = (m) => void process.stderr.write(`[vx] ${m}\n`),
+  warn: (message: string) => void = (m) => ui.say('warn', `[vx] ${m}`),
 ): Participant {
   const unsent = (what: string, to: string) => unsentBy(warn, what, to)
   const sessions = new Map<string, Session>()

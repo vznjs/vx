@@ -6,6 +6,7 @@ import {
   PLATFORMS,
   refuseUnknownOptions,
   taskDefinitions,
+  ui,
   UserError,
   type CommandContext,
   type Platform,
@@ -277,15 +278,20 @@ export function dte(options: DteOptions = {}) {
   const init = async (args: readonly string[], ctx: CommandContext): Promise<number> => {
     const extra = args.find((a) => a !== '--dry' && a !== '--force')
     if (extra !== undefined)
-      throw new UserError(`vx dte init: unknown argument ${extra}; it takes --dry and --force`)
+      throw new UserError(
+        `vx dte init: unknown argument ${extra}; it takes --dry and --force`,
+        'VX_E_USAGE',
+      )
     const root = ctx.workspaceRoot
     if (adapter === undefined)
       throw new UserError(
         'vx dte init: dte() names no adapter, so vx starts no workers and needs no CI files',
       )
     if (adapter.init === undefined) {
-      process.stdout.write(
-        'vx dte init: this adapter starts workers on this machine; no CI files to write\n',
+      ui.say(
+        'info',
+        'vx dte init: this adapter starts workers on this machine; no CI files to write',
+        'out',
       )
       return 0
     }
@@ -310,9 +316,9 @@ export function dte(options: DteOptions = {}) {
       tasks: askTasks(),
       ...originOf(root),
     })
-    const out = (line: string): void => void process.stdout.write(`${line}\n`)
+    const out = (line: string): void => ui.say('info', line, 'out')
     if (args.includes('--dry')) {
-      for (const [rel, text] of Object.entries(files.files)) out(`# ${rel}\n${text}`)
+      for (const [rel, text] of Object.entries(files.files)) ui.print('out', ui.excerpt(rel, text))
       for (const line of files.next) out(line)
       return 0
     }
@@ -326,17 +332,22 @@ export function dte(options: DteOptions = {}) {
         async run(argv, ctx) {
           // Asked for, the usage is an answer: `vx dte --help` exited 1 (2026-10-26).
           if (argv.some((a) => a === '--help' || a === '-h') || argv[0] === 'help') {
-            process.stdout.write(`${USAGE}\n`)
+            ui.say('info', USAGE, 'out')
             return 0
           }
           if (argv[0] === 'init') return init(argv.slice(1), ctx)
           // The bare usage said nothing of what was wrong with the line typed.
-          if (argv[0] === undefined) throw new UserError(`missing subcommand\n${USAGE}`)
-          if (argv[0] !== 'worker') throw new UserError(`unknown subcommand: ${argv[0]}\n${USAGE}`)
+          if (argv[0] === undefined)
+            throw new UserError(`missing subcommand\n${USAGE}`, 'VX_E_USAGE')
+          if (argv[0] !== 'worker')
+            throw new UserError(`unknown subcommand: ${argv[0]}\n${USAGE}`, 'VX_E_USAGE')
           if (argv.length > 1)
-            throw new UserError(`vx dte worker takes no arguments: ${argv.slice(1).join(' ')}`)
+            throw new UserError(
+              `vx dte worker takes no arguments: ${argv.slice(1).join(' ')}`,
+              'VX_E_USAGE',
+            )
           const run = runOf()
-          const relay = process.env['VX_DTE_RELAY'] ?? options.relay
+          const relay = process.env['VX_DTE_RELAY'] || options.relay
           // Only what is missing: with VX_DTE_RUN set, the old line still asked for it.
           if (run === undefined || relay === undefined) {
             const missing = [

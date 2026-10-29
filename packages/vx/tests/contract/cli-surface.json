@@ -39,9 +39,11 @@
       "--branch",
       "--cache-dir",
       "--failed",
+      "--follow",
       "--format",
       "--help",
       "--list",
+      "--live",
       "--log",
       "--sql",
       "--stats"
@@ -127,7 +129,6 @@
       "json",
       "pretty"
     ],
-    "cache --global": [],
     "cache --max-size": [
       "10K",
       "1G",
@@ -141,6 +142,15 @@
       "30m",
       "30s",
       "500M"
+    ],
+    "docs --format": [
+      "json",
+      "pretty"
+    ],
+    "docs --limit": [
+      "1",
+      "10",
+      "2"
     ],
     "info --cache-dir": [
       "*"
@@ -164,7 +174,9 @@
       "schedule",
       "telemetry"
     ],
-    "last --branch": [],
+    "last --branch": [
+      "*"
+    ],
     "last --cache-dir": [
       "*"
     ],
@@ -259,7 +271,12 @@
       "10",
       "2"
     ],
-    "run --schedule": [],
+    "run --schedule": [
+      "critical-path",
+      "direct-dependents",
+      "most-work",
+      "ready-order"
+    ],
     "run --timeout": [
       "12h",
       "1d",
@@ -348,7 +365,12 @@
       "10",
       "2"
     ],
-    "watch --schedule": [],
+    "watch --schedule": [
+      "critical-path",
+      "direct-dependents",
+      "most-work",
+      "ready-order"
+    ],
     "watch --timeout": [
       "12h",
       "1d",

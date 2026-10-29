@@ -24,7 +24,10 @@ const PR_SET_DUMPABLE = 4
  */
 export async function hideEnvFromTasks(): Promise<boolean> {
   if (process.platform === 'darwin') return wipeStartupEnv()
-  if (process.platform !== 'linux' || process.env['VX_DEBUG_DUMPABLE']) return false
+  // `debug.dumpable` is a bool (util sits below src/settings.ts, so it reads
+  // it itself, as util/timing.ts does): `0` and `false` hide too.
+  const dumpable = process.env['VX_DEBUG_DUMPABLE']
+  if (process.platform !== 'linux' || dumpable === 'true' || dumpable === '1') return false
   try {
     const { dlopen, FFIType } = await import('bun:ffi')
     const libc = dlopen('libc.so.6', {

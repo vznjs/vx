@@ -1319,6 +1319,19 @@ describe('parseMigrateArgs', () => {
         '--from must be turbo, nx, vite-task or scripts',
       )
   })
+  // As core's flags say it: `--format=` read "(got )" and a last `--format` "(got nothing)".
+  it('a value flag with no value says it needs one, as core does', () => {
+    expect(
+      [['--format'], ['--dry', '--format='], ['--from'], ['--from=']].map(
+        (a) => parseMigrateArgs(a).error,
+      ),
+    ).toEqual([
+      '--format requires a value: pretty or json',
+      '--format requires a value: pretty or json',
+      '--from requires a value: turbo, nx, vite-task or scripts',
+      '--from requires a value: turbo, nx, vite-task or scripts',
+    ])
+  })
 })
 
 describe('vx migrate (nx) — executors', () => {

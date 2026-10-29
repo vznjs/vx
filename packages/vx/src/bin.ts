@@ -25,11 +25,28 @@ async function main(): Promise<void> {
       // ~7 ms, half of this verb (2026-10-02). A reader gone (EPIPE) is no
       // failure of the line.
       // Handed off, it says which vx ran and which one handed it the call.
-      const from = process.env['VX_HANDED_OFF']
+      const from = process.env['VX_HANDED_OFF'] || undefined
       const where = from === undefined ? '' : ` (${vxPath()}, handed off from ${from})`
-      await Bun.write(Bun.stdout, `vx ${(await import('./version.js')).VERSION}${where}\n`).catch(
-        () => {},
-      )
+      // Painted as every other line; piped, the same words a script reads.
+      // Decided here, not by util's `detectColors`: the util barrel was the
+      // 20 ms above, and `node:tty` 17 ms; fd 1 as a character device is the
+      // TTY answer. A CI's log is not painted for this one line.
+      const [{ VERSION }, { fstatSync }] = await Promise.all([
+        import('./version.js'),
+        import('node:fs'),
+      ])
+      const env = process.env
+      const on = env['NO_COLOR']
+        ? false
+        : env['FORCE_COLOR'] !== undefined
+          ? env['FORCE_COLOR'] !== '0' && env['FORCE_COLOR'] !== 'false'
+          : env['TERM'] !== 'dumb' && fstatSync(1).isCharacterDevice()
+      const sgr = (code: string, text: string): string =>
+        on ? `\x1b[${code}m${text}\x1b[0m` : text
+      await Bun.write(
+        Bun.stdout,
+        `${sgr('1', 'vx')} ${sgr('38;2;6;182;212', VERSION)}${where === '' ? '' : sgr('2', where)}\n`,
+      ).catch(() => {})
       settled = true
       return
     }
@@ -64,7 +81,10 @@ async function main(): Promise<void> {
     // A plugin's failure quotes what it was told (a remote's reply, a
     // header), and a config's own throw is its author's text: a secret in
     // either reached stderr whole (L-11).
-    const say = (line: string): void => void process.stderr.write(maskedLine(line))
+    const say = (line: string): void =>
+      void process.stderr.write(
+        `${ui.tagged('error', maskedLine(line), detectColors(process.stderr))}\n`,
+      )
     // UserError (workspace not found, cycle, config invalid, ...) —
     // print the message only; the stack is noise the user can't act
     // on. Everything else gets the full stack so internal bugs are
@@ -134,8 +154,9 @@ async function exitOnceFlushed(): Promise<void> {
 process.on('beforeExit', () => {
   if (settled) return
   settled = true
-  process.stderr.write(
-    'vx: the run stopped before it finished: something it awaited can never settle (a plugin hook?)\n',
+  ;(require('./util/index.js') as typeof import('./util/index.js')).ui.say(
+    'error',
+    'vx: the run stopped before it finished: something it awaited can never settle (a plugin hook?)',
   )
   process.exitCode = 1
 })

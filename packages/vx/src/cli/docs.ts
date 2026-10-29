@@ -5,7 +5,7 @@
 // whole, best first.
 
 import { VERSION } from '../version.js'
-import { parseDecimalInt } from '../util/index.js'
+import { detectColors, paint, parseDecimalInt, ui } from '../util/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 
 const SITE = 'https://vznjs.github.io/vx/'
@@ -20,7 +20,7 @@ interface DocsArgs {
   error?: string
 }
 
-function parseDocsArgs(args: readonly string[]): DocsArgs {
+export function parseDocsArgs(args: readonly string[]): DocsArgs {
   const out: DocsArgs = { terms: [], limit: DEFAULT_LIMIT, json: false }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
@@ -242,16 +242,20 @@ export async function docsCmd(
     return 0
   }
   if (hits.length === 0) {
-    process.stdout.write(
+    ui.say(
+      'warn',
       `vx docs: no section of the docs at ${ref} holds every word of "${query}"; try fewer words, or ${SITE}llms.txt\n`,
+      'out',
     )
     return 0
   }
+  const c = detectColors(process.stdout)
   process.stdout.write(
     hits
-      .map(
-        (h) =>
-          `── ${h.page}.md${h.heading === '' ? '' : ` § ${h.heading}`} · ${h.url}\n\n${h.text}\n`,
+      .map((h) =>
+        c.enabled
+          ? `${ui.render([ui.excerpt(`${h.page}.md${h.heading === '' ? '' : ` § ${h.heading}`}`, h.text)], c)}${paint('', h.url, c, { dim: true })}\n`
+          : `── ${h.page}.md${h.heading === '' ? '' : ` § ${h.heading}`} · ${h.url}\n\n${h.text}\n`,
       )
       .join('\n'),
   )

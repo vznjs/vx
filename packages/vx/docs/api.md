@@ -3229,6 +3229,9 @@ export const place = (text: string): Inline => (text === 'local' ? text : id(tex
 export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
 export function inline(x: Inline, c: ColorSupport): string
 export function status(t: Tone, verb: string, headline: Inline): Block
+export function tagged(t: Tone, line: string, c: ColorSupport): string
+export function say(t: Tone, line: string, stream: 'out' | 'err' = 'err'): void
+export function excerpt(title: string, body: string): Block
 export function text(...items: Inline[]): Block
 export function why(line: Inline): Block
 export type FieldRow = readonly [label: string, ...values: Inline[]] | null
@@ -3242,8 +3245,10 @@ export interface NoticeParts {
   tone: Tone
   verb: string
   headline: Inline
+  /** What is wrong, one fact a line. */
   what?: readonly Inline[]
   why?: Inline
+  /** A source frame, below the facts. */
   code?: string
   fix?: Inline
 }

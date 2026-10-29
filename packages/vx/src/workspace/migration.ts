@@ -373,7 +373,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   }
   if (dry && args.json !== true) {
     for (const f of files) {
-      process.stdout.write(`── ${f.relPath} ──\n${f.contents}\n`)
+      ui.print('out', ui.excerpt(f.relPath, f.contents))
     }
   } else if (!dry) {
     for (const f of files) await Bun.write(f.abs, f.contents)
