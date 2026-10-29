@@ -838,3 +838,160 @@ it('names the workflow runs its workers come from, none once a dispatch named no
     await rm(temp, { recursive: true, force: true })
   }
 })
+
+it('keeps every other run to cancel when one is let go twice', async () => {
+  const calls: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      calls.push(`${req.method} ${path}`)
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: 1 })
+      if (path.endsWith('/jobs')) return Response.json({ jobs: [] })
+      return new Response(null, { status: 202 })
+    },
+  })
+  const temp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
+  await Bun.write(path.join(temp, 'vx-dte-started'), '/repos/o/r/actions/runs/9 small#9\n')
+  // Its append waits for a reader: the dispatch is held between its run and its letGo.
+  const fifo = path.join(temp, 'vx-dte-runs')
+  expect(Bun.spawnSync(['mkfifo', fifo]).exitCode).toBe(0)
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+    RUNNER_TEMP: temp,
+  })
+  try {
+    const adapter = github()
+    adapter.adopt?.((id, size) => spawn(id, size))
+    void adapter.spawn(spawn('small#1', 'small'))
+    for (let i = 0; i < 50 && !calls.some((c) => c.endsWith('/dispatches')); i++)
+      await Bun.sleep(10)
+    await Bun.sleep(50)
+    adapter.cancel?.(['small#1'])
+    expect(readFileSync(fifo, 'utf8')).toBe('/repos/o/r/actions/runs/1\n')
+    await Bun.sleep(50)
+    await adapter.close?.()
+    expect(calls.filter((c) => c.endsWith('/cancel')).toSorted()).toEqual([
+      'POST /repos/o/r/actions/runs/1/cancel',
+      'POST /repos/o/r/actions/runs/9/cancel',
+    ])
+  } finally {
+    await server.stop(true)
+    await rm(temp, { recursive: true, force: true })
+  }
+})
+
+it('dispatches a wave of more than 256 workers as runs of at most 256', async () => {
+  const waves: number[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    async fetch(req) {
+      const { inputs } = (await req.json()) as { inputs: { workers: string } }
+      waves.push((JSON.parse(inputs.workers) as string[]).length)
+      return new Response(null, { status: 204 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const adapter = github()
+    for (let i = 1; i <= 600; i++) void adapter.spawn(spawn(`small#${i}`, 'small'))
+    await Bun.sleep(100)
+    expect(waves.toSorted((a, b) => b - a)).toEqual([256, 256, 88])
+  } finally {
+    await server.stop(true)
+  }
+})
+
+it('reads every page of a run of more than 100 jobs', async () => {
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const url = new URL(req.url)
+      if (url.pathname.endsWith('/dispatches')) return Response.json({ workflow_run_id: 7 })
+      if (url.pathname === '/repos/o/r/actions/runs/7/jobs') {
+        const page = Number(url.searchParams.get('page') ?? '1')
+        const all = Array.from({ length: 101 }, (_, i) => ({
+          name: `small#${i + 1}`,
+          status: i === 100 ? 'completed' : 'in_progress',
+          conclusion: i === 100 ? 'failure' : null,
+          steps: [],
+        }))
+        return Response.json({ total_count: 101, jobs: all.slice((page - 1) * 100, page * 100) })
+      }
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const why: string[] = []
+    const adapter = github()
+    for (let i = 1; i <= 101; i++)
+      void adapter.spawn(spawn(`small#${i}`, 'small', (w) => why.push(`small#${i}: ${w}`)))
+    for (let i = 0; i < 50 && why.length === 0; i++) await Bun.sleep(100)
+    expect(why).toEqual(['small#101: job failure'])
+    await adapter.close?.()
+  } finally {
+    await server.stop(true)
+  }
+}, 10_000)
+
+// A first page's ETag says nothing of the next: asked by it, a run of more
+// than 100 jobs answered 304 and its later pages were never read again.
+it('reads every page of a run of more than 100 jobs again, its first unchanged', async () => {
+  let reads = 0
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const url = new URL(req.url)
+      if (url.pathname.endsWith('/dispatches')) return Response.json({ workflow_run_id: 7 })
+      if (url.pathname === '/repos/o/r/actions/runs/7/jobs') {
+        const page = Number(url.searchParams.get('page') ?? '1')
+        if (page === 1 && req.headers.get('if-none-match') === '"p1"')
+          return new Response(null, { status: 304, headers: { etag: '"p1"' } })
+        if (page === 2) reads++
+        const done = page === 2 && reads > 1
+        const all = Array.from({ length: 101 }, (_, i) => ({
+          name: `small#${i + 1}`,
+          status: i === 100 && done ? 'completed' : 'in_progress',
+          conclusion: i === 100 && done ? 'failure' : null,
+          steps: [],
+        }))
+        return Response.json(
+          { total_count: 101, jobs: all.slice((page - 1) * 100, page * 100) },
+          { headers: { etag: `"p${page}"` } },
+        )
+      }
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const why: string[] = []
+    const adapter = github()
+    for (let i = 1; i <= 101; i++)
+      void adapter.spawn(spawn(`small#${i}`, 'small', (w) => why.push(`small#${i}: ${w}`)))
+    for (let i = 0; i < 100 && why.length === 0; i++) await Bun.sleep(100)
+    expect(why).toEqual(['small#101: job failure'])
+    await adapter.close?.()
+  } finally {
+    await server.stop(true)
+  }
+}, 15_000)

@@ -404,6 +404,27 @@ describe('a release from the npm registry', () => {
     )
   })
 
+  it('a signed release of another version than the one asked for is refused before the tarball', async () => {
+    // npm signs every version it published, an old one included: a mirror
+    // answering 9.9.9 with 1.0.0's genuine document passed every check.
+    const integrity = integrityOf(TGZ)
+    const old = {
+      version: '1.0.0',
+      dist: {
+        tarball: TARBALL_URL,
+        integrity,
+        signatures: [{ keyid: TEST_KEY.id, sig: signed(`${PKG}@1.0.0:${integrity}`) }],
+      },
+    }
+    const r = await upgradeAgainst(old, TEST_KEY)
+    expect(r).toEqual({
+      outcome: `vx upgrade: the npm registry answered ${PKG}@9.9.9 with version 1.0.0 — refusing to install; nothing replaced`,
+      asked: [MANIFEST_URL],
+      dest: 'old',
+      left: ['vx'],
+    })
+  })
+
   it('a signature for another package does not verify for this one', () => {
     const doc = manifest() as { dist: { signatures: { keyid: string; sig: string }[] } }
     doc.dist.signatures = [
@@ -428,11 +449,12 @@ describe('a release from the npm registry', () => {
         signatures: [{ keyid: TEST_KEY.id, sig: signed(`${PKG}@${VERSION}:${integrity}`) }],
       },
     }
-    const result = await withFetch({ [MANIFEST_URL]: () => Response.json(doc) }, async (asked) => [
-      await releaseBinary(PKG, '9.9.9', () => {}, TEST_KEY),
+    const latest = `https://registry.npmjs.org/${PKG}/latest`
+    const result = await withFetch({ [latest]: () => Response.json(doc) }, async (asked) => [
+      await releaseBinary(PKG, 'latest', () => {}, TEST_KEY),
       asked,
     ])
-    expect(result).toEqual([null, [MANIFEST_URL]])
+    expect(result).toEqual([null, [latest]])
   })
 
   it('a host it cannot reach is one line naming the host, never a stack', async () => {

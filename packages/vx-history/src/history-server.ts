@@ -20,20 +20,6 @@ const DEADLINE_MS = 10_000
 /** Tries of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
 const ATTEMPTS = 3
 
-/** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
-export function serverUrlOf(
-  option: string | undefined,
-  env: Record<string, string | undefined> = Bun.env,
-): string | undefined {
-  const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
-  if (url === undefined || url === '') return undefined
-  if (!/^https?:\/\//.test(url)) throw new Error(`vxHistory(): url must be http(s), got ${url}`)
-  // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
-  if (url.endsWith('/v1'))
-    throw new Error(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
-  return url
-}
-
 /** The issuer and repository a workspace names, as a key holds them: the issuer's URL with no trailing slash, `org/name` lowercased. */
 export interface Named {
   readonly issuer: string
@@ -48,10 +34,12 @@ const hasToken = (env: Record<string, string | undefined>): boolean =>
 /** A task the run ran and that succeeded, as the server takes its timing; else undefined. */
 export function timingOf(o: TaskOutcome): ServerTiming | undefined {
   if (o.status !== 'success') return undefined
-  const cores =
+  const need =
     o.cpuMs === undefined || o.durationMs <= 0
       ? undefined
       : o.cpuMs / (o.durationMs * (o.cpuShare ?? 1))
+  // A share rounded to 0 divides by it, and the server refuses the upload.
+  const cores = need !== undefined && Number.isFinite(need) ? need : undefined
   return {
     durationMs: Math.max(0, aloneMs(o)),
     ...(cores === undefined ? {} : { cores }),
@@ -244,9 +232,13 @@ export class HistoryServer {
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
       const err = await refusal(res)
-      throw new Error(
-        `${err.message}: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)`,
-      )
+      const fix =
+        this.env.GITHUB_ACTIONS === 'true'
+          ? 'give the job `permissions: id-token: write`'
+          : this.env.GITLAB_CI === 'true'
+            ? 'name an id_tokens entry VX_HISTORY_TOKEN'
+            : 'off CI, a server reads only with READ_ACCESS=public'
+      throw new Error(`${err.message}: a read with no CI token was refused (${fix})`)
     }
     if (!res.ok) throw await refusal(res)
     return res
@@ -280,6 +272,7 @@ export class HistoryServer {
     refs: readonly string[],
     hashes: readonly string[],
   ): Promise<Map<string, ServerTiming>> {
+    if (hashes.length === 0) return new Map()
     const per = (await this.limitsNow()).maxQueryHashes
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
@@ -297,7 +290,11 @@ export class HistoryServer {
     )
     const out = new Map<string, ServerTiming>()
     for (const [hash, t] of parts.flat()) {
-      if (typeof t?.durationMs !== 'number' || !(t.durationMs >= 0)) continue
+      if (
+        typeof t?.durationMs !== 'number' ||
+        !(t.durationMs >= 0 && t.durationMs <= Number.MAX_SAFE_INTEGER)
+      )
+        continue
       out.set(hash, {
         durationMs: t.durationMs,
         ...(typeof t.cores === 'number' ? { cores: t.cores } : {}),

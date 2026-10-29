@@ -206,10 +206,12 @@ resolves it, so a symlinked path to the workspace is the same id). Null
 when the workspace names its cache dir (`cache.dir`, `VX_CACHE_DIR`),
 which then holds everything, with no repository id, or with no home. A run given `--cache-dir` passes null itself.
 
-Used by `prepareRun` (so `run` and `planRun`), the doctor, and every
-reading verb through `cli/workspace-config.ts` — `vx cache clean`
-included (`cliCacheDir`: `--cache-dir`, else this over the config with
-the plugin `config` stage applied).
+Used by `prepareRun` (so `run` and `planRun`), the doctor, and the
+verbs that open the store through `cli/workspace-config.ts` (`vx cache
+clean`, a plugin verb's cache), over the config with the plugin `config`
+stage applied. There it is asked on first use: a verb that never opens
+the store (`vx help`, `show`, `last`, `why`, `completions`) spawns no git
+for it (`tests/reading-verbs-git.test.ts`).
 
 ## What this does NOT do
 

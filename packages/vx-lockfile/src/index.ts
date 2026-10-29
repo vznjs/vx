@@ -17,6 +17,7 @@
 // each importer's `package.json` to its tasks' inputs.
 //
 // Imports core only through the public `@vzn/vx` specifier.
+import { readFileSync } from 'node:fs'
 import { mkdir, rename } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -56,7 +57,7 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 20
+const DIGEST_VERSION = 21
 
 interface Manager {
   readonly name: string
@@ -68,7 +69,8 @@ interface Manager {
   readonly importers: (text: string) => ReadonlyMap<string, LockfileImporter>
   /** Each importer's dependency names the file records, whatever they resolve to. */
   readonly recorded: (text: string) => ReadonlyMap<string, ReadonlyMap<string, unknown>>
-  readonly extraFiles?: (text: string) => readonly string[]
+  /** `root` is the workspace's when the key reads them, undefined under `--affected`. */
+  readonly extraFiles?: (text: string, root: string | undefined) => readonly string[]
   /** Root files no lockfile records that lay the install out: folded whole into every task. */
   readonly settings: readonly string[]
   /**
@@ -78,6 +80,13 @@ interface Manager {
   readonly settingsText?: (file: string, text: string) => string | undefined
   /** The lockfile files a peer under `dependencies`: the manifest says which entries are peers. */
   readonly peersInManifest?: true
+  /** The file leaves out every `link:` dependency (pnpm's `excludeLinksFromLockfile`): the manifests name them. */
+  readonly linksUnrecorded?: (text: string) => boolean
+  /**
+   * A manifest dependency the install leaves out of the file by design, so
+   * its absence is no stale lockfile.
+   */
+  readonly unrecorded?: (text: string) => (name: string, pkg: Record<string, unknown>) => boolean
   /**
    * Importers a format leaves out of the lockfile (yarn classic), from the
    * workspace's manifests through `manifest`; undefined where the file
@@ -125,6 +134,9 @@ const MANAGERS = {
           ? pnpmSettings().packageSettings(text)
           : undefined,
     peersInManifest: true,
+    // Read from their blocks alone: a whole parse here was on every warm run.
+    linksUnrecorded: (t) => pnpmLock().excludesLinks(t),
+    unrecorded: (t) => pnpmLock().ignoredOptional(t),
   },
   bun: {
     name: 'bun',
@@ -162,7 +174,16 @@ const MANAGERS = {
     files: ['yarn.lock'],
     digest: (t, files) => yarnLock().importerDigests(yarnParse(t), files),
     importers: (t) => yarnLock().importerLinks(yarnParse(t)),
-    extraFiles: (t) => yarnLock().fileDeps(yarnParse(t)),
+    extraFiles: (t, root) => {
+      // Classic keys a `link:` to a workspace like any linked directory,
+      // and records no workspace to tell them apart. Yarn 1 links the
+      // workspace itself (an edge, from the manifests), and its content
+      // folded into the one digest every task folds re-keyed the whole
+      // repo on each edit under it, its own build output included. A
+      // `file:` one is a copy, so its content stays.
+      const linked = root === undefined ? undefined : (d: string) => isWorkspace(root, d)
+      return yarnLock().fileDeps(yarnParse(t), linked)
+    },
     recorded: (t) => {
       const lock = yarnParse(t)
       const out = new Map<string, ReadonlyMap<string, unknown>>()
@@ -170,8 +191,10 @@ const MANAGERS = {
       return out
     },
     // `.yarnrc` is Yarn 1's: `ignore-scripts true` there changes the install
-    // under an unchanged yarn.lock (probed, yarn 1.22).
-    settings: ['.yarnrc.yml', '.yarnrc'],
+    // under an unchanged yarn.lock (probed, yarn 1.22). Yarn 1 reads an
+    // option `.yarnrc` leaves unset from `.npmrc`: `production=true` there
+    // dropped every devDependency (probed, yarn 1.22).
+    settings: ['.yarnrc.yml', '.yarnrc', '.npmrc'],
     async manifestImporters(t, root, manifest) {
       const lock = yarnParse(t)
       if (lock.generation !== 'classic') return undefined
@@ -197,7 +220,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     )
   }
   const extraFiles = manager.extraFiles
-  const claimOf = (file: string): LockfileClaimHooks => {
+  const claimOf = (file: string, root: string | undefined): LockfileClaimHooks => {
     // The parsers name their own file, so prefixing unconditionally said it
     // twice — "bun.lock: bun.lock: Failed to parse JSONC" (2026-09-20).
     // Prefix only what does not already name it, and say what fixes it: a
@@ -229,7 +252,9 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       }),
       // Read before `digest` on the key path: a malformed bun.lock refused
       // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
-      ...(extraFiles !== undefined ? { extraFiles: guarded(extraFiles) } : {}),
+      ...(extraFiles !== undefined
+        ? { extraFiles: guarded((text: string) => extraFiles(text, root)) }
+        : {}),
       digest: guarded((text: string, files: ReadonlyMap<string, string>) => {
         // A conflicted lockfile names two installs at once. Yarn classic's
         // line parser took the second side without a word, so the key named
@@ -241,7 +266,18 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   }
   // One part name for every file: `npm shrinkwrap` renames the lockfile,
   // and the same install keys the same.
-  const claims = manager.files.map((file) => ({ file, claim: claimOf(file) }))
+  // `--affected` reads the claims of no root: a path under a workspace is
+  // its project's change there, never a lockfile's.
+  const claims = manager.files.map((file) => ({ file, claim: claimOf(file, undefined) }))
+  const rooted = new Map<string, { file: string; claim: LockfileClaimHooks }[]>()
+  const claimsAt = (root: string): { file: string; claim: LockfileClaimHooks }[] => {
+    let at = rooted.get(root)
+    if (at === undefined) {
+      at = manager.files.map((file) => ({ file, claim: claimOf(file, root) }))
+      rooted.set(root, at)
+    }
+    return at
+  }
   const unreadable = manager.unreadable
   // With no lockfile it reads, a lockfile it cannot: the key would name no
   // install at all, so the run refuses rather than guessing.
@@ -259,7 +295,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   ): Promise<
     { importers: ReadonlyMap<string, LockfileImporter>; file: string | undefined } | undefined
   > => {
-    for (const { file, claim } of claims) {
+    for (const { file, claim } of claimsAt(ctx.workspaceRoot)) {
       const importers = await claim.importers(ctx)
       if (importers === undefined) continue
       if (importers.size > 0 || manager.manifestImporters === undefined) return { importers, file }
@@ -308,7 +344,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         settingsPerRun.set(ctx, settings)
       }
       let deps: Readonly<Record<string, string>> | undefined
-      for (const { claim } of claims) {
+      for (const { claim } of claimsAt(ctx.workspaceRoot)) {
         deps = await claim.key(task, ctx)
         if (deps !== undefined) break
       }
@@ -340,7 +376,8 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         )
         return []
       }
-      const { importers, file } = read
+      const { file } = read
+      let { importers } = read
       // A lockfile older than the manifests drops edges: a workspace it does
       // not list yet (a renamed folder, lerna's 31 added Nx projects) is
       // named by its path with none, and a dependency added to package.json
@@ -350,12 +387,17 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       // an install that is not on disk.
       if (file !== undefined) {
         const text = await Bun.file(path.join(ctx.workspaceRoot, file)).text()
+        const linksUnrecorded = manager.linksUnrecorded?.(text) === true
+        if (linksUnrecorded)
+          importers = await withManifestLinks(ctx.workspaceRoot, importers, manifest)
         const missing = await staleness(
           ctx.workspaceRoot,
           importers,
           await recordedOnce(ctx.cacheDir, file, text, manager.recorded),
           await dirs,
           manifest,
+          linksUnrecorded,
+          manager.unrecorded?.(text),
         )
         if (missing.length > 0) {
           throw new UserError(
@@ -506,6 +548,26 @@ function manifestReader(root: string): (dir: string) => Promise<Record<string, u
   }
 }
 
+/** Whether the root `package.json` `workspaces` globs name `dir`, read as `workspaceDirs` does. */
+function isWorkspace(root: string, dir: string): boolean {
+  let pkg: Record<string, unknown> | null
+  try {
+    pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >
+  } catch {
+    return false
+  }
+  const globs = globsOf(pkg).filter((p): p is string => typeof p === 'string')
+  const glob = (p: string): Bun.Glob => new Bun.Glob(p.replace(/^\.\//, '').replace(/\/+$/, ''))
+  return (
+    !dir.split('/').includes('node_modules') &&
+    globs.some((p) => !p.startsWith('!') && glob(p).match(dir)) &&
+    !globs.some((p) => p.startsWith('!') && glob(p.slice(1)).match(dir))
+  )
+}
+
 /** A root manifest's `workspaces` globs: an array, or Yarn 1's `{ packages }`. */
 function globsOf(pkg: Record<string, unknown> | null): readonly unknown[] {
   const field = pkg?.['workspaces']
@@ -574,6 +636,8 @@ async function staleness(
   recorded: ReadonlyMap<string, ReadonlySet<string>>,
   dirs: readonly string[],
   manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+  linksUnrecorded: boolean,
+  unrecorded?: (name: string, pkg: Record<string, unknown>) => boolean,
 ): Promise<string[]> {
   const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
   const missing = dirs.filter((d) => !importers.has(d)).map((d) => `the workspace ${d}`)
@@ -593,7 +657,9 @@ async function staleness(
     for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
       const declared = pkg[field]
       if (declared === null || typeof declared !== 'object') continue
-      for (const name of Object.keys(declared)) {
+      for (const [name, spec] of Object.entries(declared)) {
+        if (linksUnrecorded && typeof spec === 'string' && spec.startsWith('link:')) continue
+        if (unrecorded?.(name, pkg) === true) continue
         if (name !== own && names.has(name) && !deps.has(name)) {
           missing.push(`${importer}'s dependency on ${name}`)
         }
@@ -601,6 +667,36 @@ async function staleness(
     }
   }
   return [...new Set(missing)]
+}
+
+/**
+ * The importers with each one's `link:` dependencies on another importer
+ * added from its manifest, for a lockfile that leaves them out.
+ */
+async function withManifestLinks(
+  root: string,
+  importers: ReadonlyMap<string, LockfileImporter>,
+  manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+): Promise<ReadonlyMap<string, LockfileImporter>> {
+  const out = new Map<string, LockfileImporter>()
+  for (const [importer, links] of importers) {
+    const pkg = await manifest(importer === '.' ? root : path.join(root, importer))
+    const deps: Record<string, string> = { ...links.deps }
+    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+      const declared = pkg?.[field]
+      if (declared === null || typeof declared !== 'object') continue
+      for (const [name, spec] of Object.entries(declared)) {
+        if (typeof spec !== 'string' || !spec.startsWith('link:')) continue
+        const target = path
+          .relative(root, path.resolve(root, importer, spec.slice('link:'.length)))
+          .split(path.sep)
+          .join('/')
+        if (target !== importer && importers.has(target || '.')) deps[name] = target || '.'
+      }
+    }
+    out.set(importer, { ...links, deps })
+  }
+  return out
 }
 
 /**

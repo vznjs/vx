@@ -472,7 +472,7 @@ and exits 0, so a docs-only commit passes `vx run lint test build
   back, the note says so (`no projects selected: !app excluded every
 project the other filters matched`).
 - A name or path pattern that matches nothing is still an error, as a
-  likely typo. One that matches nothing beside one that matched prints a
+  likely typo, even beside a ref (`apq[main]`). One that matches nothing beside one that matched prints a
   warning.
 
 **An empty selection never cancels an anchored task.** Project scope
@@ -550,7 +550,9 @@ Mutual exclusion:
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest flag the verb accepts when one is within two edits
-(`unknown flag: --concurency (did you mean --concurrency?)`). Every verb
+(`unknown flag: --concurency (did you mean --concurrency?)`); a name of
+four letters or fewer gets one edit or a swap of two letters, so
+`--poll` is not hinted `--all` nor `vx test` `last`. Every verb
 does this against its own usage line and `--help`: `vx info --formt`
 hints `--format`, `vx lock --chek` hints `--check`, `vx upgrade --hlp`
 hints `--help`, and `--json` on a verb that takes `--format` hints
@@ -1391,6 +1393,10 @@ watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** A cycle opens with a blank line and
    `changed <project> <relpath>`, plus ` (+N more)` when more paths
    changed, then its task rows as `vx run` prints them, with no footer.
+   Where a hit prints no row (`--all`, `--filter`, `--affected`, or
+   `--output-logs errors-only` / `none`), a cycle of hits alone says
+   ` N tasks cached, nothing ran`, so a cycle back to cached bytes is
+   not silent below the failure before it.
    The named path is the first changed file that still exists (a
    directory only when no file changed), so an
    editor's temporary file renamed away names nothing; a deletion names
@@ -1714,10 +1720,10 @@ listing the directories.
 
 ### Exit codes
 
-| Code | When                                                                                                                                                   |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `0`  | pruning completed (zero or more entries evicted). A workspace that never ran has no cache: `› vx cache clean  nothing to free`, and nothing is created |
-| `1`  | parse error, missing policy, or workspace-discovery error                                                                                              |
+| Code | When                                                                                                                                                                                                                        |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | pruning completed (zero or more entries evicted). A workspace that never ran has no cache, nor does a directory holding nothing vx wrote (`--cache-dir build`): `› vx cache clean  nothing to free`, and nothing is created |
+| `1`  | parse error, missing policy, or workspace-discovery error                                                                                                                                                                   |
 
 ## Runs read the lock
 
@@ -2087,7 +2093,9 @@ integrity npm signed … nothing replaced`. A release signed with a key
 id vx does not pin says so: `… is signed with an npm key this vx does
 not know (…) — if npm rotated its signing key, this vx's installer
 needs updating`. A release with no signature or no integrity is refused
-before the download. Every refusal comes before anything is written.
+before the download, and so is a signed release of another version than
+the `TAG` asked for (`the npm registry answered …@<TAG> with version …`):
+npm signs its old releases too. Every refusal comes before anything is written.
 There is no fallback to GitHub's release digest: when the registry is
 unreachable, the upgrade is refused.
 
@@ -2458,9 +2466,10 @@ message is that plugin's or check's: do what it says.
 
 #### `VX_E_FS`
 
-The file system refused a write: permissions, a full disk. The message
-names the path. Free space (`vx cache clean --max-size <size>` trims the
-cache) or grant the write, then re-run.
+The file system refused a write: permissions, a full disk, a file where
+the cache directory goes. The message names the path. Free space
+(`vx cache clean --max-size <size>` trims the cache), grant the write,
+or move the file away, then re-run.
 
 #### `VX_E_FDS`
 
@@ -2782,7 +2791,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   with its size on disk, or `none: the cache dir holds the entries` when
   the workspace names its cache dir. Before a first run it is the store a
   run would open. A bare `vx cache clean` frees both sizes.
-- `cache entries` counts the entries and their size.
+- `cache entries` counts the entries and their size. An index SQLite
+  cannot read reads `unreadable: <why and the fix>` there, and the
+  history rows read 0: the report still prints, exit 0.
   Paths under the home directory print as `~/…`; the JSON keeps them
   absolute.
 - `cache policy` is the policy a `vx run` takes when no flag names one,
@@ -2815,7 +2826,9 @@ cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes`
 (on disk: the index and run history), `cacheStore` (null when the cache
 dir holds the entries), `cacheStoreBytes` (on disk, null with no store), `cacheVersion`,
-`schemaVersion`, `cacheEntries`, `cacheBytes`, `settings` (every
+`schemaVersion`, `cacheEntries`, `cacheBytes`, `cacheIndexError` (why
+the index cannot be read, with the fix, else null; the counts it holds
+read 0 then), `settings` (every
 setting by path, `{ value, source }`, `source` one of `env` /
 `workspace` / `default`, `value` null for the default),
 `orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
@@ -3131,7 +3144,9 @@ id could be is refused as an unexpected argument).
 prints one task's output instead of the summary: in the latest run that
 recorded the task, or in RUNID's. A failed task's is the kept failure
 output; any other task's is its cache entry's log (the one a hit
-replays, masked as it was), so a passing task's log reads too, on a hit
+replays, masked as it was, and again with this process's secret values,
+as a hit's replay is; a task's `env.define` / `env.secret` values only
+the run knows), so a passing task's log reads too, on a hit
 or in the run that saved it. An uncached task that passed, or a skip,
 kept none, nor does a failed task past the newest 50 failed runs:
 stdout is empty and stderr says so, exit 0. A kept log that is empty
@@ -3511,7 +3526,8 @@ plugin's failed flush) gets a yellow `warn` row above `info`,
 `N warnings above`, counting each distinct warning once; the
 warnings themselves are said once, where they happened. The
 `info` row ends with `run <id>`: the
-run's whole id, as `vx last <id>` takes it. The
+run's whole id, as `vx last <id>` takes it; a run a Ctrl-C (or
+SIGTERM, SIGHUP) stopped records nothing, so its footer names no id. The
 `time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a
 fact twice: a spread value already on the row is left out, so one
