@@ -101,7 +101,7 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
 interface PruneArgs {
   olderThanMs?: number
   maxBytes?: number
-  dryRun?: boolean
+  dry?: boolean
   format?: 'pretty' | 'json'
   /** `--cache-dir`: prune the cache a run with the same flag uses. */
   cacheDir?: string
@@ -161,7 +161,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       }
       out.maxBytes = bytes
     } else if (a === '--dry') {
-      out.dryRun = true
+      out.dry = true
     } else if (a === '--global') {
       out.global = true
     } else if (a === '--format' || a?.startsWith('--format=')) {
@@ -216,7 +216,7 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   else {
     const ws = await loadCliWorkspace(root)
     dir = ws.cacheDir
-    storeRoot = await ws.storeRoot
+    storeRoot = await ws.storeRoot()
   }
   if (parsed.olderThanMs === undefined && parsed.maxBytes === undefined) {
     return clear(args, root, dir, storeRoot, parsed)
@@ -224,15 +224,17 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   // A workspace that never ran has nothing to prune, and opening the cache
   // to find that out made it: `.vx/cache` with a database and a
   // `.gitignore`, where item 900 had held the dry run to making nothing
-  // (and a read-only checkout was refused as unwritable instead).
-  const dry = parsed.dryRun === true
+  // (and a read-only checkout was refused as unwritable instead). So has a
+  // directory holding nothing vx wrote (`--cache-dir build`): opened, it got
+  // an index and a `*` .gitignore that hid the user's files from git.
+  const dry = parsed.dry === true
   const json = parsed.format === 'json'
-  if (!existsSync(dir) && (storeRoot === null || !existsSync(storeRoot))) {
+  if (vxCacheEntries(dir).length === 0 && (storeRoot === null || !existsSync(storeRoot))) {
     printPruned({ evicted: 0, bytesFreed: 0, orphans: 0, orphanBytes: 0 }, dry, json)
     return 0
   }
   const cache =
-    parsed.dryRun === true
+    parsed.dry === true
       ? new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
       : new Cache(dir, undefined, root, undefined, 'open', storeRoot)
   // A prune deletes rows and artifacts; a cache this user cannot write is
@@ -240,19 +242,19 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   // than dying in the first DELETE with SQLite's "readonly database" and a
   // stack (an unprivileged user on a root-owned `.vx`, 2026-09-16). A dry
   // run only reads, and reads a read-only cache fine.
-  if (!parsed.dryRun) cache.assertWritable()
+  if (!parsed.dry) cache.assertWritable()
   // A prune beside a run on this workspace evicts what the run has just
   // probed as hits, whose `accessed_at` bumps it has not flushed yet; the
   // run then re-runs those tasks (upstream survey, nx#36688). So a prune
   // takes the run's lock and waits its turn. A dry run deletes nothing.
-  const releaseRunLock = parsed.dryRun
+  const releaseRunLock = parsed.dry
     ? async (): Promise<void> => {}
     : await acquireRunLock(root, { log: warnToStderr })
   try {
-    const opts: { olderThanMs?: number; maxBytes?: number; dryRun?: boolean } = {}
+    const opts: { olderThanMs?: number; maxBytes?: number; dry?: boolean } = {}
     if (parsed.olderThanMs !== undefined) opts.olderThanMs = parsed.olderThanMs
     if (parsed.maxBytes !== undefined) opts.maxBytes = parsed.maxBytes
-    if (parsed.dryRun) opts.dryRun = true
+    if (parsed.dry) opts.dry = true
     printPruned(await cache.prune(opts), dry, json)
   } finally {
     cache.close()
@@ -269,7 +271,7 @@ function printPruned(
   if (json) {
     const { evicted, bytesFreed, orphans, orphanBytes } = result
     process.stdout.write(
-      `${JSON.stringify({ dryRun: dry, evicted, bytesFreed, orphans, orphanBytes })}\n`,
+      `${JSON.stringify({ dry: dry, evicted, bytesFreed, orphans, orphanBytes })}\n`,
     )
     return
   }
@@ -297,7 +299,7 @@ function freedStatus(dry: boolean, bytes: number, any: boolean): ui.Block {
 
 /** `vx cache clean --format json` with no bound (schemas/cache.json `clear`). */
 export interface ClearResult {
-  dryRun: boolean
+  dry: boolean
   /** Workspace-relative inside the workspace, else absolute. */
   cleared: string[]
   bytesFreed: number
@@ -359,7 +361,7 @@ async function clear(
       'VX_E_CONFIG',
     )
   }
-  const dry = parsed.dryRun === true
+  const dry = parsed.dry === true
   // `.vx/cache` and the stores are vx's own; any other directory is the
   // user's, cleared entry by entry and removed only if that empties it.
   // A `.vx/cache` linked to a volume (a CI cache mount) is emptied through
@@ -389,7 +391,7 @@ async function clear(
   }
   const shown = doomed.map((t) => (path.relative(root, t).startsWith('..') ? t : relPosix(root, t)))
   if (parsed.format === 'json') {
-    const result: ClearResult = { dryRun: dry, cleared: shown, bytesFreed: bytes }
+    const result: ClearResult = { dry: dry, cleared: shown, bytesFreed: bytes }
     process.stdout.write(`${JSON.stringify(result)}\n`)
   } else
     ui.print(

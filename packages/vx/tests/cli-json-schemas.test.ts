@@ -81,6 +81,8 @@ const CONFIG = (dep: boolean) => `export default {
       exec: { command: 'test -f ../../flag || { echo src/a.txt:1:2; exit 1; }' },
       inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
+    // Waits for a file: a run in progress, for vx last --live.
+    hold: { exec: { command: 'while [ ! -f ../../go ]; do sleep 0.05; done' } },
     // Inputs that match nothing: a warning, which vx last keeps.
     lost: { exec: { command: 'true' }, inputs: { files: ['nowhere/**'] }, cache: { outputs: { files: [] } } },
   },
@@ -201,6 +203,15 @@ beforeAll(async () => {
   json('last', ['--stats'])
   expect(vx(['run', 'lib#lost']).code).toBe(0)
   json('last', [])
+  const held = Bun.spawn({
+    cmd: [process.execPath, BIN, 'run', 'lib#hold'],
+    cwd: root,
+    env: { ...process.env, NO_COLOR: '1' },
+  })
+  for (let i = 0; i < 400 && vx(['last', '--live']).code !== 0; i++) await Bun.sleep(50)
+  json('last', ['--live'])
+  await writeFile(path.join(root, 'go'), '')
+  expect(await held.exited).toBe(0)
   json('last', ['--sql', 'SELECT project, task, cpu_ms, remote_error FROM runs'])
   // The flaky task passes again: the replayed failure names that run (`fixedIn`).
   await writeFile(path.join(root, 'flag'), '')
@@ -444,6 +455,7 @@ describe('each schema object is its source type', () => {
         schemaVersion: true,
         cacheEntries: true,
         cacheBytes: true,
+        cacheIndexError: true,
         settings: true,
         orphans: true,
         runs24h: true,
@@ -635,8 +647,8 @@ describe('each schema object is its source type', () => {
 
   it('cache', () => {
     expect(def('cache', 'prune')).toEqual(
-      keys<PruneResult & { dryRun: boolean }>({
-        dryRun: true,
+      keys<PruneResult & { dry: boolean }>({
+        dry: true,
         evicted: true,
         bytesFreed: true,
         orphans: true,
@@ -644,7 +656,7 @@ describe('each schema object is its source type', () => {
       }),
     )
     expect(def('cache', 'clear')).toEqual(
-      keys<ClearResult>({ dryRun: true, cleared: true, bytesFreed: true }),
+      keys<ClearResult>({ dry: true, cleared: true, bytesFreed: true }),
     )
   })
 

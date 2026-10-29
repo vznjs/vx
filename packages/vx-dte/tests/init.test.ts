@@ -92,6 +92,43 @@ it('github({ runsOn }) names a size its runner; pnpm gets its setup step', async
   )
 })
 
+// Yarn 1, what corepack runs without a packageManager field, ignores
+// --immutable and rewrites a stale yarn.lock; both majors honour
+// --frozen-lockfile.
+it('installs a Yarn workspace frozen under Yarn 1 and Berry alike', async () => {
+  await writeFile(path.join(root, 'yarn.lock'), '')
+  expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+  for (const file of [WORKFLOW, '.github/workflows/ci.yml']) {
+    const yml = await readFile(path.join(root, file), 'utf8')
+    expect(yml).toContain(
+      '      - run: corepack enable\n      - run: yarn install --frozen-lockfile\n',
+    )
+  }
+})
+
+// `yarn vx` under Berry runs a bin with node, whatever its shebang: vx's
+// bin.ts failed at its first import. Bun reads no Plug'n'Play either, so
+// Bun's own .bin lookup is the one that runs vx under every Yarn.
+it('runs vx with Bun in a Yarn workspace', async () => {
+  await writeFile(path.join(root, 'yarn.lock'), '')
+  expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+  const worker = await readFile(path.join(root, WORKFLOW), 'utf8')
+  expect(worker).toContain('      - run: bun vx dte worker\n')
+  const run = await readFile(path.join(root, '.github/workflows/ci.yml'), 'utf8')
+  expect(run).toContain('      - run: bun vx lock --check\n')
+  expect(run).not.toContain('yarn vx')
+  const { files } = await gitlab().init!({
+    workspaceRoot: root,
+    dir: '',
+    relay: 'https://r',
+    sizes: [{ name: 'small', max: 1 }],
+    manager: 'yarn',
+    tasks: { main: '', change: '' },
+  })
+  expect(files['.gitlab-ci.yml']).toContain('  script: [bun vx dte worker]\n')
+  expect(files['.gitlab-ci.yml']).not.toContain('yarn vx')
+})
+
 // A `: ` in a plain scalar made GitHub refuse the workflow (2026-10-25).
 it('writes workflows that parse as YAML', async () => {
   await writeFile(path.join(root, 'bun.lock'), '')
@@ -153,16 +190,44 @@ it('writes the CI files at the repository’s root, running in the workspace’s
   expect(await at({ workers: sizes, adapter: github() })).toBe(0)
   for (const file of [WORKFLOW, '.github/workflows/ci.yml']) {
     const yml = await readFile(path.join(root, file), 'utf8')
-    expect(yml).toContain('    defaults:\n      run:\n        working-directory: ws\n')
+    expect(yml).toContain("    defaults:\n      run:\n        working-directory: 'ws'\n")
     expect(yml).toContain(
-      '      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0\n        with: { package_json_file: ws/package.json }\n',
+      "      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0\n        with: { package_json_file: 'ws/package.json' }\n",
     )
   }
   const relay = 'https://relay.example.com'
   expect(await at({ relay, workers: sizes, adapter: gitlab() })).toBe(0)
   const ci = await readFile(path.join(root, '.gitlab-ci.yml'), 'utf8')
-  expect(ci).toContain("    - cd 'ws'\n    - pnpm install --frozen-lockfile\n")
+  expect(ci).toContain(
+    "    - cd 'ws'\n    - npm install -g --silent bun@1.4\n    - corepack enable\n    - pnpm install --frozen-lockfile\n",
+  )
   expect(ci).toContain("    - git checkout -q FETCH_HEAD\n    - cd 'ws'\n")
+})
+
+// Written bare, ' #' began a YAML comment: the jobs ran in 'my app', and
+// pnpm's step was no YAML at all.
+it("quotes the workspace's directory in the GitHub workflows", async () => {
+  const dir = "my app #1's"
+  for (const manager of ['pnpm', 'bun'] as const) {
+    const { files } = await github().init!({
+      workspaceRoot: root,
+      dir,
+      sizes: [{ name: 'small' }],
+      manager,
+      tasks: { main: '', change: '' },
+    })
+    for (const text of Object.values(files)) {
+      const job = Object.values(
+        (Bun.YAML.parse(text) as { jobs: Record<string, Record<string, unknown>> }).jobs,
+      )[0]!
+      expect(job['defaults']).toEqual({ run: { 'working-directory': dir } })
+      const steps = job['steps'] as { uses?: string; with?: unknown }[]
+      if (manager === 'pnpm')
+        expect(steps.find((s) => s.uses?.startsWith('pnpm/action-setup@'))?.with).toEqual({
+          package_json_file: `${dir}/package.json`,
+        })
+    }
+  }
 })
 
 it('keeps a workflow its owner changed unless --force, and says when it is up to date', async () => {
@@ -484,6 +549,44 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RUN',
   ])
+  // A job without id-token: write has no ACTIONS_ID_TOKEN_REQUEST_TOKEN.
+  expect(
+    said({
+      VX_DTE_SECRET: '',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: '',
+      VX_DTE_RUN: crypto.randomUUID(),
+      VX_DTE_RELAY: 'http://127.0.0.1:9',
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'http://127.0.0.1:9/token?v=1',
+      GITHUB_REPOSITORY_ID: '1',
+    }),
+  ).toBe(
+    '✗ vx dte  vx dte worker needs VX_DTE_SECRET, the run’s, or a GitHub Actions job with id-token: write',
+  )
+})
+
+it('gitlab() runs a pnpm, npm or yarn workspace on an image with Node, adding Bun', async () => {
+  // Before: every job ran on oven/bun, which has no Node, npm, pnpm or
+  // corepack, so `pnpm install`, `npm ci` and `corepack enable` failed.
+  const ciOf = async (manager: 'pnpm' | 'npm' | 'yarn') =>
+    (
+      await gitlab().init!({
+        workspaceRoot: root,
+        dir: '',
+        relay: 'https://relay.example.com',
+        sizes: [{ name: 'small', max: 4 }],
+        manager,
+        tasks: { main: '', change: '' },
+      })
+    ).files['.gitlab-ci.yml']!
+  const pnpm = await ciOf('pnpm')
+  expect(pnpm).toContain('  image: node:22.23.4@sha256:')
+  expect(pnpm).toContain(
+    '    - npm install -g --silent bun@1.4\n    - corepack enable\n    - pnpm install --frozen-lockfile\n',
+  )
+  expect(await ciOf('npm')).toContain('    - npm install -g --silent bun@1.4\n    - npm ci\n')
+  expect(await ciOf('yarn')).toContain(
+    '    - npm install -g --silent bun@1.4\n    - corepack enable\n    - yarn install --frozen-lockfile\n',
+  )
 })
 
 interface Step {

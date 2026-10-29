@@ -59,6 +59,36 @@ describe('a task typed as a verb', () => {
     ])
   })
 
+  it('from a project that does not declare the task, names the run that reaches the ones that do', async () => {
+    // `vx run lint` from lib refuses: only projects outside the selection declare it.
+    const lock = (): void => {
+      Bun.spawnSync({
+        cmd: [process.execPath, path.resolve(import.meta.dir, '..', 'src', 'bin.ts'), 'lock'],
+        cwd: root,
+        env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+      })
+    }
+    const solo = await addProject(
+      root,
+      'solo',
+      `export default { tasks: { lint: { exec: { command: 'true' } } } }`,
+    )
+    lock()
+    try {
+      expect(vx(path.join(root, 'packages', 'lib'), 'lint')).toEqual([
+        1,
+        noticed('vx: `lint` is a task here, not a command (did you mean vx run lint --all?)\n'),
+      ])
+      expect(vx(solo, 'lint')).toEqual([
+        1,
+        noticed('vx: `lint` is a task here, not a command (did you mean vx run lint?)\n'),
+      ])
+    } finally {
+      await rm(solo, { recursive: true, force: true })
+      lock()
+    }
+  })
+
   it('a `dev` task beats the no-service note; a name no project declares stays unknown', () => {
     expect(vx(root, 'dev')).toEqual([
       1,

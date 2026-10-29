@@ -133,6 +133,17 @@ describe('resolveFilters', () => {
     })
   })
 
+  it('a selector beside a ref that names no project is a typo, not "nothing affected"', async () => {
+    // `apq[HEAD]` exited 0 as "nothing affected since HEAD" whatever the diff.
+    const { value } = await quiet(() => resolveFilters(root, ['apq...[HEAD]']))
+    expect(value).toEqual({
+      error: 'no projects matched filter(s): apq...[HEAD]. Did you mean app?',
+    })
+    // CONTROL: a selector that names a project with an empty diff is "nothing affected".
+    const named = await quiet(() => resolveFilters(root, ['app[HEAD]']))
+    expect((named.value as { empty: string }).empty).toStartWith('nothing affected since HEAD')
+  })
+
   it('a typo beside a walk that came back empty names the typo, with its hint', async () => {
     // `lib^...` matched lib, which depends on no project; `apq` matched
     // nothing. The empty walk's error hid the typo and its "did you mean".
@@ -146,6 +157,22 @@ describe('resolveFilters', () => {
     // `--affected=HEAD --filter '[HEAD]'` said "nothing affected since HEAD, HEAD".
     const { value } = await quiet(() => resolveFilters(root, ['...[HEAD]', '[HEAD]']))
     expect((value as { empty: string }).empty).toStartWith('nothing affected since HEAD — ')
+  })
+
+  it('an empty walk from several matched projects speaks of them all', async () => {
+    // "matched app, lib, which depends on no project" read as lib alone.
+    const said = []
+    for (const f of ['*^...', '...^*'])
+      said.push((await quiet(() => resolveFilters(root, [f]))).value)
+    expect(said).toEqual([
+      {
+        error: 'no projects selected: filter "*^..." matched app, lib, which depend on no project',
+      },
+      {
+        error:
+          'no projects selected: filter "...^*" matched app, lib, and no project depends on them',
+      },
+    ])
   })
 
   it('the refusal names only the filters that matched nothing', async () => {

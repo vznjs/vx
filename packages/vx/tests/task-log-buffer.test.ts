@@ -23,11 +23,24 @@ describe('TaskLogBuffer — per-task tail cap', () => {
     buf.finish('p#a', 'success', 'miss')
     const e = entry(buf.drain('r', 'ws'), 'p#a')!
     expect(e.charsFull).toBe(200 * 1024)
-    expect(e.content.length).toBeLessThanOrEqual(TASK_LOG_TAIL_CHARS)
-    expect(e.content.length).toBeGreaterThan(TASK_LOG_TAIL_CHARS - 1024) // whole-chunk eviction
+    expect(e.content.length).toBe(TASK_LOG_TAIL_CHARS)
     expect(e.truncatedHeadChars).toBe(200 * 1024 - e.content.length)
     // The tail is preserved: the last chunk's char is the final content char.
     expect(e.content.at(-1)).toBe(String.fromCharCode(65 + (199 % 26)))
+  })
+
+  it('keeps a full tail when a big chunk is followed by a small one', () => {
+    // Whole-chunk eviction dropped the big chunk entire: a failure that
+    // flushed 128 KiB of output then printed its last line kept that line
+    // alone, its reason gone.
+    const buf = new TaskLogBuffer()
+    buf.append('p#a', 'x'.repeat(TASK_LOG_TAIL_CHARS - 4) + 'WHY\n')
+    buf.append('p#a', 'exit 1\n')
+    buf.finish('p#a', 'failed', 'miss')
+    const e = entry(buf.drain('r', 'ws'), 'p#a')!
+    expect(e.content.length).toBe(TASK_LOG_TAIL_CHARS)
+    expect(e.content.endsWith('WHY\nexit 1\n')).toBe(true)
+    expect(e.truncatedHeadChars).toBe(7)
   })
 
   it('slices a single over-cap chunk to its tail', () => {
@@ -410,6 +423,28 @@ describe('TaskLogBuffer — exact edges (C-43)', () => {
     }
     expect(buf.size()).toBe(2)
     expect(buf.drain('r', 'ws').tasks.map((t) => t.taskId)).toEqual(['p#f2', 'p#f1'])
+  })
+
+  it('a run past the budget evicts in linear time, not a sort per task', () => {
+    // Every finish past the budget sorted every retained entry, stubs
+    // included: 40,000 tasks of 200 chars took 17 s inside a sink's
+    // onRecord, which must return promptly. Linear, they take ~50 ms.
+    const buf = new TaskLogBuffer()
+    const line = 'x'.repeat(200)
+    const t0 = performance.now()
+    for (let i = 0; i < 30_000; i++) {
+      buf.append(`p#${i}`, line)
+      buf.finish(`p#${i}`, i % 100 === 0 ? 'failed' : 'success', 'miss')
+    }
+    expect(performance.now() - t0).toBeLessThan(2_000)
+    expect(buf.budgetUsed()).toBeLessThanOrEqual(RUN_LOG_BUDGET_CHARS)
+    // The failures, the newest successes and nothing else keep their content.
+    const kept = buf.drain('r', 'ws').tasks.filter((t) => t.content.length > 0)
+    expect(kept.filter((t) => t.status === 'failed')).toHaveLength(300)
+    const ok = kept.filter((t) => t.status === 'success').map((t) => Number(t.taskId.slice(2)))
+    const newest: number[] = []
+    for (let i = ok[0]!; i < 30_000; i++) if (i % 100 !== 0) newest.push(i)
+    expect(ok).toEqual(newest)
   })
 
   it('eviction stops at exactly the budget', () => {

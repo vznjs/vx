@@ -33,7 +33,7 @@ it('an exit while a verified temp is being removed still takes it', async () => 
     const body = new Uint8Array(1024).fill(7)
     const tag = await artifactTag(Buffer.from(KEY), 'ab90', 'team_1', new Blob([body]))
     const config = resolveTurboCacheConfig(
-      { apiUrl: 'http://turbo.invalid', token: 't', teamId: 'team_1', signatureKey: KEY },
+      { url: 'http://turbo.invalid', token: 't', teamId: 'team_1', signatureKey: KEY },
       {},
     )
     const fetchImpl = (async () =>

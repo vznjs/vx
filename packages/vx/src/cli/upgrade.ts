@@ -341,6 +341,14 @@ export async function releaseBinary(
 ): Promise<Uint8Array | null> {
   const registry = resolveRegistry(pkg.split('/')[0]!)
   const release = verifiedRelease(await fetchManifest(pkg, spec, undefined, registry), pkg, key)
+  // npm signs every version it published: the signature proves the bytes,
+  // not that they are the version asked for, so a mirror could hand back an
+  // older one.
+  if (spec !== 'latest' && release.version !== spec) {
+    throw new UserError(
+      `vx upgrade: the npm registry answered ${pkg}@${spec} with version ${release.version} — refusing to install; nothing replaced`,
+    )
+  }
   if (release.version === current) return null
   announce(release.version)
   return binaryFromTarball(await downloadVerified(release, registry))
