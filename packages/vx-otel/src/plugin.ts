@@ -14,6 +14,7 @@ import {
   definePlugin,
   type TelemetryContext,
   type TelemetrySink,
+  UserError,
   type VxPlugin,
 } from '@vzn/vx'
 import { readFileSync } from 'node:fs'
@@ -254,6 +255,12 @@ export function resolveOtelConfig(
       )
     }
   }
+  const tracesOn = tracesWanted && tracesUrl !== undefined
+  const metricsOn = metricsWanted && metricsUrl !== undefined
+  const logsOn = logsWanted && logsUrl !== undefined
+  // Nothing left to export declines as no endpoint does: a sink that sent
+  // nothing still loaded the exporter and had core build its records.
+  if (!tracesOn && !metricsOn && !logsOn) return undefined
 
   // A header value fetch refuses is refused here, by name: fetch's error
   // quotes the whole value, and the export warning printed it — an auth
@@ -340,16 +347,6 @@ export function resolveOtelConfig(
     }
     return pem.get(file)
   }
-  // The option is held to the variable's rule: a zero, negative or
-  // non-number timeout aborted every export the moment it started.
-  if (
-    opts.timeoutMs !== undefined &&
-    !(typeof opts.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0)
-  ) {
-    throw new Error(
-      `[vx-otel] timeoutMs must be a positive number of ms, got ${JSON.stringify(opts.timeoutMs)}`,
-    )
-  }
   const timeoutMs = opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000
   const tls: Partial<Record<'traces' | 'metrics' | 'logs', OtlpTls>> = {}
   for (const signal of ['traces', 'metrics', 'logs'] as const) {
@@ -396,9 +393,9 @@ export function resolveOtelConfig(
       }),
       logs: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_LOGS_HEADERS']), ...opts.headers }),
     },
-    ...(tracesWanted && tracesUrl !== undefined ? {} : { tracesEnabled: false }),
-    metricsEnabled: metricsWanted && metricsUrl !== undefined,
-    logsEnabled: logsWanted && logsUrl !== undefined,
+    ...(tracesOn ? {} : { tracesEnabled: false }),
+    metricsEnabled: metricsOn,
+    logsEnabled: logsOn,
     live: opts.live !== false,
     timeoutMs,
     // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` wins over the
@@ -436,6 +433,19 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('otel()', opts, OTEL_PLUGIN_KEYS)
+  // At the call, not when an endpoint is set: a laptop passed what failed
+  // in CI. A zero, negative or NaN timeout aborted every export as it
+  // started; a compression the option names is never the env's to excuse.
+  const ms = opts.timeoutMs
+  if (ms !== undefined && !(Number.isFinite(ms) && ms > 0)) {
+    throw new UserError(`otel() option "timeoutMs" must be a positive number of ms, got ${ms}`)
+  }
+  const { compression } = opts
+  if (compression !== undefined && !/^\s*(gzip|none)\s*$/i.test(compression)) {
+    throw new UserError(
+      `otel() option "compression" must be "gzip" or "none", got ${JSON.stringify(compression)}`,
+    )
+  }
   return definePlugin(import.meta, {
     telemetry(ctx: TelemetryContext): Promise<TelemetrySink> | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))

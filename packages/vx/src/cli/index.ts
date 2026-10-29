@@ -14,6 +14,7 @@ import {
   maskedLine,
   nearest,
   refusalNotice,
+  thrownMessage,
   ui,
   UserError,
   wantsJson,
@@ -183,7 +184,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
           // A verb's own refusal is its one line; anything else is the
           // plugin's crash, named as every other stage names one.
           if (isUserError(err)) throw err
-          const message = err instanceof Error ? err.message : String(err)
+          const message = thrownMessage(err)
           throw new UserError(
             `plugin '${resolved.plugin.name}' failed in command '${command}': ${message}`,
           )

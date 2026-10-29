@@ -44,7 +44,7 @@ to declare in every environment:
 | `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS`                   | one signal's headers, over the shared ones                                                                                                                                         |
 | `OTEL_RESOURCE_ATTRIBUTES`                              | `k=v,k=v` resource attributes, percent-encoded (a malformed one is dropped whole and warned); its `service.name` names the service when `OTEL_SERVICE_NAME` is unset               |
 | `OTEL_EXPORTER_OTLP_TIMEOUT`                            | per-request timeout in ms (default 15000, at most 2³¹−1); `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` for one signal. The `timeoutMs` option must be a positive number, or it is refused |
-| `OTEL_EXPORTER_OTLP_COMPRESSION`                        | `gzip` or `none` (default); `OTEL_EXPORTER_OTLP_<SIGNAL>_COMPRESSION` for one signal, the `compression` option over both                                                           |
+| `OTEL_EXPORTER_OTLP_COMPRESSION`                        | `gzip` or `none` (default); `OTEL_EXPORTER_OTLP_<SIGNAL>_COMPRESSION` for one signal, the `compression` option over both, refused if it is neither                                 |
 | `OTEL_EXPORTER_OTLP_CERTIFICATE`                        | a PEM file of the CA that signed the collector's certificate (`_<SIGNAL>_` for one signal)                                                                                         |
 | `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` / `_CLIENT_KEY` | PEM files of a client certificate and key, for a collector that asks for mutual TLS                                                                                                |
 | `OTEL_EXPORTER_OTLP_PROTOCOL`                           | vx sends OTLP/HTTP JSON only; under `grpc` a failed export says so (`OTEL_EXPORTER_OTLP_<SIGNAL>_PROTOCOL` per signal)                                                             |
@@ -62,6 +62,8 @@ naming the header.
 With only a traces URL set, metrics and logs are not
 exported (they used to be POSTed to the traces URL, which a collector
 refuses), and `metrics: true` or `logs: true` without a URL says so once.
+With no signal left to export (each one `none`, `false` or without a
+URL), the plugin declines, as with no endpoint.
 Both are booleans: a string (`'false'` is truthy) is refused.
 
 The package exports `otel` and its options type `OtelPluginOptions`. The
@@ -203,14 +205,16 @@ fail a run (every export is buffered, time-bounded, and swallows errors).
 
 A collector shedding load (`429`, `502`, `503`, `504`, or a dropped
 connection) is retried twice, 200 then 800 ms apart or after the
-`Retry-After` it names (at most 2 s), inside the end-of-run deadline; a
+`Retry-After` it names, in seconds or as a date (at most 2 s), inside the end-of-run deadline; a
 deadline that passes mid-wait ends the retries and warns the last answer.
 
 Swallowed, but not silent: an export that does not land warns once per
 signal URL, naming what happened — a collector that cannot be reached, one
 that refuses the request (`HTTP 401`, `404`, `500`, with the collector's own
 message), or one that accepts it and reports part of the data dropped
-(OTLP's `partialSuccess`). A collector that answers with a redirect
+(OTLP's `partialSuccess`). One that accepts it all with a message (a
+`partialSuccess` that rejected nothing, the spec's warning) is said once
+per signal as that warning, not as a failure. A collector that answers with a redirect
 is refused too, naming where it points: like the OTel SDK exporters,
 vx-otel follows none, since a header such as `x-honeycomb-team` would
 reach the new origin with it. The URL in that line is printed with any

@@ -104,6 +104,38 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
     expect(r).toBe(refused('out\0.txt'))
   })
 
+  // One subtree named twice per level: 41 directories that expand to 2^41
+  // paths, which no file system here can hold. The walk wrote them until
+  // the disk or the run gave out.
+  it('a Tree that expands past the free inodes is refused before a write', async () => {
+    const levels: Directory[] = [
+      {
+        files: [{ name: 'f', digest: blob('x'), is_executable: false }],
+        directories: [],
+        symlinks: [],
+      },
+    ]
+    for (let i = 1; i <= 40; i++) {
+      const digest = sha256(encodeDirectory(levels[i - 1]!))
+      levels.push({
+        files: [],
+        directories: [
+          { name: 'a', digest },
+          { name: 'b', digest },
+        ],
+        symlinks: [],
+      })
+    }
+    const [top, ...children] = [...levels].reverse()
+    const r = await run({
+      output_directories: [{ path: 'dist', tree_digest: tree(top!, children) }],
+    })
+    expect(r).toMatch(
+      /^vx\/reapi: the server's Tree for .*dist expands to 3\.3e\+12 entries, more than the \d+ this file system has free — refused$/,
+    )
+    expect(existsSync(path.join(cwd, 'dist'))).toBe(false)
+  })
+
   it('a Tree name of `..`', async () => {
     const up: Directory = {
       files: [{ name: 'new', digest: blob('pwned'), is_executable: false }],

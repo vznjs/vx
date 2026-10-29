@@ -38,7 +38,8 @@ What that gives each run of `ci.yml`:
 - **A `pull_request_target` run** reads and writes nothing: it runs on
   the base branch for a fork's code.
 - **A run of another workflow or repository** is refused. With `ALLOW`
-  empty, every request is refused: `the server admits no CI: set ALLOW`.
+  empty, a server does not start, and a Worker refuses every request:
+  `the server admits no CI: set ALLOW`.
 
 On GitLab, the workflow is the CI file:
 `https://gitlab.com:acme/web:.gitlab-ci.yml`. A merge request pipeline

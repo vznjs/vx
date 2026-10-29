@@ -22,7 +22,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
 // A cache scope's rule, for `VX_CACHE_SCOPE` and a plugin's `setBranch`, and that variable's refusal
 export function isCacheScope(v: unknown): v is string
 export function branchCacheScope(repo: string, branch: string): string // `<owner>/<repo>:<branch>`, sanitized to a valid scope
-export function cacheScopeEnvError(): UserError
+export function cacheScopeEnvError(got: string): UserError
 // The same refusal as text, naming its source
 export function cacheScopeError(source?: string): string
 // `baseBranch`: `VX_BASE_BRANCH`, else the workspace's; a bad variable throws

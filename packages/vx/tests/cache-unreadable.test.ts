@@ -180,3 +180,54 @@ describe('an index corrupt past the pages the open reads', () => {
     }
   })
 })
+
+describe('a shared store corrupt past the pages the open reads', () => {
+  it('is refused by the store file, not the sound index beside it', async () => {
+    // The refusal named `cache.db` for every corrupt page, so a user told to
+    // remove it removed a sound index and the run failed the same way again.
+    const store = path.join(dir, 'home', '.vx', 'id', 'cache')
+    mkdirSync(path.join(dir, 'home'), { mode: 0o700 })
+    const proj = path.join(dir, 'proj')
+    mkdirSync(path.join(proj, 'dist'), { recursive: true })
+    writeFileSync(path.join(proj, 'dist', 'x'), 'x')
+    const open = (): Cache => new Cache(dir, undefined, undefined, undefined, 'open', store)
+    const cache = open()
+    for (let i = 0; i < 50; i++) {
+      await cache.save({
+        hash: `h${i}`,
+        projectDir: proj,
+        outputFiles: [path.join(proj, 'dist', 'x')],
+        entry: { taskId: 'p#build', command: 'c'.repeat(500), durationMs: 1, stdout: 's' },
+      })
+    }
+    expect(cache.storeDir).toBe(store)
+    cache.close()
+    const storeFile = path.join(store, 'store.db')
+    const d = new Database(storeFile)
+    d.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+    const { page_size } = d.query('PRAGMA page_size').get() as { page_size: number }
+    const { rootpage } = d
+      .query("SELECT rootpage FROM sqlite_master WHERE name = 'entries'")
+      .get() as { rootpage: number }
+    d.close()
+    const fd = openSync(storeFile, 'r+')
+    writeSync(fd, Buffer.alloc(page_size, 0xab), 0, page_size, (rootpage - 1) * page_size)
+    closeSync(fd)
+    const again = open()
+    try {
+      const err = await Promise.resolve()
+        .then(() => again.get('h7'))
+        .then(
+          () => null,
+          (e: unknown) => e as Error,
+        )
+      expect(err?.message).toBe(
+        `the cache index ${storeFile} is not a database SQLite can read (database disk image is malformed) — ` +
+          `it holds nothing a run cannot rebuild: remove it with its -wal and -shm files and ` +
+          `re-run, and \`vx cache clean\` reclaims the artifacts it indexed`,
+      )
+    } finally {
+      again.close()
+    }
+  })
+})

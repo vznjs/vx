@@ -23,6 +23,8 @@ option.
   `(req, named?)`, `named` a `Repo`, answers the token's `Access`, refusing a token of
   another repository than `named`; with no token where `readAccess` is
   `public`, `named` when ALLOW names it, or `undefined` when none is named.
+- `errorJson(status, message)` is every server's refusal, `{ code, message }`
+  (Turbo's spec's `Error`); `notAllowed(allow)` its `405`, naming the methods in `Allow`.
 - `hashPart(text)` is what a server stores in place of an issuer, a repository name or a scope: the first
   128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
 - `statusLine(tone, name, text)` is the line a server prints when it starts (`'ok'`) or refuses to
@@ -33,6 +35,8 @@ option.
 export class Refusal extends Error {
   readonly status: number
 }
+export function errorJson(status: number, message: string): Response
+export function notAllowed(allow: string): Response
 export interface Allowed {
   readonly issuer: string
   readonly repository: string

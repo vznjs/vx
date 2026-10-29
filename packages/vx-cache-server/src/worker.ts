@@ -2,8 +2,7 @@
 // `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and the limits are vars in
 // it (README.md § On Cloudflare Workers).
 
-import { type Authorize, oidcAuth, parseAllow } from '@vzn/vx-devtools'
-import { errorJson, Refusal } from './protocol.js'
+import { type Authorize, errorJson, oidcAuth, parseAllow, Refusal } from '@vzn/vx-devtools'
 import { createCacheServer, DEFAULT_LIMITS, type Limits, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
@@ -17,6 +16,7 @@ export interface R2Bucket {
 interface WorkersCache {
   match(key: Request): Promise<Response | undefined>
   put(key: Request, res: Response): Promise<void>
+  delete(key: Request): Promise<boolean>
 }
 declare const caches: { open(name: string): Promise<WorkersCache> }
 export interface Context {
@@ -44,21 +44,26 @@ const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${n
 
 /**
  * R2, read through the data center's cache: an artifact never changes
- * under its name, so a copy needs no expiry of its own. The server has
+ * under its name while R2 holds it, so a copy needs no expiry of its own;
+ * an upload drops the copy, of bytes R2 has since let go. The server has
  * checked the token and named the object before a read reaches here.
  */
 
-function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
+export function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
   return {
     async put(name, body, size) {
       // R2 takes a stream of known length; this one errors at any other.
       const fixed = new FixedLengthStream(size)
       const piped = body.pipeTo(fixed.writable)
-      try {
-        await Promise.all([bucket.put(name, fixed.readable), piped])
-      } catch (err) {
-        throw new Refusal(400, `the body is not ${size} bytes: ${String(err)}`)
-      }
+      const [stored, read] = await Promise.allSettled([bucket.put(name, fixed.readable), piped])
+      // A body of another length fails the pipe; R2 failing alone is the
+      // bucket's fault (a 502), never the client's 400.
+      if (read.status === 'rejected')
+        throw new Refusal(400, `the body is not ${size} bytes: ${String(read.reason)}`)
+      if (stored.status === 'rejected') throw stored.reason
+      // R2 takes a name only once it holds none: a copy here is of bytes
+      // R2 expired, a corrupt one too, and outlived the new ones a year.
+      await (await cache).delete(keyOf(name))
     },
     get: async (name) => {
       const key = keyOf(name)
