@@ -621,7 +621,7 @@ export function resolveCacheScope(
   const named = env['VX_CACHE_SCOPE']
   if (named !== undefined) {
     if (named === '') return undefined
-    if (!isCacheScope(named)) throw cacheScopeEnvError()
+    if (!isCacheScope(named)) throw cacheScopeEnvError(named)
     return named
   }
   if (pluginScope === null) return undefined
