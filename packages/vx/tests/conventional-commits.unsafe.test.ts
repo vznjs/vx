@@ -56,6 +56,8 @@ const KNOWN = new Set([
   'd51dc5aadebfd242b98a2fd82b142ec312415502',
   // The third mega branch's, pushed before the row ran on it: 72 chars.
   '37f3a825a627e6d675318aa96eac671f21441d6f',
+  // The fourteenth mega branch's, git revert's own subject, pushed before a force-push could reword it.
+  '2fa06adaf940d13e302123b8b43f7ca03cbef133',
 ])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {
