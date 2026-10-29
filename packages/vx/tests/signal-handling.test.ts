@@ -212,7 +212,10 @@ describe('signal handling during vx run (e2e)', () => {
       // Each user's locks sit in a directory of their own (L-47).
       const uid = process.getuid?.()
       const lockRoot = uid === undefined ? tmp : path.join(tmp, `vx-runs-${uid}`)
-      const locks = readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-'))
+      // `<lock>.sock` beside it is the run's `vx last --live` socket.
+      const locks = readdirSync(lockRoot).filter(
+        (n) => n.startsWith('vx-run-') && !n.endsWith('.sock'),
+      )
       expect(locks.length).toBe(1)
       expect(readdirSync(path.join(lockRoot, locks[0]!))).toEqual([
         expect.stringMatching(new RegExp(`^h-${proc.pid}-`)),
@@ -230,7 +233,9 @@ describe('signal handling during vx run (e2e)', () => {
       // nothing (the directory's removal was skipped). macOS CI left one
       // once (item 867).
       const left = readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-'))
-      expect(left.map((n) => [n, readdirSync(path.join(lockRoot, n))])).toEqual([])
+      expect(
+        left.map((n) => [n, n.endsWith('.sock') ? 'socket' : readdirSync(path.join(lockRoot, n))]),
+      ).toEqual([])
     } finally {
       await rm(tmp, { recursive: true, force: true })
     }

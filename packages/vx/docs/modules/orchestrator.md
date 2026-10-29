@@ -370,4 +370,5 @@ While it holds the run lock, a run answers on a unix socket beside it
 `snapshot` or `follow`, then the snapshot as one JSON line; a follower
 then gets each event until `run:done`. Nothing is written for it, and a
 follower a megabyte behind is let go, so a stuck reader never holds the
-run's memory.
+run's memory. A signal exit leaves the path too, before the lock
+(`tests/signal-handling.test.ts`).

@@ -71,6 +71,30 @@ interface Peer {
 const encoder = new TextEncoder()
 
 /**
+ * The sockets this process listens on. A signal exit is `process.exit`
+ * (signals.ts): `unlisten` never runs, and a second Ctrl-C left the
+ * socket beside the released lock. The `exit` event runs on every exit
+ * path, synchronously, as run-lock.ts's release does; this one runs
+ * first, so the path is left before the lock frees it for the next run.
+ */
+const listening = new Set<string>()
+let exitHooked = false
+function unlinkOnExit(socketPath: string): void {
+  listening.add(socketPath)
+  if (exitHooked) return
+  exitHooked = true
+  process.prependListener('exit', () => {
+    for (const p of listening) {
+      try {
+        unlinkSync(p)
+      } catch {
+        // Gone already.
+      }
+    }
+  })
+}
+
+/**
  * Serve the run's live state on `socketPath` until the returned close.
  * Never fails the run: a socket that cannot be made (a path too long, a
  * second run in this process holding it) leaves the run unanswered.
@@ -234,6 +258,7 @@ export function serveLive(opts: {
     // The socket must never keep a run's process alive past its end.
     made.unref()
     listener = made
+    unlinkOnExit(opts.socketPath)
   } catch {
     listener = undefined
   }
@@ -246,6 +271,7 @@ export function serveLive(opts: {
       if (listener === undefined) return
       listener.stop()
       listener = undefined
+      listening.delete(opts.socketPath)
       try {
         unlinkSync(opts.socketPath)
       } catch {
