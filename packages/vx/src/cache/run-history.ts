@@ -41,6 +41,11 @@ const RUN_COLUMNS = [
   'keyless_by',
   'def',
   'cpu_share',
+  'queued_ms',
+  'output_bytes',
+  'blocks',
+  'flaky_passes',
+  'flaky_failures',
 ]
 
 const INSERT_RUNS = `INSERT INTO runs(${RUN_COLUMNS.join(', ')}) VALUES `
@@ -282,7 +287,7 @@ export class RunHistory {
   }
 }
 
-/** Bind a RunRecord to one `RUN_TUPLE`'s 29 positional parameters. */
+/** Bind a RunRecord to one `RUN_TUPLE`'s positional parameters, in `RUN_COLUMNS` order. */
 function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBindings[] {
   return [
     // The ONE place the no-key sentinel is applied, so the column's
@@ -321,6 +326,11 @@ function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBi
     run.keylessBy ?? null,
     run.def ?? null,
     run.cpuShare ?? null,
+    run.queuedMs ?? null,
+    run.outputBytes ?? null,
+    run.blocks ?? null,
+    run.flakyPasses ?? null,
+    run.flakyFailures ?? null,
   ]
 }
 
