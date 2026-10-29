@@ -162,6 +162,12 @@ describe('workspace digests (npm)', () => {
     for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
   })
 
+  it('workspaces written as `{ packages: [...] }` name the same workspaces (Turbo #3235, #3244)', () => {
+    const doc = JSON.parse(lock())
+    doc.packages[''].workspaces = { packages: doc.packages[''].workspaces }
+    expect(digests(JSON.stringify(doc))).toEqual(digests(lock()))
+  })
+
   it('refuses what is not an npm v2+ lockfile', () => {
     expect(() => parseLockfile('{"name":"x"}')).toThrow(/no lockfileVersion/)
     expect(() => parseLockfile('{"lockfileVersion":1,"dependencies":{}}')).toThrow(
