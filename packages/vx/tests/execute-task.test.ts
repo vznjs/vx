@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, gitInit, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { Cache, GitFilesCache, type CacheEntry } from '../src/cache/index.js'
 import { localExecutor } from '../src/exec/local-executor.js'
+import * as spawnOffModule from '../src/exec/spawn-off.js'
 import { UserError } from '../src/util/index.js'
 import { RestoreDemoted, type TaskNode, type TaskOutcome } from '../src/graph/index.js'
 import type { ExecuteRequest, TaskExecutor } from '../src/exec/index.js'
@@ -2700,14 +2701,21 @@ describe('execute-task edges', () => {
   it('a spawn that fails for want of descriptors names the limit, not a missing command', async () => {
     const stderr: string[] = []
     const heard: Logger = { ...log, taskStderr: (_n, c) => void stderr.push(c) }
+    const refusal = () =>
+      Object.assign(new Error('EMFILE: too many open files, socketpair'), { code: 'EMFILE' })
+    // Both spawns a task may take: here, and on the spawn thread (Linux).
     const emfile = spyOn(Bun, 'spawn').mockImplementation(() => {
-      throw Object.assign(new Error('EMFILE: too many open files, socketpair'), { code: 'EMFILE' })
+      throw refusal()
     })
+    const emfileOff = spyOn(spawnOffModule, 'spawnOff').mockImplementation(() =>
+      Promise.reject(refusal()),
+    )
     let o: TaskOutcome
     try {
       o = await executeTask(baseArgs(b, node(b, { exec: { command: 'echo hi' } }), heard))
     } finally {
       emfile.mockRestore()
+      emfileOff.mockRestore()
     }
     expect([o.status, o.exitCode, stderr.join('')]).toEqual([
       'failed',

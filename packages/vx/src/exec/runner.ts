@@ -19,6 +19,7 @@ import {
   type SecretMask,
 } from '../util/index.js'
 import {
+  type Child,
   closeSignalChannel,
   holdGroups,
   killTree,
@@ -29,6 +30,7 @@ import {
   spawnGuarded,
   untilGroupsGone,
 } from './kill-tree.js'
+import { spawnOff } from './spawn-off.js'
 
 /** `sh` names itself in its errors. */
 const SH_ARGV0 = { argv0: 'sh' }
@@ -1230,22 +1232,44 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const start = Date.now()
   const fullCommand = withForwardArgs(opts.command, opts.forwardArgs)
 
-  let proc: ReturnType<typeof Bun.spawn>
+  let proc: Child
   const pipes = new TaskPipes(opts.terminal)
   const restoreModes = opts.terminal === true ? keepTerminalModes() : undefined
   try {
-    proc = spawnGuarded((guard) =>
-      Bun.spawn(shellArgv((guard === undefined ? '' : guardLine(3)) + execWrap(fullCommand)), {
-        ...SH_ARGV0,
-        cwd: opts.cwd,
-        env: opts.env as Record<string, string>,
-        stdio: [...taskStdio(opts.terminal, pipes), ...(guard === undefined ? [] : [guard])],
-        // Its own session and process group, so a kill reaches what it
-        // forked (kill-tree.ts). A terminal handed over is not this
-        // session's controlling one, so no read stops the group.
-        detached: true,
-      }),
+    const stdio = taskStdio(opts.terminal, pipes)
+    const argv = (guard: number | undefined): string[] =>
+      shellArgv((guard === undefined ? '' : guardLine(3)) + execWrap(fullCommand))
+    // Its own session and process group, so a kill reaches what it forked
+    // (kill-tree.ts). A terminal handed over is not this session's
+    // controlling one, so no read stops the group.
+    const spawnOpts = {
+      ...SH_ARGV0,
+      cwd: opts.cwd,
+      env: opts.env as Record<string, string>,
+      detached: true,
+    }
+    // Descriptors cross to the spawn thread; Bun's own pipes (macOS) and a
+    // terminal stay on this one.
+    const fds = stdio.filter(
+      (fd): fd is number | 'ignore' => typeof fd === 'number' || fd === 'ignore',
     )
+    proc =
+      fds.length === stdio.length
+        ? // What vx reads of a child (pid, exit, usage, kill) is the same off
+          // the thread; its streams are the pipes vx made (`TaskPipes`).
+          ((await spawnGuarded((guard) =>
+            spawnOff({
+              cmd: argv(guard),
+              ...spawnOpts,
+              stdio: [...fds, ...(guard === undefined ? [] : [guard])],
+            }),
+          )) as unknown as Child)
+        : spawnGuarded((guard) =>
+            Bun.spawn(argv(guard), {
+              ...spawnOpts,
+              stdio: [...stdio, ...(guard === undefined ? [] : [guard])],
+            }),
+          )
   } catch (err) {
     pipes.close()
     const stderr = spawnFailureText(err, opts.cwd, 'task', fullCommand)

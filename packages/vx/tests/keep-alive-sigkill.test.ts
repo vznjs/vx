@@ -158,7 +158,9 @@ Bun.spawn = (cmd, opts) => {
       const lines = existsSync(log) ? readFileSync(log, 'utf8').split('\n') : []
       return lines.filter((l) => l === 'vx-group-guard' || l === 'sh')
     }
-    expect(await guards()).toEqual(['vx-group-guard', 'sh', 'sh'])
+    // The tasks' own shells spawn on the spawn thread (spawn-off.ts),
+    // which the preload does not reach; the guard spawns here.
+    expect(await guards()).toEqual(['vx-group-guard'])
     expect(await guards()).toEqual([])
   }, 20_000)
 
