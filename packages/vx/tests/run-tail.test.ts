@@ -132,15 +132,15 @@ describe("vx's own steps", () => {
     expect(live.indexOf('vx:uploads')).toBeGreaterThan(live.indexOf('p#a'))
     log.stepEnd?.('vx:uploads', { durationMs: 300, ok: true })
     // Its list row, on the task grid: time, `success`, `internal` for the cache word.
-    expect(out.text()).toMatch(/⏺︎ +300ms success internal vx:uploads\n/)
-    expect(region(out)).not.toMatch(/running internal +vx:uploads/)
+    expect(out.text()).toMatch(/⏺︎ +300ms +success internal +local +vx:uploads\n/)
+    expect(region(out)).not.toMatch(/running internal +local +vx:uploads/)
   })
 
   it('one before the run starts draws the region with no footer', async () => {
     const { out, log } = start()
     log.stepStart?.('vx:load')
-    await until(() => /running internal +vx:load/.test(out.text()))
-    expect(out.text()).toMatch(/running internal +vx:load/)
+    await until(() => /running internal +local +vx:load/.test(out.text()))
+    expect(out.text()).toMatch(/running internal +local +vx:load/)
     expect(out.text()).not.toContain('tasks')
     log.stepEnd?.('vx:load', { durationMs: 300, ok: true })
     log.runStart?.({ total: 0, concurrency: 1 })
@@ -154,7 +154,7 @@ describe("vx's own steps", () => {
     log.stepStart?.('vx:history')
     await Bun.sleep(200)
     log.stepEnd?.('vx:history', { durationMs: 200, ok: false })
-    expect(out.text()).toMatch(/◼︎ +200ms failed  internal vx:history\n/)
+    expect(out.text()).toMatch(/◼︎ +200ms +failed  internal +local +vx:history\n/)
     expect(region(out)).toContain('1 total')
     expect(region(out)).not.toContain('failed ·')
   })
@@ -168,7 +168,7 @@ it('hash-only prints no row for a step that passed', () => {
   log.runStart?.({ total: 1, concurrency: 1 })
   log.stepStart?.('vx:uploads')
   log.stepEnd?.('vx:uploads', { durationMs: 300, ok: true })
-  expect(out.text()).not.toMatch(/success internal vx:uploads\n/)
+  expect(out.text()).not.toMatch(/success internal +local +vx:uploads\n/)
   // The list's header; the live region's own names `blocked` too.
   expect(out.text()).not.toMatch(/time status +cache +task\n/)
 })

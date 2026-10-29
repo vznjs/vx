@@ -12,6 +12,7 @@
 const RESET = '\x1b[0m'
 const BOLD = '\x1b[1m'
 const DIM = '\x1b[2m'
+const UNDERLINE = '\x1b[4m'
 
 // State hues every report shares with the run summary.
 export const SUCCESS = '#22c55e'
@@ -27,6 +28,7 @@ export interface ColorSupport {
 export interface PaintOptions {
   bold?: boolean
   dim?: boolean
+  underline?: boolean
 }
 
 /**
@@ -102,6 +104,7 @@ export function paint(
   let prefix = ''
   if (opts.bold) prefix += BOLD
   if (opts.dim) prefix += DIM
+  if (opts.underline) prefix += UNDERLINE
   if (color) prefix += ansiFor(color)
   if (prefix.length === 0) return text
   return `${prefix}${text}${RESET}`

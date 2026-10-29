@@ -110,12 +110,18 @@ ${body}
 `
 }
 
-/** What `--check` compares: the text and its styling, never a duration, the core count or the run id. */
+/**
+ * What `--check` compares: the text and its styling, never a duration, a
+ * row's cpu or memory, the core count or the run id.
+ */
 export function normalize(svg: string): string {
   return (
     svg
       .replace(/height="\d+"|viewBox="[^"]*"|y="\d+"|style="animation-delay:[^"]*"/g, '')
       .replace(/\d+(\.\d+)?(ms|s)\b/g, 'N')
+      // A row's cpu and peak memory are measured, as a duration is.
+      .replace(/\d+%/g, 'N%')
+      .replace(/\d+(\.\d+)?(B|KB|MB|GB)\b/g, 'N B')
       .replace(/\d+ workers?\b/g, 'N workers')
       .replace(/run [0-9a-f]{8}-[0-9a-f-]+/g, 'run ID')
       // The footer drops a spread value equal to one already on the row, so

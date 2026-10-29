@@ -39,6 +39,7 @@ export interface TaskOutcome {
   queuedMs?: number // how long it waited ready for a worker, any admission hold included
   inputFiles?: number // on a cacheable task that ran: the files its key read
   artifactBytes?: number // a hit's entry size, or (sink listening) the size a miss's save wrote
+  outputBytes?: number // a hit's output files' raw bytes: the row's `outputs`
   fetchMs?: number // a remote hit this run pulled: download + ingest
   saveMs?: number // a miss that saved, sink listening: the save's own time
   inputChanges?: InputChanges // on one that ran with a sink listening: its key against the last saved entry

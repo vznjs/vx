@@ -36,21 +36,26 @@ export function formatTaskBlock(
 ): string
 
 // ` ⇢ <time> success local <id>` — quiet cache hit
-export function formatTaskHitLine(node, outcome, colors?, onPath?): string
+export function formatTaskHitLine(node, outcome, colors?, onPath?, blocks?): string
 
 // ` ⏺ <time> success miss <id>` — broad-mode executed task
-export function formatTaskExecutedLine(node, outcome, colors?, onPath?): string
+export function formatTaskExecutedLine(node, outcome, colors?, onPath?, blocks?, usualMs?): string
 // ` flaky - failed N× before · N attempts`, dim — on a flaky task's row and
 // frame footer; '' when the run did not prove it flaky (`outcome.flaky`)
 export function flakyNote(outcome, colors?): string
 // ` ⊘ <blank> skipped <id> • blocked by <id>` (or `• needs linux-x64,
 // this is darwin-arm64`, its `exec.platforms`) — a skip never ran
-export function formatTaskSkippedLine(node, colors?, skip?: { blockedBy?; otherPlatform? }): string
+export function formatTaskSkippedLine(
+  node,
+  colors?,
+  skip?: { blockedBy?; otherPlatform? },
+  blocks?,
+): string
 // ` ✗ <time> aborted <id>` — killed by a shutdown signal;
 // ` ◌ <blank> not run <id>` — the stop reached it before it ran
-export function formatTaskAbortedLine(node, outcome, colors?): string
-// the grid they all share: `<glyph> <time> <status> <cache> <id>`;
-// the live list adds `blocked` (right-aligned, before the id)
+export function formatTaskAbortedLine(node, outcome, colors?, blocks?): string
+// the grid they all share: `<glyph> <time> <usual> <waited> <status>
+// <cache> <cpu> <mem> <blocks> <worker> <id>`; a cell `cells` leaves out is blank
 export function formatTaskRow(
   glyph,
   ms,
@@ -60,8 +65,12 @@ export function formatTaskRow(
   cacheColor,
   paintedId,
   colors?,
-  blocked?,
+  cells?: RowCells, // { usual?, waitedMs?, cpu?, memBytes?, blocks?, worker? }
 ): string
+// the headers: `time ±usual waited status cache cpu mem blocks worker task`,
+// the live list's `usual` where the results list has `±usual`
+export function formatListHeader(colors?): string
+export function formatRunningHeader(colors?): string
 export const TIME_COL = 7 // the time cell's width
 // `project#task` halves in identity hues, hashed from `hueSource`
 export function paintIdParts(hueSource, projectText, taskText, colors, opts?): string
