@@ -45,5 +45,10 @@ export function launchVersion(bin: string): Launch {
     if (failed !== undefined) return { exitCode: 1, version: '', stderr: failed }
     r = spawn([bin, '--version'])
   }
-  return { exitCode: r.exitCode, version: text(r.stdout).trim(), stderr: text(r.stderr) }
+  // A CI env that forces colour styles the line; the version is its text.
+  return {
+    exitCode: r.exitCode,
+    version: Bun.stripANSI(text(r.stdout)).trim(),
+    stderr: text(r.stderr),
+  }
 }
