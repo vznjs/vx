@@ -247,6 +247,24 @@ describe('discover', () => {
     ])
   })
 
+  // A pnpm-workspace.yaml may hold settings alone (a catalog here). pnpm
+  // 10.28 then installs the root only (probed: the lockfile lists `.`, and
+  // `pnpm ls -r` the root), so a package.json below is no workspace the
+  // lockfile lacks.
+  it('pnpm(): a pnpm-workspace.yaml with no `packages` is the root alone', async () => {
+    await writeFile(
+      path.join(root, 'pnpm-lock.yaml'),
+      "lockfileVersion: '9.0'\n\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\n\nimporters:\n\n  .: {}\n",
+    )
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'catalog:\n  is-number: ^7\n')
+    const metas = (await projects({ root: { name: 'root', private: true } })).slice(0, 1)
+    const warnings: string[] = []
+    expect(await discover(pnpm(), metas, warnings)).toEqual([
+      { dir: '.', name: 'root', deps: [], reach: [] },
+    ])
+    expect(warnings).toEqual([])
+  })
+
   it('a name two importers share is given to neither', async () => {
     await writeFile(path.join(root, 'bun.lock'), BUN)
     const metas = await projects({ b: { name: 'a' } })

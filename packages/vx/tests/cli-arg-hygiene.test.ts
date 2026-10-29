@@ -292,6 +292,19 @@ describe('vx cache clean value parsing', () => {
   })
 })
 
+// A boolean flag takes no value: `--all=false` read as `--all` ran every
+// project, and one read as a value flag ate the next word.
+describe('a boolean flag given a value', () => {
+  it('--all=true and --all=false are refused, naming --all', () => {
+    for (const spelling of ['--all=true', '--all=false']) {
+      expect(parseRunArgs(['build', spelling]).error).toBe(
+        `unknown flag: ${spelling} (did you mean --all?)`,
+      )
+    }
+    expect(parseRunArgs(['build', '--all']).all).toBe(true)
+  })
+})
+
 describe('value flags accept the = form', () => {
   it('--filter=', () => {
     const r = parseRunArgs(['build', '--filter=@scope/*', '--filter', 'other'])

@@ -43,11 +43,17 @@ const TREE = [
   'src/(group)/page.ts',
   'src/[id].ts',
   'src/a.js',
+  'src/a.spec.ts',
+  'src/a.spec.ts.snap',
+  'src/a.spec.tsx',
   'src/a.test.ts',
+  'src/a.tsx',
   'src/deep/.hidden.ts',
   'src/deep/x/y.ts',
   'src/file with space.ts',
   'src/index.ts',
+  'src/z+skip.spec.ts',
+  'src/z+skip.ts',
   'src/{b}.ts',
 ]
 
@@ -87,6 +93,16 @@ const INPUTS: readonly (readonly string[])[] = [
   ['**', '!src/**'],
   ['src/*.ts', '!src/[id].ts'],
   ['src/*.ts', '!src/\\[id\\].ts'],
+  // Brace sets with commas beside a negation of the same shape.
+  ['src/**/*.{ts,tsx}', '!src/**/*.spec.{ts,tsx}'],
+  // An empty brace alternative: the file and its snapshot.
+  ['**/*.spec.ts{,.snap}'],
+  // `+` not before `(` is a literal character.
+  ['src/*+skip*.ts', '!src/*+skip.ts'],
+  // A negation listed first still takes back from the positive after it.
+  ['!src/deep/**', 'src/**'],
+  // Two brace groups in one pattern.
+  ['{src,lib}/{a,b}.js'],
 ]
 
 /** Output lists, resolved by the resolver `cleanOutputs` and a save share. */

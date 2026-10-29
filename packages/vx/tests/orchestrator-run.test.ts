@@ -1138,6 +1138,42 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
     TIMEOUT,
   )
 
+  // Other runners gave the args to the first project only, or to one
+  // command line of several, or ran a requested task twice when another
+  // requested task also depended on it.
+  it(
+    'arguments after -- reach every requested task, once each, and no dependency',
+    async () => {
+      const task = (deps: string) => `
+          export default {
+            tasks: {
+              build: { exec: { command: 'echo ran >> runs.txt\\necho ARGS: > args.txt' }, dependsOn: [${deps}] },
+            },
+          }
+        `
+      const c = await addProject(fixture.root, 'c', { config: task('') })
+      const b = await addProject(fixture.root, 'b', { config: task(`'c#build'`) })
+      const a = await addProject(fixture.root, 'a', { config: task(`'b#build'`) })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['a#build', 'c#build'],
+        forwardArgs: ['0', '--x', 'two words'],
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      const read = (dir: string, f: string) => readFile(path.join(dir, f), 'utf8')
+      expect(await read(a, 'args.txt')).toBe('ARGS: 0 --x two words\n')
+      expect(await read(b, 'args.txt')).toBe('ARGS:\n')
+      expect(await read(c, 'args.txt')).toBe('ARGS: 0 --x two words\n')
+      expect(await Promise.all([a, b, c].map((d) => read(d, 'runs.txt')))).toEqual([
+        'ran\n',
+        'ran\n',
+        'ran\n',
+      ])
+    },
+    TIMEOUT,
+  )
+
   it(
     'multiple positional tasks share a graph: vx run a b runs both in one invocation',
     async () => {
