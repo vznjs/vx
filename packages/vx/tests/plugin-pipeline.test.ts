@@ -1763,6 +1763,12 @@ describe('plugin-host, called directly', () => {
         await said(`projectName: 'a', taskName: 'x', projectDir: 'packages/a'`),
         await said(`projectName: 'a', projectDir: dir`),
         await said(`projectName: '', taskName: 'x', projectDir: dir`),
+        // Ran in, keyed and cleaned outputs under a directory no project
+        // owns, past the hard project boundary.
+        await said(
+          `projectName: 'a', taskName: 'x', projectDir: dir.slice(0, dir.lastIndexOf('/'))`,
+        ),
+        await said(`id: 'zz#x', projectName: 'zz', taskName: 'x', projectDir: dir`),
         // CONTROL: the whole node runs.
         await said(`projectName: 'a', taskName: 'x', projectDir: dir`),
       ]).toEqual([
@@ -1770,6 +1776,8 @@ describe('plugin-host, called directly', () => {
         `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectDir is "packages/a", not an absolute path`,
         `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's taskName is undefined, not a name`,
         `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectName is "", not a name`,
+        `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectDir is packages, not project a's directory packages/a`,
+        `${LOCK_REFUSED}plugin 'org/add' failed in graph: zz#x's project zz is not a project in this workspace`,
         'a#build success, a#x success',
       ])
     },
@@ -1830,6 +1838,29 @@ describe('plugin-host, called directly', () => {
         first: true,
         next: true,
         said: ["[vx] plugin 'org/boom' failed in admit: boom; admitting every task from here on"],
+      })
+    })
+
+    it('an answer that is not true, false or undefined is named once and admits from then on', () => {
+      // `0` admitted beside a running task and `42` too, with no word: a
+      // policy that answered a count enforced nothing.
+      const said: string[] = []
+      const admit = buildAdmission(
+        [
+          testPlugin('org/count', { admit: (_t, ctx) => ctx.running.length as never }),
+          testPlugin('org/forty', { admit: () => 42 as never }),
+        ],
+        graph,
+        2,
+        (m) => said.push(m),
+      )!
+      expect({ first: admit('b', busy), next: admit('b', busy), said }).toEqual({
+        first: true,
+        next: true,
+        said: [
+          "[vx] plugin 'org/count' failed in admit: returned a number, not true or false; admitting every task from here on",
+          "[vx] plugin 'org/forty' failed in admit: returned a number, not true or false; admitting every task from here on",
+        ],
       })
     })
   })

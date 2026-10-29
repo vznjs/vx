@@ -116,9 +116,19 @@ it("VX_CACHE_SCOPE beats a plugin's scope, which beats git's; git's needs a cach
   expect(
     resolveCacheScope(root, 'acme/app:ci', true, undefined, { VX_CACHE_SCOPE: '' }),
   ).toBeUndefined()
-  expect(() =>
-    resolveCacheScope(root, undefined, true, undefined, { VX_CACHE_SCOPE: 'a b' }),
-  ).toThrow('VX_CACHE_SCOPE must be')
+  // A VX_* value the run does not take is usage, as every setting variable
+  // is (cli.md § VX_E_USAGE), and names what it got.
+  let refused: unknown
+  try {
+    resolveCacheScope(root, undefined, true, undefined, { VX_CACHE_SCOPE: 'a b' })
+  } catch (err) {
+    refused = err
+  }
+  expect(refused).toMatchObject({
+    code: 'VX_E_USAGE',
+    message:
+      "VX_CACHE_SCOPE must be a scope name of letters, digits and . _ - / @ : (at most 128), like 'vznjs/vx:feat-x' (got a b)",
+  })
 })
 
 it("VX_BASE_BRANCH beats the workspace's baseBranch, and a value no branch can take is refused", () => {
@@ -131,7 +141,7 @@ it("VX_BASE_BRANCH beats the workspace's baseBranch, and a value no branch can t
     expect(configuredBaseBranch({ baseBranch: 'develop' })).toBe('release/2')
     process.env['VX_BASE_BRANCH'] = '--output=x'
     expect(() => configuredBaseBranch(null)).toThrow(
-      "VX_BASE_BRANCH must be a branch name like 'main'",
+      "VX_BASE_BRANCH must be a branch name like 'main' (got --output=x)",
     )
   } finally {
     if (was === undefined) delete process.env['VX_BASE_BRANCH']
