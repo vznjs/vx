@@ -744,22 +744,31 @@ describe('config', () => {
       expect(() => vxCache(options as never)).toThrow(said)
   })
 
-  // A NaN, zero or negative deadline armed its abort at once: every request
-  // failed "no answer within NaN ms" and the cache read as a miss each time.
+  // A NaN, zero, negative or over-2³¹−1 deadline armed its abort at once:
+  // every request failed "no answer within NaN ms" and the cache read as a
+  // miss each time.
   it('refuses a deadline it cannot wait on, naming the value', () => {
     for (const [options, said] of [
       [
         { timeoutMs: Number.NaN },
-        'vxCache() option "timeoutMs" must be a positive number of ms, got NaN',
+        '"timeoutMs" must be a positive number of ms up to 2147483647, got NaN',
       ],
-      [{ timeoutMs: 0 }, 'vxCache() option "timeoutMs" must be a positive number of ms, got 0'],
+      [{ timeoutMs: 0 }, '"timeoutMs" must be a positive number of ms up to 2147483647, got 0'],
       [
         { uploadTimeoutMs: -1 },
-        'vxCache() option "uploadTimeoutMs" must be a positive number of ms, got -1',
+        '"uploadTimeoutMs" must be a positive number of ms up to 2147483647, got -1',
+      ],
+      [
+        { timeoutMs: 2 ** 31 },
+        '"timeoutMs" must be a positive number of ms up to 2147483647, got 2147483648',
+      ],
+      [
+        { uploadTimeoutMs: Infinity },
+        '"uploadTimeoutMs" must be a positive number of ms up to 2147483647, got Infinity',
       ],
     ] as const)
-      expect(() => vxCache({ ...NAMED, ...options })).toThrow(said)
-    expect(() => vxCache({ ...NAMED, timeoutMs: 1000, uploadTimeoutMs: 2000 })).not.toThrow()
+      expect(() => vxCache({ ...NAMED, ...options })).toThrow(`vxCache() option ${said}`)
+    expect(() => vxCache({ ...NAMED, timeoutMs: 1000, uploadTimeoutMs: 2 ** 31 - 1 })).not.toThrow()
   })
 
   it('reads with no token from a public server, sends none, and uploads nothing', async () => {

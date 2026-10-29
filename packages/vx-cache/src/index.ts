@@ -708,6 +708,9 @@ function namedOf(options: VxCacheOptions): { issuer: string; repository: string 
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
+/** The longest delay a timer holds. */
+const MAX_TIMER_MS = 2 ** 31 - 1
+
 /** Options over `VX_CACHE_URL`; `undefined`: no server named. */
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
@@ -757,11 +760,14 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
  */
 export function vxCache(options: VxCacheOptions): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
-  // A NaN, zero or negative deadline aborted every request as it began.
+  // A NaN, zero or negative deadline aborted every request as it began,
+  // and so did one over 2³¹−1: Bun runs a timer it cannot hold after 1 ms.
   for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
     const ms = options[name]
-    if (ms !== undefined && !(Number.isFinite(ms) && ms > 0))
-      throw new UserError(`vxCache() option "${name}" must be a positive number of ms, got ${ms}`)
+    if (ms !== undefined && !(ms > 0 && ms <= MAX_TIMER_MS))
+      throw new UserError(
+        `vxCache() option "${name}" must be a positive number of ms up to ${MAX_TIMER_MS}, got ${ms}`,
+      )
   }
   proxyHeaders('vxCache()', options.headers)
   namedOf(options)
