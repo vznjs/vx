@@ -642,6 +642,9 @@ describe('a selector narrowed by a git range (D-44)', () => {
     expect(sel('@s/*...[HEAD]', ['core'])).toEqual(['@s/app', '@s/lib'])
     expect(sel('@s/app...[HEAD]', ['core'])).toEqual(['@s/app'])
     expect(sel('core...[HEAD]', ['@s/lib'])).toEqual([])
+    // The named package itself changing selects it, not only a changed
+    // dependency (vercel/turborepo#950).
+    expect(sel('@s/lib...[HEAD]', ['@s/lib'])).toEqual(['@s/lib'])
     const f = parseFilter('@s/*...[HEAD]', ROOT)
     expect([f.matcher, f.gitSince, f.withDeps, f.sinceViaDeps]).toEqual([
       '@s/*',
