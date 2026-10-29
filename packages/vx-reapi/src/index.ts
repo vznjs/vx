@@ -23,7 +23,7 @@ import {
 } from '@vzn/vx'
 import { ReapiRemoteCache } from './cache.js'
 import { reapiExecutor } from './executor.js'
-import { ReapiClient, type ReapiOptions, usesTls } from './wire.js'
+import { MAX_TIMER_MS, ReapiClient, type ReapiOptions, usesTls } from './wire.js'
 
 // `ReapiRemoteCache` is public for a workspace that composes cache
 // layers by hand; the wire, the Merkle encoders and the executor are
@@ -217,8 +217,8 @@ function refuseBadNumbers(options: ReapiPluginOptions): void {
     'queueTimeoutMs',
   ] as const) {
     const v = options[name]
-    if (v !== undefined && !(Number.isFinite(v) && v > 0))
-      refuse(name, v, 'a positive number of ms')
+    if (v !== undefined && !(v > 0 && v <= MAX_TIMER_MS))
+      refuse(name, v, `a positive number of ms up to ${MAX_TIMER_MS}`)
   }
   for (const name of ['chunkBytes', 'capacity'] as const) {
     const v = options[name]

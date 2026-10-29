@@ -49,7 +49,14 @@ import {
   type TreeGraft,
 } from './merkle.js'
 import { execDigestFor } from './cache.js'
-import type { ActionResult, Digest, Directory, Operation, ReapiClient } from './wire.js'
+import {
+  type ActionResult,
+  type Digest,
+  type Directory,
+  MAX_TIMER_MS,
+  type Operation,
+  type ReapiClient,
+} from './wire.js'
 
 // A default decoder strips a leading U+FEFF, which is part of a path.
 const PATH_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
@@ -534,21 +541,15 @@ export function acceptsTask(task: TaskPlacement): boolean {
   return task.cacheable && !task.pinnedLocal
 }
 
-/**
- * The longest a timer waits: one past 2^31-1 ms fires after 1 ms, so a
- * month's `executeTimeoutMs` or `queueTimeoutMs` gave up on every action
- * at once. A bound held to it waits about 24 days.
- */
-const MAX_TIMER_MS = 2 ** 31 - 1
-
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
   // A zero or non-number bound stopped every action the moment it began
-  // executing. One past the longest timer is held to it (MAX_TIMER_MS).
+  // executing, and so did a month's: a timer past MAX_TIMER_MS fires after
+  // 1 ms. Core refuses such an exec.timeout, so every bound fits a timer.
   for (const key of ['executeTimeoutMs', 'queueTimeoutMs'] as const) {
     const ms = opts[key]
-    if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
+    if (ms !== undefined && !(typeof ms === 'number' && ms > 0 && ms <= MAX_TIMER_MS)) {
       throw new Error(
-        `reapi(): ${key} must be a positive number of ms (got ${typeof ms === 'number' ? String(ms) : JSON.stringify(ms)})`,
+        `reapi(): ${key} must be a positive number of ms up to ${MAX_TIMER_MS} (got ${typeof ms === 'number' ? String(ms) : JSON.stringify(ms)})`,
       )
     }
   }
@@ -952,11 +953,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       const queueTimer =
         opts.queueTimeoutMs === undefined
           ? undefined
-          : setTimeout(() => queued.abort(), Math.min(opts.queueTimeoutMs, MAX_TIMER_MS))
+          : setTimeout(() => queued.abort(), opts.queueTimeoutMs)
       const armStall = (): void => {
         clearTimeout(queueTimer)
         if (stallTimer !== undefined) return
-        stallTimer = setTimeout(() => stall.abort(), Math.min(stallAfter, MAX_TIMER_MS))
+        stallTimer = setTimeout(() => stall.abort(), stallAfter)
       }
       // The run's stop (Ctrl-C, an embedder's abort) cancels the operation
       // stream as the stall does; unheard, vx waited on the remote for as

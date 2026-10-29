@@ -276,11 +276,9 @@ buying headroom for that upload also buys every metadata probe the same
 minutes before it can degrade, which is the opposite of what the deadline is
 for.
 
-Each deadline must be a positive number of ms; anything else is refused when
-the plugin starts. `executeTimeoutMs` and `queueTimeoutMs` are checked when
-the executor starts, so with `execute` off they are not checked. They wait
-on a timer, so each must also be at most 2147483647 (a longer timer fires at
-once).
+Each deadline, `executeTimeoutMs` and `queueTimeoutMs` among them, must be
+a positive number of ms up to 2147483647 (a longer timer fires at once);
+anything else is refused at the `reapi()` call.
 
 That is not hypothetical. A NativeLink instance degraded into a state where it
 answered every ActionCache MISS in 3 ms and every HIT never — idle CPU,

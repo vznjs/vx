@@ -403,6 +403,13 @@ export interface ReapiOptions {
   chunkBytes?: number
 }
 
+/**
+ * The longest a timer waits: one past 2^31-1 ms fires after 1 ms, so a
+ * month's bound gave up at once. Every deadline option is refused past it,
+ * as core refuses such an exec.timeout.
+ */
+export const MAX_TIMER_MS = 2 ** 31 - 1
+
 /** The ceiling a derived control-plane deadline never exceeds, however far
  *  `callTimeoutMs` is raised for a bulk transfer. */
 export const META_TIMEOUT_CAP_MS = 15_000
@@ -532,14 +539,15 @@ export class ReapiClient {
     this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
     // No listener is no reason to say nothing.
     this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', m))
-    // A zero, negative or non-number deadline ended every call as it began.
+    // A zero, negative or non-number deadline ended every call as it began,
+    // and so did one past the longest timer.
     for (const [name, ms] of [
       ['callTimeoutMs', this.callTimeoutMs],
       ['metaTimeoutMs', this.metaTimeoutMs],
     ] as const) {
-      if (!(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
+      if (!(typeof ms === 'number' && ms > 0 && ms <= MAX_TIMER_MS)) {
         throw new Error(
-          `reapi(): ${name} must be a positive number of ms (got ${typeof ms === 'number' ? String(ms) : JSON.stringify(ms)})`,
+          `reapi(): ${name} must be a positive number of ms up to ${MAX_TIMER_MS} (got ${typeof ms === 'number' ? String(ms) : JSON.stringify(ms)})`,
         )
       }
     }
