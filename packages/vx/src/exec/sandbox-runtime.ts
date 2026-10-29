@@ -32,12 +32,12 @@ import {
   lstatSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -670,28 +670,25 @@ function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
  * narrowing `process.env` around `initialize` would hand a task spawned
  * meanwhile the narrowed one. The same path runs socat inside the
  * sandbox, so the wrapper keeps `SOCAT_DEFAULT_LISTEN_IP` (`hostHasIpv6`).
- * Made once per process in a 0700 directory; a host where it cannot run
- * (`/tmp` mounted noexec) keeps the bare socat.
+ * It lives in this user's own 0700 directory, named by its content, and
+ * no exit hook removes it: SRT's dependency check reads the path its live
+ * config holds, and a per-process one an emitted `exit` reaped left the
+ * next probe "socat not executable" while the process went on (B-93's
+ * shape). A host where it cannot run (`/tmp` mounted noexec) keeps the
+ * bare socat.
  */
 const socatWrappers = new Map<string, string>()
 function envCutSocat(socat: string): string {
   const known = socatWrappers.get(socat)
-  // The exit hook reaps the wrapper's directory, and SRT's own exit cleanup
-  // lets an init follow it in the same process: one stat per init.
+  // One stat per init: a wrapper someone removed is made again.
   if (known !== undefined && (known === socat || existsSync(known))) return known
   let wrapper = socat
   try {
-    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-socat-'))
-    trackTaskTmpdir(dir)
     const keep = [...ESSENTIAL_ENV, 'SOCAT_DEFAULT_LISTEN_IP']
       .map((n) => `\${${n}+"${n}=$${n}"}`)
       .join(' ')
-    const file = path.join(dir, 'socat')
-    writeFileSync(
-      file,
-      `#!/bin/sh\nexec ${shellQuote(executablePath('env'))} -i ${keep} ${shellQuote(socat)} "$@"\n`,
-      { mode: 0o500 },
-    )
+    const body = `#!/bin/sh\nexec ${shellQuote(executablePath('env'))} -i ${keep} ${shellQuote(socat)} "$@"\n`
+    const file = ownWrapper(body)
     if (
       Bun.spawnSync([file, '-V'], { env: helperEnv(), stdout: 'ignore', stderr: 'ignore' })
         .exitCode === 0
@@ -699,10 +696,49 @@ function envCutSocat(socat: string): string {
       wrapper = file
     }
   } catch {
-    // no temp dir or no `env`: the bare socat, as before
+    // no private directory or no `env`: the bare socat, as before
   }
   socatWrappers.set(socat, wrapper)
   return wrapper
+}
+
+/**
+ * `body` as an executable in `vx-socat-<uid>/` under the OS temp dir,
+ * written once (to a temp, then renamed, so a process beside this one
+ * never runs half of it) and checked byte for byte before it is used.
+ * Anything else at the names (another owner, group or other bits, a
+ * link, other bytes) is refused.
+ */
+function ownWrapper(body: string): string {
+  const uid = process.getuid!()
+  const dir = path.join(os.tmpdir(), `vx-socat-${uid}`)
+  try {
+    mkdirSync(dir, { mode: 0o700 })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  const d = lstatSync(dir)
+  if (!d.isDirectory() || d.uid !== uid || (d.mode & 0o077) !== 0) {
+    throw new Error(`${dir} is not this user's own directory`)
+  }
+  const file = path.join(dir, `socat-${xxh3hex(body).slice(0, 16)}`)
+  const ok = (): boolean => {
+    const f = lstatSync(file, { throwIfNoEntry: false })
+    return (
+      f !== undefined &&
+      f.isFile() &&
+      f.uid === uid &&
+      (f.mode & 0o777) === 0o500 &&
+      readFileSync(file, 'utf8') === body
+    )
+  }
+  if (ok()) return file
+  const tmp = `${file}.${process.pid}`
+  rmSync(tmp, { force: true })
+  writeFileSync(tmp, body, { mode: 0o500, flag: 'wx' })
+  renameSync(tmp, file)
+  if (!ok()) throw new Error(`${file} is not this user's wrapper`)
+  return file
 }
 
 /**
