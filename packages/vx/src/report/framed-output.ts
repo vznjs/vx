@@ -273,7 +273,7 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
 // the two axes out, each in its own color. Time is right-aligned in a
 // fixed cell so durations line up and a ticking elapsed never shifts
 // the row. All detail (exit code, output) lives in the framed block.
-export const TIME_COL = 7 // "0ms" … "999.99s"
+export const TIME_COL = 7 // "0ms" … "999.99s", then "16m 40s" … "99m 59s"
 const STATUS_COL = 7 // "success" / "running" / "skipped" / "aborted" / "not run"
 const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
 const BLOCKED_COL = 7 // the live list's count of tasks a running one holds back
@@ -282,7 +282,9 @@ const HEADER = '#a78bfa'
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
-  const raw = ms === null ? '' : formatElapsed(ms)
+  let raw = ms === null ? '' : formatElapsed(ms)
+  // `1000.00s` is wider than the cell; minutes fit it up to `99m 59s`.
+  if (ms !== null && raw.length > TIME_COL) raw = formatElapsed(ms, true)
   return ' '.repeat(Math.max(0, TIME_COL - raw.length)) + paint('', raw, colors, { dim: true })
 }
 
