@@ -58,8 +58,8 @@ it('a stop keeps the region: running rows say aborting, exited ones aborted', as
     wallclockStartNs: 1n,
   } as TaskOutcome)
   const text = out.text()
-  const row = text.slice(text.lastIndexOf('p#a') - 40, text.lastIndexOf('p#a') + 3)
-  expect(row).toMatch(/✗\s+1\.20s aborted\s+p#a/)
+  const row = text.slice(text.lastIndexOf('p#a') - 90, text.lastIndexOf('p#a') + 3)
+  expect(row).toMatch(/✗\s+1\.20s\s+aborted\s+local\s+p#a/)
   // b is still aborting, below the row a left.
   expect(region(out)).toContain('aborting')
   expect(region(out)).toContain('p#b')

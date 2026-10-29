@@ -1,3 +1,4 @@
+import { indexDb } from '../src/cache/index.js'
 import { existsSync, statSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -1380,12 +1381,11 @@ describe('Cache storage (v10)', () => {
       entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
     })
     // Old enough that the hit renews it (a row used within the hour is not).
-    cache.dbHandle().query('UPDATE entries SET accessed_at = 0 WHERE hash = ?').run('h-flush')
+    indexDb(cache).query('UPDATE entries SET accessed_at = 0 WHERE hash = ?').run('h-flush')
     await cache.get('h-flush')
     const readAccessed = (): number =>
       (
-        cache
-          .dbHandle()
+        indexDb(cache)
           .query('SELECT accessed_at AS a FROM entries WHERE hash = ?')
           .get('h-flush') as {
           a: number
@@ -1420,14 +1420,13 @@ describe('Cache storage (v10)', () => {
       outputFiles: [],
       entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
     })
-    cache.dbHandle().query('UPDATE entries SET accessed_at = 1 WHERE hash = ?').run('h-close')
+    indexDb(cache).query('UPDATE entries SET accessed_at = 1 WHERE hash = ?').run('h-close')
     const before = Date.now()
     await cache.get('h-close')
     cache.close()
     cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     const accessed = (
-      cache
-        .dbHandle()
+      indexDb(cache)
         .query('SELECT accessed_at AS a FROM entries WHERE hash = ?')
         .get('h-close') as {
         a: number
@@ -1443,7 +1442,7 @@ describe('Cache storage (v10)', () => {
       outputFiles: [],
       entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
     })
-    cache.dbHandle().query('UPDATE entries SET accessed_at = 1 WHERE hash = ?').run('h-hit')
+    indexDb(cache).query('UPDATE entries SET accessed_at = 1 WHERE hash = ?').run('h-hit')
     await cache.get('h-hit')
     // The cutoff is above the ancient stamp and below the hit's: the bump
     // pending in memory is the only thing that keeps the entry.
@@ -1463,7 +1462,7 @@ describe('Cache storage (v10)', () => {
         entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
       })
     }
-    const db = cache.dbHandle()
+    const db = indexDb(cache)
     const set = (at: number): void => {
       db.query('UPDATE entries SET accessed_at = ?').run(at)
     }
@@ -1494,7 +1493,7 @@ describe('Cache storage (v10)', () => {
       outputFiles: [],
       entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
     })
-    const db = cache.dbHandle()
+    const db = indexDb(cache)
     const limit = 30 * 60 * 1000
     // Renewed 50 minutes ago and hit just now, which renews nothing: the
     // row reads older than the 30-minute limit, the use is not.
@@ -2119,7 +2118,7 @@ describe('Cache storage (v10)', () => {
       outputFiles: [f],
       entry: { ...ctx, durationMs: 0, stdout: '' },
     })
-    cache.dbHandle().query('DELETE FROM entries WHERE hash = ?').run(hash)
+    indexDb(cache).query('DELETE FROM entries WHERE hash = ?').run(hash)
     const twoHoursAgo = (Date.now() - 2 * 60 * 60 * 1000) / 1000
     await utimes(cache.outputsPath(hash), twoHoursAgo, twoHoursAgo)
 
@@ -3012,7 +3011,7 @@ describe('Cache schema/version recovery', () => {
       c3.close()
       expect(c2.stats().runCountLast24h).toBe(0)
       // The Tier-3 tables are recreated as part of the gate.
-      const db = c2.dbHandle()
+      const db = indexDb(c2)
       const tables = (
         db
           .query(
@@ -3041,7 +3040,7 @@ describe('Cache schema/version recovery', () => {
       const orphan = '00000000000000ee'
       expect(await c2.get(orphan)).toBeNull()
       expect(storedArtifact(c2, orphan)).not.toBeNull()
-      c2.dbHandle()
+      indexDb(c2)
         .query('UPDATE artifacts SET at = ? WHERE hash = ?')
         .run(Date.now() - 2 * 60 * 60 * 1000, orphan)
       const pruned = await c2.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
@@ -3193,7 +3192,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     ]
     try {
       cache.recordRunBundle({ runs, invocation: invocation(runId) })
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
 
       const inv = db.query('SELECT * FROM invocations WHERE run_id = ?').get(runId) as Record<
         string,
@@ -3246,10 +3245,10 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       TAR_STORE,
     )
     try {
-      expect(indexesOnRuns(cache.dbHandle())).toEqual(['runs_run_id', 'runs_started_at'])
-      cache.dbHandle().exec("CREATE INDEX runs_failed ON runs(hash) WHERE status = 'failed'")
-      cache.dbHandle().exec('CREATE INDEX runs_project ON runs(project, task)')
-      cache.dbHandle().exec('CREATE INDEX runs_ended ON runs(ended_at)')
+      expect(indexesOnRuns(indexDb(cache))).toEqual(['runs_run_id', 'runs_started_at'])
+      indexDb(cache).exec("CREATE INDEX runs_failed ON runs(hash) WHERE status = 'failed'")
+      indexDb(cache).exec('CREATE INDEX runs_project ON runs(project, task)')
+      indexDb(cache).exec('CREATE INDEX runs_ended ON runs(ended_at)')
     } finally {
       cache.close()
     }
@@ -3263,7 +3262,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       TAR_STORE,
     )
     try {
-      expect(indexesOnRuns(reopened.dbHandle())).toEqual(['runs_run_id', 'runs_started_at'])
+      expect(indexesOnRuns(indexDb(reopened))).toEqual(['runs_run_id', 'runs_started_at'])
     } finally {
       reopened.close()
     }
@@ -3316,7 +3315,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       TAR_STORE,
     )
     try {
-      const db = reopened.dbHandle()
+      const db = indexDb(reopened)
       const ids = (
         db.query('SELECT run_id FROM invocations ORDER BY run_id').all() as { run_id: string }[]
       ).map((r) => r.run_id)
@@ -3349,7 +3348,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         { kind: 'env', name: 'MODE', hash: 'prod' },
         { kind: 'upstream', name: 'pkg-a#build', hash: 'up-a' },
       ])
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       const rows = db
         .query('SELECT components FROM entry_inputs WHERE entry_hash = ?')
         .all('h-save') as Array<{ components: string }>
@@ -3383,8 +3382,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         { kind: 'file', name: 'a.ts', hash: 'oid-a' },
         { kind: 'file', name: 'b.ts', hash: 'second' },
       ])
-      const row = cache
-        .dbHandle()
+      const row = indexDb(cache)
         .query('SELECT components FROM entry_inputs WHERE entry_hash = ?')
         .get('h-dup') as { components: string }
       expect(JSON.parse(row.components)).toEqual([
@@ -3407,7 +3405,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       TAR_STORE,
     )
     try {
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       // Cold: a miss/save populates the rows for this hash.
       await saveWithInputs(cache, 'h-warm', [
         { kind: 'config', name: 'config', hash: 'cfg' },
@@ -3465,8 +3463,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     try {
       const inv = { ...invocation(runId), dirty: null, commitSha: null, branch: null }
       cache.recordRunBundle({ runs: [], invocation: inv })
-      const row = cache
-        .dbHandle()
+      const row = indexDb(cache)
         .query('SELECT dirty, commit_sha, branch FROM invocations WHERE run_id = ?')
         .get(runId) as { dirty: number | null; commit_sha: string | null; branch: string | null }
       expect(row.dirty).toBeNull()
@@ -3486,11 +3483,11 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
 
     const c2 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     try {
-      const n = c2.dbHandle().query(`${COMPONENT_COUNT} WHERE entry_hash = ?`).get('h-persist') as {
+      const n = indexDb(c2).query(`${COMPONENT_COUNT} WHERE entry_hash = ?`).get('h-persist') as {
         n: number
       }
       expect(n.n).toBe(1)
-      const inv = c2.dbHandle().query('SELECT command FROM invocations WHERE run_id = ?').get(runId)
+      const inv = indexDb(c2).query('SELECT command FROM invocations WHERE run_id = ?').get(runId)
       expect(inv).not.toBeNull()
     } finally {
       c2.close()

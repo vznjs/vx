@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { type InvocationRecord, Cache, type RunRecord } from '../src/cache/index.js'
+import { indexDb, type InvocationRecord, Cache, type RunRecord } from '../src/cache/index.js'
 import {
   cacheKeyDiff,
   explainCacheKey as explainCacheKeyQuery,
@@ -80,7 +80,7 @@ function seedEntryInputs(
   entryHash: string,
   rows: { kind: string; name: string; hash: string }[],
 ): void {
-  const db = cache.dbHandle()
+  const db = indexDb(cache)
   // entry_inputs has an FK to entries(hash); satisfy it with a stub row.
   db.query(
     `INSERT OR IGNORE INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
@@ -111,7 +111,7 @@ describe('listRuns', () => {
         mkRun({ hash: 'h2', project: 'pkg', task: 'build', startedAt: 2000 }),
         mkRun({ hash: 'h3', project: 'pkg', task: 'build', startedAt: 3000 }),
       ])
-      const rows = listRuns(cache.dbHandle(), { limit: 2 })
+      const rows = listRuns(indexDb(cache), { limit: 2 })
       expect(rows.length).toBe(2)
       expect(rows[0]!.hash).toBe('h3')
       expect(rows[1]!.hash).toBe('h2')
@@ -125,10 +125,10 @@ describe('listRuns', () => {
         mkRun({ hash: 'h2', project: 'pkg', task: 'test', runId: 'r-1' }),
         mkRun({ hash: 'h3', project: 'other', task: 'build', runId: 'r-2' }),
       ])
-      expect(listRuns(cache.dbHandle(), { project: 'pkg' }).length).toBe(2)
-      expect(listRuns(cache.dbHandle(), { task: 'build' }).length).toBe(2)
-      expect(listRuns(cache.dbHandle(), { runId: 'r-1' }).length).toBe(2)
-      expect(listRuns(cache.dbHandle(), { project: 'pkg', task: 'test' }).length).toBe(1)
+      expect(listRuns(indexDb(cache), { project: 'pkg' }).length).toBe(2)
+      expect(listRuns(indexDb(cache), { task: 'build' }).length).toBe(2)
+      expect(listRuns(indexDb(cache), { runId: 'r-1' }).length).toBe(2)
+      expect(listRuns(indexDb(cache), { project: 'pkg', task: 'test' }).length).toBe(1)
     })
   })
 
@@ -141,10 +141,10 @@ describe('listRuns', () => {
       )
       // SQLite reads LIMIT 0 as none and LIMIT -1 as unbounded, so an
       // unclamped caller-supplied number is two different wrong answers.
-      expect(listRuns(cache.dbHandle(), { limit: 0 }).length).toBe(1)
-      expect(listRuns(cache.dbHandle(), { limit: -1 }).length).toBe(1)
+      expect(listRuns(indexDb(cache), { limit: 0 }).length).toBe(1)
+      expect(listRuns(indexDb(cache), { limit: -1 }).length).toBe(1)
       // And the default is high enough that a list view sees a real page.
-      expect(listRuns(cache.dbHandle()).length).toBe(12)
+      expect(listRuns(indexDb(cache)).length).toBe(12)
     })
   })
 
@@ -154,13 +154,12 @@ describe('listRuns', () => {
       // `cacheHit`/`cached` are documented as null on rows older than the
       // column. Boolean(null) is false — which reads as "this task declares
       // a cache block and missed", a claim the row does not make.
-      cache
-        .dbHandle()
+      indexDb(cache)
         .query(
           'UPDATE runs SET cache_hit = NULL, cached = NULL, wallclock_start_ns = 1500000000000',
         )
         .run()
-      const row = listRuns(cache.dbHandle())[0]!
+      const row = listRuns(indexDb(cache))[0]!
       expect(row.cacheHit).toBeNull()
       expect(row.cached).toBeNull()
       // The ns columns cross the wire as decimal STRINGS, never as numbers:
@@ -206,7 +205,7 @@ describe('listRuns', () => {
           }),
           mkRun({ hash: 'h3', project: 'p', task: 'plain', status: 'failed', exitCode: 3 }),
         ])
-        const byTask = new Map(listRuns(cache.dbHandle(), { project: 'p' }).map((r) => [r.task, r]))
+        const byTask = new Map(listRuns(indexDb(cache), { project: 'p' }).map((r) => [r.task, r]))
         expect(byTask.get('skip')?.blockedBy).toBe('p#lib')
         expect(byTask.get('slow')?.timedOut).toBe(true)
         expect(byTask.get('box')?.sandboxViolations).toBe(2)
@@ -246,7 +245,7 @@ describe('listInvocations', () => {
           hitLocalCount: 1,
         }),
       })
-      const rows = listInvocations(cache.dbHandle())
+      const rows = listInvocations(indexDb(cache))
       expect(rows.length).toBe(2)
       // newest first
       expect(rows[0]!.runId).toBe('r-2')
@@ -271,7 +270,7 @@ describe('listInvocations', () => {
           invocation: mkInvocation({ runId: `r-${i}`, startedAt: 1000 + i }),
         })
       }
-      expect(listInvocations(cache.dbHandle(), { limit: 2 }).length).toBe(2)
+      expect(listInvocations(indexDb(cache), { limit: 2 }).length).toBe(2)
     })
   })
 })
@@ -291,7 +290,7 @@ describe('getInvocation', () => {
           exitOk: false,
         }),
       })
-      const inv = getInvocation(cache.dbHandle(), 'r-1')!
+      const inv = getInvocation(indexDb(cache), 'r-1')!
       expect(inv.command).toBe('vx run build test --all')
       expect(inv.requestedTasks).toEqual(['build', 'test'])
       expect(inv.dirty).toBe(true)
@@ -303,7 +302,7 @@ describe('getInvocation', () => {
 
   it('returns null for an unknown runId', () => {
     withCache((cache) => {
-      expect(getInvocation(cache.dbHandle(), 'nope')).toBeNull()
+      expect(getInvocation(indexDb(cache), 'nope')).toBeNull()
     })
   })
 })
@@ -332,7 +331,7 @@ describe('cacheKeyDiff', () => {
         { kind: 'file', name: 'src/new.ts', hash: 'oidNew' }, // added
       ])
 
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       expect(diff.found).toBe(true)
       expect(diff.previousRunId).toBe('r-1')
       expect(diff.unchangedCount).toBe(1) // src/stable.ts
@@ -377,7 +376,7 @@ describe('cacheKeyDiff', () => {
         mkRun({ hash: 'hOnly', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
       )
       seedEntryInputs(cache, 'hOnly', [{ kind: 'file', name: 'src/a.ts', hash: 'oid' }])
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-1', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-1', 'pkg#test')
       expect(diff.found).toBe(true)
       expect(diff.previousRunId).toBeNull()
       expect(diff.entries).toEqual([])
@@ -393,7 +392,7 @@ describe('cacheKeyDiff', () => {
         mkRun({ hash: 'hSame', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
       seedEntryInputs(cache, 'hSame', [{ kind: 'file', name: 'src/a.ts', hash: 'oid' }])
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       expect(diff.found).toBe(true)
       expect(diff.previousRunId).toBe('r-1')
       expect(diff.entries).toEqual([])
@@ -402,7 +401,7 @@ describe('cacheKeyDiff', () => {
 
   it('returns found=false for an unknown runId + taskId', () => {
     withCache((cache) => {
-      const diff = cacheKeyDiff(cache.dbHandle(), 'nope', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'nope', 'pkg#test')
       expect(diff.found).toBe(false)
       expect(diff.entries).toEqual([])
     })
@@ -436,7 +435,7 @@ describe('cacheKeyDiff', () => {
       seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x1' }])
       seedEntryInputs(cache, 'hB', [{ kind: 'file', name: 'a.ts', hash: 'x2' }])
 
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-3', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-3', 'pkg#test')
       // The comparison is against r-1, the last run that HAD a key — not
       // against the keyless r-2 sitting between them.
       expect(diff.previousRunId).toBe('r-1')
@@ -468,7 +467,7 @@ describe('cacheKeyDiff', () => {
         { kind: 'env', name: 'x', hash: 'e-same' },
         { kind: 'fil', name: 'ex', hash: 's-same' },
       ])
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       // Only the file component moved; the other two are unchanged and must
       // be counted, not collapsed into it.
       expect(diff.entries).toEqual([
@@ -501,7 +500,7 @@ describe('cacheKeyDiff', () => {
         { kind: 'apple', name: 'm', hash: 'a-new' },
         { kind: 'Banana', name: 'z', hash: 'b-new' },
       ])
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       expect(diff.entries.map((e) => `${e.kind}/${e.name}`)).toEqual([
         'Banana/z',
         'Zed/a',
@@ -530,7 +529,7 @@ describe('cacheKeyDiff', () => {
         { kind: 'file', name: 'Z.ts', hash: 'z-new' },
         { kind: 'file', name: 'a.ts', hash: 'a-new' },
       ])
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       expect(diff.entries.map((e) => e.name)).toEqual(['Z.ts', 'a.ts', 'b.ts'])
     })
   })
@@ -595,7 +594,7 @@ describe('cacheKeyDiff', () => {
       )
       seedEntryInputs(cache, 'hSame1', [{ kind: 'file', name: 'a.ts', hash: 'same' }])
       seedEntryInputs(cache, 'hSame2', [{ kind: 'file', name: 'a.ts', hash: 'same' }])
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       expect(diff.entries).toEqual([])
       expect(diff.unchangedCount).toBe(1)
       expect(diff.note).toBe('cache key changed but no component-level difference was recorded')
@@ -618,8 +617,8 @@ describe('cacheKeyDiff', () => {
       )
       // Only the PREVIOUS side keeps its rows.
       seedEntryInputs(cache, 'hK1', [{ kind: 'file', name: 'a.ts', hash: 'x1' }])
-      cache.dbHandle().query('UPDATE runs SET cached = 0').run()
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      indexDb(cache).query('UPDATE runs SET cached = 0').run()
+      const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       expect(diff.entries).toEqual([])
       expect(diff.note).toBe(
         'with no `cache` block it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key',
@@ -636,7 +635,7 @@ describe('cacheKeyDiff', () => {
       cache.recordRun(
         mkRun({ hash: 'hC', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       )
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       expect(diff.found).toBe(true)
       expect(diff.previousRunId).toBe('r-1')
       expect(diff.entries).toEqual([])
@@ -676,7 +675,7 @@ describe('cacheKeyDiff', () => {
         seedEntryInputs(cache, failed === 'this' ? 'hA' : 'hB', [
           { kind: 'file', name: 'a.ts', hash: 'x' },
         ])
-        out = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test').note
+        out = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test').note
       })
       return out
     }
@@ -711,7 +710,7 @@ describe('cacheKeyDiff', () => {
         { kind: 'file', name: 'a.test.ts', hash: 'z' },
         { kind: 'file', name: 'b.ts', hash: 'y' },
       ])
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-3', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-3', 'pkg#test')
       expect([diff.previousRunId, diff.entries.map((e) => e.name), diff.unchangedCount]).toEqual([
         'r-1',
         ['a.test.ts'],
@@ -742,7 +741,7 @@ describe('cacheKeyDiff', () => {
       run('hC', 'r-3', 3000)
       seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x' }])
       seedEntryInputs(cache, 'hC', [{ kind: 'file', name: 'a.ts', hash: 'z' }])
-      const diff = cacheKeyDiff(cache.dbHandle(), 'r-3', 'pkg#test')
+      const diff = cacheKeyDiff(indexDb(cache), 'r-3', 'pkg#test')
       expect([diff.previousRunId, diff.entries.map((e) => e.name), diff.note]).toEqual([
         'r-1',
         ['a.ts'],
@@ -766,7 +765,7 @@ describe('cacheKeyDiff', () => {
         })
       }
       seedEntryInputs(cache, 'hC', [{ kind: 'file', name: 'a.ts', hash: 'z' }])
-      expect(cacheKeyDiff(cache.dbHandle(), 'r-3', 'pkg#test').note).toBe(
+      expect(cacheKeyDiff(indexDb(cache), 'r-3', 'pkg#test').note).toBe(
         'cache key changed but input fingerprints are unavailable — the previous run ran beside a failed task and saved no entry; only the key change is known',
       )
     })
@@ -776,7 +775,7 @@ describe('cacheKeyDiff', () => {
 describe('getRun', () => {
   it('returns null for an unknown runId', () => {
     withCache((cache) => {
-      expect(getRun(cache.dbHandle(), 'unknown')).toBeNull()
+      expect(getRun(indexDb(cache), 'unknown')).toBeNull()
     })
   })
 
@@ -800,7 +799,7 @@ describe('getRun', () => {
           endedAt: 1300,
         }),
       ])
-      const detail = getRun(cache.dbHandle(), 'r-1')!
+      const detail = getRun(indexDb(cache), 'r-1')!
       expect(detail.startedAt).toBe(1000)
       expect(detail.endedAt).toBe(1300)
       expect(detail.tasks.length).toBe(2)
@@ -823,7 +822,7 @@ describe('getRun', () => {
         }),
       )
       cache.recordRuns(runs)
-      const detail = getRun(cache.dbHandle(), 'big')!
+      const detail = getRun(indexDb(cache), 'big')!
       expect(detail.tasks.length).toBe(700)
       expect(detail.tasks.some((t) => t.project === 'pkg-000')).toBe(true)
     })
@@ -834,7 +833,7 @@ describe('explainCacheKeyQuery', () => {
   it('returns the most recent entries row for a (project, task)', () => {
     withCache((cache) => {
       cache.recordRun(mkRun({ hash: 'h1', project: 'pkg', task: 'build', status: 'success' }))
-      const explained = explainCacheKeyQuery(cache.dbHandle(), 'pkg#build')
+      const explained = explainCacheKeyQuery(indexDb(cache), 'pkg#build')
       expect(explained.taskId).toBe('pkg#build')
       expect(explained.project).toBe('pkg')
       expect(explained.task).toBe('build')
@@ -860,7 +859,7 @@ describe('the newest recorded run is the latest, whatever the clock said', () =>
       })
       seedEntryInputs(cache, 'h1', [{ kind: 'file', name: 'x.txt', hash: 'one' }])
       seedEntryInputs(cache, 'h2', [{ kind: 'file', name: 'x.txt', hash: 'two' }])
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       expect(latestRunId(db, 'pkg#test')).toBe('r-2')
       const why = whyDidThisRerunQuery(db, 'r-2', 'pkg#test')
       expect([why.thisRun!.hash, why.previousRun!.hash]).toEqual(['h2', 'h1'])
@@ -882,7 +881,7 @@ describe('whyDidThisRerunQuery', () => {
         mkRun({ hash: 'h1', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
         mkRun({ hash: 'h2', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
       ])
-      const result = whyDidThisRerunQuery(cache.dbHandle(), 'r-2', 'pkg#test')
+      const result = whyDidThisRerunQuery(indexDb(cache), 'r-2', 'pkg#test')
       expect(result.found).toBe(true)
       expect(result.thisRun!.hash).toBe('h2')
       expect(result.previousRun!.hash).toBe('h1')
@@ -951,15 +950,14 @@ describe('whyDidThisRerunQuery', () => {
             }),
           })
           if (setup.entryAt !== undefined) {
-            cache
-              .dbHandle()
+            indexDb(cache)
               .query(
                 `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
                  VALUES ('h', 'pkg', 'test', 'cmd', 0, 0, 0, ?, ?)`,
               )
               .run(setup.entryAt, setup.entryAt)
           }
-          note = whyDidThisRerunQuery(cache.dbHandle(), 'r-2', 'pkg#test').note
+          note = whyDidThisRerunQuery(indexDb(cache), 'r-2', 'pkg#test').note
         })
         return note
       })()
@@ -1027,7 +1025,7 @@ describe('whyDidThisRerunQuery', () => {
 
   it('returns found=false for an unknown runId', () => {
     withCache((cache) => {
-      const result = whyDidThisRerunQuery(cache.dbHandle(), 'r-x', 'pkg#test')
+      const result = whyDidThisRerunQuery(indexDb(cache), 'r-x', 'pkg#test')
       expect(result.found).toBe(false)
     })
   })

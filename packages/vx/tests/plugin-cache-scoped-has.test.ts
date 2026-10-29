@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { Cache, pluginCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import { indexDb, Cache, pluginCache, type RemoteCacheLayer } from '../src/cache/index.js'
 
 const FULL = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
 const dirs: string[] = []
@@ -28,7 +28,7 @@ it('a scoped hasMany names the entry the local store holds', async () => {
     hasMany: async () => new Map(),
   }
   const c = pluginCache('org/a', {
-    db: local.dbHandle(),
+    db: indexDb(local),
     policy: FULL,
     remotes: [{ remote, read: true, write: true }],
     scope: 'pr-1',

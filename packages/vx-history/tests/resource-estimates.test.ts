@@ -3,12 +3,21 @@
 // scheduler already reads; the pins here are the rounding, the headroom,
 // the thresholds, the packing rule and the one rule that matters most — a
 // declared reservation is never overridden.
+import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, spyOn } from 'bun:test'
-import type { HistoryTable, TaskHistory, TaskNode } from '@vzn/vx'
+import { Cache, type HistoryTable, type TaskHistory, type TaskNode } from '@vzn/vx'
 import { admits, resourceEstimates, vxHistory, withDeclared } from '../src/index.js'
 
 const MB = 1024 * 1024
+
+/** A local cache whose history read fails: closed, so the read throws. */
+function noHistory(): Cache {
+  const cache = new Cache(path.join(mkdtempSync(path.join(os.tmpdir(), 'vx-history-')), 'cache'))
+  cache.close()
+  return cache
+}
 
 function node(id: string, exec: TaskNode['config']['exec'] | null = { command: 'echo' }): TaskNode {
   const [projectName, taskName] = id.split('#') as [string, string]
@@ -227,11 +236,7 @@ describe('the reservation rules the sweep found unheld', () => {
   it('a `memory` that is no number above 0 packs against the default; one warning names it', async () => {
     const warned: string[] = []
     const ctx = {
-      localCache: {
-        dbHandle() {
-          throw new Error('no history')
-        },
-      },
+      localCache: noHistory(),
       warn: (m: string) => warned.push(m),
     }
     for (const memory of [Number(undefined), 0, -1]) {
@@ -256,11 +261,7 @@ describe('the reservation rules the sweep found unheld', () => {
   it('a declared reservation axis that is no number above 0 is not declared; one warning names it', async () => {
     const warned: string[] = []
     const ctx = {
-      localCache: {
-        dbHandle() {
-          throw new Error('no history')
-        },
-      },
+      localCache: noHistory(),
       warn: (m: string) => warned.push(m),
     }
     const plugin = vxHistory({
@@ -295,15 +296,13 @@ describe('the reservation rules the sweep found unheld', () => {
     const plugin = vxHistory()
     const warned: string[] = []
     const ctx = {
-      localCache: {
-        dbHandle() {
-          throw new Error('disk on fire')
-        },
-      },
+      localCache: noHistory(),
       warn: (m: string) => warned.push(m),
     }
     const weights = await plugin.schedule!(new Map([['a#build', node('a#build')]]), ctx as never)
     expect(weights).toBeUndefined()
-    expect(warned).toEqual(['[vx] vx-history: ordering falls back to the baseline: disk on fire'])
+    expect(warned).toEqual([
+      '[vx] vx-history: ordering falls back to the baseline: Cannot use a closed database',
+    ])
   })
 })

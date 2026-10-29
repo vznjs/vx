@@ -5,7 +5,7 @@
 // Read-only — no config evaluation, no re-hash, no cache probe.
 
 import type { Database } from 'bun:sqlite'
-import { Cache, keptSteps, keptWarnings, type RunStep } from '../cache/index.js'
+import { indexDb, Cache, keptSteps, keptWarnings, type RunStep } from '../cache/index.js'
 import { formatBytes } from './format.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import {
@@ -804,7 +804,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
   const cacheDir = await cliCacheDir(root, parsed.cacheDir)
   const cache = Cache.inspect(cacheDir)
   try {
-    const db = cache.dbHandle()
+    const db = indexDb(cache)
     // Nothing recorded at all is its own answer: `--failed` said "no
     // recorded run failed" and a run id pointed at a `--list` that lists
     // nothing, while `--list --failed` past green runs said there were none.

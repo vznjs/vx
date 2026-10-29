@@ -18,7 +18,7 @@ and key derivation logic live here.
   its first part. It touches no store; `Cache.key` delegates to it
   (item 691).
   `foldHead` is the same fold up to the input files, which come last.
-- `fold-memo.ts` — `FoldMemo`: each task's last key over `fold_memo`, by
+- `fold-memo.ts` — `FoldMemo` (`IndexFoldMemo` over the rows): each task's last key over `fold_memo`, by
   a probe that is `foldHead` seeded into the task's `filesToken`
   (inputs.md). `computeTaskHash` reads a warm task's key back instead of
   resolving and folding its files; rows are written at close, and a prune
@@ -131,6 +131,7 @@ export interface CacheLayer {
   hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string // a file-backed artifact's path; a small one lives in the index
   artifactSize?(hash: string): number | undefined // the stored artifact's compressed size, wherever it lives
+  outputBytes?(hash: string): number | undefined // the entry this process just saved: its files' bytes, uncompressed; asked once
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }
@@ -371,6 +372,11 @@ export interface RunRecord {
   keylessBy?: string // v46: the task with no inputs its key folded
   def?: string // v48: the task's definition (`taskDefinition`), which history reads by
   cpuShare?: number // v49: the share of a core its threads got there; history divides its CPU by it
+  queuedMs?: number // v51: waited ready for a slot
+  outputBytes?: number // v51: its output files' bytes, restored or saved
+  blocks?: number // v51: the tasks downstream of it in the run
+  flakyPasses?: number // v51: the flaky record its row quoted
+  flakyFailures?: number
 }
 
 export interface CacheStats {
@@ -394,11 +400,16 @@ export function absentOr(err: unknown): string
 // The fold up to the input files, which `foldKey` folds last (key-fold.ts).
 export function foldHead(input: CacheKeyInput, digestValue?: (value: string) => string): bigint
 // Each task's last key by its probe, over `fold_memo` (fold-memo.ts).
-export class FoldMemo {
+// `Cache.foldMemo()` hands out the interface; the rows' own class,
+// `IndexFoldMemo`, stays in the cache module, as `IndexRemoteHits` does
+// behind `Cache.remoteHits`. No handle reaches a plugin (2026-10-29).
+export interface FoldMemo {
   get(taskId: string, probe: string): string | undefined
   set(taskId: string, probe: string, key: string): void
-  flush(cutoff: number, now?: number): void // at close: this run's folds; rows unwritten since `cutoff` go
 }
+// Core's own readers (`vx last`, `vx why`, the history provider) take the
+// index handle from `indexDb(cache)`, never from a `Cache` member.
+export function indexDb(cache: Cache): Database
 export const SCHEMA_VERSION = 'v47'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
@@ -750,7 +761,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v51'`; `SCHEMA_VERSION` is
-`'v50'`. Bump `CACHE_VERSION` when:
+`'v51'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

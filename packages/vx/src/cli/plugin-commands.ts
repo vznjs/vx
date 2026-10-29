@@ -7,6 +7,7 @@
 // reports an unknown command as it always did. Core's verbs are matched
 // before this is asked, so a plugin cannot shadow `run`.
 
+import { indexDb } from '../cache/index.js'
 import type { CachePolicy, PluginCache, ResolvedRemote } from '../cache/index.js'
 import type { WorkspaceConfig } from '../config.js'
 import type {
@@ -184,7 +185,7 @@ async function verbCache(
     remotes,
   })
   await openVerbRemotes(remotes, openRemotes)
-  return pluginCache(plugin, { db: localCache.dbHandle(), policy: VERB_POLICY, remotes, scope })
+  return pluginCache(plugin, { db: indexDb(localCache), policy: VERB_POLICY, remotes, scope })
 }
 
 /**

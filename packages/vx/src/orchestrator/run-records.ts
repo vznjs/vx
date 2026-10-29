@@ -38,6 +38,8 @@ export interface RunRecordsInput {
   host: HostContext
   /** Build the telemetry mirror; a run with no sink allocates none. */
   withTelemetry: boolean
+  /** Each task's count of the tasks downstream of it: the rows' `blocks`. */
+  blocks?: ReadonlyMap<string, number>
   /** The run's remote failures by key, so far (`Cache.traffic`). */
   remoteTraffic?: ReadonlyMap<string, { failures: readonly string[] }>
 }
@@ -124,6 +126,14 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     if (o.whereCores !== undefined) r.placementCores = o.whereCores
     if (o.whereMemoryBytes !== undefined) r.placementMemoryBytes = o.whereMemoryBytes
     if (o.cpuShare !== undefined) r.cpuShare = o.cpuShare
+    if (o.queuedMs !== undefined) r.queuedMs = o.queuedMs
+    if (o.outputBytes !== undefined) r.outputBytes = o.outputBytes
+    const blocks = input.blocks?.get(o.node.id)
+    if (blocks !== undefined) r.blocks = blocks
+    if (o.flaky !== undefined) {
+      r.flakyPasses = o.flaky.passes
+      r.flakyFailures = o.flaky.failures
+    }
     if (o.wallclockStartNs !== undefined) r.wallclockStartNs = o.wallclockStartNs
     if (o.wallclockEndNs !== undefined) r.wallclockEndNs = o.wallclockEndNs
     if (hit) r.restored = o.restored === true

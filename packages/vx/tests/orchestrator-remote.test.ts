@@ -20,7 +20,7 @@ import {
   silentLogger,
   TIMEOUT,
 } from './helpers/orchestrator-fixture.js'
-import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import { indexDb, Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import { ownRssHighWater } from '../src/exec/runner.js'
 import { type RunSummaryRecord, type TelemetryRecord } from '../src/orchestrator/index.js'
 import { LocalHistoryProvider } from '../src/history/index.js'
@@ -333,7 +333,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           const local = new Cache(cacheDir)
           try {
             return (
-              local.dbHandle().query('SELECT hash FROM remote_hits').all() as Array<{
+              indexDb(local).query('SELECT hash FROM remote_hits').all() as Array<{
                 hash: string
               }>
             )
@@ -414,7 +414,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         const local = new Cache(cacheDir)
         let rows: unknown[]
         try {
-          rows = local.dbHandle().query('SELECT hash FROM remote_hits').all()
+          rows = indexDb(local).query('SELECT hash FROM remote_hits').all()
         } finally {
           local.close()
         }
@@ -1529,7 +1529,7 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
         // What `@vzn/vx-history` reads on this runner's NEXT run.
         const local = new Cache(path.join(fixture.root, '.vx', 'cache'))
         try {
-          const table = await new LocalHistoryProvider(local.dbHandle()).loadFor(['app#build'])
+          const table = await new LocalHistoryProvider(indexDb(local)).loadFor(['app#build'])
           expect(table.get('app#build')?.maxPeakRssBytes).toBe(produced.peakRssBytes!)
           expect(table.get('app#build')?.hitRate).toBe(1)
         } finally {

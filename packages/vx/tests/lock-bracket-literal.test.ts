@@ -96,7 +96,7 @@ describe('vx lock refuses a bracket class that names an existing path', () => {
       // The row's words, not their spacing: a run that sampled the task's
       // CPU adds columns between them.
       const row = r.out.split('\n').find((l) => l.endsWith(' packages/a#build'))
-      expect(row?.trim().split(/ +/)).toEqual(expect.arrayContaining(['success', 'miss']))
+      expect(row?.trim().split(/ +/)).toEqual(expect.arrayContaining(['success', 'miss', 'local']))
     },
     TIMEOUT,
   )

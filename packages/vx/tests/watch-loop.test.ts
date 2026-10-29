@@ -96,14 +96,27 @@ describe('vx watch loop (e2e)', () => {
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
     await until(async () => (await executions(f.log)) === 2, 'the re-run after the edits')
     await Bun.sleep(SETTLE_MS)
-    // The duration is padded to a fixed width, so its digits decide the spaces before it.
-    expect(w.out().replace(/ +\d+ms/g, ' Nms')).toBe(
+    // The duration and cpu are padded to fixed widths, so their digits decide the spaces before them.
+    expect(
+      w
+        .out()
+        .replace(/ +\d+ms/g, ' Nms')
+        .replace(/ +\d+%/g, ' C'),
+    ).toBe(
       [
-        ' ⏺︎ Nms success miss     app#build',
+        ' ⏺︎ Nms                 success miss C' +
+          ' '.repeat(13) +
+          '3B' +
+          ' '.repeat(7) +
+          '0 local        app#build',
         'watching 1 project · 1 task',
         '',
         'changed app src/b.txt (+1 more)',
-        ' ⏺︎ Nms success miss     app#build',
+        ' ⏺︎ Nms                 success miss C' +
+          ' '.repeat(13) +
+          '6B' +
+          ' '.repeat(7) +
+          '0 local        app#build',
         '',
       ].join('\n'),
     )
@@ -123,13 +136,26 @@ describe('vx watch loop (e2e)', () => {
     await until(() => w.out().includes('1 task cached'), 'the cached line')
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(2)
-    expect(w.out().replace(/ +\d+ms/g, ' Nms')).toBe(
+    expect(
+      w
+        .out()
+        .replace(/ +\d+ms/g, ' Nms')
+        .replace(/ +\d+%/g, ' C'),
+    ).toBe(
       [
-        ' ⏺︎ Nms success miss     app#build',
+        ' ⏺︎ Nms                 success miss C' +
+          ' '.repeat(13) +
+          '3B' +
+          ' '.repeat(7) +
+          '0 local        app#build',
         'watching 1 project · 1 task',
         '',
         'changed app src/a.txt',
-        ' ⏺︎ Nms success miss     app#build',
+        ' ⏺︎ Nms                 success miss C' +
+          ' '.repeat(13) +
+          '3B' +
+          ' '.repeat(7) +
+          '0 local        app#build',
         '',
         'changed app src/a.txt',
         ' 1 task cached, nothing ran',

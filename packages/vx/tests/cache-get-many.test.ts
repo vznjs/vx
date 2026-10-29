@@ -13,7 +13,7 @@ import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { CacheGetContext } from '../src/cache/cache.js'
-import { Cache } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
 import { removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 
 describe('Cache.getMany agrees with Cache.get', () => {
@@ -112,7 +112,7 @@ describe('Cache.getMany agrees with Cache.get', () => {
     const cache = new Cache(cacheDir)
     try {
       await seed(cache, ['aa', 'bb'])
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       const stamp = (hash: string): number =>
         (db.query('SELECT accessed_at AS t FROM entries WHERE hash = ?').get(hash) as { t: number })
           .t
@@ -132,7 +132,7 @@ describe('Cache.getMany agrees with Cache.get', () => {
     const cache = new Cache(cacheDir)
     try {
       await seed(cache, ['aa'])
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       const clone = db.query(
         `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
          SELECT ?, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at FROM entries WHERE hash = 'aa'`,

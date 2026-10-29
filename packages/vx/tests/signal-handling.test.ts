@@ -655,8 +655,8 @@ describe('signal handling during vx run (e2e)', () => {
         .filter((l) => l.endsWith(' app#t') || l.endsWith(' app#after'))
         .map((l) => l.replace(/^ (\S+) +[\d.]+m?s /, ' $1 <t> '))
       expect(rows).toEqual([
-        ' ✗ <t> aborted          app#t',
-        ' ◌         not run          app#after',
+        ' ✗ <t>                 aborted                                     1 local        app#t',
+        ' ◌                         not run                                     0              app#after',
       ])
     },
     TIMEOUT,
@@ -733,7 +733,7 @@ describe('signal handling during vx run (e2e)', () => {
       const out = await new Response(again.stdout).text()
       expect(await again.exited).toBe(0)
       // `fresh`: a hit whose outputs are already on disk.
-      expect(out).toMatch(/ success fresh +app#done\n/)
+      expect(out).toMatch(/ success fresh .* app#done\n/)
     },
     TIMEOUT,
   )
@@ -1050,7 +1050,7 @@ describe('signal handling during vx run (e2e)', () => {
         out += new TextDecoder().decode(value)
       }
       expect(await proc.exited).toBe(130)
-      const aborted = out.search(/aborted +app#slow/)
+      const aborted = out.search(/aborted .* app#slow/)
       const frame = out.indexOf('┌─ app#lint')
       expect(aborted).toBeGreaterThan(-1)
       expect(frame).toBeGreaterThan(-1)

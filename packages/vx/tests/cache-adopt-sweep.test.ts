@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { Cache } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 
 // Adopting a row-less artifact hard-links it to a temp name, and a link
@@ -30,7 +30,7 @@ describe('an adopt beside another process sweeping orphans', () => {
         outputFiles: [outFile],
         entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
       })
-      saver.dbHandle().query('DELETE FROM entries WHERE hash = ?').run(hash)
+      indexDb(saver).query('DELETE FROM entries WHERE hash = ?').run(hash)
       saver.close()
       const artifact = path.join(dir, `${hash}.tar.zst`)
       const old = new Date(Date.now() - 2 * 60 * 60 * 1000)

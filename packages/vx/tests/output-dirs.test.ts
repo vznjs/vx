@@ -27,6 +27,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
+  indexDb,
   Cache,
   OUTPUT_DIRS_CAP,
   OUTPUT_DIRS_OVER_CAP,
@@ -438,7 +439,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     await cache.recordOutputDirs('h1', proj, ['dist'])
     await cache.recordOutputDirs('h2', proj, ['dist/a'])
     const count = () =>
-      (cache.dbHandle().query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
+      (indexDb(cache).query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
     expect(count()).toBe(0)
     expect((cache.loadOutputDirsBatch(['h1']).get('h1') ?? []).map((r) => r.path).sort()).toEqual([
       'dist',
@@ -459,7 +460,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     // A snapshot whose entry another process pruned meanwhile lands as
     // nothing, and does not fail the flush for the rest.
     await cache.recordOutputDirs('h2', proj, ['dist/a'])
-    cache.dbHandle().query('DELETE FROM entries WHERE hash = ?').run('h2')
+    indexDb(cache).query('DELETE FROM entries WHERE hash = ?').run('h2')
     expect(cache.loadOutputDirsBatch(['h1', 'h2']).get('h1')?.length).toBe(1)
     expect(count()).toBe(1)
   })
@@ -485,7 +486,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
   it('stats() lands a pending snapshot before it counts', async () => {
     await cache.recordOutputDirs('h1', proj, ['dist'])
     const count = () =>
-      (cache.dbHandle().query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
+      (indexDb(cache).query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
     expect(count()).toBe(0)
     cache.stats()
     expect(count()).toBe(3)
@@ -501,12 +502,11 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     await cache.recordOutputDirs('h1', proj, ['dist'])
     await cache.recordOutputDirs('h2', proj, ['dist/sub'])
     // Evict h2 by age: its `accessed_at` is set back past the cutoff.
-    cache.dbHandle().query('UPDATE entries SET accessed_at = 0 WHERE hash = ?').run('h2')
+    indexDb(cache).query('UPDATE entries SET accessed_at = 0 WHERE hash = ?').run('h2')
     // Past an hour after it: a row's last use is accessed_at plus the hour.
     const result = await cache.prune({ olderThanMs: 60 * 60 * 1000 + 1 })
     expect(result.evicted).toBe(1)
-    const all = cache
-      .dbHandle()
+    const all = indexDb(cache)
       .query('SELECT entry_hash AS h, path FROM output_dirs ORDER BY h, path')
       .all() as Array<{ h: string; path: string }>
     // Held two ways: the flush before the delete lets the cascade take
@@ -551,7 +551,7 @@ describe('warm hits through run() with the short-circuit', () => {
     const recordedDirs = () => {
       const c = db()
       const hash = (
-        c.dbHandle().query("SELECT hash FROM entries WHERE task = 'build'").get() as {
+        indexDb(c).query("SELECT hash FROM entries WHERE task = 'build'").get() as {
           hash: string
         }
       ).hash
@@ -597,7 +597,7 @@ describe('warm hits through run() with the short-circuit', () => {
     const recordedDirs = () => {
       const c = db()
       const hash = (
-        c.dbHandle().query("SELECT hash FROM entries WHERE task = 'build'").get() as {
+        indexDb(c).query("SELECT hash FROM entries WHERE task = 'build'").get() as {
           hash: string
         }
       ).hash
@@ -627,7 +627,7 @@ describe('warm hits through run() with the short-circuit', () => {
     const hashOf = () => {
       const c = db()
       const hash = (
-        c.dbHandle().query("SELECT hash FROM entries WHERE task = 'build'").get() as {
+        indexDb(c).query("SELECT hash FROM entries WHERE task = 'build'").get() as {
           hash: string
         }
       ).hash
@@ -659,7 +659,7 @@ describe('warm hits through run() with the short-circuit', () => {
   const recordedForBuild = () => {
     const c = db()
     const hash = (
-      c.dbHandle().query("SELECT hash FROM entries WHERE task = 'build'").get() as { hash: string }
+      indexDb(c).query("SELECT hash FROM entries WHERE task = 'build'").get() as { hash: string }
     ).hash
     const recorded = (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path).sort()
     c.close()
@@ -695,7 +695,7 @@ describe('warm hits through run() with the short-circuit', () => {
     expect((await runBuild()).ok).toBe(true)
     const c = db()
     const paths = (
-      c.dbHandle().query('SELECT path FROM output_dirs ORDER BY path').all() as {
+      indexDb(c).query('SELECT path FROM output_dirs ORDER BY path').all() as {
         path: string
       }[]
     ).map((r) => r.path)
@@ -715,7 +715,7 @@ describe('warm hits through run() with the short-circuit', () => {
     )
     const recorded = () => {
       const c = db()
-      const r = c.dbHandle().query('SELECT path, mtime_ms FROM output_dirs').all()
+      const r = indexDb(c).query('SELECT path, mtime_ms FROM output_dirs').all()
       c.close()
       return r
     }

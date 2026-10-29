@@ -458,6 +458,9 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
     ...(hit.cpuMs !== undefined ? { storedCpuMs: hit.cpuMs } : {}),
     ...(hit.peakRssBytes !== undefined ? { storedPeakRssBytes: hit.peakRssBytes } : {}),
     ...(hit.sizeBytes !== undefined ? { artifactBytes: hit.sizeBytes } : {}),
+    ...(hit.outputRows !== undefined
+      ? { outputBytes: hit.outputRows.reduce((n, r) => n + r.size, 0) }
+      : {}),
     ...(hit.fetchMs !== undefined ? { fetchMs: hit.fetchMs } : {}),
     hash,
     restored: restored || hit.source === 'remote',

@@ -12,7 +12,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
 import { xxh3hex } from '../src/util/index.js'
 
 // Now-relative: `close()` prunes history older than 30 days (retention).
@@ -101,7 +101,7 @@ const invocation: InvocationRecord = {
 // made it 33 of 31: 1,023, past it.
 it('binds at most 999 variables in any history INSERT', () => {
   const cache = new Cache(path.join(dir, 'cache'))
-  const db = cache.dbHandle()
+  const db = indexDb(cache)
   const sql: string[] = []
   const query = db.query.bind(db)
   db.query = ((text: string) => {

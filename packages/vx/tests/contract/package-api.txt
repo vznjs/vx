@@ -57,6 +57,7 @@ export class Cache implements CacheLayer {
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   outputsPath(hash: string): string
+  outputBytes(hash: string): number | undefined
   artifactSize(hash: string): number | undefined
   async recordOutputDirs(
     hash: string,
@@ -94,7 +95,6 @@ export class Cache implements CacheLayer {
     | { tmpPath: string }
     | { plan: true; saved: SavedTree }
   >
-  dbHandle(): Database
   recordRun(run: RunRecord): void
   recordRuns(runs: readonly RunRecord[]): void
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
@@ -115,17 +115,6 @@ export class FingerprintWatch {
   wrote(): void
   moved(): readonly string[] | undefined
   say(log: Logger): void
-}
-== class FoldMemo (src/cache/fold-memo.ts)
-export class FoldMemo {
-  constructor(
-    private readonly db: Database,
-    private readonly write: boolean,
-  ) {}
-  get(taskId: string, probe: string): string | undefined
-  set(taskId: string, probe: string, key: string): void
-  flush(now: number = Date.now()): void
-  prune(cutoff: number): void
 }
 == class GitFilesCache (src/cache/git-inputs.ts)
 export class GitFilesCache extends Map<string, readonly string[]> {
@@ -160,37 +149,6 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   override set(key: string, value: readonly string[]): this
   override delete(key: string): boolean
   override clear(): void
-}
-== class LocalHistoryProvider (src/history/history.ts)
-export class LocalHistoryProvider implements HistoryProvider {
-  constructor(
-    private readonly db: Database,
-    readonly recent: number
-    private readonly branch?: string | null,
-    private readonly defs?: ReadonlyMap<string, string>,
-  ) {}
-  async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
-  async loadAll(): Promise<HistoryTable>
-  async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
-  lackedBranchHistory
-  hasImported(sha: string): boolean
-  importTimings(
-    sha: string,
-    timings: ReadonlyMap<string, number>,
-    needs: ReadonlyMap<string, TaskResources> = new Map(),
-    defs: ReadonlyMap<string, string> = new Map(),
-  ): void
-  async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
-}
-== class RemoteHits (src/cache/remote-hits.ts)
-export class RemoteHits {
-  constructor(
-    private readonly db: Database,
-    private readonly write: boolean,
-  ) {}
-  get(hashes: readonly string[]): Map<string, RemoteHit>
-  record(asked: readonly string[], found: ReadonlyMap<string, RemoteHit>, now = Date.now()): void
-  forget(hash: string): void
 }
 == class TaskLogBuffer (src/orchestrator/task-log-buffer.ts)
 export class TaskLogBuffer {
@@ -367,6 +325,8 @@ export async function loadResolvedProjects(
 export function localFloor(
   sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
 ): LocalFloor
+== function localHistory (src/history/history.ts)
+export function localHistory(cache: Cache, options: LocalHistoryOptions = {}): LocalHistory
 == function lockfileClaim (src/orchestrator/lockfile-claim.ts)
 export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 == function machineMemoryBytes (src/util/cgroup.ts)
@@ -684,6 +644,7 @@ export interface CacheLayer {
   hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string
   artifactSize?(hash: string): number | undefined
+  outputBytes?(hash: string): number | undefined
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }
@@ -928,6 +889,11 @@ export interface FingerprintClaim {
 export interface FingerprintContext extends BaseContext {
   readonly projects: ReadonlyArray<{ readonly name: string; readonly dir: string }>
 }
+== type FoldMemo (src/cache/fold-memo.ts)
+export interface FoldMemo {
+  get(taskId: string, probe: string): string | undefined
+  set(taskId: string, probe: string, key: string): void
+}
 == type GeneratedProject (src/workspace/migration.ts)
 export interface GeneratedProject {
   name: string
@@ -1086,6 +1052,23 @@ export interface LocalFloor {
   rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
   close(): Promise<void>
 }
+== type LocalHistory (src/history/history.ts)
+export interface LocalHistory extends HistoryProvider {
+  resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+  hasImported(sha: string): boolean
+  importTimings(
+    sha: string,
+    timings: ReadonlyMap<string, number>,
+    needs?: ReadonlyMap<string, TaskResources>,
+    defs?: ReadonlyMap<string, string>,
+  ): void
+}
+== type LocalHistoryOptions (src/history/history.ts)
+export interface LocalHistoryOptions {
+  readonly recent?: number | undefined
+  readonly branch?: string | null | undefined
+  readonly defs?: ReadonlyMap<string, string> | undefined
+}
 == type LockfileClaimHooks (src/orchestrator/lockfile-claim.ts)
 export interface LockfileClaimHooks {
   readonly fingerprint: FingerprintClaim
@@ -1133,7 +1116,7 @@ export interface Logger {
     context?: RunContext
     startedAtMs?: number
   }): void
-  taskStart?(node: TaskNode): void
+  taskStart?(node: TaskNode, info?: { waitedMs?: number }): void
   runEnd?(): void
   stepStart?(id: string): void
   stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
@@ -1476,6 +1459,12 @@ export interface RemoteHit {
   readonly size?: number
   readonly durationMs?: number
 }
+== type RemoteHits (src/cache/remote-hits.ts)
+export interface RemoteHits {
+  get(hashes: readonly string[]): Map<string, RemoteHit>
+  record(asked: readonly string[], found: ReadonlyMap<string, RemoteHit>, now?: number): void
+  forget(hash: string): void
+}
 == type RemoteKeyTraffic (src/cache/cache.ts)
 export interface RemoteKeyTraffic {
   uploading: number
@@ -1530,6 +1519,8 @@ export interface RunContext {
   runId?: string | undefined
   executorRows?: () => readonly (readonly [string, ui.Inline])[]
   whereRunning?: (taskId: string) => string | null | undefined
+  usage?: (taskId: string) => { cores: number; rssBytes: number } | undefined
+  blocks?: () => ReadonlyMap<string, number>
   concurrency?: number
   remoteCacheEnabled: boolean
   cacheScope?: string | undefined
@@ -1579,7 +1570,7 @@ export interface RunContextRecord {
 == type RunEvent (src/report/events.ts)
 export type RunEvent =
   | { kind: 'run:start'; info: RunStartInfo }
-  | { kind: 'task:start'; node: TaskNode }
+  | { kind: 'task:start'; node: TaskNode; waitedMs?: number }
   | { kind: 'task:stdout'; node: TaskNode; chunk: string }
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
@@ -1681,6 +1672,11 @@ export interface RunRecord {
   placementCores?: number
   placementMemoryBytes?: number
   cpuShare?: number
+  queuedMs?: number
+  outputBytes?: number
+  blocks?: number
+  flakyPasses?: number
+  flakyFailures?: number
 }
 == type RunReport (src/orchestrator/plugin.ts)
 export interface RunReport {
@@ -1987,6 +1983,7 @@ export interface TaskOutcome {
   queuedMs?: number
   inputFiles?: number
   artifactBytes?: number
+  outputBytes?: number
   fetchMs?: number
   saveMs?: number
   inputChanges?: InputChanges

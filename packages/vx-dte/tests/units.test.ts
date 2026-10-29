@@ -7,6 +7,7 @@ import {
   realpath,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from 'node:fs/promises'
 import os from 'node:os'
@@ -4630,6 +4631,33 @@ it('snapshots the uncommitted changes in a checkout with no git identity', async
   await writeFile(path.join(ws, 'f.txt'), '2\n')
   const { tree } = await snapshot(ws)
   expect(tree).not.toBe('')
+  expect(git('rev-parse', `${tree}:f.txt`)).toBe(git('hash-object', 'f.txt'))
+})
+
+// A file edited in the tick its index was written, to the same size, is
+// "racily clean": git trusts its stat only while the file is not newer than
+// the index. The snapshot's copy of the index had a fresh mtime, so git took
+// the edit for clean and the tree held the old blob, the workers building
+// bytes the run never had (CI, 2026-10-29).
+it('snapshots an edit made in the tick its index was written', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'commit.gpgsign=false', ...a], { cwd: ws })
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  const f = path.join(ws, 'f.txt')
+  await writeFile(f, '1\n')
+  git('add', '-A')
+  git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
+  const tick = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000)
+  await utimes(f, tick, tick)
+  await utimes(path.join(ws, '.git', 'index'), tick, tick)
+  git('update-index', '--refresh')
+  await utimes(path.join(ws, '.git', 'index'), tick, tick)
+  await writeFile(f, '2\n')
+  await utimes(f, tick, tick)
+  const { tree } = await snapshot(ws)
   expect(git('rev-parse', `${tree}:f.txt`)).toBe(git('hash-object', 'f.txt'))
 })
 

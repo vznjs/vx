@@ -8,10 +8,11 @@ import {
   formatListHeader,
   formatTaskAbortedLine,
   formatTaskBlock,
+  executedCells,
+  waited,
   formatTaskExecutedLine,
   flakyNote,
   pathNote,
-  whereNote,
   formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
@@ -91,7 +92,8 @@ export interface Logger {
     /** The run's canonical start (epoch ms) — equals the final summary's `startedAt`. */
     startedAtMs?: number
   }): void
-  taskStart?(node: TaskNode): void
+  /** `waitedMs`: how long it waited ready for a slot, when not started at once. */
+  taskStart?(node: TaskNode, info?: { waitedMs?: number }): void
   /** The task graph finished (any outcome); vx's own closing steps follow. Idempotent. */
   runEnd?(): void
   /**
@@ -354,6 +356,8 @@ export function defaultLogger(
   const onPath = new Set<string>()
   let blockedCount = 0
   let expected: ReadonlyMap<string, number> | undefined
+  // Each task's usual time once history is read: the results' `±usual`.
+  let usualOf: ReadonlyMap<string, number> | undefined
   let blocked: readonly BlockedTask[] | undefined
   let blockedBy: ReadonlyMap<string, number> | undefined
   let etaAtMs = 0
@@ -521,6 +525,7 @@ export function defaultLogger(
       expected = f.expected
       blocked = f.blocked
       blockedBy = f.blockedBy
+      usualOf = f.usual
     }
     const etaMs = deadlineMs === undefined ? undefined : deadlineMs - now
     if (signals.progress && total > 0) {
@@ -604,6 +609,7 @@ export function defaultLogger(
         nowMs: Date.now(),
         summaryLines,
         ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
+        ...(runContext?.usage !== undefined ? { usage: runContext.usage } : {}),
         ...(expected !== undefined ? { expected } : {}),
         ...(critical !== undefined ? { critical } : {}),
       },
@@ -688,7 +694,7 @@ export function defaultLogger(
   const emitRow = (line: string): void => {
     if (!headed) {
       headed = true
-      emitLine(formatListHeader(runContext?.whereRunning !== undefined, colors))
+      emitLine(formatListHeader(colors))
     }
     emitLine(line)
   }
@@ -731,10 +737,17 @@ export function defaultLogger(
     (framesTerminal && holdsTerminal(node)) ||
     (view.mode === 'focused' && isPrimary(node) && !isGroupTask(node) && requestedCount <= 1)
 
+  // How many tasks are downstream of each: every results row's `blocks`.
+  const blocksOf = (id: string): number | undefined => runContext?.blocks?.().get(id)
   const failureRow = (node: TaskNode, outcome: TaskOutcome): string =>
-    formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(outcome)) +
+    formatFailureLine(
+      node.id,
+      outcome.durationMs,
+      colors,
+      cacheWordOf(outcome),
+      executedCells(outcome, blocksOf(node.id)),
+    ) +
     (onPath.has(node.id) ? pathNote(colors) : '') +
-    whereNote(outcome, colors) +
     flakyNote(outcome, colors)
 
   return {
@@ -798,7 +811,7 @@ export function defaultLogger(
       tail = false
       killStatus()
     },
-    taskStart(node) {
+    taskStart(node, info) {
       if (isGroupTask(node)) return
       if (holdsTerminal(node)) {
         killStatus()
@@ -820,7 +833,12 @@ export function defaultLogger(
       }
       // The rows are the status region's; with none, nothing reads them.
       if (statusDead) return
-      const slot: WorkerSlot = { id: node.id, startedMs: Date.now() }
+      const slot: WorkerSlot = {
+        id: node.id,
+        startedMs: Date.now(),
+        cache: ranNoCache({ node }) ? 'no-cache' : 'miss',
+        ...(waited(info?.waitedMs) ? { waitedMs: info!.waitedMs! } : {}),
+      }
       const free = slots.indexOf(null)
       if (free >= 0) slots[free] = slot
       else slotQueue.push(slot)
@@ -1016,7 +1034,7 @@ export function defaultLogger(
         // Otherwise a row in the task list, in every view that lists a
         // failure: the run exits red, and the row names why.
         if (view.mode !== 'none' && view.mode !== 'hash-only') {
-          emitRow(formatTaskAbortedLine(node, outcome, colors))
+          emitRow(formatTaskAbortedLine(node, outcome, colors, blocksOf(node.id)))
         }
         return
       }
@@ -1099,7 +1117,7 @@ export function defaultLogger(
         }
         case 'errors-only':
           if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome))
+            emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
             return
           }
           if (outcome.status !== 'failed') return
@@ -1136,9 +1154,18 @@ export function defaultLogger(
               ),
             )
           } else if (outcome.status === 'success') {
-            emitRow(formatTaskExecutedLine(node, outcome, colors, onPath.has(node.id)))
+            emitRow(
+              formatTaskExecutedLine(
+                node,
+                outcome,
+                colors,
+                onPath.has(node.id),
+                blocksOf(node.id),
+                usualOf?.get(node.id),
+              ),
+            )
           } else if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome))
+            emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
           }
           return
         case 'focused':
@@ -1147,7 +1174,7 @@ export function defaultLogger(
             // stopped), so no frame-open fired — and a skip has no output,
             // so a one-liner carries everything a frame would.
             if (outcome.status === 'skipped') {
-              emitRow(formatTaskSkippedLine(node, colors, outcome))
+              emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
               return
             }
             if (streamsLive(node)) {
@@ -1198,7 +1225,7 @@ export function defaultLogger(
           // Dependency-pulled nodes: silent on success; a skip gets its
           // row, failures the ◼ row now and their frame replayed at runEnd.
           if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome))
+            emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
           } else if (outcome.status === 'failed') {
             emitRow(failureRow(node, outcome))
             deferredFailures.push(
@@ -1222,11 +1249,13 @@ export function defaultLogger(
           // point); misses/failures are always framed. One-liners
           // stay outside ::group:: — there's nothing to collapse.
           if (isHit && output.every((c) => c.text.trim().length === 0)) {
-            emitRow(formatTaskHitLine(node, outcome, colors, onPath.has(node.id)))
+            emitRow(
+              formatTaskHitLine(node, outcome, colors, onPath.has(node.id), blocksOf(node.id)),
+            )
             return
           }
           if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome))
+            emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
             return
           }
           const block = formatTaskBlock(

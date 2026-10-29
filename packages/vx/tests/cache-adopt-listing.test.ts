@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { Cache } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 
 // A row-less lookup stats its artifact path for the first 64 asks, then
@@ -24,7 +24,7 @@ async function saveFile(cache: Cache, root: string, hash: string): Promise<void>
     outputFiles: [out],
     entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
   })
-  cache.dbHandle().query('DELETE FROM entries WHERE hash = ?').run(hash)
+  indexDb(cache).query('DELETE FROM entries WHERE hash = ?').run(hash)
 }
 
 describe('row-less lookups past the stat limit', () => {
