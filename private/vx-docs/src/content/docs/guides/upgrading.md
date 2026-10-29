@@ -9,7 +9,11 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## orchestrator: hand extraFiles a context, keep cancel leftovers
+## vx-docs: list the breaking changes squashes left out
+
+`vx cache clean --dry-run` is `--dry` (its JSON `dryRun` is `dry`) and `vx run --dry=text` is `--dry=pretty`; a duration in `M` is refused, write minutes as `m`; `baseBranch: 'origin/main'` is refused, write `baseBranch: 'main'`; a glob brace (`{src,lib}`) reads each alternative alone; an `inputs.tasks` entry matching no dependency is refused, and so is a dependency rule selector `--filter` would misread; `inputs.runtime` probes see only the essential env, name more in `inputs.env`; `vxHistory({ defaultBranch })` is `baseBranch`, and timings in the remote cache need `vxHistory({ url })`; `turboCache({ apiUrl })` is `turboCache({ url })` and `nxCache({ server, accessToken })` is `nxCache({ url, token })`; `reapi()` reads no `VX_REAPI_*` variable, pass its options instead.
+
+## close known lockfile, cache, DTE and watch issues
 
 FingerprintClaim.extraFiles(file, bytes, ctx) may return a promise, and DteAdapter.cancel(ids, late?) may return the ids it left running: a plugin implementing either takes the new arguments.
 
