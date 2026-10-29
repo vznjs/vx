@@ -426,3 +426,41 @@ describe('exec.timeout — loader validation', () => {
     expect(cfg.tasks?.dev?.exec?.timeout).toBe('1s')
   })
 })
+
+// The masked stream holds back a tail that could begin a secret, flushed
+// 25 ms idle: a server that died before ready printed that tail below the
+// line saying it never became ready.
+it(
+  "a server that exits before ready prints its last characters above vx's line",
+  async () => {
+    const f = await makeWorkspace()
+    try {
+      await addProject(
+        f.root,
+        'srv',
+        `export default { tasks: { dev: { exec: {
+          command: "printf 'booting t'; exit 1",
+          env: { define: { API_TOKEN: 'tok-secret-123' } },
+          persistent: { readyWhen: 'READY' },
+        } } } }`,
+      )
+      const seq: string[] = []
+      await run({
+        cwd: f.root,
+        tasks: ['dev'],
+        projects: ['srv'],
+        log: {
+          ...silentLogger(f),
+          taskStdout: (_n, c) => void seq.push(c),
+          taskStderr: (_n, c) => void seq.push(c),
+        },
+        handleSignals: false,
+      })
+      await Bun.sleep(60)
+      expect(seq.join('')).toStartWith('booting t\n[vx] srv#dev: persistent task failed')
+    } finally {
+      await rm(f.root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)

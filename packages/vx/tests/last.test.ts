@@ -442,6 +442,16 @@ describe('parseLastArgs', () => {
       500,
       '--list must be a whole number from 1 to 500 (got 501) (see `vx last --help`)',
     ])
+    // `Number()` read these as 100, 16, 5 and 5; an empty `=` said "(got )".
+    expect(
+      ['1e2', '0x10', '5.0', ' 5', ''].map((v) => parseLastArgs([`--list=${v}`]).error),
+    ).toEqual([
+      '--list must be a whole number from 1 to 500 (got 1e2) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got 0x10) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got 5.0) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got  5) (see `vx last --help`)',
+      '--list= requires a count from 1 to 500; bare --list shows 10 (see `vx last --help`)',
+    ])
     expect(parseLastArgs(['--format', 'json']).format).toBe('json')
     expect(parseLastArgs(['--format=pretty']).format).toBe('pretty')
     expect(parseLastArgs(['--format', 'yaml']).error).toBe(

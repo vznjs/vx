@@ -17,6 +17,7 @@ import {
   machineMemoryBytes,
   ui,
   machineParallelism,
+  packageManagerPath,
   sampleTrees,
   sandboxRequestFor,
   sweepPlaceholders,
@@ -924,6 +925,11 @@ export function localEnv(
   // By path: a plain replace moved `/ws2` and `/private/ws` with `/ws`.
   const out: Record<string, string | undefined> = swapRoots({ ...env }, [[remoteRoot, root]])
   // Sent only when the task's `env.define` names it: its value, as keyed.
+  // Else this machine's manager, as core sets it on a local task.
+  if (!('npm_execpath' in out)) {
+    const manager = packageManagerPath(root)
+    if (manager !== null) out['npm_execpath'] = manager
+  }
   for (const k of HOST_ENV) if (!(k in out)) out[k] = process.env[k]
   const bins = (out['PATH'] ?? '').split(':').filter((p) => p === root || p.startsWith(`${root}/`))
   out['PATH'] = [...bins, process.env['PATH'] ?? ''].join(':')
