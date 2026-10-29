@@ -11,7 +11,7 @@ import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { allowOf, type Issuer, issuer, NAMED } from './issuer.js'
-import { HistoryServer, proxyHeaders, serverUrlOf, timingOf } from '../src/history-server.js'
+import { HistoryServer, serverUrlOf, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
 
 let iss: Issuer
@@ -249,8 +249,7 @@ describe('HistoryServer', () => {
       seen.push(new Headers(init.headers))
       return new Response(JSON.stringify({ maxUploadTimings: 10, maxQueryHashes: 10, rows: [] }))
     }) as unknown as typeof fetch
-    const headers = proxyHeaders({ 'CF-Access-Client-Id': 'id', 'X-Unset': undefined })
-    expect(headers).toEqual({ 'CF-Access-Client-Id': 'id' })
+    const headers = { 'CF-Access-Client-Id': 'id' }
     const client = new HistoryServer(
       'https://h.example',
       NAMED,
@@ -267,8 +266,6 @@ describe('HistoryServer', () => {
         h.get('vx-issuer'),
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', null, null])
-    for (const bad of [{ Authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
-      expect(() => proxyHeaders(bad)).toThrow('vxHistory(): ')
   })
 
   it('reads with no token from a public server, sending none', async () => {

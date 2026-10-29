@@ -33,6 +33,7 @@ import {
   readLockfile,
   buildPackageGraph,
   checkDependencyRules,
+  computeNestedProjectDirs,
   writeLockfile,
   type Lockfile,
   type ProjectMeta,
@@ -185,12 +186,19 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         buildPackageGraph(out.all, taskEdgesFrom(projects)),
       )
     const rules = runRules(workspaceConfig)
+    const nameOf = new Map(out.all.map((m) => [m.dir, m.name]))
     const nodes = buildTaskGraph({
       projects,
       packageGraph: buildPackageGraph(out.all),
       requested: expandRequested([...names], [...projects.keys()], projects, isDefaultBuild),
       workspaceRoot: root,
       rules,
+      nestedProjects: new Map(
+        [...computeNestedProjectDirs(out.all)].map(([name, dirs]) => [
+          name,
+          dirs.map((dir) => ({ name: nameOf.get(dir)!, dir })),
+        ]),
+      ),
     })
     if (hasHook(plugins, 'graph'))
       await applyGraphStage(plugins, nodes, {
@@ -520,15 +528,19 @@ async function checkLock(root: string, json: boolean): Promise<number> {
         metas.filter((m) => !drifted.has(lockKey(root, m.dir))),
         check.resolved,
       ).map(async (r) => {
+        // Only a missing copy is "has no": a directory in its place, or one
+        // this user cannot read, read as missing too.
         const text = await Bun.file(r.file)
           .text()
-          .catch(() => null)
+          .catch((err: NodeJS.ErrnoException) => (err.code === 'ENOENT' ? null : err))
         // Compared as JSON: a formatter may lay the copy out its own way.
-        if (text !== null && sameJson(text, r.config)) return null
+        if (typeof text === 'string' && sameJson(text, r.config)) return null
         const rel = relPosix(root, r.file)
         return text === null
           ? `"${r.name}" has no ${rel} — run 'vx lock'`
-          : `"${r.name}" (${rel}) is not what its config resolves to here — run 'vx lock'`
+          : typeof text !== 'string'
+            ? `"${r.name}" (${rel}) could not be read (${text.code ?? text.message}) — remove it and run 'vx lock'`
+            : `"${r.name}" (${rel}) is not what its config resolves to here — run 'vx lock'`
       }),
     )
     for (const f of stale) if (f !== null) failures.push(f)

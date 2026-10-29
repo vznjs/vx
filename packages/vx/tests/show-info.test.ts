@@ -731,6 +731,13 @@ describe('parseShowArgs', () => {
     )
   })
 
+  // `--filter=` refused as `vx run --filter=` is, not as a filter naming no project.
+  it('an empty --filter= is a missing value', () => {
+    expect(parseShowArgs(['--filter=']).error).toBe(
+      '--filter requires a value: a project name, glob or path (see `vx show --help`)',
+    )
+  })
+
   it('rejects unknown flags and extra positionals', () => {
     expect(parseShowArgs(['--bogus']).error).toBe('unknown flag: --bogus (see `vx show --help`)')
     expect(parseShowArgs(['a', 'b']).error).toBe('unexpected argument: b (see `vx show --help`)')

@@ -218,7 +218,10 @@
         "project": { "type": "string" },
         "task": { "type": "string" },
         "status": { "type": "string" },
-        "exitCode": { "type": "integer" },
+        "exitCode": {
+          "type": "integer",
+          "description": "a skipped task records 0 when an exec.platforms skip is its root, 1 behind a failure or fail-fast"
+        },
         "durationMs": { "type": "number" },
         "startedAt": { "type": "integer", "description": "epoch ms" },
         "endedAt": { "type": "integer", "description": "epoch ms" },

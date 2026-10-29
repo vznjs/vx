@@ -81,6 +81,8 @@ which its output never shows, in `<cacheDir>/steps/<runId>.json` for
 ```ts
 writeRunSteps(cacheDir, runId, steps, warn): void // at run end; nothing when no step ran; newest 50 kept; a refused write warns
 runSteps(cacheDir, runId): RunStep[] // [] when the run kept none
+writeRunWarnings(cacheDir, runId, warnings, warn): void // the run's warnings, colour stripped, beside its steps
+runWarnings(cacheDir, runId): string[] // [] when it said none or they are gone
 
 export interface RunStep {
   id: string // 'vx:prefetch'

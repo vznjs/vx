@@ -342,6 +342,7 @@ async function starter(
   if (args.mode !== undefined) {
     throw new UserError(
       `vx init: --${args.mode} answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here`,
+      'VX_E_USAGE',
     )
   }
   // A source checkout installs nothing, so it declares the plugin only where one is.

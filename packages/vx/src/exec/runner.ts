@@ -1224,16 +1224,16 @@ export class BoundedCapture {
   }
 
   /**
-   * This capture under smaller bounds. What it already dropped stays
-   * counted: copied through `chunks()`, the dropped line read as text and
-   * the new line named only the re-bound's cut (16 MB of 100 MB lost).
+   * The same output under tighter bounds. What this capture already
+   * dropped is counted in the new one's dropped line: pushed through
+   * `chunks()`, the old line fell into the new middle with its count.
    */
   rebound(headChars: number, tailChars: number): BoundedCapture {
-    const small = new BoundedCapture(headChars, tailChars)
-    for (const c of this.head) small.push(c.text, c.err)
-    small.dropped += this.dropped
-    for (const c of this.tail) small.push(c.text, c.err)
-    return small
+    const to = new BoundedCapture(headChars, tailChars)
+    for (const c of this.head) to.push(c.text, c.err)
+    for (const c of this.tail) to.push(c.text, c.err)
+    to.dropped += this.dropped
+    return to
   }
 
   /** The kept chunks in arrival order, the dropped middle named on stdout. */

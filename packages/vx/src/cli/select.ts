@@ -52,6 +52,7 @@ import {
   discoverCliProjects,
   loadCliProjects,
   loadCliWorkspace,
+  stageCacheDir,
 } from './workspace-config.js'
 
 /**
@@ -120,7 +121,7 @@ async function workspaceFingerprintClaims(
   const claims = fingerprintClaims(ws.plugins)
   const ctx = {
     workspaceRoot: root,
-    cacheDir: load.cacheDir ?? ws.cacheDir,
+    cacheDir: stageCacheDir(ws, load),
     warn: (m: string) => process.stderr.write(`${maskedLine(m)}\n`),
     projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
   }
@@ -131,8 +132,8 @@ async function workspaceFingerprintClaims(
   }
 }
 
-async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
-  return await discoverCliProjects(await findWorkspaceRoot(cwd))
+async function loadWorkspaceProjects(cwd: string, load: CliLoadOptions): Promise<ProjectMeta[]> {
+  return await discoverCliProjects(await findWorkspaceRoot(cwd), load)
 }
 
 export async function findCwdProject(cwd: string): Promise<string | null> {
@@ -146,9 +147,10 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
  */
 export async function findCwdSelection(
   cwd: string,
+  load: CliLoadOptions = {},
 ): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await discoverCliProjects(root)
+  const projects = await discoverCliProjects(root, load)
   const abs = path.resolve(cwd)
   const within = (dirOf: (p: ProjectMeta) => string): { name: string; dir: string } | null => {
     let best: { name: string; dir: string } | null = null
@@ -313,7 +315,7 @@ export async function resolveFilters(
   verb: 'run' | 'show' | 'watch' = 'run',
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await loadWorkspaceProjects(cwd)
+  const projects = await loadWorkspaceProjects(cwd, load)
   let parsed: ReturnType<typeof parseFilter>[]
   try {
     parsed = raw.map((r) => parseFilter(r, root))
@@ -481,9 +483,9 @@ export async function resolveFilters(
     // the patterns are in the error, and the nearest project name is the
     // hint a typo needs. Only the ones that matched nothing: `app !app apq` named
     // app, and `--affected` a `...[<base>]` nobody typed.
-    return {
-      error: `no projects matched filter(s): ${unmatched.join(', ')}${didYouMean(unmatched, projects, tags)}`,
-    }
+    const hint =
+      (await unlockedHint(root, parsed, unmatched)) ?? didYouMean(unmatched, projects, tags)
+    return { error: `no projects matched filter(s): ${unmatched.join(', ')}${hint}` }
   }
   // Something matched, so the run proceeds; a pattern that matched nothing
   // alongside it is still worth a line — it is probably a typo.
@@ -491,7 +493,7 @@ export async function resolveFilters(
     sayNotice(
       'warn',
       `vx ${verb}`,
-      `filter "${f}" matched no projects${didYouMean([f], projects, tags)}`,
+      `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f])) ?? didYouMean([f], projects, tags)}`,
     )
   // Each include is a union: what `--filter other` selected runs its tasks
   // whether or not the `--affected` diff reaches them, and an exclude
@@ -545,7 +547,7 @@ export async function pickTask(
   /** The projects `--filter` / `--affected` selected; every project when absent. */
   only?: ReadonlySet<string>,
 ): Promise<PickedTask | null | 'interrupted'> {
-  const projects = await loadWorkspaceProjects(cwd)
+  const projects = await loadWorkspaceProjects(cwd, load)
   // The staged load: a task a `project` plugin gave a config-less package
   // is on the menu, as it is in a run.
   const staged = await loadCliProjects(await findWorkspaceRoot(cwd), projects, 'all', load)
@@ -640,6 +642,27 @@ export async function pickTask(
   }
 }
 
+/**
+ * `. packages/c/vx.config.ts is not in the lock yet — run \`vx lock\``
+ * for an unmatched `./dir` filter naming a directory `vx lock` would make
+ * a project: a config written after the lock is none yet, and "Projects:
+ * …" without it read as a typo of the path. Asked on the refusal's path only.
+ */
+async function unlockedHint(
+  root: string,
+  parsed: readonly ReturnType<typeof parseFilter>[],
+  unmatched: readonly string[],
+): Promise<string | undefined> {
+  const dirs = parsed
+    .filter((f) => f.isPath && f.pathGlob === undefined && unmatched.includes(f.raw))
+    .map((f) => f.matcher)
+  if (dirs.length === 0) return undefined
+  const { configs } = await findProjectConfigs(root)
+  const config = configs.find((c) => dirs.includes(c.dir))
+  if (config === undefined) return undefined
+  return `. ${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``
+}
+
 /** The hint for the first unmatched pattern: a near tag for a `tag:` one, else a near project name. */
 function didYouMean(
   unmatched: readonly string[],
@@ -672,6 +695,11 @@ function didYouMeanProject(
     // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
     if (typed === '//') {
       return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'
+    }
+    // Nx's `--projects=a,b`: the edit distance hinted the first name alone.
+    const parts = pattern.split(',').filter((p) => p !== '')
+    if (parts.length > 1) {
+      return `. A filter is one pattern: ${parts.map((p) => `--filter ${p}`).join(' ')}`
     }
     const best = nearest(typed, names)
     if (best !== undefined) return `. Did you mean ${best}?`
