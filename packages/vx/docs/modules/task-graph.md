@@ -38,6 +38,9 @@ export interface BuildGraphOptions {
   undeclaredDeps?: (taskId: string, name: string) => void
   workspaceRoot?: string // lets root-anchored outputs be checked against `files` outputs (item 1088)
   rules?: GraphRules | undefined // the workspace's `rules`; each on unless false (X-53)
+  // By project name, every project rooted inside its dir; with `workspaceRoot`
+  // and unlocked (`vx lock`), an `inputs.files` entry rooted in one is refused.
+  nestedProjects?: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>
 }
 
 // `locked`: a run, which never checks the rules; `vx lock` does.
