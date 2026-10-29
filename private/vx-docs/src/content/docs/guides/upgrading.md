@@ -17,6 +17,10 @@ a brace of directories (`{src,lib}`) or of `./` spellings (`{./src,lib}/**`) in 
 
 `vx cache clean --dry-run` → `vx cache clean --dry`
 
+## vx-migrate: name the cache server url and its bearer token
+
+turboCache({ apiUrl }) is turboCache({ url }); nxCache({ server, accessToken }) is nxCache({ url, token }).
+
 ## cli: vx run --dry=pretty, the value every --format takes
 
 vx run --dry=text is now --dry=pretty (bare --dry is unchanged).
