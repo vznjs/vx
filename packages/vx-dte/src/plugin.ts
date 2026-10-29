@@ -132,6 +132,18 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   headers: 'object',
 }
 
+// A typo in a size or in `unmeasured` (`maxx`) was dropped, and the size ran uncapped.
+const SIZE_KEYS: PluginOptionKinds<WorkerSize> = {
+  max: 'number',
+  cpu: 'number',
+  memory: 'any',
+  platform: 'string',
+}
+const UNMEASURED_KEYS: PluginOptionKinds<NonNullable<DteOptions['unmeasured']>> = {
+  cpu: 'number',
+  memory: 'any',
+}
+
 const USAGE = 'Usage: vx dte worker | vx dte init [--dry] [--force]'
 
 /** `headers` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
@@ -166,6 +178,7 @@ export function dte(options: DteOptions = {}) {
   }
   const sizes = Object.entries(options.workers ?? {}).map(([name, s]) => {
     const at = `workers.${name}`
+    refuseUnknownOptions(`dte() option "${at}"`, s, SIZE_KEYS)
     if (!(Number.isInteger(s?.cpu) && s.cpu >= 1)) refuse(`${at}.cpu`, 'a whole number ≥ 1', s?.cpu)
     const memory = bytes(s.memory)
     if (memory === undefined)
@@ -857,6 +870,7 @@ const PLACED = { cores: 1, memory: 0 }
 
 function unmeasuredOf(u: DteOptions['unmeasured']): Need {
   if (u === undefined) return FRESH
+  refuseUnknownOptions('dte() option "unmeasured"', u, UNMEASURED_KEYS)
   if (!(typeof u.cpu === 'number' && u.cpu > 0 && Number.isFinite(u.cpu)))
     refuse('unmeasured.cpu', 'a number above 0', u.cpu)
   const memory = bytes(u.memory)

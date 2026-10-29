@@ -3429,6 +3429,23 @@ for (const hook of ['main', 'linked'] as const)
     expect(env).not.toMatch(/^GIT_(INDEX_FILE|DIR)=/m)
   }, 20_000)
 
+it('a worker size or unmeasured with a key dte() does not read is refused', () => {
+  // A typo of max left the size uncapped, without a word.
+  const adapter = local()
+  expect(
+    refusal(() => dte({ workers: { s: { cpu: 1, memory: '1GB', maxx: 2 } as never }, adapter })),
+  ).toBe(
+    'dte() option "workers.s" has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
+  )
+  expect(
+    refusal(() =>
+      dte({ relay: 'https://r', unmeasured: { cpu: 1, memory: '1GB', cpus: 2 } as never }),
+    ),
+  ).toBe(
+    'dte() option "unmeasured" has unknown option "cpus" (allowed: cpu, memory) — did you mean cpu?',
+  )
+})
+
 it('a run that is not distributed loads none of it', async () => {
   // Every run evaluates `.vx/workspace.ts`: importing the plugin may not
   // load the orchestrator, the worker or the relay.
