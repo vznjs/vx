@@ -25,6 +25,7 @@ import {
   type RunStep,
   runSteps,
   runWarnings,
+  shellQuote,
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
@@ -756,7 +757,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       for (const withArgs of [false, true]) {
         const ids = failed
           .filter((t) => t.forwarded === withArgs)
-          .map((t) => `${t.project}#${t.task}`)
+          .map((t) => shellQuote(`${t.project}#${t.task}`))
         if (ids.length > 0)
           rerun.push(`  re-run what failed: vx run ${ids.join(' ')}${withArgs ? args : ''}`)
       }
