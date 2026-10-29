@@ -1726,6 +1726,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     if (prepared.empty !== null) return { tasks: [] }
     // The plan orders nothing, but it refuses what the run would refuse.
     await prepared.priorities()
+    terminalHolders(prepared.nodes, options.tty === true)
     // Its own mark: a dry run's plan (every task's hash, the cache lookups,
     // the history p50s) was booked under `close`, the next mark, and read
     // as 105 ms of closing a cache at 1,000 projects (item 601).
