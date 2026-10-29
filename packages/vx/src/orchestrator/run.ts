@@ -92,7 +92,7 @@ import {
   teardownPlugins,
 } from './plugin-host.js'
 import { createSteps } from './steps.js'
-import { liveSocketPath, serveLive } from './run-live.js'
+import { liveSocketOf, serveLive } from './run-live.js'
 import { writeRunSteps, writeRunWarnings } from './run-steps.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
@@ -732,7 +732,7 @@ async function runOnBus(
   )
   // Answers `vx last --live` while the lock is held (run-live.ts).
   live = serveLive({
-    socketPath: liveSocketPath(prepared.workspaceRoot),
+    socketPath: liveSocketOf(releaseRunLock.path),
     bus,
     runId,
     command: maskInvocation(invocationCommand(options.command ?? process.argv.slice(1))),

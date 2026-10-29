@@ -52,7 +52,12 @@ export interface LiveSnapshot {
 
 /** Where the run of `workspaceRoot` answers: beside its run lock. */
 export function liveSocketPath(workspaceRoot: string, lockDir?: string): string {
-  return `${runLockPath(workspaceRoot, lockDir)}.sock`
+  return liveSocketOf(runLockPath(workspaceRoot, lockDir))
+}
+
+/** The live socket beside the run lock at `lockPath`. */
+export function liveSocketOf(lockPath: string): string {
+  return `${lockPath}.sock`
 }
 
 /** A follower this far behind is let go. */
