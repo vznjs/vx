@@ -88,6 +88,11 @@ export interface TaskOutcome {
    * its save wrote (measured only when a telemetry sink listens).
    */
   artifactBytes?: number
+  /**
+   * The raw bytes of the task's outputs: on a hit, the entry's files as
+   * restored; on a miss, what its save stored. Absent when nothing was.
+   */
+  outputBytes?: number
   /** On a remote hit this run pulled: the download and its ingest. */
   fetchMs?: number
   /** On a miss that saved, with a sink listening: the save's own time. */
@@ -304,7 +309,8 @@ export interface ScheduleOptions {
    */
   onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
-  onStart?: (node: TaskNode) => void
+  /** `queuedMs`: how long the task waited ready for a slot, when it did. */
+  onStart?: (node: TaskNode, queuedMs?: number) => void
   onFinish?: (outcome: TaskOutcome) => void
   /**
    * Where the line naming a rejected `execute` goes, before its failed
@@ -959,9 +965,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         return undefined
       }
     }
-    const started = (node: TaskNode): void => {
+    const started = (node: TaskNode, queuedMs = 0): void => {
       try {
-        onStart?.(node)
+        if (queuedMs > 0) onStart?.(node, queuedMs)
+        else onStart?.(node)
       } catch (err) {
         const m = thrownMessage(err)
         ui.say('warn', `[vx] onStart observer threw for ${node.id}: ${m}\n`)
@@ -1100,7 +1107,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         const settle = settleInPlace(node, upstream)
         let now: TaskOutcome | undefined
         if (settle !== undefined) {
-          if (!demoted.has(id)) started(node)
+          if (!demoted.has(id)) started(node, queuedMs)
           try {
             now = settle()
           } catch {
@@ -1130,7 +1137,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // the dispatch loop (it would strand the tick with the slot held).
         // A demoted task's second dispatch is the same task, already started,
         // as is one whose settle threw.
-        if (!demoted.has(id) && settle === undefined) started(node)
+        if (!demoted.has(id) && settle === undefined) started(node, queuedMs)
 
         // `.then(onFulfilled, onRejected)` — NOT `.then(f).catch(g)`. The
         // rejection arm handles ONLY `execute()` rejecting; a throw from

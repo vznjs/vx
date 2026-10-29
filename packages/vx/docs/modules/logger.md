@@ -107,7 +107,10 @@ export function createForecast(
   nodes: ReadonlyMap<string, TaskNode>,
   p50s: ReadonlyMap<string, number>,
   concurrency: number,
+  downstream?: ReadonlyMap<string, number>, // each task's `blocks`; `blocksCounts(nodes)` by default
 ): Forecast
+// every task's count of the tasks downstream of it, groups not counted
+export function blocksCounts(nodes: ReadonlyMap<string, TaskNode>): Map<string, number>
 ```
 
 ## View resolution (priority order)

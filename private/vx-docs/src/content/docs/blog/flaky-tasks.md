@@ -73,8 +73,8 @@ pass
 The note sits on the task's row:
 
 ```ansi
- [38;2;239;68;68m◼︎[0m   [2m4.21s[0m [38;2;239;68;68mfailed[0m  [2mmiss[0m     [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 3× before[0m
- [38;2;34;197;94m⏺︎[0m  [2m12.84s[0m [38;2;34;197;94msuccess[0m [2mmiss[0m     [38;2;147;197;253mapi[0m[2m#[0m[38;2;147;197;253me2e[0m [2mflaky - failed 1× before · 2 attempts[0m
+ [38;2;239;68;68m◼︎[0m   [2m4.21s[0m                 [38;2;239;68;68mfailed[0m  [2mmiss[0m                                  local        [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 3× before[0m
+ [38;2;34;197;94m⏺︎[0m  [2m12.84s[0m                 [38;2;34;197;94msuccess[0m [2mmiss[0m                                  local        [38;2;147;197;253mapi[0m[2m#[0m[38;2;147;197;253me2e[0m [2mflaky - failed 1× before · 2 attempts[0m
 ```
 
 `vx info` lists flaky tasks. `vx last --stats --format json` gives each

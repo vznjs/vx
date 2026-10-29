@@ -223,6 +223,10 @@ export interface RunContext {
   executorRows?: () => readonly (readonly [string, ui.Inline])[]
   /** Where a running task runs, `null` while it waits for a machine (`TaskExecutor.running`): its live row. */
   whereRunning?: (taskId: string) => string | null | undefined
+  /** A running task's live CPU and memory: its live row's `cpu` and `mem`. */
+  usage?: (taskId: string) => { cores: number; rssBytes: number } | undefined
+  /** Each task's count of the tasks downstream of it in the run, built on first ask: the rows' `blocks`. */
+  blocks?: () => ReadonlyMap<string, number>
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
   remoteCacheEnabled: boolean

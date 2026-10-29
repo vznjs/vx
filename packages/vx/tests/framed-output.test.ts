@@ -157,7 +157,7 @@ describe('the compact one-liners', () => {
       }),
       node: cached,
     })
-    expect(row).toMatch(/^ ⇢ +12ms success +local +@vzn\/vx#lint$/)
+    expect(row).toMatch(/^ ⇢ +12ms +success local +local +@vzn\/vx#lint$/)
     expect(doc).toContain('// ` ⇢ <time> success local <id>` — quiet cache hit')
   })
 
@@ -166,7 +166,7 @@ describe('the compact one-liners', () => {
       ...outcome('@vzn/vx#lint', 'success', { durationMs: 327, hash: 'abcdef0123456789' }),
       node: cached,
     })
-    expect(row).toMatch(/^ ⏺\uFE0E +327ms success +miss +@vzn\/vx#lint$/)
+    expect(row).toMatch(/^ ⏺\uFE0E +327ms +success miss +local +@vzn\/vx#lint$/)
     expect(doc).toContain('// ` ⏺ <time> success miss <id>` — broad-mode executed task')
   })
 
@@ -175,7 +175,7 @@ describe('the compact one-liners', () => {
       ...outcome('@vzn/vx#lint', 'success', { durationMs: 327, where: 'small#2' }),
       node: cached,
     }
-    expect(formatTaskExecutedLine(cached, o)).toMatch(/ @vzn\/vx#lint · small#2$/)
+    expect(formatTaskExecutedLine(cached, o)).toMatch(/ small#2 +@vzn\/vx#lint$/)
     expect(formatTaskBlock(cached, o, {}).trimEnd().split('\n').at(-1)).toMatch(
       /@vzn\/vx#lint · small#2 ── \(327ms\) success$/,
     )
@@ -205,15 +205,15 @@ describe('the compact one-liners', () => {
       row(cached, 'cache-hit-remote', { restored: true }),
       row(cached, 'cache-hit-remote', { restored: false }),
     ]).toEqual([
-      ' ⏺\uFE0E   1.23s success miss     @vzn/vx#lint',
-      ' ⏺\uFE0E   1.23s success no-cache @vzn/vx#fmt',
-      ' ◼\uFE0E   1.23s failed  miss     @vzn/vx#lint',
-      ' ◼\uFE0E   1.23s failed  no-cache @vzn/vx#fmt',
-      ' ⊘   1.23s skipped          @vzn/vx#lint',
-      ' ⇢   1.23s success local    @vzn/vx#lint',
-      ' ►   1.23s success fresh    @vzn/vx#lint',
-      ' ⇣   1.23s success remote   @vzn/vx#lint',
-      ' ►   1.23s success fresh    @vzn/vx#lint',
+      ' ⏺\uFE0E   1.23s                 success miss                                  local        @vzn/vx#lint',
+      ' ⏺\uFE0E   1.23s                 success no-cache                              local        @vzn/vx#fmt',
+      ' ◼\uFE0E   1.23s                 failed  miss                                  local        @vzn/vx#lint',
+      ' ◼\uFE0E   1.23s                 failed  no-cache                              local        @vzn/vx#fmt',
+      ' ⊘   1.23s                 skipped                                                    @vzn/vx#lint',
+      ' ⇢   1.23s                 success local                                 local        @vzn/vx#lint',
+      ' ►   1.23s                 success fresh                                 local        @vzn/vx#lint',
+      ' ⇣   1.23s                 success remote                                local        @vzn/vx#lint',
+      ' ►   1.23s                 success fresh                                 local        @vzn/vx#lint',
     ])
   })
 
@@ -228,7 +228,9 @@ describe('the compact one-liners', () => {
         ...outcome('@vzn/vx#fmt', 'success', { durationMs: 99_999_999 }),
         node: uncached,
       }),
-    ).toBe(' ⏺\uFE0E 1666m 40s success no-cache @vzn/vx#fmt')
+    ).toBe(
+      ' ⏺\uFE0E 1666m 40s                 success no-cache                              local        @vzn/vx#fmt',
+    )
   })
 
   // `1000.00s` is one wider than the column: past 16m 40s a running row's
@@ -241,9 +243,15 @@ describe('the compact one-liners', () => {
         ...outcome('@vzn/vx#fmt', 'success', { durationMs: ms }),
         node: uncached,
       })
-    expect(row(999_990)).toBe(' ⏺\uFE0E 999.99s success no-cache @vzn/vx#fmt')
-    expect(row(1_000_000)).toBe(' ⏺\uFE0E 16m 40s success no-cache @vzn/vx#fmt')
-    expect(row(5_999_000)).toBe(' ⏺\uFE0E 99m 59s success no-cache @vzn/vx#fmt')
+    expect(row(999_990)).toBe(
+      ' ⏺\uFE0E 999.99s                 success no-cache                              local        @vzn/vx#fmt',
+    )
+    expect(row(1_000_000)).toBe(
+      ' ⏺\uFE0E 16m 40s                 success no-cache                              local        @vzn/vx#fmt',
+    )
+    expect(row(5_999_000)).toBe(
+      ' ⏺\uFE0E 99m 59s                 success no-cache                              local        @vzn/vx#fmt',
+    )
   })
 
   it('with colour on the cache word is dim, and a blank cell emits nothing', () => {
