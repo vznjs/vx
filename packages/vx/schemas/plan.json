@@ -22,7 +22,16 @@
           "task": { "type": "string" },
           "hash": { "type": "string", "description": "the cache key" },
           "cacheStatus": {
-            "enum": ["hit-local", "hit-remote", "miss", "no-cache", "group", "not-started"]
+            "enum": [
+              "hit-local",
+              "hit-remote",
+              "miss",
+              "no-cache",
+              "group",
+              "not-started",
+              "skipped"
+            ],
+            "description": "skipped: exec.platforms leave this machine out, or a task it depends on is skipped; the run skips it too"
           },
           "deps": { "type": "array", "items": { "type": "string" } },
           "p50Ms": {
@@ -38,6 +47,20 @@
             "description": "outputs would stay remote (--cache-download)"
           },
           "description": { "type": "string" },
+          "otherPlatform": {
+            "type": "object",
+            "description": "a skipped task's own exec.platforms, and this machine's",
+            "additionalProperties": false,
+            "required": ["needs", "host"],
+            "properties": {
+              "needs": { "type": "array", "items": { "type": "string" } },
+              "host": { "type": "string" }
+            }
+          },
+          "blockedBy": {
+            "type": "string",
+            "description": "a skipped task's root: the task off this machine's platforms it depends on"
+          },
           "affected": {
             "type": "object",
             "description": "why --affected kept this requested task; absent on a dependency it pulled in",

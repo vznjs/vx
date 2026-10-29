@@ -158,6 +158,17 @@ export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set
     stack.push(...nodes.get(id)!.deps)
   }
   const clash = [...holders].filter((id) => id !== server && !before.has(id))
+  // One that runs after the server cannot run before it: the advice to make
+  // the server depend on it wrote a cycle.
+  const after = clash.filter((id) => reaches(nodes, id, server))
+  if (after.length > 0) {
+    const one = after.length === 1
+    throw new UserError(
+      `${server} is persistent and interactive, so it holds the terminal until the run ends, ` +
+        `and ${after.join(', ')}, which ${one ? 'depends' : 'depend'} on it, would ask for it too: ` +
+        `run ${one ? 'it' : 'them'} on ${one ? 'its' : 'their'} own`,
+    )
+  }
   if (clash.length > 0) {
     throw new UserError(
       `${server} is persistent and interactive, so it holds the terminal until the run ends, ` +
@@ -167,6 +178,20 @@ export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set
     )
   }
   return holders
+}
+
+/** Does `from` depend on `to`, directly or through others? */
+function reaches(nodes: Map<string, TaskNode>, from: string, to: string): boolean {
+  const seen = new Set<string>()
+  const stack = [...nodes.get(from)!.deps]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (id === to) return true
+    if (seen.has(id)) continue
+    seen.add(id)
+    stack.push(...(nodes.get(id)?.deps ?? []))
+  }
+  return false
 }
 
 export interface Placements {
@@ -371,16 +396,20 @@ export function placeTasks(
  * inspection command and must not fail over a label. The error is still
  * said, on the status line, in the plugin's name: the run this plan
  * previews would refuse on it, and a plan that hid that would read as
- * "everything lands locally".
+ * "everything lands locally". The tasks `exec.platforms` skip here ride
+ * along, and a platform refusal (CI, an executor that cannot route) throws
+ * as the run's does.
  */
 export async function planExecutorOf(
   prepared: Awaited<ReturnType<typeof prepareRun>>,
   log: Logger,
   policy: 'all' | 'toplevel' | 'none',
+  ci: boolean,
 ): Promise<{
   executorOf?: (id: string) => string | undefined
   downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
+  otherPlatform?: ReadonlyMap<string, readonly string[]>
 }> {
   let executors: readonly TaskExecutor[]
   try {
@@ -399,6 +428,9 @@ export async function planExecutorOf(
     return {}
   }
   const placements = placeTasks(prepared.nodes, executors)
+  // What the run refuses on, the plan refuses on: on CI a skip fails the run.
+  const platforms = platformVerdict(placements, ci)
+  if (platforms !== undefined && 'refuse' in platforms) throw new UserError(platforms.refuse)
   // Download modes need placement regardless of how many executors there
   // are (a single REMOTE one still defers); executor LABELS only earn their
   // column when there is a choice to report.
@@ -412,6 +444,7 @@ export async function planExecutorOf(
           remoteOnly: placements.remoteOnly,
         })
   return {
+    ...(placements.otherPlatform.size > 0 ? { otherPlatform: placements.otherPlatform } : {}),
     ...(executors.length < 2 && placements.remoteOnlyNoop.size === 0
       ? {}
       : {

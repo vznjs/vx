@@ -18,7 +18,7 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
+import { envFlagOn, parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
 import { formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -173,16 +173,21 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       // half the callers mean. Reject and name both explicit forms; the
       // sibling value flags (--retries=, --timeout=, --cache-dir=)
       // reject an empty `=` value the same way.
-      if (raw === '') {
+      const names = raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+      // `=,` named nothing and ran every edge, as `=` would have.
+      if (names.length === 0) {
         return {
           ...out,
           error: `--exclude-dependencies= needs a value — pass bare --exclude-dependencies to drop every dependsOn edge, or omit the flag to keep them`,
         }
       }
-      out.excludeDependencies = raw
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
+      // Repeated, the last list replaced the earlier ones, so their
+      // edges ran; `--filter` adds up the same way.
+      if (out.excludeDependencies !== 'all')
+        out.excludeDependencies = [...new Set([...out.excludeDependencies, ...names])]
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
       if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
@@ -409,7 +414,8 @@ export async function resolveRunOptions(
       const task = t.slice(idx + 1)
       if (!project) {
         return {
-          error: `missing project name before '#' in "${t}" (vx ${verb} ${task} runs it in every project)`,
+          // A bare name runs in the cwd project: `--all` is every project.
+          error: `missing project name before '#' in "${t}" (vx ${verb} ${task} --all runs it in every project)`,
         }
       }
       if (!task) {
@@ -446,6 +452,7 @@ export async function resolveRunOptions(
           filterStrings,
           parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
           affectedFilter,
+          verb,
         )
       : undefined
   if (resolved !== undefined && 'error' in resolved) return resolved
@@ -667,7 +674,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   return summary.ok ? 0 : 1
 }
 
-/** CI=0 and CI=false are "not CI": several vendors set CI=true. */
+/** Whether `CI` names a CI run, as detectCi reads it. */
 export function onCI(v: string | undefined): boolean {
-  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
+  return envFlagOn(v)
 }

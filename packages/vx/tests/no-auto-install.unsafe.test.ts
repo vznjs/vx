@@ -1,11 +1,12 @@
 // Bun auto-installs a bare import from the npm registry when no
 // `node_modules` is above the importer, and runs it. `project-loader.ts`
-// refuses such an import in the config itself before evaluating, but a
-// local file the config imports reached the registry: a fresh clone before
-// its install, or a typo in a helper, downloaded and ran a package (L-22).
-// `bin.ts`'s shebang runs Bun with --no-install, so no import vx evaluates
-// installs; the npm launcher's source fallback passes the same flag
-// (`npm-launcher.test.ts`), and a compiled binary never auto-installs.
+// refuses such an import before evaluating, in the config and in each file
+// it imports, but only what a static scan sees: a computed `import()` in a
+// helper reached the registry, and a fresh clone before its install, or a
+// typo, downloaded and ran a package (L-22). `bin.ts`'s shebang runs Bun
+// with --no-install, so no import vx evaluates installs; the npm launcher's
+// source fallback passes the same flag (`npm-launcher.test.ts`), and a
+// compiled binary never auto-installs.
 //
 // `.unsafe`: the row boots a registry on loopback, and core's shards grant
 // no local binding (seatbelt refused the listen on macOS).
@@ -30,14 +31,14 @@ export default { tasks: { a: { exec: { command: 'echo ' + x } } } }
     )
     await writeFile(
       path.join(root, 'helper.mjs'),
-      `import isOdd from 'is-odd'
+      `const { default: isOdd } = await import(['is', 'odd'].join('-'))
 export const x = typeof isOdd
 `,
     )
   })
   afterEach(() => rm(root, { recursive: true, force: true }))
 
-  it("a helper's unprovided import is refused without asking the registry", async () => {
+  it("a helper's computed import of an unprovided package fails without asking the registry", async () => {
     const asked: string[] = []
     using registry = Bun.serve({
       port: 0,

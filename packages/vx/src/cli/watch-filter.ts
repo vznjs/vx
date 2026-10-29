@@ -33,8 +33,13 @@ export function isIgnoredWatchPath(rel: string): boolean {
   const segments = rel.split(path.sep)
   for (let i = 1; i <= segments.length; i++) if (isIgnoredDir(segments.slice(0, i))) return true
   if (IGNORED_SUFFIXES.some((suf) => rel.endsWith(suf))) return true
+  const last = segments.length - 1
+  // The cache's first save writes `.vx/.gitignore`, which ignores only the
+  // `.vx/cache` and `.vx/tmp` already skipped: a watched root project ran
+  // one more cycle for it.
+  if (segments[last] === '.gitignore' && segments[last - 1] === '.vx') return true
   // `vx lock`'s review copy: no input, so a re-lock is no cycle.
-  return segments[segments.length - 1] === 'vx.lock.json'
+  return segments[last] === 'vx.lock.json'
 }
 
 /**
@@ -311,6 +316,11 @@ export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: s
  * the lock, a lockfile plugin's `discover` names and edges from its file).
  */
 const PROJECT_CONFIGS: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
+
+/** A project's own config file, by name: a run reads it only through the lock. */
+export function isProjectConfigFile(filename: string): boolean {
+  return PROJECT_CONFIGS.has(path.basename(filename))
+}
 
 export function shapesWatchedSet(filename: string): boolean {
   const base = path.basename(filename)

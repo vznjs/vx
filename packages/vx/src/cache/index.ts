@@ -57,6 +57,7 @@ export {
   resolveOutputs,
   outputWalkTakes,
   resolveWorkspaceOutputs,
+  resolveWorkspaceOutputTree,
   sweepRestoreTemps,
   sweepStaging,
   asTrees,

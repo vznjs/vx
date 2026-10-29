@@ -13,6 +13,7 @@ import {
   formatBytes,
   formatElapsed,
   gradientRule,
+  identityColor,
   paint,
   SUCCESS,
   ui,
@@ -533,14 +534,19 @@ function formatOver(ms: number): string {
 
 /**
  * The `--verbosity 1` per-task table (`RunOptions.summaryTable`). Groups are
- * left out as the footer leaves them: a group ran no command.
+ * left out as the footer leaves them: a group ran no command. Painted in the
+ * list's vocabulary: header bold violet, ids in their hues, status in its
+ * state colour, rule and durations dim.
  */
-export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[] {
+export function formatOutcomeTable(
+  outcomes: readonly TaskOutcome[],
+  colors: ColorSupport = NO_COLOR,
+): string[] {
   const rows = outcomes
     .filter((o) => !isGroupTask(o.node))
     .map((o) => {
       const v = projectOutcome(o)
-      return { task: v.taskId, status: outcomeLabel(v), duration: `${v.durationMs}ms` }
+      return { o, task: v.taskId, status: outcomeLabel(v), duration: `${v.durationMs}ms` }
     })
   if (rows.length === 0) return []
   const widths = {
@@ -548,15 +554,41 @@ export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[] {
     status: Math.max(6, ...rows.map((r) => r.status.length)),
     duration: Math.max(8, ...rows.map((r) => r.duration.length)),
   }
-  const line = (task: string, status: string, duration: string) =>
-    `${task.padEnd(widths.task)}  ${status.padEnd(widths.status)}  ${duration.padStart(widths.duration)}`
-  const header = line('TASK', 'STATUS', 'DURATION')
+  const pad = (text: string, width: number) => ' '.repeat(Math.max(0, width - text.length))
+  const header = `${'TASK'.padEnd(widths.task)}  ${'STATUS'.padEnd(widths.status)}  ${'DURATION'.padStart(widths.duration)}`
+  const dim = (t: string) => paint('', t, colors, { dim: true })
   return [
     '',
-    header,
-    '-'.repeat(header.length),
-    ...rows.map((r) => line(r.task, r.status, r.duration)),
+    paint(TABLE_HEADER, header, colors, { bold: true }),
+    dim('-'.repeat(header.length)),
+    ...rows.map((r) => {
+      const { node } = r.o
+      const id =
+        node.projectName !== undefined && node.taskName !== undefined
+          ? paint(identityColor(node.projectName), node.projectName, colors) +
+            dim('#') +
+            paint(identityColor(node.taskName), node.taskName, colors)
+          : r.task
+      const status = paint(tableStatusColor(r.o), r.status, colors)
+      return `${id}${pad(r.task, widths.task)}  ${status}${pad(r.status, widths.status)}  ${pad(r.duration, widths.duration)}${dim(r.duration)}`
+    }),
   ]
+}
+
+/** violet-400, as the task list's header. */
+const TABLE_HEADER = '#a78bfa'
+
+function tableStatusColor(o: TaskOutcome): string {
+  switch (o.status) {
+    case 'failed':
+      return ERROR
+    case 'skipped':
+      return WARN
+    case 'aborted':
+      return neverStarted(o) ? NOT_RUN : ABORTED
+    default:
+      return SUCCESS
+  }
 }
 
 // Local byte formatter — the orchestrator can't import cli/format.ts

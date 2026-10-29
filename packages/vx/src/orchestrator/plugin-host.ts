@@ -267,6 +267,14 @@ function checkNodeShapes(nodes: Map<string, TaskNode>): void {
         throw new Error(`${key}'s ${field} is ${shown(fields[field])}, not a name`)
       }
     }
+    // A node copied under a new id kept the old taskName: the key read
+    // the id, `--exclude-dependencies` the name, and the two disagreed.
+    const id = (node as { id?: unknown }).id
+    if (id !== `${fields.projectName as string}#${fields.taskName as string}`) {
+      throw new Error(
+        `${key}'s id is ${shown(id)}, not its projectName#taskName (${fields.projectName as string}#${fields.taskName as string})`,
+      )
+    }
     const dir = fields.projectDir
     if (typeof dir !== 'string' || !path.isAbsolute(dir)) {
       throw new Error(`${key}'s projectDir is ${shown(dir)}, not an absolute path`)
