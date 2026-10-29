@@ -33,7 +33,7 @@ import {
 } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import { entryHolds } from './miss-save.js'
-import { decodeOutputLog } from './output-log.js'
+import { decodeOutputLog, maskStreams } from './output-log.js'
 
 export interface RestoreHitArgs {
   args: ExecuteArgs
@@ -433,10 +433,9 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
       node.config.exec?.env?.secret,
     )
     // The stored log holds both streams in the order the run printed them.
-    for (const c of decodeOutputLog(hit.stdout)) {
-      const text = secrets === null ? c.text : secrets.mask(c.text)
-      if (c.err) log.taskStderr(node, text)
-      else log.taskStdout(node, text)
+    for (const c of maskStreams(decodeOutputLog(hit.stdout), secrets ?? undefined)) {
+      if (c.err) log.taskStderr(node, c.text)
+      else log.taskStdout(node, c.text)
     }
   }
   const status =

@@ -673,6 +673,9 @@ Reads via `get()` are non-blocking thanks to WAL.
   clean holds a glob root's link and a recorded row to as well).
   A path holding a backslash is resolved link by link (`realOf`): Bun's
   `realpath` answers ENOENT for any such path.
+  A directory where an entry holds a file (one `dist/**` covers and the
+  clean, which takes files only, left) is refused as it is staged, with
+  `EISDIR`: its rename would fail after others landed.
   On any throw, nothing was renamed into place.
 
 `get(hash)`:
@@ -740,7 +743,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v50'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v51'`; `SCHEMA_VERSION` is
 `'v49'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

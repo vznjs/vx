@@ -74,10 +74,12 @@ export async function workspaceGlobOwners(
     loadCliProjects(root, projects, 'all', load),
   /** The changed nested repositories (`AffectedChanges.nested`). */
   nested: readonly string[] = [],
+  /** `AffectedChanges.dirLinks`. */
+  dirLinks: ReadonlySet<string> = new Set(),
 ): Promise<string[]> {
   const declaresMatch = (config: ProjectConfig): boolean => {
     for (const task of Object.values(config.tasks ?? {})) {
-      if (changed.some((rel) => declaresInput(task, null, rel))) return true
+      if (changed.some((rel) => declaresInput(task, null, rel, dirLinks.has(rel)))) return true
       if (nested.some((dir) => workspaceFilesReachInto(task, dir))) return true
     }
     return false
@@ -379,8 +381,11 @@ export async function resolveFilters(
         workspaceRoot: root,
         since: f.gitSince,
         projects,
-        workspaceGlobOwners: (changed: readonly string[], nested: readonly string[]) =>
-          workspaceGlobOwners(root, projects, changed, load, stagedOnce, nested),
+        workspaceGlobOwners: (
+          changed: readonly string[],
+          nested: readonly string[],
+          dirLinks: ReadonlySet<string>,
+        ) => workspaceGlobOwners(root, projects, changed, load, stagedOnce, nested, dirLinks),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
         ...(git !== undefined
           ? {

@@ -1028,7 +1028,7 @@ function unlockedConfigOf(
 
 /**
  * A `project#build` naming the default `build` of a project the lock holds
- * no config for, while its directory holds one, asks for that config's task, not
+ * no config for (or no project at all), while its directory holds one, asks for that config's task, not
  * one that runs nothing: ran, `c#build` was 0 tasks, exit 0, where a
  * renamed task gets "run `vx lock`" (Growth, lock drift).
  */
@@ -1043,11 +1043,13 @@ function refuseUnlockedConfig(
     if (at < 0) continue
     const name = spec.slice(0, at)
     const entry = projects.get(name)
-    if (entry === undefined || !isDefaultBuild(entry.config.tasks?.[spec.slice(at + 1)])) continue
+    // No entry: a package the lock holds no project for, whose config came after it.
+    if (entry !== undefined && !isDefaultBuild(entry.config.tasks?.[spec.slice(at + 1)])) continue
     const config = unlockedConfig(name, metas)
     if (config === undefined) continue
     throw new UserError(
       `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
+      'VX_E_LOCK',
     )
   }
 }
@@ -1073,6 +1075,7 @@ function refuseUnlockedScope(
     if (config === undefined) continue
     throw new UserError(
       `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
+      'VX_E_LOCK',
     )
   }
 }

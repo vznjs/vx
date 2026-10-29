@@ -68,7 +68,8 @@ alone decides what it reads and where it writes, by the server's
 A bad token is `401`. A server with `ALLOW` empty does not start; a
 Worker, which cannot refuse to, refuses every request: `401`,
 `ALLOW is empty: set it to the CI workflows this server serves`. A server that
-cannot fetch the issuer's keys answers `502`: the token is not refused,
+cannot fetch the issuer's keys, or reads a broken key set (none, or two
+keys for one `kid`), answers `502`: the token is not refused,
 so a client keeps the remote for its next request.
 
 ## Keys
@@ -144,6 +145,7 @@ saying what to fix:
 
 A JSON body without `Content-Type: application/json` is `400`; an unknown
 route `404`; a route's wrong method `405` with `Allow`; a bucket that
-cannot be read or written `502`, and a failure the server did not
-expect `500`, each `message` what failed. Turbo's `teamId`
+cannot be read or written `502` (an upload whose client left before
+its body ended is `400`, and logs nothing), and a failure the server
+did not expect `500`, each `message` what failed. Turbo's `teamId`
 and `slug` query parameters are `400`: the token names the repository.

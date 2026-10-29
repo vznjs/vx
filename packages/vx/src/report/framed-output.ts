@@ -42,6 +42,19 @@ import { outcomeLabel, outcomeWord, ranNoCache, skippedReason } from './events.j
 import { fileMemo, linkPaths } from './path-links.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
+// Ends any colour a task's output left on, so vx's own lines below never
+// take it (a task killed mid-write leaves one open).
+export const RESET = '\x1b[0m'
+
+/** Whether `text`'s last colour code sets a style rather than resetting it. */
+export function leavesStyle(text: string): boolean {
+  const at = text.lastIndexOf('\x1b[')
+  if (at < 0) return false
+  const sgr = /^\[([\d;]*)m/.exec(text.slice(at + 1, at + 64))
+  // Not a colour code (a cursor move): look no further, as a reset costs nothing.
+  if (sgr === null) return true
+  return sgr[1] !== '' && sgr[1] !== '0'
+}
 
 const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
 // Identity hues (`identityColor`) are outside the status palette (green /
@@ -160,6 +173,7 @@ function pushStreamSection(
     lines.push(droppedNote(lost, colors))
   }
   pushBodyLines(lines, text)
+  if (leavesStyle(text)) lines.push(`${lines.pop()}${RESET}`)
   lines.push('')
 }
 
@@ -204,6 +218,8 @@ function pushOutputSection(
     if (!l.err || !colors.enabled) lines.push(text)
     else lines.push(l.text.includes('\x1b') ? text : paint(ERROR, text, colors))
   }
+  const styled = output.findLast((c) => c.text.includes('\x1b['))
+  if (styled !== undefined && leavesStyle(styled.text)) lines.push(`${lines.pop()}${RESET}`)
   lines.push('')
 }
 
@@ -273,7 +289,7 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
 // the two axes out, each in its own color. Time is right-aligned in a
 // fixed cell so durations line up and a ticking elapsed never shifts
 // the row. All detail (exit code, output) lives in the framed block.
-export const TIME_COL = 7 // "0ms" … "999.99s"
+export const TIME_COL = 7 // "0ms" … "999.99s", then "16m 40s" … "99m 59s"
 const STATUS_COL = 7 // "success" / "running" / "skipped" / "aborted" / "not run"
 const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
 const BLOCKED_COL = 7 // the live list's count of tasks a running one holds back
@@ -282,7 +298,9 @@ const HEADER = '#a78bfa'
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
-  const raw = ms === null ? '' : formatElapsed(ms)
+  let raw = ms === null ? '' : formatElapsed(ms)
+  // `1000.00s` is wider than the cell; minutes fit it up to `99m 59s`.
+  if (ms !== null && raw.length > TIME_COL) raw = formatElapsed(ms, true)
   return ' '.repeat(Math.max(0, TIME_COL - raw.length)) + paint('', raw, colors, { dim: true })
 }
 
@@ -710,7 +728,10 @@ export function formatKeptLines(node: TaskNode, text: string, colors: ColorSuppo
   const prefix = `${paintTaskId(node, colors)} ${paint('', '│', colors, { dim: true })} `
   return text
     .split('\n')
-    .map((line) => `${prefix}${lastRedraw(line)}\n`)
+    .map((line) => {
+      const shown = lastRedraw(line)
+      return `${prefix}${shown}${leavesStyle(shown) ? RESET : ''}\n`
+    })
     .join('')
 }
 

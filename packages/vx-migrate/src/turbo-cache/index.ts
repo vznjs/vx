@@ -722,8 +722,13 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     throw new Error(`HTTP ${res.status}`)
   }
 
+  /**
+   * Null when the layer is off: no answer, which core keeps apart from
+   * "none held" (an empty map rewrote every key it asked as a miss in
+   * `remote_hits`, and the next run fetched none of them).
+   */
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
-    if (this.disabled || hashes.length === 0) return this.disabled ? new Map() : null
+    if (this.disabled || hashes.length === 0) return null
     if (hashes.length <= BATCH_MAX) return this.batch(hashes)
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / BATCH_MAX) }, (_, i) =>
@@ -739,7 +744,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       body: JSON.stringify({ hashes }),
       headers: { 'Content-Type': 'application/json', ...this.reads },
     })
-    if (res === undefined) return new Map()
+    if (res === undefined) return null
     if (res.status !== 200) {
       // A server with no batch query (404, 405, 501) is asked per hash. Any
       // other refusal was silent: main f71b377's probe gave no answer and no

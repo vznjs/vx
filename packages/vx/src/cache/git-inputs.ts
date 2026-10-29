@@ -179,7 +179,12 @@ function repoFactsFromDisk(dir: string): RepoFacts | undefined {
   }
 }
 
-/** `[extensions] objectFormat` of a repository config, sha1 when unset; undefined when unsure. */
+/**
+ * `[extensions] objectFormat` of a repository config, sha1 when unset;
+ * undefined when unsure, or when `core.worktree` puts the work tree
+ * somewhere other than the `.git` directory's parent, which the prefix
+ * read off the disk assumes.
+ */
 function configObjectFormat(config: string): 'sha1' | 'sha256' | undefined {
   let section = ''
   let format: 'sha1' | 'sha256' = 'sha1'
@@ -192,7 +197,10 @@ function configObjectFormat(config: string): 'sha1' | 'sha256' | undefined {
       if (section === 'include' || section === 'includeif') return undefined
       continue
     }
+    if (section === 'core' && /^worktree\b/i.test(line)) return undefined
     if (section !== 'extensions') continue
+    // `config.worktree` may set `core.worktree` too.
+    if (/^worktreeconfig\b/i.test(line)) return undefined
     const kv = /^([A-Za-z0-9-]+)\s*=\s*(.*)$/.exec(line)
     if (kv === null || kv[1]!.toLowerCase() !== 'objectformat') continue
     const value = kv[2]!.toLowerCase()
@@ -1991,6 +1999,10 @@ export async function startGitEnumeration(
       async blobs() {
         const run = await spawnGit(['ls-files', '-s', '-v', '-z', '--debug', '--', ...pathspecs])
         if (run === null || run.exitCode !== 0) return null
+        // Sizes from an index written since the listing judge entries the
+        // trusted OIDs did not come from: an add there rewrote a resized
+        // entry to one that fits, and the listed OID stood (A-60).
+        if (indexStamp() !== stampBefore) return null
         const debug = splitLsDebug(run)
         const indexed = new Map<string, { oid: string; size: number }>()
         parseLsFilesOutput(debug.records, debug.undecodable, { sizes: debug.sizes, indexed })

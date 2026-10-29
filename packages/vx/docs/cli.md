@@ -404,13 +404,19 @@ What counts as a change:
   differ, as the key hashes them. One a sparse checkout left out does not.
 - A symlinked input is its target: a link whose target changed is a
   change, and a link to a target git cannot diff (outside the
-  workspace, or ignored) is one on every run.
+  workspace, or ignored) is one on every run. A link to a directory
+  selects a task whose glob may reach below it (`src/**/*.ts` over
+  `src/v`), as its key reads what is behind it.
 - A gitignored file a task names (`.env.local`, `dist/**`) never
   selects it, as in Nx. The key still hashes it, so the task misses when
   it changed.
 - What `vx lock` writes is left out (`.vx/projects.lock.json`,
   `.vx/.gitattributes`, `.vx/.gitignore`, each project's `vx.lock.json`
-  review copy), so `vx lock` never marks a project affected.
+  review copy), so `vx lock` never marks a project affected by itself.
+  `.vx/projects.lock.json` counts entry by entry when the base has
+  one: a project whose locked config changed is selected whole (a run
+  reads its config from there), and `vx lock` rewriting the same
+  entries selects nothing.
 
 **A lockfile change selects what its plugin says.** Core keys no
 lockfile and no install setting: without a lockfile plugin, the root
@@ -905,8 +911,8 @@ notification.
 In a terminal known to open OSC 8 links (Ghostty, iTerm2 3.1+, WezTerm,
 VS Code, Windows Terminal, kitty, Konsole, VTE terminals; never inside
 tmux or screen), a failed task's frame links each path that names a
-file in the task's project, `src/a.ts:12:5` or `src/a.ts(12,5)`, to
-that file, so a click from the workspace root opens the right one. The
+file in the task's project, `src/a.ts:12:5` or `src/a.ts(12,5)`, coloured
+or not, to that file, so a click from the workspace root opens the right one. The
 text is the task's output unchanged; a successful task's frame is never
 linked.
 
@@ -1266,7 +1272,10 @@ the grants that would have allowed each denial, project-relative:
 A write grants the top directory it landed in, so the next file there
 passes too, unless `inputs.files` reads that directory: then it
 grants the file alone, so the task cannot write its own inputs; a read the output depends on is a key input as well, and
-the line says so, since a grant never adds one. A credential path
+the line says so, since a grant never adds one. A read through a link
+grants the directory holding the link too: the sandbox mounts a grant at
+its real path and never the link, so the target alone stayed out of
+reach. A credential path
 (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`,
 `~/.config/gcloud`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`,
 `~/.git-credentials`, `~/.docker/config.json`, a `.env` file) is never put in the
@@ -1438,8 +1447,9 @@ watch events within 2000 ms; polling every 250 ms instead`.
    the cycle when nothing else changed. The `watching` line is said
    once: a cycle that re-reads the watched set (a member came or went,
    the lock or a plugin changed) says nothing more; `VX_DEBUG_WATCH=1`
-   says each arm on stderr as `vx watch: armed N projects`. Errors and
-   refusals go to stderr. The
+   says each arm on stderr as `vx watch: armed N projects`. A plugin's
+   warning is said once a cycle, by the cycle's run: the watch's own
+   reads of the configs say none. Errors and refusals go to stderr. The
    orchestrator is invoked again with the same options, save one: the
    `--affected` diff is read once, for the initial run. A later cycle
    runs the requested task in every project of the scope fixed at start,
@@ -1467,6 +1477,10 @@ Always ignored (no re-trigger):
   default, but `defineWorkspace({ cache: { dir } })` and `--cache-dir` can put it
   anywhere; watching it would let vx's own cache writes trigger the next
   cycle, which writes again — a loop that never settles.
+- A new empty directory (`mkdir src/new`): it holds nothing a key reads,
+  and the poller, which samples files, never saw one. A file made in it
+  is the change. A project directory made again, which the watch waits
+  on, still is one.
 
 Everything else triggers a cycle. We deliberately don't filter events
 against per-task `inputs.files` — the cache hash is the source
@@ -2509,7 +2523,8 @@ The task graph has a cycle. The message names the loop; drop one of its
 
 A run reads its configs only from `.vx/projects.lock.json`, and that
 lock is missing, not one this vx reads (not JSON, another version, a
-hand-edited entry), or holds no entry for a project the workspace has.
+hand-edited entry), holds no entry for a project the workspace has, has
+not seen a `vx.config` written since, or locks one that is gone.
 Run `vx lock`, then the verb again. Commit the lock; `vx lock --check`
 on CI fails one that no longer matches the configs.
 
@@ -2534,11 +2549,11 @@ message is that plugin's or check's: do what it says.
 
 #### `VX_E_FS`
 
-The file system refused a write, or the cache index could not be opened:
-permissions, a full disk, a file where the cache directory goes, a
-directory where `cache.db` goes. The message names the path. Free space
-(`vx cache clean --max-size <size>` trims the cache), grant the write,
-or move the path away, then re-run.
+The file system refused a read or a write, or the cache index could not
+be opened: permissions, a full disk, a file where the cache directory
+goes, a directory where `cache.db` goes. The message names the path. Free
+space (`vx cache clean --max-size <size>` trims the cache), grant the
+access, or move the path away, then re-run.
 
 #### `VX_E_FDS`
 
@@ -2553,6 +2568,12 @@ a path inside a commit, or the repository has no history to compare
 with. Pass a branch or commit you have locally, alone:
 `--affected=origin/main`. A shallow clone fetches its base from origin
 itself; with no origin, fetch it (`git fetch --depth=1 origin <base>`).
+
+#### `VX_E_NO_GIT`
+
+vx needs git and found none: `git` is not on PATH, or the workspace is
+not inside a git work tree. The message says which. Install git, or run
+`git init` in the workspace root, then re-run.
 
 #### `VX_E_GIT`
 
@@ -2618,9 +2639,10 @@ each indented line under it names both projects and the rule. Drop the dependenc
 
 #### `VX_E_INTERNAL`
 
-A defect in vx (a config's own throw is `VX_E_CONFIG`); stderr carries the stack, then
-each `cause` under it as a `Caused by:` line with its stack. Report a
-defect with that stack at
+A defect in vx: stderr carries the stack, then each `cause` under it as
+a `Caused by:` line with its stack. (A config's own throw is
+`VX_E_CONFIG`; a plugin hook's is `VX_E_REFUSED` or the plugin's code.)
+Report it with that stack at
 https://github.com/vznjs/vx/issues.
 
 A plugin can give its refusal a code: `new UserError(message, 'MY_CODE')`.
@@ -2792,7 +2814,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v50 · index schema v49
+  cache versions    keys vx-cache-v51 · index schema v49
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)

@@ -55,6 +55,17 @@ describe.skipIf(!available || process.platform !== 'linux')(
       expect(await outcome(['config.json'], 'config.json')).toEqual(['failed', true, 'default\n'])
     })
 
+    it('the fix grants the directory holding the link, not the target alone', async () => {
+      // The fix named `conf/real.json`, already granted: applied, the run
+      // failed the same way and the fix named it again.
+      for (const read of [['out'], ['conf/real.json']]) {
+        await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
+        await outcome(read, 'config.json')
+        const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+        expect(r.outcomes[0]!.sandboxFix?.read).toEqual(['.', 'conf/real.json'])
+      }
+    })
+
     it('CONTROL: the link inside a mounted directory reads through', async () => {
       expect(await outcome(['.'], 'config.json')).toEqual(['success', false, 'real\n'])
     })

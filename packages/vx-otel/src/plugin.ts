@@ -118,6 +118,9 @@ function headerValueFault(value: string): string | null {
   return past ? 'a character past Latin-1' : null
 }
 
+/** The hosts an http:// endpoint may name: this machine. */
+const LOOPBACK = new Set(['127.0.0.1', '[::1]', 'localhost'])
+
 /** An HTTP header name: an RFC 7230 token. */
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 
@@ -227,19 +230,25 @@ export function resolveOtelConfig(
   // An endpoint with no http(s) scheme (`localhost:4318`) parses as a URL
   // of scheme `localhost:`: every export failed "Unable to connect", once
   // per signal, after a second of retries. It is refused here, once per
-  // setting, and its signals are not exported.
+  // setting, and its signals are not exported. http:// is taken only to
+  // this machine, as vxCache() and vxHistory() take it: an OTLP header is
+  // often the vendor's API key, and http:// to another host sent it in
+  // clear.
   const refused = new Map<string, string[]>()
   for (const signal of ['traces', 'metrics', 'logs'] as const) {
     const p = picked[signal]
     if (p === undefined) continue
-    const protocol = URL.parse(p[0])?.protocol
-    if (protocol === 'http:' || protocol === 'https:') continue
+    const u = URL.parse(p[0])
+    if (u?.protocol === 'https:') continue
+    if (u?.protocol === 'http:' && LOOPBACK.has(u.hostname)) continue
     refused.set(p[1], [...(refused.get(p[1]) ?? []), signal])
     picked[signal] = undefined
   }
   for (const [setting, signals] of refused) {
     const names = signals.length === 3 ? 'traces, metrics and logs' : signals.join(' and ')
-    warn?.(`[vx] vx-otel: ${setting} is not an http:// or https:// URL — ${names} are not exported`)
+    warn?.(
+      `[vx] vx-otel: ${setting} is not an https:// URL (http only to 127.0.0.1, ::1 or localhost) — ${names} are not exported`,
+    )
   }
   const tracesUrl = picked.traces?.[0]
   const metricsUrl = picked.metrics?.[0]

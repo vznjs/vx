@@ -2032,13 +2032,30 @@ export class Cache implements CacheLayer {
     }
     if (await this.copyTree(hash, tree, rows, files, projectDir, accept)) return
     await extractArtifactStream(
-      packArtifactStream(planOfTree(tree, this.stdoutText(hash))),
+      packArtifactStream(this.treePlan(hash, tree, rows)),
       projectDir,
       workspaceRoot,
       verify,
       accept,
       workspaceRoot,
     )
+  }
+
+  /**
+   * The tree packed back into its tar, each file held to its row's size:
+   * the tree form keeps no checksum, and a file cut short at rest (a crash
+   * after its rename, before its data reached the disk) was restored, and
+   * uploaded under a fresh sum.
+   */
+  private treePlan(hash: string, tree: string, rows: readonly OutputFileRow[]): ArtifactPlan {
+    const plan = planOfTree(tree, this.stdoutText(hash))
+    const size = new Map(rows.map((r) => [treeName(r.path), r.size]))
+    for (const i of plan.inputs) {
+      const want = size.get(i.name)
+      if (want !== undefined && want !== i.size)
+        throw new CorruptArtifactError(hash, `${i.name} holds ${i.size} bytes, recorded ${want}`)
+    }
+    return plan
   }
 
   /**
@@ -2122,12 +2139,12 @@ export class Cache implements CacheLayer {
       chmodSync(dir, (st.mode & 0o7777) | 0o300)
       return true
     }
-    const copy = async (to: string, from: string): Promise<void> => {
+    const copy = async (to: string, from: string): Promise<number> => {
       try {
-        await Bun.write(to, Bun.file(from), { createPath: false })
+        return await Bun.write(to, Bun.file(from), { createPath: false })
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== 'EACCES' || !reopen(path.dirname(to))) throw err
-        await Bun.write(to, Bun.file(from), { createPath: false })
+        return await Bun.write(to, Bun.file(from), { createPath: false })
       }
     }
     try {
@@ -2139,7 +2156,9 @@ export class Cache implements CacheLayer {
       await Promise.all(
         files.map(async (r) => {
           const to = path.join(projectDir, r.path)
-          await copy(to, path.join(tree, treeName(r.path)))
+          const n = await copy(to, path.join(tree, treeName(r.path)))
+          if (n !== r.size)
+            throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
           const mode = restoredMode(r.mode)
           if (mode !== plain) await chmod(to, mode)
           const at = new Date(r.mtimeMs)
@@ -2547,7 +2566,7 @@ export class Cache implements CacheLayer {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT' || !existsSync(tree)) throw err
       // A tree is packed into the artifact a remote expects here, in the
       // upload queue, off the save; a small one in memory.
-      const plan = planOfTree(tree, this.stdoutText(hash))
+      const plan = this.treePlan(hash, tree, this.outputs.rowsOf(hash))
       if (plan.size <= STREAM_DECODE_FROM) {
         const bytes = await zstdCompress(await packArtifactBytes(plan))
         return { body: new Blob([bytes]), release: async () => {} }

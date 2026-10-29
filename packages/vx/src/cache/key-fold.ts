@@ -125,7 +125,7 @@ import type { CacheKeyInput } from './layer.js'
 // a v48 artifact keeps none, and a hit gave `chmod 700 dist/keys` back as 0755.
 // v50: both v49 changes in one build (2026-10-29): a v49 entry was written
 // by a vx that had only one of them.
-export const CACHE_VERSION = 'vx-cache-v50'
+export const CACHE_VERSION = 'vx-cache-v51'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

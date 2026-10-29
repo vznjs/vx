@@ -870,7 +870,8 @@ list, so a literal file it covers (`['src/**', '!src/gen/**',
 Spellings a matcher would otherwise turn into
 nothing are normalized: a leading `./` (`./src/**` is `src/**`, `!./gen`
 is `!gen`), an inner `/./` segment, a doubled `//`, and a trailing `/` on
-a pattern (`src/*/` is the trees under `src`, `src/*/**`). A bare `.` or
+a pattern (`src/*/` is the trees under `src`, `src/*/**`), and a
+trailing `/.`, read as a trailing `/`. A bare `.` or
 `./` names the project directory itself and is refused at load — write
 `**`. Turbo's `$TURBO_DEFAULT$` and `$TURBO_ROOT$` and Nx's
 `{projectRoot}`, `{workspaceRoot}`, `{projectName}` and `{options.…}`
@@ -1661,6 +1662,8 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
 `~/.codex/auth.json`. A store in home's `.config` or `.local/share` is
 denied again under `$XDG_CONFIG_HOME` or `$XDG_DATA_HOME`, which a task sees.
+Each is looked for as each task starts, so a store an earlier task of
+the run wrote (`npm config set` saving a token) is denied as well.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 vx's own stores are denied the same way: `~/.vx`, where every

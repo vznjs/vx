@@ -108,7 +108,8 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
       await other.dispose()
     }
   }
-})
+  // One Miniflare start per row; the rows on a loaded CI runner pass 5 s.
+}, 30_000)
 
 // No bucket bound: /v1/capabilities answered 200, and every artifact
 // route 502, "Cannot read properties of undefined", blaming R2.

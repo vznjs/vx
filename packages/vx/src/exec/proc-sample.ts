@@ -8,7 +8,7 @@
 // counted; nor is the CPU of a descendant that already exited.
 
 import { readdir, readFile } from 'node:fs/promises'
-import { procfsIsOwn } from '../util/index.js'
+import { helperEnv, procfsIsOwn } from '../util/index.js'
 
 export interface TreeUsage {
   /** CPU time of the live tree, user + system, in ms. */
@@ -125,7 +125,9 @@ async function linuxRssKiB(pid: number): Promise<number> {
 async function psTable(): Promise<Map<number, Proc> | undefined> {
   let text: string
   try {
+    // It runs beside the tasks, readable by them (`ps eww`): PATH alone.
     const ps = Bun.spawn(['ps', '-A', '-o', 'pid=,ppid=,rss=,time='], {
+      env: helperEnv(),
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'ignore',

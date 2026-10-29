@@ -5,24 +5,18 @@
 // a literal RS doubled. Output that never touched stderr is its own text.
 
 import { type BoundedCapture, type CapturedChunk, isDroppedOutputChunk } from '../exec/index.js'
-import type { SecretMask } from '../util/index.js'
+import { MASKED, type SecretMask } from '../util/index.js'
 
 const RS = '\x1e'
 
 /**
  * `chunks` as one stored string; it starts on stdout. `mask` (the task's
- * secrets) is applied to each stream's run of adjacent chunks joined: the
- * live stream masks chunk by chunk and lets a held piece go after a pause,
- * so a value written in two pieces reached the capture whole in two
- * chunks, and the entry a remote cache receives held it.
+ * secrets) is applied to each stream's whole text (`maskStreams`).
  */
-export function encodeOutputLog(
-  chunks: readonly CapturedChunk[],
-  mask?: (text: string) => string,
-): string {
+export function encodeOutputLog(chunks: readonly CapturedChunk[], mask?: SecretMask): string {
   let out = ''
   let err = false
-  for (const c of maskedRuns(chunks, mask)) {
+  for (const c of maskStreams(chunks, mask)) {
     if (c.err !== err) {
       out += RS + (c.err ? 'e' : 'o')
       err = c.err
@@ -39,7 +33,7 @@ export function encodeOutputLog(
  */
 export function maskedOutputLog(chunks: readonly CapturedChunk[], mask: SecretMask): string {
   const at = chunks.findIndex(isDroppedOutputChunk)
-  if (at === -1) return mask.mask(encodeOutputLog(chunks))
+  if (at === -1) return encodeOutputLog(chunks, mask)
   const before = chunks.slice(0, at)
   const tail = encodeOutputLog(chunks.slice(at + 1))
   // The dropped line is on stdout, where the tail's own log starts.
@@ -49,10 +43,18 @@ export function maskedOutputLog(chunks: readonly CapturedChunk[], mask: SecretMa
   return h + back + chunks[at]!.text + lead + t
 }
 
-/** Each stream's run of adjacent non-empty chunks joined, masked when `mask` is given. */
-function maskedRuns(
+/**
+ * Each stream's run of adjacent non-empty chunks joined, with `mask`
+ * applied to each stream's text as a whole: a value is masked where it
+ * starts and its rest dropped from the runs it reaches. The live stream
+ * masks chunk by chunk and lets a held piece go after a pause, so a value
+ * written in two pieces reached the capture in two chunks, and a write to
+ * the other stream between them made them two runs. A hit replays each
+ * stream to its own descriptor, so `vx run > log` joined them again.
+ */
+export function maskStreams(
   chunks: readonly CapturedChunk[],
-  mask: ((text: string) => string) | undefined,
+  mask: SecretMask | undefined,
 ): CapturedChunk[] {
   if (mask === undefined) return chunks.filter((c) => c.text.length > 0)
   const runs: CapturedChunk[] = []
@@ -62,8 +64,36 @@ function maskedRuns(
     if (last !== undefined && last.err === c.err) last.text += c.text
     else runs.push({ text: c.text, err: c.err })
   }
-  for (const r of runs) r.text = mask(r.text)
-  return runs
+  for (const err of [false, true]) {
+    const own = runs.filter((r) => r.err === err)
+    const spans = mask.spans(own.map((r) => r.text).join(''))
+    if (spans.length === 0) continue
+    let at = 0
+    let i = 0
+    for (const r of own) {
+      const end = at + r.text.length
+      let text = ''
+      let from = at
+      for (; i < spans.length && spans[i]![0] < end; i++) {
+        const [s, e] = spans[i]!
+        if (s >= from) text += r.text.slice(from - at, s - at) + MASKED
+        from = Math.max(from, Math.min(e, end))
+        // A value that runs past this run is cut from the next one too.
+        if (e > end) break
+      }
+      r.text = text + r.text.slice(from - at)
+      at = end
+    }
+  }
+  // A run emptied whole leaves its neighbours, the other stream, adjacent.
+  const kept: CapturedChunk[] = []
+  for (const r of runs) {
+    if (r.text.length === 0) continue
+    const last = kept.at(-1)
+    if (last !== undefined && last.err === r.err) last.text += r.text
+    else kept.push(r)
+  }
+  return kept
 }
 
 /** The chunks `encodeOutputLog` wrote, adjacent same-stream text joined. */
@@ -104,13 +134,13 @@ export const FAILED_OUTPUT_TAIL_CHARS = 56 * 1024
 export function failedOutputLog(
   capture: BoundedCapture,
   entrySized: boolean,
-  mask?: (text: string) => string,
+  mask?: SecretMask,
 ): string {
   if (!entrySized) return encodeOutputLog(capture.chunks(), mask)
   // Masked before the re-bound: its cut must not split a value first.
   return encodeOutputLog(
     capture
-      .rebound(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS, (c) => maskedRuns(c, mask))
+      .rebound(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS, (c) => maskStreams(c, mask))
       .chunks(),
   )
 }
