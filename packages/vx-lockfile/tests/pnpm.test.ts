@@ -981,6 +981,119 @@ packages:
     expect(movedDirs(lock('sha512-q1'), lock('sha512-q2'))).toEqual(['packages/a'])
   })
 
+  // vercel/turborepo#3461 and #4555: pnpm writes a dependency (an alias
+  // too) as its full lockfile key; read as a version, its closure fell out.
+  it('a dependency written as an absolute key (v5, v6) is followed to its snapshot', () => {
+    const v5 = (child: string) => `lockfileVersion: 5.4
+importers:
+  packages/a:
+    specifiers:
+      parent: ^1
+      eth: npm:hardhat-deploy-ethers@0.3.0-beta.13
+    dependencies:
+      parent: /@scope/parent/1.0.0
+      eth: /hardhat-deploy-ethers/0.3.0-beta.13_ethers@5.7.0
+packages:
+  /@scope/parent/1.0.0:
+    resolution: {integrity: sha512-parent}
+    dependencies:
+      child: /@scope/child/1.0.0
+  /@scope/child/1.0.0:
+    resolution: {integrity: ${child}}
+  /hardhat-deploy-ethers/0.3.0-beta.13_ethers@5.7.0:
+    resolution: {integrity: sha512-hde}
+`
+    expect(movedDirs(v5('sha512-c1'), v5('sha512-c2'))).toEqual(['packages/a'])
+    const aliased = (eth: string) =>
+      v5('sha512-c1').replace('{integrity: sha512-hde}', `{integrity: ${eth}}`)
+    expect(movedDirs(aliased('sha512-e1'), aliased('sha512-e2'))).toEqual(['packages/a'])
+    const v6 = (child: string) => `lockfileVersion: '6.0'
+importers:
+  packages/a:
+    dependencies:
+      parent:
+        specifier: ^1
+        version: /@scope/parent@1.0.0
+packages:
+  /@scope/parent@1.0.0:
+    resolution: {integrity: sha512-parent}
+    dependencies:
+      child: /@scope/child@1.0.0
+  /@scope/child@1.0.0:
+    resolution: {integrity: ${child}}
+`
+    expect(movedDirs(v6('sha512-c1'), v6('sha512-c2'))).toEqual(['packages/a'])
+  })
+
+  // vercel/turborepo#3611 and #3656: a top-level dependency beside another
+  // version of itself deeper down, and a specifier an override rewrote: the
+  // key is the resolved version, never the specifier.
+  it('a version beside a deeper one, under any specifier, is keyed by what it resolved to', () => {
+    const lock = (deep: string) => `lockfileVersion: '9.0'
+importers:
+  packages/a:
+    dependencies:
+      ci-info:
+        specifier: ^9.9.9
+        version: 2.0.0
+      is-ci:
+        specifier: ^3
+        version: 3.0.1
+packages:
+  ci-info@2.0.0:
+    resolution: {integrity: sha512-ci2}
+  ci-info@3.7.1:
+    resolution: {integrity: ${deep}}
+  is-ci@3.0.1:
+    resolution: {integrity: sha512-isci}
+snapshots:
+  ci-info@2.0.0: {}
+  ci-info@3.7.1: {}
+  is-ci@3.0.1:
+    dependencies:
+      ci-info: 3.7.1
+`
+    expect(movedDirs(lock('sha512-d1'), lock('sha512-d2'))).toEqual(['packages/a'])
+  })
+
+  // vercel/turborepo#8003: `a@1.0.0(b@1.0.0(c@1.0.0))` cut at the last `(`
+  // named no package. A bump of a, or of c behind it, moves x and not y.
+  it('a nested peer suffix folds the package before the first parenthesis', () => {
+    const lock = (c: string, a = 'sha512-a') => `lockfileVersion: '9.0'
+importers:
+  packages/x:
+    dependencies:
+      a:
+        specifier: ^1
+        version: 1.0.0(b@1.0.0(c@1.0.0))
+  packages/y:
+    dependencies:
+      b:
+        specifier: ^1
+        version: 1.0.0
+packages:
+  a@1.0.0:
+    resolution: {integrity: ${a}}
+  b@1.0.0:
+    resolution: {integrity: sha512-b}
+  c@1.0.0:
+    resolution: {integrity: ${c}}
+snapshots:
+  a@1.0.0(b@1.0.0(c@1.0.0)):
+    dependencies:
+      b: 1.0.0(c@1.0.0)
+  b@1.0.0: {}
+  b@1.0.0(c@1.0.0):
+    dependencies:
+      c: 1.0.0
+  c@1.0.0: {}
+`
+    expect(movedDirs(lock('sha512-c1'), lock('sha512-c2'))).toEqual(['packages/x'])
+    expect(movedDirs(lock('sha512-c1', 'sha512-a1'), lock('sha512-c1', 'sha512-a2'))).toEqual([
+      'packages/x',
+    ])
+  })
+
   it('a `link:` outside every importer folds its target', () => {
     const lock = (target: string) =>
       v9().replace('version: link:../b', `version: link:../../vendor/${target}`)
