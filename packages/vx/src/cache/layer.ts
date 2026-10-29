@@ -236,7 +236,7 @@ export interface RunRecord {
   queuedMs?: number
   /** Its output files' bytes (`TaskOutcome.outputBytes`, v51). */
   outputBytes?: number
-  /** The tasks downstream of it in the run (v51). */
+  /** The tasks and groups downstream of it in the run, the scheduler's count (v51). */
   blocks?: number
   /** The flaky record its row's note quoted (`TaskOutcome.flaky`, v51). */
   flakyPasses?: number

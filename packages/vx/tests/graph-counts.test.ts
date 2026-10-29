@@ -1,15 +1,16 @@
-// A run's dependents counts (the scheduler's baseline, every row's `blocks`)
-// come from one closure, built once and remembered with the graph: the
-// closure over 11k nodes cost ~100 ms of every 9,603-task warm run and three
-// times that cold (2026-10-29).
+// A run's dependents count is the scheduler's baseline, and every row's
+// `blocks` shows that same count: one closure, built once and remembered
+// with the graph. The closure over 11k nodes cost ~100 ms of every
+// 9,603-task warm run and three times that cold, and a second count for
+// the rows alone was a pass of its own (2026-10-29).
 
 import { Database } from 'bun:sqlite'
 import { expect, it } from 'bun:test'
 import { IndexFoldMemo } from '../src/cache/fold-memo.js'
-import { computeReverseDepCount, reverseDepCounts, runGraph } from '../src/graph/index.js'
+import { computeReverseDepCount, runGraph } from '../src/graph/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { graphCounts } from '../src/orchestrator/graph-memo.js'
-import { blocksCounts } from '../src/report/index.js'
+import { createForecast } from '../src/report/index.js'
 
 const node = (id: string, deps: string[] = [], group = false): TaskNode => ({
   id,
@@ -22,7 +23,7 @@ const node = (id: string, deps: string[] = [], group = false): TaskNode => ({
 })
 
 // A diamond under a group: diamonds double-count under naive sums, and a
-// group counts toward `all` but never toward a row's `blocks`.
+// group counts as the scheduler counts it.
 const graph = (): Map<string, TaskNode> =>
   new Map(
     [
@@ -43,13 +44,14 @@ const folds = () => {
   return new IndexFoldMemo(db, true)
 }
 
-it('one closure answers both the scheduler baseline and every row’s blocks', () => {
+it('a row’s blocks is the scheduler’s own count, groups counted', () => {
   const nodes = graph()
-  const both = reverseDepCounts(nodes)
-  expect(both.all).toEqual(computeReverseDepCount(nodes))
-  expect(both.tasks).toEqual(blocksCounts(nodes))
-  expect(both.all.get('a#build')).toBe(4)
-  expect(both.tasks.get('a#build')).toBe(3)
+  const counts = graphCounts(nodes, folds(), 'graph-token')
+  expect(counts).toEqual(computeReverseDepCount(nodes))
+  expect(counts.get('a#build')).toBe(4)
+  // The live rows read the count they are handed, never a pass of their own.
+  const live = createForecast(nodes, new Map(), 4, counts)(new Set(), new Map([['a#build', 0]]), 0)
+  expect(live.blockedBy.get('a#build')).toBe(4)
 })
 
 it('a remembered graph’s counts are read back, not built again', () => {
@@ -61,9 +63,8 @@ it('a remembered graph’s counts are read back, not built again', () => {
   edited.get('b#build')!.deps = []
   edited.get('c#build')!.deps = []
   const again = graphCounts(edited, memo, 'graph-token')
-  expect(again.all).toEqual(first.all)
-  expect(again.tasks).toEqual(first.tasks)
-  expect(again.tasks.get('a#build')).toBe(3)
+  expect(again).toEqual(first)
+  expect(again.get('a#build')).toBe(4)
 })
 
 it('another token or another task set builds afresh', () => {
@@ -72,12 +73,12 @@ it('another token or another task set builds afresh', () => {
   const edited = graph()
   edited.get('b#build')!.deps = []
   edited.get('c#build')!.deps = []
-  expect(graphCounts(edited, memo, 'other-token').tasks.get('a#build')).toBe(0)
+  expect(graphCounts(edited, memo, 'other-token').get('a#build')).toBe(0)
   // A run that prunes the graph (`--affected`) keeps the token; the tasks differ.
   const pruned = graph()
   pruned.delete('e#lint')
   pruned.get('b#build')!.deps = []
-  expect(graphCounts(pruned, memo, 'graph-token').tasks.get('a#build')).toBe(2)
+  expect(graphCounts(pruned, memo, 'graph-token').get('a#build')).toBe(3)
 })
 
 it('no token means no memo: counted from the nodes', () => {
@@ -86,7 +87,7 @@ it('no token means no memo: counted from the nodes', () => {
   graphCounts(graph(), memo, undefined)
   edited.get('b#build')!.deps = []
   edited.get('c#build')!.deps = []
-  expect(graphCounts(edited, memo, undefined).tasks.get('a#build')).toBe(0)
+  expect(graphCounts(edited, memo, undefined).get('a#build')).toBe(0)
 })
 
 it('the scheduler ranks by the dependents counts it is handed', async () => {

@@ -357,7 +357,7 @@ export interface ScheduleOptions {
    */
   strategy?: ScheduleStrategy
   /**
-   * The `most-work` baseline already counted (`reverseDepCounts().all`, read
+   * The `most-work` baseline already counted (`computeReverseDepCount`, read
    * back with the graph): asked only when that baseline is the one used.
    */
   reverseDeps?: () => ReadonlyMap<string, number>

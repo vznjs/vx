@@ -14,9 +14,8 @@
 import type { FoldMemo } from '../cache/index.js'
 import {
   buildTaskGraph,
+  computeReverseDepCount,
   declaredTask,
-  reverseDepCounts,
-  type ReverseDepCounts,
   type TaskNode,
 } from '../graph/index.js'
 import { xxh3hex } from '../util/index.js'
@@ -146,44 +145,45 @@ function rebuilt(
 }
 
 /**
- * The run's dependents counts, read back with the graph they were counted
- * on: the closure over a 9,603-task graph (11k nodes) was ~100 ms of every
- * warm run, the same each time (2026-10-29). `token` names the graph's edges
- * (`memoGraph`, undefined once anything edited them), the node ids which of
- * them this run kept (`--affected` prunes under the same token).
+ * The run's dependents count, the scheduler's baseline and every row's
+ * `blocks`, read back with the graph it was counted on: the closure over a
+ * 9,603-task graph (11k nodes) was ~100 ms of every warm run, the same each
+ * time (2026-10-29). `token` names the graph's edges (`memoGraph`, undefined
+ * once anything edited them), the node ids which of them this run kept
+ * (`--affected` prunes under the same token).
  */
 export function graphCounts(
   nodes: ReadonlyMap<string, TaskNode>,
   folds: FoldMemo | undefined,
   token: string | undefined,
-): ReverseDepCounts {
-  if (folds === undefined || token === undefined) return reverseDepCounts(nodes)
-  const id = `\0counts\0${token}`
+): Map<string, number> {
+  if (folds === undefined || token === undefined) return computeReverseDepCount(nodes)
+  // Not `counts`: those rows held a second count the rows no longer show.
+  const id = `\0dependents\0${token}`
   const probe = xxh3hex([...nodes.keys()].join('\0'))
   const row = folds.get(id, probe)
   if (row !== undefined) {
     const back = countsOf(row, nodes)
     if (back !== undefined) return back
   }
-  const counts = reverseDepCounts(nodes)
-  const at = (m: Map<string, number>): number[] => [...nodes.keys()].map((k) => m.get(k)!)
-  folds.set(id, probe, JSON.stringify([at(counts.all), at(counts.tasks)]))
+  const counts = computeReverseDepCount(nodes)
+  folds.set(id, probe, JSON.stringify([...nodes.keys()].map((k) => counts.get(k)!)))
   return counts
 }
 
-function countsOf(row: string, nodes: ReadonlyMap<string, TaskNode>): ReverseDepCounts | undefined {
-  let all: number[], tasks: number[]
+function countsOf(
+  row: string,
+  nodes: ReadonlyMap<string, TaskNode>,
+): Map<string, number> | undefined {
+  let all: number[]
   try {
-    ;[all, tasks] = JSON.parse(row) as [number[], number[]]
+    all = JSON.parse(row) as number[]
   } catch {
     return undefined
   }
-  if (all?.length !== nodes.size || tasks?.length !== nodes.size) return undefined
-  const counts: ReverseDepCounts = { all: new Map(), tasks: new Map() }
+  if (all?.length !== nodes.size) return undefined
+  const counts = new Map<string, number>()
   let i = 0
-  for (const id of nodes.keys()) {
-    counts.all.set(id, all[i]!)
-    counts.tasks.set(id, tasks[i++]!)
-  }
+  for (const id of nodes.keys()) counts.set(id, all[i++]!)
   return counts
 }
