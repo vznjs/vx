@@ -26,6 +26,7 @@ export function refusal(parts: RefusalParts, opts?: { code?; message? }): UserEr
 export function isUserError(err: unknown): err is UserError // by name, across a copy boundary (below)
 export function errorCode(err: unknown): string // the stable code of anything bin.ts catches
 export function configThrow(err: object): object // marks a config's own throw: errorCode answers VX_E_CONFIG
+export function thrownMessage(err: unknown): string // what any thrown value says; never throws
 export function wantsJson(argv: readonly string[]): boolean // --format json, --format=json, --dry=json, before `--`
 export function errorDocument(code: string, message: string): string // `{"ok":false,"error":{code,message}}` + newline
 
@@ -112,6 +113,12 @@ read as an "internal error" (reproduced through the real binary,
 helper; it is on the façade so a plugin can classify the same way. The
 **name** `UserError` is the contract that survives the copy boundary: a
 plugin may throw its own class named `UserError` without importing core's.
+
+`thrownMessage(err)` is what a line naming a plugin's failure quotes. A
+plugin may throw anything: `String(err)` read `[object Object]` for an
+error-like `{ message }`, `undefined` for a bare `throw`, and threw itself
+on an object with no prototype. It takes a string `message` when there is
+one, else says `threw <value>` (`tests/plugin-thrown-values.test.ts`).
 
 `isExecutableMissing(err)` is Bun's `ENOENT` for a spawn that could not
 run at all, and `gitSpawnRefusal(cwd)` the one `UserError` for a git that
