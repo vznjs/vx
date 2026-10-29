@@ -1022,6 +1022,29 @@ snapshots:
     ])
   })
 
+  it("a snapshot's aliased dependency (`react-is-19: react-is@19.2.8`) is followed (vercel/turborepo#13477)", () => {
+    const lock = (integrity: string) => `lockfileVersion: '9.0'
+importers:
+  .: {}
+  apps/web:
+    dependencies:
+      pretty-format:
+        specifier: 30.2.0
+        version: 30.2.0
+packages:
+  pretty-format@30.2.0:
+    resolution: {integrity: sha512-abc}
+  react-is@19.2.8:
+    resolution: {integrity: ${integrity}}
+snapshots:
+  pretty-format@30.2.0:
+    dependencies:
+      react-is-19: react-is@19.2.8
+  react-is@19.2.8: {}
+`
+    expect(movedDirs(lock('sha512-def'), lock('sha512-ghi'))).toEqual(['apps/web'])
+  })
+
   it('a `link:` outside every importer folds its target', () => {
     const lock = (target: string) =>
       v9().replace('version: link:../b', `version: link:../../vendor/${target}`)
