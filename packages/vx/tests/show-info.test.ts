@@ -804,6 +804,7 @@ describe('vx info — the rendered rows', () => {
     schemaVersion: 'v28',
     cacheEntries: 0,
     cacheBytes: 0,
+    cacheIndexError: null,
     settings: {},
     orphans: { artifacts: 0, bytes: 0 },
     runs24h: 5,
