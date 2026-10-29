@@ -139,11 +139,14 @@ const outputs: Record<string, unknown[]> = {
   error: [],
 }
 
-function vx(args: string[]): { code: number; out: string; err: string } {
+function vx(
+  args: string[],
+  env: Record<string, string> = {},
+): { code: number; out: string; err: string } {
   const p = Bun.spawnSync({
     cmd: [process.execPath, BIN, ...args],
     cwd: root,
-    env: { ...process.env, NO_COLOR: '1' },
+    env: { ...process.env, NO_COLOR: '1', ...env },
   })
   return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
 }
@@ -151,8 +154,8 @@ function vx(args: string[]): { code: number; out: string; err: string } {
 // Every document as printed: a script reads one line per document.
 const printed: { what: string; out: string }[] = []
 
-function json(verb: string, args: string[]): void {
-  const r = vx([verb, ...args, '--format', 'json'])
+function json(verb: string, args: string[], env: Record<string, string> = {}): void {
+  const r = vx([verb, ...args, '--format', 'json'], env)
   if (r.code !== 0) throw new Error(`vx ${verb} ${args.join(' ')}: ${r.code}\n${r.err}`)
   printed.push({ what: `vx ${verb} ${args.join(' ')}`, out: r.out })
   outputs[verb]!.push(JSON.parse(r.out))
@@ -194,6 +197,8 @@ beforeAll(async () => {
   ])
     json('show', a)
   json('info', [])
+  // A variable a run refuses: `vx info` reports it, and why.
+  json('info', [], { VX_RUN_TIMEOUT: 'abc' })
   json('why', ['app#build'])
   json('why', ['app#fail'])
   json('last', [])

@@ -132,6 +132,21 @@ describe('vx docs', () => {
     expect([bare.code, JSON.parse(bare.out).error.code]).toEqual([1, 'VX_E_USAGE'])
   })
 
+  it('a letter past ASCII is part of the word asked', async () => {
+    // `café` searched `caf`, and a query of such letters alone was empty.
+    const pages = async () => ({
+      a: '# A\n## Le café\nOuvert.\n## Caf\nA caf only.\n## Timing\n12 µs each.',
+    })
+    const hits = async (q: string) => {
+      const r = await docsIn([q, '--format', 'json'], pages)
+      const doc = JSON.parse(r.out) as { query: string; hits: { heading: string }[] }
+      return [r.code, doc.query, doc.hits.map((h) => h.heading)]
+    }
+    expect(await hits('Café')).toEqual([0, 'café', ['Le café']])
+    expect(await hits('µs')).toEqual([0, 'µs', ['Timing']])
+    expect(await hits('caf')).toEqual([0, 'caf', ['Caf']])
+  })
+
   it('no network is a refusal that names the site', async () => {
     const r = await vx(['cache', '--format', 'json'], async () => {
       throw new Error('Unable to connect')

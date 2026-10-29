@@ -156,6 +156,15 @@ describe('terminalSignals', () => {
     expect(terminalSignals({ ConEmuPID: '1' })).toEqual({ progress: true, notify: false })
     // tmux renames the program: neither, since OSC 9 there may be a notification.
     expect(terminalSignals({ TERM_PROGRAM: 'tmux' })).toEqual({ progress: false, notify: false })
+    // A multiplexer keeps the outer terminal's variables: inside one started
+    // from Windows Terminal or Ghostty, the progress went to it all the same.
+    for (const env of [
+      { TERM_PROGRAM: 'tmux', TMUX: '/tmp/tmux-1/default,1,0', WT_SESSION: 'x' },
+      { TERM_PROGRAM: 'ghostty', TMUX: '/tmp/tmux-1/default,1,0' },
+      { TERM_PROGRAM: 'ghostty', STY: '1.pts-0.host' },
+      { TERM_PROGRAM: 'screen', ConEmuPID: '1' },
+    ])
+      expect(terminalSignals(env)).toEqual({ progress: false, notify: false })
     expect(terminalSignals({})).toEqual({ progress: false, notify: false })
   })
 

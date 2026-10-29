@@ -221,7 +221,7 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
 export function wireForwarder(send: (event: WireEvent) => void): RunEventSubscriber {
   // Which tasks the consumer has been told about. A skipped task never
   // reaches the scheduler's onStart, so its completion arrives with no
-  // preceding task:start — and `createWireRenderer` resolves a completion's
+  // preceding task:start — and a consumer resolves a completion's
   // node from the start it recorded, so it would drop the task entirely
   // while the forwarded footer still counted it. Synthesize the start here,
   // where the live TaskNode is in hand, so the projection stays full
