@@ -121,10 +121,21 @@ function headerValueFault(value: string): string | null {
 /** An HTTP header name: an RFC 7230 token. */
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 
-/** `OTEL_EXPORTER_OTLP_TIMEOUT`: milliseconds; anything but a positive number is unset. */
-function envTimeout(raw: string | undefined): number | undefined {
-  const ms = Number(present(raw))
-  return Number.isFinite(ms) && ms > 0 ? ms : undefined
+/**
+ * `OTEL_EXPORTER_OTLP_TIMEOUT`: milliseconds; anything but a positive
+ * number is unset, and said, as the spec asks of an invalid value.
+ */
+function envTimeout(
+  env: Record<string, string | undefined>,
+  name: string,
+  warn: ((m: string) => void) | undefined,
+): number | undefined {
+  const raw = present(env[name])
+  if (raw === undefined) return undefined
+  const ms = Number(raw)
+  if (Number.isFinite(ms) && ms > 0) return ms
+  warn?.(`[vx] vx-otel: ${name} ${JSON.stringify(raw)} is not a positive number of ms — not used`)
+  return undefined
 }
 
 /**
@@ -358,7 +369,7 @@ export function resolveOtelConfig(
     }
     return pem.get(file)
   }
-  const timeoutMs = opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000
+  const timeoutMs = opts.timeoutMs ?? envTimeout(env, 'OTEL_EXPORTER_OTLP_TIMEOUT', warn) ?? 15_000
   const tls: Partial<Record<'traces' | 'metrics' | 'logs', OtlpTls>> = {}
   for (const signal of ['traces', 'metrics', 'logs'] as const) {
     const one: OtlpTls = {}
@@ -415,9 +426,11 @@ export function resolveOtelConfig(
     // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` wins over the
     // shared one; it was not read (F-49). The option tops both.
     signalTimeoutMs: {
-      traces: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TRACES_TIMEOUT']) ?? timeoutMs,
-      metrics: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_METRICS_TIMEOUT']) ?? timeoutMs,
-      logs: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_LOGS_TIMEOUT']) ?? timeoutMs,
+      traces:
+        opts.timeoutMs ?? envTimeout(env, 'OTEL_EXPORTER_OTLP_TRACES_TIMEOUT', warn) ?? timeoutMs,
+      metrics:
+        opts.timeoutMs ?? envTimeout(env, 'OTEL_EXPORTER_OTLP_METRICS_TIMEOUT', warn) ?? timeoutMs,
+      logs: opts.timeoutMs ?? envTimeout(env, 'OTEL_EXPORTER_OTLP_LOGS_TIMEOUT', warn) ?? timeoutMs,
     },
     ...(warn ? { warn } : {}),
   }
