@@ -589,6 +589,10 @@ describe('warm hits through run() with the short-circuit', () => {
       path.join(root, 'packages/b/vx.config.mjs'),
       `export default { tasks: { build: { exec: { command: 'sleep ${(OUTPUT_DIRS_RACY_MS * 3) / 1000}' } } } }\n`,
     )
+    // Two slots: a restore backfills an idle one, so a one-core runner's
+    // one slot ran it after `b`, at run end, still inside the window.
+    const runBuild = () =>
+      run({ cwd: root, tasks: ['build'], log, handleSignals: false, concurrency: 2 })
     expect((await runBuild()).ok).toBe(true) // the miss
     const recordedDirs = () => {
       const c = db()

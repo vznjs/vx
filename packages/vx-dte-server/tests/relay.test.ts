@@ -677,6 +677,26 @@ describe('a host that keeps runs and holds websockets', () => {
     ])
   })
 
+  // A join whose socket never opened (its client dropped during the
+  // upgrade) left a participant with no socket and no drop time, which no
+  // grace ever lapsed: a host's kept its session, refusing its own rejoin
+  // 409 for as long as the relay ran.
+  it('loses a participant whose join’s socket never opened, once its grace passes', async () => {
+    const c = client({ graceMs: 20 })
+    const [host] = await c.request(R, 'join', { role: 'host' })
+    expect((await c.relay.fetch(host)).status).toBe(101)
+    await Bun.sleep(30)
+    const joined = await c.call(R, 'join', { role: 'host' })
+    expect(joined.status).toBe(200)
+    const o = joined.json.id
+    const [peer] = await c.request(R, 'join', { role: 'peer' })
+    expect((await c.relay.fetch(peer)).status).toBe(101)
+    const [ghost] = (await c.poll(R, o)).map((m) => m.body.id)
+    await Bun.sleep(30)
+    await c.frame(R, o, { sends: [] })
+    expect((await c.poll(R, o)).map((m) => m.body)).toEqual([{ type: 'left', id: ghost }])
+  })
+
   it('pushes messages down a socket and takes sends from it', async () => {
     const c = client()
     const joined = await c.call(R, 'join', { role: 'host' })

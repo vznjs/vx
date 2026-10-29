@@ -232,6 +232,25 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     )
     await expect(readLockfile(root)).rejects.toThrow(/`projects` must be an object/)
   })
+
+  it('a directory key outside the root, or not as vx lock spells one, is refused', async () => {
+    // A run joined `../evil` onto the root and ran a project outside the
+    // workspace; `/tmp` read as a project `tmp` at `<root>/tmp`.
+    for (const dir of ['../evil', 'a/../../x', '/tmp', 'a/', './a', 'a//b', '']) {
+      await writeRaw(
+        JSON.stringify({ version: LOCKFILE_VERSION, projects: { [dir]: entry(CONFIG) } }),
+      )
+      expect((await rejection(readLockfile(root))).message).toBe(
+        `${LOCKFILE_NAME}: "${dir}" is not a directory under the workspace root — re-run \`vx lock\``,
+      )
+    }
+    for (const dir of ['.', 'a', 'a/b', '.github/actions/x', 'a..b']) {
+      await writeRaw(
+        JSON.stringify({ version: LOCKFILE_VERSION, projects: { [dir]: entry(CONFIG) } }),
+      )
+      expect(Object.keys((await readLockfile(root))!.projects)).toEqual([dir])
+    }
+  })
 })
 
 describe('writeLockfile — the file is committed, so its shape is a contract', () => {

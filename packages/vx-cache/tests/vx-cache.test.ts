@@ -32,13 +32,13 @@ beforeAll(async () => {
 })
 
 /** The server over a Map bucket: what the wire sees is the server's own. */
-function server(maxUploadBytes = 1 << 20, readAccess?: string) {
+function server(maxUploadBytes = 1 << 20, readAccess?: string, maxCheckHashes?: number) {
   const blobs = new Map<string, Uint8Array>()
   const seen: { method: string; path: string; body: string; scope: string | null }[] = []
   const handle = createCacheServer({
     blobs: memBlobs(blobs),
     authorize: oidcAuth({ allow: ALLOW, readAccess, fetchJson: (u) => iss.fetchJson(u) }),
-    limits: { maxUploadBytes },
+    limits: { maxUploadBytes, ...(maxCheckHashes === undefined ? {} : { maxCheckHashes }) },
   })
   const srv = Bun.serve({
     port: 0,
@@ -280,6 +280,78 @@ describe('VxCacheLayer', () => {
   })
 })
 
+describe("the server's limits", () => {
+  // Each check of one hash named every scope: a run reading more refs than
+  // the server's maxCheckHashes sent more lookups than it takes, and every
+  // check was refused.
+  it('checks a run that reads more refs than one check takes, scopes in order', async () => {
+    const srv = server(1 << 20, undefined, 2)
+    try {
+      const [write, read] = await Promise.all([srv.token(MAIN_JOB), srv.token(READ_JOB)])
+      await layer(srv.url, write).put('ab12', new Blob(['held']), { durationMs: 1 })
+      const refs = ['refs/heads/a', 'refs/heads/b', 'refs/heads/c', 'refs/heads/d', MAIN]
+      const c = layer(srv.url, read, refs)
+      const before = srv.seen.length
+      expect(await c.hasMany(['ab12', 'cd34'])).toEqual(new Map([['ab12', { size: 4 }]]))
+      const checks = srv.seen.slice(before).filter((r) => r.path === '/v1/artifacts')
+      for (const r of checks) {
+        const { hashes, scopes } = JSON.parse(r.body) as { hashes: string[]; scopes: string[] }
+        expect(hashes.length * scopes.length).toBeLessThanOrEqual(2)
+      }
+      expect(await (await c.get('ab12'))!.body.text()).toBe('held')
+      expect(srv.seen.at(-1)!.scope).toBe(await hashPart(MAIN))
+    } finally {
+      await srv.stop()
+    }
+  })
+
+  // A server restarted with lower limits refused each check and upload for
+  // its size, and the run kept the old ones: every check of the run failed.
+  it('keeps to the limits a refusal names, from the next check and upload', async () => {
+    const blobs = new Map<string, Uint8Array>()
+    const made = (maxCheckHashes: number, maxUploadBytes: number) =>
+      createCacheServer({
+        blobs: memBlobs(blobs),
+        authorize: oidcAuth({ allow: ALLOW, fetchJson: (u) => iss.fetchJson(u) }),
+        limits: { maxCheckHashes, maxUploadBytes },
+      })
+    let handle = made(500, 1 << 20)
+    const lookups: number[] = []
+    const srv = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: async (req) => {
+        if (new URL(req.url).pathname === '/v1/artifacts') {
+          const { hashes, scopes } = (await req.clone().json()) as Record<string, string[]>
+          lookups.push(hashes!.length * scopes!.length)
+        }
+        return handle(req as never)
+      },
+    })
+    try {
+      const url = srv.url.href.replace(/\/$/, '')
+      const c = layer(url, await iss.sign(MAIN_JOB, new URL(url).origin))
+      const said: string[] = []
+      c.warn = (m) => said.push(m)
+      const keys = ['a1', 'a2', 'a3']
+      expect((await c.hasMany(keys)).size).toBe(0)
+      handle = made(2, 1 << 20)
+      await expect(c.hasMany(keys)).rejects.toThrow('HTTP 400')
+      handle = made(2, 4)
+      await expect(c.put('b1', new Blob(['12345']), { durationMs: 1 })).rejects.toThrow('HTTP 413')
+      lookups.length = 0
+      expect((await c.hasMany(keys)).size).toBe(0)
+      expect(lookups.sort((a, b) => a - b)).toEqual([1, 2])
+      expect(await c.put('b2', new Blob(['12345']), { durationMs: 1 })).toBe(false)
+      expect(said).toEqual([
+        "[vx] vx-cache: b2 is 5 bytes, over the server's upload limit of 4: not uploaded",
+      ])
+    } finally {
+      await srv.stop(true)
+    }
+  })
+})
+
 describe('download deadline', () => {
   /** A server sending `chunks` bytes `gapMs` apart, then going quiet when `stallAfter` were sent. */
   function slow(chunks: number, gapMs: number, stallAfter = Infinity) {
@@ -506,6 +578,40 @@ describe('lend', () => {
   })
 })
 
+// Core lends while its remote reads, and the layer turns itself off: a
+// refused token was lent to every worker, each of which said the refusal
+// again, and a failed OIDC ask was asked again at each lend.
+it('lends nothing once the remote is off', async () => {
+  const srv = server()
+  let asked = 0
+  const github = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: () => {
+      asked++
+      return new Response('no', { status: 403 })
+    },
+  })
+  try {
+    const refused = layer(srv.url, 'nope')
+    await expect(refused.has('aa11')).rejects.toThrow('remote cache off for this run')
+    expect(await refused.lend()).toBeUndefined()
+
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: github.url.href,
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'gh',
+    }
+    const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, env)!, fetch, env)
+    c.refs = [MAIN]
+    await expect(c.has('aa11')).rejects.toThrow("GitHub's OIDC endpoint: HTTP 403")
+    expect(await c.lend()).toBeUndefined()
+    expect(asked).toBe(1)
+  } finally {
+    await srv.stop()
+    await github.stop(true)
+  }
+})
+
 describe('config', () => {
   // 2026-10-25: a proxy in front of the server (an Access service token).
   it('sends its headers on every request to the server, never over the CI token', async () => {
@@ -534,7 +640,18 @@ describe('config', () => {
         h.get('vx-issuer'),
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', await hashPart(GITHUB), await hashPart(REPO)])
-    for (const bad of [{ authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
+    // A name the wire sets, in any case, joined its value ("x, application/json"):
+    // every request was a 400.
+    for (const bad of [
+      { authorization: 'x' },
+      { 'a b': 'x' },
+      { a: 'x\ny' },
+      { 'Content-Type': 'text/plain' },
+      { 'Content-Length': '1' },
+      { 'VX-Issuer': 'x' },
+      { 'vx-repository': 'x' },
+      { 'Vx-Scope': 'x' },
+    ])
       expect(() =>
         resolveVxCacheConfig({ ...NAMED, url: 'https://c.example', headers: bad }, {}),
       ).toThrow('vxCache(): header')
@@ -614,6 +731,31 @@ describe('config', () => {
     ])
   })
 
+  // Core opens a remote only when the run's policy reads or writes it: the
+  // factory asked the limits (and GitHub for a token) on a --no-cache run.
+  it('asks the server nothing until core opens it', async () => {
+    const saved = { ...Bun.env }
+    const names = [
+      'ACTIONS_ID_TOKEN_REQUEST_URL',
+      'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+      'VX_CACHE_TOKEN',
+    ]
+    for (const k of names) delete Bun.env[k]
+    const srv = server(1 << 20, 'public')
+    try {
+      const plugin = vxCache({ ...NAMED, url: srv.url })
+      const layer = await plugin.cache!({ refs: [MAIN], warn: () => {} } as never)
+      await Bun.sleep(50)
+      expect(srv.seen).toEqual([])
+      await layer!.open!({ ci: false, warn: () => {} } as never)
+      await Bun.sleep(50)
+      expect(srv.seen.map((r) => r.path)).toEqual(['/v1/capabilities'])
+    } finally {
+      for (const k of names) if (saved[k] !== undefined) Bun.env[k] = saved[k]
+      await srv.stop()
+    }
+  })
+
   // The second failed ask of the limits was kept: every later check threw
   // it, though the server was back (2026-10-26).
   it('asks the limits again after each failed ask, and reads once the server is back', async () => {
@@ -653,6 +795,27 @@ describe('config', () => {
         'HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run',
       )
       expect(await c.has('ab12')).toBeNull()
+    } finally {
+      await srv.stop()
+    }
+  })
+
+  // A check that started while the start's ask was still out shared its
+  // refusal, threw it, and the next check threw it again.
+  it('says a refusal met while it starts once, though a check waited on the same ask', async () => {
+    const srv = server()
+    try {
+      const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, {})!, fetch, {})
+      c.refs = [MAIN]
+      c.start()
+      const said: string[] = []
+      for (let i = 0; i < 3; i++)
+        await c.has('ab12').catch((err: Error) => {
+          said.push(err.message)
+        })
+      expect(said).toEqual([
+        'HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run',
+      ])
     } finally {
       await srv.stop()
     }

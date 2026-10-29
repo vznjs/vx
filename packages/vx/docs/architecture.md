@@ -482,7 +482,7 @@ runs in a worker instead: the query cannot reach the config's own
 imports.
 
 A project config's first load is served the bytes the loader already
-read (`?vx-held=`, a `Bun.plugin` onLoad) instead of letting Bun read
+read (a `Bun.plugin` onLoad, under its plain path) instead of letting Bun read
 the file again — ESM and UTF-8 only; see `docs/modules/project-loader.md`.
 
 The loader validates each task's shape at load time and surfaces a

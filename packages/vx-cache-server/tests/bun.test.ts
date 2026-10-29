@@ -1,5 +1,6 @@
 // The Bun server: an S3-compatible bucket, and nothing else.
 
+import { createServer, type AddressInfo } from 'node:net'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { oidcAuth } from '@vzn/vx-devtools'
 import { s3Blobs } from '../src/bun.js'
@@ -81,11 +82,14 @@ it('reads the limits from the environment, and refuses one that is not a count',
   expect(() => limitsFrom({ MAX_CHECK_HASHES: '1.5' })).toThrow(
     'MAX_CHECK_HASHES: not a whole number above 0: 1.5',
   )
-  // wrangler.jsonc's `"vars": { "MAX_CHECK_HASHES": 40 }` binds a number:
-  // read as unset, the Worker kept its default of 6, unsaid.
-  expect(limitsFrom({ MAX_CHECK_HASHES: 40 })).toEqual({ maxCheckHashes: 40 })
-  expect(() => limitsFrom({ MAX_UPLOAD_BYTES: 0 })).toThrow(
-    'MAX_UPLOAD_BYTES: not a whole number above 0: 0',
+})
+
+// wrangler.jsonc writes a var as JSON: a number was skipped, and the
+// default limit served in its place.
+it('reads a limit a Worker var gives as a number, and refuses another type', () => {
+  expect(limitsFrom({ MAX_UPLOAD_BYTES: 5 })).toEqual({ maxUploadBytes: 5 })
+  expect(() => limitsFrom({ MAX_UPLOAD_BYTES: [5] })).toThrow(
+    'MAX_UPLOAD_BYTES: not a whole number above 0: [5]',
   )
 })
 
@@ -152,7 +156,7 @@ it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--bogus'], {
     stderr: 'pipe',
   })
-  const [said, usage] = Bun.stripANSI(cli.stderr.toString()).split('\n')
+  const [said, usage] = cli.stderr.toString().split('\n')
   expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
     2,
     "✗ vx-cache-server  Unknown option '--bogus'",
@@ -166,7 +170,7 @@ it('names ALLOW when it cannot be read', () => {
       env: { ...process.env, S3_BUCKET: 'b', ALLOW: allow },
       stderr: 'pipe',
     })
-    return [cli.exitCode, Bun.stripANSI(cli.stderr.toString())]
+    return [cli.exitCode, cli.stderr.toString()]
   }
   expect([said('acme/app'), said('https://x:acme:ci.yml')]).toEqual([
     [2, '✗ vx-cache-server  ALLOW: acme/app is not issuer:owner/repo:workflow\n'],
@@ -179,8 +183,90 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     env: { ...process.env, S3_BUCKET: 'b', ALLOW: '' },
     stderr: 'pipe',
   })
-  expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString())]).toEqual([
+  expect([cli.exitCode, cli.stderr.toString()]).toEqual([
     2,
     '✗ vx-cache-server  --port: not a port: \n',
   ])
+})
+
+// With no S3 credentials the server listened, said so, and answered every
+// request 502: a deploy looked up while it could serve nothing.
+it('refuses to start with no S3 credentials', () => {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(S3|AWS)_/.test(k)))
+  const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+    env: { ...env, S3_BUCKET: 'b', ALLOW: '' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: 3000,
+  })
+  expect([cli.exitCode, cli.stdout.toString(), cli.stderr.toString()]).toEqual([
+    2,
+    '',
+    expect.stringMatching(/^✗ vx-cache-server {2}S3: Missing S3 credentials\./),
+  ])
+})
+
+// Bun's fetch asks for gzip and inflates what it is sent, so a bucket (or
+// a proxy before it) that compressed an answer named the compressed
+// Content-Length as the artifact's size: a check and a download said
+// fewer bytes than the artifact holds.
+it('reads sizes off the bytes as stored, never a compressed answer', async () => {
+  const bytes = 'vx '.repeat(10_000)
+  const gzipping = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      if (!/gzip/.test(req.headers.get('accept-encoding') ?? '')) {
+        return new Response(req.method === 'HEAD' ? null : bytes, {
+          headers: { 'content-length': String(bytes.length) },
+        })
+      }
+      const z = Bun.gzipSync(bytes)
+      return new Response(req.method === 'HEAD' ? null : z, {
+        headers: { 'content-encoding': 'gzip', 'content-length': String(z.byteLength) },
+      })
+    },
+  })
+  try {
+    const blobs = s3Blobs(
+      new Bun.S3Client({
+        endpoint: gzipping.url.href,
+        bucket: 'b',
+        accessKeyId: 'a',
+        secretAccessKey: 's',
+      }),
+    )
+    const got = (await blobs.get('x'))!
+    expect([got.size, (await new Response(got.body).text()).length, await blobs.size('x')]).toEqual(
+      [bytes.length, bytes.length, bytes.length],
+    )
+  } finally {
+    await gzipping.stop(true)
+  }
+})
+
+// Number(null) is 0: a HEAD naming no Content-Length was an artifact of
+// 0 bytes to a check and a HEAD. A download sent chunked still serves:
+// Bun frames a streamed answer itself.
+it('takes no size the bucket did not state', async () => {
+  const unsized = createServer((sock) =>
+    sock.once('data', () =>
+      sock.end('HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n\r\n'),
+    ),
+  )
+  await new Promise<void>((r) => unsized.listen(0, '127.0.0.1', r))
+  try {
+    const blobs = s3Blobs(
+      new Bun.S3Client({
+        endpoint: `http://127.0.0.1:${(unsized.address() as AddressInfo).port}`,
+        bucket: 'b',
+        accessKeyId: 'a',
+        secretAccessKey: 's',
+      }),
+    )
+    await expect(blobs.size('x')).rejects.toThrow('the bucket answered HEAD with no Content-Length')
+    expect(await new Response((await blobs.get('x'))!.body).text()).toBe('abc')
+  } finally {
+    unsized.close()
+  }
 })

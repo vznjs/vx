@@ -122,7 +122,9 @@ its error where `exists()` answers in 15–40 µs.
 
 The root is the directory holding the nearest `.vx/workspace.*` from
 `start` up to the git top-level, inclusive (a worktree's `.git` file is a
-top-level; a submodule goes on to its superproject), or up to `/` outside
+top-level, a submodule's too; a submodule goes on to its superproject, and so does an
+embedded repository the outer git does not ignore, whose configs
+`findProjectConfigs` lists as the outer workspace's), or up to `/` outside
 git. Nothing else decides it: not a `package.json`, `pnpm-workspace.yaml`
 or a lockfile (2026-10-13: "Workspace file is the ultimate",
 "never go out of git root"). A file above the checkout is never read.
@@ -140,7 +142,8 @@ config git ignores is no project. A nested repository is one entry to the
 outer git (a submodule's gitlink, an embedded repository's untracked
 `dir/`): its own git lists its configs, or a walk when it has no `.git`,
 as the input enumeration expands one. Outside git: a walk that skips
-dot-directories and `node_modules`. A config at or under a nested
+`node_modules`, `.git` and `.vx`, and enters every other dot-directory,
+as git lists `.github/actions/x`. A config at or under a nested
 `.vx/workspace.*` is that workspace's and is left out. Where a directory
 holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
 file (a directory may carry a config's name; git lists a tracked config

@@ -399,6 +399,9 @@ export function createRelay(opts: RelayOptions): Relay {
       // No one reads the host's.
       info: role === 'peer' ? (body.info ?? null) : null,
       queue: [],
+      // Off a socket until its join's opens: one whose client dropped
+      // during the upgrade lapses as a dropped one does.
+      droppedAt: Date.now(),
     }
     session.byId.set(p.id, p)
     if (p.role === 'host') {

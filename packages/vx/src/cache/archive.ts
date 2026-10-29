@@ -140,6 +140,7 @@ class EntrySum {
  */
 class SumCheck {
   private readonly sum = new EntrySum()
+  private readonly names = new Set<string>()
   private seen: boolean = false
   /** The entry's body, hashed as the caller reads it; null for the sum entry itself (checked here). */
   async body(
@@ -157,6 +158,10 @@ class SumCheck {
   enter(name: string): boolean {
     if (this.seen) throw new TarFormatError(`entry ${name} follows the artifact's checksum`)
     if (name === SUM_ENTRY) return true
+    // vx never packs a name twice, and a restore staged both: their renames
+    // ran together, so which body landed was a race the index never saw.
+    if (this.names.has(name)) throw new ArchiveSecurityError(`archive holds ${name} twice`)
+    this.names.add(name)
     this.sum.entry(name)
     return false
   }
@@ -574,7 +579,7 @@ class ScanFold {
 
   sidecar(text: string): void {
     const parsed = JSON.parse(text) as MetaFile
-    this.files = parsed.files ?? {}
+    this.files = filesOf(parsed)
     this.dirs = dirsOf(parsed)
     this.links = linksOf(parsed)
     // The ingest side is the untrusted boundary: a foreign sidecar's
@@ -663,6 +668,37 @@ export function scanTarBytes(tar: Uint8Array): ArtifactScan {
   return fold.result()
 }
 
+/** The largest millisecond count a Date holds (ECMA-262 §21.4.1.1). */
+const DATE_MAX_MS = 8.64e15
+
+/**
+ * The sidecar's stats, each an integer mode in 0..0o7777 and an integer
+ * mtime a Date holds: one taken as is reached the index, and its restore
+ * threw a TypeError out of `utimesSync` after renames had begun.
+ */
+function filesOf(meta: MetaFile): MetaFile['files'] {
+  const raw: unknown = meta.files
+  if (raw === undefined || raw === null) return {}
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ArchiveSecurityError('archive sidecar files is not a map')
+  }
+  for (const [name, pair] of Object.entries(raw as Record<string, unknown>)) {
+    if (
+      !Array.isArray(pair) ||
+      !Number.isInteger(pair[0]) ||
+      pair[0] < 0 ||
+      pair[0] > 0o7777 ||
+      !Number.isInteger(pair[1]) ||
+      Math.abs(pair[1]) > DATE_MAX_MS
+    ) {
+      throw new ArchiveSecurityError(
+        `archive sidecar has a bad stat for ${name}: ${JSON.stringify(pair)}`,
+      )
+    }
+  }
+  return raw as MetaFile['files']
+}
+
 /**
  * The sidecar's directory names, each held to the rules a file entry's
  * name is (the sidecar is as attacker-reachable as the tar), and only
@@ -708,6 +744,22 @@ function linksOf(meta: MetaFile): Array<[string, string]> {
 }
 
 /** `p` is `root` or under it, lexically. */
+/** A file this user cannot read is not the same bytes: the rename replaces it. */
+function sameBytes(file: string, body: Uint8Array): boolean {
+  try {
+    return readFileSync(file).equals(body)
+  } catch {
+    return false
+  }
+}
+
+/** The deepest directory holding both `a` and `b`. */
+function commonDir(a: string, b: string): string {
+  let dir = a
+  while (!inside(b, dir) && path.dirname(dir) !== dir) dir = path.dirname(dir)
+  return dir
+}
+
 const inside = (p: string, root: string): boolean => {
   const r = path.resolve(root)
   return p === r || p.startsWith(r + path.sep)
@@ -768,7 +820,7 @@ export async function extractArtifactStream(
         const text = await textOf(body)
         fold?.sidecar(text)
         const parsed = JSON.parse(text) as MetaFile
-        meta = parsed.files ?? {}
+        meta = filesOf(parsed)
         dirs = dirsOf(parsed)
         links = linksOf(parsed)
         continue
@@ -811,7 +863,12 @@ export async function extractArtifactStream(
       provided.add(`${name}/`)
     }
     // A link may point only inside the workspace (the project, without one).
-    const bound = stageRoot ?? workspaceDest ?? destDir
+    // Unpacked into a cache tree (no stage root), `outputs/` and
+    // `workspace-outputs/` are siblings: bounded by the latter alone, a
+    // `dist/link -> big.bin` pointed "out" and the ingest failed. The tree
+    // bounds by their parent; its restore checks against the workspace.
+    const bound =
+      stageRoot ?? (workspaceDest === undefined ? destDir : commonDir(destDir, workspaceDest))
     for (const [name, to] of links) {
       if (accept !== undefined && !accept(name)) {
         throw new ArchiveSecurityError(
@@ -893,7 +950,8 @@ function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined)
   const fd = openSync(s.target, constants.O_RDONLY | constants.O_NOFOLLOW)
   try {
     const st = fstatSync(fd)
-    if (st.ino !== ino || st.nlink !== 1) {
+    // An in-place write since the compare keeps the inode and bumps the ctime.
+    if (st.ino !== ino || st.nlink !== 1 || st.ctimeMs !== s.sameCtimeMs) {
       throw new Error(`${s.target} changed while it was restored`)
     }
     if ((st.mode & 0o7777) !== restoredMode(mode)) fchmodSync(fd, restoredMode(mode))
@@ -921,6 +979,8 @@ interface Staged {
   base: string
   /** The target already holds the entry's bytes: nothing was written, and only its mode and mtime may change. */
   same?: number
+  /** The kept target's ctime when its bytes were compared. */
+  sameCtimeMs?: number
   /** `tmp` was copied beside `target`, which is on another filesystem than the staging (`crossOver`). */
   beside?: true
   /** A symlink to this target, made at `tmp`: no mode, no mtime. */
@@ -1232,7 +1292,7 @@ class Extractor {
         st.isFile() &&
         st.nlink === 1 &&
         st.size === body.byteLength &&
-        readFileSync(target).equals(body)
+        sameBytes(target, body)
       ) {
         this.staged.push({
           staged: false,
@@ -1243,6 +1303,7 @@ class Extractor {
           streamed: false,
           base,
           same: st.ino,
+          sameCtimeMs: st.ctimeMs,
         })
         return
       }

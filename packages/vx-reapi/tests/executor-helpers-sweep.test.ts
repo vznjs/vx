@@ -118,9 +118,31 @@ describe.if(CHUNKING_SUPPORTED)('the command line a worker runs', () => {
     expect(code).toBe(0)
     expect(realpathSync(vxRoot!)).toBe(root)
     expect(PATH).toBe(
-      `${vxRoot}/node_modules/.bin:${path.join(root, 'pkg')}/node_modules/.bin:/usr/bin:/bin`,
+      `${path.join(root, 'pkg')}/node_modules/.bin:${vxRoot}/node_modules/.bin:/usr/bin:/bin`,
     )
     expect(args).toEqual(["it's", 'a b'])
+  })
+
+  // The local executor puts the project's bin before the root's (core's
+  // taskBinDirs): a worker that put the root's first ran the root's
+  // version of a tool the project pins, under the same key.
+  it("runs the project's own tool over the root's, as the local executor does", async () => {
+    const bins = [
+      path.join(root, 'node_modules', '.bin'),
+      path.join(root, 'pkg', 'node_modules', '.bin'),
+    ]
+    for (const [i, dir] of bins.entries()) {
+      await mkdir(dir, { recursive: true })
+      await writeFile(path.join(dir, 'tool'), `#!/bin/sh\necho ${i === 0 ? 'root' : 'project'}\n`, {
+        mode: 0o755,
+      })
+    }
+    try {
+      await runOne(request({ command: 'tool' }))
+      expect(sh(lastScript(), path.join(root, 'pkg')).out).toBe('project\n')
+    } finally {
+      for (const dir of bins) await rm(path.dirname(dir), { recursive: true, force: true })
+    }
   })
 
   // X-112: appended after it, a trailing comment took the args and the

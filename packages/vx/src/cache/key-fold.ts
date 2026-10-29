@@ -118,7 +118,9 @@ import type { CacheKeyInput } from './layer.js'
 // v47: the local store keeps plain files (`cache.store`).
 // v48: a task glob is standard again (2026-10-18): `app/[id]/page.js` is
 // a class, and a v47 entry under its unchanged key holds the literal route.
-export const CACHE_VERSION = 'vx-cache-v48'
+// v49: each brace alternative is read alone (2026-10-28): a v48 entry for
+// `outputs: ['{dist,lib}']` under its unchanged key holds nothing.
+export const CACHE_VERSION = 'vx-cache-v49'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

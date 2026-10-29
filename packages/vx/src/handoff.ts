@@ -101,9 +101,42 @@ async function findWorkspaceFile(start: string): Promise<string | null> {
     }
     if (d === '' || d === top) break
   }
+  if (found === null && top !== null && top !== '/') found = await outerWorkspaceFile(top)
   // Every directory walked has the same answer: the loader asks for the root's.
   for (const d of passed) if (!files.has(d)) files.set(d, Promise.resolve(found))
   return found
+}
+
+/**
+ * The workspace config of the repository `top` is embedded in (an untracked
+ * clone with its own `.git` directory), when that repository's git does not
+ * ignore it: `vx lock` lists such a repository's configs as the outer
+ * workspace's, and a run from inside one stopped at its `.git`, "no
+ * .vx/workspace.ts". A submodule's walk goes on already ({@link gitTop}).
+ * Asked only when the walk found nothing, so a run pays nothing for it.
+ */
+async function outerWorkspaceFile(top: string): Promise<string | null> {
+  // A worktree's `.git` is a file: another checkout, its own top-level.
+  if (!(await Bun.file(`${top}/.git/HEAD`).exists())) return null
+  const parent = top.slice(0, top.lastIndexOf('/')) || '/'
+  const outer = await gitTop(parent)
+  if (outer === null) return null
+  const file = await workspaceFile(parent)
+  if (file === null) return null
+  try {
+    // Plain `git`, as handoff imports nothing (the hand-off runs first).
+    // Exit 1: not ignored, so the outer listing holds it; 0 ignored; 128 an error.
+    const p = Bun.spawnSync({
+      cmd: ['git', 'check-ignore', '-q', '--', top.slice(outer.length + (outer === '/' ? 0 : 1))],
+      cwd: outer,
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    return p.exitCode === 1 ? file : null
+  } catch {
+    return null
+  }
 }
 
 const tops = new Map<string, Promise<string | null>>()
@@ -132,6 +165,11 @@ async function findGitTop(start: string): Promise<string | null> {
     if (await file.exists()) {
       const gitdir = await file.text().catch(() => '')
       if (!/(^|[\s/])\.git\/modules\//.test(gitdir)) return d || '/'
+      // A submodule's own worktree points there too, and is a top-level:
+      // git writes `commondir` in a worktree's gitdir alone.
+      const to = gitdir.replace(/^gitdir:\s*/, '').trim()
+      if (await Bun.file(`${to.startsWith('/') ? '' : `${d}/`}${to}/commondir`).exists())
+        return d || '/'
     }
     if (d === '') return null
   }
@@ -161,6 +199,14 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   const code = await child.exited
   const signal = child.signalCode
   if (signal === null) process.exit(code)
+  // Die of a stop signal the local vx died of, as vx itself does: a shell
+  // running vx in a script stops on Ctrl-C only when its child died of
+  // SIGINT, and an exit 130 ran the script's next line. The code below is
+  // the rest, and the fallback should the signal not land.
+  if (signal === 'SIGINT' || signal === 'SIGTERM' || signal === 'SIGHUP') {
+    process.removeAllListeners(signal)
+    process.kill(process.pid, signal)
+  }
   if (typeof signal === 'number') process.exit(128 + signal)
   const { constants } = await import('node:os')
   process.exit(128 + (constants.signals[signal] ?? 1))
