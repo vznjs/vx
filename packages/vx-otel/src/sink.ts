@@ -165,7 +165,8 @@ async function postOnce(
 ): Promise<void> {
   const controller = new AbortController()
   // A timer past 2^31-1 ms fires after 1 ms: OTEL_EXPORTER_OTLP_TIMEOUT=1e10
-  // aborted every export at once (F-56). Held to the longest a timer waits.
+  // aborted every export at once (F-56). The spec defines that value, so it
+  // is held to the longest a timer waits; the option is refused at the call.
   // The reason is what fetch rejects with, so the warning names the
   // timeout spent; a bare abort said only "The operation was aborted."
   const timer = setTimeout(

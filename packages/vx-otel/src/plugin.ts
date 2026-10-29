@@ -52,7 +52,7 @@ export interface OtelPluginOptions {
    * everything at the run's end.
    */
   live?: boolean
-  /** Per-request timeout (ms). Falls back to `OTEL_EXPORTER_OTLP_TIMEOUT`, else 15000. */
+  /** Per-request timeout (ms, above 0, up to 2³¹−1). Falls back to `OTEL_EXPORTER_OTLP_TIMEOUT`, else 15000. */
   timeoutMs?: number
   /**
    * `'gzip'` sends every signal gzipped. Falls back to each signal's
@@ -453,6 +453,9 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
   compression: 'string',
 }
 
+/** The longest delay a timer holds; not sink.ts's, which loads only once a run exports. */
+const MAX_TIMER_MS = 2 ** 31 - 1
+
 /**
  * The OpenTelemetry exporter plugin. Declared in .vx/workspace.ts via
  * `defineWorkspace({ plugins: [otel()] })`. Contributes a telemetry sink that
@@ -463,11 +466,14 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('otel()', opts, OTEL_PLUGIN_KEYS)
   // At the call, not when an endpoint is set: a laptop passed what failed
-  // in CI. A zero, negative or NaN timeout aborted every export as it
-  // started; a compression the option names is never the env's to excuse.
+  // in CI. A zero, negative, NaN or past-the-longest-timer timeout aborted
+  // every export as it started; a compression the option names is never the
+  // env's to excuse.
   const ms = opts.timeoutMs
-  if (ms !== undefined && !(Number.isFinite(ms) && ms > 0)) {
-    throw new UserError(`otel() option "timeoutMs" must be a positive number of ms, got ${ms}`)
+  if (ms !== undefined && !(ms > 0 && ms <= MAX_TIMER_MS)) {
+    throw new UserError(
+      `otel() option "timeoutMs" must be a positive number of ms up to ${MAX_TIMER_MS}, got ${ms}`,
+    )
   }
   const { compression } = opts
   if (compression !== undefined && !/^\s*(gzip|none)\s*$/i.test(compression)) {
