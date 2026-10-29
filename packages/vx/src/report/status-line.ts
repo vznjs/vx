@@ -38,6 +38,9 @@ export interface StatusStream {
   rows?: number
 }
 
+/** A region's lines, or what builds them when it is drawn. */
+export type Region = readonly string[] | (() => readonly string[])
+
 export interface OutputWriter {
   /** True only when the stream is a TTY and the run isn't CI. */
   readonly enabled: boolean
@@ -55,9 +58,11 @@ export interface OutputWriter {
   setStatus(line: string, opts?: { force?: boolean }): void
   /**
    * Replace the multi-line status region. Same throttle contract as
-   * `setStatus`; the two share one display slot.
+   * `setStatus`; the two share one display slot. A function is called
+   * when the region is next drawn, once: a set the throttle coalesces
+   * builds nothing.
    */
-  setRegion(lines: readonly string[], opts?: { force?: boolean }): void
+  setRegion(lines: Region, opts?: { force?: boolean }): void
   /** Hand over what `coalesce` holds and write straight through from now on. */
   settle(): void
   /** Permanently remove the status display; later set* is a no-op. */
@@ -113,7 +118,7 @@ export function createOutputWriter(
     stream.write(text)
   }
 
-  let current: readonly string[] | null = null
+  let current: Region | null = null
   let shown = false
   // PHYSICAL rows the shown region occupies, not logical lines — see
   // `regionRows`.
@@ -199,13 +204,18 @@ export function createOutputWriter(
     // only repeat these bytes.
     cancelTrailing()
     const erase = shown ? eraseSeq() : CLEAR
+    // Built here, not at the set: a warm run's task events set the
+    // region hundreds of times inside one floor, and each build was a
+    // forecast pass and a summary render no frame showed (200 hits on a
+    // terminal: run graph 62 → 9 ms). Kept built: a write redraws it.
+    if (typeof current === 'function') current = current()
     const lines = fitted(current!)
     stream.write(erase + lines.join('\n'))
     shown = true
     shownRows = regionRows(lines)
     lastDraw = now()
   }
-  const set = (lines: readonly string[], o: { force?: boolean }): void => {
+  const set = (lines: Region, o: { force?: boolean }): void => {
     if (!enabled || dead) return
     current = lines
     if (!atLineStart || holds > 0) return
