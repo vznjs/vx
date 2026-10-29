@@ -27,6 +27,7 @@ import {
   UserError,
   refuseUnknownOptions,
   type PluginOptionKinds,
+  ui,
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
 import path from 'node:path'
