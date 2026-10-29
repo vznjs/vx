@@ -560,6 +560,8 @@ describe('discoverPackages', () => {
     expect(await names(['apps/{x,y}'])).toEqual(['x', 'y'])
     expect(await names(['packages/{a,nested/b}'])).toEqual(['a', 'b'])
     expect(await names(['{packages/{a,nested/b},apps/*}', '!apps/y'])).toEqual(['a', 'b', 'x'])
+    // A `,` inside a class is a member, never a cut (turborepo#13763).
+    expect(await names(['{packages/nested/[b,],apps/x}'])).toEqual(['b', 'x'])
   })
 
   it('a matched directory with NO package.json is not a project', async () => {
