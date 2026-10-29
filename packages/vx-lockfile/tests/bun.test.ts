@@ -417,7 +417,7 @@ describe('every input the digest must read', () => {
 describe('bun()', () => {
   it('refuses an unknown scope', () => {
     expect(() => bun({ scope: 'file' as never })).toThrow(
-      /bun\(\) scope must be 'project' or 'workspace'/,
+      /bun\(\) option "scope" must be 'project' or 'workspace', got/,
     )
   })
 

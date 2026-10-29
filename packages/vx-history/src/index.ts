@@ -263,6 +263,24 @@ function namedOf(issuer: unknown, repository: unknown): Named {
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
+/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused, never printing a value. */
+function proxyHeaders(
+  headers: Record<string, string | undefined> | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (value === undefined) continue
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
+      throw new UserError(`vxHistory() option "headers" cannot set "${name}"`)
+    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
+      throw new UserError(
+        `vxHistory() option "headers.${name}" must be one line of text (its value is not printed)`,
+      )
+    out[name] = value
+  }
+  return out
+}
+
 export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   refuseUnknownOptions('vxHistory()', options, VX_HISTORY_KEYS)
   const named =
@@ -271,6 +289,9 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       : namedOf(options.issuer, options.repository)
   // `'any'` above lets `null` through, and every run then failed in
   // `schedule` reading `null.headroom`.
+  // At the call: refused once a server was named, a laptop passed what
+  // failed the first CI run.
+  const headers = proxyHeaders(options.headers)
   const { resources } = options
   if (
     resources !== undefined &&
@@ -402,7 +423,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     if (url === undefined) return undefined
     // VX_HISTORY_URL alone: the workspace names no repository to ask for.
     if (named === undefined) return undefined
-    return new m.HistoryServer(url, named, Bun.env, fetch, m.proxyHeaders(options.headers))
+    return new m.HistoryServer(url, named, Bun.env, fetch, headers)
   }
   // What the run sends the history server at its end, by task definition.
   let reported: { timings: Map<string, ServerTiming>; warn: (m: string) => void } | undefined
