@@ -377,6 +377,19 @@ describe('project stage', () => {
   )
 
   it(
+    'a project-stage edit of `name` is refused, naming the plugin: the stage runs after naming',
+    async () => {
+      // The edit validated and was dropped: the project kept its name.
+      await pkg('a', build)
+      await workspace([pluginSource('org/renamer', `{ project(config) { config.name = 'b' } }`)])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        'vx.config.mjs (after plugin \'org/renamer\'): project "a" is named before the project stage, so `name: "b"` cannot rename it — a plugin names a project in its `discover` hook',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     "a plugin's output is judged against the project's own config file, not the refusal's label",
     async () => {
       // The label `<path> (after plugin 'org/x')` was read as the config
@@ -591,6 +604,29 @@ describe('graph stage', () => {
   )
 
   it(
+    'a node whose id is not its projectName#taskName is refused by name',
+    async () => {
+      // A copy under a new id kept the old taskName: the key read the id,
+      // `--exclude-dependencies=build` the name, and dropped the copy's edge.
+      await pkg('a', build)
+      await workspace([
+        pluginSource(
+          'org/copy',
+          `{ graph(nodes) {
+            const n = nodes.get('a#build')
+            nodes.set('a#gen', { ...n, id: 'a#gen', deps: [] })
+            n.deps.push('a#gen')
+          } }`,
+        ),
+      ])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        `plugin 'org/copy' failed in graph: a#gen's id is "a#gen", not its projectName#taskName (a#build)`,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task config a plugin breaks is refused, naming the plugin and the field',
     async () => {
       // Unchecked, the misspelled field left the task without a command:
@@ -636,6 +672,34 @@ describe('graph stage', () => {
       expect((globalThis as unknown as { __vxRequested: string[] }).__vxRequested).toEqual([
         'a#test',
       ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a named task a plugin drops is gone from an --affected run too, not a TypeError',
+    async () => {
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([pluginSource('org/drop', `{ graph(nodes) { nodes.delete('a#build') } }`)])
+      const changes = {
+        projects: new Set(['b']),
+        changed: ['packages/b/x'],
+        paths: new Map([['b', ['x']]]),
+        whole: new Set<string>(),
+      }
+      const ids = async (affected?: typeof changes): Promise<string[]> =>
+        (
+          await planRun({
+            cwd: root,
+            tasks: ['a#build', 'b#build'],
+            ...(affected !== undefined ? { affected } : {}),
+            log: silent(),
+          })
+        ).tasks.map((t) => t.node.id)
+      // CONTROL: the run without the diff plans what the hook left.
+      expect(await ids()).toEqual(['b#build'])
+      expect(await ids(changes)).toEqual(['b#build'])
     },
     TIMEOUT,
   )

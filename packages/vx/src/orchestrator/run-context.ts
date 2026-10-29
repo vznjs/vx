@@ -13,7 +13,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { executablePath, gitEnv, relPosix, ulid, xxh3hex } from '../util/index.js'
+import { envFlagOn, executablePath, gitEnv, relPosix, ulid, xxh3hex } from '../util/index.js'
 import { resolveSetting } from '../settings.js'
 import { branchCacheScope, cacheScopeEnvError, isCacheScope } from '../workspace/index.js'
 import { VERSION } from '../version.js'
@@ -312,10 +312,6 @@ const CI_PROVIDERS: ReadonlyArray<[envVar: string, provider: string]> = [
   ['CI', 'generic'],
 ]
 
-function isTruthy(v: string | undefined): boolean {
-  return v !== undefined && v !== '' && v !== '0' && v.toLowerCase() !== 'false'
-}
-
 /**
  * Detect a CI environment + which provider. `ci=true` if any recognized
  * var is truthy; `provider` names the most-specific match (a specific
@@ -323,7 +319,7 @@ function isTruthy(v: string | undefined): boolean {
  */
 export function detectCi(env: NodeJS.ProcessEnv | Record<string, string | undefined>): CiContext {
   for (const [varName, provider] of CI_PROVIDERS) {
-    if (isTruthy(env[varName])) return { ci: true, provider, ...ciLinks(provider, env) }
+    if (envFlagOn(env[varName])) return { ci: true, provider, ...ciLinks(provider, env) }
   }
   return { ci: false, provider: null }
 }

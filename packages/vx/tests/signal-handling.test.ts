@@ -752,7 +752,8 @@ describe('signal handling during vx run (e2e)', () => {
       }
       expect(await vx('run', 'quick', '--all').exited).toBe(0)
       expect(await list()).toEqual(['ok'])
-      const proc = vx('run', 'slow', 'done', '--all')
+      // Two slots: a one-core runner's one slot held `done` behind `slow`.
+      const proc = vx('run', 'slow', 'done', '--all', '--concurrency', '2')
       await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       await waitForContent(path.join(dir, 'done.txt'), 'done\n', 10_000)
       await Bun.sleep(300)

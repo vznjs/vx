@@ -14,7 +14,7 @@ let mf: Miniflare
 let base: URL
 let iss: Issuer
 
-async function start(bindings: Record<string, unknown>): Promise<Miniflare> {
+async function start(bindings: Record<string, unknown>, r2Buckets = ['BLOBS']): Promise<Miniflare> {
   const built = await Bun.build({
     entrypoints: [path.join(import.meta.dir, '..', 'src', 'worker.ts')],
     target: 'browser',
@@ -25,7 +25,7 @@ async function start(bindings: Record<string, unknown>): Promise<Miniflare> {
       modules: true,
       script: await built.outputs[0]!.text(),
       compatibilityDate: '2026-10-01',
-      r2Buckets: ['BLOBS'],
+      r2Buckets,
       bindings: { AUDIENCE: AUD, ...bindings },
       // The issuer's keys, served to the Worker's fetch without a network.
       outboundService: async (req: Request) =>
@@ -65,10 +65,22 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
       500,
       'ALLOW: https://gitlab.com:group/app is not issuer:owner/repo:workflow',
     ],
+    // wrangler.jsonc may write a var as a JSON list: "list.split is not a function".
+    [
+      { ALLOW: [ALLOW_VAR] },
+      500,
+      'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
+    ],
     [
       { ALLOW: ALLOW_VAR, MAX_CHECK_HASHES: '0' },
       500,
       'MAX_CHECK_HASHES: not a whole number above 0: 0',
+    ],
+    // A blank AUDIENCE was taken: every token was then "wrong audience".
+    [
+      { ALLOW: ALLOW_VAR, AUDIENCE: ' ' },
+      500,
+      'AUDIENCE: the aud CI tokens name, or unset, not blank',
     ],
     [{ ALLOW: ALLOW_VAR, READ_ACCESS: 'yes' }, 500, 'READ_ACCESS: public, or unset, not yes'],
   ] as const) {
@@ -82,6 +94,36 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
     } finally {
       await other.dispose()
     }
+  }
+})
+
+// No bucket bound: /v1/capabilities answered 200, and every artifact
+// route 502, "Cannot read properties of undefined", blaming R2.
+it('refuses every request, saying why, while no R2 bucket is bound as BLOBS', async () => {
+  const other = await start({ ALLOW: ALLOW_VAR }, [])
+  try {
+    const headers = { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.main, AUD)}` }
+    for (const [method, route] of [
+      ['GET', '/v1/capabilities'],
+      ['GET', '/v1/artifacts/abc'],
+      ['PUT', '/v1/artifacts/abc'],
+    ] as const) {
+      const res = await fetch(new URL(route, await other.ready), {
+        method,
+        headers,
+        ...(method === 'PUT' ? { body: 'x' } : {}),
+      })
+      expect([route, res.status, await res.json()]).toEqual([
+        route,
+        500,
+        {
+          code: 'internal_error',
+          message: 'BLOBS: bind an R2 bucket as BLOBS (wrangler.jsonc r2_buckets)',
+        },
+      ])
+    }
+  } finally {
+    await other.dispose()
   }
 })
 

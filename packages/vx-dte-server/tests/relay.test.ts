@@ -674,6 +674,55 @@ describe('a host that keeps runs and holds websockets', () => {
     ])
   })
 
+  // A refused socket request is held for the socket its host attaches. One
+  // whose upgrade its host could not make (Bun's, with no
+  // Sec-WebSocket-Key) never attaches, and each was held for as long as
+  // the relay ran: any client, no token needed, grew its memory by one.
+  it('holds no refusal whose upgrade its host could not make', async () => {
+    const ids: string[] = []
+    const relay = createRelay({
+      verify: () => Promise.reject(new Error('unused')),
+      upgrade: (_key, id) => {
+        ids.push(id)
+        return Response.json({ error: 'not a websocket' }, { status: 426 })
+      },
+    })
+    const res = await relay.fetch(
+      new Request(`http://relay/v1/sessions/${R}/socket`, {
+        headers: { upgrade: 'websocket', 'sec-websocket-protocol': 'switchboard.v1' },
+      }),
+    )
+    expect(res.status).toBe(426)
+    const frames: unknown[] = []
+    const closed: (number | undefined)[] = []
+    const socket = {
+      send: (t: string) => void frames.push(JSON.parse(t)),
+      close: (c?: number) => void closed.push(c),
+    }
+    expect(relay.attach('', ids[0]!, socket)).toBe(false)
+    expect(closed).toEqual([GONE])
+  })
+
+  // A join whose socket never opened (its client dropped during the
+  // upgrade) left a participant with no socket and no drop time, which no
+  // grace ever lapsed: a host's kept its session, refusing its own rejoin
+  // 409 for as long as the relay ran.
+  it('loses a participant whose join’s socket never opened, once its grace passes', async () => {
+    const c = client({ graceMs: 20 })
+    const [host] = await c.request(R, 'join', { role: 'host' })
+    expect((await c.relay.fetch(host)).status).toBe(101)
+    await Bun.sleep(30)
+    const joined = await c.call(R, 'join', { role: 'host' })
+    expect(joined.status).toBe(200)
+    const o = joined.json.id
+    const [peer] = await c.request(R, 'join', { role: 'peer' })
+    expect((await c.relay.fetch(peer)).status).toBe(101)
+    const [ghost] = (await c.poll(R, o)).map((m) => m.body.id)
+    await Bun.sleep(30)
+    await c.frame(R, o, { sends: [] })
+    expect((await c.poll(R, o)).map((m) => m.body)).toEqual([{ type: 'left', id: ghost }])
+  })
+
   it('pushes messages down a socket and takes sends from it', async () => {
     const c = client()
     const joined = await c.call(R, 'join', { role: 'host' })
@@ -766,7 +815,7 @@ it('the Bun entry serves the protocol, without auth on loopback only', async () 
   const refused = Bun.spawnSync(['bun', bin, '--no-auth', '--host', '0.0.0.0'], { stderr: 'pipe' })
   expect([refused.exitCode, refused.stderr.toString().trim()]).toEqual([
     2,
-    '--no-auth listens on loopback only',
+    '✗ vx-dte-server  --no-auth listens on loopback only',
   ])
   const proc = Bun.spawn(['bun', bin, '--no-auth', '--port', '0'], { stdout: 'pipe' })
   try {
@@ -811,11 +860,11 @@ it('names the flags it lacks', () => {
     said('--allow', '', '--audience', ''),
     said(...allow, '--audience', ' '),
   ]).toEqual([
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
-    'missing --allow (or --no-auth)',
-    'missing --allow and --audience (or --no-auth)',
-    'missing --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --allow and --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --allow (or --no-auth)',
+    '✗ vx-dte-server  missing --allow and --audience (or --no-auth)',
+    '✗ vx-dte-server  missing --audience (or --no-auth)',
   ])
 })
 
@@ -826,7 +875,7 @@ it('answers a flag it does not know with its usage', () => {
   const [said, usage] = cli.stderr.toString().split('\n')
   expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
     2,
-    "Unknown option '--bogus'",
+    "✗ vx-dte-server  Unknown option '--bogus'",
     'usage: vx-dte-server',
   ])
 })
@@ -836,5 +885,8 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
     ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--no-auth', '--port', ''],
     { stderr: 'pipe' },
   )
-  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+  expect([cli.exitCode, cli.stderr.toString()]).toEqual([
+    2,
+    '✗ vx-dte-server  --port: not a port: \n',
+  ])
 })

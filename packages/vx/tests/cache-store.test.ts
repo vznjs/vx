@@ -275,3 +275,135 @@ describe('a tree no row names', () => {
     cache.close()
   })
 })
+
+it("a pinned upload body survives another process's prune that keeps the entry", async () => {
+  // The pin is a hard link, so it shares the artifact's mtime: an artifact
+  // saved hours ago made it look like a crashed save's temp, and another
+  // process's orphan sweep took it mid-upload (DTE share and resend).
+  const { cache } = await saved({ embeddings: 0, decompress: false }, LARGE)
+  const dir = path.join(root, 'c')
+  const old = new Date(Date.now() - 2 * 60 * 60 * 1000)
+  await utimes(path.join(dir, `${HASH}.tar.zst`), old, old)
+  const pinned = await cache.pinArtifact(HASH)
+  const other = new Cache(dir, undefined, undefined, undefined, undefined, undefined, {
+    embeddings: 0,
+    decompress: false,
+  })
+  await other.prune({ maxBytes: 1024 ** 3 })
+  other.close()
+  expect((await pinned.body.bytes()).byteLength).toBeGreaterThan(0)
+  await pinned.release()
+  cache.close()
+})
+
+describe('a tree restore while another process re-saves the key', () => {
+  // The tree form copies each file by path under `<hash>.tree`; a re-save
+  // elsewhere renames the old tree aside and a new one in. Files copied
+  // after that came from the new build, a mix of two under a green hit;
+  // where the new build's names differ, the copy's ENOENT read as a
+  // corrupt artifact and dropped the other process's fresh entry.
+  const open = (dir: string): Cache =>
+    new Cache(dir, undefined, undefined, undefined, undefined, undefined, {
+      embeddings: 0,
+      decompress: true,
+    })
+  async function build(cache: Cache, proj: string, id: string, names: string[]): Promise<void> {
+    await mkdir(path.join(proj, 'out'), { recursive: true })
+    for (const n of names) await writeFile(path.join(proj, 'out', n), `${n} ${id}`)
+    await cache.save({
+      hash: HASH,
+      entry: { taskId: 'p#build', command: 'build', durationMs: 1, stdout: '' },
+      projectDir: proj,
+      outputFiles: names.map((n) => path.join(proj, 'out', n)),
+    })
+  }
+  /** Restore with the re-save landing after the first file is copied. */
+  async function racedRestore(
+    second: string[],
+  ): Promise<{ reader: Cache; writer: Cache; err: unknown }> {
+    const dir = path.join(root, 'c')
+    const reader = open(dir)
+    const writer = open(dir)
+    await build(writer, path.join(root, 'w1'), '1', ['a.js', 'b.js'])
+    expect(await reader.get(HASH)).not.toBeNull()
+    const real = Bun.write
+    let first = true
+    let done!: () => void
+    const resaved = new Promise<void>((r) => (done = r))
+    const write = spyOn(Bun, 'write').mockImplementation((async (
+      to: never,
+      from: never,
+      o: never,
+    ) => {
+      if (!String((from as { name?: string }).name).includes('.tree')) return real(to, from, o)
+      if (first) {
+        first = false
+        const n = await real(to, from, o)
+        await build(writer, path.join(root, 'w2'), '2', second)
+        done()
+        return n
+      }
+      await resaved
+      return real(to, from, o)
+    }) as unknown as typeof Bun.write)
+    let err: unknown
+    try {
+      await reader.restoreOutputs(HASH, path.join(root, 'r'))
+    } catch (e) {
+      err = e
+    } finally {
+      write.mockRestore()
+    }
+    return { reader, writer, err }
+  }
+
+  it('restores one build or none, never a mix', async () => {
+    const { reader, writer, err } = await racedRestore(['a.js', 'b.js'])
+    if (err === undefined) {
+      const a = await readFile(path.join(root, 'r/out/a.js'), 'utf8')
+      const b = await readFile(path.join(root, 'r/out/b.js'), 'utf8')
+      expect([a, b]).toEqual(a === 'a.js 1' ? ['a.js 1', 'b.js 1'] : ['a.js 2', 'b.js 2'])
+    } else {
+      expect((err as Error).name).toBe('ArtifactVanishedError')
+      expect(existsSync(path.join(root, 'r/out'))).toBe(false)
+    }
+    reader.close()
+    writer.close()
+  })
+
+  it("a re-save with other names is a miss and keeps the other process's entry", async () => {
+    const { reader, writer, err } = await racedRestore(['c.js'])
+    expect((err as Error | undefined)?.name).toBe('ArtifactVanishedError')
+    expect(existsSync(path.join(root, 'r/out'))).toBe(false)
+    expect(await writer.get(HASH)).not.toBeNull()
+    reader.close()
+    writer.close()
+  })
+})
+
+it('an ingested tree counts the bytes it holds, as a saved tree does', async () => {
+  // A remote hit unpacked into a tree recorded the zstd archive's size, so
+  // `--max-size` and stats undercounted it by the compression ratio.
+  const proj = path.join(root, 'p')
+  await mkdir(path.join(proj, 'out'), { recursive: true })
+  const hex = Buffer.from(crypto.getRandomValues(new Uint8Array(512 * 1024))).toString('hex')
+  await writeFile(path.join(proj, 'out/a.bin'), hex)
+  const a = new Cache(path.join(root, 'a'))
+  await a.save({
+    hash: HASH,
+    entry: { taskId: 'p#build', command: 'build', durationMs: 1, stdout: '' },
+    projectDir: proj,
+    outputFiles: [path.join(proj, 'out/a.bin')],
+  })
+  const pinned = await a.pinArtifact(HASH)
+  const b = new Cache(path.join(root, 'b'))
+  await b.ingest(HASH, pinned.body, { taskId: 'p#build', command: 'build', durationMs: 1 })
+  await pinned.release()
+  const size = (c: Cache): number =>
+    (c.dbHandle().query('SELECT size_bytes FROM entries').get() as { size_bytes: number })
+      .size_bytes
+  expect(size(b)).toBe(size(a))
+  expect(size(b)).toBeGreaterThanOrEqual(hex.length)
+  a.close()
+  b.close()
+})

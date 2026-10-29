@@ -94,6 +94,24 @@ describe('a shallow clone', () => {
     expect(shallow(root)).toBe('true')
   })
 
+  it('a two-dot range fetches its base as the three-dot one does', async () => {
+    // `[A..HEAD]` diffs from A's tip itself, so main's own edit (a.txt) counts.
+    expect(await changed(await clone('feat'), 'origin/main..HEAD')).toEqual([
+      'a.txt',
+      'b.txt',
+      'c.txt',
+    ])
+    expect(await changed(await clone('feat'), 'HEAD~1..HEAD')).toEqual(['c.txt'])
+  })
+
+  it('fetches a tag base as it fetches a branch', async () => {
+    og('tag', '-f', 'light', 'main')
+    og('tag', '-f', '-a', '-m', 'annotated', 'ann', 'main')
+    expect(await changed(await clone('feat'), 'light')).toEqual(['b.txt', 'c.txt'])
+    expect(await changed(await clone('feat'), 'refs/tags/ann')).toEqual(['b.txt', 'c.txt'])
+    expect(await changed(await clone('feat'), 'light..HEAD')).toEqual(['a.txt', 'b.txt', 'c.txt'])
+  })
+
   it("a bare --affected with no base branch fetches origin's default", async () => {
     const root = await clone('feat')
     expect(gitIn(root)('branch', '-r').trim()).toBe('origin/feat')
@@ -139,6 +157,15 @@ describe('a shallow clone', () => {
     expect(refusal).toBe(
       'git ref "HEAD~1" did not resolve. Pass a branch or commit you have locally. ' +
         'This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).',
+    )
+    // The base's tip is here but not the history to its merge base: diffing
+    // the tip selected what main changed, green.
+    const cut = await clone('feat')
+    gitIn(cut)('fetch', '-q', '--depth=1', 'origin', '+refs/heads/main:refs/remotes/origin/main')
+    gitIn(cut)('remote', 'set-url', 'origin', `file://${dir}/nowhere`)
+    expect(await changed(cut, 'origin/main').catch((err: Error) => err.message)).toBe(
+      'git ref "origin/main" has no merge base with HEAD in this shallow clone, and origin ' +
+        'did not give the history between them: fetch it (`git fetch --unshallow origin`).',
     )
     // CONTROL: the same missing ref in a full clone keeps the bare message.
     expect(await changed(origin, 'HEAD~99').catch((err: Error) => err.message)).toBe(

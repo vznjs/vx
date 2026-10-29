@@ -47,6 +47,8 @@ function main(argv: string[]): void {
   const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
+  // Bun.serve reads '' as localhost: unreachable from another host or container.
+  if (values.host.trim() === '') fail(`--host: needs an address, got '${values.host}'`)
   let allow
   let timingDays
   try {

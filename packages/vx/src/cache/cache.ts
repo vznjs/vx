@@ -163,11 +163,13 @@ const VX_CACHE_NAMES = new Set([
   'cache.db-wal',
   'cache.db-shm',
   'cache.db-journal',
-  'runs',
+  // run-failures.ts, run-steps.ts, orchestrator/lockfile-claim.ts. Run
+  // history lives in cache.db and the config bundle always in
+  // `.vx/cache/compiled`, so a `runs` or `compiled` here is the user's.
   'failures',
+  'steps',
+  'warnings',
   'lockfile-claims',
-  // The workspace config's bytecode bundle (workspace/config-bytecode.ts).
-  'compiled',
 ])
 
 /**
@@ -1180,8 +1182,10 @@ export class Cache implements CacheLayer {
           } | null
         )?.value,
     )
+    // A dry prune names what the real one takes, so it reads the store a
+    // run opens (today's), not the one the index last recorded.
     let storeDir =
-      mode !== 'open'
+      mode === 'inspect'
         ? (recorded ?? (typeof storeRoot === 'string' ? storeRoot : undefined))
         : storeRoot === undefined
           ? recorded
@@ -1298,7 +1302,7 @@ export class Cache implements CacheLayer {
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
     this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
-    this.outputs = new OutputIndex(this.db)
+    this.outputs = new OutputIndex(this.db, this.writeBlocked === null && !this.inspecting)
     this.folds = new FoldMemo(this.db, this.write && !this.inspecting)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))
     this.remoteHits = new RemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
@@ -1975,7 +1979,7 @@ export class Cache implements CacheLayer {
         `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(this.artifactCeiling)} artifact ceiling`,
       )
     }
-    if (await this.copyTree(tree, rows, files, projectDir, accept)) return
+    if (await this.copyTree(hash, tree, rows, files, projectDir, accept)) return
     await extractArtifactStream(
       packArtifactStream(planOfTree(tree, this.stdoutText(hash))),
       projectDir,
@@ -1995,6 +1999,7 @@ export class Cache implements CacheLayer {
    * restore through the tar extractor, ~25 ms a task (2026-10-22).
    */
   private async copyTree(
+    hash: string,
     tree: string,
     rows: readonly OutputFileRow[],
     files: readonly OutputFileRow[],
@@ -2046,6 +2051,12 @@ export class Cache implements CacheLayer {
     const roots = [...made].filter((d) => ![...made].some((o) => d.startsWith(`${o}/`)))
     readUmask()
     const plain = restoredMode(0o666)
+    // Another process's re-save of this key renames the tree aside and a
+    // new one in mid-copy: the files copied after came from another build.
+    // A changed inode is that race, a miss (the task runs), and the entry
+    // the other process saved is kept.
+    const ino = lstatSync(tree).ino
+    const swapped = (): boolean => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino
     try {
       const dirs = new Set<string>()
       for (const r of rows) {
@@ -2062,11 +2073,14 @@ export class Cache implements CacheLayer {
           await utimes(to, at, at)
         }),
       )
+      if (swapped()) throw new ArtifactVanishedError(hash)
     } catch (err) {
       await Promise.all([
         ...roots.map((d) => rm(path.join(projectDir, d), { recursive: true, force: true })),
         ...placed.map((f) => rm(path.join(projectDir, f), { force: true })),
       ])
+      if (!(err instanceof ArtifactVanishedError) && swapped())
+        throw new ArtifactVanishedError(hash)
       throw err
     }
     return true
@@ -2200,7 +2214,12 @@ export class Cache implements CacheLayer {
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
       // output directory that links out of the project).
-      if (err instanceof CorruptArtifactError || err instanceof UserError) throw err
+      if (
+        err instanceof CorruptArtifactError ||
+        err instanceof UserError ||
+        err instanceof ArtifactVanishedError
+      )
+        throw err
       // The save and the ingest proved every name safe, so one that reads
       // unsafe now is damaged or tampered bytes: a long name's pax record
       // has no header checksum, and the name is judged before the CRC at
@@ -2279,6 +2298,15 @@ export class Cache implements CacheLayer {
       if (code === 'ENOENT' && (err as NodeJS.ErrnoException).path === src) {
         throw new ArtifactVanishedError(hash)
       }
+      // So is a tree file: a prune or another process's re-save moved the
+      // tree aside mid-copy.
+      if (
+        code === 'ENOENT' &&
+        tree !== undefined &&
+        inTree((err as NodeJS.ErrnoException).path, tree)
+      ) {
+        throw new ArtifactVanishedError(hash)
+      }
       // A staged file the restore itself just wrote is gone before its
       // commit: another process cleaned the same outputs under us (two runs
       // on one workspace, a `vx watch` beside a `vx run` — a clean landing
@@ -2335,6 +2363,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     /** See `CacheLayer.save`. */
@@ -2425,6 +2454,11 @@ export class Cache implements CacheLayer {
     const pinned = this.tempPath(hash)
     try {
       linkSync(this.tarPath(hash), pinned)
+      // The link shares the artifact's mtime, as adopt's does: an artifact
+      // saved over an hour ago made the pin a crashed save's temp to another
+      // process's orphan sweep, which took it mid-upload.
+      const now = new Date()
+      utimesSync(pinned, now, now)
     } catch (err) {
       const tree = this.treePath(hash)
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT' || !existsSync(tree)) throw err
@@ -2528,6 +2562,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
   }): Map<string, string> {
     const outputs = new Map<string, string>()
@@ -2561,6 +2596,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
   }): Promise<Uint8Array> {
     // stdout is ALWAYS present in the artifact, even if empty, so the
@@ -2583,7 +2619,12 @@ export class Cache implements CacheLayer {
       key: args.hash,
       stdout: args.entry.stdout ?? '',
       outputs: this.outputsOf(args),
-      dirs: args.outputDirs?.map((d) => `outputs/${relPosix(args.projectDir, d)}`),
+      dirs: [
+        ...(args.outputDirs ?? []).map((d) => `outputs/${relPosix(args.projectDir, d)}`),
+        ...(args.workspaceOutputDirs ?? []).map(
+          (d) => `${WORKSPACE_OUTPUT_PREFIX}${relPosix(args.workspaceRoot!, d)}`,
+        ),
+      ],
       exec: usageOfEntry(args.entry),
       root: args.workspaceRoot ?? args.projectDir,
     })
@@ -2801,13 +2842,9 @@ export class Cache implements CacheLayer {
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     }
     const { entries } = scanned
-    // What the entry's form holds on disk, as `--max-size` counts it: a
-    // tree its files, saved or ingested, never the body it was sent as.
-    let treeBytes = 0
-    for (const e of entries) treeBytes += e.size
-    const totalBytes =
-      inline === null && this.store.decompress
-        ? (saved?.bytes ?? treeBytes)
+    let totalBytes =
+      saved !== undefined
+        ? saved.bytes
         : compressed instanceof Uint8Array
           ? compressed.byteLength
           : Bun.file(tmpPath!).size
@@ -2838,6 +2875,12 @@ export class Cache implements CacheLayer {
       if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
       tmpPath = undefined
       tree = dir
+    }
+    // A tree keeps its files as they are: counted as a saved tree counts
+    // them, not as the archive it was unpacked from (`--max-size`, stats).
+    if (tree !== undefined && saved === undefined) {
+      totalBytes = 0
+      for (const e of entries) totalBytes += e.size
     }
     const outputFileRows: Array<[string, number, number, number]> = []
     // Per-output-file fingerprint rows feed the skip-restore check.
@@ -3082,6 +3125,7 @@ export class Cache implements CacheLayer {
     return this.guard(() => this.history.recordRunBundle(bundle))
   }
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void {
+    if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRemoteErrors(runId, errors))
   }
   stats(opts: CacheStatsOptions = {}): CacheStats {
@@ -3208,7 +3252,25 @@ export class Cache implements CacheLayer {
     this.files.pruneOlderThan(cutoff)
     this.folds.prune(cutoff)
     const orphans = await this.reapOrphans(picked.files)
+    // An inline artifact's deleted pages go to SQLite's free list and the
+    // file keeps its size: give them back, or the bytes said freed are not.
+    if ([...victims].some((h) => inline.has(h))) this.releaseFreePages()
     return { evicted: victims.size, bytesFreed, ...orphans }
+  }
+
+  /** VACUUM the schema holding inline artifacts; busy or no room to rewrite keeps the pages for reuse. */
+  private releaseFreePages(): void {
+    const schema = this.storeDir === undefined ? 'main' : 'store'
+    try {
+      const { freelist_count: free } = this.db.prepare(`PRAGMA ${schema}.freelist_count`).get() as {
+        freelist_count: number
+      }
+      if (free === 0) return
+      this.db.exec(`VACUUM ${schema}`)
+      this.db.exec(`PRAGMA ${schema}.wal_checkpoint(TRUNCATE)`)
+    } catch {
+      // Another process holds the database, or the disk has no room for the copy.
+    }
   }
 
   /**
