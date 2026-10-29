@@ -1170,6 +1170,26 @@ describe('resolved file order is stable regardless of enumeration order', () => 
     ])
   })
 
+  it('sorts by code unit, not by locale: the key is the same on every machine', async () => {
+    // A locale sort puts `a.ts` before `B.ts` and `_x.ts` anywhere the
+    // collation likes; code units put `B` (66) < `_` (95) < `a` (97).
+    for (const f of ['é.ts', '_x.ts', 'B.ts']) await write(path.join(projectDir, 'src', f), f)
+    const memo = new GitFilesCache()
+    memo.set(projectDir, ['src/a.ts', 'src/é.ts', 'src/_x.ts', 'src/B.ts'])
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+      gitFilesCache: memo,
+    })
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual(
+      ['src/B.ts', 'src/_x.ts', 'src/a.ts', 'src/é.ts'].map((f) => path.join(...f.split('/'))),
+    )
+  })
+
   it('a workspaceFiles declaration is resolved once per run and snapshot', async () => {
     // Every Turbo-mapped task carries the same `globalDependencies`; resolving
     // one literal against medusa's 24k-file enumeration per task was 930 ms of

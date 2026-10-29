@@ -232,6 +232,24 @@ describe('key', () => {
     expect(calls).toHaveLength(2)
   })
 
+  it('a parse that throws writes no memo: the next process parses, and refuses, again', async () => {
+    await lock('broken\n')
+    const throwing = () =>
+      lockfileClaim({
+        file: 'bun.lock',
+        version: 1,
+        digest: (text) => {
+          calls.push(text)
+          throw new Error('bun.lock: not JSON')
+        },
+      })
+    for (let i = 1; i <= 2; i++) {
+      await expect(throwing().key(task('packages/a'), ctx())).rejects.toThrow('not JSON')
+      expect(calls).toHaveLength(i)
+    }
+    expect(await Bun.file(MEMO()).exists()).toBe(false)
+  })
+
   it('a same-size rewrite with its mtime kept is read again in the same process', async () => {
     // `cp -p` / `tar -x` of another lockfile: size and mtime match the last
     // read, and only the ctime and inode say the bytes moved. The waits put

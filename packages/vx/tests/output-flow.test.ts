@@ -63,6 +63,16 @@ describe('resolveOutputView', () => {
     expect(resolveOutputView({ outputLogs: 'full', flow: 'broad' }, {})).toEqual({ mode: 'full' })
   })
 
+  it('--output-logs beats VX_RUN_OUTPUT_LOGS, and the variable beats CI and flow', () => {
+    const env = { VX_RUN_OUTPUT_LOGS: 'none' }
+    expect(resolveOutputView({ outputLogs: 'full', flow: 'broad' }, env)).toEqual({ mode: 'full' })
+    expect(resolveOutputView({ flow: 'focused' }, env)).toEqual({ mode: 'none' })
+    expect(resolveOutputView({ flow: 'broad' }, { ...env, CI: '1' })).toEqual({
+      mode: 'none',
+      ci: true,
+    })
+  })
+
   it('no flow, no CI, no override → full (programmatic default)', () => {
     expect(resolveOutputView({}, {})).toEqual({ mode: 'full' })
   })

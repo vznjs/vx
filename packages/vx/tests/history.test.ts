@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
@@ -92,6 +92,36 @@ describe('LocalHistoryProvider', () => {
   }
   afterEach(() => {
     rmSync(cacheDir, { recursive: true, force: true })
+  })
+
+  // A second opener of an existing index (another run, a reading verb) must
+  // not drop the first one's write-ahead log: rows it committed and has not
+  // checkpointed live only there.
+  it('a second open of an existing index keeps the rows the first has not checkpointed', async () => {
+    const first = makeCache()
+    try {
+      first.recordRuns([
+        mkRun({
+          hash: 'w1',
+          project: 'pkg',
+          task: 'build',
+          status: 'success',
+          durationMs: 7,
+          startedAt: 1,
+        }),
+      ])
+      expect(existsSync(path.join(cacheDir, 'cache.db-wal'))).toBe(true)
+      const second = new Cache(cacheDir)
+      try {
+        const db = (second as unknown as { db: Database }).db
+        const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#build'])).get('pkg#build')
+        expect(entry?.runs).toBe(1)
+      } finally {
+        second.close()
+      }
+    } finally {
+      first.close()
+    }
   })
 
   it('aggregates success/failure/hit counts over recent runs', async () => {
