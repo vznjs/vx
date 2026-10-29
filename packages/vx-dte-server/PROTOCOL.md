@@ -153,8 +153,10 @@ again on a new socket if the first dropped under it.
 `heartbeatMs` is how often participants should hear from each other: a
 peer quiet on a socket that never closed is its peers' to lose. The
 clients probe a quiet peer with an empty numbered send, which it
-acknowledges at once, and lose one quiet for two `heartbeatMs`. A
-numbered frame the relay leaves unanswered a heartbeat is a dead socket.
+acknowledges at once, and lose one quiet for two `heartbeatMs`; a
+worker whose relay answered its probe waits five on its host, as long as
+the relay keeps a host whose socket dropped. A numbered frame the relay
+leaves unanswered a heartbeat is a dead socket.
 
 ## Close codes
 

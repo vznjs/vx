@@ -273,6 +273,46 @@ it('a worker late for a run that ended exits 0', async () => {
   }
 })
 
+// A worker that ended on its orchestrator's silence stopped every task it
+// ran and left with no word: its CI job green, the cause found only in the
+// run's profile (CI run 40886829588, 2026-10-29). It says why.
+it('a worker its orchestrator went silent on says so and exits 0', async () => {
+  let silent = false
+  const served = servedRelay({ heartbeatMs: 100 }, (frame) => {
+    if (!silent) return frame
+    const f = JSON.parse(frame) as { sends?: { to: string }[] }
+    if (f.sends === undefined) return frame
+    return JSON.stringify({ ...f, sends: f.sends.filter((one) => one.to === 'host') })
+  })
+  const written: string[] = []
+  const write = process.stderr.write.bind(process.stderr)
+  process.stderr.write = ((chunk: string) => {
+    written.push(String(chunk))
+    return true
+  }) as typeof process.stderr.write
+  try {
+    const o = await join(served.url, R, 'orchestrator', null, undefined)
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root: process.cwd(),
+      token: async () => undefined,
+      proof: { psk: async () => new Uint8Array(32), mismatch: 'no key' },
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    for (let i = 0; i < 50 && (await o.poll()).length === 0; i++);
+    silent = true
+    expect(await code).toBe(0)
+    expect(written.join('')).toContain(
+      'the orchestrator went silent: the tasks running here were stopped, and the run gives them to other workers',
+    )
+    await o.leave()
+  } finally {
+    process.stderr.write = write
+    await served.stop()
+  }
+})
+
 // A relay restart its orchestrator does not join again within two
 // heartbeats loses the worker. The run gave its tasks to others; the
 // worker's CI job is no failure (mac#1 on #3895).

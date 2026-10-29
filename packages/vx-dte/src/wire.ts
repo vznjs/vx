@@ -55,6 +55,18 @@ const WORKER_PROBE_BEATS = 1.6
  */
 const LOST_BEATS = 1.9
 /**
+ * A worker whose relay answered its probe waits this many on a quiet
+ * orchestrator: the relay is up and keeps the run's host while that host's
+ * socket dials again (its grace, 10 s on the default), so an orchestrator
+ * quiet but there (its loop held, its socket redialing) is not lost. Lost
+ * at 1.9, every worker of a run stopped its running tasks in the same
+ * second and left (CI, 2026-10-29); owner, 2026-10-23: "if it does not
+ * reply for 10s its dead".
+ */
+const ORCHESTRATOR_LOST_BEATS = 5
+/** Why a worker ends on its orchestrator's silence. */
+export const ORCHESTRATOR_SILENT = 'relay: the orchestrator went silent'
+/**
  * A relay that forgot this participant (a restart: it stores nothing) is
  * joined again for this many heartbeats; the orchestrator joins as the
  * run's host again, a worker as itself (2026-10-25: "If they can't
@@ -293,6 +305,8 @@ export async function join(
    * never closed: the relay loses one whose socket closed and says so.
    */
   const heard = new Map<string, number>()
+  /** When a worker last probed its orchestrator. */
+  let probedAt: number | undefined
   /** `quiet`: an ack, a probe or a resend, which waits on no answer: the relay says only a failure. */
   const put = (to: string, frame: object, quiet = true): Promise<void> =>
     over((s) => s.send(relayIds.get(to) ?? to, frame, quiet))
@@ -398,11 +412,14 @@ export async function join(
     for (const [peer, at] of heard) {
       const quiet = now - at
       if (quiet >= LOST_BEATS * heartbeatMs) {
-        forget(peer)
         if (peer === 'orchestrator') {
-          end(new RelayError(410, 'relay: the orchestrator went silent'))
+          const relayUp = probedAt !== undefined && socket.heardAt >= probedAt
+          if (relayUp && quiet < ORCHESTRATOR_LOST_BEATS * heartbeatMs) continue
+          forget(peer)
+          end(new RelayError(410, ORCHESTRATOR_SILENT))
           return
         }
+        forget(peer)
         inbox.push({ from: 'relay', body: { type: 'lost', id: peer } })
         nudge()
       } else if (
@@ -414,8 +431,12 @@ export async function join(
         if (o === undefined) outbox.set(peer, (o = { next: 0, unacked: new Map() }))
         const seq = ++o.next
         o.unacked.set(seq, { body: PROBED, at: now })
+        // A worker's probe is answered by the relay: an answer says the
+        // relay is up while its orchestrator is quiet (`ORCHESTRATOR_LOST_BEATS`).
+        const asked = role === 'worker'
+        if (asked) probedAt = now
         // quiet: unacknowledged, it goes again
-        put(peer, { seq, ...owed(peer) } satisfies Probe).catch(() => undefined)
+        put(peer, { seq, ...owed(peer) } satisfies Probe, !asked).catch(() => undefined)
       }
     }
   }
