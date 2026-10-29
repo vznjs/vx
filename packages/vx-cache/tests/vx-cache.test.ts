@@ -195,6 +195,40 @@ describe('VxCacheLayer', () => {
     ])
   })
 
+  it("reads a server's endless answer no further than its cap", async () => {
+    const pulled = { capabilities: 0, check: 0, refusal: 0 }
+    const endless = (into: keyof typeof pulled, status = 200) =>
+      new Response(
+        new ReadableStream({
+          pull(c) {
+            pulled[into] += 64 * 1024
+            c.enqueue(new Uint8Array(64 * 1024).fill(0x20))
+          },
+        }),
+        { status },
+      )
+    const fake = (where: keyof typeof pulled, status?: number): typeof fetch =>
+      Object.assign(
+        async (input: string | URL | Request, init?: RequestInit) => {
+          const at = new URL(input instanceof Request ? input.url : input).pathname
+          if (at === '/v1/capabilities' && where !== 'capabilities') return fetch(input, init)
+          return endless(where, status)
+        },
+        { preconnect: fetch.preconnect },
+      )
+    expect(layer(srv.url, write, [MAIN], fake('capabilities')).hasMany(['e1'])).rejects.toThrow(
+      '/v1/capabilities answered over 65536 bytes',
+    )
+    expect(layer(srv.url, write, [MAIN], fake('check')).hasMany(['e1'])).rejects.toThrow(
+      'the check answered over',
+    )
+    expect(layer(srv.url, write, [MAIN], fake('refusal', 500)).get('e1')).rejects.toThrow(
+      'HTTP 500',
+    )
+    await Bun.sleep(50)
+    for (const n of Object.values(pulled)) expect(n).toBeLessThanOrEqual(256 * 1024)
+  })
+
   it('says a job that reads only was refused a write once, and reads on', async () => {
     const c = layer(srv.url, read)
     expect(c.put('cc33', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
