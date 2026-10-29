@@ -130,6 +130,16 @@ it('refuses every join with a 403 while ALLOW admits no one, waking no object', 
   }
 })
 
+// No object bound: each join threw "Cannot read properties of
+// undefined", a 500 a client retries until its deadline.
+it('refuses every join with a 403, saying why, while RELAY is unbound', async () => {
+  const res = await join({ ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml' } as Env, A)
+  expect([res.status, await res.json()]).toEqual([
+    403,
+    { error: 'RELAY: bind the RelayRun Durable Object as RELAY (wrangler.jsonc durable_objects)' },
+  ])
+})
+
 // Hibernated, an object is built again from its sockets: it writes no storage.
 it('rebuilds a run from its sockets’ attachments when it wakes', () => {
   const pushed = new Map<string, unknown[]>()
@@ -245,17 +255,5 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
         "the token's aud is https://other.example.com, not this relay's https://relay.example.com: ask CI for a token for https://relay.example.com, or set the relay's audience",
     },
     426,
-  ])
-})
-
-// A deploy that bound no Durable Object threw the runtime's TypeError: a bare 500.
-it('refuses every join with a 403 naming the binding while no RELAY is bound', async () => {
-  const res = await join({ ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml' } as Env, A)
-  expect([res.status, await res.json()]).toEqual([
-    403,
-    {
-      error:
-        'this relay has no Durable Object bound as RELAY: bind RelayRun in wrangler.jsonc (durable_objects)',
-    },
   ])
 })

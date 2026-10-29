@@ -132,13 +132,13 @@ export default {
     }
     const refused = allowRefusal(env.ALLOW)
     if (refused !== undefined) return refuse(req, 403, refused)
-    // Unbound, the runtime's TypeError was a bare 500, which a client waits out.
-    if (env.RELAY === undefined)
+    if (env.RELAY === undefined) {
       return refuse(
         req,
         403,
-        'this relay has no Durable Object bound as RELAY: bind RelayRun in wrangler.jsonc (durable_objects)',
+        'RELAY: bind the RelayRun Durable Object as RELAY (wrangler.jsonc durable_objects)',
       )
+    }
     const token = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1]
     const claimed = token === undefined ? undefined : claimedRun(token)
     const stub = env.RELAY.get(env.RELAY.idFromName(await sessionKey(session, claimed)))

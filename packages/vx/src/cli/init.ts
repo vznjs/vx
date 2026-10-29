@@ -147,7 +147,9 @@ export function initInstalls(
 ): { argv: string[]; cwd: string | null }[] {
   const out: { argv: string[]; cwd: string | null }[] = []
   if (globalAt !== version) {
-    const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1] ?? 'bun'
+    // Yarn 2+ has no `yarn global`: Bun, which vx needs anyway, as with no runner.
+    const ua = /^(npm|pnpm|yarn|bun)\/(\d+)/.exec(userAgent ?? '')
+    const runner = ua === null || (ua[1] === 'yarn' && Number(ua[2]) >= 2) ? 'bun' : ua[1]!
     const manager = runner as ManagedInstall['manager']
     out.push({ argv: upgradeArgv({ manager, scope: 'global', cwd: '' }, version), cwd: null })
   }
@@ -307,7 +309,8 @@ function hasScripts(pkgRoot: string | null): boolean {
   if (pkgRoot === null) return false
   if (existsSync(path.join(pkgRoot, 'pnpm-workspace.yaml'))) return true
   try {
-    const pj = JSON.parse(readFileSync(path.join(pkgRoot, 'package.json'), 'utf8')) as {
+    const text = readFileSync(path.join(pkgRoot, 'package.json'), 'utf8').replace(/^﻿/, '')
+    const pj = JSON.parse(text) as {
       scripts?: unknown
       workspaces?: unknown
     }
@@ -335,6 +338,7 @@ async function starter(
   if (args.mode !== undefined) {
     throw new UserError(
       `vx init: --${args.mode} answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here`,
+      'VX_E_USAGE',
     )
   }
   // A source checkout installs nothing, so it declares the plugin only where one is.
