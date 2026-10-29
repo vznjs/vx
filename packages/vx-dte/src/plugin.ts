@@ -139,9 +139,11 @@ function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new UserError(`dte(): headers cannot set "${name}"`)
+      throw new UserError(`dte() option "headers" cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new UserError(`dte(): header "${name}" must be one line of text`)
+      throw new UserError(
+        `dte() option "headers.${name}" must be one line of text (its value is not printed)`,
+      )
     out[name] = value
   }
   return out
@@ -153,33 +155,29 @@ export function dte(options: DteOptions) {
   const how: Strategy = { ...DEFAULT_STRATEGY }
   for (const [layer, choice] of Object.entries(options.scheduler ?? {})) {
     const choices = STRATEGIES[layer as keyof Strategy] as readonly string[] | undefined
-    if (choices === undefined || !choices.includes(choice as string))
+    if (choices === undefined)
       throw new UserError(
-        `dte(): scheduler.${layer} ${choices === undefined ? `is no layer: the layers are ${Object.keys(STRATEGIES).join(', ')}` : `is one of ${choices.join(', ')}`}`,
+        `dte() option "scheduler" has no layer ${JSON.stringify(layer)} (layers: ${Object.keys(STRATEGIES).join(', ')})`,
       )
+    if (!choices.includes(choice as string))
+      refuse(`scheduler.${layer}`, `one of ${choices.join(', ')}`, choice)
     ;(how as unknown as Record<string, unknown>)[layer] = choice
   }
   const sizes = Object.entries(options.workers ?? {}).map(([name, s]) => {
-    const memory = bytes(s?.memory)
-    if (
-      !(
-        (s?.max === undefined || (Number.isInteger(s.max) && s.max >= 0)) &&
-        Number.isInteger(s?.cpu) &&
-        s.cpu >= 1
-      ) ||
-      memory === undefined
-    ) {
-      throw new UserError(
-        `dte(): workers.${name} needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any`,
-      )
-    }
+    const at = `workers.${name}`
+    if (!(Number.isInteger(s?.cpu) && s.cpu >= 1)) refuse(`${at}.cpu`, 'a whole number ≥ 1', s?.cpu)
+    const memory = bytes(s.memory)
+    if (memory === undefined)
+      refuse(`${at}.memory`, "bytes above 0 or a size such as '8GB'", s.memory)
+    if (!(s.max === undefined || (Number.isInteger(s.max) && s.max >= 0)))
+      refuse(`${at}.max`, 'a whole number ≥ 0', s.max)
     if (s.platform !== undefined && !PLATFORMS.includes(s.platform))
-      throw new UserError(`dte(): workers.${name}.platform is one of ${PLATFORMS.join(', ')}`)
+      refuse(`${at}.platform`, `one of ${PLATFORMS.join(', ')}`, s.platform)
     return {
       name,
       max: s.max ?? Infinity,
       cpu: s.cpu,
-      memory,
+      memory: memory!,
       platform: s.platform ?? hostPlatform(),
     }
   })
@@ -217,7 +215,9 @@ export function dte(options: DteOptions) {
   }
   // With no scheme the run failed in the executor as a bare "Invalid URL".
   if (options.relay !== undefined && !/^https?:\/\//.test(options.relay)) {
-    throw new UserError(`dte(): relay must be http(s), got ${options.relay}`)
+    throw new UserError(
+      `dte() option "relay" must be an http(s) URL, got ${JSON.stringify(options.relay)}`,
+    )
   }
   // On GitHub Actions with none given, one for the relay's URL.
   const token = async (relay: string): Promise<string | undefined> =>
@@ -842,10 +842,18 @@ const PLACED = { cores: 1, memory: 0 }
 
 function unmeasuredOf(u: DteOptions['unmeasured']): Need {
   if (u === undefined) return FRESH
+  if (!(typeof u.cpu === 'number' && u.cpu > 0 && Number.isFinite(u.cpu)))
+    refuse('unmeasured.cpu', 'a number above 0', u.cpu)
   const memory = bytes(u.memory)
-  if (!(typeof u.cpu === 'number' && u.cpu > 0) || memory === undefined)
-    throw new UserError("dte(): unmeasured needs cpu > 0 and memory such as '4GB'")
-  return { cores: u.cpu, memory }
+  if (memory === undefined)
+    refuse('unmeasured.memory', "bytes above 0 or a size such as '4GB'", u.memory)
+  return { cores: u.cpu, memory: memory! }
+}
+
+/** A `dte()` option it cannot use, named with the value as written (a NaN as NaN, not null). */
+function refuse(option: string, want: string, got: unknown): never {
+  const said = typeof got === 'number' ? String(got) : (JSON.stringify(got) ?? String(got))
+  throw new UserError(`dte() option "${option}" must be ${want}, got ${said}`)
 }
 
 /** What a task asks of a worker, from its history. */

@@ -271,8 +271,9 @@ export async function affectedChanges(
 
   const projects = await args.projects
 
-  // .vx/projects.lock.json (workspace-root metadata) is excluded like a gitignored
-  // file: re-running `vx lock` must not mark every project affected.
+  // What vx writes under `.vx` (the lock, its git files, the cache) is
+  // excluded like a gitignored file: re-running `vx lock` must not mark
+  // every project affected, nor the root project whole.
   // An untracked file under `node_modules` is an install, which the input
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.
   // So is each project's `vx.lock.json`, the review copy `vx lock` writes
@@ -282,7 +283,9 @@ export async function affectedChanges(
   const rootDir = path.resolve(args.workspaceRoot)
   const changed = [...diffed.paths, ...untracked.filter((s) => !isInstalledPath(s))].filter(
     (s) =>
-      s !== LOCKFILE_NAME &&
+      !VX_OWN.has(s) &&
+      !s.startsWith('.vx/cache/') &&
+      !s.startsWith('.vx/tmp/') &&
       (path.posix.basename(s) !== REVIEW_FILE || !reviewCopies.has(path.join(rootDir, s))),
   )
   // A symlinked input keys the content behind it (cache/linked-inputs.ts),
@@ -478,6 +481,9 @@ export async function affectedChanges(
   for (const name of await args.workspaceGlobOwners(changed, nestedDirs)) owned.add(name)
   return done()
 }
+
+/** What vx writes under `.vx`, which no key reads (cache/inputs.ts `ALWAYS_IGNORE`). */
+const VX_OWN: ReadonlySet<string> = new Set([LOCKFILE_NAME, '.vx/.gitattributes', '.vx/.gitignore'])
 
 const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 

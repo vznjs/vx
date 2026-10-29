@@ -45,11 +45,23 @@ export const place = (text: string): Inline => (text === 'local' ? text : id(tex
 /** Text in a tone's color. */
 export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
 
+// oxlint-disable-next-line no-control-regex
+const CONTROL = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g
+
+/**
+ * `s` with every control byte but a tab and a line break as `\xNN`: a
+ * notice quotes paths and names, anyone's bytes, and one holding `ESC ]0;`
+ * retitled the terminal. The colors are the components' own, added after.
+ */
+const plainText = (s: string): string =>
+  s.replace(CONTROL, (ch) => `\\x${ch.charCodeAt(0).toString(16).padStart(2, '0')}`)
+
 /** One inline as text, colored for `c`. */
 export function inline(x: Inline, c: ColorSupport): string {
-  if (typeof x === 'string') return x
+  if (typeof x === 'string') return plainText(x)
   if (Array.isArray(x)) return (x as readonly Inline[]).map((p) => inline(p, c)).join('')
-  const { style, text } = x as { style: Style; text: string }
+  const { style } = x as { style: Style; text: string }
+  const text = plainText((x as { text: string }).text)
   switch (style) {
     case 'dim':
       return paint('', text, c, { dim: true })

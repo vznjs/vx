@@ -13,6 +13,8 @@ export interface WatchCycle {
   readonly opts: RunOptions
   /** Every task in flight is a persistent one not yet ready. */
   waitsOnReadiness(): boolean
+  /** The project directories of the servers in flight. */
+  serverDirs(): string[]
   /** Stop the run as a SIGTERM would; watch keeps going. */
   interrupt(): void
   readonly interrupted: boolean
@@ -26,20 +28,23 @@ export function watchCycle(opts: RunOptions, stop: AbortSignal, onWaiting: () =>
   const bus = createEventBus()
   // id → persistent; a group task has no process and holds nothing up.
   const active = new Map<string, boolean>()
+  const dirs = new Map<string, string>()
   let tasks: number | undefined
   const waitsOnReadiness = (): boolean =>
     active.size > 0 && [...active.values()].every((persistent) => persistent)
   bus.subscribe((e) => {
     if (e.kind === 'run:start') tasks = e.info.total
-    else if (e.kind === 'task:start' && e.node.config.exec !== undefined)
+    else if (e.kind === 'task:start' && e.node.config.exec !== undefined) {
       active.set(e.node.id, e.node.config.exec.persistent !== undefined)
-    else if (e.kind === 'task:complete') active.delete(e.node.id)
+      dirs.set(e.node.id, e.node.projectDir)
+    } else if (e.kind === 'task:complete') active.delete(e.node.id)
     else return
     if (waitsOnReadiness()) onWaiting()
   })
   return {
     opts: { ...opts, bus, footer: false, signal: AbortSignal.any([stop, own.signal]) },
     waitsOnReadiness,
+    serverDirs: () => [...active].filter(([, server]) => server).map(([id]) => dirs.get(id)!),
     interrupt: () => own.abort('SIGTERM'),
     get interrupted() {
       return own.signal.aborted
