@@ -7,11 +7,11 @@
   "concurrency": 10,
   "runners": {
     "vx": {
-      "date": "2026-10-29T18:49:04.043Z",
+      "date": "2026-10-29T19:27:44.784Z",
       "machine": {
         "os": "linux x64",
         "cores": 4,
-        "cpu": "AMD EPYC 9V45 96-Core Processor",
+        "cpu": "AMD EPYC 9V74 80-Core Processor",
         "memoryGb": 16
       },
       "reps": 3,
@@ -20,28 +20,28 @@
         "fresh": 112830,
         "warmNoRestore": 0,
         "warmRestore": 0,
-        "freshCpu": 32264.063,
+        "freshCpu": 44753.464,
         "warmNoRestoreCpu": 0,
         "criticalPathMs": 9150,
         "workBoundMs": 112822.5
       },
       "row": {
         "runner": "vx",
-        "version": "vx 0.0.0 @ 7813301b9",
-        "fresh": 120549.529115,
-        "warmNoRestore": 460.832301,
-        "warmRestore": 784.549733,
-        "freshCpu": 62962.383,
-        "warmNoRestoreCpu": 980.681,
-        "warmRestoreCpu": 1629.244
+        "version": "vx 0.0.0 @ b3bb04103",
+        "fresh": 121907.386391,
+        "warmNoRestore": 633.699737,
+        "warmRestore": 1026.815625,
+        "freshCpu": 81669.955,
+        "warmNoRestoreCpu": 1371.156,
+        "warmRestoreCpu": 2329.021
       }
     },
     "turbo": {
-      "date": "2026-10-29T18:16:28.078Z",
+      "date": "2026-10-29T19:25:00.279Z",
       "machine": {
         "os": "linux x64",
         "cores": 4,
-        "cpu": "Intel(R) Xeon(R) 6973P-C",
+        "cpu": "AMD EPYC 9V74 80-Core Processor",
         "memoryGb": 16
       },
       "reps": 3,
@@ -50,7 +50,7 @@
         "fresh": 112830,
         "warmNoRestore": 0,
         "warmRestore": 0,
-        "freshCpu": 25530.257,
+        "freshCpu": 44421.046,
         "warmNoRestoreCpu": 0,
         "criticalPathMs": 9150,
         "workBoundMs": 112822.5
@@ -58,20 +58,20 @@
       "row": {
         "runner": "turbo",
         "version": "2.11.10",
-        "fresh": 120419.152181,
-        "warmNoRestore": 475.377781,
-        "warmRestore": 995.946085,
-        "freshCpu": 79667.267,
-        "warmNoRestoreCpu": 1111.355,
-        "warmRestoreCpu": 2347.561
+        "fresh": 124868.883257,
+        "warmNoRestore": 656.041154,
+        "warmRestore": 1365.196425,
+        "freshCpu": 126415.788,
+        "warmNoRestoreCpu": 1627.406,
+        "warmRestoreCpu": 3542.065
       }
     },
     "nx": {
-      "date": "2026-10-29T18:20:43.844Z",
+      "date": "2026-10-29T19:18:41.440Z",
       "machine": {
         "os": "linux x64",
         "cores": 4,
-        "cpu": "Intel(R) Xeon(R) 6973P-C",
+        "cpu": "AMD EPYC 9V74 80-Core Processor",
         "memoryGb": 16
       },
       "reps": 3,
@@ -80,7 +80,7 @@
         "fresh": 112830,
         "warmNoRestore": 0,
         "warmRestore": 0,
-        "freshCpu": 25601.402,
+        "freshCpu": 44085.907,
         "warmNoRestoreCpu": 0,
         "criticalPathMs": 9150,
         "workBoundMs": 112822.5
@@ -88,20 +88,20 @@
       "row": {
         "runner": "nx",
         "version": "24.0.2",
-        "fresh": 161941.036458,
-        "warmNoRestore": 9437.935366,
-        "warmRestore": 9167.524308,
-        "freshCpu": 196651.291,
-        "warmNoRestoreCpu": 14709.95,
-        "warmRestoreCpu": 14328.07
+        "fresh": 288246.00803,
+        "warmNoRestore": 12230.17914,
+        "warmRestore": 12133.327398,
+        "freshCpu": 363240.587,
+        "warmNoRestoreCpu": 18686.839,
+        "warmRestoreCpu": 18564.391
       }
     },
     "vite-task": {
-      "date": "2026-10-29T18:23:51.345Z",
+      "date": "2026-10-29T19:22:16.858Z",
       "machine": {
         "os": "linux x64",
         "cores": 4,
-        "cpu": "Intel(R) Xeon(R) 6973P-C",
+        "cpu": "AMD EPYC 9V74 80-Core Processor",
         "memoryGb": 16
       },
       "reps": 3,
@@ -110,7 +110,7 @@
         "fresh": 112830,
         "warmNoRestore": 0,
         "warmRestore": 0,
-        "freshCpu": 26275.174,
+        "freshCpu": 44492.641,
         "warmNoRestoreCpu": 0,
         "criticalPathMs": 9150,
         "workBoundMs": 112822.5
@@ -118,12 +118,12 @@
       "row": {
         "runner": "vite-task",
         "version": "1.4.0",
-        "fresh": 118888.802615,
-        "warmNoRestore": 6619.258598,
-        "warmRestore": 6600.823975,
-        "freshCpu": 46820.46,
-        "warmNoRestoreCpu": 6619.825,
-        "warmRestoreCpu": 6602.406
+        "fresh": 121320.857708,
+        "warmNoRestore": 10449.143914,
+        "warmRestore": 10157.931929,
+        "freshCpu": 68369.281,
+        "warmNoRestoreCpu": 10446.705,
+        "warmRestoreCpu": 10159.17
       }
     }
   }
