@@ -331,6 +331,35 @@ describe('turbo-map: what the sweep found unheld', () => {
     })
   })
 
+  // vercel/turborepo#1472: a plain `turbo.json` takes comments too, line
+  // and block, between entries and before a string in an array.
+  it('reads comments in a plain `turbo.json`', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      `// top
+      { "tasks": { /* block */ "build": {
+        "dependsOn": [ /* before */ "^build" ], // after
+        /*
+          multi-line
+        */
+        "inputs": ["src/**"],
+      } } }`,
+    )
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const packageJson = { name: 'a', scripts: { build: 'b' } }
+    const m = await mapTurboWorkspace(
+      root,
+      [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
+      opts,
+    )
+    const t = m.projects[0]!.tasks[0]!.task!
+    expect([t['dependsOn'], t['inputs']]).toEqual([
+      ['^build'],
+      { files: ['src/**', 'package.json'] },
+    ])
+  })
+
   // vercel/turborepo#10083: Turbo refuses a directory holding both files.
   // Read first, `turbo.json` shadowed the `.jsonc` beside it in silence,
   // so an edit there keyed and ran nothing.
