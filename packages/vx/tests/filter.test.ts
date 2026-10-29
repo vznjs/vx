@@ -387,6 +387,33 @@ describe('applyFilters', () => {
     expect(pick('apps')).toEqual([])
   })
 
+  // pnpm's and Turbo's `<pattern>{<dir>}` (vercel/turborepo#887's
+  // `pattern{foo}[master]`): the packages the name selects in the
+  // directory. vx read the whole as one name glob and matched nothing.
+  it('a name pattern with a `{<dir>}` selects the matching packages in that directory', () => {
+    const projects = [
+      mkProject('@s/web', '/ws/apps/web', ['@s/ui']),
+      mkProject('@s/docs', '/ws/apps/docs'),
+      mkProject('@s/ui', '/ws/packages/ui'),
+      mkProject('web-kit', '/ws/packages/web-kit'),
+    ]
+    const graph = buildPackageGraph(projects)
+    const pick = (...raw: string[]) =>
+      [...applyFilters({ filters: raw.map((r) => parseFilter(r, ROOT)), projects, graph })].sort()
+    expect(pick('@s/*{apps}')).toEqual(['@s/docs', '@s/web'])
+    expect(pick('@s/*{./packages/*}')).toEqual(['@s/ui'])
+    expect(pick('*web*{apps/**}')).toEqual(['@s/web'])
+    expect(pick('@s/web{apps}...')).toEqual(['@s/ui', '@s/web'])
+    expect(pick('@s/*', '!*{apps}')).toEqual(['@s/ui'])
+    expect(pick('web-kit{apps}')).toEqual([])
+    const f = parseFilter('@s/*{apps}[main]', ROOT)
+    expect([f.matcher, f.gitSince, f.isPath]).toEqual(['@s/*', 'main', false])
+    expect(() => parseFilter('@s/*{}', ROOT)).toThrow('filter "@s/*{}" names no project')
+    expect(() => parseFilter('@s/*{../x}', ROOT)).toThrow(
+      'filter "@s/*{../x}" names a directory outside the workspace root',
+    )
+  })
+
   it('path filter selects packages under the directory', () => {
     const filters = [parseFilter('./packages/ui', ROOT)]
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['ui'])
