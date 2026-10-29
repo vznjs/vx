@@ -308,8 +308,7 @@ export function mcp(): VxPlugin {
           // through core (`localHistory`), which returns rows, not a handle.
           const cache = Cache.inspect(ctx.cacheDir)
           try {
-            const table = await localHistory(cache).loadAll()
-            void argv
+            const table = await localHistory(cache).loadFor(argv)
             void table
           } finally {
             cache.close()
