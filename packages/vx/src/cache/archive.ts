@@ -508,7 +508,10 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
     plan.inputs.map(async (i) => {
       if (!(i.body instanceof Blob)) return
       const to = path.join(dir, i.name)
-      await Bun.write(to, i.body)
+      // The tar form's refusal (`tarPackInto`): an output that grew or shrank
+      // since the plan's stat is not the file its row describes.
+      const n = await Bun.write(to, i.body)
+      if (n !== i.size) throw new TarFormatError(`${i.name}: ${n} bytes, ${i.size} declared`)
       const at = new Date(times[i.name]![1])
       await utimes(to, at, at)
     }),
