@@ -26,7 +26,10 @@ describe('a task under a vx that runs on a terminal', () => {
             tasks: {
               probe: {
                 exec: {
-                  command: 'if stty -echo < /dev/tty; then echo HAD-TTY; else echo NO-TTY; fi; head -c1 < /dev/tty; echo AFTER-READ',
+                  // One pipe: dash writes its refusal in three writes and the
+                  // newline last, so on two pipes NO-TTY could land before
+                  // that newline and glue onto the refusal's line (CI, PR #4867).
+                  command: 'exec 2>&1; if stty -echo < /dev/tty; then echo HAD-TTY; else echo NO-TTY; fi; head -c1 < /dev/tty; echo AFTER-READ',
                 },
               },
             },
