@@ -84,6 +84,7 @@ src/exec/sandbox-deny-scan.ts
 src/exec/sandbox-paths.ts
 src/exec/sandbox-runtime.ts
 src/exec/sandbox-violations.ts
+src/exec/spawn-off.ts
 src/graph/critical-path.ts
 src/graph/default-build.ts
 src/graph/definition.ts
