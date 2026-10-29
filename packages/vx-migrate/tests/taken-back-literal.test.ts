@@ -76,5 +76,5 @@ it('turbo(): a task whose literal input an exclusion covers maps without it', as
   ]
   const m = await mapTurboWorkspace(root, metas, { splice: (_k, v) => v, persistentTodo: 'P' })
   const t = m.projects[0]!.tasks[0]!.task as { inputs: { files: unknown[] } }
-  expect(t.inputs.files).toEqual(['src/**', '!src/gen/**'])
+  expect(t.inputs.files).toEqual(['src/**', '!src/gen/**', 'package.json'])
 })

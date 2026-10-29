@@ -1961,6 +1961,14 @@ function buildTask(
     if (files.length > 0 && files.every((f) => typeof f === 'string' && f.startsWith('!'))) {
       files.unshift('**/*')
     }
+    // Turbo keys the package's own package.json beside any explicit
+    // `inputs` (PACKAGE_CONFIG_INPUTS, turborepo#1832): without it, an edit
+    // to its `exports` or `type` replayed the old build. A glob naming it
+    // already, or an exclusion of it, is left as written.
+    const named = files.some(
+      (g) => typeof g === 'string' && new Bun.Glob(g.replace(/^!/, '')).match('package.json'),
+    )
+    if (!named) files.push('package.json')
   }
   // Turbo 1's task `dotEnv`: package-relative `.env` files it hashes,
   // gitignored as a rule, so read as files they keyed nothing (item 1032).

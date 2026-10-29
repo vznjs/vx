@@ -711,6 +711,36 @@ describe('input zero segments', () => {
   )
 })
 
+// turborepo#1832: Turbo hashes a package's package.json beside any explicit
+// `inputs`. Mapped without it, an edit to a field the build reads (here
+// `type`) replayed the old output.
+describe("the package's package.json with explicit inputs", () => {
+  it(
+    'an edit to it re-runs a task whose inputs name only src',
+    async () => {
+      const app = path.join(root, 'packages', 'app')
+      const manifest = (type: string) =>
+        JSON.stringify({ name: 'app', version: '1.0.0', type, scripts: { build: BUILD } })
+      const BUILD = 'mkdir -p dist && cp package.json dist/pkg.json'
+      await writeFile(path.join(app, 'package.json'), manifest('commonjs'))
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { inputs: ['src/**'], outputs: ['dist/**'] } } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const opts = { cwd: root, tasks: ['app#build'], log: silent(), handleSignals: false }
+      const status = (r: Awaited<ReturnType<typeof run>>) =>
+        r.outcomes.find((o) => o.node.id === 'app#build')!.status
+      expect(status(await run(opts))).toBe('success')
+      expect(status(await run(opts))).toBe('cache-hit')
+      await writeFile(path.join(app, 'package.json'), manifest('module'))
+      expect(status(await run(opts))).toBe('success')
+      expect(await Bun.file(path.join(app, 'dist', 'pkg.json')).text()).toBe(manifest('module'))
+    },
+    TIMEOUT,
+  )
+})
+
 describe('output negation', () => {
   it(
     'a wildcard output carved by negations stays cached and names what the clean deletes',
@@ -993,7 +1023,7 @@ describe('per-package turbo.json', () => {
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       const cache = app.config.cache!
       const inputs = app.config.inputs!
-      expect(inputs.files).toEqual(['src/**', '!src/gen/**'])
+      expect(inputs.files).toEqual(['src/**', 'package.json', '!src/gen/**'])
       expect(inputs.workspaceFiles).toEqual([
         'tsconfig.base.json',
         'packages/lib/src/**',
