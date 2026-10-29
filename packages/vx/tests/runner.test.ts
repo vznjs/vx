@@ -1540,10 +1540,14 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
   // stdin too: a server's is a pipe vx holds open (schema.md), and Bun's
   // socketpair refused `/dev/stdin` by path, so a server that read it
   // failed at once instead of blocking until vx ends.
+  // No `timeout(1)`: macOS has none. A background job's stdin is /dev/null
+  // unless redirected, hence fd 3; still blocked after a second, it ends
+  // by the kill (143), where a refused open exits 1.
   it('runPersistent: a server reading /dev/stdin by path blocks on it', async () => {
     const live: string[] = []
     const spawn = runPersistent({
-      command: 'echo up; timeout 1 cat /dev/stdin; echo rc=$?; exec sleep 30',
+      command:
+        'echo up; exec 3<&0; cat /dev/stdin <&3 & c=$!; sleep 1; kill $c; wait $c 2>/dev/null; echo rc=$?; exec sleep 30',
       cwd,
       env,
       readyWhen: 'rc=',
@@ -1552,7 +1556,7 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     })
     try {
       await spawn.ready
-      expect(live.join('')).toBe('up\nrc=124\n')
+      expect(live.join('')).toBe('up\nrc=143\n')
     } finally {
       spawn.child!.kill('SIGKILL')
       await spawn.child!.exited
