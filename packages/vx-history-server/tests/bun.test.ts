@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { sqliteDb } from '../src/bun.js'
+import { timingDaysOf } from '../src/days.js'
 import { createHistoryServer } from '../src/server.js'
 import { sqliteStore } from '../src/store.js'
 import { conformance } from './conformance.js'
@@ -415,6 +416,14 @@ it('reads AUDIENCE without the blanks around it', async () => {
     await cli.exited
     await keys.stop(true)
   }
+})
+
+// Number() read 0x1e as 30 and 3e1 as 30, as it read --port, which takes
+// digits only since c4d2ce089c.
+it('reads TIMING_DAYS only as decimal digits', () => {
+  for (const v of ['0x1e', '3e1', ' 30', '30 ', '+30'])
+    expect(() => timingDaysOf(v)).toThrow(`TIMING_DAYS: a whole number of days, got ${v}`)
+  expect([timingDaysOf('30'), timingDaysOf(30), timingDaysOf('')]).toEqual([30, 30, undefined])
 })
 
 it('answers a flag it does not know with its usage', () => {
