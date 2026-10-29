@@ -151,6 +151,41 @@ describe('captureGitContext', () => {
     expect(captureGitContext(dir, null, { GITHUB_HEAD_REF: 'something-else' }).branch).toBe('main')
   })
 
+  // vercel/turborepo#13882: `--abbrev-ref` answers `heads/main` when a tag
+  // shares the branch's name; the files say `main`, so the spawn must too.
+  it('a tag named like the branch never renames it, read from the files or asked of git', async () => {
+    git(dir, ['init', '-q', '-b', 'main'])
+    git(dir, ['config', 'user.email', 'test@example.com'])
+    git(dir, ['config', 'user.name', 'Test'])
+    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
+    git(dir, ['tag', 'main'])
+    const sub = path.join(dir, 'ws')
+    await mkdir(sub)
+    expect(captureGitContext(dir, null, {}).branch).toBe('main')
+    let ctx = null as ReturnType<typeof captureGitContext> | null
+    expect(gitSpawnsIn(() => (ctx = captureGitContext(sub, null, {})))).toBe(1)
+    expect(ctx!.branch).toBe('main')
+    expect(ctx!.commitSha).toMatch(/^[0-9a-f]{40}$/)
+  })
+
+  // vercel/turborepo#13882: before the first commit HEAD already names the
+  // branch it lands on; `rev-parse HEAD` fails there.
+  it('a repository with no commit yet reports its branch and no commit', async () => {
+    git(dir, ['init', '-q', '-b', 'trunk'])
+    expect(captureGitContext(dir, null, {})).toEqual({
+      commitSha: null,
+      branch: 'trunk',
+      dirty: null,
+    })
+    const sub = path.join(dir, 'ws')
+    await mkdir(sub)
+    expect(captureGitContext(sub, null, {})).toEqual({
+      commitSha: null,
+      branch: 'trunk',
+      dirty: null,
+    })
+  })
+
   it('returns null commit/branch in a non-git directory without throwing', () => {
     // Explicit empty env for the same reason as the detached test above.
     const ctx = captureGitContext(dir, null, {})

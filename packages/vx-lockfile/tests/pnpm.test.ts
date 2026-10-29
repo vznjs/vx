@@ -803,6 +803,22 @@ ${main}`
     expect(recordedImporters(`${v9()}\nbroken: [\n`)).toEqual(parseLockfile(v9()).importers)
   })
 
+  // vercel/turborepo#13640: pnpm's YAML writer spells a key past 1,024
+  // characters (a long peer chain) as an explicit `? key` / `: value` pair.
+  it('explicit `? key` entries key as the plain ones, in the whole parse and the importers block', () => {
+    const explicit = (text: string): string =>
+      text.replace(
+        /^ {2}(\S[^\n]*?):( [^\n]*)?$/gm,
+        (_m, key: string, value = '') => `  ? ${key}\n  :${value}`,
+      )
+    const text = explicit(v9())
+    expect(text).toContain('\n  ? qux@1.0.0(react@18.0.0)\n  :\n    dependencies:')
+    expect(text).toContain('\n  ? packages/a\n  :\n')
+    expect(digests(text)).toEqual(digests(v9()))
+    expect(recordedImporters(text)).toEqual(parseLockfile(v9()).importers)
+    expect(movedDirs(text, explicit(v9({ bar: '2.0.1' })))).toEqual(['packages/a'])
+  })
+
   it('a lockfile below v5 is refused; v5 is read', () => {
     expect(() => parseLockfile("lockfileVersion: '4.0'\n")).toThrow(
       'pnpm-lock.yaml: unsupported lockfileVersion "4.0"',

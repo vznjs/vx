@@ -88,3 +88,40 @@ it('a brace of directories or ./ spellings keys what each alternative names', as
     expect([glob, await build()]).toEqual([glob, 'cache-hit'])
   }
 })
+
+// vercel/turborepo#13763 pinned that a `,` inside a class is no
+// alternative. Split there, `src/{a[,]b,x}.ts` became `src/a[.ts` and
+// `src/]b.ts`: an edit to `src/a,b.ts` replayed the old output, and the
+// same glob after `!` never took the file back.
+it('a `,` `{` or `}` inside a class in a brace alternative is a member, not a cut', async () => {
+  const cases = [
+    ['inc', "['src/{a[,]b,x}.ts']", 'src/a,b.ts', 'src/b.ts'],
+    ['open', "['src/{a[{]b,x}.ts']", 'src/a{b.ts', 'src/b.ts'],
+    ['exc', "['src/**', '!src/{a[,]b,x}.ts']", 'src/c.ts', 'src/a,b.ts'],
+  ] as const
+  for (const [name, files, keyed, unkeyed] of cases) {
+    const app = await addProject(root, name, {
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'true' },
+              inputs: { files: ${files} }, cache: { outputs: { files: [] } },
+            },
+          },
+        }
+      `,
+      files: { [keyed]: 'a', [unkeyed]: 'a' },
+    })
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', name)
+    const build = async () =>
+      (await run({ cwd: root, tasks: [`${name}#build`], log, handleSignals: false })).outcomes[0]!
+        .status
+    expect(await build()).toBe('success')
+    writeFileSync(path.join(app, keyed), 'b')
+    expect([files, await build()]).toEqual([files, 'success'])
+    writeFileSync(path.join(app, unkeyed), 'b')
+    expect([files, await build()]).toEqual([files, 'cache-hit'])
+  }
+})
