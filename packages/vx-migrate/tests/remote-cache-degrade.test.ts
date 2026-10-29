@@ -176,8 +176,8 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       srv = hostileServer()
       const decl =
         wire === 'turboCache'
-          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
-          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
+          ? `turboCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
+          : `nxCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
       root = await fixture(decl, wire)
     })
     afterAll(async () => {
@@ -280,8 +280,8 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       srv = hostileServer()
       const decl =
         wire === 'turboCache'
-          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)} })`
-          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)} })`
+          ? `turboCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)} })`
+          : `nxCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)} })`
       root = await fixture(decl, wire)
     })
     afterAll(async () => {
@@ -339,7 +339,7 @@ describe('a refused token costs ONE line on a whole workspace', () => {
       path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(
         [
-          `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`,
+          `turboCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`,
         ],
         `import { turboCache } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
       ),
@@ -429,8 +429,8 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       srv = hostileServer()
       const decl =
         wire === 'turboCache'
-          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
-          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
+          ? `turboCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
+          : `nxCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
       root = await fixture(decl, wire)
     })
     afterAll(async () => {
@@ -482,8 +482,8 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       srv = hostileServer()
       const decl =
         wire === 'turboCache'
-          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
-          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
+          ? `turboCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
+          : `nxCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
       root = await fixture(decl, wire)
     })
     afterAll(async () => {
@@ -531,8 +531,8 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
     ): Promise<{ warnings: string[]; first: string }> => {
       const decl =
         wire === 'turboCache'
-          ? `turboCache({ apiUrl: ${JSON.stringify(url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: ${timeoutMs}, uploadTimeoutMs: ${timeoutMs}, retries: 0 })`
-          : `nxCache({ server: ${JSON.stringify(url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: ${timeoutMs}, retries: 0 })`
+          ? `turboCache({ url: ${JSON.stringify(url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: ${timeoutMs}, uploadTimeoutMs: ${timeoutMs}, retries: 0 })`
+          : `nxCache({ url: ${JSON.stringify(url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: ${timeoutMs}, retries: 0 })`
       const root = await fixture(decl, wire)
       try {
         const r = await cliRun(root, prefix)

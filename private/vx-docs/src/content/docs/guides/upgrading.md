@@ -31,6 +31,9 @@ vxHistory({ defaultBranch }) is refused; set the workspace's baseBranch instead.
 ## cli: vx run --dry=pretty, the value every --format takes
 
 vx run --dry=text is now --dry=pretty (bare --dry is unchanged).
+## vx-migrate: name the cache server url and its bearer token
+
+turboCache({ apiUrl }) is turboCache({ url }); nxCache({ server, accessToken }) is nxCache({ url, token }).
 
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 
