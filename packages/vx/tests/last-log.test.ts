@@ -184,3 +184,20 @@ it("a cached task's log masks this process's secret values, as its replay does",
   })
   expect([p.exitCode, p.stdout.toString()]).toEqual([0, '***\n'])
 })
+
+// Turbo #6267: a log file named after `build:prod` broke on Windows. vx
+// names no file after a task; a colon runs, caches, restores and reads back.
+it('a task named with a colon saves, restores and reads back its log', async () => {
+  const dir = await addProject(
+    root,
+    'c',
+    `export default { tasks: { 'build:prod': { exec: { command: 'echo r >> runs.txt && mkdir -p dist && echo p > dist/o && echo prod-ok' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } } } } }\n`,
+  )
+  expect(vx('run', 'c#build:prod').code).toBe(0)
+  await rm(path.join(dir, 'dist'), { recursive: true })
+  const hit = vx('run', 'c#build:prod')
+  expect([hit.code, hit.out + hit.err]).toEqual([0, expect.stringContaining('prod-ok')])
+  expect(await Bun.file(path.join(dir, 'dist', 'o')).text()).toBe('p\n')
+  expect(await Bun.file(path.join(dir, 'runs.txt')).text()).toBe('r\n')
+  expect(vx('last', '--log', 'c#build:prod')).toEqual({ code: 0, out: 'prod-ok\n', err: '' })
+})

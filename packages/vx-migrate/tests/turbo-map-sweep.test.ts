@@ -364,6 +364,31 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(await said()).toBe('mapped')
   })
 
+  // Turbo #5623: Turbo reads `turbo.json` itself as JSONC too.
+  it('reads comments and trailing commas in `turbo.json`', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      '{\n  // line\n  /* block */\n  "tasks": { "build": { "inputs": ["src/**",], }, },\n}\n',
+    )
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const m = await mapTurboWorkspace(
+      root,
+      [
+        {
+          name: 'a',
+          dir,
+          packageJson: { name: 'a', scripts: { build: 'b' } } as never,
+          configPath: null,
+        },
+      ],
+      opts,
+    )
+    expect(m.projects[0]!.tasks[0]!.task!['inputs'] as unknown).toEqual({
+      files: ['src/**', 'package.json'],
+    })
+  })
+
   // Item 939: a task Turbo defines but the package has no script for is a
   // no-op node that keeps its edges. Dropped whole, `test → codegen →
   // ^build` lost `^build`: `test` ran before its dependency's build and its
@@ -712,6 +737,32 @@ describe('turbo-map: a package overlay that extends an inherited list', () => {
     )
     const task = t.task as { inputs?: { files?: string[] } }
     expect(task.inputs?.files).toEqual(['lib/**', 'package.json'])
+  })
+
+  // vercel/turborepo#3866: a package's `dependsOn: []` was merged as unset,
+  // so the root's `^build` stayed on the task.
+  it('an empty overlay `dependsOn` drops the inherited edges', async () => {
+    const t = await taskOf(
+      { tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } },
+      {
+        a: {
+          scripts: { build: 'b' },
+          turbo: { extends: ['//'], tasks: { build: { dependsOn: [] } } },
+        },
+      },
+    )
+    expect((t.task as { dependsOn?: string[] }).dependsOn ?? []).toEqual([])
+    // CONTROL: an overlay that leaves `dependsOn` out keeps the root's.
+    const kept = await taskOf(
+      { tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } },
+      {
+        a: {
+          scripts: { build: 'b' },
+          turbo: { extends: ['//'], tasks: { build: { outputs: ['lib/**'] } } },
+        },
+      },
+    )
+    expect((kept.task as { dependsOn?: string[] }).dependsOn).toEqual(['^build'])
   })
 })
 

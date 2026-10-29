@@ -82,6 +82,15 @@ describe('cli run()', () => {
       // CONTROL: a word without a dash is still a command.
       [1, noticed('vx: unknown command: rnu. Did you mean run? (see `vx help`)\n')],
     ])
+    // Turbo #9445: a run flag before the verb is refused, not ignored.
+    for (const args of [
+      ['--filter=foo', 'run', 'build'],
+      ['--filter=foo', 'watch', 'build'],
+    ])
+      expect(await said(args)).toEqual([
+        1,
+        noticed("vx: unknown flag: --filter=foo; a verb's flags follow the verb (see `vx help`)\n"),
+      ])
   })
 
   it('vx watch names its own help, and vx cache its one subcommand (M-58)', async () => {

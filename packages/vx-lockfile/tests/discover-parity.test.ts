@@ -744,6 +744,69 @@ describe('the recorded edges hold on specs a lockfile resolves past its layout',
       },
       edges: ['app → is-number'],
     },
+    // vercel/turborepo#854: a `file:` path to a workspace's directory lost
+    // its edge. Bun 1.4.4 and npm 10 link it as the workspace (lockfiles
+    // those installs wrote for b → a, `"a": "file:../a"`).
+    {
+      title: 'bun(): a `file:` path to a workspace links it',
+      make: bun,
+      file: 'bun.lock',
+      text: `{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "root",
+    },
+    "packages/a": {
+      "name": "a",
+      "version": "1.0.0",
+    },
+    "packages/b": {
+      "name": "b",
+      "version": "1.0.0",
+      "dependencies": {
+        "a": "file:../a",
+      },
+    },
+  },
+  "packages": {
+    "a": ["a@workspace:packages/a"],
+
+    "b": ["b@workspace:packages/b"],
+  }
+}
+`,
+      manifests: {
+        'packages/a': { name: 'a', version: '1.0.0' },
+        'packages/b': { name: 'b', version: '1.0.0', dependencies: { a: 'file:../a' } },
+      },
+      edges: ['b → a'],
+    },
+    {
+      title: 'npm(): a `file:` path to a workspace links it',
+      make: npm,
+      file: 'package-lock.json',
+      text: `{
+  "name": "root",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": { "name": "root", "workspaces": ["packages/*"] },
+    "node_modules/a": { "resolved": "packages/a", "link": true },
+    "node_modules/b": { "resolved": "packages/b", "link": true },
+    "packages/a": { "version": "1.0.0" },
+    "packages/b": { "version": "1.0.0", "dependencies": { "a": "file:../a" } }
+  }
+}
+`,
+      manifests: {
+        '.': { name: 'root', workspaces: ['packages/*'] },
+        'packages/a': { name: 'a', version: '1.0.0' },
+        'packages/b': { name: 'b', version: '1.0.0', dependencies: { a: 'file:../a' } },
+      },
+      edges: ['b → a'],
+    },
     {
       title: 'yarn(): a `link:` path links the workspace package it points at',
       make: yarn,
@@ -938,6 +1001,69 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
     })
     // A manifest read guessed `other → is-number`.
     expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', D_PNPM, projects)).order).toEqual([])
+  })
+
+  it('pnpm(): a `workspace:<name>@<range>` alias links the package it names, not its alias', async () => {
+    // Turbo #5569: pnpm records the dependency under its alias `ui`.
+    const lock = `lockfileVersion: '9.0'
+
+importers:
+
+  .: {}
+
+  packages/scope-ui: {}
+
+  packages/ui: {}
+
+  packages/web:
+    dependencies:
+      ui:
+        specifier: workspace:@scope/ui@*
+        version: link:../scope-ui
+`
+    const projects = await metas({
+      'packages/web': {
+        name: 'web',
+        version: '1.0.0',
+        dependencies: { ui: 'workspace:@scope/ui@*' },
+      },
+      'packages/scope-ui': { name: '@scope/ui', version: '1.0.0' },
+      'packages/ui': { name: 'ui', version: '9.0.0' },
+    })
+    expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', lock, projects)).order).toEqual([
+      'web → @scope/ui',
+    ])
+  })
+
+  it('a manifest whose `keywords` is no string array reads like any other (Turbo #161)', async () => {
+    const lock = `lockfileVersion: '9.0'
+
+importers:
+
+  .: {}
+
+  packages/lib: {}
+
+  packages/web:
+    dependencies:
+      lib:
+        specifier: workspace:*
+        version: link:../lib
+`
+    for (const keywords of ['a, b', null, 7, { a: 1 }, [1, 'x']]) {
+      const projects = await metas({
+        'packages/web': {
+          name: 'web',
+          version: '1.0.0',
+          keywords,
+          dependencies: { lib: 'workspace:*' },
+        } as never,
+        'packages/lib': { name: 'lib', version: '1.0.0', keywords } as never,
+      })
+      expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', lock, projects)).order).toEqual([
+        'web → lib',
+      ])
+    }
   })
 
   it('yarn packs a `file:` directory, a copy that is no link to the workspace package', async () => {

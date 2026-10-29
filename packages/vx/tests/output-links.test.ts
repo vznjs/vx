@@ -75,6 +75,24 @@ it.skipIf(process.platform === 'win32')(
   TIMEOUT,
 )
 
+// Turbo #6838 (a link target past tar's 100-byte linkname) and #7628 (a
+// directory past ustar's path fields).
+it.skipIf(process.platform === 'win32')(
+  'a link with a 300-byte target and an empty directory 300 bytes deep come back',
+  async () => {
+    const deep = ['a', 'b', 'c'].map((c) => c.repeat(100)).join('/')
+    const { root, dir } = await workspace(
+      `rm -rf dist && mkdir -p dist/${deep}/empty && echo t > dist/${deep}/t.txt && ln -s ${deep}/t.txt dist/link`,
+    )
+    expect(await ok(root)).toContain('local 1↑')
+    rmSync(path.join(dir, 'dist'), { recursive: true })
+    expect(await ok(root)).toContain('1↓')
+    expect(readlinkSync(path.join(dir, 'dist/link'))).toBe(`${deep}/t.txt`)
+    expect(statSync(path.join(dir, 'dist', deep, 'empty')).isDirectory()).toBe(true)
+  },
+  TIMEOUT,
+)
+
 it.skipIf(process.platform === 'win32')(
   'a link pointed elsewhere since the hit is put back, even at the same length',
   async () => {
