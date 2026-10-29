@@ -127,6 +127,10 @@ it('a task no run recorded, or one outside the run named, is refused', () => {
     err: noticed('vx last: no recorded run of a#nope (a task id is project#task)\n'),
   })
   expect(vx('last', runIds['bad']!, '--log', 'a#build').code).toBe(1)
+  // No history of it, as `--stats` and `vx why` say it: it was VX_E_REFUSED.
+  expect(JSON.parse(vx('last', '--log', 'a#nope', '--format', 'json').out).error.code).toBe(
+    'VX_E_NO_HISTORY',
+  )
 })
 
 it('--log with no value reads the positional argument as the task', () => {
