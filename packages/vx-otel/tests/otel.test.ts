@@ -100,7 +100,7 @@ describe('resolveOtelConfig', () => {
     expect([none, warns]).toEqual([
       undefined,
       [
-        '[vx] vx-otel: OTEL_EXPORTER_OTLP_ENDPOINT is not an http:// or https:// URL — traces, metrics and logs are not exported',
+        '[vx] vx-otel: OTEL_EXPORTER_OTLP_ENDPOINT is not an https:// URL (http only to 127.0.0.1, ::1 or localhost) — traces, metrics and logs are not exported',
       ],
     ])
     // One bad signal endpoint drops that signal only.
@@ -115,9 +115,29 @@ describe('resolveOtelConfig', () => {
       false,
       true,
       [
-        '[vx] vx-otel: the metricsEndpoint option is not an http:// or https:// URL — metrics are not exported',
+        '[vx] vx-otel: the metricsEndpoint option is not an https:// URL (http only to 127.0.0.1, ::1 or localhost) — metrics are not exported',
       ],
     ])
+  })
+
+  // An OTLP header is often the vendor's API key: http:// to another host
+  // sent it, and every span, in clear (vxCache and vxHistory take http
+  // only to this machine too).
+  it('an http:// endpoint is taken only to this machine', () => {
+    const warns: string[] = []
+    const none = resolveOtelConfig(
+      {},
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example:4318' },
+      (m) => warns.push(m),
+    )
+    expect([none, warns]).toEqual([
+      undefined,
+      [
+        '[vx] vx-otel: OTEL_EXPORTER_OTLP_ENDPOINT is not an https:// URL (http only to 127.0.0.1, ::1 or localhost) — traces, metrics and logs are not exported',
+      ],
+    ])
+    for (const local of ['http://127.0.0.1:4318', 'http://[::1]:4318', 'http://localhost:4318'])
+      expect(resolveOtelConfig({ endpoint: local }, {})?.tracesUrl).toBe(`${local}/v1/traces`)
   })
 
   // A curl-style `Authorization: Basic …=` splits at its first `=` into a
@@ -128,7 +148,7 @@ describe('resolveOtelConfig', () => {
     const c = resolveOtelConfig(
       {},
       {
-        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c',
         OTEL_EXPORTER_OTLP_HEADERS: 'Authorization: Basic dXNlcjpwYXNz==,x-ok=1',
       },
       (m) => warns.push(m),
@@ -147,7 +167,7 @@ describe('resolveOtelConfig', () => {
     const c = resolveOtelConfig(
       {},
       {
-        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c',
         OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Bearer%20shared',
         OTEL_EXPORTER_OTLP_TRACES_HEADERS: 'authorization=Bearer%20traces-only',
       },
@@ -158,7 +178,7 @@ describe('resolveOtelConfig', () => {
     const o = resolveOtelConfig(
       { headers: { authorization: 'Bearer option' } },
       {
-        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c',
         OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Bearer%20env',
       },
     )!
@@ -168,7 +188,7 @@ describe('resolveOtelConfig', () => {
   // Only `OTEL_LOGS_EXPORTER=none` was read; the rest still exported
   // (item 1056).
   it('the SDK opt-outs are honoured: disabled, and traces or metrics none', () => {
-    const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' }
+    const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c' }
     expect(resolveOtelConfig({}, { ...base, OTEL_SDK_DISABLED: 'true' })).toBeUndefined()
     const t = resolveOtelConfig({}, { ...base, OTEL_TRACES_EXPORTER: 'none' })!
     expect([t.tracesEnabled, t.metricsEnabled]).toEqual([false, true])
@@ -184,12 +204,12 @@ describe('resolveOtelConfig', () => {
   // With every signal off the sink exported nothing, yet a run still paid
   // for it: the exporter loaded, and core built the telemetry it reads.
   it('declines when no signal is left to export', () => {
-    const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' }
+    const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c' }
     const off = { OTEL_TRACES_EXPORTER: 'none', OTEL_METRICS_EXPORTER: 'none' }
     expect([
       resolveOtelConfig({}, { ...base, ...off, OTEL_LOGS_EXPORTER: 'none' }),
       resolveOtelConfig({ metrics: false, logs: false }, { ...base, ...off }),
-      resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://c/t', ...off }),
+      resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://c/t', ...off }),
     ]).toEqual([undefined, undefined, undefined])
     // CONTROL: one signal left exports.
     expect(resolveOtelConfig({}, { ...base, ...off })?.logsEnabled).toBe(true)
@@ -202,7 +222,7 @@ describe('resolveOtelConfig', () => {
     const c = resolveOtelConfig(
       {},
       {
-        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c',
         OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Bearer%20SECRET%0Aline2,x-ok=1',
         OTEL_EXPORTER_OTLP_TRACES_HEADERS: 'Authorization=Bearer%20SECRET%0Aline2',
       },
@@ -231,18 +251,18 @@ describe('resolveOtelConfig', () => {
     const c = resolveOtelConfig(
       {},
       {
-        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'https://collector:4318',
         OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: '',
         OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: '',
       },
     )!
-    expect(c.metricsUrl).toBe('http://collector:4318/v1/metrics')
-    expect(c.logsUrl).toBe('http://collector:4318/v1/logs')
+    expect(c.metricsUrl).toBe('https://collector:4318/v1/metrics')
+    expect(c.logsUrl).toBe('https://collector:4318/v1/logs')
     // Same rule for a non-URL string: an empty service name is not a name.
     expect(
       resolveOtelConfig(
         {},
-        { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c:4318', OTEL_SERVICE_NAME: '' },
+        { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c:4318', OTEL_SERVICE_NAME: '' },
       )!.serviceName,
     ).toBe('vx')
   })
@@ -251,24 +271,24 @@ describe('resolveOtelConfig', () => {
     expect(resolveOtelConfig({}, {})).toBeUndefined()
   })
   it('derives /v1/traces + /v1/metrics from the base endpoint', () => {
-    const c = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318' })!
-    expect(c.tracesUrl).toBe('http://collector:4318/v1/traces')
-    expect(c.metricsUrl).toBe('http://collector:4318/v1/metrics')
+    const c = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://collector:4318' })!
+    expect(c.tracesUrl).toBe('https://collector:4318/v1/traces')
+    expect(c.metricsUrl).toBe('https://collector:4318/v1/metrics')
   })
   it('strips a trailing slash on the base endpoint', () => {
-    const c = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://x:4318/' })!
-    expect(c.tracesUrl).toBe('http://x:4318/v1/traces')
+    const c = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://x:4318/' })!
+    expect(c.tracesUrl).toBe('https://x:4318/v1/traces')
   })
   it('honors per-signal endpoint overrides + OTEL_SERVICE_NAME + headers', () => {
     const c = resolveOtelConfig(
       {},
       {
-        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://t/v1/traces',
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://t/v1/traces',
         OTEL_SERVICE_NAME: 'svc',
         OTEL_EXPORTER_OTLP_HEADERS: 'authorization=Bearer x',
       },
     )!
-    expect(c.tracesUrl).toBe('http://t/v1/traces')
+    expect(c.tracesUrl).toBe('https://t/v1/traces')
     expect(c.serviceName).toBe('svc')
     expect(c.headers['authorization']).toBe('Bearer x')
   })
@@ -276,20 +296,20 @@ describe('resolveOtelConfig', () => {
   // the env's collector, metrics to the configured one.
   it('the endpoint option beats a signal endpoint from the env', () => {
     const c = resolveOtelConfig(
-      { endpoint: 'http://opt:4318' },
-      { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://env/v1/traces' },
+      { endpoint: 'https://opt:4318' },
+      { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://env/v1/traces' },
     )!
     expect([c.tracesUrl, c.metricsUrl]).toEqual([
-      'http://opt:4318/v1/traces',
-      'http://opt:4318/v1/metrics',
+      'https://opt:4318/v1/traces',
+      'https://opt:4318/v1/metrics',
     ])
   })
   it('options override env, headers merge over env', () => {
     const c = resolveOtelConfig(
-      { endpoint: 'http://opt:4318', serviceName: 'optsvc', headers: { x: 'opt' } },
-      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://env', OTEL_EXPORTER_OTLP_HEADERS: 'x=env,y=env' },
+      { endpoint: 'https://opt:4318', serviceName: 'optsvc', headers: { x: 'opt' } },
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://env', OTEL_EXPORTER_OTLP_HEADERS: 'x=env,y=env' },
     )!
-    expect(c.tracesUrl).toBe('http://opt:4318/v1/traces')
+    expect(c.tracesUrl).toBe('https://opt:4318/v1/traces')
     expect(c.serviceName).toBe('optsvc')
     expect(c.headers).toEqual({ x: 'opt', y: 'env' })
   })
@@ -427,9 +447,9 @@ function mkConfig(over: Partial<ConstructorParameters<typeof OtelSink>[0]> = {})
     calls.push({ url, body: JSON.parse(body) })
   }
   const cfg = {
-    tracesUrl: 'http://c/v1/traces',
-    metricsUrl: 'http://c/v1/metrics',
-    logsUrl: 'http://c/v1/logs',
+    tracesUrl: 'https://c/v1/traces',
+    metricsUrl: 'https://c/v1/metrics',
+    logsUrl: 'https://c/v1/logs',
     serviceName: 'vx',
     headers: {},
     metricsEnabled: true,
@@ -503,7 +523,7 @@ describe('OtelSink end-to-end', () => {
     driveOneTask(sink)
     await sink.flush()
 
-    const trace = calls.find((c) => c.url === 'http://c/v1/traces')!
+    const trace = calls.find((c) => c.url === 'https://c/v1/traces')!
     expect(trace).toBeDefined()
     const spans = (
       trace.body as {
@@ -540,7 +560,7 @@ describe('OtelSink end-to-end', () => {
     driveOneTask(sink)
     await sink.flush()
     // Item 927: a delta over the run itself, from its start to its end.
-    const metrics = calls.find((c) => c.url === 'http://c/v1/metrics')!.body as {
+    const metrics = calls.find((c) => c.url === 'https://c/v1/metrics')!.body as {
       resourceMetrics: {
         scopeMetrics: {
           metrics: { sum?: { dataPoints: { startTimeUnixNano: string; timeUnixNano: string }[] } }[]
@@ -588,7 +608,7 @@ describe('OtelSink end-to-end', () => {
     rec(end('a#lint', { status: 'skipped', durationMs: 0 }))
     sink.onRunSummary(summaryFor(RUN, []))
     await sink.flush()
-    const bodies = calls.filter((c) => c.url === 'http://c/v1/metrics')
+    const bodies = calls.filter((c) => c.url === 'https://c/v1/metrics')
     expect(bodies).toHaveLength(1)
     type Metric = {
       name: string
@@ -659,7 +679,7 @@ describe('OtelSink end-to-end', () => {
       gauge?: { dataPoints: { attributes: { key: string; value: { stringValue?: string } }[] }[] }
     }
     const metrics = (
-      calls.find((c) => c.url === 'http://c/v1/metrics')!.body as {
+      calls.find((c) => c.url === 'https://c/v1/metrics')!.body as {
         resourceMetrics: { scopeMetrics: { metrics: Metric[] }[] }[]
       }
     ).resourceMetrics[0]!.scopeMetrics[0]!.metrics
@@ -700,7 +720,7 @@ describe('OtelSink end-to-end', () => {
     sink.onRunSummary(summaryFor(RUN, []))
     await sink.flush()
     const names = calls
-      .filter((c) => c.url === 'http://c/v1/metrics')
+      .filter((c) => c.url === 'https://c/v1/metrics')
       .map((c) =>
         (
           c.body as { resourceMetrics: { scopeMetrics: { metrics: { name: string }[] }[] }[] }
@@ -769,7 +789,7 @@ describe('OtelSink end-to-end', () => {
       links?: { spanId: string; attributes: { value: { stringValue?: string } }[] }[]
     }
     const spans = (
-      calls.find((c) => c.url === 'http://c/v1/traces')!.body as {
+      calls.find((c) => c.url === 'https://c/v1/traces')!.body as {
         resourceSpans: { scopeSpans: { spans: Span[] }[] }[]
       }
     ).resourceSpans[0]!.scopeSpans[0]!.spans
@@ -918,7 +938,7 @@ describe('otel() plugin', () => {
   })
 
   it('returns a sink when an endpoint is configured via options', async () => {
-    const plugin = otel({ endpoint: 'http://c:4318' })
+    const plugin = otel({ endpoint: 'https://c:4318' })
     const sink = (await plugin.telemetry!({
       workspaceRoot: '/ws',
       cacheDir: '/ws/.vx/cache',
@@ -935,7 +955,7 @@ describe('otel() plugin', () => {
       const loaded = () => Object.keys(require.cache).some((k) => k.endsWith('/vx-otel/src/sink.ts'))
       const ctx = { workspaceRoot: '/ws', cacheDir: '/c', warn() {} }
       const declined = [otel().telemetry(ctx), loaded()]
-      const sink = await otel({ endpoint: 'http://c:4318' }).telemetry(ctx)
+      const sink = await otel({ endpoint: 'https://c:4318' }).telemetry(ctx)
       console.log(JSON.stringify([...declined, sink.name, loaded()]))`
     const env = { ...process.env }
     delete env['OTEL_EXPORTER_OTLP_ENDPOINT']
@@ -1387,7 +1407,7 @@ describe('OtelSink logs', () => {
     driveLogged(sink)
     await sink.flush()
 
-    const logs = calls.find((c) => c.url === 'http://c/v1/logs')
+    const logs = calls.find((c) => c.url === 'https://c/v1/logs')
     expect(logs).toBeDefined()
     const records = logRecords(logs!.body)
     expect(records).toHaveLength(1)
@@ -1420,7 +1440,7 @@ describe('OtelSink logs', () => {
     const sink = new OtelSink(cfg)
     driveLogged(sink, { status: 'cache-hit', cacheSource: 'local', exitCode: 0 })
     await sink.flush()
-    expect(calls.find((c) => c.url === 'http://c/v1/logs')).toBeUndefined()
+    expect(calls.find((c) => c.url === 'https://c/v1/logs')).toBeUndefined()
   })
 
   it('posts no logs body when a run captured nothing', async () => {
@@ -1436,7 +1456,7 @@ describe('OtelSink logs', () => {
     } as TelemetryRecord)
     sink.onRunSummary(summaryFor(RUN, []))
     await sink.flush()
-    expect(calls.some((c) => c.url === 'http://c/v1/logs')).toBe(false)
+    expect(calls.some((c) => c.url === 'https://c/v1/logs')).toBe(false)
   })
 
   it('declines task.log entirely when logs are off, so core never projects one', () => {
@@ -1451,7 +1471,7 @@ describe('OtelSink logs', () => {
     const sink = new OtelSink(cfg)
     driveLogged(sink)
     await sink.flush()
-    expect(calls.some((c) => c.url === 'http://c/v1/logs')).toBe(false)
+    expect(calls.some((c) => c.url === 'https://c/v1/logs')).toBe(false)
     // ...but traces still ship, so turning logs off costs no other signal.
     expect(calls.some((c) => c.url.endsWith('/v1/traces'))).toBe(true)
   })
@@ -1459,36 +1479,36 @@ describe('OtelSink logs', () => {
 
 describe('resolveOtelConfig — logs', () => {
   it('derives a logs URL from the base endpoint and enables the signal', () => {
-    const cfg = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' })!
-    expect(cfg.logsUrl).toBe('http://c/v1/logs')
+    const cfg = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c' })!
+    expect(cfg.logsUrl).toBe('https://c/v1/logs')
     expect(cfg.logsEnabled).toBe(true)
   })
 
   it('honours the standard OTEL_LOGS_EXPORTER=none opt-out', () => {
     const cfg = resolveOtelConfig(
       {},
-      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c', OTEL_LOGS_EXPORTER: 'none' },
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c', OTEL_LOGS_EXPORTER: 'none' },
     )!
     expect(cfg.logsEnabled).toBe(false)
     // The URL is still resolved — only the signal is off, so flipping the
     // option back on needs no endpoint change.
-    expect(cfg.logsUrl).toBe('http://c/v1/logs')
+    expect(cfg.logsUrl).toBe('https://c/v1/logs')
   })
 
   it('lets an explicit option override the env opt-out', () => {
     const cfg = resolveOtelConfig(
       { logs: true },
-      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c', OTEL_LOGS_EXPORTER: 'none' },
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c', OTEL_LOGS_EXPORTER: 'none' },
     )!
     expect(cfg.logsEnabled).toBe(true)
   })
 
   it('prefers an explicit logs endpoint over the derived one', () => {
     const cfg = resolveOtelConfig(
-      { logsEndpoint: 'http://other/logs' },
-      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' },
+      { logsEndpoint: 'https://other/logs' },
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c' },
     )!
-    expect(cfg.logsUrl).toBe('http://other/logs')
+    expect(cfg.logsUrl).toBe('https://other/logs')
   })
 })
 
@@ -1693,7 +1713,7 @@ describe('a signal ships only to its own url (item 807)', () => {
     const warns: string[] = []
     const c = resolveOtelConfig(
       {},
-      { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://t/v1/traces' },
+      { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://t/v1/traces' },
       (m) => warns.push(m),
     )!
     // Off by default and nothing asked for: nothing said.
@@ -1719,16 +1739,16 @@ describe('a signal ships only to its own url (item 807)', () => {
       return urls.sort()
     }
     expect([
-      await posted({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://m/v1/metrics' }),
+      await posted({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'https://m/v1/metrics' }),
       await posted({}),
-    ]).toEqual([['http://m/v1/metrics'], undefined])
+    ]).toEqual([['https://m/v1/metrics'], undefined])
     // A logs-only endpoint: logs on, the others off (a log needs task output to post).
-    const logs = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'http://l/v1/logs' })
+    const logs = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'https://l/v1/logs' })
     expect([logs?.tracesEnabled, logs?.metricsEnabled, logs?.logsEnabled, logs?.logsUrl]).toEqual([
       false,
       false,
       true,
-      'http://l/v1/logs',
+      'https://l/v1/logs',
     ])
   })
 
@@ -1736,7 +1756,7 @@ describe('a signal ships only to its own url (item 807)', () => {
     const warns: string[] = []
     const c = resolveOtelConfig(
       { metrics: true, logs: true },
-      { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://t/v1/traces' },
+      { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://t/v1/traces' },
       (m) => warns.push(m),
     )!
     expect({ metrics: c.metricsEnabled, logs: c.logsEnabled }).toEqual({
@@ -1754,24 +1774,24 @@ describe('a signal ships only to its own url (item 807)', () => {
     const c = resolveOtelConfig(
       { metrics: true, logs: true },
       {
-        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://t/v1/traces',
-        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://m/v1/metrics',
-        OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'http://l/v1/logs',
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://t/v1/traces',
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'https://m/v1/metrics',
+        OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'https://l/v1/logs',
       },
       (m) => warns.push(m),
     )!
     expect([c.metricsEnabled, c.logsEnabled, c.metricsUrl, c.logsUrl, warns]).toEqual([
       true,
       true,
-      'http://m/v1/metrics',
-      'http://l/v1/logs',
+      'https://m/v1/metrics',
+      'https://l/v1/logs',
       [],
     ])
   })
 })
 
 describe('what the vx-otel sweep found unheld (item 807)', () => {
-  const BASE = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c:4318' }
+  const BASE = { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c:4318' }
 
   it('headers: a key that is only whitespace is dropped; keys and values are trimmed', () => {
     expect(parseOtlpHeaders(' =v, k = v2 ,=x')).toEqual({ k: 'v2' })
@@ -1783,14 +1803,14 @@ describe('what the vx-otel sweep found unheld (item 807)', () => {
 
   it('each per-signal option wins over its env var and the base', () => {
     const c = resolveOtelConfig(
-      { tracesEndpoint: 'http://ot/t', metricsEndpoint: 'http://om/m' },
+      { tracesEndpoint: 'https://ot/t', metricsEndpoint: 'https://om/m' },
       {
         ...BASE,
-        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://et/t',
-        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://em/m',
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://et/t',
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'https://em/m',
       },
     )!
-    expect([c.tracesUrl, c.metricsUrl]).toEqual(['http://ot/t', 'http://om/m'])
+    expect([c.tracesUrl, c.metricsUrl]).toEqual(['https://ot/t', 'https://om/m'])
   })
 
   it('OTEL_LOGS_EXPORTER=none is read trimmed and in any case', () => {
@@ -1809,7 +1829,7 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
   type Span = { name: string; startTimeUnixNano: string; endTimeUnixNano: string }
   const spansOf = (calls: { url: string; body: Record<string, unknown> }[]) =>
     (
-      calls.find((c) => c.url === 'http://c/v1/traces')!.body as {
+      calls.find((c) => c.url === 'https://c/v1/traces')!.body as {
         resourceSpans: { scopeSpans: { scope: { version: string }; spans: Span[] }[] }[]
       }
     ).resourceSpans[0]!.scopeSpans[0]!
@@ -1881,7 +1901,7 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
     await sink.flush()
     const root = spansOf(calls).spans[0]!
     expect([root.startTimeUnixNano, root.endTimeUnixNano]).toEqual(['900000000', '2000000000'])
-    const logs = calls.find((c) => c.url === 'http://c/v1/logs')!.body as {
+    const logs = calls.find((c) => c.url === 'https://c/v1/logs')!.body as {
       resourceLogs: { scopeLogs: { logRecords: { timeUnixNano: string }[] }[] }[]
     }
     const record = logs.resourceLogs[0]!.scopeLogs[0]!.logRecords[0]! as {
@@ -1965,7 +1985,7 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
         headers: { 'x-top': 'opt' },
       },
       {
-        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c',
         OTEL_EXPORTER_OTLP_HEADERS: 'a=shared,x-top=env',
         OTEL_EXPORTER_OTLP_TRACES_HEADERS: 'a=traces%20only',
       },
@@ -1979,13 +1999,13 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
     await sink.flush()
     // `a` is the traces header's, over the shared one; `x-top` the option's.
     expect(seen).toEqual({
-      'http://c/v1/traces': {
+      'https://c/v1/traces': {
         'content-type': 'application/json',
         a: 'traces only',
         'x-top': 'opt',
       },
       // Live (the default) sent the task's metrics as it ended: the shared `a`.
-      'http://c/v1/metrics': { 'content-type': 'application/json', a: 'shared', 'x-top': 'opt' },
+      'https://c/v1/metrics': { 'content-type': 'application/json', a: 'shared', 'x-top': 'opt' },
     })
   })
 })
@@ -2053,7 +2073,7 @@ describe('config the sweep left unpinned', () => {
   })
 
   it('OTEL_SDK_DISABLED is read case- and space-insensitively', () => {
-    const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' }
+    const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c' }
     expect(
       ['TRUE', ' true ', 'false'].map((v) =>
         resolveOtelConfig({}, { ...base, OTEL_SDK_DISABLED: v }) === undefined ? 'off' : 'on',
@@ -2075,10 +2095,10 @@ describe('config the sweep left unpinned', () => {
 
   it('each signal reads its own headers variable; options top env for endpoint and name', () => {
     const c = resolveOtelConfig(
-      { logsEndpoint: 'http://opt/logs', serviceName: 'svc-opt' },
+      { logsEndpoint: 'https://opt/logs', serviceName: 'svc-opt' },
       {
-        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c',
-        OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'http://env/logs',
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c',
+        OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'https://env/logs',
         OTEL_SERVICE_NAME: 'svc-env',
         OTEL_EXPORTER_OTLP_TRACES_HEADERS: 't=1',
         OTEL_EXPORTER_OTLP_METRICS_HEADERS: 'm=1',
@@ -2086,7 +2106,7 @@ describe('config the sweep left unpinned', () => {
       },
     )!
     expect([c.logsUrl, c.serviceName, c.signalHeaders]).toEqual([
-      'http://opt/logs',
+      'https://opt/logs',
       'svc-opt',
       { traces: { t: '1' }, metrics: { m: '1' }, logs: { l: '1' } },
     ])
@@ -2095,7 +2115,7 @@ describe('config the sweep left unpinned', () => {
 
 // F-17: the standard OTLP env vars below were not read.
 describe('the standard OTLP env a pipeline already sets', () => {
-  const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' }
+  const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c' }
 
   it('OTEL_RESOURCE_ATTRIBUTES reaches every signal’s resource, under vx’s identity', async () => {
     const bodies: Record<string, { resource: { attributes: unknown[] } }> = {}
@@ -2160,9 +2180,9 @@ describe('the standard OTLP env a pipeline already sets', () => {
       { key: 'service.version', value: { stringValue: '1.2.3' } },
     ]
     expect(Object.keys(bodies).sort()).toEqual([
-      'http://c/v1/logs',
-      'http://c/v1/metrics',
-      'http://c/v1/traces',
+      'https://c/v1/logs',
+      'https://c/v1/metrics',
+      'https://c/v1/traces',
     ])
     for (const b of Object.values(bodies)) expect(b.resource.attributes).toEqual(expected)
   })
@@ -2197,7 +2217,7 @@ describe('the standard OTLP env a pipeline already sets', () => {
     expect([
       urls('https://c/otlp?tenant=a'),
       urls('https://c/?t=a'),
-      urls('http://c:4318/'),
+      urls('https://c:4318/'),
     ]).toEqual([
       [
         'https://c/otlp/v1/traces?tenant=a',
@@ -2205,7 +2225,7 @@ describe('the standard OTLP env a pipeline already sets', () => {
         'https://c/otlp/v1/logs?tenant=a',
       ],
       ['https://c/v1/traces?t=a', 'https://c/v1/metrics?t=a', 'https://c/v1/logs?t=a'],
-      ['http://c:4318/v1/traces', 'http://c:4318/v1/metrics', 'http://c:4318/v1/logs'],
+      ['https://c:4318/v1/traces', 'https://c:4318/v1/metrics', 'https://c:4318/v1/logs'],
     ])
   })
 
@@ -2333,8 +2353,8 @@ describe('the standard OTLP env a pipeline already sets', () => {
     sink.onRunSummary(summaryFor(RUN, []))
     await sink.flush()
     expect(warns.sort()).toEqual([
-      '[vx] vx-otel: export failed for http://c/v1/metrics: socket closed',
-      "[vx] vx-otel: export failed for http://c/v1/traces: socket closed — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)",
+      '[vx] vx-otel: export failed for https://c/v1/metrics: socket closed',
+      "[vx] vx-otel: export failed for https://c/v1/traces: socket closed — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)",
     ])
   })
 })
@@ -2404,8 +2424,8 @@ describe('a large run ships in requests a collector accepts', () => {
     expect(
       Object.fromEntries(Object.entries(per).map(([u, ns]) => [u, ns.sort((a, b) => b - a)])),
     ).toEqual({
-      'http://c/v1/traces': [1000, 1000, 501],
-      'http://c/v1/logs': [1000, 1000, 500],
+      'https://c/v1/traces': [1000, 1000, 501],
+      'https://c/v1/logs': [1000, 1000, 500],
     })
   })
 
@@ -2414,8 +2434,8 @@ describe('a large run ships in requests a collector accepts', () => {
       throw new Error('refused')
     })
     expect(warns.sort()).toEqual([
-      '[vx] vx-otel: export failed for http://c/v1/logs: refused (2 of 2 requests)',
-      '[vx] vx-otel: export failed for http://c/v1/traces: refused (2 of 2 requests)',
+      '[vx] vx-otel: export failed for https://c/v1/logs: refused (2 of 2 requests)',
+      '[vx] vx-otel: export failed for https://c/v1/traces: refused (2 of 2 requests)',
     ])
   })
 })
@@ -2608,12 +2628,12 @@ describe('the sink, past its sweep', () => {
       async () => {
         throw new Error('down')
       },
-      { tracesUrl: 'http://u:tok@h:99999/v1/traces' },
+      { tracesUrl: 'https://u:tok@h:99999/v1/traces' },
     )
     expect([partly, exact, sync, unparsable]).toEqual([
-      ['[vx] vx-otel: export failed for http://c/v1/traces: second refused (1 of 3 requests)'],
+      ['[vx] vx-otel: export failed for https://c/v1/traces: second refused (1 of 3 requests)'],
       1,
-      ['[vx] vx-otel: export failed for http://c/v1/traces: sync'],
+      ['[vx] vx-otel: export failed for https://c/v1/traces: sync'],
       ['[vx] vx-otel: export failed for (an unparsable URL): down'],
     ])
   })
@@ -2622,7 +2642,7 @@ describe('the sink, past its sweep', () => {
 // F-56: a mutation sweep of plugin.ts (226 mutants, 157 caught) found these
 // unheld, and one bug (the timeout past a timer's range).
 describe('the OTLP env, as its second sweep found it unheld', () => {
-  const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' }
+  const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c' }
 
   it('a metrics or logs header no request can carry is dropped too', () => {
     const warns: string[] = []
@@ -2686,7 +2706,7 @@ describe('the OTLP env, as its second sweep found it unheld', () => {
 
   it('an empty endpoint option falls back like an empty env var', () => {
     const c = resolveOtelConfig({ tracesEndpoint: '', endpoint: '' }, base)!
-    expect(c.tracesUrl).toBe('http://c/v1/traces')
+    expect(c.tracesUrl).toBe('https://c/v1/traces')
   })
 })
 
@@ -2985,7 +3005,7 @@ describe('signals link to each other', () => {
     sink.onRunSummary(summaryFor(RUN, [t]))
     await sink.flush()
     expect(JSON.stringify(calls.map((c) => c.body))).not.toContain('exemplars')
-    expect(calls.map((c) => c.url)).toEqual(['http://c/v1/metrics'])
+    expect(calls.map((c) => c.url)).toEqual(['https://c/v1/metrics'])
   })
 
   it('a task span holds each sandbox violation as an event, up to 100, then how many more', () => {
