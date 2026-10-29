@@ -48,7 +48,7 @@ describe('resolveNxCacheConfig, exactly', () => {
 
   it('a password with no user name is refused too', () => {
     expect(() => resolveNxCacheConfig({ url: 'http://:pw@nx.invalid' }, {})).toThrow(
-      'vx/nx-cache: url carries credentials (user:pass@); pass them as the token instead',
+      'nxCache() option "url" carries credentials (user:pass@); pass them as the token instead',
     )
   })
 

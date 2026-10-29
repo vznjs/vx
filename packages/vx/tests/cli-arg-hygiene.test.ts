@@ -374,3 +374,67 @@ describe('a refused value says what the flag takes (E-36)', () => {
     ])
   })
 })
+
+describe('a task argument with a control character is refused by name', () => {
+  // `vx run $'build\n'` said "no projects declare task(s): build" with the
+  // newline printed raw, then "Did you mean build?": the one fault, a
+  // byte no task name holds, went unsaid.
+  it('names the byte escaped, in a bare and an anchored task', () => {
+    expect(parseRunArgs(['build\n']).error).toBe(
+      'task "build\\n" holds a control character, which no task name may hold — retype it',
+    )
+    expect(parseRunArgs(['app#lint\x01']).error).toBe(
+      'task "app#lint\\u0001" holds a control character, which no task name may hold — retype it',
+    )
+    expect(parseRunArgs(['watch\t'], 'watch').error).toBe(
+      'task "watch\\t" holds a control character, which no task name may hold — retype it',
+    )
+  })
+
+  it('a forwarded argument may hold one (control)', () => {
+    expect(parseRunArgs(['build', '--', 'a\nb'])).toMatchObject({
+      tasks: ['build'],
+      forwardArgs: ['a\nb'],
+    })
+    expect(parseRunArgs(['build:prod', 'app#e2e']).error).toBeUndefined()
+  })
+})
+
+describe('--profile names a file, checked before the run', () => {
+  let stderr: string
+  const origCwd = process.cwd()
+  let tmp: string
+
+  beforeEach(async () => {
+    stderr = ''
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vx-profile-'))
+    process.chdir(tmp)
+  })
+
+  afterEach(async () => {
+    process.chdir(origCwd)
+    vi.restoreAllMocks()
+    await fs.rm(tmp, { recursive: true, force: true })
+  })
+
+  // A directory died with EISDIR at write time, after the whole run.
+  it('refuses a directory', async () => {
+    await fs.mkdir(path.join(tmp, 'out'))
+    expect(await run(['run', 'build', '--profile=out'])).toBe(1)
+    expect(stderr).toContain(
+      '--profile: out is a directory — name a file, e.g. --profile=out/profile.json',
+    )
+  })
+
+  it('a file in an existing directory goes on to the run (control)', async () => {
+    // No workspace here: the run's own refusal, thrown, is the next fault.
+    const thrown = await run(['run', 'build', '--profile=p.json']).catch((e: Error) => e.message)
+    expect(thrown).toContain('.vx/workspace.ts')
+    expect(stderr).not.toContain('--profile:')
+  })
+})

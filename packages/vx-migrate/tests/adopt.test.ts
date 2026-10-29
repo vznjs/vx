@@ -114,6 +114,7 @@ describe('the package manager', () => {
   it('adds at the workspace root: pnpm -w, Yarn 1 -W, Berry without', async () => {
     const root = await tmp('vx-adopt-argv-')
     try {
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages: []\n')
       await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n')
       const yarn1 = installArgv(root, 'yarn', ['@vzn/vx'])
       await writeFile(path.join(root, 'yarn.lock'), '__metadata:\n  version: 8\n')
@@ -138,6 +139,7 @@ describe('the package manager', () => {
   it('removes at the workspace root: pnpm -w, Yarn 1 -W, Berry without', async () => {
     const root = await tmp('vx-adopt-rm-')
     try {
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages: []\n')
       await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n')
       const yarn1 = removeArgv(root, 'yarn', ['@vzn/vx-migrate'])
       await writeFile(path.join(root, 'yarn.lock'), '__metadata:\n  version: 8\n')
@@ -762,6 +764,7 @@ describe('install when PATH holds an unrunnable manager', () => {
     await chmod(path.join(root, 'real', 'pnpm'), 0o755)
     await writeFile(path.join(root, 'ws', 'package.json'), '{"name":"ws"}')
     await writeFile(path.join(root, 'ws', 'pnpm-lock.yaml'), '')
+    await writeFile(path.join(root, 'ws', 'pnpm-workspace.yaml'), 'packages: []\n')
     await writeFile(
       path.join(root, 'probe.ts'),
       `import { install } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/adopt.ts'))}

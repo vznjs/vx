@@ -17,6 +17,10 @@ a brace of directories (`{src,lib}`) or of `./` spellings (`{./src,lib}/**`) in 
 
 `vx cache clean --dry-run` → `vx cache clean --dry`
 
+## vx-history: read the run's refs, never a guessed main
+
+vxHistory({ defaultBranch }) is refused; set the workspace's baseBranch instead.
+
 ## vx-migrate: name the cache server url and its bearer token
 
 turboCache({ apiUrl }) is turboCache({ url }); nxCache({ server, accessToken }) is nxCache({ url, token }).

@@ -310,7 +310,9 @@ terminal and a task succeeding or failing. Read it alongside
        task plus the `invocations` header row (command, git/CI/host
        context, counts). Group + aborted tasks skipped; a run
        a signal stopped records only the tasks that finished, with no
-       header row, so `vx last` does not list it.
+       header row, so `vx last` does not list it. A stop in the
+       keep-alive wait (step 8), the usual end of `vx run dev`, is no
+       such stop: the run is recorded ok.
     5. Telemetry: emit the RunSummaryRecord to every active sink +
        await their flush (crash-isolated; skipped when no sink).
     6. Drain background remote prefetches/uploads; cache.close();

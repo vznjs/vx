@@ -575,6 +575,24 @@ describe('persistent task framing', () => {
     expect(close).toBe('└─ ▸ @vzn/vx-docs#dev ── (1.81s) running')
   })
 
+  it('a buffered persistent frame is marked and reads running at both ends too', () => {
+    // Several requested tasks buffer their frames: a ready server's read
+    // `success` with no mark, as if it had exited.
+    const n = persistentNode('@vzn/vx-docs#dev', 'astro dev')
+    const block = formatTaskBlock(n, outcome('@vzn/vx-docs#dev', 'success', { durationMs: 1810 }), {
+      output: [{ text: 'Local: x\n', err: false }],
+    }).split('\n')
+    expect(block[0]).toBe('┌─ ▸ @vzn/vx-docs#dev > running')
+    expect(block).toContain('└─ ▸ @vzn/vx-docs#dev ── (1.81s) running')
+    const failed = formatTaskBlock(
+      n,
+      outcome('@vzn/vx-docs#dev', 'failed', { durationMs: 1810 }),
+      {},
+    ).split('\n')
+    expect(failed[0]).toBe('┌─ ▸ @vzn/vx-docs#dev > failed (exit 1)')
+    expect(failed).toContain('└─ ▸ @vzn/vx-docs#dev ── (1.81s) failed (exit 1)')
+  })
+
   it('a non-persistent task frame is unmarked and closes as success', () => {
     const n = node('@vzn/vx#lint', 'oxlint .')
     expect(formatFrameOpen(n)).toBe('┌─ @vzn/vx#lint > $ oxlint .')
