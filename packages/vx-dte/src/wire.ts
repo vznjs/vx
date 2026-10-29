@@ -54,6 +54,8 @@ const WORKER_PROBE_BEATS = 1.6
  * (4 s on the default).
  */
 const LOST_BEATS = 1.9
+/** Why a worker ends on its orchestrator's silence. */
+export const ORCHESTRATOR_SILENT = 'relay: the orchestrator went silent'
 /**
  * A relay that forgot this participant (a restart: it stores nothing) is
  * joined again for this many heartbeats; the orchestrator joins as the
@@ -400,7 +402,7 @@ export async function join(
       if (quiet >= LOST_BEATS * heartbeatMs) {
         forget(peer)
         if (peer === 'orchestrator') {
-          end(new RelayError(410, 'relay: the orchestrator went silent'))
+          end(new RelayError(410, ORCHESTRATOR_SILENT))
           return
         }
         inbox.push({ from: 'relay', body: { type: 'lost', id: peer } })

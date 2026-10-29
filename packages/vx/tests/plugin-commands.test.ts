@@ -216,6 +216,53 @@ describe('plugin commands', () => {
     }
   })
 
+  // `vx dte worker` asks whether a remote took a task's upload, and sends
+  // the task's output with its end when none did (#4428). The verb's
+  // artifacts dropped `uploaded`, so a reset upload read as landed and the
+  // run failed the finished task: "no cache this machine reads gave its
+  // entry" (CI, 2026-10-29).
+  it("a verb's artifacts say whether a remote took an upload", async () => {
+    const box = globalThis as unknown as { __vxCmd?: unknown }
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/wire',
+          `{ cache: () => ({
+              has: async () => false,
+              get: async () => null,
+              put: async (h) => { if (h.endsWith('bb')) throw new Error('ECONNRESET') },
+            }) }`,
+        ),
+        pluginSource(
+          'org/saver',
+          `{ commands: { save: { description: 'saves', async run(argv, ctx) {
+             const said = []
+             for (const artifacts of [ctx.artifacts, ctx.artifactsFor(() => undefined)])
+               for (const key of ['00000000000000aa', '00000000000000bb']) {
+                 await artifacts.save(key, {
+                   id: 'app#build', projectDir: ctx.workspaceRoot, command: 'true',
+                   outputs: { files: [], workspaceFiles: [] },
+                 }, { output: [{ text: 'ran', err: false }], durationMs: 1 })
+                 said.push(await artifacts.uploaded?.(key))
+               }
+             globalThis.__vxCmd = said
+             return 0
+           } } } }`,
+        ),
+      ]),
+    )
+    const was = process.env['CI']
+    process.env['CI'] = 'true'
+    try {
+      expect(await cli(['save'])).toBe(0)
+    } finally {
+      if (was === undefined) delete process.env['CI']
+      else process.env['CI'] = was
+    }
+    expect(box.__vxCmd).toEqual([true, false, true, false])
+  })
+
   // `vx <verb> --help` answers from core's reference for a CORE verb only: a
   // plugin verb owns its arguments, `--help` included (docs/cli.md). The
   // gate that says so could go with the suite green (E-10's sweep of the

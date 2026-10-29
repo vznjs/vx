@@ -711,10 +711,26 @@ export const POST_EXIT_CUT_LINE =
   `still held its stdout/stderr ${POST_EXIT_DRAIN_MS} ms later\n`
 
 /**
- * A task's two output callbacks, wrapped to learn whether its output so far
- * ends mid-line, so a line vx adds after it (`POST_EXIT_CUT_LINE`) breaks
- * the line only then: a newline always before it printed a blank line under
- * the task's last line. An absent callback stays absent (nothing decodes).
+ * How long one stream's output waits on the other's open line. dash writes
+ * the pieces of `sh: 1: cannot open /dev/tty: …` back to back; a line open
+ * longer is a prompt or a progress line, and the other stream's lines are
+ * shown live rather than held behind it.
+ */
+export const OPEN_LINE_WAIT_MS = 50
+/** And how much of it waits: the hold never costs more than this per task. */
+export const OPEN_LINE_HOLD_CHARS = 64 * 1024
+
+/**
+ * A task's two output callbacks, merged a line at a time. They are two
+ * pipes, read in the order they arrive, and dash's stderr line written in
+ * pieces took a stdout write inside it: `sh: /dev/ttyNO-TTY\n\n` (CI,
+ * 2026-10-29). So a chunk on one stream waits while the other's line is
+ * open, and goes once that line ends; what of a chunk follows its last
+ * newline goes after the held output. A line still open when the hold
+ * passes `OPEN_LINE_WAIT_MS`, `OPEN_LINE_HOLD_CHARS` or `end` is broken
+ * with a newline first, as `own` breaks one before vx's line. A stream
+ * writing alone is never held, so a task that writes one stream pays a
+ * comparison per chunk. An absent callback stays absent (nothing decodes).
  */
 export function lineEnds(
   onStdout?: (chunk: string) => void,
@@ -724,18 +740,71 @@ export function lineEnds(
   onStderr?: (chunk: string) => void
   /** `text` on a line of its own. */
   own(text: string): string
+  /** Lets what waits go: the task's streams ended. */
+  end(): void
 } {
-  let mid = false
-  const track =
-    (f: (chunk: string) => void) =>
-    (chunk: string): void => {
-      if (chunk.length > 0) mid = !chunk.endsWith('\n')
-      f(chunk)
+  const sinks = [onStdout, onStderr]
+  /** The stream whose line is open (0 stdout, 1 stderr). */
+  let open: 0 | 1 | undefined
+  /** What the other stream wrote while that line was open: one side at most. */
+  const held = ['', '']
+  /** When what waits began to: the bound counts from there. */
+  let heldAt = 0
+  // One timer, re-armed only when it fires early: a hold set and cleared
+  // its own per line, and a task interleaving short lines paid a timer each
+  // (+26 ms of CPU on 20 000 lines, 2026-10-29).
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const arm = (ms: number): void => {
+    timer = setTimeout(due, ms)
+    timer.unref()
+  }
+  const due = (): void => {
+    timer = undefined
+    const s = held[0]!.length > 0 ? 0 : held[1]!.length > 0 ? 1 : undefined
+    if (s === undefined) return
+    const left = heldAt + OPEN_LINE_WAIT_MS - performance.now()
+    if (left > 0) arm(left)
+    else release(s, true)
+  }
+  const write = (s: 0 | 1, text: string): void => {
+    open = text.endsWith('\n') ? undefined : s
+    sinks[s]?.(text)
+  }
+  const release = (s: 0 | 1, broken: boolean): void => {
+    const text = held[s]!
+    if (text.length === 0) return
+    held[s] = ''
+    write(s, broken ? `\n${text}` : text)
+  }
+  const push = (s: 0 | 1, chunk: string): void => {
+    if (chunk.length === 0) return
+    if (open === undefined || open === s) {
+      const other = s === 0 ? 1 : 0
+      const nl = held[other]!.length === 0 ? -1 : chunk.lastIndexOf('\n')
+      if (nl === -1 || nl === chunk.length - 1) {
+        write(s, chunk)
+        if (nl !== -1) release(other, false)
+        return
+      }
+      write(s, chunk.slice(0, nl + 1))
+      release(other, false)
+      return push(s, chunk.slice(nl + 1))
     }
+    if (held[s]!.length === 0) heldAt = performance.now()
+    held[s] += chunk
+    if (held[s]!.length > OPEN_LINE_HOLD_CHARS) return release(s, true)
+    if (timer === undefined) arm(OPEN_LINE_WAIT_MS)
+  }
   return {
-    ...(onStdout && { onStdout: track(onStdout) }),
-    ...(onStderr && { onStderr: track(onStderr) }),
-    own: (text) => (mid ? `\n${text}` : text),
+    ...(onStdout && { onStdout: (chunk: string) => push(0, chunk) }),
+    ...(onStderr && { onStderr: (chunk: string) => push(1, chunk) }),
+    own: (text) => (open !== undefined ? `\n${text}` : text),
+    end: () => {
+      clearTimeout(timer)
+      timer = undefined
+      release(0, true)
+      release(1, true)
+    },
   }
 }
 
@@ -1203,6 +1272,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   if (timeout.timedOut()) ac.abort()
   else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
+  ends.end()
   const cutLine = ends.own(POST_EXIT_CUT_LINE)
   if (cut) opts.onStderr?.(cutLine)
   const stderr = cut ? streamed + cutLine : streamed
