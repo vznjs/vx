@@ -17,6 +17,10 @@ a brace of directories (`{src,lib}`) or of `./` spellings (`{./src,lib}/**`) in 
 
 `vx cache clean --dry-run` → `vx cache clean --dry`
 
+## cli: vx run --dry=pretty, the value every --format takes
+
+vx run --dry=text is now --dry=pretty (bare --dry is unchanged).
+
 ## cli: vx cache clean --dry, as vx run and vx init spell it
 
 vx cache clean --dry-run is now --dry; its JSON field dryRun is dry, and Cache.prune takes { dry } in place of { dryRun }.

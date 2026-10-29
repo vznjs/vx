@@ -32,8 +32,7 @@ const refusal = (f: () => unknown): string => {
 describe('resolveNxCacheConfig, exactly', () => {
   // Item 928: the same token leak as turboCache's.
   it('an access token no header can carry is refused, and not printed', () => {
-    const msg = (accessToken: string) =>
-      refusal(() => resolveNxCacheConfig({ server: SERVER, accessToken }, {}))
+    const msg = (token: string) => refusal(() => resolveNxCacheConfig({ url: SERVER, token }, {}))
     expect([msg('SECRET\r\nX: y'), msg('SECRET\0'), msg('SECRET')]).toEqual([
       'vx/nx-cache: the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
       'vx/nx-cache: the access token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
@@ -42,28 +41,28 @@ describe('resolveNxCacheConfig, exactly', () => {
   })
 
   it('every trailing slash is stripped, and a server of only slashes or nothing declines', () => {
-    expect(resolveNxCacheConfig({ server: `${SERVER}//` }, {})?.server).toBe(SERVER)
-    expect(resolveNxCacheConfig({ server: '' }, {})).toBeUndefined()
-    expect(resolveNxCacheConfig({ server: '/' }, {})).toBeUndefined()
+    expect(resolveNxCacheConfig({ url: `${SERVER}//` }, {})?.url).toBe(SERVER)
+    expect(resolveNxCacheConfig({ url: '' }, {})).toBeUndefined()
+    expect(resolveNxCacheConfig({ url: '/' }, {})).toBeUndefined()
   })
 
   it('a password with no user name is refused too', () => {
-    expect(() => resolveNxCacheConfig({ server: 'http://:pw@nx.invalid' }, {})).toThrow(
-      'vx/nx-cache: server carries credentials (user:pass@); pass them as the accessToken instead',
+    expect(() => resolveNxCacheConfig({ url: 'http://:pw@nx.invalid' }, {})).toThrow(
+      'vx/nx-cache: url carries credentials (user:pass@); pass them as the token instead',
     )
   })
 
-  it('the accessToken option wins over the env; an empty one is an open server', () => {
+  it('the token option wins over the env; an empty one is an open server', () => {
     const env = { NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: 'env' }
-    expect(resolveNxCacheConfig({ server: SERVER, accessToken: 'opt' }, env)).toEqual({
-      server: SERVER,
-      accessToken: 'opt',
+    expect(resolveNxCacheConfig({ url: SERVER, token: 'opt' }, env)).toEqual({
+      url: SERVER,
+      token: 'opt',
       timeoutMs: 30_000,
       retries: 1,
     })
-    expect(resolveNxCacheConfig({ server: SERVER, accessToken: '' }, env)).toEqual({
-      server: SERVER,
-      accessToken: '',
+    expect(resolveNxCacheConfig({ url: SERVER, token: '' }, env)).toEqual({
+      url: SERVER,
+      token: '',
       timeoutMs: 30_000,
       retries: 1,
     })
@@ -73,10 +72,10 @@ describe('resolveNxCacheConfig, exactly', () => {
 describe('the requests', () => {
   it('no token sends no Authorization; an upload declares its length', async () => {
     const { fetchImpl, calls } = stub(() => new Response(null, { status: 200 }))
-    await new NxRemoteCache(
-      { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
-      fetchImpl,
-    ).put('aa', new Blob(['12345']))
+    await new NxRemoteCache({ url: SERVER, token: '', timeoutMs: 1000, retries: 0 }, fetchImpl).put(
+      'aa',
+      new Blob(['12345']),
+    )
     expect(calls.map((c) => c.headers)).toEqual([
       {
         'Content-Type': 'application/octet-stream',
@@ -90,7 +89,7 @@ describe('the requests', () => {
     for (const status of [201, 204]) {
       const { fetchImpl } = stub(() => new Response(null, { status }))
       await new NxRemoteCache(
-        { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
+        { url: SERVER, token: '', timeoutMs: 1000, retries: 0 },
         fetchImpl,
       ).put('aa', new Blob(['x']))
     }
@@ -99,19 +98,15 @@ describe('the requests', () => {
   it('a GET answering 500 is an error, not a miss', async () => {
     const { fetchImpl } = stub(() => new Response(null, { status: 500 }))
     await expect(
-      new NxRemoteCache(
-        { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
-        fetchImpl,
-      ).get('aa'),
+      new NxRemoteCache({ url: SERVER, token: '', timeoutMs: 1000, retries: 0 }, fetchImpl).get(
+        'aa',
+      ),
     ).rejects.toThrow('HTTP 500')
   })
   // "HTTP 500" alone said nothing of why (2026-10-23).
   it('a refused GET or PUT says the server’s own words', async () => {
     const { fetchImpl } = stub(() => new Response('disk full', { status: 507 }))
-    const c = new NxRemoteCache(
-      { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
-      fetchImpl,
-    )
+    const c = new NxRemoteCache({ url: SERVER, token: '', timeoutMs: 1000, retries: 0 }, fetchImpl)
     await expect(c.get('aa')).rejects.toThrow('HTTP 507: disk full')
     await expect(c.put('aa', new Blob(['x']))).rejects.toThrow('HTTP 507: disk full')
   })
@@ -120,7 +115,7 @@ describe('the requests', () => {
   it('a refused token or upload says the server’s own words too', async () => {
     const c = (status: number, body: string): NxRemoteCache =>
       new NxRemoteCache(
-        { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
+        { url: SERVER, token: '', timeoutMs: 1000, retries: 0 },
         stub(() => new Response(body, { status })).fetchImpl,
       )
     await expect(c(401, 'token expired').get('aa')).rejects.toThrow(
@@ -133,7 +128,7 @@ describe('the requests', () => {
   it('a GET answering 403 says a read was refused, not a write', async () => {
     const { fetchImpl } = stub(() => new Response(null, { status: 403 }))
     const err = await new NxRemoteCache(
-      { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
+      { url: SERVER, token: '', timeoutMs: 1000, retries: 0 },
       fetchImpl,
     )
       .get('aa')

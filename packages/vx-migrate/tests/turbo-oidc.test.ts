@@ -239,12 +239,12 @@ describe('a failed exchange leaves the run local, and says why without a token',
 describe('another server', () => {
   it('needs its tokenUrl, and revokes only where revokeUrl names it', async () => {
     expect(() =>
-      resolveTurboCacheConfig({ apiUrl: 'https://cache.example', oidc: true }, GH_ENV),
+      resolveTurboCacheConfig({ url: 'https://cache.example', oidc: true }, GH_ENV),
     ).toThrow("vx/turbo-cache: oidc needs tokenUrl for a cache that is not Vercel's")
     const w = world()
     const c = cache(
       {
-        apiUrl: 'https://cache.example',
+        url: 'https://cache.example',
         oidc: { tokenUrl: 'https://auth.example/oauth/token', params: { resource: 'cache' } },
       },
       GH_ENV,

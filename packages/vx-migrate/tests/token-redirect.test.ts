@@ -33,12 +33,12 @@ afterAll(() => srv.stop())
 const clients = {
   'nxCache()': () =>
     new NxRemoteCache(
-      resolveNxCacheConfig({ server: `http://127.0.0.1:${srv.port}`, accessToken: TOKEN }, {})!,
+      resolveNxCacheConfig({ url: `http://127.0.0.1:${srv.port}`, token: TOKEN }, {})!,
     ),
   'turboCache()': () =>
     new TurboRemoteCache(
       resolveTurboCacheConfig(
-        { apiUrl: `http://127.0.0.1:${srv.port}`, token: TOKEN, teamId: 'team_1' },
+        { url: `http://127.0.0.1:${srv.port}`, token: TOKEN, teamId: 'team_1' },
         {},
       )!,
     ),
