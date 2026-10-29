@@ -57,8 +57,25 @@ export function refusal(
 }
 
 // A refusal that opens with the config that caused it: the schema's
-// `<file>: tasks.<name> …` and the loader's `<file> has unknown field …`.
-const CONFIG_REFUSAL = /^\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
+// `<file>: tasks.<name> …`, and the loader's `Project config <file>: …` and
+// `Workspace config at <file> did not …`, which answered VX_E_REFUSED.
+const CONFIG_REFUSAL =
+  /^(?:(?:Project|Workspace) config (?:at )?)?\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
+
+const CONFIG_THROW = Symbol('vx.configThrow')
+
+/**
+ * A config's own throw, shown as thrown (its stack names its line), and
+ * answered as the config's refusal rather than a defect of vx.
+ */
+export function configThrow(err: object): object {
+  try {
+    Object.defineProperty(err, CONFIG_THROW, { value: true })
+  } catch {
+    // A frozen error stays VX_E_INTERNAL.
+  }
+  return err
+}
 
 /**
  * The stable code of anything `bin.ts` catches. A UserError's own, but
@@ -68,6 +85,7 @@ const CONFIG_REFUSAL = /^\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
  * predates it.
  */
 export function errorCode(err: unknown): string {
+  if (typeof err === 'object' && err !== null && CONFIG_THROW in err) return 'VX_E_CONFIG'
   if (isUserError(err)) {
     const code = (err as { code?: unknown }).code
     if (typeof code === 'string' && code !== 'VX_E_REFUSED') return code
@@ -104,6 +122,30 @@ export function errorDocument(code: string, message: string): string {
     ? { docs: `https://vznjs.github.io/vx/cli/#${code.toLowerCase()}` }
     : {}
   return `${JSON.stringify({ ok: false, error: { code, message, ...docs } })}\n`
+}
+
+/**
+ * What a thrown value says, for a line that names its thrower. A plugin
+ * may throw anything: `String(err)` read `[object Object]` for an
+ * error-like `{ message }`, `undefined` for a bare `throw`, and itself threw
+ * on an object with no prototype. Never throws.
+ */
+export function thrownMessage(err: unknown): string {
+  try {
+    if (typeof err === 'string') return err === '' ? 'threw an empty string' : err
+    if (typeof err === 'object' && err !== null) {
+      const message = (err as { message?: unknown }).message
+      if (typeof message === 'string' && message !== '') return message
+      if (err instanceof Error) return `threw ${err.name} with no message`
+      const json = JSON.stringify(err)
+      if (json !== undefined) return `threw ${json.length > 200 ? `${json.slice(0, 200)}…` : json}`
+      return 'threw an object'
+    }
+    if (typeof err === 'bigint') return `threw ${err}n`
+    return `threw ${String(err)}`
+  } catch {
+    return 'threw an object'
+  }
 }
 
 /**

@@ -10,7 +10,15 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { beginRun, mark, nearest, relPosix, type SecretBroker, UserError } from '../util/index.js'
+import {
+  beginRun,
+  mark,
+  nearest,
+  relPosix,
+  type SecretBroker,
+  thrownMessage,
+  UserError,
+} from '../util/index.js'
 import {
   Cache,
   type CacheLayer,
@@ -952,9 +960,11 @@ function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>
   const stack = [...roots]
   while (stack.length > 0) {
     const id = stack.pop()!
-    if (keep.has(id)) continue
+    // A `pkg#task` the user named is kept, though a hook may have dropped it.
+    const node = nodes.get(id)
+    if (node === undefined || keep.has(id)) continue
     keep.add(id)
-    stack.push(...nodes.get(id)!.deps)
+    stack.push(...node.deps)
   }
   for (const [id, n] of nodes) {
     if (!keep.has(id)) nodes.delete(id)
@@ -1037,7 +1047,7 @@ export async function openRemotes(
     } catch (err) {
       entry.read = false
       entry.write = false
-      const e = err instanceof Error ? err : new Error(String(err))
+      const e = err instanceof Error ? err : new Error(thrownMessage(err))
       entry.onError?.(e)
       closed = true
     }

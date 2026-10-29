@@ -40,7 +40,7 @@ of that with no task on it (a task counts from its send to its result,
 restore and save included), its tasks, the cores
 its tasks were expected to use (their last run's) beside the cores it used, its peak RAM of its memory, and
 its utilization, under a line
-of the expected and used share of all their core-time. Tasks the executor left to the run's own machine get a `this machine` row, and a line splits the executed count between workers and this machine. A footer line
+of the expected and used share of all their core-time (the expected share over the workers whose executor reports one). Tasks the executor left to the run's own machine get a `this machine` row, and a line splits the executed count between workers and this machine. A footer line
 names the vx version, the command (what follows `--` counted, not
 quoted), tasks passed and outputs restored.
 Anywhere else (`GITHUB_ACTIONS` not `true`: laptops, other CI)
@@ -67,7 +67,8 @@ github({
 On Actions (`GITHUB_ACTIONS=true`) the plugin's `config` stage names the
 run's branch through `ctx.setBranch`, from the ref (`GITHUB_REF`,
 `GITHUB_REF_NAME`, `GITHUB_HEAD_REF`, `GITHUB_REPOSITORY`) and the
-`GITHUB_EVENT_PATH` payload. A push to the default branch names no scope.
+`GITHUB_EVENT_PATH` payload. A push to the default branch (the
+workspace's `baseBranch`, else the event's) names no scope.
 A push to, or a pull request from, a branch names
 `<owner>/<repo>:<branch>` of the repository the branch lives in, so a
 fork's pull request names the fork; so does a `pull_request_target` or
@@ -81,8 +82,10 @@ keys only what plugins store themselves (`ctx.cache`, run records):
 task keys never carry it, and the cache server decides from the CI OIDC
 token where a task's entry lands. `VX_CACHE_SCOPE` overrides it.
 
-It also names the refs a remote cache reads, in order (`refs`): the
-run's own branch (a pull request's head, else `GITHUB_REF`), then the
+It also names the refs a remote cache reads, in order (`refs`): a pull
+request's merge ref (`refs/pull/<n>/merge`, the one scope its token
+writes), then the run's own branch (a pull request's head, else
+`GITHUB_REF`), then the
 branch it merges into (`GITHUB_BASE_REF`), then the default branch (the
 workspace's `baseBranch`, else the event's). A merge queue's run reads
 only its base branch (`merge_group.base_ref`, else the queue ref's
@@ -113,7 +116,8 @@ A merge train's pipeline (`CI_MERGE_REQUEST_EVENT_TYPE=merge_train`)
 builds what lands on the target, so it is trusted: no scope. As on
 Actions, the scope keys only plugin entries. A remote reads the tag, else
 the merge request's source branch, else `CI_COMMIT_REF_NAME`, then the
-target (`CI_MERGE_REQUEST_TARGET_BRANCH_NAME`), then the default branch
+target (`CI_MERGE_REQUEST_TARGET_BRANCH_NAME`, an external pull
+request's `CI_EXTERNAL_PULL_REQUEST_TARGET_BRANCH_NAME`), then the default branch
 (`baseBranch`, else `CI_DEFAULT_BRANCH`); a merge train reads only its
 target. `gitlab({ cacheScope: false })` (`GitlabPluginOptions`) turns it off;
 `VX_CACHE_SCOPE` overrides it. Anywhere else `gitlab()` returns
@@ -178,7 +182,7 @@ and the job is on GitLab CI. Core has no `setup` verb.
 ## How it works
 
 `github()` contributes one observe-only telemetry sink through vx's
-`telemetry` seam. It receives the versioned `RunSummaryRecord` at run end
+`telemetry` hook. It receives the versioned `RunSummaryRecord` at run end
 and renders + appends the markdown in `flush()` — it holds no run handle,
 streams no per-event records (`wants: []`), and a slow or failing write can
 never fail or stall the run (core's crash-isolation + flush deadline).

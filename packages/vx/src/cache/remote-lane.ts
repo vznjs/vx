@@ -4,7 +4,7 @@
 // class with the endpoint named. The order across remotes, the local store
 // and provenance are `LayeredCache`'s; nothing here knows another remote.
 
-import { machineParallelism } from '../util/index.js'
+import { machineParallelism, thrownMessage } from '../util/index.js'
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
 import type { ArtifactInfo, RemoteCacheLayer } from './layered-cache.js'
 
@@ -295,7 +295,11 @@ export class RemoteLane {
       this.report('download', hash, err)
       return undefined
     }
-    if (!result) return null
+    if (!result) {
+      // Gone, whatever a probe said: the re-run's save uploads it.
+      this.held.delete(hash)
+      return null
+    }
     if (typeof result !== 'object' || !isBody((result as { body?: unknown }).body)) {
       const shape =
         typeof result !== 'object'
@@ -453,7 +457,7 @@ export class RemoteLane {
    * server in it (item 749).
    */
   report(op: RemoteOp, subject: string | { batch: string }, err: unknown): void {
-    const e = err instanceof Error ? err : new Error(String(err))
+    const e = err instanceof Error ? err : new Error(thrownMessage(err))
     const hash = typeof subject === 'string' ? subject : undefined
     // A batch probe's failure is no one task's: each of its hashes is asked
     // again on its own, and that ask is the one counted.

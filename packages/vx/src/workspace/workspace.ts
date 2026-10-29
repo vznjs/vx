@@ -13,8 +13,10 @@ import {
   executablePath,
   gitEnv,
   gitSpawnRefusal,
+  hasControl,
   isExecutableMissing,
   isOutOfFds,
+  printable,
   realPath,
   refusal,
   relPosix,
@@ -281,7 +283,8 @@ export interface ProjectConfigs {
  * lock and never walks). In git: `git ls-files` over the config names,
  * tracked and untracked, git's ignore rules applied, none under
  * `node_modules`, and each nested repository's own listing. Outside git: a walk
- * that skips dot-directories and `node_modules`. A config at or under a
+ * that skips `node_modules` and vx's own `.vx`, and enters every other
+ * dot-directory, as git lists `.github/actions/x`. A config at or under a
  * nested `.vx/workspace.*` belongs to that workspace and is left out.
  * Where a directory holds several, `PROJECT_CONFIG_FILENAMES` order picks
  * the first that is a file.
@@ -290,9 +293,8 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
   const rels = (await gitTop(root)) === null ? await scanConfigs(root) : await gitConfigs(root)
   const nested: string[] = []
   for (const rel of rels) {
-    const at = rel.lastIndexOf('.vx/workspace.')
-    if (at > 0 && rel[at - 1] === '/' && rel.lastIndexOf('/') === at + 3)
-      nested.push(rel.slice(0, at - 1))
+    const at = rel.lastIndexOf('/.vx/')
+    if (at > 0 && WORKSPACE_RANK.has(rel.slice(at + 1))) nested.push(rel.slice(0, at))
   }
   const byDir = new Map<string, string[]>()
   const reviewed: string[] = []
@@ -338,10 +340,19 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     .filter((f): f is ConfigDir => f !== null)
     .sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0))
   const configured = new Set(configs.map((c) => c.dir))
-  const strayReviews = reviewed
-    .map((rel) => (rel === '' ? root : path.join(root, rel)))
-    .filter((dir) => !configured.has(dir))
-    .map((dir) => path.join(dir, REVIEW_FILE))
+  // On disk only: git lists a tracked copy deleted with its project.
+  const strayReviews = (
+    await Promise.all(
+      reviewed
+        .map((rel) => (rel === '' ? root : path.join(root, rel)))
+        .filter((dir) => !configured.has(dir))
+        .map(async (dir) => {
+          const file = path.join(dir, REVIEW_FILE)
+          return (await isFile(file)) ? file : null
+        }),
+    )
+  )
+    .filter((f) => f !== null)
     .sort()
   return { configs, strayReviews, shadowed }
 }
@@ -438,7 +449,7 @@ async function gitZ(cwd: string, args: string[]): Promise<string[]> {
     .filter((p) => p !== '')
 }
 
-/** The config paths under `root` outside git, root-relative: no dot-directory, no `node_modules`. */
+/** The config paths under `root` outside git, root-relative: none under `node_modules`, `.git` or `.vx`. */
 async function scanConfigs(root: string): Promise<string[]> {
   const out: string[] = []
   const walk = async (rel: string): Promise<void> => {
@@ -456,8 +467,7 @@ async function scanConfigs(root: string): Promise<string[]> {
     for (const e of entries) {
       const child = rel === '' ? e.name : `${rel}/${e.name}`
       if (CONFIG_RANK.has(e.name) || e.name === REVIEW_FILE) out.push(child)
-      else if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
-        below.push(child)
+      else if (e.isDirectory() && !SCAN_SKIPS.has(e.name)) below.push(child)
     }
     await Promise.all(below.map(walk))
   }
@@ -465,9 +475,12 @@ async function scanConfigs(root: string): Promise<string[]> {
   return out
 }
 
+// `.vx` holds vx's state (the cache), which a checkout ignores.
+const SCAN_SKIPS = new Set(['node_modules', '.git', '.vx'])
+
 async function workspaceFileIn(root: string, rel: string): Promise<boolean> {
   const names = await readdir(path.join(root, rel, '.vx')).catch(() => [] as string[])
-  return names.some((n) => n.startsWith('workspace.'))
+  return names.some((n) => WORKSPACE_RANK.has(`.vx/${n}`))
 }
 
 /** How each project got its name, when not by its path: `config`, or the plugin's name. */
@@ -579,6 +592,8 @@ function nameFault(name: string): string | null {
   if (name.trim() !== name) return 'the name has surrounding whitespace'
   // A task is `<project>#<task>` split at the first `#`.
   if (name.includes('#')) return 'the name holds "#" — vx addresses a task as <name>#<task>'
+  // Printed raw by the status line and summary: `ESC ]0;` retitled the terminal.
+  if (hasControl(name)) return 'the name holds a control character'
   return null
 }
 
@@ -599,7 +614,7 @@ export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMe
     const fault = namedBy.has(meta) ? null : nameFault(meta.name)
     if (fault !== null) {
       throw new UserError(
-        `${rel}: a project is named by its path unless named, and ${fault.replace('the name', 'this one')} — set \`name\` in its vx.config`,
+        `${printable(rel)}: a project is named by its path unless named, and ${fault.replace('the name', 'this one')} — set \`name\` in its vx.config`,
       )
     }
     const next = metas[i + 1]

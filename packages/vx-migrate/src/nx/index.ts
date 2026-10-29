@@ -369,6 +369,10 @@ async function nxReads(
     String(process.env['NX_LOAD_DOT_ENV_FILES']),
     JSON.stringify(installed),
     await yarnrcText(root),
+    // Whether the manager runs a script's `pre` / `post` hooks (`runsScriptHooks`).
+    ...(await Promise.all(
+      ['package.json', '.npmrc', 'pnpm-workspace.yaml'].map((f) => textOf(path.join(root, f))),
+    )),
     ...notes,
   ]
 }

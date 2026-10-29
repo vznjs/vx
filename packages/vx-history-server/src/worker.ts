@@ -1,6 +1,6 @@
 // `vx-history-server` on Cloudflare Workers, the timings in D1.
-// `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and TIMING_DAYS are vars in
-// it.
+// `wrangler.jsonc` deploys it; ALLOW, AUDIENCE, READ_ACCESS and TIMING_DAYS
+// are vars in it.
 
 import { oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
@@ -18,7 +18,7 @@ export interface D1Database {
 }
 
 export interface Env {
-  readonly DB: D1Database
+  readonly DB?: D1Database
   /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow` entries, space separated. */
   readonly ALLOW?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
@@ -53,9 +53,20 @@ let made: { key: string; handle: (req: Request) => Promise<Response> } | undefin
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
+    // A deploy's mistake: unbound, capabilities answered and every upload failed.
+    if (env.DB === undefined) {
+      return errorJson(500, 'DB: bind a D1 database as DB (wrangler.jsonc d1_databases)')
+    }
     const key = [env.ALLOW, env.AUDIENCE, env.READ_ACCESS, env.TIMING_DAYS].join('\0')
     if (made?.key !== key) {
       let allow
+      // wrangler.jsonc may write a var as JSON: a list reached parseAllow.
+      if (env.ALLOW !== undefined && typeof env.ALLOW !== 'string') {
+        return errorJson(
+          500,
+          'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
+        )
+      }
       try {
         allow = parseAllow(env.ALLOW ?? '')
       } catch (err) {

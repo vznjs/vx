@@ -46,3 +46,14 @@ it('counts the other changes of the named kind', async () => {
   judge.pending.set(path.join(dir, 'gone.txt'), 'app gone.txt')
   expect(judge.judge()).toBe('app a.txt (+2 more)')
 })
+
+// A path is anyone's bytes: a tool's file named `ESC ]0;…` printed raw in
+// `changed …` retitled the terminal.
+it('writes a control byte of the path naming the cycle as \\xNN', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-label-'))
+  const name = 'x\x1b]0;t\x07\ry.txt'
+  await writeFile(path.join(dir, name), 'x\n')
+  const judge = judgeIn(dir)
+  judge.pending.set(path.join(dir, name), `app ${name}`)
+  expect(judge.judge()).toBe('app x\\x1b]0;t\\x07\\x0dy.txt')
+})

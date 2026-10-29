@@ -49,8 +49,14 @@ export async function oidcToken(url: string, bearer: string, audience: string): 
       headers: { authorization: `bearer ${bearer}` },
       signal: AbortSignal.timeout(Math.max(1, until - performance.now())),
     }).catch((err: unknown) => (err instanceof Error ? err.message : String(err)))
-    if (typeof res !== 'string' && res.ok) return ((await res.json()) as { value: string }).value
-    const why = typeof res === 'string' ? res : String(res.status)
+    if (typeof res !== 'string' && res.ok) {
+      // quiet: a body that is not JSON holds no token, said below
+      const value = ((await res.json().catch(() => null)) as { value?: unknown } | null)?.value
+      if (typeof value !== 'string' || value === '')
+        throw new Error("GitHub's OIDC token: no token in its answer")
+      return value
+    }
+    const why = typeof res === 'string' ? res : await refusedWith(res)
     const again = typeof res === 'string' || res.status >= 500 || res.status === 429
     const pause = 250 * 2 ** (attempt - 1)
     if (!again || attempt >= 3 || performance.now() + pause >= until)
@@ -59,12 +65,28 @@ export async function oidcToken(url: string, bearer: string, audience: string): 
   }
 }
 
+/** A refusal by its status and GitHub's own `message`, bounded: a 403 said why the token was refused. */
+async function refusedWith(res: Response): Promise<string> {
+  // quiet: a body that is not JSON leaves the status to name the refusal
+  const body = (await res.json().catch(() => null)) as { message?: unknown } | null
+  const said =
+    typeof body?.message === 'string' ? body.message.replace(/\s+/g, ' ').trim().slice(0, 200) : ''
+  return `HTTP ${res.status}${said === '' ? '' : `: ${said}`}`
+}
+
 /**
  * Keyless on GitHub Actions: a side signs by an OIDC token whose audience
  * is the digest of what it signs, and checks one as GitHub's and of this
  * repository (`GITHUB_REPOSITORY_ID`). No secret is stored anywhere.
+ * `runs`, the orchestrator's: the workflow runs it dispatched, whose jobs
+ * alone are its workers (a run's id is a dispatch input anyone who reads
+ * the repository's Actions sees); `undefined` admits any job of the
+ * repository, as workers that join on their own are.
  */
-export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proof {
+export function githubProof(
+  fetchJson?: (url: string) => Promise<unknown>,
+  runs?: () => ReadonlySet<string> | undefined,
+): Proof {
   const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer } = process.env
   const repo = process.env['GITHUB_REPOSITORY_ID']
   if (!url || !bearer || !repo)
@@ -102,7 +124,9 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
       const verify = createVerifier({
         allow: [{ issuer: GITHUB }],
         audience: aud(parts),
-        runClaims: { [GITHUB]: ['repository_id'] },
+        runClaims: {
+          [GITHUB]: runs === undefined ? ['repository_id'] : ['repository_id', 'run_id'],
+        },
         fetchJson: (u) =>
           once(u).catch((err: unknown) => {
             unread = err
@@ -110,7 +134,10 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
           }),
       })
       return verify(token).then(
-        (t) => t.run[0] === repo,
+        (t) => {
+          const mine = runs?.()
+          return t.run[0] === repo && (mine === undefined || mine.has(t.run[1]!))
+        },
         () => {
           if (unread !== undefined) throw unread
           return false

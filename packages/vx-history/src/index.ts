@@ -280,7 +280,7 @@ function serverUrlOf(
   return url
 }
 
-/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
+/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused, never printing a value. */
 function proxyHeaders(
   headers: Record<string, string | undefined> | undefined,
 ): Record<string, string> {
@@ -288,9 +288,11 @@ function proxyHeaders(
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new UserError(`vxHistory(): headers cannot set "${name}"`)
+      throw new UserError(`vxHistory() option "headers" cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new UserError(`vxHistory(): header "${name}" must be one line of text`)
+      throw new UserError(
+        `vxHistory() option "headers.${name}" must be one line of text (its value is not printed)`,
+      )
     out[name] = value
   }
   return out
@@ -302,6 +304,9 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     options.url === undefined && options.issuer === undefined && options.repository === undefined
       ? undefined
       : namedOf(options.issuer, options.repository)
+  // At the call: refused once a server was named, a laptop passed what
+  // failed the first CI run.
+  const headers = proxyHeaders(options.headers)
   // `'any'` above lets `null` through, and every run then failed in
   // `schedule` reading `null.headroom`.
   const { resources } = options
@@ -327,8 +332,6 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       })
     }
   }
-  // `''` resolved to the workspace root: each run warned it could not read
-  // a directory and failed in teardown renaming its timings over it.
   // Read as `refs/heads/<name>`: `''`, a space or a full ref read
   // nothing on every run, or the server refused the query.
   const { defaultBranch } = options
@@ -338,9 +341,10 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     )
   }
   // Checked here, not in a run's `setup`: `vx show` and a `--dry` plan
-  // took a url or header no request can carry, and every run failed on it.
+  // took a url no request can carry, and every run failed on it.
   if (options.url !== undefined) serverUrlOf(options.url)
-  const headers = proxyHeaders(options.headers)
+  // `''` resolved to the workspace root: each run warned it could not read
+  // a directory and failed in teardown renaming its timings over it.
   if (options.file !== undefined && options.file.trim() === '') {
     throw new UserError(
       `vxHistory() option "file" must be a path, got ${JSON.stringify(options.file)}`,

@@ -51,3 +51,40 @@ it('a brace alternative ending in ** folds files below its first directory', asy
   writeFileSync(path.join(app, 'other/z.ts'), 'b')
   expect(await build()).toBe('cache-hit')
 })
+
+// A brace of directory literals, or of `./` spellings, keyed nothing for
+// them: `{src,lib}` and `{./src,lib}/**` replayed the old output after an
+// edit under `src`, and `{.,src}/*.ts` after one to a root `a.ts`.
+it('a brace of directories or ./ spellings keys what each alternative names', async () => {
+  const cases = [
+    ['lit', '{src,lib}', 'src/deep/a.ts'],
+    ['dot', '{./src,lib}/**', 'src/deep/a.ts'],
+    ['top', '{.,src}/*.ts', 'a.ts'],
+  ] as const
+  for (const [name, glob, file] of cases) {
+    const app = await addProject(root, name, {
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'true' },
+              inputs: { files: [${JSON.stringify(glob)}] }, cache: { outputs: { files: [] } },
+            },
+          },
+        }
+      `,
+      files: { [file]: 'a', 'other/z.ts': 'a' },
+    })
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', name)
+    const build = async () =>
+      (await run({ cwd: root, tasks: [`${name}#build`], log, handleSignals: false })).outcomes[0]!
+        .status
+    expect(await build()).toBe('success')
+    writeFileSync(path.join(app, file), 'b')
+    expect([glob, await build()]).toEqual([glob, 'success'])
+    // CONTROL: a file no alternative names stays out of the key.
+    writeFileSync(path.join(app, 'other/z.ts'), 'b')
+    expect([glob, await build()]).toEqual([glob, 'cache-hit'])
+  }
+})

@@ -752,7 +752,8 @@ describe('signal handling during vx run (e2e)', () => {
       }
       expect(await vx('run', 'quick', '--all').exited).toBe(0)
       expect(await list()).toEqual(['ok'])
-      const proc = vx('run', 'slow', 'done', '--all')
+      // Two slots: a one-core runner's one slot held `done` behind `slow`.
+      const proc = vx('run', 'slow', 'done', '--all', '--concurrency', '2')
       await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       await waitForContent(path.join(dir, 'done.txt'), 'done\n', 10_000)
       await Bun.sleep(300)
@@ -767,6 +768,56 @@ describe('signal handling during vx run (e2e)', () => {
       const tasks = db.query('SELECT task FROM runs ORDER BY id').all() as { task: string }[]
       db.close()
       expect(tasks.map((t) => t.task)).toEqual(['quick', 'done'])
+    },
+    TIMEOUT,
+  )
+
+  // The Ctrl-C that ends `vx run dev` lands after the graph, in the
+  // keep-alive wait, and is the usual end of a dev session: its record
+  // stays (keep-alive.test.ts), but it read FAILED over a server row that
+  // read `success`, the server's own 130 from the stop counted as a crash.
+  it(
+    'a Ctrl-C in the keep-alive wait records the run ok, not FAILED',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: {
+        quick: { exec: { command: 'true' } },
+        dev: { exec: { command: 'echo $$ > pid.txt; echo Listening; exec sleep 30', persistent: { readyWhen: 'Listening' } } },
+      } }`,
+      )
+      const vx = (...args: string[]) =>
+        Bun.spawn([process.execPath, BIN, ...args], {
+          cwd: fixture.root,
+          env: { ...process.env },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+      const list = async (): Promise<string[]> => {
+        const p = vx('last', '--list')
+        const out = await new Response(p.stdout).text()
+        await p.exited
+        return out
+          .trim()
+          .split('\n')
+          .map((l) => l.split(/\s+/)[0]!)
+      }
+      expect(await vx('run', 'quick', '--all').exited).toBe(0)
+      const proc = vx('run', 'dev', '--all')
+      const out = new Response(proc.stdout).text()
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      // The summary is out: the run sits in the keep-alive wait.
+      const deadline = Date.now() + 10_000
+      while (!(await Bun.file(path.join(fixture.root, '.vx', 'cache', 'cache.db')).exists())) {
+        if (Date.now() > deadline) throw new Error('no cache db')
+        await Bun.sleep(20)
+      }
+      await Bun.sleep(500)
+      proc.kill('SIGINT')
+      expect(await proc.exited).toBe(130)
+      expect(await out).toContain('app#dev running')
+      expect(await list()).toEqual(['ok', 'ok'])
     },
     TIMEOUT,
   )

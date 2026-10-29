@@ -20,9 +20,10 @@
 //   the shims `yarn run` writes, so inlined, `node -e "require('left-pad')"`
 //   was MODULE_NOT_FOUND (2026-09-28). Every script runs as `yarn run <name>`.
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { foldScriptHooks } from '@vzn/vx'
+import { shellQuote } from './nx-command.js'
 
 const YARN_RUN_BUILTIN = /(^|&&|\|\||;|\(|\|)\s*run\s/
 const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
@@ -37,12 +38,17 @@ export function scriptCommand(
   scripts: Readonly<Record<string, unknown>> = {},
   pnp = false,
 ): string {
-  if (pnp) return `yarn run ${name}`
+  if (pnp) return yarnRun(name)
   const hook = (h: string): string | undefined =>
     !LIFECYCLE.test(h) && usable(scripts[h]) ? scripts[h] : undefined
   const parts = [hook(`pre${name}`), body, hook(`post${name}`)]
-  if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return `yarn run ${name}`
+  if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return yarnRun(name)
   return foldScriptHooks(parts[0], body, parts[2])
+}
+
+/** `yarn run <name>`, the name one shell word: `a b` ran script `a` with an argument. */
+export function yarnRun(name: string): string {
+  return `yarn run ${shellQuote(name)}`
 }
 
 /**
@@ -66,4 +72,102 @@ export async function yarnrcText(root: string): Promise<string> {
   return Bun.file(path.join(root, '.yarnrc.yml'))
     .text()
     .catch(() => '\0absent')
+}
+
+/**
+ * The package manager that owns `dir`, when it runs `pre` / `post` hooks
+ * around a script; null when it runs none. The manager is the nearest `packageManager` field or
+ * lockfile, and its settings are read beside it, as each reads them for a
+ * member too. Probed with a `prebuild` / `build` / `postbuild` trio: Yarn
+ * 2+ runs none (D-31); npm runs none under `ignore-scripts=true` in
+ * `.npmrc`; pnpm runs none under `enable-pre-post-scripts=false` there or
+ * `enablePrePostScripts: false` in `pnpm-workspace.yaml` (D-33); Bun and
+ * Yarn 1 run them whatever those say. No manager found is npm's default.
+ */
+export function runsScriptHooks(dir: string, memo: Map<string, Owner>): string | null {
+  const { manager, at } = ownerOf(dir, memo)
+  const read = (f: string): string | undefined => {
+    try {
+      return readFileSync(path.join(at, f), 'utf8')
+    } catch {
+      return undefined
+    }
+  }
+  const npmrc = read('.npmrc') ?? ''
+  const set = (key: string, value: string): boolean =>
+    new RegExp(`^\\s*${key}\\s*=\\s*${value}\\s*$`, 'm').test(npmrc)
+  const runs =
+    manager === 'berry'
+      ? false
+      : manager === 'npm'
+        ? !set('ignore-scripts', 'true')
+        : manager === 'pnpm'
+          ? !set('enable-pre-post-scripts', 'false') && !pnpmSkipsHooks(read('pnpm-workspace.yaml'))
+          : true
+  return runs ? manager : null
+}
+
+/**
+ * `enablePrePostScripts: false` in `pnpm-workspace.yaml`, read as pnpm reads
+ * it, as YAML: a line regex missed `false # hooks off` and a flow mapping,
+ * which pnpm 10 honours, and folded hooks pnpm does not run.
+ */
+function pnpmSkipsHooks(yaml: string | undefined): boolean {
+  if (yaml === undefined) return false
+  try {
+    const parsed = Bun.YAML.parse(yaml) as { enablePrePostScripts?: unknown } | null
+    return parsed?.enablePrePostScripts === false
+  } catch {
+    return false
+  }
+}
+
+/** The package manager that owns a directory, and the directory that says so. */
+export interface Owner {
+  manager: string
+  at: string
+}
+
+/**
+ * The nearest `packageManager` field or lockfile from `dir` up: `berry` for
+ * Yarn 2+, `yarn` for Yarn 1, else the manager's name; none found is npm.
+ */
+export function ownerOf(dir: string, memo: Map<string, Owner>): Owner {
+  const known = memo.get(dir)
+  if (known !== undefined) return known
+  const read = (f: string): string | undefined => {
+    try {
+      return readFileSync(path.join(dir, f), 'utf8')
+    } catch {
+      return undefined
+    }
+  }
+  let manager: string | undefined
+  try {
+    // A byte-order mark is stripped, as npm, pnpm and discovery strip it:
+    // JSON.parse threw on one and the field went unread.
+    const manifest = (read('package.json') ?? '').replace(/^\uFEFF/, '')
+    const pm = (JSON.parse(manifest) as { packageManager?: unknown }).packageManager
+    // A manager vx knows nothing of (zod's `nub@0.8.3`) says nothing about
+    // hooks: the lockfile beside it does, and "nub ran `postbuild`" was a
+    // claim nothing had checked (D-96).
+    if (typeof pm === 'string' && /^(npm|pnpm|yarn|bun)@/.test(pm))
+      manager = /^yarn@([2-9]|\d{2,})/.test(pm) ? 'berry' : pm.split('@')[0]
+  } catch {}
+  if (manager === undefined) {
+    const yarnLock = read('yarn.lock')
+    if (yarnLock !== undefined) manager = yarnLock.includes('\n__metadata:') ? 'berry' : 'yarn'
+    else if (existsSync(path.join(dir, 'pnpm-lock.yaml'))) manager = 'pnpm'
+    else if (existsSync(path.join(dir, 'package-lock.json'))) manager = 'npm'
+    else if (['bun.lock', 'bun.lockb'].some((f) => existsSync(path.join(dir, f)))) manager = 'bun'
+  }
+  const up = path.dirname(dir)
+  const owner =
+    manager !== undefined
+      ? { manager, at: dir }
+      : up === dir
+        ? { manager: 'npm', at: dir }
+        : ownerOf(up, memo)
+  memo.set(dir, owner)
+  return owner
 }

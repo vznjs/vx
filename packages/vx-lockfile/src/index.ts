@@ -56,7 +56,7 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 18
+const DIGEST_VERSION = 20
 
 interface Manager {
   readonly name: string
@@ -193,7 +193,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   const scope = options.scope ?? 'project'
   if (scope !== 'project' && scope !== 'workspace') {
     throw new UserError(
-      `${manager.name}() scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`,
+      `${manager.name}() option "scope" must be 'project' or 'workspace', got ${JSON.stringify(scope)}`,
     )
   }
   const extraFiles = manager.extraFiles

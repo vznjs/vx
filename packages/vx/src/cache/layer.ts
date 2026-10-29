@@ -772,6 +772,8 @@ export interface CacheLayer {
      * format.
      */
     workspaceOutputFiles?: string[]
+    /** The empty directories under `workspaceOutputFiles`' globs (absolute). */
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     /**
      * Cache-key components for this entry (the Tier-3 input

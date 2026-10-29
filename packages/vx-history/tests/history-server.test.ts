@@ -294,10 +294,6 @@ describe('HistoryServer', () => {
         h.get('vx-issuer'),
         h.get('vx-repository'),
       ]).toEqual(['id', 'Bearer jwt', null, null])
-    for (const bad of [{ Authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
-      expect(() => vxHistory({ url: 'https://h.example', ...NAMED, headers: bad })).toThrow(
-        'vxHistory(): ',
-      )
   })
 
   it('reads with no token from a public server, sending none', async () => {
@@ -430,9 +426,9 @@ describe('HistoryServer', () => {
     }
   })
 
-  // Both were checked only in a run's `setup`: `vx show`, `vx info` and a
+  // It was checked only in a run's `setup`: `vx show`, `vx info` and a
   // `--dry` plan took the config, and every run then failed on it.
-  it('refuses a url or headers no request can carry when the config is evaluated', () => {
+  it('refuses a url no request can carry when the config is evaluated', () => {
     const refusal = (o: Parameters<typeof vxHistory>[0]): string => {
       try {
         vxHistory({ ...NAMED, ...o })
@@ -445,15 +441,7 @@ describe('HistoryServer', () => {
     expect(refusal({ url: 'https://h.example/v1' })).toBe(
       "vxHistory(): url is the server's base, without /v1: https://h.example",
     )
-    expect(refusal({ url: 'https://h.example', headers: { 'a b': 'x' } })).toBe(
-      'vxHistory(): headers cannot set "a b"',
-    )
-    expect(refusal({ url: 'https://h.example', headers: { 'x-a': 5 as never } })).toBe(
-      'vxHistory(): header "x-a" must be one line of text',
-    )
-    expect(refusal({ url: 'https://h.example', headers: { 'x-a': 'v', 'x-b': undefined } })).toBe(
-      'taken',
-    )
+    expect(refusal({ url: 'https://h.example/' })).toBe('taken')
   })
 })
 

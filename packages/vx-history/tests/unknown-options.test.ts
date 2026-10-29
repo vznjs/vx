@@ -65,3 +65,18 @@ it('a misspelt key inside resources or a reservation is refused', () => {
     refusal(() => vxHistory({ reservations: { 'a#b': { cpus: 2, memory: Number('x') } } })),
   ).toBe('taken')
 })
+
+// A header it cannot send was refused once a server was named, so a
+// laptop passed what failed the first CI run. A value is never printed.
+it('a header it cannot send is refused at the call, with no url named', () => {
+  expect(refusal(() => vxHistory({ headers: { Authorization: 'x' } }))).toBe(
+    'vxHistory() option "headers" cannot set "Authorization"',
+  )
+  expect(refusal(() => vxHistory({ headers: { 'a b': 'x' } }))).toBe(
+    'vxHistory() option "headers" cannot set "a b"',
+  )
+  expect(refusal(() => vxHistory({ headers: { a: 'x\ny' } }))).toBe(
+    'vxHistory() option "headers.a" must be one line of text (its value is not printed)',
+  )
+  expect(refusal(() => vxHistory({ headers: { a: 'x', b: undefined } }))).toBe('taken')
+})

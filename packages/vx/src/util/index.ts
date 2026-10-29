@@ -7,6 +7,7 @@ export {
   errorDocument,
   fsRefusalHint,
   isDiskFull,
+  configThrow,
   isFsRefusal,
   isTmpdirRefusal,
   TMPDIR_HINT,
@@ -21,6 +22,7 @@ export {
   isOutOfFds,
   notAWorkTree,
   OUT_OF_FDS_HINT,
+  thrownMessage,
   wantsJson,
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
@@ -64,6 +66,7 @@ export {
   outputNever,
   restorableOutput,
   printable,
+  hasControl,
   relPosix,
   DOT_VX_GITATTRIBUTES,
   DOT_VX_GITIGNORE,

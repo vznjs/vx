@@ -3,9 +3,10 @@
 // misread, and the run that followed replayed stale bytes under a green
 // run. The rule itself is in `src/cache/git-inputs.ts`.
 
-import { readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/inputs.js'
 import type { RunSummary } from '../src/orchestrator/index.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
@@ -35,6 +36,8 @@ const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 function cli(): void {
   const r = Bun.spawnSync([process.execPath, BIN, 'run', 'build', '--all'], {
     cwd: root,
+    // The preload's VX_CACHE_DIR: a spawn with no env saved into ~/.vx.
+    env: { ...process.env },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -326,6 +329,59 @@ describe('a clean filter driver', () => {
         before: 'fffe61000a00',
         after: 'feff0061000a',
       })
+    },
+    TIMEOUT,
+  )
+})
+
+describe('an index written while the enumeration reads it', () => {
+  it(
+    'an unstage between the listing and the status trusts no OID',
+    async () => {
+      // `ls-files` and `status` read the index on their own: a `git reset`
+      // landing between them (an editor unstaging) paired the OLD index's
+      // staged OID with a status of the NEW index, which called the file
+      // clean, and the staged blob keyed the committed bytes on disk.
+      const dir = await addProject(root, 'a', { files: { 'x.txt': 'one\n' } })
+      const x = path.join(dir, 'x.txt')
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'fixture')
+      await writeFile(x, 'staged\n')
+      // No racy entry in either index: `status` reads the real one, not a
+      // refreshed copy, and no entry is smudged.
+      const past = new Date(Date.now() - 100_000)
+      for (const f of git('ls-files', '-z').split('\0').filter(Boolean)) {
+        await utimes(path.join(root, f), past, past)
+      }
+      git('add', '-u')
+      await writeFile(x, 'one\n')
+      await utimes(x, past, past)
+      const shim = path.join(root, '.shim')
+      const marker = path.join(shim, 'unstaged')
+      const real = Bun.which('git')!
+      await mkdir(shim)
+      // The listing unstages once it has read the index; the status waits for that.
+      await writeFile(
+        path.join(shim, 'git'),
+        `#!/bin/sh
+case "$*" in
+  *"ls-files -s -v -z -- "*) '${real}' "$@"; rc=$?; '${real}' reset -q -- packages/a/x.txt; touch '${marker}'; exit $rc ;;
+  *" status "*) while [ ! -f '${marker}' ]; do sleep 0.02; done ;;
+esac
+exec '${real}' "$@"
+`,
+        { mode: 0o755 },
+      )
+      const memo = new GitFilesCache()
+      const PATH = process.env['PATH']
+      process.env['PATH'] = `${shim}${path.delimiter}${PATH ?? ''}`
+      try {
+        await populateGitFilesCache(root, [dir], memo)
+      } finally {
+        process.env['PATH'] = PATH
+      }
+      expect(memo.oidsFor(dir)?.get(path.join(dir, 'x.txt'))).toBeUndefined()
     },
     TIMEOUT,
   )
