@@ -130,6 +130,28 @@ describe('publishAll', () => {
     expect(message(f)).toBe('npm publish b failed (exit 1)')
     expect(published).toEqual(['a'])
   })
+  it('publishes every other plugin past one that fails, then fails naming it', () => {
+    const published: string[] = []
+    const f = (): void =>
+      publishAll(
+        [
+          ...packages,
+          { name: '@vzn/vx-cache', dir: 'd', plugin: true },
+          { name: '@vzn/vx-ci', dir: 'e', plugin: true },
+        ],
+        '1.2.3',
+        {
+          has: () => false,
+          publish: (dir) => {
+            if (dir === 'd') throw new Error('npm publish d failed (exit 1)')
+            published.push(dir)
+          },
+        },
+        () => {},
+      )
+    expect(message(f)).toBe('npm publish d failed (exit 1)')
+    expect(published).toEqual(['a', 'b', 'c', 'e'])
+  })
 })
 
 describe('publishTag', () => {

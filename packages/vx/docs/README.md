@@ -230,7 +230,9 @@ lockfile), `@vzn/vx-history` (order by the critical path
 learned from run history) and `@vzn/vx-migrate` (migration from Turbo or Nx:
 `vx.config.ts` written from either, `turbo()` / `nx()` as the temporary
 start, their remote cache kept), `@vzn/vx-cache` (the remote cache
-for CI jobs), the servers you host, `@vzn/vx-cache-server` and
-`@vzn/vx-history-server`, and `@vzn/vx-devtools` (the code they share),
+for CI jobs), `@vzn/vx-dte` (distributed task execution over workers
+your CI starts), the servers you host, `@vzn/vx-cache-server`,
+`@vzn/vx-history-server` and `@vzn/vx-dte-server` (the relay), and
+`@vzn/vx-devtools` (the code they share),
 each importing core, if at all, only through the public `@vzn/vx`
 specifier — a boundary the test suite enforces.

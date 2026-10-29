@@ -99,9 +99,9 @@ packages/vx-history-server  the task timings vx-history reads, one folded row pe
 packages/vx-cache       vxCache(): the remote cache, CI jobs only, over vx-cache-server's /v1 wire
 private/vx-docs         Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-dte         distributed task execution: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
-                        (workers in git worktrees). Private until npm has it
+                        (workers in git worktrees)
 packages/vx-dte-server  the reference relay of `@vzn/vx-dte` (PROTOCOL.md): passes a run's messages, storing none, behind CI
-                        OIDC tokens; imports only jose, not even core. Private until npm has it
+                        OIDC tokens; imports only jose, not even core
 private/vx-bench        synthetic workspace generator + runners (vx / turbo / nx)
 private/vx-servers      compose.yaml: the dte, cache and history servers' images in one file
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
@@ -110,8 +110,7 @@ packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, 
                         history/ holds the shipped record STATUS moved out (read it only when an item's why matters)
 ```
 
-`packages/` holds what ships to npm (vx-dte and its relay too, private
-only until npm has them); `private/` holds what never ships (the site,
+`packages/` holds what ships to npm; `private/` holds what never ships (the site,
 the bench, the plugin examples, deploy configs) (2026-10-23).
 
 Module boundaries: each `src/<module>/index.ts` is the contract; cross-module

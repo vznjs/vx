@@ -104,6 +104,13 @@ more), so it never needs a `--ulimit`. Measured on 4 cores (2026-10-24):
 each) and 6% of a core idle; with each worker sending one message a
 second (10,000 a second) 43% of a core, every message delivered.
 
+## Environment
+
+- `RELAY`: on Workers, the `RelayRun` Durable Object binding
+  (`wrangler.jsonc`); the relay refuses every request without it.
+- `NO_COLOR`, then `FORCE_COLOR`, then a terminal whose `TERM` is not
+  dumb: whether the Bun relay's status lines print in colour.
+
 ## API
 
 The same relay as a `fetch` handler, to mount in a server of your own
