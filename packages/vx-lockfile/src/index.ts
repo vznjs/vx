@@ -83,6 +83,11 @@ interface Manager {
   /** The file leaves out every `link:` dependency (pnpm's `excludeLinksFromLockfile`): the manifests name them. */
   readonly linksUnrecorded?: (text: string) => boolean
   /**
+   * A manifest dependency the install leaves out of the file by design, so
+   * its absence is no stale lockfile.
+   */
+  readonly unrecorded?: (text: string) => (name: string, pkg: Record<string, unknown>) => boolean
+  /**
    * Importers a format leaves out of the lockfile (yarn classic), from the
    * workspace's manifests through `manifest`; undefined where the file
    * records them itself.
@@ -129,7 +134,9 @@ const MANAGERS = {
           ? pnpmSettings().packageSettings(text)
           : undefined,
     peersInManifest: true,
-    linksUnrecorded: (t) => pnpmParse(t).excludesLinks,
+    // Read from their blocks alone: a whole parse here was on every warm run.
+    linksUnrecorded: (t) => pnpmLock().excludesLinks(t),
+    unrecorded: (t) => pnpmLock().ignoredOptional(t),
   },
   bun: {
     name: 'bun',
@@ -390,6 +397,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
           await dirs,
           manifest,
           linksUnrecorded,
+          manager.unrecorded?.(text),
         )
         if (missing.length > 0) {
           throw new UserError(
@@ -629,6 +637,7 @@ async function staleness(
   dirs: readonly string[],
   manifest: (dir: string) => Promise<Record<string, unknown> | null>,
   linksUnrecorded: boolean,
+  unrecorded?: (name: string, pkg: Record<string, unknown>) => boolean,
 ): Promise<string[]> {
   const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
   const missing = dirs.filter((d) => !importers.has(d)).map((d) => `the workspace ${d}`)
@@ -650,6 +659,7 @@ async function staleness(
       if (declared === null || typeof declared !== 'object') continue
       for (const [name, spec] of Object.entries(declared)) {
         if (linksUnrecorded && typeof spec === 'string' && spec.startsWith('link:')) continue
+        if (unrecorded?.(name, pkg) === true) continue
         if (name !== own && names.has(name) && !deps.has(name)) {
           missing.push(`${importer}'s dependency on ${name}`)
         }
