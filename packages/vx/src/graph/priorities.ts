@@ -171,7 +171,8 @@ export function reverseDepCountsOver(
   // Exact transitive-dependent COUNTS need closure SETS (diamonds
   // double-count under naive summing). Set-of-strings closures are
   // O(N²) entries and took 8.5s on a 1090-package, 100-layer repo;
-  // bitsets make the same closure O(E·N/32) time.
+  // bitsets make the same closure O(E·N/32) time over N²/8 bits
+  // (3270 tasks ≈ 1.3 MB) — single-digit ms at that scale.
   const ids = [...nodes.keys()]
   const n = ids.length
   const index = new Map<string, number>()
