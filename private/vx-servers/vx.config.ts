@@ -40,7 +40,8 @@ export default defineProject({
       },
     },
 
-    // worker-url.ts: which relay and cache server a CI run uses.
+    // worker-url.ts: which relay and cache server a CI run uses; what
+    // compose.yaml hands each server.
     test: {
       description: 'bun test',
       exec: {
@@ -50,7 +51,7 @@ export default defineProject({
         sandbox: { allow: { read: ['**/*'] } },
       },
       dependsOn: ['install'],
-      inputs: { files: ['*.ts', 'tests/**', 'package.json'] },
+      inputs: { files: ['*.ts', 'tests/**', 'compose.yaml', 'package.json'] },
       cache: {
         outputs: { files: [] },
       },

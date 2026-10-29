@@ -220,7 +220,7 @@ describe('VxCacheLayer', () => {
       '/v1/capabilities answered over 65536 bytes',
     )
     expect(layer(srv.url, write, [MAIN], fake('check')).hasMany(['e1'])).rejects.toThrow(
-      'the check answered over',
+      '/v1/artifacts answered over',
     )
     expect(layer(srv.url, write, [MAIN], fake('refusal', 500)).get('e1')).rejects.toThrow(
       'HTTP 500',
@@ -806,6 +806,31 @@ describe('config', () => {
       expect(await c.has('ab13')).toEqual({ size: 1 })
     } finally {
       await srv.stop()
+    }
+  })
+
+  // A URL of a website answers any path 200 with its page: JSON.parse's
+  // "Unrecognized token '<'" named no fault.
+  it('says a 200 that is no JSON is not a vx-cache server', async () => {
+    const site = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } }),
+    })
+    try {
+      const c = new VxCacheLayer(
+        resolveVxCacheConfig({ ...NAMED, url: site.url.origin }, {})!,
+        fetch,
+        {},
+      )
+      c.refs = [MAIN]
+      await expect(c.has('ab14')).rejects.toThrow(
+        new Error(
+          '/v1/capabilities answered 200 with text/html, not JSON: is the url a vx-cache server?',
+        ),
+      )
+    } finally {
+      await site.stop(true)
     }
   })
 

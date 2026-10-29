@@ -33,7 +33,7 @@ ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://gitla
 ```
 
 Only jobs of a workflow it names get in; any other job is refused. With
-`ALLOW` empty, every request is refused. A job writes its branch's own
+`ALLOW` empty, the server does not start (a Worker refuses every request). A job writes its branch's own
 scope, which only runs of that branch read:
 
 - A push writes its branch, so a run of `main` writes `main`.

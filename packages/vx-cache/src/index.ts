@@ -169,6 +169,20 @@ async function refusal(res: Response): Promise<Error> {
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
+/** A 200's JSON; one that is none (a website's page) names the likely fault, the url. */
+async function jsonOf(res: Response, path: string, max: number): Promise<unknown> {
+  const { text, over } = await upTo(res, max)
+  if (over) throw new Error(`${path} answered over ${max} bytes`)
+  try {
+    return JSON.parse(text)
+  } catch {
+    const type = res.headers.get('content-type') ?? 'no content type'
+    throw new Error(
+      `${path} answered ${res.status} with ${type}, not JSON: is the url a vx-cache server?`,
+    )
+  }
+}
+
 /** A deadline that names itself: the runtime's own abort says only "The operation timed out." */
 function deadline(ms: number): AbortSignal {
   const controller = new AbortController()
@@ -484,7 +498,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       const res = await this.request('/v1/capabilities', { method: 'GET' })
       if (res === undefined) return undefined
       if (res.status !== 200) throw await refusal(res)
-      const body = (await jsonUpTo(res, SMALL_ANSWER_BYTES, '/v1/capabilities')) as Record<
+      const body = (await jsonOf(res, '/v1/capabilities', SMALL_ANSWER_BYTES)) as Record<
         string,
         unknown
       > | null
@@ -592,10 +606,10 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (res === undefined) return new Map()
     if (res.status !== 200) throw await refusal(res)
     if (limitsNamed(res) === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
-    const body = (await jsonUpTo(
+    const body = (await jsonOf(
       res,
+      '/v1/artifacts',
       SMALL_ANSWER_BYTES + hashes.length * CHECK_BYTES_PER_HASH,
-      'the check',
     )) as Record<string, unknown> | null
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       throw new Error('the check answered no object of hashes')
