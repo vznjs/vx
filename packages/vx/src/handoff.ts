@@ -246,7 +246,10 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
 
 function inForeground(): boolean {
   try {
-    const stat = Bun.spawnSync(['ps', '-o', 'pgid=,tpgid=', '-p', String(process.pid)])
+    // The handed-off vx's tasks run meanwhile and could read its env: PATH alone (`helperEnv`).
+    const stat = Bun.spawnSync(['ps', '-o', 'pgid=,tpgid=', '-p', String(process.pid)], {
+      env: { PATH: process.env['PATH'] ?? '' },
+    })
     const [pgid, tpgid] = stat.stdout.toString().trim().split(/\s+/)
     return pgid !== undefined && pgid === tpgid
   } catch {

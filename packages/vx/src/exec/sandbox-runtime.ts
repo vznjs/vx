@@ -211,6 +211,7 @@ async function probeUncached(weakerNested: boolean): Promise<SandboxAvailability
 function applyPolicyHere(): SandboxAvailability {
   const proc = Bun.spawnSync({
     cmd: ['sandbox-exec', '-p', '(version 1)(allow default)', '/usr/bin/true'],
+    env: helperEnv(),
     stdout: 'ignore',
     stderr: 'pipe',
   })
