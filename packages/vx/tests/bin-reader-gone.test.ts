@@ -80,16 +80,16 @@ describe('bin.ts: a reader that leaves does not fail the run', () => {
       { cwd: root, stdout: 'ignore', stderr: 'pipe', env: { ...process.env, NO_COLOR: '1' } },
     )
   it.each([
-    ['show'],
-    ['show', '--format', 'json'],
-    ['info'],
-    ['--version'],
-    ['help'],
-    ['run', 'first', '--all', '--dry=json'],
+    'show',
+    'show --format json',
+    'info',
+    '--version',
+    'help',
+    'run first --all --dry=json',
   ])(
     '`vx %s` into a reader already gone exits 0 and says nothing',
-    (...args) => {
-      const p = intoGone(args, 1)
+    (args) => {
+      const p = intoGone(args.split(' '), 1)
       expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
     },
     30_000,
