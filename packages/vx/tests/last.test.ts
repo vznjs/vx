@@ -9,6 +9,7 @@ import { parseLastArgs } from '../src/cli/last.js'
 import { formatRunList, formatTaskRows } from '../src/cli/last.js'
 import type { RunSummaryRow } from '../src/history/index.js'
 import { noticed } from './helpers/notice.js'
+import { ERROR, paint } from '../src/util/index.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -426,6 +427,42 @@ describe('vx last tells a restored hit from an up-to-date one (e2e)', () => {
   )
 })
 
+// The run printed its rows as they finished; the replay read the history
+// newest first and listed a dependency below the task that waited on it.
+describe('vx last lists rows in the order the run recorded them (e2e)', () => {
+  it(
+    'a dependency before its dependant, in the pretty rows and the JSON alike',
+    async () => {
+      const root = await makeWorkspace()
+      try {
+        await writeFile(
+          path.join(root, 'packages', 'app', 'vx.config.mjs'),
+          `export default { tasks: {
+            one: { exec: { command: 'true' } },
+            two: { dependsOn: ['one'], exec: { command: 'true' } },
+            three: { dependsOn: ['two'], exec: { command: 'true' } },
+          } }`,
+        )
+        await vx(root, ['run', 'app#three'])
+        const rows = (await vx(root, ['last'])).out
+          .split('\n')
+          .filter((l) => /^ {2}success /.test(l))
+          .map((l) => l.trim().split(/\s+/)[1])
+        const json = JSON.parse((await vx(root, ['last', '--format', 'json'])).out) as {
+          tasks: { task: string }[]
+        }
+        expect([rows, json.tasks.map((t) => t.task)]).toEqual([
+          ['app#one', 'app#two', 'app#three'],
+          ['one', 'two', 'three'],
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('parseLastArgs', () => {
   it('parses runId, --list in both forms, --format; rejects garbage', () => {
     expect(parseLastArgs([]).format).toBe('pretty')
@@ -525,6 +562,15 @@ describe('parseLastArgs', () => {
       'a run id and --list do not combine: replay 0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d, or list runs (see `vx last --help`)',
       undefined,
     ])
+  })
+
+  it('an empty word is no run id, task or log, as vx why reads one', () => {
+    // '' is the start of every run id: it replayed the only run, or said
+    // it is the start of all of them.
+    expect(parseLastArgs([''])).toEqual({ format: 'pretty' })
+    expect(parseLastArgs(['--stats', ''])).toEqual({ format: 'pretty', stats: true })
+    // `--log=` was refused while `--log ''` read every task's log as ''.
+    expect(parseLastArgs(['--log', '']).error).toBe(parseLastArgs(['--log=']).error)
   })
 })
 
@@ -667,6 +713,13 @@ describe('formatTaskRows', () => {
     )
   })
 
+  it('one hit past sixteen folds as a hit, not hits', () => {
+    const lines = formatTaskRows(Array.from({ length: 17 }, (_, i) => hit(i, i)))
+    expect(lines.at(-1)).toBe(
+      '  … +1 more cache hit (the 16 slowest restores shown) — vx last --format json lists every row',
+    )
+  })
+
   it('sixteen hits list in full, no fold (control)', () => {
     const lines = formatTaskRows(Array.from({ length: 16 }, (_, i) => hit(i, i)))
     expect(lines.length).toBe(17)
@@ -691,6 +744,14 @@ describe('vx last --list rows', () => {
     restoredLocalCount: 0,
     restoredRemoteCount: 0,
     ...o,
+  })
+
+  // The replay's header paints its failed count red; the list dimmed it
+  // with the hits, so a failed run's count read as noise.
+  it('paints the failed count as the replay header does', () => {
+    const c = { enabled: true }
+    const [row] = formatRunList([{ inv: inv({ exitOk: false, failedCount: 2 }), id: 'r' }], c)
+    expect(row).toContain(paint(ERROR, ' · 2 failed', c))
   })
 
   it('aligns the counts, duration and command across runs whose counts differ', () => {

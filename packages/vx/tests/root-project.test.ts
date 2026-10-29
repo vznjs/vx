@@ -63,8 +63,8 @@ describe('a root vx.config makes the root a project (D-39)', () => {
   })
 
   // `vx show //#build` and `vx why //#build` read `//` as a project name, as
-  // `vx run` did before E-100.
-  it("show and why take //#task as the root project's task", async () => {
+  // `vx run` did before E-100; `vx last --log` and `--stats` still did.
+  it("show, why and last take //#task as the root project's task", async () => {
     await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
     const r = await run({
       cwd: fixture.root,
@@ -73,17 +73,19 @@ describe('a root vx.config makes the root a project (D-39)', () => {
     })
     expect(r.ok).toBe(true)
     const bin = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-    const said = (verb: string) => {
+    const said = (...verb: string[]) => {
       const p = Bun.spawnSync({
-        cmd: [process.execPath, bin, verb, '//#build', '--format', 'json'],
+        cmd: [process.execPath, bin, ...verb, '//#build', '--format', 'json'],
         cwd: path.join(fixture.root, 'packages', 'a'),
         env: { ...process.env, NO_COLOR: '1' },
       })
-      return [verb, p.exitCode, p.stdout.toString().includes('fixture-root')]
+      return [verb.join(' '), p.exitCode, p.stdout.toString().includes('fixture-root')]
     }
-    expect([said('show'), said('why')]).toEqual([
+    expect([said('show'), said('why'), said('last', '--log'), said('last', '--stats')]).toEqual([
       ['show', 0, true],
       ['why', 0, true],
+      ['last --log', 0, true],
+      ['last --stats', 0, true],
     ])
   })
 
