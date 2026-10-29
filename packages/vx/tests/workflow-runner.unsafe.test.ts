@@ -94,6 +94,11 @@ describe('a Linux CI job that runs a vx task', () => {
 // scripts/auto-release.ts), where it is typed, tested and sandboxed. The
 // three release workflows run nothing but the install and vx tasks, and no
 // workflow inlines a script or does a task's job itself.
+// release.yml and npm.yml's `scripts` input: an older tag whose release
+// scripts had a bug (v0.0.647) builds with this commit's packages/vx/scripts.
+const SCRIPTS =
+  'git fetch --depth=1 origin "$GITHUB_SHA" && git checkout FETCH_HEAD -- packages/vx/scripts'
+
 describe('a workflow `run:` step', () => {
   const steps = files.flatMap((file) =>
     jobsOf(file).flatMap(([name, job]) =>
@@ -120,6 +125,8 @@ describe('a workflow `run:` step', () => {
         ({ run }) =>
           run !== 'bun install --frozen-lockfile' &&
           run !== SETUP &&
+          // Picks which release scripts run against an older tag; runs none.
+          run !== SCRIPTS &&
           !/^bun packages\/vx\/src\/bin\.ts run [\w. -]+ --filter @vzn\/vx(?: --concurrency \d+)?$/.test(
             run,
           ),

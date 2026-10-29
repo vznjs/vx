@@ -9,6 +9,7 @@ import { decideRelease, greenCommit, type Git } from '../scripts/auto-release.js
 import {
   awaitServed,
   publishAll,
+  publishTag,
   publishOrder,
   releaseVersion,
   supportsTrustedPublishing,
@@ -128,6 +129,19 @@ describe('publishAll', () => {
       )
     expect(message(f)).toBe('npm publish b failed (exit 1)')
     expect(published).toEqual(['a'])
+  })
+})
+
+describe('publishTag', () => {
+  // npm refuses to put `latest` on a version below it; a rebuilt older tag
+  // (v0.0.647 after v0.0.648) publishes under its own dist-tag instead.
+  it('names no tag for a version at or above latest, or a first publish', () => {
+    expect(publishTag('0.0.649', '0.0.648')).toBeUndefined()
+    expect(publishTag('0.0.648', '0.0.648')).toBeUndefined()
+    expect(publishTag('0.0.1', undefined)).toBeUndefined()
+  })
+  it('names backfill for a version below latest', () => {
+    expect(publishTag('0.0.647', '0.0.648')).toBe('backfill')
   })
 })
 

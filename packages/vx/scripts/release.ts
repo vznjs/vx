@@ -88,6 +88,15 @@ export function publishAll(
   }
 }
 
+/**
+ * The dist-tag a publish of `version` takes when `latest` is above it: npm
+ * refuses to move `latest` down, so a rebuilt older tag (v0.0.647 after
+ * v0.0.648) publishes as `backfill` and `latest` stays where it is.
+ */
+export function publishTag(version: string, latest: string | undefined): string | undefined {
+  return latest !== undefined && Bun.semver.order(version, latest) < 0 ? 'backfill' : undefined
+}
+
 /** Where npm serves `name@version`'s tarball. */
 export const tarballUrl = (name: string, version: string): string =>
   `https://registry.npmjs.org/${name}/-/${name.split('/').pop()}-${version}.tgz`
@@ -250,6 +259,15 @@ function publish(os: Os, version: string): void {
     return { name, dir }
   })
   const npm = npmBin()
+  const latest = Bun.spawnSync({
+    cmd: [npm, 'view', '@vzn/vx', 'dist-tags.latest'],
+    stdout: 'pipe',
+    stderr: 'ignore',
+  })
+  const tag = publishTag(
+    version,
+    latest.exitCode === 0 ? latest.stdout.toString().trim() || undefined : undefined,
+  )
   // No NODE_AUTH_TOKEN: npm exchanges the job's OIDC token for a
   // short-lived publish credential (trusted publishing) and attaches
   // provenance. A set token would take precedence, and npm restricts
@@ -262,8 +280,9 @@ function publish(os: Os, version: string): void {
         Bun.spawnSync({ cmd: [npm, 'view', spec, 'version'], stdout: 'ignore', stderr: 'ignore' })
           .exitCode === 0,
       publish: (dir) => {
+        const publishArgs = [npm, 'publish', dir, '--access', 'public', '--provenance']
         const r = Bun.spawnSync({
-          cmd: [npm, 'publish', dir, '--access', 'public', '--provenance'],
+          cmd: tag === undefined ? publishArgs : [...publishArgs, '--tag', tag],
           stdout: 'inherit',
           stderr: 'inherit',
         })
