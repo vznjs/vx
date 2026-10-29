@@ -436,6 +436,22 @@ describe('every input the digest must read', () => {
     expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['packages/a'])
   })
 
+  it('a bundled dependency nested under its package is the one it reaches, not the root one (vercel/turborepo#10915)', () => {
+    // `oxide/@emnapi/core` is bundled inside oxide; a root `@emnapi/core`
+    // at another version is a different package.
+    const text = (nested: string, top: string) =>
+      doc(
+        `"": { "name": "ws" }, "packages/a": { "name": "a", "dependencies": { "oxide": "1.0.0" } },
+    "packages/b": { "name": "b", "dependencies": { "@emnapi/core": "2.0.0" } }`,
+        `"a": ["a@workspace:packages/a"], "b": ["b@workspace:packages/b"],
+    "oxide": ["oxide@1.0.0", "", { "dependencies": { "@emnapi/core": "1.0.0" }, "bundled": true }, "sha512-ox"],
+    "oxide/@emnapi/core": ["@emnapi/core@1.0.0", "", { "bundled": true }, "sha512-${nested}"],
+    "@emnapi/core": ["@emnapi/core@2.0.0", "", {}, "sha512-${top}"]`,
+      )
+    expect(movedDirs(text('n1', 't1'), text('n2', 't1'))).toEqual(['packages/a'])
+    expect(movedDirs(text('n1', 't1'), text('n1', 't2'))).toEqual(['packages/b'])
+  })
+
   it('an entry that is not a package tuple is passed over, not a crash', () => {
     const text = doc(`"": { "name": "ws" }`, `"odd": 5, "also": [7]`)
     expect([...digests(text).keys()]).toEqual(['.'])
