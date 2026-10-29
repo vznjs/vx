@@ -68,3 +68,16 @@ it('CONTROL: an edit under a workspace a classic `file:` copies moves the key', 
   await writeFile(path.join(root, 'packages/d/index.js'), '// v2\n')
   expect(await key()).not.toBe(before)
 })
+
+it('a workspace a `!` glob names is still one: Yarn 1 links it anyway', async () => {
+  // Yarn 1.22 takes no `!` glob (`yarn workspaces info` lists the
+  // directory), as the importers read it; the link test honoured the `!`,
+  // and c's own build output re-keyed every task, c's included.
+  await writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*', '!packages/c'] }),
+  )
+  const before = await key()
+  await writeFile(path.join(root, 'packages/c/dist/index.js'), '// v2\n')
+  expect(await key()).toBe(before)
+})

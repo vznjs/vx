@@ -209,8 +209,13 @@ const MANAGERS = {
       // folded into the one digest every task folds re-keyed the whole
       // repo on each edit under it, its own build output included. A
       // `file:` one is a copy, so its content stays.
-      const linked = root === undefined ? undefined : (d: string) => isWorkspace(root, d)
-      return yarnLock().fileDeps(yarnParse(t), linked)
+      // Berry's file names its workspaces, and contentDirs reads them there.
+      const lock = yarnParse(t)
+      const linked =
+        root === undefined || lock.generation !== 'classic'
+          ? undefined
+          : (d: string) => isClassicWorkspace(root, d)
+      return yarnLock().fileDeps(lock, linked)
     },
     recorded: (t) => {
       const lock = yarnParse(t)
@@ -644,8 +649,14 @@ function manifestReader(
   }
 }
 
-/** Whether the root `package.json` `workspaces` globs name `dir`, read as `workspaceDirs` does. */
-function isWorkspace(root: string, dir: string): boolean {
+/**
+ * Whether the root `package.json` `workspaces` globs name `dir` as Yarn 1
+ * reads them: it takes no `!` glob and links the directory anyway (`yarn
+ * workspaces info` lists it, 1.22), as `manifestImporters` reads them.
+ * Honoured here, the excluded workspace's content, its build output
+ * included, re-keyed every task.
+ */
+function isClassicWorkspace(root: string, dir: string): boolean {
   let pkg: Record<string, unknown> | null
   try {
     pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as Record<
@@ -659,8 +670,7 @@ function isWorkspace(root: string, dir: string): boolean {
   const glob = (p: string): Bun.Glob => new Bun.Glob(p.replace(/^\.\//, '').replace(/\/+$/, ''))
   return (
     !dir.split('/').includes('node_modules') &&
-    globs.some((p) => !p.startsWith('!') && glob(p).match(dir)) &&
-    !globs.some((p) => p.startsWith('!') && glob(p.slice(1)).match(dir))
+    globs.some((p) => !p.startsWith('!') && glob(p).match(dir))
   )
 }
 
