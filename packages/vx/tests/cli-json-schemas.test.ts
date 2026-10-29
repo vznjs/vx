@@ -32,6 +32,7 @@ import type {
   TaskLog,
   PlanPrediction,
   RunPlan,
+  RunStep,
 } from '../src/orchestrator/index.js'
 import type {
   CacheKeyDiff,
@@ -80,6 +81,8 @@ const CONFIG = (dep: boolean) => `export default {
       exec: { command: 'test -f ../../flag || { echo src/a.txt:1:2; exit 1; }' },
       inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
+    // Inputs that match nothing: a warning, which vx last keeps.
+    lost: { exec: { command: 'true' }, inputs: { files: ['nowhere/**'] }, cache: { outputs: { files: [] } } },
   },
 }`
 
@@ -186,9 +189,36 @@ beforeAll(async () => {
   json('last', ['--failed'])
   json('last', ['--log', 'app#fail'])
   json('last', ['--stats'])
+  expect(vx(['run', 'lib#lost']).code).toBe(0)
+  json('last', [])
+  json('last', ['--sql', 'SELECT project, task, cpu_ms, remote_error FROM runs'])
   // The flaky task passes again: the replayed failure names that run (`fixedIn`).
   await writeFile(path.join(root, 'flag'), '')
   expect(vx(['run', 'lib#flaky', '--force']).code).toBe(0)
+  json('last', ['--failed'])
+  // What only a sandbox, a moved input or a remote prefetch writes, kept
+  // beside the failed run as a run that had them keeps it.
+  const failedRun = (outputs['last']!.at(-1) as { invocation: { runId: string } }).invocation.runId
+  const cacheDir = path.join(root, '.vx', 'cache')
+  const kept = path.join(cacheDir, 'failures', `${failedRun}.json`)
+  const stored = JSON.parse(readFileSync(kept, 'utf8')) as { tasks: Record<string, unknown>[] }
+  for (const t of stored.tasks) {
+    t['inputMoved'] = 'src/a.txt'
+    t['sandboxFix'] = {
+      read: ['/r'],
+      write: ['/w'],
+      network: ['h'],
+      systemInfo: ['s'],
+      withheld: ['/c'],
+      inputs: ['src/b.txt'],
+    }
+  }
+  await writeFile(kept, JSON.stringify(stored))
+  await mkdir(path.join(cacheDir, 'steps'), { recursive: true })
+  await writeFile(
+    path.join(cacheDir, 'steps', `${failedRun}.json`),
+    JSON.stringify([{ id: 'vx:prefetch', durationMs: 3, ok: true }]),
+  )
   json('last', ['--failed'])
   const dry = vx(['run', 'build', '--filter', 'app...', '--dry=json'])
   expect(dry.code).toBe(0)
@@ -476,7 +506,10 @@ describe('each schema object is its source type', () => {
       keys<TaskLog>({ runId: true, taskId: true, status: true, source: true, output: true }),
     )
     expect(def('last', 'task')).toEqual(
-      keys<RunSummaryRow & Pick<TaskFailure, 'output' | 'locations' | 'fixedIn'>>({
+      keys<
+        RunSummaryRow &
+          Pick<TaskFailure, 'inputMoved' | 'output' | 'locations' | 'sandboxFix' | 'fixedIn'>
+      >({
         runId: true,
         project: true,
         task: true,
@@ -502,10 +535,25 @@ describe('each schema object is its source type', () => {
         notReady: true,
         remoteError: true,
         forwarded: true,
+        inputMoved: true,
         output: true,
         locations: true,
+        sandboxFix: true,
         fixedIn: true,
       }),
+    )
+    expect(def('last', 'task', 'properties', 'sandboxFix')).toEqual(
+      keys<NonNullable<TaskFailure['sandboxFix']>>({
+        read: true,
+        write: true,
+        network: true,
+        systemInfo: true,
+        withheld: true,
+        inputs: true,
+      }),
+    )
+    expect(props('last', 'oneOf', '0', 'properties', 'steps', 'items')).toEqual(
+      keys<RunStep>({ id: true, durationMs: true, ok: true }),
     )
   })
 

@@ -331,9 +331,17 @@ function shellShape(command: string): { comment: number; body: boolean[] } {
       continue
     }
     if (c === '<' && command[i - 1] !== '<') {
-      const m = /^<<(-?)[ \t]*\\?(['"]?)([A-Za-z_]\w*)\2/.exec(command.slice(i, i + 256))
-      if (m !== null) {
-        pending.push({ delim: m[3]!, tabs: m[1] === '-' })
+      // The delimiter is a whole word, quotes removed: `<<END-OF` and
+      // `<<'a b'` end at `END-OF` and `a b`. One opening with a digit is
+      // left alone, for `$((x<<2))`.
+      const m = /^<<(-?)[ \t]*((?:[^\s;&|()<>'"\\]|\\.|'[^']*'|"(?:[^"\\]|\\.)*")+)/.exec(
+        command.slice(i, i + 256),
+      )
+      if (m !== null && !/^\d/.test(m[2]!)) {
+        const delim = m[2]!.replace(/'([^']*)'|"((?:[^"\\]|\\.)*)"|\\(.)/g, (_, s, d, e) =>
+          s !== undefined ? s : d !== undefined ? d.replace(/\\(.)/g, '$1') : e,
+        )
+        pending.push({ delim, tabs: m[1] === '-' })
         i += m[0].length - 1
         atWordStart = false
         continue
@@ -373,6 +381,12 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
     // ran the args as a command of their own: `--watch: not found`. Kept
     // when an odd run of backslashes ends it: that escapes what follows.
     const escaped = (/\\+$/.exec(trimmed)?.[0].length ?? 0) % 2 === 1
+    // So did one that ends in a lone `;` or `&`: the args go before it.
+    // An escaped one (find's `-exec … \;`) is a word, and takes them after.
+    if (/(?:^|[^;&|<>\\])(?:\\\\)*[;&]$/.test(trimmed)) {
+      const head = trimmed.slice(0, -1).trimEnd()
+      return `${withForwardArgs(head, args)}${trimmed.slice(head.length)}`
+    }
     return `${escaped ? command : trimmed} ${quoted}`
   }
   // A comment-only last line after a commented line: the args go before
@@ -1141,6 +1155,11 @@ export function maskCaptured(text: string, secrets: SecretMask): string {
 
 const DROPPED_LINE = /^\n\[vx\] [\d.]+ [KMGTP]?B of output not kept — /
 
+/** Whether `chunk` is the line a `BoundedCapture` puts where its dropped middle was. */
+export function isDroppedOutputChunk(chunk: CapturedChunk): boolean {
+  return !chunk.err && DROPPED_LINE.test(chunk.text)
+}
+
 const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
 
 /** One piece of a task's output and the stream it came on. */
@@ -1205,16 +1224,16 @@ export class BoundedCapture {
   }
 
   /**
-   * This capture under smaller bounds. What it already dropped stays
-   * counted: copied through `chunks()`, the dropped line read as text and
-   * the new line named only the re-bound's cut (16 MB of 100 MB lost).
+   * The same output under tighter bounds. What this capture already
+   * dropped is counted in the new one's dropped line: pushed through
+   * `chunks()`, the old line fell into the new middle with its count.
    */
   rebound(headChars: number, tailChars: number): BoundedCapture {
-    const small = new BoundedCapture(headChars, tailChars)
-    for (const c of this.head) small.push(c.text, c.err)
-    small.dropped += this.dropped
-    for (const c of this.tail) small.push(c.text, c.err)
-    return small
+    const to = new BoundedCapture(headChars, tailChars)
+    for (const c of this.head) to.push(c.text, c.err)
+    for (const c of this.tail) to.push(c.text, c.err)
+    to.dropped += this.dropped
+    return to
   }
 
   /** The kept chunks in arrival order, the dropped middle named on stdout. */

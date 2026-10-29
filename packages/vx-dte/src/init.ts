@@ -171,6 +171,36 @@ const CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 const SETUP_BUN = 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0'
 const SETUP_PNPM = 'pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0'
 
+/**
+ * The worker's first step. A run that ended without cancelling its workers
+ * (its API limit spent, a kill) left them queued, each to hold a runner
+ * through its setup for no one (2026-10-28): one that starts after its run
+ * cancels its own workflow run, its queued fellows with it. An API that
+ * answers nothing leaves it to the relay, which turns it away.
+ */
+const LEAVE_IF_OVER = `      - name: Leave if the run is over
+        if: inputs.parent != ''
+        env: { GH_TOKEN: '\${{ github.token }}', PARENT: '\${{ inputs.parent }}' }
+        run: |
+          runs="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs"
+          status=$(curl -fsS -H "authorization: Bearer $GH_TOKEN" "$runs/$PARENT" | jq -r .status) || exit 0
+          [ "$status" = completed ] || exit 0
+          echo "::notice::run $PARENT is over: cancelling this one"
+          curl -fsS -o /dev/null -X POST -H "authorization: Bearer $GH_TOKEN" "$runs/$GITHUB_RUN_ID/cancel"
+`
+
+/**
+ * The run's last step: github() lists each worker run it dispatched in
+ * RUNNER_TEMP, since a run cancelled or timed out can die before it
+ * cancels them itself.
+ */
+const CANCEL_WORKERS = `      - name: Cancel the workers
+        if: cancelled()
+        run: |
+          [ -f "$RUNNER_TEMP/vx-dte-runs" ] || exit 0
+          while read -r run; do curl -sS -o /dev/null -X POST -H "authorization: Bearer $GITHUB_TOKEN" "$GITHUB_API_URL$run/cancel" || true; done < "$RUNNER_TEMP/vx-dte-runs"
+`
+
 /** GitHub's hosted runner of each platform; a size naming none runs on Linux x64. */
 const RUNNERS: Record<Platform, string> = {
   'linux-x64': 'ubuntu-latest',
@@ -219,10 +249,14 @@ on:
       workers: { required: true }
       # The variables github({ env }) hands the workers, as a JSON object.
       env: { required: false, default: '{}' }
+      # The run's attempt, which a worker reads first.
+      parent: { required: false, default: '' }
 
 permissions:
   contents: read
   id-token: write
+  # A worker of a run that is over cancels its own run.
+  actions: write
 
 jobs:
   worker:
@@ -239,7 +273,7 @@ ${inDir}    strategy:
       VX_DTE_RELAY: \${{ inputs.relay }}
       VX_DTE_WORKER: \${{ matrix.worker }}
     steps:
-      - uses: ${CHECKOUT}
+${LEAVE_IF_OVER}      - uses: ${CHECKOUT}
         with: { ref: '\${{ inputs.sha }}', persist-credentials: false }
       - env: { HANDED: '\${{ inputs.env }}' }
         run: |
@@ -290,7 +324,7 @@ ${
       # none named, vx fails, listing the workspace's tasks.
 `
 }      - run: ${VX} run \${{ github.event_name == 'pull_request' && '${both(setup.tasks.change, '--affected')}' || '${both(setup.tasks.main, '--all')}' }}
-`
+${CANCEL_WORKERS}`
   const repo = setup.repository ?? '<owner>/<repo>'
   const files = { '.github/workflows/ci.yml': run, [`.github/workflows/${workflow}`]: text }
   return {
@@ -353,7 +387,10 @@ export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
           ...(setup.manager === 'pnpm' ? ['corepack enable'] : []),
           ...installLines(setup.manager),
         ]
-  const image = setup.manager === 'bun' ? 'oven/bun:1.4' : 'node:22'
+  const image =
+    setup.manager === 'bun'
+      ? 'oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d'
+      : 'node:22.23.4@sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd'
   const root = setup.manager === 'bun' ? ["bun install --frozen-lockfile --filter './'"] : install
   const lines = (l: readonly string[]): string => l.map((x) => `    - ${x}`).join('\n')
   // A workspace in a subdirectory: the job's commands run in it.
@@ -396,7 +433,8 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
 
-# The image needs Bun; a job adds git if it lacks it.
+# The image needs Bun; a job adds git if it lacks it. By digest: a tag
+# can move under the same name.
 default:
   image: ${image}
 

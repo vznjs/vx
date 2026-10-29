@@ -144,7 +144,7 @@ export {
   type TaskLog,
   taskLog,
 } from './run-failures.js'
-export { type RunStep, runSteps } from './run-steps.js'
+export { type RunStep, runSteps, runWarnings } from './run-steps.js'
 export { resolveRunId, shortRunId } from './run-id.js'
 export { collectInfo, type CollectInfoOptions, type InfoFacts } from './doctor.js'
 export { localFloor, type LocalFloor } from './local-floor.js'

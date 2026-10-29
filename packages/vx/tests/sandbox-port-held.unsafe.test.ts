@@ -114,7 +114,9 @@ describe.skipIf(!available || process.platform !== 'linux')(
         },
         taskComplete() {},
       }
-      const r = await run({ cwd: root, tasks: ['a', 'b'], log })
+      // Two slots: the tasks must overlap, and a one-core runner's default
+      // of one slot ran them one after the other, so both bound the port.
+      const r = await run({ cwd: root, tasks: ['a', 'b'], log, concurrency: 2 })
       expect([
         r.outcomes.map((o) => o.status).sort(),
         err.join('').includes(`port ${port} is already in use`),
