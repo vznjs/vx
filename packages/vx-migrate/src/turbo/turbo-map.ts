@@ -380,6 +380,7 @@ const TOP_LISTS = [
 const GLOBAL_LISTS = ['inputs', 'env', 'passThroughEnv']
 const TASK_LISTS = ['dependsOn', 'outputs', 'env', 'passThroughEnv', 'with', 'dotEnv']
 const TASK_FLAGS = ['cache', 'persistent', 'interactive', 'interruptible']
+const ENV_LISTS = new Set(['globalEnv', 'globalPassThroughEnv', 'env', 'passThroughEnv'])
 
 /**
  * The shape of every field the mapper reads, refused by name. A number
@@ -395,12 +396,29 @@ function checkTurboShape(cfg: unknown, label: string): void {
     if (v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== 'string')))
       refuse(at, 'an array of strings')
   }
+  // Turbo refuses `$NAME` in an env list (`InvalidEnvPrefix`), its own
+  // `$TURBO_EXTENDS$` aside; mapped, core keyed a variable literally
+  // named `$NAME`, which is never set.
+  const envList = (v: unknown, at: string): void => {
+    list(v, at)
+    const bad = (v as string[] | undefined)?.find(
+      (x) => x.startsWith('$') && x !== '$TURBO_EXTENDS$',
+    )
+    if (bad !== undefined)
+      throw new UserError(
+        `${label}: ${at} holds ${JSON.stringify(bad)}: Turbo refuses a "$" before an env name — write ${JSON.stringify(bad.slice(1))}`,
+      )
+  }
   if (!isRecord(cfg)) refuse('the file', 'a JSON object')
   const c = cfg as Record<string, unknown>
-  for (const k of TOP_LISTS) list(c[k], k)
+  for (const k of TOP_LISTS) (ENV_LISTS.has(k) ? envList : list)(c[k], k)
   if (c['global'] !== undefined) {
     if (!isRecord(c['global'])) refuse('global', 'an object')
-    for (const k of GLOBAL_LISTS) list((c['global'] as Record<string, unknown>)[k], `global.${k}`)
+    for (const k of GLOBAL_LISTS)
+      (ENV_LISTS.has(k) ? envList : list)(
+        (c['global'] as Record<string, unknown>)[k],
+        `global.${k}`,
+      )
   }
   for (const field of ['tasks', 'pipeline']) {
     const tasks = c[field]
@@ -410,7 +428,7 @@ function checkTurboShape(cfg: unknown, label: string): void {
       const at = `${field}.${JSON.stringify(name)}`
       if (!isRecord(def)) refuse(at, 'an object')
       const d = def as Record<string, unknown>
-      for (const k of TASK_LISTS) list(d[k], `${at}.${k}`)
+      for (const k of TASK_LISTS) (ENV_LISTS.has(k) ? envList : list)(d[k], `${at}.${k}`)
       // Turbo 2.11 adds `{ mode, globs, withDefaults }` entries (`flatInputs`).
       const inputs = d['inputs']
       if (

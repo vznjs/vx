@@ -331,6 +331,42 @@ describe('turbo-map: what the sweep found unheld', () => {
     })
   })
 
+  // vercel/turborepo#1970: Turbo refuses `$NAME` in an env list. Mapped,
+  // core keyed a variable named `$FOO` that is never set, so an edit to
+  // FOO replayed the old build. CONTROL: `!FOO`, a `$` mid-name and
+  // Turbo's own `$TURBO_EXTENDS$` map.
+  it('a `$` before an env list entry is refused, as Turbo refuses it', async () => {
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const packageJson = { name: 'a', scripts: { build: 'b' } }
+    const said = async (cfg: object) => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(cfg))
+      return mapTurboWorkspace(
+        root,
+        [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
+        opts,
+      ).then(
+        () => 'mapped',
+        (e: unknown) => (e instanceof UserError ? e.message : String(e)),
+      )
+    }
+    expect([
+      await said({ tasks: { build: { env: ['$FOO'] } } }),
+      await said({ tasks: { build: { passThroughEnv: ['$P'] } } }),
+      await said({ globalEnv: ['$G'], tasks: { build: {} } }),
+      await said({ globalPassThroughEnv: ['$H'], tasks: { build: {} } }),
+      await said({ global: { env: ['$I'] }, tasks: { build: {} } }),
+      await said({ tasks: { build: { env: ['!FOO', 'A$B', '$TURBO_EXTENDS$'] } } }),
+    ]).toEqual([
+      'turbo.json: tasks."build".env holds "$FOO": Turbo refuses a "$" before an env name — write "FOO"',
+      'turbo.json: tasks."build".passThroughEnv holds "$P": Turbo refuses a "$" before an env name — write "P"',
+      'turbo.json: globalEnv holds "$G": Turbo refuses a "$" before an env name — write "G"',
+      'turbo.json: globalPassThroughEnv holds "$H": Turbo refuses a "$" before an env name — write "H"',
+      'turbo.json: global.env holds "$I": Turbo refuses a "$" before an env name — write "I"',
+      'mapped',
+    ])
+  })
+
   // vercel/turborepo#1472: a plain `turbo.json` takes comments too, line
   // and block, between entries and before a string in an array.
   it('reads comments in a plain `turbo.json`', async () => {
