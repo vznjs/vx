@@ -667,19 +667,35 @@ async function historyCmd(
   // The tasks a run would see, plugin stages included — the same ids the
   // `schedule` hook is handed.
   const projects = await loadResolvedProjects(ctx.workspaceRoot, { scope: 'all', warn: ctx.warn })
-  const ids: string[] = []
+  const nodes: TaskNode[] = []
   for (const p of projects.values()) {
-    for (const t of Object.keys(p.config.tasks ?? {})) ids.push(`${p.name}#${t}`)
+    for (const [t, config] of Object.entries(p.config.tasks ?? {})) {
+      const id = `${p.name}#${t}`
+      nodes.push({
+        id,
+        projectName: p.name,
+        projectDir: p.dir,
+        taskName: t,
+        config,
+        deps: [],
+        requested: false,
+      })
+    }
   }
+  const ids = nodes.map((n) => n.id)
   numberWarnings(options, ctx.warn)
   const window = windowOf(options)
   const cache = new Cache(ctx.cacheDir)
   let table: HistoryTable
   try {
+    // Each task's rows of its definition as it is now, as `schedule` reads
+    // them: read with every definition's, a task whose command changed
+    // showed the old command's peak and a reservation no run packs.
     table = await new LocalHistoryProvider(
       cache.dbHandle(),
       window,
       currentBranch(ctx.workspaceRoot),
+      taskDefinitions(nodes),
     ).loadFor(ids)
   } finally {
     cache.close()
