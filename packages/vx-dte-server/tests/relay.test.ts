@@ -677,6 +677,35 @@ describe('a host that keeps runs and holds websockets', () => {
     ])
   })
 
+  // A refused socket request is held for the socket its host attaches. One
+  // whose upgrade its host could not make (Bun's, with no
+  // Sec-WebSocket-Key) never attaches, and each was held for as long as
+  // the relay ran: any client, no token needed, grew its memory by one.
+  it('holds no refusal whose upgrade its host could not make', async () => {
+    const ids: string[] = []
+    const relay = createRelay({
+      verify: () => Promise.reject(new Error('unused')),
+      upgrade: (_key, id) => {
+        ids.push(id)
+        return Response.json({ error: 'not a websocket' }, { status: 426 })
+      },
+    })
+    const res = await relay.fetch(
+      new Request(`http://relay/v1/sessions/${R}/socket`, {
+        headers: { upgrade: 'websocket', 'sec-websocket-protocol': 'switchboard.v1' },
+      }),
+    )
+    expect(res.status).toBe(426)
+    const frames: unknown[] = []
+    const closed: (number | undefined)[] = []
+    const socket = {
+      send: (t: string) => void frames.push(JSON.parse(t)),
+      close: (c?: number) => void closed.push(c),
+    }
+    expect(relay.attach('', ids[0]!, socket)).toBe(false)
+    expect(closed).toEqual([GONE])
+  })
+
   // A join whose socket never opened (its client dropped during the
   // upgrade) left a participant with no socket and no drop time, which no
   // grace ever lapsed: a host's kept its session, refusing its own rejoin

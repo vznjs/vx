@@ -23,6 +23,7 @@ const NOT_SECRET = /_(FILE|PATH|DIR)$|^GIT_CONFIG_KEY_\d+$/i
  */
 const secretNames = new Map<string, boolean>()
 
+/** Whether vx masks a variable's value by its name alone (`NPM_TOKEN`, not `NPM_TOKEN_FILE`). */
 export function secretNamed(name: string): boolean {
   let secret = secretNames.get(name)
   if (secret === undefined) {

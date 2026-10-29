@@ -110,22 +110,6 @@ interface Limits {
   readonly maxQueryHashes: number
 }
 
-/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
-export function proxyHeaders(
-  headers: Record<string, string | undefined> | undefined,
-): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [name, value] of Object.entries(headers ?? {})) {
-    if (value === undefined) continue
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`vxHistory(): headers cannot set "${name}"`)
-    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`vxHistory(): header "${name}" must be one line of text`)
-    out[name] = value
-  }
-  return out
-}
-
 export class HistoryServer {
   private token: Promise<string> | undefined
   private held: { jwt: string; exp: number } | undefined

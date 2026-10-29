@@ -755,7 +755,12 @@ export function defaultLogger(
     stepEnd(id, { durationMs, ok }) {
       steps.delete(id)
       if (durationMs < STEP_SHOWN_MS) return
-      if (ok ? view.mode !== 'none' && view.mode !== 'errors-only' : view.mode !== 'none')
+      // `hash-only` is one line per task: only a step that failed adds one.
+      if (
+        ok
+          ? view.mode !== 'none' && view.mode !== 'errors-only' && view.mode !== 'hash-only'
+          : view.mode !== 'none'
+      )
         emitRow(formatStepLine(id, durationMs, ok, colors))
       refresh(true)
     },
