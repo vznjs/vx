@@ -405,7 +405,9 @@ it('reads AUDIENCE without the blanks around it', async () => {
     },
   )
   try {
-    const line = new TextDecoder().decode((await cli.stdout.getReader().read()).value)
+    const line = Bun.stripANSI(
+      new TextDecoder().decode((await cli.stdout.getReader().read()).value),
+    )
     const base = /on (\S+)/.exec(line)![1]!
     const res = await fetch(new URL('/v1/capabilities', base), {
       headers: { authorization: `Bearer ${await at.sign('read', 'https://history.example')}` },

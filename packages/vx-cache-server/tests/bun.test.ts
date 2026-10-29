@@ -270,7 +270,9 @@ it('reads AUDIENCE without the blanks around it', async () => {
     },
   )
   try {
-    const line = new TextDecoder().decode((await cli.stdout.getReader().read()).value)
+    const line = Bun.stripANSI(
+      new TextDecoder().decode((await cli.stdout.getReader().read()).value),
+    )
     const base = /on (\S+)/.exec(line)![1]!
     const token = await new SignJWT({
       project_path: REPO,
