@@ -16,7 +16,7 @@ export async function cacheCmd(args: readonly string[]): Promise<number>
 interface PruneArgs {
   olderThanMs?: number
   maxBytes?: number
-  dryRun?: boolean
+  dry?: boolean
   format?: 'pretty' | 'json'
   cacheDir?: string // `--cache-dir`: prune the cache a run with the same flag uses
   global?: boolean // `--global`: with no bound, clear every ~/.vx/*/cache too
@@ -25,7 +25,7 @@ interface PruneArgs {
 
 export function parsePruneArgs(args: readonly string[]): PruneArgs
 export interface ClearResult {
-  dryRun: boolean
+  dry: boolean
   cleared: string[]
   bytesFreed: number
 }
@@ -115,6 +115,6 @@ the caller surfaces `--max-size must be a size like 500M or 1G (got <value>)`.
 `tests/cli.test.ts`: `parseDuration` and `parseSize` units and parse
 failures; `vx cache clean` reports 0 entries
 pruned from an empty cache, and rejects an unknown subcommand.
-Eviction, orphan reaping and `dryRun` are tested in
+Eviction, orphan reaping and `dry` are tested in
 `tests/cache.test.ts` against `Cache.prune`; clearing in
 `tests/cache-clean.test.ts`.

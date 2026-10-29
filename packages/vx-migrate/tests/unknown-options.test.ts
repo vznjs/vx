@@ -20,11 +20,25 @@ it('a misspelt option is refused, naming the nearest one', () => {
   expect(refusal(() => nx({ rot: '.' } as never))).toBe(
     'nx() has unknown option "rot" (allowed: executors, graph, root) \u2014 did you mean root?',
   )
-  expect(refusal(() => turboCache({ apiURL: 'x' } as never))).toBe(
-    'turboCache() has unknown option "apiURL" (allowed: apiUrl, oidc, preflight, retries, scope, signatureKey, teamId, teamSlug, timeoutMs, token, uploadTimeoutMs) \u2014 did you mean apiUrl?',
+  expect(refusal(() => turboCache({ ulr: 'x' } as never))).toBe(
+    'turboCache() has unknown option "ulr" (allowed: oidc, preflight, retries, scope, signatureKey, teamId, teamSlug, timeoutMs, token, uploadTimeoutMs, url) \u2014 did you mean url?',
   )
-  expect(refusal(() => nxCache({ severr: 'x' } as never))).toBe(
-    'nxCache() has unknown option "severr" (allowed: accessToken, retries, server, timeoutMs) \u2014 did you mean server?',
+  expect(refusal(() => nxCache({ ulr: 'x' } as never))).toBe(
+    'nxCache() has unknown option "ulr" (allowed: retries, timeoutMs, token, url) \u2014 did you mean url?',
+  )
+})
+
+// One name per concept across the cache plugins, vxCache()'s: the server is
+// `url`, its bearer `token`.
+it('names the server url and its bearer token, as vxCache() does', () => {
+  expect(refusal(() => turboCache({ apiUrl: 'x' } as never))).toContain(
+    'turboCache() has unknown option "apiUrl"',
+  )
+  expect(refusal(() => nxCache({ server: 'x' } as never))).toContain(
+    'nxCache() has unknown option "server"',
+  )
+  expect(refusal(() => nxCache({ accessToken: 'x' } as never))).toContain(
+    'nxCache() has unknown option "accessToken"',
   )
 })
 

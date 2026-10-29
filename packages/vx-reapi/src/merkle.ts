@@ -255,7 +255,11 @@ export async function buildInputTree(args: {
       node.symlinks.set(parts[parts.length - 1]!, { name: parts[parts.length - 1]!, target })
       continue
     }
-    if (got.kind === 'other') continue
+    if (got.kind === 'other') {
+      // A keyed file that is now a directory (or a socket) is absent too.
+      if (args.expected?.has(rel) === true) moved.push(rel)
+      continue
+    }
     const data = got.data
     const want = args.expected?.get(rel)
     if (want !== undefined && !carriesOid(data, want)) moved.push(rel)

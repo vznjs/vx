@@ -65,6 +65,31 @@ it('output files are fetched and written at once, each with its own bytes', asyn
   expect(got).toEqual(names)
 })
 
+// A Tree's small files are fetched 64 MiB at a time; the result's own
+// output files were fetched in one batch read, every one held at once.
+it('output files are fetched a window at a time, as a Tree’s are', async () => {
+  const MiB = 1024 * 1024
+  const asked: number[] = []
+  const windowed = {
+    batchReadBlobs: async (ds: { hash: string; size_bytes: number }[]) => {
+      asked.push(ds.reduce((n, d) => n + d.size_bytes, 0))
+      return new Map(ds.map((d) => [d.hash, enc.encode(d.hash)]))
+    },
+    readBlob: async () => null,
+    digest: 'SHA256',
+  } as unknown as Parameters<typeof materialiseOutputs>[0]
+  const result = {
+    output_files: Array.from({ length: 100 }, (_, i) => ({
+      path: `out/${i}.bin`,
+      digest: { hash: `h${i}`, size_bytes: MiB },
+      is_executable: false,
+    })),
+  }
+  await materialiseOutputs(windowed, req(), result as never, () => undefined)
+  expect(asked.length > 1 && asked.every((n) => n <= 64 * MiB)).toBe(true)
+  expect(await readFile(path.join(ws, 'out', '99.bin'), 'utf8')).toBe('h99')
+})
+
 it("a Tree's files are fetched and written at once, each with its own bytes", async () => {
   const root: Directory = {
     files: names.map((n) => ({ name: `${n}.js`, digest: blob(`t${n}`), is_executable: false })),

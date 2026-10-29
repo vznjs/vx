@@ -438,7 +438,7 @@ describe('HistoryServer', () => {
         workspaceRoot: dir,
         localCache: cache,
         branch: 'main',
-        refs: [],
+        refs: ['refs/heads/main'],
         refine: (p: Promise<unknown>) => refined.push(p),
       } as never)
       expect(refined).toHaveLength(1)
