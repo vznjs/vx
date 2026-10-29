@@ -68,7 +68,8 @@ alone decides what it reads and where it writes, by the server's
 A bad token is `401`. A server with `ALLOW` empty does not start; a
 Worker, which cannot refuse to, refuses every request: `401`,
 `ALLOW is empty: set it to the CI workflows this server serves`. A server that
-cannot fetch the issuer's keys answers `502`: the token is not refused,
+cannot fetch the issuer's keys, or reads a broken key set (none, or two
+keys for one `kid`), answers `502`: the token is not refused,
 so a client keeps the remote for its next request.
 
 ## Keys

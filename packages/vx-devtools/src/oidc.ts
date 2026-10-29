@@ -379,11 +379,13 @@ const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
 function refusal(err: unknown, iss: string, audience: string): Refusal {
   if (err instanceof Refusal) return err
   // A refetch of the keys for a kid not held failed, or the issuer served
-  // no key set: the issuer, not the token. A broken set read "not a JWT".
+  // no key set, or one with two keys for a kid: the issuer, not the token.
+  // A broken set read "not a JWT".
   if (
     !(err instanceof errors.JOSEError) ||
     err instanceof errors.JWKSTimeout ||
-    err instanceof errors.JWKSInvalid
+    err instanceof errors.JWKSInvalid ||
+    err instanceof errors.JWKSMultipleMatchingKeys
   )
     return keysUnread(iss, err)
   if (err instanceof errors.JOSEAlgNotAllowed) return new Refusal(401, 'alg is not RS256')
