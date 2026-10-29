@@ -126,7 +126,10 @@ const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const session = SESSION.exec(new URL(req.url).pathname)?.[1]
-    if (session === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
+    if (session === undefined) {
+      const error = `no route ${req.method} ${new URL(req.url).pathname.slice(0, 200)}: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`
+      return Response.json({ error }, { status: 404 })
+    }
     const refused = allowRefusal(env.ALLOW)
     if (refused !== undefined) return refuse(req, 403, refused)
     if (env.RELAY === undefined) {
