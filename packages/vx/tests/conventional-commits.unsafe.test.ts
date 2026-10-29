@@ -60,6 +60,8 @@ const KNOWN = new Set([
   '163e07ec32743c7b8eca637e09c4175d461e7952',
   // The third mega branch's, pushed before the row ran on it: 74 chars.
   'adf8df0351495c9f0c46a53aee2d2fa0bbabc70e',
+  // The third mega branch's, pushed before the row ran on it: 72 chars.
+  '4879901a4b8894e8c8c08b9f222a86c96eb69958',
 ])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {
