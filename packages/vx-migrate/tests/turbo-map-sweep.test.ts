@@ -650,6 +650,32 @@ describe('turbo-map: a package overlay that extends an inherited list', () => {
     const task = t.task as { inputs?: { files?: string[] } }
     expect(task.inputs?.files).toEqual(['lib/**'])
   })
+
+  // vercel/turborepo#3866: a package's `dependsOn: []` was merged as unset,
+  // so the root's `^build` stayed on the task.
+  it('an empty overlay `dependsOn` drops the inherited edges', async () => {
+    const t = await taskOf(
+      { tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } },
+      {
+        a: {
+          scripts: { build: 'b' },
+          turbo: { extends: ['//'], tasks: { build: { dependsOn: [] } } },
+        },
+      },
+    )
+    expect((t.task as { dependsOn?: string[] }).dependsOn ?? []).toEqual([])
+    // CONTROL: an overlay that leaves `dependsOn` out keeps the root's.
+    const kept = await taskOf(
+      { tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } },
+      {
+        a: {
+          scripts: { build: 'b' },
+          turbo: { extends: ['//'], tasks: { build: { outputs: ['lib/**'] } } },
+        },
+      },
+    )
+    expect((kept.task as { dependsOn?: string[] }).dependsOn).toEqual(['^build'])
+  })
 })
 
 // Item 909: Turbo 1 names an env dependency as `$NAME` in a task's
