@@ -184,6 +184,26 @@ describe('turbo()', () => {
     TIMEOUT,
   )
 
+  // Turbo folds the whole pipeline into its global hash (vercel/turborepo
+  // #1166): an edit to any task's definition misses every task. vx keys a
+  // task on its own resolved config, so only its own definition moves it.
+  it(
+    "an edit to another task's turbo.json definition keeps the hit; its own re-runs it",
+    async () => {
+      const opts = { cwd: root, tasks: ['lib#build'], log: silent(), handleSignals: false }
+      const status = async () => (await run(opts)).outcomes.map((o) => o.status)
+      expect(await status()).toEqual(['success'])
+      const turbo = structuredClone(TURBO_JSON)
+      turbo.tasks.test.outputs = ['coverage/**'] as never[]
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo, null, 2))
+      expect(await status()).toEqual(['cache-hit'])
+      turbo.tasks.build.env = ['NODE_ENV', 'BUILD_MODE']
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo, null, 2))
+      expect(await status()).toEqual(['success'])
+    },
+    TIMEOUT,
+  )
+
   it(
     'runs the graph, caches by the mapped blocks, and leaves `cache: false` tasks uncached',
     async () => {
