@@ -67,6 +67,29 @@ describe('turbo(): turbo.json workspace keys', () => {
     }
   })
 
+  // Turbo #9053: an empty TURBO_SCM_BASE is unset, not a base of ''.
+  it('TURBO_SCM_BASE names the base commit; an empty or blank one names none', async () => {
+    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: {} }))
+    const saved = { base: process.env['TURBO_SCM_BASE'], gha: process.env['GITHUB_ACTIONS'] }
+    try {
+      delete process.env['GITHUB_ACTIONS']
+      const seen: unknown[] = []
+      for (const v of ['origin/main', '', '  ']) {
+        process.env['TURBO_SCM_BASE'] = v
+        seen.push((await staged(turbo())).base)
+      }
+      expect(seen).toEqual(['origin/main', undefined, undefined])
+    } finally {
+      for (const [k, v] of [
+        ['TURBO_SCM_BASE', saved.base],
+        ['GITHUB_ACTIONS', saved.gha],
+      ] as const) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  })
+
   it('a concurrency that is no positive whole number is left to the default', async () => {
     for (const concurrency of ['abc', '1.5', '-2']) {
       await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency, tasks: {} }))
