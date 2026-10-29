@@ -93,6 +93,23 @@ describe('./-prefixed globs', () => {
     expect(normalizeGlob('.')).toBe('')
   })
 
+  // 2026-10-28: a trailing `/.` names the directory as a trailing `/` does,
+  // but no rule folded it: `*/.` matched no file, so an edit under src was a
+  // stale hit, and `!gen/.` took nothing back.
+  it('a trailing /. names the directory: */. keys on src, !gen/. subtracts gen', async () => {
+    expect(normalizeGlob('src/.')).toBe('src/')
+    expect(normalizeGlob('src/*/.')).toBe('src/*/**')
+    expect(normalizeGlob('!gen/./.')).toBe('!gen/')
+    expect(normalizeGlob('./.')).toBe('')
+    const dir = await project(`{ files: ['*/.', '!gen/.', '!dist/**'] }`, `{ files: ['dist/**'] }`)
+    expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['success'])
+    await writeFile(path.join(dir, 'gen', 'g.txt'), 'g2\n')
+    expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+    await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
+    expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['success'])
+    expect(await Bun.file(path.join(dir, 'dist', 'out.txt')).text()).toBe('a2\ng2\n')
+  }, 30_000)
+
   it('an input written src/**/ (trailing slash on a pattern) keys on src too', async () => {
     const dir = await project(`{ files: ['src/**/'] }`, `{ files: ['dist/**'] }`)
     expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['success'])

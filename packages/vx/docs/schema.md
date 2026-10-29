@@ -870,7 +870,8 @@ list, so a literal file it covers (`['src/**', '!src/gen/**',
 Spellings a matcher would otherwise turn into
 nothing are normalized: a leading `./` (`./src/**` is `src/**`, `!./gen`
 is `!gen`), an inner `/./` segment, a doubled `//`, and a trailing `/` on
-a pattern (`src/*/` is the trees under `src`, `src/*/**`). A bare `.` or
+a pattern (`src/*/` is the trees under `src`, `src/*/**`), and a
+trailing `/.`, read as a trailing `/`. A bare `.` or
 `./` names the project directory itself and is refused at load — write
 `**`. Turbo's `$TURBO_DEFAULT$` and `$TURBO_ROOT$` and Nx's
 `{projectRoot}`, `{workspaceRoot}`, `{projectName}` and `{options.…}`

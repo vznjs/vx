@@ -153,7 +153,8 @@ export function outputDirPrefixes(globs: readonly string[]): string[] | null {
  * replays old outputs as a green hit (2026-09-10, probed one by one):
  * a leading `./`, an inner `/./` segment, a doubled `//`, and a trailing
  * `/` on a pattern (`src/*\/` means the trees under `src`, so it becomes
- * `src/*\/**`; a trailing slash on a LITERAL is `asTrees`' job). Applied
+ * `src/*\/**`; a trailing slash on a LITERAL is `asTrees`' job), and a
+ * trailing `/.`, read as a trailing `/`. Applied
  * after an optional `!`; a bare `.` is the empty entry the schema refuses.
  */
 export function normalizeGlob(glob: string): string {
@@ -173,6 +174,9 @@ function normalizeWith(glob: string, wildcards: RegExp): string {
   const neg = glob.startsWith('!')
   let g = neg ? glob.slice(1) : glob
   g = g.replace(/\/{2,}/g, '/').replace(/(^|\/)(\.\/)+/g, '$1')
+  // A trailing `/.` is the directory, as a trailing `/` is: `*/.` matched
+  // no file and `!gen/.` took nothing back (2026-10-28).
+  if (g.endsWith('/.')) g = g.slice(0, -1)
   if (g === '.') g = ''
   if (wildcards.test(g) && g.endsWith('/')) g = `${g.replace(/\/+$/, '')}/**`
   return neg ? `!${g}` : g
