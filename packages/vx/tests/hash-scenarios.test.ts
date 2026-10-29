@@ -446,4 +446,23 @@ describe("untracked inputs follow git's ignore rules", () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a root pattern two levels into a project applies; its unignored siblings are keyed (vercel/turborepo#13690)',
+    async () => {
+      const root = await workspace(
+        "{ files: ['**'] }",
+        { 'src/a.txt': 'a\n' },
+        { '.gitignore': '.vx/cache/\npackages/lib/src/deep/*.tmp\n' },
+      )
+      await mkdir(at(root, 'src/deep'), { recursive: true })
+      await writeFile(at(root, 'src/deep/x.tmp'), '1\n')
+      const k0 = await key(root)
+      await writeFile(at(root, 'src/deep/x.tmp'), '2\n')
+      expect(await key(root)).toBe(k0)
+      await writeFile(at(root, 'src/deep/y.txt'), '1\n')
+      expect(await key(root)).not.toBe(k0)
+    },
+    TIMEOUT,
+  )
 })
