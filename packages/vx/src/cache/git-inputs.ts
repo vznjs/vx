@@ -1724,15 +1724,6 @@ export async function startGitEnumeration(
     }
   }
   const startedAtMs = Date.now()
-  // Four spawns at most (the rev-parse is memoized per process), one
-  // worktree walk. `ls-files -s -v` reads the INDEX only
-  // (~9 ms on a 1000-project tree) and answers two questions at once: every
-  // tracked path's OID and its cache-state flag. `status -uall` is the one
-  // command that walks the worktree, and it answers two as well: which
-  // tracked paths are dirty AND which files are untracked. Asking
-  // `ls-files --others` for the untracked set walked the same tree a second
-  // time (~50 ms of CPU, concurrent with status but contending with it).
-  const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs])
   // The gate for whether a clean filter can rewrite bytes between the
   // index and the worktree: git's merged config (`core.autocrlf`) and,
   // from git 2.42, the attributes files it reads outside the tree
@@ -1741,7 +1732,7 @@ export async function startGitEnumeration(
   // 1.32 ms, min of 30), which could not name the default global file.
   // Not foldable into the rev-parse below: rev-parse prints no config.
   const varsRun = spawnGit(['var', '-l'])
-  // Asked while the two above run, from the memo the file hasher reads
+  // Asked while `var` runs, from the memo the file hasher reads
   // too (`repoFacts`). `prefix` is the repo→workspace path (empty when the
   // workspace root IS the git root): `ls-files` prints cwd(workspace)-
   // relative paths but `status` prints repo-root-relative ones, so when the
@@ -1767,6 +1758,27 @@ export async function startGitEnumeration(
     facts === null || facts.indexFile === ''
       ? undefined
       : path.resolve(workspaceRoot, facts.indexFile)
+  // `ls-files` and `status` each read the index on their own. A write
+  // between them (an unstage, a checkout) paired one index's OIDs with the
+  // other's verdict: a `git reset` of a staged edit made the file clean to
+  // `status` while `ls-files` had listed the staged blob, and that blob
+  // keyed the committed bytes on disk. The index is stamped before the
+  // listing and after the status; an index that moved trusts no OID.
+  const indexStamp = (): string | undefined => {
+    if (indexFile === undefined) return undefined
+    const st = lstatSync(indexFile, { throwIfNoEntry: false })
+    return st === undefined ? undefined : `${st.ino}:${st.ctimeMs}:${st.size}`
+  }
+  const stampBefore = indexStamp()
+  // Four spawns at most (the rev-parse is memoized per process), one
+  // worktree walk. `ls-files -s -v` reads the INDEX only
+  // (~9 ms on a 1000-project tree) and answers two questions at once: every
+  // tracked path's OID and its cache-state flag. `status -uall` is the one
+  // command that walks the worktree, and it answers two as well: which
+  // tracked paths are dirty AND which files are untracked. Asking
+  // `ls-files --others` for the untracked set walked the same tree a second
+  // time (~50 ms of CPU, concurrent with status but contending with it).
+  const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs])
   // Read synchronously: `status` spawns once the read is in, and an async
   // read's answer waited for the main thread to yield, behind the workspace
   // config and discovery (~5 ms of a 1,200-task warm run's wait for git).
@@ -1832,6 +1844,7 @@ export async function startGitEnumeration(
       ? spawnGit(CHECK_ATTR, [...parsedLs.oids.keys()].join('\0'))
       : undefined
   const [, status, vars] = await running
+  const indexMoved = indexStamp() !== stampBefore
   // The key stands for the index `ls-files` listed only when that index
   // was written before the enumeration began (git writes it by rename, so
   // the stamp moves with any write) and is still in place after it: a
@@ -1889,7 +1902,7 @@ export async function startGitEnumeration(
   // this same status spawn so `run()` needs no second `git status`.
   // null when the status spawn failed (non-repo / git error).
   const worktreeDirty = dirty === null ? null : dirty.size > 0
-  const trusted = dirty === null ? new Map<string, string>() : oids
+  const trusted = dirty === null || indexMoved ? new Map<string, string>() : oids
   if (dirty !== null) {
     for (const rel of dirty) trusted.delete(rel)
   }
