@@ -1017,6 +1017,7 @@ function refuseUnlockedConfig(
     if (config === undefined) continue
     throw new UserError(
       `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
+      'VX_E_LOCK',
     )
   }
 }
@@ -1041,6 +1042,7 @@ function refuseUnlockedScope(
     if (config === undefined) continue
     throw new UserError(
       `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
+      'VX_E_LOCK',
     )
   }
 }

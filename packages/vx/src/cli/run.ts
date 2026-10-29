@@ -495,7 +495,10 @@ export async function resolveRunOptions(
       }
     }
     if (cwdProject.unlockedConfig !== undefined) {
-      return { error: `${cwdProject.unlockedConfig} is not in the lock yet — run \`vx lock\`` }
+      return {
+        error: `${cwdProject.unlockedConfig} is not in the lock yet — run \`vx lock\``,
+        code: 'VX_E_LOCK',
+      }
     }
     projects = [cwdProject.name]
     discovered = cwdProject.discovered
