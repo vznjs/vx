@@ -63,7 +63,7 @@ export const EXTGLOB: RegExp // /[!@+*?]\(/
 export function printable(s: string): string
 // Whether `s` holds a char `printable` escapes: a project or task name may not.
 export function hasControl(s: string): boolean
-// Whether vx may write or delete at `real`, where a link landed: under `realBase`, in no `.git`.
+// Whether vx may write or delete at `real`, where a link landed: under `realBase`, not in its own `.git`.
 export function writableUnder(real: string, realBase: string): boolean
 ```
 

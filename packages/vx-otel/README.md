@@ -58,7 +58,8 @@ carry (`Authorization: Basic …` written curl-style, with a colon) is not
 sent, and the warning prints neither its name nor its value. A `headers`
 option value that is unset (`process.env.X`, X unset) is left out, as
 `vxCache({ headers })` leaves it; any other value that is not a string is
-not sent either, with a warning naming the header.
+not sent either, with a warning naming the header. A `content-type` header is
+not sent: the body is OTLP/HTTP JSON, `application/json`.
 
 With only a traces URL set, metrics and logs are not
 exported (they used to be POSTed to the traces URL, which a collector

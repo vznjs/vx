@@ -2108,6 +2108,28 @@ export class Cache implements CacheLayer {
     // the other process saved is kept.
     const ino = lstatSync(tree).ino
     const swapped = (): boolean => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino
+    // A standing directory of this user's that withholds its own write (a
+    // task's `chmod 555 dist/ro`) gets owner write and search for the copy
+    // and its mode back after, as the extractor's rename does: else only
+    // root could restore a file into it, and the hit failed EACCES.
+    const reopened = new Map<string, number>()
+    const reopen = (dir: string): boolean => {
+      if (reopened.has(dir)) return true
+      const st = lstatSync(dir, { throwIfNoEntry: false })
+      if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
+      if ((st.mode & 0o300) === 0o300) return false
+      reopened.set(dir, st.mode & 0o7777)
+      chmodSync(dir, (st.mode & 0o7777) | 0o300)
+      return true
+    }
+    const copy = async (to: string, from: string): Promise<void> => {
+      try {
+        await Bun.write(to, Bun.file(from), { createPath: false })
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EACCES' || !reopen(path.dirname(to))) throw err
+        await Bun.write(to, Bun.file(from), { createPath: false })
+      }
+    }
     try {
       const dirs = new Set<string>()
       for (const r of rows) {
@@ -2117,7 +2139,7 @@ export class Cache implements CacheLayer {
       await Promise.all(
         files.map(async (r) => {
           const to = path.join(projectDir, r.path)
-          await Bun.write(to, Bun.file(path.join(tree, treeName(r.path))), { createPath: false })
+          await copy(to, path.join(tree, treeName(r.path)))
           const mode = restoredMode(r.mode)
           if (mode !== plain) await chmod(to, mode)
           const at = new Date(r.mtimeMs)
@@ -2133,6 +2155,14 @@ export class Cache implements CacheLayer {
       if (!(err instanceof ArtifactVanishedError) && swapped())
         throw new ArtifactVanishedError(hash)
       throw err
+    } finally {
+      for (const [dir, mode] of reopened) {
+        try {
+          chmodSync(dir, mode)
+        } catch {
+          // gone with the task's own cleanup since
+        }
+      }
     }
     return true
   }

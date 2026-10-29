@@ -122,3 +122,32 @@ it('--sql needs a query and combines with nothing but --format and --cache-dir',
     expect(r.err).toContain('--sql combines only with --format and --cache-dir')
   }
 })
+
+// A join's `SELECT *` names `run_id` and `started_at` twice: the rows were
+// keyed by name, so a table printed one column of each, holding the
+// invocation's `started_at` under the task's place in the header.
+it('pretty prints a column named twice twice, each with its own value', () => {
+  const r = vx('last', '--sql', 'SELECT 1 AS a, 2 AS a, 3 AS b')
+  expect([r.code, r.err, r.out]).toEqual([0, '', 'a  a  b\n1  2  3\n'])
+})
+
+it('--format json refuses a column named twice, naming it', () => {
+  const r = vx('last', '--sql', 'SELECT 1 AS a, 2 AS a, 3 AS b', '--format', 'json')
+  expect(r.code).toBe(1)
+  expect(JSON.parse(r.out).error.message).toBe(
+    'vx last: --sql: column "a" is named twice, and a JSON row holds one value per name; name each with AS',
+  )
+})
+
+// SQLite prepares the first statement of a text, and the rest was dropped
+// without a word: two counts asked, one printed.
+it('a second statement is refused, not dropped', () => {
+  const r = vx('last', '--sql', 'SELECT 1 AS a; SELECT 2 AS b')
+  expect([r.code, r.out]).toEqual([1, ''])
+  expect(r.err).toContain(
+    '--sql takes one statement, and "SELECT 2 AS b" follows the first: run each in its own --sql',
+  )
+  // A closing `;` or comment is no second statement (control).
+  const ok = vx('last', '--sql', "SELECT 'a;b' AS a; -- the end\n", '--format', 'json')
+  expect([ok.code, ok.err, ok.out]).toEqual([0, '', '{"rows":[{"a":"a;b"}]}\n'])
+})

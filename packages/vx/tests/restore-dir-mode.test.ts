@@ -103,6 +103,19 @@ for (const [form, extra] of [
         expect(readFileSync(path.join(app, 'dist/ro/f'), 'utf8')).toBe('r\n')
         expect(modes(app, NAMES)).toEqual(EXPECTED)
 
+        // Every file gone but `dist/ro` left standing 0555: the tree's
+        // copy-out writes into it, and as the extractor's rename does, it
+        // opens the directory for the write and gives its mode back.
+        for (const d of ['dist/keys', 'dist/empty', 'dist/open']) rmTree(path.join(app, d))
+        chmodSync(path.join(app, 'dist/ro'), 0o755)
+        rmSync(path.join(app, 'dist/ro/f'))
+        chmodSync(path.join(app, 'dist/ro'), 0o555)
+        const into = await build()
+        expect(`${into.code}\n${into.err}`).toStartWith('0\n')
+        expect(into.out + into.err).toContain('local 1↓')
+        expect(readFileSync(path.join(app, 'dist/ro/f'), 'utf8')).toBe('r\n')
+        expect(modes(app, NAMES)).toEqual(EXPECTED)
+
         // The tree it leaves is current: the next hit restores nothing.
         const again = await build()
         expect(`${again.code}\n${again.err}`).toStartWith('0\n')

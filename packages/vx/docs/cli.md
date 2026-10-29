@@ -3311,7 +3311,10 @@ combines only with `--follow`, `--format` and `--cache-dir`.
 `--sql <query>` runs one `SELECT` (or `WITH … SELECT`) over the run
 history and prints its rows: a table with a header, or with
 `--format json` `{ rows }`, one object per row keyed by column. It answers what no
-flag does: filter by task or project, group, trend.
+flag does: filter by task or project, group, trend. The table prints
+every column, a name repeated by a join's `SELECT *` (`run_id`) too;
+`--format json` refuses a repeated name, since an object holds one
+value per key: name each with `AS`.
 
 ```sh
 # a task's memory and cpu, run by run
@@ -3335,7 +3338,9 @@ Times are epoch milliseconds. The history keeps 30 days.
 A write is refused (`--sql reads only`, exit 1), and the query runs
 with SQLite's `query_only` on, so a `WITH` that hides one fails too;
 nothing else may lead the statement, since `ATTACH` would make a file.
-A query SQLite cannot run is refused with its reason. `--sql` combines
+A query SQLite cannot run is refused with its reason, and so is a
+second statement after the first (SQLite would run the first alone).
+`--sql` combines
 only with `--format` and `--cache-dir`. The tables are vx's own and
 change with `SCHEMA_VERSION`; read `sqlite_schema` rather than assume.
 

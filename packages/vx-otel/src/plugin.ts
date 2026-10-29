@@ -302,6 +302,17 @@ export function resolveOtelConfig(
         continue
       }
       const k = raw.toLowerCase()
+      // The body is JSON whatever a header says; a `content-type` over it
+      // made a collector parse it as protobuf and refuse every export.
+      if (k === 'content-type') {
+        if (!dropped.has(k)) {
+          dropped.add(k)
+          warn?.(
+            '[vx] vx-otel: header "content-type" names the body\'s type, and vx-otel sends OTLP/HTTP JSON (application/json) — not sent',
+          )
+        }
+        continue
+      }
       // An option's value may be a number or an object: refused like a
       // value fetch cannot send, not left to throw `value.trim is not a
       // function` out of the plugin.
