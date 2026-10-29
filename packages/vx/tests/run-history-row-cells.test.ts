@@ -77,10 +77,10 @@ it("a run stores each row's waited, outputs and blocks", async () => {
   expect(c.get('gen')).toMatchObject({ status: 'success', output_bytes: 5, blocks: 1 })
   expect(c.get('other')).toMatchObject({ output_bytes: null, blocks: 0 })
   expect(c.get('use')).toMatchObject({ output_bytes: null, blocks: 0 })
-  // The hit restores (or keeps) the same five bytes.
-  expect(warm).toEqual([
-    { task: 'gen', status: 'cache-hit', queued_ms: null, output_bytes: 5, blocks: 0 },
-  ])
+  // The hit restores (or keeps) the same five bytes. Its wait is not held:
+  // a busy runner made even a lone hit wait 2 ms for its slot.
+  expect(warm).toHaveLength(1)
+  expect(warm![0]).toMatchObject({ task: 'gen', status: 'cache-hit', output_bytes: 5, blocks: 0 })
 }, 20_000)
 
 it("an outcome's waited, outputs, blocks and flaky record reach its RunRecord", () => {
