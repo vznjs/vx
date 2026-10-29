@@ -28,9 +28,15 @@ function askHidden(
   output: { write(s: string): unknown },
   interrupt: () => void,
 ): Promise<string> {
-  output.write(question)
   const wasRaw = input.isRaw === true
-  input.setRawMode(true)
+  // A terminal that refuses raw mode (EIO once its session is gone) cannot
+  // hide an answer: the rejection reaches the broker before any question.
+  try {
+    input.setRawMode(true)
+  } catch (err) {
+    return Promise.reject(err)
+  }
+  output.write(question)
   input.resume()
   return new Promise((resolve) => {
     let line = ''
