@@ -857,12 +857,11 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     pipes.close()
     pipes.closeStdin()
     // Bun names `sh` in the ENOENT a missing directory gives too.
+    // The command the shell was handed, a sandbox's wrap included.
     const message =
       isExecutableMissing(err) && !existsSync(opts.cwd)
         ? `its working directory ${opts.cwd} does not exist`
-        : err instanceof Error
-          ? err.message
-          : String(err)
+        : spawnErrorReason(err, opts.signalChannel === true ? SANDBOXED_TASK : 'task', opts.command)
     return {
       child: undefined,
       ready: Promise.reject(
@@ -1055,6 +1054,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   }
 }
 
+/** `spawnFailureText`'s `what` for a sandboxed task: its command is the sandbox's wrap of the task's. */
+export const SANDBOXED_TASK = 'sandboxed task'
+
 /**
  * What a task's frame says when `Bun.spawn` itself threw. The text goes
  * through `onStderr` AND onto the result: the orchestrator retains no
@@ -1064,9 +1066,6 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
  * working directory in place is the shell, without it the directory; Bun's
  * own text names the rest.
  */
-/** `spawnFailureText`'s `what` for a sandboxed task: its command is the sandbox's wrap of the task's. */
-export const SANDBOXED_TASK = 'sandboxed task'
-
 export function spawnFailureText(
   err: unknown,
   cwd: string,
@@ -1079,13 +1078,18 @@ export function spawnFailureText(
       ? `[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
       : `[vx] failed to spawn ${what}: its working directory ${cwd} does not exist\n`
   }
+  return `[vx] failed to spawn ${what}: ${spawnErrorReason(err, what, command)}\n`
+}
+
+/** Bun's text for a spawn that threw, and the way out when the limit hit is a known one. */
+function spawnErrorReason(err: unknown, what: string, command: string | undefined): string {
   const message = err instanceof Error ? err.message : String(err)
   const hint = isOutOfFds(err)
     ? ` — ${OUT_OF_FDS_HINT}`
     : command !== undefined && (err as NodeJS.ErrnoException | undefined)?.code === 'E2BIG'
       ? ` — ${argTooLongHint(command, what === SANDBOXED_TASK)}`
       : ''
-  return `[vx] failed to spawn ${what}: ${message}${hint}\n`
+  return `${message}${hint}`
 }
 
 /**

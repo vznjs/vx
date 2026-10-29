@@ -14,6 +14,7 @@ import {
   resourceUsageToCpuRss,
   runCommand,
   runPersistent,
+  PersistentReadyError,
   shellQuote,
   signalExitCode,
   streamToString,
@@ -1493,6 +1494,23 @@ describe('runCommand — the rows its sweep asked for', () => {
     expect([r.exitCode, r.spawnFailed]).toEqual([127, true])
     expect(r.stderr).toContain('E2BIG')
     expect(r.stderr).toContain('the command, with the args after --, is 2930 KiB')
+  })
+
+  // A server's command is one argument too; its refusal said only E2BIG.
+  it('a server command too long to spawn says what the limit is', async () => {
+    const spawn = runPersistent({
+      command: `true ${'x'.repeat(3_000_000)}`,
+      cwd: dir,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    const err = await spawn.ready.then(
+      () => undefined,
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(PersistentReadyError)
+    expect((err as PersistentReadyError).reason).toBe('spawn')
+    expect((err as Error).message).toContain('E2BIG')
+    expect((err as Error).message).toContain('the command, with the args after --, is 2930 KiB')
   })
 
   it('a timed-out command returns only once its group is gone', async () => {

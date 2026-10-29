@@ -217,7 +217,10 @@ The promise from `runCommand` always resolves (never rejects) with a
   through `onStderr` (the task's frame) as well as onto `stderr`: a
   missing `sh` says `[vx] vx runs each task with sh -c: failed to spawn
 'sh' (working dir: <cwd>). Install a POSIX sh and re-run.`, anything else
-  `[vx] failed to spawn task: <message>`. The orchestrator retains no
+  `[vx] failed to spawn task: <message>`, with the way out for an
+  `E2BIG` (the 128 KiB argument limit, a sandbox's wrap counted) or an
+  `EMFILE`; `runPersistent`'s `spawn` rejection carries the same reason.
+  The orchestrator retains no
   stderr, so a reason that only sat on the result reached nobody: a box
   without `sh` showed "failed (exit 127)" under a bare `$ <command>`
   (2026-09-16).
