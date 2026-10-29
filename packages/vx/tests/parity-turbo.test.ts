@@ -147,6 +147,21 @@ describe('Turbo parity — `--filter` (package selection)', () => {
   )
 
   it(
+    'a repeated --filter unions every occurrence, in either spelling (vercel/turborepo#14106)',
+    async () => {
+      expect(await planned(root, ['lint', '--filter=docs', '--filter', 'ui'])).toEqual([
+        'docs#lint',
+        'ui#lint',
+      ])
+      expect(await planned(root, ['lint', '--filter', 'ui', '--filter=docs'])).toEqual([
+        'docs#lint',
+        'ui#lint',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     '`--filter=./packages/ui` selects by directory; `--filter=!docs` excludes',
     async () => {
       expect(await planned(root, ['lint', '--filter', './packages/ui'])).toEqual(['ui#lint'])
