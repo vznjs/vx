@@ -341,7 +341,11 @@ describe('docs/modules/plan-format.md shows what the formatters print', () => {
     expect(texts[1]!.body).toBe(formatPlanText(plan))
   })
 
+  // The formatter lays a markdown JSON fence out over lines, so the sample
+  // is compared as JSON; the printed form is one line (formatPlanJson's tests).
   it('the JSON sample is the lint task alone', () => {
-    expect(fenced.find((b) => b.lang === 'json')!.body).toBe(formatPlanJson({ tasks: [lint] }))
+    expect(JSON.parse(fenced.find((b) => b.lang === 'json')!.body)).toEqual(
+      JSON.parse(formatPlanJson({ tasks: [lint] })),
+    )
   })
 })
