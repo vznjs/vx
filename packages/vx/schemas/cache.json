@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "vx cache clean --format json",
-  "description": "With a bound (prune): what the policy evicted and the orphan sweep reaped. With no bound (clear): the directories it deleted. With dryRun, what they would.",
+  "description": "With a bound (prune): what the policy evicted and the orphan sweep reaped. With no bound (clear): the directories it deleted. With dry, what they would.",
   "oneOf": [{ "$ref": "#/$defs/prune" }, { "$ref": "#/$defs/clear" }],
   "$defs": {
     "prune": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["dryRun", "evicted", "bytesFreed", "orphans", "orphanBytes"],
+      "required": ["dry", "evicted", "bytesFreed", "orphans", "orphanBytes"],
       "properties": {
-        "dryRun": { "type": "boolean" },
+        "dry": { "type": "boolean" },
         "evicted": {
           "type": "integer",
           "description": "index entries evicted by the age / size policy"
@@ -28,9 +28,9 @@
     "clear": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["dryRun", "cleared", "bytesFreed"],
+      "required": ["dry", "cleared", "bytesFreed"],
       "properties": {
-        "dryRun": { "type": "boolean" },
+        "dry": { "type": "boolean" },
         "cleared": {
           "type": "array",
           "items": { "type": "string" },

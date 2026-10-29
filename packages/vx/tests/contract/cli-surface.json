@@ -39,9 +39,11 @@
       "--branch",
       "--cache-dir",
       "--failed",
+      "--follow",
       "--format",
       "--help",
       "--list",
+      "--live",
       "--log",
       "--sql",
       "--stats"
@@ -168,6 +170,7 @@
     "last --cache-dir": [
       "*"
     ],
+    "last --follow": [],
     "last --format": [
       "json",
       "pretty"
@@ -236,7 +239,7 @@
     ],
     "run --dry": [
       "json",
-      "text"
+      "pretty"
     ],
     "run --exclude-dependencies": [
       "*"

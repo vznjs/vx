@@ -66,3 +66,32 @@ it('sorts the files under outputs into stale and an upstream’s in time linear 
   expect(cleared.at(-1)).toBe('web/.next/BUILD_ID')
   expect((user + system) / 1000).toBeLessThan(500)
 })
+
+// Core measured `dist -> ../victim` under `dist/**` deleting a file outside
+// the project, and `dist -> .git` the repository (inputs.ts `containedIn`):
+// a worker clears what this names before the task runs.
+it('names no file through a link out of the project, or into .git', async () => {
+  await fs.mkdir(path.join(root, 'victim'), { recursive: true })
+  await fs.writeFile(path.join(root, 'victim/precious.txt'), '')
+  await fs.mkdir(path.join(root, 'l/.git'), { recursive: true })
+  await fs.writeFile(path.join(root, 'l/.git/HEAD'), '')
+  await fs.mkdir(path.join(root, 'l/real'), { recursive: true })
+  await fs.writeFile(path.join(root, 'l/real/a.js'), '')
+  await fs.symlink('../victim', path.join(root, 'l/dist'))
+  await fs.symlink('.git', path.join(root, 'l/meta'))
+  await fs.symlink('real', path.join(root, 'l/build'))
+  // Out of the workspace, for its own outputs.
+  const away = await fs.mkdtemp(path.join(os.tmpdir(), 'vx-dte-away-'))
+  await fs.writeFile(path.join(away, 'precious.txt'), '')
+  await fs.symlink(away, path.join(root, 'away'))
+  try {
+    expect(
+      await outputFiles(root, 'l', {
+        files: ['dist/**', 'meta/**', 'build/**'],
+        workspaceFiles: ['away/**'],
+      }),
+    ).toEqual(['l/build/a.js'])
+  } finally {
+    await fs.rm(away, { recursive: true, force: true })
+  }
+})

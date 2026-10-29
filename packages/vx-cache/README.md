@@ -36,9 +36,9 @@ export default {
   server refuses a token of another repository.
 - `timeoutMs` (default 30 000) bounds each read and query, and
   `uploadTimeoutMs` (default 60 000) each upload. A download is bounded
-  the same way until its answer, then only while no bytes arrive: a big
-  artifact still coming in is not cut off. Each is ms above 0, or
-  `vxCache()` refuses it.
+  the same way until its answer, then must bring at least 1 MiB a second
+  over each `timeoutMs`: a big artifact still coming in is not cut off,
+  and one trickling in is. Each is ms above 0, or `vxCache()` refuses it.
 - `headers` are sent on every request to the server, for a proxy in
   front of it, such as a Cloudflare Access service token:
   `headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
@@ -92,7 +92,10 @@ upload is one artifact by `PUT`, up to four at once: its bytes reach the
 bucket untouched by the server's code (a batch, split by that code, ran
 out of Workers' CPU). While the server names no limits (said once),
 checks go one hash at a time: no limit is guessed. An artifact over the server's upload limit is not sent: it
-is said once.
+is said once. An answer is read no further than its use: 64 KiB for the
+capabilities or a token, 512 bytes a hash for a check, a refusal's first
+2 KiB; a longer one is refused, so a server's endless answer cannot fill
+memory.
 
 Task timings are not this plugin's: `@vzn/vx-history` keeps them.
 

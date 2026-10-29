@@ -52,7 +52,7 @@ const turbo = (
   local: { token?: string } = {},
 ) =>
   new TurboRemoteCache(
-    resolveTurboCacheConfig({ apiUrl: API, teamSlug: 'cachely', ...options }, env, {}, local)!,
+    resolveTurboCacheConfig({ url: API, teamSlug: 'cachely', ...options }, env, {}, local)!,
     fetchImpl,
   )
 const message = (p: Promise<unknown>) =>
@@ -150,12 +150,9 @@ describe('turboCache(): option, env, config file, then the keychain', () => {
 describe('nxCache()', () => {
   const SERVER = 'https://nx.example'
   const NX_KEY = `${SERVER}/v1/cache`
-  const nx = (accessToken: string | undefined, f: typeof fetch) =>
+  const nx = (token: string | undefined, f: typeof fetch) =>
     new NxRemoteCache(
-      resolveNxCacheConfig(
-        accessToken === undefined ? { server: SERVER } : { server: SERVER, accessToken },
-        {},
-      )!,
+      resolveNxCacheConfig(token === undefined ? { url: SERVER } : { url: SERVER, token }, {})!,
       f,
     )
 
@@ -169,7 +166,7 @@ describe('nxCache()', () => {
     expect(srv.auth).toEqual(['Bearer kc'])
   })
 
-  it('an empty token is an open server: nothing read, no Authorization', async () => {
+  it('an empty token is an open url: nothing read, no Authorization', async () => {
     const k = keychain()
     const srv = server(404)
     const c = nx('', srv.fetchImpl)

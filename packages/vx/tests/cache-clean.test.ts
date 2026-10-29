@@ -67,8 +67,8 @@ describe('vx cache clean with no bound clears the cache', () => {
 
       const dry = await vx(['cache', 'clean', '--dry', '--format', 'json'])
       expect({ code: dry.code, err: dry.err }).toEqual({ code: 0, err: '' })
-      const plan = JSON.parse(dry.out) as { dryRun: boolean; cleared: string[]; bytesFreed: number }
-      expect([plan.dryRun, plan.cleared, plan.bytesFreed > 0]).toEqual([
+      const plan = JSON.parse(dry.out) as { dry: boolean; cleared: string[]; bytesFreed: number }
+      expect([plan.dry, plan.cleared, plan.bytesFreed > 0]).toEqual([
         true,
         ['.vx/cache', st],
         true,
@@ -139,6 +139,20 @@ describe('vx cache clean with no bound clears the cache', () => {
     async () => {
       const r = await vx(['cache', 'clean'])
       expect(r).toEqual({ code: 0, out: '› vx cache clean  nothing to free\n', err: '' })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a trim of a directory vx never wrote makes nothing there',
+    async () => {
+      // Opened to find nothing, it got an index and a `*` .gitignore that
+      // hid the user's files from git.
+      const dir = path.join(root, 'notes')
+      await Bun.write(path.join(dir, 'keep.txt'), 'mine')
+      const r = await vx(['cache', 'clean', '--older-than', '30d', '--cache-dir', 'notes'])
+      expect(r).toEqual({ code: 0, out: '› vx cache clean  nothing to free\n', err: '' })
+      expect(readdirSync(dir)).toEqual(['keep.txt'])
     },
     TIMEOUT,
   )

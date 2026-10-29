@@ -150,7 +150,7 @@ function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
   return out
 }
 
-export function dte(options: DteOptions) {
+export function dte(options: DteOptions = {}) {
   refuseUnknownOptions('dte()', options, KEYS)
   const headers = proxyHeaders(options.headers)
   const how: Strategy = { ...DEFAULT_STRATEGY }
@@ -781,9 +781,13 @@ export function dte(options: DteOptions) {
   })
 }
 
-/** A GitHub Actions job that may ask for OIDC tokens. */
+/** A GitHub Actions job that may ask for OIDC tokens: all githubProof() reads. */
 function onGitHub(): boolean {
-  return Boolean(process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] && process.env['GITHUB_REPOSITORY_ID'])
+  return Boolean(
+    process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] &&
+    process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] &&
+    process.env['GITHUB_REPOSITORY_ID'],
+  )
 }
 
 /** `VX_DTE_SECRET`: the run's, given. */

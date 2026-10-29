@@ -33,13 +33,13 @@ import {
 
 export interface NxCacheOptions {
   /** Base URL of the cache server, or `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`. */
-  server?: string
+  url?: string
   /**
    * Bearer token, or `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN`, then the OS
    * keychain. `''` (option or variable) is a server that runs open: no
    * token, nothing asked.
    */
-  accessToken?: string
+  token?: string
   /** Per-request deadline (default 30 s). */
   timeoutMs?: number
   /** Resends of a request answered 429 / 5xx or never connected (default 1); 0 turns them off. */
@@ -47,9 +47,9 @@ export interface NxCacheOptions {
 }
 
 export interface NxCacheConfig {
-  server: string
+  url: string
   /** Undefined: the layer's `open` asks the OS keychain; `''`: an open server. */
-  accessToken?: string
+  token?: string
   timeoutMs: number
   retries: number
 }
@@ -59,35 +59,33 @@ export function resolveNxCacheConfig(
   options: NxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
 ): NxCacheConfig | undefined {
-  // Named by its source: the env's was refused as a `server` option.
+  // Named by its source: the env's was refused as a `url` option.
   const from =
-    options.server !== undefined
-      ? 'nxCache() option "server"'
-      : 'NX_SELF_HOSTED_REMOTE_CACHE_SERVER'
-  const server = (options.server ?? env['NX_SELF_HOSTED_REMOTE_CACHE_SERVER'])?.replace(/\/+$/, '')
-  if (!server) return undefined
+    options.url !== undefined ? 'nxCache() option "url"' : 'NX_SELF_HOSTED_REMOTE_CACHE_SERVER'
+  const url = (options.url ?? env['NX_SELF_HOSTED_REMOTE_CACHE_SERVER'])?.replace(/\/+$/, '')
+  if (!url) return undefined
   // With no scheme every request failed on its own, as a bare "Invalid URL".
-  if (!/^https?:\/\//.test(server))
-    throw new UserError(`${from} must be an http(s) URL, got ${JSON.stringify(server)}`)
+  if (!/^https?:\/\//.test(url))
+    throw new UserError(`${from} must be an http(s) URL, got ${JSON.stringify(url)}`)
   // The URL is printed in every refusal line, so a `user:pass@` in it would
   // leak to the log. Credentials go in the access token.
-  if (URL.canParse(server)) {
-    const u = new URL(server)
+  if (URL.canParse(url)) {
+    const u = new URL(url)
     if (u.username !== '' || u.password !== '')
       throw new UserError(
-        `${from} carries credentials (user:pass@); pass them as the accessToken instead`,
+        `${from} carries credentials (user:pass@); pass them as the token instead`,
       )
   }
-  const accessToken = options.accessToken ?? env['NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN']
-  const fault = accessToken === undefined ? null : headerValueFault(accessToken)
+  const token = options.token ?? env['NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN']
+  const fault = token === undefined ? null : headerValueFault(token)
   if (fault !== null)
     throw new Error(
       `vx/nx-cache: the access token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
     )
   const retries = options.retries ?? 1
   return {
-    server,
-    ...(accessToken !== undefined ? { accessToken } : {}),
+    url,
+    ...(token !== undefined ? { token } : {}),
     timeoutMs: options.timeoutMs ?? 30_000,
     retries,
   }
@@ -130,11 +128,11 @@ export class NxRemoteCache implements RemoteCacheLayer {
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
   ) {
-    this.endpoint = `${config.server}/v1/cache`
-    this.token = config.accessToken
+    this.endpoint = `${config.url}/v1/cache`
+    this.token = config.token
     this.keychainRemote = {
       key: this.endpoint,
-      label: remoteLabel(config.server, undefined),
+      label: remoteLabel(config.url, undefined),
       env: 'NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN',
     }
   }
@@ -172,7 +170,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
       () =>
         withRetry(
           () =>
-            this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
+            this.fetchImpl(`${this.config.url}/v1/cache/${hash}`, {
               method,
               headers,
               ...(body === undefined ? {} : { body }),
@@ -254,8 +252,8 @@ export class NxRemoteCache implements RemoteCacheLayer {
 
 /** Each option `NxCacheOptions` names, with its kind: derived from the type, so the two cannot drift. */
 const NX_CACHE_KEYS: PluginOptionKinds<NxCacheOptions> = {
-  server: 'string',
-  accessToken: 'string',
+  url: 'string',
+  token: 'string',
   timeoutMs: 'number',
   retries: 'number',
 }
@@ -264,10 +262,10 @@ const NX_CACHE_KEYS: PluginOptionKinds<NxCacheOptions> = {
  * Declare in `.vx/workspace.ts`; the local store stays the floor beneath it:
  *
  * ```ts
- * plugins: [nxCache({ server: 'https://cache.example.com', accessToken: process.env.CACHE_TOKEN })]
+ * plugins: [nxCache({ url: 'https://cache.example.com', token: process.env.CACHE_TOKEN })]
  * ```
  *
- * Declines without a server, so it is safe to leave declared.
+ * Declines without a url, so it is safe to leave declared.
  */
 export function nxCache(options: NxCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('nxCache()', options, NX_CACHE_KEYS)

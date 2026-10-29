@@ -946,8 +946,28 @@ describe('Cache storage (v10)', () => {
       thrown = err
     }
     expect(thrown).toBeInstanceOf(UserError)
+    expect((thrown as UserError).code).toBe('VX_E_FS')
     expect((thrown as Error).message).toBe(
-      `cannot create cache directory ${file} (EEXIST: file already exists, mkdir '${file}') — vx keeps its cache there; make the workspace writable, set \`cache.dir\` in .vx/workspace.ts, or pass --cache-dir <path>`,
+      `cannot create cache directory ${file}: ${file} is a file, not a directory — move it away, set \`cache.dir\` in .vx/workspace.ts, or pass --cache-dir <path>`,
+    )
+  })
+
+  // ENOTDIR: the file in the way is a parent, and the fix names it, not
+  // the directory vx asked for.
+  it('a file where a parent of the cache directory goes is named as the one in the way', async () => {
+    const file = path.join(projectDir, 'not-a-dir-parent')
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(file, 'x')
+    const dir = path.join(file, 'sub', 'cache')
+    let thrown: unknown
+    try {
+      new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE).close()
+    } catch (err) {
+      thrown = err
+    }
+    expect((thrown as UserError).code).toBe('VX_E_FS')
+    expect((thrown as Error).message).toBe(
+      `cannot create cache directory ${dir}: ${file} is a file, not a directory — move it away, set \`cache.dir\` in .vx/workspace.ts, or pass --cache-dir <path>`,
     )
   })
 
@@ -1725,7 +1745,7 @@ describe('Cache storage (v10)', () => {
     ).toEqual(['h-warm-b'])
   })
 
-  it('prune({ dryRun }) reports the victims and orphans and deletes nothing', async () => {
+  it('prune({ dry }) reports the victims and orphans and deletes nothing', async () => {
     const { mkdir, writeFile, utimes } = await import('node:fs/promises')
     await mkdir(projectDir, { recursive: true })
     const f = path.join(projectDir, 'a.txt')
@@ -1742,7 +1762,7 @@ describe('Cache storage (v10)', () => {
     await utimes(aged, twoHoursAgo, twoHoursAgo)
     await new Promise((r) => setTimeout(r, 10))
 
-    const dry = await cache.prune({ olderThanMs: Date.now() + REFRESH, dryRun: true })
+    const dry = await cache.prune({ olderThanMs: Date.now() + REFRESH, dry: true })
     expect(dry.evicted).toBe(1)
     expect(dry.bytesFreed).toBeGreaterThanOrEqual(3)
     expect(dry.orphans).toBe(1)
@@ -1940,13 +1960,13 @@ describe('Cache storage (v10)', () => {
 
     // By age too: the phantom is older than the cutoff and still neither
     // evicted nor counted as freed; the real entry is.
-    const byAge = await cache.prune({ olderThanMs: hourAgo + REFRESH + 1, dryRun: true })
+    const byAge = await cache.prune({ olderThanMs: hourAgo + REFRESH + 1, dry: true })
     expect({ evicted: byAge.evicted, bytesFreed: byAge.bytesFreed }).toEqual({
       evicted: 1,
       bytesFreed: 100,
     })
 
-    const dry = await cache.prune({ maxBytes: 200, dryRun: true })
+    const dry = await cache.prune({ maxBytes: 200, dry: true })
     expect({ evicted: dry.evicted, bytesFreed: dry.bytesFreed }).toEqual({
       evicted: 0,
       bytesFreed: 0,

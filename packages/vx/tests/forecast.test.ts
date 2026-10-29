@@ -639,3 +639,45 @@ describe('the live view knows blocked tasks from the graph, from the first frame
     expect(r.rows).toEqual(['', ''])
   })
 })
+
+describe('a burst of task events builds the live region once per draw', () => {
+  it('the region is built when the writer draws it, not per event', async () => {
+    const out = tty()
+    // Frozen before the writer reads its clock: every event lands inside
+    // the forced-redraw floor, so only the first draws at once.
+    const clock = spyOn(Date, 'now').mockReturnValue(Date.now())
+    let built = 0
+    let lastFinished = -1
+    try {
+      const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, { env: {} })
+      log.runStart?.({ total: 50, concurrency: 4 })
+      log.forecast(
+        () => (finished) => {
+          built++
+          lastFinished = finished.size
+          return { blockedBy: new Map(), waiting: 0 }
+        },
+        async () => () => ({ blockedBy: new Map(), waiting: 0 }),
+      )
+      for (let i = 0; i < 50; i++) {
+        const t = node(`p#t${i}`)
+        log.taskStart?.(t)
+        log.taskComplete(t, {
+          node: t,
+          status: 'cache-hit',
+          exitCode: 0,
+          durationMs: 0,
+          restored: false,
+        } as TaskOutcome)
+      }
+      // A hundred events past the first draw: none of them built a region.
+      expect(built).toBe(0)
+    } finally {
+      clock.mockRestore()
+    }
+    // The trailing draw at the floor's end builds the last state, once.
+    await Bun.sleep(80)
+    expect([built, lastFinished]).toEqual([1, 50])
+    expect(out.text()).toContain('50 up-to-date')
+  })
+})

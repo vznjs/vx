@@ -139,7 +139,8 @@ from the `info` row (worker pool +
 cache mode: the layers the run's policy uses, `local + remote cache`,
 `local cache`, `remote cache` or `no cache`; `admit held N tasks · Ns` when a policy held any — a
 sum, said as one — and `run <id>`, the run's whole id as
-`vx last <id>` takes it, live from the run's start) and the `time` row: the wall time, the live
+`vx last <id>` takes it, live from the run's start; the footer of a run
+a signal stopped names none, as such a run records nothing) and the `time` row: the wall time, the live
 forecast (`~3s left`), then the dim `max / avg / min` spread over
 executed tasks. The footer never says a fact twice (2026-10-14):
 no `result` row (it only repeated the tasks, cache and time rows), a

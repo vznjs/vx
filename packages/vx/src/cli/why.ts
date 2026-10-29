@@ -158,6 +158,25 @@ async function resolveTarget(
       .query('SELECT 1 FROM runs WHERE project = ? AND task = ? ORDER BY id DESC LIMIT 1')
       .get(project, task)
     if (hit !== null) return target
+  } else {
+    // A bare name reads only its own task's rows: the DISTINCT over every
+    // pair sorted the whole history (24 of 26 ms at 58k rows), and its list
+    // serves only the miss's suggestions below.
+    const matches = (
+      db.query('SELECT DISTINCT project FROM runs WHERE task = ? ORDER BY project').all(target) as {
+        project: string
+      }[]
+    ).map((r) => `${r.project}#${target}`)
+    if (matches.length === 1) return matches[0]!
+    if (matches.length > 1) {
+      const here = await cwdProject()
+      if (here !== null && matches.includes(`${here}#${target}`)) return `${here}#${target}`
+      throw new UserError(
+        `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
+          matches.map((m) => `  ${m}`).join('\n'),
+        'VX_E_AMBIGUOUS',
+      )
+    }
   }
   const pairs = db
     .query('SELECT DISTINCT project, task FROM runs ORDER BY project, task')
@@ -177,17 +196,6 @@ async function resolveTarget(
     throw new UserError(
       `vx why: no recorded runs for "${target}"${suggest(target, ids, invoked)}`,
       'VX_E_NO_HISTORY',
-    )
-  }
-  const matches = ids.filter((id) => id.endsWith(`#${target}`))
-  if (matches.length === 1) return matches[0]!
-  if (matches.length > 1) {
-    const here = await cwdProject()
-    if (here !== null && matches.includes(`${here}#${target}`)) return `${here}#${target}`
-    throw new UserError(
-      `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
-        matches.map((m) => `  ${m}`).join('\n'),
-      'VX_E_AMBIGUOUS',
     )
   }
   throw new UserError(

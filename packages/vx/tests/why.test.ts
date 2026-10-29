@@ -111,6 +111,49 @@ describe('vx why (e2e)', () => {
   )
 
   it(
+    'a bare task name reads its own rows, never every pair of the history',
+    async () => {
+      // Every statement vx prepares, logged by a preload: the walk over
+      // every distinct (project, task) sorted the whole run history (24 of
+      // 26 ms at 58k rows) to resolve a name one task's rows answer.
+      const log = path.join(root, 'sql.log')
+      const preload = path.join(root, 'sql-log.ts')
+      await writeFile(
+        preload,
+        `import { Database } from 'bun:sqlite'
+import { appendFileSync } from 'node:fs'
+const proto = Database.prototype as any
+for (const m of ['query', 'prepare']) {
+  const orig = proto[m]
+  proto[m] = function (sql: string, ...rest: unknown[]) {
+    appendFileSync(${JSON.stringify(log)}, sql.replace(/\\s+/g, ' ') + '\\n')
+    return orig.call(this, sql, ...rest)
+  }
+}
+`,
+      )
+      const sqlFor = async (args: string[]): Promise<string[]> => {
+        await rm(log, { force: true })
+        const p = Bun.spawnSync([process.execPath, '--preload', preload, BIN, ...args], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        expect(p.stdout.toString() + p.stderr.toString()).toContain('build')
+        return readFileSync(log, 'utf8')
+          .split('\n')
+          .filter((s) => s.includes(' FROM runs'))
+      }
+      const everyPair = (sql: string[]): boolean =>
+        sql.some((s) => s.includes('SELECT DISTINCT project, task FROM runs'))
+      expect(everyPair(await sqlFor(['why', 'build']))).toBe(false)
+      // Control: a miss still lists every pair, for its suggestions.
+      expect(everyPair(await sqlFor(['why', 'buld']))).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
     '--format json emits the machine shape (why + component diff)',
     async () => {
       const r = await vx(root, ['why', 'app#build', '--format', 'json'])

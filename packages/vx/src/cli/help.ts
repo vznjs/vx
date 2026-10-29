@@ -121,7 +121,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]',
     '  vx info [--format pretty|json] [--cache-dir <path>]',
     '  vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]',
-    '  vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--format pretty|json] [--cache-dir <path>]',
+    '  vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--live [--follow]] [--format pretty|json] [--cache-dir <path>]',
     '  vx docs <query> [--limit N] [--format pretty|json]',
     '  vx completions bash|zsh|fish',
     '  vx help [VERB]',
@@ -186,7 +186,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                                  summary table after the run.',
     '',
     'Planning (for run — skips execution):',
-    "      --dry[=text|json]    Print the task graph and each task's predicted hit",
+    "      --dry[=pretty|json]  Print the task graph and each task's predicted hit",
     '                           or miss.',
     '',
     'Artifacts (for run):',
@@ -257,6 +257,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     "      --branch <name>  The branch --stats' p50 forecasts from (default: the run's).",
     '      --sql <query>    One read-only SELECT over the history (runs, invocations,',
     '                       entries, task_outcomes, ...): filter, group, trend.',
+    '      --live           The run in progress: running, ended, waiting tasks, warnings.',
+    "      --follow         With --live, the run's output and events until it ends.",
     '      --format <fmt>   pretty (default) | json.',
     '  info, why and last:',
     '      --cache-dir <path>  Read the cache a run with the same flag uses.',
@@ -341,8 +343,8 @@ export function refusedWord(arg: string): string {
 }
 
 /**
- * `(did you mean --concurrency?)` for a flag within two edits of one `verb`
- * accepts; empty for anything else (a positional included). A third edit
+ * `(did you mean --concurrency?)` for a flag within two edits (one, for a
+ * name of four letters or fewer) of one `verb` accepts; empty for anything else (a positional included). A third edit
  * is allowed only between flags that share their first five characters,
  * so `--timeouts` reaches `--timeout` while `--zzz` does not reach `--all`.
  */

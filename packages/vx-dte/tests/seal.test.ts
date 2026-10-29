@@ -11,7 +11,7 @@ import {
   sealOrchestrator,
   secretProof,
 } from '../src/seal.js'
-import { join, type Participant, type RelayMessage } from '../src/wire.js'
+import { join, RelayError, type Participant, type RelayMessage } from '../src/wire.js'
 import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -233,6 +233,19 @@ it('loses a worker whose body the relay changed, and drops one it replays', asyn
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
 })
 
+// A send to a worker already lost failed as a plain Error: the run's batch
+// still chained to that worker took it for a refusal and failed tasks
+// that had already gone back to the queue, some running elsewhere.
+it('a send to a worker it lost is refused as one the relay does not know (404)', async () => {
+  const { o, a } = await pair()
+  await until(o)
+  await a.leave()
+  expect((await until(o)).map((m) => (m.body as { type: string }).type)).toEqual(['lost'])
+  const err = await o.send(a.id, { type: 'batch' }).catch((e: unknown) => e)
+  expect(err).toBeInstanceOf(RelayError)
+  expect((err as RelayError).status).toBe(404)
+})
+
 it('loses a worker whose body the relay spliced from two, each part sealed', async () => {
   const { r, o, a } = await pair()
   await until(o)
@@ -342,6 +355,19 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
       'GITHUB_REPOSITORY_ID',
     ])
       delete process.env[k]
+  }
+})
+
+it('names exactly the GitHub variables a proof lacks', () => {
+  process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'http://127.0.0.1:1/token?v=1'
+  delete process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
+  delete process.env['GITHUB_REPOSITORY_ID']
+  try {
+    expect(() => githubProof()).toThrow(
+      /^not a GitHub Actions job with id-token: write \(ACTIONS_ID_TOKEN_REQUEST_TOKEN, GITHUB_REPOSITORY_ID\)$/,
+    )
+  } finally {
+    delete process.env['ACTIONS_ID_TOKEN_REQUEST_URL']
   }
 })
 

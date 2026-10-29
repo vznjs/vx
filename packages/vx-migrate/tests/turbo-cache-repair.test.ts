@@ -28,7 +28,7 @@ describe('turboCache() repairs an entry its own get could not use', () => {
       const { sent, fetchImpl } = server()
       const config = resolveTurboCacheConfig(
         {
-          apiUrl: 'https://cache.example',
+          url: 'https://cache.example',
           token: 't',
           ...(signed ? { teamId: 'team_1', signatureKey: KEY } : {}),
         },
@@ -44,7 +44,7 @@ describe('turboCache() repairs an entry its own get could not use', () => {
 
   it('CONTROL: a key this process never read is asked first, and a held one is kept', async () => {
     const { sent, fetchImpl } = server()
-    const config = resolveTurboCacheConfig({ apiUrl: 'https://cache.example', token: 't' }, {})!
+    const config = resolveTurboCacheConfig({ url: 'https://cache.example', token: 't' }, {})!
     await new TurboRemoteCache(config, fetchImpl).put('bb', new Blob(['x']), { durationMs: 1 })
     expect(sent).toEqual(['HEAD /v8/artifacts/bb'])
   })

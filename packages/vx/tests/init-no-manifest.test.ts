@@ -135,7 +135,7 @@ describe('vx init with no package.json', () => {
     const p = await vx(root, ['init', '--plugin', 'cache'])
     expect([p.code, p.err]).toEqual([
       1,
-      '✗ vx init  cannot write plugins/cache.ts: plugins is a file, not a directory; move it and re-run\n',
+      '✗ vx init  cannot write plugins/package.json: plugins is a file, not a directory; move it and re-run\n',
     ])
   })
 

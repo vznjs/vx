@@ -37,16 +37,22 @@ export function tieredReverseDepCount(
     for (const id of nodes.keys()) zeros.set(id, 0)
     return zeros
   }
+  // A restore releases its dependents only once its own deps have settled
+  // (scheduler.ts, item 963), so an exec task under a restore blocks what
+  // that restore feeds: e1 → r → e2 held e2 until e1 ran, and e1 ranked 0
+  // behind every idle task. The exec tier is counted with each restore dep
+  // replaced by the exec tasks it waits on, through restores.
+  const view = execThroughRestores(nodes, exec, restoreTier)
   // An exec tier with no edge inside it (a warm run's groups) counts 0
   // everywhere: no closure to build.
   let linked = false
-  for (const node of exec.values()) {
-    if (node.deps.some((d) => exec.has(d))) {
+  for (const node of view.values()) {
+    if (node.deps.some((d) => view.has(d))) {
       linked = true
       break
     }
   }
-  const counts = linked ? computeReverseDepCount(exec) : new Map<string, number>()
+  const counts = linked ? computeReverseDepCount(view) : new Map<string, number>()
   if (!linked) for (const id of exec.keys()) counts.set(id, 0)
   let feeds = false
   for (const node of exec.values()) {
@@ -87,6 +93,52 @@ export function tieredReverseDepCount(
     }
   }
   return counts
+}
+
+/**
+ * The exec tier with each restore dep replaced by the exec tasks that
+ * restore waits on (directly or through other restores). A node with no
+ * restore dep is itself; the restore tier is walked once, post-order.
+ */
+function execThroughRestores(
+  nodes: Map<string, TaskNode>,
+  exec: Map<string, TaskNode>,
+  restoreTier: ReadonlySet<string>,
+): Map<string, TaskNode> {
+  const isRestore = (id: string): boolean => restoreTier.has(id) && nodes.has(id)
+  const below = new Map<string, readonly string[]>()
+  const belowOf = (root: string): readonly string[] => {
+    const stack: Array<[id: string, depsDone: boolean]> = [[root, false]]
+    while (stack.length > 0) {
+      const [id, depsDone] = stack.pop()!
+      if (below.has(id)) continue
+      const deps = nodes.get(id)!.deps
+      if (!depsDone) {
+        stack.push([id, true])
+        for (const d of deps) if (isRestore(d) && !below.has(d)) stack.push([d, false])
+        continue
+      }
+      const out = new Set<string>()
+      for (const d of deps) {
+        if (exec.has(d)) out.add(d)
+        else for (const e of below.get(d) ?? []) out.add(e)
+      }
+      below.set(id, [...out])
+    }
+    return below.get(root)!
+  }
+  let view: Map<string, TaskNode> | undefined
+  for (const node of exec.values()) {
+    if (!node.deps.some(isRestore)) continue
+    const deps = new Set<string>()
+    for (const d of node.deps) {
+      if (isRestore(d)) for (const e of belowOf(d)) deps.add(e)
+      else deps.add(d)
+    }
+    view ??= new Map(exec)
+    view.set(node.id, { ...node, deps: [...deps] })
+  }
+  return view ?? exec
 }
 
 /**
