@@ -172,6 +172,26 @@ describe('cli run()', () => {
     })
   })
 
+  // `vx help run extra` printed run's help and exited 0, and `vx --help run`
+  // / `vx -h run` printed the whole reference: a word after the one verb was
+  // dropped, where `vx version extra` is refused.
+  it('`vx --help <verb>` is `vx help <verb>`, and a second word is refused', async () => {
+    expect(await run(['help', 'run'])).toBe(0)
+    const cut = stdout
+    for (const flag of ['--help', '-h']) {
+      stdout = ''
+      expect(await run([flag, 'run'])).toBe(0)
+      expect(stdout).toBe(cut)
+    }
+    stdout = ''
+    stderr = ''
+    expect(await run(['help', 'run', 'extra'])).toBe(1)
+    expect({ stdout, stderr }).toEqual({
+      stdout: '',
+      stderr: noticed('vx help: unexpected argument: extra (see `vx help`)\n'),
+    })
+  })
+
   // Every argument error points at the verb's own help, which is only
   // useful because `vx <verb> --help` prints something (same day). A verb
   // that grows a new parser and forgets the pointer fails here.
@@ -819,20 +839,31 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stderr).toContain('no projects matched filter(s): oen\n\n  fix  one\n')
   })
 
-  it('a `../` path filter is not a path form — refused loud, naming the pattern (parity L2)', async () => {
+  it('a path filter that climbs out of the root is refused, naming the pattern (parity L2)', async () => {
     // `./` is root-relative in vx by documented choice, so `../apps/*`
-    // (Turbo's cwd-relative sibling form) has no meaning here; it falls
-    // through to the name matcher and must say so, not select nothing
-    // quietly.
+    // (Turbo's cwd-relative sibling form) has no meaning here. `../` and
+    // `{..}` named the directory every project sits under, and all ran.
     let stderr = ''
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
       stderr += String(chunk)
       return true
     })
-    const code = await run(['run', '--filter', '../packages/*', 'hello'])
-    expect(code).not.toBe(0)
-    expect(stderr).toContain('no projects matched filter(s): ../packages/*')
+    const said: [string, number][] = []
+    for (const f of ['../packages/*', '../', '{..}']) {
+      stderr = ''
+      said.push([stderr, await run(['run', '--filter', f, 'hello'])])
+      said[said.length - 1]![0] = stderr.trim()
+    }
+    const refusal = (f: string) =>
+      noticed(
+        `vx run: filter "${f}" names a directory outside the workspace root: a path filter is relative to the root`,
+      ).trimEnd()
+    expect(said).toEqual([
+      [refusal('../packages/*'), 1],
+      [refusal('../'), 1],
+      [refusal('{..}'), 1],
+    ])
   })
 
   it('a filter that matched but walked to nothing, or names no project, says so (item 1030)', async () => {
@@ -886,6 +917,20 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       noticed(
         'vx run: no projects selected: !one excluded every project the other filters matched',
       ).trimEnd(),
+    ])
+  })
+
+  it('an exclusion alone that takes back every project names no other filter', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['run', '--filter', '!*', 'hello'])
+    expect([code, stderr.trim()]).toEqual([
+      1,
+      noticed('vx run: no projects selected: !* excluded every project').trimEnd(),
     ])
   })
 
@@ -1674,6 +1719,9 @@ describe('parseRunArgs', () => {
   it('--exclude-dependencies= (empty value) is rejected, not read as "exclude nothing"', () => {
     const r = parseRunArgs(['build', '--exclude-dependencies='])
     expect(r.error).toMatch(/--exclude-dependencies= needs a value/)
+    // A list of no names is the same empty value: `,` and ` ` dropped none.
+    for (const v of [',', ' ', ' , '])
+      expect(parseRunArgs(['build', `--exclude-dependencies=${v}`]).error).toBe(r.error)
     // Both unambiguous forms keep working.
     expect(parseRunArgs(['build', '--exclude-dependencies']).excludeDependencies).toBe('all')
     expect(parseRunArgs(['build', '--exclude-dependencies=a,b']).excludeDependencies).toEqual([
@@ -1795,6 +1843,21 @@ describe('parseRunArgs', () => {
   it('parses --exclude-dependencies=name1,name2 as a name list', () => {
     expect(parseRunArgs(['build', '--exclude-dependencies=lint,test']).excludeDependencies).toEqual(
       ['lint', 'test'],
+    )
+  })
+
+  it('repeated --exclude-dependencies flags add up, and the bare one drops every edge', () => {
+    const of = (...a: string[]) => parseRunArgs(['build', ...a]).excludeDependencies
+    expect([
+      of('--exclude-dependencies=gen', '--exclude-dependencies=lint,gen'),
+      of('--exclude-dependencies', '--exclude-dependencies=gen'),
+      of('--exclude-dependencies=gen', '--exclude-dependencies'),
+    ]).toEqual([['gen', 'lint'], 'all', 'all'])
+  })
+
+  it('--exclude-dependencies= with only commas is rejected like an empty value', () => {
+    expect(parseRunArgs(['build', '--exclude-dependencies=,']).error).toMatch(
+      /^--exclude-dependencies= needs a value/,
     )
   })
 

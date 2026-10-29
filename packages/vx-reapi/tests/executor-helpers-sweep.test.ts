@@ -118,9 +118,31 @@ describe.if(CHUNKING_SUPPORTED)('the command line a worker runs', () => {
     expect(code).toBe(0)
     expect(realpathSync(vxRoot!)).toBe(root)
     expect(PATH).toBe(
-      `${vxRoot}/node_modules/.bin:${path.join(root, 'pkg')}/node_modules/.bin:/usr/bin:/bin`,
+      `${path.join(root, 'pkg')}/node_modules/.bin:${vxRoot}/node_modules/.bin:/usr/bin:/bin`,
     )
     expect(args).toEqual(["it's", 'a b'])
+  })
+
+  // The local executor puts the project's bin before the root's (core's
+  // taskBinDirs): a worker that put the root's first ran the root's
+  // version of a tool the project pins, under the same key.
+  it("runs the project's own tool over the root's, as the local executor does", async () => {
+    const bins = [
+      path.join(root, 'node_modules', '.bin'),
+      path.join(root, 'pkg', 'node_modules', '.bin'),
+    ]
+    for (const [i, dir] of bins.entries()) {
+      await mkdir(dir, { recursive: true })
+      await writeFile(path.join(dir, 'tool'), `#!/bin/sh\necho ${i === 0 ? 'root' : 'project'}\n`, {
+        mode: 0o755,
+      })
+    }
+    try {
+      await runOne(request({ command: 'tool' }))
+      expect(sh(lastScript(), path.join(root, 'pkg')).out).toBe('project\n')
+    } finally {
+      for (const dir of bins) await rm(path.dirname(dir), { recursive: true, force: true })
+    }
   })
 
   // X-112: appended after it, a trailing comment took the args and the
@@ -344,6 +366,20 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     const record = fullRecordOf('k-each')
     expect(record.output_files ?? []).toEqual([])
     expect(record.output_symlinks ?? []).toEqual([])
+  })
+
+  // A server's Tree may name one subtree under many names. Its match's Tree
+  // carried every PATH's directory, 2^depth children from a Tree of depth+1.
+  it("a match's Tree carries each distinct descendant once", async () => {
+    const levels = [dir(['x'])]
+    for (let i = 1; i <= 12; i++) levels.push(dir([], { a: levels[i - 1]!, b: levels[i - 1]! }))
+    const top = levels.at(-1)!
+    executeReturning('mods', fake.put(encodeTree(dir([], { top }), [...levels].reverse())))
+    await refusal(run('k-dag', ['mods/*']))
+    const recorded = recordOf('k-dag')
+    expect(recorded.map((d) => d.path)).toEqual(['pkg/mods/top'])
+    const tree = decodeTreeWithBytes(fake.blobs.get(recorded[0]!.tree_digest.hash)!)
+    expect(tree.children.length).toBe(12)
   })
 
   it("the matches' Trees go up in one probe and one batch, not one round trip each", async () => {

@@ -575,6 +575,24 @@ describe('persistent task framing', () => {
     expect(close).toBe('└─ ▸ @vzn/vx-docs#dev ── (1.81s) running')
   })
 
+  it('a buffered persistent frame is marked and reads running at both ends too', () => {
+    // Several requested tasks buffer their frames: a ready server's read
+    // `success` with no mark, as if it had exited.
+    const n = persistentNode('@vzn/vx-docs#dev', 'astro dev')
+    const block = formatTaskBlock(n, outcome('@vzn/vx-docs#dev', 'success', { durationMs: 1810 }), {
+      output: [{ text: 'Local: x\n', err: false }],
+    }).split('\n')
+    expect(block[0]).toBe('┌─ ▸ @vzn/vx-docs#dev > running')
+    expect(block).toContain('└─ ▸ @vzn/vx-docs#dev ── (1.81s) running')
+    const failed = formatTaskBlock(
+      n,
+      outcome('@vzn/vx-docs#dev', 'failed', { durationMs: 1810 }),
+      {},
+    ).split('\n')
+    expect(failed[0]).toBe('┌─ ▸ @vzn/vx-docs#dev > failed (exit 1)')
+    expect(failed).toContain('└─ ▸ @vzn/vx-docs#dev ── (1.81s) failed (exit 1)')
+  })
+
   it('a non-persistent task frame is unmarked and closes as success', () => {
     const n = node('@vzn/vx#lint', 'oxlint .')
     expect(formatFrameOpen(n)).toBe('┌─ @vzn/vx#lint > $ oxlint .')
@@ -626,6 +644,27 @@ describe('persistent task framing', () => {
     expect(close).toContain('SANDBOX VIOLATIONS (2)')
     expect(close).toContain(line)
     expect(close).toContain('bun(2) deny(1) file-read-data /repo')
+  })
+
+  // A denied path is anyone's bytes, and the seatbelt log carries it raw:
+  // a file named `ESC ]0;…` retitled the terminal from the report.
+  it('writes a control byte of a violation or a fix path as \\xNN', () => {
+    const n = node('a#build', 'cat x')
+    const close = formatFrameClose(
+      n,
+      outcome('a#build', 'failed', {
+        exitCode: 1,
+        sandboxViolations: 1,
+        sandboxViolationLines: ['cat(1) deny(1) file-read-data /w/a/x\x1b]0;t\x07'],
+        sandboxFix: { read: ['x\x1b]0;t\x07'], inputs: ['x\r'], withheld: ['~/.ssh/\x1b'] },
+      }),
+    )
+    expect(close).toContain('/w/a/x\\x1b]0;t\\x07')
+    expect(close).toContain("read: ['x\\x1b]0;t\\x07']")
+    expect(close).toContain("inputs.files: ['x\\x0d']")
+    expect(close).toContain('~/.ssh/\\x1b')
+    // oxlint-disable-next-line no-control-regex
+    expect(close.match(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g)).toBeNull()
   })
 
   it("vx's own notes are not counted as violations in the header", () => {

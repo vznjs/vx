@@ -101,7 +101,10 @@ export function versionSpec(tag: string | undefined): string {
   if (tag === undefined) return 'latest'
   const v = tag.startsWith('v') ? tag.slice(1) : tag
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v)) {
-    throw new UserError(`vx upgrade: ${tag} is not a version (expected v<major>.<minor>.<patch>)`)
+    throw new UserError(
+      `vx upgrade: ${tag} is not a version (expected v<major>.<minor>.<patch>)`,
+      'VX_E_USAGE',
+    )
   }
   return v
 }
@@ -437,7 +440,8 @@ const FIELDS = ['devDependencies', 'dependencies', 'optionalDependencies'] as co
 
 function readJson(file: string): Record<string, unknown> | null {
   try {
-    const v: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    // A byte-order mark is stripped, as every package manager strips it.
+    const v: unknown = JSON.parse(readFileSync(file, 'utf8').replace(/^﻿/, ''))
     return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
   } catch {
     return null
@@ -541,7 +545,11 @@ export function managedInstall(execPath: string, cwd: string): ManagedInstall | 
     const plugins = pluginsBeside(root, field)
     return { manager: projectManager(root, execPath), scope: 'project', cwd: root, field, plugins }
   }
-  for (let d = path.resolve(cwd); d.startsWith(root); d = path.dirname(d)) {
+  for (
+    let d = path.resolve(cwd);
+    d === root || d.startsWith(`${root}${path.sep}`);
+    d = path.dirname(d)
+  ) {
     const f = listingField(d)
     if (f !== undefined) {
       const plugins = pluginsBeside(d, f)
@@ -787,6 +795,8 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
     sayNotice('error', 'vx upgrade', `unexpected argument: ${extra}${seeHelp('upgrade')}`)
     return 1
   }
+  // A mistyped tag is the mistake to name, before any guard about this install.
+  versionSpec(tag)
   if (!isCompiledBinary()) {
     throw new UserError(
       'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull',
@@ -825,11 +835,15 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
 }
 
 /**
- * The vx an upgrade just installed: the replaced binary, or the project's
+ * The vx an upgrade just installed: the replaced binary, or the tree's
  * `node_modules/.bin/vx` (a manager's store path names the old version).
+ * npm's global tree has no `.bin` there; its platform binary keeps its path.
  */
-const newVx = (install: ManagedInstall | null, dest: string): string =>
-  install === null ? dest : path.join(install.cwd, 'node_modules', '.bin', 'vx')
+function newVx(install: ManagedInstall | null, dest: string): string {
+  if (install === null) return dest
+  const bin = path.join(install.cwd, 'node_modules', '.bin', 'vx')
+  return existsSync(bin) ? bin : dest
+}
 
 /**
  * Lock the workspace with the vx just installed at `bin` (2026-10-18):
@@ -839,12 +853,17 @@ const newVx = (install: ManagedInstall | null, dest: string): string =>
 export async function relock(bin: string, cwd = process.cwd()): Promise<void> {
   const root = await findWorkspaceRoot(cwd).catch(() => null)
   if (root === null) return
-  const proc = Bun.spawnSync({
-    cmd: [bin, 'lock'],
-    cwd: root,
-    stdio: ['inherit', 'inherit', 'inherit'],
-  })
-  if (proc.exitCode !== 0) sayNotice('warn', 'vx upgrade', 'vx lock failed: run vx lock')
+  let code: number | null
+  try {
+    code = Bun.spawnSync({
+      cmd: [bin, 'lock'],
+      cwd: root,
+      stdio: ['inherit', 'inherit', 'inherit'],
+    }).exitCode
+  } catch {
+    code = null
+  }
+  if (code !== 0) sayNotice('warn', 'vx upgrade', 'vx lock failed: run vx lock')
 }
 
 /**
@@ -854,13 +873,19 @@ export async function relock(bin: string, cwd = process.cwd()): Promise<void> {
  * binary in place, old one never restored.
  */
 export function startedVersion(bin: string, timeoutMs = 10_000): string | null {
-  const proc = Bun.spawnSync({
-    cmd: [bin, '--version'],
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'pipe',
-    timeout: timeoutMs,
-  })
+  let proc: ReturnType<typeof Bun.spawnSync>
+  try {
+    proc = Bun.spawnSync({
+      cmd: [bin, '--version'],
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: timeoutMs,
+    })
+  } catch {
+    // The OS refused the spawn (EACCES on a noexec mount, ENOENT): it did not start.
+    return null
+  }
   const out = new TextDecoder().decode(proc.stdout).trim()
   return proc.exitCode === 0 && out.startsWith('vx ') ? out : null
 }

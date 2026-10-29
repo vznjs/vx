@@ -23,16 +23,20 @@ option.
   `(req, named?)`, `named` a `Repo`, answers the token's `Access`, refusing a token of
   another repository than `named`; with no token where `readAccess` is
   `public`, `named` when ALLOW names it, or `undefined` when none is named.
+- `errorJson(status, message)` is every server's refusal, `{ code, message }`
+  (Turbo's spec's `Error`); `notAllowed(allow)` its `405`, naming the methods in `Allow`.
 - `hashPart(text)` is what a server stores in place of an issuer, a repository name or a scope: the first
   128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
 - `statusLine(tone, name, text)` is the line a server prints when it starts (`'ok'`) or refuses to
   (`'err'`): `✓ vx-cache-server  listening on …`, painted as vx's own status lines (NO_COLOR, then
-  FORCE_COLOR, then a terminal), with any lines after the first dim.
+  FORCE_COLOR, then a terminal whose `TERM` is not `dumb`), with any lines after the first dim.
 
 ```ts
 export class Refusal extends Error {
   readonly status: number
 }
+export function errorJson(status: number, message: string): Response
+export function notAllowed(allow: string): Response
 export interface Allowed {
   readonly issuer: string
   readonly repository: string
@@ -80,7 +84,10 @@ export function oidcTokenAuth(
 - With `readAccess: 'public'` (`READ_ACCESS`), a request with no token
   reads the repository it names when `ALLOW` names it (else `403`), and
   writes nothing. Any other value than `public` or unset throws.
-- A token writes its branch (a `pull_request` run's head branch on GitHub;
-  a merge queue's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
-  ref, else `ref`; GitLab's `ref_path`). A `pull_request_target` run writes
-  nothing: its `head_ref` a fork names, and its `ref` is the base.
+- A token writes its `ref` (GitLab's `ref_path`): a `pull_request` run
+  its merge ref, `refs/pull/<n>/merge`, never its `head_ref`, which a fork
+  names; a `merge_group` run its base branch for a
+  `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>` ref. A
+  `pull_request_target` run writes nothing: it runs a fork's code on the
+  base branch's `ref`. Nor does a GitLab merge request pipeline unless `source_project_path` (GitLab
+  19.5+) names its own project: a fork's runs in the parent project.

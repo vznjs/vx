@@ -61,6 +61,10 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
     expect(await refusal({ dir: 'packages/b', name: 'b#1' })).toBe(
       `plugin 'p' named project "b#1": the name holds "#" — vx addresses a task as <name>#<task>`,
     )
+    // Printed raw by the status line and summary, `ESC ]0;` retitled the terminal.
+    expect(await refusal({ dir: 'packages/b', name: 'b\x1b]0;x\x07' })).toBe(
+      `plugin 'p' named project "b\\u001b]0;x\\u0007": the name holds a control character`,
+    )
   })
 
   it('an edge to a directory that is no project, or outside the root', () => {
@@ -123,6 +127,9 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
     )
     expect(() => checkProjectNames(root, named('packages/a', '//'))).toThrow(
       'packages/a: "//" names the workspace root — set another `name`',
+    )
+    expect(() => checkProjectNames(root, named('p\x1b[2Jq'))).toThrow(
+      'p\\x1b[2Jq: a project is named by its path unless named, and this one holds a control character — set `name` in its vx.config',
     )
     // CONTROL: the root named by its path, and a `#` path a config names.
     expect(checkProjectNames(root, named('.')).map((m) => m.name)).toEqual(['//'])

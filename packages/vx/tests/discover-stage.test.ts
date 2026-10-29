@@ -2,7 +2,7 @@
 // beyond the locked ones (turbo()'s root for `//#task`), names a project its
 // path names, and gives any project edges as directories: `deps` (order and
 // reach) and `reach` (reach only).
-import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -145,6 +145,94 @@ describe('discover stage', () => {
       [...applyFilters({ filters: [parseFilter(filter, root)], projects, graph })].sort()
     expect(selected('a...')).toEqual(['a', 'lib'])
     expect(selected('...lib')).toEqual(['a', 'gen', 'lib'])
+  })
+
+  // A workspace glob over linked packages (pnpm's `widgets/**` with
+  // `widgets/a -> ../submodules/a`) names the link; the config lies at the
+  // real directory. Joined by spelling, one directory made two projects:
+  // the configured one nothing depended on, and a config-less twin at the
+  // link that took every edge (vercel/turborepo#12489's case).
+  describe('a directory reached through a symlink', () => {
+    const at = (p: ProjectMeta): string => `${p.name}@${path.relative(root, p.dir)}`
+
+    it('is the project at its real directory: name, edges and a ./link filter land there', async () => {
+      await mkdir(path.join(root, 'submodules', 'w'), { recursive: true })
+      await mkdir(path.join(root, 'widgets'))
+      await symlink('../submodules/w', path.join(root, 'widgets', 'w'))
+      const projects = await discover(
+        [
+          plugin('p', () => [
+            { dir: path.join(root, 'widgets', 'w'), name: 'w' },
+            { dir: 'packages/a', name: 'a', deps: [path.join(root, 'widgets', 'w')] },
+          ]),
+        ],
+        { 'submodules/w': {} },
+      )
+      expect(projects.map(at)).toEqual(['a@packages/a', 'w@submodules/w'])
+      expect(edgesOf(projects)).toEqual({ a: { deps: ['w'], reach: undefined } })
+      const graph = buildPackageGraph(projects)
+      expect([
+        ...applyFilters({ filters: [parseFilter('./widgets/w', root)], projects, graph }),
+      ]).toEqual(['w'])
+    })
+
+    it('two links to one directory are one project', async () => {
+      await mkdir(path.join(root, 'shared', 'x'), { recursive: true })
+      await symlink('../shared/x', path.join(root, 'tools', 'x'))
+      await symlink('../shared/x', path.join(root, 'packages', 'x'))
+      const projects = await discover([
+        plugin('p', () => [
+          { dir: 'tools/x', name: 'x' },
+          { dir: 'packages/x', name: 'x' },
+        ]),
+      ])
+      expect(projects.map(at)).toEqual(['packages/a@packages/a', 'x@shared/x'])
+    })
+
+    it('an edge to a link no entry named lands on the project at its real directory', async () => {
+      await mkdir(path.join(root, 'widgets'))
+      await symlink('../packages/a', path.join(root, 'widgets', 'a'))
+      const projects = await discover([
+        plugin('p', () => [{ dir: 'tools/gen', name: 'gen', deps: ['widgets/a'] }]),
+      ])
+      expect(edgesOf(projects)).toEqual({ gen: { deps: ['packages/a'], reach: undefined } })
+    })
+
+    it('CONTROL: a link leading out of the root stays at the link', async () => {
+      const out = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-discover-out-')))
+      try {
+        await symlink(out, path.join(root, 'tools', 'ext'))
+        const projects = await discover([plugin('p', () => [{ dir: 'tools/ext', name: 'ext' }])])
+        expect(projects.map(at)).toEqual(['ext@tools/ext', 'packages/a@packages/a'])
+      } finally {
+        await rm(out, { recursive: true, force: true })
+      }
+    })
+
+    // macOS's temp root is a link (`/var` -> `/private/var`): the real
+    // directory is spelled under the root as given, so it still matches
+    // the lock's projects.
+    it('under a root reached through a link, keeps the root as given', async () => {
+      const outer = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-discover-root-')))
+      const linked = path.join(outer, 'root')
+      await symlink(root, linked)
+      try {
+        await mkdir(path.join(root, 'widgets'))
+        await symlink('../packages/a', path.join(root, 'widgets', 'a'))
+        const projects = await discoverProjects(
+          linked,
+          lockOf(),
+          [plugin('p', () => [{ dir: 'widgets/a', name: 'a' }])],
+          linked,
+          warn,
+        )
+        expect(projects.map((p) => `${p.name}@${p.dir}`)).toEqual([
+          `a@${path.join(linked, 'packages', 'a')}`,
+        ])
+      } finally {
+        await rm(outer, { recursive: true, force: true })
+      }
+    })
   })
 
   const refusals: Array<[string, VxPlugin['discover'], string]> = [

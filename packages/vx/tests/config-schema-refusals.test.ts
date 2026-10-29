@@ -42,6 +42,19 @@ describe('run.branch in the workspace config', () => {
   })
 })
 
+// JSON writes a non-finite number as null: `concurrency: 1e400` was
+// refused as "(got null)", a value the file never held.
+describe('a non-finite number in the workspace config', () => {
+  it('is quoted as written', () => {
+    const rule = "must be a positive integer, or a share of the cores like '50%'"
+    expect([Infinity, -Infinity, NaN].map((n) => refusal({ run: { concurrency: n } }))).toEqual([
+      `${WS}: \`run.concurrency\` ${rule} (got Infinity)`,
+      `${WS}: \`run.concurrency\` ${rule} (got -Infinity)`,
+      `${WS}: \`run.concurrency\` ${rule} (got NaN)`,
+    ])
+  })
+})
+
 // Item 1099: a command of whitespace alone passed as non-empty and ran as
 // a no-op success, cached.
 describe('an empty command in any spelling', () => {
@@ -361,6 +374,9 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       ['b.*', "holds '*', which makes it a pattern"],
       ['^gen', "starts with '^', which names dependencies' tasks or negates"],
       ['!gen', "starts with '!', which names dependencies' tasks or negates"],
+      // Printed raw by the status line, `ESC ]0;` retitled the terminal.
+      ['b\x1b]0;x\x07', 'holds a control character'],
+      ['b\rc', 'holds a control character'],
     ] as const) {
       expect(named(name)).toBe(`${CFG}: task name ${JSON.stringify(name)} ${why}${tail}`)
     }
@@ -368,6 +384,46 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     for (const name of ['build:prod', 'e2e-ci--src/app.cy.ts', 'gen^2', 'a!b', 'lint.fix']) {
       expect(named(name)).toBeNull()
     }
+  })
+
+  it('a project name holding a control character is refused', () => {
+    const named = (name: string): string | null => {
+      try {
+        validateProjectConfig({ name, tasks: {} } as never, CFG)
+        return null
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect(named('a\x1b]0;x\x07')).toBe(
+      `${CFG}: \`name\` "a\\u001b]0;x\\u0007" holds a control character — rename the project`,
+    )
+    expect(named('@acme/ui')).toBeNull()
+  })
+
+  // `run.retries` refused what no attempt count can be; a task's own took
+  // 1e20 and retried a failing task without end.
+  it("a task's retries are held to run.retries' rule", () => {
+    expect(taskRefusal({ exec: { command: 'x', retries: 1e20 } })).toBe(
+      `${CFG}: tasks.t.exec.retries must be a non-negative integer (got 100000000000000000000)`,
+    )
+    expect(taskRefusal({ exec: { command: 'x', retries: 3 } })).toBeNull()
+  })
+
+  // `vx show` printed a tag raw: `ESC ]0;` retitled the terminal.
+  it('a tag holding a control character is refused', () => {
+    const tagged = (tag: string): string | null => {
+      try {
+        validateProjectConfig({ tags: [tag] } as never, CFG)
+        return null
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect(tagged('t\x1b]0;x\x07')).toBe(
+      `${CFG}: tag "t\\u001b]0;x\\u0007" holds a control character — rename the tag`,
+    )
+    expect(tagged('team-ui')).toBeNull()
   })
 
   // A project output under `workspace-outputs/` read back as a workspace

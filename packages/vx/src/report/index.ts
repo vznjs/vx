@@ -15,6 +15,7 @@ export {
   type RunEvent,
   type RunEventSubscriber,
   type RunStartInfo,
+  skippedReason,
   type TaskView,
   terminalSubscriber,
   toWireEvent,

@@ -708,6 +708,27 @@ describe('archive restore — mixed valid + malicious entries', () => {
     expect(existsSync(path.join(dest, '..', 'evil.txt'))).toBe(false)
   })
 
+  it('refuses an entry named twice: which body lands was a race', async () => {
+    // Both were staged and their renames ran together (in a staged tree,
+    // both bodies were written to one temp at once), while the index took
+    // the last one's size: the bytes on disk were either.
+    const enc = new TextEncoder()
+    const tar = concatTar([
+      makeHeader({ name: 'stdout', size: 0, typeFlag: '0' }),
+      makeHeader({ name: 'outputs/new/a.txt', size: 1, typeFlag: '0' }),
+      makeDataBlock(enc.encode('x')),
+      makeHeader({ name: 'outputs/new/a.txt', size: 2, typeFlag: '0' }),
+      makeDataBlock(enc.encode('yy')),
+      EOF_BLOCKS,
+    ])
+    await expect(scan(tar)).rejects.toBeInstanceOf(ArchiveSecurityError)
+    const summed = await withSum(tar)
+    await expect(
+      extractArtifactStream(streamOf(summed), dest, undefined, undefined, undefined, dest),
+    ).rejects.toBeInstanceOf(ArchiveSecurityError)
+    expect(existsSync(path.join(dest, 'new'))).toBe(false)
+  })
+
   it('abort prunes the empty directories it created but leaves one a concurrent writer filled', async () => {
     // Entry 1 lands under a fresh `dist/new/`; entry 2 is a traversal, so
     // the archive is rejected after entry 1 was staged. Between the two,

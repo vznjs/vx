@@ -90,6 +90,8 @@ export default { plugins: [${edgesSource({ app: ['lib'] })}, ${pluginSource(
   const vx = async (...args: string[]) => {
     const proc = Bun.spawn([process.execPath, BIN, ...args], {
       cwd: root,
+      // The preload's VX_CACHE_DIR: a spawn with no env saved into ~/.vx.
+      env: { ...process.env },
       stdout: 'pipe',
       stderr: 'pipe',
     })

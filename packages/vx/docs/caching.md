@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v48'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v49'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -130,8 +130,8 @@ over (in order):
    `npm-shrinkwrap.json` over `package-lock.json`, as npm does; `bun()`
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
-   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`:
-   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`)
+   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
+   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, `.npmrc`)
    and folds each whole into every task.
 
    The run reads each claimed root file once, before any task. A task
@@ -364,7 +364,8 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     whose static directory passes through a link (`lib/**` over
     `lib -> ../shared`) takes the link as an input: git lists a linked
     directory as the link alone, so the glob matched nothing and an
-    edit behind it was a hit (2026-10-25). A `**` glob does not enter
+    edit behind it was a hit (2026-10-25); each brace alternative counts
+    alone (`{lib,src}/**`). A `**` glob does not enter
     one it meets.
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
@@ -1367,7 +1368,7 @@ root) and it holds everything, shared with no other workspace:
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
 ├── failures/<runId>.json                   a failed run's task output and the files it
-│                                           names (`vx last --format json`, getFailures);
+│                                           names (`vx last --format json`, runFailures);
 │                                           the newest 50 kept
 └── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
     ├── outputs/<rel>                       declared output files, project-relative (when any),
@@ -1508,8 +1509,12 @@ it), every wire ships the bytes verbatim, and an artifact without it
 reads as before. The ingest side takes the numbers only as plain
 non-negative numbers; anything else in a foreign sidecar is dropped.
 `dirs` (v44) names the empty directories the output globs matched at
-save (`outputs/dist/empty`): a tar of regular files cannot hold them, and
+save (`outputs/dist/empty`, `workspace-outputs/gen/empty` under
+`outputs.workspaceFiles`): a tar of regular files cannot hold them, and
 a hit makes each one, so the tree a hit leaves is the one the miss left.
+A miss's clean removes the empty directories it finds under the outputs
+too, so one an older build left is not saved as this run's, and a hit
+removes one the entry does not hold, as it removes a stray file.
 Each name is held to a file entry's rules and to the declared outputs,
 and is reached only through directories that stay in the project. Its
 index row is the path with a trailing slash (`dist/empty/`); the
@@ -1547,10 +1552,15 @@ one leading out of the workspace, fails the save by name, as the config
 spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
 followed). An output directory that is a symlink (`dist -> real-out`) is
-followed by the clean as by the save and restore, so its target is the
+followed by the clean as by the save and restore, named by a glob
+(`dist/**`) or a literal (`dist`) alike, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5). The clean prunes the directories it emptied (before a miss it keeps
+nothing is deleted through it (X-5). So does one, in either scope, that
+resolves into a `.git` (any case) or the root's `.vx`: for the root
+project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
+under `dist/**` had the clean delete the repository. A recorded row
+reached through such a link is never removed either. The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
 task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
@@ -1575,7 +1585,12 @@ following a chain of links to its end — and writes through it, the
 link kept. Whether a link stays inside is decided on where it resolves,
 so a dangling link to `../elsewhere` or to an absolute path out of the
 project is the same refusal, nothing created outside, and a cycle of
-links is refused by name. (A link the output globs themselves cover,
+links is refused by name. Nor is a link written through into Git's
+metadata: a path that resolves into a `.git` directory under the
+project (or the workspace, for `outputs.workspaceFiles`), in any case,
+is refused naming the link (`dist/g -> ../.git` carried
+`dist/g/hooks/pre-commit` into `.git/hooks`), and an artifact's own link
+into `.git` fails its restore (vercel/turborepo#14808). (A link the output globs themselves cover,
 `dist/sub` under `dist/**`, is an output: the clean unlinks it.) Entry NAMES are
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps
@@ -2124,6 +2139,11 @@ breaking footer).
 
 ### History
 
+- **v48 → v49**: stored bytes wrong under a key the change does not move
+  (2026-10-28). Each brace alternative is read alone: `{dist,lib}` is the
+  two trees, and `{./dist,lib}/**` drops the `./`. An output glob folds
+  as its text, so a v48 entry for `outputs: ['{dist,lib}']` holds an empty
+  artifact under the unchanged key and would restore nothing.
 - **v47 → v48**: stored bytes wrong under a key the change does not move
   (2026-10-18). A task glob is a standard glob again: `[...]` is a
   character class and `\[id\]` names a route directory, which reverts

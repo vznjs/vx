@@ -56,17 +56,16 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     let format: string | undefined
     if (a === '--format') format = args[++i] ?? ''
     else if (a.startsWith('--format=')) format = a.slice('--format='.length)
-    else if (a === '--filter') {
-      const v = args[++i]
+    else if (a === '--filter' || a.startsWith('--filter=')) {
+      const v = a === '--filter' ? args[++i] : a.slice('--filter='.length)
       // `--filter --format json` took `--format` as the pattern; no filter opens with `--`.
-      if (v === undefined || v === '' || v.startsWith('--'))
+      if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
         return {
           ...out,
           error: `--filter requires a value: a project name, glob or path${seeHelp('show')}`,
         }
       out.filters.push(v)
-    } else if (a.startsWith('--filter=')) out.filters.push(a.slice('--filter='.length))
-    else if (a === '--affected') out.affected = ''
+    } else if (a === '--affected') out.affected = ''
     else if (a.startsWith('--affected=')) out.affected = a.slice('--affected='.length)
     else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('show', a)}${seeHelp('show')}` }
@@ -164,7 +163,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       affected = f
       raw.unshift(f)
     }
-    const r = await resolveFilters(process.cwd(), raw, {}, affected, 'vx show')
+    const r = await resolveFilters(process.cwd(), raw, {}, affected, 'show')
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
     if ('empty' in r) sayNotice('info', 'vx show', r.empty)
     selected = new Set('empty' in r ? [] : r.names)
@@ -472,6 +471,7 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
   )
   add('env.secret', list(exec?.env?.secret))
   add('remote', exec?.remote === undefined ? undefined : String(exec.remote))
+  add('platforms', list(exec?.platforms))
   add('sandbox', exec?.sandbox === undefined ? undefined : JSON.stringify(exec.sandbox))
   const persistent = exec?.persistent
   if (persistent !== undefined) {
@@ -494,6 +494,9 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
   if (cache !== undefined) {
     add('outputs.files', list(cache.outputs.files))
     add('outputs.workspaceFiles', list(cache.outputs.workspaceFiles))
+    add('outputs.clean', cache.outputs.clean)
+    add('inputStability.strategy', cache.inputStability?.strategy)
+    add('inputStability.severity', cache.inputStability?.severity)
   }
   return rows
 }

@@ -241,36 +241,30 @@ describe('a refusal under --format json', () => {
     ])
   })
 
-  // cli.md: VX_E_CONFIG is a config "that does not load or is refused". A
-  // load failure answered VX_E_REFUSED, and a config's own throw
-  // VX_E_INTERNAL, which sends the reader to file a vx bug.
-  it('a workspace config that does not load is a config refusal', async () => {
-    const sources = {
+  // The loader's own refusals open with `Workspace config …`, not the path,
+  // and answered VX_E_REFUSED; a config's own throw answered VX_E_INTERNAL.
+  it('a workspace file that does not load is VX_E_CONFIG', async () => {
+    const codes: Record<string, string> = {}
+    for (const [name, body] of Object.entries({
       syntax: 'export default {\n',
-      fn: 'export default () => ({})\n',
-      missing: "import x from 'no-such-pkg'\nexport default {}\n",
+      notObject: 'export default 42\n',
       thrownValue: "throw 'no'\n",
-      thrown: "throw new Error('no')\n",
-    }
-    const dirs: string[] = []
-    try {
-      const codes: Record<string, string> = {}
-      for (const [name, source] of Object.entries(sources)) {
-        const dir = await makeWorkspace({ prefix: `vx-error-codes-load-${name}-` })
-        dirs.push(dir)
-        await Bun.write(path.join(dir, '.vx/workspace.mjs'), source)
-        codes[name] = await refusal(['show', '--format', 'json'], dir)
+      thrownError: "throw new Error('no')\n",
+    })) {
+      const ws = await makeWorkspace({ prefix: `vx-error-codes-ws-${name}-`, workspaceFile: false })
+      try {
+        await Bun.write(path.join(ws, '.vx/workspace.mjs'), body)
+        codes[name] = await refusal(['show', '--format', 'json'], ws)
+      } finally {
+        await rm(ws, { recursive: true, force: true })
       }
-      expect(codes).toEqual({
-        syntax: 'VX_E_CONFIG',
-        fn: 'VX_E_CONFIG',
-        missing: 'VX_E_CONFIG',
-        thrownValue: 'VX_E_CONFIG',
-        thrown: 'VX_E_CONFIG',
-      })
-    } finally {
-      for (const dir of dirs) await rm(dir, { recursive: true, force: true })
     }
+    expect(codes).toEqual({
+      syntax: 'VX_E_CONFIG',
+      notObject: 'VX_E_CONFIG',
+      thrownValue: 'VX_E_CONFIG',
+      thrownError: 'VX_E_CONFIG',
+    })
   }, 30_000)
 
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
@@ -296,14 +290,6 @@ describe('errorCode', () => {
       errorCode(
         new UserError('Workspace config at /ws/.vx/workspace.ts did not export a default object'),
       ),
-      errorCode(
-        Object.assign(new Error('no'), { stack: 'Error: no\n    at /ws/vx.config.ts:1:7' }),
-      ),
-      errorCode(
-        Object.assign(new Error('no'), {
-          stack: 'Error: no\n    at f (/ws/node_modules/x/i.js:1:1)\n    at /ws/vx.config.ts:1:7',
-        }),
-      ),
     ]).toEqual([
       'VX_E_CYCLE',
       'VX_E_REFUSED',
@@ -314,8 +300,6 @@ describe('errorCode', () => {
       'VX_E_INTERNAL',
       'VX_E_CONFIG',
       'VX_E_CONFIG',
-      'VX_E_CONFIG',
-      'VX_E_INTERNAL',
     ])
   })
 

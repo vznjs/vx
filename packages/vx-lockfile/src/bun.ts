@@ -211,10 +211,19 @@ function workspaceSpecTarget(
   return alias === null ? undefined : lock.workspaceDirs.get(alias[1]!)
 }
 
-/** The node_modules path a workspace resolves from: its own name, or the root's ''. */
+/**
+ * The node_modules path a workspace resolves from: its own name, `./<name>`
+ * when a root package holds that name, or the root's ''. Bun 1.4 writes no
+ * root entry for such a workspace and nests its own dependencies under
+ * `./<name>/`: resolved from `<name>`, they were the root package's.
+ */
 function importerFrom(lock: Lockfile, dir: string): string {
   if (dir === '.') return ''
-  for (const [name, wsDir] of lock.workspaceDirs) if (wsDir === dir) return name
+  for (const [name, wsDir] of lock.workspaceDirs) {
+    if (wsDir !== dir) continue
+    const held = lock.packages.get(name)
+    return held === undefined || held.id === `${name}@workspace:${dir}` ? name : `./${name}`
+  }
   return ''
 }
 

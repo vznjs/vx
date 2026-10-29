@@ -207,7 +207,14 @@ export function conformance(name: string, target: Target): void {
       ])
       expect((await put('a-b', 'x')).status).toBe(400)
       expect((await put('f'.repeat(129), 'x')).status).toBe(400)
-      expect((await put(key(), new Uint8Array(target.maxUploadBytes + 1))).status).toBe(413)
+      const big = await put(key(), new Uint8Array(target.maxUploadBytes + 1))
+      expect([big.status, await big.json()]).toEqual([
+        413,
+        {
+          code: 'payload_too_large',
+          message: `an upload is at most ${target.maxUploadBytes} bytes`,
+        },
+      ])
     })
 
     it('names its limits on every check, and at /v1/capabilities', async () => {
@@ -222,6 +229,27 @@ export function conformance(name: string, target: Target): void {
       ]).toEqual(Object.values(limits))
       expect(await (await call('/v1/capabilities')).json()).toEqual(limits)
       expect((await call('/v1/capabilities', { token: null })).status).toBe(401)
+    })
+
+    // A check refused for its size, or an upload for its, named no limits:
+    // a client holding older ones (a server restarted with new ones, a
+    // Worker's rollout) was refused every check of the run.
+    it('names its limits on every /v1/artifacts answer, a refusal too', async () => {
+      const named = (res: Response) => [
+        res.status,
+        Number(res.headers.get('vx-max-check-hashes')),
+        Number(res.headers.get('vx-max-upload-bytes')),
+      ]
+      const too = Array.from({ length: target.maxCheckHashes + 1 }, key)
+      const answers = [
+        await json('/v1/artifacts', { hashes: too, scopes: [MAIN] }),
+        await put(key(), new Uint8Array(target.maxUploadBytes + 1)),
+        await put(key(), 'x'),
+        await get(key()),
+      ]
+      expect(answers.map(named)).toEqual(
+        [400, 413, 204, 404].map((s) => [s, target.maxCheckHashes, target.maxUploadBytes]),
+      )
     })
 
     it('answers each hash of a check with the first scope asked that holds it, or null', async () => {
@@ -289,9 +317,29 @@ export function conformance(name: string, target: Target): void {
     })
 
     it('answers an unknown route 404 and a wrong method 405', async () => {
-      expect((await call('/v2/artifacts/abc')).status).toBe(404)
+      const nope = await call('/v2/artifacts/abc')
+      expect([nope.status, await nope.json()]).toEqual([
+        404,
+        {
+          code: 'not_found',
+          message: `no route GET /v2/artifacts/abc: name the server's base URL; it serves /v1/ (PROTOCOL.md)`,
+        },
+      ])
+      const text = await call('/v1/artifacts', {
+        method: 'POST',
+        body: '{"hashes":[],"scopes":[]}',
+        headers: { 'content-type': 'text/plain' },
+      })
+      expect([text.status, await text.json()]).toEqual([
+        400,
+        { code: 'bad_request', message: 'send the body as Content-Type: application/json' },
+      ])
       const res = await call('/v1/artifacts', { method: 'DELETE' })
-      expect([res.status, res.headers.get('allow')]).toEqual([405, 'POST'])
+      expect([res.status, res.headers.get('allow'), await res.json()]).toEqual([
+        405,
+        'POST',
+        { code: 'method_not_allowed', message: 'this route takes POST' },
+      ])
       const one = await call(`/v1/artifacts/${key()}`, { method: 'DELETE', token: write })
       expect([one.status, one.headers.get('allow')]).toEqual([405, 'GET, HEAD, PUT'])
     })

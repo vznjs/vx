@@ -65,8 +65,11 @@ export function lockedProjects(
   root: string,
   locked: Readonly<Record<string, { readonly file: string; readonly config: ProjectConfig }>>,
 ): ProjectMeta[]
+// `dir` at the directory it leads to, under `root` as given; `dir` when
+// that lies outside the root, null when absent
+export function canonicalDir(root: string, dir: string): string | null
 // The project a `discover` entry names: new (`added`) or the one already
-// at its dir, renamed when its path named it. `deps` / `reach` are
+// at its real dir, renamed when its path named it. `deps` / `reach` are
 // checked to be string arrays here and resolved by linkDiscoveredEdges
 export function discoveredProject(
   root: string,
@@ -119,7 +122,9 @@ its error where `exists()` answers in 15–40 µs.
 
 The root is the directory holding the nearest `.vx/workspace.*` from
 `start` up to the git top-level, inclusive (a worktree's `.git` file is a
-top-level; a submodule goes on to its superproject), or up to `/` outside
+top-level, a submodule's too; a submodule goes on to its superproject, and so does an
+embedded repository the outer git does not ignore, whose configs
+`findProjectConfigs` lists as the outer workspace's), or up to `/` outside
 git. Nothing else decides it: not a `package.json`, `pnpm-workspace.yaml`
 or a lockfile (2026-10-13: "Workspace file is the ultimate",
 "never go out of git root"). A file above the checkout is never read.
@@ -137,7 +142,8 @@ config git ignores is no project. A nested repository is one entry to the
 outer git (a submodule's gitlink, an embedded repository's untracked
 `dir/`): its own git lists its configs, or a walk when it has no `.git`,
 as the input enumeration expands one. Outside git: a walk that skips
-dot-directories and `node_modules`. A config at or under a nested
+`node_modules`, `.git` and `.vx`, and enters every other dot-directory,
+as git lists `.github/actions/x`. A config at or under a nested
 `.vx/workspace.*` is that workspace's and is left out. Where a directory
 holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
 file (a directory may carry a config's name; git lists a tracked config
@@ -148,6 +154,19 @@ names each, since an edit to it changes nothing. The same listing names each `vx
 which `vx lock --check` names. Left where a project's config was
 deleted, it is a source of the project around it, and a `**` reader
 there was keyed on a copy no `vx lock` rewrites (2026-10-23).
+
+### A directory reached through a symlink
+
+A project is its real directory. A `discover` entry, an edge or a
+`./path` filter naming a link (pnpm's `widgets/**` with
+`widgets/a -> ../submodules/a`) is the project at the directory it
+leads to, spelled under the root as given (`canonicalDir`); git lists
+the config there, not at the link. Joined by spelling, one directory
+was two projects: the configured one, which nothing depended on, and a
+config-less twin at the link taking every `^task` edge
+(vercel/turborepo#12489). A link leading out of the root stays a
+project at the link. Only a directory no project holds is resolved, so
+locked projects cost no syscall (`tests/discover-stage.test.ts`).
 
 ### Names
 

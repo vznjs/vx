@@ -37,8 +37,13 @@ export interface ConfigImportOwnersArgs {
 export function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set<string>>
 
 /** Every file a config imports by relative specifier, transitively, outside
- *  `node_modules`, the config excluded; an unresolved one by the names it would have. */
-export async function configImports(configPath: string): Promise<string[]>
+ *  `node_modules`, the config excluded; an unresolved one by the names it would have.
+ *  `configSource` spares the config's read; `read` reads the rest. */
+export async function configImports(
+  configPath: string,
+  configSource?: string,
+  read?: (file: string) => Promise<string>,
+): Promise<string[]>
 ```
 
 ## How it works
@@ -162,7 +167,10 @@ provides — the ones Bun would auto-install from the npm registry when no
 `node_modules` exists anywhere above (sixteen connections and 150 ms before
 "cannot find", measured 2026-09-16). The loader refuses such a config before
 evaluating it: `cannot find '<name>' — no node_modules above the config
-provides it; install the workspace's dependencies first`. Builtins, `@vzn/vx`
+provides it; install the workspace's dependencies first`, and so is one
+whose relative import closure (`configImports`) holds a script with such
+an import: `<file> imports '<name>', which no node_modules above it
+provides`, looked up from that file. Builtins, `@vzn/vx`
 (the core alias), relative or absolute specifiers, and package.json
 subpath imports (`#tasks`: Bun maps them inside the package and never asks
 the registry, D-28) are never listed. Nor is a self-reference: a
@@ -176,8 +184,10 @@ disk: Bun loads that file and never reaches the registry (D-26).
 
 ## `configImports`
 
-The files `vx watch` watches beside each config, and the files a repeat
-load checks before it evaluates the workspace config again (item 1046):
+The files `vx watch` watches beside each config, the files a repeat
+load checks before it evaluates the workspace config again (item 1046),
+and the files the loader scans for an unprovided bare import before a
+source evaluation (its reads kept across one load's configs):
 a shared preset outside the project changed what a run evaluates and no
 watcher saw it (item 949). The walk scans each file with
 `Bun.Transpiler.scanImports` (a plain match when the parser refuses the

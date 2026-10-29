@@ -32,6 +32,7 @@ import {
   identityColor,
   maskedCommand,
   paint,
+  printable,
   ui,
   type ColorSupport,
 } from '../util/index.js'
@@ -99,8 +100,11 @@ export function formatTaskBlock(
 
   const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('', s, colors, { dim: true })
-  const header = formatBlockHeader(outcome, colors)
-  const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
+  // A ready server's frame reads as the live one does: marked, and running.
+  const mark = persistentMark(node, colors)
+  const running = mark !== '' && outcome.status === 'success'
+  const header = running ? paint(ACCENT, 'running', colors) : formatBlockHeader(outcome, colors)
+  const lines: string[] = [`${corner('┌─')} ${mark}${idPainted} ${corner('>')} ${header}`]
 
   // The command section shows what actually ran — executed tasks
   // (success and failed). Cache hits normally skip it (the stored
@@ -126,7 +130,7 @@ export function formatTaskBlock(
   lines.push(...violationSection(outcome, colors))
 
   lines.push(
-    `${corner('└─')} ${idPainted}${whereNote(outcome, colors)} ${corner('──')}${formatBlockFooter(outcome, colors)}`,
+    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${running ? runningFooter(outcome, colors) : formatBlockFooter(outcome, colors)}`,
   )
   return lines.join('\n') + '\n'
 }
@@ -547,7 +551,7 @@ export function formatFrameOpen(
 ): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
   const cmd = shownCommand(node, forwardArgs)
-  const mark = isPersistentNode(node) ? `${paint(ACCENT, '▸', colors)} ` : ''
+  const mark = persistentMark(node, colors)
   return `${corner('┌─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
 }
 
@@ -567,7 +571,9 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // VERBATIM: a violation is evidence, and evidence that has been rewritten
   // for display is not the thing the sandbox reported. The outcome keeps
   // every record for telemetry.
-  const body = [...new Set(vlines)]
+  // Verbatim but for control bytes: a denied path is anyone's bytes, and
+  // one named `ESC ]0;…` retitled the terminal (the `\xNN` is still exact).
+  const body = [...new Set(vlines)].map(printable)
   // Red, not amber: a violation fails the task, so it reads as a failure.
   // vx's note, after the evidence: the grants that would have allowed it.
   // A read the output depends on is a key input too; the sandbox never
@@ -584,12 +590,16 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
           ...(fix.inputs !== undefined
             ? [
                 dim(
-                  `and, if the output depends on them, inputs.files: [${fix.inputs.map((p) => `'${p}'`).join(', ')}]`,
+                  `and, if the output depends on them, inputs.files: [${fix.inputs.map((p) => `'${printable(p)}'`).join(', ')}]`,
                 ),
               ]
             : []),
           ...(fix.withheld !== undefined
-            ? [dim(`credential path, grant it only on purpose: ${fix.withheld.join(', ')}`)]
+            ? [
+                dim(
+                  `credential path, grant it only on purpose: ${fix.withheld.map(printable).join(', ')}`,
+                ),
+              ]
             : []),
           '',
         ]
@@ -610,14 +620,13 @@ export function formatFrameClose(
   colors: ColorSupport = NO_COLOR,
 ): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
-  const persistent = isPersistentNode(node)
-  const mark = persistent ? `${paint(ACCENT, '▸', colors)} ` : ''
+  const mark = persistentMark(node, colors)
   // A persistent task's child keeps running past this "ready" outcome,
   // so the close reads `running` (accent), not `success` — the ▸ marks
   // both ends of the frame as a long-lived task.
   const tail =
-    persistent && outcome.status === 'success'
-      ? ` ${paint('', `(${formatElapsed(outcome.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
+    mark !== '' && outcome.status === 'success'
+      ? runningFooter(outcome, colors)
       : formatBlockFooter(outcome, colors)
   const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${tail}`
   const violations = violationSection(outcome, colors)
@@ -633,8 +642,12 @@ function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string {
   )
 }
 
-function isPersistentNode(node: TaskNode): boolean {
-  return node.config.exec?.persistent !== undefined
+function persistentMark(node: TaskNode, colors: ColorSupport): string {
+  return node.config.exec?.persistent !== undefined ? `${paint(ACCENT, '▸', colors)} ` : ''
+}
+
+function runningFooter(o: TaskOutcome, colors: ColorSupport): string {
+  return ` ${paint('', `(${formatElapsed(o.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
 }
 
 /**
@@ -755,7 +768,7 @@ function sandboxFixLine(f: NonNullable<TaskOutcome['sandboxFix']>): string | und
   const fix = Object.entries(f).filter(([k]) => k !== 'withheld' && k !== 'inputs')
   if (fix.length === 0) return undefined
   const parts = fix.map(
-    ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${p}'`).join(', ')}]`,
+    ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${printable(p)}'`).join(', ')}]`,
   )
   return `exec.sandbox.allow: { ${parts.join(', ')} }`
 }

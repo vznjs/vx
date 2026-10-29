@@ -24,6 +24,8 @@ import {
   runFailures,
   type RunStep,
   runSteps,
+  runWarnings,
+  shellQuote,
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
@@ -33,6 +35,7 @@ import {
   ERROR,
   formatElapsed,
   paint,
+  parseDecimalInt,
   refusal,
   splitTaskId,
   SUCCESS,
@@ -61,6 +64,8 @@ interface LastArgs {
   branch?: string
   /** `--cache-dir`: read the history a run with the same flag wrote. */
   cacheDir?: string
+  /** `--sql <query>`: the history's rows a read-only query selects. */
+  sql?: string
   error?: string
 }
 
@@ -90,8 +95,13 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
           (!RUN_ID_SHAPE.test(next) && (!next.startsWith('-') || /^-\d/.test(next))))
       const lv = a === '--list' ? (spaced ? next : '10') : a.slice(7)
       if (spaced) i++
-      const n = Number(lv)
-      if (!Number.isInteger(n) || n < 1 || n > 500) {
+      if (lv === '')
+        return {
+          ...out,
+          error: `--list= requires a count from 1 to 500; bare --list shows 10${seeHelp('last')}`,
+        }
+      const n = parseDecimalInt(lv)
+      if (n === null || n < 1 || n > 500) {
         return {
           ...out,
           error: `--list must be a whole number from 1 to 500 (got ${lv})${seeHelp('last')}`,
@@ -106,6 +116,17 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     if (a === '--stats') {
       out.stats = true
+      continue
+    }
+    if (a === '--sql' || a.startsWith('--sql=')) {
+      const v = a === '--sql' ? args[++i] : a.slice('--sql='.length)
+      if (v === undefined || v.trim() === '') {
+        return {
+          ...out,
+          error: `--sql requires a query, like 'SELECT * FROM runs'${seeHelp('last')}`,
+        }
+      }
+      out.sql = v
       continue
     }
     if (a === '--branch' || a.startsWith('--branch=')) {
@@ -151,6 +172,16 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     if (out.runId !== undefined)
       return { ...out, error: `unexpected argument: ${a}${seeHelp('last')}` }
     out.runId = a
+  }
+  if (out.sql !== undefined) {
+    const other = [out.runId, out.list, out.failed, out.log, out.stats, out.branch]
+    if (bareLog || other.some((v) => v !== undefined)) {
+      return {
+        ...out,
+        error: `--sql combines only with --format and --cache-dir${seeHelp('last')}`,
+      }
+    }
+    return out
   }
   if (bareLog) {
     if (out.runId === undefined) {
@@ -294,6 +325,59 @@ async function printStats(
   return 0
 }
 
+/**
+ * `--sql`: one SELECT over the history (`runs`, `invocations`, and the
+ * store's `entries`, `entry_inputs`, `task_durations`, `task_outcomes`),
+ * so an agent asks what no flag answers: a task's memory trend, the
+ * flakiest project, which input moved a key. `query_only` stops a write
+ * the statement hides (`WITH … DELETE`); it does not stop ATTACH, which
+ * creates a file, hence only SELECT or WITH may lead.
+ */
+function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): number {
+  if (!/^\s*(select|with)\b/i.test(sql)) {
+    throw new UserError(
+      `vx last: --sql reads only: one SELECT (or WITH … SELECT) over the history`,
+      'VX_E_USAGE',
+    )
+  }
+  db.exec('PRAGMA query_only = ON')
+  let rows: Array<Record<string, unknown>>
+  try {
+    rows = db.query(sql).all() as Array<Record<string, unknown>>
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (/readonly|query_only/i.test(message)) {
+      throw new UserError(`vx last: --sql reads only: ${message}`, 'VX_E_USAGE')
+    }
+    throw new UserError(`vx last: --sql: ${message}`, 'VX_E_USAGE')
+  }
+  if (format === 'json') {
+    process.stdout.write(`${JSON.stringify({ rows })}\n`)
+    return 0
+  }
+  if (rows.length === 0) return 0
+  // A column's value as SQLite returns it: TEXT, a number, NULL or a BLOB.
+  const cell = (v: string | number | bigint | Uint8Array | null): string =>
+    v === null || v === undefined
+      ? '-'
+      : v instanceof Uint8Array
+        ? `<${v.length} bytes>`
+        : String(v)
+  const table = [
+    Object.keys(rows[0]!),
+    ...rows.map((r) => Object.values(r).map((v) => cell(v as Parameters<typeof cell>[0]))),
+  ]
+  const widths = table[0]!.map((_, c) => Math.max(...table.map((r) => r[c]!.length)))
+  const lines = table.map((r) =>
+    r
+      .map((v, c) => v.padEnd(widths[c]!))
+      .join('  ')
+      .trimEnd(),
+  )
+  process.stdout.write(`${lines.join('\n')}\n`)
+  return 0
+}
+
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
 
 const fmtMs = (ms: number): string => formatElapsed(ms, true)
@@ -322,7 +406,7 @@ function fmtUsage(t: {
  * their exit stands for, the sandbox's violation count, a skip's blocker.
  * Older rows carry none and read as before.
  */
-function reasonParts(t: RunSummaryRow): string {
+function reasonParts(t: RunSummaryRow, skippedHere: ReadonlySet<string>): string {
   const parts: string[] = []
   if (t.status === 'failed') {
     if (t.notReady !== null) {
@@ -339,11 +423,22 @@ function reasonParts(t: RunSummaryRow): string {
       parts.push(`${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}`)
     }
   } else if (t.status === 'skipped' && t.blockedBy !== null) {
-    parts.push(`after ${t.blockedBy} failed`)
+    // A blocker that is itself a skip is a platform skip: a failure's
+    // dependants name the failure, never a skip between.
+    parts.push(
+      skippedHere.has(t.blockedBy)
+        ? `after ${t.blockedBy} skipped: ${OTHER_PLATFORM}`
+        : `after ${t.blockedBy} failed`,
+    )
+  } else if (t.status === 'skipped' && t.exitCode === 0) {
+    // Exit 0 with no blocker is a platform skip; a fail-fast skip records 1.
+    parts.push(OTHER_PLATFORM)
   }
   if (t.remoteError !== null) parts.push(`remote \u2717 ${t.remoteError}`)
   return parts.map((p) => `  ${p}`).join('')
 }
+
+const OTHER_PLATFORM = 'needs another platform'
 
 /** Hit rows shown before the rest fold — the slowest restores. */
 const HITS_SHOWN = 16
@@ -389,6 +484,9 @@ export function formatTaskRows(
   const at = (t: (typeof ordered)[number]): string =>
     t.placement !== null ? `@${t.placement}` : ''
   const idW = Math.max(...ordered.map((t) => `${t.project}#${t.task}${at(t)}`.length), 4)
+  const skippedHere = new Set(
+    tasks.filter((t) => t.status === 'skipped').map((t) => `${t.project}#${t.task}`),
+  )
   const lines = ['']
   for (const t of ordered) {
     const id = `${t.project}#${t.task}${at(t)}`
@@ -410,7 +508,7 @@ export function formatTaskRows(
         paint(
           '',
           `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-            reasonParts(t),
+            reasonParts(t, skippedHere),
           c,
           { dim: true },
         ),
@@ -525,6 +623,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     // nothing, while `--list --failed` past green runs said there were none.
     const noRuns = (): boolean => listInvocations(db, { limit: 1 }).length === 0
 
+    if (parsed.sql !== undefined) return printQuery(db, parsed.sql, parsed.format)
+
     if (parsed.stats === true) {
       const branch = currentBranch(root, undefined, parsed.branch)
       return await printStats(db, parsed.task, parsed.format, branch)
@@ -547,12 +647,24 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         return 0
       }
       if (log.source === null) {
+        // A cached task with no entry was not saved (a read-only policy) or
+        // was pruned; calling it uncached sends the user to the config.
+        const [project, task] = splitTaskId(log.taskId)
+        const cached =
+          log.status !== 'failed' &&
+          (
+            db
+              .query('SELECT cached FROM runs WHERE run_id = ? AND project = ? AND task = ?')
+              .get(log.runId, project, task) as { cached: number | null } | null
+          )?.cached === 1
         sayNotice(
           'info',
           'vx last',
           log.status === 'failed'
             ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
-            : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
+            : cached
+              ? `${log.taskId} ended ${log.status}, and its entry is not in the cache: the run did not save it, or it was pruned since`
+              : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
         )
       } else if (log.output === '') {
         sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)
@@ -629,8 +741,14 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
             }
       })
       const steps = runSteps(cacheDir, inv.runId)
+      const warnings = runWarnings(cacheDir, inv.runId)
       process.stdout.write(
-        `${JSON.stringify({ invocation: inv, tasks, ...(steps.length > 0 ? { steps } : {}) })}\n`,
+        `${JSON.stringify({
+          invocation: inv,
+          tasks,
+          ...(steps.length > 0 ? { steps } : {}),
+          ...(warnings.length > 0 ? { warnings } : {}),
+        })}\n`,
       )
       return 0
     }
@@ -656,6 +774,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     )
     lines.push(...formatTaskRows(detail?.tasks ?? [], c))
     lines.push(...formatStepRows(runSteps(cacheDir, inv.runId), c))
+    const warnings = runWarnings(cacheDir, inv.runId)
+    if (warnings.length > 0) {
+      lines.push('', '  warnings', ...warnings.flatMap((w) => w.split('\n').map((l) => `    ${l}`)))
+    }
     // The next command after reading a failed run, with the arguments the
     // run forwarded to the tasks that got them (a failure under `-- --shard
     // 2` is that shard's); a dependency never got them, so its line has none.
@@ -667,7 +789,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       for (const withArgs of [false, true]) {
         const ids = failed
           .filter((t) => t.forwarded === withArgs)
-          .map((t) => `${t.project}#${t.task}`)
+          .map((t) => shellQuote(`${t.project}#${t.task}`))
         if (ids.length > 0)
           rerun.push(
             `  ${dim('re-run what failed:')} ${paint('', `vx run ${ids.join(' ')}${withArgs ? args : ''}`, c, { bold: true })}`,

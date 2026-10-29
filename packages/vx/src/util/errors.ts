@@ -56,23 +56,36 @@ export function refusal(
   return err
 }
 
-const CONFIG_FILE = String.raw`\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b`
 // A refusal that opens with the config that caused it: the schema's
-// `<file>: tasks.<name> …`, the loader's `<file> has unknown field …`, and
-// a load that failed, `Workspace config <file>: …` (project-loader.ts).
-const CONFIG_REFUSAL = new RegExp(`^(?:(?:Workspace|Project) config (?:at )?)?${CONFIG_FILE}`)
-// A throw whose innermost frame is a config's own line: the loader passes
-// it through for its stack, and it is the config's, not a vx defect.
-const CONFIG_FRAME = new RegExp(`^\\s+at (?:.*\\()?${CONFIG_FILE}`)
+// `<file>: tasks.<name> …`, and the loader's `Project config <file>: …` and
+// `Workspace config at <file> did not …`, which answered VX_E_REFUSED.
+const CONFIG_REFUSAL =
+  /^(?:(?:Project|Workspace) config (?:at )?)?\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
+
+const CONFIG_THROW = Symbol('vx.configThrow')
+
+/**
+ * A config's own throw, shown as thrown (its stack names its line), and
+ * answered as the config's refusal rather than a defect of vx.
+ */
+export function configThrow(err: object): object {
+  try {
+    Object.defineProperty(err, CONFIG_THROW, { value: true })
+  } catch {
+    // A frozen error stays VX_E_INTERNAL.
+  }
+  return err
+}
 
 /**
  * The stable code of anything `bin.ts` catches. A UserError's own, but
  * `VX_E_CONFIG` for a codeless one that names its config file; then the
- * environment's refusals; a config's own throw; anything else is a defect,
- * `VX_E_INTERNAL`. A UserError from another copy of core has no `code`
- * when that copy predates it.
+ * environment's refusals; anything else is a defect, `VX_E_INTERNAL`. A
+ * UserError from another copy of core has no `code` when that copy
+ * predates it.
  */
 export function errorCode(err: unknown): string {
+  if (typeof err === 'object' && err !== null && CONFIG_THROW in err) return 'VX_E_CONFIG'
   if (isUserError(err)) {
     const code = (err as { code?: unknown }).code
     if (typeof code === 'string' && code !== 'VX_E_REFUSED') return code
@@ -80,12 +93,6 @@ export function errorCode(err: unknown): string {
   }
   if (isOutOfFds(err)) return 'VX_E_FDS'
   if (isFsRefusal(err)) return 'VX_E_FS'
-  const frame = (err as { stack?: unknown } | null)?.stack
-  if (
-    typeof frame === 'string' &&
-    CONFIG_FRAME.test(frame.split('\n').find((l) => /^\s+at /.test(l)) ?? '')
-  )
-    return 'VX_E_CONFIG'
   return 'VX_E_INTERNAL'
 }
 
@@ -115,6 +122,30 @@ export function errorDocument(code: string, message: string): string {
     ? { docs: `https://vznjs.github.io/vx/cli/#${code.toLowerCase()}` }
     : {}
   return `${JSON.stringify({ ok: false, error: { code, message, ...docs } })}\n`
+}
+
+/**
+ * What a thrown value says, for a line that names its thrower. A plugin
+ * may throw anything: `String(err)` read `[object Object]` for an
+ * error-like `{ message }`, `undefined` for a bare `throw`, and itself threw
+ * on an object with no prototype. Never throws.
+ */
+export function thrownMessage(err: unknown): string {
+  try {
+    if (typeof err === 'string') return err === '' ? 'threw an empty string' : err
+    if (typeof err === 'object' && err !== null) {
+      const message = (err as { message?: unknown }).message
+      if (typeof message === 'string' && message !== '') return message
+      if (err instanceof Error) return `threw ${err.name} with no message`
+      const json = JSON.stringify(err)
+      if (json !== undefined) return `threw ${json.length > 200 ? `${json.slice(0, 200)}…` : json}`
+      return 'threw an object'
+    }
+    if (typeof err === 'bigint') return `threw ${err}n`
+    return `threw ${String(err)}`
+  } catch {
+    return 'threw an object'
+  }
 }
 
 /**

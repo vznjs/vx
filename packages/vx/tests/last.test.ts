@@ -44,6 +44,9 @@ const APP_CONFIG = `
         dependsOn: ['boom'],
         exec: { command: 'echo never' },
       },
+      "it's boom": {
+        exec: { command: 'exit 4' },
+      },
     },
   }
 `
@@ -257,6 +260,17 @@ describe('vx last (e2e)', () => {
   )
 
   it(
+    'the re-run line quotes a task id a shell would split',
+    async () => {
+      // Joined bare, `app#it's boom` pasted as an unclosed quote.
+      await vx(root, ['run', "it's boom", '--all'])
+      const lines = (await vx(root, ['last'])).out.trimEnd().split('\n')
+      expect(lines.at(-1)).toBe(`  re-run what failed: vx run 'app#it'\\''s boom'`)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task killed by a signal replays with the exit code and the signal it stands for',
     async () => {
       const r1 = await vx(root, ['run', 'killed', '--all'])
@@ -428,6 +442,16 @@ describe('parseLastArgs', () => {
       500,
       '--list must be a whole number from 1 to 500 (got 501) (see `vx last --help`)',
     ])
+    // `Number()` read these as 100, 16, 5 and 5; an empty `=` said "(got )".
+    expect(
+      ['1e2', '0x10', '5.0', ' 5', ''].map((v) => parseLastArgs([`--list=${v}`]).error),
+    ).toEqual([
+      '--list must be a whole number from 1 to 500 (got 1e2) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got 0x10) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got 5.0) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got  5) (see `vx last --help`)',
+      '--list= requires a count from 1 to 500; bare --list shows 10 (see `vx last --help`)',
+    ])
     expect(parseLastArgs(['--format', 'json']).format).toBe('json')
     expect(parseLastArgs(['--format=pretty']).format).toBe('pretty')
     expect(parseLastArgs(['--format', 'yaml']).error).toBe(
@@ -593,6 +617,28 @@ describe('formatTaskRows', () => {
       'remote ✗ download: connection refused; upload: 503',
     )
     expect(formatTaskRows([row('t')])[1]).not.toContain('remote')
+  })
+
+  // A platform skip and what it blocked are no failure (the run exits 0),
+  // and the replay read `after p#mac failed` under an `ok` header.
+  it('a skip behind another platform says so, not that its blocker failed', () => {
+    const lines = formatTaskRows([
+      row('mac', { status: 'skipped', exitCode: 0, cached: false, hash: '' }),
+      row('macdep', { status: 'skipped', exitCode: 1, blockedBy: 'p#mac', hash: '' }),
+      row('boom', { status: 'failed', exitCode: 3 }),
+      row('after', { status: 'skipped', exitCode: 1, blockedBy: 'p#boom', hash: '' }),
+      row('fast', { status: 'skipped', exitCode: 1, hash: '' }),
+    ])
+    const reason = (task: string): string => {
+      const line = lines.find((l) => l.includes(`p#${task} `))!
+      return line.slice(line.indexOf('ms') + 2).trim()
+    }
+    expect([reason('mac'), reason('macdep'), reason('after'), reason('fast')]).toEqual([
+      'no-cache  needs another platform',
+      'after p#mac skipped: needs another platform',
+      'after p#boom failed',
+      '',
+    ])
   })
 
   it('names where an executor ran a task, and nothing for one run here', () => {
