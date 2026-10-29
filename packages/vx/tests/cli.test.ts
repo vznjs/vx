@@ -839,20 +839,31 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stderr).toContain('no projects matched filter(s): oen\n\n  fix  one\n')
   })
 
-  it('a `../` path filter is not a path form — refused loud, naming the pattern (parity L2)', async () => {
+  it('a path filter that climbs out of the root is refused, naming the pattern (parity L2)', async () => {
     // `./` is root-relative in vx by documented choice, so `../apps/*`
-    // (Turbo's cwd-relative sibling form) has no meaning here; it falls
-    // through to the name matcher and must say so, not select nothing
-    // quietly.
+    // (Turbo's cwd-relative sibling form) has no meaning here. `../` and
+    // `{..}` named the directory every project sits under, and all ran.
     let stderr = ''
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
       stderr += String(chunk)
       return true
     })
-    const code = await run(['run', '--filter', '../packages/*', 'hello'])
-    expect(code).not.toBe(0)
-    expect(stderr).toContain('no projects matched filter(s): ../packages/*')
+    const said: [string, number][] = []
+    for (const f of ['../packages/*', '../', '{..}']) {
+      stderr = ''
+      said.push([stderr, await run(['run', '--filter', f, 'hello'])])
+      said[said.length - 1]![0] = stderr.trim()
+    }
+    const refusal = (f: string) =>
+      noticed(
+        `vx run: filter "${f}" names a directory outside the workspace root: a path filter is relative to the root`,
+      ).trimEnd()
+    expect(said).toEqual([
+      [refusal('../packages/*'), 1],
+      [refusal('../'), 1],
+      [refusal('{..}'), 1],
+    ])
   })
 
   it('a filter that matched but walked to nothing, or names no project, says so (item 1030)', async () => {
