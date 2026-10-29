@@ -179,7 +179,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     at 100,000 files). The key stands only for an index written before
     the run began and still in place after its listing, so a `git add`
     between the two cannot pair one index's verdict with the other's
-    entries; any other run checks every blob. A changed index spawns
+    entries; any other run checks every blob. That check's own listing
+    reads the index again: one written since the enumeration's stamp
+    (an add rewrote a resized entry to one whose size fits) trusts no
+    OID, as the enumeration does. A changed index spawns
     `git ls-files -s -v -z --debug` for the recorded sizes, takes each
     blob's size from `blob_sizes` (fixed for its OID), and asks one
     `git cat-file --batch-check` for the ones not yet known (65 ms

@@ -385,4 +385,59 @@ exec '${real}' "$@"
     },
     TIMEOUT,
   )
+  it(
+    'an add before the blob-size listing (A-60) trusts no OID',
+    async () => {
+      // The index holds the LF blob `core.autocrlf` wrote for a CRLF file,
+      // stat-clean with autocrlf gone: only the blob-size check drops it.
+      // An add before that check's own listing rewrote the entry to the
+      // CRLF blob, whose size matches, so the check, reading the new
+      // index, kept the LF OID the enumeration listed from the old one.
+      const dir = await addProject(root, 'a', { files: { 'f.txt': 'aa\n' } })
+      const file = path.join(dir, 'f.txt')
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'fixture')
+      await writeFile(file, 'aa\r\n')
+      const past = new Date(Date.now() - 10_000)
+      await utimes(file, past, past)
+      git('-c', 'core.autocrlf=true', 'add', file)
+      const rel = path.relative(root, file)
+      const lf = git('rev-parse', `HEAD:${rel}`).trim()
+      expect(git('ls-files', '-s', file).split(' ')[1]).toBe(lf)
+      const shim = path.join(root, '.shim')
+      const marker = path.join(shim, 'added')
+      const real = Bun.which('git')!
+      await mkdir(shim)
+      // `touch` makes the add re-read the file rather than keep the entry.
+      await writeFile(
+        path.join(shim, 'git'),
+        `#!/bin/sh
+case "$*" in
+  *" --debug "*) if [ ! -f '${marker}' ]; then touch '${file}' && '${real}' -C '${root}' add '${rel}' || exit 1; : > '${marker}'; fi ;;
+esac
+exec '${real}' "$@"
+`,
+        { mode: 0o755 },
+      )
+      const memo = new GitFilesCache()
+      const PATH = process.env['PATH']
+      process.env['PATH'] = `${shim}${path.delimiter}${PATH ?? ''}`
+      try {
+        await populateGitFilesCache(root, [dir], memo)
+      } finally {
+        process.env['PATH'] = PATH
+      }
+      expect({
+        added: await Bun.file(marker).exists(),
+        trusted: memo.oidsFor(dir)?.get(file),
+      }).toEqual({
+        added: true,
+        trusted: undefined,
+      })
+      // The add stored the CRLF blob: the old OID named other bytes.
+      expect(git('ls-files', '-s', file).split(' ')[1]).not.toBe(lf)
+    },
+    TIMEOUT,
+  )
 })
