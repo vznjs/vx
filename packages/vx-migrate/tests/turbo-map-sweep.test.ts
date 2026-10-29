@@ -360,6 +360,25 @@ describe('turbo-map: what the sweep found unheld', () => {
     ])
   })
 
+  // vercel/turborepo#1681: Turbo 1 dropped `baseBranch`, which old repos
+  // still spell; it neither fails the mapping nor reaches a task.
+  it('a top-level `baseBranch` maps nothing and fails nothing', async () => {
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const packageJson = { name: 'a', scripts: { build: 'b' } }
+    const map = async (cfg: object) => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(cfg))
+      const m = await mapTurboWorkspace(
+        root,
+        [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
+        opts,
+      )
+      return [m.projects[0]!.tasks, m.notes]
+    }
+    const tasks = { build: { inputs: ['src/**'] } }
+    expect(await map({ baseBranch: 'origin/main', tasks })).toEqual(await map({ tasks }))
+  })
+
   // vercel/turborepo#10083: Turbo refuses a directory holding both files.
   // Read first, `turbo.json` shadowed the `.jsonc` beside it in silence,
   // so an edit there keyed and ran nothing.
