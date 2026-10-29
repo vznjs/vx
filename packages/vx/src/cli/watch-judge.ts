@@ -10,6 +10,8 @@ import { gitIgnored, gitSpeller } from './watch-filter.js'
 import { modifiedBefore } from './watch-fs.js'
 
 const ABSENT = -1n
+/** `settledState` of a directory with no entries. */
+const EMPTY_DIR = xxh3(Buffer.from(''))
 
 function settledState(abs: string): bigint {
   let st: fs.Stats
@@ -101,6 +103,8 @@ export interface JudgeContext {
   namedIgnored?(): readonly string[]
   /** Whether `abs`, under the project at `ownDir`, lies in a project nested there (`makeFence`). */
   fenced?(ownDir: string, abs: string): boolean
+  /** Whether a watch waits on `abs` itself: a project's directory, or one above it. */
+  awaited?(abs: string): boolean
   /** The files git listed at the arm; absent when git could not answer. */
   existedAtArm?: ReadonlySet<string>
   /** The files git tracked at the arm; absent when git could not answer. */
@@ -182,6 +186,11 @@ export class ChangeJudge {
     const prev = this.lastState.get(abs)
     this.lastState.set(abs, state)
     if (prev !== undefined) return prev === state
+    // A new empty directory holds nothing a key reads, and the poller,
+    // sampling files, never reported one: a file made in it is the edit.
+    // One a watch waits on (a project directory made again) is a change:
+    // its cycle re-arms the project.
+    if (state === EMPTY_DIR && isDirectory(abs) && this.ctx.awaited?.(abs) !== true) return true
     if (state === ABSENT) {
       const listed = this.ctx.existedAtArm
       return !ignored && listed !== undefined && !listed.has(spell(abs)) && !this.inNestedRepo(abs)
