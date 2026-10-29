@@ -332,6 +332,19 @@ describe('affectedProjects', () => {
 
   // `^main` is rev-list's exclusion: `git diff ^main` diffed from main itself,
   // so a change only main made selected its project too, green.
+  // `rev-parse --verify --quiet` exits 128 and prints nothing for a reflog
+  // entry the log lacks: the refusal read "git rev-parse failed (exit 128)".
+  it("names git's reason for a reflog entry the log lacks", async () => {
+    const err = await affectedProjects({ workspaceRoot: root, since: 'HEAD@{99}', projects }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err).toBeInstanceOf(UserError)
+    expect(err?.message).toMatch(
+      /^git ref "HEAD@\{99\}" did not resolve: log for 'HEAD' only has \d+ entries\.$/,
+    )
+  })
+
   it('refuses a base written as an exclusion (`^<ref>`)', async () => {
     await git(root, 'branch', '-m', 'main')
     await git(root, 'checkout', '-q', '-b', 'feature')
@@ -1009,7 +1022,12 @@ describe('affectedProjects', () => {
       // one its docblock names outright.
       describe('claimedAffected — what a real plugin is allowed to answer', () => {
         const change = { file: 'pnpm-lock.yaml', before: null, after: null }
-        const ctx = { projects: [] } as unknown as FingerprintContext
+        const ctx = {
+          projects: [
+            { name: 'a', dir: '/ws/a' },
+            { name: 'b', dir: '/ws/b' },
+          ],
+        } as unknown as FingerprintContext
         const answering = (answer: unknown): VxPlugin =>
           testPlugin('org/pm', {
             fingerprint: {
@@ -1055,6 +1073,12 @@ describe('affectedProjects', () => {
         it('a name that is not a string is refused, rather than added as one', async () => {
           expect(await refusal([1])).toBe(
             "plugin 'org/pm' failed in fingerprint: affected project a number is not a name",
+          )
+        })
+
+        it('a name that is no project is refused: it selected nothing, and its tests did not run', async () => {
+          expect(await refusal(['a', 'pkg-a'])).toBe(
+            'plugin \'org/pm\' failed in fingerprint: affected project "pkg-a" is not a project in this workspace',
           )
         })
 

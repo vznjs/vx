@@ -68,6 +68,17 @@ describe('configErrorFrame', () => {
       )[0],
     ).toBe(`${file}:4:7: tasks.build: \`exec\` is odd`)
   })
+  it("frames a syntax error at the loader's line:col", () => {
+    // Bun's BuildMessage, as the loader words it: no field, a position.
+    expect(configErrorFrame(`Project config ${file}:7:15: Expected "}" but found "x"`, dir)).toBe(
+      'vx.config.ts:7:15: Expected "}" but found "x"\n\n' +
+        '  5 |     },\n' +
+        "  6 |     'lint.fix': {\n" +
+        "> 7 |       exec: { comand: 'x', timeout: -1 },\n" +
+        '    |               ^',
+    )
+  })
+
   it('frames a .vx/workspace.ts field too', async () => {
     await mkdir(path.join(dir, '.vx'), { recursive: true })
     const ws = path.join(dir, '.vx', 'workspace.ts')
@@ -109,6 +120,30 @@ describe('vx lock prints a config refusal with its frame', () => {
       expect(err).toContain(
         "  > 7 |       exec: { comand: 'x', timeout: -1 },\n      |               ^\n",
       )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a syntax error too, at the line Bun places it', async () => {
+    const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-syntax-' }))
+    try {
+      const pkg = path.join(root, 'packages', 'b')
+      await mkdir(pkg, { recursive: true })
+      await writeFile(path.join(pkg, 'vx.config.mjs'), 'export default {\n  tasks: {}\n')
+      const r = Bun.spawnSync(['bun', BIN, 'lock'], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(r.exitCode).toBe(1)
+      const err = r.stderr.toString()
+      expect(err).toStartWith(
+        '✗ vx lock  lock not written\n\n  packages/b/vx.config.mjs:2:12\n  Expected "}" but found end of file\n',
+      )
+      expect(err).toContain('  > 2 |   tasks: {}\n      |            ^\n')
+      expect(err).not.toContain(root)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

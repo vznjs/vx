@@ -35,7 +35,7 @@ as long as the relay keeps it, while the messages keep their subprotocol.
 One request is HTTP, a websocket upgrade of `GET
 <relay>/v1/sessions/<session>/socket`. `<session>` is the session id, a random
 (v4) UUID, so no one can guess it; another answers `400`, another path
-`404`, another method `405`, a request that is no upgrade `426`. It carries
+`404`, another method `405` (`Allow: GET`), a request that is no upgrade `426`. It carries
 `Authorization: Bearer <token>` (§ Tokens).
 
 | Query       | Does                                                                         |
@@ -147,7 +147,8 @@ without it, the host too, may dial again by its `id` for a grace, 10 s
 on `@vzn/vx-dte-server`, and is gone when the grace passes with no socket:
 a peer as if it left, the host closing its session. The relay keeps no
 timer and counts no heartbeat: it finds a grace passed as the session is
-next used. A client whose socket drops dials again, and says its `leave`
+next used. A join whose socket never opened (its client dropped during
+the upgrade) has the same grace from the join. A client whose socket drops dials again, and says its `leave`
 again on a new socket if the first dropped under it.
 `heartbeatMs` is how often participants should hear from each other: a
 peer quiet on a socket that never closed is its peers' to lose. The

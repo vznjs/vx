@@ -11,6 +11,7 @@
 // jose's to check: signature, algorithm, audience and times.
 
 import { hashPart } from './hash-part.js'
+import { Refusal } from './refusal.js'
 import {
   createRemoteJWKSet,
   customFetch,
@@ -19,16 +20,6 @@ import {
   jwtVerify,
   type JWTPayload,
 } from 'jose'
-
-/** A request refused: its HTTP status and what to fix. */
-export class Refusal extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 /** One entry of `ALLOW`: the jobs of one workflow file of one repository at one issuer. */
 export interface Allowed {
@@ -90,9 +81,15 @@ export function parseAllow(list: string): Allowed[] {
       const https =
         issuer.startsWith('https://') ||
         (issuer.startsWith('http://') && URL.parse(issuer)?.hostname === '127.0.0.1')
-      if (r < 0 || !https || !repository.includes('/') || workflow === '') {
+      // An entry missing a part splits elsewhere: its issuer is then no URL.
+      const url = /^[a-z][a-z0-9+.-]*:\/\/[^/]/i.test(issuer)
+      if (r < 0 || !url || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
+      if (!https)
+        throw new Error(
+          `${e}: the issuer is https://, not ${issuer} (plain http only on 127.0.0.1)`,
+        )
       return { issuer, repository, workflow }
     })
 }
@@ -110,17 +107,15 @@ const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCas
 const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /**
- * The scope a token writes: its branch. A GitHub pull request's run writes
- * its head branch (its `ref` is the merge ref the run's own reads never
- * name); a merge queue's (`merge_group`) run its base branch, which its
- * code is about to become (2026-10-25: "just strip it"); any other run its `ref`,
- * GitLab's its `ref_path`. Only a `pull_request` run takes its head
- * branch, and only a `merge_group` run's ref is renamed: anyone can push
- * a branch named like a queue ref. A `pull_request_target` run writes
- * nothing: its `head_ref` is a fork's branch name, chosen by the fork, and
- * its `ref` is the base branch, which a fork's code must never write. Nor
- * does a pull request whose head branch has its base branch's name: only
- * a fork's can. A GitLab merge request pipeline writes its source branch
+ * The scope a token writes: its `ref`, GitLab's `ref_path`. A GitHub pull
+ * request's run writes its merge ref, `refs/pull/<n>/merge`, never its
+ * `head_ref`: a fork names that, and no claim tells a fork's from the
+ * repository's own, so a fork's branch `release` wrote release. A merge
+ * queue's (`merge_group`) run writes its base branch, which its code is
+ * about to become (2026-10-25: "just strip it"); only its ref is renamed:
+ * anyone can push a branch named like a queue ref. A `pull_request_target`
+ * run writes nothing: it runs a fork's code on the base branch's `ref`,
+ * which that code must never write. A GitLab merge request pipeline writes its source branch
  * only when `source_project_path` names its own project: a fork's runs in
  * the parent project with the fork's branch as its `ref_path`, and a
  * GitLab before 19.5 names no source project.
@@ -139,15 +134,7 @@ function branchOf(iss: string, claims: JWTPayload): string | undefined {
   }
   const event = claims['event_name']
   if (event === 'pull_request_target') return undefined
-  const head = event === 'pull_request' ? claims['head_ref'] : undefined
-  // Only a fork's head branch can share its base branch's name.
-  if (head !== undefined && head === claims['base_ref']) return undefined
-  const ref =
-    iss === GITHUB
-      ? typeof head === 'string' && head !== ''
-        ? `refs/heads/${head}`
-        : claims['ref']
-      : claims['ref_path']
+  const ref = iss === GITHUB ? claims['ref'] : claims['ref_path']
   if (typeof ref !== 'string' || !ref.startsWith('refs/') || ref.length > 512) return undefined
   const queued = iss === GITHUB && event === 'merge_group' ? QUEUE.exec(ref) : null
   return queued === null ? ref : `refs/heads/${queued[1]}`
@@ -282,6 +269,9 @@ const bearerOf = (req: Request): string | undefined =>
 
 /** A token checked: jose's checks, then ALLOW's repository and workflow, and the branch it may write. */
 function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Promise<Access> {
+  // A blank one is no origin a token names: every token was "wrong audience".
+  if (opts.audience !== undefined && opts.audience.trim() === '')
+    throw new Error('AUDIENCE: the aud CI tokens name, or unset, not blank')
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
   // jose keeps each issuer's keys, and refetches them for a key it lacks.
@@ -315,7 +305,12 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
       throw new Refusal(401, 'not a JWT')
     }
     if (typeof iss !== 'string' || !opts.allow.some((a) => a.issuer === iss)) {
-      throw new Refusal(401, "an issuer this server's ALLOW does not name")
+      throw new Refusal(
+        401,
+        typeof iss === 'string'
+          ? `issuer ${iss.slice(0, 200)} is not in this server's ALLOW: add issuer:owner/repo:workflow for it`
+          : 'the token names no issuer (iss)',
+      )
     }
     const audience = opts.audience ?? new URL(req.url).origin
     let claims: JWTPayload
@@ -330,7 +325,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
         })
       ).payload
     } catch (err) {
-      throw refusal(err, iss)
+      throw refusal(err, iss, audience)
     }
     const claim = repoClaimOf(iss)
     const named = claims[claim]
@@ -360,7 +355,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
 const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
 
 /** What jose's refusal of a token says. */
-function refusal(err: unknown, iss: string): Refusal {
+function refusal(err: unknown, iss: string, audience: string): Refusal {
   if (err instanceof Refusal) return err
   // A refetch of the keys for a kid not held failed: the network, not the token.
   // Keys answered as JSON that is no key set (a proxy's error page) are the issuer's fault too.
@@ -375,12 +370,19 @@ function refusal(err: unknown, iss: string): Refusal {
   if (err instanceof errors.JWSSignatureVerificationFailed) return new Refusal(401, 'bad signature')
   if (err instanceof errors.JWTExpired) return new Refusal(401, 'expired')
   if (err instanceof errors.JWTClaimValidationFailed) {
-    if (err.claim === 'aud') return new Refusal(401, 'wrong audience')
+    if (err.claim === 'aud')
+      return new Refusal(
+        401,
+        `the token's aud is ${audOf(err.payload)}, not this server's ${audience}: ask CI for a token for ${audience}, or set the server's AUDIENCE`,
+      )
     if (err.claim === 'nbf') return new Refusal(401, 'not yet valid')
     if (err.reason === 'missing') return new Refusal(401, `no ${err.claim} claim`)
   }
   return new Refusal(401, 'not a JWT')
 }
+
+/** A token's `aud`, as a refusal names it: "wrong audience" alone left the fix to a guess. */
+const audOf = (claims: JWTPayload): string => [claims.aud ?? 'unset'].flat().join(', ')
 
 async function defaultFetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })

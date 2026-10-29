@@ -289,6 +289,7 @@ export function planNxUpstream(
     into: NxInputs,
     todos: string[],
     edges: Set<string>,
+    depsOf = false,
   ): void => {
     // Nx reads the list as `dependsOn`'s `projects` (`findMatchingProjects`):
     // `*` patterns, `tag:` and `!` exclusions. Looked up as names, a
@@ -302,6 +303,10 @@ export function planNxUpstream(
     for (const p of literal)
       todos.push(`input project ${JSON.stringify(p)} is not a graph node — map manually`)
     for (const p of matchNxProjects(of, projectTags)) {
+      if (depsOf) {
+        fold(p, name, new Set(), into, todos, edges)
+        continue
+      }
       const u = { name }
       const meta = metaByNode.get(p)
       if (meta !== undefined) {
@@ -319,7 +324,7 @@ export function planNxUpstream(
     const edges = new Set<string>()
     for (const u of into.upstream) {
       if (u.of === 'deps') fold(node, u.name, new Set(), into, todos, edges)
-      else foldProjects(u.name, u.of, into, todos, edges)
+      else foldProjects(u.name, u.of, into, todos, edges, u.depsOf)
     }
     return [...edges]
   }
@@ -337,7 +342,7 @@ export function planNxUpstream(
       fold(node, name, peers, inputs, todos, edges)
       // A nested `^other` in this project's `name` input.
       for (const u of inputs.upstream) {
-        if (u.of !== 'deps') foldProjects(u.name, u.of, inputs, todos, edges)
+        if (u.of !== 'deps') foldProjects(u.name, u.of, inputs, todos, edges, u.depsOf)
         else if (u.name !== name) fold(node, u.name, peers, inputs, todos, edges)
       }
       // Nx hashes a fileset that matches nothing as nothing; core warns of

@@ -388,6 +388,26 @@ describe('every input the digest must read', () => {
     expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['.', 'packages/a'])
   })
 
+  it('a workspace whose name a root package holds resolves under `./<name>`, where Bun nests its own', () => {
+    // Bun 1.4.4 for a workspace named `ms` beside a root `ms@2.0.0`: no
+    // root entry for the workspace, and what it nests sits under `./ms`.
+    // Resolved from `ms`, its is-number was the root's, so a bump of its
+    // own moved no key, here or in `a`, which links it.
+    const text = (v: string) =>
+      doc(
+        `"": { "name": "ws", "dependencies": { "ms": "2.0.0" } },
+    "packages/a": { "name": "a", "dependencies": { "ms": "workspace:*" } },
+    "packages/c": { "name": "ms", "dependencies": { "is-number": "${v}" } }`,
+        `"a": ["a@workspace:packages/a"],
+    "is-number": ["is-number@6.0.0", "", {}, "sha512-n6"],
+    "ms": ["ms@2.0.0", "", {}, "sha512-ms"],
+    "./ms/is-number": ["is-number@${v}", "", {}, "sha512-n${v}"],
+    "a/ms": ["ms@workspace:packages/c"],
+    "a/ms/is-number": ["is-number@${v}", "", {}, "sha512-n${v}"]`,
+      )
+    expect(movedDirs(text('5.0.0'), text('7.0.0'))).toEqual(['packages/a', 'packages/c'])
+  })
+
   it('an entry that is not a package tuple is passed over, not a crash', () => {
     const text = doc(`"": { "name": "ws" }`, `"odd": 5, "also": [7]`)
     expect([...digests(text).keys()]).toEqual(['.'])
@@ -397,7 +417,7 @@ describe('every input the digest must read', () => {
 describe('bun()', () => {
   it('refuses an unknown scope', () => {
     expect(() => bun({ scope: 'file' as never })).toThrow(
-      /bun\(\) scope must be 'project' or 'workspace'/,
+      /bun\(\) option "scope" must be 'project' or 'workspace', got/,
     )
   })
 

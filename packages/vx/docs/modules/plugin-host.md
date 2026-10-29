@@ -22,7 +22,12 @@ that set `deps = null` was refused as "null is not an object", naming
 neither the task nor the field. Its `projectName` and `taskName` must be
 names and its `projectDir` an absolute path (X-94): a node a hook added
 without one failed at its run as an internal error (a TypeError from
-`path`), and a relative one keyed and ran against vx's own cwd.
+`path`), and a relative one keyed and ran against vx's own cwd. Its `id`
+must be `projectName#taskName`: a copy under a new id kept the old
+`taskName`, which `--exclude-dependencies` read while the key read the id.
+Its `projectName` must name a project of the workspace and its
+`projectDir` be that project's directory (`graph-stage.ts`): a node under
+a directory no project owns ran, keyed and cleaned its outputs there.
 
 Every capability is resolved inside `prepareRun`/`run()` from the declared
 list (`prepared.plugins`). (A whole-run `backend` capability was resolved
@@ -76,7 +81,8 @@ nothing runs and caches here.
   declared order, behind `host.localCache` in one `LayeredCache`, each
   gated by `host.policy` alone, and names the plugin
   in its warnings. No remote leaves the local store unwrapped.
-  `REMOTE_CACHE_METHODS` is what a returned remote must carry.
+  `REMOTE_CACHE_METHODS` is what a returned remote must carry; an optional
+  `open`, `lend`, `hasMany` or `missing` that is there must be a function.
 - `buildAdmission(plugins, nodes, concurrency, warn)` → the scheduler's
   `admit(id, running)` predicate, or undefined when no plugin declares
   `admit` (the scheduler then tracks nothing). Every declaring plugin is

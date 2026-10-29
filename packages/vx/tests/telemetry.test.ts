@@ -783,6 +783,8 @@ describe('subscribeTelemetry — host', () => {
         bad('org/null', null),
         bad('org/number', 42),
         bad('org/wants', { wants: 'run.start', onRecord: () => undefined }),
+        // A misspelt kind was a sink that never heard it, with no word.
+        bad('org/typo', { wants: ['task.end', 'task.logs'], onRecord: () => undefined }),
       ],
       createEventBus(),
       { ...ctx, warn: (m) => warnings.push(m) },
@@ -795,6 +797,10 @@ describe('subscribeTelemetry — host', () => {
       why('org/null', 'telemetry sink must be an object, got null'),
       why('org/number', 'telemetry sink must be an object, got number'),
       why('org/wants', "telemetry sink 'wants' must be an array, got string"),
+      why(
+        'org/typo',
+        'telemetry sink \'wants\' names "task.logs", which is no record kind (run.start, task.start, task.log, task.sample, task.end, run.end)',
+      ),
     ])
   })
 
@@ -945,6 +951,11 @@ describe('telemetry — end-to-end through run()', () => {
       'vx run build -- <2 arguments>',
     )
     expect(invocationCommand(['vx', 'run', 'build'])).toBe('vx run build')
+    // The CLI's line is shell-quoted: split at every blank, `'a b'` counted
+    // two arguments.
+    expect(invocationCommand("vx run --filter 'my app' build -- 'a b' 'it'\\''s'")).toBe(
+      "vx run --filter 'my app' build -- <2 arguments>",
+    )
     const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'vx-telemetry-argv-'))
     const argv = process.argv
     try {
