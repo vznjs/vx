@@ -46,12 +46,16 @@ describe('live task usage', () => {
     expect(c.running).toBe(false)
   })
 
-  it('cores are CPU time over wall time between two looks; mem is the latest', async () => {
+  // The values its results row shows once it ends: average cores and peak
+  // memory, never the last half second's.
+  it('cores are the average since the task started; mem is its peak so far', async () => {
     const c = clock()
     let now = 0
     const seen = [
-      { cpuMs: 100, rssBytes: 10 },
-      { cpuMs: 1900, rssBytes: 30 },
+      { cpuMs: 1500, rssBytes: 30 },
+      // A descendant exited: its CPU and memory left the tree's sum.
+      { cpuMs: 1200, rssBytes: 10 },
+      { cpuMs: 3600, rssBytes: 20 },
     ]
     const live = createLiveUsage({
       every: c.every,
@@ -60,12 +64,15 @@ describe('live task usage', () => {
     })
     live.track('p#a', 7)
     live.usage('p#a')
-    await c.tick()
-    // One look has no interval yet.
-    expect(live.usage('p#a')).toBeUndefined()
     now = 1000
     await c.tick()
-    expect(live.usage('p#a')).toEqual({ cores: 1.8, rssBytes: 30 })
+    expect(live.usage('p#a')).toEqual({ cores: 1.5, rssBytes: 30 })
+    now = 2000
+    await c.tick()
+    expect(live.usage('p#a')).toEqual({ cores: 0.75, rssBytes: 30 })
+    now = 3000
+    await c.tick()
+    expect(live.usage('p#a')).toEqual({ cores: 1.2, rssBytes: 30 })
   })
 
   it('a task that ended has no usage, and the timer stops with the last', async () => {
