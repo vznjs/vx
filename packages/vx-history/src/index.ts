@@ -314,6 +314,19 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       `vxHistory() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
     )
   }
+  // A misspelt key inside was read as unset, unsaid. Values stay `any`:
+  // a bad number warns per run (`numberWarnings`), as at the top level.
+  if (resources !== undefined && resources !== false) {
+    refuseUnknownOptions('vxHistory() option "resources"', resources, { headroom: 'any' })
+  }
+  for (const [id, r] of Object.entries(options.reservations ?? {})) {
+    if (r !== null && typeof r === 'object' && !Array.isArray(r)) {
+      refuseUnknownOptions(`vxHistory() option "reservations[${JSON.stringify(id)}]"`, r, {
+        cpus: 'any',
+        memory: 'any',
+      })
+    }
+  }
   // `''` resolved to the workspace root: each run warned it could not read
   // a directory and failed in teardown renaming its timings over it.
   // Read as `refs/heads/<name>`: `''`, a space or a full ref read

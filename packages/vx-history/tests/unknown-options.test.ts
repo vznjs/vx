@@ -51,3 +51,17 @@ it('a defaultBranch that is no branch name is refused', () => {
     )
   expect(refusal(() => vxHistory({ defaultBranch: 'release/1.x' }))).toBe('taken')
 })
+
+// Only the top level was checked: `resources: { headrom }` packed on the
+// default headroom, and `{ cpu: 2 }` reserved no cores, both unsaid.
+it('a misspelt key inside resources or a reservation is refused', () => {
+  expect(refusal(() => vxHistory({ resources: { headrom: 1.5 } as never }))).toBe(
+    'vxHistory() option "resources" has unknown option "headrom" (allowed: headroom) — did you mean headroom?',
+  )
+  expect(refusal(() => vxHistory({ reservations: { 'a#b': { cpu: 2 } as never } }))).toBe(
+    'vxHistory() option "reservations["a#b"]" has unknown option "cpu" (allowed: cpus, memory) — did you mean cpus?',
+  )
+  expect(
+    refusal(() => vxHistory({ reservations: { 'a#b': { cpus: 2, memory: Number('x') } } })),
+  ).toBe('taken')
+})
