@@ -117,8 +117,10 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    nothing, as the refresh did.
 3. Untracked files (`git ls-files --others --exclude-standard`) are
    unioned in — a brand-new source file is a change. `.vx/projects.lock.json` is
-   filtered out, so re-running `vx lock` never selects everything. A
-   changed path that is a link to a directory, or was a link (mode
+   no project's path: its entries are compared at the base and now (when
+   both have a lock that parses), and a project whose entry changed is
+   selected whole, so a lock rewritten over the same configs selects
+   nothing. A changed path that is a link to a directory, or was a link (mode
    120000 on either side) and is no link to a file now, is a `dirLinks`
    entry: `declaresInput` matches it as a directory a glob may reach
    below, as the key does (`mayHoldMatch`).

@@ -19,7 +19,7 @@ import {
   relPosix,
   UserError,
 } from '../util/index.js'
-import { LOCKFILE_NAME } from './lockfile.js'
+import { LOCKFILE_NAME, lockKey } from './lockfile.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
@@ -310,7 +310,8 @@ export async function affectedChanges(
 
   // What vx writes under `.vx` (the lock, its git files, the cache) is
   // excluded like a gitignored file: re-running `vx lock` must not mark
-  // every project affected, nor the root project whole.
+  // every project affected, nor the root project whole. The lock's
+  // entries are read below.
   // An untracked file under `node_modules` is an install, which the input
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.
   // So is each project's `vx.lock.json`, the review copy `vx lock` writes
@@ -497,6 +498,37 @@ export async function affectedChanges(
       : undefined,
   )
   for (const name of claimedOwned.keys()) owned.add(name)
+  // A run reads each config from the lock, so an entry that moved moved
+  // its project's keys, though no config or import did (one evaluated
+  // under another env, a preset imported by package name).
+  if (diffed.paths.includes(LOCKFILE_NAME) || untracked.includes(LOCKFILE_NAME)) {
+    // A side with no lock (or one that will not parse) ran nothing from
+    // it: the paths of the configs say what changed, as before the lock.
+    const entries = (bytes: Uint8Array | null): Record<string, unknown> | null => {
+      if (bytes === null) return null
+      try {
+        const locked = (JSON.parse(new TextDecoder().decode(bytes)) as { projects?: unknown })
+          .projects
+        return typeof locked === 'object' && locked !== null
+          ? (locked as Record<string, unknown>)
+          : null
+      } catch {
+        return null
+      }
+    }
+    const before = entries(await gitBytesAt(args.workspaceRoot, base, LOCKFILE_NAME))
+    const after = entries(await bytesOrNull(path.join(args.workspaceRoot, LOCKFILE_NAME)))
+    const same = (dir: string): boolean =>
+      before === null ||
+      after === null ||
+      (Object.hasOwn(before, dir) === Object.hasOwn(after, dir) &&
+        JSON.stringify(before[dir]) === JSON.stringify(after[dir]))
+    for (const p of projects) {
+      if (same(lockKey(rootDir, p.dir))) continue
+      owned.add(p.name)
+      whole.add(p.name)
+    }
+  }
 
   // A config or manifest that makes an existing directory a project took
   // files from the project above it.
