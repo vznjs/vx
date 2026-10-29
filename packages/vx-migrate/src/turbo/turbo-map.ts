@@ -36,9 +36,12 @@ import {
   keyable,
   microfrontendsConfigs,
   ROOT,
+  TURBO_BUILTIN_PASS_THROUGH,
+  TURBO_DEFAULT_ENV,
   turboConfigFile,
 } from './turbo-reads.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
+import { keysRootEngines, ROOT_ENGINES_PROBE } from './root-engines.js'
 import {
   DOTENV_PROBE,
   DOTENV_PROBE_TOP,
@@ -72,6 +75,8 @@ interface TurboJson {
   /** Turbo 2.11 `futureFlags.globalConfiguration`: the global lists live here. */
   global?: { inputs?: string[]; env?: string[]; passThroughEnv?: string[]; envMode?: unknown }
   envMode?: unknown
+  /** Turbo 2.11.6: the package's labels, which `--filter tag:` selects by. */
+  tags?: string[]
 }
 
 const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -133,6 +138,18 @@ function explicitEnv(
   return out.filter((n) => !excluded.some((re) => re.test(n)))
 }
 
+/**
+ * The literal names of Turbo's builtin pass-through list, the same under
+ * `turbo()` as in written configs: `exec.env.passThrough` is keyed by name,
+ * so a list matched against the live environment keyed each machine apart
+ * and missed the cache `turbo()` filled once the configs were written. A
+ * wildcard family is a note. A name that is no shell variable name
+ * (`ProgramFiles(x86)`) is left out: core refuses it there.
+ */
+const BUILTIN_PASS_THROUGH = TURBO_BUILTIN_PASS_THROUGH.filter((e) =>
+  /^[A-Za-z_][A-Za-z0-9_]*$/.test(e),
+)
+
 /** A gap's message: a wildcard, or a literal name core cannot key. */
 const envGap = (field: string, entry: string, literal: string | null, list: string): string =>
   literal === null
@@ -161,8 +178,11 @@ const KNOWN_TASK_KEYS = new Set([
   // watch` keeps it up and restarts it only when its config changes or it
   // dies, so either value maps to nothing.
   'interruptible',
-  // Labels: Turbo keeps them out of the hash and the behaviour.
+  // Turbo 2.11.6 selects a task by them (`--filter tag:`); a vx tag belongs
+  // to a project, so only the package-level `tags` map (`packageTags`).
   'tags',
+  // Turbo parses it for external CI tooling and acts on nothing.
+  'experimentalCI',
 ])
 
 // Turbo's per-task `outputLogs` against vx's per-run `--output-logs`.
@@ -191,6 +211,8 @@ export interface TurboMappedTask {
 export interface TurboMappedProject {
   name: string
   dir: string
+  /** The package's turbo.json `tags`, its vx project tags. */
+  tags?: string[]
   tasks: TurboMappedTask[]
 }
 
@@ -222,6 +244,12 @@ export interface MapTurboOptions {
    * Absent (`bunx @vzn/vx-migrate` writes files), a wildcard is a todo.
    */
   envNames?: readonly string[]
+  /**
+   * A variable's value where the tasks will run, read only for a framework
+   * conditional's key (Turbo's `envConditionals`). Absent (written configs),
+   * every conditional name is keyed: more misses, never a stale hit.
+   */
+  envValue?: (name: string) => string | undefined
   /**
    * Without `envNames` (written configs): the upper-case names the files
    * under `dirs` spell, which a framework's `*` prefix is matched against.
@@ -354,10 +382,12 @@ const TOP_LISTS = [
   'globalPassThroughEnv',
   'globalDotEnv',
   'extends',
+  'tags',
 ]
 const GLOBAL_LISTS = ['inputs', 'env', 'passThroughEnv']
 const TASK_LISTS = ['dependsOn', 'outputs', 'env', 'passThroughEnv', 'with', 'dotEnv']
 const TASK_FLAGS = ['cache', 'persistent', 'interactive', 'interruptible']
+const ENV_LISTS = new Set(['globalEnv', 'globalPassThroughEnv', 'env', 'passThroughEnv'])
 
 /**
  * The shape of every field the mapper reads, refused by name. A number
@@ -373,12 +403,29 @@ function checkTurboShape(cfg: unknown, label: string): void {
     if (v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== 'string')))
       refuse(at, 'an array of strings')
   }
+  // Turbo refuses `$NAME` in an env list (`InvalidEnvPrefix`), its own
+  // `$TURBO_EXTENDS$` aside; mapped, core keyed a variable literally
+  // named `$NAME`, which is never set.
+  const envList = (v: unknown, at: string): void => {
+    list(v, at)
+    const bad = (v as string[] | undefined)?.find(
+      (x) => x.startsWith('$') && x !== '$TURBO_EXTENDS$',
+    )
+    if (bad !== undefined)
+      throw new UserError(
+        `${label}: ${at} holds ${JSON.stringify(bad)}: Turbo refuses a "$" before an env name — write ${JSON.stringify(bad.slice(1))}`,
+      )
+  }
   if (!isRecord(cfg)) refuse('the file', 'a JSON object')
   const c = cfg as Record<string, unknown>
-  for (const k of TOP_LISTS) list(c[k], k)
+  for (const k of TOP_LISTS) (ENV_LISTS.has(k) ? envList : list)(c[k], k)
   if (c['global'] !== undefined) {
     if (!isRecord(c['global'])) refuse('global', 'an object')
-    for (const k of GLOBAL_LISTS) list((c['global'] as Record<string, unknown>)[k], `global.${k}`)
+    for (const k of GLOBAL_LISTS)
+      (ENV_LISTS.has(k) ? envList : list)(
+        (c['global'] as Record<string, unknown>)[k],
+        `global.${k}`,
+      )
   }
   for (const field of ['tasks', 'pipeline']) {
     const tasks = c[field]
@@ -388,7 +435,7 @@ function checkTurboShape(cfg: unknown, label: string): void {
       const at = `${field}.${JSON.stringify(name)}`
       if (!isRecord(def)) refuse(at, 'an object')
       const d = def as Record<string, unknown>
-      for (const k of TASK_LISTS) list(d[k], `${at}.${k}`)
+      for (const k of TASK_LISTS) (ENV_LISTS.has(k) ? envList : list)(d[k], `${at}.${k}`)
       // Turbo 2.11 adds `{ mode, globs, withDefaults }` entries (`flatInputs`).
       const inputs = d['inputs']
       if (
@@ -402,6 +449,16 @@ function checkTurboShape(cfg: unknown, label: string): void {
         if (d[k] !== undefined && typeof d[k] !== 'string') refuse(`${at}.${k}`, 'a string')
     }
   }
+}
+
+/**
+ * A package's top-level turbo.json `tags`, which Turbo 2.11.6's `--filter
+ * tag:<label>` selects every task of the package by, as vx's `tag:` does a
+ * project's. Its own file only: Turbo inherits no package tag, and the
+ * root's label the root package. Blank ones dropped, as vx refuses them.
+ */
+function packageTags(cfg: TurboJson | undefined): string[] {
+  return [...new Set((cfg?.tags ?? []).filter((t) => t.trim() !== ''))]
 }
 
 function tasksOf(cfg: TurboJson): Record<string, TurboTask> {
@@ -762,6 +819,22 @@ async function rootPackageJson(root: string): Promise<PackageMeta['packageJson']
   return (pkg !== null && typeof pkg === 'object' ? pkg : {}) as PackageMeta['packageJson']
 }
 
+/**
+ * `turboConfigFile`, refusing a directory that holds both files as Turbo
+ * does (vercel/turborepo#10083): `turbo.json` shadowed the `.jsonc` beside
+ * it in silence, so an edit there keyed and ran nothing.
+ */
+async function onlyConfigFile(dir: string, root: string): Promise<string | null> {
+  const file = await turboConfigFile(dir)
+  if (file?.endsWith('.json') === true && (await Bun.file(`${file}c`).exists())) {
+    const where = dir === root ? 'the workspace root' : relPosix(root, dir)
+    throw new UserError(
+      `${where} holds both turbo.json and turbo.jsonc: Turbo refuses this — remove one`,
+    )
+  }
+  return file
+}
+
 export async function mapTurboWorkspace(
   root: string,
   metas: readonly PackageMeta[],
@@ -769,7 +842,16 @@ export async function mapTurboWorkspace(
 ): Promise<TurboMapping> {
   // A workspace with no Turbo config answered with a bare ENOENT and a stack
   // (item 1043): turbo() declared in the wrong repo, or its file removed.
-  const rootFile = await turboConfigFile(root)
+  const rootFile = await onlyConfigFile(root, root)
+  // Turbo reads its root config from the file TURBO_ROOT_TURBO_JSON names,
+  // against the cwd (vercel/turborepo#9087); reading the root's in its
+  // place ran another task graph than `turbo run`.
+  const named = Bun.env['TURBO_ROOT_TURBO_JSON']
+  if (named && (rootFile === null || path.resolve(named) !== rootFile)) {
+    throw new UserError(
+      `TURBO_ROOT_TURBO_JSON names ${path.resolve(named)}: turbo() reads only the workspace root's turbo.json or turbo.jsonc — unset it, or move that config to the root`,
+    )
+  }
   if (rootFile === null) {
     throw new UserError(
       `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from .vx/workspace.ts`,
@@ -829,6 +911,7 @@ export async function mapTurboWorkspace(
   // over git's files keyed nothing: the workspace probe keys them (item
   // 1032).
   const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
+  const rootPkg = rootMeta?.packageJson ?? (await rootPackageJson(root))
   const globalFiles = [
     ...globalDeps.filter((d) => envDependency(d) === null).map(turboGlobstar),
     ...(rootCfg.globalDotEnv ?? []),
@@ -837,7 +920,7 @@ export async function mapTurboWorkspace(
     // packages that depend on the database package).
     ...(rootCfg.tasks === undefined && rootCfg.pipeline !== undefined
       ? []
-      : rootDependencyGlobs(root, rootMeta?.packageJson ?? (await rootPackageJson(root)), metas)),
+      : rootDependencyGlobs(root, rootPkg, metas)),
     ...microfrontendsConfigs(root, [root, ...metas.map((m) => m.dir)]).map((c) => c.rel),
   ]
   const rootDotenv = globalFiles.filter((f) => isDotenvGlob(f))
@@ -851,18 +934,31 @@ export async function mapTurboWorkspace(
   const globals = {
     inputs: globalFiles.filter((f) => !isDotenvGlob(f) && !globalIgnored.includes(f)),
     env: [
-      ...envNames('globalEnv', rootCfg.globalEnv ?? []),
+      // Turbo's defaults sit before the user's list, so its `!` takes them back.
+      ...envNames('globalEnv', [...TURBO_DEFAULT_ENV, ...(rootCfg.globalEnv ?? [])]),
       ...globalDeps.flatMap((d) => envDependency(d) ?? []),
     ],
-    pass: envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
+    pass: [
+      ...envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
+      ...BUILTIN_PASS_THROUGH,
+    ],
   }
+
+  // A written config names no variable by pattern: Turbo's builtin
+  // families are the user's to list, once, for the tasks that read them.
+  if (opts.envNames === undefined && opts.sourceNames !== undefined)
+    notes.push(
+      `Turbo passes every ${TURBO_BUILTIN_PASS_THROUGH.filter((e) => e.endsWith('*')).join(', ')} ` +
+        'variable to each task; the configs pass its literal names only — add the ones a task ' +
+        'reads to exec.env.passThrough',
+    )
 
   // The workspace root as a project (a `vx.config` there, D-39) holds
   // Turbo's `//#task`s (`rootMeta`, above); Turbo runs no plain task in the root package.
   const files = new Map<string, TurboJson>([[ROOT, rootCfg]])
   for (const meta of metas) {
     if (meta === rootMeta) continue
-    const file = await turboConfigFile(meta.dir)
+    const file = await onlyConfigFile(meta.dir, root)
     if (file !== null) files.set(meta.name, await readTurboJson(file, root))
   }
 
@@ -1113,6 +1209,8 @@ export async function mapTurboWorkspace(
         const head = e.slice(0, -1)
         return live.filter((n) => n.startsWith(head)).sort()
       })
+      for (const c of fw.conditionals ?? [])
+        if (opts.envValue?.(c.key) === c.value) names.push(...c.include)
       inferredOf.set(m.name, vendor ? names.filter((n) => !n.startsWith(vendor)) : names)
     } else if (opts.sourceNames !== undefined) {
       // A written config cannot ask the run's environment, and with the
@@ -1125,11 +1223,15 @@ export async function mapTurboWorkspace(
         m.name,
         // The bare prefix is no name: formbricks' web spells `NEXT_PUBLIC_`
         // in a `startsWith` test, and the configs keyed a variable of it.
-        fw.env.flatMap((e) => {
-          if (!e.endsWith('*')) return [e]
-          const head = e.slice(0, -1)
-          return spelled.filter((n) => n.startsWith(head) && n.length > head.length)
-        }),
+        [
+          ...fw.env.flatMap((e) => {
+            if (!e.endsWith('*')) return [e]
+            const head = e.slice(0, -1)
+            return spelled.filter((n) => n.startsWith(head) && n.length > head.length)
+          }),
+          // Written for another environment: keyed whatever the condition.
+          ...(fw.conditionals ?? []).flatMap((c) => c.include),
+        ],
       )
       sourcedOf.set(fw, [...(sourcedOf.get(fw) ?? []), m.name])
     } else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])
@@ -1323,7 +1425,8 @@ export async function mapTurboWorkspace(
       tasks.push(mapped)
     }
     excludeSiblingOutputs(resolveSharedOutputs(tasks))
-    projects.push({ name: meta.name, dir: meta.dir, tasks })
+    const tags = packageTags(meta === rootMeta ? rootCfg : files.get(meta.name))
+    projects.push({ name: meta.name, dir: meta.dir, ...(tags.length > 0 ? { tags } : {}), tasks })
   }
 
   // Turbo 2.11's `dependencyOutputs` input hashes the named files after
@@ -1426,6 +1529,14 @@ export async function mapTurboWorkspace(
     }
   }
 
+  if (keysRootEngines(rootPkg))
+    for (const p of projects)
+      for (const t of p.tasks) {
+        const inputs = t.task?.['inputs'] as Record<string, unknown> | undefined
+        if (inputs === undefined) continue
+        const probes = (inputs['workspaceRuntime'] as unknown[] | undefined) ?? []
+        inputs['workspaceRuntime'] = [...probes, ROOT_ENGINES_PROBE]
+      }
   nestedInputs(root, projects)
   for (const [entry, n] of wildcardUses)
     notes.push(
@@ -1446,7 +1557,40 @@ export async function mapTurboWorkspace(
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   refuseTaskNames(projects, 'task')
+  sortOrderFree(projects)
   return { projects, notes, globals }
+}
+
+function byText(a: unknown, b: unknown): number {
+  const x = typeof a === 'string' ? a : JSON.stringify(a)
+  const y = typeof b === 'string' ? b : JSON.stringify(b)
+  return x < y ? -1 : x > y ? 1 : 0
+}
+
+function negationsLast(a: unknown, b: unknown): number {
+  const neg = (g: unknown) => Number(typeof g === 'string' && g.startsWith('!'))
+  return neg(a) - neg(b) || byText(a, b)
+}
+
+/**
+ * Turbo sorts a task's `outputs` and `dependsOn` before hashing, so
+ * reordering them in turbo.json keeps the hit (vercel/turborepo#2064).
+ * Core keys a config's lists as written, and gives neither list's order a
+ * meaning: an edge set, and a `!` output takes back from the positives
+ * wherever it stands (`outputMatcher`). Sorted here, negations last, so
+ * the reorder keys the same and a written config reads the same.
+ */
+function sortOrderFree(projects: readonly TurboMappedProject[]): void {
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const task = t.task
+      if (task === null) continue
+      if (Array.isArray(task['dependsOn'])) task['dependsOn'] = [...task['dependsOn']].sort(byText)
+      const outputs = (task['cache'] as { outputs?: Record<string, unknown> } | undefined)?.outputs
+      if (outputs === undefined) continue
+      for (const k of ['files', 'workspaceFiles'])
+        if (Array.isArray(outputs[k])) outputs[k] = [...outputs[k]].sort(negationsLast)
+    }
 }
 
 /**
@@ -1800,6 +1944,12 @@ function buildTask(
           todos.push(
             `dependsOn ${JSON.stringify(d)}: no workspace package is named ${pkg} — edge dropped`,
           )
+        // Turbo runs a root task only when turbo.json names it `//#x`; the
+        // script alone is not enough (vercel/turborepo#3592).
+        else if (d.startsWith(`${ROOT}#`))
+          todos.push(
+            `dependsOn ${JSON.stringify(d)}: turbo.json defines no "${d}" task — edge dropped`,
+          )
         else
           todos.push(
             `dependsOn ${JSON.stringify(d)}: ${pkg} declares no ${task} script — edge dropped`,
@@ -1961,6 +2111,14 @@ function buildTask(
     if (files.length > 0 && files.every((f) => typeof f === 'string' && f.startsWith('!'))) {
       files.unshift('**/*')
     }
+    // Turbo keys the package's own package.json beside any explicit
+    // `inputs` (PACKAGE_CONFIG_INPUTS, turborepo#1832): without it, an edit
+    // to its `exports` or `type` replayed the old build. A glob naming it
+    // already, or an exclusion of it, is left as written.
+    const named = files.some(
+      (g) => typeof g === 'string' && new Bun.Glob(g.replace(/^!/, '')).match('package.json'),
+    )
+    if (!named) files.push('package.json')
   }
   // Turbo 1's task `dotEnv`: package-relative `.env` files it hashes,
   // gitignored as a rule, so read as files they keyed nothing (item 1032).
@@ -2072,8 +2230,10 @@ function buildTask(
   const rewritesManifest = takeBacks.includes('!package.json')
 
   if (atRoot) wsOutFiles.unshift(...outFiles.splice(0))
-  const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
-  const ws = takingBack(wsOutFiles)
+  // Sorted here, before the passes that take them back from other tasks'
+  // inputs, so those `!` entries come in this order too (`sortOrderFree`).
+  const outputs: Record<string, unknown> = { files: takingBack(outFiles).sort(negationsLast) }
+  const ws = takingBack(wsOutFiles).sort(negationsLast)
   if (ws.length > 0) outputs.workspaceFiles = ws
   task.cache = {
     outputs,

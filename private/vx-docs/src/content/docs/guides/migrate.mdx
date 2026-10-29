@@ -121,7 +121,9 @@ bunx @vzn/vx-migrate
   [2mtasks   [0m  [38;2;34;197;94m3 clean[0m
   [2mfiles   [0m  packages/app/vx.config.ts
             packages/lib/vx.config.ts
+            vx-preset.ts
   [2mlock    [0m  2 project configs → .vx/projects.lock.json
+  [2mnote    [0m  Turbo passes every XDG_DATA_*, COREPACK_*, VSCODE_*, DOCKER_*, BUILDKIT_*, COMPOSE_*, JB_IDE_*, TURBO_*, VERCEL_*, NEXT_*, GITHUB_*, RUNNER_*, __NIXOS_*, NIX_* variable to each task; the configs pass its literal names only — add the ones a task reads to exec.env.passThrough
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
@@ -130,16 +132,21 @@ bunx @vzn/vx-migrate
 
 ```ts
 import type { ProjectConfig } from '@vzn/vx/config'
+import { globalEnvInputs, globalPassThroughEnv } from '../../vx-preset.js'
 
 export default {
   tasks: {
     build: {
       exec: {
         command: 'mkdir -p dist && cp src/*.js dist/',
+        env: {
+          passThrough: [...globalEnvInputs, ...globalPassThroughEnv],
+        },
       },
       dependsOn: ['^build'],
       inputs: {
-        files: ['src/**'],
+        files: ['src/**', 'package.json'],
+        env: [...globalEnvInputs],
       },
       cache: {
         outputs: {
@@ -191,8 +198,10 @@ vx run test --all      # local 3✓
 | `interactive: true` | `exec.interactive: true`: the task gets the terminal, alone |
 | `interruptible` | nothing: `vx watch` keeps a persistent task up and restarts it only when its config changes or it dies |
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
+| `experimentalCI` | nothing: Turbo reads it for external CI tooling and acts on nothing |
 | `outputLogs` (Turbo 1: `outputMode`)                        | `"new-only"` is the default; other values are the run's `--output-logs` |
 | `dotEnv` (Turbo 1), a `.env` input                          | `inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (written configs name it from the preset: `dotenvFiles`, `dotenvFilesDeep`, and `dotenvRootFiles` for the root globs); a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `inputs.workspaceRuntime`, a probe of only the files its globs name |
+| the root `package.json`'s `engines`, which Turbo hashes into every task | `inputs.workspaceRuntime`: a probe that prints that value alone (`rootEngines` in `vx-preset.ts`), so raising `engines.node` re-runs every task and no other root edit does |
 | an input or `globalDependencies` path git ignores (`config.local.json`) | `inputs.workspaceRuntime`: a probe that prints the file's name and bytes, since core refuses a file input git ignores; a gitignored file a glob matches is not keyed |
 | `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |
 | `description` | `description` |
@@ -209,7 +218,8 @@ The command itself comes from your `package.json` script, with its
 | --------------------------------- | ------------------------------------------------------ |
 | `turbo run build`                 | `vx run build --all`                                   |
 | `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`                       |
-| `turbo run build --affected`      | `vx run build --affected` (`turbo()` takes `TURBO_SCM_BASE`, or GitHub Actions' base, as Turbo does) |
+| `turbo run build --affected`      | `vx run build --affected` (`turbo()` takes `TURBO_SCM_BASE`, or GitHub Actions' base, as Turbo does; a `TURBO_SCM_HEAD` other than the checked-out commit is a warning) |
+| `turbo run build --force`, `TURBO_FORCE=true` | `vx run build --force`; `turbo()` reads `TURBO_FORCE` too |
 | `turbo run build --continue`      | `vx run build --continue` (`always`, as Turbo's; without it, vx skips only a failure's dependents where Turbo stops) |
 | `TURBO_TOKEN` remote cache        | [`turboCache()`](../../docs/remote-cache/) reads the same variables |
 

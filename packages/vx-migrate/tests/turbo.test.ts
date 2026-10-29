@@ -10,6 +10,7 @@ import { lock, planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { turbo } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { tamperMapping } from './helpers/tamper-mapping.js'
+import { notTurbos } from './helpers/turbo-own.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const TIMEOUT = 30_000
@@ -117,10 +118,38 @@ describe('turbo()', () => {
       // globalDependencies and the $TURBO_ROOT$/ input both name the
       // file; the mapper sees both strings and lists it once.
       expect(inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
-      expect(inputs.env).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
+      expect(notTurbos(inputs.env!)).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
       expect(cache.outputs.files).toEqual(['dist/**'])
-      expect(app.config.exec?.env?.passThrough).toEqual(['GLOBAL_MODE', 'AWS_PROFILE', 'NODE_ENV'])
+      expect(notTurbos(app.config.exec!.env!.passThrough!)).toEqual([
+        'GLOBAL_MODE',
+        'AWS_PROFILE',
+        'NODE_ENV',
+      ])
       expect(app.config.exec?.command).toBe('mkdir -p dist && cat src/gen/api.js > dist/app.js')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a turbo.json with comments, trailing commas and a top-level "//" note plans as the plain one',
+    async () => {
+      // Turbo parses turbo.json as JSONC (vercel/turborepo#6810) and skips a
+      // top-level `//` key, the ecosystem's comment field (#7546).
+      const plan = async () =>
+        (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks
+          .map((t) => ({ id: t.node.id, deps: [...t.node.deps].sort(), config: t.node.config }))
+          .sort((a, b) => a.id.localeCompare(b.id))
+      const plain = await plan()
+      const body = JSON.stringify(TURBO_JSON, null, 2)
+      const commented = body
+        .replace('{\n', '{\n  // shared by every package\n  "//": "see docs/turbo.md",\n')
+        .replace(
+          '"outputs": [\n        "dist/**"\n      ],',
+          '"outputs": ["dist/**",], /* built */',
+        )
+      expect(commented).toContain('/* built */')
+      await writeFile(path.join(root, 'turbo.json'), commented)
+      expect(await plan()).toEqual(plain)
     },
     TIMEOUT,
   )
@@ -151,6 +180,26 @@ describe('turbo()', () => {
       expect(await Bun.file(path.join(root, 'packages', 'lib', 'dist', 'lib.js')).text()).toBe(
         'lib\n',
       )
+    },
+    TIMEOUT,
+  )
+
+  // Turbo folds the whole pipeline into its global hash (vercel/turborepo
+  // #1166): an edit to any task's definition misses every task. vx keys a
+  // task on its own resolved config, so only its own definition moves it.
+  it(
+    "an edit to another task's turbo.json definition keeps the hit; its own re-runs it",
+    async () => {
+      const opts = { cwd: root, tasks: ['lib#build'], log: silent(), handleSignals: false }
+      const status = async () => (await run(opts)).outcomes.map((o) => o.status)
+      expect(await status()).toEqual(['success'])
+      const turbo = structuredClone(TURBO_JSON)
+      turbo.tasks.test.outputs = ['coverage/**'] as never[]
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo, null, 2))
+      expect(await status()).toEqual(['cache-hit'])
+      turbo.tasks.build.env = ['NODE_ENV', 'BUILD_MODE']
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo, null, 2))
+      expect(await status()).toEqual(['success'])
     },
     TIMEOUT,
   )
@@ -711,6 +760,36 @@ describe('input zero segments', () => {
   )
 })
 
+// turborepo#1832: Turbo hashes a package's package.json beside any explicit
+// `inputs`. Mapped without it, an edit to a field the build reads (here
+// `type`) replayed the old output.
+describe("the package's package.json with explicit inputs", () => {
+  it(
+    'an edit to it re-runs a task whose inputs name only src',
+    async () => {
+      const app = path.join(root, 'packages', 'app')
+      const manifest = (type: string) =>
+        JSON.stringify({ name: 'app', version: '1.0.0', type, scripts: { build: BUILD } })
+      const BUILD = 'mkdir -p dist && cp package.json dist/pkg.json'
+      await writeFile(path.join(app, 'package.json'), manifest('commonjs'))
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { inputs: ['src/**'], outputs: ['dist/**'] } } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const opts = { cwd: root, tasks: ['app#build'], log: silent(), handleSignals: false }
+      const status = (r: Awaited<ReturnType<typeof run>>) =>
+        r.outcomes.find((o) => o.node.id === 'app#build')!.status
+      expect(status(await run(opts))).toBe('success')
+      expect(status(await run(opts))).toBe('cache-hit')
+      await writeFile(path.join(app, 'package.json'), manifest('module'))
+      expect(status(await run(opts))).toBe('success')
+      expect(await Bun.file(path.join(app, 'dist', 'pkg.json')).text()).toBe(manifest('module'))
+    },
+    TIMEOUT,
+  )
+})
+
 describe('output negation', () => {
   it(
     'a wildcard output carved by negations stays cached and names what the clean deletes',
@@ -735,12 +814,12 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.config.cache?.outputs.files).toEqual([
-        '!node_modules/**',
-        '!src/**',
-        '*/**',
         '*',
+        '*/**',
         '.medusa/**',
+        '!node_modules/**',
         '!package.json',
+        '!src/**',
       ])
       expect(warned).toContain(
         '[vx] vx-migrate: 2 tasks (build across 2 packages): output "*/**": vx cleans outputs before a run and a restore, so every untracked file this glob reaches is deleted; committed files are kept',
@@ -770,11 +849,11 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.config.cache?.outputs.files).toEqual([
-        '!node_modules/**',
-        '!src/**',
-        '*/**',
         '*',
+        '*/**',
+        '!node_modules/**',
         '!package.json',
+        '!src/**',
       ])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const dir = path.join(root, 'packages', 'app')
@@ -809,9 +888,9 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist/**', '**/dist'])
+      expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist', '**/dist/**'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist/**', '**/dist'])
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist', '**/dist/**'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const nested = path.join(root, 'packages', 'app', 'rsc', 'dist', 'r.js')
       expect((await build()).ok).toBe(true)
@@ -839,9 +918,9 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['test'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#test')?.outputs.files).toEqual(['coverage/**', '*.xml'])
+      expect(cacheOf('app#test')?.outputs.files).toEqual(['*.xml', 'coverage/**'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#test')?.outputs.files).toEqual(['coverage/**', '*.xml'])
+      expect(cacheOf('lib#test')?.outputs.files).toEqual(['*.xml', 'coverage/**'])
       const test = () => run({ cwd: root, tasks: ['test'], log: silent(), handleSignals: false })
       const report = path.join(root, 'packages', 'app', 'junit.xml')
       expect((await test()).ok).toBe(true)
@@ -871,9 +950,9 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*/**', 'dist-*'])
+      expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*', 'dist-*/**'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*/**', 'dist-*'])
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*', 'dist-*/**'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const out = path.join(root, 'packages', 'app', 'dist-esm', 'a.js')
       expect((await build()).ok).toBe(true)
@@ -899,14 +978,14 @@ describe('output negation', () => {
         (await planRun({ cwd: root, tasks: ['app#build'], log: silent() })).tasks.find(
           (t) => t.node.id === 'app#build',
         )!.node.config.cache
-      expect((await cacheOf())?.outputs.files).toEqual(['lib/**', '*.mjs'])
+      expect((await cacheOf())?.outputs.files).toEqual(['*.mjs', 'lib/**'])
       // A config the mapped task now lives beside: the kept mapping is
       // re-made, and the output takes the config back.
       await writeFile(
         path.join(root, 'packages', 'app', 'vx.config.mjs'),
         'export default { tasks: {} }\n',
       )
-      expect((await cacheOf())?.outputs.files).toEqual(['lib/**', '*.mjs', '!vx.config.mjs'])
+      expect((await cacheOf())?.outputs.files).toEqual(['*.mjs', 'lib/**', '!vx.config.mjs'])
     },
     TIMEOUT,
   )
@@ -993,7 +1072,7 @@ describe('per-package turbo.json', () => {
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       const cache = app.config.cache!
       const inputs = app.config.inputs!
-      expect(inputs.files).toEqual(['src/**', '!src/gen/**'])
+      expect(inputs.files).toEqual(['src/**', 'package.json', '!src/gen/**'])
       expect(inputs.workspaceFiles).toEqual([
         'tsconfig.base.json',
         'packages/lib/src/**',
@@ -1215,15 +1294,15 @@ describe('turbo(): the mapping cache', () => {
     await edit()
     expect(await lint()).toBe(expected)
   })
-  // An empty turbo.json is not an absent one: it shadows the turbo.jsonc
-  // beside it, and Turbo refuses it; keyed alike, a hit ran the old mapping.
+  // An empty turbo.json is not an absent one: Turbo refuses it beside a
+  // turbo.jsonc (vercel/turborepo#10083); keyed alike, a hit ran the old mapping.
   it('an empty turbo.json beside a turbo.jsonc maps afresh, and is refused', async () => {
     const dir = path.join(root, 'packages', 'app')
     await writeFile(path.join(dir, 'turbo.jsonc'), '{ "extends": ["//"], "tasks": {} }')
     await lint()
     await tamperMapping(root, 'turbo')
     await writeFile(path.join(dir, 'turbo.json'), '')
-    await expect(lint()).rejects.toThrow('failed to parse packages/app/turbo.json')
+    await expect(lint()).rejects.toThrow('packages/app holds both turbo.json and turbo.jsonc')
   })
 
   // A hit is the whole mapping: its notes and todos warn as the miss did.
@@ -1483,6 +1562,62 @@ describe('the npm_* variables a package manager sets', () => {
       const lib = path.join(root, 'packages', 'lib')
       expect(await Bun.file(path.join(lib, 'v.txt')).text()).toBe('lib 1.2.3 v\n')
       expect(await Bun.file(path.join(lib, 'w.txt')).text()).toBe('1.2.3 \n')
+    },
+    TIMEOUT,
+  )
+})
+
+// Turbo passes `BUILTIN_PASS_THROUGH_ENV` (TZ, VERCEL_*, GITHUB_*, …) to
+// every task and hashes `DEFAULT_ENV_VARS` into every key
+// (crates/turborepo-env). Under turbo() the task ran without TZ, and a
+// build for VERCEL_TARGET_ENV=preview was a hit for production.
+describe("Turbo's builtin env under turbo()", () => {
+  const NAMES = ['TZ', 'VERCEL_URL', 'GITHUB_SHA', 'VERCEL_TARGET_ENV', 'UNLISTED_VAR']
+  const saved = new Map(NAMES.map((n) => [n, process.env[n]]))
+  afterEach(() => {
+    for (const [n, v] of saved) {
+      if (v === undefined) delete process.env[n]
+      else process.env[n] = v
+    }
+  })
+  it(
+    'reaches the task; a default re-keys it, a pass-through one does not',
+    async () => {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { e: { outputs: ['dist/**'] } } }),
+      )
+      await writeFile(
+        path.join(root, 'packages', 'lib', 'package.json'),
+        JSON.stringify({
+          name: 'lib',
+          scripts: {
+            e: 'mkdir -p dist && echo "$TZ|$VERCEL_URL|$GITHUB_SHA|$VERCEL_TARGET_ENV|$UNLISTED_VAR" > dist/e.txt',
+          },
+        }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      Object.assign(process.env, {
+        TZ: 'Asia/Tokyo',
+        VERCEL_URL: 'x.vercel.app',
+        GITHUB_SHA: 'abc',
+        VERCEL_TARGET_ENV: 'preview',
+        UNLISTED_VAR: 'no',
+      })
+      const go = async () =>
+        (await run({ cwd: root, tasks: ['lib#e'], log: silent(), handleSignals: false }))
+          .outcomes[0]!.status
+      expect(await go()).toBe('success')
+      expect(await Bun.file(path.join(root, 'packages', 'lib', 'dist', 'e.txt')).text()).toBe(
+        // A builtin wildcard family (VERCEL_*, GITHUB_*) is not matched
+        // against the run's names: the list is keyed, and must key alike
+        // on every machine and in the written configs.
+        'Asia/Tokyo|||preview|\n',
+      )
+      process.env['TZ'] = 'UTC'
+      expect(await go()).toBe('cache-hit')
+      process.env['VERCEL_TARGET_ENV'] = 'production'
+      expect(await go()).toBe('success')
     },
     TIMEOUT,
   )

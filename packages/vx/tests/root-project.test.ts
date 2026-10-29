@@ -169,6 +169,36 @@ describe('a root vx.config makes the root a project (D-39)', () => {
     }
   })
 
+  // vercel/turborepo#3503: the root package holds every directory, so a
+  // bare task run from inside a member inferred the root as its package.
+  it('a bare task from inside a member runs the member, not the root that holds it', async () => {
+    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    await writeFile(
+      path.join(fixture.root, 'packages', 'a', 'vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+    )
+    const planned = (cwd: string): string[] => {
+      const p = Bun.spawnSync({
+        cmd: [
+          process.execPath,
+          path.join(import.meta.dir, 'helpers', 'vx-locked.ts'),
+          'run',
+          'build',
+          '--dry=json',
+        ],
+        cwd,
+        env: { ...process.env, NO_COLOR: '1', CI: '' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      return (JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
+    }
+    await mkdir(path.join(fixture.root, 'packages', 'a', 'src', 'deep'), { recursive: true })
+    expect(planned(path.join(fixture.root, 'packages', 'a', 'src', 'deep'))).toEqual(['a#build'])
+    // CONTROL: from a directory no member holds, the root project is the one.
+    expect(planned(path.join(fixture.root, 'tools'))).toEqual(['fixture-root#build'])
+  })
+
   // `turbo run //#build` runs the root's task from any package; vx read
   // `//` as a project name and said no project declares it.
   it("runs //#task as the root project's task, from the root or a member", async () => {
@@ -181,6 +211,30 @@ describe('a root vx.config makes the root a project (D-39)', () => {
         ['fixture-root#build'],
       ])
     }
+  })
+
+  it('an exclude-only filter keeps the root project, as it keeps every member (vercel/turborepo#12212)', async () => {
+    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    for (const name of ['b', 'c'])
+      await addProject(fixture.root, name, {
+        config: `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+      })
+    const bin = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+    const planned = (...args: string[]): unknown => {
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, bin, 'run', 'build', ...args, '--dry=json'],
+        cwd: fixture.root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      if (p.exitCode !== 0) return p.stderr.toString()
+      return (JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }).tasks
+        .map((t) => t.id)
+        .sort()
+    }
+    expect([planned('--filter=!c'), planned('--filter=!./packages/c')]).toEqual([
+      ['b#build', 'fixture-root#build'],
+      ['b#build', 'fixture-root#build'],
+    ])
   })
 
   it("keys on the files no member owns: a member's edit leaves it, a root file's moves it", async () => {

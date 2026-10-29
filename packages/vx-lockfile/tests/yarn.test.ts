@@ -9,7 +9,7 @@ import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { yarn } from '../src/index.js'
-import { importerDigests, parseLockfile } from '../src/yarn.js'
+import { importerDigests, importerLinks, parseLockfile, resolutionsOf } from '../src/yarn.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -404,6 +404,220 @@ ${
   })
 })
 
+// Yarn 4 records a patch a workspace asks for directly (`yarn patch` in
+// the workspace) in its own dependencies, with a `~/` (project root) path,
+// and keys the patched entry by that descriptor (vercel/turborepo#6974).
+describe('a Yarn 4 patch a workspace names directly', () => {
+  const lock = (hash: string) => `__metadata:
+  version: 8
+  cacheKey: 10c0
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  dependencies:
+    c: "workspace:*"
+  languageName: unknown
+  linkType: soft
+
+"b@workspace:packages/b":
+  version: 0.0.0-use.local
+  resolution: "b@workspace:packages/b"
+  dependencies:
+    c: "workspace:*"
+    is-odd: "patch:is-odd@npm%3A3.0.1#~/.yarn/patches/is-odd-npm-3.0.1-93c3c3f41b.patch"
+  languageName: unknown
+  linkType: soft
+
+"c@workspace:*, c@workspace:packages/c":
+  version: 0.0.0-use.local
+  resolution: "c@workspace:packages/c"
+  languageName: unknown
+  linkType: soft
+
+"is-number@npm:^6.0.0":
+  version: 6.0.0
+  resolution: "is-number@npm:6.0.0"
+  checksum: 10c0/number
+  languageName: node
+  linkType: hard
+
+"is-odd@npm:3.0.1":
+  version: 3.0.1
+  resolution: "is-odd@npm:3.0.1"
+  dependencies:
+    is-number: "npm:^6.0.0"
+  checksum: 10c0/plain
+  languageName: node
+  linkType: hard
+
+"is-odd@patch:is-odd@npm%3A3.0.1#~/.yarn/patches/is-odd-npm-3.0.1-93c3c3f41b.patch":
+  version: 3.0.1
+  resolution: "is-odd@patch:is-odd@npm%3A3.0.1#~/.yarn/patches/is-odd-npm-3.0.1-93c3c3f41b.patch::version=3.0.1&hash=${hash}"
+  dependencies:
+    is-number: "npm:^6.0.0"
+  checksum: 10c0/${hash}
+  languageName: node
+  linkType: hard
+
+"r@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "r@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+  it('editing the patch moves the workspace that names it, and no other', () => {
+    expect(movedDirs(lock('9b90ad'), lock('1c2d3e'))).toEqual(['packages/b'])
+    // Control: the same lockfile moves nothing.
+    expect(movedDirs(lock('9b90ad'), lock('9b90ad'))).toEqual([])
+  })
+})
+
+describe('a parent-scoped `resolutions` override (vercel/turborepo#14499)', () => {
+  // As Yarn 4.5 writes it: is-odd's entry keeps the range it declares, so
+  // adding `"is-odd/is-number": "^7.0.0"`, a range `c` already keys,
+  // leaves yarn.lock byte for byte (probed) while `a` now installs 7.
+  const LOCK = `__metadata:
+  version: 8
+  cacheKey: 10c0
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  dependencies:
+    is-odd: "npm:3.0.1"
+  languageName: unknown
+  linkType: soft
+
+"b@workspace:packages/b":
+  version: 0.0.0-use.local
+  resolution: "b@workspace:packages/b"
+  dependencies:
+    is-number: "npm:^6.0.0"
+  languageName: unknown
+  linkType: soft
+
+"c@workspace:packages/c":
+  version: 0.0.0-use.local
+  resolution: "c@workspace:packages/c"
+  dependencies:
+    is-number: "npm:^7.0.0"
+  languageName: unknown
+  linkType: soft
+
+"is-number@npm:^6.0.0":
+  version: 6.0.0
+  resolution: "is-number@npm:6.0.0"
+  checksum: 10c0/number6
+  languageName: node
+  linkType: hard
+
+"is-number@npm:^7.0.0":
+  version: 7.0.0
+  resolution: "is-number@npm:7.0.0"
+  checksum: 10c0/number7
+  languageName: node
+  linkType: hard
+
+"is-odd@npm:3.0.1":
+  version: 3.0.1
+  resolution: "is-odd@npm:3.0.1"
+  dependencies:
+    is-number: "npm:^6.0.0"
+  checksum: 10c0/odd
+  languageName: node
+  linkType: hard
+
+"root@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "root@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+  let root: string
+  const manifest = (extra: Record<string, unknown>) =>
+    writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'], ...extra }),
+    )
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(tmpdir(), 'vx-yarn-resolutions-'))
+    await manifest({})
+    for (const name of ['a', 'b', 'c']) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
+      await writeFile(path.join(dir, 'src', 'index.js'), `// ${name}\n`)
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
+      )
+    }
+    await writeFile(path.join(root, 'yarn.lock'), LOCK)
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource(['yarn()'], `import { yarn } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
+    )
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('adding one under an unchanged yarn.lock re-keys the workspace it reaches', async () => {
+    const hashes = async () => {
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      return Object.fromEntries(plan.tasks.map((t) => [t.node.id, t.hash]))
+    }
+    const before = await hashes()
+    // CONTROL: a field Yarn installs nothing by moves no key.
+    await manifest({ description: 'x' })
+    expect(await hashes()).toEqual(before)
+    await manifest({ resolutions: { 'is-odd/is-number': '^7.0.0' } })
+    expect((await hashes())['a#build']).not.toBe(before['a#build'])
+  })
+
+  it('a lockfile-only bump of the entry the override names re-keys the workspace it reaches', async () => {
+    // `yarn up -R is-number` moves the ^7 entry `c` keys, and `a` installs
+    // it through the override, while is-odd's entry still names ^6.
+    await manifest({ resolutions: { 'is-odd/is-number': '^7.0.0' } })
+    const hashes = async () => {
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      return Object.fromEntries(plan.tasks.map((t) => [t.node.id, t.hash]))
+    }
+    const before = await hashes()
+    await writeFile(
+      path.join(root, 'yarn.lock'),
+      LOCK.replace('version: 7.0.0', 'version: 7.0.1').replace('npm:7.0.0', 'npm:7.0.1'),
+    )
+    const after = await hashes()
+    const changed = Object.keys(before).filter((id) => before[id] !== after[id])
+    expect(changed.sort()).toEqual(['a#build', 'c#build'])
+  })
+})
+
+describe('resolutionsOf', () => {
+  it('reads each override as its dependency and scoping parent; a ** or bad JSON as any', () => {
+    const text = JSON.stringify({
+      resolutions: {
+        'is-number': '^7',
+        'is-odd/is-number': '^7',
+        'is-odd@3/is-number': '^7',
+        '@s/p/@s/d@^1': '2',
+        'a/**/b': '1',
+      },
+    })
+    expect(resolutionsOf(text)).toEqual([
+      { parent: undefined, name: 'is-number', range: '^7' },
+      { parent: 'is-odd', name: 'is-number', range: '^7' },
+      { parent: 'is-odd', name: 'is-number', range: '^7' },
+      { parent: '@s/p', name: '@s/d', range: '2' },
+      { parent: undefined, name: 'b', range: '1' },
+    ])
+    expect(resolutionsOf('{')).toEqual([])
+  })
+})
+
 describe('Yarn 4 catalogs (turborepo#12635)', () => {
   it('a catalog bump `^6 → ^7` moves the workspace that names `catalog:` and what links it', () => {
     // The file records `is-number: "catalog:"`, never the range: folded
@@ -421,6 +635,15 @@ describe('Yarn 4 catalogs (turborepo#12635)', () => {
       'packages/a',
       'packages/c',
     ])
+  })
+
+  it('a catalog workspace gaining a dependency moves it and what links it, no other (vercel/turborepo#12684)', () => {
+    const gained = catalogLock().replace(
+      '    is-number: "catalog:"\n',
+      '    is-number: "catalog:"\n    is-odd: "npm:^3.0.1"\n',
+    )
+    expect(gained).not.toBe(catalogLock())
+    expect(movedDirs(catalogLock(), gained)).toEqual(['packages/a', 'packages/c'])
   })
 
   it('a named catalog (`catalog:<name>`) reaches the entries of its package', () => {
@@ -646,6 +869,50 @@ describe('yarn() in a repo with no workspaces field', () => {
 describe('every input the yarn digest must read', () => {
   const ALL = ['.', 'packages/a', 'packages/b', 'packages/c']
 
+  it.each([
+    [
+      'an entry with no resolution',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  dependencies:\n    x: "npm:^1"\n\n"x@npm:^1":\n  version: 1.0.0\n`,
+    ],
+    [
+      'a patch range with no inner descriptor',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n  dependencies:\n    x: "patch:x@"\n`,
+    ],
+    [
+      'a dependency range that is no string',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n  dependencies:\n    x: [1, 2]\n`,
+    ],
+    ['an entry that is no map', `"a@workspace:packages/a": 3\n`],
+    [
+      'a patch descriptor with a broken escape',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n\n"x@patch:x@npm%3A1%E0%A4%A#./p.patch::locator=a%40workspace%3Apackages%2Fa":\n  version: 1.0.0\n  resolution: "x@patch:x@npm%3A1%E0%A4%A#./p.patch::version=1.0.0&hash=1"\n`,
+    ],
+  ])(
+    'a malformed berry lockfile (%s) is read past, never a crash (vercel/turborepo#12828)',
+    (_, body) => {
+      const lock = parseLockfile(`__metadata:\n  version: 8\n  cacheKey: 10\n\n${body}`)
+      expect(lock.generation).toBe('berry')
+      expect([...importerDigests(lock).keys()]).toEqual(['packages/a'])
+      expect([...importerLinks(lock).keys()]).toEqual(['packages/a'])
+    },
+  )
+
+  // Turbo panicked on both until vercel/turborepo#6725 made them errors.
+  it.each([
+    [
+      'two entries that claim one descriptor',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n  dependencies:\n    x: "npm:^1"\n\n"x@npm:^1":\n  version: 1.0.0\n  resolution: "x@npm:1.0.0"\n\n"x@npm:^1, x@npm:1.1.0":\n  version: 1.1.0\n  resolution: "x@npm:1.1.0"\n`,
+    ],
+    [
+      'a dependency no entry resolves',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n  dependencies:\n    x: "npm:^1"\n\n"x@npm:^1":\n  version: 1.0.0\n  resolution: "x@npm:1.0.0"\n  dependencies:\n    gone: "npm:^9"\n`,
+    ],
+  ])('a berry lockfile with %s is read past, never a crash', (_, body) => {
+    const lock = parseLockfile(`__metadata:\n  version: 8\n  cacheKey: 10\n\n${body}`)
+    expect([...importerDigests(lock).keys()]).toEqual(['packages/a'])
+    expect([...importerLinks(lock).keys()]).toEqual(['packages/a'])
+  })
+
   it('an entry with no `resolution` is keyed by its descriptors, never merged with another', () => {
     const strip = (text: string) =>
       text
@@ -798,5 +1065,91 @@ describe('every input the yarn digest must read', () => {
     expect(swapped).not.toBe(text)
     expect(digests(crlf)).toEqual(digests(text))
     expect(digests(swapped)).toEqual(digests(text))
+  })
+})
+
+// vercel/turborepo#4755 and #6723 (their fixtures berry-protocol-collision.lock
+// and yarn4-mixed-protocol.lock): a workspace that one package names with a
+// bare or `npm:` range and another with `workspace:*`, all on one key. Turbo
+// refused the bare one and rewrote the `npm:` one to the registry.
+describe('yarn(): one key holding a workspace under several protocols', () => {
+  it.each([
+    [
+      'a bare range (Yarn 3)',
+      `__metadata:
+  version: 6
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  dependencies:
+    c: "*"
+  languageName: unknown
+  linkType: soft
+
+"b@workspace:packages/b":
+  version: 0.0.0-use.local
+  resolution: "b@workspace:packages/b"
+  dependencies:
+    c: "workspace:*"
+  languageName: unknown
+  linkType: soft
+
+"c@*, c@workspace:*, c@workspace:packages/c":
+  version: 0.0.0-use.local
+  resolution: "c@workspace:packages/c"
+  languageName: unknown
+  linkType: soft
+
+"prune-edge@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "prune-edge@workspace:."
+  languageName: unknown
+  linkType: soft
+`,
+      'packages',
+    ],
+    [
+      'an `npm:` range (Yarn 4)',
+      `__metadata:
+  version: 8
+  cacheKey: 10c0
+
+"a@workspace:pkgs/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:pkgs/a"
+  dependencies:
+    c: "npm:*"
+  languageName: unknown
+  linkType: soft
+
+"b@workspace:pkgs/b":
+  version: 0.0.0-use.local
+  resolution: "b@workspace:pkgs/b"
+  dependencies:
+    c: "workspace:*"
+  languageName: unknown
+  linkType: soft
+
+"c@npm:*, c@workspace:*, c@workspace:pkgs/c":
+  version: 0.0.0-use.local
+  resolution: "c@workspace:pkgs/c"
+  languageName: unknown
+  linkType: soft
+
+"yarn4-test@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "yarn4-test@workspace:."
+  languageName: unknown
+  linkType: soft
+`,
+      'pkgs',
+    ],
+  ])('%s links the workspace for every package that names it', (_, text, dir) => {
+    const links = importerLinks(parseLockfile(text))
+    expect([links.get(`${dir}/a`)?.deps, links.get(`${dir}/b`)?.deps]).toEqual([
+      { c: `${dir}/c` },
+      { c: `${dir}/c` },
+    ])
   })
 })

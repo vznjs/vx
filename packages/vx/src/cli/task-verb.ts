@@ -84,6 +84,28 @@ export async function taskNamesHere(cwd: string): Promise<string[] | null> {
   return [...names].sort()
 }
 
+/**
+ * "no projects declare task(s): …" for the bare names no project in the
+ * workspace declares, or undefined. A diff that matched nothing judged no
+ * name, so `vx run tset --affected` exited 0 as "nothing affected"
+ * (vercel/turborepo#12268). A workspace that does not load judges none.
+ */
+export async function undeclaredTasks(
+  tasks: readonly string[],
+  cwd: string,
+): Promise<string | undefined> {
+  const projects = await workspaceProjects(cwd)
+  if (projects === null) return undefined
+  const declared = new Set<string>()
+  for (const p of projects.values())
+    for (const [t, task] of Object.entries(p.config.tasks ?? {}))
+      if (!isDefaultBuild(task)) declared.add(t)
+  const missing = tasks.filter((t) => !t.includes('#') && !declared.has(t))
+  if (missing.length === 0) return undefined
+  const near = [...new Set(missing.map((t) => nearest(t, declared)).filter((t) => t !== undefined))]
+  return `no projects declare task(s): ${missing.join(', ')}.${near.length > 0 ? ` Did you mean ${near.join(', ')}?` : ''}`
+}
+
 async function workspaceProjects(
   cwd: string,
 ): Promise<Awaited<ReturnType<typeof loadCliProjects>> | null> {

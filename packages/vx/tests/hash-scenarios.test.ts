@@ -93,6 +93,66 @@ describe('line endings (Turbo crlf)', () => {
   )
 })
 
+/**
+ * Back-date `rels` and refresh the index, so git records their stat with no
+ * racy smudge: a file written in the second of its commit is hashed from
+ * disk whatever git says, which would hide a wrong clean verdict.
+ */
+async function settle(root: string, rels: readonly string[]): Promise<void> {
+  const past = new Date(Date.now() - 60_000)
+  for (const rel of rels) await utimes(at(root, rel), past, past)
+  gitIn(root)('update-index', '--really-refresh')
+}
+
+// Turbo d154e7e92 (vercel/turborepo#14697) matched git's text=auto binary
+// check: a file git stores raw keeps its CRs. vx hashes a filtered file's
+// raw bytes, so a LF→CRLF rewrite moves the key whatever git thinks of it.
+describe('text=auto, git binary detection (vercel/turborepo#14697)', () => {
+  it.each([
+    ['a lone CR', 'a\nb\rc\n'],
+    ['a NUL past the first 8000 bytes', `${'a\n'.repeat(4500)}\0\n`],
+    ['a control byte', 'a\u0001\nb\n'],
+    ['plain text', 'a\nb\n'],
+  ])(
+    '%s: an LF→CRLF rewrite moves the key',
+    async (_, body) => {
+      const root = await workspace(
+        "{ files: ['data.bin'] }",
+        { 'data.bin': body },
+        {
+          '.gitattributes': '* text=auto\n',
+        },
+      )
+      await settle(root, ['data.bin'])
+      const clean = await key(root)
+      await writeFile(at(root, 'data.bin'), body.replaceAll('\n', '\r\n'))
+      expect(await key(root)).not.toBe(clean)
+      // CONTROL: the bytes back, the key back.
+      await writeFile(at(root, 'data.bin'), body)
+      expect(await key(root)).toBe(clean)
+    },
+    TIMEOUT,
+  )
+})
+
+// Turbo ebc204865 (vercel/turborepo#10844): without `-z` git C-quotes a
+// non-ASCII path, which then names no file.
+describe('a non-ASCII tracked input (vercel/turborepo#10844)', () => {
+  it(
+    'an uncommitted edit to it moves the key; the bytes back bring it back',
+    async () => {
+      const root = await workspace("{ files: ['src/**'] }", { 'src/테스트.ts': 'one\n' })
+      await settle(root, ['src/테스트.ts'])
+      const clean = await key(root)
+      await writeFile(at(root, 'src/테스트.ts'), 'two\n')
+      expect(await key(root)).not.toBe(clean)
+      await writeFile(at(root, 'src/테스트.ts'), 'one\n')
+      expect(await key(root)).toBe(clean)
+    },
+    TIMEOUT,
+  )
+})
+
 describe('ignore rules (Turbo scm, Nx walker)', () => {
   it(
     'an uncommitted .gitignore edit that un-ignores a file makes it an input, and one that re-ignores it takes it out',
@@ -399,3 +459,88 @@ describe('refused at vx lock (Turbo, Nx)', () => {
     expect(refusal(inputs)).toContain(message)
   })
 })
+
+// vx lists untracked inputs through git (`ls-files --others
+// --exclude-standard`), so git's own rules decide what is ignored. Turbo's
+// walker reimplemented them and got each of these wrong once.
+describe("untracked inputs follow git's ignore rules", () => {
+  it(
+    "a project's `!` line takes a file back from the root's rule (vercel/turborepo#13221)",
+    async () => {
+      const root = await workspace(
+        "{ files: ['src/**'] }",
+        { '.gitignore': '!important.log\n', 'src/a.txt': 'a\n' },
+        { '.gitignore': '.vx/cache/\n*.log\n' },
+      )
+      await writeFile(at(root, 'src/important.log'), 'v1\n')
+      await writeFile(at(root, 'src/other.log'), 'v1\n')
+      const k0 = await key(root)
+      await writeFile(at(root, 'src/other.log'), 'v2\n')
+      expect(await key(root)).toBe(k0)
+      await writeFile(at(root, 'src/important.log'), 'v2\n')
+      expect(await key(root)).not.toBe(k0)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a root pattern two levels into a project applies; its unignored siblings are keyed (vercel/turborepo#13690)',
+    async () => {
+      const root = await workspace(
+        "{ files: ['**'] }",
+        { 'src/a.txt': 'a\n' },
+        { '.gitignore': '.vx/cache/\npackages/lib/src/deep/*.tmp\n' },
+      )
+      await mkdir(at(root, 'src/deep'), { recursive: true })
+      await writeFile(at(root, 'src/deep/x.tmp'), '1\n')
+      const k0 = await key(root)
+      await writeFile(at(root, 'src/deep/x.tmp'), '2\n')
+      expect(await key(root)).toBe(k0)
+      await writeFile(at(root, 'src/deep/y.txt'), '1\n')
+      expect(await key(root)).not.toBe(k0)
+    },
+    TIMEOUT,
+  )
+})
+
+// vercel/turborepo#13949: a task keyed on workspace files was hashed by a
+// shortcut decided before its global inputs were added, and missed their
+// change.
+it.each([
+  ["{ files: [], workspaceFiles: ['g.txt'] }"],
+  ["{ files: ['src/**'], workspaceFiles: ['g.txt'] }"],
+])(
+  '%s re-keys when the workspace file changes',
+  async (inputs) => {
+    const root = await workspace(
+      inputs,
+      { 'src/a.txt': 'a\n', 'other.txt': 'o\n' },
+      { 'g.txt': '1\n' },
+    )
+    const k0 = await key(root)
+    await writeFile(at(root, 'other.txt'), 'p\n')
+    expect(await key(root)).toBe(k0)
+    await writeFile(path.join(root, 'g.txt'), '2\n')
+    expect(await key(root)).not.toBe(k0)
+  },
+  TIMEOUT,
+)
+
+// vercel/turborepo#13793: an input glob that does not compile (`[invalid`)
+// failed affected detection. vx compiles no such class: an unclosed `[` is
+// the literal name, keyed as any file is.
+it(
+  'an unclosed `[` in an input names the literal file, keyed and re-keyed',
+  async () => {
+    const root = await workspace("{ files: ['src/[invalid'] }", {
+      'src/[invalid': 'v1\n',
+      'src/i': 'v1\n',
+    })
+    const k0 = await key(root)
+    await writeFile(at(root, 'src/i'), 'v2\n')
+    expect(await key(root)).toBe(k0)
+    await writeFile(at(root, 'src/[invalid'), 'v2\n')
+    expect(await key(root)).not.toBe(k0)
+  },
+  TIMEOUT,
+)

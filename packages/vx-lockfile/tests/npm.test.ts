@@ -102,6 +102,14 @@ describe('workspace digests (npm)', () => {
     expect(a.get('packages/a')).not.toBe(b.get('packages/a'))
   })
 
+  // vercel/turborepo#2272: npm keeps an old package's `engines` as an
+  // array of strings, which Turbo's lockfile reader refused.
+  it('reads an entry whose engines is an array, keying as without it', () => {
+    const doc = JSON.parse(lock()) as { packages: Record<string, Record<string, unknown>> }
+    doc.packages['node_modules/bar']!['engines'] = ['node >= 0.8.0']
+    expect(digests(JSON.stringify(doc))).toEqual(digests(lock()))
+  })
+
   it('a hoisted bump moves the workspaces that reach it and no other', () => {
     const before = digests(lock())
     const after = digests(lock({ bar: '2.0.1' }))
@@ -147,12 +155,43 @@ describe('workspace digests (npm)', () => {
     for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
   })
 
+  it("a workspaces glob with a trailing slash still names the workspace's own version", () => {
+    // Turbo #6772: `packages/*/` matched no workspace, so none had a
+    // digest of its own and b's version read as an installed package's.
+    const slash = (text: string, version: string): string => {
+      const doc = JSON.parse(text)
+      doc.packages[''].workspaces = ['packages/*/']
+      doc.packages['packages/b'].version = version
+      return JSON.stringify(doc, null, 2)
+    }
+    const before = digests(slash(lock(), '1.0.0'))
+    const after = digests(slash(lock(), '1.0.1'))
+    expect([...before.keys()].sort()).toEqual([...digests(lock()).keys()].sort())
+    for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
+  })
+
+  it('workspaces written as `{ packages: [...] }` name the same workspaces (Turbo #3235, #3244)', () => {
+    const doc = JSON.parse(lock())
+    doc.packages[''].workspaces = { packages: doc.packages[''].workspaces }
+    expect(digests(JSON.stringify(doc))).toEqual(digests(lock()))
+  })
+
   it('refuses what is not an npm v2+ lockfile', () => {
     expect(() => parseLockfile('{"name":"x"}')).toThrow(/no lockfileVersion/)
     expect(() => parseLockfile('{"lockfileVersion":1,"dependencies":{}}')).toThrow(
       /lockfileVersion 1 has no/,
     )
     expect(() => parseLockfile('nope')).toThrow(/JSON Parse error/)
+  })
+
+  it('refuses a v2+ lockfile whose packages are only in the legacy tree (vercel/turborepo#13993)', () => {
+    // Read as empty, a bump in the legacy `dependencies` tree moved no key.
+    expect(() =>
+      parseLockfile('{"lockfileVersion":2,"dependencies":{"foo":{"version":"1.0.0"}}}'),
+    ).toThrow(/only in the legacy `dependencies` tree/)
+    // An empty or absent legacy tree is no such lockfile.
+    expect(() => parseLockfile('{"lockfileVersion":2,"dependencies":{}}')).not.toThrow()
+    expect(() => parseLockfile('{"lockfileVersion":3}')).not.toThrow()
   })
 })
 
@@ -199,6 +238,36 @@ describe('every input the npm digest must read', () => {
         })
       expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['packages/a'])
     }
+  })
+
+  // vercel/turborepo#4824 (its fixture workspace-peer-dependency.json): a
+  // workspace linked under a registry name (`eslint` → packages/c) that a
+  // registry package and a workspace both peer on. It resolved to no
+  // package and the closure failed; it is a link, the bump moves only a.
+  it('a peer on a workspace linked under a registry name is that workspace', () => {
+    const text = (v: string) =>
+      doc({
+        'node_modules/a': { resolved: 'packages/a', link: true },
+        'node_modules/b': { resolved: 'packages/b', link: true },
+        'node_modules/eslint': { resolved: 'packages/c', link: true },
+        'node_modules/eslint-plugin-turbo': {
+          version: v,
+          resolved: `https://r/e-${v}.tgz`,
+          integrity: `sha-${v}`,
+          peerDependencies: { eslint: '>6.6.0' },
+        },
+        'packages/a': {
+          dependencies: { eslint: '^0.0.0-workspace', 'eslint-plugin-turbo': '^1.9.3' },
+        },
+        'packages/b': { peerDependencies: { eslint: '*' } },
+        'packages/c': { name: 'eslint', version: '0.0.0-workspace' },
+      })
+    const links = importerLinks(parseLockfile(text('1.9.3')))
+    expect([links.get('packages/a'), links.get('packages/b')]).toEqual([
+      { deps: { eslint: 'packages/c' }, peers: {} },
+      { deps: {}, peers: { eslint: 'packages/c' } },
+    ])
+    expect(movedDirs(text('1.9.3'), text('1.9.4'))).toEqual(['packages/a'])
   })
 
   it.each([
@@ -344,6 +413,67 @@ describe('every input the npm digest must read', () => {
     expect(read({ packages: ['packages/*'] })).toEqual(expected)
     // CONTROL: the array form.
     expect(read(['packages/*'])).toEqual(expected)
+  })
+
+  it("two workspaces' own nested versions of one package each move only their workspace (vercel/turborepo#10988)", () => {
+    // Turbo's issue-10985 fixture: app-one nests next 14, app-two next 15,
+    // both reach @repo/components, whose next is a peer.
+    const text = (one: string, two: string) =>
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'monorepo', workspaces: ['apps/*', 'packages/*'] },
+          'node_modules/next': { version: '14.2.5', integrity: 'sha512-top' },
+          'node_modules/@repo/components': { resolved: 'packages/components', link: true },
+          'apps/app-one': {
+            name: 'app-one',
+            dependencies: { '@repo/components': '*', next: '^14.0.0' },
+          },
+          'apps/app-one/node_modules/next': { version: '14.2.5', integrity: `sha512-${one}` },
+          'apps/app-two': {
+            name: 'app-two',
+            dependencies: { '@repo/components': '*', next: '^15.0.0' },
+          },
+          'apps/app-two/node_modules/next': { version: '15.0.0', integrity: `sha512-${two}` },
+          'packages/components': {
+            name: '@repo/components',
+            peerDependencies: { next: '^14 || ^15' },
+          },
+        },
+      })
+    expect(movedDirs(text('a', 'b'), text('a', 'b2'))).toEqual(['apps/app-two'])
+    expect(movedDirs(text('a', 'b'), text('a2', 'b'))).toEqual(['apps/app-one'])
+  })
+
+  it("a dependency nested two levels under a workspace's package is in its reach (vercel/turborepo#12464)", () => {
+    // npm install-strategy=shallow: app-a/chai → its own nested deep-eql;
+    // pkg-b keeps an older chai of its own.
+    const text = (eql: string, chaiB: string) =>
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'monorepo', workspaces: ['apps/*', 'packages/*'] },
+          'node_modules/app-a': { resolved: 'apps/app-a', link: true },
+          'node_modules/pkg-b': { resolved: 'packages/pkg-b', link: true },
+          'apps/app-a': { name: 'app-a', dependencies: { 'pkg-b': '*', chai: '^5.0.0' } },
+          'apps/app-a/node_modules/chai': {
+            version: '5.3.3',
+            dependencies: { 'deep-eql': '^5.0.0' },
+          },
+          'apps/app-a/node_modules/chai/node_modules/deep-eql': {
+            version: eql,
+            integrity: `sha512-${eql}`,
+          },
+          'packages/pkg-b': { name: 'pkg-b', devDependencies: { chai: '^4.0.0' } },
+          'packages/pkg-b/node_modules/chai': { version: chaiB, integrity: `sha512-${chaiB}` },
+        },
+      })
+    expect(movedDirs(text('5.0.2', '4.5.0'), text('5.0.3', '4.5.0'))).toEqual(['apps/app-a'])
+    // app-a links pkg-b, so pkg-b's own chai is in app-a's reach too.
+    expect(movedDirs(text('5.0.2', '4.5.0'), text('5.0.2', '4.5.1'))).toEqual([
+      'apps/app-a',
+      'packages/pkg-b',
+    ])
   })
 
   // Item 1073's class, npm's side: two workspaces that link each other,

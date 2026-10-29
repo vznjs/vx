@@ -47,6 +47,12 @@ export function parseLockfile(text: string): Lockfile {
     )
   }
   const raws = record(d!['packages']) ?? {}
+  // Read as no packages, a bump there moved no key.
+  if (Object.keys(raws).length === 0 && Object.keys(record(d!['dependencies']) ?? {}).length > 0) {
+    throw new Error(
+      `lockfileVersion ${version} lists its packages only in the legacy \`dependencies\` tree — npm 7+ writes them under \`packages\``,
+    )
+  }
   const isMember = workspaceMatcher(raws[''])
   const packages = new Map<string, Entry>()
   for (const [p, raw] of Object.entries(raws)) {

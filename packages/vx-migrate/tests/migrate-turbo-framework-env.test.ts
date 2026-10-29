@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
+import { BUILTIN_FAMILIES_NOTE } from './helpers/turbo-own.js'
 
 let root: string
 let metas: PackageMeta[]
@@ -67,9 +68,15 @@ describe('migrateTurbo: a framework Turbo infers', () => {
       'NEXT_DEPLOYMENT_ID',
     ]
     expect(await env()).toEqual({
-      env: names,
-      pass: names,
+      env: [{ raw: '...globalEnvInputs' }, ...names, 'VERCEL_DEPLOYMENT_ID'],
+      pass: [
+        { raw: '...globalEnvInputs' },
+        { raw: '...globalPassThroughEnv' },
+        ...names,
+        'VERCEL_DEPLOYMENT_ID',
+      ],
       notes: [
+        BUILTIN_FAMILIES_NOTE,
         'nextjs in web: Turbo passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID implicitly; the configs ' +
           'list the names the package and its workspace dependencies spell, so add any an ' +
           'installed dependency reads to inputs.env and exec.env.passThrough',
@@ -77,7 +84,27 @@ describe('migrateTurbo: a framework Turbo infers', () => {
     })
   })
 
+  it('infers Next only for the package that depends on next (vercel/turborepo#14188)', async () => {
+    // `other` spells a NEXT_PUBLIC_ name and builds, but has no next dependency.
+    const other = metas.find((m) => m.name === 'other')!
+    other.packageJson = { name: 'other', scripts: { build: 'tsc' } } as never
+    const git = (...a: string[]) => Bun.spawnSync(['git', ...a], { cwd: root })
+    git('init', '-q')
+    git('add', '-A')
+    const p = await migrateTurbo(root, metas)
+    const t = p.projects.find((x) => x.name === 'other')!.tasks[0]!.task as {
+      inputs: { env?: unknown }
+      exec: { env?: { passThrough?: unknown } }
+    }
+    expect(JSON.stringify([t.inputs.env, t.exec.env?.passThrough])).not.toContain('NEXT_')
+    expect(p.notes.filter((n) => n.includes('in other'))).toEqual([])
+  })
+
   it('without git lists only the literal names', async () => {
-    expect((await env()).env).toEqual(['NEXT_DEPLOYMENT_ID'])
+    expect((await env()).env).toEqual([
+      { raw: '...globalEnvInputs' },
+      'NEXT_DEPLOYMENT_ID',
+      'VERCEL_DEPLOYMENT_ID',
+    ])
   })
 })

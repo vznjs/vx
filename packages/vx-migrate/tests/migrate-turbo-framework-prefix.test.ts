@@ -38,5 +38,11 @@ it('a framework prefix spelled alone is no name', async () => {
     { name: 'web', dir, packageJson: packageJson as never, configPath: null },
   ])
   const t = p.projects[0]!.tasks[0]!.task as { inputs: { env?: unknown } }
-  expect(t.inputs.env).toEqual(['NEXT_PUBLIC_API', 'NEXT_DEPLOYMENT_ID'])
+  // Skew protection's name is keyed whatever the condition: written for another environment.
+  expect(t.inputs.env).toEqual([
+    { raw: '...globalEnvInputs' },
+    'NEXT_PUBLIC_API',
+    'NEXT_DEPLOYMENT_ID',
+    'VERCEL_DEPLOYMENT_ID',
+  ])
 })

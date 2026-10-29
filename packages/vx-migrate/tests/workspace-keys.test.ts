@@ -67,6 +67,63 @@ describe('turbo(): turbo.json workspace keys', () => {
     }
   })
 
+  // Turbo #9053: an empty TURBO_SCM_BASE is unset, not a base of ''.
+  it('TURBO_SCM_BASE names the base commit; an empty or blank one names none', async () => {
+    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: {} }))
+    const saved = { base: process.env['TURBO_SCM_BASE'], gha: process.env['GITHUB_ACTIONS'] }
+    try {
+      delete process.env['GITHUB_ACTIONS']
+      const seen: unknown[] = []
+      for (const v of ['origin/main', '', '  ']) {
+        process.env['TURBO_SCM_BASE'] = v
+        seen.push((await staged(turbo())).base)
+      }
+      expect(seen).toEqual(['origin/main', undefined, undefined])
+    } finally {
+      for (const [k, v] of [
+        ['TURBO_SCM_BASE', saved.base],
+        ['GITHUB_ACTIONS', saved.gha],
+      ] as const) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  })
+
+  // Turbo #9053: `turbo run --affected` diffs TURBO_SCM_BASE...TURBO_SCM_HEAD.
+  // vx's head is the checkout (HEAD and its working tree), so a head that is
+  // HEAD's commit is honoured as is, and any other one is said, not ignored.
+  it('TURBO_SCM_HEAD at the checkout is honoured; another head is warned of', async () => {
+    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: {} }))
+    const git = (...args: string[]) =>
+      Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: root })
+        .stdout.toString()
+        .trim()
+    git('init', '-q')
+    git('commit', '-q', '--allow-empty', '-m', 'one')
+    git('commit', '-q', '--allow-empty', '-m', 'two')
+    const [head, parent] = [git('rev-parse', 'HEAD'), git('rev-parse', 'HEAD~1')]
+    const saved = process.env['TURBO_SCM_HEAD']
+    try {
+      const warned: Record<string, string[]> = {}
+      for (const v of ['HEAD', head, '', ' ', parent, 'no-such-ref']) {
+        process.env['TURBO_SCM_HEAD'] = v
+        const said: string[] = []
+        await turbo().config!(
+          {},
+          { workspaceRoot: root, warn: (m) => void said.push(m), setBranch: () => {} },
+        )
+        warned[v] = said
+      }
+      expect(Object.values(warned).map((w) => w.length)).toEqual([0, 0, 0, 0, 1, 1])
+      expect(warned[parent]![0]).toContain(`TURBO_SCM_HEAD (${parent})`)
+      expect(warned['no-such-ref']![0]).toContain('TURBO_SCM_HEAD (no-such-ref)')
+    } finally {
+      if (saved === undefined) delete process.env['TURBO_SCM_HEAD']
+      else process.env['TURBO_SCM_HEAD'] = saved
+    }
+  })
+
   it('a concurrency that is no positive whole number is left to the default', async () => {
     for (const concurrency of ['abc', '1.5', '-2']) {
       await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency, tasks: {} }))
@@ -95,5 +152,97 @@ describe("a relative root is the workspace root's", () => {
   it('an empty root is refused, as it is no directory', () => {
     expect(() => turbo({ root: '' })).toThrow('turbo() option "root" is a directory, not empty')
     expect(() => nx({ root: '' })).toThrow('nx() option "root" is a directory, not empty')
+  })
+})
+
+// What a bare `--affected` compares with: Nx's NX_BASE over nx.json's
+// defaultBase (Nx 19's affected.defaultBase before it), Turbo's
+// TURBO_SCM_BASE (pinned above) or GitHub Actions' base. A key the
+// workspace sets is its own.
+describe('the affected base', () => {
+  const withEnv = async <T>(name: string, value: string | undefined, fn: () => Promise<T>) => {
+    const prev = process.env[name]
+    if (value === undefined) delete process.env[name]
+    else process.env[name] = value
+    try {
+      return await fn()
+    } finally {
+      if (prev === undefined) delete process.env[name]
+      else process.env[name] = prev
+    }
+  }
+
+  it('nx(): NX_BASE is the base commit; defaultBase, then affected.defaultBase, the base branch', async () => {
+    const branch = () => withEnv('NX_BASE', undefined, async () => (await staged(nx())).baseBranch)
+    await writeFile(path.join(root, 'nx.json'), JSON.stringify({}))
+    expect(await branch()).toBeUndefined()
+    await writeFile(
+      path.join(root, 'nx.json'),
+      JSON.stringify({ affected: { defaultBase: 'origin/dev' } }),
+    )
+    expect(await branch()).toBe('dev')
+    await writeFile(
+      path.join(root, 'nx.json'),
+      JSON.stringify({ defaultBase: 'develop', affected: { defaultBase: 'dev' } }),
+    )
+    expect(await branch()).toBe('develop')
+    expect(await withEnv('NX_BASE', 'origin/next', async () => (await staged(nx())).base)).toBe(
+      'origin/next',
+    )
+    expect(await withEnv('NX_BASE', undefined, () => staged(nx(), { baseBranch: 'main' }))).toEqual(
+      { baseBranch: 'main' },
+    )
+  })
+
+  // Turbo's `get_github_base_ref`: with no TURBO_SCM_BASE, a pull request's
+  // GITHUB_BASE_REF, else the push event's `before`, or the parent of its
+  // first commit for a new or forced push. vx guessed origin/HEAD, which a
+  // push to main is: nothing affected.
+  it('turbo(): on GitHub Actions, the base the event names', async () => {
+    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: {} }))
+    const event = path.join(root, 'event.json')
+    const gha = async (vars: Record<string, string | undefined>, payload?: unknown) => {
+      if (payload !== undefined) await writeFile(event, JSON.stringify(payload))
+      const names = ['TURBO_SCM_BASE', 'GITHUB_ACTIONS', 'GITHUB_BASE_REF', 'GITHUB_EVENT_PATH']
+      const prev = names.map((n) => process.env[n])
+      for (const n of names) delete process.env[n]
+      Object.assign(process.env, { GITHUB_ACTIONS: 'true', GITHUB_EVENT_PATH: event, ...vars })
+      for (const [k, v] of Object.entries(vars)) if (v === undefined) delete process.env[k]
+      try {
+        return (await staged(turbo())).base
+      } finally {
+        names.forEach((n, i) => {
+          if (prev[i] === undefined) delete process.env[n]
+          else process.env[n] = prev[i]
+        })
+      }
+    }
+    const sha = 'a'.repeat(40)
+    const zero = '0'.repeat(40)
+    expect(await gha({ GITHUB_BASE_REF: 'main' }, { before: sha })).toBe('main')
+    expect(await gha({ GITHUB_BASE_REF: '' }, { before: sha })).toBe(sha)
+    expect(await gha({}, { before: zero, commits: [{ id: 'c1' }, { id: 'c2' }] })).toBe('c1^')
+    expect(await gha({}, { before: sha, forced: true, commits: [{ id: 'c1' }] })).toBe('c1^')
+    expect(await gha({}, { before: zero, commits: [] })).toBeUndefined()
+    expect(await gha({ TURBO_SCM_BASE: 'dev' }, { before: sha })).toBe('dev')
+    // Off GitHub Actions, the event says nothing.
+    expect(await gha({ GITHUB_ACTIONS: undefined }, { before: sha })).toBeUndefined()
+    // A base ref the checkout lacks is origin's only under Turbo's future flag.
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ futureFlags: { githubActionsRemoteBaseRefFallback: true }, tasks: {} }),
+    )
+    Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
+    const git = (...a: string[]) =>
+      Bun.spawnSync(
+        ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...a],
+        { cwd: root, stderr: 'pipe' },
+      )
+    const commit = git('commit', '-q', '--allow-empty', '-m', 'x')
+    expect({ code: commit.exitCode, err: commit.stderr.toString() }).toEqual({ code: 0, err: '' })
+    git('update-ref', 'refs/remotes/origin/release', 'HEAD')
+    expect(await gha({ GITHUB_BASE_REF: 'release' })).toBe('origin/release')
+    git('branch', 'release')
+    expect(await gha({ GITHUB_BASE_REF: 'release' })).toBe('release')
   })
 })

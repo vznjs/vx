@@ -121,7 +121,7 @@ describe('a preset spread of the global inputs', () => {
       { splice: () => [spread], persistentTodo: 'PERSIST' },
     )
     const task = (p: string) => m.projects.find((x) => x.name === p)!.tasks[0]!
-    expect(ws(task('root').task!)).toEqual(['shared/README.md', 'shared/**'])
+    expect(ws(task('root').task!)).toEqual(['shared/README.md', 'package.json', 'shared/**'])
     expect(task('root').uses.has('inputs')).toBe(false)
     expect(ws(task('a').task!) as unknown[]).toEqual([spread])
   })

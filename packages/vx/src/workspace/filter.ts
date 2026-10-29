@@ -66,6 +66,8 @@ export interface ParsedFilter {
    * `./apps/*` when it names no project, as Nx's `--projects` reads it.
    */
   dirFallback?: ParsedFilter
+  /** `<pattern>{<dir>}`: the `{<dir>}` path form the name matches are narrowed to. */
+  within?: ParsedFilter
 }
 
 export function parseFilter(
@@ -175,6 +177,27 @@ export function parseFilter(
     }
   }
 
+  // `<pattern>{<dir>}`: the packages the name selects in the directory, as
+  // pnpm and Turbo read it (turborepo#887, `pattern{foo}[master]`). Read as
+  // one name glob, it matched nothing.
+  const named = /^([^{}]+)\{([^{}]*)\}$/.exec(s)
+  if (named !== null && !named[1]!.startsWith('./') && named[1] !== '.') {
+    if (named[2]!.trim() === '') throw new UserError(`filter "${raw}" names no project`)
+    return {
+      raw,
+      negate,
+      withDeps,
+      withDependents,
+      onlyDeps,
+      onlyDependents,
+      isPath: false,
+      matcher: named[1]!,
+      within: parseFilter(`{${named[2]}}`, workspaceRoot, raw),
+      ...(gitSince !== undefined ? { gitSince } : {}),
+      ...(sinceViaDeps ? { sinceViaDeps: true as const } : {}),
+    }
+  }
+
   let isPath = false
   let matcher = s
   let pathGlob: Bun.Glob | undefined
@@ -266,6 +289,11 @@ function matchSelector(
   projects: ProjectMeta[],
   tags: ProjectTags | undefined,
 ): string[] {
+  if (filter.within !== undefined) {
+    const { within, ...name } = filter
+    const inDir = new Set(matchSelector(within, projects, tags))
+    return matchSelector(name, projects, tags).filter((n) => inDir.has(n))
+  }
   const out: string[] = []
   if (filter.tag === true) {
     const re = compileNameGlob(filter.matcher)

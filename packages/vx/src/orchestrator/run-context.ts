@@ -30,7 +30,7 @@ import type { RunContextRecord } from './telemetry.js'
 export interface GitContext {
   /** `git rev-parse HEAD`, or null outside a repo / on failure. */
   commitSha: string | null
-  /** `git rev-parse --abbrev-ref HEAD`, or null. */
+  /** The branch HEAD names (`refs/heads/` stripped), with or without a commit; null when detached. */
   branch: string | null
   /** True if `git status --porcelain` was non-empty; null on failure. */
   dirty: boolean | null
@@ -61,9 +61,11 @@ export interface HostContext {
 
 /**
  * One short `git` spawn per run (not per task), behind try/catch.
- * `git rev-parse HEAD --abbrev-ref HEAD` returns the commit on line 1
- * and the branch on line 2 in a SINGLE invocation — half the spawns of
- * two separate `rev-parse` calls. `dirty` is NOT probed here: the run's
+ * `git rev-parse HEAD --symbolic-full-name HEAD` returns the commit on
+ * line 1 and the ref on line 2 in a SINGLE invocation — half the spawns
+ * of two separate `rev-parse` calls. The full name, not `--abbrev-ref`:
+ * a tag named like the branch made that answer `heads/main`
+ * (vercel/turborepo#13882). `dirty` is NOT probed here: the run's
  * `GitFilesCache` populate already ran `git status --porcelain` for
  * input enumeration, so the orchestrator passes that aggregate in
  * (`dirty`) rather than paying for a second status spawn. Pass
@@ -95,7 +97,7 @@ export function captureGitContext(
         workspaceRoot,
         'rev-parse',
         'HEAD',
-        '--abbrev-ref',
+        '--symbolic-full-name',
         'HEAD',
       ],
       env: gitEnv(),
@@ -107,15 +109,19 @@ export function captureGitContext(
       const sha = lines[0]?.trim()
       const br = lines[1]?.trim()
       if (sha) commitSha = sha
-      // `--abbrev-ref HEAD` answers the literal string `HEAD` when nothing is
-      // checked out. Recording that verbatim INVENTS a branch: every detached
+      // A detached HEAD answers the literal string `HEAD`, never `refs/heads/…`.
+      // Recording that verbatim INVENTS a branch: every detached
       // run shares a pseudo-branch "HEAD", which is how `actions/checkout`
       // leaves a pull_request build. The trust boundary (`branch ===
       // defaultBranch`) means it is at least never mistaken for trunk, but
       // every PR collapses into one scope — so one PR's timings feed another's
       // baseline, cross-branch regression detection counts them as a single
       // branch, and a consumer grouping runs by branch reads "HEAD".
-      if (br && br !== 'HEAD') branch = br
+      if (br?.startsWith('refs/heads/')) branch = br.slice('refs/heads/'.length)
+    } else {
+      // No commit yet: `rev-parse HEAD` fails, yet HEAD already names the
+      // branch the first commit lands on (`git branch --show-current`).
+      branch = unbornBranch(workspaceRoot)
     }
   } catch {
     // git unavailable / non-repo: both fields stay null.
@@ -129,6 +135,18 @@ export function captureGitContext(
   return { commitSha, branch, dirty }
 }
 
+/** The branch HEAD names, asked of git only after `rev-parse HEAD` failed. */
+function unbornBranch(workspaceRoot: string): string | null {
+  const proc = Bun.spawnSync({
+    cmd: [executablePath('git'), '-C', workspaceRoot, 'symbolic-ref', '--quiet', 'HEAD'],
+    env: gitEnv(),
+    stdout: 'pipe',
+    stderr: 'ignore',
+  })
+  const ref = proc.exitCode === 0 ? new TextDecoder().decode(proc.stdout).trim() : ''
+  return ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : null
+}
+
 /**
  * `HEAD`'s commit and branch from the `.git` files, or null when anything
  * about the layout is unfamiliar (the caller then spawns git). Handles a
@@ -138,7 +156,7 @@ export function captureGitContext(
  */
 function readHeadDirect(
   workspaceRoot: string,
-): { commitSha: string; branch: string | null } | null {
+): { commitSha: string | null; branch: string | null } | null {
   try {
     const dirs = refDirsOf(workspaceRoot)
     if (dirs === null) return null
@@ -166,7 +184,8 @@ function readHeadDirect(
         }
       }
     }
-    return null
+    // Neither a loose nor a packed ref: the branch has no commit yet.
+    return { commitSha: null, branch }
   } catch {
     return null
   }

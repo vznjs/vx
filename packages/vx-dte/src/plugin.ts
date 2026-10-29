@@ -485,13 +485,13 @@ export function dte(options: DteOptions = {}) {
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
       const [
         { Orchestrator },
-        { join },
+        { joinOffLoop },
         { decide, knownMisses, slowdown, tailsMs, WARM_UP_MS },
         { snapshot },
         seal,
       ] = await Promise.all([
         import('./orchestrator.js'),
-        import('./wire.js'),
+        import('./wire-thread.js'),
         import('./planner.js'),
         import('./tree.js'),
         import('./seal.js'),
@@ -521,7 +521,9 @@ export function dte(options: DteOptions = {}) {
       let onChange = (_now?: boolean): void => {}
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
-          await join(relay, run, 'orchestrator', null, () => token(relay), headers),
+          // Off this loop: the run's own sync work held its acks, and every
+          // worker then running ended (CI, 2026-10-29).
+          await joinOffLoop(relay, run, null, () => token(relay), headers),
           run,
           proof,
           ctx.warn,

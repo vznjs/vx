@@ -253,6 +253,16 @@ describe('workspace digests', () => {
     for (const dir of before.keys()) expect(after.get(dir)).not.toBe(before.get(dir))
   })
 
+  // vercel/turborepo#10729 (test_global_change_version_mismatch): Bun
+  // rewrites the whole layout across lockfile versions, so a version bump
+  // with no other edit is install-wide.
+  it('a lockfileVersion bump alone moves every workspace', () => {
+    const before = digests(lock())
+    const after = digests(lock().replace('"lockfileVersion": 1,', '"lockfileVersion": 2,'))
+    expect(before.size).toBe(4)
+    for (const dir of before.keys()) expect(after.get(dir)).not.toBe(before.get(dir))
+  })
+
   it("a workspace's own manifest entry moves that workspace and what links it, no other", () => {
     const before = lock()
     // b gains a dependency on foo, which a already reaches.
@@ -423,6 +433,68 @@ describe('every input the digest must read', () => {
       deps: { root: '.' },
       peers: {},
     })
+  })
+
+  it("a package's optional dependency with no entry (another platform's) is no error, and its siblings still key (vercel/turborepo#10909)", () => {
+    const text = (v: string) =>
+      doc(
+        `"": { "name": "ws" }, "packages/a": { "name": "a", "dependencies": { "x": "^1" } }`,
+        `"a": ["a@workspace:packages/a"],
+    "x": ["x@1.0.0", "", { "dependencies": { "y": "^1" }, "optionalDependencies": { "x-linux-arm64": "1.0.0" } }, "sha512-x"],
+    "y": ["y@${v}", "", {}, "sha512-y${v}"]`,
+      )
+    expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['packages/a'])
+  })
+
+  it('a bundled dependency nested under its package is the one it reaches, not the root one (vercel/turborepo#10915)', () => {
+    // `oxide/@emnapi/core` is bundled inside oxide; a root `@emnapi/core`
+    // at another version is a different package.
+    const text = (nested: string, top: string) =>
+      doc(
+        `"": { "name": "ws" }, "packages/a": { "name": "a", "dependencies": { "oxide": "1.0.0" } },
+    "packages/b": { "name": "b", "dependencies": { "@emnapi/core": "2.0.0" } }`,
+        `"a": ["a@workspace:packages/a"], "b": ["b@workspace:packages/b"],
+    "oxide": ["oxide@1.0.0", "", { "dependencies": { "@emnapi/core": "1.0.0" }, "bundled": true }, "sha512-ox"],
+    "oxide/@emnapi/core": ["@emnapi/core@1.0.0", "", { "bundled": true }, "sha512-${nested}"],
+    "@emnapi/core": ["@emnapi/core@2.0.0", "", {}, "sha512-${top}"]`,
+      )
+    expect(movedDirs(text('n1', 't1'), text('n2', 't1'))).toEqual(['packages/a'])
+    expect(movedDirs(text('n1', 't1'), text('n1', 't2'))).toEqual(['packages/b'])
+  })
+
+  it("a GitHub dependency's 3-tuple is read: its commit and its dependencies key the workspace (vercel/turborepo#11268)", () => {
+    // `[id, info, ref]`: no registry slot, the info object second.
+    const text = (ref: string, store: string) =>
+      doc(
+        `"": { "name": "ws" }, "packages/a": { "name": "a", "dependencies": { "@t/react-store": "github:t/store#${ref}" } },
+    "packages/b": { "name": "b" }`,
+        `"a": ["a@workspace:packages/a"], "b": ["b@workspace:packages/b"],
+    "@t/react-store": ["@t/react-store@github:t/store#${ref}", { "dependencies": { "@t/store": "0.7.0" } }, "t-store-${ref}"],
+    "@t/store": ["@t/store@0.7.0", "", {}, "sha512-${store}"]`,
+      )
+    expect(movedDirs(text('24a971c', 's1'), text('9f00d1e', 's1'))).toEqual(['packages/a'])
+    expect(movedDirs(text('24a971c', 's1'), text('24a971c', 's2'))).toEqual(['packages/a'])
+  })
+
+  it('a workspace named like a package another package nests: the nested one moves only who reaches it (vercel/turborepo#14871)', () => {
+    // Turbo's bun-v2-workspace-name-shadow fixture: workspace `ms`, and
+    // `debug/ms` from npm under debug. web links the workspace `ms`.
+    const text = (v: string) =>
+      doc(
+        `"": { "name": "root" },
+    "apps/web": { "name": "web", "dependencies": { "debug": "4.4.3", "ms": "workspace:*" } },
+    "packages/ms": { "name": "ms", "version": "0.0.0-local" }`,
+        `"debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" } }, "sha512-debug"],
+    "ms": ["ms@workspace:packages/ms"],
+    "web": ["web@workspace:apps/web"],
+    "debug/ms": ["ms@${v}", "", {}, "sha512-ms${v}"]`,
+        `\n  "configVersion": 1,`,
+      )
+    expect(importerLinks(parseLockfile(text('2.1.3'))).get('apps/web')).toEqual({
+      deps: { ms: 'packages/ms' },
+      peers: {},
+    })
+    expect(movedDirs(text('2.1.3'), text('2.1.4'))).toEqual(['apps/web'])
   })
 
   it("a git dependency's short tuple: its commit and its own dependencies move what reaches it", () => {

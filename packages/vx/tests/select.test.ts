@@ -215,6 +215,27 @@ describe('resolveFilters', () => {
     )
   })
 
+  it('a braced directory list is named as one braced directory per --filter (vercel/turborepo#6955)', async () => {
+    // Turbo crashed on `--filter={cli,docs}`. vx refused it, but the hint
+    // split the braces apart: `--filter {packages/app --filter packages/lib}`,
+    // two filters that each name nothing.
+    const { value } = await quiet(() => resolveFilters(root, ['{packages/app,packages/lib}']))
+    expect(value).toEqual({
+      error:
+        'no projects matched filter(s): {packages/app,packages/lib}. A filter is one pattern: --filter {packages/app} --filter {packages/lib}',
+    })
+    // A comma inside a glob's own braces is no list: `./packages/{app,nope}` is one pattern.
+    const glob = await quiet(() => resolveFilters(root, ['./packages/{nope,none}']))
+    expect(glob.value).toEqual({
+      error: 'no projects matched filter(s): ./packages/{nope,none}. Projects: app, lib',
+    })
+    // A malformed glob class is a filter that matched nothing, not a crash.
+    const bad = await quiet(() => resolveFilters(root, ['{packages/a[}']))
+    expect(bad.value).toEqual({
+      error: 'no projects matched filter(s): {packages/a[}. Projects: app, lib',
+    })
+  })
+
   it("the hint reads a pattern's name through its graph operators", async () => {
     const { value } = await quiet(() => resolveFilters(root, ['apq...']))
     expect(value).toEqual({ error: 'no projects matched filter(s): apq.... Did you mean app?' })

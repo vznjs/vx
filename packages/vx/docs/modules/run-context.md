@@ -91,8 +91,11 @@ export function captureWorkspaceIdentity(
   `reftable/` directory; its HEAD file names `refs/heads/.invalid`) is
   never read from its files, and anything else unfamiliar falls back
   to ONE
-  `git rev-parse HEAD --abbrev-ref HEAD` spawn (commit on line 1, branch
-  on line 2), behind try/catch. A detached HEAD takes the branch the CI
+  `git rev-parse HEAD --symbolic-full-name HEAD` spawn (commit on line
+  1, ref on line 2; the full name, so a tag named like the branch cannot
+  make it `heads/main`), behind try/catch. A branch with no commit yet
+  still reports its name (a second `git symbolic-ref` spawn when the
+  files cannot say). A detached HEAD takes the branch the CI
   environment names, when one does. `dirty` is passed in — the run's
   `GitFilesCache` populate already ran `git status --porcelain`, so no
   second status spawn. Each field degrades to null independently.

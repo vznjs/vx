@@ -109,6 +109,29 @@ describe('Turbo parity — scm: which file changes move a key (turborepo-scm)', 
   )
 
   it(
+    '`tree_walks_match_wax_walks` (turborepo#14511) — a name holding a newline keys, committed or untracked, file or directory',
+    async () => {
+      const git = gitIn(root)
+      await mkdir(path.join(lib, 'src', 'new\nline'), { recursive: true })
+      await writeFile(path.join(lib, 'src', 'a\nb.txt'), '1\n')
+      await writeFile(path.join(lib, 'src', 'new\nline', 'f.txt'), '1\n')
+      const untracked = await key(root, 'lib#t')
+      await writeFile(path.join(lib, 'src', 'new\nline', 'f.txt'), '2\n')
+      expect(await key(root, 'lib#t')).not.toBe(untracked)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'newline names')
+      for (const file of ['a\nb.txt', 'new\nline/f.txt']) {
+        const before = await key(root, 'lib#t')
+        await writeFile(path.join(lib, 'src', file), 'edited\n')
+        expect([file, await key(root, 'lib#t')]).not.toEqual([file, before])
+      }
+      git('rm', '-q', '-r', '-f', '--', 'packages/lib/src/a\nb.txt', 'packages/lib/src/new\nline')
+      git('commit', '-q', '-m', 'drop newline names')
+    },
+    TIMEOUT,
+  )
+
+  it(
     '`test_scoped_untracked_files_only_include_selected_package` / `test_prefix_does_not_match_sibling_with_shared_prefix`',
     async () => {
       const before = await key(root, 'lib#t')
@@ -174,6 +197,49 @@ describe('Turbo parity — scm: which file changes move a key (turborepo-scm)', 
       expect(await key(root, 'lib#t')).toBe(deleted)
       git('commit', '-q', '-m', 'rm')
       expect(await key(root, 'lib#t')).toBe(deleted)
+    },
+    TIMEOUT,
+  )
+
+  // vercel/turborepo#13245: an intent-to-add entry holds the empty blob's
+  // OID in the index, which must never stand in for the bytes on disk.
+  it(
+    '`git add -N` (intent to add) — the file keys its bytes, and an edit moves the key',
+    async () => {
+      const git = gitIn(root)
+      const before = await key(root, 'lib#t')
+      await writeFile(path.join(lib, 'src', 'ita.txt'), 'one\n')
+      git('add', '-N', 'packages/lib/src/ita.txt')
+      const added = await key(root, 'lib#t')
+      expect(added).not.toBe(before)
+      await writeFile(path.join(lib, 'src', 'ita.txt'), 'two\n')
+      expect(await key(root, 'lib#t')).not.toBe(added)
+      git('rm', '-q', '--cached', 'packages/lib/src/ita.txt')
+      await unlink(path.join(lib, 'src', 'ita.txt'))
+      expect(await key(root, 'lib#t')).toBe(before)
+    },
+    TIMEOUT,
+  )
+
+  // vercel/turborepo#12096
+  it(
+    '`test_nested_gitignore_scoping` / `test_empty_directories_on_disk` — a nested .gitignore ignores only below it; an empty directory keys nothing',
+    async () => {
+      const git = gitIn(root)
+      await mkdir(path.join(lib, 'src', 'a'), { recursive: true })
+      await writeFile(path.join(lib, 'src', 'a', '.gitignore'), 'x.txt\n')
+      git('add', '-A')
+      git('commit', '-q', '-m', 'nested ignore')
+      const before = await key(root, 'lib#t')
+      await writeFile(path.join(lib, 'src', 'a', 'x.txt'), 'x\n')
+      await mkdir(path.join(lib, 'src', 'empty', 'deeper'), { recursive: true })
+      expect(await key(root, 'lib#t')).toBe(before)
+      await mkdir(path.join(lib, 'src', 'b'), { recursive: true })
+      await writeFile(path.join(lib, 'src', 'b', 'x.txt'), 'x\n')
+      expect(await key(root, 'lib#t')).not.toBe(before)
+      await rm(path.join(lib, 'src', 'b'), { recursive: true })
+      await rm(path.join(lib, 'src', 'empty'), { recursive: true })
+      await rm(path.join(lib, 'src', 'a', 'x.txt'))
     },
     TIMEOUT,
   )
@@ -248,9 +314,16 @@ describe('Turbo parity — file hashing: globs and literals (turborepo-scm manua
           'true',
           `dir: { exec: { command: 'true' }, inputs: { files: ['src'] }, cache: { outputs: { files: [] } } },
     reversed: { exec: { command: 'true' }, inputs: { files: ['!**/*.md', 'src/**'] }, cache: { outputs: { files: [] } } },
-    missing: { exec: { command: 'true' }, inputs: { files: ['src/**', 'nope.txt'] }, cache: { outputs: { files: [] } } },`,
+    missing: { exec: { command: 'true' }, inputs: { files: ['src/**', 'nope.txt'] }, cache: { outputs: { files: [] } } },
+    plain: { exec: { command: 'true' }, inputs: { files: ['src/**', 'gen/**', 'logs/**', '!gen', '!logs/**', '!src/skip.txt'] }, cache: { outputs: { files: [] } } },`,
         ),
-        files: { 'src/a.txt': 'a\n', 'src/notes.md': '# n\n' },
+        files: {
+          'src/a.txt': 'a\n',
+          'src/notes.md': '# n\n',
+          'src/skip.txt': 's\n',
+          'gen/x.txt': 'x\n',
+          'logs/y.log': 'y\n',
+        },
       },
     })
     await mkdir(path.join(root, 'shared'), { recursive: true })
@@ -274,6 +347,21 @@ describe('Turbo parity — file hashing: globs and literals (turborepo-scm manua
       await writeFile(path.join(lib, 'src', 'a.txt'), 'a2\n')
       expect(await key(root, 'lib#t')).not.toBe(t)
       expect(await key(root, 'lib#reversed')).not.toBe(reversed)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '`plain_exclusions_walk_like_wax_exclusions` (turborepo#14510) — `!dir`, `!dir/**` and `!file` each take back what they name, at any depth',
+    async () => {
+      const before = await key(root, 'lib#plain')
+      await mkdir(path.join(lib, 'gen', 'deep'), { recursive: true })
+      for (const file of ['gen/x.txt', 'gen/deep/z.txt', 'logs/y.log', 'src/skip.txt']) {
+        await writeFile(path.join(lib, file), 'changed\n')
+      }
+      expect(await key(root, 'lib#plain')).toBe(before)
+      await writeFile(path.join(lib, 'src', 'a.txt'), 'a3\n')
+      expect(await key(root, 'lib#plain')).not.toBe(before)
     },
     TIMEOUT,
   )

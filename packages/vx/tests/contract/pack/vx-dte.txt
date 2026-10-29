@@ -24,5 +24,7 @@ src/trace.ts
 src/tree.ts
 src/usage.ts
 src/warm-ups.ts
+src/wire-host.ts
+src/wire-thread.ts
 src/wire.ts
 src/worker.ts

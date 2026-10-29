@@ -139,6 +139,7 @@ Both use the same mapper.
 | `extends`                                      | a package task merges over the root's; `false` alone opts out, `false` + keys runs on those alone |
 | `interruptible` | nothing: `vx watch` keeps a persistent task up and restarts it only when its config changes or it dies |
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
+| `experimentalCI` | nothing: Turbo reads it for external CI tooling and acts on nothing |
 | `outputLogs` (Turbo 1: `outputMode`)           | no per-task knob: the per-run `--output-logs` flag      |
 | `$TURBO_ROOT$/file`                            | `inputs.workspaceFiles`                           |
 | `dotEnv` (Turbo 1)                              | `inputs.runtime`: a probe that hashes the `.env` files |

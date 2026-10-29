@@ -323,8 +323,9 @@ describe('vx-migrate ends with the lock', () => {
       expect(skipped.out).not.toContain('vx lock:')
       const r = await migrate(root, env, [])
       expect([r.code, r.err]).toEqual([0, ''])
+      // The lock line follows the files; the notes (Turbo's builtin env) and next follow it.
       expect(r.out).toContain(
-        '\n  lock      2 project configs → .vx/projects.lock.json\n\n  next  ',
+        '\n            .vx/.gitignore\n  lock      2 project configs → .vx/projects.lock.json\n  note  ',
       )
       expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(true)
     } finally {

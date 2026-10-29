@@ -425,6 +425,25 @@ describe('discoverPackages', () => {
     }
   })
 
+  // Turbo dropped `**/test/` and `**/tests/` from its workspace ignores
+  // (vercel/turborepo#1145): a package there is a member, as the manager links it.
+  it('a package under a test/ or tests/ directory is a member', async () => {
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: ['packages/**'] }),
+    )
+    for (const [rel, name] of [
+      ['packages/a', 'a'],
+      ['packages/a/test/fixture', 'fixture'],
+      ['packages/tests/mock', 'mock'],
+    ] as const) {
+      await mkdir(path.join(dir, rel), { recursive: true })
+      await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
+    }
+    const projects = await discoverPackages(await loadPackageWorkspace(dir))
+    expect(projects.map((p) => p.name).sort()).toEqual(['a', 'fixture', 'mock'])
+  })
+
   it("a single-package repo's installed dependencies are not unreached members (D-19)", async () => {
     // The hint names the package.json files a root with no `workspaces`
     // leaves out; node_modules holds the repo's dependencies, not those.
@@ -560,6 +579,8 @@ describe('discoverPackages', () => {
     expect(await names(['apps/{x,y}'])).toEqual(['x', 'y'])
     expect(await names(['packages/{a,nested/b}'])).toEqual(['a', 'b'])
     expect(await names(['{packages/{a,nested/b},apps/*}', '!apps/y'])).toEqual(['a', 'b', 'x'])
+    // A `,` inside a class is a member, never a cut (turborepo#13763).
+    expect(await names(['{packages/nested/[b,],apps/x}'])).toEqual(['b', 'x'])
   })
 
   it('a matched directory with NO package.json is not a project', async () => {

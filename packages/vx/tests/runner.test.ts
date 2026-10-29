@@ -22,6 +22,9 @@ import {
   CAPTURE_TAIL_CHARS,
   withForwardArgs,
   RSS_FLOOR_SLACK_BYTES,
+  lineEnds,
+  OPEN_LINE_HOLD_CHARS,
+  OPEN_LINE_WAIT_MS,
 } from '../src/exec/runner.js'
 
 /**
@@ -1836,4 +1839,170 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     await Bun.sleep(50)
     expect([...openFds()].filter((fd) => !before.has(fd))).toEqual([])
   }, 10_000)
+})
+
+// A task's stdout and stderr are two pipes, merged in the order vx reads
+// them. dash writes `sh: 1: cannot open /dev/tty: …` in several writes,
+// the newline last, and a stdout write between them landed inside the
+// line: `sh: /dev/ttyNO-TTY\n\n` (CI, 2026-10-29). A stream's output waits
+// while the other's line is open, so no line holds bytes of both.
+describe('lineEnds — one stream never writes into the other’s open line', () => {
+  const merged = () => {
+    const got: [string, string][] = []
+    const ends = lineEnds(
+      (t) => got.push(['out', t]),
+      (t) => got.push(['err', t]),
+    )
+    return { got, ends }
+  }
+
+  it('holds stdout while a stderr line is open and lets it go when that line ends', () => {
+    const { got, ends } = merged()
+    ends.onStderr!('sh: 1: ')
+    ends.onStdout!('NO-TTY\n')
+    ends.onStderr!('cannot open /dev/tty')
+    ends.onStderr!(': No such device\n')
+    ends.end()
+    expect(got).toEqual([
+      ['err', 'sh: 1: '],
+      ['err', 'cannot open /dev/tty'],
+      ['err', ': No such device\n'],
+      ['out', 'NO-TTY\n'],
+    ])
+  })
+
+  it('lets the held stream go at the open line’s last newline, the rest of its chunk after', () => {
+    const { got, ends } = merged()
+    ends.onStdout!('build ')
+    ends.onStderr!('warn\n')
+    ends.onStdout!('done\nnext ')
+    ends.onStderr!('again\n')
+    ends.onStdout!('line\n')
+    ends.end()
+    expect(got).toEqual([
+      ['out', 'build '],
+      ['out', 'done\n'],
+      ['err', 'warn\n'],
+      ['out', 'next '],
+      ['out', 'line\n'],
+      ['err', 'again\n'],
+    ])
+  })
+
+  // A newline added here was the held stream's own text: a hit replays
+  // each stream to its own descriptor, and `2> log` read one the task
+  // never wrote (secret-mask.test.ts, CI 2026-10-29).
+  it('a line still open at the end lets the held stream go as written', () => {
+    const { got, ends } = merged()
+    ends.onStderr!('prompt? ')
+    ends.onStdout!('out\n')
+    ends.end()
+    expect(got).toEqual([
+      ['err', 'prompt? '],
+      ['out', 'out\n'],
+    ])
+    // Nothing held: the end adds nothing.
+    const control = merged()
+    control.ends.onStdout!('half')
+    control.ends.end()
+    expect(control.got).toEqual([['out', 'half']])
+  })
+
+  it('a stream alone is never held', () => {
+    const { got, ends } = merged()
+    ends.onStdout!('a')
+    ends.onStdout!('b\nc')
+    expect(got).toEqual([
+      ['out', 'a'],
+      ['out', 'b\nc'],
+    ])
+  })
+
+  it('what waits is bounded: past OPEN_LINE_HOLD_CHARS it goes as written', () => {
+    const { got, ends } = merged()
+    ends.onStderr!('waiting')
+    const big = 'x'.repeat(OPEN_LINE_HOLD_CHARS)
+    ends.onStdout!(big)
+    expect(got).toEqual([['err', 'waiting']])
+    ends.onStdout!('y')
+    expect(got).toEqual([
+      ['err', 'waiting'],
+      ['out', `${big}y`],
+    ])
+    ends.end()
+  })
+
+  it('and in time: held OPEN_LINE_WAIT_MS, it goes as written', async () => {
+    const { got, ends } = merged()
+    ends.onStderr!('compiling…')
+    ends.onStdout!('progress\n')
+    expect(got).toEqual([['err', 'compiling…']])
+    await Bun.sleep(OPEN_LINE_WAIT_MS * 4)
+    expect(got).toEqual([
+      ['err', 'compiling…'],
+      ['out', 'progress\n'],
+    ])
+    ends.end()
+  })
+
+  it('what waits at the exit goes before runCommand returns', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-lines-'))
+    try {
+      const got: string[] = []
+      await runCommand({
+        command: "printf 'prompt? ' >&2; sleep 0.01; echo out",
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+        onStdout: (t) => got.push(t),
+        onStderr: (t) => got.push(t),
+      })
+      // Read at once: the wait's timer would bring it after the capture was stored.
+      expect(got.join('')).toBe('prompt? out\n')
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('a task writing a stderr line in pieces, stdout between them, shows each line whole', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-lines-'))
+    try {
+      const got: [string, string][] = []
+      // `sleep` orders the writes across the two pipes, as dash's
+      // back-to-back writes landed on CI. The bound is lengthened so the
+      // hold, not its bound, is what is driven: on a loaded macOS runner
+      // the two sleeps outlasted 50 ms and the line went unbroken.
+      process.env['VX_TEST_OPEN_LINE_WAIT'] = '5s'
+      const result = await runCommand({
+        command:
+          "printf 'sh: 1: ' >&2; sleep 0.01; printf 'NO-TTY\\n'; sleep 0.01; " +
+          "printf 'cannot open /dev/tty\\n' >&2; printf 'after\\n'",
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+        onStdout: (t) => got.push(['out', t]),
+        onStderr: (t) => got.push(['err', t]),
+      })
+      delete process.env['VX_TEST_OPEN_LINE_WAIT']
+      expect(result.exitCode).toBe(0)
+      // Each line and the streams that wrote into it.
+      const lines: { text: string; from: Set<string> }[] = [{ text: '', from: new Set() }]
+      for (const [from, text] of got)
+        for (const [i, piece] of text.split('\n').entries()) {
+          if (i > 0) lines.push({ text: '', from: new Set() })
+          if (piece.length === 0) continue
+          lines.at(-1)!.text += piece
+          lines.at(-1)!.from.add(from)
+        }
+      expect(lines.filter((l) => l.from.size > 1).map((l) => l.text)).toEqual([])
+      expect(lines.map((l) => l.text).filter((t) => t !== '')).toContain('NO-TTY')
+      expect(
+        got
+          .filter(([from]) => from === 'err')
+          .map(([, t]) => t)
+          .join('')
+          .replaceAll('\n', ''),
+      ).toBe('sh: 1: cannot open /dev/tty')
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
 })

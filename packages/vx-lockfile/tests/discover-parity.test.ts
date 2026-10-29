@@ -744,6 +744,69 @@ describe('the recorded edges hold on specs a lockfile resolves past its layout',
       },
       edges: ['app → is-number'],
     },
+    // vercel/turborepo#854: a `file:` path to a workspace's directory lost
+    // its edge. Bun 1.4.4 and npm 10 link it as the workspace (lockfiles
+    // those installs wrote for b → a, `"a": "file:../a"`).
+    {
+      title: 'bun(): a `file:` path to a workspace links it',
+      make: bun,
+      file: 'bun.lock',
+      text: `{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "root",
+    },
+    "packages/a": {
+      "name": "a",
+      "version": "1.0.0",
+    },
+    "packages/b": {
+      "name": "b",
+      "version": "1.0.0",
+      "dependencies": {
+        "a": "file:../a",
+      },
+    },
+  },
+  "packages": {
+    "a": ["a@workspace:packages/a"],
+
+    "b": ["b@workspace:packages/b"],
+  }
+}
+`,
+      manifests: {
+        'packages/a': { name: 'a', version: '1.0.0' },
+        'packages/b': { name: 'b', version: '1.0.0', dependencies: { a: 'file:../a' } },
+      },
+      edges: ['b → a'],
+    },
+    {
+      title: 'npm(): a `file:` path to a workspace links it',
+      make: npm,
+      file: 'package-lock.json',
+      text: `{
+  "name": "root",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": { "name": "root", "workspaces": ["packages/*"] },
+    "node_modules/a": { "resolved": "packages/a", "link": true },
+    "node_modules/b": { "resolved": "packages/b", "link": true },
+    "packages/a": { "version": "1.0.0" },
+    "packages/b": { "version": "1.0.0", "dependencies": { "a": "file:../a" } }
+  }
+}
+`,
+      manifests: {
+        '.': { name: 'root', workspaces: ['packages/*'] },
+        'packages/a': { name: 'a', version: '1.0.0' },
+        'packages/b': { name: 'b', version: '1.0.0', dependencies: { a: 'file:../a' } },
+      },
+      edges: ['b → a'],
+    },
     {
       title: 'yarn(): a `link:` path links the workspace package it points at',
       make: yarn,
@@ -940,6 +1003,69 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
     expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', D_PNPM, projects)).order).toEqual([])
   })
 
+  it('pnpm(): a `workspace:<name>@<range>` alias links the package it names, not its alias', async () => {
+    // Turbo #5569: pnpm records the dependency under its alias `ui`.
+    const lock = `lockfileVersion: '9.0'
+
+importers:
+
+  .: {}
+
+  packages/scope-ui: {}
+
+  packages/ui: {}
+
+  packages/web:
+    dependencies:
+      ui:
+        specifier: workspace:@scope/ui@*
+        version: link:../scope-ui
+`
+    const projects = await metas({
+      'packages/web': {
+        name: 'web',
+        version: '1.0.0',
+        dependencies: { ui: 'workspace:@scope/ui@*' },
+      },
+      'packages/scope-ui': { name: '@scope/ui', version: '1.0.0' },
+      'packages/ui': { name: 'ui', version: '9.0.0' },
+    })
+    expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', lock, projects)).order).toEqual([
+      'web → @scope/ui',
+    ])
+  })
+
+  it('a manifest whose `keywords` is no string array reads like any other (Turbo #161)', async () => {
+    const lock = `lockfileVersion: '9.0'
+
+importers:
+
+  .: {}
+
+  packages/lib: {}
+
+  packages/web:
+    dependencies:
+      lib:
+        specifier: workspace:*
+        version: link:../lib
+`
+    for (const keywords of ['a, b', null, 7, { a: 1 }, [1, 'x']]) {
+      const projects = await metas({
+        'packages/web': {
+          name: 'web',
+          version: '1.0.0',
+          keywords,
+          dependencies: { lib: 'workspace:*' },
+        } as never,
+        'packages/lib': { name: 'lib', version: '1.0.0', keywords } as never,
+      })
+      expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', lock, projects)).order).toEqual([
+        'web → lib',
+      ])
+    }
+  })
+
   it('yarn packs a `file:` directory, a copy that is no link to the workspace package', async () => {
     const projects = await metas({
       'packages/app': { name: 'app', version: '1.0.0', dependencies: { a: 'file:../real-a' } },
@@ -978,6 +1104,25 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
     })
   }
 
+  // pnpm 9 can record an injected package as a plain `link:`, its
+  // `dependenciesMeta` beside it (vercel/turborepo#12082, issue #8243).
+  it('pnpm v9: an injected workspace package recorded as `link:` is an edge', async () => {
+    const projects = await metas({
+      'packages/a': {
+        name: 'a',
+        version: '1.0.0',
+        dependencies: { b: 'workspace:^' },
+        dependenciesMeta: { b: { injected: true } },
+      },
+      'packages/b': { name: 'b', version: '1.0.0' },
+    })
+    const text = P_INJECTED_V9.replace('version: file:packages/b', 'version: link:../b').replace(
+      /\npackages:\n[\s\S]*$/,
+      '\n',
+    )
+    expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', text, projects)).order).toEqual(['a → b'])
+  })
+
   it('bun installs `dependencies` over a devDependency or an optional one of the same key', async () => {
     const projects = await metas({
       'packages/dev-met-prod-unmet': {
@@ -996,6 +1141,155 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
     })
     // A manifest read guessed both projects → is-number.
     expect((await pluginEdges(bun(), 'bun.lock', D_BUN, projects)).order).toEqual([])
+  })
+
+  it('pnpm: a `catalog:` dependency the install linked to a workspace package is an edge (vercel/turborepo#12185)', async () => {
+    // As pnpm 10.28 wrote it with linkWorkspacePackages: true.
+    const text = `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+catalogs:
+  default:
+    pkg-b:
+      specifier: ^1.0.0
+      version: 1.0.0
+  named:
+    pkg-c:
+      specifier: ^1.0.0
+      version: 1.0.0
+
+importers:
+
+  .: {}
+
+  packages/app-a:
+    dependencies:
+      pkg-b:
+        specifier: 'catalog:'
+        version: link:../pkg-b
+      pkg-c:
+        specifier: catalog:named
+        version: link:../pkg-c
+
+  packages/pkg-b: {}
+
+  packages/pkg-c: {}
+`
+    const projects = await metas({
+      'packages/app-a': {
+        name: 'app-a',
+        version: '1.0.0',
+        dependencies: { 'pkg-b': 'catalog:', 'pkg-c': 'catalog:named' },
+      },
+      'packages/pkg-b': { name: 'pkg-b', version: '1.0.0' },
+      'packages/pkg-c': { name: 'pkg-c', version: '1.0.0' },
+    })
+    expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', text, projects)).order).toEqual([
+      'app-a → pkg-b',
+      'app-a → pkg-c',
+    ])
+  })
+
+  it('pnpm: a concrete `npm:` dependency wins over a `workspace:` peer of the same name (vercel/turborepo#12682)', async () => {
+    // b: devDependency buffer npm:buffer@6.0.3, peer buffer workspace:*;
+    // pnpm 10.28 installs the registry buffer and links no workspace.
+    const text = `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: false
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  packages/a:
+    dependencies:
+      b:
+        specifier: workspace:*
+        version: link:../b
+
+  packages/b:
+    devDependencies:
+      buffer:
+        specifier: npm:buffer@6.0.3
+        version: 6.0.3
+
+  packages/buffer: {}
+
+packages:
+
+  buffer@6.0.3:
+    resolution: {integrity: sha512-FTiC}
+
+snapshots:
+
+  buffer@6.0.3: {}
+`
+    const projects = await metas({
+      'packages/a': { name: 'a', version: '1.0.0', dependencies: { b: 'workspace:*' } },
+      'packages/b': {
+        name: 'b',
+        version: '1.0.0',
+        devDependencies: { buffer: 'npm:buffer@6.0.3' },
+        peerDependencies: { buffer: 'workspace:*' },
+      },
+      'packages/buffer': { name: 'buffer', version: '6.0.3' },
+    })
+    expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', text, projects)).order).toEqual(['a → b'])
+  })
+
+  it('yarn berry: an `npm:` alias named like a workspace is the registry package (vercel/turborepo#12061)', async () => {
+    // Turbo's berry-npm-alias fixture, as yarn 4.4 wrote it.
+    const text = `__metadata:
+  version: 8
+  cacheKey: 10c0
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  dependencies:
+    buffer: "npm:buffer@6.0.3"
+  languageName: unknown
+  linkType: soft
+
+"buffer@npm:buffer@6.0.3":
+  version: 6.0.3
+  resolution: "buffer@npm:6.0.3"
+  checksum: 10c0/2a90
+  languageName: node
+  linkType: hard
+
+"buffer@workspace:packages/buffer":
+  version: 0.0.0-use.local
+  resolution: "buffer@workspace:packages/buffer"
+  languageName: unknown
+  linkType: soft
+
+"root@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "root@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+    const projects = await metas({
+      'packages/a': { name: 'a', version: '1.0.0', dependencies: { buffer: 'npm:buffer@6.0.3' } },
+      'packages/buffer': { name: 'buffer', version: '6.0.3' },
+    })
+    expect((await pluginEdges(yarn(), 'yarn.lock', text, projects)).order).toEqual([])
+    // CONTROL: the same key on `workspace:*` is the edge.
+    const linked = text
+      .replace('buffer: "npm:buffer@6.0.3"', 'buffer: "workspace:*"')
+      .replace('"buffer@npm:buffer@6.0.3"', '"buffer@npm:6.0.3"')
+    projects[0] = (
+      await metas({
+        'packages/a': { name: 'a', version: '1.0.0', dependencies: { buffer: 'workspace:*' } },
+      })
+    )[0]!
+    expect((await pluginEdges(yarn(), 'yarn.lock', linked, projects)).order).toEqual(['a → buffer'])
   })
 
   it("npm resolves an `npm:` alias's key to the workspace package of that name", async () => {

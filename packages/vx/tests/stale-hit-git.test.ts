@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { affectedProjects } from '../src/workspace/index.js'
 import {
   GitFilesCache,
   attributeFilesOutsideTree,
@@ -1071,6 +1072,50 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       TIMEOUT,
     )
   }
+
+  it(
+    'such a name fails only the task that reads it; the rest hit and --affected selects its owner (vercel/turborepo#11106, vercel/turborepo#12826)',
+    async () => {
+      await write(path.join(root, 'package.json'), '{"name":"r","workspaces":["pkgs/*"]}')
+      await writeLocalWorkspace(root)
+      for (const p of ['a', 'b']) {
+        await write(path.join(root, 'pkgs', p, 'package.json'), `{"name":"${p}"}`)
+        await write(
+          path.join(root, 'pkgs', p, 'vx.config.mjs'),
+          `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,
+        )
+        await write(path.join(root, 'pkgs', p, 'src', 'i'), '1')
+      }
+      await writeFile(badIn(path.join(root, 'pkgs', 'a', 'src')), 'bad1')
+      // One outside every project, which no task reads.
+      await write(path.join(root, 'docs', 'ok'), '1')
+      await writeFile(badIn(path.join(root, 'docs')), 'doc1')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      const first = vxExit(root, 'run', 'build', '--all')
+      expect([first.code, first.out]).toEqual([1, expect.stringContaining('src/x\uFFFDy')])
+      expect(first.out).toContain('not valid UTF-8')
+      // The row's words, not their spacing: a run that sampled a task's CPU
+      // adds columns between them (CI, PR #4867).
+      const row = first.out.split('\n').find((l) => l.endsWith(' b#build'))
+      expect(row?.trim().split(/ +/)).toEqual(expect.arrayContaining(['success', 'miss']))
+      expect(vxExit(root, 'run', 'build', '--filter', 'b').out).toContain('local 1✓')
+      await writeFile(badIn(path.join(root, 'pkgs', 'a', 'src')), 'bad2')
+      await writeFile(badIn(path.join(root, 'docs')), 'doc2')
+      git(root, 'commit', '-q', '-am', 'edit the odd names')
+      const projects = ['a', 'b'].map((name) => ({
+        name,
+        dir: path.join(root, 'pkgs', name),
+        packageJson: { name } as never,
+        configPath: null,
+      }))
+      expect([
+        ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })),
+      ]).toEqual(['a'])
+    },
+    TIMEOUT,
+  )
 
   it(
     'one inside an embedded repository is refused too, not dropped',

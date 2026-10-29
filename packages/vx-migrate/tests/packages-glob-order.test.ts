@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { discoverPackages, loadPackageWorkspace } from '../src/packages.js'
+import { discoverPackages, findManifestRoot, loadPackageWorkspace } from '../src/packages.js'
 
 let root: string | undefined
 
@@ -71,4 +71,15 @@ it('a `/**` negation excludes the directory itself, its tree with it', async () 
 
 it('CONTROL: no negation finds every member', async () => {
   expect(await members(['packages/*'])).toEqual(['packages/a', 'packages/b'])
+})
+
+// vercel/turborepo#9557 (test_workspace_globs_trailing_slash): a member
+// glob or literal written with a trailing slash names the same members,
+// and a run from inside one finds the root that lists it.
+it('a trailing slash on a member glob or literal changes nothing', async () => {
+  const want = ['packages/a', 'packages/b']
+  expect(await members(['packages/a/', 'packages/b/'])).toEqual(want)
+  expect(await members(['packages/*/'], DIRS, true)).toEqual(want)
+  expect(await members(['packages/*/'])).toEqual(want)
+  expect(await findManifestRoot(path.join(root!, 'packages/b'))).toBe(root!)
 })

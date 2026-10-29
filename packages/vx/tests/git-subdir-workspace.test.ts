@@ -95,6 +95,46 @@ describe('workspace root is a subdirectory of the git repo', () => {
   })
 })
 
+describe('a root project in a workspace below the git top-level', () => {
+  it('keys the workspace alone: a file beside it, edited or new, moves nothing (vercel/turborepo#12706)', async () => {
+    const repo = await mkdtemp(path.join(tmpdir(), 'vx-subws-root-'))
+    try {
+      const ws = await makeWorkspace({ dir: repo, prefix: 'code-', git: false })
+      await writeFile(
+        path.join(ws, 'vx.config.mjs'),
+        `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['**'] }, cache: { outputs: { files: [] } } } } }\n`,
+      )
+      await writeFile(path.join(ws, 'in.txt'), 'v1')
+      await writeFile(path.join(repo, 'beside.txt'), 'v1')
+      await git(repo, ['init', '-q', '-b', 'main'])
+      await git(repo, ['-c', 'user.email=t@t.co', '-c', 'user.name=t', 'add', '-A'])
+      await git(repo, [
+        '-c',
+        'user.email=t@t.co',
+        '-c',
+        'user.name=t',
+        'commit',
+        '-q',
+        '-m',
+        'init',
+      ])
+      const key = async (): Promise<string> =>
+        (await dry(ws, ['build', '--all'])).find((t) => t.id === 'fixture-root#build')!.hash
+      const k0 = await key()
+      await writeFile(path.join(repo, 'beside.txt'), 'v2')
+      await writeFile(path.join(repo, 'new.txt'), 'new')
+      await mkdir(path.join(repo, 'other'))
+      await writeFile(path.join(repo, 'other', 'x.txt'), 'x')
+      expect(await key()).toBe(k0)
+      // CONTROL: an untracked file inside the workspace is an input.
+      await writeFile(path.join(ws, 'new.txt'), 'new')
+      expect(await key()).not.toBe(k0)
+    } finally {
+      await rm(repo, { recursive: true, force: true })
+    }
+  }, 30_000)
+})
+
 // The clean-filter gate walks UP from each pathspec looking for a
 // `.gitattributes`, and it has to know where to stop. Deriving that from
 // `--git-dir` is wrong in a linked worktree — there it names

@@ -82,6 +82,15 @@ describe('cli run()', () => {
       // CONTROL: a word without a dash is still a command.
       [1, noticed('vx: unknown command: rnu. Did you mean run? (see `vx help`)\n')],
     ])
+    // Turbo #9445: a run flag before the verb is refused, not ignored.
+    for (const args of [
+      ['--filter=foo', 'run', 'build'],
+      ['--filter=foo', 'watch', 'build'],
+    ])
+      expect(await said(args)).toEqual([
+        1,
+        noticed("vx: unknown flag: --filter=foo; a verb's flags follow the verb (see `vx help`)\n"),
+      ])
   })
 
   it('vx watch names its own help, and vx cache its one subcommand (M-58)', async () => {
@@ -1972,6 +1981,15 @@ describe('parseRunArgs', () => {
     const r = parseRunArgs(['build', '--', '--watch', '--bail'])
     expect(r.tasks).toEqual(['build'])
     expect(r.forwardArgs).toEqual(['--watch', '--bail'])
+  })
+
+  // Turbo re-adds a `--` for yarn and bun, which swallow one, so a user's
+  // own reaches the script (vercel/turborepo#6422). Only the first `--`
+  // ends vx's flags; any later one is the task's argument.
+  it('a `--` after the first is forwarded to the task, not swallowed', () => {
+    const r = parseRunArgs(['build', '--', 'a', '--', '--b'])
+    expect(r.tasks).toEqual(['build'])
+    expect(r.forwardArgs).toEqual(['a', '--', '--b'])
   })
 
   it('flags before `--` are parsed; flags after are forwarded literally', () => {

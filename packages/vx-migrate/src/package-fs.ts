@@ -41,18 +41,34 @@ export function normalizeBunGlob(glob: string): string {
 }
 
 /**
+ * Where the `[`…`]` class opening at `i` ends (a `]` right after the `[` is
+ * a member); `i` for a `[` with no `]`. A `,` `{` or `}` in a class is a
+ * member, never a brace cut, as `Bun.Glob` reads it.
+ */
+function classEnd(pattern: string, i: number): number {
+  const end = pattern.indexOf(']', i + 2)
+  return end === -1 ? i : end
+}
+
+/**
  * `pattern` with its first brace group expanded, recursively, while that
  * group holds a `/`: `Bun.Glob`'s scan finds nothing for one.
  */
 export function slashBraceExpansions(pattern: string): string[] {
   if (pattern.includes('\\')) return [pattern]
-  for (let open = pattern.indexOf('{'); open !== -1; open = pattern.indexOf('{', open + 1)) {
+  for (let open = 0; open < pattern.length; open++) {
+    if (pattern[open] === '[') {
+      open = classEnd(pattern, open)
+      continue
+    }
+    if (pattern[open] !== '{') continue
     let depth = 0
     const cuts: number[] = []
     let close = -1
     for (let i = open; i < pattern.length && close === -1; i++) {
       const c = pattern[i]
-      if (c === '{') depth++
+      if (c === '[') i = classEnd(pattern, i)
+      else if (c === '{') depth++
       else if (c === '}' && --depth === 0) close = i
       else if (c === ',' && depth === 1) cuts.push(i)
     }

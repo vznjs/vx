@@ -72,12 +72,12 @@
   {
     "key": "turbo.json globalEnv",
     "status": "mapped",
-    "reason": "Added to every task's `inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note."
+    "reason": "Added to every task's `inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note. Turbo's default keyed names (`VERCEL_ANALYTICS_ID`, `VERCEL_TARGET_ENV`, and `VERCEL_DEPLOYMENT_ID` on a Next package when `VERCEL_SKEW_PROTECTION_ENABLED=1`; written configs key it always) join it, and a `!` entry takes them back. A `$NAME` entry is refused, as Turbo refuses it."
   },
   {
     "key": "turbo.json globalPassThroughEnv",
     "status": "mapped",
-    "reason": "Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise a wildcard is dropped with a note."
+    "reason": "Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise a wildcard is dropped with a note. The literal names of Turbo's builtin pass-through list (`TZ`, `CI`, the Vercel, Docker and IDE names) join it, under `turbo()` as in written configs, so both key alike; its wildcard families (`GITHUB_*`, `DOCKER_*`, ...) are a note. A `$NAME` entry is refused, as Turbo refuses it."
   },
   {
     "key": "turbo.json noUpdateNotifier",
@@ -91,13 +91,13 @@
   },
   {
     "key": "turbo.json tags",
-    "status": "not-applicable",
-    "reason": "Package tags feed only Turbo boundaries; never read."
+    "status": "supported",
+    "reason": "A package's own `tags` (Turbo 2.11.6) become its vx project `tags`, so `--filter tag:<label>` selects its tasks as Turbo's does; the root's label the root project, and none is inherited."
   },
   {
     "key": "turbo.json tasks",
     "status": "supported",
-    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below); a task no package has a script for is a group task in each package that defines it, as Turbo runs a no-op node there and exits 0. A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it."
+    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below); a task no package has a script for is a group task in each package that defines it, as Turbo runs a no-op node there and exits 0. A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it. A task's key holds its own mapped definition, not all of turbo.json: an edit to another task's definition keeps its hits, where Turbo's global hash misses every task."
   },
   {
     "key": "turbo.json ui",
@@ -112,7 +112,7 @@
   {
     "key": "turbo.json tasks.*.dependsOn",
     "status": "mapped",
-    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept. A task name no package has a script for (`ci: { dependsOn: [\"lint\", \"build\"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does."
+    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept. A task name no package has a script for (`ci: { dependsOn: [\"lint\", \"build\"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does. Written sorted, as Turbo sorts it before hashing, so a reorder keeps the hit."
   },
   {
     "key": "turbo.json tasks.*.description",
@@ -122,12 +122,12 @@
   {
     "key": "turbo.json tasks.*.env",
     "status": "mapped",
-    "reason": "Goes to `inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO."
+    "reason": "Goes to `inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. A `$NAME` entry is refused, as Turbo refuses it."
   },
   {
     "key": "turbo.json tasks.*.inputs",
     "status": "mapped",
-    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO; a path git ignores is keyed by a `inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's."
+    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; the package's own `package.json` joins an explicit list, as Turbo keys it, unless a glob names or excludes it; unsafe globs get a TODO; a path git ignores is keyed by a `inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's."
   },
   {
     "key": "turbo.json tasks.*.interactive",
@@ -147,12 +147,12 @@
   {
     "key": "turbo.json tasks.*.outputs",
     "status": "mapped",
-    "reason": "Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment (`*/**`) stays cached with a note that the clean deletes the untracked files it reaches (without git, the task runs uncached with a TODO); core never cleans a file git tracks, committed or only `git add`ed; the project's own `package.json` or vx.config is taken back with `!` (a build that writes `package.json` also gets `inputStability: { strategy: 'mutable' }`)."
+    "reason": "Become `cache.outputs`, negations kept, sorted with the negations last, as Turbo sorts them before hashing, so a reorder keeps the hit; vx cleans outputs, so a wildcard first segment (`*/**`) stays cached with a note that the clean deletes the untracked files it reaches (without git, the task runs uncached with a TODO); core never cleans a file git tracks, committed or only `git add`ed; the project's own `package.json` or vx.config is taken back with `!` (a build that writes `package.json` also gets `inputStability: { strategy: 'mutable' }`)."
   },
   {
     "key": "turbo.json tasks.*.passThroughEnv",
     "status": "mapped",
-    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO."
+    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. A `$NAME` entry is refused, as Turbo refuses it."
   },
   {
     "key": "turbo.json tasks.*.persistent",
@@ -678,5 +678,20 @@
     "key": "inputs: {json, fields, excludeFields}",
     "status": "mapped",
     "reason": "The whole file is hashed, a superset of the selected fields."
+  },
+  {
+    "key": "turbo.json setup",
+    "status": "not-applicable",
+    "reason": "`turbo setup`'s toolchain provisioning policy; vx provisions no toolchain and ignores it."
+  },
+  {
+    "key": "turbo.json tasks.*.tags",
+    "status": "not-supported",
+    "reason": "Ignored: vx tags are a project's, so a `tag:` filter selects by a package's own `tags`, never a task's."
+  },
+  {
+    "key": "turbo.json futureFlags.experimentalSetup",
+    "status": "not-applicable",
+    "reason": "Gates `turbo setup`, which vx has no counterpart for."
   }
 ]

@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { type RemoteCacheLayer } from '@vzn/vx'
+import type { WorkspaceConfig } from '@vzn/vx/config'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import {
@@ -18,7 +19,7 @@ import {
   resolveTurboCacheConfig,
   TurboRemoteCache,
 } from '../src/turbo-cache/index.js'
-import { turboCache } from '../src/index.js'
+import { turbo, turboCache } from '../src/index.js'
 import { readScopes } from '../src/turbo-cache/scope.js'
 
 const TOKEN = 'secret-token'
@@ -110,6 +111,37 @@ describe('resolveTurboCacheConfig', () => {
     ).toMatchObject({ url: 'https://c.example', teamId: 'team_x', teamSlug: 'linked' })
   })
 
+  // vercel/turborepo#1844: Turbo uses its remote only when linked, a token
+  // with a team. A TURBO_TOKEN with no team ran remote here, team-less,
+  // where `turbo` runs local. CONTROL: a team from any source, or a
+  // turboCache() option naming the cache.
+  it('a Turbo token or url with no team declines, as turbo runs local', () => {
+    const said: string[] = []
+    const at = (env: Record<string, string>, local = {}) =>
+      resolveTurboCacheConfig({}, env, {}, local, (m) => said.push(m))?.url
+    expect([
+      at({ TURBO_TOKEN: 't' }),
+      at({ TURBO_TOKEN: 't', TURBO_API: 'https://c.example' }),
+      at({ TURBO_API: 'https://c.example' }),
+      at({ VERCEL_ARTIFACTS_TOKEN: 'vt' }),
+      at({ TURBO_TOKEN: 't', TURBO_TEAM: 'acme' }),
+      at({ TURBO_TOKEN: 't' }, { teamId: 'team_link' }),
+      resolveTurboCacheConfig({ token: 't' }, {})?.url,
+    ]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'https://vercel.com/api',
+      'https://vercel.com/api',
+      'https://vercel.com/api',
+    ])
+    // Turbo names a token it ignores; a bare url it reads as not linked.
+    const line =
+      'a Turbo token is set but no team (TURBO_TEAM, TURBO_TEAMID or .turbo/config.json): remote cache off for this run, as for turbo'
+    expect(said).toEqual([line, line])
+  })
+
   it('reads options over Turbo’s environment, strips a trailing slash, declines without url, team or token', () => {
     expect(resolveTurboCacheConfig({}, {})).toBeUndefined()
     // A URL with no token is kept: the layer's `open` asks the OS keychain.
@@ -167,7 +199,13 @@ describe('resolveTurboCacheConfig', () => {
       pick(resolveTurboCacheConfig({}, {}, file)),
       pick(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't' }, { ...file, enabled: false })),
       pick(resolveTurboCacheConfig({ token: 't' }, {}, { ...file, enabled: false })),
-      pick(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't' }, { apiUrl: 7, teamId: null })),
+      pick(
+        resolveTurboCacheConfig(
+          {},
+          { TURBO_TOKEN: 't', TURBO_TEAM: 'a' },
+          { apiUrl: 7, teamId: null },
+        ),
+      ),
     ]).toEqual([
       ['https://file.example', 'team_file', 'file'],
       ['https://env.example', 'team_env', 'env'],
@@ -175,7 +213,7 @@ describe('resolveTurboCacheConfig', () => {
       ['https://file.example', 'team_file', 'file'],
       undefined,
       ['https://file.example', 'team_file', 'file'],
-      ['https://vercel.com/api', undefined, undefined],
+      ['https://vercel.com/api', undefined, 'a'],
     ])
   })
 
@@ -718,8 +756,10 @@ describe('vx run with turboCache() layered over the local cache', () => {
         return turboCache({}).cache?.(ctx as never) !== undefined
       }
       expect([
-        await on({ remoteCache: { apiUrl: 'https://file.example' } }),
-        await on({ remoteCache: { apiUrl: 'https://file.example', enabled: false } }),
+        await on({ remoteCache: { apiUrl: 'https://file.example', teamSlug: 'a' } }),
+        await on({
+          remoteCache: { apiUrl: 'https://file.example', teamSlug: 'a', enabled: false },
+        }),
       ]).toEqual([true, false])
     } finally {
       if (before === undefined) delete process.env['TURBO_TOKEN']
@@ -735,6 +775,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
     try {
       process.env['TURBO_TOKEN'] = 't'
       process.env['TURBO_API'] = 'https://c.example'
+      process.env['TURBO_TEAM'] = 'acme'
       const remote = (env: Record<string, string>) => {
         Object.assign(process.env, env)
         const ctx = {
@@ -757,6 +798,135 @@ describe('vx run with turboCache() layered over the local cache', () => {
     }
   })
 
+  // TURBO_FORCE (`true` or `1`, as Turbo reads it) is `turbo run --force`:
+  // a CI that set it got hits replayed under turbo() (vercel/turborepo#921).
+  // The remote is read by no forced run and written only where the
+  // workspace's own policy names it: a laptop's write could reach CI.
+  it('TURBO_FORCE turns every cache read off, through cache.policy', async () => {
+    const saved = process.env['TURBO_FORCE']
+    const policy = async (value: string | undefined, ws: WorkspaceConfig = {}) => {
+      if (value === undefined) delete process.env['TURBO_FORCE']
+      else process.env['TURBO_FORCE'] = value
+      await turbo().config!(ws, { workspaceRoot: root, warn: () => {}, setBranch: () => {} })
+      return ws.cache?.policy ?? null
+    }
+    try {
+      expect([
+        await policy(undefined),
+        await policy('true'),
+        await policy('1'),
+        await policy('false'),
+        await policy('yes'),
+        await policy('true', { cache: { policy: 'local:rw,remote:rw' } }),
+        await policy('true', { cache: { policy: 'remote:r' } }),
+        await policy('true', { cache: { policy: 'local:r' } }),
+      ]).toEqual([
+        null,
+        'local:w,remote:',
+        'local:w,remote:',
+        null,
+        null,
+        'local:w,remote:w',
+        'local:w,remote:',
+        'local:,remote:',
+      ])
+    } finally {
+      if (saved === undefined) delete process.env['TURBO_FORCE']
+      else process.env['TURBO_FORCE'] = saved
+    }
+  })
+
+  // TURBO_FORCE aside, turbo() leaves cache.policy to the workspace: a
+  // TURBO_REMOTE_ONLY (vercel/turborepo#969) set for Turbo keeps the local
+  // cache under vx, and the run says nothing of it.
+  it('TURBO_REMOTE_ONLY, TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY leave cache.policy unset', async () => {
+    const names = ['TURBO_REMOTE_ONLY', 'TURBO_CACHE', 'TURBO_REMOTE_CACHE_READ_ONLY']
+    const saved = names.map((n) => process.env[n])
+    const policy = async (env: Record<string, string>) => {
+      for (const n of names) delete process.env[n]
+      Object.assign(process.env, env)
+      const ws: WorkspaceConfig = {}
+      const warned: string[] = []
+      await turbo().config!(ws, {
+        workspaceRoot: root,
+        warn: (m) => warned.push(m),
+        setBranch: () => {},
+      })
+      return [ws.cache?.policy ?? null, warned.length]
+    }
+    try {
+      expect([
+        await policy({ TURBO_REMOTE_ONLY: 'true' }),
+        await policy({ TURBO_REMOTE_ONLY: '1' }),
+        await policy({ TURBO_CACHE: 'remote:rw' }),
+        await policy({ TURBO_REMOTE_CACHE_READ_ONLY: 'true' }),
+      ]).toEqual([
+        [null, 0],
+        [null, 0],
+        [null, 0],
+        [null, 0],
+      ])
+    } finally {
+      names.forEach((n, i) => {
+        if (saved[i] === undefined) delete process.env[n]
+        else process.env[n] = saved[i]
+      })
+    }
+  })
+
+  it('a turbo() run under TURBO_FORCE runs its tasks and leaves the remote alone', async () => {
+    const ws = await mkdtemp(path.join(tmpdir(), 'vx-turbo-force-'))
+    const saved = process.env['TURBO_FORCE']
+    try {
+      await writeFile(
+        path.join(ws, 'package.json'),
+        JSON.stringify({ name: 'fixture', workspaces: ['pkg'] }),
+      )
+      await writeFile(
+        path.join(ws, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { inputs: ['src/**'], outputs: ['dist/**'] } } }),
+      )
+      await mkdir(path.join(ws, 'pkg', 'src'), { recursive: true })
+      await writeFile(
+        path.join(ws, 'pkg', 'package.json'),
+        JSON.stringify({ name: 'pkg', scripts: { build: 'mkdir -p dist && cp src/app.js dist/' } }),
+      )
+      await writeFile(path.join(ws, 'pkg', 'src', 'app.js'), 'console.log("app")\n')
+      await Bun.write(
+        path.join(ws, '.vx/workspace.mjs'),
+        localWorkspaceSource(
+          [
+            'turbo()',
+            `turboCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, teamSlug: 'acme' })`,
+          ],
+          `import { turbo, turboCache } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
+        ),
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: ws })
+      delete process.env['TURBO_FORCE']
+      const status = async () =>
+        (await run({ cwd: ws, tasks: ['build'], handleSignals: false })).outcomes.map(
+          (o) => o.status,
+        )
+      const first = await status()
+      const asked = srv.seen.length
+      process.env['TURBO_FORCE'] = 'true'
+      const forced = await status()
+      const remoteAsked = srv.seen.length - asked
+      delete process.env['TURBO_FORCE']
+      expect({ first, forced, remoteAsked, after: await status() }).toEqual({
+        first: ['success'],
+        forced: ['success'],
+        remoteAsked: 0,
+        after: ['cache-hit'],
+      })
+    } finally {
+      if (saved === undefined) delete process.env['TURBO_FORCE']
+      else process.env['TURBO_FORCE'] = saved
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
+
   it('the plugin reads the repo’s .turbo/config.json, under Turbo’s aliases', async () => {
     const ws = await mkdtemp(path.join(tmpdir(), 'vx-turbo-link-'))
     const saved = process.env['TURBO_TOKEN']
@@ -773,9 +943,38 @@ describe('vx run with turboCache() layered over the local cache', () => {
       await mkdir(path.join(ws, '.turbo'), { recursive: true })
       await writeFile(
         path.join(ws, '.turbo', 'config.json'),
-        JSON.stringify({ apiurl: 'https://link.example', token: 'lt' }),
+        JSON.stringify({ apiurl: 'https://link.example', teamid: 'team_l', token: 'lt' }),
       )
       expect([before, on()]).toEqual([false, true])
+    } finally {
+      if (saved !== undefined) process.env['TURBO_TOKEN'] = saved
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
+
+  // Turbo refuses a .turbo/config.json it cannot parse (vercel/turborepo
+  // #1156). The remote stays off as with none, and the run says why: read
+  // as absent in silence, a linked repo lost its cache with no word.
+  it('a .turbo/config.json that does not parse is named, and read as absent', async () => {
+    const ws = await mkdtemp(path.join(tmpdir(), 'vx-turbo-link-'))
+    const saved = process.env['TURBO_TOKEN']
+    try {
+      delete process.env['TURBO_TOKEN']
+      const said: string[] = []
+      const ctx = { warn: (m: string) => said.push(m), workspaceRoot: ws, cacheDir: ws, refs: [] }
+      const on = () => turboCache({}).cache?.(ctx as never) !== undefined
+      expect([on(), said]).toEqual([false, []])
+      await mkdir(path.join(ws, '.turbo'), { recursive: true })
+      await writeFile(path.join(ws, '.turbo', 'config.json'), '{"apiurl": "https://link.example",')
+      expect(on()).toBe(false)
+      await writeFile(path.join(ws, '.turbo', 'config.json'), '["not", "an", "object"]')
+      expect(on()).toBe(false)
+      expect(said).toEqual([
+        expect.stringMatching(
+          /\.turbo\/config\.json does not parse as a JSON object \(.+\): read as absent$/,
+        ),
+        "[vx] plugin '@vzn/vx-migrate': .turbo/config.json does not parse as a JSON object (an array): read as absent",
+      ])
     } finally {
       if (saved !== undefined) process.env['TURBO_TOKEN'] = saved
       await rm(ws, { recursive: true, force: true })

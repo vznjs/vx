@@ -535,7 +535,7 @@ use your own instead.
   leaves no file. One waits there up to 10 s; past that, with that worker
   gone or of another platform, or with its uncached upstreams on two
   workers, the upstream runs again where the dependant can go, and the
-  dependant follows it. A task whose upload no remote took (too big, a 429) is kept the same way: its output comes to the orchestrator with
+  dependant follows it. A task whose upload no remote took (too big, a 429, a reset connection) is kept the same way: its output comes to the orchestrator with
   its result, its files stay on the worker, and a task on the
   orchestrator's machine that needs them fails saying so. Before a task
   runs, its
@@ -616,11 +616,16 @@ use your own instead.
   peer heard from for none of a heartbeat and a half is probed (an
   empty numbered send), which it acks at once; either side hearing
   nothing from the other for 1.9 heartbeats loses it, a worker by
-  ending. A quiet pair trades one probe and its ack each heartbeat and a
+  ending, and saying so. A quiet pair trades one probe and its ack each heartbeat and a
   half, the relay answers neither, and nobody pings. An orchestrator
   with no worker yet asks the relay an empty frame instead; a frame the
   relay leaves unanswered a heartbeat closes the socket, which is dialed
   again.
+- The orchestrator's socket, its acks, probes and redials run on a thread
+  of their own, so sync work on the run's loop never holds them (one CI
+  run went quiet 12 s that way and lost every worker). A loop held a
+  second or more says so, with how long; one held 5 heartbeats (10 s)
+  ends the run, as a dead orchestrator would.
 - Each send is numbered for its receiver and held until the receiver
   acknowledges it, so one a socket or the relay dropped goes again after
   a heartbeat, or at once on a new socket; the receiver takes each once,

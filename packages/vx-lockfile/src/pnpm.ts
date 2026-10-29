@@ -272,6 +272,26 @@ function packageName(lock: Lockfile, snapshot: string): string {
 }
 
 /**
+ * The patch pnpm applies to a snapshot, by its precedence: `name@version`,
+ * then a range key (`name@<=7.0.0`), then `name`. A range key matched
+ * nothing here, so a patch edit re-keyed no project (vercel/turborepo#13307).
+ */
+function patchOf(lock: Lockfile, snapshot: string): string {
+  const exact = lock.patches.get(packageKey(snapshot))
+  if (exact !== undefined) return exact
+  const name = packageName(lock, snapshot)
+  const id = packageKey(snapshot)
+  const version = id.slice(id.indexOf(name) + name.length + 1)
+  for (const [key, hash] of lock.patches) {
+    if (key.length > name.length + 1 && key.startsWith(`${name}@`)) {
+      const range = key.slice(name.length + 1)
+      if (Bun.semver.satisfies(version, range)) return hash
+    }
+  }
+  return lock.patches.get(name) ?? ''
+}
+
+/**
  * Every importer's digest: the lockfile as one graph (importers and
  * snapshots alike), each node's material its identity, and core's
  * `reachDigests` folding what every node reaches (components, so pnpm's
@@ -358,8 +378,7 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   }
   for (const key of lock.snapshots.keys()) {
     const resolution = lock.resolutions.get(key) ?? lock.resolutions.get(packageKey(key)) ?? ''
-    const patch =
-      lock.patches.get(packageKey(key)) ?? lock.patches.get(packageName(lock, key)) ?? ''
+    const patch = patchOf(lock, key)
     const dir = lock.directories.get(key) ?? lock.directories.get(packageKey(key))
     const content = dir === undefined ? '' : `\0file\0${files.get(dir) ?? ''}`
     node(key, `${key}\0${resolution}\0${patch}${content}`)

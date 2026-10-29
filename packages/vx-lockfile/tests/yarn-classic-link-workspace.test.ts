@@ -82,6 +82,37 @@ it('a workspace a `!` glob names is still one: Yarn 1 links it anyway', async ()
   expect(await key()).toBe(before)
 })
 
+it('a workspaces glob written with a trailing slash finds the same workspaces', async () => {
+  // Turbo #6772: `packages/*/` read as a glob no directory matches.
+  await writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*/'] }),
+  )
+  // Under another name, so only the workspace walk ties `y` to c.
+  await writeFile(
+    path.join(root, 'packages/b/package.json'),
+    JSON.stringify({ name: 'b', dependencies: { y: 'link:../c' } }),
+  )
+  await writeFile(
+    path.join(root, 'yarn.lock'),
+    '# yarn lockfile v1\n\n\n"y@link:packages/c":\n  version "1.0.0"\n',
+  )
+  const ctx: DiscoverContext = {
+    workspaceRoot: root,
+    cacheDir: path.join(root, '.vx', 'cache'),
+    projects: [],
+    warn() {},
+    worktreeChanges: async () => null,
+  }
+  const rel = (dir: string) => path.relative(root, dir)
+  const b = (await yarn().discover!(ctx)).find((p) => rel(p.dir) === 'packages/b')!
+  expect((b.deps ?? []).map(rel)).toEqual(['packages/c'])
+  // And the key reads c as a workspace: its build output moves no key.
+  const before = await key()
+  await writeFile(path.join(root, 'packages/c/dist/index.js'), '// v2\n')
+  expect(await key()).toBe(before)
+})
+
 it('a `link:` to a workspace under another name is an edge to it', async () => {
   // Yarn 1 symlinks the directory whatever the name; the edge came only
   // from the name, so `"y": "link:../c"` ordered nothing and b's ^build

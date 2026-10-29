@@ -274,6 +274,46 @@ it('a worker late for a run that ended exits 0', async () => {
   }
 })
 
+// A worker that ended on its orchestrator's silence stopped every task it
+// ran and left with no word: its CI job green, the cause found only in the
+// run's profile (CI run 40886829588, 2026-10-29). It says why.
+it('a worker its orchestrator went silent on says so and exits 0', async () => {
+  let silent = false
+  const served = servedRelay({ heartbeatMs: 100 }, (frame) => {
+    if (!silent) return frame
+    const f = JSON.parse(frame) as { sends?: { to: string }[] }
+    if (f.sends === undefined) return frame
+    return JSON.stringify({ ...f, sends: f.sends.filter((one) => one.to === 'host') })
+  })
+  const written: string[] = []
+  const write = process.stderr.write.bind(process.stderr)
+  process.stderr.write = ((chunk: string) => {
+    written.push(String(chunk))
+    return true
+  }) as typeof process.stderr.write
+  try {
+    const o = await join(served.url, R, 'orchestrator', null, undefined)
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root: process.cwd(),
+      token: async () => undefined,
+      proof: { psk: async () => new Uint8Array(32), mismatch: 'no key' },
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    for (let i = 0; i < 50 && (await o.poll()).length === 0; i++);
+    silent = true
+    expect(await code).toBe(0)
+    expect(written.join('')).toContain(
+      'the orchestrator went silent: the tasks running here were stopped, and the run gives them to other workers',
+    )
+    await o.leave()
+  } finally {
+    process.stderr.write = write
+    await served.stop()
+  }
+})
+
 // A relay restart its orchestrator does not join again within two
 // heartbeats loses the worker. The run gave its tasks to others; the
 // worker's CI job is no failure (mac#1 on #3895).
@@ -1785,11 +1825,11 @@ it('a task a worker stops saying it holds goes back when its lease ends', async 
 })
 
 // The relay restarts while a worker runs t1, and the orchestrator is away
-// most of two heartbeats: past t1's lease, which no `held` renewed. It
-// stays the worker's, not run again elsewhere (2026-10-25: "make
-// sure on rejoin we don't repeat work").
+// a heartbeat; another worker polls past t1's lease, which no `held`
+// renewed. It stays the worker's, not run again elsewhere (2026-10-25:
+// "make sure on rejoin we don't repeat work").
 it('a task held across a relay restart stays its worker’s: its lease waits for both to be back', async () => {
-  const beat = 300
+  const beat = 400
   const h = await harness(new Map([node('t1')]), undefined, beat)
   try {
     const a = await h.worker(1)
@@ -1798,12 +1838,17 @@ it('a task held across a relay restart stays its worker’s: its lease waits for
     expect(await a.batches()).toEqual([['t1']])
     await a.begin('t1')
     await a.say({ type: 'held', running: ['t1'], queued: [] })
+    const heldAt = performance.now()
     const b = await h.worker(1)
     h.served.refuse = (r) => decodeURIComponent(r.url).includes('"role":"host"')
     h.served.restart()
-    setTimeout(() => (h.served.refuse = undefined), 500)
-    // Past the lease of 3 heartbeats from that `held`, 900 ms.
-    const until = performance.now() + 1_200
+    // One heartbeat refused of the two a rejoin has: a redial waits a
+    // jitter of up to half a beat, and a 500 ms refusal of 600 left a
+    // loaded runner 100 ms for it and the dial (CI, PR #4867).
+    setTimeout(() => (h.served.refuse = undefined), beat)
+    // Half a beat past the lease of 3 heartbeats from that `held`, half a
+    // beat before the lease the rejoin renewed (at least 4 from it) ends.
+    const until = heldAt + beat * 3.5
     const got: string[] = []
     while (performance.now() < until)
       for (const m of await b.poll()) got.push((m.body as { type: string }).type)

@@ -185,6 +185,8 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       affectedBase: 'HEAD',
       tasks: [],
     })
+    // An empty one is unset, as Turbo reads an empty TURBO_SCM_BASE (#9053).
+    expect(run({ VX_AFFECTED_BASE: '' }, '--affected')).toEqual({ affectedBase: 'HEAD', tasks: [] })
   })
 
   it('CONTROL: a real base that happens to select nothing keeps the plain note', async () => {

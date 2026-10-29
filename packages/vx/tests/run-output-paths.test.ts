@@ -1,8 +1,8 @@
 // Where `vx run` writes the file a flag names, end to end: the output path
-// makes its directory (item 993).
+// makes its directory (item 993). And where a task itself runs.
 
-import { existsSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -22,8 +22,12 @@ afterEach(async () => {
 })
 
 function vx(...args: string[]): { code: number; err: string } {
+  return vxIn(root, ...args)
+}
+
+function vxIn(cwd: string, ...args: string[]): { code: number; err: string } {
   const r = Bun.spawnSync([process.execPath, BIN, 'run', 'build', '--all', ...args], {
-    cwd: root,
+    cwd,
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -40,3 +44,19 @@ describe('output paths (item 993)', () => {
     TIMEOUT,
   )
 })
+
+// vercel/turborepo#1774: a task's shell starts in its own project, from
+// wherever vx was started, never in the caller's cwd.
+it(
+  'a task runs in its own project, started from inside another',
+  async () => {
+    const b = await addProject(root, 'b', {
+      config: `export default { tasks: { build: { exec: { command: 'pwd -P > where.txt' } } } }`,
+    })
+    const inA = path.join(root, 'packages', 'a', 'deep')
+    await mkdir(inA)
+    expect(vxIn(inA)).toEqual({ code: 0, err: '' })
+    expect(readFileSync(path.join(b, 'where.txt'), 'utf8')).toBe(`${realpathSync(b)}\n`)
+  },
+  TIMEOUT,
+)

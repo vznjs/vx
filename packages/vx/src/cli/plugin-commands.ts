@@ -284,7 +284,12 @@ async function openVerbRemotes(
   await open(remotes, ci, new SecretBroker(ci, warn))
 }
 
-function lazyArtifacts(open: () => Promise<TaskArtifacts>): TaskArtifacts {
+/**
+ * `Required`, so a member `TaskArtifacts` gains cannot be left out here:
+ * this wrapper dropped `uploaded`, and `vx dte worker` took every upload a
+ * remote reset as landed (CI, 2026-10-29).
+ */
+function lazyArtifacts(open: () => Promise<TaskArtifacts>): Required<TaskArtifacts> {
   let opened: Promise<TaskArtifacts> | undefined
   const artifacts = (): Promise<TaskArtifacts> => (opened ??= open())
   return {
@@ -293,6 +298,7 @@ function lazyArtifacts(open: () => Promise<TaskArtifacts>): TaskArtifacts {
     output: async (key) => (await artifacts()).output(key),
     share: async (key) => (await artifacts()).share(key),
     resend: async (key) => (await artifacts()).resend(key),
+    uploaded: async (key) => (await artifacts()).uploaded?.(key),
   }
 }
 

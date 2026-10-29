@@ -96,9 +96,14 @@ export function execWrap(command: string): string // `exec <command>` when execW
 
 export function armTimeout(proc, timeoutMs): { timedOut(): boolean; settle(): Promise<void> }
 export const POST_EXIT_CUT_LINE: string
-// The two output callbacks wrapped to learn whether the output ends mid-line;
-// `own(text)` breaks the line before vx's note only then.
-export function lineEnds(onStdout?, onStderr?): { onStdout?; onStderr?; own(text: string): string }
+// The two output callbacks merged a line at a time: a chunk on one stream
+// waits while the other's line is open, at most OPEN_LINE_WAIT_MS (50) and
+// OPEN_LINE_HOLD_CHARS (64 KiB), then goes as written (no newline added); `end()`
+// lets it go at the exit. `own(text)` breaks the line before vx's note only
+// when the output ends mid-line.
+export const OPEN_LINE_WAIT_MS = 50
+export const OPEN_LINE_HOLD_CHARS: number
+export function lineEnds(onStdout?, onStderr?): { onStdout?; onStderr?; own(text: string): string; end(): void }
 export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<boolean>
 export function spawnFailureText(err: unknown, cwd: string, what?: string, command?: string): string // E2BIG with `command`: its size and the 128 KiB limit
 export const SANDBOXED_TASK = 'sandboxed task' // `what` for runSandboxed, whose `command` is the wrap: the hint says the wrap counts
@@ -134,6 +139,20 @@ export class TaskPipes {
   closeStdin(): void // a persistent task's held stdin: once the child exited AND its output ended
 }
 ```
+
+Cost of `lineEnds` (2026-10-29, runCommand A/B, interleaved, min of 11,
+before arm a worktree of main 296536e17): a 9 MB flood on both streams
+with partial lines 337 ms wall against 371 before, CPU 416 against 363
+(medians 455 and 432); 100 MB on stdout
+alone 653 against 710; 20 000 short lines interleaved by a shell 121
+against 126. Alone, about 10 ns more per chunk, and 70 ns per line one
+stream holds behind the other's open line.
+
+The hold never delays what a user waits on past the bound: a prompt with
+no newline on the stream whose line is open goes at once (it is that
+line); one on the other stream goes within `OPEN_LINE_WAIT_MS`, its timer
+held to its start; at the exit, `end` lets everything go; and an
+`exec.interactive` task on a TTY has no pipes, so nothing passes here.
 
 ## Spawning rules
 

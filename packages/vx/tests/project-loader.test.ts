@@ -518,6 +518,27 @@ describe('loadProjectConfig', () => {
       expect(cfg.tasks?.['build']?.inputs?.files).toEqual(['..foo/**'])
     })
 
+    // vercel/turborepo#13300: a negated output still escapes, and a `..`
+    // that only LOOKS like one is a literal name — nothing decodes a glob.
+    it('refuses `..` in a negated output; dot lookalikes in an output are literal names', async () => {
+      const load = async (outputs: string[]) => {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(
+          file,
+          `export default { tasks: { build: {
+            exec: { command: 'tsc' },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ${JSON.stringify(outputs)} } },
+          } } }`,
+        )
+        return loadProjectConfig(file)
+      }
+      await expect(load(['dist/**', '!../secret.txt'])).rejects.toThrow(
+        /'\.\.' path segments are not allowed/,
+      )
+      const literal = ['%2e%2e/t.txt', '．．/t.txt', '~/t.txt', 'dist/**']
+      expect((await load(literal)).tasks?.['build']?.cache?.outputs?.files).toEqual(literal)
+    })
+
     it('the directory-itself refusal also strips a leading `!`', async () => {
       // `.` selects nothing and says so nowhere, which is why it is refused.
       // A negated `!.` is the same mistake wearing a marker, and only

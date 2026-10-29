@@ -229,6 +229,20 @@ describe('resolveOutputs', () => {
     ])
   })
 
+  it('a repeated or overlapping glob lists each file once (vercel/turborepo#14004)', async () => {
+    await write(path.join(projectDir, 'dist', 'a.js'))
+    await write(path.join(projectDir, 'dist', 'sub', 'b.js'))
+    const out = await resolveOutputs({
+      projectDir,
+      outputs: ['dist/**', 'dist/**', 'dist/sub/**'],
+      nestedProjectDirs: [],
+    })
+    expect(out).toEqual([
+      path.join(projectDir, 'dist', 'a.js'),
+      path.join(projectDir, 'dist', 'sub', 'b.js'),
+    ])
+  })
+
   it('does not filter outputs through gitignore (typical dist/ is ignored)', async () => {
     // `dist/` is normally in .gitignore; outputs should still be captured.
     await write(path.join(root, '.gitignore'), 'dist\n')
@@ -520,6 +534,29 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       nestedProjectDirs: [],
     })
     expect(got.files.sort()).toEqual(odd.map((n) => path.join(projectDir, 'src', n)).sort())
+  })
+
+  // Turbo escapes a `:` in an input glob so wax reads it as a literal
+  // (vercel/turborepo#6847): a colon is a plain character in a POSIX name,
+  // and a glob naming one must find it, as a wildcard over it does.
+  it('a name holding a colon enters the inputs by a wildcard and by its literal path', async () => {
+    await write(path.join(projectDir, 'src', 'a:b.txt'))
+    await write(path.join(projectDir, 'src', 'c.txt'))
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'init')
+    await write(path.join(projectDir, 'src', 'x:y.txt'))
+    const resolve = (files: string[]) =>
+      resolveInputs({
+        projectDir,
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files },
+        ownOutputs: [],
+        nestedProjectDirs: [],
+      }).then((got) => got.files.map((f) => relPosix(projectDir, f)).sort())
+    expect(await resolve(['src/*:*.txt'])).toEqual(['src/a:b.txt', 'src/x:y.txt'])
+    expect(await resolve(['src/a:b.txt', 'src/x:y.txt'])).toEqual(['src/a:b.txt', 'src/x:y.txt'])
+    expect(await resolve(['src/**', '!src/a:b.txt'])).toEqual(['src/c.txt', 'src/x:y.txt'])
   })
 
   // A default TextDecoder (and Response.text()) strips a leading U+FEFF, so

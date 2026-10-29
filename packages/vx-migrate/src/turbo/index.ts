@@ -24,6 +24,7 @@ import { onceReader, type ReadText, tscBuildInfo } from '../tsc-buildinfo.js'
 import type * as TurboMap from './turbo-map.js'
 import type { TurboMappedProject } from './turbo-map.js'
 import {
+  ENV_CONDITION_KEYS,
   envNamesThatMap,
   microfrontendsConfigs,
   rootTaskProject,
@@ -71,12 +72,24 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
         const keys = await workspaceKeys(rootOf(ctx.workspaceRoot))
         if (workspace.run?.concurrency === undefined && keys.concurrency !== undefined)
           workspace.run = { ...workspace.run, concurrency: keys.concurrency }
+        // `TURBO_FORCE` (`true` or `1`, as Turbo reads it) is `turbo run --force`.
+        const force = Bun.env['TURBO_FORCE']?.trim()
+        if (force === 'true' || force === '1')
+          workspace.cache = { ...workspace.cache, policy: forcedPolicy(workspace.cache?.policy) }
         // `turbo run --affected` compares with TURBO_SCM_BASE when set, and
         // on GitHub Actions with what the event names.
         const base =
           Bun.env['TURBO_SCM_BASE']?.trim() ||
           githubActionsBase(rootOf(ctx.workspaceRoot), keys.remoteBaseFallback === true)
         if (base) ctx.setBranch({ base })
+        // ...up to TURBO_SCM_HEAD. vx's head is the checkout (HEAD and its
+        // working tree): a head at HEAD's commit is that, any other is said.
+        const head = Bun.env['TURBO_SCM_HEAD']?.trim()
+        if (head && !atHead(rootOf(ctx.workspaceRoot), head))
+          ctx.warn(
+            `TURBO_SCM_HEAD (${head}) is not the checked-out commit: --affected compares ` +
+              `the base with the checkout, so check out ${head} to compare with it.`,
+          )
       },
       // Turbo's packages are the package manager's members, each a project
       // with no vx.config written. `//#task` keys run on the root, as Turbo
@@ -98,6 +111,18 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
 }
 
 const UNKNOWN_SHA = '0'.repeat(40)
+
+/** Whether `ref` names HEAD's commit. */
+function atHead(root: string, ref: string): boolean {
+  // An option is no ref; rev-parse prints `--end-of-options` back (git 2.43).
+  if (ref.startsWith('-')) return false
+  const proc = Bun.spawnSync(['git', 'rev-parse', 'HEAD', `${ref}^{commit}`], {
+    cwd: root,
+    stderr: 'ignore',
+  })
+  const [head, at] = proc.stdout.toString().split('\n')
+  return proc.exitCode === 0 && head === at
+}
 
 /**
  * Turbo's `--affected` base on GitHub Actions when `TURBO_SCM_BASE` is
@@ -185,6 +210,25 @@ async function workspaceKeys(root: string): Promise<{
   return out
 }
 
+/**
+ * A policy with every read off, as `--force` is: no hit is replayed. The
+ * remote is written only where the workspace's own policy names it, so a
+ * laptop's forced run never writes the cache CI reads.
+ */
+function forcedPolicy(spec = ''): string {
+  const flags = new Map([
+    ['local', 'w'],
+    ['remote', ''],
+  ])
+  for (const seg of spec.split(',')) {
+    if (seg.trim() === '') continue
+    const m = /^(local|remote):([rw]*)$/.exec(seg.trim())
+    if (m === null) return spec // core refuses it, naming `cache.policy`
+    flags.set(m[1]!, m[2]!.replace('r', ''))
+  }
+  return [...flags].map(([layer, f]) => `${layer}:${f}`).join(',')
+}
+
 const envNamesNow = (): string[] => Object.keys(process.env).sort()
 
 const textOf = (file: string): Promise<string> =>
@@ -223,6 +267,8 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       // An env wildcard expands over these; a new name it matches maps afresh.
       JSON.stringify(envNames),
       process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
+      // A framework conditional keys its names on these values (skew protection).
+      JSON.stringify(ENV_CONDITION_KEYS.map((k) => process.env[k] ?? null)),
       process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
       yarnrc,
@@ -265,6 +311,7 @@ async function mapAll(
     splice: (_kind, values) => values,
     persistentTodo: PERSISTENT_NOTE,
     envNames,
+    envValue: (name) => process.env[name],
     vendorEnvPrefix: process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
     envMode: process.env['TURBO_ENV_MODE'] ?? '',
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),

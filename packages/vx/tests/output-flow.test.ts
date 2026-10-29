@@ -775,6 +775,21 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     expect(text.indexOf('::endgroup::')).toBeGreaterThan(text.indexOf('└─ one#build'))
   })
 
+  it('a task that printed nothing never leaves an empty group: it holds the frame (vercel/turborepo#10760)', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#build', { requested: true })
+    log.taskStart?.(n)
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    const text = out.text()
+    const inside = text.slice(text.indexOf('::group::'), text.indexOf('::endgroup::'))
+    expect(inside).toContain('┌─ one#build')
+    expect(inside).toContain('$ noop')
+    expect(inside).toContain('└─ one#build')
+    // CONTROL: the frame is the only thing it holds.
+    expect(text.match(/::group::/g)).toHaveLength(1)
+  })
+
   it('hit-with-replay blocks group with the cache outcome word', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)

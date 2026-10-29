@@ -14,7 +14,13 @@
 // them to the runner around every spawn.
 
 import { signalExitCode } from '../exec/index.js'
-import { claimExitForSignal, hangupIgnored, killGraceMs, settleWithin } from '../util/index.js'
+import {
+  claimExitForSignal,
+  dieOf,
+  hangupIgnored,
+  killGraceMs,
+  settleWithin,
+} from '../util/index.js'
 import {
   holdGroups,
   killTree,
@@ -154,10 +160,7 @@ export function forwardSignals(args: {
     // and a 130 exit ran the script's next line. The code stays the
     // fallback should the signal not land.
     if (args.handsTerminal !== true) {
-      process.once('exit', () => {
-        process.removeAllListeners(signal)
-        process.kill(process.pid, signal)
-      })
+      process.once('exit', () => dieOf(signal))
     }
     process.exit(signalExitCode(signal))
   }

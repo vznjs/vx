@@ -101,6 +101,22 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
     expect([r.exitCode, r.out.includes('no projects declare task(s): tset')]).toEqual([1, true])
   })
 
+  it('a name no project declares is refused when nothing changed at all (vercel/turborepo#12268)', () => {
+    // The scope is empty: the typo guard still judges the name.
+    const typo = vx(root, 'run', 'tset', '--affected=HEAD')
+    const ref = vx(root, 'run', 'tset', '--filter', '[HEAD]')
+    const real = vx(root, 'run', 'test', '--affected=HEAD')
+    expect([
+      [typo.exitCode, typo.out.includes('no projects declare task(s): tset')],
+      [ref.exitCode, ref.out.includes('no projects declare task(s): tset')],
+      [real.exitCode, real.out.includes('nothing affected since HEAD')],
+    ]).toEqual([
+      [1, true],
+      [1, true],
+      [0, true],
+    ])
+  })
+
   it('a scope the user named is judged as before (control)', () => {
     const r = vx(root, 'run', 'test', '--filter', 'docs')
     expect([r.exitCode, r.out.includes('no projects declare task(s): test')]).toEqual([1, true])

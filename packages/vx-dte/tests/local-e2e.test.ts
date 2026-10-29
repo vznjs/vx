@@ -548,21 +548,14 @@ it.each(['SIGHUP', 'SIGINT'] as const)(
         (await readdir(tmp)).filter((d) => d.startsWith('vx-dte-'))
       for (let i = 0; i < 200 && (await left()).length > 0; i++) await Bun.sleep(50)
       expect(await left()).toEqual([])
-      const trees = () => Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
-      for (
-        let i = 0;
-        i < 100 &&
-        trees()
-          .stdout.toString()
-          .match(/^worktree /gm)!.length > 1;
-        i++
-      )
-        await Bun.sleep(50)
-      expect(
-        trees()
-          .stdout.toString()
-          .match(/^worktree /gm),
-      ).toHaveLength(1)
+      // A `git worktree list` racing the detached removal can print nothing
+      // and fail (CI, PR #4867): that answer is "not settled", not zero trees.
+      const trees = (): number | null => {
+        const p = Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+        return p.exitCode === 0 ? (p.stdout.toString().match(/^worktree /gm)?.length ?? 0) : null
+      }
+      for (let i = 0; i < 100 && trees() !== 1; i++) await Bun.sleep(50)
+      expect(trees()).toBe(1)
     } finally {
       await rm(tmp, { recursive: true, force: true })
     }

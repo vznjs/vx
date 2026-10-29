@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
+import { ownSplice } from './helpers/turbo-own.js'
 
 let root: string
 beforeEach(async () => {
@@ -35,7 +36,7 @@ describe('turbo-map: an env name no shell can hold', () => {
       },
     ]
     const m = await mapTurboWorkspace(root, metas, {
-      splice: (_k, v) => v,
+      splice: ownSplice,
       persistentTodo: 'P',
     })
     const t = m.projects[0]!.tasks[0]!.task as {

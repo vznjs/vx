@@ -69,6 +69,37 @@ export async function settleWithin(p: Promise<unknown>, ms: number): Promise<boo
 // with the run's verdict (1), so bin.ts asks before it exits.
 let signalOwnsExit = false
 
+/** How long `dieOf` waits for its own signal to land before the caller exits anyway. */
+const SELF_SIGNAL_WAIT_MS = 1000
+
+/**
+ * Die of `signal`: its listeners off, so Bun restores the default action,
+ * the signal sent to this process, and the caller held until it lands. A
+ * kill is not always delivered before it returns: a signal another thread
+ * takes, or one a tracer holds (the sandbox's `strace -f` sees every
+ * signal before the tracee does), lands later, and the `process.exit`
+ * after it won: vx exited with the signal's code (130), not of the
+ * signal, and a script running it
+ * went on (CI, PR #4867). Bounded: the caller's exit code is the fallback
+ * should the signal never land. `testTimerMs('SELF_SIGNAL_DELAY')` sends
+ * it from a helper that late instead, the window a test widens.
+ */
+export function dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void {
+  process.removeAllListeners(signal)
+  const lateMs = testTimerMs('SELF_SIGNAL_DELAY', 0)
+  if (lateMs > 0) {
+    Bun.spawn(['sh', '-c', `sleep ${lateMs / 1000}; kill -${signal.slice(3)} ${process.pid}`], {
+      stdio: ['ignore', 'ignore', 'ignore'],
+    })
+  } else {
+    process.kill(process.pid, signal)
+  }
+  // Synchronous: an `exit` listener's loop never turns again. A signal
+  // that lands ends the process here; the wait costs nothing then.
+  const until = performance.now() + lateMs + SELF_SIGNAL_WAIT_MS
+  while (performance.now() < until) Bun.sleepSync(5)
+}
+
 /** A signal's handler will end the process: bin.ts leaves the exit to it. */
 export function claimExitForSignal(): void {
   signalOwnsExit = true

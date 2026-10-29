@@ -5,11 +5,12 @@
 // The deep pins for each behaviour live in the suites `docs/parity.md`
 // maps; this file is the one place a Turbo reader can scan.
 
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { gitIn } from './helpers/workspace.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import {
   dry,
   makeParityWorkspace,
@@ -147,6 +148,21 @@ describe('Turbo parity — `--filter` (package selection)', () => {
   )
 
   it(
+    'a repeated --filter unions every occurrence, in either spelling (vercel/turborepo#14106)',
+    async () => {
+      expect(await planned(root, ['lint', '--filter=docs', '--filter', 'ui'])).toEqual([
+        'docs#lint',
+        'ui#lint',
+      ])
+      expect(await planned(root, ['lint', '--filter', 'ui', '--filter=docs'])).toEqual([
+        'docs#lint',
+        'ui#lint',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     '`--filter=./packages/ui` selects by directory; `--filter=!docs` excludes',
     async () => {
       expect(await planned(root, ['lint', '--filter', './packages/ui'])).toEqual(['ui#lint'])
@@ -219,7 +235,7 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
         exec: { command: 'echo mode=$MODE token=$TOKEN', env: { passThrough: ['MODE', 'TOKEN'] } },
         inputs: { files: ['src/**'], env: ['MODE'] }, cache: { outputs: { files: [] } },
       },
-      uncached: { exec: { command: 'echo uncached' } },
+      uncached: { exec: { command: "printf 'streamed-%s\\\\n' out" } },
       args: {
         exec: { command: 'echo args' },
         inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
@@ -297,14 +313,18 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
     TIMEOUT,
   )
 
+  // vercel/turborepo@15a11406c: an uncached task's output took another
+  // writer and lost its log streaming. The printf keeps the command line
+  // from matching: only the task's own output reads `streamed-out`.
   it(
-    '`"cache": false` (vx: no `cache` block) executes on every run',
+    '`"cache": false` (vx: no `cache` block) executes on every run, its output shown',
     async () => {
       for (let i = 0; i < 2; i++) {
         const r = await summarized(root, ['lib#uncached'])
         expect(r.code).toBe(0)
         expect(r.tasks.get('lib#uncached')?.['status']).toBe('success')
         expect(r.tasks.get('lib#uncached')?.['noCache']).toBe(true)
+        expect(r.text).toContain('streamed-out\n')
       }
     },
     TIMEOUT,
@@ -521,6 +541,107 @@ describe('Turbo parity — failures, output and reports', () => {
       const r = await vx(root, ['run', 'lint', '--all', '--force', '--concurrency', '1'])
       expect(r.code).toBe(0)
       expect(r.out + r.err).toContain('1 worker')
+    },
+    TIMEOUT,
+  )
+})
+
+// Turbo inferred a package from the cwd and injected its name into a
+// directory filter, so the same command selected differently by where it
+// ran (vercel/turborepo#11432, #11500). vx reads a `./` path from the
+// workspace root wherever it runs, and injects nothing (D-43).
+describe('Turbo parity — a directory filter run from a subdirectory', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeWorkspace({ prefix: 'vx-parity-turbo-subdir-' })
+    const config = `export default { tasks: { lint: { exec: { command: 'true' } } } }\n`
+    for (const dir of ['packages/apps', 'packages/apps/x', 'packages/apps/y']) {
+      await mkdir(path.join(root, dir), { recursive: true })
+      await writeFile(
+        path.join(root, dir, 'package.json'),
+        JSON.stringify({ name: path.basename(dir) }),
+      )
+      await writeFile(path.join(root, dir, 'vx.config.mjs'), config)
+    }
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'selects the same projects from the root and from the project the path is in, every time',
+    async () => {
+      const ids = async (cwd: string): Promise<string[]> => {
+        const r = await vx(path.join(root, cwd), [
+          'run',
+          'lint',
+          '--filter',
+          './packages/apps/*',
+          '--dry=json',
+        ])
+        expect(r.code).toBe(0)
+        return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
+      }
+      const want = ['packages/apps/x#lint', 'packages/apps/y#lint']
+      expect(await ids('.')).toEqual(want)
+      for (let i = 0; i < 3; i++) expect(await ids('packages/apps')).toEqual(want)
+      // CONTROL: the project's own path selects it alone.
+      const own = await vx(path.join(root, 'packages/apps'), [
+        'run',
+        'lint',
+        '--filter',
+        './packages/apps',
+        '--dry=json',
+      ])
+      expect((JSON.parse(own.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id)).toEqual([
+        'apps#lint',
+      ])
+    },
+    TIMEOUT,
+  )
+})
+
+// turborepo#6877: a checkout whose path holds glob characters read its own
+// path as a pattern. Here the root, a project and an input all hold them,
+// beside a sibling `cx` that `[c]x` would match as a class.
+describe('Turbo parity — glob characters in paths are names', () => {
+  let parent: string
+  let root: string
+  let dir: string
+  beforeAll(async () => {
+    parent = await mkdtemp(path.join(os.tmpdir(), 'vx-parity-glob-path-'))
+    root = await makeWorkspace({ dir: parent, prefix: '[br] (x){y}-', git: false })
+    const config = `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist && cat src/*/page.ts > dist/o' },
+      inputs: { files: ['src/\\\\[id\\\\]/**'] }, cache: { outputs: { files: ['dist/**'] } },
+    } } }`
+    dir = await addProject(root, '[c]x', {
+      config,
+      files: { 'src/[id]/page.ts': 'v1\n', '.gitignore': 'dist/\n' },
+    })
+    await addProject(root, 'cx', { config, files: { 'src/[id]/page.ts': 'c\n' } })
+    const git = gitIn(root)
+    git('init', '-q')
+    git('add', '-A')
+    // CI's runner has no git identity: name one, as makeWorkspace's own init does.
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init')
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(parent, { recursive: true, force: true })
+  })
+
+  it(
+    'a project `[c]x` under `[br] (x){y}` misses on an edit, then hits and restores',
+    async () => {
+      const status = async () =>
+        (await summarized(root, ['[c]x#build'])).tasks.get('[c]x#build')?.['status']
+      expect(await status()).toBe('success')
+      expect(await status()).toBe('cache-hit')
+      await writeFile(path.join(dir, 'src', '[id]', 'page.ts'), 'v2\n')
+      expect(await status()).toBe('success')
+      await rm(path.join(dir, 'dist'), { recursive: true })
+      expect(await status()).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'dist', 'o'), 'utf8')).toBe('v2\n')
     },
     TIMEOUT,
   )

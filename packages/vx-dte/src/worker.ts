@@ -47,7 +47,7 @@ import {
 import { leftUnder, names, outputFiles } from './outputs.js'
 import { snapshot } from './tree.js'
 import { sealWorker, type Proof } from './seal.js'
-import { join, RelayError, unsent as unsentBy } from './wire.js'
+import { join, ORCHESTRATOR_SILENT, RelayError, unsent as unsentBy } from './wire.js'
 
 export async function runWorker(opts: {
   relay: string
@@ -153,6 +153,24 @@ export async function runWorker(opts: {
   process.once('SIGINT', onInt)
   process.once('SIGTERM', onTerm)
   const quitCode = (): number => 128 + constants.signals[quit.signal.reason as 'SIGINT' | 'SIGTERM']
+  /**
+   * The run is over for this worker (410), its job no failure. An end on
+   * the orchestrator's silence stops what runs here, and is said: three
+   * workers' every task stopped in one second, each job green and silent,
+   * and the cause was found only in the run's profile (CI, 2026-10-29).
+   */
+  const ended = (err: RelayError): number => {
+    if (err.message === ORCHESTRATOR_SILENT)
+      ui.print(
+        'err',
+        ui.status(
+          'warn',
+          'vx dte worker',
+          'the orchestrator went silent: the tasks running here were stopped, and the run gives them to other workers',
+        ),
+      )
+    return 0
+  }
 
   /** Saves the task's files (none when `bare`) and output under `key` and says so. */
   const reply = async (
@@ -524,7 +542,7 @@ export async function runWorker(opts: {
         messages = await me.poll(quit.signal)
       } catch (err) {
         if (quit.signal.aborted) return quitCode()
-        if (err instanceof RelayError && err.status === 410) return 0
+        if (err instanceof RelayError && err.status === 410) return ended(err)
         // The relay lost it (silent too long, or restarted): the run gave its
         // tasks to others, so this job has nothing left and is no failure.
         if (err instanceof RelayError && err.status === 404) {
@@ -585,7 +603,7 @@ export async function runWorker(opts: {
     }
   } catch (err) {
     // The run closed under a poll or an answer: nothing is left for this worker.
-    if (err instanceof RelayError && err.status === 410) return 0
+    if (err instanceof RelayError && err.status === 410) return ended(err)
     throw err
   } finally {
     process.off('SIGINT', onInt)

@@ -889,7 +889,9 @@ The wildcards are `*`, `**`, `?`, a character class `[ab]` (`[a-z]`,
 match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`, and
 `{src,lib}` is the two directory trees, as `['src', 'lib']` is; the
 spellings fold per alternative (`{./src,lib}/**` is `src/**` plus
-`lib/**`), in inputs and outputs alike. A
+`lib/**`), in inputs and outputs alike. A `,`, `{` or `}` inside a
+class is one of its characters, never a cut: `lib/{a[,]b,x}.ts` is
+`lib/a[,]b.ts` plus `lib/x.ts`. A
 backslash escapes: a route directory (Next.js, SvelteKit, Astro) is
 `app/\[id\]/**`; bare, `app/[id]/**` is the class that matches `app/i`
 and `app/d`, never the route. When the path the class spells exists
