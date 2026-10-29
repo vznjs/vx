@@ -130,6 +130,28 @@ describe('runCommand', () => {
     expect(control).toEqual([])
   }, 15_000)
 
+  // The cut line opens a line of its own, and only that: its leading
+  // newline printed a blank line under the task's last line, and none
+  // would glue it to a line the task left open.
+  it('the cut line breaks a line only when the output ends mid-line', async () => {
+    const run = async (command: string): Promise<string[]> => {
+      const live: string[] = []
+      await runCommand({
+        command,
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+        onStdout: () => {},
+        onStderr: (chunk) => live.push(chunk),
+      })
+      return live
+    }
+    expect([
+      await run('(sleep 1; echo late) & echo whole'),
+      await run('(sleep 1; echo late) & printf half'),
+    ]).toEqual([[POST_EXIT_CUT_LINE], [`\n${POST_EXIT_CUT_LINE}`]])
+    expect(POST_EXIT_CUT_LINE).toStartWith('[vx] ')
+  }, 15_000)
+
   // nx#36863, nx#35302: output a task's background child printed just
   // after the task exited was missing from the log and the replay. Within
   // the post-exit drain it is kept: live, and in what the cache stores.
@@ -1452,6 +1474,8 @@ describe('runCommand — the rows its sweep asked for', () => {
       true,
     ])
     expect(r.stderr).not.toContain('Install a POSIX sh')
+    // Nothing ran before it: no blank line above it in the frame.
+    expect(r.stderr).toStartWith('[vx] ')
   })
 
   it('a timed-out command returns only once its group is gone', async () => {
