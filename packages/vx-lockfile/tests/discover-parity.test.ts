@@ -978,6 +978,25 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
     })
   }
 
+  // pnpm 9 can record an injected package as a plain `link:`, its
+  // `dependenciesMeta` beside it (vercel/turborepo#12082, issue #8243).
+  it('pnpm v9: an injected workspace package recorded as `link:` is an edge', async () => {
+    const projects = await metas({
+      'packages/a': {
+        name: 'a',
+        version: '1.0.0',
+        dependencies: { b: 'workspace:^' },
+        dependenciesMeta: { b: { injected: true } },
+      },
+      'packages/b': { name: 'b', version: '1.0.0' },
+    })
+    const text = P_INJECTED_V9.replace('version: file:packages/b', 'version: link:../b').replace(
+      /\npackages:\n[\s\S]*$/,
+      '\n',
+    )
+    expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', text, projects)).order).toEqual(['a → b'])
+  })
+
   it('bun installs `dependencies` over a devDependency or an optional one of the same key', async () => {
     const projects = await metas({
       'packages/dev-met-prod-unmet': {

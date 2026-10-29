@@ -178,6 +178,49 @@ describe('Turbo parity — scm: which file changes move a key (turborepo-scm)', 
     TIMEOUT,
   )
 
+  // vercel/turborepo#13245: an intent-to-add entry holds the empty blob's
+  // OID in the index, which must never stand in for the bytes on disk.
+  it(
+    '`git add -N` (intent to add) — the file keys its bytes, and an edit moves the key',
+    async () => {
+      const git = gitIn(root)
+      const before = await key(root, 'lib#t')
+      await writeFile(path.join(lib, 'src', 'ita.txt'), 'one\n')
+      git('add', '-N', 'packages/lib/src/ita.txt')
+      const added = await key(root, 'lib#t')
+      expect(added).not.toBe(before)
+      await writeFile(path.join(lib, 'src', 'ita.txt'), 'two\n')
+      expect(await key(root, 'lib#t')).not.toBe(added)
+      git('rm', '-q', '--cached', 'packages/lib/src/ita.txt')
+      await unlink(path.join(lib, 'src', 'ita.txt'))
+      expect(await key(root, 'lib#t')).toBe(before)
+    },
+    TIMEOUT,
+  )
+
+  // vercel/turborepo#12096
+  it(
+    '`test_nested_gitignore_scoping` / `test_empty_directories_on_disk` — a nested .gitignore ignores only below it; an empty directory keys nothing',
+    async () => {
+      const git = gitIn(root)
+      await mkdir(path.join(lib, 'src', 'a'), { recursive: true })
+      await writeFile(path.join(lib, 'src', 'a', '.gitignore'), 'x.txt\n')
+      git('add', '-A')
+      git('commit', '-q', '-m', 'nested ignore')
+      const before = await key(root, 'lib#t')
+      await writeFile(path.join(lib, 'src', 'a', 'x.txt'), 'x\n')
+      await mkdir(path.join(lib, 'src', 'empty', 'deeper'), { recursive: true })
+      expect(await key(root, 'lib#t')).toBe(before)
+      await mkdir(path.join(lib, 'src', 'b'), { recursive: true })
+      await writeFile(path.join(lib, 'src', 'b', 'x.txt'), 'x\n')
+      expect(await key(root, 'lib#t')).not.toBe(before)
+      await rm(path.join(lib, 'src', 'b'), { recursive: true })
+      await rm(path.join(lib, 'src', 'empty'), { recursive: true })
+      await rm(path.join(lib, 'src', 'a', 'x.txt'))
+    },
+    TIMEOUT,
+  )
+
   it(
     '`test_superset_prefixes_produce_same_hashes_as_scoped_prefixes` / `versioned_package_filter_and_explicit_task_id_share_a_hash`',
     async () => {

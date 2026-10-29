@@ -163,6 +163,8 @@ const KNOWN_TASK_KEYS = new Set([
   'interruptible',
   // Labels: Turbo keeps them out of the hash and the behaviour.
   'tags',
+  // Turbo parses it for external CI tooling and acts on nothing.
+  'experimentalCI',
 ])
 
 // Turbo's per-task `outputLogs` against vx's per-run `--output-logs`.
