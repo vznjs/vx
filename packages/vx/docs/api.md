@@ -1385,7 +1385,7 @@ export interface Logger {
     context?: RunContext
     startedAtMs?: number
   }): void
-  taskStart?(node: TaskNode): void
+  taskStart?(node: TaskNode, info?: { waitedMs?: number }): void
   runEnd?(): void
   stepStart?(id: string): void
   stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
@@ -2965,6 +2965,7 @@ export interface TaskOutcome {
   queuedMs?: number
   inputFiles?: number
   artifactBytes?: number
+  outputBytes?: number
   fetchMs?: number
   saveMs?: number
   inputChanges?: InputChanges

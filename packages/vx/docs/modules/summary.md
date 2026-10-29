@@ -50,7 +50,9 @@ export interface RunContext {
   packageCount: number // projects with a task to run → the bar's "affected" half
   runId?: string | undefined // the whole id `vx last` takes (info row)
   executorRows?: () => readonly (readonly [string, ui.Inline])[] // executors' footer rows
-  whereRunning?: (taskId: string) => string | undefined // a running task's executor
+  whereRunning?: (taskId: string) => string | null | undefined // a running task's executor
+  usage?: (taskId: string) => { cores: number; rssBytes: number } | undefined // a running row's live cpu and mem
+  blocks?: () => ReadonlyMap<string, number> // each task's downstream count: the rows' `blocks`
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
   cacheScope?: string | undefined // the run's scope (info row: `scope vznjs/vx:feat-x`)
