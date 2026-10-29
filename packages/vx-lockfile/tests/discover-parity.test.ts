@@ -1003,6 +1003,38 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
     expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', D_PNPM, projects)).order).toEqual([])
   })
 
+  it('pnpm(): a `workspace:<name>@<range>` alias links the package it names, not its alias', async () => {
+    // Turbo #5569: pnpm records the dependency under its alias `ui`.
+    const lock = `lockfileVersion: '9.0'
+
+importers:
+
+  .: {}
+
+  packages/scope-ui: {}
+
+  packages/ui: {}
+
+  packages/web:
+    dependencies:
+      ui:
+        specifier: workspace:@scope/ui@*
+        version: link:../scope-ui
+`
+    const projects = await metas({
+      'packages/web': {
+        name: 'web',
+        version: '1.0.0',
+        dependencies: { ui: 'workspace:@scope/ui@*' },
+      },
+      'packages/scope-ui': { name: '@scope/ui', version: '1.0.0' },
+      'packages/ui': { name: 'ui', version: '9.0.0' },
+    })
+    expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', lock, projects)).order).toEqual([
+      'web → @scope/ui',
+    ])
+  })
+
   it('yarn packs a `file:` directory, a copy that is no link to the workspace package', async () => {
     const projects = await metas({
       'packages/app': { name: 'app', version: '1.0.0', dependencies: { a: 'file:../real-a' } },
