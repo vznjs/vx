@@ -203,7 +203,8 @@ function unquote(s: string): string {
  * workspace's manifest (`manifests`: importer dir → `package.json`, `.`
  * the root). A dependency on a workspace's name is linked unless the file
  * keys its descriptor, which Yarn writes only for the registry copy it
- * fetched when the workspace's version misses the range. A peer on a
+ * fetched when the workspace's version misses the range, and a `file:`
+ * range is a copy, no link. A peer on a
  * workspace with no installed entry of that name is a peer link.
  */
 export function classicLinks(
@@ -232,6 +233,8 @@ export function classicLinks(
         // A root resolution rewrites the request before the workspace is
         // asked: Yarn keys the resolution's range, never the manifest's.
         const asked = forced.get(name) ?? range
+        // A `file:` range is a copy packed at install, as berry's (`linkedDir`).
+        if (asked.startsWith('file:')) continue
         if (target !== undefined && target !== dir && !lock.descriptors.has(`${name}@${asked}`)) {
           links.deps[name] = target
         }
@@ -412,9 +415,18 @@ function contentDirs(lock: Lockfile): Map<string, string> {
   return out
 }
 
-/** The directories `contentDirs` names, for the claim to hash. */
-export function fileDeps(lock: Lockfile): string[] {
-  return [...new Set(contentDirs(lock).values())].sort()
+/**
+ * The directories `contentDirs` names, for the claim to hash, but a
+ * classic `link:` to a directory `workspace` says is one: Yarn 1 links
+ * that workspace as it would by its name.
+ */
+export function fileDeps(lock: Lockfile, workspace?: (dir: string) => boolean): string[] {
+  const out = new Set<string>()
+  for (const [id, dir] of contentDirs(lock)) {
+    if (workspace !== undefined && /^.[^@]*@link:/.test(id) && workspace(dir)) continue
+    out.add(dir)
+  }
+  return [...out].sort()
 }
 
 /** The entry a descriptor the file keys resolves to: as written, bound to `from`, or with berry's `npm:` prefix. */

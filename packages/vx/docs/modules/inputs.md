@@ -23,12 +23,12 @@ re-exports it for readers that reach it here: `GitFilesCache`,
 the `GitEnumeration` type.
 
 ```ts
-/** Does `cache` declare this changed path an input? A project-relative
+/** Does `task` declare this changed path an input? A project-relative
  *  path is matched against `inputs.files`, a workspace-relative one
  *  against `inputs.workspaceFiles`; own outputs and negations apply.
  *  null skips that half. `--affected`'s per-task seed. */
 export function declaresInput(
-  cache: CacheConfig,
+  task: TaskConfig,
   projectRel: string | null,
   workspaceRel: string | null,
 ): boolean
@@ -36,7 +36,7 @@ export function declaresInput(
 /** May `inputs.workspaceFiles` name a file under `dir` (workspace-relative)?
  *  By the positive entries' static prefixes. A changed nested repository is
  *  one path for all its files; `--affected` asks this of it. */
-export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolean
+export function workspaceFilesReachInto(task: TaskConfig, dir: string): boolean
 
 /** Paths a task names outright (literals, globs' fixed prefixes): `files`
  *  project-relative, `workspaceFiles` root-relative. `vx watch` judges a
