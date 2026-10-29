@@ -10,7 +10,7 @@
 // as its own.
 
 import { realpathSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { realpath, rm } from 'node:fs/promises'
 import path from 'node:path'
 import {
   hostPlatform,
@@ -1084,8 +1084,11 @@ export class Orchestrator {
   }
 
   private unsent(what: string, to: string): (err: unknown) => void {
-    return unsent(this.o.warn ?? ((m) => ui.say('warn', `[vx] ${m}`)), what, to)
+    return unsent(this.warn, what, to)
   }
+
+  private readonly warn = (m: string): void =>
+    this.o.warn === undefined ? ui.say('warn', `[vx] ${m}`) : this.o.warn(m)
 
   /** Worker `a` began `task`: from now its cores are booked. */
   private begun(a: Worker, task: string): void {
@@ -1208,9 +1211,31 @@ export class Orchestrator {
         path.relative(this.o.root, node?.projectDir ?? job.req.cwd),
         job.req.outputs,
       )
-      for (const f of head.removed)
-        if (typeof f === 'string' && !f.split('/').includes('..') && ours(f))
+      // A link on the path (`dist/in -> ../../other`) would lead the rm
+      // into another project or off the workspace: the path is removed only
+      // where it is, as a restore lays a file only there (archive.ts).
+      const real = new Map<string, Promise<string | undefined>>()
+      for (const f of head.removed) {
+        if (typeof f !== 'string' || f.split('/').includes('..') || !ours(f)) continue
+        const dir = path.dirname(f)
+        let at = real.get(dir)
+        if (at === undefined)
+          real.set(
+            dir,
+            (at = realpath(path.join(this.o.root, dir)).catch(
+              // quiet: a dir that is gone holds nothing to remove
+              () => undefined,
+            )),
+          )
+        const where = await at
+        if (where === undefined) continue
+        if (where === path.join(this.realRoot, dir))
           await rm(path.join(this.o.root, f), { force: true })
+        else
+          this.warn(
+            `dte: ${task}: kept ${f}, which the worker removed: a link on its path leads elsewhere`,
+          )
+      }
     }
     // In the order the task wrote it: replayed a stream at a time, an error
     // line came after the stdout that followed it (2026-10-25).

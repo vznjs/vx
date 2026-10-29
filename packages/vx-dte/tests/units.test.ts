@@ -1,4 +1,13 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
@@ -4497,4 +4506,83 @@ it('plans at most once a tick, and waits ten times a plan after it', async () =>
   const before = runs
   p.now()
   expect(runs).toBe(before + 1)
+})
+
+// Audit, 2026-10-28: a removed path through a symlinked output dir deleted
+// another project's source and a file outside the workspace.
+it('removes a worker’s removed outputs only where no link leads elsewhere', async () => {
+  const base = await tmp()
+  const ws = path.join(base, 'ws')
+  const outside = path.join(base, 'outside')
+  await mkdir(path.join(ws, 'pkg/dist'), { recursive: true })
+  await mkdir(path.join(ws, 'other/src'), { recursive: true })
+  await mkdir(outside)
+  await writeFile(path.join(ws, 'other/src/index.ts'), 'src')
+  await writeFile(path.join(outside, 'victim'), 'x')
+  await writeFile(path.join(ws, 'pkg/dist/stale.js'), 'old')
+  await symlink('../../other', path.join(ws, 'pkg/dist/in'))
+  await symlink(outside, path.join(ws, 'pkg/dist/out'))
+  const served = servedRelay()
+  const store = fakeArtifacts()
+  store.saved.set('k', [])
+  const said: string[] = []
+  const nodes = new Map([
+    ['t', { id: 't', projectDir: path.join(ws, 'pkg'), config: {} } as unknown as TaskNode],
+  ])
+  const o = new Orchestrator({
+    me: await join(served.url, R, 'orchestrator', null, undefined),
+    root: ws,
+    tree: 'c',
+    nodes: () => nodes,
+    need: () => ({ cores: 1, memory: 10 }),
+    artifacts: store.artifacts,
+    cacheFacts: async () => ({ refs: [], lent: {} }),
+    run: R,
+    keyOf: () => undefined,
+    warn: (m) => said.push(m),
+  })
+  try {
+    const w = await join(
+      served.url,
+      R,
+      'worker',
+      { v: 1, cores: 1, memory: 100, tree: 'c' },
+      undefined,
+    )
+    const run = o.execute({
+      taskId: 't',
+      workspaceRoot: ws,
+      command: 'true',
+      forwardArgs: [],
+      cwd: path.join(ws, 'pkg'),
+      env: {},
+      envDefine: {},
+      outputs: { files: ['dist/**'], workspaceFiles: [] },
+      onStdout() {},
+      onStderr() {},
+    } as unknown as ExecuteRequest)
+    for (let i = 0; i < 20; i++)
+      if ((await w.poll()).some((m) => (m.body as { type: string }).type === 'batch')) break
+    await w.send('orchestrator', {
+      type: 'end',
+      task: 't',
+      key: 'k',
+      result: {
+        exitCode: 0,
+        durationMs: 1,
+        removed: ['pkg/dist/stale.js', 'pkg/dist/in/src/index.ts', 'pkg/dist/out/victim'],
+      },
+    })
+    expect((await run).exitCode).toBe(0)
+    expect((await readdir(path.join(ws, 'pkg/dist'))).sort()).toEqual(['in', 'out'])
+    expect(await readdir(path.join(ws, 'other/src'))).toEqual(['index.ts'])
+    expect(await readdir(outside)).toEqual(['victim'])
+    expect(said).toEqual([
+      'dte: t: kept pkg/dist/in/src/index.ts, which the worker removed: a link on its path leads elsewhere',
+      'dte: t: kept pkg/dist/out/victim, which the worker removed: a link on its path leads elsewhere',
+    ])
+  } finally {
+    await o.close()
+    await served.stop()
+  }
 })

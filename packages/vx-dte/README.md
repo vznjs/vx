@@ -502,8 +502,9 @@ use your own instead.
   except committed files, nested projects' files, and its dependencies'
   outputs (an additive task builds on its upstream's tree). An upstream's
   file the task leaves as it found it is not saved in its entry; one it
-  removes is removed on this machine too, and the task saves no entry, as
-  core saves none.
+  removes is removed on this machine too, unless a link on its path leads
+  elsewhere (that file is kept, with a warning), and the task saves no
+  entry, as core saves none.
 - A hit only this machine's cache holds (the remote evicted it, or this
   run does not write the remote) is uploaded to the remotes the workers
   read before a task that depends on it is sent; with none written, its
