@@ -373,9 +373,14 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
     )
   }
   db.exec('PRAGMA query_only = ON')
-  let rows: Array<Record<string, unknown>>
+  // Read by position: a join's `SELECT *` names `run_id` twice, and rows
+  // keyed by name kept one value per name.
+  let columns: string[]
+  let values: unknown[][]
   try {
-    rows = db.query(sql).all() as Array<Record<string, unknown>>
+    const stmt = db.query(sql)
+    columns = stmt.columnNames
+    values = stmt.values() as unknown[][]
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (/readonly|query_only/i.test(message)) {
@@ -384,10 +389,18 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
     throw new UserError(`vx last: --sql: ${message}`, 'VX_E_USAGE')
   }
   if (format === 'json') {
+    const twice = columns.find((c, i) => columns.indexOf(c) !== i)
+    if (twice !== undefined) {
+      throw new UserError(
+        `vx last: --sql: column ${JSON.stringify(twice)} is named twice, and a JSON row holds one value per name; name each with AS`,
+        'VX_E_USAGE',
+      )
+    }
+    const rows = values.map((v) => Object.fromEntries(columns.map((c, i) => [c, v[i]])))
     process.stdout.write(`${JSON.stringify({ rows })}\n`)
     return 0
   }
-  if (rows.length === 0) return 0
+  if (values.length === 0) return 0
   // A column's value as SQLite returns it: TEXT, a number, NULL or a BLOB.
   const cell = (v: string | number | bigint | Uint8Array | null): string =>
     v === null || v === undefined
@@ -395,10 +408,7 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
       : v instanceof Uint8Array
         ? `<${v.length} bytes>`
         : String(v)
-  const table = [
-    Object.keys(rows[0]!),
-    ...rows.map((r) => Object.values(r).map((v) => cell(v as Parameters<typeof cell>[0]))),
-  ]
+  const table = [columns, ...values.map((r) => r.map((v) => cell(v as Parameters<typeof cell>[0])))]
   const widths = table[0]!.map((_, c) => Math.max(...table.map((r) => r[c]!.length)))
   const lines = table.map((r) =>
     r
