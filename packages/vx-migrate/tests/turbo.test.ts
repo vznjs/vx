@@ -126,6 +126,30 @@ describe('turbo()', () => {
   )
 
   it(
+    'a turbo.json with comments, trailing commas and a top-level "//" note plans as the plain one',
+    async () => {
+      // Turbo parses turbo.json as JSONC (vercel/turborepo#6810) and skips a
+      // top-level `//` key, the ecosystem's comment field (#7546).
+      const plan = async () =>
+        (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks
+          .map((t) => ({ id: t.node.id, deps: [...t.node.deps].sort(), config: t.node.config }))
+          .sort((a, b) => a.id.localeCompare(b.id))
+      const plain = await plan()
+      const body = JSON.stringify(TURBO_JSON, null, 2)
+      const commented = body
+        .replace('{\n', '{\n  // shared by every package\n  "//": "see docs/turbo.md",\n')
+        .replace(
+          '"outputs": [\n        "dist/**"\n      ],',
+          '"outputs": ["dist/**",], /* built */',
+        )
+      expect(commented).toContain('/* built */')
+      await writeFile(path.join(root, 'turbo.json'), commented)
+      expect(await plan()).toEqual(plain)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a turbo.json spelled with ./ (inputs and outputs) keys the mapped task on its files',
     async () => {
       // The mapper hands globs through as written; core normalizes the

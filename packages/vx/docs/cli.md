@@ -220,7 +220,9 @@ filter(s): …`, plus a hint:
   when one scoped name matches after its `/` (`--filter vx-otel` hints
   `@vzn/vx-otel`).
 - `A filter is one pattern: --filter a --filter b` for a comma list
-  (`--filter a,b`, Nx's `--projects` habit).
+  (`--filter a,b`, Nx's `--projects` habit), and `--filter {a} --filter {b}`
+  for a braced one (`{a,b}`); a comma inside a glob's braces
+  (`./packages/{a,b}`) is no list.
 - `Projects: a, b` otherwise: eight names, then a count.
 - For a `tag:` filter, the nearest tag (`Did you mean tag:scope:web?`),
   else the list of tags.
