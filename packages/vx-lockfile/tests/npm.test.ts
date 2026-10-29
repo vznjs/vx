@@ -316,6 +316,67 @@ describe('every input the npm digest must read', () => {
     expect(read(['packages/*'])).toEqual(expected)
   })
 
+  it("two workspaces' own nested versions of one package each move only their workspace (vercel/turborepo#10988)", () => {
+    // Turbo's issue-10985 fixture: app-one nests next 14, app-two next 15,
+    // both reach @repo/components, whose next is a peer.
+    const text = (one: string, two: string) =>
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'monorepo', workspaces: ['apps/*', 'packages/*'] },
+          'node_modules/next': { version: '14.2.5', integrity: 'sha512-top' },
+          'node_modules/@repo/components': { resolved: 'packages/components', link: true },
+          'apps/app-one': {
+            name: 'app-one',
+            dependencies: { '@repo/components': '*', next: '^14.0.0' },
+          },
+          'apps/app-one/node_modules/next': { version: '14.2.5', integrity: `sha512-${one}` },
+          'apps/app-two': {
+            name: 'app-two',
+            dependencies: { '@repo/components': '*', next: '^15.0.0' },
+          },
+          'apps/app-two/node_modules/next': { version: '15.0.0', integrity: `sha512-${two}` },
+          'packages/components': {
+            name: '@repo/components',
+            peerDependencies: { next: '^14 || ^15' },
+          },
+        },
+      })
+    expect(movedDirs(text('a', 'b'), text('a', 'b2'))).toEqual(['apps/app-two'])
+    expect(movedDirs(text('a', 'b'), text('a2', 'b'))).toEqual(['apps/app-one'])
+  })
+
+  it("a dependency nested two levels under a workspace's package is in its reach (vercel/turborepo#12464)", () => {
+    // npm install-strategy=shallow: app-a/chai → its own nested deep-eql;
+    // pkg-b keeps an older chai of its own.
+    const text = (eql: string, chaiB: string) =>
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'monorepo', workspaces: ['apps/*', 'packages/*'] },
+          'node_modules/app-a': { resolved: 'apps/app-a', link: true },
+          'node_modules/pkg-b': { resolved: 'packages/pkg-b', link: true },
+          'apps/app-a': { name: 'app-a', dependencies: { 'pkg-b': '*', chai: '^5.0.0' } },
+          'apps/app-a/node_modules/chai': {
+            version: '5.3.3',
+            dependencies: { 'deep-eql': '^5.0.0' },
+          },
+          'apps/app-a/node_modules/chai/node_modules/deep-eql': {
+            version: eql,
+            integrity: `sha512-${eql}`,
+          },
+          'packages/pkg-b': { name: 'pkg-b', devDependencies: { chai: '^4.0.0' } },
+          'packages/pkg-b/node_modules/chai': { version: chaiB, integrity: `sha512-${chaiB}` },
+        },
+      })
+    expect(movedDirs(text('5.0.2', '4.5.0'), text('5.0.3', '4.5.0'))).toEqual(['apps/app-a'])
+    // app-a links pkg-b, so pkg-b's own chai is in app-a's reach too.
+    expect(movedDirs(text('5.0.2', '4.5.0'), text('5.0.2', '4.5.1'))).toEqual([
+      'apps/app-a',
+      'packages/pkg-b',
+    ])
+  })
+
   // Item 1073's class, npm's side: two workspaces that link each other,
   // each on its own is-number. Swapping which one reaches 7.0.0 gives
   // their nodes the same lines unless each folds its own path — both are

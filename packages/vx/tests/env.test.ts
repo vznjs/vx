@@ -75,6 +75,23 @@ describe('buildIsolatedEnv', () => {
     expect(env).toEqual({ ...xdg, FORCE_COLOR: '1' })
   })
 
+  // Turbo made these default pass-throughs; in vx a task sees each only
+  // when it names it, so what it reads is in its config (schema.md).
+  it.each([
+    ['vercel/turborepo#10984', ['LD_PRELOAD', 'DYLD_INSERT_LIBRARIES']],
+    ['vercel/turborepo#10959', ['XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS']],
+    ['vercel/turborepo#10740', ['GITHUB_SHA', 'GITHUB_TOKEN', 'RUNNER_OS']],
+  ])(
+    'a host variable Turbo passes by default reaches a task only when passThrough names it (%s)',
+    (_, names) => {
+      const source = Object.fromEntries(names.map((n) => [n, `v-${n}`]))
+      const without = buildIsolatedEnv({ passThrough: [], define: {}, source })
+      expect(Object.keys(without)).toEqual(['FORCE_COLOR'])
+      const named = buildIsolatedEnv({ passThrough: [...names], define: {}, source })
+      expect(Object.fromEntries(names.map((n) => [n, named[n]]))).toEqual(source)
+    },
+  )
+
   it('omits essentials that are not set in source', () => {
     const env = buildIsolatedEnv({
       passThrough: [],

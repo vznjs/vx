@@ -93,7 +93,8 @@ task(s): test.` A name no project declares is still refused.
 - A change that reaches no requested task exits 0 with `Nothing
 affected: the change reaches no test task.`
 - A diff that touched no project exits 0 with
-  `nothing affected since <ref>` on stderr, before any name is checked.
+  `nothing affected since <ref>` on stderr, once each bare name is
+  found declared somewhere: a name no project declares is still refused.
 
 There is no `-V`; use `vx --version`, as in Turbo.
 

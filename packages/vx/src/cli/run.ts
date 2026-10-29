@@ -19,7 +19,7 @@ import {
   parseCachePolicy,
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
-import { nxTargetHint, taskNamesHere } from './task-verb.js'
+import { nxTargetHint, taskNamesHere, undeclaredTasks } from './task-verb.js'
 import {
   detectColors,
   envFlagOn,
@@ -505,6 +505,8 @@ export async function resolveRunOptions(
       // `pkg#task`, which resolves to its own project regardless of
       // scope. An empty project list keeps the bare tasks unselected
       // while the anchored ones still run.
+      const typo = await undeclaredTasks(bareTasks, cwd)
+      if (typo !== undefined) return { error: typo, code: 'VX_E_UNKNOWN_TASK' }
       if (anchoredTasks.length === 0) return { nothingSelected: resolved.empty }
       sayNotice('info', 'vx run', `${resolved.empty} — running ${anchoredTasks.join(', ')} only`)
       projects = []

@@ -860,6 +860,8 @@ packages:
     ['a record with no hash', 'bar: {path: patches/a.patch}', 'bar: {path: patches/b.patch}'],
     ['a record keyed `name@version`', "'bar@2.0.0': {hash: h1}", "'bar@2.0.0': {hash: h2}"],
     ['a scoped package named alone', "'@s/qux': {hash: h1}", "'@s/qux': {hash: h2}"],
+    // pnpm keys a patch by a range too (vercel/turborepo#13307).
+    ['a record keyed by a version range', "'bar@<=2.0.0': {hash: h1}", "'bar@<=2.0.0': {hash: h2}"],
   ])('a patch given as %s moves only what reaches it', (_shape, before, after) => {
     const withPatch = (entry: string) =>
       v9().replace('\nimporters:', `\npatchedDependencies:\n  ${entry}\n\nimporters:`) +
@@ -882,6 +884,15 @@ packages:
     expect(movedDirs(isScoped ? scoped(b) : b, isScoped ? scoped(a) : a)).toEqual(
       isScoped ? ['packages/b', 'packages/c'] : ['packages/a'],
     )
+  })
+
+  it('a range-keyed patch the version falls outside of moves nothing (vercel/turborepo#13307)', () => {
+    const withPatch = (hash: string) =>
+      v9().replace(
+        '\nimporters:',
+        `\npatchedDependencies:\n  'bar@<2.0.0': {hash: ${hash}}\n\nimporters:`,
+      )
+    expect(movedDirs(withPatch('h1'), withPatch('h2'))).toEqual([])
   })
 
   it.each([
@@ -995,6 +1006,89 @@ packages:
     dev: false
 `
     expect(movedDirs(lock('sha512-q1'), lock('sha512-q2'))).toEqual(['packages/a'])
+  })
+
+  it('a `node@runtime:` dependency is a package of the importer naming it (vercel/turborepo#13408)', () => {
+    // pnpm 10.14+ records `devEngines.runtime` with `onFail: download` so.
+    const lock = (rt: string) => `lockfileVersion: '9.0'
+importers:
+  .:
+    devDependencies:
+      node:
+        specifier: runtime:22.0.0
+        version: runtime:${rt}
+  packages/a:
+    dependencies:
+      leaf:
+        specifier: ^1
+        version: 1.0.0
+packages:
+  leaf@1.0.0:
+    resolution: {integrity: sha512-leaf}
+  node@runtime:${rt}:
+    resolution: {type: variations, variants: [{resolution: {integrity: sha256-${rt}}}]}
+snapshots:
+  leaf@1.0.0: {}
+  node@runtime:${rt}: {}
+`
+    expect(movedDirs(lock('22.0.0'), lock('22.1.0'))).toEqual(['.'])
+    // The resolution alone (same version, another download) moves it too.
+    expect(movedDirs(lock('22.0.0'), lock('22.0.0').replace('sha256-22.0.0', 'sha256-x'))).toEqual([
+      '.',
+    ])
+  })
+
+  it("a snapshot's aliased dependency (`react-is-19: react-is@19.2.8`) is followed (vercel/turborepo#13477)", () => {
+    const lock = (integrity: string) => `lockfileVersion: '9.0'
+importers:
+  .: {}
+  apps/web:
+    dependencies:
+      pretty-format:
+        specifier: 30.2.0
+        version: 30.2.0
+packages:
+  pretty-format@30.2.0:
+    resolution: {integrity: sha512-abc}
+  react-is@19.2.8:
+    resolution: {integrity: ${integrity}}
+snapshots:
+  pretty-format@30.2.0:
+    dependencies:
+      react-is-19: react-is@19.2.8
+  react-is@19.2.8: {}
+`
+    expect(movedDirs(lock('sha512-def'), lock('sha512-ghi'))).toEqual(['apps/web'])
+  })
+
+  it("a root devDependency's transitive bump moves the root importer alone (vercel/turborepo#13476)", () => {
+    const lock = (deep: string) => `lockfileVersion: '9.0'
+importers:
+  .:
+    devDependencies:
+      prettier:
+        specifier: ^3
+        version: 3.5.3
+  packages/a:
+    dependencies:
+      leaf:
+        specifier: ^1
+        version: 1.0.0
+packages:
+  deep@${deep}:
+    resolution: {integrity: sha512-${deep}}
+  leaf@1.0.0:
+    resolution: {integrity: sha512-leaf}
+  prettier@3.5.3:
+    resolution: {integrity: sha512-p}
+snapshots:
+  deep@${deep}: {}
+  leaf@1.0.0: {}
+  prettier@3.5.3:
+    dependencies:
+      deep: ${deep}
+`
+    expect(movedDirs(lock('1.0.0'), lock('1.0.1'))).toEqual(['.'])
   })
 
   it('a `link:` outside every importer folds its target', () => {
