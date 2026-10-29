@@ -89,10 +89,11 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     if (a === '--run' || a.startsWith('--run=')) {
       const rv = a === '--run' ? args[++i] : a.slice(6)
       // A run id is hex: one opening with `-` is the next flag, swallowed.
-      if (rv === undefined || rv === '' || (a === '--run' && rv.startsWith('-')))
+      const flag = a === '--run' && rv?.startsWith('-') === true ? `got flag ${rv}; ` : ''
+      if (rv === undefined || rv === '' || flag !== '')
         return {
           ...out,
-          error: `--run requires a run id (\`vx last --list\` shows them)${seeHelp('why')}`,
+          error: `--run requires a run id (${flag}\`vx last --list\` shows them)${seeHelp('why')}`,
         }
       out.runId = rv
       continue
