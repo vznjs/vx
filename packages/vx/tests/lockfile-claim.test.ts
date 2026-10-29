@@ -288,7 +288,12 @@ describe('key', () => {
       await expect(throwing().key(task('packages/a'), ctx())).rejects.toThrow('not JSON')
       expect(calls).toHaveLength(i)
     }
-    expect(await Bun.file(MEMO()).exists()).toBe(false)
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+    try {
+      expect(db.query('SELECT COUNT(*) AS n FROM lockfile_memos').get()).toEqual({ n: 0 })
+    } finally {
+      db.close()
+    }
   })
 
   it('a same-size rewrite with its mtime kept is read again in the same process', async () => {
