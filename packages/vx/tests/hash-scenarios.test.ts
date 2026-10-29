@@ -93,6 +93,48 @@ describe('line endings (Turbo crlf)', () => {
   )
 })
 
+/**
+ * Back-date `rels` and refresh the index, so git records their stat with no
+ * racy smudge: a file written in the second of its commit is hashed from
+ * disk whatever git says, which would hide a wrong clean verdict.
+ */
+async function settle(root: string, rels: readonly string[]): Promise<void> {
+  const past = new Date(Date.now() - 60_000)
+  for (const rel of rels) await utimes(at(root, rel), past, past)
+  gitIn(root)('update-index', '--really-refresh')
+}
+
+// Turbo d154e7e92 (vercel/turborepo#14697) matched git's text=auto binary
+// check: a file git stores raw keeps its CRs. vx hashes a filtered file's
+// raw bytes, so a LF→CRLF rewrite moves the key whatever git thinks of it.
+describe('text=auto, git binary detection (vercel/turborepo#14697)', () => {
+  it.each([
+    ['a lone CR', 'a\nb\rc\n'],
+    ['a NUL past the first 8000 bytes', `${'a\n'.repeat(4500)}\0\n`],
+    ['a control byte', 'a\u0001\nb\n'],
+    ['plain text', 'a\nb\n'],
+  ])(
+    '%s: an LF→CRLF rewrite moves the key',
+    async (_, body) => {
+      const root = await workspace(
+        "{ files: ['data.bin'] }",
+        { 'data.bin': body },
+        {
+          '.gitattributes': '* text=auto\n',
+        },
+      )
+      await settle(root, ['data.bin'])
+      const clean = await key(root)
+      await writeFile(at(root, 'data.bin'), body.replaceAll('\n', '\r\n'))
+      expect(await key(root)).not.toBe(clean)
+      // CONTROL: the bytes back, the key back.
+      await writeFile(at(root, 'data.bin'), body)
+      expect(await key(root)).toBe(clean)
+    },
+    TIMEOUT,
+  )
+})
+
 describe('ignore rules (Turbo scm, Nx walker)', () => {
   it(
     'an uncommitted .gitignore edit that un-ignores a file makes it an input, and one that re-ignores it takes it out',
