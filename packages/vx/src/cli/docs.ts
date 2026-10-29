@@ -59,7 +59,7 @@ export interface DocsHit {
 }
 
 function words(s: string): string[] {
-  return s.toLowerCase().match(/[a-z0-9][a-z0-9_.-]*/g) ?? []
+  return s.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}_.-]*/gu) ?? []
 }
 
 /** GitHub's heading anchor, which Starlight shares: lowercase, punctuation dropped, spaces to `-`. */
