@@ -36,7 +36,8 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 `url` (or `VX_HISTORY_URL`), its base URL without `/v1`, names a
 [`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server).
 On a CI job with a token (GitHub's OIDC token, which needs
-`permissions: id-token: write`, or a GitLab `id_tokens` entry
+`permissions: id-token: write` to set `ACTIONS_ID_TOKEN_REQUEST_URL`
+and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, or a GitLab `id_tokens` entry
 `VX_HISTORY_TOKEN` with the server's origin as `aud`; a 5xx or 429 from
 GitHub's endpoint, or a 429, 502, 503 or 504 from the server, is asked
 again up to three times), each run asks it
@@ -56,7 +57,8 @@ keeps it. A refusal is said with the server's
 words, and a CI job with no token says so once (on GitHub Actions,
 `GITHUB_ACTIONS`, naming the permission).
 A run with no token (off CI) reads only, from a server whose
-`READ_ACCESS` is `public`, and sends nothing.
+`READ_ACCESS` is `public`, and sends nothing; a server refusing it
+names the fix for the CI it is on (`GITHUB_ACTIONS`, `GITLAB_CI`).
 `issuer` (the CI issuer's URL, as its tokens name it) and `repository`
 (`org/name` there) are required with a server: the run's one query
 names them, with its refs and every task hash, and nothing guesses

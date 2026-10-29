@@ -64,6 +64,9 @@ bunx wrangler login
 bunx wrangler deploy
 ```
 
+The Worker reads its D1 database as the binding `DB`, as `wrangler.jsonc`
+names it.
+
 ## API
 
 The same server as a `fetch` handler, over storage of your own

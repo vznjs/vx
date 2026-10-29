@@ -94,7 +94,8 @@ bunx wrangler login
 bunx wrangler deploy
 ```
 
-Wrangler makes the R2 bucket `wrangler.jsonc` names on the first deploy.
+Wrangler makes the R2 bucket `wrangler.jsonc` names on the first deploy;
+the Worker reads it as the binding `BLOBS`.
 By default a check makes 6 lookups: a Worker request has 6 calls
 waiting at once and queues the rest, so checks of 6 sent at once are
 the fastest (from a GitHub runner, 134 hashes: 168 to 216 ms, against
