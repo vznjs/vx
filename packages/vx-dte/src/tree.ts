@@ -28,7 +28,7 @@ export async function snapshot(root: string): Promise<{ commit: string; tree: st
     try {
       await copyFile(index, env.GIT_INDEX_FILE)
     } catch {
-      // No index yet: HEAD's tree is its tracked set.
+      // quiet: no index yet, so HEAD's tree is its tracked set.
       if ((await git(['read-tree', head], root, env)) === undefined) return none
     }
     if ((await git(['add', '-u', '--', ':/'], root, env)) === undefined) return none

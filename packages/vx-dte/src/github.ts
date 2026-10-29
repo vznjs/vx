@@ -148,6 +148,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
         return undefined
       })
       if (res === undefined || res.ok || res.status === 409) return
+      // quiet: the status is said below either way; the body only adds to it
       const text = printable((await res.text().catch(() => '')).slice(0, 200))
       const reset = limitReset(res)
       if (reset !== undefined && reset <= end) {
