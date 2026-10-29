@@ -50,6 +50,12 @@ const KNOWN = new Set([
   'a8df2225a47b612e2ff63cd1831d436b3a926132',
   // The second mega branch's, made before the row held it: 72 chars.
   'a2d4705b49ed44cdf594ba47ed8060eb3d380aae',
+  // The third mega branch's, pushed before the row ran on it: 74 chars.
+  'fec78038896ceb121683a351eedd9cd9b0cb65a6',
+  // The third mega branch's, pushed before the row ran on it: 76 chars.
+  'd51dc5aadebfd242b98a2fd82b142ec312415502',
+  // The third mega branch's, pushed before the row ran on it: 72 chars.
+  '37f3a825a627e6d675318aa96eac671f21441d6f',
 ])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {
