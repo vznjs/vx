@@ -223,7 +223,7 @@ export function createRelay(opts: RelayOptions): Relay {
     try {
       if (s !== undefined) closeSocket(s)
     } catch {}
-      // quiet: the socket is already gone; closing it again says nothing new
+    // quiet: the socket is already gone; closing it again says nothing new
   }
 
   /** `socket` reaches the participant: what queued for it goes down it. */
@@ -295,7 +295,7 @@ export function createRelay(opts: RelayOptions): Relay {
         try {
           p.socket?.send(JSON.stringify({ messages: left }))
         } catch {}
-          // quiet: the close code tells the participant it is gone
+        // quiet: the close code tells the participant it is gone
       }
     }
     // Its socket learns it is gone by the close code; its next socket, from `socket`.
@@ -593,7 +593,7 @@ export function createRelay(opts: RelayOptions): Relay {
         try {
           closeSocket(earlier)
         } catch {}
-          // quiet: the earlier socket is replaced; its close says nothing new
+        // quiet: the earlier socket is replaced; its close says nothing new
       }
       return {
         key,

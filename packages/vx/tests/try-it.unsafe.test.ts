@@ -44,12 +44,16 @@ const GUIDE = path.join(
   'migrate.mdx',
 )
 
-/** The guide's `## <name>` section: its fences of `lang`, in order. */
-function guideFences(name: string, lang: string): string[] {
+/** The guide's `## <name>` section. */
+function guideSection(name: string): string {
   const text = readFileSync(GUIDE, 'utf8')
   const start = text.indexOf(`\n## ${name}\n`)
-  const section = text.slice(start, text.indexOf('\n## ', start + 1))
-  return [...section.matchAll(new RegExp('```' + lang + '\\n([\\s\\S]*?)```', 'g'))].map(
+  return text.slice(start, text.indexOf('\n## ', start + 1))
+}
+
+/** The guide's `## <name>` section: its fences of `lang`, in order. */
+function guideFences(name: string, lang: string): string[] {
+  return [...guideSection(name).matchAll(new RegExp('```' + lang + '\\n([\\s\\S]*?)```', 'g'))].map(
     (m) => m[1]!,
   )
 }
@@ -256,10 +260,12 @@ describe('vx init in a Turbo or Nx repo: the first run builds, the second hits',
   }
 })
 
-/** A `$ <command>` sample's command and the output below it. */
-function transcript(fence: string): [string, string] {
-  const [first, ...rest] = fence.split('\n')
-  return [first!.replace(/^\$ /, ''), versionless(rest.join('\n'))]
+const SGR = new RegExp(String.fromCharCode(27) + '\\[[0-9;]*m', 'g')
+
+/** An `ansi` sample as a run with colour off prints it: the report opens
+ *  on a blank line the sample leaves out. */
+function printedPlain(fence: string): string {
+  return versionless(`\n${fence.replace(SGR, '')}`)
 }
 
 /** A report's rule names the version: a checkout's is 0.0.0, the guide's a release. */
@@ -274,13 +280,15 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const root = turboRepo()
     commit(root)
     const [file, libConfig] = guideFences('Turborepo', 'ts')
-    const [initFence, cacheLine, migrateFence] = guideFences('Turborepo', 'text')
+    const [initCmd, migrateCmd] = guideFences('Turborepo', 'sh').map((f) => f.trim())
+    const [initOut, migrateOut] = guideFences('Turborepo', 'ansi').map(printedPlain)
+    const cacheLine = /^`(turboCache\(\): [^`]*)`$/m.exec(guideSection('Turborepo'))?.[1]
+    expect(cacheLine).toBeDefined()
     // `vx init` runs the installed vx-migrate (else the registry's, through bun x).
     expect(step(root, 'npm install -D @vzn/vx @vzn/vx-migrate').code).toBe(0)
-    const [initCmd, initOut] = transcript(initFence!)
     expect(initCmd).toBe('bunx @vzn/vx init --keep')
-    const init = step(root, initCmd)
-    expect([init.code, versionless(init.out)]).toEqual([0, initOut])
+    const init = step(root, initCmd!)
+    expect([init.code, versionless(init.out)]).toEqual([0, initOut!])
     expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(file!)
 
     mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true })
@@ -289,9 +297,8 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     expect(cached.out.split('\n').map((l) => l.trim())).toContain(cacheLine!.trim())
     rmSync(path.join(root, '.github'), { recursive: true })
 
-    const [migrateCmd, migrateOut] = transcript(migrateFence!)
     expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
-    expect(migrate(root)).toEqual([0, migrateOut])
+    expect(migrate(root)).toEqual([0, migrateOut!])
     expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.config.ts'), 'utf8')).toBe(
       libConfig!,
     )
@@ -303,17 +310,16 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     standInNx(root)
     commit(root)
     const [file, libConfig] = guideFences('Nx', 'ts')
-    const [initFence, migrateFence] = guideFences('Nx', 'text')
+    const [initCmd, migrateCmd] = guideFences('Nx', 'sh')[0]!.trim().split('\n')
+    const [initOut, migrateOut] = guideFences('Nx', 'ansi').map(printedPlain)
     // `vx init` runs the installed vx-migrate (else the registry's, through bun x).
     expect(step(root, 'npm install -D @vzn/vx @vzn/vx-migrate').code).toBe(0)
-    const [initCmd, initOut] = transcript(initFence!)
     expect(initCmd).toBe('bunx @vzn/vx init --keep')
-    const init = step(root, initCmd)
-    expect([init.code, versionless(init.out)]).toEqual([0, initOut])
+    const init = step(root, initCmd!)
+    expect([init.code, versionless(init.out)]).toEqual([0, initOut!])
     expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(file!)
-    const [migrateCmd, migrateOut] = transcript(migrateFence!)
     expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
-    expect(migrate(root)).toEqual([0, migrateOut])
+    expect(migrate(root)).toEqual([0, migrateOut!])
     expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.config.ts'), 'utf8')).toBe(
       libConfig!,
     )

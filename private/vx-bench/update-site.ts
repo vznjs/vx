@@ -83,6 +83,11 @@ const s = (ms: number): string =>
   ms < 1000 ? `${Math.round(ms)} ms` : `${+(ms / 1000).toFixed(2)} s`
 const WORKLOAD = `Benchmark workload: a synthetic monorepo of ${n(d.packages)} projects and ${n(d.tasks)} tasks in ${d.levels} dependency levels, five core libraries a quarter of the projects use; build ${s(d.buildMs)}, test and typecheck ${s(d.buildMs / 2)}, lint ${s(d.buildMs / 4)}, publish ${s(d.buildMs / 10)}; real repos with uneven task times will differ.`
 const vs = (r: Row, f: (r: Row) => number): string => disp(f(r))
+// The site's pages hold a paragraph to a phone's five lines (docs-research):
+// the workload's one sentence splits in two there.
+const PAIR_WORKLOAD = `Benchmark workload: a synthetic monorepo of ${n(d.packages)} projects and ${n(d.tasks)} tasks in ${d.levels} dependency levels, with five core libraries a quarter of the projects use.
+
+Task times: build ${s(d.buildMs)}, test and typecheck ${s(d.buildMs / 2)}, lint ${s(d.buildMs / 4)}, publish ${s(d.buildMs / 10)}. Real repos with uneven task times differ.`
 const tableBlock =
   'const benchTable = [\n' +
   table
@@ -156,7 +161,8 @@ ${table.map(([label, f]) => `| ${label} | ${vxCell(f, [r])} | ${vs(r, f)} |`).jo
 
 ${FORMULA}
 
-${WORKLOAD}
+${PAIR_WORKLOAD}
+
 ${RUN}
 
 Same graph, commands and concurrency, each tool in its own native config: [how it is measured](../../benchmarks/).

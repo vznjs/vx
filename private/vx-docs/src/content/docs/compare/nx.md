@@ -22,15 +22,11 @@ The design choices behind both are on [vx, Turborepo, Nx, Bazel](../).
 
 Time each tool adds over the ideal run; lower is better.
 
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603
-tasks in 30 dependency levels, with five core libraries a quarter of the
-projects use.
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, with five core libraries a quarter of the projects use.
 
-Task times: build 300 ms, test and typecheck 150 ms, lint 75 ms, publish
-30 ms. Real repos with uneven task times differ.
+Task times: build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms. Real repos with uneven task times differ.
 
-Run 2026-10-25 on linux x64, 4 cores: vx at commit 9abdfb52c, Turborepo
-2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
+Run 2026-10-25 on linux x64, 4 cores: vx at commit 9abdfb52c, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
 
 Same graph, commands and concurrency, each tool in its own native config: [how it is measured](../../benchmarks/).
 
