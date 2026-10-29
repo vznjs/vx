@@ -463,7 +463,7 @@ export function waited(ms: number | undefined): boolean {
 }
 
 /** A task's average cores over its run: CPU time over wall time. */
-export function coresOf(o: TaskOutcome): number | undefined {
+function coresOf(o: TaskOutcome): number | undefined {
   return o.cpuMs === undefined || o.durationMs <= 0 ? undefined : o.cpuMs / o.durationMs
 }
 
@@ -472,7 +472,7 @@ export function coresOf(o: TaskOutcome): number | undefined {
  * usual time, `+6.0s` red or `−1.4s` green, only past a fifth of the usual
  * either way; blank with no usual time to compare.
  */
-export function usualDelta(
+function usualDelta(
   ms: number,
   usualMs: number | undefined,
   colors: ColorSupport = NO_COLOR,
@@ -607,7 +607,7 @@ export function pathNote(colors: ColorSupport = NO_COLOR): string {
 }
 
 /** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */
-export function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
+function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
   return o.where === undefined ? '' : placeNote(o.where, colors)
 }
 
@@ -615,7 +615,7 @@ export function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): stri
  * ` · <where>` after the id: the dot dim, the place in its own hue. Last
  * on the row, as a worker's name has no width to pad to (2026-10-21).
  */
-export function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
+function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
   return `${paint('', ' \u00b7', colors, { dim: true })} ${ui.inline(ui.place(where), colors)}`
 }
 
