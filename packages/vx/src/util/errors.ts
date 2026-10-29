@@ -125,6 +125,30 @@ export function errorDocument(code: string, message: string): string {
 }
 
 /**
+ * What a thrown value says, for a line that names its thrower. A plugin
+ * may throw anything: `String(err)` read `[object Object]` for an
+ * error-like `{ message }`, `undefined` for a bare `throw`, and itself threw
+ * on an object with no prototype. Never throws.
+ */
+export function thrownMessage(err: unknown): string {
+  try {
+    if (typeof err === 'string') return err === '' ? 'threw an empty string' : err
+    if (typeof err === 'object' && err !== null) {
+      const message = (err as { message?: unknown }).message
+      if (typeof message === 'string' && message !== '') return message
+      if (err instanceof Error) return `threw ${err.name} with no message`
+      const json = JSON.stringify(err)
+      if (json !== undefined) return `threw ${json.length > 200 ? `${json.slice(0, 200)}…` : json}`
+      return 'threw an object'
+    }
+    if (typeof err === 'bigint') return `threw ${err}n`
+    return `threw ${String(err)}`
+  } catch {
+    return 'threw an object'
+  }
+}
+
+/**
  * `instanceof UserError`, plus the same class arriving from ANOTHER COPY of
  * core. A compiled `vx` binary carries core inside it while a plugin in the
  * workspace imports `@vzn/vx` from node_modules, so a plugin's `UserError`
