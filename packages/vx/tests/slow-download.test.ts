@@ -12,9 +12,9 @@ const CFG = `export default { tasks: { build: {
   exec: { command: 'echo built > out.txt' },
   inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } } } } }`
 
-/** `bytes` as a body: its first half now, the rest after `gapMs`, or never. */
-const trickle = (bytes: Uint8Array, gapMs: number | null): Response => {
-  const half = bytes.length >> 1
+/** `bytes` as a body: its first `share` now (half), the rest after `gapMs`, or never. */
+const trickle = (bytes: Uint8Array, gapMs: number | null, share = 0.5): Response => {
+  const half = Math.floor(bytes.length * share)
   return new Response(
     new ReadableStream<Uint8Array>({
       async start(c) {
@@ -28,10 +28,19 @@ const trickle = (bytes: Uint8Array, gapMs: number | null): Response => {
   )
 }
 
-for (const [name, info, gapMs, status] of [
-  ['a body slower than the task runs the task here', 'huge', null, 'success'],
-  ['a body faster than the task is awaited', 'slow-task', 300, 'cache-hit-remote'],
-  ['a key the remote did not size is awaited', 'none', 300, 'cache-hit-remote'],
+for (const [name, info, gapMs, status, share] of [
+  ['a body slower than the task runs the task here', 'huge', null, 'success', 0.5],
+  ['a body faster than the task is awaited', 'slow-task', 300, 'cache-hit-remote', 0.5],
+  ['a key the remote did not size is awaited', 'none', 300, 'cache-hit-remote', 0.5],
+  // Turbo's wire rounds a sub-ms task to 0: its budget was 0, and a body
+  // 99% in at the first weighing was given up for its last bytes.
+  [
+    'a body nearly in is awaited for a task timed at 0 ms',
+    'instant',
+    200,
+    'cache-hit-remote',
+    0.99,
+  ],
 ] as const) {
   it(
     name,
@@ -46,7 +55,9 @@ for (const [name, info, gapMs, status] of [
             ? { size: stored!.length * 1000, durationMs: 1 }
             : info === 'slow-task'
               ? { size: stored!.length, durationMs: 60_000 }
-              : {}
+              : info === 'instant'
+                ? { size: stored!.length, durationMs: 0 }
+                : {}
         const remote: RemoteCacheLayer = {
           endpoint: 'mem://test',
           has: async () => (stored === undefined ? null : infoOf()),
@@ -56,7 +67,7 @@ for (const [name, info, gapMs, status] of [
             return new Map(stored === undefined ? [] : hs.map((h) => [h, infoOf()] as const))
           },
           get: async () =>
-            stored === undefined ? null : { body: trickle(stored, gapMs), durationMs: 1 },
+            stored === undefined ? null : { body: trickle(stored, gapMs, share), durationMs: 1 },
           put: async (_hash, body) => {
             puts++
             stored = new Uint8Array(await body.arrayBuffer())

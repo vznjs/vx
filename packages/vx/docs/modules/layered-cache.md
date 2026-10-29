@@ -209,8 +209,9 @@ any, after `run()` has drained every upload and prefetch.
    own sidecar, so no wire needs to carry them.
 4. A task waiting on its download gives it up when the rest of the
    body would take longer than running the task: twice the stored
-   duration, for the save a run adds, against the body's own pace so
-   far, weighed every 25 ms. The task then runs here, a miss, and
+   duration, for the save a run adds, and never under one weighing
+   (25 ms: a sub-ms task is stored as 0), against the body's own pace
+   so far, weighed every 25 ms. The task then runs here, a miss, and
    uploads nothing (the remote holds the key). Only a key the batch
    probe sized and timed is judged; any other is awaited. 500 tasks at
    30 ms and 4 MB/s per connection, 20 of them 8 MB: 3070 ms → 1807 ms
