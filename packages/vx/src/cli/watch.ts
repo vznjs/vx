@@ -48,10 +48,25 @@ import {
   sayLine,
 } from '../util/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
+import { isCacheHit } from '../graph/index.js'
+import { resolveOutputView } from '../report/index.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
 function sayCannot(what: string, err: unknown): void {
   sayNotice('warn', 'vx watch', `${what}: ${err instanceof Error ? err.message : String(err)}`)
+}
+
+/**
+ * One line for a cycle every task of which was a cache hit, where hits
+ * print no row: watch prints no footer, so such a cycle said nothing, and
+ * a failure the cycle before stayed the last outcome on screen.
+ */
+function sayAllCached(opts: RunOptions, outcomes: readonly { status: string }[]): void {
+  if (outcomes.length === 0 || !outcomes.every((o) => isCacheHit(o.status))) return
+  const mode = resolveOutputView(opts).mode
+  if (mode !== 'broad' && mode !== 'errors-only' && mode !== 'none') return
+  const n = outcomes.length
+  process.stdout.write(` ${n === 1 ? '1 task' : `${n} tasks`} cached, nothing ran\n`)
 }
 
 /** Wait this long after the last filesystem event before re-running. */
@@ -222,6 +237,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   initial.held = runOrchestrator(initial.cycle.opts).then(
     (run) => {
       if (run.refused !== undefined) sayNotice('error', 'vx watch', run.refused)
+      sayAllCached(opts, run.outcomes)
       // A run that failed having run nothing refused to start: a requested
       // name no project declares (run() says which, with a "did you mean").
       // `vx run` exits 1 on it; `vx watch buidl` watched on, re-running the
@@ -541,6 +557,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               interruptIfWaiting,
             )
             const cycle = await runOrchestrator(current.opts)
+            sayAllCached(opts, cycle.outcomes)
             lastTasks = current.tasks ?? lastTasks
             current = undefined
             held = cycle.persistent
