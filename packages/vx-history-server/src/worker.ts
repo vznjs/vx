@@ -2,10 +2,19 @@
 // `wrangler.jsonc` deploys it; ALLOW, AUDIENCE, READ_ACCESS and TIMING_DAYS
 // are vars in it.
 
-import { errorJson, oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
+import {
+  cachedFetchJson,
+  errorJson,
+  type KeysCache,
+  oidcTokenAuth,
+  parseAllow,
+} from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
 import { createHistoryServer } from './server.js'
 import { type Db, sqliteStore } from './store.js'
+
+/** The data center's cache (Workers Cache API). */
+declare const caches: { default: KeysCache }
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
 interface D1Statement {
@@ -51,6 +60,16 @@ function d1Db(d1: D1Database): Db {
 /** One handler per isolate and settings: the schema is made once per isolate. */
 let made: { key: string; handle: (req: Request) => Promise<Response> } | undefined
 
+/**
+ * The issuer's keys through the data center's cache: a fresh isolate read
+ * GitHub on its first token, and one slow answer failed it 502 (2026-10-29).
+ * `caches.default` is read at each call, as the bucket is per request.
+ */
+const edgeKeys = cachedFetchJson({
+  match: (url) => caches.default.match(url),
+  put: (url, res) => caches.default.put(url, res),
+})
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     // A deploy's mistake: unbound, capabilities answered and every upload failed.
@@ -83,6 +102,7 @@ export default {
         authorize = oidcTokenAuth({
           allow,
           readAccess: env.READ_ACCESS,
+          fetchJson: edgeKeys,
           // jose matches aud exactly: a pasted newline refused every
           // token as the wrong audience.
           ...(env.AUDIENCE ? { audience: env.AUDIENCE.trim() } : {}),

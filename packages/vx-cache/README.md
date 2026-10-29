@@ -83,7 +83,7 @@ workflow would carry a token that writes nowhere the run reads. A job
 uses a lent token over its own and never lends one on, nor any once
 its remote is off for the run.
 
-An upload answered with a 5xx or a 429 is sent again, three tries in
+An upload answered with a 5xx or a 429, or whose connection reset, is sent again, three tries in
 all: a PUT names its hash, so a second one stores the same bytes.
 
 A refused token is said once and turns the remote off for the run; a

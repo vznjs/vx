@@ -2,7 +2,7 @@
 
 import { afterEach, beforeAll, describe, expect, it, setSystemTime } from 'bun:test'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
-import { oidcTokenAuth, parseAllow, Refusal } from '../src/index.js'
+import { cachedFetchJson, oidcTokenAuth, parseAllow, Refusal } from '../src/index.js'
 
 const GITLAB = 'https://gitlab.example.com'
 const AUD = 'https://cache.example.com'
@@ -145,5 +145,75 @@ describe('oidcTokenAuth', () => {
       const { privateKey } = await generateKeyPair('RS256')
       expect(await statusOf(auth(req(await signWith(privateKey, 'k2')), scope))).toBe(502)
     })
+  })
+
+  // A Worker's fresh isolate read the issuer on its first token, and the
+  // issuer's slow answer failed it 502: the first read may come from a
+  // cache an isolate shares, a reload (jose's, every 10 minutes or for a
+  // kid it lacks) never does, or a rotated key stayed unknown.
+  it('asks the first read of each URL not fresh, each reload fresh', async () => {
+    const asked: [string, boolean][] = []
+    const auth = oidcTokenAuth({
+      allow: parseAllow(`${GITLAB}:group/app:.gitlab-ci.yml`),
+      fetchJson: async (url, fresh) => {
+        asked.push([url, fresh])
+        return fetchJson(url)
+      },
+    })
+    const scope = { issuer: GITLAB, repository: 'group/app' }
+    await auth(req(await sign(GITLAB)), scope)
+    setSystemTime(Date.now() + 11 * 60_000)
+    await auth(req(await sign(GITLAB)), scope)
+    setSystemTime()
+    expect(asked).toEqual([
+      [`${GITLAB}/.well-known/openid-configuration`, false],
+      [`${GITLAB}/keys`, false],
+      [`${GITLAB}/keys`, true],
+    ])
+  })
+})
+
+describe('cachedFetchJson', () => {
+  const memCache = () => {
+    const held = new Map<string, string>()
+    return {
+      held,
+      match: async (url: string) => {
+        const body = held.get(url)
+        return body === undefined ? undefined : new Response(body)
+      },
+      put: async (url: string, res: Response) => {
+        held.set(url, await res.text())
+      },
+    }
+  }
+  const network = (answers: Record<string, unknown>) => {
+    const seen: string[] = []
+    const fetchImpl = (async (url: string) => {
+      seen.push(url)
+      return Response.json(answers[url])
+    }) as unknown as typeof fetch
+    return { seen, fetchImpl }
+  }
+
+  it('answers a read not fresh from the cache, and keeps what the network says', async () => {
+    const cache = memCache()
+    const net = network({ 'https://i/keys': { keys: [1] } })
+    const read = cachedFetchJson(cache, net.fetchImpl)
+    expect(await read('https://i/keys', false)).toEqual({ keys: [1] })
+    expect(await read('https://i/keys', false)).toEqual({ keys: [1] })
+    expect(net.seen).toEqual(['https://i/keys'])
+    expect(JSON.parse(cache.held.get('https://i/keys')!)).toEqual({ keys: [1] })
+  })
+
+  it('asks the network for a fresh read, held or not', async () => {
+    const cache = memCache()
+    cache.held.set('https://i/keys', JSON.stringify({ keys: [1] }))
+    const net = network({ 'https://i/keys': { keys: [2] } })
+    expect(await cachedFetchJson(cache, net.fetchImpl)('https://i/keys', true)).toEqual({
+      keys: [2],
+    })
+    expect(net.seen).toEqual(['https://i/keys'])
+    expect(JSON.parse(cache.held.get('https://i/keys')!)).toEqual({ keys: [2] })
   })
 })
