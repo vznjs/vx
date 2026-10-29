@@ -95,6 +95,16 @@ it('reads the limits from the environment, and refuses one that is not a count',
   )
 })
 
+// Number() read 0x10 as 16 and 1e3 as 1000, as it read --port, which takes
+// digits only since c4d2ce089c.
+it('reads a limit only as decimal digits', () => {
+  for (const v of ['0x10', '1e3', ' 9', '9 ', '+9'])
+    expect(() => limitsFrom({ MAX_UPLOAD_BYTES: v })).toThrow(
+      `MAX_UPLOAD_BYTES: not a whole number above 0: ${v}`,
+    )
+  expect(limitsFrom({ MAX_UPLOAD_BYTES: '16' })).toEqual({ maxUploadBytes: 16 })
+})
+
 // wrangler.jsonc writes a var as JSON: a number was skipped, and the
 // default limit served in its place.
 it('reads a limit a Worker var gives as a number, and refuses another type', () => {
