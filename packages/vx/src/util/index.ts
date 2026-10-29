@@ -119,6 +119,7 @@ export {
 } from './git-ignored.js'
 export { realPath, realpathOf } from './real-path.js'
 export {
+  heldSecrets,
   maskedCommand,
   maskedEmitter,
   maskedLine,
