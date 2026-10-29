@@ -17,10 +17,11 @@ import type {
   RunContextRecord,
   RunSummaryRecord,
   TelemetryContext,
+  TelemetryRecord,
   TelemetrySink,
   TreeLoad,
 } from './telemetry.js'
-import { settleWithin, teardownTimeoutMs } from '../util/index.js'
+import { settleWithin, teardownTimeoutMs, thrownMessage } from '../util/index.js'
 import { createTelemetrySource } from './telemetry.js'
 import type { VxPlugin } from './plugin.js'
 
@@ -36,6 +37,16 @@ export interface TelemetryHandle {
   readonly track?: (taskId: string, pid: number) => () => TreeLoad | undefined
 }
 
+// Every kind once: a kind added to `TelemetryRecord` fails to compile here.
+const RECORD_KINDS: Record<TelemetryRecord['kind'], true> = {
+  'run.start': true,
+  'task.start': true,
+  'task.log': true,
+  'task.sample': true,
+  'task.end': true,
+  'run.end': true,
+}
+
 /** Reject anything that is not sink-shaped, naming what arrived. */
 function checkSink(sink: unknown): TelemetrySink {
   if (typeof sink !== 'object' || sink === null) {
@@ -44,6 +55,15 @@ function checkSink(sink: unknown): TelemetrySink {
   const wants = (sink as TelemetrySink).wants
   if (wants !== undefined && !Array.isArray(wants)) {
     throw new Error(`telemetry sink 'wants' must be an array, got ${typeof wants}`)
+  }
+  // A misspelt kind (`task.logs`) was a sink that never heard it, with no word.
+  const unknown = (wants as readonly unknown[] | undefined)?.find(
+    (k) => typeof k !== 'string' || !Object.hasOwn(RECORD_KINDS, k),
+  )
+  if (unknown !== undefined) {
+    throw new Error(
+      `telemetry sink 'wants' names ${typeof unknown === 'string' ? JSON.stringify(unknown) : typeof unknown}, which is no record kind (${Object.keys(RECORD_KINDS).join(', ')})`,
+    )
   }
   // Every handler is optional, so `{ nope: true }` was a valid sink that
   // subscribed to the bus and heard nothing — the plugin was "on" and did
@@ -102,7 +122,7 @@ export async function subscribeTelemetry(
       accepted = list.map((sink) => checkSink(sink))
     } catch (err) {
       ctx.warn(
-        `[vx] plugin '${plugin.name}' telemetry failed to initialize; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx] plugin '${plugin.name}' telemetry failed to initialize; disabled for this run: ${thrownMessage(err)}`,
       )
       continue
     }

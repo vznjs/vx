@@ -528,15 +528,19 @@ async function checkLock(root: string, json: boolean): Promise<number> {
         metas.filter((m) => !drifted.has(lockKey(root, m.dir))),
         check.resolved,
       ).map(async (r) => {
+        // Only a missing copy is "has no": a directory in its place, or one
+        // this user cannot read, read as missing too.
         const text = await Bun.file(r.file)
           .text()
-          .catch(() => null)
+          .catch((err: NodeJS.ErrnoException) => (err.code === 'ENOENT' ? null : err))
         // Compared as JSON: a formatter may lay the copy out its own way.
-        if (text !== null && sameJson(text, r.config)) return null
+        if (typeof text === 'string' && sameJson(text, r.config)) return null
         const rel = relPosix(root, r.file)
         return text === null
           ? `"${r.name}" has no ${rel} — run 'vx lock'`
-          : `"${r.name}" (${rel}) is not what its config resolves to here — run 'vx lock'`
+          : typeof text !== 'string'
+            ? `"${r.name}" (${rel}) could not be read (${text.code ?? text.message}) — remove it and run 'vx lock'`
+            : `"${r.name}" (${rel}) is not what its config resolves to here — run 'vx lock'`
       }),
     )
     for (const f of stale) if (f !== null) failures.push(f)
