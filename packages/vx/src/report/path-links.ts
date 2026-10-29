@@ -10,9 +10,15 @@ import { pathToFileURL } from 'node:url'
 
 // `src/a.ts`, `./a.ts:12`, `/abs/a.ts:12:5`, tsc's `src/a.ts(12,5)`. Not
 // after a word, dot, slash or `@`, so a URL's path or a scoped name's tail
-// never starts a match. Groups: file, then line and column of either form.
-const PATH =
-  /(?<![\w./@+-])((?:\/|\.{1,2}\/)?(?:[\w@.+-]+\/)*[\w@+-][\w@.+-]*\.[A-Za-z][A-Za-z0-9]{0,9})(?::(\d+)(?::(\d+))?|\((\d+),(\d+)\))?/g
+// never starts a match. Colour codes (`\x1b[4m`) are invisible: a path one
+// starts is linked (tasks run with FORCE_COLOR), one it splits from its
+// directory is not. Groups: file, then line and column of either form.
+const SGR = String.raw`\x1b\[[\d;]*m`
+const PATH = new RegExp(
+  String.raw`(?<!\x1b\[[\d;]*)(?:(?<![\w./@+-])|(?<=${SGR}))(?<![\w./@+-](?<!${SGR})(?:${SGR})+)` +
+    String.raw`((?:\/|\.{1,2}\/)?(?:[\w@.+-]+\/)*[\w@+-][\w@.+-]*\.[A-Za-z][A-Za-z0-9]{0,9})(?::(\d+)(?::(\d+))?|\((\d+),(\d+)\))?`,
+  'g',
+)
 
 /** A file a task's output names; `file` absolute. */
 export interface OutputLocation {
