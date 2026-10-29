@@ -1272,7 +1272,10 @@ the grants that would have allowed each denial, project-relative:
 A write grants the top directory it landed in, so the next file there
 passes too, unless `inputs.files` reads that directory: then it
 grants the file alone, so the task cannot write its own inputs; a read the output depends on is a key input as well, and
-the line says so, since a grant never adds one. A credential path
+the line says so, since a grant never adds one. A read through a link
+grants the directory holding the link too: the sandbox mounts a grant at
+its real path and never the link, so the target alone stayed out of
+reach. A credential path
 (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`,
 `~/.config/gcloud`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`,
 `~/.git-credentials`, `~/.docker/config.json`, a `.env` file) is never put in the
