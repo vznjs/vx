@@ -135,6 +135,24 @@ describe('text=auto, git binary detection (vercel/turborepo#14697)', () => {
   )
 })
 
+// Turbo ebc204865 (vercel/turborepo#10844): without `-z` git C-quotes a
+// non-ASCII path, which then names no file.
+describe('a non-ASCII tracked input (vercel/turborepo#10844)', () => {
+  it(
+    'an uncommitted edit to it moves the key; the bytes back bring it back',
+    async () => {
+      const root = await workspace("{ files: ['src/**'] }", { 'src/테스트.ts': 'one\n' })
+      await settle(root, ['src/테스트.ts'])
+      const clean = await key(root)
+      await writeFile(at(root, 'src/테스트.ts'), 'two\n')
+      expect(await key(root)).not.toBe(clean)
+      await writeFile(at(root, 'src/테스트.ts'), 'one\n')
+      expect(await key(root)).toBe(clean)
+    },
+    TIMEOUT,
+  )
+})
+
 describe('ignore rules (Turbo scm, Nx walker)', () => {
   it(
     'an uncommitted .gitignore edit that un-ignores a file makes it an input, and one that re-ignores it takes it out',
