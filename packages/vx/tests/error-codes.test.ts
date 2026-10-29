@@ -327,6 +327,24 @@ describe('a refusal under --format json', () => {
     }
   }, 30_000)
 
+  // A workspace with no git work tree, or a machine with no git, read
+  // VX_E_REFUSED: an agent could not tell either from a plugin's refusal,
+  // and its next step is the environment's, `git init` or installing git.
+  it('no git work tree, or no git on PATH, is VX_E_NO_GIT', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-error-codes-nogit-', git: false })
+    const noPath = await mkdtemp(path.join(os.tmpdir(), 'vx-error-codes-nopath-'))
+    try {
+      await addProject(ws, 'a', `export default { tasks: { b: { exec: { command: 'true' } } } }\n`)
+      expect({
+        noTree: await refusal(['run', 'b', '--all', '--dry=json'], ws),
+        noGit: await refusal(['run', 'b', '--all', '--dry=json'], ws, { PATH: noPath }),
+      }).toEqual({ noTree: 'VX_E_NO_GIT', noGit: 'VX_E_NO_GIT' })
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+      await rm(noPath, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   // SQLite's `unable to open database file` reached every verb as a stack
   // and VX_E_INTERNAL; only an fd shortage was named (2026-10-28).
   it('a cache index SQLite cannot open is VX_E_FS, naming the file', async () => {
