@@ -88,9 +88,13 @@ miss.
 
 `GET /v1/artifacts/<hash>` (as Turbo's `GET /v8/artifacts/<hash>`) with
 `vx-scope: <scope>`: `200` with the bytes (`application/octet-stream`,
-`Content-Length`, `Cache-Control: private, max-age=31536000, immutable`:
-the bytes under a key never change), or `404`. `HEAD` is the same with
-no bytes.
+`Cache-Control: private, max-age=31536000, immutable`: the bytes under a
+key never change), or `404`. `HEAD` is the same with no bytes, and names
+the size as `Content-Length`. A download may come chunked with no
+`Content-Length` (Bun.serve sends any streamed answer so), so a body cut
+short can end as cleanly as a whole one: a client checks the bytes
+themselves (vx refuses an artifact whose zstd frame, tar end or recorded
+key is missing) and reads one that fails as a miss.
 
 `POST /v1/artifacts` (Turbo's batch query) with `{ "hashes": [<hash>,
 …], "scopes": [<scope>, …] }`, the scopes in the order to read them, up

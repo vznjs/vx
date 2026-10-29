@@ -135,6 +135,23 @@ export function conformance(name: string, target: Target): void {
       ]).toEqual([200, 'application/octet-stream', '5', 'first'])
     })
 
+    // Bun.serve sends a streamed answer chunked, with no Content-Length
+    // (PROTOCOL.md): a download many chunks long arrives whole all the same.
+    it('serves a download many chunks long whole', async () => {
+      const k = key()
+      const big = new Uint8Array(4 * 1024 * 1024 + 1)
+      for (let at = 0; at < big.length; at += 65_536)
+        crypto.getRandomValues(big.subarray(at, at + 65_536))
+      expect((await put(k, big)).status).toBe(204)
+      const got = await get(k)
+      expect([got.status, got.headers.get('content-type')]).toEqual([
+        200,
+        'application/octet-stream',
+      ])
+      const bytes = new Uint8Array(await got.arrayBuffer())
+      expect([bytes.length, Bun.hash(bytes)]).toEqual([big.length, Bun.hash(big)])
+    })
+
     it('answers HEAD with the size the scope holds, and no bytes', async () => {
       const k = key()
       const head = (scope = MAIN) =>
