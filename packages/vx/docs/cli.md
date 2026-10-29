@@ -3688,8 +3688,8 @@ on a terminal or not; a note vx prints before it is not part of it.
 A broad run looks like:
 
 ```
- ⇢     4ms                 success local                                 local        @vzn/vx#format-check
- ⏺︎   5.20s                 success miss                                  local        @vzn/vx#test
+ ⇢     4ms         success local                                 local        @vzn/vx#format-check
+ ⏺︎   5.20s         success miss                                  local        @vzn/vx#test
 
 ─ vx 0.0.0 ───────────────────────────────────────────────────
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
