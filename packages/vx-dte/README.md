@@ -616,11 +616,7 @@ use your own instead.
   peer heard from for none of a heartbeat and a half is probed (an
   empty numbered send), which it acks at once; either side hearing
   nothing from the other for 1.9 heartbeats loses it, a worker by
-  ending, and saying so. A worker's probe is answered by the relay, and
-  one the relay answered waits five heartbeats (10 s) on its quiet
-  orchestrator: the relay keeps the run's host that long while its
-  socket dials again, and at 1.9 every worker of a run stopped its
-  running tasks in the same second (2026-10-29). A quiet pair trades one probe and its ack each heartbeat and a
+  ending, and saying so. A quiet pair trades one probe and its ack each heartbeat and a
   half, the relay answers neither, and nobody pings. An orchestrator
   with no worker yet asks the relay an empty frame instead; a frame the
   relay leaves unanswered a heartbeat closes the socket, which is dialed

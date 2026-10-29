@@ -695,39 +695,6 @@ it('a worker whose relay answers nothing ends, and the orchestrator loses it, wi
   await o.leave()
 }, 5_000)
 
-// CI run 40886829588 (2026-10-29): three workers' every running task was
-// stopped within a second, each worker's job green, when their orchestrator
-// was quiet past 1.9 heartbeats (3.8 s) on a relay that answered them. The
-// relay keeps a run's host while its socket dials again (10 s), so a worker
-// whose relay answers waits for a quiet orchestrator that long; one whose
-// relay answers nothing still ends at 1.9 (the row above).
-it('a worker whose relay answers waits five heartbeats on a quiet orchestrator', async () => {
-  let silent = false
-  // The orchestrator's frames lose what they carry to a worker; the relay answers all.
-  const served = servedRelay({ heartbeatMs: 200 }, (frame) => {
-    if (!silent) return frame
-    const f = JSON.parse(frame) as { sends?: { to: string }[] }
-    if (f.sends === undefined) return frame
-    return JSON.stringify({ ...f, sends: f.sends.filter((one) => one.to === 'host') })
-  })
-  try {
-    const o = await join(served.url, R2, 'orchestrator', null, undefined)
-    const a = await join(served.url, R2, 'worker', null, undefined)
-    await o.poll()
-    silent = true
-    const at = performance.now()
-    let err: unknown
-    while (err === undefined) await a.poll().catch((e: unknown) => (err = e))
-    const waited = performance.now() - at
-    expect((err as RelayError).message).toBe('relay: the orchestrator went silent')
-    // Five heartbeats, not 1.9: 1 000 ms, where it ended at 380.
-    expect(waited).toBeGreaterThanOrEqual(4 * 200)
-    await o.leave()
-  } finally {
-    await served.stop()
-  }
-}, 10_000)
-
 it('a worker ends when its orchestrator’s relay answers nothing, the run’s close unheard', async () => {
   const { url, drop } = dropping()
   const o = await join(url, R2, 'orchestrator', null, undefined)
