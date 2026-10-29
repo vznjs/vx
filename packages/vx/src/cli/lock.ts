@@ -499,7 +499,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       locked === undefined
         ? `${rel} is not in the lock — run 'vx lock'`
         : locked.file !== fresh.file
-          ? `${rel} is not the ${locked.file} the lock holds for ${dir} — run 'vx lock'`
+          ? `${rel} is not the ${locked.file} the lock holds for ${dir === '.' ? 'the workspace root project' : dir} — run 'vx lock'`
           : !Bun.deepEquals(fresh.config, locked.config, true)
             ? `${rel} evaluates differently from the lock here — its config, a file ` +
               `it imports, or the environment it reads changed; run 'vx lock'`
@@ -550,7 +550,8 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   // read as gone, the healthy ones too.
   for (const dir of check.loaded ? Object.keys(lock.projects) : []) {
     if (!Object.hasOwn(check.fresh.projects, dir)) {
-      failures.push(`the lock holds ${dir}, which has no vx.config now — run 'vx lock'`)
+      const what = dir === '.' ? 'the workspace root project' : dir
+      failures.push(`the lock holds ${what}, which has no vx.config now — run 'vx lock'`)
     }
   }
   if (json)

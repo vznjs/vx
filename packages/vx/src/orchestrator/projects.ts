@@ -336,7 +336,8 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     const present = await Promise.all(withFile.map((m) => Bun.file(m.configPath).exists()))
     const gone = withFile.find((_, i) => !present[i])
     if (gone !== undefined) {
-      const rel = relPosix(workspaceRoot, gone.dir) || '.'
+      // `.` read as a sentence's end: the notice cut the line there.
+      const rel = relPosix(workspaceRoot, gone.dir) || 'the workspace root project'
       const named = gone.name === pathName(workspaceRoot, gone.dir) ? '' : ` ("${gone.name}")`
       const file = relPosix(gone.dir, gone.configPath)
       // exists() says false for a file behind a directory this user may not
