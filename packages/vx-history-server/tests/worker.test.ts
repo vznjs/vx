@@ -65,6 +65,13 @@ it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS i
       'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
     ],
     [{ ALLOW: allowVarOf(), TIMING_DAYS: '0' }, 500, 'TIMING_DAYS: a whole number of days, got 0'],
+    // wrangler.jsonc may write a var as JSON: `true` was read as 1 day,
+    // where the Bun entry refuses TIMING_DAYS=true.
+    [
+      { ALLOW: allowVarOf(), TIMING_DAYS: true },
+      500,
+      'TIMING_DAYS: a whole number of days, got true',
+    ],
     // A blank AUDIENCE was taken: every token was then "wrong audience".
     [
       { ALLOW: allowVarOf(), AUDIENCE: ' ' },

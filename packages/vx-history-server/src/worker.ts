@@ -26,7 +26,7 @@ export interface Env {
   /** `public`: a request with no token reads a repository ALLOW names. */
   readonly READ_ACCESS?: string
   /** Days a task's timings outlive its last report (default 30). */
-  readonly TIMING_DAYS?: string
+  readonly TIMING_DAYS?: string | number
 }
 
 function d1Db(d1: D1Database): Db {

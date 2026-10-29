@@ -41,8 +41,8 @@ origin is the request's `Host` header, which a client picks.
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' AUDIENCE=https://history.example.com bun packages/vx-history-server/src/bun.ts --db /var/lib/vx-history.sqlite --port 8080
 ```
 
-`TIMING_DAYS` (default 30) is how long a task's row outlives its last
-report; the first upload of each day sweeps, whichever node or Workers
+`TIMING_DAYS` (default 30, whole days; on Workers a string or a number)
+is how long a task's row outlives its last report; the first upload of each day sweeps, whichever node or Workers
 isolate takes it.
 
 ## With Docker
