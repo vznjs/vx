@@ -1851,10 +1851,10 @@ describe('parseRunArgs', () => {
 
   it('an empty `=` value is a missing value, not a bad one', () => {
     expect(parseRunArgs(['build', '--dry=']).error).toBe(
-      '--dry= requires a format (text or json); bare --dry prints text',
+      '--dry= requires a format: text or json; bare --dry prints text',
     )
     expect(parseRunArgs(['build', '--verbosity=']).error).toBe(
-      '--verbosity requires a value (a non-negative integer)',
+      '--verbosity requires a value: a non-negative integer',
     )
   })
 
@@ -1876,7 +1876,7 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--retries=1.5']).error).toMatch(/non-negative/)
     // Missing value.
     expect(parseRunArgs(['build', '--retries']).error).toBe(
-      '--retries requires a value (a non-negative integer)',
+      '--retries requires a value: a non-negative integer',
     )
   })
 
@@ -1889,7 +1889,7 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--timeout=-5']).error).toMatch(/must be a duration/)
     // Missing value.
     expect(parseRunArgs(['build', '--timeout']).error).toBe(
-      "--timeout requires a value (a duration like '500ms', '30s' or '5m', at most 24 days)",
+      "--timeout requires a value: a duration like '500ms', '30s' or '5m', at most 24 days",
     )
   })
 
@@ -1923,11 +1923,11 @@ describe('parseRunArgs', () => {
 
   it('rejects missing flag value', () => {
     expect(parseRunArgs(['build', '--filter']).error).toBe(
-      '--filter requires a value (a project name, glob or path, e.g. --filter app)',
+      '--filter requires a value: a project name, glob or path, e.g. --filter app',
     )
     // X-13: the next flag is no pattern (`--filter --dry` matched "--dry").
     expect(parseRunArgs(['build', '--filter', '--dry']).error).toBe(
-      '--filter requires a value (a project name, glob or path, e.g. --filter app)',
+      '--filter requires a value: a project name, glob or path, e.g. --filter app',
     )
     // Each value-taking flag says what the value is, not only that it is missing.
     expect(
@@ -1935,9 +1935,9 @@ describe('parseRunArgs', () => {
         (f) => parseRunArgs(['build', f]).error,
       ),
     ).toEqual([
-      "--concurrency requires a value (a positive integer, or a share of the cores like '50%')",
-      '--cache-policy requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)',
-      '--verbosity requires a value (a non-negative integer)',
+      "--concurrency requires a value: a positive integer, or a share of the cores like '50%'",
+      '--cache-policy requires a value: a spec like local:r, local:rw, remote:, or local:,remote:rw',
+      '--verbosity requires a value: a non-negative integer',
     ])
   })
 
