@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
 import { LocalHistoryProvider, type TaskResources } from '../src/history/index.js'
 
 const STATUSES: RunRecord['status'][] = ['success', 'cache-hit', 'failed', 'skipped', 'success']
@@ -78,7 +78,7 @@ beforeEach(() => {
     cache.recordRunBundle({ runs, invocation: invocation(runId, 1_000 + i) })
   }
   // What each hit's entry says its producing execution used; some say nothing.
-  const entry = cache.dbHandle().query(
+  const entry = indexDb(cache).query(
     `INSERT OR IGNORE INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes,
          created_at, accessed_at, cpu_ms, peak_rss_bytes) VALUES (?, 'p', ?, 'x', 0, ?, 1, 1, 1, ?, ?)`,
   )
@@ -103,7 +103,7 @@ afterEach(() => {
 it('answers the p50 loadFor answers for each task, inside and across the window', async () => {
   const ids = TASKS.map((t) => `p#${t}`)
   for (const recent of [1, 7, 30, 50]) {
-    const history = new LocalHistoryProvider(cache.dbHandle(), recent)
+    const history = new LocalHistoryProvider(indexDb(cache), recent)
     const full = await history.loadFor(ids)
     const p50s = await history.p50sFor(ids)
     const expected = ids.flatMap((id): Array<[string, number]> => {
@@ -116,13 +116,13 @@ it('answers the p50 loadFor answers for each task, inside and across the window'
     expect(expected.length).toBeLessThan(ids.length)
   }
   // Only what was asked for.
-  expect([...(await new LocalHistoryProvider(cache.dbHandle()).p50sFor(['p#a']))].length).toBe(1)
+  expect([...(await new LocalHistoryProvider(indexDb(cache)).p50sFor(['p#a']))].length).toBe(1)
 })
 
 it('answers the p50 and resource maxima loadFor answers for each task', async () => {
   const ids = TASKS.map((t) => `p#${t}`)
   for (const recent of [1, 7, 30, 50]) {
-    const history = new LocalHistoryProvider(cache.dbHandle(), recent)
+    const history = new LocalHistoryProvider(indexDb(cache), recent)
     const full = await history.loadFor(ids)
     const got = await history.resourcesFor(ids)
     // The forecast reads past the window (p50sFor); the maxima stay in it.
@@ -144,8 +144,7 @@ it('answers the p50 and resource maxima loadFor answers for each task', async ()
     // CONTROL: a hit-only task carries its entry's numbers, its time the
     // longest producer's.
     if (recent >= 7) {
-      const longest = cache
-        .dbHandle()
+      const longest = indexDb(cache)
         .query(
           `SELECT MAX(e.duration_ms) AS ms FROM entries e WHERE e.task = 'only-hits' AND e.hash IN (
              SELECT hash FROM runs WHERE task = 'only-hits' ORDER BY id DESC LIMIT ?)`,
@@ -208,7 +207,7 @@ it('names the biggest machine a task filled, by its cores or its memory', async 
     ],
     invocation: invocation('sat', 5_000),
   })
-  const r = await new LocalHistoryProvider(cache.dbHandle()).resourcesFor([
+  const r = await new LocalHistoryProvider(indexDb(cache)).resourcesFor([
     'p#cpu',
     'p#mem',
     'p#roomy',
@@ -240,7 +239,7 @@ it('learns the mean need over the window, filling a machine only on average', as
   })
   for (const [i, r] of [at(0, 16_000), at(1, 19_000, 0.67), at(2, 19_000)].entries())
     cache.recordRunBundle({ runs: [r], invocation: invocation(`mean${i}`, 5_000 + i) })
-  const r = await new LocalHistoryProvider(cache.dbHandle()).resourcesFor(['p#build'])
+  const r = await new LocalHistoryProvider(indexDb(cache)).resourcesFor(['p#build'])
   expect(r.get('p#build')?.maxCpuParallelism).toBeCloseTo((1.6 + 1.9 / 0.67 + 1.9) / 3, 2)
   expect(r.get('p#build')?.saturatedCores).toBeUndefined()
 })
@@ -269,7 +268,7 @@ it('learns a crowded run’s need, not its share, and never past its machine', a
     ],
     invocation: invocation('crowd', 5_000),
   })
-  const r = await new LocalHistoryProvider(cache.dbHandle()).resourcesFor([
+  const r = await new LocalHistoryProvider(indexDb(cache)).resourcesFor([
     'p#shard',
     'p#free',
     'p#misread',

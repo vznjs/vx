@@ -297,7 +297,6 @@ export class Cache implements CacheLayer {
     | { tmpPath: string }
     | { plan: true; saved: SavedTree }
   >
-  dbHandle(): Database
   recordRun(run: RunRecord): void
   recordRuns(runs: readonly RunRecord[]): void
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
@@ -1254,32 +1253,45 @@ export interface LocalFloor {
 }
 ```
 
-## `LocalHistoryProvider`
+## `localHistory`
 
-class · `src/history/history.ts`
+function · `src/history/history.ts`
 
-Reads from the orchestrator's local SQLite cache.db.
+The run history in `cache`'s index. A plugin reads history only through
+this: core owns every read and write of cache.db (2026-10-29).
 
 ```ts
-export class LocalHistoryProvider implements HistoryProvider {
-  constructor(
-    private readonly db: Database,
-    readonly recent: number
-    private readonly branch?: string | null,
-    private readonly defs?: ReadonlyMap<string, string>,
-  ) {}
-  async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
-  async loadAll(): Promise<HistoryTable>
-  async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
-  lackedBranchHistory
+export function localHistory(cache: Cache, options: LocalHistoryOptions = {}): LocalHistory
+```
+
+## `LocalHistory`
+
+type · `src/history/history.ts`
+
+One local cache's run history, read and written by core (`localHistory`): plain rows out, no handle.
+
+```ts
+export interface LocalHistory extends HistoryProvider {
+  resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
   hasImported(sha: string): boolean
   importTimings(
     sha: string,
     timings: ReadonlyMap<string, number>,
-    needs: ReadonlyMap<string, TaskResources> = new Map(),
-    defs: ReadonlyMap<string, string> = new Map(),
+    needs?: ReadonlyMap<string, TaskResources>,
+    defs?: ReadonlyMap<string, string>,
   ): void
-  async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+}
+```
+
+## `LocalHistoryOptions`
+
+type · `src/history/history.ts`
+
+```ts
+export interface LocalHistoryOptions {
+  readonly recent?: number | undefined
+  readonly branch?: string | null | undefined
+  readonly defs?: ReadonlyMap<string, string> | undefined
 }
 ```
 
@@ -1305,6 +1317,10 @@ export interface LockfileClaimHooks {
     readonly workspaceRoot: string
     readonly cacheDir: string
   }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
+  recorded(ctx: {
+    readonly workspaceRoot: string
+    readonly cacheDir: string
+  }): Promise<ReadonlyMap<string, ReadonlySet<string>> | undefined>
 }
 ```
 
@@ -1321,6 +1337,7 @@ export interface LockfileClaimOptions {
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
   readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+  readonly recorded?: (text: string) => ReadonlyMap<string, readonly string[]>
 }
 ```
 

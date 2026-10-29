@@ -296,7 +296,7 @@ reads them back. See the [API](../../api/).
 network I/O in `flush()`, which vx awaits for up to 3 s.
 
 ```ts
-import { Cache, definePlugin, type VxPlugin } from '@vzn/vx'
+import { Cache, definePlugin, localHistory, type VxPlugin } from '@vzn/vx'
 
 export function mcp(): VxPlugin {
   return definePlugin(import.meta, {
@@ -304,9 +304,16 @@ export function mcp(): VxPlugin {
       mcp: {
         description: 'serve run history to an AI agent over stdio',
         async run(argv, ctx) {
-          const db = Cache.inspect(ctx.cacheDir).dbHandle() // read-only: never resets the index
-          void argv
-          void db
+          // read-only: never resets the index. A plugin reads cache.db only
+          // through core (`localHistory`), which returns rows, not a handle.
+          const cache = Cache.inspect(ctx.cacheDir)
+          try {
+            const table = await localHistory(cache).loadAll()
+            void argv
+            void table
+          } finally {
+            cache.close()
+          }
           return 0 // the exit code
         },
       },

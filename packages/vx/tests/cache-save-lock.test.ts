@@ -13,7 +13,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
 import { isInline, storedArtifact } from './helpers/stored-artifact.js'
 
 let root: string
@@ -60,7 +60,7 @@ describe('a save whose index transaction cannot commit', () => {
     // A second writer that also missed rebuilds the key with a differently
     // named chunk while another holds the lock past this handle's busy timeout.
     const second = new Cache(cacheDir)
-    second.dbHandle().exec('PRAGMA busy_timeout = 50')
+    indexDb(second).exec('PRAGMA busy_timeout = 50')
     const holder = new Database(path.join(cacheDir, 'cache.db'))
     holder.exec('BEGIN IMMEDIATE')
     let refused: unknown
@@ -124,11 +124,9 @@ describe('a save whose index transaction cannot commit', () => {
   it('an inline save that fails after its blob insert leaves no row and no blob', async () => {
     const cache = new Cache(cacheDir)
     try {
-      cache
-        .dbHandle()
-        .exec(
-          "CREATE TRIGGER refuse BEFORE INSERT ON entries BEGIN SELECT RAISE(ABORT, 'refused'); END",
-        )
+      indexDb(cache).exec(
+        "CREATE TRIGGER refuse BEFORE INSERT ON entries BEGIN SELECT RAISE(ABORT, 'refused'); END",
+      )
       const refused = await saveBuild(cache, 'chunk-aaaa.js').catch((e: unknown) => e)
       expect(String(refused)).toContain('refused')
       expect([
@@ -137,7 +135,7 @@ describe('a save whose index transaction cannot commit', () => {
         readdirSync(cacheDir).filter((n) => n.includes('.tar.zst')),
       ]).toEqual([null, null, []])
       // CONTROL: the same save with the trigger gone lands inline.
-      cache.dbHandle().exec('DROP TRIGGER refuse')
+      indexDb(cache).exec('DROP TRIGGER refuse')
       await saveBuild(cache, 'chunk-aaaa.js')
       expect([(await cache.get('h1'))?.stdout, isInline(cache, 'h1')]).toEqual([
         'chunk-aaaa.js',

@@ -3,6 +3,7 @@
 // file (0.55 ms against 0.04 per save, on the main thread with the write
 // lock held). `node:fs` is wrapped to record whether each rename's
 // destination existed; every call passes through.
+import { indexDb } from '../src/cache/index.js'
 import * as fs from 'node:fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -63,8 +64,8 @@ describe('a re-save of a key', () => {
     await save('first')
     // An entry is immutable, so a re-save comes only after its row is
     // gone (dropped as corrupt, or two writers that both found it absent).
-    cache.dbHandle().run('DELETE FROM entries WHERE hash = ?', [HASH])
-    cache.dbHandle().run('DELETE FROM artifacts WHERE hash = ?', [HASH])
+    indexDb(cache).run('DELETE FROM entries WHERE hash = ?', [HASH])
+    indexDb(cache).run('DELETE FROM artifacts WHERE hash = ?', [HASH])
     await save('second')
     const final = path.join(cacheDir, `${HASH}.tar.zst`)
     expect(renames.filter((r) => r.to === final).map((r) => r.existed)).toEqual([false, false])

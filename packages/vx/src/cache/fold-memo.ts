@@ -13,7 +13,14 @@ export interface FoldMemoRow {
   key: string
 }
 
-export class FoldMemo {
+/** What a key fold asks of the memo; the rows stay core's (`IndexFoldMemo`). */
+export interface FoldMemo {
+  /** The key remembered for `taskId` under `probe`, if that is the probe it was folded under. */
+  get(taskId: string, probe: string): string | undefined
+  set(taskId: string, probe: string, key: string): void
+}
+
+export class IndexFoldMemo implements FoldMemo {
   private rows: Map<string, FoldMemoRow> | undefined
   private readonly dirty = new Map<string, FoldMemoRow>()
 

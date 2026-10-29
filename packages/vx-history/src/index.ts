@@ -14,7 +14,8 @@
 import {
   currentBranch,
   definePlugin,
-  LocalHistoryProvider,
+  type LocalHistory,
+  localHistory,
   machineMemoryBytes,
   Cache,
   type HistoryTable,
@@ -193,7 +194,7 @@ const readHistory = (
   branch: string | null,
   defs: ReadonlyMap<string, string>,
 ): Promise<ReadonlyMap<string, TaskResources>> =>
-  new LocalHistoryProvider(cache.dbHandle(), windowOf(options), branch, defs).resourcesFor(ids)
+  localHistory(cache, { recent: windowOf(options), branch, defs }).resourcesFor(ids)
 
 /** What each task reserves: learned from the history unless `resources: false`, a declared reservation over either. */
 const reservationsFor = (
@@ -411,14 +412,13 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       const ids: string[] = []
       for (const n of nodes.values()) if (n.config.exec?.command !== undefined) ids.push(n.id)
       let table: ReadonlyMap<string, TaskResources>
-      let provider: LocalHistoryProvider
+      let provider: LocalHistory
       try {
-        provider = new LocalHistoryProvider(
-          ctx.localCache.dbHandle(),
-          windowOf(options),
-          ctx.branch,
+        provider = localHistory(ctx.localCache, {
+          recent: windowOf(options),
+          branch: ctx.branch,
           defs,
-        )
+        })
         table = await provider.resourcesFor(ids)
       } catch (err) {
         // Failing open: a broken history read costs the ordering and the
@@ -849,13 +849,12 @@ async function historyCmd(
     // Each task's rows of its definition as it is now, as `schedule` reads
     // them: read with every definition's, a task whose command changed
     // showed the old command's peak and a reservation no run packs.
-    table = await new LocalHistoryProvider(
-      cache.dbHandle(),
-      window,
-      currentBranch(ctx.workspaceRoot),
+    table = await localHistory(cache, {
+      recent: window,
+      branch: currentBranch(ctx.workspaceRoot),
       // As a run reads them: a task whose command changed has no rows yet.
-      taskDefinitions(tasks as TaskNode[]),
-    ).loadFor(ids)
+      defs: taskDefinitions(tasks as TaskNode[]),
+    }).loadFor(ids)
   } finally {
     cache.close()
   }
