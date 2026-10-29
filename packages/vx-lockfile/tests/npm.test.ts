@@ -352,7 +352,7 @@ describe('npm() declared', () => {
 
   it('refuses an unknown scope', () => {
     expect(() => npm({ scope: 'x' as never })).toThrow(
-      /npm\(\) scope must be 'project' or 'workspace'/,
+      /npm\(\) option "scope" must be 'project' or 'workspace', got/,
     )
   })
 })
