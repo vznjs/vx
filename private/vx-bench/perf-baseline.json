@@ -33,17 +33,17 @@
         "hash xxh3": 8056,
         "spawn git": 6,
         "spawn sh": 200,
-        "sqlite statement": 2746
+        "sqlite statement": 2747
       },
       "up-to-date run @100": {
         "hash xxh3": 4392,
         "spawn git": 3,
-        "sqlite statement": 126
+        "sqlite statement": 127
       },
       "restore run @100": {
         "hash xxh3": 309,
         "spawn git": 3,
-        "sqlite statement": 225
+        "sqlite statement": 226
       },
       "plan @100": {
         "hash xxh3": 2688,
@@ -55,7 +55,7 @@
         "hash xxh3": 3484,
         "spawn git": 3,
         "spawn sh": 68,
-        "sqlite statement": 716
+        "sqlite statement": 717
       }
     },
     "time": {
