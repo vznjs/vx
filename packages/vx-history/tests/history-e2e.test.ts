@@ -367,6 +367,43 @@ describe('vx-history plugin end to end', () => {
   )
 
   it(
+    '`vx history` reads a task as it is now, as the schedule does',
+    async () => {
+      // The hog's command is replaced: the run reads only the new
+      // definition's rows and reserves nothing, so the verb shows none.
+      const hog =
+        'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(50); console.log(b.length)"'
+      const build = (command: string): string =>
+        `export default { tasks: { build: { exec: { command: ${JSON.stringify(command)} } } } }\n`
+      await pkg('a', build(hog))
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['vxHistory({ memory: 4096 })']),
+      )
+      const r = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      expect(r.ok).toBe(true)
+      await pkg('a', build('true'))
+      Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'lock'], cwd: root })
+      const json = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+        cwd: root,
+      })
+      const out = JSON.parse(json.stdout.toString()) as {
+        tasks: { id: string; runs: number; maxPeakRssBytes: number | null; reservation: unknown }[]
+      }
+      const { id, runs, maxPeakRssBytes, reservation } = out.tasks[0]!
+      expect({ id, runs, maxPeakRssBytes, reservation }).toEqual({
+        id: 'a#build',
+        runs: 0,
+        maxPeakRssBytes: null,
+        reservation: null,
+      })
+    },
+    TIMEOUT,
+  )
+
+  it(
     'an assumed duration orders the very first run, before any history exists',
     async () => {
       // The same two chains, no history: the case above pins that this run
