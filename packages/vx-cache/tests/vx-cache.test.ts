@@ -775,6 +775,21 @@ describe('config', () => {
     }
   })
 
+  // A server's words reach the terminal: an ESC in them retitled it and
+  // overwrote the line vx printed before them.
+  it("writes the controls in a server's words as escapes", async () => {
+    const said = JSON.stringify({ message: '\x1b]0;PWNED\x07\x1b[2K\rall good' })
+    const c = layer(
+      'https://cache.test',
+      't',
+      [MAIN],
+      Object.assign(() => Promise.resolve(new Response(said, { status: 500 })), {
+        preconnect: fetch.preconnect,
+      }),
+    )
+    await expect(c.has('ab14')).rejects.toThrow('HTTP 500: \\x1b]0;PWNED\\x07\\x1b[2K all good')
+  })
+
   // The layer asks for the limits as it starts, before any check: a
   // refusal there turned the remote off and was never said.
   it('says a refusal met while it starts, at the first check', async () => {

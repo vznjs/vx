@@ -50,7 +50,6 @@
 @vzn/vx-migrate TURBO_REMOTE_CACHE_TIMEOUT
 @vzn/vx-migrate TURBO_REMOTE_CACHE_UPLOAD_TIMEOUT
 @vzn/vx-migrate TURBO_SCM_BASE
-@vzn/vx-migrate TURBO_SIGNATURE
 @vzn/vx-migrate TURBO_TEAM
 @vzn/vx-migrate TURBO_TEAMID
 @vzn/vx-migrate TURBO_TOKEN
