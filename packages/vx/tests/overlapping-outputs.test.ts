@@ -17,7 +17,7 @@ import { planRun as planFromLock } from '../src/orchestrator/index.js'
 import { lock, prepareRun, run } from './helpers/orchestrator.js'
 import { workspaceWith, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
-import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
+import { indexDb, Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 
@@ -445,7 +445,7 @@ describe('overlapping outputs: the run-end snapshot of each side', () => {
   const recordedFor = (root: string, task: string): string[] => {
     const c = new Cache(path.join(root, '.vx/cache'))
     try {
-      const { hash } = c.dbHandle().query('SELECT hash FROM entries WHERE task = ?').get(task) as {
+      const { hash } = indexDb(c).query('SELECT hash FROM entries WHERE task = ?').get(task) as {
         hash: string
       }
       return (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path)

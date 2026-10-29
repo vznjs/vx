@@ -7,6 +7,7 @@
 // stays as the save path's self-check; this is the agreement it must
 // keep, held in both directions: the rows a save writes, the rows a scan
 // of its bytes reads, and the rows an ingest of those bytes writes.
+import { indexDb } from '../src/cache/index.js'
 import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -36,8 +37,7 @@ interface Row {
 }
 
 function rows(c: Cache, hash: string): Row[] {
-  return c
-    .dbHandle()
+  return indexDb(c)
     .query(
       'SELECT path, size_bytes, mode, mtime_ms FROM output_files WHERE entry_hash = ? ORDER BY path',
     )

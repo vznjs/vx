@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache } from '../src/cache/index.js'
+import { indexDb, Cache } from '../src/cache/index.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 
@@ -56,7 +56,7 @@ describe('Cache.prune', () => {
 
   function hashes(cache: Cache): string[] {
     return (
-      cache.dbHandle().query('SELECT hash FROM entries ORDER BY hash').all() as Array<{
+      indexDb(cache).query('SELECT hash FROM entries ORDER BY hash').all() as Array<{
         hash: string
       }>
     ).map((r) => r.hash)
@@ -185,7 +185,7 @@ describe('Cache.prune', () => {
       age('aa', now - 3000)
       age('bb', now - 2000)
       age('cc', now - 1000)
-      const sizes = cache.dbHandle().query('SELECT size_bytes AS s FROM entries').all() as Array<{
+      const sizes = indexDb(cache).query('SELECT size_bytes AS s FROM entries').all() as Array<{
         s: number
       }>
       const one = Math.max(...sizes.map((r) => r.s))
@@ -278,7 +278,7 @@ describe('Cache.prune', () => {
       await seed(cache, ['aa'])
       age('aa', Date.now() - 2 * DAY)
       const one = (
-        cache.dbHandle().query('SELECT size_bytes AS s FROM entries').get() as {
+        indexDb(cache).query('SELECT size_bytes AS s FROM entries').get() as {
           s: number
         }
       ).s
@@ -326,13 +326,13 @@ describe('Cache.prune', () => {
         for (const h of keys) {
           if (where === 'file')
             await utimes(path.join(cacheDir, `${h}.tar.zst`), when / 1000, when / 1000)
-          else writer.dbHandle().query('UPDATE artifacts SET at = ? WHERE hash = ?').run(when, h)
+          else indexDb(writer).query('UPDATE artifacts SET at = ? WHERE hash = ?').run(when, h)
         }
         expect(present(writer)).toEqual([true, true, true, true])
         expect(await writer.get(hit)).not.toBeNull()
         expect((await writer.getMany([hitMany])).size).toBe(1)
         // Another version's open dropped this row; this one finds the artifact.
-        writer.dbHandle().query('DELETE FROM entries WHERE hash = ?').run(adopted)
+        indexDb(writer).query('DELETE FROM entries WHERE hash = ?').run(adopted)
         expect(await writer.get(adopted, { taskId: 'p#b3', command: 'echo b3' })).not.toBeNull()
       } finally {
         writer.close()
@@ -348,7 +348,7 @@ describe('Cache.prune', () => {
         TAR_STORE,
       )
       try {
-        other.dbHandle().query('DELETE FROM entries').run()
+        indexDb(other).query('DELETE FROM entries').run()
         expect((await other.prune({ olderThanMs: Date.now() - DAY })).orphans).toBe(1)
         // CONTROL: the one never used goes.
         expect(present(other)).toEqual([true, true, true, false])

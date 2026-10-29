@@ -9,9 +9,9 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## report: name taskStart's waited time on the logger page
+## vx: hand plugins history rows, not a cache.db handle
 
-Logger.taskStart is called as taskStart(node, info?) with info.waitedMs, and the task:start event carries waitedMs: a logger or bus subscriber that matched on their exact shape takes the new field.
+The facade no longer exports LocalHistoryProvider and Cache has no dbHandle(). Read run history with localHistory(cache, { recent, branch, defs }), which returns loadFor, p50sFor, resourcesFor, hasImported and importTimings. A plugin has no handle on cache.db.
 
 ## cache: keep run notes and lockfile memos in cache.db
 

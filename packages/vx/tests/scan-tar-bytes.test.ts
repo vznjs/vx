@@ -7,6 +7,7 @@
 // output log (stdout and stderr in one ordered entry since v42), every
 // flipped byte and every truncation. Both run one header decoder
 // (`TarDecoder` in tar-stream.ts); these rows hold the rest of each path.
+import { indexDb } from '../src/cache/index.js'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -351,8 +352,7 @@ describe("a save's index rows are the rows a restore reads", () => {
         durationMs: 1,
       })
       const rows = (c: Cache) =>
-        c
-          .dbHandle()
+        indexDb(c)
           .query(
             'SELECT path, size_bytes, mode, mtime_ms FROM output_files WHERE entry_hash = ? ORDER BY path',
           )

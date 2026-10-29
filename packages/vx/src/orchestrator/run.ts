@@ -8,6 +8,7 @@ import { EMPTY_LOCK, inputStabilityEnv, LOCK_INVALID, lockEntryBroken } from '..
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
+  indexDb,
   Cache,
   type CachePolicy,
   cachesNothing,
@@ -982,7 +983,7 @@ async function runOnBus(
         const ids: string[] = []
         for (const n of nodes.values()) if (!isGroupTask(n)) ids.push(n.id)
         const p50s = await new LocalHistoryProvider(
-          prepared.localCache.dbHandle(),
+          indexDb(prepared.localCache),
           undefined,
           prepared.branch(),
           taskDefinitions(nodes.values()),
@@ -1122,7 +1123,7 @@ async function runOnBus(
     // Why a task missed, for a sink: a read of the history per miss, so only
     // when a sink exists.
     const explainMiss =
-      telemetry === undefined ? undefined : createMissExplainer(prepared.localCache.dbHandle())
+      telemetry === undefined ? undefined : createMissExplainer(indexDb(prepared.localCache))
     const lateProbes = probesAfterWrites(nodes, workspaceRoot)
     // The scheduler's fail-fast stop, as the retry loop of a task already
     // in flight sees it.
@@ -1233,7 +1234,7 @@ async function runOnBus(
     // rows land, so the row that prints next carries the verdict: nothing
     // prints below the footer. A hit or a skip asks nothing; a green miss
     // is one probe of the failed-row index.
-    const historyDb = prepared.localCache.dbHandle()
+    const historyDb = indexDb(prepared.localCache)
     const cacheOff = cachesNothing(policy)
     const judgeFlaky = (o: TaskOutcome): void => {
       const candidates = flakyCandidates([o], taintedRan)
@@ -1558,7 +1559,7 @@ async function runOnBus(
     if (keeps) {
       // Beside the run's rows (cache/run-notes.ts); a refused write costs only them.
       try {
-        keepRunNotes(prepared.localCache.dbHandle(), runId, {
+        keepRunNotes(indexDb(prepared.localCache), runId, {
           steps: steps.ended,
           warnings: warned.map((w) => Bun.stripANSI(w)),
         })
@@ -1820,7 +1821,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // inspection command, so the history read's cost is fine here even
       // though it stays OFF the default run path.
       history: new LocalHistoryProvider(
-        prepared.localCache.dbHandle(),
+        indexDb(prepared.localCache),
         undefined,
         prepared.branch(),
         taskDefinitions(prepared.nodes.values()),

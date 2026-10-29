@@ -1,5 +1,6 @@
 // An output that grows or shrinks between the save's plan (its stat) and
 // the copy is not the file its row describes: both stores refuse the save.
+import { indexDb } from '../src/cache/index.js'
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -48,7 +49,7 @@ for (const [store, label] of [
           () => 'saved',
           (e: Error) => e.message,
         )
-      expect([saved, cache.dbHandle().query('SELECT path FROM output_files').all()]).toEqual([
+      expect([saved, indexDb(cache).query('SELECT path FROM output_files').all()]).toEqual([
         'outputs/dist/a.bin: 65546 bytes, 65536 declared',
         [],
       ])

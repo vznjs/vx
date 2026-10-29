@@ -94,7 +94,6 @@ export class Cache implements CacheLayer {
     | { tmpPath: string }
     | { plan: true; saved: SavedTree }
   >
-  dbHandle(): Database
   recordRun(run: RunRecord): void
   recordRuns(runs: readonly RunRecord[]): void
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
@@ -115,17 +114,6 @@ export class FingerprintWatch {
   wrote(): void
   moved(): readonly string[] | undefined
   say(log: Logger): void
-}
-== class FoldMemo (src/cache/fold-memo.ts)
-export class FoldMemo {
-  constructor(
-    private readonly db: Database,
-    private readonly write: boolean,
-  ) {}
-  get(taskId: string, probe: string): string | undefined
-  set(taskId: string, probe: string, key: string): void
-  flush(now: number = Date.now()): void
-  prune(cutoff: number): void
 }
 == class GitFilesCache (src/cache/git-inputs.ts)
 export class GitFilesCache extends Map<string, readonly string[]> {
@@ -160,37 +148,6 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   override set(key: string, value: readonly string[]): this
   override delete(key: string): boolean
   override clear(): void
-}
-== class LocalHistoryProvider (src/history/history.ts)
-export class LocalHistoryProvider implements HistoryProvider {
-  constructor(
-    private readonly db: Database,
-    readonly recent: number
-    private readonly branch?: string | null,
-    private readonly defs?: ReadonlyMap<string, string>,
-  ) {}
-  async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
-  async loadAll(): Promise<HistoryTable>
-  async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
-  lackedBranchHistory
-  hasImported(sha: string): boolean
-  importTimings(
-    sha: string,
-    timings: ReadonlyMap<string, number>,
-    needs: ReadonlyMap<string, TaskResources> = new Map(),
-    defs: ReadonlyMap<string, string> = new Map(),
-  ): void
-  async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
-}
-== class RemoteHits (src/cache/remote-hits.ts)
-export class RemoteHits {
-  constructor(
-    private readonly db: Database,
-    private readonly write: boolean,
-  ) {}
-  get(hashes: readonly string[]): Map<string, RemoteHit>
-  record(asked: readonly string[], found: ReadonlyMap<string, RemoteHit>, now = Date.now()): void
-  forget(hash: string): void
 }
 == class TaskLogBuffer (src/orchestrator/task-log-buffer.ts)
 export class TaskLogBuffer {
@@ -367,6 +324,8 @@ export async function loadResolvedProjects(
 export function localFloor(
   sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
 ): LocalFloor
+== function localHistory (src/history/history.ts)
+export function localHistory(cache: Cache, options: LocalHistoryOptions = {}): LocalHistory
 == function lockfileClaim (src/orchestrator/lockfile-claim.ts)
 export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 == function machineMemoryBytes (src/util/cgroup.ts)
@@ -928,6 +887,11 @@ export interface FingerprintClaim {
 export interface FingerprintContext extends BaseContext {
   readonly projects: ReadonlyArray<{ readonly name: string; readonly dir: string }>
 }
+== type FoldMemo (src/cache/fold-memo.ts)
+export interface FoldMemo {
+  get(taskId: string, probe: string): string | undefined
+  set(taskId: string, probe: string, key: string): void
+}
 == type GeneratedProject (src/workspace/migration.ts)
 export interface GeneratedProject {
   name: string
@@ -1085,6 +1049,23 @@ export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
   rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
   close(): Promise<void>
+}
+== type LocalHistory (src/history/history.ts)
+export interface LocalHistory extends HistoryProvider {
+  resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+  hasImported(sha: string): boolean
+  importTimings(
+    sha: string,
+    timings: ReadonlyMap<string, number>,
+    needs?: ReadonlyMap<string, TaskResources>,
+    defs?: ReadonlyMap<string, string>,
+  ): void
+}
+== type LocalHistoryOptions (src/history/history.ts)
+export interface LocalHistoryOptions {
+  readonly recent?: number | undefined
+  readonly branch?: string | null | undefined
+  readonly defs?: ReadonlyMap<string, string> | undefined
 }
 == type LockfileClaimHooks (src/orchestrator/lockfile-claim.ts)
 export interface LockfileClaimHooks {
@@ -1475,6 +1456,12 @@ export interface RemoteCacheLayer {
 export interface RemoteHit {
   readonly size?: number
   readonly durationMs?: number
+}
+== type RemoteHits (src/cache/remote-hits.ts)
+export interface RemoteHits {
+  get(hashes: readonly string[]): Map<string, RemoteHit>
+  record(asked: readonly string[], found: ReadonlyMap<string, RemoteHit>, now?: number): void
+  forget(hash: string): void
 }
 == type RemoteKeyTraffic (src/cache/cache.ts)
 export interface RemoteKeyTraffic {

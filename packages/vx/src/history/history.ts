@@ -12,7 +12,7 @@
 // (zero-config); the interface is the seam a plugin fills for any other.
 
 import type { Database } from 'bun:sqlite'
-import { branchSource, EXECUTED_RUNS_SQL } from '../cache/index.js'
+import { branchSource, type Cache, EXECUTED_RUNS_SQL, indexDb } from '../cache/index.js'
 import { isMeasure, splitTaskId } from '../util/index.js'
 import { failureModeOf, mixedOutcomeKeysSql } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
@@ -117,8 +117,40 @@ export class EmptyHistoryProvider implements HistoryProvider {
   }
 }
 
+/** One local cache's run history, read and written by core (`localHistory`): plain rows out, no handle. */
+export interface LocalHistory extends HistoryProvider {
+  /** Each task's measured need (`p50DurationMs`, peak cores and memory). */
+  resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+  /** Whether timings of commit `sha` were imported. */
+  hasImported(sha: string): boolean
+  /** Keep commit `sha`'s timings (task id → ms) and needs as forecast rows. */
+  importTimings(
+    sha: string,
+    timings: ReadonlyMap<string, number>,
+    needs?: ReadonlyMap<string, TaskResources>,
+    defs?: ReadonlyMap<string, string>,
+  ): void
+}
+
+export interface LocalHistoryOptions {
+  /** The newest invocations a read sees (default 50). */
+  readonly recent?: number | undefined
+  /** The run's branch (`currentBranch`); undefined: a read sees every branch's timings. */
+  readonly branch?: string | null | undefined
+  /** Each task's definition (`taskDefinitions`): given, a task reads only rows of it as it is now. */
+  readonly defs?: ReadonlyMap<string, string> | undefined
+}
+
+/**
+ * The run history in `cache`'s index. A plugin reads history only through
+ * this: core owns every read and write of cache.db (2026-10-29).
+ */
+export function localHistory(cache: Cache, options: LocalHistoryOptions = {}): LocalHistory {
+  return new LocalHistoryProvider(indexDb(cache), options.recent, options.branch, options.defs)
+}
+
 /** Reads from the orchestrator's local SQLite cache.db. */
-export class LocalHistoryProvider implements HistoryProvider {
+export class LocalHistoryProvider implements LocalHistory {
   constructor(
     private readonly db: Database,
     readonly recent: number = DEFAULT_RECENT,

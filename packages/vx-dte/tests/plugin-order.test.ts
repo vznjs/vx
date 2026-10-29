@@ -5,9 +5,16 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import type { TaskNode } from '@vzn/vx'
+import { Cache, type TaskNode } from '@vzn/vx'
 import { serveRelay } from '@vzn/vx-dte-server'
 import { dte } from '../src/index.js'
+
+/** A local cache whose history read fails: closed, so the read throws. */
+function noHistory(root: string): Cache {
+  const cache = new Cache(path.join(root, '.vx', 'cache'))
+  cache.close()
+  return cache
+}
 
 // Main 49adc41, 2026-10-23: the first ask came before `schedule` read
 // history, booked a whole worker for each of 122 tasks, 0 measured, and
@@ -45,7 +52,10 @@ it('asks for no worker before schedule has read history', async () => {
         } as unknown as TaskNode,
       ]),
     )
-    const warn = () => {}
+    // Each history read fails and says so once: the count of reads.
+    const warn = (m: string) => {
+      if (m.startsWith('[vx] dte: tasks are packed one core each')) reads++
+    }
     const ex = (await plugin.executor!({
       workspaceRoot: root,
       cacheDir: root,
@@ -63,12 +73,7 @@ it('asks for no worker before schedule has read history', async () => {
       cacheDir: root,
       warn,
       branch: null,
-      localCache: {
-        dbHandle: () => {
-          reads++
-          throw new Error('no history')
-        },
-      },
+      localCache: noHistory(root),
       refine: () => {},
       onRefine: () => {},
       refining: async () => {},
@@ -142,11 +147,7 @@ it('numbers workers within their size', async () => {
       cacheDir: root,
       warn,
       branch: null,
-      localCache: {
-        dbHandle: () => {
-          throw new Error('no history')
-        },
-      },
+      localCache: noHistory(root),
       refine: () => {},
       onRefine: () => {},
       refining: async () => {},
@@ -216,11 +217,7 @@ it('takes an adapter spawn that throws as a worker that could not start', async 
           cacheDir: root,
           warn,
           branch: null,
-          localCache: {
-            dbHandle: () => {
-              throw new Error('no history')
-            },
-          },
+          localCache: noHistory(root),
           refine: () => {},
           onRefine: () => {},
           refining: async () => {},
@@ -302,11 +299,7 @@ it('counts a worker its adapter left running against its size again', async () =
       cacheDir: root,
       warn,
       branch: null,
-      localCache: {
-        dbHandle: () => {
-          throw new Error('no history')
-        },
-      },
+      localCache: noHistory(root),
       refine: () => {},
       onRefine: () => {},
       refining: async () => {},

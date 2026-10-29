@@ -12,7 +12,15 @@ export interface RemoteHit {
   readonly durationMs?: number
 }
 
-export class RemoteHits {
+/** What a layered cache asks of the remote-hit rows; the rows stay core's (`IndexRemoteHits`). */
+export interface RemoteHits {
+  /** The keys of `hashes` a remote last said it holds. */
+  get(hashes: readonly string[]): Map<string, RemoteHit>
+  record(asked: readonly string[], found: ReadonlyMap<string, RemoteHit>, now?: number): void
+  forget(hash: string): void
+}
+
+export class IndexRemoteHits implements RemoteHits {
   constructor(
     private readonly db: Database,
     /** Off for a reading verb or an index this user cannot write. */
