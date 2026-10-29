@@ -236,6 +236,28 @@ describe('defaultLogger visibility matrix — focused', () => {
     )
   })
 
+  // A row or a kept server's line written while the streamed task sat
+  // mid-line was glued onto the task's own text.
+  it("vx's own lines never glue onto a streamed task's partial line", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    const db = mkNode('db#serve')
+    db.config.exec!.persistent = {}
+    log.taskComplete(db, mkOutcome(db, 'success'))
+    const n = mkNode('app#dev', { requested: true })
+    log.taskStart?.(n)
+    log.taskStdout(n, 'compiling... ')
+    log.stepEnd?.('vx:keys', { durationMs: 500, ok: false })
+    log.taskComplete(n, mkOutcome(n, 'failed'))
+    log.taskStdout(n, 'late, partial')
+    log.runEnd?.()
+    log.taskStdout(db, 'db line\n')
+    expect(out.text()).toBe(
+      '┌─ app#dev > $ noop\ncompiling... \n ◼︎   500ms failed  internal vx:keys\n' +
+        '└─ app#dev ── (100ms) failed (exit 1)\n\nlate, partial\ndb#serve │ db line\n',
+    )
+  })
+
   // It opened no frame, so a frame close for it closed nothing.
   it('requested task the stop kept from starting → a `not run` row, no frame close', () => {
     const out = sink()
