@@ -90,6 +90,40 @@ describe('turbo(): turbo.json workspace keys', () => {
     }
   })
 
+  // Turbo #9053: `turbo run --affected` diffs TURBO_SCM_BASE...TURBO_SCM_HEAD.
+  // vx's head is the checkout (HEAD and its working tree), so a head that is
+  // HEAD's commit is honoured as is, and any other one is said, not ignored.
+  it('TURBO_SCM_HEAD at the checkout is honoured; another head is warned of', async () => {
+    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: {} }))
+    const git = (...args: string[]) =>
+      Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: root })
+        .stdout.toString()
+        .trim()
+    git('init', '-q')
+    git('commit', '-q', '--allow-empty', '-m', 'one')
+    git('commit', '-q', '--allow-empty', '-m', 'two')
+    const [head, parent] = [git('rev-parse', 'HEAD'), git('rev-parse', 'HEAD~1')]
+    const saved = process.env['TURBO_SCM_HEAD']
+    try {
+      const warned: Record<string, string[]> = {}
+      for (const v of ['HEAD', head, '', ' ', parent, 'no-such-ref']) {
+        process.env['TURBO_SCM_HEAD'] = v
+        const said: string[] = []
+        await turbo().config!(
+          {},
+          { workspaceRoot: root, warn: (m) => void said.push(m), setBranch: () => {} },
+        )
+        warned[v] = said
+      }
+      expect(Object.values(warned).map((w) => w.length)).toEqual([0, 0, 0, 0, 1, 1])
+      expect(warned[parent]![0]).toContain(`TURBO_SCM_HEAD (${parent})`)
+      expect(warned['no-such-ref']![0]).toContain('TURBO_SCM_HEAD (no-such-ref)')
+    } finally {
+      if (saved === undefined) delete process.env['TURBO_SCM_HEAD']
+      else process.env['TURBO_SCM_HEAD'] = saved
+    }
+  })
+
   it('a concurrency that is no positive whole number is left to the default', async () => {
     for (const concurrency of ['abc', '1.5', '-2']) {
       await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency, tasks: {} }))

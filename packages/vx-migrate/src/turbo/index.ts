@@ -78,6 +78,14 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
           Bun.env['TURBO_SCM_BASE']?.trim() ||
           githubActionsBase(rootOf(ctx.workspaceRoot), keys.remoteBaseFallback === true)
         if (base) ctx.setBranch({ base })
+        // ...up to TURBO_SCM_HEAD. vx's head is the checkout (HEAD and its
+        // working tree): a head at HEAD's commit is that, any other is said.
+        const head = Bun.env['TURBO_SCM_HEAD']?.trim()
+        if (head && !atHead(rootOf(ctx.workspaceRoot), head))
+          ctx.warn(
+            `TURBO_SCM_HEAD (${head}) is not the checked-out commit: --affected compares ` +
+              `the base with the checkout, so check out ${head} to compare with it.`,
+          )
       },
       // Turbo's packages are the package manager's members, each a project
       // with no vx.config written. `//#task` keys run on the root, as Turbo
@@ -99,6 +107,18 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
 }
 
 const UNKNOWN_SHA = '0'.repeat(40)
+
+/** Whether `ref` names HEAD's commit. */
+function atHead(root: string, ref: string): boolean {
+  // An option is no ref; rev-parse prints `--end-of-options` back (git 2.43).
+  if (ref.startsWith('-')) return false
+  const proc = Bun.spawnSync(['git', 'rev-parse', 'HEAD', `${ref}^{commit}`], {
+    cwd: root,
+    stderr: 'ignore',
+  })
+  const [head, at] = proc.stdout.toString().split('\n')
+  return proc.exitCode === 0 && head === at
+}
 
 /**
  * Turbo's `--affected` base on GitHub Actions when `TURBO_SCM_BASE` is
