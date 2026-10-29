@@ -550,7 +550,9 @@ Mutual exclusion:
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest flag the verb accepts when one is within two edits
-(`unknown flag: --concurency (did you mean --concurrency?)`). Every verb
+(`unknown flag: --concurency (did you mean --concurrency?)`); a name of
+four letters or fewer gets one edit or a swap of two letters, so
+`--poll` is not hinted `--all` nor `vx test` `last`. Every verb
 does this against its own usage line and `--help`: `vx info --formt`
 hints `--format`, `vx lock --chek` hints `--check`, `vx upgrade --hlp`
 hints `--help`, and `--json` on a verb that takes `--format` hints
@@ -1391,6 +1393,10 @@ watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** A cycle opens with a blank line and
    `changed <project> <relpath>`, plus ` (+N more)` when more paths
    changed, then its task rows as `vx run` prints them, with no footer.
+   Where a hit prints no row (`--all`, `--filter`, `--affected`, or
+   `--output-logs errors-only` / `none`), a cycle of hits alone says
+   ` N tasks cached, nothing ran`, so a cycle back to cached bytes is
+   not silent below the failure before it.
    The named path is the first changed file that still exists (a
    directory only when no file changed), so an
    editor's temporary file renamed away names nothing; a deletion names
@@ -2458,9 +2464,10 @@ message is that plugin's or check's: do what it says.
 
 #### `VX_E_FS`
 
-The file system refused a write: permissions, a full disk. The message
-names the path. Free space (`vx cache clean --max-size <size>` trims the
-cache) or grant the write, then re-run.
+The file system refused a write: permissions, a full disk, a file where
+the cache directory goes. The message names the path. Free space
+(`vx cache clean --max-size <size>` trims the cache), grant the write,
+or move the file away, then re-run.
 
 #### `VX_E_FDS`
 
@@ -3131,7 +3138,9 @@ id could be is refused as an unexpected argument).
 prints one task's output instead of the summary: in the latest run that
 recorded the task, or in RUNID's. A failed task's is the kept failure
 output; any other task's is its cache entry's log (the one a hit
-replays, masked as it was), so a passing task's log reads too, on a hit
+replays, masked as it was, and again with this process's secret values,
+as a hit's replay is; a task's `env.define` / `env.secret` values only
+the run knows), so a passing task's log reads too, on a hit
 or in the run that saved it. An uncached task that passed, or a skip,
 kept none, nor does a failed task past the newest 50 failed runs:
 stdout is empty and stderr says so, exit 0. A kept log that is empty
