@@ -116,6 +116,22 @@ describe('vx show <task> --affected', () => {
     ])
   })
 
+  // Another runner's affected set depended on the directory it ran from.
+  it('answers the same from a project directory below the root as from the root', async () => {
+    const below = path.join(edge, 'pkgs', 'y', 'sub')
+    await mkdir(below, { recursive: true })
+    const all = (cwd: string) => {
+      const r = vx(cwd, 'run', 'test', '--all', '--affected=HEAD', '--dry=json')
+      if (r.code !== 0) throw new Error(`vx run --dry: ${r.err}`)
+      return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
+    }
+    expect([shown(below, '--affected=HEAD'), all(below)]).toEqual([
+      ['x', 'y'],
+      ['x#test', 'y#test'],
+    ])
+    expect(all(edge)).toEqual(['x#test', 'y#test'])
+  })
+
   // `vx show` takes no --all: the run's way out named a flag show refuses.
   it('on the base branch, names the way out show has', () => {
     const r = vx(noEdge, 'show', '--affected')
