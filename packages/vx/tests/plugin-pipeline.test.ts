@@ -1609,6 +1609,24 @@ describe('plugin-host, called directly', () => {
     })
   })
 
+  // The fold hashes a part's UTF-8, which writes '\ud800' and '\udc00'
+  // alike as U+FFFD: two materials folded one key.
+  it('a lone surrogate in a key part is refused; a pair folds', async () => {
+    const refusal = (material: Record<string, string>): Promise<string | null> =>
+      applyKeyHooks([testPlugin('org/tool', { key: () => material })], nodes(), {} as never).then(
+        () => null,
+        (e: Error) => e.message,
+      )
+    const why = (part: string): string =>
+      `plugin 'org/tool' failed in key: part '${part}' on a#build holds a lone UTF-16 surrogate, which the key cannot tell from another`
+    expect([
+      await refusal({ v: 'a\ud800' }),
+      await refusal({ v: 'a\udc00' }),
+      await refusal({ 'n\ud800': 'x' }),
+      await refusal({ v: 'a😀' }),
+    ]).toEqual([why('v'), why('v'), why('n�'), null])
+  })
+
   it('a stage counts as declared only by a plugin that declares that stage', () => {
     const admitOnly = [bare, testPlugin('org/gate', { admit: () => true })]
     const stages = ['config', 'project', 'graph', 'key', 'schedule', 'admit'] as const
