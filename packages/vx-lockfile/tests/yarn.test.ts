@@ -9,7 +9,7 @@ import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { yarn } from '../src/index.js'
-import { importerDigests, parseLockfile } from '../src/yarn.js'
+import { importerDigests, importerLinks, parseLockfile } from '../src/yarn.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -613,6 +613,34 @@ describe('yarn() declared', () => {
 // could be dropped from yarn.ts with the suite green.
 describe('every input the yarn digest must read', () => {
   const ALL = ['.', 'packages/a', 'packages/b', 'packages/c']
+
+  it.each([
+    [
+      'an entry with no resolution',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  dependencies:\n    x: "npm:^1"\n\n"x@npm:^1":\n  version: 1.0.0\n`,
+    ],
+    [
+      'a patch range with no inner descriptor',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n  dependencies:\n    x: "patch:x@"\n`,
+    ],
+    [
+      'a dependency range that is no string',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n  dependencies:\n    x: [1, 2]\n`,
+    ],
+    ['an entry that is no map', `"a@workspace:packages/a": 3\n`],
+    [
+      'a patch descriptor with a broken escape',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n\n"x@patch:x@npm%3A1%E0%A4%A#./p.patch::locator=a%40workspace%3Apackages%2Fa":\n  version: 1.0.0\n  resolution: "x@patch:x@npm%3A1%E0%A4%A#./p.patch::version=1.0.0&hash=1"\n`,
+    ],
+  ])(
+    'a malformed berry lockfile (%s) is read past, never a crash (vercel/turborepo#12828)',
+    (_, body) => {
+      const lock = parseLockfile(`__metadata:\n  version: 8\n  cacheKey: 10\n\n${body}`)
+      expect(lock.generation).toBe('berry')
+      expect([...importerDigests(lock).keys()]).toEqual(['packages/a'])
+      expect([...importerLinks(lock).keys()]).toEqual(['packages/a'])
+    },
+  )
 
   it('an entry with no `resolution` is keyed by its descriptors, never merged with another', () => {
     const strip = (text: string) =>
