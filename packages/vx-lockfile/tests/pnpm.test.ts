@@ -1045,6 +1045,36 @@ snapshots:
     expect(movedDirs(lock('sha512-def'), lock('sha512-ghi'))).toEqual(['apps/web'])
   })
 
+  it("a root devDependency's transitive bump moves the root importer alone (vercel/turborepo#13476)", () => {
+    const lock = (deep: string) => `lockfileVersion: '9.0'
+importers:
+  .:
+    devDependencies:
+      prettier:
+        specifier: ^3
+        version: 3.5.3
+  packages/a:
+    dependencies:
+      leaf:
+        specifier: ^1
+        version: 1.0.0
+packages:
+  deep@${deep}:
+    resolution: {integrity: sha512-${deep}}
+  leaf@1.0.0:
+    resolution: {integrity: sha512-leaf}
+  prettier@3.5.3:
+    resolution: {integrity: sha512-p}
+snapshots:
+  deep@${deep}: {}
+  leaf@1.0.0: {}
+  prettier@3.5.3:
+    dependencies:
+      deep: ${deep}
+`
+    expect(movedDirs(lock('1.0.0'), lock('1.0.1'))).toEqual(['.'])
+  })
+
   it('a `link:` outside every importer folds its target', () => {
     const lock = (target: string) =>
       v9().replace('version: link:../b', `version: link:../../vendor/${target}`)
