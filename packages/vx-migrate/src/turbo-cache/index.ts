@@ -26,7 +26,7 @@ import {
   UserError,
   type PluginOptionKinds,
 } from '@vzn/vx'
-import { deadline } from '../remote-deadline.js'
+import { deadline, MAX_TIMER_MS } from '../remote-deadline.js'
 import { refusal } from '../remote-refusal.js'
 import { keyedByRef, readScopes, remoteScope, type RemoteScope } from './scope.js'
 import { OutageBreaker } from '../remote-breaker.js'
@@ -986,11 +986,14 @@ function refuseBadNumbers(options: TurboCacheOptions): void {
   if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
     throw new UserError(`turboCache() option "retries" must be a whole number ≥ 0, got ${retries}`)
   // 0 is no deadline, as Turbo reads it; a negative or non-number one made
-  // AbortSignal.timeout throw on every request.
+  // AbortSignal.timeout throw on every request, and one past the longest
+  // timer aborted each as it started (Turbo's own env values are held).
   for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
     const ms = options[name]
-    if (ms !== undefined && !(Number.isFinite(ms) && ms >= 0))
-      throw new UserError(`turboCache() option "${name}" must be ms ≥ 0 (0: none), got ${ms}`)
+    if (ms !== undefined && !(ms >= 0 && ms <= MAX_TIMER_MS))
+      throw new UserError(
+        `turboCache() option "${name}" must be ms ≥ 0 (0: none) up to ${MAX_TIMER_MS}, got ${ms}`,
+      )
   }
 }
 

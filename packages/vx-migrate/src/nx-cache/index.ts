@@ -20,7 +20,7 @@ import {
   UserError,
   type PluginOptionKinds,
 } from '@vzn/vx'
-import { deadline } from '../remote-deadline.js'
+import { deadline, MAX_TIMER_MS } from '../remote-deadline.js'
 import { refusal } from '../remote-refusal.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { Cooldown, withRetry } from '../remote-retry.js'
@@ -271,13 +271,15 @@ export function nxCache(options: NxCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('nxCache()', options, NX_CACHE_KEYS)
   // At the call: in the `cache` hook a laptop with no server named passed
   // what failed the first CI run. A NaN never reaches the bound, and the
-  // request would be resent forever; a zero timeout aborted every request
-  // as it started.
+  // request would be resent forever; a zero timeout, or one past the longest
+  // timer, aborted every request as it started.
   const { retries, timeoutMs: ms } = options
   if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
     throw new UserError(`nxCache() option "retries" must be a whole number ≥ 0, got ${retries}`)
-  if (ms !== undefined && !(Number.isFinite(ms) && ms > 0))
-    throw new UserError(`nxCache() option "timeoutMs" must be a positive number of ms, got ${ms}`)
+  if (ms !== undefined && !(ms > 0 && ms <= MAX_TIMER_MS))
+    throw new UserError(
+      `nxCache() option "timeoutMs" must be a positive number of ms up to ${MAX_TIMER_MS}, got ${ms}`,
+    )
   return definePlugin(import.meta, {
     cache(): RemoteCacheLayer | undefined {
       const config = resolveNxCacheConfig(options)
