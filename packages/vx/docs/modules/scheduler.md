@@ -94,7 +94,7 @@ export interface ScheduleOptions {
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
   /** Where a rejected `execute`'s line goes, before its outcome; default stderr. */
-  onError?: (node: TaskNode, line: string) => void
+  onError?: (node: TaskNode, line: string, err: unknown) => void
   /** What an outcome still owes before its dependents may start (the off-slot cache save). */
   settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
   /** The outcome of an exec-tier task settled in place, or undefined to dispatch it. */

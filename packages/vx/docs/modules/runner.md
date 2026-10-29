@@ -66,7 +66,7 @@ export function restoreTerminalModes(): void
 export function shellQuote(arg: string): string
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 // POSIX "terminated by signal N" → exit 128+N (SIGINT → 130, SIGTERM → 143).
-export function signalExitCode(signal: string): number // 128 + signo; 130 fallback
+export function signalExitCode(signal: string | number): number // 128 + signo (Bun gives a bare number for an unnamed signal); 130 fallback for an unknown name
 // The signal a run's stop sends a task, from its abort reason (SIGINT,
 // else SIGTERM — a hang-up forwards SIGTERM, as `forwardedSignal`): a
 // task stopped before its spawn exits as if it had killed it.
@@ -80,7 +80,7 @@ export function streamToString(
 ): Promise<string>
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
-  floorBytes?: number, // ownRssHighWater(): a peak at or under it is inherited, not reported
+  floorBytes?: number | ((peak: number) => number), // ownRssHighWater(), or a function of the peak: a peak at or under it is inherited, not reported
 ): { cpuMs?: number; peakRssBytes?: number }
 
 // The inverse of signalExitCode: 137 → 'SIGKILL', and undefined below
