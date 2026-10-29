@@ -253,6 +253,14 @@ export function classicLinks(
         const asked = forced.get(name) ?? range
         // A `file:` range is a copy packed at install, as berry's (`linkedDir`).
         if (asked.startsWith('file:')) continue
+        // A `link:` symlinks its directory whatever the name: under another
+        // name (`"y": "link:../c"`) the name found no workspace.
+        if (asked.startsWith('link:')) {
+          const linked = joinPosix(dir, asked.slice('link:'.length))
+          if (linked !== undefined && linked !== dir && manifests.has(linked))
+            links.deps[name] = linked
+          continue
+        }
         if (target !== undefined && target !== dir && !lock.descriptors.has(`${name}@${asked}`)) {
           links.deps[name] = target
         }
