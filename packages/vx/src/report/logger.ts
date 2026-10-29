@@ -6,10 +6,11 @@ import {
   formatKeptLines,
   formatPersistentTailBlock,
   formatListHeader,
+  formatListTitle,
+  usualCell,
   formatTaskAbortedLine,
   formatTaskBlock,
   executedCells,
-  waited,
   formatTaskExecutedLine,
   flakyNote,
   pathNote,
@@ -92,8 +93,7 @@ export interface Logger {
     /** The run's canonical start (epoch ms) — equals the final summary's `startedAt`. */
     startedAtMs?: number
   }): void
-  /** `waitedMs`: how long it waited ready for a slot, when not started at once. */
-  taskStart?(node: TaskNode, info?: { waitedMs?: number }): void
+  taskStart?(node: TaskNode): void
   /** The task graph finished (any outcome); vx's own closing steps follow. Idempotent. */
   runEnd?(): void
   /**
@@ -355,9 +355,7 @@ export function defaultLogger(
   // Tasks the region showed on the critical path: their finished rows say so too.
   const onPath = new Set<string>()
   let blockedCount = 0
-  let expected: ReadonlyMap<string, number> | undefined
   // Each task's usual time once history is read: the results' `±usual`.
-  let usualOf: ReadonlyMap<string, number> | undefined
   let blocked: readonly BlockedTask[] | undefined
   let blockedBy: ReadonlyMap<string, number> | undefined
   let etaAtMs = 0
@@ -522,10 +520,8 @@ export function defaultLogger(
             : Math.min(deadlineMs ?? now, now)
       critical = f.critical
       blockedCount = f.waiting
-      expected = f.expected
       blocked = f.blocked
       blockedBy = f.blockedBy
-      usualOf = f.usual
     }
     const etaMs = deadlineMs === undefined ? undefined : deadlineMs - now
     if (signals.progress && total > 0) {
@@ -610,7 +606,7 @@ export function defaultLogger(
         summaryLines,
         ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
         ...(runContext?.usage !== undefined ? { usage: runContext.usage } : {}),
-        ...(expected !== undefined ? { expected } : {}),
+        ...(runContext?.usual !== undefined ? { usual: runContext.usual } : {}),
         ...(critical !== undefined ? { critical } : {}),
       },
       colors,
@@ -694,6 +690,7 @@ export function defaultLogger(
   const emitRow = (line: string): void => {
     if (!headed) {
       headed = true
+      emitLine(formatListTitle('Finished', colors))
       emitLine(formatListHeader(colors))
     }
     emitLine(line)
@@ -739,14 +736,14 @@ export function defaultLogger(
 
   // How many tasks are downstream of each: every results row's `blocks`.
   const blocksOf = (id: string): number | undefined => runContext?.blocks?.().get(id)
+  // A row's usual time: null for a task history never timed, undefined with no history to ask.
+  const usualMsOf = (id: string): number | null | undefined =>
+    runContext?.usual === undefined ? undefined : (runContext.usual(id) ?? null)
   const failureRow = (node: TaskNode, outcome: TaskOutcome): string =>
-    formatFailureLine(
-      node.id,
-      outcome.durationMs,
-      colors,
-      cacheWordOf(outcome),
-      executedCells(outcome, blocksOf(node.id)),
-    ) +
+    formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(outcome), {
+      ...executedCells(outcome, blocksOf(node.id)),
+      usual: usualCell(outcome.durationMs, usualMsOf(node.id), colors),
+    }) +
     (onPath.has(node.id) ? pathNote(colors) : '') +
     flakyNote(outcome, colors)
 
@@ -811,7 +808,7 @@ export function defaultLogger(
       tail = false
       killStatus()
     },
-    taskStart(node, info) {
+    taskStart(node) {
       if (isGroupTask(node)) return
       if (holdsTerminal(node)) {
         killStatus()
@@ -837,7 +834,6 @@ export function defaultLogger(
         id: node.id,
         startedMs: Date.now(),
         cache: ranNoCache({ node }) ? 'no-cache' : 'miss',
-        ...(waited(info?.waitedMs) ? { waitedMs: info!.waitedMs! } : {}),
       }
       const free = slots.indexOf(null)
       if (free >= 0) slots[free] = slot
@@ -1161,7 +1157,7 @@ export function defaultLogger(
                 colors,
                 onPath.has(node.id),
                 blocksOf(node.id),
-                usualOf?.get(node.id),
+                usualMsOf(node.id),
               ),
             )
           } else if (outcome.status === 'skipped') {

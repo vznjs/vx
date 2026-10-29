@@ -7,11 +7,13 @@
 
 import { dumbTerminal, paint, type ColorSupport } from '../util/index.js'
 import {
+  formatListTitle,
   formatRunningHeader,
   formatTaskRow,
   paintIdParts,
   pathNote,
   type RowCells,
+  unknownUsual,
 } from './framed-output.js'
 import type { BlockedTask } from './forecast.js'
 
@@ -327,8 +329,6 @@ export interface WorkerSlot {
   startedMs: number
   /** Its executor holds it for a machine to begin it (`TaskExecutor.running` is `null`). */
   waiting?: boolean
-  /** How long it waited ready for a slot; absent when it started at once. */
-  waitedMs?: number
   /** Its cache cell: `no-cache` for a task that caches nothing, else `miss` (the default). */
   cache?: 'miss' | 'no-cache'
 }
@@ -344,8 +344,11 @@ export interface StatusRegionState {
   critical?: string
   /** Where a running task runs, when not here (`TaskExecutor.running`); its row shows it. */
   where?: (taskId: string) => string | null | undefined
-  /** A running task's usual duration from history; its row shows it. */
-  expected?: ReadonlyMap<string, number>
+  /**
+   * A task's usual duration from history, undefined for one it never
+   * timed; its row shows it, `unknown` for none. Absent: no history to ask.
+   */
+  usual?: (taskId: string) => number | undefined
   /** A running task's live CPU and memory; its row's `cpu` and `mem`. */
   usage?: (taskId: string) => LiveUsage | undefined
   /**
@@ -464,8 +467,10 @@ export function formatStatusRegion(
   const dim = (t: string) => paint('', t, colors, { dim: true })
   // A task's usual duration, the live list's `usual` cell: `~18s`.
   const usualOf = (id: string): { text: string; painted: string } => {
-    const ms = s.expected?.get(id)
-    const text = ms === undefined ? '' : formatExpected(ms)
+    if (s.usual === undefined) return { text: '', painted: '' }
+    const ms = s.usual(id)
+    if (ms === undefined) return unknownUsual(colors)
+    const text = formatExpected(ms)
     return { text, painted: dim(text) }
   }
   // Leading blank separates the live running region from the completed
@@ -493,8 +498,9 @@ export function formatStatusRegion(
   // the ticking time IS the motion), then `running`, the usual duration,
   // how many tasks wait on it, and the full id (never truncated — name is
   // the last column). The rows no task runs in hold the tasks planned
-  // next, each nested under what it waits on; the rest stay blank, so the
-  // list keeps its height.
+  // next, each nested under what it waits on. No blank rows pad the list
+  // to the worker count: a run using 2 of 12 workers left 10 empty lines
+  // between its rows and the footer (2026-10-29).
   const running = s.slots.filter((x): x is WorkerSlot => x !== null && x.waiting !== true)
   // Placed by an executor (DTE), the list is what runs: blocked tasks are
   // the tasks line's count alone, and its size is no machine's.
@@ -513,9 +519,7 @@ export function formatStatusRegion(
       n++
     }
   }
-  let rows = 0
   for (const slot of running) {
-    rows++
     if (s.stopping === true) {
       lines.push(
         formatTaskRow(
@@ -546,7 +550,6 @@ export function formatStatusRegion(
         colors,
         {
           usual: usualOf(slot.id),
-          ...(slot.waitedMs !== undefined ? { waitedMs: slot.waitedMs } : {}),
           ...(use !== undefined ? { cpu: use.cores, memBytes: use.rssBytes } : {}),
           blocks: String(s.blockedBy?.get(slot.id) ?? 0),
           worker: at ?? 'local',
@@ -554,7 +557,6 @@ export function formatStatusRegion(
       ) + (s.critical === slot.id ? pathNote(colors) : ''),
     )
     for (const b of nested.get(slot.id) ?? []) {
-      rows++
       lines.push(
         formatTaskRow(
           ' ',
@@ -570,7 +572,6 @@ export function formatStatusRegion(
       )
     }
   }
-  if (!placed) for (; rows < (s.size ?? 0); rows++) lines.push('')
   for (const step of s.steps ?? []) {
     lines.push(
       formatTaskRow(
@@ -586,7 +587,8 @@ export function formatStatusRegion(
       ),
     )
   }
-  if (lines.length > 1) lines.splice(1, 0, formatRunningHeader(colors))
+  if (lines.length > 1)
+    lines.splice(1, 0, formatListTitle('Running', colors), formatRunningHeader(colors))
   // The live summary section — identical shape to the final printout,
   // so the region visually BECOMES the summary when the run ends.
   lines.push(...s.summaryLines)

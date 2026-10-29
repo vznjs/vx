@@ -311,6 +311,11 @@ export class LocalHistoryProvider implements LocalHistory {
    * against 4 for the executed successes' durations alone.
    */
   async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
+    return this.p50sNow(taskIds)
+  }
+
+  /** `p50sFor`, at once: a row drawn now reads it (the rows' `usual`). */
+  p50sNow(taskIds: readonly string[]): ReadonlyMap<string, number> {
     if (taskIds.length === 0) return new Map()
     return this.forecasts(new Set(taskIds))
   }

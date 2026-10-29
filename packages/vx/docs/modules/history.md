@@ -141,8 +141,9 @@ first run would have read every task unmeasured. `tests/history-definition.test.
 
 ## Who reads it
 
-- The live region's end-of-run forecast and each running row's usual
-  duration (`p50sFor`), asked only once a run is a second old.
+- Every row's `usual` (running and finished, terminal and log) and the
+  live region's end-of-run forecast (`p50sNow`), read once per run on
+  the first row that asks: a run that executes nothing never reads it.
 
 - `plan.ts` (`--dry`): attaches each would-run task's p50 and
   predicts the run's wall-clock, through `p50sFor` when the provider has

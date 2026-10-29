@@ -96,15 +96,18 @@ describe('vx watch loop (e2e)', () => {
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
     await until(async () => (await executions(f.log)) === 2, 'the re-run after the edits')
     await Bun.sleep(SETTLE_MS)
-    // The duration and cpu are padded to fixed widths, so their digits decide the spaces before them.
+    // The duration, its distance from the usual (D) and cpu are padded to
+    // fixed widths, so their digits decide the spaces before them. The first
+    // cycle has no history: its usual is unknown.
     expect(
       w
         .out()
+        .replace(/ +[+\u2212][\d.]+m?s/g, ' D')
         .replace(/ +\d+ms/g, ' Nms')
         .replace(/ +\d+%/g, ' C'),
     ).toBe(
       [
-        ' ⏺︎ Nms                 success miss C' +
+        ' ⏺︎ Nms unknown success miss C' +
           ' '.repeat(13) +
           '3B' +
           ' '.repeat(7) +
@@ -112,7 +115,7 @@ describe('vx watch loop (e2e)', () => {
         'watching 1 project · 1 task',
         '',
         'changed app src/b.txt (+1 more)',
-        ' ⏺︎ Nms                 success miss C' +
+        ' ⏺︎ Nms D success miss C' +
           ' '.repeat(13) +
           '6B' +
           ' '.repeat(7) +
@@ -139,11 +142,12 @@ describe('vx watch loop (e2e)', () => {
     expect(
       w
         .out()
+        .replace(/ +[+\u2212][\d.]+m?s/g, ' D')
         .replace(/ +\d+ms/g, ' Nms')
         .replace(/ +\d+%/g, ' C'),
     ).toBe(
       [
-        ' ⏺︎ Nms                 success miss C' +
+        ' ⏺︎ Nms unknown success miss C' +
           ' '.repeat(13) +
           '3B' +
           ' '.repeat(7) +
@@ -151,7 +155,7 @@ describe('vx watch loop (e2e)', () => {
         'watching 1 project · 1 task',
         '',
         'changed app src/a.txt',
-        ' ⏺︎ Nms                 success miss C' +
+        ' ⏺︎ Nms D success miss C' +
           ' '.repeat(13) +
           '3B' +
           ' '.repeat(7) +

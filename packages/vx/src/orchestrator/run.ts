@@ -917,10 +917,33 @@ async function runOnBus(
     // over the graph, built on the first row that asks.
     let blocks: ReadonlyMap<string, number> | undefined
     const blocksNow = (): ReadonlyMap<string, number> => (blocks ??= blocksCounts(nodes))
+    // Every row's `usual` and the forecast's timings: history read once, on
+    // the first row that asks, so a run that executes nothing never reads
+    // it. It was read only a second into a live run, so rows before that,
+    // a short run's and every log's showed none (2026-10-29).
+    let p50s: ReadonlyMap<string, number> | undefined
+    const p50sNow = (): ReadonlyMap<string, number> => {
+      if (p50s !== undefined) return p50s
+      const ids: string[] = []
+      for (const n of nodes.values()) if (!isGroupTask(n)) ids.push(n.id)
+      try {
+        p50s = new LocalHistoryProvider(
+          indexDb(prepared.localCache),
+          undefined,
+          prepared.branch(),
+          taskDefinitions(nodes.values()),
+        ).p50sNow(ids)
+      } catch {
+        // History is observability: an unreadable one knows no task.
+        p50s = new Map()
+      }
+      return p50s
+    }
     // The live rows' `cpu` and `mem`; it looks only once the live list asks.
     const liveUsage = createLiveUsage()
     const runContext = {
       blocks: blocksNow,
+      usual: (id: string) => p50sNow().get(id),
       usage: liveUsage.usage,
       ...(footers.length > 0
         ? { executorRows: () => footers.flatMap((e) => executorFooter(e, fault)) }
@@ -979,17 +1002,7 @@ async function runOnBus(
     // never reads history.
     terminal?.forecast(
       () => createForecast(nodes, new Map(), concurrency, blocksNow()),
-      async () => {
-        const ids: string[] = []
-        for (const n of nodes.values()) if (!isGroupTask(n)) ids.push(n.id)
-        const p50s = await new LocalHistoryProvider(
-          indexDb(prepared.localCache),
-          undefined,
-          prepared.branch(),
-          taskDefinitions(nodes.values()),
-        ).p50sFor(ids)
-        return createForecast(nodes, p50s, concurrency, blocksNow())
-      },
+      async () => createForecast(nodes, p50sNow(), concurrency, blocksNow()),
     )
 
     // Remote-only: kick off background prefetches so remote-GET latency
@@ -1280,8 +1293,8 @@ async function runOnBus(
       serverDied,
       onFailFast: () => failFast.abort(),
       signal: stop.signal,
-      onStart: (node, queuedMs) => {
-        log.taskStart?.(node, queuedMs === undefined ? undefined : { waitedMs: queuedMs })
+      onStart: (node) => {
+        log.taskStart?.(node)
       },
       onFinish: (o) => {
         if (cacheOff) o.cacheOff = true

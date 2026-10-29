@@ -42,7 +42,7 @@ export function plainOutput(sink: Logger): Logger {
     status: (line) => sink.status(line),
     ...(sink.warn && { warn: (line) => sink.warn!(line) }),
     ...(sink.runStart && { runStart: (info) => sink.runStart!(info) }),
-    ...(sink.taskStart && { taskStart: (node, info) => sink.taskStart!(node, info) }),
+    ...(sink.taskStart && { taskStart: (node) => sink.taskStart!(node) }),
     ...(sink.runEnd && { runEnd: () => sink.runEnd!() }),
     ...(sink.stepStart && { stepStart: (id) => sink.stepStart!(id) }),
     ...(sink.stepEnd && { stepEnd: (id, info) => sink.stepEnd!(id, info) }),
