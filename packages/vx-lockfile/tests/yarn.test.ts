@@ -9,7 +9,7 @@ import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { yarn } from '../src/index.js'
-import { importerDigests, parseLockfile } from '../src/yarn.js'
+import { importerDigests, parseLockfile, resolutionsOf } from '../src/yarn.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -506,6 +506,46 @@ describe('a parent-scoped `resolutions` override (vercel/turborepo#14499)', () =
     expect(await hashes()).toEqual(before)
     await manifest({ resolutions: { 'is-odd/is-number': '^7.0.0' } })
     expect((await hashes())['a#build']).not.toBe(before['a#build'])
+  })
+
+  it('a lockfile-only bump of the entry the override names re-keys the workspace it reaches', async () => {
+    // `yarn up -R is-number` moves the ^7 entry `c` keys, and `a` installs
+    // it through the override, while is-odd's entry still names ^6.
+    await manifest({ resolutions: { 'is-odd/is-number': '^7.0.0' } })
+    const hashes = async () => {
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      return Object.fromEntries(plan.tasks.map((t) => [t.node.id, t.hash]))
+    }
+    const before = await hashes()
+    await writeFile(
+      path.join(root, 'yarn.lock'),
+      LOCK.replace('version: 7.0.0', 'version: 7.0.1').replace('npm:7.0.0', 'npm:7.0.1'),
+    )
+    const after = await hashes()
+    const changed = Object.keys(before).filter((id) => before[id] !== after[id])
+    expect(changed.sort()).toEqual(['a#build', 'c#build'])
+  })
+})
+
+describe('resolutionsOf', () => {
+  it('reads each override as its dependency and scoping parent; a ** or bad JSON as any', () => {
+    const text = JSON.stringify({
+      resolutions: {
+        'is-number': '^7',
+        'is-odd/is-number': '^7',
+        'is-odd@3/is-number': '^7',
+        '@s/p/@s/d@^1': '2',
+        'a/**/b': '1',
+      },
+    })
+    expect(resolutionsOf(text)).toEqual([
+      { parent: undefined, name: 'is-number', range: '^7' },
+      { parent: 'is-odd', name: 'is-number', range: '^7' },
+      { parent: 'is-odd', name: 'is-number', range: '^7' },
+      { parent: '@s/p', name: '@s/d', range: '2' },
+      { parent: undefined, name: 'b', range: '1' },
+    ])
+    expect(resolutionsOf('{')).toEqual([])
   })
 })
 

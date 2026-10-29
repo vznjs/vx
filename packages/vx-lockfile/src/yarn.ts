@@ -573,6 +573,72 @@ function extend(
   if (orphans.length > 0) for (const r of roots) edges[r]!.push(...orphans)
 }
 
+/** A root `resolutions` entry: the dependency it overrides, of `parent` alone when scoped. */
+export interface Resolution {
+  readonly parent: string | undefined
+  readonly name: string
+  readonly range: string
+}
+
+/**
+ * The root manifest's berry `resolutions` (`is-number`, `is-odd/is-number`,
+ * `is-odd@3/is-number`, `a/**\/b`), each as the dependency it overrides and
+ * the parent it is scoped to. A parent's range and a `**` are read as any
+ * parent: an edge too many re-keys once too often, never too seldom.
+ */
+export function resolutionsOf(manifest: string | undefined): Resolution[] {
+  let raw: unknown
+  try {
+    raw = manifest === undefined ? undefined : JSON.parse(manifest)
+  } catch {
+    return []
+  }
+  const out: Resolution[] = []
+  for (const [pattern, range] of depsOf((raw ?? {}) as Record<string, unknown>, ['resolutions'])) {
+    const parts = pattern.split('/')
+    const tokens: string[] = []
+    for (let i = 0; i < parts.length; i++) {
+      tokens.push(
+        parts[i]!.startsWith('@') && i + 1 < parts.length ? `${parts[i]}/${parts[++i]}` : parts[i]!,
+      )
+    }
+    const bare = (t: string) => {
+      const at = t.indexOf('@', 1)
+      return at === -1 ? t : t.slice(0, at)
+    }
+    const name = bare(tokens.at(-1) ?? '')
+    if (name === '' || name === '**') continue
+    const parent = tokens.length < 2 || tokens.includes('**') ? undefined : bare(tokens.at(-2)!)
+    out.push({ parent, name, range })
+  }
+  return out
+}
+
+/**
+ * Each entry a root `resolutions` override reaches gets an edge to the
+ * entry its range names. Yarn 4 writes a parent-scoped override nowhere in
+ * the file: is-odd's entry keeps `is-number: "npm:^6.0.0"` while is-odd
+ * installs the ^7 entry another package keys, so a lockfile-only bump of
+ * that entry moved only the other package's key, and is-odd's dependents
+ * replayed a stale output. The override's own text is a settings fold
+ * (yarn-settings.ts); this is where it lands.
+ */
+function override(
+  lock: Lockfile,
+  index: ReadonlyMap<string, number>,
+  edges: number[][],
+  resolutions: readonly Resolution[],
+): void {
+  for (const r of resolutions) {
+    for (const [id, e] of lock.entries) {
+      if (!e.deps.has(r.name) || (r.parent !== undefined && e.name !== r.parent)) continue
+      for (const target of resolveDescriptor(lock, id, r.name, r.range)) {
+        edges[index.get(id)!]!.push(index.get(target)!)
+      }
+    }
+  }
+}
+
 /**
  * Every workspace's digest. Berry: one node per entry, workspaces among
  * them, keyed by dir. Classic: the file has no workspace entries, so the
@@ -583,6 +649,7 @@ export function importerDigests(
   lock: Lockfile,
   files: ReadonlyMap<string, string> = new Map(),
   extensions: readonly Extension[] = BUILTIN,
+  resolutions: readonly Resolution[] = [],
 ): ReadonlyMap<string, string> {
   const index = new Map<string, number>()
   const material: string[] = []
@@ -615,6 +682,7 @@ export function importerDigests(
       if (target !== undefined)
         edges[index.get(id)!]!.push(index.get(lock.workspaces.get(target)!)!)
     }
+    override(lock, index, edges, resolutions)
     extend(lock, index, edges, extensions)
   }
   const digests = reachDigests({ material, edges })

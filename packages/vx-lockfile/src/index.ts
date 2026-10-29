@@ -231,7 +231,12 @@ const MANAGERS = {
       // changed one is a settings change, which selects every project.
       const rc =
         lock.generation === 'berry' ? readText(path.join(root, yarnLock().YARNRC)) : undefined
-      return yarnLock().importerDigests(lock, files, yarnLock().packageExtensions(rc))
+      // Root `resolutions` Yarn 4 records on no entry: the edges they add.
+      const resolutions =
+        lock.generation === 'berry'
+          ? yarnLock().resolutionsOf(readText(path.join(root, 'package.json')))
+          : []
+      return yarnLock().importerDigests(lock, files, yarnLock().packageExtensions(rc), resolutions)
     },
     importers: (t) => yarnLock().importerLinks(yarnParse(t)),
     extraFiles: (t, root) => {
