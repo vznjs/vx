@@ -481,7 +481,8 @@ async function starter(
   if (ran.length > 0) rows.push(['installed', ...ran])
   for (const f of files) {
     await writeNoFollow(path.join(root, f.path), f.contents).catch((err: NodeJS.ErrnoException) => {
-      if (err.code !== 'ENOTDIR') throw err
+      // writeNoFollow's mkdir of a parent that is a file says EEXIST.
+      if (err.code !== 'ENOTDIR' && err.code !== 'EEXIST') throw err
       throw new UserError(
         `vx init: cannot write ${f.path}: ${path.dirname(f.path)} is a file, not a directory; move it and re-run`,
       )
