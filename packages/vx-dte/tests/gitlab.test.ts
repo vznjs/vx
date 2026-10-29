@@ -128,6 +128,14 @@ it('names a run only in a GitLab job, and starts no worker outside one', async (
   expect(() => gitlab({ include: 'x' } as never)).toThrow('include')
 })
 
+it('names exactly the job variables it lacks', async () => {
+  delete process.env['CI_JOB_TOKEN']
+  delete process.env['CI_COMMIT_SHA']
+  await expect(gitlab().spawn(worker)).rejects.toThrow(
+    /^gitlab\(\): not in a GitLab job \(CI_JOB_TOKEN, CI_COMMIT_SHA\)$/,
+  )
+})
+
 it("triggers on the target branch once a merged request's source branch is gone", async () => {
   // Before: a merge request merged mid-run with "delete source branch" (GitLab's
   // default), GitLab answered 400 "Reference not found" and every worker of

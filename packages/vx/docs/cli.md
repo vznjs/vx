@@ -2789,7 +2789,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   with its size on disk, or `none: the cache dir holds the entries` when
   the workspace names its cache dir. Before a first run it is the store a
   run would open. A bare `vx cache clean` frees both sizes.
-- `cache entries` counts the entries and their size.
+- `cache entries` counts the entries and their size. An index SQLite
+  cannot read reads `unreadable: <why and the fix>` there, and the
+  history rows read 0: the report still prints, exit 0.
   Paths under the home directory print as `~/…`; the JSON keeps them
   absolute.
 - `cache policy` is the policy a `vx run` takes when no flag names one,
@@ -2822,7 +2824,9 @@ cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes`
 (on disk: the index and run history), `cacheStore` (null when the cache
 dir holds the entries), `cacheStoreBytes` (on disk, null with no store), `cacheVersion`,
-`schemaVersion`, `cacheEntries`, `cacheBytes`, `settings` (every
+`schemaVersion`, `cacheEntries`, `cacheBytes`, `cacheIndexError` (why
+the index cannot be read, with the fix, else null; the counts it holds
+read 0 then), `settings` (every
 setting by path, `{ value, source }`, `source` one of `env` /
 `workspace` / `default`, `value` null for the default),
 `orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
@@ -3520,7 +3524,8 @@ plugin's failed flush) gets a yellow `warn` row above `info`,
 `N warnings above`, counting each distinct warning once; the
 warnings themselves are said once, where they happened. The
 `info` row ends with `run <id>`: the
-run's whole id, as `vx last <id>` takes it. The
+run's whole id, as `vx last <id>` takes it; a run a Ctrl-C (or
+SIGTERM, SIGHUP) stopped records nothing, so its footer names no id. The
 `time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a
 fact twice: a spread value already on the row is left out, so one
