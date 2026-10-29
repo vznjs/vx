@@ -86,13 +86,13 @@ export default defineProject({
 
     // The site's head-to-head (2026-10-29: no figure on the site is typed by
     // hand). One task per runner, each writing its rows to site/<runner>.json,
-    // which @vzn/vx-docs#import gathers into the site's bench.json. vx's is
+    // which @vzn/vx-docs#bench.data gathers into the site's bench.json. vx's is
     // keyed on its source through install's ^build, so every change to vx
     // re-measures it; a rival's is keyed on the harness and the pins in
     // package.json alone, so it re-measures only when either changes. One
-    // runner at a time on a machine of its own: CI's Bench job (ci.yml)
-    // runs them with `--concurrency 1` before main's run, which restores
-    // them; a DTE worker is packed beside other tasks.
+    // runner at a time on a machine of its own: only CI's Bench job
+    // (ci.yml) runs them, with `--concurrency 1`, and no build depends on
+    // them, so a DTE worker, packed beside other tasks, never does.
     ...Object.fromEntries(
       (['vx', 'turbo', 'nx', 'vite-task'] as const).map((runner) => [
         `bench.${runner}`,
@@ -102,9 +102,6 @@ export default defineProject({
           exec: {
             command: 'bun compare.ts 3',
             timeout: '30m',
-            // Never on a DTE worker, packed beside other tasks: a run that
-            // misses the Bench job's rows measures here.
-            remote: false,
             env: {
               define: {
                 ...NO_TRANSPILER_CACHE.define,

@@ -1,14 +1,14 @@
 // The site's benchmark data (2026-10-29: no figure on the site is typed by
 // hand). Gathers the head-to-head rows each `@vzn/vx-bench#bench.<runner>`
-// task wrote into src/data/bench.json, the one file every page reads
-// (src/bench/bench.ts). A runner missing, or measured on another shape,
-// fails the task, and with it the build.
+// task wrote into measured/bench.json. Its committed copy,
+// src/data/bench.json, is the one file every page reads (src/bench/data.ts).
+// A runner missing, or measured on another shape, fails the task.
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { RUNNERS, type BenchData, type RunnerResult } from '../src/bench/format.ts'
 
 const SITE = path.resolve(import.meta.dir, '../../vx-bench/site')
-const OUT = path.resolve(import.meta.dir, '../src/data/bench.json')
+const OUT = path.resolve(import.meta.dir, '../measured/bench.json')
 
 type RunFile = Omit<RunnerResult, 'row'> & {
   shape: string
