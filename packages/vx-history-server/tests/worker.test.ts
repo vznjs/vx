@@ -108,7 +108,8 @@ it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS i
       await other.dispose()
     }
   }
-})
+  // One Miniflare start per row; ten of them on a loaded CI runner pass 5 s.
+}, 30_000)
 
 // No database bound: every request was a 500 naming "undefined", or a
 // capabilities 200 while every upload failed.
