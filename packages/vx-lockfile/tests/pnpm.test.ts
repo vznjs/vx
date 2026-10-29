@@ -253,7 +253,7 @@ describe('importer digests', () => {
   it('a catalog bump moves the importer that names `catalog:` and no other (turborepo#12635)', () => {
     // pnpm records each importer's resolved version beside `catalog:`,
     // so the lockfile alone carries the bump; pnpm-workspace.yaml, where
-    // the catalog lives, is in core's fingerprint besides.
+    // the catalog lives, folds without it.
     const before = digests(catalogV9(6))
     const after = digests(catalogV9(7))
     expect([...after.keys()].filter((k) => after.get(k) !== before.get(k))).toEqual(['packages/a'])
@@ -438,7 +438,9 @@ describe('pnpm()', () => {
       err = e
     }
     expect(isUserError(err)).toBe(true)
-    expect((err as Error).message).toBe(`pnpm() scope must be 'project' or 'workspace', not "file"`)
+    expect((err as Error).message).toBe(
+      `pnpm() option "scope" must be 'project' or 'workspace', got "file"`,
+    )
   })
 
   describe('affected', () => {

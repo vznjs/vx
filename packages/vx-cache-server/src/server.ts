@@ -3,8 +3,15 @@
 // an artifact is one object, named by its issuer, repository name, scope and
 // hash, and a read names the exact scope it wants (2026-10-25).
 
-import { type Access, type Authorize, hashPart, Refusal } from '@vzn/vx-devtools'
-import { errorJson, isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
+import {
+  type Access,
+  type Authorize,
+  errorJson,
+  hashPart,
+  notAllowed,
+  Refusal,
+} from '@vzn/vx-devtools'
+import { isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
 import { blobName, type Blobs } from './store.js'
 
 /** What an operator may set; each defaults, and a backend may cap them. */
@@ -31,15 +38,18 @@ const VARS = {
   maxUploadBytes: 'MAX_UPLOAD_BYTES',
 } as const
 
-/** `MAX_CHECK_HASHES` and `MAX_UPLOAD_BYTES` from the environment, each a whole number above 0. */
+/** `MAX_CHECK_HASHES` and `MAX_UPLOAD_BYTES` from the environment (a string, or a Worker's JSON number), each a whole number above 0. */
 export function limitsFrom(env: object): Partial<Limits> {
   const out: Partial<Record<keyof Limits, number>> = {}
   for (const [field, name] of Object.entries(VARS) as [keyof Limits, string][]) {
     const v = (env as Record<string, unknown>)[name]
-    if (typeof v !== 'string' || v === '') continue
-    const n = Number(v)
+    if (v === undefined || v === '') continue
+    // A Worker var may be JSON: a number was skipped, the default served.
+    const n = typeof v === 'string' || typeof v === 'number' ? Number(v) : Number.NaN
     if (!(Number.isSafeInteger(n) && n > 0))
-      throw new Error(`${name}: not a whole number above 0: ${v}`)
+      throw new Error(
+        `${name}: not a whole number above 0: ${typeof v === 'string' ? v : JSON.stringify(v)}`,
+      )
     out[field] = n
   }
   return out
@@ -67,6 +77,14 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
   const nameOf = (access: Access, scope: string, hash: string): Promise<string> =>
     blobName(access.issuer, access.repository, scope, hash)
+  /** A read of the bucket: one it fails is its fault, `502`, never the server's `500`. */
+  const read = async <T>(ask: Promise<T>): Promise<T> => {
+    try {
+      return await ask
+    } catch (err) {
+      throw new Refusal(502, `the bucket could not be read: ${message(err)}`)
+    }
+  }
 
   /** The token's own scope, the one place it writes. */
   const writeScope = (access: Access): Promise<string> => {
@@ -98,7 +116,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
     const scope = scopeOf(req.headers.get(SCOPE_HEADER))
-    const blob = await blobs.get(await nameOf(access, scope, hash))
+    const blob = await read(blobs.get(await nameOf(access, scope, hash)))
     if (blob === null) return errorJson(404, 'no artifact under this key')
     return new Response(blob.body, {
       headers: {
@@ -115,7 +133,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
     const scope = scopeOf(req.headers.get(SCOPE_HEADER))
-    const size = await blobs.size(await nameOf(access, scope, hash))
+    const size = await read(blobs.size(await nameOf(access, scope, hash)))
     if (size === null) return new Response(null, { status: 404 })
     return new Response(null, {
       headers: { 'content-length': String(size), 'cache-control': IMMUTABLE },
@@ -129,7 +147,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const { hashes, scopes } = await queryOf(req, limits.maxCheckHashes)
     const sizes = await Promise.all(
       hashes.map((hash) =>
-        Promise.all(scopes.map(async (s) => blobs.size(await nameOf(access, s, hash)))),
+        Promise.all(scopes.map(async (s) => read(blobs.size(await nameOf(access, s, hash))))),
       ),
     )
     const held = Object.fromEntries(
@@ -138,7 +156,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
         return [hash, at < 0 ? null : { size: sizes[i]![at], scope: scopes[at] }]
       }),
     )
-    return Response.json(held, { headers: limitHeaders })
+    return Response.json(held)
   }
 
   /**
@@ -156,7 +174,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (length > limits.maxUploadBytes) {
       throw new Refusal(413, `an upload is at most ${limits.maxUploadBytes} bytes`)
     }
-    if ((await blobs.size(name)) !== null) {
+    if ((await read(blobs.size(name))) !== null) {
       await req.body?.cancel()
       return new Response(null, { status: 204 })
     }
@@ -170,6 +188,16 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
 
   return async (req) => {
+    const res = await answer(req)
+    // Every /v1/artifacts answer, a refusal too: a client holding older
+    // limits (a restart with new ones, a Worker's rollout) learns them from
+    // the answer that refused it, or it was refused every check of the run.
+    if (/^\/v1\/artifacts(\/|$)/.test(new URL(req.url).pathname))
+      for (const [h, v] of Object.entries(limitHeaders)) res.headers.set(h, v)
+    return res
+  }
+
+  async function answer(req: Request): Promise<Response> {
     const url = new URL(req.url)
     try {
       const path = url.pathname
@@ -191,9 +219,17 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
         if (req.method === 'HEAD') return await exists(req, hash)
         return req.method === 'PUT' ? await put(req, hash) : notAllowed('GET, HEAD, PUT')
       }
-      return errorJson(404, 'no such route')
+      return errorJson(
+        404,
+        `no route ${req.method} ${path.slice(0, 200)}: name the server's base URL; it serves /v1/ (PROTOCOL.md)`,
+      )
     } catch (err) {
-      if (err instanceof Refusal) return errorJson(err.status, err.message)
+      if (err instanceof Refusal) {
+        // The bucket's or the issuer's fault is the operator's to see too.
+        if (err.status >= 500)
+          console.error(`vx-cache-server: ${req.method} ${url.pathname}: ${err.message}`)
+        return errorJson(err.status, err.message)
+      }
       // Never swallowed: the client warns with what the server says.
       console.error(err)
       return errorJson(500, message(err))
@@ -201,17 +237,11 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
 }
 
-const notAllowed = (allow: string): Response => {
-  const res = errorJson(405, `this route takes ${allow}`)
-  res.headers.set('allow', allow)
-  return res
-}
-
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 async function readJson(req: Request, max: number): Promise<unknown> {
   if (!/^application\/json\b/i.test(req.headers.get('content-type') ?? '')) {
-    throw new Refusal(400, 'the body is application/json')
+    throw new Refusal(400, 'send the body as Content-Type: application/json')
   }
   if (Number(req.headers.get('content-length') ?? 0) > max) {
     throw new Refusal(413, `the body is at most ${max} bytes`)

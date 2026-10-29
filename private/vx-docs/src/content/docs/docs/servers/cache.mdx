@@ -93,14 +93,15 @@ curl https://cache.example.com/v1/capabilities
 {"code":"bad_request","message":"vx-issuer and vx-repository: the issuer's and the repository's hashes (PROTOCOL.md § Keys)"}
 ```
 
-That refusal means it is up and has an `ALLOW`. With `ALLOW` empty it
-says `the server admits no CI: set ALLOW` instead.
+That refusal means it is up and has an `ALLOW`. A Worker with `ALLOW`
+empty says `the server admits no CI: set ALLOW` instead; the Bun server
+and its image do not start without one.
 
 ## Settings
 
 | Setting | Default | What it sets |
 | --- | --- | --- |
-| `ALLOW` | empty: refuse every request | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
+| `ALLOW` | required (a Worker without it refuses every request) | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
 | `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token, such as a laptop's, reads a repository `ALLOW` names, and writes nothing |
 | `AUDIENCE` | the URL it is reached at | the `aud` a CI token must name |
 | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | | the bucket (Bun and Docker), as Bun's S3 client reads them |
@@ -227,7 +228,9 @@ results. A result is never rewritten: a second upload of the same key
 keeps the first bytes.
 
 A download through Workers goes through Cloudflare's cache: after R2
-serves a result once, that data center answers it without R2.
+serves a result once, that data center answers it without R2. An
+upload of a result R2 expired drops the copy in the data center it
+reaches.
 
 Whether a result exists is asked of R2 alone, so every data center agrees.
 

@@ -381,6 +381,8 @@ export function notice(p: NoticeParts): Block
 export function outputDirPrefixes(globs: readonly string[]): string[] | null
 == function outputsOverlap (src/graph/task-graph.ts)
 export function outputsOverlap(rawA: string, rawB: string): boolean
+== function packageManagerPath (src/exec/env.ts)
+export function packageManagerPath(root: string): string | null
 == function planRun (src/orchestrator/run.ts)
 export async function planRun(options: RunOptions): Promise<RunPlan>
 == function prepareRun (src/orchestrator/prepare.ts)

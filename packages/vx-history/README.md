@@ -29,7 +29,7 @@ export default {
 }
 ```
 
-A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a finite non-negative number (`Number()` of an unset variable is NaN) is dropped with one warning naming its task ids; the rest still order the run. vx's own CI declares four, this one among them — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
+A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a number of ms from 0 to 2^53 (`Number()` of an unset variable is NaN; a larger one summed along a chain past any number) is dropped with one warning naming its task ids; the rest still order the run. vx's own CI declares four, this one among them — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
 
 ## Timings from a history server
 
@@ -37,11 +37,13 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 [`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server).
 On a CI job with a token (GitHub's OIDC token, which needs
 `permissions: id-token: write`, or a GitLab `id_tokens` entry
-`VX_HISTORY_TOKEN` with the server's origin as `aud`), each run asks it
+`VX_HISTORY_TOKEN` with the server's origin as `aud`; a 5xx or 429 from
+GitHub's endpoint, or a 429, 502, 503 or 504 from the server, is asked
+again up to three times), each run asks it
 for its tasks' numbers, by task definition, in the refs the run reads,
 as a remote cache does: its branch's, the branch it merges into, then
-the default branch's (`baseBranch`, else git's or the CI's). `defaultBranch`
-instead reads its branch's, then that branch's.
+the default branch's (`baseBranch`, else git's or the CI's). `defaultBranch`, a
+branch name (`main`, not `refs/heads/main`), instead reads its branch's, then that one's.
 The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,
@@ -104,10 +106,11 @@ export default {
 ```
 
 The file is `{ "version": 1, "tasks": { "<task id>": <ms> } }`, keys
-sorted. A p50 recorded on this machine wins over it, and it wins over
+sorted; an entry that is not a number of ms from 0 to 2^53 is dropped. A p50 recorded on this machine wins over it, and it wins over
 `assume`; like `assume`, it never feeds the workspace median. A task the
 run did not see keeps its time. A file that is not one warns and is read
-as empty; `--dry` writes nothing.
+as empty, one it cannot write warns and the run goes on; `--dry` writes
+nothing.
 
 ## Reservations learned from history
 
@@ -136,13 +139,13 @@ plugins: [
     // MB. The default is the machine's total capped by the cgroup limit; set it to budget below either.
     memory: 8192,
     resources: { headroom: 1.5 },
-    // Declared by hand for what history cannot size (a first run); a declaration wins.
+    // Declared by hand for what history cannot size (a first run); a declared axis wins, one left out keeps what history learned.
     reservations: { 'app#e2e': { cpus: 2, memory: 4096 } },
   }),
 ]
 ```
 
-`window`, `memory` and `headroom` must each be a finite number above 0 (`window` a whole one). One that is not — `Number(process.env.X)` with `X` unset is NaN, and no reservation fits a NaN budget, so every task that reserved memory would wait for an idle machine — runs on its default, named in one warning per run and in `vx history`. So does a declared `reservations` axis (`cpus`, `memory`): one that is not a number above 0 reserves nothing on that axis (a NaN held its task alone and every reserving task beside it waited); `0` is taken as nothing, silently. An entry that is not an object (`{ "app#build": 2048 }`) reserves nothing and is named the same way.
+`window`, `memory` and `headroom` must each be a finite number above 0 (`window` a whole one). One that is not — `Number(process.env.X)` with `X` unset is NaN, and no reservation fits a NaN budget, so every task that reserved memory would wait for an idle machine — runs on its default, named in one warning per run and in `vx history`. So does a declared `reservations` axis (`cpus`, `memory`): one that is not a number above 0 is not declared, so the axis keeps what history learned (a NaN held its task alone and every reserving task beside it waited); `0` declares nothing on that axis, silently. An entry that is not an object (`{ "app#build": 2048 }`) declares nothing and is named the same way. A key other than `cpus` and `memory` there, or `headroom` in `resources`, is refused when the config loads, as a misspelt option is.
 
 `vx history [--format pretty|json]` (a verb this plugin adds; `--help`
 prints its usage) shows what it learned per task and the reservation it

@@ -92,6 +92,22 @@ describe('the feature data', () => {
 
   // Every `vx <verb> …` a page shows is a verb vx has, with flags it takes:
   // core's help text decides.
+  // What vx prints is shown as the terminal shows it: an `ansi` block from a
+  // real run, coloured wherever vx colours that output.
+  it('shows vx output as ansi, in colour where vx colours it', () => {
+    const output = /^(?:\$ vx\b|✗ vx\b|\[vx\]|vx: | [⏺◼⊘◌✗►⇢⇣▸]|┌─|└─|::group::|would run:)/m
+    const painted = /^(?:✗ vx\b| [⏺◼⊘]|┌─|└─)/m
+    const bad: string[] = []
+    for (const f of FEATURES) {
+      // eslint-disable-next-line no-control-regex
+      const plain = f.example.code.replace(/\x1b\[[0-9;]*m/g, '')
+      if (f.example.lang !== 'ansi' && output.test(plain)) bad.push(`${f.slug}: ${f.example.lang}`)
+      if (f.example.lang === 'ansi' && painted.test(plain) && !f.example.code.includes('\x1b['))
+        bad.push(`${f.slug}: no colour`)
+    }
+    expect(bad).toEqual([])
+  })
+
   it('shows only verbs and flags core accepts', () => {
     const bad: string[] = []
     let seen = 0
@@ -280,6 +296,25 @@ describe('the built feature pages', () => {
       )
       if (JSON.stringify(cards) !== JSON.stringify(want))
         bad.push(`${f.slug}: more ${JSON.stringify(cards)}`)
+    }
+    expect(bad).toEqual([])
+  })
+
+  // The example renders through Expressive Code, as a docs block does: a
+  // plain <pre> would print an ansi example's escapes as text, uncoloured.
+  it('renders each example as the docs render a code block, ansi in colour', () => {
+    const bad: string[] = []
+    for (const f of FEATURES) {
+      const html = page(`features/${f.slug}/`)
+      const box = /<div class="fexample">([\s\S]*?)<\/figure>/.exec(html)?.[1] ?? html
+      if (/<pre(?![^>]*data-language)/.test(box)) bad.push(`${f.slug}: plain <pre>`)
+      if (!box.includes(`<pre data-language="${f.example.lang}"`))
+        bad.push(`${f.slug}: not rendered`)
+      if (f.example.code.includes('\x1b[')) {
+        const colours = new Set([...box.matchAll(/style="--0:(#[0-9a-f]+)/g)].map((m) => m[1]))
+        if (colours.size < 2 || box.includes('\x1b[') || box.includes('[38;'))
+          bad.push(`${f.slug}: ansi not painted`)
+      }
     }
     expect(bad).toEqual([])
   })

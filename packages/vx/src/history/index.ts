@@ -24,11 +24,13 @@ export {
   explainCacheKey,
   getInvocation,
   getRun,
+  GROUP_VIA,
   inputWriters,
   latestRunId,
   listInvocations,
   listRuns,
   rootCauses,
+  upstreamTask,
   whyDidThisRerun,
 } from './metrics.js'
 export type {

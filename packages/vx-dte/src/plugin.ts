@@ -77,6 +77,12 @@ export interface DteAdapter {
   report?(warn: (message: string) => void): void
   /** Its workers prove themselves by their CI identity (GitHub OIDC): the run makes no secret for them. */
   readonly keyless?: boolean
+  /**
+   * A keyless adapter's: the CI runs (GitHub workflow run ids) whose jobs
+   * alone may join as its workers; `undefined` admits any job of the
+   * repository.
+   */
+  workerRuns?(): ReadonlySet<string> | undefined
   /** A worker's name in a job its CI started for several, when `VX_DTE_WORKER` is unset. */
   workerId?(): string | undefined
   /** The run's id when `VX_DTE_RUN` is unset, in a CI job it starts workers from; none elsewhere. */
@@ -134,9 +140,11 @@ function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new UserError(`dte(): headers cannot set "${name}"`)
+      throw new UserError(`dte() option "headers" cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new UserError(`dte(): header "${name}" must be one line of text`)
+      throw new UserError(
+        `dte() option "headers.${name}" must be one line of text (its value is not printed)`,
+      )
     out[name] = value
   }
   return out
@@ -148,33 +156,29 @@ export function dte(options: DteOptions) {
   const how: Strategy = { ...DEFAULT_STRATEGY }
   for (const [layer, choice] of Object.entries(options.scheduler ?? {})) {
     const choices = STRATEGIES[layer as keyof Strategy] as readonly string[] | undefined
-    if (choices === undefined || !choices.includes(choice as string))
+    if (choices === undefined)
       throw new UserError(
-        `dte(): scheduler.${layer} ${choices === undefined ? `is no layer: the layers are ${Object.keys(STRATEGIES).join(', ')}` : `is one of ${choices.join(', ')}`}`,
+        `dte() option "scheduler" has no layer ${JSON.stringify(layer)} (layers: ${Object.keys(STRATEGIES).join(', ')})`,
       )
+    if (!choices.includes(choice as string))
+      refuse(`scheduler.${layer}`, `one of ${choices.join(', ')}`, choice)
     ;(how as unknown as Record<string, unknown>)[layer] = choice
   }
   const sizes = Object.entries(options.workers ?? {}).map(([name, s]) => {
-    const memory = bytes(s?.memory)
-    if (
-      !(
-        (s?.max === undefined || (Number.isInteger(s.max) && s.max >= 0)) &&
-        Number.isInteger(s?.cpu) &&
-        s.cpu >= 1
-      ) ||
-      memory === undefined
-    ) {
-      throw new UserError(
-        `dte(): workers.${name} needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any`,
-      )
-    }
+    const at = `workers.${name}`
+    if (!(Number.isInteger(s?.cpu) && s.cpu >= 1)) refuse(`${at}.cpu`, 'a whole number ≥ 1', s?.cpu)
+    const memory = bytes(s.memory)
+    if (memory === undefined)
+      refuse(`${at}.memory`, "bytes above 0 or a size such as '8GB'", s.memory)
+    if (!(s.max === undefined || (Number.isInteger(s.max) && s.max >= 0)))
+      refuse(`${at}.max`, 'a whole number ≥ 0', s.max)
     if (s.platform !== undefined && !PLATFORMS.includes(s.platform))
-      throw new UserError(`dte(): workers.${name}.platform is one of ${PLATFORMS.join(', ')}`)
+      refuse(`${at}.platform`, `one of ${PLATFORMS.join(', ')}`, s.platform)
     return {
       name,
       max: s.max ?? Infinity,
       cpu: s.cpu,
-      memory,
+      memory: memory!,
       platform: s.platform ?? hostPlatform(),
     }
   })
@@ -212,7 +216,9 @@ export function dte(options: DteOptions) {
   }
   // With no scheme the run failed in the executor as a bare "Invalid URL".
   if (options.relay !== undefined && !/^https?:\/\//.test(options.relay)) {
-    throw new UserError(`dte(): relay must be http(s), got ${options.relay}`)
+    throw new UserError(
+      `dte() option "relay" must be an http(s) URL, got ${JSON.stringify(options.relay)}`,
+    )
   }
   // On GitHub Actions with none given, one for the relay's URL.
   const token = async (relay: string): Promise<string | undefined> =>
@@ -466,7 +472,10 @@ export function dte(options: DteOptions) {
       let proof: Proof | undefined
       if (secret === undefined) {
         if ((adapter === undefined || adapter.keyless === true) && onGitHub())
-          proof = seal.githubProof()
+          proof = seal.githubProof(
+            undefined,
+            adapter?.workerRuns === undefined ? undefined : () => adapter.workerRuns!(),
+          )
         else if (adapter === undefined)
           throw new UserError(
             'dte(): with no adapter, set VX_DTE_SECRET here and on each worker, or run on GitHub Actions with id-token: write',
@@ -840,10 +849,18 @@ const PLACED = { cores: 1, memory: 0 }
 
 function unmeasuredOf(u: DteOptions['unmeasured']): Need {
   if (u === undefined) return FRESH
+  if (!(typeof u.cpu === 'number' && u.cpu > 0 && Number.isFinite(u.cpu)))
+    refuse('unmeasured.cpu', 'a number above 0', u.cpu)
   const memory = bytes(u.memory)
-  if (!(typeof u.cpu === 'number' && u.cpu > 0) || memory === undefined)
-    throw new UserError("dte(): unmeasured needs cpu > 0 and memory such as '4GB'")
-  return { cores: u.cpu, memory }
+  if (memory === undefined)
+    refuse('unmeasured.memory', "bytes above 0 or a size such as '4GB'", u.memory)
+  return { cores: u.cpu, memory: memory! }
+}
+
+/** A `dte()` option it cannot use, named with the value as written (a NaN as NaN, not null). */
+function refuse(option: string, want: string, got: unknown): never {
+  const said = typeof got === 'number' ? String(got) : (JSON.stringify(got) ?? String(got))
+  throw new UserError(`dte() option "${option}" must be ${want}, got ${said}`)
 }
 
 /** What a task asks of a worker, from its history. */
@@ -913,16 +930,16 @@ function givenRun(): string | undefined {
  * working tree's changes included: none when git cannot say (no parent, a
  * shallow clone), and the run waits for its misses as before.
  */
-async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
+export async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
   try {
     const proc = Bun.spawn({
-      cmd: ['git', 'diff', '--name-only', '--relative', '--no-renames', 'HEAD^', '--'],
+      cmd: ['git', 'diff', '--name-only', '-z', '--relative', '--no-renames', 'HEAD^', '--'],
       cwd: workspaceRoot,
       stdout: 'pipe',
       stderr: 'ignore',
     })
     const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-    return exit === 0 ? out.split('\n').filter((l) => l !== '') : []
+    return exit === 0 ? out.split('\0').filter((l) => l !== '') : []
     // quiet: a local git read; no files is the answer
   } catch {
     return []

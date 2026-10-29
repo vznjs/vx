@@ -28,7 +28,7 @@ export async function githubBranch(
   if (env['GITHUB_ACTIONS'] !== 'true') return {}
   const event = await eventOf(env['GITHUB_EVENT_PATH'])
   const refs = githubRefs(env, event, baseBranch)
-  const facts = scopeOf(env, event)
+  const facts = scopeOf(env, event, baseBranch)
   return refs.length === 0 ? facts : { ...facts, refs }
 }
 
@@ -38,7 +38,9 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
 /**
  * The refs an Actions run reads, in order (2026-10-25): a merge
  * queue's run only its base branch, the code it is about to become; any
- * other its own branch (a pull request's head, else `GITHUB_REF`), then
+ * other a pull request's merge ref (`refs/pull/<n>/merge`, the one scope
+ * its token writes), then its own branch (a pull request's head, else
+ * `GITHUB_REF`), then
  * the branch it merges into, then the default branch (`baseBranch`, else
  * the event's).
  */
@@ -53,15 +55,17 @@ function githubRefs(
     const base = stringOf(event?.merge_group?.base_ref) ?? head(QUEUE.exec(ref ?? '')?.[1])
     return base === undefined ? [] : [base]
   }
+  const merge = /^refs\/pull\/\d+\//.test(ref ?? '') ? ref : undefined
   const own = head(stringOf(env['GITHUB_HEAD_REF'])) ?? ref
   const into = head(stringOf(env['GITHUB_BASE_REF']))
   const trunk = head(baseBranch ?? stringOf(event?.repository?.default_branch))
-  return [...new Set([own, into, trunk].filter((r): r is string => r !== undefined))]
+  return [...new Set([merge, own, into, trunk].filter((r): r is string => r !== undefined))]
 }
 
 function scopeOf(
   env: Readonly<Record<string, string | undefined>>,
   event: ActionsEvent | undefined,
+  baseBranch: string | undefined,
 ): BranchFacts {
   const ref = env['GITHUB_REF'] ?? ''
   if (env['GITHUB_EVENT_NAME'] === 'merge_group') {
@@ -85,8 +89,10 @@ function scopeOf(
   if (onBehalf !== undefined) return withBase(onBehalf)
   const name = env['GITHUB_REF_NAME']
   if (ref === '' || name === undefined || name === '' || repo === undefined) return {}
-  const branch = event?.repository?.default_branch
-  if (typeof branch === 'string' && branch !== '' && ref === `refs/heads/${branch}`) return {}
+  // The workspace's `baseBranch` first, as the refs read it: a run on it
+  // has no scope even where the event names no default branch.
+  const branch = baseBranch ?? stringOf(event?.repository?.default_branch)
+  if (branch !== undefined && ref === `refs/heads/${branch}`) return {}
   return { scope: branchCacheScope(repo, name) }
 }
 

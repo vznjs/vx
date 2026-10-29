@@ -677,12 +677,12 @@ const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])
  * tree; vx requires git. `-z` survives filenames with newlines /
  * spaces.
  */
-export function runGitLsFiles(cwd: string): GitLsResult {
+export function runGitLsFiles(cwd: string, env = gitEnv()): GitLsResult {
   let proc
   try {
     proc = Bun.spawnSync({
       cmd: [executablePath('git'), 'ls-files', '-s', '--others', '--exclude-standard', '-z', '.'],
-      env: gitEnv(),
+      env,
       cwd,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -764,11 +764,65 @@ function expandNestedRepos(
       for (const f of walkFiles(abs)) out.push(`${nested}/${f}`)
       continue
     }
-    const inner = runGitLsFiles(abs)
+    let inner
+    try {
+      inner = runGitLsFiles(abs, nestedRepoEnv())
+    } catch {
+      // A `.git` git cannot open (a submodule's file naming a lost
+      // `.git/modules` entry) answers as no `.git` does: by a walk. It
+      // refused the whole run as "not inside a git work tree".
+      for (const f of walkFiles(abs)) out.push(`${nested}/${f}`)
+      continue
+    }
     for (const f of inner.files) out.push(`${nested}/${f}`)
     for (const f of inner.undecodable) undecodable.push(`${nested}/${f}`)
   }
   return { files: out ?? files, undecodable }
+}
+
+/**
+ * Variables that name the repository git works on (git's `local_repo_env`),
+ * which a nested repository's git must not inherit. A pre-commit hook runs
+ * vx with `GIT_INDEX_FILE` or `GIT_DIR` naming the OUTER repository, and
+ * the nested listing read the outer index: a file the nested repository
+ * tracks under an ignore rule fell out of the inputs, a stale hit. git
+ * clears the same list for a submodule's commands; config variables stay.
+ */
+const LOCAL_REPO_ENV = new Set([
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_COMMON_DIR',
+  'GIT_DIR',
+  'GIT_GRAFT_FILE',
+  'GIT_IMPLICIT_WORK_TREE',
+  'GIT_INDEX_FILE',
+  'GIT_INTERNAL_SUPER_PREFIX',
+  'GIT_NO_REPLACE_OBJECTS',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_PREFIX',
+  'GIT_REPLACE_REF_BASE',
+  'GIT_SHALLOW_FILE',
+  'GIT_WORK_TREE',
+])
+
+function nestedRepoEnv(): Record<string, string> {
+  const env = gitEnv()
+  for (const name of LOCAL_REPO_ENV) delete env[name]
+  return env
+}
+
+/**
+ * The environment a listing of `dir` runs in: `nestedRepoEnv` when a
+ * location variable is set and `dir` sits in a repository nested below
+ * `workspaceRoot` (a `.git` at it or between), whose git must not read the
+ * workspace repository's index; git's own environment otherwise.
+ */
+export function listingEnv(dir: string, workspaceRoot: string): Record<string, string> {
+  if (![...LOCAL_REPO_ENV].some((name) => process.env[name] !== undefined)) return gitEnv()
+  for (let at = dir; at !== workspaceRoot && at.startsWith(workspaceRoot); at = path.dirname(at)) {
+    if (existsSync(path.join(at, '.git'))) return nestedRepoEnv()
+    if (path.dirname(at) === at) break
+  }
+  return gitEnv()
 }
 
 /** Every file and symlink under `dir`, relative and `/`-separated; a `.git` is skipped, a link not followed. */
@@ -1670,15 +1724,6 @@ export async function startGitEnumeration(
     }
   }
   const startedAtMs = Date.now()
-  // Four spawns at most (the rev-parse is memoized per process), one
-  // worktree walk. `ls-files -s -v` reads the INDEX only
-  // (~9 ms on a 1000-project tree) and answers two questions at once: every
-  // tracked path's OID and its cache-state flag. `status -uall` is the one
-  // command that walks the worktree, and it answers two as well: which
-  // tracked paths are dirty AND which files are untracked. Asking
-  // `ls-files --others` for the untracked set walked the same tree a second
-  // time (~50 ms of CPU, concurrent with status but contending with it).
-  const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs])
   // The gate for whether a clean filter can rewrite bytes between the
   // index and the worktree: git's merged config (`core.autocrlf`) and,
   // from git 2.42, the attributes files it reads outside the tree
@@ -1687,7 +1732,7 @@ export async function startGitEnumeration(
   // 1.32 ms, min of 30), which could not name the default global file.
   // Not foldable into the rev-parse below: rev-parse prints no config.
   const varsRun = spawnGit(['var', '-l'])
-  // Asked while the two above run, from the memo the file hasher reads
+  // Asked while `var` runs, from the memo the file hasher reads
   // too (`repoFacts`). `prefix` is the repo→workspace path (empty when the
   // workspace root IS the git root): `ls-files` prints cwd(workspace)-
   // relative paths but `status` prints repo-root-relative ones, so when the
@@ -1713,6 +1758,27 @@ export async function startGitEnumeration(
     facts === null || facts.indexFile === ''
       ? undefined
       : path.resolve(workspaceRoot, facts.indexFile)
+  // `ls-files` and `status` each read the index on their own. A write
+  // between them (an unstage, a checkout) paired one index's OIDs with the
+  // other's verdict: a `git reset` of a staged edit made the file clean to
+  // `status` while `ls-files` had listed the staged blob, and that blob
+  // keyed the committed bytes on disk. The index is stamped before the
+  // listing and after the status; an index that moved trusts no OID.
+  const indexStamp = (): string | undefined => {
+    if (indexFile === undefined) return undefined
+    const st = lstatSync(indexFile, { throwIfNoEntry: false })
+    return st === undefined ? undefined : `${st.ino}:${st.ctimeMs}:${st.size}`
+  }
+  const stampBefore = indexStamp()
+  // Four spawns at most (the rev-parse is memoized per process), one
+  // worktree walk. `ls-files -s -v` reads the INDEX only
+  // (~9 ms on a 1000-project tree) and answers two questions at once: every
+  // tracked path's OID and its cache-state flag. `status -uall` is the one
+  // command that walks the worktree, and it answers two as well: which
+  // tracked paths are dirty AND which files are untracked. Asking
+  // `ls-files --others` for the untracked set walked the same tree a second
+  // time (~50 ms of CPU, concurrent with status but contending with it).
+  const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs])
   // Read synchronously: `status` spawns once the read is in, and an async
   // read's answer waited for the main thread to yield, behind the workspace
   // config and discovery (~5 ms of a 1,200-task warm run's wait for git).
@@ -1778,6 +1844,7 @@ export async function startGitEnumeration(
       ? spawnGit(CHECK_ATTR, [...parsedLs.oids.keys()].join('\0'))
       : undefined
   const [, status, vars] = await running
+  const indexMoved = indexStamp() !== stampBefore
   // The key stands for the index `ls-files` listed only when that index
   // was written before the enumeration began (git writes it by rename, so
   // the stamp moves with any write) and is still in place after it: a
@@ -1835,7 +1902,7 @@ export async function startGitEnumeration(
   // this same status spawn so `run()` needs no second `git status`.
   // null when the status spawn failed (non-repo / git error).
   const worktreeDirty = dirty === null ? null : dirty.size > 0
-  const trusted = dirty === null ? new Map<string, string>() : oids
+  const trusted = dirty === null || indexMoved ? new Map<string, string>() : oids
   if (dirty !== null) {
     for (const rel of dirty) trusted.delete(rel)
   }

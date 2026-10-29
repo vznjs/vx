@@ -3,7 +3,12 @@
 
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import { type GeneratedProject, type MigrationFormat, type MigrationPlan } from '@vzn/vx'
+import {
+  type GeneratedProject,
+  type MigrationFormat,
+  type MigrationPlan,
+  quoteTsLiteral,
+} from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
 import { mapNxWorkspace, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
@@ -172,8 +177,6 @@ export interface NxWorkspaceField {
   readonly note: string
 }
 
-const quoted = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
-
 /**
  * nx.json's run-wide settings `nx()` applies live: each a field of the
  * written `.vx/workspace.ts`, or a migrated repo that ran one task at a time
@@ -202,7 +205,7 @@ export function nxWorkspaceFields(json: Record<string, unknown> | undefined): Nx
     const branch = base.trim().replace(/^origin\//, '')
     out.push({
       field: 'baseBranch',
-      source: quoted(branch),
+      source: quoteTsLiteral(branch),
       note: `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`baseBranch: ${JSON.stringify(branch)}\` to .vx/workspace.ts`,
     })
   }

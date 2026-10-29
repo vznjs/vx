@@ -97,6 +97,25 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }
     },
   ],
+  [
+    "<file> imports '<name>', which no node_modules above it provides; install the workspace's dependencies first",
+    // The same import one relative hop away, in a preset.
+    async () => {
+      const dir = scratchDir()
+      await Bun.write(path.join(dir, 'preset.ts'), "export { preset } from 'nope-pkg'\n")
+      const file = path.join(dir, 'vx.config.ts')
+      await Bun.write(
+        file,
+        "import { preset } from './preset.ts'\nexport default { tasks: {}, ...preset }\n",
+      )
+      try {
+        await loadProjectConfig(file)
+        return null
+      } catch (err) {
+        return (err as Error).message
+      }
+    },
+  ],
   ['tasks must be an object keyed by task name', () => validated({ tasks: [ok] })],
   [
     "cannot find '<name>' — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set <remedy>",

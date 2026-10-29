@@ -55,3 +55,39 @@ it('a brace over two directories saves and restores both, and nothing beside the
     existsSync(path.join(app, 'lib/cjs/c.js')),
   ]).toEqual(['a\n', 'b\n', false])
 })
+
+// A brace of directory literals saved an empty artifact (the hit restored
+// nothing), and `{./dist,lib}/**` saved `dist/sub/a.js` that the restore
+// then refused as no declared output, so every run missed.
+it('a brace of directory literals or ./ spellings saves and restores each tree', async () => {
+  for (const [name, glob] of [
+    ['lit', '{dist,lib}'],
+    ['dot', '{./dist,lib}/**'],
+  ] as const) {
+    const app = await addProject(root, name, {
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p dist/sub lib && echo a > dist/sub/a.js && echo b > lib/b.js' },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: [${JSON.stringify(glob)}] } },
+            },
+          },
+        }
+      `,
+      files: { 'src/x.ts': 'x', '.gitignore': 'dist/\nlib/\n' },
+    })
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', name)
+    const build = () => run({ cwd: root, tasks: [`${name}#build`], log, handleSignals: false })
+    expect((await build()).outcomes[0]!.status).toBe('success')
+    await rm(path.join(app, 'dist'), { recursive: true })
+    await rm(path.join(app, 'lib'), { recursive: true })
+    const hit = await build()
+    expect([glob, hit.outcomes[0]!.status]).toEqual([glob, 'cache-hit'])
+    expect([
+      readFileSync(path.join(app, 'dist/sub/a.js'), 'utf8'),
+      readFileSync(path.join(app, 'lib/b.js'), 'utf8'),
+    ]).toEqual(['a\n', 'b\n'])
+  }
+})

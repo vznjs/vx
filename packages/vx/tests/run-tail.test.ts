@@ -159,3 +159,16 @@ describe("vx's own steps", () => {
     expect(region(out)).not.toContain('failed ·')
   })
 })
+
+// `--output-logs hash-only` is one line per task: a step's row (and the
+// list header over it) broke the audit trail a script reads off a terminal.
+it('hash-only prints no row for a step that passed', () => {
+  const out = tty()
+  const log = defaultLogger({ enabled: false }, { mode: 'hash-only' }, out, { forceFloorMs: 0 })
+  log.runStart?.({ total: 1, concurrency: 1 })
+  log.stepStart?.('vx:uploads')
+  log.stepEnd?.('vx:uploads', { durationMs: 300, ok: true })
+  expect(out.text()).not.toMatch(/success internal vx:uploads\n/)
+  // The list's header; the live region's own names `blocked` too.
+  expect(out.text()).not.toMatch(/time status +cache +task\n/)
+})

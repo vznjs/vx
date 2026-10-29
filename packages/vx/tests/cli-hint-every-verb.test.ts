@@ -131,6 +131,17 @@ describe('a refused word names the nearest one the verb takes', () => {
     ])
   })
 
+  it('vx help takes one verb: a second word is refused, not dropped', async () => {
+    expect([
+      await refused(['help', 'run', 'extra']),
+      await refused(['help', 'run', '--hlp']),
+    ]).toEqual([
+      [1, '✗ vx help  unexpected argument: extra\n\n  see vx help\n'],
+      [1, '✗ vx help  unknown flag: --hlp\n\n  see vx help\n\n  fix  --help\n'],
+    ])
+    expect(await run(['help', 'run'])).toBe(0)
+  })
+
   it('a flag far from --help gets no hint (control)', async () => {
     expect(await refused(['lock', '--zzz'])).toEqual([
       1,

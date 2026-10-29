@@ -3219,33 +3219,41 @@
       },
       "tasks.*.exec.retries": {
         "ok": ["<absent>", "0", "1", "65536", "2147483648"],
-        "$CONFIG: tasks.c.exec.retries must be a non-negative integer": [
-          "null",
-          "true",
-          "false",
-          "1.5",
-          "-1",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got null)": ["null"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got true)": ["true"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got false)": ["false"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got 1.5)": ["1.5"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got -1)": ["-1"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got \"\")": ["\"\""],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got \"x\")": ["\"x\""],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got \"(\")": ["\"(\""],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got \"30d\")": ["\"30d\""],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got \"10G\")": ["\"10G\""],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got \"10\")": ["\"10\""],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [])": ["[]"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [1])": ["[1]"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [3000])": ["[3000]"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got {})": ["{}"],
+        "$CONFIG: tasks.c.exec.retries must be a non-negative integer (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },

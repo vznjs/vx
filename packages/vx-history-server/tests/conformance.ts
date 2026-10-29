@@ -141,6 +141,9 @@ export function conformance(name: string, target: Target): void {
       expect((await upload([ok], tokens.read)).status).toBe(403)
       for (const [bad, message] of [
         [[{ ...ok, hash: '' }], 'timings[0].hash: a string of up to 512 characters'],
+        // A lone surrogate is stored as bytes that read back as U+FFFD: a
+        // hash no query could find again.
+        [[{ ...ok, hash: 'a\ud800' }], 'timings[0].hash: a string of up to 512 characters'],
         [[{ ...ok, durationMs: 1.5 }], 'timings[0].durationMs: whole milliseconds'],
         [[{ ...ok, cores: -1 }], 'timings[0].cores: a number of cores'],
         [[{ ...ok, rssBytes: 'x' }], 'timings[0].rssBytes: a byte count'],
@@ -163,6 +166,7 @@ export function conformance(name: string, target: Target): void {
         { ...named(), refs: ['main'], hashes: ['a'] },
         { ...named(), refs: Array(9).fill(main[0]), hashes: ['a'] },
         { ...named(), refs: main, hashes: Array.from({ length: 10_001 }, (_, i) => String(i)) },
+        { ...named(), refs: main, hashes: ['\udbff'] },
         { repository: target.repository, refs: main, hashes: ['a'] },
         { issuer: target.issuer, repository: 'nameonly', refs: main, hashes: ['a'] },
       ]) {
@@ -202,8 +206,36 @@ export function conformance(name: string, target: Target): void {
       })
       expect((await call('/v1/capabilities', {}, null)).status).toBe(401)
       const get = await call('/v1/timings/query')
-      expect([get.status, get.headers.get('allow')]).toEqual([405, 'POST'])
-      expect((await call('/v1/nope')).status).toBe(404)
+      expect([get.status, get.headers.get('allow'), await get.json()]).toEqual([
+        405,
+        'POST',
+        { code: 'method_not_allowed', message: 'this route takes POST' },
+      ])
+      const nope = await call('/v1/nope')
+      expect([nope.status, await nope.json()]).toEqual([
+        404,
+        {
+          code: 'not_found',
+          message: `no route GET /v1/nope: name the server's base URL; it serves /v1/ (PROTOCOL.md)`,
+        },
+      ])
+      const text = await call('/v1/timings/query', {
+        method: 'POST',
+        body: '{}',
+        headers: { 'content-type': 'text/plain' },
+      })
+      expect([text.status, await text.json()]).toEqual([
+        400,
+        { code: 'bad_request', message: 'send the body as Content-Type: application/json' },
+      ])
+      const query = await call('/v1/capabilities?team=a')
+      expect([query.status, await query.json()]).toEqual([
+        400,
+        {
+          code: 'bad_request',
+          message: 'this server takes no query parameters: drop ?team=a from the url',
+        },
+      ])
     })
   })
 }

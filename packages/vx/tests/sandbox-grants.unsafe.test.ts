@@ -1942,6 +1942,21 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
     }
   })
 
+  // The report line is printed verbatim, and `cStringPath` decodes the
+  // `\033` strace wrote: a file named `ESC ]0;…` retitled the terminal.
+  it('writes a control byte of a denied path as \\xNN in the line, raw in the target', async () => {
+    const ws = path.join(dir, 'ws')
+    const produced = await produce(
+      String.raw`1 openat(AT_FDCWD, "${ws}/x\033]0;t\007\ry", 0) = -1 ENOENT (x)`,
+    )
+    expect(produced.map((v) => [v.line, v.target])).toEqual([
+      [
+        `openat(${ws}/x\\x1b]0;t\\x07\\x0dy) = -1 ENOENT  [${ws}/x\\x1b]0;t\\x07\\x0dy]`,
+        `${ws}/x\x1b]0;t\x07\ry`,
+      ],
+    ])
+  })
+
   it('marks an openat ignorable by either list, since the trace lacks its flags', async () => {
     const ws = path.join(dir, 'ws')
     const produced = await produce(at(`${ws}/s.txt`))

@@ -13,6 +13,7 @@ import {
   inputWriters,
   latestRunId,
   rootCauses,
+  upstreamTask,
   whyDidThisRerun,
 } from '../history/index.js'
 import { resolveRunId } from '../orchestrator/index.js'
@@ -252,7 +253,13 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     )
     let runId: string | null
     if (parsed.runId !== undefined) {
-      runId = resolveRunId(db, parsed.runId, 'vx why')
+      // A stopped run keeps rows but no header (item 854), and `vx last
+      // --log` prints its id, so the whole id is taken from its rows too.
+      runId =
+        resolveRunId(db, parsed.runId, 'vx why') ??
+        (db.query('SELECT 1 FROM runs WHERE run_id = ? LIMIT 1').get(parsed.runId) !== null
+          ? parsed.runId
+          : null)
       // An unknown id read as a known run missing the task (X-18).
       if (runId === null) {
         throw new UserError(
@@ -370,14 +377,20 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         }
       }
       const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
+      // An upstream row names the task to ask next: the command, not a
+      // placeholder to fill in from the row above. A group records no run,
+      // so `vx why` on one refuses: its members are asked instead.
+      const upstream = [
+        ...new Set(
+          diff.entries.filter((e) => e.kind === 'upstream').map((e) => upstreamTask(e.name)),
+        ),
+      ].filter((n) => cacheKeyDiff(db, runId, n).found)
       const kinds = [...new Set([...diff.entries.map((e) => e.kind), ...rootKinds])].filter(
-        (k) => k in WHAT_TO_DO && !(k === 'upstream' && roots.length > 0),
+        (k) =>
+          k in WHAT_TO_DO && !(k === 'upstream' && (roots.length > 0 || upstream.length === 0)),
       )
       if (kinds.length > 0) {
         lines.push('', `  ${head('what to do')}:`)
-        // An upstream row names the task to ask next: the command, not a
-        // placeholder to fill in from the row above.
-        const upstream = diff.entries.filter((e) => e.kind === 'upstream').map((e) => e.name)
         for (const k of kinds) {
           const todo =
             k === 'upstream'

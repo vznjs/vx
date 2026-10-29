@@ -78,6 +78,17 @@ describe('--affected and a symlinked input', () => {
     expect(c.paths.get('b')).toEqual(['src/s.txt'])
   })
 
+  // The target reached `git ls-files` as a pathspec: `:x` is pathspec magic,
+  // matched nothing, and the ignored target read as one git diffs.
+  it('an ignored target whose name is pathspec magic is affected every run', async () => {
+    await writeFile(path.join(root, '.gitignore'), 'secret.txt\n/:gen/\n')
+    await mkdir(path.join(root, ':gen'))
+    await writeFile(path.join(root, ':gen', 'x.txt'), 'G\n')
+    await symlink('../../../:gen', path.join(root, 'packages/a/src/gen'))
+    commit()
+    expect([...(await changes()).projects]).toEqual(['a'])
+  })
+
   // Control: a dangling link, and a link whose target did not change, select nothing.
   it('a dangling link, or an unchanged target, selects nothing', async () => {
     await symlink('../nowhere.txt', path.join(root, 'packages/a/src/gone.txt'))

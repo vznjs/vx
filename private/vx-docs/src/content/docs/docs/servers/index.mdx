@@ -31,22 +31,28 @@ ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml'
 What that gives each run of `ci.yml`:
 
 - **A run of `acme/app`** reads its own branch, then the branch it merges
-  into, then `main`.
+  into, then `main`; a pull request first its merge ref, `refs/pull/<n>/merge`.
 - **A push to a branch**, such as `main`, writes that branch.
-- **A pull request from `feat-x`** writes `feat-x` only.
+- **A pull request from `feat-x`** writes its merge ref only, never a
+  branch: a fork names its own head branch, and could name `release`.
 - **A `pull_request_target` run** reads and writes nothing: it runs on
   the base branch for a fork's code.
 - **A run of another workflow or repository** is refused. With `ALLOW`
-  empty, every request is refused: `the server admits no CI: set ALLOW`.
+  empty, a server does not start, and a Worker refuses every request:
+  `the server admits no CI: set ALLOW`.
 
 On GitLab, the workflow is the CI file:
-`https://gitlab.com:acme/web:.gitlab-ci.yml`.
+`https://gitlab.com:acme/web:.gitlab-ci.yml`. A merge request pipeline
+writes its source branch only when the token's `source_project_path`
+(GitLab 19.5+) names the project itself: a fork's merge request, run in
+your project, writes nothing.
 
 <details>
 <summary>What a merge queue writes</summary>
 
-A GitHub merge queue run, on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
-writes `main` before its code lands. Code you queue is code you trust,
+A GitHub merge queue run (`merge_group`), on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
+writes `main` before its code lands. A push to a branch of that name
+writes only that branch. Code you queue is code you trust,
 so run security checks on the pull request, before it is queued.
 
 </details>

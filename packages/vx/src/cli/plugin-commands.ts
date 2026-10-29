@@ -18,7 +18,7 @@ import type {
   TaskArtifacts,
 } from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
-import { machineParallelism, maskedLine, SecretBroker, ui } from '../util/index.js'
+import { machineParallelism, maskedLine, SecretBroker, thrownMessage, ui } from '../util/index.js'
 import { resolveSetting } from '../settings.js'
 
 export interface ResolvedPluginCommand {
@@ -72,7 +72,7 @@ async function workspacePlugins(cwd: string): Promise<
     const { loadCliWorkspace } = await import('./workspace-config.js')
     ws = await loadCliWorkspace(workspaceRoot)
   } catch (err) {
-    return { loadError: err instanceof Error ? err.message : String(err) }
+    return { loadError: thrownMessage(err) }
   }
   return {
     workspaceRoot,

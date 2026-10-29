@@ -7,6 +7,7 @@ export {
   errorDocument,
   fsRefusalHint,
   isDiskFull,
+  configThrow,
   isFsRefusal,
   isTmpdirRefusal,
   TMPDIR_HINT,
@@ -21,9 +22,11 @@ export {
   isOutOfFds,
   notAWorkTree,
   OUT_OF_FDS_HINT,
+  thrownMessage,
   wantsJson,
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
+export { envFlagOn } from './env-flag.js'
 export {
   detectColors,
   dumbTerminal,
@@ -63,6 +66,7 @@ export {
   outputNever,
   restorableOutput,
   printable,
+  hasControl,
   relPosix,
   DOT_VX_GITATTRIBUTES,
   DOT_VX_GITIGNORE,
@@ -78,6 +82,7 @@ export {
   braceAlternatives,
   braceRange,
   BRACE_RANGE_LIMIT,
+  writableUnder,
 } from './paths.js'
 export {
   claimExitForSignal,
@@ -115,6 +120,7 @@ export {
 } from './git-ignored.js'
 export { realPath, realpathOf } from './real-path.js'
 export {
+  heldSecrets,
   maskedCommand,
   maskedEmitter,
   maskedLine,
