@@ -684,6 +684,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     uncached: () => uncached,
     namedIgnored: () => namedIgnored,
     fenced: (ownDir, abs) => fenced(ownDir, abs),
+    awaited: (abs) => ancestorNames.get(path.dirname(abs))?.has(path.basename(abs)) === true,
     ...(atArm !== undefined ? { existedAtArm: atArm.listed, trackedAtArm: atArm.tracked } : {}),
   })
   /** Per-project arms by directory, so `rearm` can add and drop them. */

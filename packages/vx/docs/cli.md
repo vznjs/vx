@@ -1477,6 +1477,10 @@ Always ignored (no re-trigger):
   default, but `defineWorkspace({ cache: { dir } })` and `--cache-dir` can put it
   anywhere; watching it would let vx's own cache writes trigger the next
   cycle, which writes again — a loop that never settles.
+- A new empty directory (`mkdir src/new`): it holds nothing a key reads,
+  and the poller, which samples files, never saw one. A file made in it
+  is the change. A project directory made again, which the watch waits
+  on, still is one.
 
 Everything else triggers a cycle. We deliberately don't filter events
 against per-task `inputs.files` — the cache hash is the source
