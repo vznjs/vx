@@ -404,7 +404,12 @@ describe('the relay carries one run between its orchestrator and workers', () =>
       const res = await c.relay.fetch(
         new Request(`http://relay/v1/sessions/${R}/${verb}`, { method: 'POST', body: '{}' }),
       )
-      expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
+      expect([res.status, await res.json()]).toEqual([
+        404,
+        {
+          error: `no route POST /v1/sessions/${R}/${verb}: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`,
+        },
+      ])
     }
   })
 
@@ -962,4 +967,19 @@ it('keeps no refusal of a socket request whose upgrade failed', async () => {
   relay.attach('', ids[0]!, { send: () => {}, close: (code) => void closed.push(code) })
   // Its refusal gone, the id is one the relay never knew.
   expect(closed).toEqual([GONE])
+})
+
+// A 405 with no Allow named no method to use.
+it('answers a wrong method 405 naming GET, in Allow too', async () => {
+  const relay = createRelay({ upgrade: () => new Response(null, { status: 101 }) })
+  const res = await relay.fetch(
+    new Request('http://relay/v1/sessions/00000000-0000-4000-8000-000000000001/socket', {
+      method: 'POST',
+    }),
+  )
+  expect([res.status, res.headers.get('allow'), await res.json()]).toEqual([
+    405,
+    'GET',
+    { error: 'this route takes GET' },
+  ])
 })

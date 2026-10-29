@@ -188,6 +188,10 @@ describe('config stage', () => {
       expect(await refusal('ws.cache = { dir: 42 }')).toBe(
         `${where}: \`cache.dir\` must be a non-blank string (got 42)`,
       )
+      // The list is fixed before the stage: an edit validated and was dropped.
+      expect(await refusal('ws.plugins.pop()')).toBe(
+        `${where}: \`plugins\` is fixed before the config stage, so an edit to it would change nothing — declare plugins in .vx/workspace`,
+      )
       // CONTROL: a valid edit passes the same check.
       expect(await refusal("ws.run.timeout = '5s'")).toBeUndefined()
     },
