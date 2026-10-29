@@ -844,6 +844,8 @@ packages:
     ['a record with no hash', 'bar: {path: patches/a.patch}', 'bar: {path: patches/b.patch}'],
     ['a record keyed `name@version`', "'bar@2.0.0': {hash: h1}", "'bar@2.0.0': {hash: h2}"],
     ['a scoped package named alone', "'@s/qux': {hash: h1}", "'@s/qux': {hash: h2}"],
+    // pnpm keys a patch by a range too (vercel/turborepo#13307).
+    ['a record keyed by a version range', "'bar@<=2.0.0': {hash: h1}", "'bar@<=2.0.0': {hash: h2}"],
   ])('a patch given as %s moves only what reaches it', (_shape, before, after) => {
     const withPatch = (entry: string) =>
       v9().replace('\nimporters:', `\npatchedDependencies:\n  ${entry}\n\nimporters:`) +
@@ -866,6 +868,15 @@ packages:
     expect(movedDirs(isScoped ? scoped(b) : b, isScoped ? scoped(a) : a)).toEqual(
       isScoped ? ['packages/b', 'packages/c'] : ['packages/a'],
     )
+  })
+
+  it('a range-keyed patch the version falls outside of moves nothing (vercel/turborepo#13307)', () => {
+    const withPatch = (hash: string) =>
+      v9().replace(
+        '\nimporters:',
+        `\npatchedDependencies:\n  'bar@<2.0.0': {hash: ${hash}}\n\nimporters:`,
+      )
+    expect(movedDirs(withPatch('h1'), withPatch('h2'))).toEqual([])
   })
 
   it.each([
