@@ -69,11 +69,13 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--log': ['a#build'],
   '--sql': ['SELECT * FROM runs'],
   '--stats': [],
+  '--live': [],
   '--limit': ['2'],
 }
-/** A flag that only rides with another on one verb: `last --branch` needs `--stats`. */
+/** A flag that only rides with another on one verb: `last --branch` needs `--stats`, `--follow` needs `--live`. */
 const VERB_ARGV: Readonly<Record<string, readonly string[]>> = {
   'last --branch': ['main', '--stats'],
+  'last --follow': ['--live'],
 }
 
 describe('verbFlags is what each verb accepts', () => {

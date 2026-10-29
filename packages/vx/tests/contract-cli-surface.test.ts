@@ -62,6 +62,7 @@ function companions(verb: string, flag: string): string[] {
   if (verb === 'cache' && !['--older-than', '--max-size', '--global'].includes(flag))
     return ['--max-size', '1G']
   if (verb === 'last' && flag === '--branch') return ['--stats']
+  if (verb === 'last' && flag === '--follow') return ['--live']
   return []
 }
 

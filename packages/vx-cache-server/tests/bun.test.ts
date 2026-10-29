@@ -359,9 +359,9 @@ it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', 
     return [cli.exitCode, cli.stderr.toString()]
   }
   expect(['0x50', '1e1', ' 80', '80.0'].map(said)).toEqual([
-    [2, '--port: not a port: 0x50\n'],
-    [2, '--port: not a port: 1e1\n'],
-    [2, '--port: not a port:  80\n'],
-    [2, '--port: not a port: 80.0\n'],
+    [2, '✗ vx-cache-server  --port: not a port: 0x50\n'],
+    [2, '✗ vx-cache-server  --port: not a port: 1e1\n'],
+    [2, '✗ vx-cache-server  --port: not a port:  80\n'],
+    [2, '✗ vx-cache-server  --port: not a port: 80.0\n'],
   ])
 }, 20_000)

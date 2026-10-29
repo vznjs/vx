@@ -368,7 +368,7 @@ it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', 
         timeout: 2000,
       },
     )
-    return [cli.exitCode, cli.stderr.toString()]
+    return [cli.exitCode, stderrOf(cli)]
   }
   expect(['0x50', '1e1', ' 80', '80.0'].map(said)).toEqual([
     [2, '--port: not a port: 0x50\n'],

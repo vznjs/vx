@@ -39,9 +39,11 @@
       "--branch",
       "--cache-dir",
       "--failed",
+      "--follow",
       "--format",
       "--help",
       "--list",
+      "--live",
       "--log",
       "--sql",
       "--stats"
