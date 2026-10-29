@@ -125,6 +125,13 @@ it('says where to let the job set pipeline variables when GitLab refuses them', 
   )
 })
 
+it("writes the controls in GitLab's words as escapes", async () => {
+  reply = () => new Response('\x1b]0;PWNED\x07', { status: 403 })
+  expect(gitlab().spawn(worker)).rejects.toThrow(
+    'gitlab(): triggering small#2: 403 \\x1b]0;PWNED\\x07',
+  )
+})
+
 it('names a run only in a GitLab job, and starts no worker outside one', async () => {
   expect(gitlab().runId!()).toMatch(/^[0-9a-f-]{36}$/)
   delete process.env['GITLAB_CI']
