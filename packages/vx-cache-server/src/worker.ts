@@ -147,6 +147,10 @@ export default {
           'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
         )
       }
+      // Likewise AUDIENCE: "env.AUDIENCE.trim is not a function".
+      if (env.AUDIENCE !== undefined && typeof (env.AUDIENCE as unknown) !== 'string') {
+        return errorJson(500, 'AUDIENCE: one string, the aud CI tokens name')
+      }
       try {
         allow = parseAllow(env.ALLOW ?? '')
       } catch (err) {

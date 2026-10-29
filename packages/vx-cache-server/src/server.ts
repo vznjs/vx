@@ -49,7 +49,9 @@ export function limitsFrom(env: object): Partial<Limits> {
     const v = (env as Record<string, unknown>)[name]
     if (v === undefined || v === '') continue
     // A Worker var may be JSON: a number was skipped, the default served.
-    const n = typeof v === 'string' || typeof v === 'number' ? Number(v) : Number.NaN
+    // A string is digits only, as --port is: Number read 0x10 as 16.
+    const n =
+      typeof v === 'number' ? v : typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : Number.NaN
     if (!(Number.isSafeInteger(n) && n > 0))
       throw new Error(
         `${name}: not a whole number above 0: ${typeof v === 'string' || typeof v === 'number' ? v : JSON.stringify(v)}`,

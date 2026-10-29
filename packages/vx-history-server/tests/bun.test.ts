@@ -6,10 +6,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { sqliteDb } from '../src/bun.js'
+import { timingDaysOf } from '../src/days.js'
 import { createHistoryServer } from '../src/server.js'
 import { sqliteStore } from '../src/store.js'
 import { conformance } from './conformance.js'
-import { allowOf, GITHUB, type Issuer, issuer, REPO } from './issuer.js'
+import { allowOf, allowVarOf, GITHUB, type Issuer, issuer, REPO } from './issuer.js'
 
 let server: Bun.Server<undefined>
 let iss: Issuer
@@ -374,6 +375,58 @@ it("answers 502, saying why, while the issuer's keys are not a key set", async (
 /** What the CLI said on stderr, past the refusal line's mark. */
 const stderrOf = (cli: { stderr: Buffer }): string =>
   Bun.stripANSI(cli.stderr.toString()).replace(/^✗ vx-history-server {2}/, '')
+
+// jose matches aud exactly: AUDIENCE with a pasted newline refused every
+// token as the wrong audience. The Workers entry trims it
+// (worker.test.ts); so does this one. The issuer is on loopback, as the
+// image's smoke test serves it, so the spawned server reaches its keys.
+it('reads AUDIENCE without the blanks around it', async () => {
+  let keysOf: Issuer | undefined
+  const keys = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: async (req) => Response.json(await keysOf!.fetchJson(req.url)),
+  })
+  const at = await issuer(keys.url.origin)
+  keysOf = at
+  const cli = Bun.spawn(
+    [
+      'bun',
+      path.join(import.meta.dir, '..', 'src', 'bun.ts'),
+      ...['--port', '0', '--host', '127.0.0.1', '--db', ':memory:'],
+    ],
+    {
+      env: {
+        ...process.env,
+        ALLOW: allowVarOf(at.iss),
+        AUDIENCE: ' https://history.example\n',
+      },
+      stdout: 'pipe',
+    },
+  )
+  try {
+    const line = Bun.stripANSI(
+      new TextDecoder().decode((await cli.stdout.getReader().read()).value),
+    )
+    const base = /on (\S+)/.exec(line)![1]!
+    const res = await fetch(new URL('/v1/capabilities', base), {
+      headers: { authorization: `Bearer ${await at.sign('read', 'https://history.example')}` },
+    })
+    expect(res.status).toBe(200)
+  } finally {
+    cli.kill()
+    await cli.exited
+    await keys.stop(true)
+  }
+})
+
+// Number() read 0x1e as 30 and 3e1 as 30, as it read --port, which takes
+// digits only since c4d2ce089c.
+it('reads TIMING_DAYS only as decimal digits', () => {
+  for (const v of ['0x1e', '3e1', ' 30', '30 ', '+30'])
+    expect(() => timingDaysOf(v)).toThrow(`TIMING_DAYS: a whole number of days, got ${v}`)
+  expect([timingDaysOf('30'), timingDaysOf(30), timingDaysOf('')]).toEqual([30, 30, undefined])
+})
 
 it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {

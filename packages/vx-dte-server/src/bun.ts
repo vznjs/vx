@@ -28,6 +28,8 @@ function main(argv: string[]): void {
   }
   const noAuth = values['no-auth']
   const host = values.host ?? (noAuth ? '127.0.0.1' : '0.0.0.0')
+  // Bun.serve reads '' as localhost: unreachable from another host or container.
+  if (host.trim() === '') fail(`--host: needs an address, got '${host}'`)
   if (noAuth && !LOOPBACK.has(host)) fail('--no-auth listens on loopback only')
   // Read from the environment, as the cache and history servers and the
   // relay's Worker read them: one way to configure every vx server.
@@ -48,8 +50,10 @@ function main(argv: string[]): void {
   } catch (err) {
     fail(`ALLOW: ${(err as Error).message}`)
   }
-  // Number('') is 0: `--port "$PORT"` with PORT unset bound a random port.
-  const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
+  // Digits only, as the cache and history servers read it: Number('') is
+  // 0, a random port for `--port "$PORT"` with PORT unset, and Number read
+  // 0x50 as 80 and 1e1 as 10.
+  const port = /^\d+$/.test(values.port) ? Number(values.port) : Number.NaN
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
   const server = serveRelay({

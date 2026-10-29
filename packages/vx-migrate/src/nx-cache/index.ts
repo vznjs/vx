@@ -20,7 +20,8 @@ import {
   UserError,
   type PluginOptionKinds,
 } from '@vzn/vx'
-import { deadline } from '../remote-deadline.js'
+import { deadline, MAX_TIMER_MS } from '../remote-deadline.js'
+import { checkRemoteUrl } from '../remote-url.js'
 import { refusal } from '../remote-refusal.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { Cooldown, withRetry } from '../remote-retry.js'
@@ -64,18 +65,7 @@ export function resolveNxCacheConfig(
     options.url !== undefined ? 'nxCache() option "url"' : 'NX_SELF_HOSTED_REMOTE_CACHE_SERVER'
   const url = (options.url ?? env['NX_SELF_HOSTED_REMOTE_CACHE_SERVER'])?.replace(/\/+$/, '')
   if (!url) return undefined
-  // With no scheme every request failed on its own, as a bare "Invalid URL".
-  if (!/^https?:\/\//.test(url))
-    throw new UserError(`${from} must be an http(s) URL, got ${JSON.stringify(url)}`)
-  // The URL is printed in every refusal line, so a `user:pass@` in it would
-  // leak to the log. Credentials go in the access token.
-  if (URL.canParse(url)) {
-    const u = new URL(url)
-    if (u.username !== '' || u.password !== '')
-      throw new UserError(
-        `${from} carries credentials (user:pass@); pass them as the token instead`,
-      )
-  }
+  checkRemoteUrl(url, from)
   const token = options.token ?? env['NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN']
   const fault = token === undefined ? null : headerValueFault(token)
   if (fault !== null)
@@ -271,13 +261,19 @@ export function nxCache(options: NxCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('nxCache()', options, NX_CACHE_KEYS)
   // At the call: in the `cache` hook a laptop with no server named passed
   // what failed the first CI run. A NaN never reaches the bound, and the
-  // request would be resent forever; a zero timeout aborted every request
-  // as it started.
+  // request would be resent forever; a zero timeout, or one past the longest
+  // timer, aborted every request as it started.
   const { retries, timeoutMs: ms } = options
   if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
     throw new UserError(`nxCache() option "retries" must be a whole number ≥ 0, got ${retries}`)
-  if (ms !== undefined && !(Number.isFinite(ms) && ms > 0))
-    throw new UserError(`nxCache() option "timeoutMs" must be a positive number of ms, got ${ms}`)
+  if (ms !== undefined && !(ms > 0 && ms <= MAX_TIMER_MS))
+    throw new UserError(
+      `nxCache() option "timeoutMs" must be a positive number of ms up to ${MAX_TIMER_MS}, got ${ms}`,
+    )
+  // At the call too, as vxCache() checks its url: in the hook alone, a verb
+  // that opens no cache (`vx show`) took a url every run then failed on.
+  const url = options.url?.replace(/\/+$/, '')
+  if (url) checkRemoteUrl(url, 'nxCache() option "url"')
   return definePlugin(import.meta, {
     cache(): RemoteCacheLayer | undefined {
       const config = resolveNxCacheConfig(options)

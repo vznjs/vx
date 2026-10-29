@@ -120,6 +120,28 @@ describe('a CI OIDC token', () => {
     ])
   })
 
+  // A loopback issuer ALLOW takes, as a container's tests run one: its
+  // workflow claim names the host without http://, as GitLab's names it
+  // without https://.
+  it('is accepted from a loopback http issuer ALLOW names', async () => {
+    const LOCAL = 'http://127.0.0.1:8080'
+    const verify = createVerifier({
+      allow: parseAllow(`${LOCAL}:group/app:.gitlab-ci.yml`),
+      audience: AUD,
+      now: () => now,
+      fetchJson: async (url) =>
+        url.endsWith('/.well-known/openid-configuration')
+          ? { jwks_uri: `${LOCAL}/jwks` }
+          : { keys: [{ ...jwk, kid: 'k1' }] },
+    })
+    const token = await sign({
+      ...good,
+      iss: LOCAL,
+      ci_config_ref_uri: '127.0.0.1:8080/group/app//.gitlab-ci.yml@refs/heads/main',
+    })
+    expect(await verify(token)).toEqual({ iss: LOCAL, run: ['7'] })
+  })
+
   // The claim was cut at its first `@`, so a workflow file named with one
   // (`ci@x.yml`) was refused whatever ALLOW said; an issuer written in ALLOW
   // with a trailing slash matched no token's iss, so it admitted nothing.
@@ -173,9 +195,20 @@ describe('a CI OIDC token', () => {
     )
     expect(() => parseAllow('https://x.dev:vx:ci.yml')).toThrow('is not issuer:owner/repo:workflow')
     // Well formed, so "is not issuer:owner/repo:workflow" sent its author to the wrong part.
-    expect(() => parseAllow('http://x.dev:o/r:ci.yml')).toThrow(
-      new Error('http://x.dev:o/r:ci.yml: the issuer is https://, not http://x.dev'),
-    )
+    // One rule with @vzn/vx-devtools' parseAllow, which the cache and
+    // history servers read ALLOW with: plain http only to 127.0.0.1's host,
+    // where a server's own container tests run an issuer.
+    for (const [bad, issuer] of [
+      ['http://x.dev:o/r:ci.yml', 'http://x.dev'],
+      ['http://127.0.0.1:80@x.example:o/r:ci.yml', 'http://127.0.0.1:80@x.example'],
+      ['http://127.0.0.1.x.example:o/r:ci.yml', 'http://127.0.0.1.x.example'],
+    ] as const)
+      expect(() => parseAllow(bad)).toThrow(
+        new Error(`${bad}: the issuer is https://, not ${issuer} (plain http only on 127.0.0.1)`),
+      )
+    expect(parseAllow('http://127.0.0.1:8080:o/r:ci.yml')).toEqual([
+      { issuer: 'http://127.0.0.1:8080', repository: 'o/r', workflow: 'ci.yml' },
+    ])
     expect(() => parseAllow('https://x.dev:o/r:a.yml,https://x.dev:o/s:a.yml')).toThrow(
       'entries are space separated',
     )

@@ -145,16 +145,60 @@ it('refuses every join with a 403 while ALLOW admits no one, waking no object', 
   for (const [allow, error] of [
     [' ', "this relay's ALLOW is empty: it admits no run"],
     ['o/r', "this relay's ALLOW: o/r is not issuer:owner/repo:workflow"],
+    // wrangler.jsonc may write a var as a JSON list: "list.split is not a
+    // function", where the cache and history Workers name ALLOW's form.
+    [
+      ['https://gitlab.com:o/r:.gitlab-ci.yml'],
+      "this relay's ALLOW: one string of issuer:owner/repo:workflow entries, space separated",
+    ],
   ] as const) {
     const env: Env = {
       RELAY: {
         idFromName: (n) => n,
         get: () => ({ fetch: () => Promise.reject(new Error('woken')) }),
       },
-      ALLOW: allow,
+      ALLOW: allow as string,
     }
     const res = await join(env, A)
     expect([res.status, await res.json()]).toEqual([403, { error }])
+  }
+})
+
+// jose matches aud exactly: AUDIENCE with a pasted newline refused every
+// token as the wrong audience, and a blank one was the audience itself.
+// The relay on Bun, and the cache and history servers' Workers, trim it
+// and refuse a blank one.
+it('reads AUDIENCE without the blanks around it, and refuses a blank one', async () => {
+  issuer()
+  let env: Env
+  env = {
+    RELAY: namespace(() => env),
+    ALLOW: `${ISS}:o/r:.gitlab-ci.yml`,
+    AUDIENCE: ' vx-dte-server\n',
+  }
+  // 426, past the token: no websocket here to join on.
+  expect((await join(env, A, await job(1))).status).toBe(426)
+  const blank: Env = {
+    RELAY: {
+      idFromName: (n) => n,
+      get: () => ({ fetch: () => Promise.reject(new Error('woken')) }),
+    },
+    ALLOW: `${ISS}:o/r:.gitlab-ci.yml`,
+    AUDIENCE: ' ',
+  }
+  const res = await join(blank, B, await job(1))
+  expect([res.status, await res.json()]).toEqual([
+    403,
+    { error: "this relay's AUDIENCE: the aud CI tokens name, or unset, not blank" },
+  ])
+  // wrangler.jsonc may write a var as JSON: "env.AUDIENCE.trim is not a
+  // function" escaped the Worker as a 500.
+  for (const audience of [42, ['vx-dte-server']]) {
+    const listed = await join({ ...blank, AUDIENCE: audience as never }, C, await job(1))
+    expect([listed.status, await listed.json()]).toEqual([
+      403,
+      { error: "this relay's AUDIENCE: one string, the aud CI tokens name" },
+    ])
   }
 })
 

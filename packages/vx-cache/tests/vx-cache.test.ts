@@ -814,6 +814,19 @@ describe('config', () => {
     expect(hasCiToken(gh, false)).toBe(true)
   })
 
+  // Checked only in the `cache` hook, a url option no request can carry
+  // passed every verb that opens no cache (`vx show`); vxHistory() refuses
+  // its url at the call.
+  it('refuses a url option at the call, as vxHistory() does', () => {
+    expect(() => vxCache({ ...NAMED, url: 'http://c.example' })).toThrow(
+      'vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got http://c.example',
+    )
+    expect(() => vxCache({ ...NAMED, url: 'https://c.example/v1' })).toThrow(
+      "vxCache(): url is the server's base, without /v1: https://c.example",
+    )
+    expect(() => vxCache({ ...NAMED, url: 'https://c.example' })).not.toThrow()
+  })
+
   // 2026-10-25: the user names both, always; nothing guesses them. A
   // UserError: a plain one printed a stack under VX_E_INTERNAL (2026-10-28).
   it('refuses a workspace that names no issuer or repository', () => {

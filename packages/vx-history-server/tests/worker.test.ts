@@ -65,13 +65,33 @@ it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS i
       'ALLOW: one string of issuer:owner/repo:workflow entries, space separated',
     ],
     [{ ALLOW: allowVarOf(), TIMING_DAYS: '0' }, 500, 'TIMING_DAYS: a whole number of days, got 0'],
+    // wrangler.jsonc may write a var as JSON: `true` was read as 1 day,
+    // where the Bun entry refuses TIMING_DAYS=true.
+    [
+      { ALLOW: allowVarOf(), TIMING_DAYS: true },
+      500,
+      'TIMING_DAYS: a whole number of days, got true',
+    ],
     // A blank AUDIENCE was taken: every token was then "wrong audience".
     [
       { ALLOW: allowVarOf(), AUDIENCE: ' ' },
       500,
       'AUDIENCE: the aud CI tokens name, or unset, not blank',
     ],
+    // wrangler.jsonc may write a var as JSON: "env.AUDIENCE.trim is not a function".
+    [{ ALLOW: allowVarOf(), AUDIENCE: 42 }, 500, 'AUDIENCE: one string, the aud CI tokens name'],
+    [
+      { ALLOW: allowVarOf(), AUDIENCE: ['https://a.example'] },
+      500,
+      'AUDIENCE: one string, the aud CI tokens name',
+    ],
     [{ ALLOW: allowVarOf(), READ_ACCESS: 'yes' }, 500, 'READ_ACCESS: public, or unset, not yes'],
+    // wrangler.jsonc may write a var as JSON: a list was refused "not public".
+    [
+      { ALLOW: allowVarOf(), READ_ACCESS: ['public'] },
+      500,
+      'READ_ACCESS: public, or unset, not ["public"]',
+    ],
   ] as const) {
     const other = await start(bindings)
     try {
@@ -88,7 +108,8 @@ it('refuses every request, saying why, while ALLOW, TIMING_DAYS or READ_ACCESS i
       await other.dispose()
     }
   }
-})
+  // One Miniflare start per row; ten of them on a loaded CI runner pass 5 s.
+}, 30_000)
 
 // No database bound: every request was a 500 naming "undefined", or a
 // capabilities 200 while every upload failed.

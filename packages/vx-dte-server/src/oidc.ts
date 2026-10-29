@@ -111,8 +111,17 @@ export function parseAllow(list: string): Allowed[] {
       if (r < 0 || !url || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
-      if (!issuer.startsWith('https://'))
-        throw new Error(`${e}: the issuer is https://, not ${issuer}`)
+      // @vzn/vx-devtools' rule, which the cache and history servers read
+      // ALLOW with (the relay imports only jose): plain http only to
+      // 127.0.0.1's host, where a container's tests run an issuer. Its
+      // host, not its spelling: `http://127.0.0.1:80@x.example` is x.example.
+      const https =
+        issuer.startsWith('https://') ||
+        (issuer.startsWith('http://') && URL.parse(issuer)?.hostname === '127.0.0.1')
+      if (!https)
+        throw new Error(
+          `${e}: the issuer is https://, not ${issuer} (plain http only on 127.0.0.1)`,
+        )
       // A token's iss has no trailing slash: one written in ALLOW matched none.
       return { issuer: issuer.replace(/\/+$/, ''), repository, workflow }
     })
@@ -122,7 +131,7 @@ export function parseAllow(list: string): Allowed[] {
 function workflowPath(iss: string, repository: string, workflow: string): string {
   return iss === GITHUB
     ? `${repository}/.github/workflows/${workflow}`
-    : `${iss.replace(/^https:\/\//, '').replace(/\/$/, '')}/${repository}//${workflow}`
+    : `${iss.replace(/^https?:\/\//, '').replace(/\/$/, '')}/${repository}//${workflow}`
 }
 
 const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()

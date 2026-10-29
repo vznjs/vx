@@ -10,7 +10,8 @@
   // refused with "set ALLOW". AUDIENCE: the aud a
   // CI token names, unset the Worker's own origin. READ_ACCESS: public
   // lets a query with no token read a repository ALLOW names. TIMING_DAYS:
-  // days a task's timings outlive its last report (default 30).
+  // days a task's timings outlive its last report (default 30), a string
+  // or a number.
   "vars": { "ALLOW": "" },
   "d1_databases": [{ "binding": "DB", "database_name": "vx-history" }],
 }

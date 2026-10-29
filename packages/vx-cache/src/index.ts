@@ -825,6 +825,9 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
   }
   proxyHeaders('vxCache()', options.headers)
   namedOf(options)
+  // At the call, as vxHistory() checks its url: in the hook alone, a verb
+  // that opens no cache (`vx show`) took a url every run then failed on.
+  if (options.url !== undefined) resolveVxCacheConfig(options, {})
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveVxCacheConfig(options)

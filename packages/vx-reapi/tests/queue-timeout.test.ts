@@ -99,11 +99,13 @@ describe('queueTimeoutMs', () => {
   })
 
   // A timer past 2^31-1 ms fires after 1 ms: a bound of a month, meant as
-  // "wait", cancelled every action as it was queued, or as it started.
-  it('waits out a bound longer than a timer holds', async () => {
+  // "wait", cancelled every action as it was queued, or as it started. Such
+  // a bound is refused (timeout-options.test.ts); the longest a timer holds
+  // waits.
+  it('waits out the longest bound a timer holds', async () => {
     expect([
-      await settle(['QUEUED'], Bun.sleep(100), { queueTimeoutMs: 3e9 }),
-      await settle(['QUEUED', 'EXECUTING'], Bun.sleep(100), { executeTimeoutMs: 3e9 }),
+      await settle(['QUEUED'], Bun.sleep(100), { queueTimeoutMs: 2 ** 31 - 1 }),
+      await settle(['QUEUED', 'EXECUTING'], Bun.sleep(100), { executeTimeoutMs: 2 ** 31 - 1 }),
     ]).toEqual(['exit 0', 'exit 0'])
   })
 })

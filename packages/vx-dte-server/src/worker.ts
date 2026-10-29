@@ -89,7 +89,11 @@ function allowRefusal(allow: string | undefined): string | undefined {
   if (allowChecked !== undefined && allowChecked.allow === allow) return allowChecked.why
   let why: string | undefined
   try {
-    if (parseAllow(allow ?? '').length === 0) why = "this relay's ALLOW is empty: it admits no run"
+    // wrangler.jsonc may write a var as JSON: a list reached parseAllow.
+    if (allow !== undefined && typeof allow !== 'string')
+      why = "this relay's ALLOW: one string of issuer:owner/repo:workflow entries, space separated"
+    else if (parseAllow(allow ?? '').length === 0)
+      why = "this relay's ALLOW is empty: it admits no run"
   } catch (err) {
     why = `this relay's ALLOW: ${(err as Error).message}`
   }
@@ -128,7 +132,8 @@ const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
  * its first deploy; a token for another one is not meant for this relay.
  */
 function verifierOf(env: Env, req: Request): ReturnType<typeof createVerifier> {
-  const audience = env.AUDIENCE || new URL(req.url).origin
+  // jose matches aud exactly: a pasted newline refused every token.
+  const audience = env.AUDIENCE?.trim() || new URL(req.url).origin
   const key = `${env.ALLOW}\0${audience}`
   let v = verifiers.get(key)
   if (v === undefined) {
@@ -147,6 +152,13 @@ export default {
     }
     const refused = allowRefusal(env.ALLOW)
     if (refused !== undefined) return refuse(req, 403, refused)
+    // wrangler.jsonc may write a var as JSON: "env.AUDIENCE.trim is not a
+    // function" escaped as a 500, which a client retries.
+    if (env.AUDIENCE !== undefined && typeof (env.AUDIENCE as unknown) !== 'string')
+      return refuse(req, 403, "this relay's AUDIENCE: one string, the aud CI tokens name")
+    // A blank one was the audience itself: every token was "wrong audience".
+    if (env.AUDIENCE !== undefined && env.AUDIENCE.trim() === '')
+      return refuse(req, 403, "this relay's AUDIENCE: the aud CI tokens name, or unset, not blank")
     if (env.RELAY === undefined) {
       return refuse(
         req,

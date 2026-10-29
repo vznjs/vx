@@ -28,16 +28,23 @@ it('no options is taken', () => {
 // (JSON.stringify(NaN)).
 it('a number option it cannot use is refused at the call, naming the value', () => {
   expect(refusal(() => reapi({ callTimeoutMs: Number.NaN }))).toBe(
-    'reapi() option "callTimeoutMs" must be a positive number of ms, got NaN',
+    'reapi() option "callTimeoutMs" must be a positive number of ms up to 2147483647, got NaN',
   )
   expect(refusal(() => reapi({ metaTimeoutMs: 0 }))).toBe(
-    'reapi() option "metaTimeoutMs" must be a positive number of ms, got 0',
+    'reapi() option "metaTimeoutMs" must be a positive number of ms up to 2147483647, got 0',
   )
   expect(refusal(() => reapi({ executeTimeoutMs: -1 }))).toBe(
-    'reapi() option "executeTimeoutMs" must be a positive number of ms, got -1',
+    'reapi() option "executeTimeoutMs" must be a positive number of ms up to 2147483647, got -1',
   )
   expect(refusal(() => reapi({ queueTimeoutMs: Number.POSITIVE_INFINITY }))).toBe(
-    'reapi() option "queueTimeoutMs" must be a positive number of ms, got Infinity',
+    'reapi() option "queueTimeoutMs" must be a positive number of ms up to 2147483647, got Infinity',
+  )
+  // A timer past 2^31-1 ms fires after 1 ms.
+  expect(refusal(() => reapi({ queueTimeoutMs: 2 ** 31 }))).toBe(
+    'reapi() option "queueTimeoutMs" must be a positive number of ms up to 2147483647, got 2147483648',
+  )
+  expect(refusal(() => reapi({ callTimeoutMs: 3e9 }))).toBe(
+    'reapi() option "callTimeoutMs" must be a positive number of ms up to 2147483647, got 3000000000',
   )
   expect(refusal(() => reapi({ chunkBytes: 1.5 }))).toBe(
     'reapi() option "chunkBytes" must be a whole number above 0, got 1.5',
