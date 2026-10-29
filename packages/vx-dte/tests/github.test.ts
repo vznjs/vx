@@ -469,11 +469,13 @@ it("dispatches on the base branch once a merged PR's branch is gone", async () =
     port: 0,
     hostname: '127.0.0.1',
     async fetch(req) {
+      if (!new URL(req.url).pathname.endsWith('/dispatches'))
+        return new Response(null, { status: 202 })
       const { ref } = (await req.json()) as { ref: string }
       refs.push(ref)
       if (ref === 'feature')
         return Response.json({ message: 'No ref found for: feature' }, { status: 422 })
-      return new Response(null, { status: 204 })
+      return Response.json({ workflow_run_id: 1 })
     },
   })
   Object.assign(process.env, {
@@ -485,9 +487,11 @@ it("dispatches on the base branch once a merged PR's branch is gone", async () =
   })
   try {
     const why: string[] = []
-    void github().spawn(spawn('small#1', 'small', (w) => why.push(w)))
+    const adapter = github()
+    void adapter.spawn(spawn('small#1', 'small', (w) => why.push(w)))
     await Bun.sleep(100)
     expect([refs, why]).toEqual([['feature', 'main'], []])
+    await adapter.close?.()
   } finally {
     await server.stop(true)
   }
@@ -841,9 +845,10 @@ it('says a cancel the spent API limit refuses past its wait, with the reset', as
 })
 
 // The workflow runs it dispatched or adopted are the only ones whose jobs
-// the orchestrator admits as its workers (seal.ts githubProof); one
-// dispatch that named no run (an older API) admits any of the repository.
-it('names the workflow runs its workers come from, none once a dispatch named no run', async () => {
+// the orchestrator admits as its workers (seal.ts githubProof). A dispatch
+// that named no run is refused: before, it admitted any job of the
+// repository with id-token: write as a worker.
+it('names the workflow runs its workers come from, refusing a dispatch that named none', async () => {
   let id = 6
   let named = true
   const server = Bun.serve({
@@ -875,9 +880,15 @@ it('names the workflow runs its workers come from, none once a dispatch named no
     for (let i = 0; i < 50 && adapter.workerRuns!()!.size < 2; i++) await Bun.sleep(20)
     expect([...adapter.workerRuns!()!].sort()).toEqual(['5', '7'])
     named = false
-    void adapter.spawn(spawn('big#3', 'big'))
-    for (let i = 0; i < 50 && adapter.workerRuns!() !== undefined; i++) await Bun.sleep(20)
-    expect(adapter.workerRuns!()).toBeUndefined()
+    const why: string[] = []
+    void adapter.spawn(spawn('big#3', 'big', (w) => why.push(w)))
+    for (let i = 0; i < 50 && why.length === 0; i++) await Bun.sleep(20)
+    expect([why, [...adapter.workerRuns!()!].sort()]).toEqual([
+      [
+        'github(): dispatching vx-worker.yml named no workflow run (204): its workers cannot be told from any job of the repository',
+      ],
+      ['5', '7'],
+    ])
   } finally {
     await server.stop(true)
     await rm(temp, { recursive: true, force: true })

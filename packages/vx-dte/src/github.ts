@@ -118,10 +118,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
   let held = 0
   // The workflow runs whose jobs are this run's workers, by id: a run's id
   // is a dispatch input anyone who reads the repository's Actions sees, so
-  // a job of any other run is no worker of it. A dispatch that named no
-  // run (an API that answers 204) leaves it unbound.
+  // a job of any other run is no worker of it.
   const workerRuns = new Set<string>()
-  let unbound = false
   // Workers the run no longer needs: a run of only these is cancelled.
   const cancelled = new Set<string>()
   // A poll or cancel that failed is said, each cause once (2026-10-23: no
@@ -318,10 +316,12 @@ export function github(options: GithubOptions = {}): DteAdapter {
       res.status === 200
         ? ((await res.json()) as { workflow_run_id?: number }).workflow_run_id
         : undefined
-    if (id === undefined) {
-      unbound = true
-      return
-    }
+    // An API naming no run (a 204) is refused, not trusted by repository
+    // alone: any job of it with id-token: write would join as a worker.
+    if (id === undefined)
+      throw new Error(
+        `github(): dispatching ${workflow} named no workflow run (${res.status}): its workers cannot be told from any job of the repository`,
+      )
     workerRuns.add(String(id))
     const run = `/repos/${repo}/actions/runs/${id}`
     runs.push(run)
@@ -338,7 +338,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
     // Loaded only by `vx dte init`: a run never needs it.
     init: async (setup) => (await import('./init.js')).githubInit(options, setup),
     keyless: true,
-    workerRuns: () => (unbound ? undefined : workerRuns),
+    workerRuns: () => workerRuns,
     report(w) {
       warn = w
     },

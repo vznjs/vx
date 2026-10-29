@@ -61,7 +61,8 @@ the initiator.
   side checks the other's as a token of the same `repository_id`; with
   `github()`, the orchestrator also checks a worker's `run_id` is a
   workflow run it dispatched, since the run's id is a dispatch input
-  anyone who reads the repository's Actions sees.
+  anyone who reads the repository's Actions sees. A dispatch GitHub
+  answers without a run id (204) is refused, so its workers exit.
 
 | Who           | `info` / `body`                                         |
 | ------------- | ------------------------------------------------------- |
