@@ -130,6 +130,7 @@ export class TaskPipes {
   spawned(): void // close vx's write ends once the spawn returned or threw
   streams(child): [stdout, stderr] // what streamToString reads
   close(): void // close the read ends once both streams ended or were cancelled
+  closeStdin(): void // a persistent task's held stdin: once the child exited AND its output ended
 }
 ```
 
@@ -173,7 +174,10 @@ export class TaskPipes {
   `runPersistent` alone hands its child a stdin pipe vx holds and never
   writes (on Linux a `pipe2` pipe too: `cat /dev/stdin` on the socketpair
   failed with ENXIO instead of blocking): a dev server that exits on stdin EOF (esbuild `--watch`) stays up
-  while vx lives, and sees EOF when vx exits (execution.md § Output
+  while vx lives, and sees EOF when vx exits. Its write end closes once the
+  child has exited and its output has ended, never on the output alone: a
+  server that sent its output to a log (`exec >log 2>&1`) ended its streams
+  at once, read EOF and exited (execution.md § Output
   capture and rendering). `terminal: true` (an `exec.interactive` task
   on a TTY) spawns either with `'inherit'` on all three: no stream, no
   capture, no callbacks. The terminal's modes are read with `stty -g`

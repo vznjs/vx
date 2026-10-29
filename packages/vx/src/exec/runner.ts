@@ -241,11 +241,19 @@ export class TaskPipes {
    * Close the read ends, once both streams have ended or been cancelled.
    * Bun reads a dup of each, but takes it on the stream's first pull: a
    * number closed before then was reused by the next spawn's pipe, and
-   * the stream read THAT (probed, Bun 1.4.2). The held stdin's write end
-   * goes with them: its reader has exited by then.
+   * the stream read THAT (probed, Bun 1.4.2).
    */
   close(): void {
     for (const fd of this.#read) closeSync(fd)
+  }
+
+  /**
+   * Close the held stdin's write end, once the child has exited and its
+   * output has ended. Not with the output alone: a server that sends it
+   * to a log (`exec >log 2>&1`) ended its streams at once, read stdin EOF
+   * and exited.
+   */
+  closeStdin(): void {
     if (this.#stdinWrite !== undefined) closeSync(this.#stdinWrite)
   }
 }
@@ -847,6 +855,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     }
   } catch (err) {
     pipes.close()
+    pipes.closeStdin()
     // Bun names `sh` in the ENOENT a missing directory gives too.
     const message =
       isExecutableMissing(err) && !existsSync(opts.cwd)
@@ -960,6 +969,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const readers = Promise.all([consumeChunks(stdout, false), consumeChunks(stderr, true)]).finally(
     () => pipes.close(),
   )
+  void Promise.allSettled([readers, child.exited]).then(() => pipes.closeStdin())
 
   opts.liveChildren?.add(child)
   opts.onSpawn?.(child.pid)
