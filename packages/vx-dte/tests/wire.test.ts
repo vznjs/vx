@@ -997,3 +997,19 @@ it('takes each send once and in order, however often it arrives', async () => {
   await a.leave()
   await o.leave()
 }, 5_000)
+
+// A participant that left while its relay held every redial kept what
+// waited on a socket (here an owed ack) asking for one a heartbeat at a
+// time, for good, so its process never ended by itself.
+it('ends what waits on a socket when it leaves, so its process can end', async () => {
+  const child = Bun.spawn(['bun', `${import.meta.dir}/wire-leave-fixture.ts`], {
+    stdout: 'pipe',
+    stderr: 'inherit',
+    timeout: 8_000,
+  })
+  expect([await child.exited, child.signalCode, (await child.stdout.text()).trim()]).toEqual([
+    0,
+    null,
+    'left',
+  ])
+}, 10_000)
