@@ -344,8 +344,14 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // bytes as written, as the cache holds them: it formats its own output.
   const render = terminalSubscriber(terminal === null || colors.enabled ? sink : plainOutput(sink))
   let unsubscribeTerminal = bus.subscribe(render)
+  // What the run warned of, no task's: the footer repeats it (`warn`).
+  const warned: string[] = []
+  const unsubscribeWarned = bus.subscribe((e) => {
+    if (e.kind === 'run:status' && 'warn' in e) warned.push(e.line)
+  })
   const detach = (): void => {
     unsubscribeTerminal()
+    unsubscribeWarned()
     terminal?.settle()
   }
   // A plugin's `output` renders the run from its start; core's renderer
@@ -364,7 +370,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // vx's own steps are timed only where something renders them.
     const showsSteps =
       terminal !== null ? terminal.showsSteps : options.log?.stepStart !== undefined
-    const summary = await runOnBus(options, bus, colors, terminal, showsSteps, takeOutput)
+    const summary = await runOnBus(options, bus, warned, colors, terminal, showsSteps, takeOutput)
     if (summary.persistent === undefined) return summary
     // Servers handed back still running still write: `vx watch dev` printed
     // none of its server's log while it idled, the renderer gone with this
@@ -386,17 +392,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 async function runOnBus(
   options: RunOptions,
   bus: EventBus,
+  warned: readonly string[],
   colors: ColorSupport,
   terminal: DefaultLogger | null,
   showsSteps: boolean,
   takeOutput?: (claimed: { logger: Logger; owner: string }) => void,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
-  // What the run warned of, no task's: the footer repeats it (`warn`).
-  const warned: string[] = []
-  bus.subscribe((e) => {
-    if (e.kind === 'run:status' && 'warn' in e) warned.push(e.line)
-  })
   const steps = createSteps(log, showsSteps)
   const { step, stepSync } = steps
   // A server's output goes through a cell of its own: a later watch cycle
@@ -1264,6 +1266,13 @@ async function runOnBus(
         keeper?.taskDone(o)
         log.taskComplete(o.node, o)
         demand.finished(o.node.id)
+        // A server that dies while the graph runs is no longer running:
+        // its pin stayed `running` under the line naming its exit.
+        const server = o.status === 'success' ? persistentRegistry.get(o.node.id) : undefined
+        if (server !== undefined && o.serverExit === undefined)
+          void server.exited.then((code) => {
+            if (code !== 0 && !graphOver && !stop.signal.aborted) o.serverExit = code
+          })
       },
       // A crash a hand-broken lock entry caused is named as that; asked
       // only here, so a run that does not crash pays nothing.
@@ -1580,8 +1589,11 @@ async function runOnBus(
     log.runDone?.()
     if (options.summaryTable === true)
       for (const line of formatOutcomeTable(list, colors)) log.status(line)
+    // A run a signal stopped records nothing `vx last` opens: no id to copy.
+    const footerContext =
+      stop.stoppedBy === undefined ? runContext : { ...runContext, runId: undefined }
     if (options.footer !== false)
-      for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
+      for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
 
     // Edge case the summary already reported: the user requested a
     // persistent task (dev server / watcher). The run is "done" in every

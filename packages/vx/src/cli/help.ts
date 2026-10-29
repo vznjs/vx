@@ -186,7 +186,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                                  summary table after the run.',
     '',
     'Planning (for run — skips execution):',
-    "      --dry[=text|json]    Print the task graph and each task's predicted hit",
+    "      --dry[=pretty|json]  Print the task graph and each task's predicted hit",
     '                           or miss.',
     '',
     'Artifacts (for run):',

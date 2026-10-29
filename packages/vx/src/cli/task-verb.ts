@@ -4,6 +4,7 @@
 // does it. It stays a refusal: a verb that runs whatever task shares its
 // name would change meaning the day a plugin declares that verb.
 
+import type { TaskConfig } from '../config.js'
 import { isDefaultBuild } from '../graph/index.js'
 import { nxProjectTarget, projectNamed } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
@@ -27,19 +28,27 @@ export async function taskVerbHint(
   if (projects === null) return null
   const tasks = new Set<string>()
   // The default build is no task `vx run` takes by name (X-145).
+  const declared = (task: TaskConfig | undefined): boolean =>
+    task !== undefined && !isDefaultBuild(task)
   for (const p of projects.values())
-    for (const [t, task] of Object.entries(p.config.tasks ?? {}))
-      if (!isDefaultBuild(task)) tasks.add(t)
+    for (const [t, task] of Object.entries(p.config.tasks ?? {})) if (declared(task)) tasks.add(t)
   const task = tasks.has(command) ? command : typo ? nearest(command, tasks) : undefined
   if (task === undefined) return null
   // Nx's `nx build app`: the word after the target is its project.
   const project = rest[0] === undefined ? undefined : projectNamed(rest[0], projects)
+  // A bare `vx run <task>` runs the cwd project's alone, and refuses where
+  // that project does not declare it.
+  const declaresHere = async (): Promise<boolean> => {
+    const here = await findCwdProject(cwd)
+    const own = here === null ? undefined : projects.get(here)?.config.tasks
+    return own !== undefined && Object.hasOwn(own, task) && declared(own[task])
+  }
   const run =
     project !== undefined
       ? `vx run ${task} --filter ${project}`
-      : (await findCwdProject(cwd)) === null
-        ? `vx run ${task} --all`
-        : `vx run ${task}`
+      : (await declaresHere())
+        ? `vx run ${task}`
+        : `vx run ${task} --all`
   return task === command
     ? `\`${command}\` is a task here, not a command (did you mean ${run}?)`
     : `unknown command: ${command}, a typo of the task \`${task}\` (did you mean ${run}?)`

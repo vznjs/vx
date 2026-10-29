@@ -65,7 +65,7 @@ export interface RunArgs {
   poll?: true
   forwardArgs: string[]
   verbosity: number
-  dry: 'text' | 'json' | undefined
+  dry: 'pretty' | 'json' | undefined
   profile: string | undefined
   /**
    * `--affected[=<base>]`. When undefined the flag wasn't passed.
@@ -263,14 +263,15 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
         return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
       out.verbosity = n
     } else if (a === '--dry') {
-      out.dry = 'text'
+      out.dry = 'pretty'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
       if (fmt === '') {
-        return { ...out, error: `--dry= requires a format (text or json); bare --dry prints text` }
+        return { ...out, error: `--dry= requires a format (pretty or json); bare --dry prints pretty` }
       }
-      if (fmt !== 'text' && fmt !== 'json') {
-        return { ...out, error: `--dry must be text or json (got ${fmt})` }
+      // The values every --format takes.
+      if (fmt !== 'pretty' && fmt !== 'json') {
+        return { ...out, error: `--dry must be pretty or json (got ${fmt})` }
       }
       out.dry = fmt
     } else if (a === '--profile') {

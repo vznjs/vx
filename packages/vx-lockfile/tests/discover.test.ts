@@ -453,6 +453,21 @@ describe('discover', () => {
     expect(got.find((e) => e.dir === 'packages/a')?.deps).toEqual(['packages/b'])
   })
 
+  it('yarn(): a classic `file:` dependency on a workspace is a copy, no link', async () => {
+    // Yarn 1.22 keys `"c@file:packages/c"` and copies it into
+    // packages/a/node_modules/c, as berry's `file:` (`linkedDir`).
+    await writeFile(
+      path.join(root, 'yarn.lock'),
+      '# yarn lockfile v1\n\n\n"c@file:packages/c":\n  version "1.0.0"\n',
+    )
+    const metas = await projects({
+      root: { name: 'root', private: true, workspaces: ['packages/*'] },
+      a: { name: 'a', dependencies: { b: 'link:../b', c: 'file:../c' } },
+    })
+    const got = await discover(yarn(), metas)
+    expect(got.find((e) => e.dir === 'packages/a')?.deps).toEqual(['packages/b'])
+  })
+
   it('yarn(): a classic root `resolutions` range the workspace satisfies stays a link', async () => {
     await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n\n\n')
     const metas = await projects({
