@@ -425,8 +425,10 @@ export async function resolveFilters(
     // A `[<since>]` selector matching nothing is the ordinary "nothing
     // changed" outcome, reported below; only a name/path pattern that
     // matched nothing is worth flagging as a probable typo.
+    // A selector beside the ref (`lbi[main]`) that names no project is the
+    // same typo, whatever the diff: it exited 0 as "nothing affected".
     onNoMatch: (f) => {
-      if (f.gitSince === undefined) unmatched.push(f.raw)
+      if (f.gitSince === undefined || namesNothing(f, projects, graph, tags)) unmatched.push(f.raw)
       else emptyDiffs.add(f)
     },
     // A pattern that matched, with nothing on the walk it asked for: the
@@ -451,7 +453,11 @@ export async function resolveFilters(
     const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
     // With no include the base is every project: there is no "other filter".
     const excluded = `${negations.join(', ')} excluded every project${includes.length > 0 ? ' the other filters matched' : ''}`
-    if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
+    if (
+      unmatched.length === 0 &&
+      includes.length > 0 &&
+      includes.every((f) => f.gitSince !== undefined)
+    ) {
       if (includes.every((f) => emptyDiffs.has(f))) {
         const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
         // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
@@ -661,13 +667,45 @@ async function unlockedHint(
   return `. ${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``
 }
 
+/** Whether `f`'s name, path or tag selector, its `[<since>]` aside, matches no project. */
+function namesNothing(
+  f: ReturnType<typeof parseFilter>,
+  projects: ProjectMeta[],
+  graph: ReturnType<typeof buildPackageGraph>,
+  tags: ReadonlyMap<string, readonly string[]> | undefined,
+): boolean {
+  if (f.matcher === '') return false
+  const { gitSince: _since, sinceViaDeps: _viaDeps, ...selector } = f
+  return (
+    applyFilters({
+      filters: [
+        {
+          ...selector,
+          negate: false,
+          withDeps: false,
+          withDependents: false,
+          onlyDeps: false,
+          onlyDependents: false,
+        },
+      ],
+      projects,
+      graph,
+      ...(tags !== undefined ? { tags } : {}),
+    }).size === 0
+  )
+}
+
+/** A pattern as a name: its `[<since>]` and graph operators aside. */
+const typedName = (pattern: string): string =>
+  pattern.replace(/\[[^\]]*\]$/, '').replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+
 /** The hint for the first unmatched pattern: a near tag for a `tag:` one, else a near project name. */
 function didYouMean(
   unmatched: readonly string[],
   projects: Iterable<{ name: string }>,
   tags: ReadonlyMap<string, readonly string[]> | undefined,
 ): string {
-  const first = unmatched[0]?.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+  const first = unmatched[0] === undefined ? undefined : typedName(unmatched[0])
   if (first?.startsWith('tag:') !== true) return didYouMeanProject(unmatched, projects)
   const known = [...new Set([...(tags?.values() ?? [])].flat())].sort()
   if (known.length === 0) return '. No project declares tags'
@@ -689,7 +727,7 @@ function didYouMeanProject(
     if (bare !== n) byBare.set(bare, [...(byBare.get(bare) ?? []), n])
   }
   for (const pattern of unmatched) {
-    const typed = pattern.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+    const typed = typedName(pattern)
     // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
     if (typed === '//') {
       return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'

@@ -471,7 +471,7 @@ and exits 0, so a docs-only commit passes `vx run lint test build
   back, the note says so (`no projects selected: !app excluded every
 project the other filters matched`).
 - A name or path pattern that matches nothing is still an error, as a
-  likely typo. One that matches nothing beside one that matched prints a
+  likely typo, even beside a ref (`apq[main]`). One that matches nothing beside one that matched prints a
   warning.
 
 **An empty selection never cancels an anchored task.** Project scope
