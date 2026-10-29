@@ -321,10 +321,14 @@ const releaseTasks = {
                     }
                   : {}),
               },
-              // Bun's x64 runtime probes CPU features under Rosetta; the
-              // denied read changes nothing it prints.
+              // Bun's x64 runtime probes CPU features and cache sizes under
+              // Rosetta; the denied read changes nothing it prints.
               ...(os === 'darwin'
-                ? { ignore: { systemInfo: ['hw.optional.bmi1', 'hw.optional.avx2_0'] } }
+                ? {
+                    ignore: {
+                      systemInfo: ['hw.optional.bmi1', 'hw.optional.avx2_0', 'hw.l3cachesize'],
+                    },
+                  }
                 : {}),
             },
           },
