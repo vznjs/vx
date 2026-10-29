@@ -248,9 +248,16 @@ describe('Turbo parity — file hashing: globs and literals (turborepo-scm manua
           'true',
           `dir: { exec: { command: 'true' }, inputs: { files: ['src'] }, cache: { outputs: { files: [] } } },
     reversed: { exec: { command: 'true' }, inputs: { files: ['!**/*.md', 'src/**'] }, cache: { outputs: { files: [] } } },
-    missing: { exec: { command: 'true' }, inputs: { files: ['src/**', 'nope.txt'] }, cache: { outputs: { files: [] } } },`,
+    missing: { exec: { command: 'true' }, inputs: { files: ['src/**', 'nope.txt'] }, cache: { outputs: { files: [] } } },
+    plain: { exec: { command: 'true' }, inputs: { files: ['src/**', 'gen/**', 'logs/**', '!gen', '!logs/**', '!src/skip.txt'] }, cache: { outputs: { files: [] } } },`,
         ),
-        files: { 'src/a.txt': 'a\n', 'src/notes.md': '# n\n' },
+        files: {
+          'src/a.txt': 'a\n',
+          'src/notes.md': '# n\n',
+          'src/skip.txt': 's\n',
+          'gen/x.txt': 'x\n',
+          'logs/y.log': 'y\n',
+        },
       },
     })
     await mkdir(path.join(root, 'shared'), { recursive: true })
@@ -274,6 +281,21 @@ describe('Turbo parity — file hashing: globs and literals (turborepo-scm manua
       await writeFile(path.join(lib, 'src', 'a.txt'), 'a2\n')
       expect(await key(root, 'lib#t')).not.toBe(t)
       expect(await key(root, 'lib#reversed')).not.toBe(reversed)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '`plain_exclusions_walk_like_wax_exclusions` (turborepo#14510) — `!dir`, `!dir/**` and `!file` each take back what they name, at any depth',
+    async () => {
+      const before = await key(root, 'lib#plain')
+      await mkdir(path.join(lib, 'gen', 'deep'), { recursive: true })
+      for (const file of ['gen/x.txt', 'gen/deep/z.txt', 'logs/y.log', 'src/skip.txt']) {
+        await writeFile(path.join(lib, file), 'changed\n')
+      }
+      expect(await key(root, 'lib#plain')).toBe(before)
+      await writeFile(path.join(lib, 'src', 'a.txt'), 'a3\n')
+      expect(await key(root, 'lib#plain')).not.toBe(before)
     },
     TIMEOUT,
   )
