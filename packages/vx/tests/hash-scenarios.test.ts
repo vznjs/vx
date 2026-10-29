@@ -466,3 +466,26 @@ describe("untracked inputs follow git's ignore rules", () => {
     TIMEOUT,
   )
 })
+
+// vercel/turborepo#13949: a task keyed on workspace files was hashed by a
+// shortcut decided before its global inputs were added, and missed their
+// change.
+it.each([
+  ["{ files: [], workspaceFiles: ['g.txt'] }"],
+  ["{ files: ['src/**'], workspaceFiles: ['g.txt'] }"],
+])(
+  '%s re-keys when the workspace file changes',
+  async (inputs) => {
+    const root = await workspace(
+      inputs,
+      { 'src/a.txt': 'a\n', 'other.txt': 'o\n' },
+      { 'g.txt': '1\n' },
+    )
+    const k0 = await key(root)
+    await writeFile(at(root, 'other.txt'), 'p\n')
+    expect(await key(root)).toBe(k0)
+    await writeFile(path.join(root, 'g.txt'), '2\n')
+    expect(await key(root)).not.toBe(k0)
+  },
+  TIMEOUT,
+)
