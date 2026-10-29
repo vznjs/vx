@@ -42,7 +42,10 @@ vulnerability), never in a public issue.
   install is a different key, never a code path. A file vx generates
   (`vx init`, `vx lock`'s review copies, `@vzn/vx-migrate`,
   `vx dte init`) is never written through a symlink the repo carries:
-  vx refuses it, naming where it points.
+  vx refuses it, naming where it points. vx runs `git status`,
+  `git ls-files` and their kin in the checkout, so a repo-local git
+  config that runs code (`core.fsmonitor`, a filter) runs as it would
+  for a plain `git status` there: vx adds no trigger git lacks.
 - **Whoever can write your remote cache.** A cache key names the
   inputs, not the bytes, so a store that answers a key with bytes of its
   choosing is trusted as a writer, as it is in every action cache. Use a
