@@ -68,7 +68,9 @@ import { settleProbedHit, unkeyedGroupOutcome, type ExecuteArgs } from './execut
 import { executeArgsOf, type RunScope } from './execute-args.js'
 import { excludedTaint } from './excluded-keys.js'
 import { dependedOn, keyUpstream } from './upstream.js'
+import { createLiveUsage } from './live-usage.js'
 import {
+  blocksCounts,
   busLogger,
   createEventBus,
   createForecast,
@@ -911,7 +913,15 @@ async function runOnBus(
     const fault = executorFaults(warnOf(log))
     const footers = executors.filter((e) => e.footer !== undefined)
     const placers = executors.filter((e) => e.running !== undefined)
+    // Every row's `blocks`, the live list's and the results': one closure
+    // over the graph, built on the first row that asks.
+    let blocks: ReadonlyMap<string, number> | undefined
+    const blocksNow = (): ReadonlyMap<string, number> => (blocks ??= blocksCounts(nodes))
+    // The live rows' `cpu` and `mem`; it looks only once the live list asks.
+    const liveUsage = createLiveUsage()
     const runContext = {
+      blocks: blocksNow,
+      usage: liveUsage.usage,
       ...(footers.length > 0
         ? { executorRows: () => footers.flatMap((e) => executorFooter(e, fault)) }
         : {}),
@@ -968,7 +978,7 @@ async function runOnBus(
     // history's only if the region is still up a second in, so a warm run
     // never reads history.
     terminal?.forecast(
-      () => createForecast(nodes, new Map(), concurrency),
+      () => createForecast(nodes, new Map(), concurrency, blocksNow()),
       async () => {
         const ids: string[] = []
         for (const n of nodes.values()) if (!isGroupTask(n)) ids.push(n.id)
@@ -978,7 +988,7 @@ async function runOnBus(
           prepared.branch(),
           taskDefinitions(nodes.values()),
         ).p50sFor(ids)
-        return createForecast(nodes, p50s, concurrency)
+        return createForecast(nodes, p50s, concurrency, blocksNow())
       },
     )
 
@@ -1144,7 +1154,15 @@ async function runOnBus(
     if (options.retries !== undefined) scope.retries = options.retries
     if (taskTimeoutDefault !== undefined) scope.timeout = taskTimeoutDefault
     if (cleanOutputs !== undefined) scope.cleanOutputs = cleanOutputs
-    if (telemetry?.track !== undefined) scope.track = telemetry.track
+    const sinkTrack = telemetry?.track
+    scope.track = (taskId, pid) => {
+      const untrack = liveUsage.track(taskId, pid)
+      const sunk = sinkTrack?.(taskId, pid)
+      return () => {
+        untrack()
+        return sunk?.()
+      }
+    }
     if (explainMiss !== undefined) scope.explainMiss = explainMiss
     if (keepRun !== undefined) scope.keepRun = keepRun
     if (sandboxArmer !== null) scope.armSandbox = () => sandboxArmer.arm()
@@ -1262,8 +1280,8 @@ async function runOnBus(
       serverDied,
       onFailFast: () => failFast.abort(),
       signal: stop.signal,
-      onStart: (node) => {
-        log.taskStart?.(node)
+      onStart: (node, queuedMs) => {
+        log.taskStart?.(node, queuedMs === undefined ? undefined : { waitedMs: queuedMs })
       },
       onFinish: (o) => {
         if (cacheOff) o.cacheOff = true

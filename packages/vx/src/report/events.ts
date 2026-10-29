@@ -45,7 +45,7 @@ export interface RunStartInfo {
  */
 export type RunEvent =
   | { kind: 'run:start'; info: RunStartInfo }
-  | { kind: 'task:start'; node: TaskNode }
+  | { kind: 'task:start'; node: TaskNode; waitedMs?: number }
   | { kind: 'task:stdout'; node: TaskNode; chunk: string }
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
@@ -139,7 +139,12 @@ export function busLogger(bus: EventBus): Logger {
     taskStderr: (node, chunk) => bus.emit({ kind: 'task:stderr', node, chunk }),
     taskComplete: (node, outcome) => bus.emit({ kind: 'task:complete', node, outcome }),
     runStart: (info) => bus.emit({ kind: 'run:start', info }),
-    taskStart: (node) => bus.emit({ kind: 'task:start', node }),
+    taskStart: (node, info) =>
+      bus.emit(
+        info?.waitedMs === undefined
+          ? { kind: 'task:start', node }
+          : { kind: 'task:start', node, waitedMs: info.waitedMs },
+      ),
     runEnd: () => {
       if (ended) return
       ended = true
@@ -174,7 +179,10 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
         sink.runStart?.(event.info)
         return
       case 'task:start':
-        sink.taskStart?.(event.node)
+        sink.taskStart?.(
+          event.node,
+          event.waitedMs === undefined ? undefined : { waitedMs: event.waitedMs },
+        )
         return
       case 'task:stdout':
         sink.taskStdout(event.node, event.chunk)

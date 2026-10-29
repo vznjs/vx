@@ -24,6 +24,7 @@ export interface ColorSupport {
 export interface PaintOptions {
   bold?: boolean
   dim?: boolean
+  underline?: boolean
 }
 
 export function detectColors(stream?: NodeJS.WriteStream): ColorSupport

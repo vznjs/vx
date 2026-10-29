@@ -13,6 +13,13 @@ import {
   type StatusStream,
   type WorkerSlot,
 } from '../src/report/status-line.js'
+import {
+  formatListHeader,
+  formatTaskExecutedLine,
+  formatSize,
+  formatTaskHitLine,
+} from '../src/report/framed-output.js'
+const NO = { enabled: false }
 import { defaultLogger } from '../src/report/logger.js'
 import type { RunContext } from '../src/report/summary.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
@@ -347,7 +354,7 @@ describe('defaultLogger status line integration', () => {
     log.taskComplete(a, mkOutcome(a, 'success'))
     const after = s.chunks[s.chunks.length - 1]!
     // A freed row stays, blank, so the list keeps its height (2 workers).
-    expect(after).toContain('blocked task\n\n\n')
+    expect(after).toContain('worker       task\n\n\n')
     expect(after).not.toContain('idle')
     // The live section speaks the summary's language as it fills in.
     expect(after).toContain('1 success')
@@ -446,7 +453,7 @@ describe('defaultLogger status line integration', () => {
     const after = s.chunks.slice(before)
     expect(after).toContain('raw output\n')
     const redrawn = after.slice(after.indexOf('raw output\n') + 1).join('')
-    expect(redrawn).toMatch(/running +0 one#test/)
+    expect(redrawn).toMatch(/running no-cache +0 local +one#test/)
     expect(redrawn).toContain('run R1')
     log.taskComplete(req, mkOutcome(req, 'success'))
     log.runEnd?.()
@@ -486,7 +493,7 @@ describe('defaultLogger status line integration', () => {
     await Bun.sleep(1100)
     at = 'small#1'
     log.taskStart?.(mkNode('b#x'))
-    expect(row()).toMatch(/ \d+ms running +0 a#x · small#1$/)
+    expect(row()).toMatch(/ \d+ms +running no-cache +0 small#1 +a#x$/)
     expect(tasks()).toMatch(/^ +2 running · 2 left · 2 total$/)
     log.runEnd?.()
   })
@@ -550,7 +557,9 @@ describe('defaultLogger status line integration', () => {
     log.taskStderr(bad, 'kaput\n')
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
     // ✗ marker is permanent scrollback, not a region pin.
-    expect(s2.text()).toContain('failed  no-cache one#boom')
+    expect(s2.text()).toContain(
+      'failed  no-cache                              local        one#boom',
+    )
     expect(s2.text()).not.toContain('┌─ one#boom')
     log.runEnd?.()
     // Full frame replays after the region is gone, above the summary.
@@ -569,7 +578,7 @@ describe('defaultLogger status line integration', () => {
     log.taskComplete(dev, mkOutcome(dev, 'success'))
     // [0] is the region's leading blank separator, [1] the header; the pin is [2].
     expect(regionRows(s.chunks[s.chunks.length - 1]!)[2]).toBe(
-      ' ▸         running                  web#dev',
+      ' ▸                         running                                       local        web#dev',
     )
     log.runEnd?.()
   })
@@ -590,7 +599,7 @@ describe('defaultLogger status line integration', () => {
     log.taskStart?.(mkNode('web#e2e'))
     const rows = regionRows(s.chunks[s.chunks.length - 1]!)
     expect(rows.filter((r) => r.includes('▸'))).toEqual([
-      ' ▸         running                  web#api',
+      ' ▸                         running                                       local        web#api',
     ])
     log.runEnd?.()
   })
@@ -717,8 +726,8 @@ describe('formatStatusRegion', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#build'), null], size: 2 })
     expect(lines).toEqual([
       '',
-      '      time status  cache    blocked task',
-      '     2.00s running                0 a#build',
+      '      time   usual  waited status  cache      cpu    mem outputs  blocks worker       task',
+      '     2.00s                 running miss                                0 local        a#build',
       '',
       ...SUMMARY,
     ])
@@ -762,8 +771,10 @@ describe('formatStatusRegion', () => {
       size: 8,
       where,
     })
-    expect(lines[1]).toBe('      time status  cache    blocked task · worker')
-    expect(lines[2]).toMatch(/ a#x · small#2$/)
+    expect(lines[1]).toBe(
+      '      time   usual  waited status  cache      cpu    mem outputs  blocks worker       task',
+    )
+    expect(lines[2]).toMatch(/ small#2 +a#x$/)
     expect(lines[3]).toMatch(/b#x$/)
     // An executor's machines are not the size: no blank rows under it.
     expect(lines.slice(4)).toEqual(SUMMARY)
@@ -777,7 +788,7 @@ describe('formatStatusRegion', () => {
     })
     expect(lines).toEqual([
       '',
-      '      time status  cache    blocked task',
+      '      time   usual  waited status  cache      cpu    mem outputs  blocks worker       task',
       ...Array.from({ length: 10 }, () => ''),
       ...SUMMARY,
     ])
@@ -798,10 +809,10 @@ describe('formatStatusRegion', () => {
       critical: 'a#x',
     })
     expect(lines.slice(2, 6)).toEqual([
-      '     2.00s running                7 a#x  critical path',
-      '           blocked                  └ d#x',
-      '     2.00s running                0 b#x',
-      '           blocked                  └ c#x',
+      '     2.00s                 running miss                                7 local        a#x  critical path',
+      '                           blocked                                                    └ d#x',
+      '     2.00s                 running miss                                0 local        b#x',
+      '                           blocked                                                    └ c#x',
     ])
     expect(lines.slice(6)).toEqual(SUMMARY)
   })
@@ -818,18 +829,30 @@ describe('formatStatusRegion', () => {
     ])
     const ids = ['a#x', 'b#x', 'c#x', 'd#x', 'e#x']
     const lines = formatStatusRegion({ ...base, slots: ids.map((id) => slot(id)), expected })
-    expect(lines[2]).toBe('     2.00s running ~5.2s          0 a#x')
-    expect(lines[3]).toBe('     2.00s running ~42s           0 b#x')
-    expect(lines[4]).toBe('     2.00s running ~2m 05s        0 c#x')
-    expect(lines[5]).toBe('     2.00s running ~300ms         0 d#x')
+    expect(lines[2]).toBe(
+      '     2.00s   ~5.2s         running miss                                0 local        a#x',
+    )
+    expect(lines[3]).toBe(
+      '     2.00s    ~42s         running miss                                0 local        b#x',
+    )
+    expect(lines[4]).toBe(
+      '     2.00s ~2m 05s         running miss                                0 local        c#x',
+    )
+    expect(lines[5]).toBe(
+      '     2.00s  ~300ms         running miss                                0 local        d#x',
+    )
     // No history for it: the column holds its width, empty.
-    expect(lines[6]).toBe('     2.00s running                0 e#x')
+    expect(lines[6]).toBe(
+      '     2.00s                 running miss                                0 local        e#x',
+    )
   })
 
   it('an expected duration that rounds to a second prints in seconds', () => {
     const expected = new Map([['a#x', 999.6]])
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x')], expected })
-    expect(lines[2]).toBe('     2.00s running ~1.0s          0 a#x')
+    expect(lines[2]).toBe(
+      '     2.00s   ~1.0s         running miss                                0 local        a#x',
+    )
   })
 
   it('long ids are shown in full (never truncated — name is the last column)', () => {
@@ -848,9 +871,9 @@ describe('formatStatusRegion', () => {
     })
     expect(lines).toEqual([
       '',
-      '      time status  cache    blocked task',
-      ' ▸         running                  web#dev',
-      ' ▸         running                  api#dev',
+      '      time   usual  waited status  cache      cpu    mem outputs  blocks worker       task',
+      ' ▸                         running                                       local        web#dev',
+      ' ▸                         running                                       local        api#dev',
       '',
       ...SUMMARY,
     ])
@@ -887,7 +910,7 @@ describe('formatStatusRegion', () => {
       nowMs: 1_000,
       summaryLines: [],
     })
-    expect(lines[2]).not.toContain('-')
+    expect(lines[2]).not.toMatch(/-\d/)
     // CONTROL: an ordinary elapsed still renders.
     const ok = formatStatusRegion({
       pinnedPersistent: [],
@@ -899,7 +922,9 @@ describe('formatStatusRegion', () => {
   })
 
   it('formatFailureLine: red ◼︎ glyph + exec time + failed + miss + id (no exit code)', () => {
-    expect(formatFailureLine('a#build', 100)).toBe(' ◼︎   100ms failed  miss     a#build')
+    expect(formatFailureLine('a#build', 100)).toBe(
+      ' ◼︎   100ms                 failed  miss                                               a#build',
+    )
     const colored = formatFailureLine('a#build', 100, { enabled: true })
     expect(colored).toContain('◼︎')
     expect(colored).toContain('failed')
@@ -1193,7 +1218,7 @@ describe('the task log opens with one blank line', () => {
         // On a terminal the list's header is its first row.
         const first = s.chunks.find(
           (c) =>
-            (c.includes('one#a') || c.includes(' time status')) &&
+            (c.includes('one#a') || c.includes('worker       task')) &&
             !c.startsWith('\x1b') &&
             !c.startsWith('\r'),
         )
@@ -1222,6 +1247,179 @@ describe('--output-logs hash-only', () => {
     const painted = line(true)
     expect(painted).toStartWith('\x1b[38;2;239;68;68mfailed\x1b[0m ')
     expect(painted).toEndWith('\x1b[2mabcdef0123456789\x1b[0m')
+  })
+})
+
+// The header blended into the rows under it (bold, in the rows' own hues),
+// and the live list's header named the results' columns over rows that hold
+// other values: `cache` over the usual time. Each list now has its own
+// header, dim and underlined across the whole line, gaps included, straight
+// over its rows.
+describe('list headers', () => {
+  const ON = { enabled: true }
+  const OPEN = '\x1b[2m\x1b[4m'
+  /** The text of a line painted as one dim underline, or undefined if it is not. */
+  const underlined = (line: string): string | undefined =>
+    line.startsWith(OPEN) &&
+    line.endsWith('\x1b[0m') &&
+    line.indexOf('\x1b', OPEN.length) === line.length - 4
+      ? line.slice(OPEN.length, -4)
+      : undefined
+
+  it('the running list names its own columns: time, usual, status, cache, blocks', () => {
+    const lines = formatStatusRegion({
+      pinnedPersistent: [],
+      nowMs: 10_000,
+      summaryLines: [],
+      slots: [{ id: 'a#build', startedMs: 8000 }],
+      size: 1,
+      expected: new Map([['a#build', 18_000]]),
+      blockedBy: new Map([['a#build', 1]]),
+    })
+    expect(lines.slice(1, 3)).toEqual([
+      '      time   usual  waited status  cache      cpu    mem outputs  blocks worker       task',
+      '     2.00s    ~18s         running miss                                1 local        a#build',
+    ])
+    const head = lines[1]!
+    expect(['status', 'cache', 'worker', 'task'].map((w) => head.indexOf(w))).toEqual(
+      ['running', 'miss', 'local', 'a#build'].map((w) => lines[2]!.indexOf(w)),
+    )
+    // `usual` and `blocks` are right-aligned over their values.
+    expect(head.indexOf('usual') + 'usual'.length).toBe(lines[2]!.indexOf('~18s') + 4)
+    expect(head.indexOf('blocks') + 'blocks'.length).toBe(lines[2]!.indexOf('1 local') + 1)
+  })
+
+  // An executed row says how far it ran from its usual time, only past a
+  // fifth either way: red slower, green faster; blank within, or unknown.
+  it('a results row shows ±usual only outside a fifth of the usual time', () => {
+    const n = {
+      id: 'p#a',
+      projectName: 'p',
+      taskName: 'a',
+      config: { exec: { command: 'x' } },
+    } as unknown as TaskNode
+    const row = (ms: number, usual?: number, c = NO): string =>
+      formatTaskExecutedLine(
+        n,
+        { node: n, status: 'success', exitCode: 0, durationMs: ms },
+        c,
+        false,
+        0,
+        usual,
+      ).replace('\uFE0E', '')
+    const head = formatListHeader()
+    expect(row(8000, 2000)).toContain(' +6.00s         success')
+    expect(head.indexOf('±usual') + 6).toBe(row(8000, 2000).indexOf('+6.00s') + 6)
+    expect(row(600, 2000)).toContain(' \u22121.40s         success')
+    expect(row(2300, 2000)).toContain('   8.00s                 success'.replace('8.00s', '2.30s'))
+    expect(row(8000)).toContain('   8.00s                 success')
+    expect(row(8000, 2000, ON)).toContain('239;68;68m+6.00s')
+    expect(row(600, 2000, ON)).toContain('34;197;94m\u22121.40s')
+  })
+
+  // The results list counts, as the live list does, every task downstream
+  // of each row's task: what its result held back or let go.
+  it('a results row carries its blocks count under the header', () => {
+    const n = {
+      id: 'p#a',
+      projectName: 'p',
+      taskName: 'a',
+      config: { exec: { command: 'x' } },
+    } as unknown as TaskNode
+    const head = formatListHeader()
+    // One column per glyph: its text-presentation selector takes none.
+    const row = formatTaskExecutedLine(
+      n,
+      { node: n, status: 'success', exitCode: 0, durationMs: 65 },
+      NO,
+      false,
+      3,
+    ).replace('\uFE0E', '')
+    expect(row).toEndWith(' no-cache                            3 local        p#a')
+    expect(head.indexOf('blocks') + 'blocks'.length).toBe(row.indexOf('3 local') + 1)
+    expect(head.indexOf('task')).toBe(row.indexOf('p#a'))
+    expect(head.indexOf('status')).toBe(row.indexOf('success'))
+  })
+
+  // Every cell the grid holds, under its own header word: waited, the
+  // average cores and peak memory a run spent, what it wrote, the worker.
+  it('a results row fills each column under its header', () => {
+    const n = {
+      id: 'p#a',
+      projectName: 'p',
+      taskName: 'a',
+      config: { exec: { command: 'x' }, cache: {} },
+    } as unknown as TaskNode
+    const MB = 1024 * 1024
+    const row = formatTaskExecutedLine(
+      n,
+      {
+        node: n,
+        status: 'success',
+        exitCode: 0,
+        durationMs: 24_000,
+        queuedMs: 1200,
+        cpuMs: 57_600,
+        peakRssBytes: 1.1 * 1024 * MB,
+        outputBytes: 12 * MB,
+        where: 'linux-arm-runner-3',
+      },
+      NO,
+      false,
+      14,
+    ).replace('\uFE0E', '')
+    const head = formatListHeader()
+    const under = (word: string, value: string): void =>
+      expect(head.indexOf(word) + word.length).toBe(row.indexOf(value) + value.length)
+    under('waited', '1.20s')
+    under('cpu', '240%')
+    under('mem', '1.1GB')
+    under('outputs', '12MB')
+    // Below 10 MB a size keeps one decimal: 1.2 MB is not 1MB.
+    expect(formatSize(1.2 * MB)).toBe('1.2MB')
+    expect(formatSize(340 * 1024)).toBe('340KB')
+    under('blocks', '14')
+    expect(head.indexOf('worker')).toBe(row.indexOf('linux-arm-r\u2026'))
+    expect(head.indexOf('task')).toBe(row.indexOf('p#a'))
+    // A hit spent no CPU here and wrote nothing new; its outputs are what it restored.
+    const hit = formatTaskHitLine(
+      n,
+      {
+        node: n,
+        status: 'cache-hit',
+        exitCode: 0,
+        durationMs: 12,
+        restored: true,
+        outputBytes: 900,
+      },
+      NO,
+      false,
+      0,
+    )
+    expect(hit).toContain(' success local ')
+    expect(hit).not.toContain('%')
+    expect(head.indexOf('outputs') + 7).toBe(hit.indexOf('900B') + 4)
+  })
+
+  it('each header is one dim underline across the whole line, gaps included, on its rows', () => {
+    const live = formatStatusRegion(
+      {
+        pinnedPersistent: [],
+        nowMs: 1,
+        summaryLines: [],
+        slots: [{ id: 'a#b', startedMs: 0 }],
+        size: 1,
+      },
+      ON,
+    )
+    expect(underlined(live[1]!)).toBe(
+      '      time   usual  waited status  cache      cpu    mem outputs  blocks worker       task',
+    )
+    expect(underlined(formatListHeader(ON))).toBe(
+      '      time  ±usual  waited status  cache      cpu    mem outputs  blocks worker       task',
+    )
+    // No blank line between a header and its first row.
+    expect(Bun.stripANSI(live[2]!)).toEndWith('a#b')
   })
 })
 

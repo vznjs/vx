@@ -7,11 +7,11 @@
 
 import { dumbTerminal, paint, type ColorSupport } from '../util/index.js'
 import {
-  formatListHeader,
+  formatRunningHeader,
   formatTaskRow,
   paintIdParts,
   pathNote,
-  placeNote,
+  type RowCells,
 } from './framed-output.js'
 import type { BlockedTask } from './forecast.js'
 
@@ -327,6 +327,16 @@ export interface WorkerSlot {
   startedMs: number
   /** Its executor holds it for a machine to begin it (`TaskExecutor.running` is `null`). */
   waiting?: boolean
+  /** How long it waited ready for a slot; absent when it started at once. */
+  waitedMs?: number
+  /** Its cache cell: `no-cache` for a task that caches nothing, else `miss` (the default). */
+  cache?: 'miss' | 'no-cache'
+}
+
+/** What a running task's process tree uses now. */
+export interface LiveUsage {
+  cores: number
+  rssBytes: number
 }
 
 export interface StatusRegionState {
@@ -336,6 +346,8 @@ export interface StatusRegionState {
   where?: (taskId: string) => string | null | undefined
   /** A running task's usual duration from history; its row shows it. */
   expected?: ReadonlyMap<string, number>
+  /** A running task's live CPU and memory; its row's `cpu` and `mem`. */
+  usage?: (taskId: string) => LiveUsage | undefined
   /**
    * Ready persistent tasks (dev servers …) whose children keep
    * running after their outcome lands. Pinned until runEnd — the
@@ -395,6 +407,7 @@ export function formatFailureLine(
   durationMs: number | null,
   colors: ColorSupport = NO_COLOR,
   cacheWord: 'miss' | 'no-cache' = 'miss',
+  cells: RowCells = {},
 ): string {
   return formatTaskRow(
     paint(ERROR, '◼\uFE0E', colors),
@@ -405,6 +418,7 @@ export function formatFailureLine(
     '',
     paintPinnedId(id, colors),
     colors,
+    cells,
   )
 }
 
@@ -431,6 +445,7 @@ export function formatStepLine(
     '',
     paintPinnedId(id, colors),
     colors,
+    { worker: 'local' },
   )
 }
 
@@ -447,6 +462,12 @@ export function formatStatusRegion(
   colors: ColorSupport = NO_COLOR,
 ): string[] {
   const dim = (t: string) => paint('', t, colors, { dim: true })
+  // A task's usual duration, the live list's `usual` cell: `~18s`.
+  const usualOf = (id: string): { text: string; painted: string } => {
+    const ms = s.expected?.get(id)
+    const text = ms === undefined ? '' : formatExpected(ms)
+    return { text, painted: dim(text) }
+  }
   // Leading blank separates the live running region from the completed
   // task list scrolling above it (owner: "separate running from list").
   const lines: string[] = ['']
@@ -463,8 +484,7 @@ export function formatStatusRegion(
         '',
         paintPinnedId(id, colors),
         colors,
-        // A blank `blocked` cell, so the id sits under the header's `task`.
-        '',
+        { worker: 'local' },
       ),
     )
   }
@@ -507,27 +527,31 @@ export function formatStatusRegion(
           '',
           paintPinnedId(slot.id, colors),
           colors,
-          '',
+          { worker: s.where?.(slot.id) ?? 'local' },
         ),
       )
       continue
     }
     const at = s.where?.(slot.id)
-    const usual = s.expected?.get(slot.id)
+    const use = s.usage?.(slot.id)
     lines.push(
       formatTaskRow(
         ' ',
         Math.max(0, s.nowMs - slot.startedMs),
         'running',
         ACCENT,
-        usual === undefined ? '' : formatExpected(usual),
+        slot.cache ?? 'miss',
         '',
         paintPinnedId(slot.id, colors),
         colors,
-        String(s.blockedBy?.get(slot.id) ?? 0),
-      ) +
-        (s.critical === slot.id ? pathNote(colors) : '') +
-        (at != null ? placeNote(at, colors) : ''),
+        {
+          usual: usualOf(slot.id),
+          ...(slot.waitedMs !== undefined ? { waitedMs: slot.waitedMs } : {}),
+          ...(use !== undefined ? { cpu: use.cores, memBytes: use.rssBytes } : {}),
+          blocks: String(s.blockedBy?.get(slot.id) ?? 0),
+          worker: at ?? 'local',
+        },
+      ) + (s.critical === slot.id ? pathNote(colors) : ''),
     )
     for (const b of nested.get(slot.id) ?? []) {
       rows++
@@ -541,7 +565,7 @@ export function formatStatusRegion(
           '',
           `${dim('\u2514')} ${paintPinnedId(b.id, colors)}`,
           colors,
-          '',
+          { usual: usualOf(b.id) },
         ),
       )
     }
@@ -558,11 +582,11 @@ export function formatStatusRegion(
         '',
         paintPinnedId(step.id, colors),
         colors,
-        '',
+        { worker: 'local' },
       ),
     )
   }
-  if (lines.length > 1) lines.splice(1, 0, formatListHeader(placed, colors, true))
+  if (lines.length > 1) lines.splice(1, 0, formatRunningHeader(colors))
   // The live summary section — identical shape to the final printout,
   // so the region visually BECOMES the summary when the run ends.
   lines.push(...s.summaryLines)

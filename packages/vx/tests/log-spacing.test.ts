@@ -62,7 +62,7 @@ it(
     const out = await runs('true')
     // The last row may be an internal step the run waited on (`vx:close` on
     // a loaded box), not only a task.
-    expect(out).toMatch(/success (?:no-cache app#\w+|internal vx:\w+)\n\n─ vx /)
+    expect(out).toMatch(/success (?:no-cache .* app#\w+|internal +local +vx:\w+)\n\n─ vx /)
   },
   TIMEOUT,
 )
