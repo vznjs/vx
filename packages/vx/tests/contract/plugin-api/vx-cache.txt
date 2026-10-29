@@ -11,6 +11,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   )
   lent: (() => string | undefined) | undefined
   async lend(): Promise<LentAccess | undefined>
+  async open(): Promise<void>
   start(): void
   async has(hash: string): Promise<ArtifactInfo | null>
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>>
