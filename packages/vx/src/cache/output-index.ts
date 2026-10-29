@@ -143,17 +143,20 @@ export class OutputIndex {
   /**
    * Replace an entry's file rows. Called INSIDE the store's save transaction,
    * so an entry and its fingerprints land together (an UPDATE on the same
-   * hash refreshes rather than appends).
+   * hash refreshes rather than appends). Answers the files' bytes.
    */
-  replaceFileRows(hash: string, rows: ReadonlyArray<[string, number, number, number]>): void {
+  replaceFileRows(hash: string, rows: ReadonlyArray<[string, number, number, number]>): number {
     // A stamp taken for the rows this replaces describes their files, not these.
     this.held.delete(hash)
     this.pendingStamps.delete(hash)
     this.deleteOutputFiles.run(hash)
     this.deleteStamps.run(hash)
+    let bytes = 0
     for (const [rel, size, mode, mtime] of rows) {
       this.insertOutputFile.run(hash, rel, size, mode, mtime)
+      bytes += size
     }
+    return bytes
   }
 
   /** Hold a probe's rows for its restores (`held`), in place of the last probe's. */
