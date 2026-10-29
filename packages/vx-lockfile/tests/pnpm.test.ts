@@ -602,6 +602,31 @@ describe('vx run with pnpm() declared', () => {
     expect(affectedIds(root, 'build')).toEqual(['a#build', 'b#build', 'c#build'])
   })
 
+  it('`--affected` over a commit that adds a workspace and its dependency selects it alone', async () => {
+    // Turbo #8127: the importer the old lockfile lacks read as a change to
+    // every package.
+    commitAll(root)
+    const dir = path.join(root, 'packages', 'd')
+    await mkdir(path.join(dir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'd', version: '1.0.0', dependencies: { newdep: '^1' } }),
+    )
+    await writeFile(path.join(dir, 'src', 'index.js'), '// d\n')
+    await writeFile(path.join(dir, 'vx.config.mjs'), BUILD)
+    await writeFile(
+      path.join(root, 'pnpm-lock.yaml'),
+      v9()
+        .replace(
+          '\npackages:\n',
+          '\n  packages/d:\n    dependencies:\n      newdep:\n        specifier: ^1\n        version: 1.0.0\n\npackages:\n\n  newdep@1.0.0:\n    resolution: {integrity: sha512-newdep}\n',
+        )
+        .replace('\nsnapshots:\n', '\nsnapshots:\n\n  newdep@1.0.0: {}\n'),
+    )
+    await lock(root)
+    expect(affectedIds(root, 'build')).toEqual(['d#build'])
+  })
+
   it('`vx why` names the plugin part', async () => {
     await statuses()
     await writeFile(path.join(root, 'pnpm-lock.yaml'), v9({ bar: '2.0.1' }))
