@@ -822,18 +822,19 @@ function throughLink(
 }
 
 /**
- * Whether a restore may write at `real`: under `realBase` and in no `.git`
- * there, in any case (a case-insensitive disk reads `.GIT` as `.git`). The
- * entry names are held to this lexically; this holds the path a link on
- * the way resolves to (vercel/turborepo#14808).
+ * Whether a restore may write at `real`: under `realBase` and not in its
+ * `.git`, in any case (a case-insensitive disk reads `.GIT` as `.git`). The
+ * entry names are held to this lexically (`OUTPUT_NEVER`); this holds the
+ * path a link on the way resolves to (vercel/turborepo#14808). Only the
+ * base's own: a deeper `.git` (a submodule under `gen/**`, a build's
+ * `dist/.git`) is an output an entry may name, and refused only once it
+ * existed on disk, a restore failed by what the last run left.
  */
 function writable(real: string, realBase: string): boolean {
   if (real === realBase) return true
   if (!real.startsWith(realBase + path.sep)) return false
-  return !real
-    .slice(realBase.length + 1)
-    .split(path.sep)
-    .some((part) => part.toLowerCase() === '.git')
+  const top = real.slice(realBase.length + 1).split(path.sep, 1)[0]!
+  return top.toLowerCase() !== '.git'
 }
 
 /**
