@@ -458,8 +458,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   if (options.selectedByDiff === true && candidateProjects.length === 0)
     unresolvedTasks = [...new Set([...tasks.filter((t) => !t.includes('#')), ...unresolvedTasks])]
   refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
+  // A scope that loaded no candidate judged no bare name: each is unresolved.
   if (options.projects !== undefined && options.selectedByDiff !== true)
-    refuseUnlockedScope(unresolvedTasks, candidateProjects, projects, projectMetas, workspaceRoot)
+    refuseUnlockedScope(
+      candidateProjects.length === 0 ? tasks : unresolvedTasks,
+      options.projects,
+      projectMetas,
+      workspaceRoot,
+    )
   if (options.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
     // A name a loaded project declares is no typo, whether or not the load
     // was whole: an unaffected dependency loaded for the closure declared
@@ -1029,7 +1035,7 @@ function unlockedConfigOf(
 function refuseUnlockedConfig(
   tasks: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,
-  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+  metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
   workspaceRoot: string,
 ): void {
   for (const spec of tasks) {
@@ -1038,7 +1044,7 @@ function refuseUnlockedConfig(
     const name = spec.slice(0, at)
     const entry = projects.get(name)
     if (entry === undefined || !isDefaultBuild(entry.config.tasks?.[spec.slice(at + 1)])) continue
-    const config = unlockedConfig(name, projects, metas)
+    const config = unlockedConfig(name, metas)
     if (config === undefined) continue
     throw new UserError(
       `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
@@ -1054,15 +1060,16 @@ function refuseUnlockedConfig(
  */
 function refuseUnlockedScope(
   unresolved: readonly string[],
-  candidates: readonly string[],
-  projects: ReadonlyMap<string, ProjectEntry>,
-  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+  selected: readonly string[],
+  metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
   workspaceRoot: string,
 ): void {
   const spec = unresolved.find((t) => !t.includes('#'))
   if (spec === undefined) return
-  for (const name of candidates) {
-    const config = unlockedConfig(name, projects, metas)
+  // The selection, not the loaded projects: a scope loads no config-less
+  // member nothing configured reaches, and that is the one to ask about.
+  for (const name of selected) {
+    const config = unlockedConfig(name, metas)
     if (config === undefined) continue
     throw new UserError(
       `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
@@ -1073,15 +1080,13 @@ function refuseUnlockedScope(
 /** The config file in a project's directory the lock holds none for. */
 function unlockedConfig(
   name: string,
-  projects: ReadonlyMap<string, ProjectEntry>,
-  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+  metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
 ): string | undefined {
-  const entry = projects.get(name)
-  if (entry === undefined) return undefined
-  const locked = metas.find((m) => m.name === name)?.configPath
-  if (typeof locked === 'string' && locked !== '') return undefined
-  const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(entry.dir, n)))
-  return config === undefined ? undefined : path.join(entry.dir, config)
+  const meta = metas.find((m) => m.name === name)
+  if (meta === undefined) return undefined
+  if (typeof meta.configPath === 'string' && meta.configPath !== '') return undefined
+  const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(meta.dir, n)))
+  return config === undefined ? undefined : path.join(meta.dir, config)
 }
 
 /**
