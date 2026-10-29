@@ -395,9 +395,8 @@ function loadFailure(err: unknown, configPath: string, kind: string): unknown {
   if (user !== null) return user
   if (isUserError(err)) return err
   if (err !== null && typeof err === 'object' && typeof (err as Error).message === 'string') {
-    const at = throwSite(String((err as Error).stack ?? ''), configPath)
     const user = new UserError(
-      `${kind} config ${configPath} threw: ${(err as Error).message}${at === undefined ? '' : ` (at ${at})`}`,
+      `${kind} config ${configPath} threw: ${thrownLine(err as Error, configPath)}${causeLines(err as Error, configPath)}`,
       'VX_E_CONFIG',
     )
     // The thrown error, stack and all, for an embedder of the loader.
@@ -408,6 +407,37 @@ function loadFailure(err: unknown, configPath: string, kind: string): unknown {
 }
 
 const VX_SRC = `${path.resolve(import.meta.dir, '..')}${path.sep}`
+
+/** A thrown error's message and where it was thrown. */
+function thrownLine(err: Error, configPath: string): string {
+  const stack = String(err.stack ?? '')
+  // A cause rebuilt from the config worker carries its stack alone.
+  const message =
+    err.message !== ''
+      ? err.message
+      : (/^[\w$.]+: (.*)$/.exec(stack.split('\n')[0] ?? '')?.[1] ?? stack.split('\n')[0] ?? '')
+  const at = throwSite(stack, configPath)
+  return `${message}${at === undefined ? '' : ` (at ${at})`}`
+}
+
+/**
+ * Each `cause` under a wrapped throw (`new Error(msg, { cause })`), which
+ * holds the reason the wrapper names only in its own words. Bounded, and a
+ * cause seen before ends the chain.
+ */
+function causeLines(err: Error, configPath: string): string {
+  let out = ''
+  const seen = new Set<unknown>([err])
+  for (
+    let c = err.cause, depth = 0;
+    c !== undefined && c !== null && !seen.has(c) && depth < 8;
+    c = c instanceof Error ? c.cause : undefined, depth++
+  ) {
+    seen.add(c)
+    out += `; caused by: ${c instanceof Error ? thrownLine(c, configPath) : Bun.inspect(c, { compact: true })}`
+  }
+  return out
+}
 
 /**
  * Where a throw came from: its first frame that names a file, and the

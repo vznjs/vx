@@ -1162,7 +1162,11 @@ describe('vx’s stores outside the workspace are denied', () => {
         [],
         path.join(root, '.vxc'),
       )
-      expect(inside.sandbox.baseDenyRead).not.toContain(path.join(root, '.vxc'))
+      // Inside, the workspace's own deny covers it; macOS denies each wall
+      // too, and an inside cache dir is one (sealed), so it is there once.
+      expect(inside.sandbox.baseDenyRead.filter((p) => p === path.join(root, '.vxc')).length).toBe(
+        process.platform === 'darwin' ? 1 : 0,
+      )
     } finally {
       if (saved === undefined) delete process.env['HOME']
       else process.env['HOME'] = saved

@@ -2430,7 +2430,7 @@ type more of it.
 A `vx.config.*` or `.vx/workspace.*` that does not load or is refused. The
 message names the file and the field, or what the config (or a plugin it
 called, such as a factory refusing an option) threw and the line it threw
-at; fix that field
+at, then each `cause` it wraps (`; caused by: …`); fix that field
 (`vx docs <field>` prints its reference). `vx lock` lists every config
 that does not load at once. A project config's refusal is `vx lock`'s,
 not a run's: a run never evaluates one.
@@ -2544,7 +2544,7 @@ each indented line under it names both projects and the rule. Drop the dependenc
 
 #### `VX_E_INTERNAL`
 
-A defect in vx, or a config's own throw; stderr carries the stack, then
+A defect in vx (a config's own throw is `VX_E_CONFIG`); stderr carries the stack, then
 each `cause` under it as a `Caused by:` line with its stack. Report a
 defect with that stack at
 https://github.com/vznjs/vx/issues.

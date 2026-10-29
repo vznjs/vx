@@ -860,12 +860,19 @@ function dirModesOf(meta: MetaFile): Array<[string, number]> {
   })
 }
 
-/** A file this user cannot read is not the same bytes: the rename replaces it. */
+/**
+ * A file this user cannot read, or one gone since its stat, is not the
+ * same bytes: the rename replaces it. Any other failure is the restore's:
+ * an EMFILE read as "differs" sent the restore on to stage, and its error
+ * named the staging file.
+ */
 function sameBytes(file: string, body: Uint8Array): boolean {
   try {
     return readFileSync(file).equals(body)
-  } catch {
-    return false
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'EACCES' || code === 'EPERM' || code === 'ENOENT') return false
+    throw err
   }
 }
 
