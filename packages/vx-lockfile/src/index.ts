@@ -411,15 +411,14 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         const before = folded(change.before)
         return before !== undefined && before === folded(change.after) ? [] : undefined
       },
-      // The files the key hashes, so read with the root: `--affected` asks
-      // about every changed path, and a classic `link:` to a workspace
-      // named without it widened an edit under that workspace to all.
-      extraFiles: (file, bytes, ctx) =>
-        extraFiles !== undefined && (manager.files as readonly string[]).includes(file)
-          ? guardedFor(file)((t: string) => extraFiles(t, ctx.workspaceRoot))(
-              new TextDecoder().decode(bytes),
-            )
-          : [],
+      // The files the key hashes, so the key's own claim answers, from its
+      // memo when it holds these bytes: `--affected` asks about every
+      // changed path, and a classic `link:` to a workspace named without
+      // the root widened an edit under that workspace to all.
+      extraFiles: async (file, bytes, ctx) =>
+        (await claimsAt(ctx.workspaceRoot)
+          .find((c) => c.file === file)
+          ?.claim.fingerprint.extraFiles?.(file, bytes, ctx)) ?? [],
     },
     async key(task, ctx) {
       let settings = settingsPerRun.get(ctx)

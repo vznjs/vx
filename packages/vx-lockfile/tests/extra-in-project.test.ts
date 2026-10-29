@@ -120,3 +120,22 @@ it('with no memo yet (a fresh clone) the edit still selects the project reaching
   await rm(path.join(root, '.vx', 'cache', 'lockfile-claims'), { recursive: true })
   expect(affectedIds(root, 'build')).toContain('lib#build')
 })
+
+it('the files --affected is told the lockfile names come from the memo once a run wrote it', async () => {
+  await hashes()
+  const memo = path.join(root, '.vx', 'cache', 'lockfile-claims', 'pnpm-lock.yaml.json')
+  const kept = JSON.parse(await Bun.file(memo).text()) as { extras: Record<string, string> }
+  expect(Object.keys(kept.extras)).toEqual(['packages/other/vendor'])
+  await Bun.write(memo, JSON.stringify({ ...kept, extras: { 'from/the/memo': '' } }))
+  const { pnpm } = await import('../src/index.js')
+  const ctx = {
+    workspaceRoot: root,
+    cacheDir: path.join(root, '.vx', 'cache'),
+    warn() {},
+    projects: [],
+  }
+  const bytes = await Bun.file(path.join(root, 'pnpm-lock.yaml')).bytes()
+  expect(await pnpm().fingerprint!.extraFiles!('pnpm-lock.yaml', bytes, ctx)).toEqual([
+    'from/the/memo',
+  ])
+})
