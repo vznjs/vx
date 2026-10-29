@@ -387,8 +387,8 @@ describe("the server's limits", () => {
 })
 
 describe('download deadline', () => {
-  /** A server sending `chunks` bytes `gapMs` apart, then going quiet when `stallAfter` were sent. */
-  function slow(chunks: number, gapMs: number, stallAfter = Infinity) {
+  /** A server sending `chunks` chunks of `size` bytes `gapMs` apart, then going quiet when `stallAfter` were sent. */
+  function slow(chunks: number, gapMs: number, stallAfter = Infinity, size = 1) {
     return Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
@@ -399,7 +399,7 @@ describe('download deadline', () => {
             async pull(out) {
               if (sent === stallAfter) return new Promise<void>(() => {})
               await Bun.sleep(gapMs)
-              out.enqueue(new Uint8Array([97]))
+              out.enqueue(new Uint8Array(size).fill(97))
               if (++sent === chunks) out.close()
             },
           }),
@@ -418,20 +418,33 @@ describe('download deadline', () => {
   }
 
   it('lets a body arriving at a steady pace outlast the deadline', async () => {
-    const s = slow(8, 60)
+    // 128 KiB each 50 ms: 2.5 MiB a second, over the floor.
+    const s = slow(8, 50, Infinity, 128 * 1024)
     try {
       const got = await slowLayer(s.url.href.replace(/\/$/, '')).get('aa')
-      expect(await got!.body.text()).toBe('a'.repeat(8))
+      expect(await got!.body.text()).toBe('a'.repeat(8 * 128 * 1024))
     } finally {
       await s.stop(true)
     }
   })
 
   it('ends a body that stops arriving', async () => {
-    const s = slow(8, 20, 2)
+    const s = slow(8, 20, 2, 128 * 1024)
     try {
       const got = await slowLayer(s.url.href.replace(/\/$/, '')).get('aa')
-      expect(got!.body.text()).rejects.toThrow('no bytes for 200 ms')
+      expect(got!.body.text()).rejects.toThrow('no bytes in 200 ms')
+    } finally {
+      await s.stop(true)
+    }
+  })
+
+  // A byte now and then reset the gap's clock: a 60 MB artifact took
+  // 19 minutes on CI (2026-10-28) and held the whole run.
+  it('ends a body trickling in under its floor', async () => {
+    const s = slow(1000, 20)
+    try {
+      const got = await slowLayer(s.url.href.replace(/\/$/, '')).get('aa')
+      expect(got!.body.text()).rejects.toThrow(/^\d+ bytes in 200 ms, under 1 MiB a second$/)
     } finally {
       await s.stop(true)
     }
