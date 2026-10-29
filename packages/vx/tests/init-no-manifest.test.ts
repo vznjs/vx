@@ -123,6 +123,22 @@ describe('vx init with no package.json', () => {
     expect([r.code, r.out.includes('  lock      not written\n')]).toEqual([1, true])
   })
 
+  it('a file where .vx or plugins goes is one line, not a stack', async () => {
+    const root = await tmp('vx-init-bare-dotvx-file-')
+    await writeFile(path.join(root, '.vx'), '')
+    const r = await vx(root, ['init'])
+    expect([r.code, r.err]).toEqual([
+      1,
+      '✗ vx init  cannot write .vx/workspace.ts: .vx is a file, not a directory; move it and re-run\n',
+    ])
+    await writeFile(path.join(root, 'plugins'), '')
+    const p = await vx(root, ['init', '--plugin', 'cache'])
+    expect([p.code, p.err]).toEqual([
+      1,
+      '✗ vx init  cannot write plugins/cache.ts: plugins is a file, not a directory; move it and re-run\n',
+    ])
+  })
+
   it('--native and --keep answer a Turbo or Nx question, and are refused here', async () => {
     const root = await tmp('vx-init-bare-keep-')
     const r = await vx(root, ['init', '--keep'])
@@ -131,6 +147,9 @@ describe('vx init with no package.json', () => {
       "✗ vx init  --keep answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here\n",
       false,
     ])
+    // A flag this repo cannot take is usage, not the catch-all VX_E_REFUSED.
+    const json = await vx(root, ['init', '--native', '--dry', '--format', 'json'])
+    expect([json.code, JSON.parse(json.out).error.code]).toEqual([1, 'VX_E_USAGE'])
   })
 })
 
