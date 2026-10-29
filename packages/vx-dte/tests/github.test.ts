@@ -169,6 +169,29 @@ it('says why for each worker of a dispatch GitHub refused', async () => {
   }
 })
 
+// A server's words reach the terminal: an ESC in them retitled it and
+// overwrote the line vx printed before them.
+it("writes the controls in GitHub's words as escapes", async () => {
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: () => new Response('\x1b]0;PWNED\x07\rok', { status: 500 }),
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const why: string[] = []
+    void github({ workflow: 'workers.yml' }).spawn(spawn('small#1', 'small', (w) => why.push(w)))
+    for (let i = 0; i < 50 && why.length === 0; i++) await Bun.sleep(20)
+    expect(why).toEqual(['github(): dispatching workers.yml: 500 \\x1b]0;PWNED\\x07\\x0dok'])
+  } finally {
+    await server.stop(true)
+  }
+})
+
 it('says the workflow is not on the branch when GitHub answers 404', async () => {
   const server = Bun.serve({
     port: 0,
