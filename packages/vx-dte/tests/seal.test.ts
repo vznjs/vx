@@ -358,6 +358,19 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
   }
 })
 
+it('names exactly the GitHub variables a proof lacks', () => {
+  process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'http://127.0.0.1:1/token?v=1'
+  delete process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
+  delete process.env['GITHUB_REPOSITORY_ID']
+  try {
+    expect(() => githubProof()).toThrow(
+      /^not a GitHub Actions job with id-token: write \(ACTIONS_ID_TOKEN_REQUEST_TOKEN, GITHUB_REPOSITORY_ID\)$/,
+    )
+  } finally {
+    delete process.env['ACTIONS_ID_TOKEN_REQUEST_URL']
+  }
+})
+
 it('says a token check GitHub’s keys could not answer, never a key mismatch', async () => {
   process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'http://127.0.0.1:1/token?v=1'
   process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] = 'req-token'
