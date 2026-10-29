@@ -236,6 +236,20 @@ describe('defaultLogger visibility matrix — focused', () => {
     )
   })
 
+  it("a streamed task's blank lines are kept, and nothing is added after its stderr", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    const n = mkNode('one#test', { requested: true })
+    log.taskStart?.(n)
+    log.taskStdout(n, 'l1\n\n\n')
+    log.taskStderr(n, 'e1\n\n')
+    log.taskStdout(n, 'l4\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    expect(out.text()).toBe(
+      '┌─ one#test > $ noop\nl1\n\n\ne1\n\nl4\n└─ one#test ── (100ms) success\n\n',
+    )
+  })
+
   // A row or a kept server's line written while the streamed task sat
   // mid-line was glued onto the task's own text.
   it("vx's own lines never glue onto a streamed task's partial line", () => {
