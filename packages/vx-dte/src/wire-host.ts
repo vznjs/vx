@@ -69,6 +69,8 @@ self.onmessage = async (e: MessageEvent<Record<string, unknown>>) => {
             status: 410,
             message: `dte: this machine's run was held ${Math.round(held / 1000)} s, past ${HELD_BEATS} heartbeats: the run is over`,
           })
+          // quiet: `ended` above already said the run is over; a failed
+          // leave changes nothing the relay does with it.
           void p.leave().catch(() => undefined)
         },
         Math.max(10, p.heartbeatMs / 10),
