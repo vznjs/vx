@@ -998,6 +998,56 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
     expect((await pluginEdges(bun(), 'bun.lock', D_BUN, projects)).order).toEqual([])
   })
 
+  it('yarn berry: an `npm:` alias named like a workspace is the registry package (vercel/turborepo#12061)', async () => {
+    // Turbo's berry-npm-alias fixture, as yarn 4.4 wrote it.
+    const text = `__metadata:
+  version: 8
+  cacheKey: 10c0
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  dependencies:
+    buffer: "npm:buffer@6.0.3"
+  languageName: unknown
+  linkType: soft
+
+"buffer@npm:buffer@6.0.3":
+  version: 6.0.3
+  resolution: "buffer@npm:6.0.3"
+  checksum: 10c0/2a90
+  languageName: node
+  linkType: hard
+
+"buffer@workspace:packages/buffer":
+  version: 0.0.0-use.local
+  resolution: "buffer@workspace:packages/buffer"
+  languageName: unknown
+  linkType: soft
+
+"root@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "root@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+    const projects = await metas({
+      'packages/a': { name: 'a', version: '1.0.0', dependencies: { buffer: 'npm:buffer@6.0.3' } },
+      'packages/buffer': { name: 'buffer', version: '6.0.3' },
+    })
+    expect((await pluginEdges(yarn(), 'yarn.lock', text, projects)).order).toEqual([])
+    // CONTROL: the same key on `workspace:*` is the edge.
+    const linked = text
+      .replace('buffer: "npm:buffer@6.0.3"', 'buffer: "workspace:*"')
+      .replace('"buffer@npm:buffer@6.0.3"', '"buffer@npm:6.0.3"')
+    projects[0] = (
+      await metas({
+        'packages/a': { name: 'a', version: '1.0.0', dependencies: { buffer: 'workspace:*' } },
+      })
+    )[0]!
+    expect((await pluginEdges(yarn(), 'yarn.lock', linked, projects)).order).toEqual(['a → buffer'])
+  })
+
   it("npm resolves an `npm:` alias's key to the workspace package of that name", async () => {
     // `d: npm:is-number@^2.0.0` beside a workspace `d`: npm wrote no entry
     // for the alias, so `require('d')` from app finds the workspace d.
