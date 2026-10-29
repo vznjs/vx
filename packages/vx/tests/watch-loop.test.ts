@@ -410,11 +410,14 @@ describe('vx watch with a persistent task (e2e)', () => {
     // It writes only once watch is armed: a write before the arm is the
     // initial run's, never an event, and a loaded runner took longer than
     // the 0.3 s to arm, so no cycle ever started (CI, 2026-10-06).
+    // Stamped to the second, so most writes are the same bytes and their
+    // judgements find nothing: each reset the streak, as an event macOS
+    // delivers late can for a nanosecond stamp (CI, 2026-10-29).
     const armed = path.join(outside, 'armed')
     await writeFile(
       path.join(dir, 'vx.config.mjs'),
       `export default { tasks: { dev: { exec: {
-        command: 'echo $$ >> ${pids}; echo READY; until [ -e ${armed} ]; do sleep 0.05; done; while :; do sleep 0.3; date +%s%N > server.log; done',
+        command: 'echo $$ >> ${pids}; echo READY; until [ -e ${armed} ]; do sleep 0.05; done; while :; do sleep 0.3; date +%s > server.log; done',
         persistent: { readyWhen: 'READY' },
       } } } }\n`,
     )

@@ -290,8 +290,14 @@ export class ChangeJudge {
     this.changed = changed
     const more = (live > 0 ? live : goneCount) - 1
     const named = more > 0 ? `${first} (+${more} more)` : first
-    const byServer = firstAbs !== undefined && this.ctx.held()
-    if (firstAbs === undefined || !this.writtenDuringLastCycle(firstAbs, spell)) {
+    // A judgement that found nothing starts no cycle, so it breaks no
+    // streak. A server's log stamped to the second rewrites the same bytes
+    // between its changes, and an event can land after the judgement that
+    // read its write; resetting on either, the storm ran on unnamed (macOS
+    // CI, 2026-10-29).
+    if (firstAbs === undefined) return named
+    const byServer = this.ctx.held()
+    if (!this.writtenDuringLastCycle(firstAbs, spell)) {
       this.streak.n = 0
       return named
     }
