@@ -96,6 +96,7 @@ export interface InputListing {
   workspaceRoot: string // where git's location variables point; a nested repo's root is listed without them
   listed: readonly string[] // root-relative, as git listed them
   isInput: (rel: string) => boolean // the declaration's verdict
+  linked: (rel: string) => boolean // a link to a directory here is an input
   nested: (rel: string) => boolean // inside a nested project
   prefixes: readonly string[] // directories a positive entry reaches, '' for the root
   literals: readonly string[]
@@ -321,7 +322,8 @@ directory a positive entry reaches, reads one whose ctime moved since
 `listedAt` (less the racy window), and asks `git ls-files` only when a
 name there matches the declaration and the key lacks it, or names an
 unlisted directory; a literal absent from the key that exists now is
-asked too. Blind to a file added inside a directory that held no
+asked too, and a new link to a directory a glob may match below
+(`InputListing.linked`). Blind to a file added inside a directory that held no
 listed file and was not itself created since the listing.
 
 ## Env resolution rules

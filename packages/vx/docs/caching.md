@@ -857,7 +857,8 @@ the save the same way, named on the same line: the listing's
 directories a glob reaches are `lstat`ed, one whose ctime moved since
 the listing is read, and a new name the declaration matches (or an
 unlisted directory) is asked of git, which alone knows what is ignored;
-a literal input absent then and present now is asked too. Not seen: a
+a literal input absent then and present now is asked too, and so is
+a new link to a directory a glob may match below. Not seen: a
 file added inside a directory that held no listed file before (only
 ignored ones, or none) and was not itself created mid-run. Cost: one
 `lstat` per input and per reached directory on a miss that saves, a
