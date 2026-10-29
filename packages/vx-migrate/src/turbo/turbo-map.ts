@@ -177,8 +177,8 @@ const KNOWN_TASK_KEYS = new Set([
   // watch` keeps it up and restarts it only when its config changes or it
   // dies, so either value maps to nothing.
   'interruptible',
-  // Turbo 2.11.6 selects a task by them (`--filter tag:`); vx tags are a
-  // project's, so only the package's own `tags` map (`packageTags`).
+  // Turbo 2.11.6 selects a task by them (`--filter tag:`); a vx tag belongs
+  // to a project, so only the package-level `tags` map (`packageTags`).
   'tags',
   // Turbo parses it for external CI tooling and acts on nothing.
   'experimentalCI',
