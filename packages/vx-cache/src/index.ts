@@ -28,7 +28,7 @@ export interface VxCacheOptions {
   repository: string
   /** Per-request deadline for reads and queries (default 30 s); a download's bounds its answer, then each gap between its bytes. */
   timeoutMs?: number
-  /** … and for an upload (default 60 s). */
+  /** … and for an upload (default 60 s): its bytes must leave at 1 MiB a second over each, then its answer come within one. */
   uploadTimeoutMs?: number
   /**
    * Headers every request to the server carries, for a proxy in front of
@@ -204,19 +204,23 @@ function deadline(ms: number): AbortSignal {
   return controller.signal
 }
 
-/** A download's least pace: at 1 MiB a second, a 60 MB artifact is in within a minute. */
+/** A transfer's least pace: at 1 MiB a second, a 60 MB artifact is in within a minute. */
 const FLOOR_BYTES_PER_S = 1024 * 1024
 
+/** An upload's body is handed to the fetch in slices this long, so its pace can be read. */
+const SLICE_BYTES = 64 * 1024
+
 /**
- * A download's deadline: `ms` for the answer, then at least
- * `FLOOR_BYTES_PER_S` over each `ms` of its body. A whole-body deadline
- * failed a big artifact still arriving at a steady pace (a 30 s cut, CI
- * 2026-10-25); a gap-only one let a trickle hold a run 19 minutes (a byte
- * now and then reset it, CI 2026-10-28). Core judges whether running the
- * task beats the rest of the wait.
+ * At least `FLOOR_BYTES_PER_S` over each `ms`, or `controller` aborts
+ * naming the pace. A whole-body deadline failed a big artifact still
+ * arriving at a steady pace (a 30 s cut, CI 2026-10-25); a gap-only one
+ * let a trickle hold a run 19 minutes (a byte now and then reset it, CI
+ * 2026-10-28).
  */
-function streamed(res: Response, controller: AbortController, ms: number): Response {
-  if (res.body === null) return res
+function pace(
+  controller: AbortController,
+  ms: number,
+): { moved(bytes: number): void; stop(): void } {
   const floor = (FLOOR_BYTES_PER_S * ms) / 1000
   let got = 0
   const window = setInterval(() => {
@@ -229,14 +233,30 @@ function streamed(res: Response, controller: AbortController, ms: number): Respo
     got = 0
   }, ms)
   window.unref()
-  controller.signal.addEventListener('abort', () => clearInterval(window), { once: true })
+  const stop = () => clearInterval(window)
+  controller.signal.addEventListener('abort', stop, { once: true })
+  return {
+    moved: (bytes) => {
+      got += bytes
+    },
+    stop,
+  }
+}
+
+/**
+ * A download's deadline: `ms` for the answer, then `pace` over its body.
+ * Core judges whether running the task beats the rest of the wait.
+ */
+function streamed(res: Response, controller: AbortController, ms: number): Response {
+  if (res.body === null) return res
+  const window = pace(controller, ms)
   const body = res.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, out) {
-        got += chunk.byteLength
+        window.moved(chunk.byteLength)
         out.enqueue(chunk)
       },
-      flush: () => clearInterval(window),
+      flush: window.stop,
     }),
   )
   return new Response(body, {
@@ -244,6 +264,43 @@ function streamed(res: Response, controller: AbortController, ms: number): Respo
     statusText: res.statusText,
     headers: res.headers,
   })
+}
+
+/**
+ * An upload's body, held to `pace` while the fetch takes it, then `ms`
+ * for the answer (`sent`). A deadline over the whole upload failed every
+ * artifact slower than its size over it: 100 MB under 1.7 MB a second at
+ * the default 60 s. The pace is what the fetch takes, so the bytes the
+ * socket buffers ahead of the wire (MBs) count early once; a stalled
+ * link still ends at the first window they do not fill.
+ */
+function paced(
+  blob: Blob,
+  controller: AbortController,
+  ms: number,
+  sent: () => void,
+): { body: ReadableStream<Uint8Array>; stop(): void } {
+  const window = pace(controller, ms)
+  let at = 0
+  const body = new ReadableStream<Uint8Array>(
+    {
+      async pull(out) {
+        if (at >= blob.size) {
+          window.stop()
+          out.close()
+          sent()
+          return
+        }
+        const slice = await blob.slice(at, at + SLICE_BYTES).bytes()
+        at += slice.byteLength
+        window.moved(slice.byteLength)
+        out.enqueue(slice)
+      },
+      cancel: window.stop,
+    },
+    { highWaterMark: 0 },
+  )
+  return { body, stop: window.stop }
 }
 
 /**
@@ -461,8 +518,10 @@ export class VxCacheLayer implements RemoteCacheLayer {
       headers?: Record<string, string>
       timeoutMs?: number
       write?: boolean
-      /** A body read at its own pace: the deadline then bounds the gaps between its bytes. */
+      /** A body read at its own pace: the deadline then bounds its pace (`streamed`). */
       streamed?: boolean
+      /** A body sent at its own pace: the deadline bounds its pace, then the answer (`paced`). */
+      paced?: boolean
     } = {},
   ): Promise<Response | undefined> {
     let bearer: string
@@ -476,8 +535,17 @@ export class VxCacheLayer implements RemoteCacheLayer {
     }
     const ms = init.timeoutMs ?? this.config.timeoutMs
     const controller = new AbortController()
-    const answer = setTimeout(() => controller.abort(new Error(`no answer within ${ms} ms`)), ms)
-    answer.unref()
+    let answer: ReturnType<typeof setTimeout> | undefined
+    const arm = () => {
+      if (answer !== undefined) return
+      answer = setTimeout(() => controller.abort(new Error(`no answer within ${ms} ms`)), ms)
+      answer.unref()
+    }
+    const sending =
+      init.paced === true && init.body instanceof Blob
+        ? paced(init.body, controller, ms, arm)
+        : undefined
+    if (sending === undefined) arm()
     const url = `${this.config.url}${path}`
     let res = await this.fetchImpl(url, {
       method: init.method ?? 'POST',
@@ -486,11 +554,16 @@ export class VxCacheLayer implements RemoteCacheLayer {
         ...this.named,
         ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
         ...init.headers,
+        // A stream names no length, and the server refuses an upload without one.
+        ...(sending === undefined ? {} : { 'content-length': String((init.body as Blob).size) }),
       },
-      ...(init.body === undefined ? {} : { body: init.body }),
+      ...(init.body === undefined ? {} : { body: sending?.body ?? init.body }),
       signal: controller.signal,
       redirect: 'manual',
     })
+    // An answer before the last byte (one the scope holds): its body is bounded as any answer's.
+    sending?.stop()
+    arm()
     if (res.status >= 300 && res.status < 400) {
       clearTimeout(answer)
       throw await redirected(res, url)
@@ -728,6 +801,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       headers: { 'content-type': 'application/octet-stream' },
       timeoutMs: this.config.uploadTimeoutMs,
       write: true,
+      paced: true,
     })
     if (res === undefined) return false
     if (!res.ok) throw await refusal(res)

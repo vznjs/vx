@@ -41,8 +41,10 @@ export default {
 - `timeoutMs` (default 30 000) bounds each read and query, and
   `uploadTimeoutMs` (default 60 000) each upload. A download is bounded
   the same way until its answer, then must bring at least 1 MiB a second
-  over each `timeoutMs`: a big artifact still coming in is not cut off,
-  and one trickling in is. Each is ms above 0 and up to 2³¹−1 (the
+  over each `timeoutMs`; an upload must send at least 1 MiB a second over
+  each `uploadTimeoutMs`, then be answered within one. A big artifact
+  still moving is not cut off, and one trickling or stalled is: it fails
+  the transfer, said as any cache error. Each is ms above 0 and up to 2³¹−1 (the
   longest a timer holds), or `vxCache()` refuses it.
 - `headers` are sent on every request to the server, for a proxy in
   front of it, such as a Cloudflare Access service token:

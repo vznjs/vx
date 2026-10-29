@@ -526,6 +526,85 @@ describe('download deadline', () => {
   })
 })
 
+describe('upload deadline', () => {
+  /**
+   * A fetch that takes an upload's body at `bytesPerS`, its first
+   * `stallAfter` bytes only, then answers 204, or never when `answer` is
+   * false. What it took, and the length the request named, are kept.
+   */
+  function taker(bytesPerS: number, stallAfter = Infinity, answer = true) {
+    const took = { bytes: 0, length: null as string | null }
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      const signal = init.signal!
+      const aborted = new Promise<never>((_, reject) =>
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
+      )
+      took.length = new Headers(init.headers).get('content-length')
+      const body = init.body instanceof Blob ? init.body.stream() : (init.body as ReadableStream)
+      const reader = body.getReader()
+      const read = async () => {
+        for (;;) {
+          if (took.bytes >= stallAfter) return new Promise<never>(() => {})
+          const { done, value } = await reader.read()
+          if (done) break
+          took.bytes += value.byteLength
+          await Bun.sleep((value.byteLength / bytesPerS) * 1000)
+        }
+        if (!answer) return new Promise<never>(() => {})
+        return new Response(null, { status: 204 })
+      }
+      return Promise.race([read(), aborted])
+    }) as unknown as typeof fetch
+    const c = new VxCacheLayer(
+      {
+        url: 'http://127.0.0.1:1',
+        timeoutMs: 200,
+        uploadTimeoutMs: 200,
+        headers: {},
+        issuer: GITHUB,
+        repository: REPO,
+      },
+      fetchImpl,
+      { VX_CACHE_TOKEN: 't' },
+    )
+    c.refs = [MAIN]
+    return { c, took }
+  }
+  const SIZE = 1024 * 1024
+
+  // A deadline over the whole upload failed any artifact slower than its
+  // size over the deadline: 100 MB under 1.6 MB a second at the default.
+  it('lets an upload leaving at a steady pace outlast the deadline', async () => {
+    // 2.5 MiB a second: 400 ms for the MiB, twice the deadline.
+    const { c, took } = taker(2.5 * SIZE)
+    await c.put('aa', new Blob([new Uint8Array(SIZE)]), { durationMs: 1 })
+    expect(took).toEqual({ bytes: SIZE, length: String(SIZE) })
+  })
+
+  it('ends an upload that stops leaving', async () => {
+    const { c } = taker(2.5 * SIZE, 256 * 1024)
+    await expect(c.put('aa', new Blob([new Uint8Array(SIZE)]), { durationMs: 1 })).rejects.toThrow(
+      /^(no bytes|\d+ bytes) in 200 ms(, under 1 MiB a second)?$/,
+    )
+  })
+
+  it('ends an upload leaving under its floor', async () => {
+    // 256 KiB a second: under the floor's 1 MiB.
+    const { c } = taker(SIZE / 4)
+    await expect(c.put('aa', new Blob([new Uint8Array(SIZE)]), { durationMs: 1 })).rejects.toThrow(
+      /^\d+ bytes in 200 ms, under 1 MiB a second$/,
+    )
+  })
+
+  it('bounds the answer after the last byte', async () => {
+    const { c, took } = taker(100 * SIZE, Infinity, false)
+    await expect(c.put('aa', new Blob([new Uint8Array(SIZE)]), { durationMs: 1 })).rejects.toThrow(
+      'no answer within 200 ms',
+    )
+    expect(took.bytes).toBe(SIZE)
+  })
+})
+
 describe('GitHub OIDC', () => {
   it("asks the job's token for the server's origin, and its branch's writes land there", async () => {
     const srv = server()
