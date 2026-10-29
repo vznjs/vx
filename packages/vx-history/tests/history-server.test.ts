@@ -459,9 +459,14 @@ describe('HistoryServer', () => {
     const setup = (o: Parameters<typeof vxHistory>[0]) =>
       vxHistory(o).setup!({ ci: false, warn: (m: string) => warned.push(m) } as never)
     try {
+      // Named as the workspace set it: it said `url`, an option never written.
       Bun.env.VX_HISTORY_URL = 'h.example'
       await expect(setup({ ...NAMED }) as Promise<unknown>).rejects.toThrow(
-        'vxHistory(): url must be http(s), got h.example',
+        'vxHistory(): VX_HISTORY_URL must be http(s), got h.example',
+      )
+      Bun.env.VX_HISTORY_URL = 'https://h.example/v1'
+      await expect(setup({ ...NAMED }) as Promise<unknown>).rejects.toThrow(
+        "vxHistory(): VX_HISTORY_URL is the server's base, without /v1: https://h.example",
       )
       await setup({ ...NAMED, url: 'https://h.example/' })
       Bun.env.VX_HISTORY_URL = 'https://h.example/'

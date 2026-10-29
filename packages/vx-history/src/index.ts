@@ -282,10 +282,15 @@ function serverUrlOf(
 ): string | undefined {
   const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
-  if (!/^https?:\/\//.test(url)) throw new UserError(`vxHistory(): url must be http(s), got ${url}`)
+  // Named as the workspace set it: a bad VX_HISTORY_URL was refused as `url`.
+  const from = option === undefined ? 'VX_HISTORY_URL' : 'url'
+  if (!/^https?:\/\//.test(url))
+    throw new UserError(`vxHistory(): ${from} must be http(s), got ${url}`)
   // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
-    throw new UserError(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
+    throw new UserError(
+      `vxHistory(): ${from} is the server's base, without /v1: ${url.slice(0, -3)}`,
+    )
   return url
 }
 
