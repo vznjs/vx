@@ -68,6 +68,7 @@ describe('a Linux CI job that runs a vx task', () => {
   it('is every one of these — the pin is not vacuous', () => {
     expect(covered).toEqual([
       'auto-release.yml#release',
+      'ci.yml#bench',
       'ci.yml#perf',
       'npm.yml#publish',
       'release.yml#assets',
