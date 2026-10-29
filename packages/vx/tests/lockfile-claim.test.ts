@@ -116,6 +116,31 @@ describe('extra files the lockfile names', () => {
     expect((await withExtras().key(task('packages/a'), ctx()))!['deps']).toBe('a1|patches/p.patch:')
   })
 
+  // `--affected` asks which files a lockfile names for every diff (one may
+  // sit inside a project), and parsed the lockfile cold to learn what the
+  // memo already records for these bytes.
+  it("--affected's extra files come from the memo, not a parse", async () => {
+    const counting = () => {
+      const hooks = withExtras()
+      return { hooks, extraFiles: hooks.fingerprint!.extraFiles! }
+    }
+    await lock('packages/a=a1\nextra:patches/p.patch\n')
+    await patch('one')
+    const bytes = await Bun.file(path.join(root, 'bun.lock')).bytes()
+    const fctx = { ...ctx(), projects: [] }
+    // CONTROL: no memo yet, so the lockfile is parsed.
+    const cold = counting()
+    expect(await cold.extraFiles('bun.lock', bytes, fctx)).toEqual(['patches/p.patch'])
+    await cold.hooks.key(task('packages/a'), ctx())
+    const warm = counting()
+    const text = await readFile(MEMO(), 'utf8')
+    await writeFile(MEMO(), text.replace('"patches/p.patch"', '"patches/from-the-memo"'))
+    expect(await warm.extraFiles('bun.lock', bytes, fctx)).toEqual(['patches/from-the-memo'])
+    // Other bytes are not the memo's: parsed.
+    const other = new TextEncoder().encode('packages/a=a2\nextra:patches/q.patch\n')
+    expect(await warm.extraFiles('bun.lock', other, fctx)).toEqual(['patches/q.patch'])
+  })
+
   it('CONTROL: an unchanged extra file costs a warm run no parse', async () => {
     await lock('packages/a=a1\nextra:patches/p.patch\n')
     await patch('one')

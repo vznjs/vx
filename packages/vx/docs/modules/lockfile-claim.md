@@ -125,8 +125,10 @@ and the workspace-scope key. The memo records the files and their hashes,
 so a warm run re-hashes the files it names and parses only when one
 moved; within a process the same identity gates the read beside the
 lockfile's, taken before each file is hashed. The claim's `extraFiles`
-names them to core, and `--affected` hands a changed one in
-`change.extras`, so `affected` digests both sides with its bytes.
+names them to core, from the memo when it holds those bytes (a parse
+otherwise): `--affected` asks on every diff, and a cold parse of this
+repo's bun.lock was ~8 ms of its selection. `--affected` hands a changed
+one in `change.extras`, so `affected` digests both sides with its bytes.
 
 A named path may be a directory: a `file:` dependency a manager copies
 into `node_modules` at install, or a directory it links, recording only

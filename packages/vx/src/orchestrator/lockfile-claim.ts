@@ -334,7 +334,18 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         return names
       },
       ...(options.extraFiles !== undefined
-        ? { extraFiles: (_file: string, bytes: Uint8Array) => options.extraFiles!(decode(bytes)) }
+        ? {
+            // The memo records which files these exact bytes name, for this
+            // parser: `--affected` asks on every diff, and a cold parse of
+            // a large lockfile was most of its selection's cost.
+            async extraFiles(_file: string, bytes: Uint8Array, ctx: FingerprintContext) {
+              const memoFile = path.join(ctx.cacheDir, 'lockfile-claims', `${file}.json`)
+              const memo = await readMemo(memoFile, version, claimant, xxh3hex(bytes))
+              return memo !== undefined
+                ? Object.keys(memo.extras)
+                : options.extraFiles!(decode(bytes))
+            },
+          }
         : {}),
     },
     async key(task, ctx) {
