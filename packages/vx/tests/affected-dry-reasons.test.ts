@@ -22,7 +22,10 @@ beforeAll(async () => {
   root = await makeWorkspace({ prefix: 'vx-affected-why-', git: false, edges: { app: ['lib'] } })
   await addProject(root, 'lib', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
   await addProject(root, 'app', {
-    config: cached(`\n      dependsOn: ['^build'],`),
+    config: cached(`\n      dependsOn: ['^build'],`).replace(
+      '    lint:',
+      "    agg: { dependsOn: ['^build'] },\n    lint:",
+    ),
     files: { 'src/a.js': 'export {}\n' },
   })
   await addProject(root, 'other', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
@@ -65,6 +68,15 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
       'lib#lint': { kind: 'project', file: 'packages/lib/src/a.js' },
       'other#build': { kind: 'named' },
     })
+  })
+
+  it('json: a group whose dependency is affected is kept, through that edge', () => {
+    // A task with no command of its own aggregates its dependencies: with
+    // one of them affected, it must be selected too.
+    const plan = JSON.parse(dry('agg', '--dry=json')) as {
+      tasks: Array<{ id: string; affected?: { via?: string[] } }>
+    }
+    expect(plan.tasks.find((t) => t.id === 'app#agg')?.affected?.via).toEqual(['lib#build'])
   })
 
   it('CONTROL: a plan without --affected states no base', () => {
