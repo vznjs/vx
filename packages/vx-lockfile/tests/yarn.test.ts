@@ -897,6 +897,22 @@ describe('every input the yarn digest must read', () => {
     },
   )
 
+  // Turbo panicked on both until vercel/turborepo#6725 made them errors.
+  it.each([
+    [
+      'two entries that claim one descriptor',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n  dependencies:\n    x: "npm:^1"\n\n"x@npm:^1":\n  version: 1.0.0\n  resolution: "x@npm:1.0.0"\n\n"x@npm:^1, x@npm:1.1.0":\n  version: 1.1.0\n  resolution: "x@npm:1.1.0"\n`,
+    ],
+    [
+      'a dependency no entry resolves',
+      `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n  dependencies:\n    x: "npm:^1"\n\n"x@npm:^1":\n  version: 1.0.0\n  resolution: "x@npm:1.0.0"\n  dependencies:\n    gone: "npm:^9"\n`,
+    ],
+  ])('a berry lockfile with %s is read past, never a crash', (_, body) => {
+    const lock = parseLockfile(`__metadata:\n  version: 8\n  cacheKey: 10\n\n${body}`)
+    expect([...importerDigests(lock).keys()]).toEqual(['packages/a'])
+    expect([...importerLinks(lock).keys()]).toEqual(['packages/a'])
+  })
+
   it('an entry with no `resolution` is keyed by its descriptors, never merged with another', () => {
     const strip = (text: string) =>
       text

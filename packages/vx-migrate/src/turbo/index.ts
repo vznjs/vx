@@ -72,6 +72,10 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
         const keys = await workspaceKeys(rootOf(ctx.workspaceRoot))
         if (workspace.run?.concurrency === undefined && keys.concurrency !== undefined)
           workspace.run = { ...workspace.run, concurrency: keys.concurrency }
+        // `TURBO_FORCE` (`true` or `1`, as Turbo reads it) is `turbo run --force`.
+        const force = Bun.env['TURBO_FORCE']?.trim()
+        if (force === 'true' || force === '1')
+          workspace.cache = { ...workspace.cache, policy: forcedPolicy(workspace.cache?.policy) }
         // `turbo run --affected` compares with TURBO_SCM_BASE when set, and
         // on GitHub Actions with what the event names.
         const base =
@@ -204,6 +208,25 @@ async function workspaceKeys(root: string): Promise<{
     if (Number.isInteger(n) && n > 0) out.concurrency = n
   }
   return out
+}
+
+/**
+ * A policy with every read off, as `--force` is: no hit is replayed. The
+ * remote is written only where the workspace's own policy names it, so a
+ * laptop's forced run never writes the cache CI reads.
+ */
+function forcedPolicy(spec = ''): string {
+  const flags = new Map([
+    ['local', 'w'],
+    ['remote', ''],
+  ])
+  for (const seg of spec.split(',')) {
+    if (seg.trim() === '') continue
+    const m = /^(local|remote):([rw]*)$/.exec(seg.trim())
+    if (m === null) return spec // core refuses it, naming `cache.policy`
+    flags.set(m[1]!, m[2]!.replace('r', ''))
+  }
+  return [...flags].map(([layer, f]) => `${layer}:${f}`).join(',')
 }
 
 const envNamesNow = (): string[] => Object.keys(process.env).sort()

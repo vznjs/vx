@@ -41,6 +41,7 @@ import {
   turboConfigFile,
 } from './turbo-reads.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
+import { keysRootEngines, ROOT_ENGINES_PROBE } from './root-engines.js'
 import {
   DOTENV_PROBE,
   DOTENV_PROBE_TOP,
@@ -824,6 +825,15 @@ export async function mapTurboWorkspace(
   // A workspace with no Turbo config answered with a bare ENOENT and a stack
   // (item 1043): turbo() declared in the wrong repo, or its file removed.
   const rootFile = await onlyConfigFile(root, root)
+  // Turbo reads its root config from the file TURBO_ROOT_TURBO_JSON names,
+  // against the cwd (vercel/turborepo#9087); reading the root's in its
+  // place ran another task graph than `turbo run`.
+  const named = Bun.env['TURBO_ROOT_TURBO_JSON']
+  if (named && (rootFile === null || path.resolve(named) !== rootFile)) {
+    throw new UserError(
+      `TURBO_ROOT_TURBO_JSON names ${path.resolve(named)}: turbo() reads only the workspace root's turbo.json or turbo.jsonc — unset it, or move that config to the root`,
+    )
+  }
   if (rootFile === null) {
     throw new UserError(
       `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from .vx/workspace.ts`,
@@ -883,6 +893,7 @@ export async function mapTurboWorkspace(
   // over git's files keyed nothing: the workspace probe keys them (item
   // 1032).
   const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
+  const rootPkg = rootMeta?.packageJson ?? (await rootPackageJson(root))
   const globalFiles = [
     ...globalDeps.filter((d) => envDependency(d) === null).map(turboGlobstar),
     ...(rootCfg.globalDotEnv ?? []),
@@ -891,7 +902,7 @@ export async function mapTurboWorkspace(
     // packages that depend on the database package).
     ...(rootCfg.tasks === undefined && rootCfg.pipeline !== undefined
       ? []
-      : rootDependencyGlobs(root, rootMeta?.packageJson ?? (await rootPackageJson(root)), metas)),
+      : rootDependencyGlobs(root, rootPkg, metas)),
     ...microfrontendsConfigs(root, [root, ...metas.map((m) => m.dir)]).map((c) => c.rel),
   ]
   const rootDotenv = globalFiles.filter((f) => isDotenvGlob(f))
@@ -1500,6 +1511,14 @@ export async function mapTurboWorkspace(
     }
   }
 
+  if (keysRootEngines(rootPkg))
+    for (const p of projects)
+      for (const t of p.tasks) {
+        const inputs = t.task?.['inputs'] as Record<string, unknown> | undefined
+        if (inputs === undefined) continue
+        const probes = (inputs['workspaceRuntime'] as unknown[] | undefined) ?? []
+        inputs['workspaceRuntime'] = [...probes, ROOT_ENGINES_PROBE]
+      }
   nestedInputs(root, projects)
   for (const [entry, n] of wildcardUses)
     notes.push(

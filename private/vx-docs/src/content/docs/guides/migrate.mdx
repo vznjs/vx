@@ -201,6 +201,7 @@ vx run test --all      # local 3✓
 | `experimentalCI` | nothing: Turbo reads it for external CI tooling and acts on nothing |
 | `outputLogs` (Turbo 1: `outputMode`)                        | `"new-only"` is the default; other values are the run's `--output-logs` |
 | `dotEnv` (Turbo 1), a `.env` input                          | `inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (written configs name it from the preset: `dotenvFiles`, `dotenvFilesDeep`, and `dotenvRootFiles` for the root globs); a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `inputs.workspaceRuntime`, a probe of only the files its globs name |
+| the root `package.json`'s `engines`, which Turbo hashes into every task | `inputs.workspaceRuntime`: a probe that prints that value alone (`rootEngines` in `vx-preset.ts`), so raising `engines.node` re-runs every task and no other root edit does |
 | an input or `globalDependencies` path git ignores (`config.local.json`) | `inputs.workspaceRuntime`: a probe that prints the file's name and bytes, since core refuses a file input git ignores; a gitignored file a glob matches is not keyed |
 | `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |
 | `description` | `description` |
@@ -218,6 +219,7 @@ The command itself comes from your `package.json` script, with its
 | `turbo run build`                 | `vx run build --all`                                   |
 | `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`                       |
 | `turbo run build --affected`      | `vx run build --affected` (`turbo()` takes `TURBO_SCM_BASE`, or GitHub Actions' base, as Turbo does; a `TURBO_SCM_HEAD` other than the checked-out commit is a warning) |
+| `turbo run build --force`, `TURBO_FORCE=true` | `vx run build --force`; `turbo()` reads `TURBO_FORCE` too |
 | `turbo run build --continue`      | `vx run build --continue` (`always`, as Turbo's; without it, vx skips only a failure's dependents where Turbo stops) |
 | `TURBO_TOKEN` remote cache        | [`turboCache()`](../../docs/remote-cache/) reads the same variables |
 

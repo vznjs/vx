@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { type RemoteCacheLayer } from '@vzn/vx'
+import type { WorkspaceConfig } from '@vzn/vx/config'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import {
@@ -18,7 +19,7 @@ import {
   resolveTurboCacheConfig,
   TurboRemoteCache,
 } from '../src/turbo-cache/index.js'
-import { turboCache } from '../src/index.js'
+import { turbo, turboCache } from '../src/index.js'
 import { readScopes } from '../src/turbo-cache/scope.js'
 
 const TOKEN = 'secret-token'
@@ -754,6 +755,97 @@ describe('vx run with turboCache() layered over the local cache', () => {
     } finally {
       for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]
       Object.assign(process.env, saved)
+    }
+  })
+
+  // TURBO_FORCE (`true` or `1`, as Turbo reads it) is `turbo run --force`:
+  // a CI that set it got hits replayed under turbo() (vercel/turborepo#921).
+  // The remote is read by no forced run and written only where the
+  // workspace's own policy names it: a laptop's write could reach CI.
+  it('TURBO_FORCE turns every cache read off, through cache.policy', async () => {
+    const saved = process.env['TURBO_FORCE']
+    const policy = async (value: string | undefined, ws: WorkspaceConfig = {}) => {
+      if (value === undefined) delete process.env['TURBO_FORCE']
+      else process.env['TURBO_FORCE'] = value
+      await turbo().config!(ws, { workspaceRoot: root, warn: () => {}, setBranch: () => {} })
+      return ws.cache?.policy ?? null
+    }
+    try {
+      expect([
+        await policy(undefined),
+        await policy('true'),
+        await policy('1'),
+        await policy('false'),
+        await policy('yes'),
+        await policy('true', { cache: { policy: 'local:rw,remote:rw' } }),
+        await policy('true', { cache: { policy: 'remote:r' } }),
+        await policy('true', { cache: { policy: 'local:r' } }),
+      ]).toEqual([
+        null,
+        'local:w,remote:',
+        'local:w,remote:',
+        null,
+        null,
+        'local:w,remote:w',
+        'local:w,remote:',
+        'local:,remote:',
+      ])
+    } finally {
+      if (saved === undefined) delete process.env['TURBO_FORCE']
+      else process.env['TURBO_FORCE'] = saved
+    }
+  })
+
+  it('a turbo() run under TURBO_FORCE runs its tasks and leaves the remote alone', async () => {
+    const ws = await mkdtemp(path.join(tmpdir(), 'vx-turbo-force-'))
+    const saved = process.env['TURBO_FORCE']
+    try {
+      await writeFile(
+        path.join(ws, 'package.json'),
+        JSON.stringify({ name: 'fixture', workspaces: ['pkg'] }),
+      )
+      await writeFile(
+        path.join(ws, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { inputs: ['src/**'], outputs: ['dist/**'] } } }),
+      )
+      await mkdir(path.join(ws, 'pkg', 'src'), { recursive: true })
+      await writeFile(
+        path.join(ws, 'pkg', 'package.json'),
+        JSON.stringify({ name: 'pkg', scripts: { build: 'mkdir -p dist && cp src/app.js dist/' } }),
+      )
+      await writeFile(path.join(ws, 'pkg', 'src', 'app.js'), 'console.log("app")\n')
+      await Bun.write(
+        path.join(ws, '.vx/workspace.mjs'),
+        localWorkspaceSource(
+          [
+            'turbo()',
+            `turboCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, teamSlug: 'acme' })`,
+          ],
+          `import { turbo, turboCache } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
+        ),
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: ws })
+      delete process.env['TURBO_FORCE']
+      const status = async () =>
+        (await run({ cwd: ws, tasks: ['build'], handleSignals: false })).outcomes.map(
+          (o) => o.status,
+        )
+      const first = await status()
+      const asked = srv.seen.length
+      process.env['TURBO_FORCE'] = 'true'
+      const forced = await status()
+      const remoteAsked = srv.seen.length - asked
+      delete process.env['TURBO_FORCE']
+      expect({ first, forced, remoteAsked, after: await status() }).toEqual({
+        first: ['success'],
+        forced: ['success'],
+        remoteAsked: 0,
+        after: ['cache-hit'],
+      })
+    } finally {
+      if (saved === undefined) delete process.env['TURBO_FORCE']
+      else process.env['TURBO_FORCE'] = saved
+      await rm(ws, { recursive: true, force: true })
     }
   })
 
