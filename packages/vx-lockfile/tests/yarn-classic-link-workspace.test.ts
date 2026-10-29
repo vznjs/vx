@@ -106,3 +106,18 @@ it('a `link:` to a workspace under another name is an edge to it', async () => {
   // CONTROL: the `file:` copy of d is no edge.
   expect((b.deps ?? []).map(rel)).toEqual(['packages/c'])
 })
+
+// `--affected` now asks about paths inside projects too, so the files it
+// is told the lockfile names must be the ones the key hashes: with the
+// linked workspace among them, an edit under c selected every project.
+it("--affected's extra files leave out a workspace a classic `link:` names, as the key does", async () => {
+  const ctx = {
+    workspaceRoot: root,
+    cacheDir: path.join(root, '.vx', 'cache'),
+    warn() {},
+    projects: [],
+  }
+  const bytes = await Bun.file(path.join(root, 'yarn.lock')).bytes()
+  const named = await yarn().fingerprint!.extraFiles!('yarn.lock', bytes, ctx)
+  expect([...named].sort()).toEqual(['packages/d', 'vendor/l'])
+})

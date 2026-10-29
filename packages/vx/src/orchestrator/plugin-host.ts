@@ -421,16 +421,17 @@ export async function claimedAffected(
  * (`FingerprintClaim.extraFiles`); `undefined` when it names none it can
  * answer for, and a plugin that throws is refused by its name.
  */
-export function claimedExtraFiles(
+export async function claimedExtraFiles(
   plugin: VxPlugin,
   file: string,
   bytes: Uint8Array,
-): readonly string[] | undefined {
+  ctx: FingerprintContext,
+): Promise<readonly string[] | undefined> {
   const read = plugin.fingerprint?.extraFiles
   if (read === undefined) return undefined
   let names: unknown
   try {
-    names = read.call(plugin.fingerprint, file, bytes)
+    names = await read.call(plugin.fingerprint, file, bytes, ctx)
   } catch (err) {
     throw new UserError(
       maskedLine(`plugin '${plugin.name}' failed in fingerprint: ${thrownMessage(err)}`),

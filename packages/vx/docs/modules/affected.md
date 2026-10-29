@@ -69,7 +69,7 @@ export interface FingerprintClaims {
     extras?: ReadonlyMap<string, { before: Uint8Array | null; after: Uint8Array | null }>
   }): Promise<ReadonlySet<string> | undefined>
   /** The files a claimed file names that its claimant keys too; absent = it reads none. */
-  extraFiles?(file: string, bytes: Uint8Array): readonly string[] | undefined
+  extraFiles?(file: string, bytes: Uint8Array): Promise<readonly string[] | undefined>
 }
 
 /** The base `ref` names (`<base>...HEAD` reads as `<base>`) when it is the
