@@ -483,9 +483,14 @@ export interface FingerprintClaim {
    * path and hashes nowhere, or a `file:` dependency's directory. A change
    * to one, or under one, asks `affected` about the file naming it, with
    * `change.extras`. Without it, a `bun.lock` patch edit selects every
-   * project.
+   * project. Asked on every `--affected` diff, so a claimant that memoises
+   * its parse answers from `ctx.cacheDir`.
    */
-  extraFiles?(file: string, bytes: Uint8Array): readonly string[]
+  extraFiles?(
+    file: string,
+    bytes: Uint8Array,
+    ctx: FingerprintContext,
+  ): readonly string[] | Promise<readonly string[]>
 }
 
 export interface FingerprintChange {

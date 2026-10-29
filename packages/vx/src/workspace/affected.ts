@@ -141,7 +141,7 @@ export interface FingerprintClaims {
     extras?: ReadonlyMap<string, { before: Uint8Array | null; after: Uint8Array | null }>
   }): Promise<ReadonlySet<string> | undefined>
   /** The files a claimed file names that its claimant keys too; absent = it reads none. */
-  extraFiles?(file: string, bytes: Uint8Array): readonly string[] | undefined
+  extraFiles?(file: string, bytes: Uint8Array): Promise<readonly string[] | undefined>
 }
 
 /**
@@ -149,14 +149,14 @@ export interface FingerprintClaims {
  * the whole fix: a broken lockfile at the base ref is not the working
  * tree's to regenerate, and the bare refusal named neither.
  */
-function extraFilesOn(
+async function extraFilesOn(
   claims: FingerprintClaims,
   file: string,
   bytes: Uint8Array,
   side: string,
-): readonly string[] | undefined {
+): Promise<readonly string[] | undefined> {
   try {
-    return claims.extraFiles?.(file, bytes)
+    return await claims.extraFiles?.(file, bytes)
   } catch (err) {
     if (!(err instanceof Error)) throw err
     throw new UserError(
@@ -393,11 +393,11 @@ export async function affectedChanges(
     const same = !changed.includes(file)
     const before = same ? after : await gitBytesAt(args.workspaceRoot, base, file)
     const namedAfter =
-      after === null ? [] : extraFilesOn(extraClaims!, file, after, 'in the working tree')
+      after === null ? [] : await extraFilesOn(extraClaims!, file, after, 'in the working tree')
     const named = new Set([
       ...(before === null || same
         ? []
-        : (extraFilesOn(extraClaims!, file, before, 'as of the base ref') ?? [])),
+        : ((await extraFilesOn(extraClaims!, file, before, 'as of the base ref')) ?? [])),
       ...(namedAfter ?? []),
     ])
     const extras = new Map<string, { before: Uint8Array | null; after: Uint8Array | null }>()

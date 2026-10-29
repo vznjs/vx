@@ -845,7 +845,7 @@ describe('affectedProjects', () => {
         projects,
         fingerprintClaims: async () => ({
           files: new Set(['bun.lock']),
-          extraFiles: () => ['patches/x.patch'],
+          extraFiles: async () => ['patches/x.patch'],
           affected: async (change) => {
             asked.push(change)
             return new Set(['b'])
@@ -997,7 +997,7 @@ describe('affectedProjects', () => {
           projects,
           fingerprintClaims: async () => ({
             ...(await claimOf(['b'], loaded)()),
-            extraFiles: (_file: string, bytes: Uint8Array) => {
+            extraFiles: async (_file: string, bytes: Uint8Array) => {
               parsed.push(new TextDecoder().decode(bytes))
               return []
             },

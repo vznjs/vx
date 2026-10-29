@@ -50,10 +50,11 @@ the projects reaching it move.
 ## Claiming a file (`VxPlugin.fingerprint`)
 
 A plugin that reads a root file declares `fingerprint: { files:
-['bun.lock'], affected(change, ctx), extraFiles?(file, bytes) }`
+['bun.lock'], affected(change, ctx), extraFiles?(file, bytes, ctx) }`
 (`extraFiles`: the files a claimed file names that the plugin's key
 reads too, such as `bun.lock`'s patches and a `file:` dependency's
-directory). The schema refuses a
+directory; the same ones the key reads, since `--affected` asks about
+every changed path). The schema refuses a
 second claimant for one file. `fingerprintClaims(plugins)` in
 `plugin-host.ts` indexes the claims. `--affected`
 (`workspace/affected.ts`) asks the claimant's `affected` with the file's
