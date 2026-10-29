@@ -5,11 +5,12 @@
 // The deep pins for each behaviour live in the suites `docs/parity.md`
 // maps; this file is the one place a Turbo reader can scan.
 
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { gitIn } from './helpers/workspace.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import {
   dry,
   makeParityWorkspace,
@@ -525,6 +526,51 @@ describe('Turbo parity — failures, output and reports', () => {
       const r = await vx(root, ['run', 'lint', '--all', '--force', '--concurrency', '1'])
       expect(r.code).toBe(0)
       expect(r.out + r.err).toContain('1 worker')
+    },
+    TIMEOUT,
+  )
+})
+
+// turborepo#6877: a checkout whose path holds glob characters read its own
+// path as a pattern. Here the root, a project and an input all hold them,
+// beside a sibling `cx` that `[c]x` would match as a class.
+describe('Turbo parity — glob characters in paths are names', () => {
+  let parent: string
+  let root: string
+  let dir: string
+  beforeAll(async () => {
+    parent = await mkdtemp(path.join(os.tmpdir(), 'vx-parity-glob-path-'))
+    root = await makeWorkspace({ dir: parent, prefix: '[br] (x){y}-', git: false })
+    const config = `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist && cat src/*/page.ts > dist/o' },
+      inputs: { files: ['src/\\\\[id\\\\]/**'] }, cache: { outputs: { files: ['dist/**'] } },
+    } } }`
+    dir = await addProject(root, '[c]x', {
+      config,
+      files: { 'src/[id]/page.ts': 'v1\n', '.gitignore': 'dist/\n' },
+    })
+    await addProject(root, 'cx', { config, files: { 'src/[id]/page.ts': 'c\n' } })
+    const git = gitIn(root)
+    git('init', '-q')
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(parent, { recursive: true, force: true })
+  })
+
+  it(
+    'a project `[c]x` under `[br] (x){y}` misses on an edit, then hits and restores',
+    async () => {
+      const status = async () =>
+        (await summarized(root, ['[c]x#build'])).tasks.get('[c]x#build')?.['status']
+      expect(await status()).toBe('success')
+      expect(await status()).toBe('cache-hit')
+      await writeFile(path.join(dir, 'src', '[id]', 'page.ts'), 'v2\n')
+      expect(await status()).toBe('success')
+      await rm(path.join(dir, 'dist'), { recursive: true })
+      expect(await status()).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'dist', 'o'), 'utf8')).toBe('v2\n')
     },
     TIMEOUT,
   )
