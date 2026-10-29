@@ -535,9 +535,7 @@ describe('nx()', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'lib', private: true }),
       )
-      expect((await lockWarnings()).join('\n')).toContain(
-        'Nx project(s) ws have no workspace package',
-      )
+      expect((await lockWarnings()).join('\n')).toContain('Nx project ws has no workspace package')
       const plan = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
       expect(plan.tasks[0]!.node.config.exec?.command).toBe('echo lint-ran > lint.log')

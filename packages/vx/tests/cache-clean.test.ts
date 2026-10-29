@@ -68,11 +68,7 @@ describe('vx cache clean with no bound clears the cache', () => {
       const dry = await vx(['cache', 'clean', '--dry', '--format', 'json'])
       expect({ code: dry.code, err: dry.err }).toEqual({ code: 0, err: '' })
       const plan = JSON.parse(dry.out) as { dry: boolean; cleared: string[]; bytesFreed: number }
-      expect([plan.dry, plan.cleared, plan.bytesFreed > 0]).toEqual([
-        true,
-        ['.vx/cache', st],
-        true,
-      ])
+      expect([plan.dry, plan.cleared, plan.bytesFreed > 0]).toEqual([true, ['.vx/cache', st], true])
       expect([existsSync(path.join(root, '.vx', 'cache')), existsSync(st)]).toEqual([true, true])
 
       const real = await vx(['cache', 'clean'])

@@ -474,6 +474,10 @@ describe('parseLastArgs', () => {
       'a run id and --failed do not combine: replay 01a0 (see `vx last --help`)',
     )
     expect(parseLastArgs(['--list=0']).error).toMatch(/from 1 to 500/)
+    // An empty `=` value said "(got )", naming nothing.
+    expect(parseLastArgs(['--list=']).error).toBe(
+      '--list= requires a count from 1 to 500; bare --list shows 10 (see `vx last --help`)',
+    )
     // The ceiling: 500 is taken, 501 is refused.
     expect([parseLastArgs(['--list=500']).list, parseLastArgs(['--list=501']).error]).toEqual([
       500,

@@ -202,7 +202,9 @@ it('a send to a worker the relay would not take is said', async () => {
       undefined,
     )
     for (let i = 0; i < 40 && said.length === 0; i++) await Bun.sleep(50)
-    expect(said).toEqual([`dte: sending refused to ${worker.id} failed: relay: 503 overloaded`])
+    expect(said).toEqual([
+      `[vx] dte: sending refused to ${worker.id} failed: relay: 503 overloaded`,
+    ])
     await o.close()
   } finally {
     await served.stop()

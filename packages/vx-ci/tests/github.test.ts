@@ -415,7 +415,26 @@ describe('github() activation', () => {
       const full = await run(MAX_JOB_SUMMARY_BYTES - 10)
       expect(full.size).toBe(MAX_JOB_SUMMARY_BYTES - 10)
       expect(full.warns).toEqual([
-        `vx-ci: ${path.join(dir, `summary-${MAX_JOB_SUMMARY_BYTES - 10}.md`)} already holds ${MAX_JOB_SUMMARY_BYTES - 10} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
+        `[vx] vx-ci: ${path.join(dir, `summary-${MAX_JOB_SUMMARY_BYTES - 10}.md`)} already holds ${MAX_JOB_SUMMARY_BYTES - 10} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
+      ])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Every plugin warning says `[vx]` first: this one said `vx-ci:` alone.
+  it('a summary it cannot write is warned with the [vx] tag', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-gh-sum-'))
+    try {
+      const warns: string[] = []
+      const sink = github({ summaryFile: dir })!.telemetry!({
+        ...ctx,
+        warn: (m: string) => warns.push(m),
+      }) as GithubSummarySink
+      sink.onRunSummary!(summary([task({ taskId: 'a#build' })]))
+      await sink.flush!()
+      expect(warns.map((w) => w.slice(0, w.indexOf(dir) + dir.length))).toEqual([
+        `[vx] vx-ci: could not write the job summary to ${dir}`,
       ])
     } finally {
       await rm(dir, { recursive: true, force: true })

@@ -14,7 +14,7 @@ const warnings = (env: Record<string, string>): string[] => {
 
 it('names the compression variable that is not gzip or none, once each', () => {
   expect(warnings({ OTEL_EXPORTER_OTLP_COMPRESSION: 'zstd' })).toEqual([
-    '[vx-otel] OTEL_EXPORTER_OTLP_COMPRESSION "zstd" is not gzip or none — sent uncompressed',
+    '[vx] vx-otel: OTEL_EXPORTER_OTLP_COMPRESSION "zstd" is not gzip or none — sent uncompressed',
   ])
   expect(
     warnings({
@@ -22,7 +22,7 @@ it('names the compression variable that is not gzip or none, once each', () => {
       OTEL_EXPORTER_OTLP_LOGS_COMPRESSION: 'br',
     }),
   ).toEqual([
-    '[vx-otel] OTEL_EXPORTER_OTLP_TRACES_COMPRESSION "zstd" is not gzip or none — sent uncompressed',
-    '[vx-otel] OTEL_EXPORTER_OTLP_LOGS_COMPRESSION "br" is not gzip or none — sent uncompressed',
+    '[vx] vx-otel: OTEL_EXPORTER_OTLP_TRACES_COMPRESSION "zstd" is not gzip or none — sent uncompressed',
+    '[vx] vx-otel: OTEL_EXPORTER_OTLP_LOGS_COMPRESSION "br" is not gzip or none — sent uncompressed',
   ])
 })

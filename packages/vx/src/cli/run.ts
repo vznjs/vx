@@ -162,7 +162,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
         return {
           ...out,
-          error: `--filter requires a value (a project name, glob or path, e.g. --filter app)`,
+          error: `--filter requires a value: a project name, glob or path, e.g. --filter app`,
         }
       out.filters.push(v)
     } else if (a === '--all') {
@@ -221,7 +221,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       if (v === undefined)
         return {
           ...out,
-          error: `${name} requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)`,
+          error: `${name} requires a value: a spec like local:r, local:rw, remote:, or local:,remote:rw`,
         }
       // A spec with no segment at all applies NOTHING, so `--cache-policy=`
       // (an empty shell var, or someone reaching for "no cache") left
@@ -257,7 +257,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
     } else if (a?.startsWith('--continue=')) {
       const v = a.slice('--continue='.length)
       if (v === '') {
-        return { ...out, error: `--continue= requires a mode (never, deps-ok, or always)` }
+        return { ...out, error: `--continue= requires a mode: never, deps-ok, or always` }
       }
       if (v !== 'never' && v !== 'deps-ok' && v !== 'always') {
         return { ...out, error: `--continue must be never, deps-ok, or always (got ${v})` }
@@ -266,7 +266,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
     } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
       const v = a === '--verbosity' ? before[++i] : a.slice('--verbosity='.length)
       if (v === undefined || v === '')
-        return { ...out, error: `--verbosity requires a value (a non-negative integer)` }
+        return { ...out, error: `--verbosity requires a value: a non-negative integer` }
       const n = parseDecimalInt(v)
       if (n === null)
         return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
@@ -278,7 +278,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       if (fmt === '') {
         return {
           ...out,
-          error: `--dry= requires a format (pretty or json); bare --dry prints pretty`,
+          error: `--dry= requires a format: pretty or json; bare --dry prints pretty`,
         }
       }
       // The values every --format takes.
@@ -307,7 +307,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       const { s: set, name } = settingFlagOf(a)!
       const v = a === name ? before[++i] : a.slice(name.length + 1)
       if (v === undefined || v === '')
-        return { ...out, error: `${name} requires a value (${kindHint(set.kind)})` }
+        return { ...out, error: `${name} requires a value: ${kindHint(set.kind)}` }
       // A string's shape rejects nothing, so the space form would swallow
       // the next flag as the value, as `--cache-dir` would above.
       if (set.kind.type === 'string' && a === name && v.startsWith('-'))

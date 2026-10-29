@@ -124,11 +124,11 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const cancelled = new Set<string>()
   // A poll or cancel that failed is said, each cause once (2026-10-23: no
   // fault is silent): a job that ended badly went unseen, a run held runners.
-  let warn = (m: string): void => ui.say('warn', `[vx] ${m}`)
+  let warn = (m: string): void => ui.say('warn', m)
   const said = new Set<string>()
   const runOf = (run: string): string => `workflow run ${run.slice(run.lastIndexOf('/') + 1)}`
   const failed = (what: string, why: string): void => {
-    const m = `github(): ${what} failed: ${why}`
+    const m = `[vx] github(): ${what} failed: ${why}`
     if (said.has(m)) return
     said.add(m)
     warn(m)

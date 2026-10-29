@@ -41,25 +41,29 @@ export function collectGaps(
   return { notes, todos, live }
 }
 
-/** At `vx lock` every gap; on a run only the live notes. */
+/**
+ * At `vx lock` every gap; on a run only the live notes. Each says `[vx]`
+ * first, as every plugin warning does, then the package's short name.
+ */
 export function warnGaps(
   warn: (line: string) => void,
   pluginName: string,
   gaps: Gaps,
   lock: boolean,
 ): void {
-  for (const note of gaps.live) warn(`[${pluginName}] ${note}`)
+  const tag = `[vx] ${pluginName.replace(/^@vzn\//, '')}:`
+  for (const note of gaps.live) warn(`${tag} ${note}`)
   if (!lock) return
-  for (const note of gaps.notes) warn(`[${pluginName}] ${note}`)
+  for (const note of gaps.notes) warn(`${tag} ${note}`)
   for (const [todo, ids] of gaps.todos) {
     if (ids.length === 1) {
-      warn(`[${pluginName}] ${ids[0]}: ${todo}`)
+      warn(`${tag} ${ids[0]}: ${todo}`)
       continue
     }
     const names = [...new Set(ids.map((id) => id.slice(id.indexOf('#') + 1)))]
     const packages = new Set(ids.map((id) => id.slice(0, id.indexOf('#'))))
     warn(
-      `[${pluginName}] ${ids.length} task(s) (${names.join(', ')} across ${packages.size} package(s)): ${todo}`,
+      `${tag} ${ids.length} tasks (${names.join(', ')} across ${packages.size} package${packages.size === 1 ? '' : 's'}): ${todo}`,
     )
   }
 }

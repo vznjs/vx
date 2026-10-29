@@ -348,6 +348,26 @@ it("answers a bucket that cannot be read 502, naming the bucket's answer", async
   logged.mockRestore()
 })
 
+// A failed request logged the bare error, no server name, method or route,
+// beside the history server's `vx-history-server: <method> <path>: <why>`.
+it('logs a request it failed with its name, method and path', async () => {
+  const errors: string[] = []
+  const logged = console.error
+  console.error = (...args: unknown[]) => void errors.push(args.join(' '))
+  try {
+    const res = await createCacheServer({
+      blobs: { put: async () => {}, get: async () => null, size: async () => null },
+      // A fault of the server's own (not the bucket's 502): its 500.
+      authorize: async () => {
+        throw new Error('the check broke')
+      },
+    })(new Request('http://x.test/v1/artifacts/abc', { method: 'HEAD' }))
+    expect(res.status).toBe(500)
+  } finally {
+    console.error = logged
+  }
+  expect(errors).toEqual(['vx-cache-server: HEAD /v1/artifacts/abc: Error: the check broke'])
+})
 it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', () => {
   const said = (port: string) => {
     const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', port], {

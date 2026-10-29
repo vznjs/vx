@@ -215,11 +215,13 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Cache management:',
     '  vx cache clean --older-than 30d     Evict entries last accessed > 30 days ago.',
     '  vx cache clean --max-size 1G        Keep total cache under 1 GB (LRU eviction).',
-    "  vx cache clean                      Clear .vx/cache and this repo's store ~/.vx/<id>/cache.",
+    "  vx cache clean                      Clear .vx/cache and this repo's store",
+    '                                      ~/.vx/<id>/cache.',
     "      --global                        Clear every repo's store under ~/.vx.",
     '      --dry                           Say what the policy would reap; delete nothing.',
     '      --format <fmt>                  pretty (default) | json.',
-    '      --cache-dir <path>              The cache a run with the same flag uses (why, last, info too).',
+    '      --cache-dir <path>              The cache a run with the same flag uses (why,',
+    '                                      last, info too).',
     '',
     '  Duration units: ms, s, m, h, d. Size units: K, M, G, T (powers of 1024).',
     '  Cache statistics — directory, entry count, size — are part of `vx info`.',
@@ -304,9 +306,9 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                       and never writes the lock: with none it fails.',
     '  vx lock --check      Audit the lock: re-evaluate every config here and compare',
     '                       it with the frozen object, find a config added or gone, and',
-    '                       check the graph rules. Exits 1 on drift (e.g. configs that read env',
-    '                       vars). Run it before the run in CI. With --format json it prints',
-    '                       {upToDate, audited, notAudited, problems}.',
+    '                       check the graph rules. Exits 1 on drift (e.g. configs that',
+    '                       read env vars). Run it before the run in CI. With --format json',
+    '                       it prints {upToDate, audited, notAudited, problems}.',
     '',
     ...(pluginCommands.length > 0 ? ['Plugin commands:', ...pluginCommands, ''] : []),
   ].join('\n')
@@ -358,6 +360,15 @@ export function flagHint(verb: string, arg: string): string {
   // from `--format`: a run with its cache reads turned off.
   if ((name === '--format' || name === '--json') && flags.includes('--dry'))
     return ' (the run as JSON is `vx last --format json` after it; the plan is --dry=json)'
+  // A bare flag handed a value (`--check=yes`) is no edit from itself.
+  if (name !== arg && flags.includes(name)) return ` (did you mean ${name}?)`
+  // Another verb's own flag is no typo: `vx run --poll` was told "did you
+  // mean --all?". Named only when one other verb takes it.
+  const owners = CORE_VERBS.filter(
+    (v) => v !== verb.split(' ')[0] && acceptedFlags(v).includes(name),
+  )
+  if (owners.length === 1)
+    return `. \`vx ${owners[0] === 'cache' ? 'cache clean' : owners[0]}\` takes it`
   // A flag one word too long (`--dry-run` for `--dry`) is too many edits
   // away for either budget, and so is one cut short at a word.
   const cut = flags.filter((f) => f.startsWith(`${name}-`) || name.startsWith(`${f}-`))

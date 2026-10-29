@@ -161,7 +161,7 @@ function parseResourceAttributes(
       out[key] = decodeURIComponent(pair.slice(eq + 1).trim())
     } catch {
       warn?.(
-        `[vx-otel] OTEL_RESOURCE_ATTRIBUTES is malformed (${pair.trim()}) — none of it is used`,
+        `[vx] vx-otel: OTEL_RESOURCE_ATTRIBUTES is malformed (${pair.trim()}) — none of it is used`,
       )
       return {}
     }
@@ -225,7 +225,7 @@ export function resolveOtelConfig(
   }
   for (const [setting, signals] of refused) {
     const names = signals.length === 3 ? 'traces, metrics and logs' : signals.join(' and ')
-    warn?.(`[vx-otel] ${setting} is not an http:// or https:// URL — ${names} are not exported`)
+    warn?.(`[vx] vx-otel: ${setting} is not an http:// or https:// URL — ${names} are not exported`)
   }
   const tracesUrl = picked.traces?.[0]
   const metricsUrl = picked.metrics?.[0]
@@ -255,7 +255,7 @@ export function resolveOtelConfig(
   ] as const) {
     if (asked === true && url === undefined) {
       warn?.(
-        `[vx-otel] ${signal}: true but no ${signal} endpoint (OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_ENDPOINT) — ${signal} are not exported`,
+        `[vx] vx-otel: ${signal}: true but no ${signal} endpoint (OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_ENDPOINT) — ${signal} are not exported`,
       )
     }
   }
@@ -283,7 +283,7 @@ export function resolveOtelConfig(
         if (!badName) {
           badName = true
           warn?.(
-            '[vx-otel] a header name holds a character no HTTP header name can carry (a space, a colon, …) — not sent (neither its name nor its value is printed)',
+            '[vx] vx-otel: a header name holds a character no HTTP header name can carry (a space, a colon, …) — not sent (neither its name nor its value is printed)',
           )
         }
         continue
@@ -297,7 +297,7 @@ export function resolveOtelConfig(
       else if (!dropped.has(k)) {
         dropped.add(k)
         warn?.(
-          `[vx-otel] header ${JSON.stringify(raw)} holds ${fault}, which no HTTP header can carry — not sent (its value is not printed)`,
+          `[vx] vx-otel: header ${JSON.stringify(raw)} holds ${fault}, which no HTTP header can carry — not sent (its value is not printed)`,
         )
       }
     }
@@ -336,7 +336,7 @@ export function resolveOtelConfig(
     if (value === 'gzip') return true
     if (!badCompression.has(name)) {
       badCompression.add(name)
-      warn?.(`[vx-otel] ${name} ${JSON.stringify(raw)} is not gzip or none — sent uncompressed`)
+      warn?.(`[vx] vx-otel: ${name} ${JSON.stringify(raw)} is not gzip or none — sent uncompressed`)
     }
     return false
   })
@@ -351,7 +351,7 @@ export function resolveOtelConfig(
         pem.set(file, readFileSync(file, 'utf8'))
       } catch (err) {
         warn?.(
-          `[vx-otel] ${name}: cannot read ${file} (${(err as NodeJS.ErrnoException).code ?? String(err)}) — not used`,
+          `[vx] vx-otel: ${name}: cannot read ${file} (${(err as NodeJS.ErrnoException).code ?? String(err)}) — not used`,
         )
         pem.set(file, undefined)
       }

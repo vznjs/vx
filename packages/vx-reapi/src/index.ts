@@ -126,7 +126,7 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
     } catch (err) {
       const from = option !== undefined ? `\`reapi({ ${name} })\`` : env
       throw new UserError(
-        `vx/reapi: ${from} names ${file}, which cannot be read (${(err as NodeJS.ErrnoException).code ?? String(err)})`,
+        `vx-reapi: ${from} names ${file}, which cannot be read (${(err as NodeJS.ErrnoException).code ?? String(err)})`,
       )
     }
   }
@@ -152,12 +152,12 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
   // setting.
   if ((tlsClientCertPem === undefined) !== (tlsClientKeyPem === undefined)) {
     throw new UserError(
-      'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
+      'vx-reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
     )
   }
   if (usesTls({ endpoint, tls: options.tls, tlsCaPem, tlsClientCertPem }) && ipTarget(endpoint)) {
     throw new UserError(
-      `vx/reapi: ${from} is ${JSON.stringify(endpoint)}, TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext`,
+      `vx-reapi: ${from} is ${JSON.stringify(endpoint)}, TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext`,
     )
   }
   return {
@@ -185,7 +185,7 @@ function assertEndpoint(endpoint: string, from: string): void {
   const port = m?.[2] === undefined ? undefined : Number(m[2])
   if (m === null || (port !== undefined && (port < 1 || port > 65_535))) {
     throw new UserError(
-      `vx/reapi: ${from} is ${JSON.stringify(endpoint)}, which is not host[:port] (e.g. grpcs://cache.example.com:443)`,
+      `vx-reapi: ${from} is ${JSON.stringify(endpoint)}, which is not host[:port] (e.g. grpcs://cache.example.com:443)`,
     )
   }
 }
@@ -296,7 +296,7 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       const caps = await executorClient.capabilities()
       if (!caps.execEnabled) {
         ctx.warn(
-          `vx/reapi: ${conn.endpoint} does not advertise remote execution (cache only) — tasks will run locally`,
+          `[vx] vx-reapi: ${conn.endpoint} does not advertise remote execution (cache only) — tasks will run locally`,
         )
         executorClient.close()
         executorClient = undefined

@@ -247,12 +247,13 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         // provided by PLUGINS (declared in .vx/workspace.ts), never by core.
         // We keep this neutral hint for the common muscle-memory verbs, but
         // core names no specific plugin package: any package can provide
-        // these.
+        // these. The notice prints a line per fact, so each line is a
+        // whole sentence.
         return unknown(
-          `vx: '${command}' is not a vx core command.\n` +
-            `  vx core runs tasks in-process. A dashboard, remote cache, and\n` +
-            `  distributed execution come from plugins — not core. See the plugin\n` +
-            `  guide: https://vznjs.github.io/vx/docs/plugins/\n`,
+          `vx: \`${command}\` is not a vx core command.\n` +
+            `  vx core runs tasks in-process.\n` +
+            `  A dashboard, remote cache and distributed execution come from plugins, not core.\n` +
+            `  See the plugin guide: https://vznjs.github.io/vx/docs/plugins/\n`,
         )
       }
       // One line, as a verb's own unknown flag or subcommand gets; the full

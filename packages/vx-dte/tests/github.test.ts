@@ -528,8 +528,8 @@ it('says each poll and cancel GitHub refused, by status and body, once', async (
     for (let i = 0; i < 80 && said.length === 0; i++) await Bun.sleep(100)
     await adapter.close?.()
     expect(said).toEqual([
-      "github(): reading workflow run 7's jobs failed: 502 bad gateway",
-      'github(): cancelling workflow run 7 failed: 500 cannot cancel',
+      "[vx] github(): reading workflow run 7's jobs failed: 502 bad gateway",
+      '[vx] github(): cancelling workflow run 7 failed: 500 cannot cancel',
     ])
   } finally {
     await server.stop(true)
@@ -615,7 +615,7 @@ it('asks no more jobs until a spent API limit resets, saying when', async () => 
     await adapter.close?.()
     expect(jobs).toBe(1)
     expect(said).toEqual([
-      `github(): reading workflow run 7's jobs failed: 403 API rate limit exceeded for installation; the repository's API limit resets at ${new Date(reset * 1000).toISOString()}`,
+      `[vx] github(): reading workflow run 7's jobs failed: 403 API rate limit exceeded for installation; the repository's API limit resets at ${new Date(reset * 1000).toISOString()}`,
     ])
   } finally {
     await server.stop(true)
@@ -788,7 +788,7 @@ it('says a cancel the spent API limit refuses past its wait, with the reset', as
     await adapter.close?.()
     expect(cancels).toBe(1)
     expect(said).toEqual([
-      `github(): cancelling workflow run 8 failed: 403 API rate limit exceeded for installation; the repository's API limit resets at ${new Date(reset * 1000).toISOString()}`,
+      `[vx] github(): cancelling workflow run 8 failed: 403 API rate limit exceeded for installation; the repository's API limit resets at ${new Date(reset * 1000).toISOString()}`,
     ])
   } finally {
     await server.stop(true)

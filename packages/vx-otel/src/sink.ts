@@ -756,7 +756,7 @@ export class OtelSink implements TelemetrySink {
     if (failed.length === 0 && said !== undefined && !this.cautioned.has(signal)) {
       this.cautioned.add(signal)
       this.cfg.warn?.(
-        `[vx-otel] the collector at ${shownUrl(url)} accepted the export and warned: ${said.message}`,
+        `[vx] vx-otel: the collector at ${shownUrl(url)} accepted the export and warned: ${said.message}`,
       )
     }
     // export is fully optional — a down collector never affects a run
@@ -771,7 +771,7 @@ export class OtelSink implements TelemetrySink {
       ? ` — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)`
       : ''
     const share = bodies.length > 1 ? ` (${failed.length} of ${bodies.length} requests)` : ''
-    this.cfg.warn?.(`[vx-otel] export failed for ${shownUrl(url)}: ${failed[0]}${share}${hint}`)
+    this.cfg.warn?.(`[vx] vx-otel: export failed for ${shownUrl(url)}: ${failed[0]}${share}${hint}`)
   }
 }
 

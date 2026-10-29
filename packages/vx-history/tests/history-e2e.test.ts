@@ -252,6 +252,27 @@ describe('vx-history plugin end to end', () => {
       })
       expect(bad.exitCode).not.toBe(0)
       expect(bad.stderr.toString()).toContain('unknown flag: --nope')
+      // Worded as core verbs word theirs: a positional is no flag, and a
+      // bad --format says what it takes as `vx last --format xml` does.
+      const said = (args: string[]) => {
+        const r = Bun.spawnSync({
+          cmd: [process.execPath, CORE_BIN, 'history', ...args],
+          cwd: root,
+          env: { ...process.env, NO_COLOR: '1' },
+        })
+        return [r.exitCode, Bun.stripANSI(r.stderr.toString())]
+      }
+      expect([
+        said(['--nope']),
+        said(['extra']),
+        said(['--format', 'xml']),
+        said(['--format']),
+      ]).toEqual([
+        [1, '✗ vx history  unknown flag: --nope\n\n  see vx history --help\n'],
+        [1, '✗ vx history  unexpected argument: extra\n\n  see vx history --help\n'],
+        [1, '✗ vx history  --format must be pretty or json (got xml)\n\n  see vx history --help\n'],
+        [1, '✗ vx history  --format requires a value: pretty or json\n\n  see vx history --help\n'],
+      ])
       // A flag the verb does not take is a usage refusal, as core's are.
       const badJson = Bun.spawnSync({
         cmd: [process.execPath, CORE_BIN, 'history', '--format=json', '--nope'],

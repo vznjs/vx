@@ -63,7 +63,10 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
       if (seam === undefined || !Object.hasOwn(PLUGIN_TEMPLATES, seam)) {
         return {
           ...out,
-          error: `--plugin takes a seam: one of ${seams}${seam === undefined || seam === '' ? '' : ` (got '${seam}')`}${seeHelp('init')}`,
+          error:
+            seam === undefined || seam === ''
+              ? `--plugin requires a value: one of ${seams}${seeHelp('init')}`
+              : `--plugin must be one of ${seams} (got ${seam})${seeHelp('init')}`,
         }
       }
       if (out.plugin !== undefined && out.plugin !== seam) {

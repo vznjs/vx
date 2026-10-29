@@ -311,9 +311,9 @@ export function sealOrchestrator(
   me: Participant,
   run: string,
   proof: Proof,
-  warn: (message: string) => void = (m) => ui.say('warn', `[vx] ${m}`),
+  warn: (message: string) => void = (m) => ui.say('warn', m),
 ): Participant {
-  const unsent = (what: string, to: string) => unsentBy(warn, what, to)
+  const unsent = (what: string, to: string) => unsentBy((m) => warn(`[vx] ${m}`), what, to)
   const sessions = new Map<string, Session>()
   /** A worker's first message, read: its info, and this side's answer. */
   const admit = async (
@@ -371,7 +371,7 @@ export function sealOrchestrator(
             )
             if (got === undefined || typeof got === 'string') {
               const reason = got ?? `its key is not the run’s: ${proof.mismatch}`
-              warn(`dte: refused a worker: ${reason}`)
+              warn(`[vx] dte: refused a worker: ${reason}`)
               await me.send(id, { type: 'refused', reason }).catch(unsent('refused', id))
               await me.remove(id).catch(unsent('remove', id))
               continue

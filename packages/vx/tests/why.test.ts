@@ -628,7 +628,9 @@ describe('vx why (e2e) — the exact lines', () => {
       const bare = await vx(root, ['why'])
       expect(bare.code).toBe(1)
       expect(err(bare)).toBe(
-        noticed('vx why: <task> required (e.g. vx why app#build, or vx why build)').trimEnd(),
+        noticed(
+          'vx why: <task> required (e.g. vx why app#build, or vx why build) (see `vx why --help`)',
+        ).trimEnd(),
       )
     },
     TIMEOUT,

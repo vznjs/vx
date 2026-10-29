@@ -131,16 +131,16 @@ it('the plugin reads the PEM files its options or VX_REAPI_TLS_* name; an unread
   }
   expect(await cacheOf({ tlsCertificate: file('ca.pem') })).toBe('ok')
   expect(await cacheOf({ tlsClientCertificate: file('client.pem') })).toBe(
-    'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
+    'vx-reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
   )
   expect(await cacheOf({ tlsCertificate: file('nope.pem') })).toBe(
-    `vx/reapi: \`reapi({ tlsCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
+    `vx-reapi: \`reapi({ tlsCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
   )
   const prev = process.env['VX_REAPI_TLS_CLIENT_KEY']
   process.env['VX_REAPI_TLS_CLIENT_KEY'] = file('missing.key')
   try {
     expect(await cacheOf({})).toBe(
-      `vx/reapi: VX_REAPI_TLS_CLIENT_KEY names ${file('missing.key')}, which cannot be read (ENOENT)`,
+      `vx-reapi: VX_REAPI_TLS_CLIENT_KEY names ${file('missing.key')}, which cannot be read (ENOENT)`,
     )
   } finally {
     if (prev === undefined) delete process.env['VX_REAPI_TLS_CLIENT_KEY']
@@ -238,8 +238,8 @@ it('a TLS option wins over its env var; an env path is trimmed and an empty one 
       'ok',
       'ok',
       'ok',
-      `vx/reapi: \`reapi({ tlsClientCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
-      'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
+      `vx-reapi: \`reapi({ tlsClientCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
+      'vx-reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
     ])
   } finally {
     keys.forEach((k, i) => {

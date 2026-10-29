@@ -97,7 +97,7 @@ async function runWith(endpoint: string) {
 }
 
 const fail = (signal: string, why: string) =>
-  `[vx-otel] export failed for http://127.0.0.1:PORT/v1/${signal}: ${why}`
+  `[vx] vx-otel: export failed for http://127.0.0.1:PORT/v1/${signal}: ${why}`
 
 describe('a run whose collector fails', () => {
   const cases = [

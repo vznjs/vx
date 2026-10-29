@@ -237,14 +237,14 @@ describe('vx init --plugin <seam>', () => {
         expect([bad.code, bad.err]).toEqual([
           1,
           noticed(
-            `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope') (see \`vx init --help\`)\n`,
+            `vx init: --plugin must be one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got nope) (see \`vx init --help\`)\n`,
           ),
         ])
         const empty = await vx(root, ['init', '--plugin='])
         expect([empty.code, empty.err]).toEqual([
           1,
           noticed(
-            `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (see \`vx init --help\`)\n`,
+            `vx init: --plugin requires a value: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (see \`vx init --help\`)\n`,
           ),
         ])
         // --dry writes nothing.

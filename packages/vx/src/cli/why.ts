@@ -238,7 +238,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   if (parsed.error !== undefined) throw new UserError(`vx why: ${parsed.error}`, 'VX_E_USAGE')
   if (parsed.target === undefined) {
     throw new UserError(
-      'vx why: <task> required (e.g. vx why app#build, or vx why build)',
+      `vx why: <task> required (e.g. vx why app#build, or vx why build)${seeHelp('why')}`,
       'VX_E_USAGE',
     )
   }
