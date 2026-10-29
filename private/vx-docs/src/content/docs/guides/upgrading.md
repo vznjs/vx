@@ -9,7 +9,11 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## exec: hand plugins a signal Bun names only by number
+## orchestrator: hand extraFiles a context, keep cancel leftovers
+
+FingerprintClaim.extraFiles(file, bytes, ctx) may return a promise, and DteAdapter.cancel(ids, late?) may return the ids it left running: a plugin implementing either takes the new arguments.
+
+## exec: keep numeric signals, forward args into compounds
 
 RunResult.signal is string | number: an executor or telemetry plugin that reads it must accept a number for a signal with no name.
 
