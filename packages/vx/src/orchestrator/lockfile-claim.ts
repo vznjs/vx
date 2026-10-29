@@ -500,9 +500,21 @@ export function reachDigests(g: ReachGraph): string[] {
       // share one digest, so retargeting an edge between two of them (an
       // importer's `y@1.0.0` → `y@1.1.0` inside one cycle) moved nothing
       // and replayed a stale output (item 1013). A self-loop reaches
-      // nothing new and is left out.
+      // nothing new and is left out. An edge leaving a cycle names the
+      // component it lands on: npm and bun key two copies of one version
+      // alike (`a/node_modules/foo` → bar@1, `node_modules/foo` → bar@2),
+      // so by material alone two members swapping copies moved nothing. A
+      // singleton's children already say where its edges land, and its
+      // lines stay as they were, so an acyclic digest keeps its value.
+      const cyclic = members.length > 1
       const lines = members.map((m) => {
-        const targets = [...new Set(g.edges[m]!.filter((w) => w !== m).map((w) => g.material[w]!))]
+        const targets = [
+          ...new Set(
+            g.edges[m]!.filter((w) => w !== m).map((w) =>
+              cyclic && comp[w] !== id ? `child\0${compHash[comp[w]!]!}` : g.material[w]!,
+            ),
+          ),
+        ]
         return `${g.material[m]!}\0${targets.sort().join('\0')}`
       })
       let h = xxh3(`members:${members.length}`)
