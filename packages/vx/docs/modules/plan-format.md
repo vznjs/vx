@@ -21,6 +21,8 @@ export interface PlanTaskJson {
   download?: 'deferred'
   description?: string
   affected?: AffectedReason // why `--affected` kept it (affected-tasks.md)
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string } // a `skipped` task's own platforms, and this machine's
+  blockedBy?: string // a `skipped` task's root: the task off this machine's platform it depends on
 }
 export function formatPlanJson(plan: RunPlan, affectedBase?: string): string
 ```
@@ -104,7 +106,19 @@ was taken from) under `--affected`; `schemas/plan.json`
 states it and `tests/cli-json-schemas.test.ts` holds it:
 
 ```json
-{"tasks":[{"id":"@vzn/vx#lint","project":"@vzn/vx","task":"lint","hash":"d66cfed2a1b2c3d4","cacheStatus":"hit-remote","deps":[],"description":"oxlint with tsgolint-backed type-aware checks"}]}
+{
+  "tasks": [
+    {
+      "id": "@vzn/vx#lint",
+      "project": "@vzn/vx",
+      "task": "lint",
+      "hash": "d66cfed2a1b2c3d4",
+      "cacheStatus": "hit-remote",
+      "deps": [],
+      "description": "oxlint with tsgolint-backed type-aware checks"
+    }
+  ]
+}
 ```
 
 `p50Ms`, `executor`, `download`, `affected`, `otherPlatform` and

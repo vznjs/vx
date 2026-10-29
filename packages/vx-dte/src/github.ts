@@ -80,6 +80,10 @@ const resetsAt = (at: number): string =>
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
   const workflow = options.workflow ?? 'vx-worker.yml'
+  if (workflow === '' || workflow.includes('/'))
+    throw new UserError(
+      `github() option "workflow" must be a file name in .github/workflows, such as vx-worker.yml, got ${JSON.stringify(workflow)}`,
+    )
   const handed = handedEnv(options.env ?? {})
   // The workers one demand starts, by size: one dispatch each.
   const waves = new Map<string, WorkerSpawn[]>()
