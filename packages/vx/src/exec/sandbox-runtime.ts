@@ -2290,6 +2290,7 @@ async function runSandboxedOnce(
   if (timeout.timedOut()) ac.abort()
   else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
+  ends.end()
   const cutLine = ends.own(POST_EXIT_CUT_LINE)
   if (cut) args.onStderr?.(cutLine)
   const stderr = cut ? streamed + cutLine : streamed
