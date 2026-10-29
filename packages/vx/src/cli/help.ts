@@ -339,8 +339,8 @@ export function refusedWord(arg: string): string {
 }
 
 /**
- * `(did you mean --concurrency?)` for a flag within two edits of one `verb`
- * accepts; empty for anything else (a positional included). A third edit
+ * `(did you mean --concurrency?)` for a flag within two edits (one, for a
+ * name of four letters or fewer) of one `verb` accepts; empty for anything else (a positional included). A third edit
  * is allowed only between flags that share their first five characters,
  * so `--timeouts` reaches `--timeout` while `--zzz` does not reach `--all`.
  */

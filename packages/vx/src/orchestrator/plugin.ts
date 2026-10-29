@@ -86,7 +86,7 @@ export interface VxPlugin {
    * (with no config; named by `name`, else its path). A project named by
    * its path takes `name`; one its config names keeps that name, and a
    * different name from an earlier plugin is refused, as is a directory
-   * outside the root. Two projects of one name are refused once the stage
+   * outside the root and the name `//` away from it. Two projects of one name are refused once the stage
    * ends. `deps` and `reach` from every plugin union then; a target that is
    * no project is refused.
    */
