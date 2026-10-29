@@ -132,7 +132,7 @@ export interface TaskLogBundle {
 
 /**
  * Per-run bounded capture. append() keeps a chunk LIST + running char count
- * per task, evicting whole chunks from the head past TASK_LOG_TAIL_CHARS
+ * per task, evicting from the head past TASK_LOG_TAIL_CHARS
  * (no string concatenation until finish — chunks are retained by reference,
  * so a cache-hit replay costs one array push, zero copies).
  */
