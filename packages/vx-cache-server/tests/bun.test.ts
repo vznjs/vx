@@ -356,27 +356,15 @@ it('logs a request it failed with its name, method and path', async () => {
   console.error = (...args: unknown[]) => void errors.push(args.join(' '))
   try {
     const res = await createCacheServer({
-      blobs: {
-        put: async () => {},
-        get: async () => null,
-        size: async () => {
-          throw new Error('the bucket is down')
-        },
+      blobs: { put: async () => {}, get: async () => null, size: async () => null },
+      // A fault of the server's own (not the bucket's 502): its 500.
+      authorize: async () => {
+        throw new Error('the check broke')
       },
-      authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
-    })(
-      new Request('http://x.test/v1/artifacts/abc', {
-        method: 'HEAD',
-        headers: {
-          ...NAMED,
-          'vx-scope': 'a'.repeat(32),
-          authorization: `Bearer ${await iss.sign(MAIN_JOB, 'http://x.test')}`,
-        },
-      }),
-    )
+    })(new Request('http://x.test/v1/artifacts/abc', { method: 'HEAD' }))
     expect(res.status).toBe(500)
   } finally {
     console.error = logged
   }
-  expect(errors).toEqual(['vx-cache-server: HEAD /v1/artifacts/abc: Error: the bucket is down'])
+  expect(errors).toEqual(['vx-cache-server: HEAD /v1/artifacts/abc: Error: the check broke'])
 })
