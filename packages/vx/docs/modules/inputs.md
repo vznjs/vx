@@ -210,7 +210,11 @@ export async function cleanOutputPaths(args: {
 }): Promise<void>
 // Remove the `.vx-tmp-*` restore temps a killed run left beside the
 // exact-file outputs; a temp whose writer is alive stays.
-export function sweepRestoreTemps(base: string, outputs: readonly string[], committed?: (abs: string) => boolean): void
+export function sweepRestoreTemps(
+  base: string,
+  outputs: readonly string[],
+  committed?: (abs: string) => boolean,
+): void
 // Remove the `.vx/tmp/<pid>-0` staging a killed run left; a live run's
 // stays. Once per run.
 export function sweepStaging(workspaceRoot: string): void
