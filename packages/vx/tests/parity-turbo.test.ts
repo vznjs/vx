@@ -219,7 +219,7 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
         exec: { command: 'echo mode=$MODE token=$TOKEN', env: { passThrough: ['MODE', 'TOKEN'] } },
         inputs: { files: ['src/**'], env: ['MODE'] }, cache: { outputs: { files: [] } },
       },
-      uncached: { exec: { command: 'echo uncached' } },
+      uncached: { exec: { command: "printf 'streamed-%s\\\\n' out" } },
       args: {
         exec: { command: 'echo args' },
         inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
@@ -297,14 +297,18 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
     TIMEOUT,
   )
 
+  // vercel/turborepo@15a11406c: an uncached task's output took another
+  // writer and lost its log streaming. The printf keeps the command line
+  // from matching: only the task's own output reads `streamed-out`.
   it(
-    '`"cache": false` (vx: no `cache` block) executes on every run',
+    '`"cache": false` (vx: no `cache` block) executes on every run, its output shown',
     async () => {
       for (let i = 0; i < 2; i++) {
         const r = await summarized(root, ['lib#uncached'])
         expect(r.code).toBe(0)
         expect(r.tasks.get('lib#uncached')?.['status']).toBe('success')
         expect(r.tasks.get('lib#uncached')?.['noCache']).toBe(true)
+        expect(r.text).toContain('streamed-out\n')
       }
     },
     TIMEOUT,
