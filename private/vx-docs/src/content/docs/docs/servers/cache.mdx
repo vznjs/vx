@@ -228,7 +228,9 @@ results. A result is never rewritten: a second upload of the same key
 keeps the first bytes.
 
 A download through Workers goes through Cloudflare's cache: after R2
-serves a result once, that data center answers it without R2.
+serves a result once, that data center answers it without R2. An
+upload of a result R2 expired drops the copy in the data center it
+reaches.
 
 Whether a result exists is asked of R2 alone, so every data center agrees.
 

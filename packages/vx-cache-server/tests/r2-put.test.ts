@@ -31,7 +31,11 @@ const bucket = (fail?: Error): R2Bucket => ({
   get: async () => null,
   head: async () => null,
 })
-const cache = Promise.resolve({ match: async () => undefined, put: async () => {} })
+const cache = Promise.resolve({
+  match: async () => undefined,
+  put: async () => {},
+  delete: async () => true,
+})
 const body = (s: string) => new Blob([s]).stream()
 
 it("refuses a body of another length 400, and answers R2's own failure as the bucket's", async () => {
