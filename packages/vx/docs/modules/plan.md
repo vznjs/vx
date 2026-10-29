@@ -86,7 +86,7 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
    `ranNoCache` (`events.ts`), the predicate every run surface labels by,
    so the plan and the run agree.
    A server the run would leave idle (`idleServers`: not requested, and
-   every dependant a `restorable` local hit, through unrequested groups) → `'not-started'`; `planRun`
+   every dependant a `restorable` hit, local or remote, through unrequested groups) → `'not-started'`; `planRun`
    fills `restorable` by the run's own gates (`shouldShortCircuit`,
    stable keys, `restoreTierExclusions`) only when a server could idle
    (WD-17).
