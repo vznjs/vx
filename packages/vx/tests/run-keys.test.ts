@@ -4,6 +4,7 @@
 // a key folds and expects the task to run.
 
 import { Database } from 'bun:sqlite'
+import { statSync, utimesSync } from 'node:fs'
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -156,6 +157,43 @@ it('a run with a keyless task remembers no keys', async () => {
   build()
   build()
   expect(runRows()).toEqual([])
+}, 60_000)
+
+it('an edit to the code that keeps its size and mtime moves the code identity', async () => {
+  // An npm tarball stamps every file 1985-10-26 and extraction keeps it, so
+  // an upgrade that changed `<` to `>` left size and mtime alike: the run
+  // and graph memos read back what the old code derived.
+  const tmp = await mkdtemp(path.join(tmpdir(), 'vx-run-keys-code-'))
+  try {
+    await cp(path.resolve(import.meta.dir, '..', 'src'), path.join(tmp, 'src'), {
+      recursive: true,
+    })
+    const npmStamp = new Date('1985-10-26T08:15:00Z')
+    const file = path.join(tmp, 'src', 'cache', 'key-fold.ts')
+    utimesSync(file, npmStamp, npmStamp)
+    const identity = (): string => {
+      const p = Bun.spawnSync({
+        cmd: [
+          process.execPath,
+          '-e',
+          `import { codeIdentity } from ${JSON.stringify(path.join(tmp, 'src', 'orchestrator', 'run-keys.ts'))}; console.log(codeIdentity())`,
+        ],
+        stderr: 'pipe',
+      })
+      if (p.exitCode !== 0) throw new Error(p.stderr.toString())
+      return p.stdout.toString().trim()
+    }
+    const before = identity()
+    // CONTROL: nothing changed, the same identity.
+    expect(identity()).toBe(before)
+    const size = statSync(file).size
+    await writeFile(file, (await readFile(file, 'utf8')).replace('inputs:', 'INPUTS:'))
+    utimesSync(file, npmStamp, npmStamp)
+    expect([statSync(file).size, statSync(file).mtimeMs]).toEqual([size, npmStamp.getTime()])
+    expect(identity()).not.toBe(before)
+  } finally {
+    await rm(tmp, { recursive: true, force: true })
+  }
 }, 60_000)
 
 it('a release binary built from a source tree that is gone remembers keys', async () => {
