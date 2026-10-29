@@ -35,7 +35,7 @@ it(
           tasks: {
             build: {
               exec: { command: ${JSON.stringify(write.replaceAll('seq -w 0', 'seq -f %03g 0'))} },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**', '!dist/*/keep'] } },
             },
           },
         }
@@ -59,11 +59,13 @@ it(
     const b = await run()
     expect(`${b.code}\n${b.err}`).toStartWith('0\n')
 
-    // Back to A, with an empty directory where A's first file goes: the
-    // globs select no directory, so the restore's rename of it fails.
+    // Back to A, with a directory where A's first file goes, holding a
+    // file the outputs leave out: a hit takes an empty one, never this,
+    // so the restore's rename onto it fails.
     await writeFile(path.join(dir, 'src', 'in.txt'), 'A\n')
     await rm(path.join(dist, name(0)))
     await mkdir(path.join(dist, name(0)))
+    await writeFile(path.join(dist, name(0), 'keep'), '')
     const failed = await run()
     expect(failed.code).not.toBe(0)
     await rm(path.join(dist, name(0)), { recursive: true })
