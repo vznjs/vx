@@ -158,6 +158,35 @@ it('refuses every join with a 403 while ALLOW admits no one, waking no object', 
   }
 })
 
+// jose matches aud exactly: AUDIENCE with a pasted newline refused every
+// token as the wrong audience, and a blank one was the audience itself.
+// The relay on Bun, and the cache and history servers' Workers, trim it
+// and refuse a blank one.
+it('reads AUDIENCE without the blanks around it, and refuses a blank one', async () => {
+  issuer()
+  let env: Env
+  env = {
+    RELAY: namespace(() => env),
+    ALLOW: `${ISS}:o/r:.gitlab-ci.yml`,
+    AUDIENCE: ' vx-dte-server\n',
+  }
+  // 426, past the token: no websocket here to join on.
+  expect((await join(env, A, await job(1))).status).toBe(426)
+  const blank: Env = {
+    RELAY: {
+      idFromName: (n) => n,
+      get: () => ({ fetch: () => Promise.reject(new Error('woken')) }),
+    },
+    ALLOW: `${ISS}:o/r:.gitlab-ci.yml`,
+    AUDIENCE: ' ',
+  }
+  const res = await join(blank, B, await job(1))
+  expect([res.status, await res.json()]).toEqual([
+    403,
+    { error: "this relay's AUDIENCE: the aud CI tokens name, or unset, not blank" },
+  ])
+})
+
 // No object bound: each join threw "Cannot read properties of
 // undefined", a 500 a client retries until its deadline.
 it('refuses every join with a 403, saying why, while RELAY is unbound', async () => {

@@ -128,7 +128,8 @@ const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
  * its first deploy; a token for another one is not meant for this relay.
  */
 function verifierOf(env: Env, req: Request): ReturnType<typeof createVerifier> {
-  const audience = env.AUDIENCE || new URL(req.url).origin
+  // jose matches aud exactly: a pasted newline refused every token.
+  const audience = env.AUDIENCE?.trim() || new URL(req.url).origin
   const key = `${env.ALLOW}\0${audience}`
   let v = verifiers.get(key)
   if (v === undefined) {
@@ -147,6 +148,9 @@ export default {
     }
     const refused = allowRefusal(env.ALLOW)
     if (refused !== undefined) return refuse(req, 403, refused)
+    // A blank one was the audience itself: every token was "wrong audience".
+    if (env.AUDIENCE !== undefined && env.AUDIENCE.trim() === '')
+      return refuse(req, 403, "this relay's AUDIENCE: the aud CI tokens name, or unset, not blank")
     if (env.RELAY === undefined) {
       return refuse(
         req,

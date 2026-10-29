@@ -59,7 +59,8 @@ Object request, against 100 000 a day; it writes no row.
 the button made, or in the Worker's settings in the Cloudflare dashboard:
 
 - `AUDIENCE`, unset, is the URL the relay is reached at. Set it only
-  when tokens name another one.
+  when tokens name another one. Blanks around it are dropped, and a
+  blank one is refused, as on Bun.
 
 ### On Bun
 
