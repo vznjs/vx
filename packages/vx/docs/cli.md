@@ -2499,6 +2499,15 @@ the inputs with a `!` glob, as the message shows, or declare no outputs
 for a task that rewrites files in place.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
+#### `VX_E_NESTED_INPUT`
+
+A task's `inputs.files` entry is rooted inside a project nested in its
+own (`dist/**` where `dist/` holds a config): a project's globs never
+reach another project's files, so it would key nothing. Depend on a
+task of the nested project, or name the files in
+`inputs.workspaceFiles`, as the message shows.
+`vx lock` refuses it, not a run: a run trusts the graph the lock holds.
+
 #### `VX_E_DEPENDENCY_RULE`
 
 `vx lock` found a project depending on one a `run.rules.dependencies`
