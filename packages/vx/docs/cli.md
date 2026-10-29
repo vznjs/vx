@@ -1720,10 +1720,10 @@ listing the directories.
 
 ### Exit codes
 
-| Code | When                                                                                                                                                   |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `0`  | pruning completed (zero or more entries evicted). A workspace that never ran has no cache: `› vx cache clean  nothing to free`, and nothing is created |
-| `1`  | parse error, missing policy, or workspace-discovery error                                                                                              |
+| Code | When                                                                                                                                                                                                                        |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | pruning completed (zero or more entries evicted). A workspace that never ran has no cache, nor does a directory holding nothing vx wrote (`--cache-dir build`): `› vx cache clean  nothing to free`, and nothing is created |
+| `1`  | parse error, missing policy, or workspace-discovery error                                                                                                                                                                   |
 
 ## Runs read the lock
 

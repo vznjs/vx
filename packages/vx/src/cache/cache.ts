@@ -1362,13 +1362,31 @@ export class Cache implements CacheLayer {
    */
   private guard<T>(op: () => T): T {
     const refuse = (err: unknown): never => {
-      throw unreadableIndex(err) ? unreadableIndexError(this.dbFile, err) : err
+      throw unreadableIndex(err) ? unreadableIndexError(this.unreadableFile(), err) : err
     }
     try {
       const out = op()
       return (out instanceof Promise ? out.catch(refuse) : out) as T
     } catch (err) {
       return refuse(err)
+    }
+  }
+
+  /**
+   * Which file a "not a database" answer came from: SQLite does not say,
+   * and the entries live in the attached store, so naming the index alone
+   * sent the user to remove a sound file. Asked only on that refusal.
+   */
+  private unreadableFile(): string {
+    if (this.storeDir === undefined) return this.dbFile
+    const storeFile = path.join(this.storeDir, 'store.db')
+    try {
+      const row = this.db.prepare('PRAGMA store.quick_check(1)').get() as {
+        quick_check?: unknown
+      } | null
+      return row?.quick_check === 'ok' ? this.dbFile : storeFile
+    } catch {
+      return storeFile
     }
   }
 
