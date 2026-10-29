@@ -1800,6 +1800,12 @@ function buildTask(
           todos.push(
             `dependsOn ${JSON.stringify(d)}: no workspace package is named ${pkg} — edge dropped`,
           )
+        // Turbo runs a root task only when turbo.json names it `//#x`; the
+        // script alone is not enough (vercel/turborepo#3592).
+        else if (d.startsWith(`${ROOT}#`))
+          todos.push(
+            `dependsOn ${JSON.stringify(d)}: turbo.json defines no "${d}" task — edge dropped`,
+          )
         else
           todos.push(
             `dependsOn ${JSON.stringify(d)}: ${pkg} declares no ${task} script — edge dropped`,

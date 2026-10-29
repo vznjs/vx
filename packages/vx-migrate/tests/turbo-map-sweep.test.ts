@@ -546,6 +546,20 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(a.todos).toEqual(['dependsOn "b#gen": b declares no gen script — edge dropped'])
   })
 
+  // vercel/turborepo#3592: a root script turbo.json does not name `//#x` is
+  // no task; "ws declares no x script" pointed at a script that is there.
+  it('a `//#task` edge turbo.json does not define says so', async () => {
+    const m = await map(
+      { tasks: { build: { dependsOn: ['//#gen'] } } },
+      { a: { scripts: { build: 'b' } }, ws: { scripts: { gen: 'x' }, root: true } },
+    )
+    const a = m.projects.find((p) => p.name === 'a')!.tasks[0]!
+    expect(a.task!['dependsOn']).toBeUndefined()
+    expect(a.todos).toEqual([
+      'dependsOn "//#gen": turbo.json defines no "//#gen" task — edge dropped',
+    ])
+  })
+
   // highlight's `rrweb#build` names a submodule not checked out: "rrweb
   // declares no build script" sent the reader to a package.json that is not there.
   it('a `pkg#task` edge to no workspace package says the package is missing', async () => {
