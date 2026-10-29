@@ -243,7 +243,7 @@ async function collectWorkspaceInfo(
   return {
     vx: VERSION,
     vxPath: vxPath(),
-    handedOffFrom: process.env['VX_HANDED_OFF'] ?? null,
+    handedOffFrom: process.env['VX_HANDED_OFF'] || null,
     // An unsupported Bun does not stop a run, it makes the run's ANSWERS
     // wrong (util/bun-version.ts measures which). The row a reader already
     // consults for "is my setup sane" is where that belongs: a warning on

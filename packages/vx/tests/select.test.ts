@@ -12,6 +12,7 @@ import {
   taskEdgesFrom,
   workspaceGlobOwners,
 } from '../src/cli/select.js'
+import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import type { ProjectConfig } from '../src/config.js'
 import type { ProjectEntry, ProjectMeta } from '../src/workspace/index.js'
 import { lock } from './helpers/orchestrator.js'
@@ -218,6 +219,15 @@ describe('resolveFilters', () => {
     const near = await quiet(() => resolveFilters(root, ['app', 'apq']))
     expect(near.stderr).toBe(
       noticed('vx run: filter "apq" matched no projects. Did you mean app?\n', 'warn'),
+    )
+  })
+
+  // `vx watch --filter app --filter apq` warned as `vx run`.
+  it('names the verb that read the filters', async () => {
+    const parsed = parseRunArgs(['build', '--filter', 'app', '--filter', 'apq'], 'watch')
+    const { stderr } = await quiet(() => resolveRunOptions(parsed, root, ['build'], 'watch'))
+    expect(stderr).toBe(
+      noticed('vx watch: filter "apq" matched no projects. Did you mean app?\n', 'warn'),
     )
   })
 

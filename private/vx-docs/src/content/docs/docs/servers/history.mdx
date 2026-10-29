@@ -177,9 +177,8 @@ On Workers, each setting is a var in `wrangler.jsonc`.
 
 ## What it keeps
 
-One row per repository, branch and task. Repository and branch are
-stored as the first 128 bits of their SHA-256, in hex, so the database
-names neither. Each report folds into the row:
+One row per issuer, repository, branch and task, each stored plainly,
+so the table reads as it is. Each report folds into the row:
 
 - `durationMs` and `cores`: `old × 0.7 + new × 0.3`. A task that got
   slower is followed within about three runs, and one odd run moves it

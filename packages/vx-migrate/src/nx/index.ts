@@ -69,7 +69,8 @@ const ROOT_GRAPH_FILE =
 export interface NxPluginOptions {
   /**
    * Where `nx.json` lives. Defaults to the workspace root; a repo whose Nx
-   * workspace sits elsewhere names the directory here.
+   * workspace sits elsewhere names the directory here, relative to the workspace
+   * root or absolute.
    */
   readonly root?: string
   /**
@@ -111,6 +112,11 @@ function refuseExecutors(executors: NxExecutors | undefined): void {
 /** The plugin: the adoption skeleton over `mapNxWorkspace`, one mapping per run. */
 export function nx(options: NxPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('nx()', options, NX_PLUGIN_KEYS)
+  if (options.root === '') throw new UserError('nx() option "root" is a directory, not empty')
+  // Against the workspace root, as vx reads every path: against the cwd,
+  // `vx run` from a package dir read another directory.
+  const rootOf = (workspaceRoot: string): string =>
+    options.root === undefined ? workspaceRoot : path.resolve(workspaceRoot, options.root)
   refuseExecutors(options.executors)
   // One graph load per RUN, shared by `discover` and `project`: the run
   // hands both stages the same projects array (discover's, grown by what
@@ -134,7 +140,7 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
   return adoptionPlugin(
     import.meta,
     async (ctx) => {
-      const root = options.root ?? ctx.workspaceRoot
+      const root = rootOf(ctx.workspaceRoot)
       return mapAll(
         root,
         ctx.projects,
@@ -146,7 +152,7 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
     options.root === undefined ? ['nx.json'] : [],
     {
       async config(workspace, ctx) {
-        const root = options.root ?? ctx.workspaceRoot
+        const root = rootOf(ctx.workspaceRoot)
         const nxBaseCommit = Bun.env['NX_BASE']?.trim()
         if (nxBaseCommit) ctx.setBranch({ base: nxBaseCommit })
         if (workspace.baseBranch === undefined) {
@@ -174,7 +180,7 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
       // project, by its package.json name or else its Nx name; a name a
       // project already holds stays unattached, and the mapping says so.
       async discover(ctx) {
-        const root = options.root ?? ctx.workspaceRoot
+        const root = rootOf(ctx.workspaceRoot)
         const members = await memberProjects(ctx.workspaceRoot)
         // Core's status is the workspace's: a root elsewhere asks git itself.
         const changes = options.root === undefined ? () => ctx.worktreeChanges() : undefined

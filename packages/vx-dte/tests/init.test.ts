@@ -479,6 +479,19 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     '✗ vx dte  unknown subcommand: bogus',
     '✗ vx dte  vx dte worker takes no arguments: --bogus',
   ])
+  // Each is a usage refusal, as core's are, for a reader of the JSON.
+  const code = (args: string[]) =>
+    JSON.parse(
+      Bun.spawnSync([process.execPath, CORE_BIN, 'dte', ...args, '--format=json'], {
+        cwd: root,
+        stderr: 'pipe',
+      }).stdout.toString(),
+    ).error.code
+  expect([code(['bogus']), code(['worker', '--bogus']), code(['init', '--x'])]).toEqual([
+    'VX_E_USAGE',
+    'VX_E_USAGE',
+    'VX_E_USAGE',
+  ])
 })
 
 it('a relay URL with no http(s) scheme is refused, named', async () => {
@@ -531,10 +544,13 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     said({}),
     said({ VX_DTE_RUN: crypto.randomUUID() }),
     said({ VX_DTE_RELAY: 'http://127.0.0.1:9' }),
+    // Empty is unset, as for VX_DTE_RUN, VX_DTE_SECRET and VX_DTE_WORKER.
+    said({ VX_DTE_RUN: crypto.randomUUID(), VX_DTE_RELAY: '' }),
   ]).toEqual([
     '✗ vx dte  vx dte worker needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RUN',
+    '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
   ])
   // A job without id-token: write has no ACTIONS_ID_TOKEN_REQUEST_TOKEN.
   expect(

@@ -172,6 +172,7 @@ export function describeWorkers(w: InfoFacts['workers']): string {
   const quota = w.cpuQuota === null ? '' : `, cgroup CPU quota ${trimCores(w.cpuQuota)}`
   const cores = `${w.cores} core${w.cores === 1 ? '' : 's'}`
   if (w.source === 'workspace') return `${w.count} — .vx/workspace.ts (${cores}${quota})`
+  if (w.source === 'env') return `${w.count} — ${envName('run.concurrency')} (${cores}${quota})`
   if (w.source === 'cgroup')
     return `${w.count} — cgroup CPU quota ${trimCores(w.cpuQuota ?? w.count)} of ${cores}`
   return `${w.count} — the CPU count${quota}`

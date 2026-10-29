@@ -786,12 +786,15 @@ async function historyCmd(
     if (a === '--format' || a.startsWith('--format=')) {
       const v = a === '--format' ? argv[++i] : a.slice(9)
       if (v !== 'pretty' && v !== 'json') {
-        throw new UserError(`vx history: invalid --format: ${v ?? ''} (expected pretty | json)`)
+        throw new UserError(
+          `vx history: invalid --format: ${v ?? ''} (expected pretty | json)`,
+          'VX_E_USAGE',
+        )
       }
       format = v
       continue
     }
-    throw new UserError(`vx history: unknown flag: ${a} (only --format pretty|json)`)
+    throw new UserError(`vx history: unknown flag: ${a} (only --format pretty|json)`, 'VX_E_USAGE')
   }
   // The tasks a run would see, plugin stages included — the same ids the
   // `schedule` hook is handed.

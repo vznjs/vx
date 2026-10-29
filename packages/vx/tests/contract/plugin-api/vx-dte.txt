@@ -1,7 +1,7 @@
 == function docker (src/docker.ts)
 export function docker(options: DockerOptions): DteAdapter
 == function dte (src/plugin.ts)
-export function dte(options: DteOptions)
+export function dte(options: DteOptions = {})
 == function github (src/github.ts)
 export function github(options: GithubOptions = {}): DteAdapter
 == function gitlab (src/gitlab.ts)

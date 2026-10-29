@@ -182,7 +182,17 @@ beforeAll(async () => {
   await unlink(path.join(root, 'flag'))
   expect(vx(['run', 'lib#flaky', '--force']).code).toBe(1)
 
-  for (const a of [[], ['kitchen'], ['bare'], ['kitchen#all'], ['build']]) json('show', a)
+  // A task no selected project declares lists none: `[]`, which both the
+  // list and the task-list branch held, so it matched two `oneOf` branches.
+  for (const a of [
+    [],
+    ['kitchen'],
+    ['bare'],
+    ['kitchen#all'],
+    ['build'],
+    ['build', '--filter', 'bare'],
+  ])
+    json('show', a)
   json('info', [])
   json('why', ['app#build'])
   json('why', ['app#fail'])
@@ -397,6 +407,15 @@ describe('read verbs hold their --format json to a checked-in schema', () => {
     const { vx: _, ...missing } = facts
     expect(validate(s, missing)).toEqual(['$: missing vx'])
     expect(validate(s, { ...facts, projects: 1.5 })).toEqual(['$.projects: number is not integer'])
+  })
+
+  // `VX_RUN_CONCURRENCY` set, the workers' source is `env`: the schema
+  // refused what `vx info --json` printed.
+  it('info: the workers count from the variable conforms', () => {
+    const facts = outputs['info']![0] as { workers: Record<string, unknown> }
+    expect(
+      validate(schema('info'), { ...facts, workers: { ...facts.workers, source: 'env' } }),
+    ).toEqual([])
   })
 
   it('every object a schema declares closes its key set', () => {
