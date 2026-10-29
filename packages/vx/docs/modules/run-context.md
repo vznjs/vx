@@ -113,7 +113,7 @@ export function captureWorkspaceIdentity(
   (`normalizeRemoteUrl`: `git@github.com:o/r.git`,
   `ssh://git@github.com/o/r` and `https://github.com/o/r.git` all
   reduce to `github.com/o/r`) and hashed; no remote → a salt persisted
-  at `<root>/.vx/cache/workspace-id`, beside a `*` `.gitignore` of its own
+  at `<root>/.vx/cache/workspace-id`, beside a `*` `.gitignore` of its own (`ignoreDir`, writing util's `IGNORE_ALL`)
   (a cache elsewhere leaves no `.vx/.gitignore` naming it); an unwritable `.vx/cache/` → the root path
   itself. The URL comes from the enumeration's `git var -l` when given,
   else one `git` spawn behind try/catch; called only when telemetry is
