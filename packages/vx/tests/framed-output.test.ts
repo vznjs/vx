@@ -227,7 +227,22 @@ describe('the compact one-liners', () => {
         ...outcome('@vzn/vx#fmt', 'success', { durationMs: 99_999_999 }),
         node: uncached,
       }),
-    ).toBe(' ⏺\uFE0E 100000.00s success no-cache @vzn/vx#fmt')
+    ).toBe(' ⏺\uFE0E 1666m 40s success no-cache @vzn/vx#fmt')
+  })
+
+  // `1000.00s` is one wider than the column: past 16m 40s a running row's
+  // ticking time pushed its status and id right, and finished rows went
+  // out of line with their neighbours.
+  it('a duration past 999.99s keeps the grid, in minutes', () => {
+    const uncached = node('@vzn/vx#fmt', 'oxfmt .')
+    const row = (ms: number) =>
+      formatTaskExecutedLine(uncached, {
+        ...outcome('@vzn/vx#fmt', 'success', { durationMs: ms }),
+        node: uncached,
+      })
+    expect(row(999_990)).toBe(' ⏺\uFE0E 999.99s success no-cache @vzn/vx#fmt')
+    expect(row(1_000_000)).toBe(' ⏺\uFE0E 16m 40s success no-cache @vzn/vx#fmt')
+    expect(row(5_999_000)).toBe(' ⏺\uFE0E 99m 59s success no-cache @vzn/vx#fmt')
   })
 
   it('with colour on the cache word is dim, and a blank cell emits nothing', () => {
