@@ -412,7 +412,7 @@ it('refuses to start with ALLOW empty: it would refuse every request', () => {
         timeout: 10_000,
       },
     )
-    const [said, usage] = cli.stderr.toString().split('\n')
+    const [said, usage] = Bun.stripANSI(cli.stderr.toString()).split('\n')
     expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
       2,
       '✗ vx-history-server  set ALLOW',

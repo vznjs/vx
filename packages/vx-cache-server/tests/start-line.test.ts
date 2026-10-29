@@ -14,6 +14,9 @@ async function start(env: Record<string, string>): Promise<string> {
       ALLOW: 'https://token.actions.githubusercontent.com:o/r:ci.yml',
       AUDIENCE: 'https://cache.example',
       S3_BUCKET: 'b',
+      // Bun's S3 client refuses to start without keys; the host's own may be unset.
+      S3_ACCESS_KEY_ID: 'a',
+      S3_SECRET_ACCESS_KEY: 's',
       ...env,
     },
     stdout: 'pipe',
