@@ -464,8 +464,39 @@ function trackTaskTmpdir(dir: string): void {
   if (tmpdirExitHooked) return
   tmpdirExitHooked = true
   process.on('exit', () => {
-    for (const d of liveTaskTmpdirs) rmSync(d, { recursive: true, force: true })
+    for (const d of liveTaskTmpdirs) removeTaskTmpdir(d)
   })
+}
+
+/**
+ * Remove a task's temp directory; never throws. The task may leave it
+ * unremovable: a read-only directory in it (EACCES), or a straggler still
+ * writing (ENOTEMPTY). Thrown, either failed a task that had passed, as a
+ * worker fault under dte. A read-only one is made writable and the remove
+ * retried; what still stands is left to the exit hook's last try.
+ */
+function removeTaskTmpdir(dir: string): boolean {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+      return true
+    } catch {
+      if (attempt === 2) return false
+      ownerWritable(dir)
+    }
+  }
+}
+
+/** Give the owner write and search on every directory under `dir`, which a recursive remove needs. */
+function ownerWritable(dir: string): void {
+  try {
+    const st = lstatSync(dir)
+    if (!st.isDirectory()) return
+    if ((st.mode & 0o700) !== 0o700) chmodSync(dir, (st.mode & 0o7777) | 0o700)
+    for (const name of readdirSync(dir)) ownerWritable(path.join(dir, name))
+  } catch {
+    // gone, or not this user's: the retry says
+  }
 }
 
 /** Whether SRT is up in this process — set by `initSandbox`, cleared by `resetSandbox`. */
@@ -1901,7 +1932,8 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
  */
 export function releaseBridges(tag: string): void {
   const tmp = taskTmpdir(tag)
-  if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
+  // One that will not go stays tracked, for the exit hook.
+  if (liveTaskTmpdirs.has(tmp) && removeTaskTmpdir(tmp)) liveTaskTmpdirs.delete(tmp)
   if (liveServers.delete(tag)) {
     // A server's wrap stays counted until it stops: one stopped server
     // kept every later task's stubs in the workspace until the reset.
