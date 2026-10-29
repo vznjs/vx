@@ -127,6 +127,22 @@ describe('terminalHolders', () => {
     )
   })
 
+  // Told to make the server depend on its own dependant, the user wrote a cycle.
+  it('refuses an interactive dependant of the server without advising a cycle', () => {
+    let message = ''
+    try {
+      terminalHolders(
+        graph(server('a#dev'), node('a#gen', {}, ['a#dev']), ask('a#e2e', ['a#gen'])),
+        true,
+      )
+    } catch (err) {
+      message = (err as Error).message
+    }
+    expect(message).toBe(
+      'a#dev is persistent and interactive, so it holds the terminal until the run ends, and a#e2e, which depends on it, would ask for it too: run it on its own',
+    )
+  })
+
   it('takes an interactive task the server depends on, through a plain one', () => {
     expect(
       terminalHolders(

@@ -37,6 +37,10 @@ print('out' | 'err', ...blocks)
 - Tones: `ok` ✓ green, `warn` ! yellow, `error` ✗ red, `info` › cyan.
   `id` paints a `project#task` as rows do: each half in its name's hue (`identityColor`), the `#` dim.
   `place` paints where a task runs (`small#1`) as `id` does; `local` stays plain.
+- Text is printed with every control byte but a tab and a line break as
+  `\xNN`: a notice quotes paths and names, and one holding `ESC ]0;`
+  retitled the terminal. A component's colors are its own; an inline
+  carries no escape.
 - Content sits 2 spaces under a headline; labels are one dim column at
   least 8 wide; `fix` and `next` values are bold.
 - Colors are decided at print time per stream (`detectColors`), so a
