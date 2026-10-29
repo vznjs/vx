@@ -221,6 +221,16 @@ describe('runCommand', () => {
     expect(result.stdout.trim()).toBe(`prefix: hello world with space it's`)
   })
 
+  it('a task writes into a pipe and reads no terminal, so it sends no terminal queries to replay', async () => {
+    const result = await runCommand({
+      command:
+        'if [ -t 1 ]; then echo out-tty; else echo out-pipe; fi; if [ -t 0 ]; then echo in-tty; else echo in-none; fi',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect(result.stdout).toBe('out-pipe\nin-none\n')
+  })
+
   it('a forwarded arg reaches the command as one word, the shell expanding nothing in it', async () => {
     const args = [
       '--name=a b',
