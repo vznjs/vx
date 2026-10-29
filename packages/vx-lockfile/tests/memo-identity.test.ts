@@ -7,7 +7,8 @@ import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { TaskNode } from '@vzn/vx'
+import { Cache, type TaskNode } from '@vzn/vx'
+import { editMemo } from './helpers/memo.js'
 
 const SRC = path.resolve(import.meta.dir, '..', 'src')
 const LOCK = `lockfileVersion: '9.0'
@@ -22,6 +23,8 @@ let copy: string
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'vx-memo-id-'))
   await writeFile(path.join(root, 'pnpm-lock.yaml'), LOCK)
+  // The index a run makes, where the memo is kept.
+  new Cache(path.join(root, '.vx')).close()
   // In the temp dir, not beside src: a sandboxed test task may write only
   // there. A link to the workspace's node_modules resolves `@vzn/vx`.
   copy = await mkdtemp(path.join(tmpdir(), 'vx-memo-id-src-'))
@@ -45,10 +48,9 @@ const key = async (src: string): Promise<string> => {
 
 it("a parser whose source changed does not trust the old parser's memo", async () => {
   await key(SRC)
-  const memo = path.join(root, '.vx', 'lockfile-claims', 'pnpm-lock.yaml.json')
-  const kept = JSON.parse(await readFile(memo, 'utf8')) as { importers: Record<string, string> }
-  kept.importers['.'] = 'from-the-memo'
-  await writeFile(memo, JSON.stringify(kept))
+  editMemo(path.join(root, '.vx'), 'pnpm-lock.yaml', (m) => {
+    m.importers['.'] = 'from-the-memo'
+  })
   // CONTROL: the same source trusts it.
   expect(await key(SRC)).toBe('from-the-memo')
   const parser = path.join(copy, 'src', 'pnpm.ts')
@@ -90,10 +92,9 @@ it("a reachDigests that folds otherwise does not trust the old one's memo", asyn
   // Its source is not the fold: a cycle's labels live in a helper it
   // calls, so a core upgrade that changed them kept the function's text.
   await key(SRC)
-  const memo = path.join(root, '.vx', 'lockfile-claims', 'pnpm-lock.yaml.json')
-  const kept = JSON.parse(await readFile(memo, 'utf8')) as { importers: Record<string, string> }
-  kept.importers['.'] = 'from-the-memo'
-  await writeFile(memo, JSON.stringify(kept))
+  editMemo(path.join(root, '.vx'), 'pnpm-lock.yaml', (m) => {
+    m.importers['.'] = 'from-the-memo'
+  })
   // CONTROL: the copy, its fold unchanged, trusts it.
   expect(await keyIn(false)).toBe('from-the-memo')
   expect(await keyIn(true)).not.toBe('from-the-memo')

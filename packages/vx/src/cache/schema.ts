@@ -261,6 +261,49 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       arch              TEXT,
       vx_version        TEXT NOT NULL
     );
+    -- v50: what a run said that its runs rows do not hold (run-notes.ts),
+    -- for \`vx last\`: the steps it did not wait on (\`vx:prefetch\`), its
+    -- warnings, colour stripped, and each failed task's output, plain,
+    -- bounded and masked, with the files it names (JSON). Rows of the
+    -- newest 50 runs that had any; run ids are UUIDv7, so they sort by age.
+    CREATE TABLE IF NOT EXISTS main.steps (
+      run_id      TEXT NOT NULL,
+      seq         INTEGER NOT NULL,
+      step        TEXT NOT NULL,
+      duration_ms INTEGER NOT NULL,
+      ok          INTEGER NOT NULL,
+      PRIMARY KEY (run_id, seq)
+    );
+    CREATE TABLE IF NOT EXISTS main.warnings (
+      run_id TEXT NOT NULL,
+      seq    INTEGER NOT NULL,
+      text   TEXT NOT NULL,
+      PRIMARY KEY (run_id, seq)
+    );
+    CREATE TABLE IF NOT EXISTS main.failures (
+      run_id      TEXT NOT NULL,
+      task_id     TEXT NOT NULL,
+      input_moved TEXT,
+      output      TEXT NOT NULL,
+      locations   TEXT NOT NULL,
+      sandbox_fix TEXT,
+      PRIMARY KEY (run_id, task_id)
+    );
+    -- v50: a lockfile claimant's parse (orchestrator/lockfile-claim.ts): one
+    -- row per lockfile and claimant, read while \`version\` and \`lock\` (the
+    -- file's xxh3) match, replaced when they do not. JSON: the extra files'
+    -- hashes, the importers' digests and edges, the names each records.
+    CREATE TABLE IF NOT EXISTS main.lockfile_memos (
+      file      TEXT NOT NULL,
+      claimant  TEXT NOT NULL,
+      version   INTEGER NOT NULL,
+      lock      TEXT NOT NULL,
+      extras    TEXT NOT NULL,
+      importers TEXT NOT NULL,
+      edges     TEXT NOT NULL,
+      recorded  TEXT,
+      PRIMARY KEY (file, claimant)
+    );
     CREATE INDEX IF NOT EXISTS main.invocations_started ON invocations(started_at);
     CREATE INDEX IF NOT EXISTS main.invocations_branch  ON invocations(branch);
     CREATE INDEX IF NOT EXISTS main.invocations_ci      ON invocations(ci);

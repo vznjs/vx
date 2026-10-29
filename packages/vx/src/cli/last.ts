@@ -5,7 +5,7 @@
 // Read-only — no config evaluation, no re-hash, no cache probe.
 
 import type { Database } from 'bun:sqlite'
-import { Cache } from '../cache/index.js'
+import { Cache, keptSteps, keptWarnings, type RunStep } from '../cache/index.js'
 import { formatBytes } from './format.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import {
@@ -24,9 +24,6 @@ import {
   exitSignal,
   resolveRunId,
   runFailures,
-  type RunStep,
-  runSteps,
-  runWarnings,
   shellQuote,
   shortRunId,
   taskLog,
@@ -358,8 +355,9 @@ async function printStats(
 }
 
 /**
- * `--sql`: one SELECT over the history (`runs`, `invocations`, and the
- * store's `entries`, `entry_inputs`, `task_durations`, `task_outcomes`),
+ * `--sql`: one SELECT over the history (`runs`, `invocations`, `steps`,
+ * `warnings`, `failures`, and the store's `entries`, `entry_inputs`,
+ * `task_durations`, `task_outcomes`),
  * so an agent asks what no flag answers: a task's memory trend, the
  * flakiest project, which input moved a key. `query_only` stops a write
  * the statement hides (`WITH … DELETE`); it does not stop ATTACH, which
@@ -825,12 +823,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         parsed.runId === undefined
           ? undefined
           : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
-      const log = taskLog(
-        cacheDir,
-        db,
-        await bareTaskId(db, await rootSpelled(root, parsed.log)),
-        runId,
-      )
+      const log = taskLog(db, await bareTaskId(db, await rootSpelled(root, parsed.log)), runId)
       if (log === null) {
         // The id's form is hinted only when it lacks one: a task that
         // never ran was told how to spell a task id.
@@ -921,9 +914,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     const detail = getRun(db, inv.runId)
 
     if (parsed.format === 'json') {
-      const failures = new Map(
-        (runFailures(cacheDir, db, inv.runId)?.tasks ?? []).map((f) => [f.taskId, f]),
-      )
+      const failures = new Map((runFailures(db, inv.runId)?.tasks ?? []).map((f) => [f.taskId, f]))
       const tasks = (detail?.tasks ?? []).map((t) => {
         const f = failures.get(`${t.project}#${t.task}`)
         return f === undefined
@@ -937,8 +928,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
               ...(f.fixedIn !== undefined ? { fixedIn: f.fixedIn } : {}),
             }
       })
-      const steps = runSteps(cacheDir, inv.runId)
-      const warnings = runWarnings(cacheDir, inv.runId)
+      const steps = keptSteps(db, inv.runId)
+      const warnings = keptWarnings(db, inv.runId)
       process.stdout.write(
         `${JSON.stringify({
           invocation: inv,
@@ -971,12 +962,12 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     )
     const moved = new Map<string, string>()
     if (inv.failedCount > 0) {
-      for (const f of runFailures(cacheDir, db, inv.runId)?.tasks ?? [])
+      for (const f of runFailures(db, inv.runId)?.tasks ?? [])
         if (f.inputMoved !== undefined) moved.set(f.taskId, f.inputMoved)
     }
     lines.push(...formatTaskRows(detail?.tasks ?? [], c, moved))
-    lines.push(...formatStepRows(runSteps(cacheDir, inv.runId), c))
-    const warnings = runWarnings(cacheDir, inv.runId)
+    lines.push(...formatStepRows(keptSteps(db, inv.runId), c))
+    const warnings = keptWarnings(db, inv.runId)
     if (warnings.length > 0) {
       lines.push('', '  warnings', ...warnings.flatMap((w) => w.split('\n').map((l) => `    ${l}`)))
     }

@@ -188,23 +188,23 @@ describe('vx cache clean with no bound clears the cache', () => {
     TIMEOUT,
   )
   it(
-    "in a cache.dir the user named, keeps the user's runs/ and compiled/ and takes vx's steps/",
+    "in a cache.dir the user named, keeps the user's runs/, compiled/ and steps/",
     async () => {
-      // vx never writes `runs` (history is in cache.db) or `compiled` (always
-      // `.vx/cache/compiled`) into a named directory, yet the clear took them;
-      // it left `steps`, which run-steps.ts does write there.
+      // vx writes no directory into a named one (history, steps, warnings and
+      // failures are in cache.db, the config bundle in `.vx/cache/compiled`),
+      // yet the clear took `runs` and `compiled`, and later `steps`.
       const shared = path.join(home, 'shared')
       const env = { VX_CACHE_DIR: shared }
       expect((await vx(['run', 'build', '--all'], env)).code).toBe(0)
-      expect(readdirSync(shared)).not.toContain('runs')
-      expect(readdirSync(shared)).not.toContain('compiled')
+      for (const dir of ['runs', 'compiled', 'steps'])
+        expect(readdirSync(shared)).not.toContain(dir)
       await Bun.write(path.join(shared, 'runs', 'ci.log'), 'mine')
       await Bun.write(path.join(shared, 'compiled', 'app.js'), 'mine')
       await Bun.write(path.join(shared, 'steps', '0190a000-0000-7000-8000-000000000000.json'), '[]')
 
       const r = await vx(['cache', 'clean'], env)
       expect(r.code).toBe(0)
-      expect(readdirSync(shared).sort()).toEqual(['compiled', 'runs'])
+      expect(readdirSync(shared).sort()).toEqual(['compiled', 'runs', 'steps'])
     },
     TIMEOUT,
   )

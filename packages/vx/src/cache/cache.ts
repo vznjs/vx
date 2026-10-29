@@ -164,13 +164,8 @@ const VX_CACHE_NAMES = new Set([
   'cache.db-wal',
   'cache.db-shm',
   'cache.db-journal',
-  // run-failures.ts, run-steps.ts, orchestrator/lockfile-claim.ts. Run
-  // history lives in cache.db and the config bundle always in
-  // `.vx/cache/compiled`, so a `runs` or `compiled` here is the user's.
-  'failures',
-  'steps',
-  'warnings',
-  'lockfile-claims',
+  // Every record vx keeps lives in cache.db, and the config bundle always
+  // in `.vx/cache/compiled`, so any directory here is the user's.
 ])
 
 /**
@@ -357,7 +352,10 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //   v49: runs.cpu_share — the share of a core each runnable thread got
 //        where the task ran, so a crowded run's CPU reads as need. The
 //        cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v49'
+//   v50: steps, warnings, failures and lockfile_memos — what a run said
+//        and a lockfile claimant parsed, files under the cache dir until
+//        now (if it can be in the DB, it is). The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v50'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -1172,7 +1170,7 @@ export class Cache implements CacheLayer {
             // keeps it so).
             if (found !== undefined) {
               this.db.exec(
-                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo; DROP TABLE IF EXISTS main.remote_hits;',
+                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo; DROP TABLE IF EXISTS main.remote_hits; DROP TABLE IF EXISTS main.steps; DROP TABLE IF EXISTS main.warnings; DROP TABLE IF EXISTS main.failures; DROP TABLE IF EXISTS main.lockfile_memos;',
               )
             }
             // The tables land under the same write lock as the stamp: made
@@ -3564,7 +3562,7 @@ export class Cache implements CacheLayer {
 }
 
 /** SQLite's file-control opcode (sqlite3.h). */
-const SQLITE_FCNTL_PERSIST_WAL = 10
+export const SQLITE_FCNTL_PERSIST_WAL = 10
 
 /**
  * Close for real. A plain `close()` leaves the connection open while any
@@ -3577,7 +3575,7 @@ const SQLITE_FCNTL_PERSIST_WAL = 10
  * `vx run` exited 1 with that stack after its tasks had passed (M-44). There
  * the deferred close is the one that closes.
  */
-function closeDb(db: Database): void {
+export function closeDb(db: Database): void {
   try {
     db.close(true)
   } catch {

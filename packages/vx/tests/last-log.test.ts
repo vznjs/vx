@@ -1,5 +1,6 @@
 // `vx last --log <task>`: one task's output from the history, so an agent
 // reads a passing task's log too, not only a failure's.
+import { Database } from 'bun:sqlite'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
@@ -102,10 +103,14 @@ it('a cached or failed task that printed nothing says so, not that its output wa
   }
 })
 
-it('a failed task whose kept failures were pruned says so, not that it printed nothing', async () => {
-  const kept = path.join(root, '.vx', 'cache', 'failures', `${runIds['bad']}.json`)
-  const bytes = await Bun.file(kept).bytes()
-  await rm(kept)
+it('a failed task whose kept failures were pruned says so, not that it printed nothing', () => {
+  const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+  const kept = db.query('SELECT * FROM failures WHERE run_id = ?').all(runIds['bad']!) as Record<
+    string,
+    string | null
+  >[]
+  expect(kept.length).toBe(1)
+  db.run('DELETE FROM failures WHERE run_id = ?', [runIds['bad']!])
   try {
     expect(vx('last', runIds['bad']!, '--log', 'a#bad')).toEqual({
       code: 0,
@@ -116,7 +121,19 @@ it('a failed task whose kept failures were pruned says so, not that it printed n
       ),
     })
   } finally {
-    await Bun.write(kept, bytes)
+    for (const r of kept)
+      db.run(
+        'INSERT INTO failures(run_id, task_id, input_moved, output, locations, sandbox_fix) VALUES (?, ?, ?, ?, ?, ?)',
+        [
+          r['run_id']!,
+          r['task_id']!,
+          r['input_moved'] ?? null,
+          r['output']!,
+          r['locations']!,
+          r['sandbox_fix'] ?? null,
+        ],
+      )
+    db.close()
   }
 })
 

@@ -32,8 +32,8 @@ import type {
   TaskLog,
   PlanPrediction,
   RunPlan,
-  RunStep,
 } from '../src/orchestrator/index.js'
+import type { RunStep } from '../src/cache/index.js'
 import type {
   CacheKeyDiff,
   CacheKeyExplanation,
@@ -226,25 +226,27 @@ beforeAll(async () => {
   // beside the failed run as a run that had them keeps it.
   const failedRun = (outputs['last']!.at(-1) as { invocation: { runId: string } }).invocation.runId
   const cacheDir = path.join(root, '.vx', 'cache')
-  const kept = path.join(cacheDir, 'failures', `${failedRun}.json`)
-  const stored = JSON.parse(readFileSync(kept, 'utf8')) as { tasks: Record<string, unknown>[] }
-  for (const t of stored.tasks) {
-    t['inputMoved'] = 'src/a.txt'
-    t['sandboxFix'] = {
-      read: ['/r'],
-      write: ['/w'],
-      network: ['h'],
-      systemInfo: ['s'],
-      withheld: ['/c'],
-      inputs: ['src/b.txt'],
-    }
+  const kept = new Database(path.join(cacheDir, 'cache.db'))
+  try {
+    kept.run('UPDATE failures SET input_moved = ?, sandbox_fix = ? WHERE run_id = ?', [
+      'src/a.txt',
+      JSON.stringify({
+        read: ['/r'],
+        write: ['/w'],
+        network: ['h'],
+        systemInfo: ['s'],
+        withheld: ['/c'],
+        inputs: ['src/b.txt'],
+      }),
+      failedRun,
+    ])
+    kept.run('INSERT INTO steps(run_id, seq, step, duration_ms, ok) VALUES (?, 0, ?, 3, 1)', [
+      failedRun,
+      'vx:prefetch',
+    ])
+  } finally {
+    kept.close()
   }
-  await writeFile(kept, JSON.stringify(stored))
-  await mkdir(path.join(cacheDir, 'steps'), { recursive: true })
-  await writeFile(
-    path.join(cacheDir, 'steps', `${failedRun}.json`),
-    JSON.stringify([{ id: 'vx:prefetch', durationMs: 3, ok: true }]),
-  )
   json('last', ['--failed'])
   const dry = vx(['run', 'build', '--filter', 'app...', '--dry=json'])
   expect(dry.code).toBe(0)

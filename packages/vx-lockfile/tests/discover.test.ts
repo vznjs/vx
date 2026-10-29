@@ -10,11 +10,12 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { DiscoverContext, Logger, ProjectMeta, VxPlugin } from '@vzn/vx'
+import { Cache, type DiscoverContext, type Logger, type ProjectMeta, type VxPlugin } from '@vzn/vx'
 import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { bun, npm, pnpm, yarn } from '../src/index.js'
 import { commitAll } from './helpers/affected.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { editMemo } from './helpers/memo.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
@@ -509,12 +510,13 @@ describe('discover', () => {
         a: { name: 'a', dependencies: { b: '*' }, peerDependencies: { c: '*' } },
         c: { name: 'c', devDependencies: { d: '*' } },
       })
+      // The index a run makes: a discover before it keeps nothing.
+      new Cache(path.join(root, '.vx', 'cache')).close()
       expect(await discover(c.make(), metas)).toEqual(EXPECTED)
       // The kept names are what the next run reads: emptied, they refuse.
-      const memo = path.join(root, '.vx/cache/lockfile-claims', `${c.file}.recorded.json`)
-      const kept = (await Bun.file(memo).json()) as { names: Record<string, string[]> }
-      for (const i of Object.keys(kept.names)) kept.names[i] = []
-      await writeFile(memo, JSON.stringify(kept))
+      editMemo(path.join(root, '.vx', 'cache'), c.file, (m) => {
+        for (const i of Object.keys(m.recorded!)) m.recorded![i] = []
+      })
       await expect(discover(c.make(), metas)).rejects.toThrow(`${c.file} is out of date`)
       // An edit to the lockfile reads it afresh.
       await writeFile(path.join(root, c.file), `${c.text}\n`)

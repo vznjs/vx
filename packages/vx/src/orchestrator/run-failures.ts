@@ -1,19 +1,14 @@
 // A failed run's task output and the files it names, so an agent reads why
-// a task failed without the terminal (`vx last --format json`). One file per failed run, `<cacheDir>/failures/<runId>.json`,
-// the newest 50 kept: files, not cache.db, so the index layout (and every
-// shared store under it) stays as it was.
+// a task failed without the terminal (`vx last --format json`). Rows of
+// cache.db's `failures` (cache/run-notes.ts), the newest 50 failed runs kept.
 
 import type { Database } from 'bun:sqlite'
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
+import { type Cache, keepRunNotes, keptFailures } from '../cache/index.js'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
 import { PASS_STATUSES } from '../history/index.js'
-import { isFsRefusal, maskedLine, splitTaskId } from '../util/index.js'
+import { maskedLine, splitTaskId } from '../util/index.js'
 import { fileLocations, fileMemo, type OutputLocation } from '../report/index.js'
-
-/** Failed runs whose output is kept; run ids are UUIDv7, so names sort by age. */
-const KEPT = 50
 
 /** A failed task of a run and what it said. */
 export interface TaskFailure {
@@ -36,17 +31,19 @@ export interface RunFailures {
   tasks: TaskFailure[]
 }
 
-interface StoredFailure extends TaskFailure {
-  project: string
-  task: string
-}
-
-const dirOf = (cacheDir: string): string => path.join(cacheDir, 'failures')
-
-/** Each failed outcome's output as plain text and the files it names. */
-function failuresOf(outcomes: readonly TaskOutcome[]): StoredFailure[] {
+/**
+ * Keep the run's failures, when any outcome carries output. A refused write
+ * (a full disk) costs only this output: `warn` says so and the run's
+ * verdict stands.
+ */
+export function writeRunFailures(
+  cache: Cache,
+  runId: string,
+  outcomes: readonly TaskOutcome[],
+  warn: (message: string) => void,
+): void {
   const isFile = fileMemo()
-  const out: StoredFailure[] = []
+  const failures = []
   for (const o of outcomes) {
     // A task failed by a moved input may have printed nothing: the input
     // is still why, and an agent reads it here.
@@ -60,76 +57,30 @@ function failuresOf(outcomes: readonly TaskOutcome[]): StoredFailure[] {
               .map((c) => c.text)
               .join(''),
           )
-    out.push({
+    failures.push({
       taskId: o.node.id,
-      project: o.node.projectName,
-      task: o.node.taskName,
-      exitCode: o.exitCode,
-      ...(o.timedOut === true ? { timedOut: true as const } : {}),
       ...(o.inputMoved !== undefined ? { inputMoved: o.inputMoved } : {}),
       output,
       locations: fileLocations(output, o.node.projectDir, isFile),
       ...(o.sandboxFix !== undefined ? { sandboxFix: o.sandboxFix } : {}),
     })
   }
-  return out
-}
-
-/**
- * Write the run's failures, when any outcome carries output, and drop all
- * but the newest `KEPT` files. Atomic: a reader sees the whole file or none.
- * A refused write (a full disk, a read-only cache dir) costs only this
- * output: `warn` says so and the run's verdict stands.
- */
-export function writeRunFailures(
-  cacheDir: string,
-  runId: string,
-  outcomes: readonly TaskOutcome[],
-  warn: (message: string) => void,
-): void {
-  const tasks = failuresOf(outcomes)
-  if (tasks.length === 0) return
+  if (failures.length === 0) return
   try {
-    keep(cacheDir, runId, tasks)
+    keepRunNotes(cache.dbHandle(), runId, { failures })
   } catch (err) {
-    if (!isFsRefusal(err)) throw err
-    warn(`[vx] failed tasks' output not kept: ${err.message} — the verdict above stands`)
+    const message = err instanceof Error ? err.message : String(err)
+    warn(`[vx] failed tasks' output not kept: ${message} — the verdict above stands`)
   }
-}
-
-function keep(cacheDir: string, runId: string, tasks: TaskFailure[]): void {
-  const dir = dirOf(cacheDir)
-  mkdirSync(dir, { recursive: true })
-  const file = path.join(dir, `${runId}.json`)
-  const tmp = `${file}.${process.pid}.tmp`
-  writeFileSync(tmp, JSON.stringify({ runId, tasks }))
-  renameSync(tmp, file)
-  trimKept(dir, KEPT)
-}
-
-/**
- * Keep the newest `kept` runs' files in `dir`, and the temp files of runs
- * no older: a writer that crashed between its write and its rename left
- * `<runId>.json.<pid>.tmp`, which the trim of `.json` names never took. A
- * live writer's temp is of a run newer than every kept one.
- */
-export function trimKept(dir: string, kept: number): void {
-  const all = readdirSync(dir)
-  const names = all.filter((n) => n.endsWith('.json')).sort()
-  for (const n of names.slice(0, -kept)) rmSync(path.join(dir, n), { force: true })
-  if (names.length < kept) return
-  const oldest = names[names.length - kept]!
-  for (const n of all)
-    if (n.endsWith('.tmp') && n.slice(0, n.lastIndexOf('.json.') + 5) < oldest)
-      rmSync(path.join(dir, n), { force: true })
 }
 
 /**
  * The failed tasks of `runId`, or of the latest failed run when omitted;
- * null when there is no such run. A failed task the file lacks (an older
- * run, a write the disk refused) reads `output: ''`, `locations: []`.
+ * null when there is no such run. A failed task with no kept row (a run
+ * past the newest 50, a write the disk refused) reads `output: ''`,
+ * `locations: []`.
  */
-export function runFailures(cacheDir: string, db: Database, runId?: string): RunFailures | null {
+export function runFailures(db: Database, runId?: string): RunFailures | null {
   const id =
     runId ??
     (
@@ -138,7 +89,7 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
         .get() as { run_id: string } | null
     )?.run_id
   if (id === undefined) return null
-  const kept = storedFailures(cacheDir, id)
+  const kept = keptFailures(db, id)
   const rows = db
     .query(
       `SELECT r.project, r.task, r.exit_code AS exitCode, r.timed_out AS timedOut,
@@ -165,39 +116,14 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
         ...(r.timedOut === 1 ? { timedOut: true as const } : {}),
         ...(k?.inputMoved !== undefined ? { inputMoved: k.inputMoved } : {}),
         output: k?.output ?? '',
-        locations: k?.locations ?? [],
-        ...(k?.sandboxFix !== undefined ? { sandboxFix: k.sandboxFix } : {}),
+        locations: (k?.locations ?? []) as OutputLocation[],
+        ...(k?.sandboxFix !== undefined
+          ? { sandboxFix: k.sandboxFix as NonNullable<TaskOutcome['sandboxFix']> }
+          : {}),
         ...(r.fixedIn !== null ? { fixedIn: r.fixedIn } : {}),
       }
     }),
   }
-}
-
-/** What `runId`'s failures file holds, by task id; empty when the run kept none. */
-function storedFailures(cacheDir: string, runId: string): Map<string, StoredFailure> {
-  const kept = new Map<string, StoredFailure>()
-  // A run id the caller typed names a file in failures/ only.
-  if (path.basename(runId) !== runId || runId === '..') return kept
-  let text: string
-  try {
-    text = readFileSync(path.join(dirOf(cacheDir), `${runId}.json`), 'utf8')
-  } catch (err) {
-    // No file: the run kept no output.
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-    return kept
-  }
-  // A file the disk left torn (a rename that landed before its data, on
-  // power loss) is output the run did not keep: it threw on every `vx last`
-  // until 50 newer runs rotated it out.
-  let stored: unknown
-  try {
-    stored = JSON.parse(text)
-  } catch {
-    return kept
-  }
-  const tasks = (stored as { tasks?: unknown } | null)?.tasks
-  if (Array.isArray(tasks)) for (const t of tasks as StoredFailure[]) kept.set(t.taskId, t)
-  return kept
 }
 
 /** One task's output in a recorded run, as `vx last --log` and getTaskLog read it. */
@@ -219,12 +145,7 @@ export interface TaskLog {
  * `taskId`'s output in `runId`, or in the latest run that recorded the
  * task when omitted; null when no such run recorded it.
  */
-export function taskLog(
-  cacheDir: string,
-  db: Database,
-  taskId: string,
-  runId?: string,
-): TaskLog | null {
+export function taskLog(db: Database, taskId: string, runId?: string): TaskLog | null {
   const [project, task] = splitTaskId(taskId)
   if (project === '' || task === '') return null
   const row = db
@@ -241,9 +162,9 @@ export function taskLog(
   if (row === null) return null
   const base = { runId: row.runId, taskId, status: row.status }
   if (row.status === 'failed') {
-    // Only the file: runFailures reads `output: ''` for a task it lacks, as
-    // if the task printed nothing, when the run is past the newest 50.
-    const kept = storedFailures(cacheDir, row.runId).get(taskId)
+    // Only the kept row: runFailures reads `output: ''` for a task it lacks,
+    // as if the task printed nothing, when the run is past the newest 50.
+    const kept = keptFailures(db, row.runId).get(taskId)
     if (kept !== undefined) return { ...base, source: 'failure', output: kept.output }
   } else if (row.hash !== '') {
     const stored = db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(row.hash) as {

@@ -18,7 +18,6 @@
 //
 // Imports core only through the public `@vzn/vx` specifier.
 import { readdirSync, readFileSync } from 'node:fs'
-import { mkdir, rename, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import {
@@ -326,6 +325,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       version: digestVersion(),
       scope,
       importers: guarded((text: string) => manager.importers(text)),
+      recorded: guarded(
+        (text: string) =>
+          new Map([...manager.recorded(text)].map(([i, deps]) => [i, [...deps.keys()]])),
+      ),
       // Read before `digest` on the key path: a malformed bun.lock refused
       // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
       ...(extraFiles !== undefined
@@ -476,7 +479,9 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         const missing = await staleness(
           ctx.workspaceRoot,
           importers,
-          await recordedOnce(ctx.cacheDir, file, text, manager.recorded),
+          (await claimsAt(ctx.workspaceRoot)
+            .find((c) => c.file === file)!
+            .claim.recorded(ctx)) ?? new Map(),
           await dirs,
           manifest,
           manager.member,
@@ -538,46 +543,6 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     },
   })
 }
-
-/**
- * The dependency names each importer records, kept per lockfile content:
- * parsing them (pnpm's importers block, ~2 ms on solid, and the parser's
- * load) was on every run, and only the lockfile text decides them.
- */
-async function recordedOnce(
-  cacheDir: string,
-  file: string,
-  text: string,
-  recorded: (text: string) => ReadonlyMap<string, ReadonlyMap<string, unknown>>,
-): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
-  const hash = `${RECORDED_VERSION}:${Bun.hash.xxHash3(text).toString(16)}`
-  const memo = path.join(cacheDir, 'lockfile-claims', `${file}.recorded.json`)
-  try {
-    const kept = (await Bun.file(memo).json()) as { hash: string; names: Record<string, string[]> }
-    if (kept.hash === hash) {
-      return new Map(Object.entries(kept.names).map(([i, names]) => [i, new Set(names)]))
-    }
-  } catch {
-    // None kept, or unreadable: parsed below.
-  }
-  const out = new Map([...recorded(text)].map(([i, deps]) => [i, new Set(deps.keys())]))
-  const names = Object.fromEntries([...out].map(([i, set]) => [i, [...set]]))
-  // Write-then-rename, so a concurrent run reads a whole memo or none. The
-  // memo is a speed-up: a failed write costs the next run a parse.
-  const tmp = `${memo}.tmp-${process.pid}-${Date.now()}`
-  try {
-    await mkdir(path.dirname(memo), { recursive: true })
-    await Bun.write(tmp, JSON.stringify({ hash, names }))
-    await rename(tmp, memo)
-  } catch {
-    // Left behind, one more temp file piled up in the cache every run.
-    await rm(tmp, { force: true }).catch(() => {})
-  }
-  return out
-}
-
-/** Bumped when what `recorded` returns for the same text changes. */
-const RECORDED_VERSION = 1
 
 /** Up to five names, then a count of the rest. */
 function listed(names: readonly string[]): string {
