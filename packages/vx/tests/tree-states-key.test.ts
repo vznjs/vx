@@ -149,3 +149,47 @@ describe('the key over more paths than one argv holds', () => {
     TIMEOUT,
   )
 })
+
+// A repository's own config can colour, prefix, quote or relativise what
+// git prints: a hasher that parsed porcelain text with colour codes in it,
+// or diffed relative to the cwd, keyed or selected the wrong files.
+describe('the key and --affected under a git config that reshapes output', () => {
+  let root = ''
+  beforeAll(async () => {
+    root = await makeWorkspace({ prefix: 'vx-tree-config-', edges: {} })
+    for (const name of ['a', 'b']) {
+      await addProject(root, name, { config: CONFIG, files: { 'src/x é.txt': `${name}\n` } })
+    }
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'keys as with no config, and a run from one project selects the other it changed',
+    async () => {
+      const before = await key(root)
+      const git = gitIn(root)
+      for (const [k, v] of [
+        ['color.ui', 'always'],
+        ['color.status', 'always'],
+        ['color.diff', 'always'],
+        ['diff.relative', 'true'],
+        ['diff.noprefix', 'true'],
+        ['status.relativePaths', 'true'],
+        ['core.quotepath', 'true'],
+      ] as const) {
+        git('config', k, v)
+      }
+      expect(await key(root)).toBe(before)
+      await writeFile(path.join(root, 'packages', 'b', 'src', 'x é.txt'), 'b2\n')
+      const fromA = path.join(root, 'packages', 'a')
+      const ids = (await dry(fromA, ['build', '--all', '--affected=HEAD'])).map((t) => t.id)
+      expect(ids).toEqual(['b#build'])
+    },
+    TIMEOUT,
+  )
+})
