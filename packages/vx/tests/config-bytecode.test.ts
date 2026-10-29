@@ -144,4 +144,39 @@ describe('workspace config bytecode', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'the bundle stays out of git under a cache dir elsewhere and no .vx/.gitignore',
+    async () => {
+      const cacheDir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-bytecode-cache-')))
+      try {
+        await writeFile(path.join(root, '.gitignore'), 'node_modules\n')
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+        await writeFile(
+          path.join(root, 'vx.config.mjs'),
+          "export default { name: 'ws', tasks: { hi: { exec: { command: 'true' } } } }\n",
+        )
+        const env = { ...process.env, VX_CACHE_DIR: cacheDir }
+        const vx = (...args: string[]): void => {
+          const p = Bun.spawnSync([process.execPath, BIN, ...args], {
+            cwd: root,
+            env,
+            stderr: 'pipe',
+          })
+          expect(p.exitCode, p.stderr.toString()).toBe(0)
+        }
+        expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root }).exitCode).toBe(0)
+        vx('lock')
+        vx('run', 'hi')
+        vx('run', 'hi')
+        expect((await compiled()).some((f) => f.endsWith('.json'))).toBe(true)
+        const status = Bun.spawnSync(['git', 'status', '--porcelain', '-uall'], { cwd: root })
+        const lines = status.stdout.toString().split('\n')
+        expect(lines.filter((l) => l.includes('.vx/cache/compiled'))).toEqual([])
+      } finally {
+        await rm(cacheDir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
