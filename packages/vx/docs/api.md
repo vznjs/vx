@@ -161,6 +161,11 @@ export class BoundedCapture {
     private readonly tailChars = CAPTURE_TAIL_CHARS,
   ) {}
   push(text: string, err = false): void
+  rebound(
+    headChars: number,
+    tailChars: number,
+    through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
+  ): BoundedCapture
   chunks(): CapturedChunk[]
   text(): string
 }
@@ -271,6 +276,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
   }): Promise<void>
@@ -409,6 +415,7 @@ export interface CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     absent?: boolean
@@ -1914,6 +1921,7 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry>
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
+  unlockedConfig: () => string | undefined
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

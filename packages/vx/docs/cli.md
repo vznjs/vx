@@ -2828,7 +2828,8 @@ setting by path, `{ value, source }`, `source` one of `env` /
 `orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
 runs, as the row), `restored24h` (of those hits, the ones that restored
 outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
-empty when none), `lockfile`, `sandbox` (`{ available, reason,
+empty when none), `lockfile`, `lockError` (why a run refuses the
+lock there, null when it reads it or there is none), `sandbox` (`{ available, reason,
 declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
 `untraced` the reason denied reads go unreported or null). The
 pretty rows render this object;

@@ -767,6 +767,7 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'resolveSync',
   'revision',
   'secrets',
+  'semver',
   'serve',
   'sleep',
   'sleepSync',
