@@ -100,6 +100,9 @@ const IGNORED: Record<string, string> = {
   TURBO_LOG_VERBOSITY: 'debug',
   TURBO_LOG_FILE: 'turbo.log',
   TURBO_EXPERIMENTAL_OTEL_ENABLED: 'true',
+  TURBO_PLATFORM_ENV: 'CI_ONLY_VAR',
+  TURBO_PLATFORM_ENV_DISABLED: '1',
+  TURBO_CONFIG_DIR_PATH: '/elsewhere/turborepo',
 }
 
 /** Turbo's `TURBO_MAPPING` (crates/turborepo-config/src/env.rs, 2.11), the OTel family as one. */
