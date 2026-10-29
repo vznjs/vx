@@ -117,6 +117,20 @@ describe('a refused word names the nearest one the verb takes', () => {
     ])
   })
 
+  // `vx lock --check=yes` named no flag: --check is no edit from itself.
+  it('a value given to a bare flag names the bare flag', async () => {
+    expect([
+      await refused(['lock', '--check=yes']),
+      await refused(['upgrade', '--global=true']),
+    ]).toEqual([
+      [1, '✗ vx lock  unknown flag: --check=yes\n\n  see vx lock --help\n\n  fix  --check\n'],
+      [
+        1,
+        '✗ vx upgrade  unknown flag: --global=true\n\n  see vx upgrade --help\n\n  fix  --global\n',
+      ],
+    ])
+  })
+
   it('a flag far from --help gets no hint (control)', async () => {
     expect(await refused(['lock', '--zzz'])).toEqual([
       1,

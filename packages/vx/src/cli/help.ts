@@ -356,6 +356,8 @@ export function flagHint(verb: string, arg: string): string {
   // from `--format`: a run with its cache reads turned off.
   if ((name === '--format' || name === '--json') && flags.includes('--dry'))
     return ' (the run as JSON is `vx last --format json` after it; the plan is --dry=json)'
+  // A bare flag handed a value (`--check=yes`) is no edit from itself.
+  if (name !== arg && flags.includes(name)) return ` (did you mean ${name}?)`
   // Another verb's own flag is no typo: `vx run --poll` was told "did you
   // mean --all?". Named only when one other verb takes it.
   const owners = CORE_VERBS.filter(
