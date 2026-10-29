@@ -140,6 +140,20 @@ export class TaskPipes {
 }
 ```
 
+Cost of `lineEnds` (2026-10-29, runCommand A/B, interleaved, min of 11,
+before arm a worktree of main 296536e17): a 9 MB flood on both streams
+with partial lines 337 ms wall against 371 before, CPU 416 against 363
+(medians 455 and 432); 100 MB on stdout
+alone 653 against 710; 20 000 short lines interleaved by a shell 121
+against 126. Alone, about 10 ns more per chunk, and 70 ns per line one
+stream holds behind the other's open line.
+
+The hold never delays what a user waits on past the bound: a prompt with
+no newline on the stream whose line is open goes at once (it is that
+line); one on the other stream goes within `OPEN_LINE_WAIT_MS`, its timer
+held to its start; at the exit, `end` lets everything go; and an
+`exec.interactive` task on a TTY has no pipes, so nothing passes here.
+
 ## Spawning rules
 
 - **Shell:** `Bun.spawn([executablePath('sh'), '-c', command], { argv0: 'sh', ... })`.

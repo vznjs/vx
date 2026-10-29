@@ -748,17 +748,33 @@ export function lineEnds(
   let open: 0 | 1 | undefined
   /** What the other stream wrote while that line was open: one side at most. */
   const held = ['', '']
+  /** When what waits began to: the bound counts from there. */
+  let heldAt = 0
+  // One timer, re-armed only when it fires early: a hold set and cleared
+  // its own per line, and a task interleaving short lines paid a timer each
+  // (+26 ms of CPU on 20 000 lines, 2026-10-29).
   let timer: ReturnType<typeof setTimeout> | undefined
+  const arm = (ms: number): void => {
+    timer = setTimeout(due, ms)
+    timer.unref()
+  }
+  const due = (): void => {
+    timer = undefined
+    const s = held[0]!.length > 0 ? 0 : held[1]!.length > 0 ? 1 : undefined
+    if (s === undefined) return
+    const left = heldAt + OPEN_LINE_WAIT_MS - performance.now()
+    if (left > 0) arm(left)
+    else release(s, true)
+  }
   const write = (s: 0 | 1, text: string): void => {
     open = text.endsWith('\n') ? undefined : s
     sinks[s]?.(text)
   }
   const release = (s: 0 | 1, broken: boolean): void => {
     const text = held[s]!
+    if (text.length === 0) return
     held[s] = ''
-    clearTimeout(timer)
-    timer = undefined
-    if (text.length > 0) write(s, broken ? `\n${text}` : text)
+    write(s, broken ? `\n${text}` : text)
   }
   const push = (s: 0 | 1, chunk: string): void => {
     if (chunk.length === 0) return
@@ -774,18 +790,18 @@ export function lineEnds(
       release(other, false)
       return push(s, chunk.slice(nl + 1))
     }
+    if (held[s]!.length === 0) heldAt = performance.now()
     held[s] += chunk
     if (held[s]!.length > OPEN_LINE_HOLD_CHARS) return release(s, true)
-    if (timer === undefined) {
-      timer = setTimeout(() => release(s, true), OPEN_LINE_WAIT_MS)
-      timer.unref()
-    }
+    if (timer === undefined) arm(OPEN_LINE_WAIT_MS)
   }
   return {
     ...(onStdout && { onStdout: (chunk: string) => push(0, chunk) }),
     ...(onStderr && { onStderr: (chunk: string) => push(1, chunk) }),
     own: (text) => (open !== undefined ? `\n${text}` : text),
     end: () => {
+      clearTimeout(timer)
+      timer = undefined
       release(0, true)
       release(1, true)
     },
