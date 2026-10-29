@@ -57,54 +57,34 @@ describe('flows.md names owners that exist', () => {
   })
 })
 
-// Its performance table is a COPY of one in benchmarks.md, and four other
-// pages that quote those numbers are pinned against that page while this one
-// — a contract doc — was not (item 383, 2026-09-19). Row-wise, not
-// figure-wise: the cells after the runner's name must appear together
-// on a benchmarks.md row, so a figure cannot drift onto the wrong runner.
+// Its performance table quotes the head-to-head, whose figures the site
+// fills from the measured data (2026-10-29): each runner row names its
+// own runner's tokens, so a figure cannot drift onto the wrong runner, and
+// benchmarks.md's head-to-head carries the same tokens.
 describe('patterns.md quotes the benchmark rows benchmarks.md has', () => {
-  it('each runner row is a row of the head-to-head table, cells and all', () => {
+  it("each runner row is its runner's tokens, as on the head-to-head", () => {
     const doc = readFileSync(path.join(pkg, 'docs', 'patterns.md'), 'utf8')
     const bench = readFileSync(path.join(pkg, 'docs', 'benchmarks.md'), 'utf8')
-    const tableAt = doc.indexOf('| Runner | Warm (no restore)')
+    const tableAt = doc.indexOf('| Runner    | Nothing changed')
     expect(tableAt).toBeGreaterThan(0)
-    const leadIn = doc.slice(doc.indexOf('## Performance'), tableAt)
-    const table = doc.slice(tableAt)
-    const rows = table
+    const rows = doc
+      .slice(tableAt)
       .split('\n')
       .slice(2)
       .filter((line) => line.startsWith('|'))
       .map((line) =>
         line
           .split('|')
-          .slice(2, 4)
-          // The figure, not its aside: patterns.md says `(vx 1.1× faster)`
-          // where the dated benchmarks.md row says `(1.2×)`
-          // (2026-10-04: every cell names vx's multiple).
-          .map((cell) => cell.trim().replace(/\s*\([^)]*\)$/, '')),
+          .slice(1, 4)
+          .map((cell) => cell.trim()),
       )
-    expect(rows.length).toBe(3)
-    for (const cells of rows) {
-      expect(cells.length).toBe(2)
-      const row = new RegExp(
-        `^\\|[^|]*\\|\\s*${cells.map((c) => c.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('(?:\\s*\\([^|)]*\\))?\\s*\\|\\s*')}(?:\\s*\\([^|)]*\\))?\\s*\\|`,
-        'm',
-      )
-      const found = row.exec(bench)
-      expect({ cells, onBenchmarks: found !== null }).toEqual({ cells, onBenchmarks: true })
-      // And the table is attributed to the workspace it was measured on.
-      // These rows are the 476-package run; the page called them the
-      // 3,270-task one and cited RESULTS.md, which benchmarks.md says IS
-      // the 3,270-task run — two wrong attributions in one sentence, and
-      // the figures above them were right, so the row pin alone passed it
-      // (item 383, 2026-09-19).
-      const scales = [...bench.slice(0, found!.index).matchAll(/([\d,]+) packages/g)]
-      const scale = scales[scales.length - 1]![1]!
-      expect({ cells, scale, inLeadIn: leadIn.includes(scale) }).toEqual({
-        cells,
-        scale,
-        inLeadIn: true,
-      })
+    const ALIAS: Record<string, string> = { vx: 'vx', Turborepo: 'turbo', Nx: 'nx' }
+    expect(rows.map((r) => r[0])).toEqual(Object.keys(ALIAS))
+    for (const [runner, warm, restore] of rows) {
+      const a = ALIAS[runner!]!
+      expect([warm, restore]).toEqual([`%bench.${a}.warm%`, `%bench.${a}.restore%`])
+      expect(bench).toContain(warm!)
+      expect(bench).toContain(restore!)
     }
   })
 })

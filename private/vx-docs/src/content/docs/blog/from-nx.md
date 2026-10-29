@@ -132,12 +132,14 @@ any target Nx marks `continuous`:
 
 ## What replaces the rest
 
-| 9,603 tasks, native config | vx | Nx 24.0.1 |
+| %bench.tasks% tasks, native config | vx | Nx |
 | --- | --- | --- |
-| Nothing changed | 799 ms | 24.15 s |
-| Cold build: CPU the runner burns | 36.64 s | 5 min 34 s |
+| Nothing changed | %bench.vx.warm% | %bench.nx.warm% |
+| Cold build: CPU the runner burns | %bench.vx.cpu% | %bench.nx.cpu% |
 
-<small>Synthetic monorepo, 1,601 projects · linux x64, 4 cores, concurrency 10 · vx `0be036747` · 2026-10-23 · [benchmarks](../../benchmarks/)</small>
+<small>Synthetic monorepo, %bench.projects% projects · concurrency %bench.concurrency% · [benchmarks](../../benchmarks/)</small>
+
+<small>%bench.provenance%</small>
 
 - **The daemon:** vx has [none](../no-daemon/).
 - **Distributed task execution:** `@vzn/vx-dte` (alpha) on your own CI

@@ -179,14 +179,14 @@ cache meter carries the message.)
 ## Performance
 
 Sharing the patterns doesn't mean sharing the overhead. On the
-476-package / 1,428-node synthetic workspace
-(`private/vx-bench/compare.ts 20 25 1`, 2026-09-02):
+head-to-head's %bench.tasks%-task synthetic workspace, each tool in its
+native config, the time each adds over the ideal run:
 
-| Runner | Warm (no restore) | Warm (restore) |
-| ------ | ----------------- | -------------- |
-| **vx** | **297 ms**        | **416 ms**     |
-| Turbo  | 342 ms            | 612 ms         |
-| Nx     | 1.38 s            | 1.33 s         |
+| Runner    | Nothing changed    | Nothing changed, outputs restored |
+| --------- | ------------------ | --------------------------------- |
+| vx        | %bench.vx.warm%    | %bench.vx.restore%                |
+| Turborepo | %bench.turbo.warm% | %bench.turbo.restore%             |
+| Nx        | %bench.nx.warm%    | %bench.nx.restore%                |
 
 A cached run is all runner overhead. Cold builds are compared by the
 time the runner adds, on [`benchmarks.md`](./benchmarks.md).

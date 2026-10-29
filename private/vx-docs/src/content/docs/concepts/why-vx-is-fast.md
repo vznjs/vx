@@ -13,13 +13,15 @@ the raw numbers in [Benchmarks](../../benchmarks/).
 These are reproducible on your own machine, not marketing figures:
 
 - **Runner overhead**, the number to read first: the time a runner adds
-  on top of the ideal run. On the synthetic 9,603-task workspace, with
-  nothing changed, vx adds 799 ms, Turborepo 927 ms,
-  Vite Task 12.07 s and Nx 24.15 s. On a
-  cold build over its 1 min 53 s ideal schedule, vx adds 7.57 s,
-  Turborepo 9.63 s and Nx 3 min 6 s;
-  Vite Task 9.01 s.
-  Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ. Run 2026-10-23 on linux x64, 4 cores, concurrency 10: vx at commit 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
+  on top of the ideal run. On the synthetic %bench.tasks%-task workspace, with
+  nothing changed, vx adds %bench.vx.warm%, Turborepo %bench.turbo.warm%,
+  Vite Task %bench.vt.warm% and Nx %bench.nx.warm%. On a
+  cold build over its %bench.ideal.cold% ideal schedule, vx adds %bench.vx.cold%,
+  Turborepo %bench.turbo.cold%, Nx %bench.nx.cold% and Vite Task %bench.vt.cold%.
+  The workload: %bench.projects% projects in %bench.levels% dependency levels;
+  build %bench.task.build%, test and typecheck %bench.task.test%, lint
+  %bench.task.lint%, publish %bench.task.publish%.
+  %bench.provenance%
 
 - **vx alone** — `bun private/vx-bench/run.ts [projects]` measures vx across
   fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot,
@@ -30,9 +32,9 @@ These are reproducible on your own machine, not marketing figures:
   every artifact, so it costs more than the untouched tree; the
   current floors are in [Benchmarks](../../benchmarks/).
 - **Head-to-head vs Turborepo, Nx and Vite Task** — `bun private/vx-bench/compare.ts` scaffolds
-  one repo (1,601 projects, 30 dependency levels, 9,603 tasks) and runs every runner cold,
+  one repo (%bench.projects% projects, %bench.levels% dependency levels, %bench.tasks% tasks) and runs every runner cold,
   with nothing changed and with outputs restored.
-  The committed results live in
+  The site's figures are its latest run, on
   [Benchmarks](../../benchmarks/). Run it yourself — every number here is
   a command away.
 

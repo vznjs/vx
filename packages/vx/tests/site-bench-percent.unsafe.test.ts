@@ -1,7 +1,7 @@
 // No post or guide quotes a benchmark figure with how much faster vx is
 // (2026-10-12: never say how much faster vx is; the numbers speak).
-// update-site.ts prints raw figures; a hand-typed `(vx N× faster)` would
-// bring the claim back.
+// The site fills raw figures from the measured data; a hand-typed
+// `(vx N× faster)` would bring the claim back.
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'

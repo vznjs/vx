@@ -27,10 +27,10 @@ function entry({ subject, body }: Commit): { title: string; footer: string } {
   const lines = body.split('\n')
   const start = lines.findIndex((l) => /^BREAKING[ -]CHANGE: /.test(l))
   if (start === -1) return { title, footer: '' }
-  // A blank line ends it, or a git trailer: #4876's body ran its
-  // `Co-Authored-By:` straight under the footer, and the page printed it.
+  // A footer ends at a blank line or at the git trailers (`Co-Authored-By:`)
+  // a squash message can put in its paragraph (#4876's did).
   const end = lines.findIndex(
-    (l, i) => i > start && (l.trim() === '' || /^[A-Z][a-z]*(?:-[A-Za-z]+)+: /.test(l)),
+    (l, i) => i > start && (l.trim() === '' || /^[A-Za-z]+(?:-[A-Za-z]+)+: /.test(l)),
   )
   const footer = lines
     .slice(start, end === -1 ? undefined : end)

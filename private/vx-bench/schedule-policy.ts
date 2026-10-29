@@ -32,6 +32,7 @@ import type { HistoryTable, TaskHistory, TaskNode } from '@vzn/vx'
 // as core and the plugin rank, and either entry point loads all of core.
 import { computeReverseDepCount, mergePriorities } from '../../packages/vx/src/graph/priorities.js'
 import { criticalPath } from '../../packages/vx/src/graph/critical-path.js'
+import { prng } from './prng.js'
 
 export type Policy = 'count' | 'median' | 'unknown-first' | 'oracle'
 export const POLICIES: readonly Policy[] = ['count', 'median', 'unknown-first', 'oracle']
@@ -206,18 +207,6 @@ export function simulate(
 }
 
 // --- Graphs -----------------------------------------------------------------
-
-/** mulberry32: small, seeded, and the same on every machine. */
-export function prng(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 /** Log-normal ms, median 1 s, σ = 1 (a 10× spread covers ~95 %), clamped to [10 ms, 60 s]. */
 function duration(rand: () => number): number {

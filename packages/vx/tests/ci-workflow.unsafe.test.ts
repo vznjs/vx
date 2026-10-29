@@ -46,16 +46,29 @@ const checkout = (j: Job | undefined): Step | undefined =>
 describe('ci.yml', () => {
   // The run only plans and dispatches: Linux x64, so every macOS and arm
   // runner is a worker's. The benchmarks run beside it on a runner of
-  // their own.
+  // their own; every run waits for the site's benchmark rows first.
   it('is one run, and the benchmarks beside it', () => {
     const top =
       "github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size"
+    const afterBench = `!cancelled() && (needs.bench.result == 'success' || needs.bench.result == 'skipped') && ${top}`
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
-      ['linux', 'VX DTE', 'ubuntu-latest', top, undefined],
+      ['linux', 'VX DTE', 'ubuntu-latest', afterBench, 'bench'],
+      ['bench', 'Bench', 'ubuntu-latest', top, undefined],
       ['perf', 'Perf', 'ubuntu-latest', top, undefined],
     ])
+  })
+
+  // The site's head-to-head rows are timed on a machine of their own, one
+  // runner at a time, before the DTE run restores them: a benchmark never
+  // runs under DTE (2026-10-29).
+  it('measures the site benchmark off the DTE run, one runner at a time', () => {
+    const bench = doc.jobs['bench']!
+    expect(JSON.stringify(bench)).not.toContain('VX_DTE')
+    expect(bench.steps?.at(-1)?.run).toBe(
+      "bun packages/vx/src/bin.ts run site.numbers --concurrency 1 ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}",
+    )
   })
 
   // A DTE worker is packed for the run's wall time, so a benchmark there
@@ -68,7 +81,7 @@ describe('ci.yml', () => {
       "bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}",
     )
     const bench = readFileSync(path.join(dir, '../../private/vx-bench/vx.config.ts'), 'utf8')
-    expect(bench).toContain("dependsOn: ['lint', 'test', 'check.site'],")
+    expect(bench).toContain("dependsOn: ['lint', 'test'],")
   })
 
   // A merged PR's run held its workers' runners until it ended, and the next
@@ -80,7 +93,7 @@ describe('ci.yml', () => {
       group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
       'cancel-in-progress': "${{ github.event_name == 'pull_request' }}",
     })
-    expect(doc.jobs['linux']!.if).toStartWith("github.event.action != 'closed' && ")
+    expect(doc.jobs['linux']!.if).toContain("&& github.event.action != 'closed' && ")
   })
 
   // The run fetches a merge-base itself when it needs one (--affected,
@@ -97,7 +110,10 @@ describe('ci.yml', () => {
       Object.entries(doc.jobs).flatMap(([id, j]) =>
         j.permissions?.['checks'] === undefined ? [] : [[id, j.permissions['checks']]],
       ),
-    ).toEqual([['linux', 'read']])
+    ).toEqual([
+      ['linux', 'read'],
+      ['bench', 'read'],
+    ])
   })
 
   // A PR that changes the relay runs on its own relay code, Workers Builds'
@@ -185,12 +201,13 @@ describe('ci.yml', () => {
   // The remote cache serves every hit (2026-10-23: "we dont need
   // to carry any vx cache anymore"), and Bun's packages restored took as
   // long as a cold install (4-9 s against about 5 s, main 68b851d): only
-  // the sandbox runtime of a worker and of the benchmarks' job is kept.
+  // the sandbox runtime of a worker and of the two benchmark jobs is kept.
   it('carries no vx cache between runs', () => {
     const cached = [...Object.values(doc.jobs), worker].flatMap((j) =>
       j.steps!.filter((s) => s.uses?.startsWith('actions/cache')).map((s) => s.with?.['path']),
     )
     expect(cached).toEqual([
+      '~/.cache/vx/setup-debs',
       '~/.cache/vx/setup-debs',
       '~/.cache/vx/setup-debs',
       '~/.cache/vx/setup-debs',

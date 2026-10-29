@@ -13,6 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { FIGURES } from '../src/bench/data.ts'
 import {
   CHECKPOINT,
   CHOICES,
@@ -362,7 +363,8 @@ describe('the choosing page', () => {
   })
 
   // A figure on this page is a claim about speed, and the site's rule is
-  // that every one comes from benchmarks.md, as printed there.
+  // that every one comes from benchmarks.md, as printed there, or from the
+  // measured data that page's head-to-head is filled from.
   it('quotes only figures benchmarks.md measured', () => {
     const bench = path.join(import.meta.dir, '../src/content/docs/benchmarks.md')
     if (!existsSync(bench)) throw new Error(`${bench} is missing: run the site's import task first`)
@@ -376,7 +378,8 @@ describe('the choosing page', () => {
       '1.9×',
     ])
     const figures = [...text(main).matchAll(FIGURE)].map((m) => m[0])
-    expect(figures.filter((f) => !measured.includes(f))).toEqual([])
+    const filled = new Set(FIGURES.values())
+    expect(figures.filter((f) => !measured.includes(f) && !filled.has(f))).toEqual([])
   })
 
   it("loads the element from the page's scripts, with no platform in its chunk", () => {

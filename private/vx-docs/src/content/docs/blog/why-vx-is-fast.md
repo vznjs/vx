@@ -6,20 +6,22 @@ authors:
 tags:
   - performance
   - internals
-excerpt: 'With nothing changed, vx adds 799 ms to a 9,603-task run, with no daemon. Five design choices make that number.'
+excerpt: 'What vx adds to a run with nothing changed, with no daemon, and the five design choices behind that number.'
 ---
 
-With nothing changed, vx adds **799 ms** to a 9,603-task run. No daemon
+With nothing changed, vx adds **%bench.vx.warm%** to a %bench.tasks%-task run. No daemon
 keeps it warm.
 
-| Time added over the ideal run, 1,601 projects, 9,603 tasks | vx      | Turborepo | Nx         | Vite Task |
-| ---------------------------------------------------------- | ------- | --------- | ---------- | --------- |
-| Nothing changed                                            | 799 ms  | 927 ms    | 24.15 s    | 12.07 s   |
-| Nothing changed, outputs restored                          | 1.28 s  | 2.01 s    | 24.45 s    | 11.86 s   |
-| Cold build                                                 | 7.57 s  | 9.63 s   | 3 min 6 s  | 9.01 s    |
-| Cold build: CPU the runner burns                           | 36.64 s | 1 min 12 s | 5 min 34 s | 25.32 s  |
+| Time added over the ideal run, %bench.projects% projects, %bench.tasks% tasks | vx | Turborepo | Nx | Vite Task |
+| --- | --- | --- | --- | --- |
+| Nothing changed | %bench.vx.warm% | %bench.turbo.warm% | %bench.nx.warm% | %bench.vt.warm% |
+| Nothing changed, outputs restored | %bench.vx.restore% | %bench.turbo.restore% | %bench.nx.restore% | %bench.vt.restore% |
+| Cold build | %bench.vx.cold% | %bench.turbo.cold% | %bench.nx.cold% | %bench.vt.cold% |
+| Cold build: CPU the runner burns | %bench.vx.cpu% | %bench.turbo.cpu% | %bench.nx.cpu% | %bench.vt.cpu% |
 
-<small>Synthetic monorepo, 1,601 projects, 30 levels · linux x64, 4 cores, concurrency 10 · vx `0be036747`, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0, native configs · 2026-10-23 · [benchmarks](../../benchmarks/)</small>
+<small>Synthetic monorepo, %bench.projects% projects, %bench.levels% levels · concurrency %bench.concurrency%, native configs · [benchmarks](../../benchmarks/)</small>
+
+<small>%bench.provenance%</small>
 
 Five design choices make that number. Each one also makes the cache
 harder to get wrong.

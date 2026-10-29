@@ -6,12 +6,13 @@
 // (src/components/landing/one-run.ts). What the design says is written out
 // here by hand, never read from the module it holds.
 //
-// The measurements are not checked here: `@vzn/vx-bench#check.site` holds
-// the benchTable block and the graph's size to results.json.
+// The measurements come from src/data/bench.json (bench.data); the chart's
+// figures are held to it below.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { FIGURES } from '../src/bench/data.ts'
 import { CALLOUTS, oneRun } from '../src/components/landing/one-run.js'
 import { narrowOf, type Picture } from '../src/components/guide/diagram/diagram.js'
 
@@ -284,7 +285,7 @@ describe('the landing page', () => {
     expect(run).not.toMatch(/<script\b|\son[a-z]+=/)
   })
 
-  // The numbers are check.site's; the shape is here: one chart per number,
+  // The numbers are the measured data's; the shape is here: one chart per number,
   // vx's bar first, no bar saying how much faster vx is (2026-10-12), each bar
   // as long as its time against the slowest, the formula under the chart,
   // and three reasons under it.
@@ -316,6 +317,16 @@ describe('the landing page', () => {
       const notes = bars.map((m) => /<span class="vx-bar-note">([\s\S]*?)<\/span>/.exec(m[3]!)?.[1])
       expect(notes).toEqual([undefined, undefined, undefined, undefined])
     }
+    // Each bar prints the measured data's figure for its runner and row.
+    const ROWS = ['warm', 'restore', 'cold', 'cpu']
+    figures.forEach((f, i) => {
+      const values = [...f.matchAll(/<span class="vx-bar-value">([\s\S]*?)<\/span>/g)].map((m) =>
+        text(m[1]!),
+      )
+      expect(values).toEqual(
+        ['vx', 'turbo', 'nx', 'vt'].map((r) => FIGURES.get(`${r}.${ROWS[i]}`) ?? 'missing'),
+      )
+    })
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
       'Time each tool adds over the ideal run; lower is better.',
     )
