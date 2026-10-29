@@ -50,7 +50,9 @@ boolean: a string (`process.env.X`) is refused.
 it is trimmed, and a blank one is unset. `headers`
 adds gRPC metadata to every call: a hosted server's API key goes there
 (`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`); a name
-gRPC metadata cannot carry (a space, a `-bin` suffix) is refused at startup.
+gRPC metadata cannot carry (a space, a `-bin` suffix) is refused at startup,
+and a header or `platform` value that is no string (an unset variable) as
+`reapi()` is called.
 `toolName` and `toolVersion` (default `vx`, `0.0.0`) fill each call's
 `RequestMetadata.tool_details`, and `correlatedInvocationsId` groups several
 runs as one build in a server's UI.

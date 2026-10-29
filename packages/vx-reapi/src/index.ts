@@ -255,6 +255,13 @@ function refuseBadNumbers(options: ReapiPluginOptions): void {
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
   refuseBadNumbers(options)
+  // An unset variable as a value was sent as an empty one on every action.
+  for (const key of ['platform', 'headers'] as const)
+    for (const [name, value] of Object.entries(options[key] ?? {}))
+      if (typeof value !== 'string')
+        throw new UserError(
+          `reapi() option "${key}.${name}" must be a string, got ${key === 'headers' && value !== undefined ? typeof value : String(value)}`,
+        )
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {
