@@ -1069,7 +1069,7 @@ Status legend:
 | `▶`    | cache miss — task would execute (under `--force` too: nothing is read, what runs is saved) |
 | `∅`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
 | `·`    | `@noop` — task would not run anywhere                                                      |
-| `−`    | not started — a server you did not request whose every dependant restores a local hit      |
+| `−`    | not started — a server you did not request whose every dependant is a hit, local or remote |
 | `·`    | skipped — `exec.platforms` leave this machine out, or a task it depends on is skipped      |
 | `○`    | group task (suppressed in human view; in JSON)                                             |
 
