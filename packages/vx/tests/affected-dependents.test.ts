@@ -230,6 +230,19 @@ describe('--affected follows task edges (2026-10-04)', () => {
   )
 
   it(
+    'a bare directory input selects on an edit under it (vercel/turborepo#14804)',
+    async () => {
+      await commitEdit(
+        'pkgs/lib/vx.config.mjs',
+        CONFIG.replace("['src/**', '!src/**/*.test.ts']", "['src', '!src/**/*.test.ts']"),
+      )
+      await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
+      expect(planned(['build'], '--affected=HEAD~1')).toEqual(['app#build', 'lib#build'])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a change no requested task reaches is a clean "nothing affected"',
     async () => {
       await commitEdit('pkgs/lib/src/index.test.ts', 'test 2')
