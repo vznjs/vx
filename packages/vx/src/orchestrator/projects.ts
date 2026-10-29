@@ -360,6 +360,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         // the loader accepts from a user, and the refusal names both the
         // config file and the plugin whose edit broke it.
         const where = meta.configPath ?? `${meta.name} (no config file)`
+        const name = config.name
         await applyProjectHooks(
           plugins,
           config,
@@ -372,12 +373,17 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
             projects: args.projectMetas,
             lock: args.lock === true,
           },
-          (plugin) =>
-            validateProjectConfig(
-              config,
-              `${where} (after plugin '${plugin.name}')`,
-              meta.configPath,
-            ),
+          (plugin) => {
+            const at = `${where} (after plugin '${plugin.name}')`
+            validateProjectConfig(config, at, meta.configPath)
+            // Projects are named and edged before any config loads: a new
+            // `name` here validated, and the project kept its old one.
+            if (config.name !== name) {
+              throw new UserError(
+                `${at}: project "${meta.name}" is named before the project stage, so \`name: ${JSON.stringify(config.name)}\` cannot rename it — a plugin names a project in its \`discover\` hook`,
+              )
+            }
+          },
         )
       }
       const built = withDefaultBuild(config)

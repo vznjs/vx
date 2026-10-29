@@ -717,6 +717,24 @@ describe('startedVersion', () => {
     expect(startedVersion(await fake('other', 'echo "bun 1.4.2"'))).toBeNull()
   })
 
+  it('is null for a binary the OS will not run, so the rollback can run', async () => {
+    // A new binary on a noexec mount, or one without its execute bit, made
+    // the spawn throw EACCES: the upgrade crashed with the new binary in
+    // place and the old one never put back.
+    const bin = await fake('noexec', 'echo "vx 9.9.9"')
+    await chmod(bin, 0o644)
+    expect([startedVersion(bin), startedVersion(dir)]).toEqual([null, null])
+    const dest = await fake('noexec-dest', 'echo "vx 0.0.1"')
+    await expect(
+      replaceBinary(
+        dest,
+        () => Promise.resolve(new TextEncoder().encode('#!/bin/sh\necho "vx 0.0.2"\n')),
+        () => startedVersion(path.join(dir, 'no-such-vx')) !== null,
+      ),
+    ).rejects.toThrow('the previous vx is back in place')
+    expect(startedVersion(dest)).toBe('vx 0.0.1')
+  })
+
   it('gives up on a binary that does not answer, so the rollback can run', async () => {
     // The answer decides the rollback, and it was unbounded: a new binary
     // that hung on start held `vx upgrade` forever with the old one never
@@ -992,6 +1010,26 @@ describe('vx upgrade (CLI)', () => {
     )
     expect(code).toBe(1)
     expect(err).toBe(noticed('vx upgrade: unexpected argument: v2 (see `vx upgrade --help`)\n'))
+  })
+})
+
+describe('vx upgrade (CLI), a tag that is no version', () => {
+  it('is refused as such, before the compiled-binary guard', async () => {
+    // `vx upgrade lastest` said "runs from source" (or, from npx, "runs from a
+    // package-manager cache"), never that the tag was the mistake.
+    const runtime = path.join(dir, 'bun-copy-3')
+    await copyFile(process.execPath, runtime)
+    await chmod(runtime, 0o755)
+    const proc = Bun.spawn({
+      cmd: [runtime, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'upgrade', 'lastest'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const code = await proc.exited
+    expect([code, await new Response(proc.stderr).text()]).toEqual([
+      1,
+      noticed('vx upgrade: lastest is not a version (expected v<major>.<minor>.<patch>)\n'),
+    ])
   })
 })
 

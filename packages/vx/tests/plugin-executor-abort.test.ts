@@ -199,7 +199,7 @@ describe('an executor that ignores the signal', () => {
   const deaf = pluginSource(
     'org/deaf',
     `{ executor() { return { name: 'deaf', execute(req) {
-        req.onStderr('started\\n')
+        req.onStderr('working')
         return new Promise(() => {})
       } } } }`,
   )
@@ -233,8 +233,9 @@ describe('an executor that ignores the signal', () => {
       ['app#slow', 'failed', true],
     ])
     expect(Date.now() - started).toBeLessThan(10_000)
-    expect(stderr.join('')).toContain(
-      "vx: plugin 'org/deaf' (executor 'deaf') did not return within 200ms of the timeout (300ms); abandoned\n",
+    // On its own line: the executor's last output ended mid-line.
+    expect(stderr.join('')).toStartWith(
+      "working\nvx: plugin 'org/deaf' (executor 'deaf') did not return within 200ms of the timeout (300ms); abandoned\n",
     )
   }, 20_000)
 
@@ -257,3 +258,30 @@ describe('an executor that ignores the signal', () => {
     expect(r.outcomes.map((o) => [o.node.id, o.status])).toEqual([['app#slow', 'aborted']])
   }, 20_000)
 })
+
+// The scheduler prints a thrown executor's line into the task's stream: after
+// a partial line it read `partial[vx] internal error in app#t: …`.
+it('the line naming a thrown executor starts its own line', async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/thrower',
+        `{ executor() { return { name: 'thrower', async execute(req) {
+            req.onStdout('partial')
+            throw new Error('boom')
+          } } } }`,
+      ),
+    ]),
+  )
+  await addProject(root, 'app', `export default { tasks: { t: { exec: { command: 'true' } } } }`)
+  const seq: string[] = []
+  await run({
+    cwd: root,
+    tasks: ['t'],
+    projects: ['app'],
+    log: { ...silent, taskStdout: (_n, c) => seq.push(c), taskStderr: (_n, c) => seq.push(c) },
+    handleSignals: false,
+  })
+  expect(seq.join('')).toStartWith('partial\n[vx] ')
+}, 20_000)

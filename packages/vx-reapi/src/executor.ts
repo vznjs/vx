@@ -1294,13 +1294,14 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
           .join('/')}`
   const root = cdInto === '' ? `"$PWD${climb}"` : '"$PWD"'
   // Order matters: VX_ROOT is read BEFORE the cd, the project-local bin dir
-  // AFTER it, so both are right whichever mode we are in.
+  // AFTER it, so both are right whichever mode we are in. The project's
+  // first, as core's taskBinDirs: a tool the project pins beats the root's.
   // Quoted as the forwarded args are: a project directory is a name like
   // any other, and `it's` ended the quote and ran the rest as script (L-7).
   const cd = cdInto === '' ? '' : `cd '${cdInto.replaceAll("'", `'\\''`)}' || exit 1; `
   return (
     `VX_ROOT=${root}; ${cd}` +
-    `export PATH="$VX_ROOT/node_modules/.bin:$PWD/node_modules/.bin:$PATH"; ` +
+    `export PATH="$PWD/node_modules/.bin:$VX_ROOT/node_modules/.bin:$PATH"; ` +
     command
   )
 }
@@ -1533,7 +1534,7 @@ export async function materialiseOutputs(
     await writeOutput(abs, bytes, created)
     // REAPI carries the executable bit per output; a build that produces a
     // script and a later task that runs it depends on it surviving.
-    if (f.is_executable === true) await chmod(abs, 0o755)
+    if (f.is_executable === true) await chmod(abs, masked(0o755))
   })
 
   // `OutputSymlink` — a declared output that is a link, not a file. Restoring
@@ -1869,14 +1870,23 @@ async function materialiseTree(
       }
       await fence.landing(abs)
       await writeOutput(abs, bytes, created)
-      if (f.is_executable) await chmod(abs, 0o755)
+      if (f.is_executable) await chmod(abs, masked(0o755))
       // NodeProperties.unix_mode is authoritative when the server sent it.
       const mode = f.node_properties?.unixMode
       // Permission bits only: a server's setuid or setgid bit is not a build output's.
-      if (mode !== undefined) await chmod(abs, mode & 0o777)
+      if (mode !== undefined) await chmod(abs, masked(mode))
     })
     i = j
   }
+}
+
+/**
+ * A mode as this machine gives it: minus the umask, as a local build and
+ * core's restore do. A server's 0777 was written world-writable under
+ * umask 022, and 0755 world-readable under 077.
+ */
+function masked(mode: number): number {
+  return mode & 0o777 & ~process.umask()
 }
 
 /** Output files `materialiseOutputs` writes at once. */
