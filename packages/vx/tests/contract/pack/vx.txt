@@ -135,6 +135,7 @@ src/orchestrator/run-context.ts
 src/orchestrator/run-failures.ts
 src/orchestrator/run-id.ts
 src/orchestrator/run-keys.ts
+src/orchestrator/run-live.ts
 src/orchestrator/run-lock.ts
 src/orchestrator/run-records.ts
 src/orchestrator/run-report.ts
@@ -174,6 +175,7 @@ src/util/colors.ts
 src/util/config-frame.ts
 src/util/dependency-spec.ts
 src/util/edit-distance.ts
+src/util/env-flag.ts
 src/util/errors.ts
 src/util/essential-env.ts
 src/util/git-ignored.ts
@@ -203,6 +205,7 @@ src/util/write-file.ts
 src/version.ts
 src/workspace/affected.ts
 src/workspace/bracket-literal.ts
+src/workspace/canonical-dir.ts
 src/workspace/config-bytecode.ts
 src/workspace/config-eval.ts
 src/workspace/config-imports.ts
