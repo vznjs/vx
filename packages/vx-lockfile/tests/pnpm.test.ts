@@ -2,7 +2,7 @@
 // a lockfile change re-keys exactly the projects whose reachable packages
 // changed, `--affected` names the same projects, and a warm run reads the
 // memo instead of parsing.
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
