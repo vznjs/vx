@@ -148,7 +148,8 @@ The same relay as a `fetch` handler, to mount in a server of your own
   `TokenError` carrying the `status` (401 or 403) the relay answers.
 - `parseAllow(list)` reads `ALLOW`'s entries into `Allowed`s, each
   `issuer:owner/repo:workflow` read from the right (an issuer holds `:`s),
-  or throws naming the entry it cannot read.
+  or throws naming the entry it cannot read. An issuer is `https://`, or
+  plain `http://` only to `127.0.0.1`, as the cache and history servers read it.
 - `runClaimsOf(iss)` names the claims that bind a run: `repository_id`
   for GitHub Actions, `project_id` otherwise.
 - `repositoryClaimOf(iss)` names the claim that names a token's
