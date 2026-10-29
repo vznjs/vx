@@ -268,6 +268,24 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
     ]).toEqual([true, false])
   })
 
+  // npm strips a byte-order mark, and so does every other package.json
+  // read here; the workspace check did not, so a BOM'd root lost to the
+  // nearest package.json below it.
+  it('outside git, takes an outer workspace whose package.json opens with a BOM', async () => {
+    const outer = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-init-bom-')))
+    roots.push(outer)
+    await writeFile(path.join(outer, 'package.json'), '\uFEFF{"name":"r","workspaces":["a"]}\n')
+    await mkdir(path.join(outer, 'a'))
+    await writeFile(path.join(outer, 'a', 'package.json'), '{"name":"a"}\n')
+    const env = { GIT_CEILING_DIRECTORIES: path.dirname(outer) }
+    const r = await vx(path.join(outer, 'a'), ['init', '--dry'], env)
+    const root = r.out
+      .split('\n')
+      .find((l) => l.trimStart().startsWith('root '))
+      ?.trim()
+    expect([r.code, r.err, root]).toEqual([0, '', `root      ${outer}`])
+  })
+
   // A Bun workspace with scripts got an empty root project and a `next`
   // that never named the tool that makes scripts tasks (2026-10-26).
   it('names vx-migrate in next when there are scripts to map', async () => {
