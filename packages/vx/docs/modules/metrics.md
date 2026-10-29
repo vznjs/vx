@@ -101,7 +101,7 @@ naming them), and `shortRunId(db, id)` is the shortest unique prefix, at
 least 13 characters, `vx last --list` prints. `vx why` and `vx last`
 take ids through it.
 
-Every function but `diffKeyComponents` takes an open `bun:sqlite`
+Every function but `diffKeyComponents` and `upstreamTask` takes an open `bun:sqlite`
 `Database` (the caller owns the `Cache` lifecycle — `cache.dbHandle()`),
 returns JSON-safe shapes (bigint spans as decimal strings, like
 `WireEvent.timeUnixNano`), and never throws on a missing row:
