@@ -472,7 +472,7 @@ and exits 0, so a docs-only commit passes `vx run lint test build
   back, the note says so (`no projects selected: !app excluded every
 project the other filters matched`).
 - A name or path pattern that matches nothing is still an error, as a
-  likely typo. One that matches nothing beside one that matched prints a
+  likely typo, even beside a ref (`apq[main]`). One that matches nothing beside one that matched prints a
   warning.
 
 **An empty selection never cancels an anchored task.** Project scope
@@ -2095,7 +2095,9 @@ integrity npm signed … nothing replaced`. A release signed with a key
 id vx does not pin says so: `… is signed with an npm key this vx does
 not know (…) — if npm rotated its signing key, this vx's installer
 needs updating`. A release with no signature or no integrity is refused
-before the download. Every refusal comes before anything is written.
+before the download, and so is a signed release of another version than
+the `TAG` asked for (`the npm registry answered …@<TAG> with version …`):
+npm signs its old releases too. Every refusal comes before anything is written.
 There is no fallback to GitHub's release digest: when the registry is
 unreachable, the upgrade is refused.
 
@@ -3527,7 +3529,8 @@ plugin's failed flush) gets a yellow `warn` row above `info`,
 `N warnings above`, counting each distinct warning once; the
 warnings themselves are said once, where they happened. The
 `info` row ends with `run <id>`: the
-run's whole id, as `vx last <id>` takes it. The
+run's whole id, as `vx last <id>` takes it; a run a Ctrl-C (or
+SIGTERM, SIGHUP) stopped records nothing, so its footer names no id. The
 `time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a
 fact twice: a spread value already on the row is left out, so one
