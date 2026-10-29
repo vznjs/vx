@@ -93,6 +93,30 @@ it('a worker runs the orchestrator’s env with its own root, host names and PAT
   }
 })
 
+// Core sets it to the workspace's manager on every local task; a worker
+// gave the one its own process happened to have (`bun vx dte worker`: bun),
+// or none in the Docker image, where `npm-run-all` then looked for npm.
+it("a worker names the workspace's package manager in npm_execpath, as a local run does", async () => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-dte-pm-')))
+  const saved = process.env['npm_execpath']
+  try {
+    await writeFile(path.join(root, 'package.json'), '{"packageManager":"pnpm@9.0.0"}')
+    await mkdir(path.join(root, 'node_modules/.bin'), { recursive: true })
+    await writeFile(path.join(root, 'node_modules/.bin/pnpm'), '#!/bin/sh\n')
+    await chmod(path.join(root, 'node_modules/.bin/pnpm'), 0o755)
+    process.env['npm_execpath'] = '/elsewhere/bun'
+    expect(localEnv({ PATH: '/usr/bin' }, '/orc/ws', root)['npm_execpath']).toBe(
+      path.join(root, 'node_modules/.bin/pnpm'),
+    )
+    // A task's own `define` still wins.
+    expect(localEnv({ npm_execpath: '/mine' }, '/orc/ws', root)['npm_execpath']).toBe('/mine')
+  } finally {
+    if (saved === undefined) delete process.env['npm_execpath']
+    else process.env['npm_execpath'] = saved
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 it('a worker swaps each root once, the first pair naming it winning', () => {
   expect(
     swapRoots({ a: '/ws/p/x', b: ['/ws', '/ws2/q', '/private/ws/r'], c: 'x:/ws/b' }, [
