@@ -346,17 +346,18 @@ So a rival re-measures only when its pin or the harness changes; every
 other run restores its rows from the cache. The line under the table
 names each runner's version, date and machine.
 
-On main, CI's Bench job runs `vx run site.numbers --concurrency 1` on a
-4-core Linux runner of its own, one runner at a time.
+CI's Bench job runs `vx run site.numbers --concurrency 1` on a 4-core
+Linux runner of its own, one runner at a time: on main every runner, on
+a pull request what its diff affects.
 
-The main run that builds and deploys the site comes after it and
-restores the rows from the cache.
+The DTE run that builds the site comes after it and restores the rows
+from the cache. A benchmark never runs under DTE: a worker is packed
+beside other tasks, so it would time its neighbours. Each `bench.*` task
+sets `exec.remote: false`, so a missed row is measured on the run's own
+machine, never a worker.
 
-A DTE worker is packed beside other tasks, so a benchmark there would
-time its neighbours.
-
-A pull request's run measures the rows only to build its own copy of the
-site. It stores them in its own branch's scope, which main never reads.
+A pull request stores its rows in its own branch's scope, which main
+never reads.
 
 The tasks run outside the sandbox, which on Linux traces every process
 they start: under it vx's cold overhead read 55.61 s against 7.01 s

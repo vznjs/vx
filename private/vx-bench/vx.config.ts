@@ -102,6 +102,9 @@ export default defineProject({
           exec: {
             command: 'bun compare.ts 3',
             timeout: '30m',
+            // Never on a DTE worker, packed beside other tasks: a run that
+            // misses the Bench job's rows measures here.
+            remote: false,
             env: {
               define: {
                 ...NO_TRANSPILER_CACHE.define,

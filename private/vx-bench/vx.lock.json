@@ -112,6 +112,7 @@
       "exec": {
         "command": "bun compare.ts 3",
         "timeout": "30m",
+        "remote": false,
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -149,6 +150,7 @@
       "exec": {
         "command": "bun compare.ts 3",
         "timeout": "30m",
+        "remote": false,
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -185,6 +187,7 @@
       "exec": {
         "command": "bun compare.ts 3",
         "timeout": "30m",
+        "remote": false,
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -221,6 +224,7 @@
       "exec": {
         "command": "bun compare.ts 3",
         "timeout": "30m",
+        "remote": false,
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
