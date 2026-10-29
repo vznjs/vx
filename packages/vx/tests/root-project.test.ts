@@ -183,6 +183,30 @@ describe('a root vx.config makes the root a project (D-39)', () => {
     }
   })
 
+  it('an exclude-only filter keeps the root project, as it keeps every member (vercel/turborepo#12212)', async () => {
+    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    for (const name of ['b', 'c'])
+      await addProject(fixture.root, name, {
+        config: `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+      })
+    const bin = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+    const planned = (...args: string[]): unknown => {
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, bin, 'run', 'build', ...args, '--dry=json'],
+        cwd: fixture.root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      if (p.exitCode !== 0) return p.stderr.toString()
+      return (JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }).tasks
+        .map((t) => t.id)
+        .sort()
+    }
+    expect([planned('--filter=!c'), planned('--filter=!./packages/c')]).toEqual([
+      ['b#build', 'fixture-root#build'],
+      ['b#build', 'fixture-root#build'],
+    ])
+  })
+
   it("keys on the files no member owns: a member's edit leaves it, a root file's moves it", async () => {
     await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
     const key = async (): Promise<string> => {
