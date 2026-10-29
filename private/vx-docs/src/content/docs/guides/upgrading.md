@@ -9,7 +9,11 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## vx-docs: list the breaking changes squashes left out
+## cache: answer no has-many once off, bump CACHE_VERSION to v51
+
+VxCacheLayer.hasMany resolves null, not an empty map, once the remote is off for the run; a caller of the layer itself treats null as "cannot say", as core does. CACHE_VERSION is vx-cache-v51: every cached task misses once after upgrading.
+
+## vx-docs: release post for v0.0.647
 
 `vx cache clean --dry-run` is `--dry` (its JSON `dryRun` is `dry`) and `vx run --dry=text` is `--dry=pretty`; a duration in `M` is refused, write minutes as `m`; `baseBranch: 'origin/main'` is refused, write `baseBranch: 'main'`; a glob brace (`{src,lib}`) reads each alternative alone; an `inputs.tasks` entry matching no dependency is refused, and so is a dependency rule selector `--filter` would misread; `inputs.runtime` probes see only the essential env, name more in `inputs.env`; `vxHistory({ defaultBranch })` is `baseBranch`, and timings in the remote cache need `vxHistory({ url })`; `turboCache({ apiUrl })` is `turboCache({ url })` and `nxCache({ server, accessToken })` is `nxCache({ url, token })`; `reapi()` reads no `VX_REAPI_*` variable, pass its options instead.
 

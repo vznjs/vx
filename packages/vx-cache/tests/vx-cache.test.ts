@@ -155,7 +155,7 @@ describe('VxCacheLayer', () => {
     const before = srv.seen.length
     const keys = Array.from({ length: 1200 }, (_, i) => i.toString(16))
     const c = layer(srv.url, read)
-    expect((await c.hasMany(keys)).size).toBe(0)
+    expect((await c.hasMany(keys))?.size).toBe(0)
     await c.hasMany(['0'])
     const seen = srv.seen.slice(before)
     expect(seen.filter((r) => r.path === '/v1/capabilities')).toHaveLength(1)
@@ -346,7 +346,9 @@ describe('VxCacheLayer', () => {
     )
     const n = srv.seen.length
     expect(await c.has('aa11')).toBeNull()
-    expect(await c.hasMany(['aa11'])).toEqual(new Map())
+    // No answer, not "none held": core rewrites the keys a has-many answers
+    // (`remote_hits`), and an empty map forgot every hit the remote holds.
+    expect(await c.hasMany(['aa11'])).toBeNull()
     expect(srv.seen.length).toBe(n)
   })
 
@@ -462,13 +464,13 @@ describe("the server's limits", () => {
       const said: string[] = []
       c.warn = (m) => said.push(m)
       const keys = ['a1', 'a2', 'a3']
-      expect((await c.hasMany(keys)).size).toBe(0)
+      expect((await c.hasMany(keys))?.size).toBe(0)
       handle = made(2, 1 << 20)
       await expect(c.hasMany(keys)).rejects.toThrow('HTTP 400')
       handle = made(2, 4)
       await expect(c.put('b1', new Blob(['12345']), { durationMs: 1 })).rejects.toThrow('HTTP 413')
       lookups.length = 0
-      expect((await c.hasMany(keys)).size).toBe(0)
+      expect((await c.hasMany(keys))?.size).toBe(0)
       expect(lookups.sort((a, b) => a - b)).toEqual([1, 2])
       expect(await c.put('b2', new Blob(['12345']), { durationMs: 1 })).toBe(false)
       expect(said).toEqual([
