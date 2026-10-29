@@ -69,7 +69,9 @@ function injectable(text: string): string[] {
 }
 const TAINTED = /\$\{\{[^}]*\b(?:github\.event\.|inputs\.|github\.head_ref)/
 
-const files = yamlFiles(path.join(ROOT, '.github'))
+// Sorted: readdir order differs by filesystem, and the CI runner's put
+// release.yml before auto-release.yml.
+const files = yamlFiles(path.join(ROOT, '.github')).sort()
 const rel = (p: string) => path.relative(ROOT, p)
 
 interface Step {

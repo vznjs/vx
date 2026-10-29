@@ -1012,14 +1012,23 @@ function procState(pid: number): string {
   return stat.slice(stat.lastIndexOf(')') + 2, stat.lastIndexOf(')') + 3)
 }
 
-async function untilState(pid: number, want: string, timeoutMs: number): Promise<string> {
+/**
+ * `stopped` is `T`, or `t` under a tracer: CI's Linux sandbox runs the
+ * suite under strace, and a traced process's group stop reads `t`. A
+ * syscall stop reads `t` too but passes in microseconds, so a state counts
+ * only once two samples in a row agree.
+ */
+async function untilState(pid: number, want: 'stopped' | 'S', timeoutMs: number): Promise<string> {
+  const ok = (s: string): boolean => (want === 'stopped' ? s === 'T' || s === 't' : s === want)
   const deadline = Date.now() + timeoutMs
+  let prev = ''
   let got = procState(pid)
-  while (got !== want && Date.now() < deadline) {
+  while (!(ok(got) && ok(prev)) && Date.now() < deadline) {
     await Bun.sleep(20)
+    prev = got
     got = procState(pid)
   }
-  return got
+  return ok(got) && want === 'stopped' ? 'stopped' : got
 }
 
 // Ctrl-Z stops the terminal's foreground group, which is vx's alone: a
@@ -1057,8 +1066,8 @@ describe.skipIf(process.platform !== 'linux')('Ctrl-Z (SIGTSTP) during vx run', 
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       try {
         proc.kill('SIGTSTP')
-        expect(await untilState(proc.pid, 'T', 5_000)).toBe('T')
-        expect(await untilState(pid, 'T', 5_000)).toBe('T')
+        expect(await untilState(proc.pid, 'stopped', 5_000)).toBe('stopped')
+        expect(await untilState(pid, 'stopped', 5_000)).toBe('stopped')
         proc.kill('SIGCONT')
         expect(await untilState(pid, 'S', 5_000)).toBe('S')
         proc.kill('SIGTERM')

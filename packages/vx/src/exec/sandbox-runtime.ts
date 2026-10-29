@@ -645,7 +645,9 @@ function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
 const socatWrappers = new Map<string, string>()
 function envCutSocat(socat: string): string {
   const known = socatWrappers.get(socat)
-  if (known !== undefined) return known
+  // The exit hook reaps the wrapper's directory, and SRT's own exit cleanup
+  // lets an init follow it in the same process: one stat per init.
+  if (known !== undefined && (known === socat || existsSync(known))) return known
   let wrapper = socat
   try {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-socat-'))

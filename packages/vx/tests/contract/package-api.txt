@@ -5,6 +5,11 @@ export class BoundedCapture {
     private readonly tailChars = CAPTURE_TAIL_CHARS,
   ) {}
   push(text: string, err = false): void
+  rebound(
+    headChars: number,
+    tailChars: number,
+    through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
+  ): BoundedCapture
   chunks(): CapturedChunk[]
   text(): string
 }
@@ -77,6 +82,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
   }): Promise<void>
@@ -123,6 +129,7 @@ export class FoldMemo {
 }
 == class GitFilesCache (src/cache/git-inputs.ts)
 export class GitFilesCache extends Map<string, readonly string[]> {
+  vxDirs: readonly string[]
   noteTracked(scopes: readonly string[], absPaths: readonly string[]): void
   noteTrackedLater(scopes: readonly string[], absPaths: () => Iterable<string>): void
   committedIn(dir: string): (abs: string) => boolean
@@ -659,6 +666,7 @@ export interface CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     absent?: boolean

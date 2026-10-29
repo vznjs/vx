@@ -1647,12 +1647,12 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
 `~/.codex/auth.json`. A store in home's `.config` or `.local/share` is
 denied again under `$XDG_CONFIG_HOME` or `$XDG_DATA_HOME`, which a task sees.
+What it grants from there is the union of the read grants and, on Linux,
+the DIRECTORY holding each file-shaped write grant (above).
 vx's own stores are denied the same way: `~/.vx`, where every
 repository's shared store lives, and a cache directory outside the
 workspace (`VX_CACHE_DIR=~/.cache/vx`). Read, they handed a task every
 project's cached outputs, around the cross-project wall and its key.
-What it grants from there is the union of the read grants and, on Linux,
-the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `inputs` says what INVALIDATES a task, `sandbox.allow`
 says what it may TOUCH, and deriving one from the other made a
 declaration added for caching silently widen the sandbox. The one grant

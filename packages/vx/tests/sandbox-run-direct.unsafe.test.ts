@@ -325,12 +325,17 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       env,
     })
     try {
+      // socat runs behind vx's env-cutting wrapper (#4821), which `exec`s
+      // the socat vx found, by path.
+      const socat = /(\/[^\s'"]*socat)'*"* TCP-LISTEN/.exec(w.wrapped)?.[1] ?? ''
       expect([
         w.wrapped
           .replace(/^SOCAT_DEFAULT_LISTEN_IP=4 /, '')
           .startsWith(`exec ${Bun.which('bwrap')} `),
-        w.wrapped.includes(`${Bun.which('socat')} TCP-LISTEN`),
-      ]).toEqual([true, true])
+        socat.startsWith(bin),
+        socat === Bun.which('socat') ||
+          readFileSync(socat, 'utf8').includes(` ${Bun.which('socat')} "$@"`),
+      ]).toEqual([true, false, true])
     } finally {
       releaseBridges(w.tag)
     }

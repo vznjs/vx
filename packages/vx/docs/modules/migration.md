@@ -140,6 +140,11 @@ export function vxInvocation(userAgent: string | undefined, installed: boolean):
   discovered project with any existing config, and under either caller
   every actual write target (a synthesized root project, the Turbo
   preset), abort the whole run before a byte lands.
+- No write goes through a symlink (`src/util/write-file.ts`, shared with
+  `vx init` and `vx lock`): `refuseSymlink` refuses every target that is a
+  link before the first write, so a refusal leaves none half-made, and
+  `writeNoFollow` writes a temp beside the file, renamed over it, so a
+  link put there after the check is replaced, not followed.
 - `init` distinguishes the two callers on an empty plan: a scripts
   migration of a workspace with no scripts still writes the workspace
   file and shows a worked example (or `emptyReason`); a migration with

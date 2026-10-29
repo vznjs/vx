@@ -33,19 +33,6 @@ import { forgetUndeclaredWrites, isAborted, taskEnv, taskTimeoutMs } from './tas
 const READY_NOTICE_MS = 10_000
 
 /**
- * Persistent task: dev server / file watcher / daemon. Spawn, wait
- * for ready (regex match or immediate), stash the subprocess in the
- * orchestrator-owned registry, return success. The orchestrator
- * SIGTERMs the registry at end-of-run.
- *
- * Never reads or writes the cache — the project loader rejects
- * `cache + persistent` at config-load time, so by the time we get
- * here, `cache` is guaranteed undefined.
- *
- * Never routed through an executor: a persistent task is local by
- * construction (its port lives on this machine).
- */
-/**
  * A server is keyed on its inputs like any task, so a cached dependant
  * behind a dev server re-runs when the server's sources change; with none
  * it has no key and the dependant always runs (A-17). A server the watch
@@ -68,6 +55,19 @@ export function serverKey(args: ExecuteArgs): Promise<string | undefined> | stri
   )
 }
 
+/**
+ * Persistent task: dev server / file watcher / daemon. Spawn, wait
+ * for ready (regex match or immediate), stash the subprocess in the
+ * orchestrator-owned registry, return success. The orchestrator
+ * SIGTERMs the registry at end-of-run.
+ *
+ * Never reads or writes the cache — the project loader rejects
+ * `cache + persistent` at config-load time, so by the time we get
+ * here, `cache` is guaranteed undefined.
+ *
+ * Never routed through an executor: a persistent task is local by
+ * construction (its port lives on this machine).
+ */
 export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node, log } = args
   // Type narrowing: the dispatcher checks `exec.persistent` before
