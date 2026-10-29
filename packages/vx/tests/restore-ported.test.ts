@@ -377,3 +377,36 @@ for (const change of [
     ]).toEqual(['archived\n', 'a.txt', 'missing'])
   }, 60_000)
 }
+
+// vercel/turborepo#12488: a directory the entry holds, found on disk as a
+// link into the project's sources, was written through, into the sources.
+it('a hit replaces a link where the entry holds a directory, and writes nothing through it', async () => {
+  const root = await makeWorkspace({ prefix: 'vx-ported-dirlink-' })
+  made.push(root)
+  const proj = await addProject(root, 'app', {
+    config: `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist/runtime && echo built > dist/runtime/x.js' },
+      inputs: { files: ['src/in.txt'] }, cache: { outputs: { files: ['dist/**'] } },
+    } } }`,
+    files: { 'src/in.txt': 'v1\n', 'src/runtime/x.js': 'source\n' },
+  })
+  const git = gitIn(root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'init')
+  const cacheDir = path.join(root, '.cache')
+  expect((await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])).code).toBe(0)
+  rmSync(path.join(proj, 'dist', 'runtime'), { recursive: true })
+  symlinkSync('../src/runtime', path.join(proj, 'dist', 'runtime'))
+  const hit = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+  expect(`${hit.code}\n${hit.err}`).toStartWith('0\n')
+  expect(hit.out).toContain('local 1↓')
+  expect(statSync(path.join(proj, 'dist', 'runtime'), { throwIfNoEntry: true }).isDirectory()).toBe(
+    true,
+  )
+  expect(existsSync(path.join(proj, 'dist', 'runtime', 'x.js'))).toBe(true)
+  expect([
+    readFileSync(path.join(proj, 'dist', 'runtime', 'x.js'), 'utf8'),
+    readFileSync(path.join(proj, 'src', 'runtime', 'x.js'), 'utf8'),
+  ]).toEqual(['built\n', 'source\n'])
+  expect(() => readlinkSync(path.join(proj, 'dist', 'runtime'))).toThrow()
+}, 60_000)
