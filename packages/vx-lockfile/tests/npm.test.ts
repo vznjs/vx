@@ -291,10 +291,36 @@ describe('every input the npm digest must read', () => {
     }).toEqual({ fileDirs: ['vendor/dep'], importers: ['.', 'packages/a'], moved: true })
   })
 
-  // Item 1073's class, npm's side: two workspaces that link each other,
-  // each on its own is-number. Swapping which one reaches 7.0.0 gives
-  // their nodes the same lines unless each folds its own path — both are
-  // version 1.0.0 with no resolved or integrity — and neither moved.
+  it("two workspaces' own nested versions of one package each move only their workspace (vercel/turborepo#10988)", () => {
+    // Turbo's issue-10985 fixture: app-one nests next 14, app-two next 15,
+    // both reach @repo/components, whose next is a peer.
+    const text = (one: string, two: string) =>
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'monorepo', workspaces: ['apps/*', 'packages/*'] },
+          'node_modules/next': { version: '14.2.5', integrity: 'sha512-top' },
+          'node_modules/@repo/components': { resolved: 'packages/components', link: true },
+          'apps/app-one': {
+            name: 'app-one',
+            dependencies: { '@repo/components': '*', next: '^14.0.0' },
+          },
+          'apps/app-one/node_modules/next': { version: '14.2.5', integrity: `sha512-${one}` },
+          'apps/app-two': {
+            name: 'app-two',
+            dependencies: { '@repo/components': '*', next: '^15.0.0' },
+          },
+          'apps/app-two/node_modules/next': { version: '15.0.0', integrity: `sha512-${two}` },
+          'packages/components': {
+            name: '@repo/components',
+            peerDependencies: { next: '^14 || ^15' },
+          },
+        },
+      })
+    expect(movedDirs(text('a', 'b'), text('a', 'b2'))).toEqual(['apps/app-two'])
+    expect(movedDirs(text('a', 'b'), text('a2', 'b'))).toEqual(['apps/app-one'])
+  })
+
   it('two workspaces that link each other and swap versions both move', () => {
     const swap = (aNested: boolean) =>
       JSON.stringify({
