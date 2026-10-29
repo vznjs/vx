@@ -3083,7 +3083,7 @@ export class Cache implements CacheLayer {
       }
       return moved
     }
-    const tx = this.db.transaction(() => {
+    const index = () => {
       if (inline !== null) {
         aside = moveAside()
         upsertBlob.run(hash, now, inline)
@@ -3129,10 +3129,13 @@ export class Cache implements CacheLayer {
       if (inputComponents !== undefined && inputComponents.length > 0) {
         insertEntryInput.run(hash, encodeEntryInputs(inputComponents))
       }
-    })
+    }
     const endTx = span('save: index tx')
     try {
-      tx.immediate()
+      // Built inside the try: on a database a stopping run closed while a
+      // download streamed in, building it throws, and the temp or tree
+      // the body went to stayed behind.
+      this.db.transaction(index).immediate()
     } catch (err) {
       endTx()
       const left = renamed ?? tree ?? tmpPath

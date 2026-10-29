@@ -1125,6 +1125,63 @@ describe('Cache storage (v10)', () => {
     expect(quiet?.peakRssBytes).toBeUndefined()
   })
 
+  // A run that stops closes the cache while a download streams in: the
+  // index step then met a closed database before its cleanup could run,
+  // and the temp the body was written to, or the tree it was unpacked
+  // into, stayed behind.
+  it('ingest() into a cache closed mid-download leaves no temp behind', async () => {
+    await mkdir(projectDir, { recursive: true })
+    const outFile = path.join(projectDir, 'dist', 'out.bin')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    // Past the tar store's inline bound, so its body goes to a temp file.
+    const noise = new Uint8Array(256 * 1024)
+    for (let at = 0; at < noise.length; at += 65_536)
+      crypto.getRandomValues(noise.subarray(at, at + 65_536))
+    await writeFile(outFile, noise)
+    await cache.save({
+      hash: 'h-closed',
+      projectDir,
+      outputFiles: [outFile],
+      entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
+    })
+    const bytes = storedArtifact(cache, 'h-closed')!
+    expect(bytes.byteLength).toBeGreaterThan(TAR_STORE.embeddings)
+    for (const [name, store] of [
+      ['tar', TAR_STORE],
+      ['tree', undefined],
+    ] as const) {
+      const dir = path.join(workspaceRoot, `closed-${name}`)
+      const other = new Cache(dir, undefined, undefined, undefined, undefined, undefined, store)
+      const half = bytes.byteLength >> 1
+      const { promise: firstTaken, resolve: tookFirst } = Promise.withResolvers<void>()
+      const { promise: closed, resolve: close } = Promise.withResolvers<void>()
+      let pulls = 0
+      const body = new ReadableStream<Uint8Array>({
+        async pull(c) {
+          if (pulls++ === 0) {
+            c.enqueue(bytes.slice(0, half))
+            tookFirst()
+            return
+          }
+          await closed
+          c.enqueue(bytes.slice(half))
+          c.close()
+        },
+      })
+      const ingest = other.ingest('h-closed', new Response(body), {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        durationMs: 1,
+      })
+      await firstTaken
+      other.close()
+      close()
+      await expect(ingest).rejects.toThrow('Cannot use a closed database')
+      const left = (await readdir(dir, { recursive: true })).filter((f) => f.includes('.tmp-'))
+      expect([name, left]).toEqual([name, []])
+    }
+  })
+
   it('ingest() rejects corrupt zstd bytes — no artifact on disk, no SQL row', async () => {
     const garbage = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4, 5, 6, 7, 8])
     await expect(
