@@ -201,10 +201,10 @@ all decline is byte-identical to one with none declared.** `subscribeTelemetry` 
 sinks are contributed, so no bus subscriber is added and no summary
 records are built.
 
-The repo's own `.vx/workspace.ts` declares `otel()`, `github()`,
-`bun()` and `vxHistory()`; the floor needs no declaring, and
-`otel()` and `github()` decline without their env, so a plain run stays
-zero-overhead.
+The repo's own `.vx/workspace.ts` declares `bun()`, `github()`,
+`vxCache()`, `vxHistory()` and `dte()`; the floor needs no declaring,
+and `github()`, its one telemetry plugin, declines without its env, so a
+plain run here pays no telemetry.
 
 ## The telemetry contract
 

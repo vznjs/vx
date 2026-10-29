@@ -222,7 +222,7 @@ function assumptions(
   const ok: Record<string, number> = {}
   const bad: string[] = []
   for (const [id, ms] of Object.entries(options.assume ?? {})) {
-    if (typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER) ok[id] = ms
+    if (isDuration(ms)) ok[id] = ms
     else bad.push(id)
   }
   if (bad.length > 0) {
@@ -231,6 +231,22 @@ function assumptions(
     )
   }
   return ok
+}
+
+/**
+ * A duration a task can take, in ms. A chain's weight is its durations
+ * summed, and two `1e308`s (a timings file a CI cache handed over, or
+ * `assume`) summed to Infinity, which core refuses: the run failed in
+ * `schedule`. Under 2^53 ms, any chain's sum stays finite.
+ */
+const isDuration = (ms: unknown): ms is number =>
+  typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER
+
+/** The timings file's durations a run can take; the rest are not carried. */
+function carriedOf(read: Readonly<Record<string, number>>): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const [id, ms] of Object.entries(read)) if (isDuration(ms)) out[id] = ms
+  return out
 }
 
 /** Each option `VxHistoryOptions` names, with its kind: derived from the type, so the two cannot drift. */
@@ -350,7 +366,9 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         options.file === undefined ? undefined : path.resolve(ctx.workspaceRoot, options.file)
       // Loaded with the option: every run evaluates the workspace config.
       const carried =
-        file === undefined ? {} : (await import('./timings-file.js')).readTimings(file, ctx.warn)
+        file === undefined
+          ? {}
+          : carriedOf((await import('./timings-file.js')).readTimings(file, ctx.warn))
       const defs = taskDefinitions(nodes.values())
       if (file !== undefined)
         scheduled = {
@@ -533,8 +551,12 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     if (!wrote || done === undefined) return
     const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
     const timings = await import('./timings-file.js')
+    // Over the file as it is now: a time another writer (a run in another
+    // worktree sharing it) put there since `schedule` read it is kept. Its
+    // fault, if any, was said when the run read it.
+    const now = timings.readTimings(done.file, () => {})
     try {
-      timings.writeTimings(done.file, done.carried, table)
+      timings.writeTimings(done.file, { ...done.carried, ...now }, table)
     } catch (err) {
       // Only the file is lost: said as the read is, not as a plugin failure.
       fileWarn?.warn(

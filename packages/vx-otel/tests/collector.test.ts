@@ -238,14 +238,18 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
     ])
   })
 
-  it('a partialSuccess that rejected nothing but says why is reported', async () => {
+  // The spec's warning: rejected counts of 0 with a message is an export
+  // accepted whole. It was said as a failed one that "dropped some of it".
+  it('a partialSuccess that rejected nothing but says why is reported as a warning', async () => {
     expect(
       await exportWith({
         status: 200,
-        body: JSON.stringify({ partialSuccess: { errorMessage: 'attributes trimmed' } }),
+        body: JSON.stringify({
+          partialSuccess: { rejectedSpans: '0', errorMessage: 'attributes trimmed' },
+        }),
       }),
     ).toEqual([
-      `${at('/v1/traces')}the collector dropped part of the export: some of it: attributes trimmed`,
+      `[vx-otel] the collector at ${url}/v1/traces accepted the export and warned: attributes trimmed`,
     ])
   })
 
@@ -519,6 +523,17 @@ describe('the sink, as its second sweep found it unheld', () => {
     expect(await exportWith({ status: 200, body: '{}' })).toEqual([])
     const ms = Date.now() - t0
     expect([hits, ms >= 1_900, ms < 3_000]).toEqual([2, true, true])
+  }, 10_000)
+
+  // RFC 9110 lets Retry-After be a date; `Number()` of one is NaN, and
+  // the retry came 200 ms later, while the collector asked for seconds.
+  it('a Retry-After that is a date waits until it', async () => {
+    queue = [{ status: 503, body: '', retryAfter: new Date(Date.now() + 2_000).toUTCString() }]
+    hits = 0
+    const t0 = Date.now()
+    expect(await exportWith({ status: 200, body: '{}' })).toEqual([])
+    const ms = Date.now() - t0
+    expect([hits, ms >= 900, ms < 3_000]).toEqual([2, true, true])
   }, 10_000)
 
   it('only a signal asked to gzip is sent gzipped', async () => {
