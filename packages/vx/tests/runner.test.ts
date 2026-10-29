@@ -1270,6 +1270,14 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     }
   })
 
+  // Every builtin bash itself lists, read from bash: `exec pushd x` is
+  // "exec: pushd: not found" there, where the bare command ran.
+  it('leaves every bash builtin alone', () => {
+    const listed = Bun.spawnSync(['bash', '-c', 'compgen -b']).stdout.toString().trim().split('\n')
+    expect(listed.length).toBeGreaterThan(40)
+    expect(listed.filter((b) => execWrap(`${b} x`) !== `${b} x`)).toEqual([])
+  })
+
   it('leaves compound commands and env-assignments to the shell', () => {
     expect(execWrap('a && b')).toBe('a && b')
     expect(execWrap('cmd | grep x')).toBe('cmd | grep x')

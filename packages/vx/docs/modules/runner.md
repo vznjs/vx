@@ -149,7 +149,8 @@ export class TaskPipes {
   the command resolves, inside the shell; `argv0` keeps `$0` the `sh`
   it always was.
 - **`exec`:** a plain `word args…` command runs as `exec word args…`, so
-  the program replaces the shell. A shell builtin keeps the shell, and so
+  the program replaces the shell. A shell builtin keeps the shell (each
+  one bash's `compgen -b` lists, bash-only `pushd` among them), and so
   does a bash reserved word that may open one line (`[[`, `time`):
   macOS's `sh` is bash, and `exec [[ -f x ]]` there was
   `exec: [[: not found`, exit 127 (B-56).
