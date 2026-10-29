@@ -147,6 +147,45 @@ it('answers an upload it folded even when the sweep after it fails, and sweeps o
   expect(errors).toEqual(['vx-history-server: the sweep: Error: the database is busy'])
 })
 
+// The client warns with what the server says: "internal error" told an
+// operator reading the warning nothing (2026-10-28).
+it('answers a failure it did not expect with what failed, and logs it', async () => {
+  const errors: unknown[] = []
+  const logged = console.error
+  console.error = (...args: unknown[]) => void errors.push(args.join(' '))
+  const handle = createHistoryServer({
+    store: {
+      ...sqliteStore(sqliteDb(path.join(dir, 'busy.sqlite'))),
+      read: async () => {
+        throw new Error('the database is busy')
+      },
+    },
+    authorize: async () => ({ issuer: GITHUB, repository: REPO }),
+  })
+  let res: Response
+  try {
+    res = await handle(
+      new Request('http://127.0.0.1/v1/timings/query', {
+        method: 'POST',
+        body: JSON.stringify({
+          issuer: GITHUB,
+          repository: REPO,
+          refs: ['refs/heads/main'],
+          hashes: ['t'],
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  } finally {
+    console.error = logged
+  }
+  expect([res.status, await res.json(), errors]).toEqual([
+    500,
+    { code: 'internal_error', message: 'the database is busy' },
+    ['vx-history-server: POST /v1/timings/query: Error: the database is busy'],
+  ])
+})
+
 // A chunked body names no length: it was read whole, however large,
 // before it was measured (2026-10-26).
 it('refuses a query body past its limit as it arrives', async () => {
@@ -260,11 +299,31 @@ it('names ALLOW when it cannot be read', () => {
   ])
 })
 
+it('refuses to start with ALLOW empty: it would refuse every request', () => {
+  for (const allow of [undefined, '', ' ']) {
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', ':memory:'],
+      {
+        env: { ...process.env, ...(allow === undefined ? {} : { ALLOW: allow }) },
+        stderr: 'pipe',
+        // Started, it would listen until killed.
+        timeout: 10_000,
+      },
+    )
+    const [said, usage] = cli.stderr.toString().split('\n')
+    expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+      2,
+      '✗ vx-history-server  set ALLOW',
+      'usage: vx-history-server',
+    ])
+  }
+})
+
 it('names --db when it cannot be opened, and refuses an empty one', () => {
   const said = (db: string) => {
     const cli = Bun.spawnSync(
       ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', db],
-      { env: { ...process.env, ALLOW: '' }, stderr: 'pipe' },
+      { env: { ...process.env, ALLOW: `${GITHUB}:${REPO}:ci.yml` }, stderr: 'pipe' },
     )
     return [cli.exitCode, stderrOf(cli).split('\n')[0]]
   }
