@@ -15,7 +15,7 @@ import {
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, changedSinceParent, homeOf, needOf, pace } from '../src/plugin.js'
-import type { Platform } from '@vzn/vx'
+import { isUserError, type Platform } from '@vzn/vx'
 import {
   type CacheFacts,
   type CapturedChunk,
@@ -3444,6 +3444,22 @@ it('a worker size or unmeasured with a key dte() does not read is refused', () =
   ).toBe(
     'dte() option "unmeasured" has unknown option "cpus" (allowed: cpu, memory) — did you mean cpu?',
   )
+})
+
+it('docker() with no options says what it needs, as a user error', () => {
+  // A bare docker() threw a TypeError reading options.image: a crash, not a setting to fix.
+  for (const options of [undefined, {}, { image: '' }]) {
+    let err: unknown
+    try {
+      docker(options as never)
+    } catch (e) {
+      err = e
+    }
+    expect([isUserError(err), (err as Error).message]).toEqual([
+      true,
+      "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
+    ])
+  }
 })
 
 it('a run that is not distributed loads none of it', async () => {
