@@ -147,6 +147,21 @@ describe('workspace digests (npm)', () => {
     for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
   })
 
+  it("a workspaces glob with a trailing slash still names the workspace's own version", () => {
+    // Turbo #6772: `packages/*/` matched no workspace, so none had a
+    // digest of its own and b's version read as an installed package's.
+    const slash = (text: string, version: string): string => {
+      const doc = JSON.parse(text)
+      doc.packages[''].workspaces = ['packages/*/']
+      doc.packages['packages/b'].version = version
+      return JSON.stringify(doc, null, 2)
+    }
+    const before = digests(slash(lock(), '1.0.0'))
+    const after = digests(slash(lock(), '1.0.1'))
+    expect([...before.keys()].sort()).toEqual([...digests(lock()).keys()].sort())
+    for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
+  })
+
   it('refuses what is not an npm v2+ lockfile', () => {
     expect(() => parseLockfile('{"name":"x"}')).toThrow(/no lockfileVersion/)
     expect(() => parseLockfile('{"lockfileVersion":1,"dependencies":{}}')).toThrow(
