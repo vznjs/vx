@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: store each results row's waited, outputs and blocks
+
+SCHEMA_VERSION is v51: the first run after upgrading resets the index (run history goes; artifacts stay).
+
 ## cache: keep run notes and lockfile memos in cache.db
 
 SCHEMA_VERSION is v50: the first run after upgrading resets the index (run history goes; artifacts stay). A run's steps, warnings and failed output are the steps, warnings and failures tables of cache.db, and the lockfile memo is its lockfile_memos table: `<cacheDir>/steps/`, `warnings/`, `failures/` and `lockfile-claims/` are no longer written or read, and `vx cache clean` no longer takes those names from a cache dir you named. runFailures and taskLog take the index handle, not the cache dir.
