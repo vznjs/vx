@@ -42,6 +42,16 @@ describe('linkPaths', () => {
       expect(at(t)).toBe(t)
   })
 
+  // A task sees FORCE_COLOR=1, so a linter paints the path it reports
+  // (eslint underlines it): the colour's `m` read as a word before the path.
+  it('links a path a colour starts, never a tail a colour splits off', () => {
+    const at = (t: string) => linkPaths(t, dir, fileMemo())
+    expect(at('\x1b[4msrc/a.ts\x1b[24m')).toBe(`\x1b[4m${link(a, 'src/a.ts')}\x1b[24m`)
+    expect(at(`\x1b[0m\x1b[36m${a}:1\x1b[0m`)).toBe(`\x1b[0m\x1b[36m${link(a, `${a}:1`)}\x1b[0m`)
+    writeFileSync(path.join(dir, 'a.ts'), '')
+    for (const t of ['src/\x1b[36ma.ts', 'src/\x1b[0m\x1b[36ma.ts:1']) expect(at(t)).toBe(t)
+  })
+
   it('encodes the target, never the text', () => {
     const spaced = path.join(root, 'my pkg')
     mkdirSync(spaced)
