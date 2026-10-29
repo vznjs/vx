@@ -419,10 +419,12 @@ function resolveWorkspaceFiles(args: {
     // snapshot as it was.
     isPositive ??= throughLinks(positive, anyTaskGlob(asTrees(positive)))
     const accept = isPositive
+    const mayHold = mayHoldMatch(positive)
     const extra = ignoredInputs(
       args.workspaceRoot,
       reach,
       (rel) => accept(rel) && !excludedByDeclaration(rel) && !own(rel),
+      (rel) => mayHold(rel) && !excludedByDeclaration(rel) && !own(rel),
       args.gitFilesCache?.vxDirs,
     )
     return extra.length === 0 ? kept : mergeSorted(kept, extra)
@@ -1700,12 +1702,15 @@ function outright(reach: { prefixes: readonly string[]; literals: readonly strin
  * `exists()`: that answers false for a directory. Never memoized: a
  * dependency writes these mid-run. Nothing under `vxDirs` (the run's cache
  * directory) is read: an ignored prefix over a `cache.dir` there walked the
- * index each run writes, and the task never hit.
+ * index each run writes, and the task never hit. The walk does not follow
+ * links, so a link to a directory a glob may reach below (`linked`) is an
+ * input itself, as a listed one is (`dirLinkInput`).
  */
 function ignoredInputs(
   root: string,
   reach: readonly string[],
   accept: (rel: string) => boolean,
+  linked: (rel: string) => boolean,
   vxDirs: readonly string[] = [],
 ): string[] {
   const found = new Set<string>()
@@ -1726,9 +1731,11 @@ function ignoredInputs(
       dot: true,
     })) {
       const full = `${entry}/${rel.split(path.sep).join('/')}`
-      if (!accept(full)) continue
       const file = path.join(abs, rel)
-      if (!vxOwn(file) && isInputOnDisk(file)) found.add(file)
+      if (vxOwn(file)) continue
+      if (accept(full)) {
+        if (isInputOnDisk(file)) found.add(file)
+      } else if (linked(full) && dirLinkInput(file, undefined)) found.add(file)
     }
   }
   return [...found].sort()
@@ -2183,6 +2190,12 @@ function withIgnored(
     projectDir,
     reach,
     (rel) => inPlan(plan, rel) && !nested(rel) && !ownWsOutput(rel),
+    (rel) =>
+      plan.mayHold(rel) &&
+      !plan.isExcluded(rel) &&
+      !plan.ownOutput(rel) &&
+      !nested(rel) &&
+      !ownWsOutput(rel),
     cache?.vxDirs,
   )
   return extra.length === 0 ? [...resolved] : mergeSorted(resolved, extra)

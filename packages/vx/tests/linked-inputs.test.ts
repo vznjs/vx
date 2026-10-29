@@ -156,6 +156,31 @@ describe('a symlinked input keys what it points to', () => {
     TIMEOUT,
   )
 
+  // 2026-10-28: a gitignored directory a declaration names (`gen/**/*.txt`)
+  // is walked from disk without following links, so a link to a directory
+  // in it matched by its name alone, as above: an edit behind it was a hit.
+  it(
+    'a link to a directory inside a gitignored input directory: an edit behind it',
+    async () => {
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\ngen/\n')
+      await mkdir(path.join(root, 'other'))
+      await writeFile(path.join(root, 'other', 'z.txt'), 'W1\n')
+      app = await addProject(root, 'a', {
+        config: `export default { tasks: { build: { exec: { command: 'cat gen/v/x.txt ../../gen/l/z.txt > out.txt' }, inputs: { files: ['gen/**/*.txt'], workspaceFiles: ['gen/**/*.txt'] }, cache: { outputs: { files: ['out.txt'] } } } } }`,
+      })
+      await mkdir(path.join(app, 'gen'))
+      await symlink('../../../shared', path.join(app, 'gen', 'v'))
+      await mkdir(path.join(root, 'gen'))
+      await symlink('../other', path.join(root, 'gen', 'l'))
+      commit('fixture')
+      await rebuildsAfter(() => writeFile(path.join(root, 'shared', 'x.txt'), 'V2\n'), 'V2\nW1\n')
+      await writeFile(path.join(root, 'other', 'z.txt'), 'W2\n')
+      expect(statusOf(await build()), said.join('')).toBe('success')
+      expect(await out()).toBe('V2\nW2\n')
+    },
+    TIMEOUT,
+  )
+
   it(
     'a file link to a tracked file outside the project',
     async () => {
