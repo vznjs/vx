@@ -41,6 +41,7 @@ src/remote-deadline.ts
 src/remote-refusal.ts
 src/remote-retry.ts
 src/remote-token.ts
+src/remote-url.ts
 src/script-command.ts
 src/sealed-tsconfig.ts
 src/shared-outputs.ts
