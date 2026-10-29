@@ -156,6 +156,21 @@ describe('withDeclared', () => {
     expect(merged.get('a#build')).toEqual({ memory: 128 })
   })
 
+  // Cores are never learned, only declared: declaring a task's cores
+  // dropped the memory its history learned, and it packed beside tasks
+  // its peak did not fit with.
+  it('a declared axis wins over the learned one; an axis it leaves out keeps it', () => {
+    const merged = withDeclared(new Map([['a#build', { memory: 2048 }]]), {
+      'a#build': { cpus: 2 },
+      'b#build': { cpus: 1 },
+    })
+    expect(merged.get('a#build')).toEqual({ memory: 2048, cpus: 2 })
+    expect(merged.get('b#build')).toEqual({ cpus: 1 })
+    expect(admits('a#build', ['c#build'], merged, { cpus: 4, memory: 3000 })).toBe(true)
+    const beside = new Map([...merged, ['c#build', { memory: 1024 }]])
+    expect(admits('a#build', ['c#build'], beside, { cpus: 4, memory: 3000 })).toBe(false)
+  })
+
   it('declared reservations reach tasks the history never saw', () => {
     const merged = withDeclared(new Map(), { 'cold#build': { cpus: 2 } })
     expect(merged.get('cold#build')).toEqual({ cpus: 2 })
@@ -238,7 +253,7 @@ describe('the reservation rules the sweep found unheld', () => {
 
   // A declared NaN held its task alone and summed into what runs, so every
   // reserving task beside it waited: the run went serial, unannounced.
-  it('a declared reservation axis that is no number above 0 reserves nothing; one warning names it', async () => {
+  it('a declared reservation axis that is no number above 0 is not declared; one warning names it', async () => {
     const warned: string[] = []
     const ctx = {
       localCache: {
@@ -272,7 +287,7 @@ describe('the reservation rules the sweep found unheld', () => {
     ]).toEqual([true, true, true, true, true])
     await plugin.schedule!(new Map([['a#build', node('a#build')]]), ctx as never)
     expect(warned[0]).toBe(
-      '[vx] vx-history: ignores reservations["a#build"].memory NaN (using none), reservations["b#build"].cpus -1 (using none), reservations["d#build"].cpus NaN (using none), reservations["e#build"] null (using none; must be { cpus?, memory? }), reservations["f#build"] 2048 (using none; must be { cpus?, memory? }) — each must be a finite number above 0',
+      '[vx] vx-history: ignores reservations["a#build"].memory NaN (using what history learned), reservations["b#build"].cpus -1 (using what history learned), reservations["d#build"].cpus NaN (using what history learned), reservations["e#build"] null (using what history learned; must be { cpus?, memory? }), reservations["f#build"] 2048 (using what history learned; must be { cpus?, memory? }) — each must be a finite number above 0',
     )
   })
 

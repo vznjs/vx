@@ -326,7 +326,19 @@ describe('discover', () => {
         await mkdir(path.join(root, dir), { recursive: true })
         await writeFile(path.join(root, dir, 'package.json'), JSON.stringify({ name: 'x' }))
       }
-      if (c.name === 'pnpm') expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+      if (c.name === 'pnpm') {
+        expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+        // A `**` ending a negated glob matches zero directories, as pnpm
+        // reads it: `packages/fixtures` is no workspace, and the lock was
+        // refused as out of date for it until any install, forever.
+        await mkdir(path.join(root, 'packages/fixtures'), { recursive: true })
+        await writeFile(
+          path.join(root, 'packages/fixtures/package.json'),
+          JSON.stringify({ name: 'fx' }),
+        )
+        expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+        await rm(path.join(root, 'packages/fixtures'), { recursive: true })
+      }
       await mkdir(path.join(root, 'packages/f'), { recursive: true })
       await writeFile(path.join(root, 'packages/f/package.json'), JSON.stringify({ name: 'f' }))
       const warnings: string[] = []
@@ -415,6 +427,46 @@ describe('discover', () => {
       a: { name: 'a', dependencies: { b: '^9.0.0' } },
     })
     expect((await discover(yarn(), metas)).find((e) => e.dir === 'packages/a')?.deps).toEqual([])
+  })
+
+  it('yarn(): a classic root `resolutions` range the workspace misses is the registry copy', async () => {
+    // Yarn 1.22 with `"**/ms": "2.1.3"` and a workspace ms at 2.1.2:
+    // every ms request asks for 2.1.3, the file keys `ms@2.1.3` alone, and
+    // node_modules/ms is the registry copy. a's own `^2.1.1` is keyed
+    // nowhere, so it read as the workspace link.
+    await writeFile(
+      path.join(root, 'yarn.lock'),
+      '# yarn lockfile v1\n\n\nms@2.1.3:\n  version "2.1.3"\n',
+    )
+    const metas = await projects({
+      root: {
+        name: 'root',
+        private: true,
+        workspaces: ['packages/*'],
+        resolutions: { '**/ms': '2.1.3', 'other/**/b': '9.0.0' },
+      },
+      a: { name: 'a', dependencies: { ms: '^2.1.1', b: '*' } },
+      b: { name: 'b', version: '1.0.0' },
+      c: { name: 'ms', version: '2.1.2' },
+    })
+    const got = await discover(yarn(), metas)
+    expect(got.find((e) => e.dir === 'packages/a')?.deps).toEqual(['packages/b'])
+  })
+
+  it('yarn(): a classic root `resolutions` range the workspace satisfies stays a link', async () => {
+    await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n\n\n')
+    const metas = await projects({
+      root: {
+        name: 'root',
+        private: true,
+        workspaces: ['packages/*'],
+        resolutions: { ms: '2.1.2' },
+      },
+      a: { name: 'a', dependencies: { ms: '^2.1.1' } },
+      c: { name: 'ms', version: '2.1.2' },
+    })
+    const got = await discover(yarn(), metas)
+    expect(got.find((e) => e.dir === 'packages/a')?.deps).toEqual(['packages/c'])
   })
 })
 

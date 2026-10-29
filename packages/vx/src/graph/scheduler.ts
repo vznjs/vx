@@ -1027,11 +1027,27 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // nothing on the restore path may.
         const upstream = node.deps.map((d) => outcomes.get(d) as TaskOutcome)
 
+        // An idle task the stop or fail-fast would skip settles with no
+        // outcome, as it would have run: the run never meant to start it.
+        // Below a failed dep it is skipped as before, so the hits above it
+        // pass the block down.
+        const settlesIdle =
+          idle.has(id) &&
+          (!willSkip(id) ||
+            aborted() ||
+            (failFastTripped &&
+              !node.deps.some((d) => {
+                const s = outcomes.get(d)?.status
+                return (
+                  s === 'failed' || s === 'skipped' || s === 'aborted' || blockedRestores.has(d)
+                )
+              })))
+
         // If any upstream failed/skipped, propagate skip synchronously
         // without running. Skipped tasks still flow through this queue
         // because dependents are pushed when `pending` hits 0 regardless
         // of outcome — keeps the propagation logic in one place.
-        if (willSkip(id)) {
+        if (!settlesIdle && willSkip(id)) {
           // The root of the block: a failed or aborted upstream names
           // itself; a skipped one hands down its own root.
           const blocker = upstream.find(
@@ -1059,7 +1075,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           })
           continue
         }
-        if (idle.has(id)) {
+        if (settlesIdle) {
           readyAt.delete(id)
           if (settledAbove(id)) {
             settledIdle++

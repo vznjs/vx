@@ -1622,7 +1622,9 @@ async function runOnBus(
       if (stop.signal.aborted) await stop.aborting?.catch(() => {})
       else await terminateChildren(() => keepAlive.children)
       // The server that ended the session on its own, not cleanly, failed.
-      if (!stop.signal.aborted && first.code !== 0) failServer(outcomes, node.id, first.code)
+      // A stop's own kill is no crash: the user ended the session.
+      const crashed = !stop.signal.aborted && first.code !== 0
+      if (crashed) failServer(outcomes, node.id, first.code)
       const final = [...outcomes.values()]
       if (historyAfterWait) {
         recordHistory(() => {
@@ -1630,16 +1632,14 @@ async function runOnBus(
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            // A stop ending the session is the usual end of a dev session,
-            // not a failure: the server's 130 is the stop's, as above.
-            local.recordRunBundle(recordsOf(final, ok && (stop.signal.aborted || first.code === 0)))
+            local.recordRunBundle(recordsOf(final, ok && !crashed))
           } finally {
             local.close()
           }
         })
         recordFailures(final)
       }
-      return { ok: ok && first.code === 0, outcomes: final }
+      return { ok: ok && !crashed, outcomes: final }
     }
 
     return { ok, outcomes: list }
@@ -1731,6 +1731,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     if (prepared.empty !== null) return { tasks: [] }
     // The plan orders nothing, but it refuses what the run would refuse.
     await prepared.priorities()
+    terminalHolders(prepared.nodes, options.tty === true)
     // Its own mark: a dry run's plan (every task's hash, the cache lookups,
     // the history p50s) was booked under `close`, the next mark, and read
     // as 105 ms of closing a cache at 1,000 projects (item 601).
