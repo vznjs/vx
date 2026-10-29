@@ -1101,6 +1101,28 @@ describe('config', () => {
     }
   })
 
+  // A reset connection mid-upload was final too: a DTE worker's upload
+  // died ECONNRESET and the orchestrator failed three tasks it ran
+  // (2026-10-29, #4877's run).
+  it('sends an upload again after the connection resets', async () => {
+    const srv = server()
+    try {
+      let down = 1
+      const flaky: typeof fetch = Object.assign(
+        (input: string | URL | Request, init?: RequestInit) =>
+          init?.method === 'PUT' && down-- > 0
+            ? Promise.reject(Object.assign(new Error('socket closed'), { code: 'ECONNRESET' }))
+            : fetch(input, init),
+        { preconnect: fetch.preconnect },
+      )
+      const token = await srv.token(MAIN_JOB)
+      await layer(srv.url, token, [MAIN], flaky).put('ab15', new Blob(['xyz']), { durationMs: 1 })
+      expect(await layer(srv.url, token).has('ab15')).toEqual({ size: 3 })
+    } finally {
+      await srv.stop()
+    }
+  })
+
   // A URL of a website answers any path 200 with its page: JSON.parse's
   // "Unrecognized token '<'" named no fault.
   it('says a 200 that is no JSON is not a vx-cache server', async () => {
