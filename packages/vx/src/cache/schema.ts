@@ -119,7 +119,17 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       def                 TEXT,
       -- v49: the share of a core each runnable thread got where it ran
       -- (ExecuteResult.machine.cpuShare); NULL = all it wanted.
-      cpu_share           REAL
+      cpu_share           REAL,
+      -- v51: the rest of the results row. How long the task waited ready
+      -- for a slot (NULL: it started at once); its output files' bytes,
+      -- uncompressed (a hit's restored, a miss's saved; NULL: no entry);
+      -- the tasks downstream of it in the run; the flaky record its note
+      -- quoted (NULL: not proven flaky).
+      queued_ms           INTEGER,
+      output_bytes        INTEGER,
+      blocks              INTEGER,
+      flaky_passes        INTEGER,
+      flaky_failures      INTEGER
     );
     -- Two whole-table indexes only, and both APPEND: every row of a run carries the
     -- same run_id and a started_at newer than everything before it, so
