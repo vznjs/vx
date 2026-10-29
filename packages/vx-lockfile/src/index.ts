@@ -17,7 +17,7 @@
 // each importer's `package.json` to its tasks' inputs.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { mkdir, rename, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -31,6 +31,7 @@ import {
   type ProjectMeta,
   definePlugin,
   lockfileClaim,
+  reachDigests,
   type VxPlugin,
 } from '@vzn/vx'
 
@@ -59,6 +60,29 @@ export interface LockfileOptions {
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
 const DIGEST_VERSION = 23
+
+let memoVersion: number | undefined
+/**
+ * The memo's version: DIGEST_VERSION and the parsers' own source, with
+ * core's `reachDigests`. The closures core sees wrap every parser alike,
+ * so a parser fix that forgot the bump replayed the digests the old one
+ * folded. Read once per process (~40 µs for the ten files); a plugin with
+ * no source beside it keys on DIGEST_VERSION alone.
+ */
+function digestVersion(): number {
+  if (memoVersion !== undefined) return memoVersion
+  let h = Bun.hash.xxHash3(String(reachDigests))
+  try {
+    for (const f of readdirSync(import.meta.dir).sort()) {
+      if (/\.[cm]?[jt]s$/.test(f))
+        h = Bun.hash.xxHash3(readFileSync(path.join(import.meta.dir, f)), h) ^ h
+    }
+  } catch {
+    // Bundled: the source is not on disk.
+  }
+  memoVersion = DIGEST_VERSION * 2 ** 32 + Number(h & 0xffffffffn)
+  return memoVersion
+}
 
 interface Manager {
   readonly name: string
@@ -291,7 +315,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     return lockfileClaim({
       file,
       part: manager.name,
-      version: DIGEST_VERSION,
+      version: digestVersion(),
       scope,
       importers: guarded((text: string) => manager.importers(text)),
       // Read before `digest` on the key path: a malformed bun.lock refused
