@@ -10,6 +10,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -124,6 +125,24 @@ it('a .git-like name and a link to one restore', async () => {
     await cache.restoreOutputs(HASH, dest, dest, OUT)
     expect(readdirSync(path.join(dest, '.github'))).toEqual(['.gitignore'])
     expect(existsSync(path.join(dest, 'dist', '.gitkeep'))).toBe(true)
+  } finally {
+    cache.close()
+  }
+})
+
+// Only the base's own `.git` is Git's metadata to a restore: a nested
+// repository under the outputs (`dist/sub/.git`) is an output by name, and
+// held to no `.git` at any depth, its hit failed once the last run had made
+// it. #4848's merge took this rule for every caller of `writableUnder`.
+it('a nested .git under the outputs restores where it stands', async () => {
+  const { cache, dest } = await forged({
+    'outputs/dist/a.txt': BIG,
+    'outputs/dist/sub/.git/config': 'nested\n',
+  })
+  mkdirSync(path.join(dest, 'dist', 'sub', '.git'), { recursive: true })
+  try {
+    await cache.restoreOutputs(HASH, dest, dest, OUT)
+    expect(readFileSync(path.join(dest, 'dist', 'sub', '.git', 'config'), 'utf8')).toBe('nested\n')
   } finally {
     cache.close()
   }
