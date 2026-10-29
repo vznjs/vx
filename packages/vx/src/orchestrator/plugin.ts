@@ -67,7 +67,8 @@ export interface VxPlugin {
 
   /**
    * The workspace config, before anything is derived from it (concurrency,
-   * cacheDir, timeout, …). `plugins` is already fixed by the time this runs.
+   * cacheDir, timeout, …). `plugins` is already fixed by the time this runs:
+   * an edit to it is refused.
    * Core re-validates after each plugin, as it does a user's file.
    * `ctx.setBranch` names what the CI knows of the branch: its cache scope
    * and the commit it is compared with.
