@@ -29,7 +29,15 @@ import {
   taskLog,
 } from '../orchestrator/index.js'
 import { outcomeWord } from '../report/index.js'
-import { formatElapsed, refusal, splitTaskId, UserError, sayNotice, ui } from '../util/index.js'
+import {
+  formatElapsed,
+  parseDecimalInt,
+  refusal,
+  splitTaskId,
+  UserError,
+  sayNotice,
+  ui,
+} from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
 import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
@@ -81,8 +89,13 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
           (!RUN_ID_SHAPE.test(next) && (!next.startsWith('-') || /^-\d/.test(next))))
       const lv = a === '--list' ? (spaced ? next : '10') : a.slice(7)
       if (spaced) i++
-      const n = Number(lv)
-      if (!Number.isInteger(n) || n < 1 || n > 500) {
+      if (lv === '')
+        return {
+          ...out,
+          error: `--list= requires a count from 1 to 500; bare --list shows 10${seeHelp('last')}`,
+        }
+      const n = parseDecimalInt(lv)
+      if (n === null || n < 1 || n > 500) {
         return {
           ...out,
           error: `--list must be a whole number from 1 to 500 (got ${lv})${seeHelp('last')}`,
@@ -600,6 +613,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       if (log === null) {
         throw new UserError(
           `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`} (a task id is project#task)`,
+          'VX_E_NO_HISTORY',
         )
       }
       if (parsed.format === 'json') {
