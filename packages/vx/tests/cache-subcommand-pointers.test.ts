@@ -54,7 +54,7 @@ it("an Object.prototype name is a word no runner uses, not that object's source"
   const clean = (sub: string): [number, string] => [
     1,
     noticed(
-      `vx cache: unknown subcommand: ${sub}. The subcommand is clean (see \`vx cache --help\`)\n`,
+      `vx cache: unknown subcommand: ${sub}. Its one subcommand is \`vx cache clean\` (see \`vx cache --help\`)\n`,
     ),
   ]
   expect([await said('constructor'), await said('toString'), await said('__proto__')]).toEqual([
