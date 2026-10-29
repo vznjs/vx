@@ -458,12 +458,14 @@ const KEYS_TTL_S = 600
  */
 export function cachedFetchJson(
   cache: KeysCache,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl?: typeof fetch,
 ): (url: string, fresh: boolean) => Promise<unknown> {
   return async (url, fresh) => {
     const hit = fresh ? undefined : await cache.match(url)
     if (hit !== undefined) return hit.json()
-    const res = await fetchImpl(url, { signal: AbortSignal.timeout(10_000) })
+    // The global read at each call: one taken when the module loaded missed
+    // a fetch set after it (a test's issuer reached the network).
+    const res = await (fetchImpl ?? fetch)(url, { signal: AbortSignal.timeout(10_000) })
     if (!res.ok) throw new Error(`${url}: ${res.status}`)
     const body = await res.text()
     await cache.put(

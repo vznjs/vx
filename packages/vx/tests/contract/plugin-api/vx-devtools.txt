@@ -8,7 +8,7 @@ export class Refusal extends Error {
 == function cachedFetchJson (src/oidc.ts)
 export function cachedFetchJson(
   cache: KeysCache,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl?: typeof fetch,
 ): (url: string, fresh: boolean) => Promise<unknown>
 == function errorJson (src/refusal.ts)
 export function errorJson(status: number, message: string): Response
