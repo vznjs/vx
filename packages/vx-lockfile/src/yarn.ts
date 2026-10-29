@@ -597,7 +597,19 @@ export function importerDigests(
       if (targets.length === 0) material[from] += `\nunresolved\0${name}\0${range}`
     }
   }
-  if (lock.generation === 'berry') extend(lock, index, edges, extensions)
+  if (lock.generation === 'berry') {
+    // A `link:` or `portal:` to a workspace symlinks the workspace itself:
+    // its entry lists no dependencies, and as a leaf the linked
+    // workspace's bumps moved no key of the project linking it.
+    const dirOf = new Map<string, string>()
+    for (const [dir, id] of lock.workspaces) dirOf.set(id, dir)
+    for (const id of lock.entries.keys()) {
+      const target = linkedDir(lock, dirOf, id)
+      if (target !== undefined)
+        edges[index.get(id)!]!.push(index.get(lock.workspaces.get(target)!)!)
+    }
+    extend(lock, index, edges, extensions)
+  }
   const digests = reachDigests({ material, edges })
   // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
   // bits of a seed, so two lockfiles' globals could share one (item 682).
