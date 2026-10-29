@@ -423,6 +423,15 @@ describe('Yarn 4 catalogs (turborepo#12635)', () => {
     ])
   })
 
+  it('a catalog workspace gaining a dependency moves it and what links it, no other (vercel/turborepo#12684)', () => {
+    const gained = catalogLock().replace(
+      '    is-number: "catalog:"\n',
+      '    is-number: "catalog:"\n    is-odd: "npm:^3.0.1"\n',
+    )
+    expect(gained).not.toBe(catalogLock())
+    expect(movedDirs(catalogLock(), gained)).toEqual(['packages/a', 'packages/c'])
+  })
+
   it('a named catalog (`catalog:<name>`) reaches the entries of its package', () => {
     expect(movedDirs(catalogLock(), catalogLock({ isEven: '1.0.1' }))).toEqual(['packages/e'])
   })
