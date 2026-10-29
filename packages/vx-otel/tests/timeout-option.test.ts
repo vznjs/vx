@@ -51,6 +51,23 @@ it('a compression it does not send is refused', () => {
   expect(said({ compression: 'gzip' })).toBe('taken')
 })
 
+// The option is checked as the variable is read, case and blanks aside,
+// and was then compared exactly: `compression: 'GZIP'` was taken and every
+// export went uncompressed, where OTEL_EXPORTER_OTLP_COMPRESSION=GZIP gzips.
+it('a compression the check takes is the one sent', () => {
+  const env = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:4318' }
+  const gzip = (compression: string) => {
+    expect(said({ compression })).toBe('taken')
+    return resolveOtelConfig({ compression } as never, env)?.gzip
+  }
+  expect([gzip('GZIP'), gzip(' gzip\n'), gzip('None'), gzip('gzip')]).toEqual([
+    ['traces', 'metrics', 'logs'],
+    ['traces', 'metrics', 'logs'],
+    [],
+    ['traces', 'metrics', 'logs'],
+  ])
+})
+
 it('a positive timeout, or none, is taken', () => {
   const env = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:4318' }
   expect(said({ timeoutMs: 1000 })).toBe('taken')

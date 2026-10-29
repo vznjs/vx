@@ -338,7 +338,9 @@ export function resolveOtelConfig(
   // three a value may come from, and a second bad one went unsaid.
   const badCompression = new Set<string>()
   const gzip = (['traces', 'metrics', 'logs'] as const).filter((signal) => {
-    if (opts.compression !== undefined) return opts.compression === 'gzip'
+    // Read as otel() checked it, and as the variable is: `'GZIP'` was taken
+    // and sent uncompressed.
+    if (opts.compression !== undefined) return opts.compression.trim().toLowerCase() === 'gzip'
     const own = `OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_COMPRESSION`
     const [name, raw] =
       present(env[own]) !== undefined
