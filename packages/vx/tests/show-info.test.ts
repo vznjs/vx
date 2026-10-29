@@ -492,8 +492,9 @@ describe('vx info (e2e)', () => {
       expect(r.out).toMatch(/^  memory +\d/m)
       // The runtime probe's verdict for this host, with the declared count:
       // the fixture declares none, so an unavailable runtime fails nothing.
+      // Where strace cannot trace (a sandboxed shard), vx info says so.
       expect(r.out).toMatch(
-        /^  sandbox +(available \(0 tasks declare exec\.sandbox\)|unavailable — .+; 0 tasks declare exec\.sandbox)$/m,
+        /^  sandbox +(available \(0 tasks declare exec\.sandbox\)(, untraced — .+)?|unavailable — .+; 0 tasks declare exec\.sandbox)$/m,
       )
       const json = await vx(root, ['info', '--format=json'])
       expect(json.code).toBe(0)
