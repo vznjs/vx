@@ -998,6 +998,56 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
     expect((await pluginEdges(bun(), 'bun.lock', D_BUN, projects)).order).toEqual([])
   })
 
+  it('pnpm: a `catalog:` dependency the install linked to a workspace package is an edge (vercel/turborepo#12185)', async () => {
+    // As pnpm 10.28 wrote it with linkWorkspacePackages: true.
+    const text = `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+catalogs:
+  default:
+    pkg-b:
+      specifier: ^1.0.0
+      version: 1.0.0
+  named:
+    pkg-c:
+      specifier: ^1.0.0
+      version: 1.0.0
+
+importers:
+
+  .: {}
+
+  packages/app-a:
+    dependencies:
+      pkg-b:
+        specifier: 'catalog:'
+        version: link:../pkg-b
+      pkg-c:
+        specifier: catalog:named
+        version: link:../pkg-c
+
+  packages/pkg-b: {}
+
+  packages/pkg-c: {}
+`
+    const projects = await metas({
+      'packages/app-a': {
+        name: 'app-a',
+        version: '1.0.0',
+        dependencies: { 'pkg-b': 'catalog:', 'pkg-c': 'catalog:named' },
+      },
+      'packages/pkg-b': { name: 'pkg-b', version: '1.0.0' },
+      'packages/pkg-c': { name: 'pkg-c', version: '1.0.0' },
+    })
+    expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', text, projects)).order).toEqual([
+      'app-a → pkg-b',
+      'app-a → pkg-c',
+    ])
+  })
+
   it('yarn berry: an `npm:` alias named like a workspace is the registry package (vercel/turborepo#12061)', async () => {
     // Turbo's berry-npm-alias fixture, as yarn 4.4 wrote it.
     const text = `__metadata:
