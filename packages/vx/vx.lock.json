@@ -4177,7 +4177,8 @@
           "ignore": {
             "systemInfo": [
               "hw.optional.bmi1",
-              "hw.optional.avx2_0"
+              "hw.optional.avx2_0",
+              "hw.l3cachesize"
             ]
           }
         }
