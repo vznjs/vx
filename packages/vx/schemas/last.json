@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "vx last --format json",
-  "description": "`vx last [RUNID] [--failed]` prints a run; `--list` prints an array of invocations, newest first; `--log <task>` prints that task's output; `--stats` prints per-task history numbers; `--sql` prints the rows a read-only query over the history selects.",
+  "description": "`vx last [RUNID] [--failed]` prints a run; `--list` prints an array of invocations, newest first; `--log <task>` prints that task's output; `--stats` prints per-task history numbers; `--sql` prints the rows a read-only query over the history selects; `--live` prints the run in progress (with `--follow`, its events after, one per line).",
   "oneOf": [
     {
       "type": "object",
@@ -34,9 +34,48 @@
     { "type": "array", "items": { "$ref": "#/$defs/invocation" } },
     { "$ref": "#/$defs/log" },
     { "$ref": "#/$defs/stats" },
-    { "$ref": "#/$defs/rows" }
+    { "$ref": "#/$defs/rows" },
+    { "$ref": "#/$defs/live" }
   ],
   "$defs": {
+    "live": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["live", "tasks", "warnings"],
+      "properties": {
+        "live": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runId", "command", "pid", "startedAt", "elapsedMs"],
+          "properties": {
+            "runId": { "type": "string" },
+            "command": { "type": "string" },
+            "pid": { "type": "integer" },
+            "startedAt": { "type": "integer", "description": "epoch ms" },
+            "elapsedMs": { "type": "integer" }
+          }
+        },
+        "tasks": {
+          "type": "array",
+          "description": "`--live`: running first, then ended, then waiting; groups left out",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["taskId", "status", "startedAt", "durationMs"],
+            "properties": {
+              "taskId": { "type": "string" },
+              "status": {
+                "type": "string",
+                "description": "running, waiting, or the status it ended with"
+              },
+              "startedAt": { "type": ["integer", "null"] },
+              "durationMs": { "type": ["number", "null"] }
+            }
+          }
+        },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "rows": {
       "type": "object",
       "additionalProperties": false,

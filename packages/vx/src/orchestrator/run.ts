@@ -85,6 +85,7 @@ import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
 import { keepsFailures, reportOf, RunKeeper } from './run-report.js'
 import { buildAdmission, executorDemand, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { createSteps } from './steps.js'
+import { liveSocketPath, serveLive } from './run-live.js'
 import { writeRunSteps, writeRunWarnings } from './run-steps.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
@@ -689,11 +690,13 @@ async function runOnBus(
   // because the normal path closes before the persistent-task wait —
   // holding the handle open for a dev server's whole lifetime would be
   // worse.
+  let live: ReturnType<typeof serveLive> | undefined
   let cacheClosed = false
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
     cacheClosed = true
     cache.close()
+    live?.unlisten()
     // Released with the handle: before a persistent task's wait, on every
     // exit path (see run-lock.ts for why a run holds one at all). AWAITED:
     // fired and forgotten, the release lost the race with the CLI's exit —
@@ -713,6 +716,16 @@ async function runOnBus(
       }),
     ),
   )
+  // Answers `vx last --live` while the lock is held (run-live.ts).
+  live = serveLive({
+    socketPath: liveSocketPath(prepared.workspaceRoot),
+    bus,
+    runId,
+    command: maskInvocation(invocationCommand(options.command ?? process.argv.slice(1))),
+    startedAt: Date.now(),
+    nodes: () => nodes.values(),
+    warnings: () => warned,
+  })
   try {
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
@@ -1638,6 +1651,7 @@ async function runOnBus(
     // floor for a throw a later change adds, not a path a row can drive.
     log.runEnd?.()
     log.runDone?.()
+    live?.dispose()
     stop.detach()
     // Plugins installed at the top of run() get their bus subscriptions
     // released here. Idempotent; safe even if installPlugins threw.
