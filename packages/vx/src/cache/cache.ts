@@ -3554,6 +3554,16 @@ export class Cache implements CacheLayer {
 export const SQLITE_FCNTL_PERSIST_WAL = 10
 
 /**
+ * The cache's `bun:sqlite` handle, for core's own readers (`vx last`, `vx
+ * why`, the history provider). A function, not a member: the façade hands
+ * `Cache` to plugins and no plugin touches cache.db (2026-10-29). Callers
+ * never close it — `Cache.close()` owns the lifetime.
+ */
+export function indexDb(cache: Cache): Database {
+  return cache['db']
+}
+
+/**
  * Close for real. A plain `close()` leaves the connection open while any
  * statement from `db.prepare()` lives (bun:sqlite 1.4.2 defers it, as
  * `sqlite3_close_v2` does), so `cache.db` and its `-wal` and `-shm` stayed
@@ -3564,16 +3574,6 @@ export const SQLITE_FCNTL_PERSIST_WAL = 10
  * `vx run` exited 1 with that stack after its tasks had passed (M-44). There
  * the deferred close is the one that closes.
  */
-/**
- * The cache's `bun:sqlite` handle, for core's own readers (`vx last`, `vx
- * why`, the history provider). A function, not a member: the façade hands
- * `Cache` to plugins and no plugin touches cache.db (2026-10-29). Callers
- * never close it — `Cache.close()` owns the lifetime.
- */
-export function indexDb(cache: Cache): Database {
-  return cache['db']
-}
-
 export function closeDb(db: Database): void {
   try {
     db.close(true)

@@ -394,7 +394,7 @@ export function absentOr(err: unknown): string
 // The fold up to the input files, which `foldKey` folds last (key-fold.ts).
 export function foldHead(input: CacheKeyInput, digestValue?: (value: string) => string): bigint
 // Each task's last key by its probe, over `fold_memo` (fold-memo.ts).
-// `Cache.foldMemo()` hands out the interface; the class over the rows,
+// `Cache.foldMemo()` hands out the interface; the rows' own class,
 // `IndexFoldMemo`, stays in the cache module, as `IndexRemoteHits` does
 // behind `Cache.remoteHits`. No handle reaches a plugin (2026-10-29).
 export interface FoldMemo {
