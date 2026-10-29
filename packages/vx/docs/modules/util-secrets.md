@@ -60,7 +60,8 @@ export function terminalOf(stdin, stderr, interrupt?): SecretTerminal
 - **Order.** The keychain entry (service: the plugin's package name, name:
   `key`), else, given a `prompt`, the terminal's answer, trimmed and saved.
   Else a rejection `isSecretUnavailable` names: `not-found` (no prompt),
-  `no-terminal` (CI, stdin or stderr not a TTY, or prompts closed),
+  `no-terminal` (CI, stdin or stderr not a TTY, a terminal that refuses
+  raw mode, or prompts closed),
   `declined` (an empty answer, Ctrl-D, Ctrl-C), `store-unavailable` (the
   keychain threw and no prompt was given). By name, not `instanceof`: a
   plugin may load its own copy of core.
