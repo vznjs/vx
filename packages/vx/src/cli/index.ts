@@ -44,8 +44,9 @@ export async function run(argv: readonly string[]): Promise<number> {
     return 0
   }
   // Each setting's variable once, before any verb: a renamed one is named,
-  // and a deep reader trusts what it reads.
-  checkSettingsEnv()
+  // and a deep reader trusts what it reads. Not for help, as `vx run
+  // --help` above is not: help is where a setting's values are read.
+  if (command !== 'help' && command !== '--help' && command !== '-h') checkSettingsEnv()
 
   try {
     return await dispatch(command, rest)
