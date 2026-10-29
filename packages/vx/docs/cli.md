@@ -3106,7 +3106,8 @@ vx run app#test -- …`, with the arguments the run forwarded to the
 tasks that got them; a failed dependency, which never got them, gets a
 line of its own without them, X-140). The
 replayed `$ vx run …` or `$ vx watch …` line and that one keep each
-argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49).
+argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49);
+the re-run line quotes a task id the same way (`'app#it'\''s boom'`).
 
 **No runs yet.** Before any run, every form says so
 (`› vx last  no runs yet` with `fix  vx run`, exit 1; `--list` prints
