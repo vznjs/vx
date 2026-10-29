@@ -99,4 +99,20 @@ describe('ui components', () => {
       plain(ui.text(['wrote ', ui.path('dist/**'), ' for ', ui.id('a#build')]), ui.fix('vx lock')),
     ).toBe('  wrote dist/** for a#build\n\n  fix  vx lock\n')
   })
+
+  // A refusal quotes a path or a name, which is anyone's bytes: one named
+  // `ESC ]0;…` retitled the terminal from a notice.
+  it('writes a control byte in any text as \\xNN, a line break kept', () => {
+    const bad = 'x\x1b]0;t\x07\ry'
+    const out = ui.render(
+      [ui.notice({ tone: 'error', verb: 'vx', headline: bad, what: [ui.path(bad), `a\n${bad}`] })],
+      ON,
+    )
+    expect(plain(ui.text(bad, ui.id(`${bad}#b`)))).toBe(
+      '  x\\x1b]0;t\\x07\\x0dy\n  x\\x1b]0;t\\x07\\x0dy#b\n',
+    )
+    expect(out).toContain('x\\x1b]0;t\\x07\\x0dy')
+    // oxlint-disable-next-line no-control-regex
+    expect(out.replace(/\x1b\[[0-9;]*m/g, '').match(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g)).toBeNull()
+  })
 })

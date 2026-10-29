@@ -513,7 +513,8 @@ use your own instead.
   its deps ahead of it the same way.
 - A task runs with the orchestrator's environment under the worker's
   root. `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless
-  the task's `env.define` sets them.
+  the task's `env.define` sets them; `npm_execpath` is the workspace's
+  package manager on the worker, as core sets it on a local task.
 - A worker restores, by key, the declared outputs of every task the one
   it runs depends on, each after its own dependencies (an additive task's
   rewrite of an upstream file stands), unless it ran or restored them before. Files a task

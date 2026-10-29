@@ -106,7 +106,8 @@ artifact never changes, so after R2 serves it once, that data center
 answers it without R2 (free on every plan). Whether R2 holds an
 artifact (a check, a `HEAD`, an upload's skip) is asked of R2 alone: the
 data center's copy can outlive R2's, and a writer told "held" there
-would skip an upload another data center then cannot read.
+would skip an upload another data center then cannot read. An upload
+drops the copy in the data center it reaches: R2 had let those bytes go.
 
 ## Expiry
 
