@@ -14,6 +14,7 @@ import {
 import type { PackageMeta } from './packages.js'
 import { mapTurboWorkspace, type TurboGlobal, type TurboMappedProject } from './turbo/turbo-map.js'
 import { rootTaskProject } from './turbo/turbo-reads.js'
+import { ROOT_ENGINES_PROBE } from './turbo/root-engines.js'
 import { relPosix } from './paths.js'
 import { gitIgnored, spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { DOTENV_GLOBS_HEAD, DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
@@ -247,10 +248,11 @@ function identifier(task: string): string {
 }
 
 /**
- * The `.env` probes, by name: Turbo hashes a task's `.env` files although
- * git ignores them, and a glob over git's files sees none, so the mapper
- * keys them through a shell line that prints each file. Inline in every
- * package's config, that line read as noise nobody could review.
+ * The probes, by name: Turbo hashes a task's `.env` files although git
+ * ignores them, and a glob over git's files sees none, so the mapper keys
+ * them through a shell line that prints each file; and the root's
+ * `engines`, which Turbo folds into every task. Inline in every package's
+ * config, each line read as noise nobody could review.
  */
 type Probe = { name: string; command: string }
 
@@ -262,6 +264,10 @@ const PROBES: readonly Probe[] = [
   {
     name: 'dotenvFilesDeep',
     command: DOTENV_PROBE,
+  },
+  {
+    name: 'rootEngines',
+    command: ROOT_ENGINES_PROBE,
   },
 ]
 
