@@ -25,6 +25,7 @@ export interface RefusalParts {
 export function refusal(parts: RefusalParts, opts?: { code?; message? }): UserError // message defaults to the parts joined
 export function isUserError(err: unknown): err is UserError // by name, across a copy boundary (below)
 export function errorCode(err: unknown): string // the stable code of anything bin.ts catches
+export function configThrow(err: object): object // marks a config's own throw: errorCode answers VX_E_CONFIG
 export function wantsJson(argv: readonly string[]): boolean // --format json, --format=json, --dry=json, before `--`
 export function errorDocument(code: string, message: string): string // `{"ok":false,"error":{code,message}}` + newline
 
@@ -70,8 +71,9 @@ anything else with
 its stack. Every one sets exit code 1 — nothing is re-thrown. When the
 argv asks for JSON (`wantsJson`), `bin.ts` also prints `errorDocument`
 on stdout with `errorCode`: a UserError's own code (`VX_E_CONFIG` for a
-codeless one that opens with its config file), `VX_E_FDS`, `VX_E_FS`,
-or `VX_E_INTERNAL`. The codes are listed in `cli.md` § Error codes.
+codeless one that opens with its config file, and for a config's own
+throw, which the loader marks with `configThrow` and `bin.ts` prints with
+its stack), `VX_E_FDS`, `VX_E_FS`, or `VX_E_INTERNAL`. The codes are listed in `cli.md` § Error codes.
 `isTmpdirRefusal` is not `bin.ts`'s: the sandbox runtime and the run
 lock ask it and add `TMPDIR_HINT` to their own message, because a
 minimal image's sandboxed task once said only "EACCES … mkdtemp"
@@ -121,4 +123,6 @@ is not on PATH — the input enumeration and `--affected` say it (item 241): ins
 finds the field's key in the file, path segment after path segment, and
 returns the message with the file at `line:col` (relative to `cwd`
 unless that climbs out) and the lines up to it with a caret; undefined
-when it cannot place the field, and the message prints as it was.
+when it cannot place the field, and the message prints as it was. The
+loader's syntax error (`Project config <file>:<line>:<col>: …`, Bun's
+position) is framed at that position.

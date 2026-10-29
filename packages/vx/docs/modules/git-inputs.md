@@ -149,7 +149,7 @@ export async function populateGitFilesCache(
   workspaceWide?: boolean,
 ): Promise<void> // start + apply in one call
 
-export function runGitLsFiles(cwd: string): GitLsResult // the synchronous per-project fallback
+export function runGitLsFiles(cwd: string, env?: Record<string, string>): GitLsResult // the synchronous per-project fallback
 
 // Read off a plain `.git` directory (no location variable or
 // `GIT_INDEX_FILE`, no include, no `.git` file), else one `git rev-parse

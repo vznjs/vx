@@ -122,7 +122,9 @@ its error where `exists()` answers in 15–40 µs.
 
 The root is the directory holding the nearest `.vx/workspace.*` from
 `start` up to the git top-level, inclusive (a worktree's `.git` file is a
-top-level; a submodule goes on to its superproject), or up to `/` outside
+top-level, a submodule's too; a submodule goes on to its superproject, and so does an
+embedded repository the outer git does not ignore, whose configs
+`findProjectConfigs` lists as the outer workspace's), or up to `/` outside
 git. Nothing else decides it: not a `package.json`, `pnpm-workspace.yaml`
 or a lockfile (2026-10-13: "Workspace file is the ultimate",
 "never go out of git root"). A file above the checkout is never read.

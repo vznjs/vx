@@ -39,7 +39,14 @@ import {
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
-import { hangupIgnored, maskedLine, restartTimings, sayNotice, sayLine } from '../util/index.js'
+import {
+  hangupIgnored,
+  maskedLine,
+  printable,
+  restartTimings,
+  sayNotice,
+  sayLine,
+} from '../util/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -164,23 +171,22 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     unlocked = true
     return []
   })
-  // `//#check` is the root project's task, under the name the run gives
-  // it (prepare.ts, D-39): taken literally, no project was in scope and
-  // the watch exited 1 after a green run.
-  const rootDir = path.resolve(workspaceRoot)
-  const rootName = allProjects.find((p) => path.resolve(p.dir) === rootDir)?.name
-  const anchored = opts.tasks
-    .filter((t) => t.includes('#'))
-    .map((t) => t.slice(0, t.indexOf('#')))
-    .map((p) => (p === '//' && rootName !== undefined ? rootName : p))
+  const anchored = opts.tasks.filter((t) => t.includes('#')).map((t) => t.slice(0, t.indexOf('#')))
   const named =
     anchored.length === opts.tasks.length
       ? new Set(anchored)
       : opts.projects === undefined
         ? undefined
         : new Set([...opts.projects, ...anchored])
+  // `//#check` is the root project's task, under the name the run gives
+  // it (prepare.ts, D-39): taken literally, no project was in scope and
+  // the watch exited 1 after a green run. Resolved per discovery: started
+  // with no lock, the root has no name until `vx lock` writes one.
+  const rootDir = path.resolve(workspaceRoot)
   const inScope = (all: readonly ProjectMeta[]): ProjectMeta[] =>
-    named === undefined ? [...all] : all.filter((p) => named.has(p.name))
+    named === undefined
+      ? [...all]
+      : all.filter((p) => named.has(p.name) || (named.has('//') && path.resolve(p.dir) === rootDir))
   const scope = inScope(allProjects)
 
   // Initial run — same code path as `vx run`.
@@ -421,6 +427,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   /** What stopped a cycle that waited on a server's readiness; the loop runs it next. */
   let interruptedBy: string | undefined
   let interruptTimer: ReturnType<typeof setTimeout> | null = null
+  /** The server's own writes among the paths that stopped the last cycle waiting on readiness. */
+  let stoppedLast = new Set<string>()
   // Judged on settled state one window later, as an idle edit is, and only
   // if the cycle still waits on readiness alone by then.
   const interruptIfWaiting = (): void => {
@@ -432,6 +440,18 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       if (c === undefined || c.interrupted || !c.waitsOnReadiness() || stop.aborted) return
       const label = changes.judge()
       if (label === undefined) return
+      // What a server writes in its project as it boots (a timestamped
+      // config bundle, a route tree) is an edit: it stopped the cycle, the
+      // next server wrote it again, and the loop restarted it for good,
+      // never ready. A path that stopped the last such cycle, untracked
+      // and in a waiting server's project, is that server's own write.
+      const dirs = c.serverDirs()
+      const own = changes.changed.filter(
+        (p) => !changes.trackedAtArm(p) && dirs.some((d) => p.startsWith(d + path.sep)),
+      )
+      const again = own.length === changes.changed.length && own.every((p) => stoppedLast.has(p))
+      stoppedLast = new Set(own)
+      if (again) return
       interruptedBy = label
       c.interrupt()
     }, DEBOUNCE_MS)
@@ -458,7 +478,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         sayNotice(
           'warn',
           'vx watch',
-          `${path.relative(workspaceRoot, abs)} changed; runs read the lock, so run \`vx lock\` to apply it`,
+          `${printable(path.relative(workspaceRoot, abs))} changed; runs read the lock, so run \`vx lock\` to apply it`,
         )
   }
   const trigger = (label: string, abs: string): void => {
@@ -557,6 +577,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         // after the run, under the label of what actually arrived.
         current = undefined
         if (stop.aborted) break
+        if (interruptedBy === undefined) stoppedLast = new Set()
         if (interruptedBy !== undefined) {
           label = interruptedBy
           interruptedBy = undefined
@@ -848,7 +869,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
             staleNamed.set(abs, now)
             process.stdout.write(
-              `vx watch: ${rel} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
+              `vx watch: ${printable(rel)} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
             )
           }),
         )

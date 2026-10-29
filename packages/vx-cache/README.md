@@ -42,7 +42,8 @@ export default {
   front of it, such as a Cloudflare Access service token:
   `headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
 'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET }`. An
-  unset value is left out; `authorization` stays the CI token's. A DTE
+  unset value is left out; `authorization`, `content-type`, `content-length`
+  and the `vx-*` names stay the request's own (setting one is refused). A DTE
   worker sends them too, so give its job the same secrets.
 
 ## Tokens
@@ -66,7 +67,8 @@ first read, said once, and the run stays local.
 A run that hands tasks to other jobs lends them its token (core's
 `lend()`), and they read and write with it: a job started from another
 workflow would carry a token that writes nowhere the run reads. A job
-uses a lent token over its own and never lends one on.
+uses a lent token over its own and never lends one on, nor any once
+its remote is off for the run.
 
 A refused token is said once and turns the remote off for the run; a
 refused write (a job that reads only) turns off writes alone. Any other
@@ -81,7 +83,10 @@ a run reads git's branch and the default branch only), and the first ref
 holding a hash answers it; its download names that ref. A run that reads
 no ref says so and stays local. The run asks the server's limits once
 (`/v1/capabilities`) and checks in chunks of its `maxCheckHashes`
-lookups, all at once. Each
+lookups, all at once; a run reading more refs than one check takes
+(Workers' default is 6) spreads each hash's scopes over several. It
+keeps to the limits each `/v1/artifacts` answer names, a refusal's too,
+so a server restarted with lower ones refuses one check, not the run's. Each
 upload is one artifact by `PUT`, up to four at once: its bytes reach the
 bucket untouched by the server's code (a batch, split by that code, ran
 out of Workers' CPU). While the server names no limits (said once),

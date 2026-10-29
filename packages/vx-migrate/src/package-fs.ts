@@ -123,6 +123,11 @@ export async function gitTop(dir: string): Promise<string | null> {
     if (await file.exists()) {
       const gitdir = await file.text().catch(() => '')
       if (!/(^|[\s/])\.git\/modules\//.test(gitdir)) return d || '/'
+      // A submodule's own worktree points there too, and is a top-level:
+      // git writes `commondir` in a worktree's gitdir alone.
+      const to = gitdir.replace(/^gitdir:\s*/, '').trim()
+      if (await Bun.file(`${to.startsWith('/') ? '' : `${d}/`}${to}/commondir`).exists())
+        return d || '/'
     }
     if (d === '') return null
   }

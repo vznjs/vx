@@ -626,7 +626,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           const why = timeoutFired ? `timeout (${effectiveTimeout}ms)` : 'stop'
           log.taskStderr(
             node,
-            `vx: ${executorLabel(args.executor)} did not return within ${graceMs}ms of the ${why}; abandoned\n`,
+            `${midLine ? '\n' : ''}vx: ${executorLabel(args.executor)} did not return within ${graceMs}ms of the ${why}; abandoned\n`,
           )
           const reason: unknown = signal.reason
           resolve({
@@ -1010,6 +1010,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         load = untrack?.() ?? load
         untrack = undefined
       })
+      .catch((thrown: unknown) => {
+        // The scheduler prints the throw's line into the task's stream,
+        // after the masked tail the finally above flushed.
+        if (midLine) log.taskStderr(node, '\n')
+        throw thrown
+      })
     endExec()
     if (secrets !== null)
       res = {
@@ -1122,6 +1128,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   let flushMasked = (): void => {}
+  // The attempt's output, both streams, last ended mid-line: vx's own line
+  // (a retry, an abandoned or thrown executor) starts its own. Glued, a frame read
+  // `partialvx: retrying …`.
+  let midLine = false
   // The attempt's output as the logger got it (masked): the entry's when
   // the task saves, else only what a failure reports (`failedOutput`).
   let output: BoundedCapture | undefined
@@ -1214,7 +1224,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     })
     log.taskStderr(
       node,
-      `vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
+      `${midLine ? '\n' : ''}vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
     )
   }
 
@@ -1224,12 +1234,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         ? new BoundedCapture()
         : new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
     output = kept
+    midLine = false
     const toOut = (t: string): void => {
       kept.push(t)
+      if (t.length > 0) midLine = !t.endsWith('\n')
       log.taskStdout(node, t)
     }
     const toErr = (t: string): void => {
       kept.push(t, true)
+      if (t.length > 0) midLine = !t.endsWith('\n')
       log.taskStderr(node, t)
     }
     const out = secrets && maskedEmitter(secrets, toOut)

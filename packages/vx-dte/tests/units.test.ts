@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
@@ -9,6 +9,7 @@ import {
   localEnv,
   runWorker,
   swapRoots,
+  trackedFiles,
   treeMeter,
 } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
@@ -3965,6 +3966,37 @@ it('names a tracked file a task changed as the workspace does, in a repository s
   expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
 })
 
+// A worker clears what an earlier task left under a task's outputs, but
+// never a tracked file. A git that could not list them (a corrupt index)
+// read as none tracked, and committed files under `gen/**` were deleted.
+it('refuses a checkout whose tracked files git cannot list', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+  await mkdir(path.join(ws, 'a/gen'), { recursive: true })
+  await writeFile(path.join(ws, 'a/gen/g.txt'), '1\n')
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  expect(trackedFiles(ws)).toEqual(new Set(['a/gen/g.txt']))
+  await writeFile(path.join(ws, '.git/index'), 'not an index')
+  expect(() => trackedFiles(ws)).toThrow(/git ls-files/)
+  // Outside git nothing is tracked.
+  expect(trackedFiles(await tmp())).toEqual(new Set())
+})
+
 // A pathspec is a glob unless told otherwise: a project at `p*` named its
 // sibling `pa`'s changed files as its own, and its entry was withheld.
 it('names only the tracked files under a project whose directory has glob characters', async () => {
@@ -4046,6 +4078,60 @@ it('snapshots the uncommitted changes in a checkout with no git identity', async
   const { tree } = await snapshot(ws)
   expect(tree).not.toBe('')
   expect(git('rev-parse', `${tree}:f.txt`)).toBe(git('hash-object', 'f.txt'))
+})
+
+// `git stash create` cannot save a tree holding an intent-to-add entry
+// (`git add -N`): the snapshot fell back to HEAD, without the changes.
+it('snapshots every tracked file as it is on disk, deletions, modes and intent-to-add too', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: ws },
+    )
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  for (const f of ['gone.txt', 'mode.sh', 'mod.txt']) await writeFile(path.join(ws, f), '1\n')
+  await symlink('mod.txt', path.join(ws, 'link'))
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  await rm(path.join(ws, 'gone.txt'))
+  await chmod(path.join(ws, 'mode.sh'), 0o755)
+  await writeFile(path.join(ws, 'mod.txt'), '2\n')
+  await rm(path.join(ws, 'link'))
+  await symlink('mode.sh', path.join(ws, 'link'))
+  await writeFile(path.join(ws, 'new.txt'), 'new\n')
+  git('add', '-N', 'new.txt')
+  await writeFile(path.join(ws, 'untracked.txt'), 'u\n')
+  const { commit, tree } = await snapshot(ws)
+  expect(git('rev-parse', `${commit}^{tree}`)).toBe(tree)
+  expect(git('ls-tree', '-r', tree).replace(/ [0-9a-f]{40}/g, '')).toBe(
+    [
+      '120000 blob\tlink',
+      '100644 blob\tmod.txt',
+      '100755 blob\tmode.sh',
+      '100644 blob\tnew.txt',
+    ].join('\n'),
+  )
+  for (const f of ['mod.txt', 'mode.sh', 'new.txt'])
+    expect(git('rev-parse', `${tree}:${f}`)).toBe(git('hash-object', f))
+  expect(git('cat-file', 'blob', `${tree}:link`)).toBe('mode.sh')
+  // The index and the working tree are as they were.
+  expect(git('status', '--porcelain')).toBe(
+    ['D gone.txt', ' M link', ' M mod.txt', ' M mode.sh', ' A new.txt', '?? untracked.txt'].join(
+      '\n',
+    ),
+  )
 })
 
 // A worker checkout whose prepare rewrote a tracked file joined on HEAD's

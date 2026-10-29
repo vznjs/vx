@@ -23,7 +23,7 @@ import type { PackageMeta } from '../packages.js'
 import { withoutTakenBack } from '../glob-grammar.js'
 import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
-import { scriptCommand, yarnPnp } from '../script-command.js'
+import { type Owner, runsScriptHooks, scriptCommand, yarnPnp, yarnRun } from '../script-command.js'
 import {
   ownFileTakeBacks,
   takingBack,
@@ -275,6 +275,8 @@ type MapOpts = MapNxOptions & {
   /** The root TypeScript config Nx folds into every task's hash, if any. */
   readonly rootTsConfig: string | undefined
   readonly pnp: boolean
+  /** Each directory's package manager, for whether it runs script hooks. */
+  readonly hookMemo: Map<string, Owner>
   /** Tasks per `syncGenerators` list, said once in the notes. */
   readonly syncTasks: Map<string, number>
 }
@@ -334,6 +336,7 @@ export async function mapNxWorkspace(
       existsSync(path.join(root, f)),
     ),
     pnp: yarnPnp(root),
+    hookMemo: new Map(),
     syncTasks: new Map(),
   }
 
@@ -832,6 +835,7 @@ function buildTask(
       !(p === nodeName && t === targetName) &&
       metaByNode.has(p) &&
       Object.hasOwn(nodeMap[p]?.data?.targets ?? {}, t),
+    runsScriptHooks(meta.dir, opts.hookMemo) === null ? {} : scripts,
   )
 
   const inputs = emptyNxInputs()
@@ -1136,6 +1140,8 @@ function mapCommand(
   manifestField: MapNxOptions['manifestField'],
   executors: NxExecutors | undefined,
   isTarget: (project: string, target: string) => boolean,
+  /** `scripts`, or none where the package manager runs no `pre` / `post` hooks. */
+  hookScripts: Record<string, unknown>,
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -1202,10 +1208,11 @@ function mapCommand(
     // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
     // that refuses to load, so it is the placeholder with its todo.
     if (body !== undefined && body.length > 0) {
-      const command = scriptCommand(script, body, scripts, pnp)
+      // Nx runs `<pm> run <script>`: the hooks fold only where the manager runs them.
+      const command = scriptCommand(script, body, hookScripts, pnp)
       // `yarn run <name>` sets its own.
       const env =
-        command === `yarn run ${script}`
+        command === yarnRun(script)
           ? {}
           : npmScriptEnv(command, script, command !== body, manifest, manifestField, todos)
       return shell(command, undefined, { env, readyWhen: undefined })

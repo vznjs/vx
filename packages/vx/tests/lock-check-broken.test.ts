@@ -75,3 +75,30 @@ it('a lock that is not valid JSON is a drift the audit names, in its own shape',
     '✗ vx lock --check  .vx/projects.lock.json is not valid JSON',
   )
 })
+
+it('every config that does not load is named, root-relative, with its frame', async () => {
+  const ws = await makeWorkspace({ prefix: 'vx-lock-check-two-broken-' })
+  const BAD = `export default { tasks: { b: { bad: 1 } } }\n`
+  const a = await addProject(ws, 'a', CONFIG)
+  const b = await addProject(ws, 'b', CONFIG)
+  await addProject(ws, 'c', CONFIG)
+  expect(Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws }).exitCode).toBe(0)
+  for (const dir of [a, b]) await writeFile(path.join(dir, 'vx.config.mjs'), BAD)
+  const json = Bun.spawnSync({
+    cmd: [process.execPath, BIN, 'lock', '--check', '--format', 'json'],
+    cwd: ws,
+  })
+  const pretty = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock', '--check'], cwd: ws })
+  await rm(ws, { recursive: true, force: true })
+  const { problems } = JSON.parse(json.stdout.toString()) as { problems: string[] }
+  expect(problems.filter((p) => p.includes('unknown field "bad"'))).toEqual([
+    'packages/a/vx.config.mjs: tasks.b has unknown field "bad" (allowed: cache, dependsOn, description, exec, inputs)',
+    'packages/b/vx.config.mjs: tasks.b has unknown field "bad" (allowed: cache, dependsOn, description, exec, inputs)',
+  ])
+  const err = pretty.stderr.toString()
+  expect(pretty.exitCode).toBe(1)
+  expect(err).toContain('packages/a/vx.config.mjs:1:')
+  expect(err).toContain('packages/b/vx.config.mjs:1:')
+  expect(err).toContain('> 1 | export default { tasks: { b: { bad: 1 } } }')
+  expect(err).not.toContain(ws)
+})

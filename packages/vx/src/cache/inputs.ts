@@ -21,6 +21,7 @@ import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync } fro
 import { rm, rmdir } from 'node:fs/promises'
 import type { InputsConfig, TaskConfig } from '../config.js'
 import {
+  literalPath,
   anyTaskGlob,
   asTrees,
   isExecutableMissing,
@@ -827,7 +828,8 @@ async function scanOutputs(
   // outside the project, so any future caller reaching it by another route (a
   // programmatic embedder, a config source that skips the loader) is contained
   // by construction.
-  return { files: containedIn(args.projectDir, scanned).sort() }
+  const contained = containedIn(args.projectDir, scanned)
+  return { files: outsideNested(args.nestedProjectDirs, contained).sort() }
 }
 
 /**
@@ -1002,6 +1004,27 @@ function committedPastLinks(
   }
 }
 
+/**
+ * Drop the files whose real directory is in a nested project: a link at a
+ * glob's head that stays in the project is followed (X-88), and the
+ * lexical nested-project filter cannot see where it lands.
+ */
+function outsideNested(nestedDirs: readonly string[], files: string[]): string[] {
+  if (nestedDirs.length === 0 || files.length === 0) return files
+  const realNested = nestedDirs.map((d) => realOrNull(d) ?? d)
+  const verdict = new Map<string, boolean>()
+  return files.filter((f) => {
+    const dir = path.dirname(f)
+    let ok = verdict.get(dir)
+    if (ok === undefined) {
+      const real = realOrNull(dir) ?? dir
+      ok = !realNested.some((n) => isInside(n, real))
+      verdict.set(dir, ok)
+    }
+    return ok
+  })
+}
+
 /** Is `abs` the directory `dir` itself or something beneath it? */
 function isInside(dir: string, abs: string): boolean {
   if (abs === dir) return true
@@ -1038,8 +1061,14 @@ export async function cleanOutputs(args: {
     args.projectDir,
     args.committed ?? committedFiles(undefined, args.projectDir),
   )
-  sweepRestoreTemps(args.projectDir, args.outputs)
-  const matched = args.resolved ?? (await resolveOutputs(args))
+  sweepRestoreTemps(args.projectDir, args.outputs, committed)
+  // An empty directory under the outputs is one too (a save keeps it): one
+  // an older build left would otherwise be saved by this run.
+  const tree =
+    args.resolved === undefined
+      ? await resolveOutputTree(args)
+      : { files: args.resolved, emptyDirs: [] }
+  const matched = tree.files
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
@@ -1047,7 +1076,13 @@ export async function cleanOutputs(args: {
     matched.filter((f) => !committed(f)),
     args.projectDir,
   )
-  await pruneEmptiedDirs(args.projectDir, removed, pruneScope(args.projectDir, args.outputs))
+  await pruneEmptiedDirs(
+    args.projectDir,
+    removed,
+    pruneScope(args.projectDir, args.outputs),
+    undefined,
+    tree.emptyDirs,
+  )
   // Project-relative posix paths the outputs reach, for the caller's
   // GitFilesCache.markOutputsChanged: a committed one kept here is the
   // task's to rewrite or remove, so its index OID no longer vouches for it.
@@ -1064,13 +1099,22 @@ export async function cleanOutputs(args: {
  * whose writer is alive, this process included, is left: it may be
  * mid-restore.
  */
-export function sweepRestoreTemps(base: string, outputs: readonly string[]): void {
+export function sweepRestoreTemps(
+  base: string,
+  outputs: readonly string[],
+  committed: (abs: string) => boolean = () => false,
+): void {
   const dirs = new Set<string>()
   for (const g of outputs) {
     if (g.startsWith('!') || !isLiteralPattern(g)) continue
     dirs.add(path.dirname(path.resolve(base, stripTrailingSlash(normalizeGlob(g)))))
   }
+  // A directory that resolves out of `base` is not the outputs': the link
+  // refusal runs after this sweep, and a delete never follows a link out.
+  let realBase: string | undefined
   for (const dir of dirs) {
+    const real = realOrNull(dir)
+    if (real === null || !isInside((realBase ??= realOrNull(base) ?? base), real)) continue
     let names: string[]
     try {
       names = readdirSync(dir)
@@ -1082,6 +1126,8 @@ export function sweepRestoreTemps(base: string, outputs: readonly string[]): voi
       if (m === null) continue
       const pid = Number.parseInt(m[1]!, 36)
       if (pid === process.pid || writerAlive(pid)) continue
+      // vx never deletes a committed file, whatever its name.
+      if (committed(path.join(dir, name))) continue
       rmSync(path.join(dir, name), { force: true })
     }
   }
@@ -1132,6 +1178,8 @@ export async function cleanOutputPaths(args: {
   committed?: (abs: string) => boolean
   /** Directories the prune leaves standing even when emptied (absolute). */
   keep?: ReadonlySet<string>
+  /** Empty directories to remove too (project-relative). */
+  emptyDirs?: readonly string[]
 }): Promise<void> {
   const committed = args.committed ?? committedFiles(undefined, args.projectDir)
   const files = args.rels.map((r) => path.resolve(args.projectDir, r)).filter((f) => !committed(f))
@@ -1140,6 +1188,7 @@ export async function cleanOutputPaths(args: {
     await removeAll(files, args.projectDir),
     pruneScope(args.projectDir, args.outputs),
     args.keep,
+    args.emptyDirs?.map((r) => path.resolve(args.projectDir, r)),
   )
 }
 
@@ -1327,11 +1376,11 @@ function insideRoot(files: readonly string[], root: string): string[] {
 }
 
 /**
- * Remove the directories a clean emptied, bottom-up, never `root` itself.
+ * Remove the directories a clean emptied, and the `emptyDirs` it found
+ * (an older build's, which a save would keep), bottom-up, never `root` itself.
  * A restore writes files where the cached entry has them; a directory left
  * standing where the entry holds a FILE of the same name (a task that once
- * wrote `dist/out/…` and now writes `dist/out`) blocks the rename, and an
- * empty directory is not an output anyone declared. A directory that still
+ * wrote `dist/out/…` and now writes `dist/out`) blocks the rename. A directory that still
  * holds something — a stray the globs do not cover — stays, and the restore
  * says so if it is in the way. With a `scope`, only a directory inside it
  * goes (`pruneScope`).
@@ -1341,6 +1390,7 @@ async function pruneEmptiedDirs(
   removed: readonly string[],
   scope?: PruneScope,
   keep?: ReadonlySet<string>,
+  emptyDirs: readonly string[] = [],
 ): Promise<void> {
   const rootResolved = path.resolve(root)
   // LEVEL ORDER, not a walk-up per directory. A parent is attempted only
@@ -1353,7 +1403,7 @@ async function pruneEmptiedDirs(
   // standing when a sibling's turn came first; the same walk-up without
   // the memo is correct and 60 ms, because every child re-attempts the
   // shared parent. This is correct at 44 ms.
-  let level = new Set(removed.map((f) => path.dirname(f)))
+  let level = new Set([...removed.map((f) => path.dirname(f)), ...emptyDirs])
   while (level.size > 0) {
     const parents = new Set<string>()
     const dirs = [...level].filter(
@@ -1405,8 +1455,10 @@ function pruneScope(base: string, outputs: readonly string[]): PruneScope {
   const scope: PruneScope = { below: [], atOrBelow: [] }
   for (const g of outputs) {
     if (g.startsWith('!')) continue
-    if (isLiteralPattern(g)) {
-      scope.atOrBelow.push(path.resolve(base, stripTrailingSlash(normalizeGlob(g))))
+    // `literalPath`, as `asTrees` reads it: an escaped `out/\[x\]` is one path.
+    const lit = literalPath(normalizeGlob(g))
+    if (lit !== null) {
+      scope.atOrBelow.push(path.resolve(base, stripTrailingSlash(lit)))
       continue
     }
     const prefix = staticPrefix(g)
@@ -1480,8 +1532,12 @@ export async function cleanWorkspaceOutputs(args: {
     args.workspaceRoot,
     args.committed ?? committedFiles(undefined, args.workspaceRoot),
   )
-  sweepRestoreTemps(args.workspaceRoot, args.outputs)
-  const matched = args.resolved ?? (await resolveWorkspaceOutputs(args))
+  sweepRestoreTemps(args.workspaceRoot, args.outputs, committed)
+  const tree =
+    args.resolved === undefined
+      ? await resolveWorkspaceOutputTree(args)
+      : { files: args.resolved, emptyDirs: [] }
+  const matched = tree.files
   await pruneEmptiedDirs(
     args.workspaceRoot,
     await removeAll(
@@ -1489,6 +1545,8 @@ export async function cleanWorkspaceOutputs(args: {
       args.workspaceRoot,
     ),
     pruneScope(args.workspaceRoot, args.outputs),
+    undefined,
+    tree.emptyDirs,
   )
   return matched.map((f) => relPosix(args.workspaceRoot, f))
 }
@@ -1776,7 +1834,9 @@ function throughLinks(
   isPositive: (rel: string) => boolean,
 ): (rel: string) => boolean {
   const through = new Set<string>()
-  for (const g of positive) {
+  // Each brace alternative by its own prefix: whole, `{lib,src}/**` has
+  // none, and a file behind `lib -> ../shared` was no input.
+  for (const g of positive.flatMap(braceAlternatives)) {
     const prefix = staticPrefix(g)
     if (prefix === '.' || prefix === '' || path.isAbsolute(prefix)) continue
     const parts = prefix.split('/')
@@ -2255,12 +2315,15 @@ async function scanUnion(
   emptyDirs?: Set<string>,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
+  const links: string[] = []
   const take = (rel: string): void => {
     if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) return
     const abs = path.resolve(cwd, rel)
     const st = lstatSync(abs, { throwIfNoEntry: false })
-    if (st !== undefined && (st.isFile() || st.isSymbolicLink())) matches.add(abs)
-    else if (emptyDirs !== undefined && st?.isDirectory() === true) {
+    if (st !== undefined && (st.isFile() || st.isSymbolicLink())) {
+      matches.add(abs)
+      if (st.isSymbolicLink()) links.push(abs)
+    } else if (emptyDirs !== undefined && st?.isDirectory() === true) {
       if (readdirSync(abs).length === 0) emptyDirs.add(abs)
     } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs)
   }
@@ -2272,7 +2335,13 @@ async function scanUnion(
   // A leading `**` walks the whole project whatever else is listed, so the
   // list is one walk: Turbo's `dist/**`, `**/dist/**`, `**/dist` was three,
   // ~2 ms of a warm hit on solid.
-  if (patterns.length > 1 && patterns.some((p) => p.startsWith('**'))) {
+  // Not where a static head passes through a link: the one walk does not
+  // follow links, and the per-pattern scan enters them (X-88).
+  if (
+    patterns.length > 1 &&
+    patterns.some((p) => p.startsWith('**')) &&
+    !patterns.some((p) => headLinked(cwd, p))
+  ) {
     const any = anyTaskGlob(patterns)
     for (const rel of WHOLE_TREE.scanSync(opts)) if (any(rel)) take(rel)
     return matches
@@ -2286,7 +2355,32 @@ async function scanUnion(
       for (const rel of globFor(from.rest).scanSync({ ...opts, cwd: from.dir }))
         take(`${from.prefix}/${rel}`)
   }
+  // A literal names the path and its tree (`dist`, `dist/**`), and a tree
+  // whose head is a directory link is walked through it: the link and the
+  // files under it were one artifact holding `dist` as a file and a
+  // directory, refused, so the task never cached. The walk is the output.
+  if (links.length > 0) {
+    const sorted = [...matches].sort()
+    for (const link of links) {
+      const under = `${link}/`
+      const at = sorted.findIndex((m) => m >= under)
+      if (at !== -1 && sorted[at]!.startsWith(under)) matches.delete(link)
+    }
+  }
   return matches
+}
+
+/** `pattern`'s static directory passes through a symlink under `cwd`. */
+function headLinked(cwd: string, pattern: string): boolean {
+  const prefix = staticPrefix(pattern)
+  if (prefix === '.' || path.isAbsolute(prefix)) return false
+  let at = cwd
+  for (const part of prefix.split('/')) {
+    at = path.join(at, part)
+    const st = lstatSync(at, { throwIfNoEntry: false })
+    if (st === undefined || !st.isDirectory()) return st?.isSymbolicLink() === true
+  }
+  return false
 }
 
 /**

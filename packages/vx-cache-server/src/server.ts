@@ -31,15 +31,18 @@ const VARS = {
   maxUploadBytes: 'MAX_UPLOAD_BYTES',
 } as const
 
-/** `MAX_CHECK_HASHES` and `MAX_UPLOAD_BYTES` from the environment, each a whole number above 0. */
+/** `MAX_CHECK_HASHES` and `MAX_UPLOAD_BYTES` from the environment (a string, or a Worker's JSON number), each a whole number above 0. */
 export function limitsFrom(env: object): Partial<Limits> {
   const out: Partial<Record<keyof Limits, number>> = {}
   for (const [field, name] of Object.entries(VARS) as [keyof Limits, string][]) {
     const v = (env as Record<string, unknown>)[name]
-    if (typeof v !== 'string' || v === '') continue
-    const n = Number(v)
+    if (v === undefined || v === '') continue
+    // A Worker var may be JSON: a number was skipped, the default served.
+    const n = typeof v === 'string' || typeof v === 'number' ? Number(v) : Number.NaN
     if (!(Number.isSafeInteger(n) && n > 0))
-      throw new Error(`${name}: not a whole number above 0: ${v}`)
+      throw new Error(
+        `${name}: not a whole number above 0: ${typeof v === 'string' ? v : JSON.stringify(v)}`,
+      )
     out[field] = n
   }
   return out
@@ -138,7 +141,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
         return [hash, at < 0 ? null : { size: sizes[i]![at], scope: scopes[at] }]
       }),
     )
-    return Response.json(held, { headers: limitHeaders })
+    return Response.json(held)
   }
 
   /**
@@ -170,6 +173,16 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
 
   return async (req) => {
+    const res = await answer(req)
+    // Every /v1/artifacts answer, a refusal too: a client holding older
+    // limits (a restart with new ones, a Worker's rollout) learns them from
+    // the answer that refused it, or it was refused every check of the run.
+    if (/^\/v1\/artifacts(\/|$)/.test(new URL(req.url).pathname))
+      for (const [h, v] of Object.entries(limitHeaders)) res.headers.set(h, v)
+    return res
+  }
+
+  async function answer(req: Request): Promise<Response> {
     const url = new URL(req.url)
     try {
       const path = url.pathname

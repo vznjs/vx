@@ -86,7 +86,10 @@ export function parseAllow(list: string): Allowed[] {
       const [issuer, repository, workflow] = [e.slice(0, r), e.slice(r + 1, w), e.slice(w + 1)]
       // Loopback over plain HTTP too: a server's own tests (its container's)
       // run an issuer beside it, and no one else reaches that address.
-      const https = /^(https:\/\/|http:\/\/127\.0\.0\.1[:/])/.test(issuer)
+      // Its host, not its spelling: `http://127.0.0.1:80@x.example` is x.example.
+      const https =
+        issuer.startsWith('https://') ||
+        (issuer.startsWith('http://') && URL.parse(issuer)?.hostname === '127.0.0.1')
       if (r < 0 || !https || !repository.includes('/') || workflow === '') {
         throw new Error(`${e} is not issuer:owner/repo:workflow`)
       }
@@ -107,26 +110,36 @@ const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCas
 const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /**
- * The scope a token writes: its branch. A GitHub pull request's run writes
- * its head branch (its `ref` is the merge ref the run's own reads never
- * name); a merge queue's run its base branch, which its code is about to
- * become (2026-10-25: "just strip it"); any other run its `ref`,
- * GitLab's its `ref_path`. Only a `pull_request` run takes its head
- * branch. A `pull_request_target` run writes nothing: its `head_ref` is a
- * fork's branch name, chosen by the fork, and its `ref` is the base branch,
- * which a fork's code must never write.
+ * The scope a token writes: its `ref`, GitLab's `ref_path`. A GitHub pull
+ * request's run writes its merge ref, `refs/pull/<n>/merge`, never its
+ * `head_ref`: a fork names that, and no claim tells a fork's from the
+ * repository's own, so a fork's branch `release` wrote release. A merge
+ * queue's (`merge_group`) run writes its base branch, which its code is
+ * about to become (2026-10-25: "just strip it"); only its ref is renamed:
+ * anyone can push a branch named like a queue ref. A `pull_request_target`
+ * run writes nothing: it runs a fork's code on the base branch's `ref`,
+ * which that code must never write. A GitLab merge request pipeline writes its source branch
+ * only when `source_project_path` names its own project: a fork's runs in
+ * the parent project with the fork's branch as its `ref_path`, and a
+ * GitLab before 19.5 names no source project.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
-  if (claims['event_name'] === 'pull_request_target') return undefined
-  const head = claims['event_name'] === 'pull_request' ? claims['head_ref'] : undefined
-  const ref =
-    iss === GITHUB
-      ? typeof head === 'string' && head !== ''
-        ? `refs/heads/${head}`
-        : claims['ref']
-      : claims['ref_path']
+  if (iss !== GITHUB && claims['pipeline_source'] === 'merge_request_event') {
+    const own = (claim: string) => {
+      const p = claims[claim]
+      return typeof p === 'string' && same(p, String(claims['project_path']))
+    }
+    if (
+      !own('source_project_path') ||
+      (claims['job_project_path'] !== undefined && !own('job_project_path'))
+    )
+      return undefined
+  }
+  const event = claims['event_name']
+  if (event === 'pull_request_target') return undefined
+  const ref = iss === GITHUB ? claims['ref'] : claims['ref_path']
   if (typeof ref !== 'string' || !ref.startsWith('refs/') || ref.length > 512) return undefined
-  const queued = iss === GITHUB ? QUEUE.exec(ref) : null
+  const queued = iss === GITHUB && event === 'merge_group' ? QUEUE.exec(ref) : null
   return queued === null ? ref : `refs/heads/${queued[1]}`
 }
 
@@ -259,6 +272,9 @@ const bearerOf = (req: Request): string | undefined =>
 
 /** A token checked: jose's checks, then ALLOW's repository and workflow, and the branch it may write. */
 function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Promise<Access> {
+  // A blank one is no origin a token names: every token was "wrong audience".
+  if (opts.audience !== undefined && opts.audience.trim() === '')
+    throw new Error('AUDIENCE: the aud CI tokens name, or unset, not blank')
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
   // jose keeps each issuer's keys, and refetches them for a key it lacks.
@@ -320,9 +336,13 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     const wclaim = workflowClaimOf(iss)
     const ran = claims[wclaim]
     if (typeof ran !== 'string') throw new Refusal(403, `no ${wclaim} claim`)
-    const workflow = ran.replace(/@.*$/, '')
-    if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
-      throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
+    // The path is the claim up to an `@` that a ref follows: a file name may hold `@` too.
+    const ranAllowed = ofRepo.some((a) => {
+      const p = `${workflowPath(iss, a.repository, a.workflow)}@`
+      return same(ran.slice(0, p.length), p)
+    })
+    if (!ranAllowed)
+      throw new Refusal(403, `${wclaim} ${ran.replace(/@.*$/, '')} is not in this server's ALLOW`)
     const repo = { issuer: issuerOf(iss), repository }
     const branch = branchOf(iss, claims)
     return branch === undefined ? repo : { ...repo, write: branch }
@@ -350,6 +370,7 @@ function refusal(err: unknown, iss: string): Refusal {
   if (err instanceof errors.JWTClaimValidationFailed) {
     if (err.claim === 'aud') return new Refusal(401, 'wrong audience')
     if (err.claim === 'nbf') return new Refusal(401, 'not yet valid')
+    if (err.reason === 'missing') return new Refusal(401, `no ${err.claim} claim`)
   }
   return new Refusal(401, 'not a JWT')
 }

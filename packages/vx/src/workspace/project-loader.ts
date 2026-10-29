@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { isUserError, UserError, xxh3hex } from '../util/index.js'
+import { configThrow, isUserError, UserError, xxh3hex } from '../util/index.js'
 import { isSkippedPlugin, validateProjectConfig, validateWorkspace } from './config-schema.js'
 import {
   beginEvalRound,
@@ -477,7 +477,7 @@ function loadFailure(err: unknown, configPath: string, kind: string): unknown {
   const user = configLoadError(err, configPath, kind)
   if (user !== null) return user
   if (err !== null && typeof err === 'object' && typeof (err as Error).message === 'string') {
-    return err
+    return isUserError(err) ? err : configThrow(err)
   }
   return new UserError(thrownValueMessage(kind, configPath, Bun.inspect(err, { compact: true })))
 }

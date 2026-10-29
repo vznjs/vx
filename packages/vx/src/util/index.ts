@@ -7,6 +7,7 @@ export {
   errorDocument,
   fsRefusalHint,
   isDiskFull,
+  configThrow,
   isFsRefusal,
   isTmpdirRefusal,
   TMPDIR_HINT,
