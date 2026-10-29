@@ -711,6 +711,53 @@ describe('every input the yarn digest must read', () => {
     expect(movedDirs(patched('aaa'), patched('bbb'))).toEqual(['packages/a'])
   })
 
+  // Turbo's `minimal-berry-resolutions.lock` (vercel/turborepo#4589):
+  // `resolutions: { debug: 1.0.0, "debug/ms": 0.6.0 }` leaves both edges
+  // (`debug: ^4.3.4`, `ms: 0.6.2`) naming descriptors the file never keys.
+  it('a resolutions override two hops deep still reaches the entry installed', () => {
+    const lock = (msChecksum: string) => `__metadata:
+  version: 6
+  cacheKey: 8
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  languageName: unknown
+  linkType: soft
+
+"b@workspace:packages/b":
+  version: 0.0.0-use.local
+  resolution: "b@workspace:packages/b"
+  dependencies:
+    debug: ^4.3.4
+  languageName: unknown
+  linkType: soft
+
+"debug@npm:1.0.0":
+  version: 1.0.0
+  resolution: "debug@npm:1.0.0"
+  dependencies:
+    ms: 0.6.2
+  checksum: debug100
+  languageName: node
+  linkType: hard
+
+"ms@npm:0.6.0":
+  version: 0.6.0
+  resolution: "ms@npm:0.6.0"
+  checksum: ${msChecksum}
+  languageName: node
+  linkType: hard
+
+"test@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "test@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+    expect(movedDirs(lock('ms060'), lock('ms060-repacked'))).toEqual(['packages/b'])
+  })
+
   it('an unresolved dependency still folds its range', () => {
     const ghost = (range: string) =>
       berry().replace('    foo: "npm:^1"\n', `    foo: "npm:^1"\n    ghost: "npm:${range}"\n`)
