@@ -431,7 +431,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(relay)}, workers: { sma
     }).stderr.toString()
   }
   await workspace('relay.example.com')
-  expect(said({})).toContain('dte(): relay must be http(s), got relay.example.com')
+  expect(said({})).toContain('dte() option "relay" must be an http(s) URL, got "relay.example.com"')
   await workspace('https://relay.example.com')
   expect(said({ VX_DTE_RELAY: 'relay.example.com' })).toStartWith(
     '✗ vx dte  vx dte worker: VX_DTE_RELAY must be http(s), got relay.example.com\n',
@@ -466,6 +466,19 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
     '✗ vx dte  vx dte worker needs VX_DTE_RUN',
   ])
+  // A job without id-token: write has no ACTIONS_ID_TOKEN_REQUEST_TOKEN.
+  expect(
+    said({
+      VX_DTE_SECRET: '',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: '',
+      VX_DTE_RUN: crypto.randomUUID(),
+      VX_DTE_RELAY: 'http://127.0.0.1:9',
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'http://127.0.0.1:9/token?v=1',
+      GITHUB_REPOSITORY_ID: '1',
+    }),
+  ).toBe(
+    '✗ vx dte  vx dte worker needs VX_DTE_SECRET, the run’s, or a GitHub Actions job with id-token: write',
+  )
 })
 
 interface Step {

@@ -175,7 +175,8 @@ dispatching, asking no admission policy and taking no slot. A demoted
 dependant starts it, and that dependant runs once it is ready. Once
 every dependant has an outcome it settles with none of its own and
 releases them, so it is never spawned and the returned map lacks it.
-Its own deps still run first and a failed one skips it as before.
+Its own deps still run first and a failed one skips it as before; a
+stop or fail-fast leaves it with no outcome.
 A group neither requested nor surfaced that stands only between such a
 server and its hits is idle with it: it waits the same way, settles
 with no outcome once every hit above it has one, and a demotion above

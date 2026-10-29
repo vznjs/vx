@@ -49,14 +49,29 @@ export async function oidcToken(url: string, bearer: string, audience: string): 
       headers: { authorization: `bearer ${bearer}` },
       signal: AbortSignal.timeout(Math.max(1, until - performance.now())),
     }).catch((err: unknown) => (err instanceof Error ? err.message : String(err)))
-    if (typeof res !== 'string' && res.ok) return ((await res.json()) as { value: string }).value
-    const why = typeof res === 'string' ? res : String(res.status)
+    if (typeof res !== 'string' && res.ok) {
+      // quiet: a body that is not JSON holds no token, said below
+      const value = ((await res.json().catch(() => null)) as { value?: unknown } | null)?.value
+      if (typeof value !== 'string' || value === '')
+        throw new Error("GitHub's OIDC token: no token in its answer")
+      return value
+    }
+    const why = typeof res === 'string' ? res : await refusedWith(res)
     const again = typeof res === 'string' || res.status >= 500 || res.status === 429
     const pause = 250 * 2 ** (attempt - 1)
     if (!again || attempt >= 3 || performance.now() + pause >= until)
       throw new Error(`GitHub's OIDC token: ${why}`)
     await Bun.sleep(pause)
   }
+}
+
+/** A refusal by its status and GitHub's own `message`, bounded: a 403 said why the token was refused. */
+async function refusedWith(res: Response): Promise<string> {
+  // quiet: a body that is not JSON leaves the status to name the refusal
+  const body = (await res.json().catch(() => null)) as { message?: unknown } | null
+  const said =
+    typeof body?.message === 'string' ? body.message.replace(/\s+/g, ' ').trim().slice(0, 200) : ''
+  return `HTTP ${res.status}${said === '' ? '' : `: ${said}`}`
 }
 
 /**
@@ -74,8 +89,14 @@ export function githubProof(
 ): Proof {
   const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer } = process.env
   const repo = process.env['GITHUB_REPOSITORY_ID']
-  if (!url || !bearer || !repo)
-    throw new Error('not a GitHub Actions job with id-token: write (ACTIONS_ID_TOKEN_REQUEST_URL)')
+  if (!url || !bearer || !repo) {
+    const missing = Object.entries({
+      ACTIONS_ID_TOKEN_REQUEST_URL: url,
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer,
+      GITHUB_REPOSITORY_ID: repo,
+    }).flatMap(([k, v]) => (v ? [] : [k]))
+    throw new Error(`not a GitHub Actions job with id-token: write (${missing.join(', ')})`)
+  }
   const aud = (parts: readonly string[]): string =>
     `vx-dte:${createHash('sha256').update(parts.join('\0')).digest('base64url')}`
   // GitHub's keys, read once for every check.

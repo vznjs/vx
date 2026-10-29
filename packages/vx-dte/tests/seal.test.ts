@@ -345,6 +345,19 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
   }
 })
 
+it('names exactly the GitHub variables a proof lacks', () => {
+  process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'http://127.0.0.1:1/token?v=1'
+  delete process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
+  delete process.env['GITHUB_REPOSITORY_ID']
+  try {
+    expect(() => githubProof()).toThrow(
+      /^not a GitHub Actions job with id-token: write \(ACTIONS_ID_TOKEN_REQUEST_TOKEN, GITHUB_REPOSITORY_ID\)$/,
+    )
+  } finally {
+    delete process.env['ACTIONS_ID_TOKEN_REQUEST_URL']
+  }
+})
+
 it('says a token check GitHub’s keys could not answer, never a key mismatch', async () => {
   process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'http://127.0.0.1:1/token?v=1'
   process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] = 'req-token'
@@ -446,10 +459,28 @@ it('asks GitHub for an OIDC token again after a 5xx, three tries at most, never 
   expect(calls).toBe(3)
   calls = 0
   fail = [503, 503, 503, 503]
-  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow("GitHub's OIDC token: 503")
+  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow("GitHub's OIDC token: HTTP 503")
   expect(calls).toBe(3)
   calls = 0
   fail = [401]
-  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow("GitHub's OIDC token: 401")
+  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow("GitHub's OIDC token: HTTP 401")
   expect(calls).toBe(1)
+})
+
+// A refusal said only its status, and an answer with no token returned
+// undefined, which the relay then refused as no token at all.
+it("says GitHub's own words when it refuses a token, and an answer that holds none", async () => {
+  let answer = (): Response => Response.json({ message: 'audience not allowed' }, { status: 403 })
+  const issuer = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => answer() })
+  stops.push(async () => {
+    await issuer.stop(true)
+  })
+  const url = `http://127.0.0.1:${issuer.port}/token?v=1`
+  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow(
+    "GitHub's OIDC token: HTTP 403: audience not allowed",
+  )
+  answer = () => Response.json({})
+  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow(
+    "GitHub's OIDC token: no token in its answer",
+  )
 })

@@ -9,6 +9,7 @@
 
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
 import type { DteAdapter, WorkerSpawn } from './plugin.js'
+import { printable } from './wire.js'
 
 export interface GitlabOptions {
   /** Runner tags by worker size: the runners each size's jobs go to. */
@@ -67,8 +68,15 @@ async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
     CI_JOB_TOKEN: token,
     CI_COMMIT_SHA: sha,
   } = process.env
-  if (!base || !project || !token || !sha)
-    throw new Error('gitlab(): not in a GitLab job (CI_API_V4_URL, CI_JOB_TOKEN)')
+  if (!base || !project || !token || !sha) {
+    const missing = Object.entries({
+      CI_API_V4_URL: base,
+      CI_JOB_TOKEN: token,
+      CI_PROJECT_ID: project,
+      CI_COMMIT_SHA: sha,
+    }).flatMap(([k, v]) => (v ? [] : [k]))
+    throw new Error(`gitlab(): not in a GitLab job (${missing.join(', ')})`)
+  }
   const first = workers[0]!
   const slots = workers.map((w) => [slotOf(w), w.id] as const)
   // A merge request's pipeline is of its source branch; any other, of its
@@ -98,7 +106,7 @@ async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
       signal: AbortSignal.timeout(10_000),
     })
     if (res.ok) return
-    const text = (await res.text()).slice(0, 200)
+    const text = printable((await res.text()).slice(0, 200))
     if (res.status !== 400 || !text.includes('Reference not found') || !refs[i + 1])
       throw new Error(
         `gitlab(): triggering ${workers.map((w) => w.id).join(', ')}: ${res.status} ${text}`,

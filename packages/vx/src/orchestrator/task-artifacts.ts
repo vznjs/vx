@@ -12,7 +12,7 @@ import {
   sayRemoteFault,
 } from '../cache/index.js'
 import type { CapturedChunk } from '../exec/index.js'
-import { secretMask } from '../util/index.js'
+import { secretMask, thrownMessage } from '../util/index.js'
 import { decodeOutputLog, encodeOutputLog, maskedOutputLog } from './output-log.js'
 
 /** The task a `TaskArtifacts` call names: where its outputs are and what ran. */
@@ -173,7 +173,7 @@ export async function cacheFacts(
       if (r.plugin === undefined || r.remote.lend === undefined || !r.read) return
       const got = await r.remote.lend().catch((err: unknown) => {
         // Said: unsaid, the run's workers went without this remote and no line said why.
-        const message = err instanceof Error ? err.message : String(err)
+        const message = thrownMessage(err)
         sayRemoteFault(
           r,
           new Error(`lend of ${r.plugin}'s access failed: ${message}`, { cause: err }),

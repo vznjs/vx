@@ -544,7 +544,7 @@ REPL, a watch mode that reads keys. Turbo's `interactive`.
   to the run's end, so other tasks may run once it is spawned (their
   output goes to the same terminal), a run may hold one, and every
   other interactive task must be its dependency. A run that breaks
-  either is refused before any task runs.
+  either is refused before any task runs, and so is its `--dry`.
 - **Off a TTY** (CI, a pipe) it runs as any task: stdin is empty, or
   a pipe vx holds for a persistent one, and it runs beside others.
   A prompt there reads end of input; it never hangs.
@@ -703,7 +703,9 @@ split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
 those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
-then masked in the same places.
+then masked in the same places. A token a plugin's OS keychain answered
+(`ctx.secret`) is masked in vx's own lines too (a plugin's warning, an
+error).
 
 Two `node_modules/.bin` directories are prepended to `PATH` so
 installed tools (`oxlint`, `vite`, etc.) run by name: the

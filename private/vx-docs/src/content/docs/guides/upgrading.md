@@ -16,6 +16,9 @@ a brace of directories (`{src,lib}`) or of `./` spellings (`{./src,lib}/**`) in 
 ## cli: spell vx cache clean's rehearsal flag --dry
 
 `vx cache clean --dry-run` → `vx cache clean --dry`
+## vx-history: read the run's refs, never a guessed main
+
+vxHistory({ defaultBranch }) is refused; set the workspace's baseBranch instead.
 
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 

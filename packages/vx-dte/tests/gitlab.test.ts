@@ -112,6 +112,13 @@ it('says a trigger GitLab refused, by status and body', async () => {
   )
 })
 
+it("writes the controls in GitLab's words as escapes", async () => {
+  reply = () => new Response('\x1b]0;PWNED\x07', { status: 403 })
+  expect(gitlab().spawn(worker)).rejects.toThrow(
+    'gitlab(): triggering small#2: 403 \\x1b]0;PWNED\\x07',
+  )
+})
+
 it('names a run only in a GitLab job, and starts no worker outside one', async () => {
   expect(gitlab().runId!()).toMatch(/^[0-9a-f-]{36}$/)
   delete process.env['GITLAB_CI']
@@ -119,6 +126,14 @@ it('names a run only in a GitLab job, and starts no worker outside one', async (
   delete process.env['CI_JOB_TOKEN']
   expect(gitlab().spawn(worker)).rejects.toThrow('gitlab(): not in a GitLab job')
   expect(() => gitlab({ include: 'x' } as never)).toThrow('include')
+})
+
+it('names exactly the job variables it lacks', async () => {
+  delete process.env['CI_JOB_TOKEN']
+  delete process.env['CI_COMMIT_SHA']
+  await expect(gitlab().spawn(worker)).rejects.toThrow(
+    /^gitlab\(\): not in a GitLab job \(CI_JOB_TOKEN, CI_COMMIT_SHA\)$/,
+  )
 })
 
 it("triggers on the target branch once a merged request's source branch is gone", async () => {

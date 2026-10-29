@@ -12,7 +12,7 @@ import os from 'node:os'
 import { planned } from './helpers/parity.js'
 import { makeWorkspace } from './helpers/workspace.js'
 import { writeLockClaim } from './helpers/plugin.js'
-import { editDistance, nearest } from '../src/util/index.js'
+import { CORE_VERBS, editDistance, nearest } from '../src/util/index.js'
 import { noticed } from './helpers/notice.js'
 
 describe('cli run()', () => {
@@ -839,20 +839,31 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stderr).toContain('no projects matched filter(s): oen\n\n  fix  one\n')
   })
 
-  it('a `../` path filter is not a path form — refused loud, naming the pattern (parity L2)', async () => {
+  it('a path filter that climbs out of the root is refused, naming the pattern (parity L2)', async () => {
     // `./` is root-relative in vx by documented choice, so `../apps/*`
-    // (Turbo's cwd-relative sibling form) has no meaning here; it falls
-    // through to the name matcher and must say so, not select nothing
-    // quietly.
+    // (Turbo's cwd-relative sibling form) has no meaning here. `../` and
+    // `{..}` named the directory every project sits under, and all ran.
     let stderr = ''
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
       stderr += String(chunk)
       return true
     })
-    const code = await run(['run', '--filter', '../packages/*', 'hello'])
-    expect(code).not.toBe(0)
-    expect(stderr).toContain('no projects matched filter(s): ../packages/*')
+    const said: [string, number][] = []
+    for (const f of ['../packages/*', '../', '{..}']) {
+      stderr = ''
+      said.push([stderr, await run(['run', '--filter', f, 'hello'])])
+      said[said.length - 1]![0] = stderr.trim()
+    }
+    const refusal = (f: string) =>
+      noticed(
+        `vx run: filter "${f}" names a directory outside the workspace root: a path filter is relative to the root`,
+      ).trimEnd()
+    expect(said).toEqual([
+      [refusal('../packages/*'), 1],
+      [refusal('../'), 1],
+      [refusal('{..}'), 1],
+    ])
   })
 
   it('a filter that matched but walked to nothing, or names no project, says so (item 1030)', async () => {
@@ -1708,6 +1719,9 @@ describe('parseRunArgs', () => {
   it('--exclude-dependencies= (empty value) is rejected, not read as "exclude nothing"', () => {
     const r = parseRunArgs(['build', '--exclude-dependencies='])
     expect(r.error).toMatch(/--exclude-dependencies= needs a value/)
+    // A list of no names is the same empty value: `,` and ` ` dropped none.
+    for (const v of [',', ' ', ' , '])
+      expect(parseRunArgs(['build', `--exclude-dependencies=${v}`]).error).toBe(r.error)
     // Both unambiguous forms keep working.
     expect(parseRunArgs(['build', '--exclude-dependencies']).excludeDependencies).toBe('all')
     expect(parseRunArgs(['build', '--exclude-dependencies=a,b']).excludeDependencies).toEqual([
@@ -2327,6 +2341,20 @@ describe('unknown-flag hints reach three edits', () => {
   })
 })
 
+describe('a short flag gets a one-edit hint budget', () => {
+  it('--poll is not hinted --all, two edits on a four-letter word', () => {
+    // Two edits rewrite half of `poll`: the hint read as a fix and named
+    // a flag that runs every project.
+    expect(parseRunArgs(['build', '--poll']).error).toBe('unknown flag: --poll')
+    // CONTROL: one edit on a short word, two on a long one, still hint.
+    expect(parseRunArgs(['build', '--al']).error).toBe('unknown flag: --al (did you mean --all?)')
+    expect(parseRunArgs(['build', '--dy']).error).toBe('unknown flag: --dy (did you mean --dry?)')
+    expect(parseRunArgs(['build', '--concurency', '2']).error).toBe(
+      'unknown flag: --concurency (did you mean --concurrency?)',
+    )
+  })
+})
+
 describe('nearest', () => {
   it('holds its budget exactly: a distance past it is never inside it', () => {
     expect(editDistance('abcdefgh', 'abcdzzzzzz', 4)).toBe(4)
@@ -2345,6 +2373,21 @@ describe('nearest', () => {
     // CONTROL: a real typo of a short name still hints.
     expect(nearest('p1', ['p2'])).toBe('p2')
     expect(nearest('b', ['ab'])).toBe('ab')
+  })
+
+  // `vx test` and `vx ls` were hinted `last`, `vx lint`'s neighbour
+  // `vx log` was hinted `lock`: two edits rewrite half a short word.
+  it('a word of four letters or fewer gets one edit, or a swap of two letters', () => {
+    expect(nearest('test', CORE_VERBS)).toBeUndefined()
+    expect(nearest('ls', CORE_VERBS)).toBeUndefined()
+    expect(nearest('log', CORE_VERBS)).toBeUndefined()
+    expect(nearest('poll', ['all'])).toBeUndefined()
+    // CONTROL: one edit, a swap, and two edits on a longer word still hint.
+    expect(nearest('tun', CORE_VERBS)).toBe('run')
+    expect(nearest('rnu', CORE_VERBS)).toBe('run')
+    expect(nearest('oen', ['one'])).toBe('one')
+    expect(nearest('wtach', CORE_VERBS)).toBe('watch')
+    expect(nearest('chache', CORE_VERBS)).toBe('cache')
   })
 })
 

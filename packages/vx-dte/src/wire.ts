@@ -5,6 +5,15 @@ export interface RelayMessage {
   readonly body: unknown
 }
 
+/**
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
+ * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
+ * overwrote the line before (core's `printable`, L-31).
+ */
+export const printable = (s: string): string =>
+  // oxlint-disable-next-line no-control-regex
+  s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+
 export class RelayError extends Error {
   constructor(
     readonly status: number,
@@ -683,7 +692,9 @@ export async function join(
         await said.catch(() => undefined)
       }
       left = true
-      clearTimeout(redial)
+      // Ends what still waits on a socket (an ack, a probe): no redial
+      // would ever bring one, and each waits a heartbeat at a time, for good.
+      end(new RelayError(410, 'relay: this participant left'))
       const s = socket
       // One the relay's close frame dropped may still be in its handshake:
       // Bun 1.4.4 fires the close only after it.
@@ -829,7 +840,7 @@ async function connect(
     }, answerMs(hb)).unref()
   }
   const refused = (a: Answer): RelayError =>
-    new RelayError(a.status!, `relay send: ${a.status} ${a.error ?? ''}`)
+    new RelayError(a.status!, `relay send: ${a.status} ${printable(a.error ?? '')}`)
   /** Sends asked for in this turn of the event loop, which go as one frame. */
   let sends: {
     to: string
@@ -895,8 +906,9 @@ async function connect(
   const joined = new Promise<Joined | undefined>((resolve) => {
     said = resolve
   })
-  const closed = (why = 'socket closed', by = 0): void => {
+  const closed = (words = 'socket closed', by = 0): void => {
     if (!open) return
+    const why = printable(words)
     open = false
     code = by
     reason = why

@@ -57,7 +57,8 @@ export interface VxHistoryOptions {
   /**
    * Reservations declared by hand (task id → cores, megabytes) for the
    * task history cannot size: a first run, or a task whose peak the
-   * runner cannot see. A declared reservation wins over a learned one.
+   * runner cannot see. A declared axis wins over the learned one; an axis
+   * left out keeps it.
    */
   readonly reservations?: Readonly<Record<string, ResourceEstimate>>
   /**
@@ -77,12 +78,6 @@ export interface VxHistoryOptions {
    * `assume`, it never feeds the workspace median.
    */
   readonly file?: string
-  /**
-   * The branch whose history-server rows a run reads after its own branch's.
-   * Unset, the run's refs (`baseBranch`, a CI plugin's, else git's), as a
-   * remote cache reads them.
-   */
-  readonly defaultBranch?: string
   /**
    * A vx-history server's URL (`@vzn/vx-history-server`), or
    * `VX_HISTORY_URL`. On a CI job with a token (GitHub's OIDC, or GitLab's
@@ -110,7 +105,6 @@ export interface VxHistoryOptions {
 // The provider's own default (50) serves `--dry` predictions; an ordering
 // hint needs less and reads a 2.5× smaller slice of the run history.
 const DEFAULT_WINDOW = 20
-const DEFAULT_BRANCH = 'main'
 
 // Each option is read in ONE place that a run's hooks and `vx history`
 // share: two copies of each let either drift unseen (item 805).
@@ -148,13 +142,13 @@ function numberWarnings(options: VxHistoryOptions, warn: (m: string) => void): v
   for (const [id, r] of Object.entries(options.reservations ?? {})) {
     if (r === null || typeof r !== 'object' || Array.isArray(r)) {
       bad.push(
-        `reservations[${JSON.stringify(id)}] ${JSON.stringify(r) ?? String(r)} (using none; must be { cpus?, memory? })`,
+        `reservations[${JSON.stringify(id)}] ${JSON.stringify(r) ?? String(r)} (using what history learned; must be { cpus?, memory? })`,
       )
       continue
     }
     for (const axis of ['cpus', 'memory'] as const) {
       const v = r[axis]
-      if (v !== 0) check(`reservations[${JSON.stringify(id)}].${axis}`, v, 'none')
+      if (v !== 0) check(`reservations[${JSON.stringify(id)}].${axis}`, v, 'what history learned')
     }
   }
   if (bad.length > 0) {
@@ -163,11 +157,12 @@ function numberWarnings(options: VxHistoryOptions, warn: (m: string) => void): v
 }
 
 /**
- * The declared reservations, each axis only where it is a number above 0.
- * A NaN (`Number(process.env.X)`, X unset) held a task alone and every
+ * The declared reservations, each axis only where it is a number above 0,
+ * or 0: a declared nothing, over what history learned. A NaN
+ * (`Number(process.env.X)`, X unset) held a task alone and every
  * reserving task beside it waited — the NaN summed into what runs — so the
- * run went serial and said nothing (G-4's class). A bad axis reserves
- * nothing, named by `numberWarnings`.
+ * run went serial and said nothing (G-4's class). A bad axis is not
+ * declared, named by `numberWarnings`.
  */
 function declaredOf(
   options: VxHistoryOptions,
@@ -176,8 +171,8 @@ function declaredOf(
   const out: Record<string, ResourceEstimate> = {}
   for (const [id, r] of Object.entries(options.reservations)) {
     const e: { cpus?: number; memory?: number } = {}
-    if (usable(r?.cpus)) e.cpus = r.cpus
-    if (usable(r?.memory)) e.memory = r.memory
+    if (r?.cpus === 0 || usable(r?.cpus)) e.cpus = r.cpus
+    if (r?.memory === 0 || usable(r?.memory)) e.memory = r.memory
     out[id] = e
   }
   return out
@@ -213,7 +208,8 @@ const memoryBudgetMb = (options: VxHistoryOptions): number =>
   usable(options.memory) ? options.memory : Math.floor(machineMemoryBytes() / MB)
 
 /**
- * The `assume` durations that are finite non-negative numbers. A NaN
+ * The `assume` durations that are numbers from 0 to 2^53: a larger one
+ * summed along a chain to Infinity, which core refuses too. A NaN
  * (`Number(process.env.X)` with X unset) became a NaN weight and a string
  * (an untyped `.mjs` config) string weights, and core refused both as a
  * UserError: an ordering hint failed the run (item 930). The rest are
@@ -226,12 +222,12 @@ function assumptions(
   const ok: Record<string, number> = {}
   const bad: string[] = []
   for (const [id, ms] of Object.entries(options.assume ?? {})) {
-    if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) ok[id] = ms
+    if (typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER) ok[id] = ms
     else bad.push(id)
   }
   if (bad.length > 0) {
     warn(
-      `[vx] vx-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a finite number of ms`,
+      `[vx] vx-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a number of ms from 0 to 2^53`,
     )
   }
   return ok
@@ -245,7 +241,6 @@ const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   reservations: 'object',
   assume: 'object',
   file: 'string',
-  defaultBranch: 'string',
   url: 'string',
   headers: 'object',
   issuer: 'string',
@@ -263,12 +258,47 @@ function namedOf(issuer: unknown, repository: unknown): Named {
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
+/** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
+function serverUrlOf(
+  option: string | undefined,
+  env: Record<string, string | undefined> = Bun.env,
+): string | undefined {
+  const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
+  if (url === undefined || url === '') return undefined
+  if (!/^https?:\/\//.test(url)) throw new UserError(`vxHistory(): url must be http(s), got ${url}`)
+  // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
+  if (url.endsWith('/v1'))
+    throw new UserError(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
+  return url
+}
+
+/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused, never printing a value. */
+function proxyHeaders(
+  headers: Record<string, string | undefined> | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (value === undefined) continue
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
+      throw new UserError(`vxHistory() option "headers" cannot set "${name}"`)
+    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
+      throw new UserError(
+        `vxHistory() option "headers.${name}" must be one line of text (its value is not printed)`,
+      )
+    out[name] = value
+  }
+  return out
+}
+
 export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   refuseUnknownOptions('vxHistory()', options, VX_HISTORY_KEYS)
   const named =
     options.url === undefined && options.issuer === undefined && options.repository === undefined
       ? undefined
       : namedOf(options.issuer, options.repository)
+  // At the call: refused once a server was named, a laptop passed what
+  // failed the first CI run.
+  const headers = proxyHeaders(options.headers)
   // `'any'` above lets `null` through, and every run then failed in
   // `schedule` reading `null.headroom`.
   const { resources } = options
@@ -281,6 +311,22 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       `vxHistory() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
     )
   }
+  // A misspelt key inside was read as unset, unsaid. Values stay `any`:
+  // a bad number warns per run (`numberWarnings`), as at the top level.
+  if (resources !== undefined && resources !== false) {
+    refuseUnknownOptions('vxHistory() option "resources"', resources, { headroom: 'any' })
+  }
+  for (const [id, r] of Object.entries(options.reservations ?? {})) {
+    if (r !== null && typeof r === 'object' && !Array.isArray(r)) {
+      refuseUnknownOptions(`vxHistory() option "reservations[${JSON.stringify(id)}]"`, r, {
+        cpus: 'any',
+        memory: 'any',
+      })
+    }
+  }
+  // Checked here, not in a run's `setup`: `vx show` and a `--dry` plan
+  // took a url no request can carry, and every run failed on it.
+  if (options.url !== undefined) serverUrlOf(options.url)
   // `''` resolved to the workspace root: each run warned it could not read
   // a directory and failed in teardown renaming its timings over it.
   if (options.file !== undefined && options.file.trim() === '') {
@@ -339,24 +385,22 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         return undefined
       }
       reservations = reservationsFor(nodes.keys(), table, options)
+      // Once a run: the server's numbers order it a second time.
+      const assumed = { ...assumptions(options, ctx.warn), ...carried }
       const order = (t: ReadonlyMap<string, TaskResources>): ReadonlyMap<string, number> =>
-        criticalPath([...nodes.values()], t, { ...assumptions(options, ctx.warn), ...carried })
+        criticalPath([...nodes.values()], t, assumed)
       // With a history server, its numbers re-rank what has not started
       // when they land; the run never waits on them.
       remote ??= await serverOf()
-      if (remote !== undefined) {
+      // The run's refs, as a remote cache reads them: its branch, the
+      // branch it merges into, the default branch (`baseBranch`). `main`
+      // was assumed, so a `master` or `baseBranch: 'trunk'` repository
+      // read no trunk's numbers; a run with none asks nothing.
+      const refs = ctx.refs
+      if (remote !== undefined && refs.length > 0) {
         const server = remote
         let late = false
         stopImport = () => (late = true)
-        // The run's refs, as a remote cache reads them: its branch, the
-        // branch it merges into, the default branch. `main` was assumed, so
-        // a `master` or `baseBranch: 'trunk'` repository read no trunk's
-        // numbers. No ref goes on the wire: each is in its keys' hash.
-        const main = options.defaultBranch ?? DEFAULT_BRANCH
-        const refs =
-          options.defaultBranch === undefined && ctx.refs.length > 0
-            ? ctx.refs
-            : [`refs/heads/${ctx.branch ?? main}`, `refs/heads/${main}`]
         const weights = (async () => {
           const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]
           const got = await server.query([...new Set(refs)], hashes)
@@ -398,11 +442,11 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   const serverOf = async (): Promise<HistoryServer | undefined> => {
     if ((options.url ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
     const m = await import('./history-server.js')
-    const url = m.serverUrlOf(options.url)
+    const url = serverUrlOf(options.url)
     if (url === undefined) return undefined
     // VX_HISTORY_URL alone: the workspace names no repository to ask for.
     if (named === undefined) return undefined
-    return new m.HistoryServer(url, named, Bun.env, fetch, m.proxyHeaders(options.headers))
+    return new m.HistoryServer(url, named, Bun.env, fetch, headers)
   }
   // What the run sends the history server at its end, by task definition.
   let reported: { timings: Map<string, ServerTiming>; warn: (m: string) => void } | undefined
@@ -489,7 +533,15 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     if (!wrote || done === undefined) return
     const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
     const timings = await import('./timings-file.js')
-    timings.writeTimings(done.file, done.carried, table)
+    try {
+      timings.writeTimings(done.file, done.carried, table)
+    } catch (err) {
+      // Only the file is lost: said as the read is, not as a plugin failure.
+      fileWarn?.warn(
+        `[vx] vx-history: timings file ${done.file} not written: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return
+    }
     if (fileWarn !== undefined) timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
@@ -561,8 +613,9 @@ function estimatesFor(
 }
 
 /**
- * A declared reservation wins over a learned one; a task with neither
- * reserves nothing.
+ * A declared axis wins over the learned one, and an axis the declaration
+ * leaves out keeps it: cores are only ever declared, and declaring them
+ * dropped the task's learned memory. A task with neither reserves nothing.
  */
 export function withDeclared(
   learned: ReadonlyMap<string, ResourceEstimate>,
@@ -570,7 +623,12 @@ export function withDeclared(
 ): ReadonlyMap<string, ResourceEstimate> {
   if (declared === undefined) return learned
   const out = new Map(learned)
-  for (const [id, r] of Object.entries(declared)) out.set(id, r)
+  for (const [id, r] of Object.entries(declared)) {
+    const merged: { cpus?: number; memory?: number } = { ...learned.get(id) }
+    if (r.cpus !== undefined) merged.cpus = r.cpus
+    if (r.memory !== undefined) merged.memory = r.memory
+    if (merged.cpus !== undefined || merged.memory !== undefined) out.set(id, merged)
+  }
   return out
 }
 
@@ -647,18 +705,27 @@ async function historyCmd(
   // `schedule` hook is handed.
   const projects = await loadResolvedProjects(ctx.workspaceRoot, { scope: 'all', warn: ctx.warn })
   const ids: string[] = []
+  const tasks: Pick<TaskNode, 'id' | 'config'>[] = []
   for (const p of projects.values()) {
-    for (const t of Object.keys(p.config.tasks ?? {})) ids.push(`${p.name}#${t}`)
+    for (const [t, config] of Object.entries(p.config.tasks ?? {})) {
+      ids.push(`${p.name}#${t}`)
+      tasks.push({ id: `${p.name}#${t}`, config })
+    }
   }
   numberWarnings(options, ctx.warn)
   const window = windowOf(options)
   const cache = new Cache(ctx.cacheDir)
   let table: HistoryTable
   try {
+    // Each task's rows of its definition as it is now, as `schedule` reads
+    // them: read with every definition's, a task whose command changed
+    // showed the old command's peak and a reservation no run packs.
     table = await new LocalHistoryProvider(
       cache.dbHandle(),
       window,
       currentBranch(ctx.workspaceRoot),
+      // As a run reads them: a task whose command changed has no rows yet.
+      taskDefinitions(tasks as TaskNode[]),
     ).loadFor(ids)
   } finally {
     cache.close()

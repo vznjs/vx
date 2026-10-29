@@ -93,6 +93,30 @@ it('a worker runs the orchestrator’s env with its own root, host names and PAT
   }
 })
 
+// Core sets it to the workspace's manager on every local task; a worker
+// gave the one its own process happened to have (`bun vx dte worker`: bun),
+// or none in the Docker image, where `npm-run-all` then looked for npm.
+it("a worker names the workspace's package manager in npm_execpath, as a local run does", async () => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-dte-pm-')))
+  const saved = process.env['npm_execpath']
+  try {
+    await writeFile(path.join(root, 'package.json'), '{"packageManager":"pnpm@9.0.0"}')
+    await mkdir(path.join(root, 'node_modules/.bin'), { recursive: true })
+    await writeFile(path.join(root, 'node_modules/.bin/pnpm'), '#!/bin/sh\n')
+    await chmod(path.join(root, 'node_modules/.bin/pnpm'), 0o755)
+    process.env['npm_execpath'] = '/elsewhere/bun'
+    expect(localEnv({ PATH: '/usr/bin' }, '/orc/ws', root)['npm_execpath']).toBe(
+      path.join(root, 'node_modules/.bin/pnpm'),
+    )
+    // A task's own `define` still wins.
+    expect(localEnv({ npm_execpath: '/mine' }, '/orc/ws', root)['npm_execpath']).toBe('/mine')
+  } finally {
+    if (saved === undefined) delete process.env['npm_execpath']
+    else process.env['npm_execpath'] = saved
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 it('a worker swaps each root once, the first pair naming it winning', () => {
   expect(
     swapRoots({ a: '/ws/p/x', b: ['/ws', '/ws2/q', '/private/ws/r'], c: 'x:/ws/b' }, [
@@ -1834,6 +1858,139 @@ it('sends a dependency a worker could not read over the remotes’ copy, and the
   }
 })
 
+// A worker ended its task and held it no more while this machine sent a
+// dependency it could not read again, longer than a lease: the lease
+// ending meanwhile called the worker faulty and gave the task to another.
+for (const sent of [true, false])
+  it(`a task ended while its dependency is sent again keeps no lease (${sent ? 'sent' : 'not sent'})`, async () => {
+    const beat = 300
+    const faults: string[] = []
+    const h = await harness(new Map([node('t')]), undefined, beat, undefined, undefined, {
+      faulted: () => faults.push('faulted'),
+    })
+    // Past the lease of 3 heartbeats.
+    h.store.artifacts.resend = async () => (await Bun.sleep(4 * beat), sent)
+    try {
+      const a = await h.worker(1)
+      await Bun.sleep(50)
+      const ran = h.o.execute(h.req('t'))
+      expect(await a.batches()).toEqual([['t']])
+      await a.begin('t')
+      const b = await h.worker(1)
+      await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
+      const until = performance.now() + 6 * beat
+      const toB: string[] = []
+      while (performance.now() < until)
+        for (const m of await b.poll()) toB.push((m.body as { type: string }).type)
+      expect(toB.filter((t) => t === 'batch')).toEqual([])
+      expect(faults).toEqual([])
+      if (sent) expect(await a.batches()).toEqual([['t']])
+      else expect((await ran).exitCode).toBe(1)
+    } finally {
+      await h.stop()
+    }
+  })
+
+// Its worker lost meanwhile, the task went back to the queue, and the end
+// that waited on the resend still resolved it: it ran again on another
+// worker for a run that had moved on.
+it('a task whose worker is lost while its dependency is sent again ends once', async () => {
+  const h = await harness(new Map([node('t')]))
+  let sending!: () => void
+  const sent = new Promise<void>((r) => (sending = r))
+  h.store.artifacts.resend = async () => (await sent, false)
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    let ends = 0
+    const ran = h.o.execute(h.req('t')).then((r) => (ends++, r))
+    expect(await a.batches()).toEqual([['t']])
+    await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
+    await Bun.sleep(100)
+    await a.leave()
+    for (let i = 0; i < 50 && h.o.where('t') === undefined; i++) await Bun.sleep(20)
+    expect(h.o.where('t')).toBeNull()
+    sending()
+    await Bun.sleep(100)
+    expect(ends).toBe(0)
+    expect(h.o.where('t')).toBeNull()
+    const b = await h.worker(1)
+    expect(await b.batches()).toEqual([['t']])
+    await b.finish('t', b.orders[0]!.runKey)
+    expect((await ran).exitCode).toBe(0)
+  } finally {
+    await h.stop()
+  }
+})
+
+// A batch the relay refused failed its task and left it booked on its
+// worker, with no lease to end it: the worker's cores were gone for the
+// run, and the next task waited on them for good.
+it('a task whose batch the relay refused leaves its worker’s cores free', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  const me = (h.o as unknown as { o: { me: { send: (to: string, b: unknown) => Promise<void> } } })
+    .o.me
+  const send = me.send.bind(me)
+  let refuse = true
+  me.send = async (to, body) => {
+    if (refuse && (body as { type: string }).type === 'batch') {
+      refuse = false
+      throw new RelayError(413, 'relay send: 413 too large')
+    }
+    return send(to, body)
+  }
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(
+      await t1.then(
+        () => '',
+        (e: Error) => e.message,
+      ),
+    ).toBe('relay send: 413 too large')
+    expect(h.o.where('t1')).toBeUndefined()
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t2']])
+  } finally {
+    await h.stop()
+  }
+})
+
+it('a refused batch fails only its own tasks, not those of a part sent before it', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  const me = (h.o as unknown as { o: { me: { send: (to: string, b: unknown) => Promise<void> } } })
+    .o.me
+  const send = me.send.bind(me)
+  let batches = 0
+  me.send = async (to, body) => {
+    if ((body as { type: string }).type === 'batch' && ++batches === 2)
+      throw new RelayError(413, 'relay send: 413 too large')
+    return send(to, body)
+  }
+  // Each order past half the batch limit: two parts.
+  const big = (id: string) => ({ ...h.req(id), env: { BIG: 'x'.repeat(300 * 1024) } })
+  try {
+    const a = await h.worker(2)
+    await Bun.sleep(50)
+    let first = 'pending'
+    void h.o.execute(big('t1')).then(
+      () => (first = 'ended'),
+      (e: Error) => (first = e.message),
+    )
+    const t2 = h.o.execute(big('t2')).then(
+      () => '',
+      (e: Error) => e.message,
+    )
+    expect(await a.batches()).toEqual([['t1']])
+    expect(await t2).toBe('relay send: 413 too large')
+    expect(first).toBe('pending')
+    expect(h.o.where('t1')).toBeNull()
+  } finally {
+    await h.stop()
+  }
+})
+
 // `vx watch` runs again under one run id: its next run sent a task under
 // the last run's run key, which a remote holds the first bytes of
 // (2026-10-24).
@@ -3084,9 +3241,12 @@ it('places an unmeasured task on any free core, and sizes the run by 2 cores and
     [2, 4e9],
     [2, 4e9],
   ])
-  expect(
-    refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } })),
-  ).toContain('unmeasured needs cpu > 0')
+  expect(refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } }))).toBe(
+    'dte() option "unmeasured.cpu" must be a number above 0, got 0',
+  )
+  expect(refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 1, memory: 'lots' } }))).toBe(
+    `dte() option "unmeasured.memory" must be bytes above 0 or a size such as '4GB', got "lots"`,
+  )
 })
 
 it('reads memory as bytes or with a unit', () => {
@@ -3110,30 +3270,53 @@ const refusal = (make: () => unknown): string => {
   }
 }
 
+// Worded as vxCache() and vxHistory() word the same refusal; a value is never printed.
+it('refuses a header it cannot send, never printing a value', () => {
+  const relay = 'https://r'
+  expect(refusal(() => dte({ relay, headers: { authorization: 'x' } }))).toBe(
+    'dte() option "headers" cannot set "authorization"',
+  )
+  expect(refusal(() => dte({ relay, headers: { a: 'x\ny' } }))).toBe(
+    'dte() option "headers.a" must be one line of text (its value is not printed)',
+  )
+})
+
 it('refuses options it does not read and workers it cannot start', () => {
   const adapter = local()
   const W = { s: { cpu: 1, memory: '1GB' } }
   expect(refusal(() => dte({ workers: W, adapter, relays: 'x' } as never))).toContain(
     'dte() has unknown option "relays"',
   )
+  // Each names the field and the value it got: one line for three fields named none.
   expect(refusal(() => dte({ workers: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
-    "dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
+    'dte() option "workers.s.cpu" must be a whole number ≥ 1, got 0',
   )
   expect(
     refusal(() => dte({ workers: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter })),
-  ).toBe("dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any")
+  ).toBe(
+    `dte() option "workers.s.memory" must be bytes above 0 or a size such as '8GB', got "8 lots"`,
+  )
+  expect(refusal(() => dte({ workers: { s: { max: 1.5, cpu: 1, memory: '1GB' } }, adapter }))).toBe(
+    'dte() option "workers.s.max" must be a whole number ≥ 0, got 1.5',
+  )
   expect(
     refusal(() =>
       dte({ workers: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } }, adapter }),
     ),
-  ).toBe('dte(): workers.s.platform is one of linux-x64, linux-arm64, darwin-x64, darwin-arm64')
+  ).toBe(
+    'dte() option "workers.s.platform" must be one of linux-x64, linux-arm64, darwin-x64, darwin-arm64, got "win32-x64"',
+  )
   expect(refusal(() => dte({ workers: W, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
-    'dte(): scheduler.order is one of critical-path, graphene, fifo',
+    'dte() option "scheduler.order" must be one of critical-path, graphene, fifo, got "lifo"',
   )
   expect(refusal(() => dte({ workers: W, adapter, scheduler: { pace: 'x' } as never }))).toBe(
-    'dte(): scheduler.pace is no layer: the layers are order, place, book, scale',
+    'dte() option "scheduler" has no layer "pace" (layers: order, place, book, scale)',
   )
   expect(refusal(() => dte({}))).toBe(
+    'dte(): with no adapter, set relay: the workers that join it run the tasks',
+  )
+  // A .mjs config's bare `dte()` read `options.headers` and threw a TypeError.
+  expect(refusal(() => (dte as (o?: unknown) => unknown)())).toBe(
     'dte(): with no adapter, set relay: the workers that join it run the tasks',
   )
   expect(refusal(() => dte({ relay: 'http://relay.test' }))).toBe('taken')
