@@ -425,6 +425,17 @@ describe('every input the digest must read', () => {
     })
   })
 
+  it("a package's optional dependency with no entry (another platform's) is no error, and its siblings still key (vercel/turborepo#10909)", () => {
+    const text = (v: string) =>
+      doc(
+        `"": { "name": "ws" }, "packages/a": { "name": "a", "dependencies": { "x": "^1" } }`,
+        `"a": ["a@workspace:packages/a"],
+    "x": ["x@1.0.0", "", { "dependencies": { "y": "^1" }, "optionalDependencies": { "x-linux-arm64": "1.0.0" } }, "sha512-x"],
+    "y": ["y@${v}", "", {}, "sha512-y${v}"]`,
+      )
+    expect(movedDirs(text('1.0.0'), text('1.0.1'))).toEqual(['packages/a'])
+  })
+
   it('an entry that is not a package tuple is passed over, not a crash', () => {
     const text = doc(`"": { "name": "ws" }`, `"odd": 5, "also": [7]`)
     expect([...digests(text).keys()]).toEqual(['.'])
