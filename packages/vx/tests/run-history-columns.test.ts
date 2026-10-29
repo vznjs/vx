@@ -96,6 +96,37 @@ const invocation: InvocationRecord = {
   vxVersion: '9.9.9',
 }
 
+// SQLite's oldest default ceiling is 999 bound variables a statement. The
+// runs INSERT was sized by hand, 33 rows of 30, and a column added since
+// made it 33 of 31: 1,023, past it.
+it('binds at most 999 variables in any history INSERT', () => {
+  const cache = new Cache(path.join(dir, 'cache'))
+  const db = cache.dbHandle()
+  const sql: string[] = []
+  const query = db.query.bind(db)
+  db.query = ((text: string) => {
+    sql.push(text)
+    return query(text)
+  }) as typeof db.query
+  const runs = Array.from({ length: 500 }, (_, i): RunRecord => ({
+    ...runB,
+    hash: i.toString(16).padStart(16, '0'),
+    task: `t${i}`,
+    cached: true,
+  }))
+  cache.recordRunBundle({ runs, invocation })
+  const inserts = sql.filter((t) => /^\s*INSERT INTO (runs|task_durations|task_outcomes)\b/.test(t))
+  const tables = new Set(inserts.map((t) => /INSERT INTO (\w+)/.exec(t)![1]))
+  const widest = Math.max(...inserts.map((t) => t.split('?').length - 1))
+  const stored = (db.query('SELECT COUNT(*) AS n FROM runs').get() as { n: number }).n
+  cache.close()
+  expect([[...tables].sort((x, y) => x!.localeCompare(y!)), stored]).toEqual([
+    ['runs', 'task_durations', 'task_outcomes'],
+    500,
+  ])
+  expect(widest).toBeLessThanOrEqual(999)
+})
+
 describe('the run history stores each field in its own column', () => {
   it('a run bundle reads back field by field', () => {
     const cache = new Cache(path.join(dir, 'cache'))

@@ -8,19 +8,43 @@ import { lazyStatement } from './schema.js'
 import type { InvocationRecord, RunRecord } from './layer.js'
 import { isMeasure } from '../util/index.js'
 
-const INSERT_RUNS = `
-      INSERT INTO runs(
-        hash, project, task, status, exit_code, duration_ms, forward_args,
-        started_at, ended_at,
-        run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
-        cache_hit, attempts, cached,
-        blocked_by, timed_out, sandbox_violations, not_ready, restored, remote_error,
-        peak_cores, avg_rss_bytes, placement, placement_cores, placement_memory, keyless_by, def,
-        cpu_share
-      )
-      VALUES `
-/** One `runs` row's placeholders: the 31 columns `bindRun` fills. */
-const RUN_TUPLE = `(${Array(31).fill('?').join(', ')})`
+/** The `runs` columns `bindRun` fills, in its order. */
+const RUN_COLUMNS = [
+  'hash',
+  'project',
+  'task',
+  'status',
+  'exit_code',
+  'duration_ms',
+  'forward_args',
+  'started_at',
+  'ended_at',
+  'run_id',
+  'cpu_ms',
+  'peak_rss_bytes',
+  'wallclock_start_ns',
+  'wallclock_end_ns',
+  'cache_hit',
+  'attempts',
+  'cached',
+  'blocked_by',
+  'timed_out',
+  'sandbox_violations',
+  'not_ready',
+  'restored',
+  'remote_error',
+  'peak_cores',
+  'avg_rss_bytes',
+  'placement',
+  'placement_cores',
+  'placement_memory',
+  'keyless_by',
+  'def',
+  'cpu_share',
+]
+
+const INSERT_RUNS = `INSERT INTO runs(${RUN_COLUMNS.join(', ')}) VALUES `
+const RUN_TUPLE = `(${RUN_COLUMNS.map(() => '?').join(', ')})`
 
 /** An INSERT of `n` `runs` rows. */
 function insertRunsSql(n: number): string {
@@ -28,11 +52,12 @@ function insertRunsSql(n: number): string {
 }
 
 /**
- * Rows per INSERT: 33 × 30 variables stays under 999, the oldest default
- * ceiling. A statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4
- * (2026-10-03).
+ * Rows per INSERT: as many as stay within 999 bound variables, the oldest
+ * default ceiling, read off the column count (33 rows were sized for 30
+ * columns and bound 1,023 at 31). A statement per row was 8.7 ms of 1,000
+ * rows, 40 at a time 6.4 (2026-10-03).
  */
-const RUNS_PER_INSERT = 33
+const RUNS_PER_INSERT = Math.floor(999 / RUN_COLUMNS.length)
 
 /** Rows per `task_durations` INSERT: 7 variables each, under 999. */
 const DURATIONS_PER_INSERT = 140
