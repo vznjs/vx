@@ -185,11 +185,14 @@ export function excludesLinks(text: string): boolean {
 
 /**
  * The last document's top-level `key`, parsed from its block alone (to
- * the next top-level key); undefined where pnpm wrote no such block.
+ * the next top-level key); undefined where pnpm wrote no such block. A
+ * CRLF file (a Windows checkout) heads it `key:\r\n`: found by `\n`
+ * alone, the block read as absent though the whole parse has it.
  */
 function topLevel(text: string, key: string): unknown {
   const doc = Math.max(text.lastIndexOf('\n---'), 0)
-  const head = `\n${key}:\n`
+  // The first line's ending says which: a second scan cost every LF run.
+  const head = text.charCodeAt(text.indexOf('\n') - 1) === 13 ? `\n${key}:\r\n` : `\n${key}:\n`
   const at = text.indexOf(head, doc)
   if (at < 0) return undefined
   const block = text.slice(at + 1)
