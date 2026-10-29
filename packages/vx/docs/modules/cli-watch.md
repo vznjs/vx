@@ -399,7 +399,9 @@ on, as the cache keys decide.
   three cycles in a row started by the same path after a run, watch
   names it and the remedy once (`watch-loop-selfwrite.test.ts`). A
   held server is blamed only for a file git did not track at the arm
-  (`gitFiles`' `tracked`; `watch-server-blame.test.ts`).
+  (`gitFiles`' `tracked`; `watch-server-blame.test.ts`). A judgement
+  that finds nothing changed starts no cycle and breaks no streak: a
+  log stamped to the second rewrites the same bytes between changes.
 - Start a cycle on a file born and gone since the arm (vim's `4913`
   write probe): `gitFiles` lists what existed at the arm, and a gone path
   it did not list was never read by a key (`watch-transient-file.test.ts`).
