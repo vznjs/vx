@@ -64,14 +64,22 @@ const DIGEST_VERSION = 23
 let memoVersion: number | undefined
 /**
  * The memo's version: DIGEST_VERSION and the parsers' own source, with
- * core's `reachDigests`. The closures core sees wrap every parser alike,
+ * what core's `reachDigests` answers. The closures core sees wrap every parser alike,
  * so a parser fix that forgot the bump replayed the digests the old one
  * folded. Read once per process (~40 µs for the ten files); a plugin with
  * no source beside it keys on DIGEST_VERSION alone.
  */
 function digestVersion(): number {
   if (memoVersion !== undefined) return memoVersion
-  let h = Bun.hash.xxHash3(String(reachDigests))
+  // Core's fold by what it answers, not its text: a cycle's labels live in
+  // a helper it calls. The probe has a chain, a cycle, a self-loop and two
+  // copies of one material in and out of the cycle, so each branch shows.
+  let h = Bun.hash.xxHash3(
+    reachDigests({
+      material: ['a', 'b', 'x', 'x', 'y', 'z', 'x'],
+      edges: [[1, 2, 6], [0, 3], [0, 4], [5], [4], [], [0, 5]],
+    }).join('\0'),
+  )
   try {
     for (const f of readdirSync(import.meta.dir).sort()) {
       if (/\.[cm]?[jt]s$/.test(f))
