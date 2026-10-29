@@ -74,6 +74,47 @@ describe('a lockfile the plugin cannot read', () => {
   })
 })
 
+describe('a conflicted lockfile on the key path', () => {
+  // The key reads a lockfile's extra files before its digest and edges,
+  // and that read parsed the file with no conflict check: under pnpm, npm
+  // and bun the run refused with a bare parse error, and the check the
+  // digest and edges make was never reached.
+  it('names the conflict markers under every manager', async () => {
+    const conflicted = (head: string) =>
+      `${head}\n<<<<<<< HEAD\nleft-pad@^1.0.0:\n  version "1.3.0"\n=======\nleft-pad@^1.0.0:\n  version "1.2.0"\n>>>>>>> other\n`
+    const got: string[] = []
+    for (const [plugin, file, head] of [
+      [yarn(), 'yarn.lock', '# yarn lockfile v1\n'],
+      [pnpm(), 'pnpm-lock.yaml', "lockfileVersion: '9.0'"],
+      [npm(), 'package-lock.json', '{'],
+      [bun(), 'bun.lock', '{'],
+    ] as const) {
+      const root = await mkdtemp(path.join(tmpdir(), 'vx-conflict-'))
+      try {
+        await writeFile(path.join(root, file), conflicted(head))
+        const key = (plugin as unknown as { key: (t: unknown, c: unknown) => Promise<unknown> }).key
+        got.push(
+          await key(
+            { projectDir: root },
+            { workspaceRoot: root, cacheDir: path.join(root, '.c') },
+          ).then(
+            () => '(no refusal)',
+            (e: unknown) => (e instanceof Error ? e.message : String(e)),
+          ),
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+    expect(got).toEqual([
+      'yarn.lock: holds git merge conflict markers — regenerate it with `yarn install`',
+      'pnpm-lock.yaml: holds git merge conflict markers — regenerate it with `pnpm install`',
+      'package-lock.json: holds git merge conflict markers — regenerate it with `npm install`',
+      'bun.lock: holds git merge conflict markers — regenerate it with `bun install`',
+    ])
+  })
+})
+
 describe('a malformed bun.lock on the key path (L-16)', () => {
   // Its patch files are read before the digest, and that read refused
   // outside the digest's wrapper: a bare "JSONC Parse error", no file or
