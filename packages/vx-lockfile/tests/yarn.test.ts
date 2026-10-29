@@ -599,6 +599,47 @@ describe('yarn() declared', () => {
   })
 })
 
+// A one-package repo has no `workspaces` field; Turbo's yarn support
+// errored on one until vercel/turborepo#4240.
+describe('yarn() in a repo with no workspaces field', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(tmpdir(), 'vx-yarn-single-'))
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'app', dependencies: { foo: '^1' } }),
+    )
+    await mkdir(path.join(root, 'src'))
+    await writeFile(path.join(root, 'src', 'index.js'), '// app\n')
+    await writeFile(
+      path.join(root, 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
+    )
+    await writeFile(path.join(root, 'yarn.lock'), classic())
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource(['yarn()'], `import { yarn } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
+    )
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('keys the one project on the lockfile: a transitive bump moves it, an unchanged file does not', async () => {
+    const hash = async () =>
+      (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks.map((t) => [
+        t.node.id,
+        t.hash,
+      ])
+    const before = await hash()
+    expect(before.map(([id]) => id)).toEqual(['app#build'])
+    expect(await hash()).toEqual(before)
+    await writeFile(path.join(root, 'yarn.lock'), classic('2.0.1'))
+    expect((await hash())[0]![1]).not.toBe(before[0]![1])
+  })
+})
+
 // The mutation sweep of item 803: each row changes one input the digest
 // must read and names the workspaces whose key must move. Before it, each
 // could be dropped from yarn.ts with the suite green.
@@ -668,6 +709,53 @@ describe('every input the yarn digest must read', () => {
       )
     expect(patched('aaa')).not.toBe(berry())
     expect(movedDirs(patched('aaa'), patched('bbb'))).toEqual(['packages/a'])
+  })
+
+  // Turbo's `minimal-berry-resolutions.lock` (vercel/turborepo#4589):
+  // `resolutions: { debug: 1.0.0, "debug/ms": 0.6.0 }` leaves both edges
+  // (`debug: ^4.3.4`, `ms: 0.6.2`) naming descriptors the file never keys.
+  it('a resolutions override two hops deep still reaches the entry installed', () => {
+    const lock = (msChecksum: string) => `__metadata:
+  version: 6
+  cacheKey: 8
+
+"a@workspace:packages/a":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:packages/a"
+  languageName: unknown
+  linkType: soft
+
+"b@workspace:packages/b":
+  version: 0.0.0-use.local
+  resolution: "b@workspace:packages/b"
+  dependencies:
+    debug: ^4.3.4
+  languageName: unknown
+  linkType: soft
+
+"debug@npm:1.0.0":
+  version: 1.0.0
+  resolution: "debug@npm:1.0.0"
+  dependencies:
+    ms: 0.6.2
+  checksum: debug100
+  languageName: node
+  linkType: hard
+
+"ms@npm:0.6.0":
+  version: 0.6.0
+  resolution: "ms@npm:0.6.0"
+  checksum: ${msChecksum}
+  languageName: node
+  linkType: hard
+
+"test@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "test@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+    expect(movedDirs(lock('ms060'), lock('ms060-repacked'))).toEqual(['packages/b'])
   })
 
   it('an unresolved dependency still folds its range', () => {
