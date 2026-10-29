@@ -1490,8 +1490,8 @@ async function runOnBus(
     const historyAfterWait = keepAlive.children.length > 0 && !hold && stop.stoppedBy === undefined
     // A failed task's output, for `vx last` and an agent (run-failures.ts).
     // A cache directory this user cannot write keeps none of the run's
-    // records: the run's one notice said so (readOnlyNotice).
-    const keeps = prepared.localCache.keepsRecords
+    // records: the run's one notice said so.
+    const keeps = prepared.localCache.readOnlyNotice() === null
     const recordFailures = (final: readonly TaskOutcome[]): void => {
       if (keeps) writeRunFailures(prepared.cacheDir, runId, final, warnOf(log))
     }
