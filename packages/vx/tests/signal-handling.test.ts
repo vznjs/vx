@@ -155,6 +155,20 @@ describe('signal handling during vx run (e2e)', () => {
         { code: 129, by: 'SIGHUP' },
       ])
 
+      // A self-kill that lands late (another thread took it, a tracer held
+      // it) lost to the exit after it: 130, not by SIGINT (CI, PR #4867).
+      // The helper sends it 300 ms late; vx waits for it.
+      await rm(up, { force: true })
+      const late = Bun.spawn([process.execPath, BIN, 'run', 'app#hold'], {
+        cwd: fixture.root,
+        env: { ...env, VX_TEST_SELF_SIGNAL_DELAY: '300ms' },
+        stdout: 'ignore',
+        stderr: 'ignore',
+      })
+      await waitForContent(up, 'up\n', 10_000)
+      late.kill('SIGINT')
+      expect({ code: await late.exited, by: late.signalCode }).toEqual({ code: 130, by: 'SIGINT' })
+
       // Ctrl-C reaches the terminal's foreground group: the shell and vx.
       await rm(up, { force: true })
       const script = Bun.spawn(

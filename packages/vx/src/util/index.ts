@@ -86,6 +86,7 @@ export {
 } from './paths.js'
 export {
   claimExitForSignal,
+  dieOf,
   exitClaimedBySignal,
   killGraceMs,
   settleWithin,

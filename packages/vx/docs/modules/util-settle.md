@@ -14,6 +14,7 @@ settleWithin(p: Promise<unknown>, ms): Promise<boolean>
 killGraceMs(defaultMs: number): number            // defaultMs
 claimExitForSignal(): void                        // a signal's handler will end the process
 exitClaimedBySignal(): boolean
+dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void // die of it, waiting (1 s bound) for it to land
 ```
 
 - `testTimerMs` is the one way a test shortens a run's timer:
@@ -48,6 +49,14 @@ exitClaimedBySignal(): boolean
   exits by itself with the signal's code after the run it stopped is
   done, and the verb settles first with the run's verdict; the claim
   keeps bin.ts from exiting 1 ahead of it.
+
+- `dieOf` is how vx and its hand-off die of a stop signal: listeners
+  off, the signal sent to itself, then a synchronous wait until it lands
+  (1 s bound, the caller's exit code the fallback). A kill can land after
+  it returns (another thread took it, a tracer held it), and the
+  `process.exit` right after it exited 130 instead (CI, PR #4867).
+  `VX_TEST_SELF_SIGNAL_DELAY` sends it from a helper that late, the
+  window `tests/signal-handling.test.ts` widens.
 
 ## Tests
 
