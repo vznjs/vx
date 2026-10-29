@@ -152,6 +152,10 @@ export default {
     }
     const refused = allowRefusal(env.ALLOW)
     if (refused !== undefined) return refuse(req, 403, refused)
+    // wrangler.jsonc may write a var as JSON: "env.AUDIENCE.trim is not a
+    // function" escaped as a 500, which a client retries.
+    if (env.AUDIENCE !== undefined && typeof (env.AUDIENCE as unknown) !== 'string')
+      return refuse(req, 403, "this relay's AUDIENCE: one string, the aud CI tokens name")
     // A blank one was the audience itself: every token was "wrong audience".
     if (env.AUDIENCE !== undefined && env.AUDIENCE.trim() === '')
       return refuse(req, 403, "this relay's AUDIENCE: the aud CI tokens name, or unset, not blank")

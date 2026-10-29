@@ -191,6 +191,15 @@ it('reads AUDIENCE without the blanks around it, and refuses a blank one', async
     403,
     { error: "this relay's AUDIENCE: the aud CI tokens name, or unset, not blank" },
   ])
+  // wrangler.jsonc may write a var as JSON: "env.AUDIENCE.trim is not a
+  // function" escaped the Worker as a 500.
+  for (const audience of [42, ['vx-dte-server']]) {
+    const listed = await join({ ...blank, AUDIENCE: audience as never }, C, await job(1))
+    expect([listed.status, await listed.json()]).toEqual([
+      403,
+      { error: "this relay's AUDIENCE: one string, the aud CI tokens name" },
+    ])
+  }
 })
 
 // No object bound: each join threw "Cannot read properties of
