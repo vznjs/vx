@@ -41,8 +41,8 @@ export function isTmpdirRefusal(err: unknown): err is NodeJS.ErrnoException // a
 export const TMPDIR_HINT: string // "point TMPDIR at a writable directory"
 
 export function isExecutableMissing(err: unknown): boolean // Bun's ENOENT for a spawn that could not run at all
-export function gitSpawnRefusal(cwd: string): UserError // the one refusal for a git that is not on PATH
-export function notAWorkTree(cwd: string, stderr?: string): UserError // the one refusal for a directory git does not track
+export function gitSpawnRefusal(cwd: string): UserError // the one refusal for a git that is not on PATH, VX_E_NO_GIT
+export function notAWorkTree(cwd: string, stderr?: string): UserError // the one refusal for a directory git does not track, VX_E_NO_GIT
 export function gitFailure(cwd: string, args: string, exitCode: number, stderr: string): UserError // a git that failed in cwd: notAWorkTree, else VX_E_GIT
 
 // src/util/config-frame.ts: a config refusal at its `line:col`, with the source under it; undefined when it names no field

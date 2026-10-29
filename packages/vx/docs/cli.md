@@ -2489,6 +2489,12 @@ with. Pass a branch or commit you have locally, alone:
 `--affected=origin/main`. A shallow clone fetches its base from origin
 itself; with no origin, fetch it (`git fetch --depth=1 origin <base>`).
 
+#### `VX_E_NO_GIT`
+
+vx needs git and found none: `git` is not on PATH, or the workspace is
+not inside a git work tree. The message says which. Install git, or run
+`git init` in the workspace root, then re-run.
+
 #### `VX_E_GIT`
 
 A git command vx runs to read the diff or list a run's inputs failed;
