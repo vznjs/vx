@@ -731,6 +731,24 @@ describe('a host that keeps runs and holds websockets', () => {
     expect((await c.poll(R, o)).map((m) => m.body)).toEqual([{ type: 'left', id: ghost }])
   })
 
+  // A join is let in before its socket opens; one whose client went in
+  // between never opened it, and the run, its host's, was held for good.
+  it('loses a participant whose joining socket never opened, once its grace passes', async () => {
+    const c = client({ graceMs: 20 })
+    const [host] = await c.request(R, 'join', { role: 'host' })
+    expect((await c.relay.fetch(host)).status).toBe(101)
+    const o = await c.join(R1, 'host')
+    const [peer] = await c.request(R1, 'join', { role: 'peer' })
+    expect((await c.relay.fetch(peer)).status).toBe(101)
+    const [joined] = await c.poll(R1, o)
+    await Bun.sleep(30)
+    await c.frame(R1, o, { sends: [] })
+    expect(await c.poll(R1, o)).toEqual([
+      { from: 'relay', body: { type: 'left', id: joined.body.id } },
+    ])
+    expect((await c.call(R, 'join', { role: 'host' })).status).toBe(200)
+  })
+
   it('pushes messages down a socket and takes sends from it', async () => {
     const c = client()
     const joined = await c.call(R, 'join', { role: 'host' })
