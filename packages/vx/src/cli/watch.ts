@@ -111,7 +111,12 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
 
   const refused = watchRefusal(parsed)
   if (refused !== null)
-    return refuse('watch', args, refused.replace(/^vx watch: /, ''), 'VX_E_USAGE')
+    return refuse(
+      'watch',
+      args,
+      `${refused.replace(/^vx watch: /, '')}${seeHelp('watch')}`,
+      'VX_E_USAGE',
+    )
   if (parsed.tasks.length === 0) {
     sayNotice(
       'error',

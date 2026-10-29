@@ -119,7 +119,7 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
       if (v === undefined || v === '')
         return { ...out, error: '--from requires a value: turbo, nx, vite-task or scripts' }
       if (v !== 'turbo' && v !== 'nx' && v !== 'vite-task' && v !== 'scripts') {
-        return { ...out, error: '--from must be turbo, nx, vite-task or scripts' }
+        return { ...out, error: `--from must be turbo, nx, vite-task or scripts (got ${v})` }
       }
       out.from = v
     } else if (a === '--help' || a === '-h') return { ...out, help: true }

@@ -1316,7 +1316,7 @@ describe('parseMigrateArgs', () => {
     expect(parseMigrateArgs(['--from', 'scripts']).from).toBe('scripts')
     for (const v of ['lage', 'wireit', 'package.json'])
       expect(parseMigrateArgs(['--from', v]).error).toBe(
-        '--from must be turbo, nx, vite-task or scripts',
+        `--from must be turbo, nx, vite-task or scripts (got ${v})`,
       )
   })
   // As core's flags say it: `--format=` read "(got )" and a last `--format` "(got nothing)".

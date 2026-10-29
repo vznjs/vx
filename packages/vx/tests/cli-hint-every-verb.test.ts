@@ -100,6 +100,34 @@ describe('a refused word names the nearest one the verb takes', () => {
     expect(await run(['--version'])).toBe(0)
   })
 
+  // A flag exactly one other verb takes names that verb, not a near guess
+  // here (`vx run --poll` has its own line, naming `vx watch --poll`).
+  it("another verb's own flag names that verb, not a near one here", async () => {
+    expect([await refused(['show', '--list']), await refused(['why', 'build', '--list'])]).toEqual([
+      [1, '✗ vx show  unknown flag: --list\n\n  `vx last` takes it\n  see vx show --help\n'],
+      [1, 'vx why: unknown flag: --list. `vx last` takes it (see `vx why --help`)\n'],
+    ])
+    // A flag two other verbs take names neither (control).
+    expect(await refused(['show', '--global'])).toEqual([
+      1,
+      '✗ vx show  unknown flag: --global\n\n  see vx show --help\n',
+    ])
+  })
+
+  // `vx lock --check=yes` named no flag: --check is no edit from itself.
+  it('a value given to a bare flag names the bare flag', async () => {
+    expect([
+      await refused(['lock', '--check=yes']),
+      await refused(['upgrade', '--global=true']),
+    ]).toEqual([
+      [1, '✗ vx lock  unknown flag: --check=yes\n\n  see vx lock --help\n\n  fix  --check\n'],
+      [
+        1,
+        '✗ vx upgrade  unknown flag: --global=true\n\n  see vx upgrade --help\n\n  fix  --global\n',
+      ],
+    ])
+  })
+
   it('vx help takes one verb: a second word is refused, not dropped', async () => {
     expect([
       await refused(['help', 'run', 'extra']),

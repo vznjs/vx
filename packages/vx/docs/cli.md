@@ -558,8 +558,10 @@ four letters or fewer gets one edit or a swap of two letters, so
 does this against its own usage line and `--help`: `vx info --formt`
 hints `--format`, `vx lock --chek` hints `--check`, `vx upgrade --hlp`
 hints `--help`, and `--json` on a verb that takes `--format` hints
-`--format json`. `vx version` takes no word, so `vx version --hlp` is
-refused (exit 1) where it once printed the version.
+`--format json`. A flag exactly one other verb takes names that verb
+instead (`vx run build --poll`: `` `vx watch` takes it ``). `vx version`
+takes no word, so `vx version --hlp` is refused (exit 1) where it once
+printed the version.
 
 A task typed where the verb goes (`turbo build`, `nx build app`) is
 refused with the `vx run` that runs it: `vx build` names
@@ -590,7 +592,7 @@ edge.
 Value flags (`--filter`, `--concurrency`, `--output-logs`,
 `--verbosity`, `--cache-dir`, …)
 accept both `--flag value` and `--flag=value`. In the space form,
-`--cache-dir` rejects a value
+`--cache-dir` and `--branch` reject a value
 starting with `-`: that is always a swallowed flag (an unquoted empty
 shell variable), never a path or task id. Use the `=` form for a literal
 leading dash.
@@ -3171,6 +3173,7 @@ says the task printed nothing. With
 `source` `'failure'`, `'cache'` or `null`. A task no run recorded is
 refused, exit 1. A bare name (`--log build`) is the one project that ran
 it; with several, the one the cwd is in, else it is refused listing them.
+`//#build` is the root project's, here and in `--stats`.
 `vx last app#build --log` reads the same as `--log app#build`: a `--log`
 with no value takes the positional as its task.
 

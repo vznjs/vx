@@ -474,10 +474,20 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     })
       .stderr.toString()
       .split('\n')[0]
-  expect([said([]), said(['bogus']), said(['worker', '--bogus'])]).toEqual([
+  // A subcommand's refusal is headed by it once: `✗ vx dte  vx dte worker …`
+  // named the verb twice.
+  expect([
+    said([]),
+    said(['bogus']),
+    said(['worker', '--bogus']),
+    said(['worker', 'extra']),
+    said(['init', '--bogus']),
+  ]).toEqual([
     '✗ vx dte  missing subcommand',
     '✗ vx dte  unknown subcommand: bogus',
-    '✗ vx dte  vx dte worker takes no arguments: --bogus',
+    '✗ vx dte worker  unknown flag: --bogus',
+    '✗ vx dte worker  unexpected argument: extra',
+    '✗ vx dte init  unknown flag: --bogus',
   ])
   // Each is a usage refusal, as core's are, for a reader of the JSON.
   const code = (args: string[]) =>
@@ -517,7 +527,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(relay)}, workers: { sma
   expect(said({})).toContain('dte() option "relay" must be an http(s) URL, got "relay.example.com"')
   await workspace('https://relay.example.com')
   expect(said({ VX_DTE_RELAY: 'relay.example.com' })).toStartWith(
-    '✗ vx dte  vx dte worker: VX_DTE_RELAY must be http(s), got relay.example.com\n',
+    '✗ vx dte worker  VX_DTE_RELAY must be http(s), got relay.example.com\n',
   )
 })
 
@@ -547,10 +557,10 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     // Empty is unset, as for VX_DTE_RUN, VX_DTE_SECRET and VX_DTE_WORKER.
     said({ VX_DTE_RUN: crypto.randomUUID(), VX_DTE_RELAY: '' }),
   ]).toEqual([
-    '✗ vx dte  vx dte worker needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })',
-    '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
-    '✗ vx dte  vx dte worker needs VX_DTE_RUN',
-    '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
+    '✗ vx dte worker  needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })',
+    '✗ vx dte worker  needs VX_DTE_RELAY or dte({ relay })',
+    '✗ vx dte worker  needs VX_DTE_RUN',
+    '✗ vx dte worker  needs VX_DTE_RELAY or dte({ relay })',
   ])
   // A job without id-token: write has no ACTIONS_ID_TOKEN_REQUEST_TOKEN.
   expect(
@@ -563,7 +573,7 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
       GITHUB_REPOSITORY_ID: '1',
     }),
   ).toBe(
-    '✗ vx dte  vx dte worker needs VX_DTE_SECRET, the run’s, or a GitHub Actions job with id-token: write',
+    '✗ vx dte worker  needs VX_DTE_SECRET, the run’s, or a GitHub Actions job with id-token: write',
   )
 })
 

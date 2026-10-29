@@ -309,10 +309,10 @@ describe('value flags accept the = form', () => {
       "--output-logs must be one of 'full', 'errors-only', 'hash-only', 'none' (got loud)",
     )
     expect(parseRunArgs(['build', '--output-logs=']).error).toBe(
-      "--output-logs requires a value (one of 'full', 'errors-only', 'hash-only', 'none')",
+      "--output-logs requires a value: one of 'full', 'errors-only', 'hash-only', 'none'",
     )
     expect(parseRunArgs(['build', '--output-logs']).error).toBe(
-      "--output-logs requires a value (one of 'full', 'errors-only', 'hash-only', 'none')",
+      "--output-logs requires a value: one of 'full', 'errors-only', 'hash-only', 'none'",
     )
   })
 
@@ -321,23 +321,23 @@ describe('value flags accept the = form', () => {
       "--cache-download must be one of 'all', 'toplevel', 'none' (got some)",
     )
     expect(parseRunArgs(['build', '--cache-download']).error).toBe(
-      "--cache-download requires a value (one of 'all', 'toplevel', 'none')",
+      "--cache-download requires a value: one of 'all', 'toplevel', 'none'",
     )
     expect(parseRunArgs(['build', '--cache-download=']).error).toBe(
-      "--cache-download requires a value (one of 'all', 'toplevel', 'none')",
+      "--cache-download requires a value: one of 'all', 'toplevel', 'none'",
     )
     expect(parseRunArgs(['build', '--continue=sometimes']).error).toBe(
       '--continue must be never, deps-ok, or always (got sometimes)',
     )
     expect(parseRunArgs(['build', '--continue=']).error).toBe(
-      '--continue= requires a mode (never, deps-ok, or always)',
+      '--continue= requires a mode: never, deps-ok, or always',
     )
   })
 
   it('--verbosity=', () => {
     expect(parseRunArgs(['build', '--verbosity=2']).verbosity).toBe(2)
     expect(parseRunArgs(['build', '--verbosity=']).error).toBe(
-      '--verbosity requires a value (a non-negative integer)',
+      '--verbosity requires a value: a non-negative integer',
     )
   })
 
@@ -444,5 +444,19 @@ describe('--profile names a file, checked before the run', () => {
     const thrown = await run(['run', 'build', '--profile=p.json']).catch((e: Error) => e.message)
     expect(thrown).toContain('.vx/workspace.ts')
     expect(stderr).not.toContain('--profile:')
+  })
+})
+
+describe('a string value flag does not swallow the next flag', () => {
+  it('--branch <flag> is refused, as vx last --branch refuses it', () => {
+    // `vx run build --branch $EMPTY --dry` ran the build for real, recorded
+    // under a branch named `--dry`.
+    for (const verb of ['run', 'watch'] as const) {
+      expect(parseRunArgs(['build', '--branch', '--dry'], verb).error).toBe(
+        '--branch requires a value (got flag --dry; a value that starts with - needs --branch=--dry)',
+      )
+    }
+    expect(parseRunArgs(['build', '--branch=-x']).settings['run.branch']).toBe('-x')
+    expect(parseRunArgs(['build', '--branch', 'main']).settings['run.branch']).toBe('main')
   })
 })
