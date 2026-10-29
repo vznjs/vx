@@ -380,6 +380,32 @@ describe('turbo-map: what the sweep found unheld', () => {
     ])
   })
 
+  // vercel/turborepo#2064: Turbo sorts `outputs` and `dependsOn` before
+  // hashing, so a reorder keeps the hit. Mapped as written, the config
+  // vx keys moved and the task re-ran.
+  it('maps a reordered `outputs` and `dependsOn` to the same task', async () => {
+    const pkgs = { a: { scripts: { build: 'b', lint: 'l', test: 't' } } }
+    // Every task: a sibling's inputs take the outputs back with `!`.
+    const tasks = async (build: Record<string, unknown>) =>
+      (await map({ tasks: { lint: {}, test: {}, build } }, pkgs)).projects[0]!.tasks.map(
+        (x) => x.task!,
+      )
+    const all = await tasks({
+      dependsOn: ['lint', 'test'],
+      outputs: ['a/**', '!a/tmp/**', 'b/**', '!b/tmp/**'],
+    })
+    const reordered = await tasks({
+      dependsOn: ['test', 'lint'],
+      outputs: ['!b/tmp/**', 'b/**', '!a/tmp/**', 'a/**'],
+    })
+    expect(reordered).toEqual(all)
+    const one = all.find((t) => t['dependsOn'] !== undefined)!
+    // A `!` entry takes back from the positives in any order (core's
+    // outputMatcher), so the negations sorting last changes nothing.
+    expect(one['cache']).toEqual({ outputs: { files: ['a/**', 'b/**', '!a/tmp/**', '!b/tmp/**'] } })
+    expect(one['dependsOn']).toEqual(['lint', 'test'])
+  })
+
   // vercel/turborepo#1472: a plain `turbo.json` takes comments too, line
   // and block, between entries and before a string in an array.
   it('reads comments in a plain `turbo.json`', async () => {
@@ -1703,7 +1729,7 @@ describe('turbo-map: `with`', () => {
       { build: ['^build'], ci: ['build'], deploy: ['build'], noop: ['^noop'] },
       // lib's `build` is Turbo's no-op node over lib's files (G-117), which
       // core supplies to a project with no `build`.
-      { lint: undefined, ci: ['lint', 'build'], deploy: [], noop: ['^noop'] },
+      { lint: undefined, ci: ['build', 'lint'], deploy: [], noop: ['^noop'] },
     ])
   })
 

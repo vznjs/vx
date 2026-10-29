@@ -112,7 +112,7 @@
   {
     "key": "turbo.json tasks.*.dependsOn",
     "status": "mapped",
-    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept. A task name no package has a script for (`ci: { dependsOn: [\"lint\", \"build\"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does."
+    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept. A task name no package has a script for (`ci: { dependsOn: [\"lint\", \"build\"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does. Written sorted, as Turbo sorts it before hashing, so a reorder keeps the hit."
   },
   {
     "key": "turbo.json tasks.*.description",
@@ -147,7 +147,7 @@
   {
     "key": "turbo.json tasks.*.outputs",
     "status": "mapped",
-    "reason": "Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment (`*/**`) stays cached with a note that the clean deletes the untracked files it reaches (without git, the task runs uncached with a TODO); core never cleans a file git tracks, committed or only `git add`ed; the project's own `package.json` or vx.config is taken back with `!` (a build that writes `package.json` also gets `inputStability: { strategy: 'mutable' }`)."
+    "reason": "Become `cache.outputs`, negations kept, sorted with the negations last, as Turbo sorts them before hashing, so a reorder keeps the hit; vx cleans outputs, so a wildcard first segment (`*/**`) stays cached with a note that the clean deletes the untracked files it reaches (without git, the task runs uncached with a TODO); core never cleans a file git tracks, committed or only `git add`ed; the project's own `package.json` or vx.config is taken back with `!` (a build that writes `package.json` also gets `inputStability: { strategy: 'mutable' }`)."
   },
   {
     "key": "turbo.json tasks.*.passThroughEnv",

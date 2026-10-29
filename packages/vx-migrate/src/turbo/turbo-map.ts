@@ -1521,7 +1521,40 @@ export async function mapTurboWorkspace(
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   refuseTaskNames(projects, 'task')
+  sortOrderFree(projects)
   return { projects, notes, globals }
+}
+
+function byText(a: unknown, b: unknown): number {
+  const x = typeof a === 'string' ? a : JSON.stringify(a)
+  const y = typeof b === 'string' ? b : JSON.stringify(b)
+  return x < y ? -1 : x > y ? 1 : 0
+}
+
+function negationsLast(a: unknown, b: unknown): number {
+  const neg = (g: unknown) => Number(typeof g === 'string' && g.startsWith('!'))
+  return neg(a) - neg(b) || byText(a, b)
+}
+
+/**
+ * Turbo sorts a task's `outputs` and `dependsOn` before hashing, so
+ * reordering them in turbo.json keeps the hit (vercel/turborepo#2064).
+ * Core keys a config's lists as written, and gives neither list's order a
+ * meaning: an edge set, and a `!` output takes back from the positives
+ * wherever it stands (`outputMatcher`). Sorted here, negations last, so
+ * the reorder keys the same and a written config reads the same.
+ */
+function sortOrderFree(projects: readonly TurboMappedProject[]): void {
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const task = t.task
+      if (task === null) continue
+      if (Array.isArray(task['dependsOn'])) task['dependsOn'] = [...task['dependsOn']].sort(byText)
+      const outputs = (task['cache'] as { outputs?: Record<string, unknown> } | undefined)?.outputs
+      if (outputs === undefined) continue
+      for (const k of ['files', 'workspaceFiles'])
+        if (Array.isArray(outputs[k])) outputs[k] = [...outputs[k]].sort(negationsLast)
+    }
 }
 
 /**
@@ -2161,8 +2194,10 @@ function buildTask(
   const rewritesManifest = takeBacks.includes('!package.json')
 
   if (atRoot) wsOutFiles.unshift(...outFiles.splice(0))
-  const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
-  const ws = takingBack(wsOutFiles)
+  // Sorted here, before the passes that take them back from other tasks'
+  // inputs, so those `!` entries come in this order too (`sortOrderFree`).
+  const outputs: Record<string, unknown> = { files: takingBack(outFiles).sort(negationsLast) }
+  const ws = takingBack(wsOutFiles).sort(negationsLast)
   if (ws.length > 0) outputs.workspaceFiles = ws
   task.cache = {
     outputs,
