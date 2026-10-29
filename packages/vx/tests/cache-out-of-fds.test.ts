@@ -9,9 +9,11 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const HINT = 'the process is out of file descriptors; raise the limit (ulimit -n 4096) and re-run'
 const CACHE = path.resolve(import.meta.dir, '..', 'src', 'cache', 'index.ts')
+const LOCKED = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 let root: string
 beforeEach(() => {
@@ -139,4 +141,42 @@ describe('opening the cache out of file descriptors', () => {
       err?.message.includes(HINT),
     ]).toEqual(['UserError', 'VX_E_FS', false])
   })
+})
+
+// vercel/turborepo#13282: a shell's low soft `ulimit -n` (macOS's 256) ran
+// the whole run at it. Bun raises the soft limit to the hard one as it
+// starts, and vx's tasks inherit the raised limit.
+describe('a low soft limit at startup', () => {
+  const hard = Number(Bun.spawnSync(['sh', '-c', 'ulimit -Hn']).stdout.toString().trim())
+  it.skipIf(!(hard > 256))(
+    'vx and its tasks run with the hard limit, not the soft one',
+    async () => {
+      const ws = await makeWorkspace({ prefix: 'vx-fds-start-' })
+      try {
+        await addProject(ws, 'app', {
+          config: `export default { tasks: { t: { exec: { command: 'ulimit -Sn > ${root}/n' } } } }\n`,
+        })
+        gitIn(ws)('add', '-A')
+        gitIn(ws)('commit', '-q', '-m', 'init')
+        const p = Bun.spawnSync(
+          [
+            'sh',
+            '-c',
+            'ulimit -Sn 256 && exec "$0" "$@"',
+            process.execPath,
+            LOCKED,
+            'run',
+            't',
+            '--all',
+          ],
+          { cwd: ws, stdout: 'pipe', stderr: 'pipe' },
+        )
+        expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
+        expect(Number((await Bun.file(path.join(root, 'n')).text()).trim())).toBeGreaterThan(256)
+      } finally {
+        rmSync(ws, { recursive: true, force: true })
+      }
+    },
+    30_000,
+  )
 })
