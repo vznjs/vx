@@ -910,3 +910,38 @@ describe('exec.persistent (e2e)', () => {
     TIMEOUT,
   )
 })
+
+// vx's note opens a line of its own, and only that: its leading newline
+// printed a blank line under the server's last line in the frame.
+it(
+  'the never-ready note follows a server’s last line with no blank line',
+  async () => {
+    const fixture = await makeWorkspace()
+    try {
+      await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: { dev: { exec: {
+          command: 'echo starting; exit 3',
+          persistent: { readyWhen: 'READY' },
+        } } } }`,
+      )
+      let text = ''
+      const log: Logger = {
+        status() {},
+        taskStdout(_, chunk) {
+          text += chunk
+        },
+        taskStderr(_, chunk) {
+          text += chunk
+        },
+        taskComplete() {},
+      }
+      await run({ cwd: fixture.root, tasks: ['dev'], log }).catch(() => {})
+      expect(text).toStartWith('starting\n[vx] app#dev: persistent task failed to become ready')
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)
