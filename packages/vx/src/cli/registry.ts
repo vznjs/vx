@@ -61,6 +61,22 @@ function parseNpmrc(text: string, env: Env): Map<string, string> {
 
 const withSlash = (url: string): string => (url.endsWith('/') ? url : `${url}/`)
 
+/**
+ * `value` when it is an http(s) URL. A hand-written one is a boundary: a
+ * scheme left out (`registry=npm.corp.example`) crashed the request with
+ * a TypeError stack.
+ */
+function httpUrl(value: string, where: string): string {
+  let u: URL | undefined
+  try {
+    u = new URL(value)
+  } catch {}
+  if (u?.protocol !== 'https:' && u?.protocol !== 'http:') {
+    throw new UserError(`registry "${value}" in ${where} is not an http(s) URL`)
+  }
+  return value
+}
+
 /** npm's "nerf dart": `//host[:port]/path/`, the key its credentials sit under. */
 const nerfDart = (url: string): string => {
   const u = new URL(url)
@@ -73,7 +89,11 @@ interface Bunfig {
 }
 
 /** A bunfig registry: a URL (credentials allowed in it), or `{ url, token }` / `{ url, username, password }`. */
-function bunRegistry(value: unknown, env: Env): { url: string; auth?: string } | undefined {
+function bunRegistry(
+  value: unknown,
+  env: Env,
+  file: string,
+): { url: string; auth?: string } | undefined {
   const entry =
     typeof value === 'string'
       ? { url: value }
@@ -81,7 +101,7 @@ function bunRegistry(value: unknown, env: Env): { url: string; auth?: string } |
         ? (value as { url?: unknown; token?: unknown; username?: unknown; password?: unknown })
         : undefined
   if (entry === undefined || typeof entry.url !== 'string') return undefined
-  const u = new URL(expandBun(entry.url, env))
+  const u = new URL(httpUrl(expandBun(entry.url, env), file))
   let user = decodeURIComponent(u.username)
   let pass = decodeURIComponent(u.password)
   u.username = ''
@@ -108,20 +128,31 @@ export function resolveRegistry(
   home: string = os.homedir(),
 ): Registry {
   const userrc = npmEnv(env, 'userconfig') ?? path.join(home, '.npmrc')
-  const rcs: Map<string, string>[] = []
+  const rcs: { file: string; keys: Map<string, string> }[] = []
   // A cwd under home reaches the user's file as an ancestor; it is read once, last.
   const files = ancestors(cwd)
     .map((d) => path.join(d, '.npmrc'))
     .filter((f) => f !== userrc)
   for (const file of [...files, userrc]) {
     const text = readText(file)
-    if (text !== undefined) rcs.push(parseNpmrc(text, env))
+    if (text !== undefined) rcs.push({ file, keys: parseNpmrc(text, env) })
   }
-  const fromRc = (key: string): string | undefined => rcs.find((rc) => rc.has(key))?.get(key)
+  const rcOf = (key: string) => rcs.find((rc) => rc.keys.has(key))
+  const fromRc = (key: string): string | undefined => rcOf(key)?.keys.get(key)
 
-  const npmUrl = fromRc(`${scope}:registry`) ?? npmEnv(env, 'registry') ?? fromRc('registry')
+  const scoped = rcOf(`${scope}:registry`)
+  const envUrl = npmEnv(env, 'registry')
+  const npmUrl = scoped?.keys.get(`${scope}:registry`) ?? envUrl ?? fromRc('registry')
   if (npmUrl !== undefined) {
-    const url = withSlash(npmUrl)
+    const where =
+      scoped !== undefined
+        ? scoped.file
+        : envUrl !== undefined
+          ? env['npm_config_registry'] !== undefined
+            ? 'npm_config_registry'
+            : 'NPM_CONFIG_REGISTRY'
+          : rcOf('registry')!.file
+    const url = withSlash(httpUrl(npmUrl, where))
     return {
       url,
       auth: (target) => {
@@ -158,8 +189,8 @@ export function resolveRegistry(
       )
     }
     const found =
-      bunRegistry(install?.scopes?.[scope] ?? install?.scopes?.[scope.slice(1)], env) ??
-      bunRegistry(install?.registry, env)
+      bunRegistry(install?.scopes?.[scope] ?? install?.scopes?.[scope.slice(1)], env, file) ??
+      bunRegistry(install?.registry, env, file)
     if (found === undefined) continue
     return {
       url: found.url,
