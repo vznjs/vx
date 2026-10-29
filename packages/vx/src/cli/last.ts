@@ -475,18 +475,17 @@ export function formatRunList(
   const rows = runs.map(({ inv, id }) => ({
     head: `${inv.exitOk ? 'ok    ' : 'FAILED'} ${fmtWhen(inv.startedAt)}`,
     id,
-    counts:
-      `${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}` +
-      (inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''),
+    counts: `${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`,
+    failed: inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : '',
     ms: fmtMs(inv.totalDurationMs),
     command: inv.command,
   }))
   const idW = Math.max(...rows.map((r) => r.id.length))
-  const countsW = Math.max(...rows.map((r) => r.counts.length))
+  const countsW = Math.max(...rows.map((r) => r.counts.length + r.failed.length))
   const msW = Math.max(...rows.map((r) => r.ms.length))
   return rows.map(
     (r) =>
-      `${paint(r.head.startsWith('ok') ? SUCCESS : ERROR, r.head.slice(0, 6), c)}${paint('', r.head.slice(6), c, { dim: true })}  ${paint('', r.id.padEnd(idW), c, { bold: true })}  ${paint('', `${r.counts.padEnd(countsW)}  ${r.ms.padStart(msW)}  $`, c, { dim: true })} ${r.command}`,
+      `${paint(r.head.startsWith('ok') ? SUCCESS : ERROR, r.head.slice(0, 6), c)}${paint('', r.head.slice(6), c, { dim: true })}  ${paint('', r.id.padEnd(idW), c, { bold: true })}  ${paint('', r.counts, c, { dim: true })}${paint(ERROR, r.failed, c)}${paint('', `${' '.repeat(countsW - r.counts.length - r.failed.length)}  ${r.ms.padStart(msW)}  $`, c, { dim: true })} ${r.command}`,
   )
 }
 

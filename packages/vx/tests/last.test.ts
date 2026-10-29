@@ -9,6 +9,7 @@ import { parseLastArgs } from '../src/cli/last.js'
 import { formatRunList, formatTaskRows } from '../src/cli/last.js'
 import type { RunSummaryRow } from '../src/history/index.js'
 import { noticed } from './helpers/notice.js'
+import { ERROR, paint } from '../src/util/index.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -688,6 +689,14 @@ describe('vx last --list rows', () => {
     restoredLocalCount: 0,
     restoredRemoteCount: 0,
     ...o,
+  })
+
+  // The replay's header paints its failed count red; the list dimmed it
+  // with the hits, so a failed run's count read as noise.
+  it('paints the failed count as the replay header does', () => {
+    const c = { enabled: true }
+    const [row] = formatRunList([{ inv: inv({ exitOk: false, failedCount: 2 }), id: 'r' }], c)
+    expect(row).toContain(paint(ERROR, ' · 2 failed', c))
   })
 
   it('aligns the counts, duration and command across runs whose counts differ', () => {
