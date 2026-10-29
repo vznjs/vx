@@ -135,13 +135,6 @@ export function captureGitContext(
   return { commitSha, branch, dirty }
 }
 
-/**
- * `HEAD`'s commit and branch from the `.git` files, or null when anything
- * about the layout is unfamiliar (the caller then spawns git). Handles a
- * `.git` directory, a `.git` FILE (`gitdir: …` — a linked worktree, whose
- * refs live under `commondir`), a symbolic HEAD, a detached HEAD, loose refs
- * and `packed-refs`. A reftable repository is always null.
- */
 /** The branch HEAD names, asked of git only after `rev-parse HEAD` failed. */
 function unbornBranch(workspaceRoot: string): string | null {
   const proc = Bun.spawnSync({
@@ -154,6 +147,13 @@ function unbornBranch(workspaceRoot: string): string | null {
   return ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : null
 }
 
+/**
+ * `HEAD`'s commit and branch from the `.git` files, or null when anything
+ * about the layout is unfamiliar (the caller then spawns git). Handles a
+ * `.git` directory, a `.git` FILE (`gitdir: …` — a linked worktree, whose
+ * refs live under `commondir`), a symbolic HEAD, a detached HEAD, loose refs
+ * and `packed-refs`. A reftable repository is always null.
+ */
 function readHeadDirect(
   workspaceRoot: string,
 ): { commitSha: string | null; branch: string | null } | null {
