@@ -912,6 +912,35 @@ describe('vx run with turboCache() layered over the local cache', () => {
     }
   })
 
+  // Turbo refuses a .turbo/config.json it cannot parse (vercel/turborepo
+  // #1156). The remote stays off as with none, and the run says why: read
+  // as absent in silence, a linked repo lost its cache with no word.
+  it('a .turbo/config.json that does not parse is named, and read as absent', async () => {
+    const ws = await mkdtemp(path.join(tmpdir(), 'vx-turbo-link-'))
+    const saved = process.env['TURBO_TOKEN']
+    try {
+      delete process.env['TURBO_TOKEN']
+      const said: string[] = []
+      const ctx = { warn: (m: string) => said.push(m), workspaceRoot: ws, cacheDir: ws, refs: [] }
+      const on = () => turboCache({}).cache?.(ctx as never) !== undefined
+      expect([on(), said]).toEqual([false, []])
+      await mkdir(path.join(ws, '.turbo'), { recursive: true })
+      await writeFile(path.join(ws, '.turbo', 'config.json'), '{"apiurl": "https://link.example",')
+      expect(on()).toBe(false)
+      await writeFile(path.join(ws, '.turbo', 'config.json'), '["not", "an", "object"]')
+      expect(on()).toBe(false)
+      expect(said).toEqual([
+        expect.stringMatching(
+          /\.turbo\/config\.json does not parse as a JSON object \(.+\): read as absent$/,
+        ),
+        "[vx] plugin '@vzn/vx-migrate': .turbo/config.json does not parse as a JSON object (an array): read as absent",
+      ])
+    } finally {
+      if (saved !== undefined) process.env['TURBO_TOKEN'] = saved
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
+
   it('the plugin declines without a url and a token', () => {
     const plugin = turboCache({})
     const ctx = {
