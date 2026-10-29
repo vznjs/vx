@@ -13,8 +13,8 @@ vx why @demo/ui#build
 
 ```ansi
 [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m — run 01a1837e-0b4b-7241-af39-b92b265ca8ba[0m
-  [2mthis run[0m   2026-10-28T17:10:38.177Z · success · executed · key 992d0bf996cc15d5
-  [2mprevious[0m   2026-10-28T17:10:37.430Z · success · executed · key 1b86fa37ecfc22d6
+  [2mthis run[0m   2026-10-28T17:10:38.177Z · success · executed · key 45685ae013662a8f
+  [2mprevious[0m   2026-10-28T17:10:37.430Z · success · executed · key 2132002e64f489a6
   [2mverdict[0m    [38;2;234;179;8mcache key changed: file packages/ui/src/index.ts[0m
 
   [1mwhat changed[0m[2m (1 component, 2 unchanged)[0m:
@@ -40,7 +40,7 @@ vx why @demo/web#build
   [2mverdict[0m    [38;2;234;179;8mcache key changed: upstream @demo/ui#build[0m
 
   [1mwhat changed[0m[2m (1 component, 3 unchanged)[0m:
-    [38;2;234;179;8mchanged[0m [2mupstream[0m  @demo/ui#build  [2m1b86fa37ecfc22d6 → 992d0bf996cc15d5[0m
+    [38;2;234;179;8mchanged[0m [2mupstream[0m  @demo/ui#build  [2m2132002e64f489a6 → 45685ae013662a8f[0m
 
   [1mroot cause[0m:
     @demo/web#build ← @demo/ui#build ← file packages/ui/src/index.ts

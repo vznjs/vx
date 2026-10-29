@@ -699,7 +699,7 @@ by its real path, which the grant covers, and dropped it: a tool that fell
 back on the missing file went green and cached the fallback. An ENOENT
 whose real path is granted and exists on the host is now a violation when
 a link on the opened path sits in the deny anchor in a directory no grant
-mounts (`hiddenByLink`). A link in a mounted directory, or outside the
+mounts (`hiddenLink`). A link in a mounted directory, or outside the
 anchor, is there inside; a target missing on the host is missing outside
 too (`sandbox-grant-through-link.unsafe.test.ts`).
 
