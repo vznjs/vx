@@ -332,25 +332,20 @@ Each runner is one task, `@vzn/vx-bench#bench.<runner>` (`vx`, `turbo`,
 `nx`, `vite-task`), which runs `compare.ts` for that runner alone and
 writes its rows to `private/vx-bench/site/<runner>.json`.
 
-`@vzn/vx-docs#bench.data` gathers the four files into the site's
-`src/data/bench.json`, and the site's build depends on it. A build with
-no data fails; so does a page naming an unknown token.
+`@vzn/vx-docs#bench.data` gathers the four files into
+`measured/bench.json`. The site's build reads its committed copy,
+`src/data/bench.json`. A build with no data fails; so does a page naming
+an unknown token.
 
-vx's task is keyed on vx's source, so every change to vx re-measures it
-and the next deploy shows it.
+The line under the table names each runner's version, date and machine.
 
-A rival's task is keyed on the harness and the versions pinned in
-`private/vx-bench/package.json` alone.
+Only CI's Bench job runs them, on main and on a dispatch: `vx run
+@vzn/vx-docs#bench.data --concurrency 1 --force` on a 4-core Linux
+runner of its own, one runner at a time. `--force` measures all four on
+that one machine, never a row cached from another runner's CPU. It
+uploads `measured/bench.json` as the `bench-data` artifact.
 
-So a rival re-measures only when its pin or the harness changes; every
-other run restores its rows from the cache. The line under the table
-names each runner's version, date and machine.
-
-Only CI's Bench job runs them: `vx run @vzn/vx-docs#bench.data
---concurrency 1` on a 4-core Linux runner of its own, one runner at a
-time, which gathers the rows into `src/data/bench.json` and uploads it.
-
-The site reads the committed copy of that file. No build depends on the
+No build depends on the
 benchmarks, so neither the DTE run, where a worker is packed beside
 other tasks and would time its neighbours, nor a fresh clone's `vx run
 build` ever runs one. New figures land as a commit of the job's file.

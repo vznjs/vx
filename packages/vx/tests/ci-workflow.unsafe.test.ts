@@ -55,7 +55,13 @@ describe('ci.yml', () => {
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
       ['linux', 'VX DTE', 'ubuntu-latest', top, undefined],
-      ['bench', 'Bench', 'ubuntu-latest', top, undefined],
+      [
+        'bench',
+        'Bench',
+        'ubuntu-latest',
+        "github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
+        undefined,
+      ],
       ['perf', 'Perf', 'ubuntu-latest', top, undefined],
     ])
   })
@@ -67,7 +73,7 @@ describe('ci.yml', () => {
     const bench = doc.jobs['bench']!
     expect(JSON.stringify(bench)).not.toContain('VX_DTE')
     expect(bench.steps?.find((s) => s.name === 'vx run bench.data')?.run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-docs#bench.data --concurrency 1',
+      'bun packages/vx/src/bin.ts run @vzn/vx-docs#bench.data --concurrency 1 --force',
     )
   })
 

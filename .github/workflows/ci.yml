@@ -165,11 +165,12 @@ jobs:
   # DTE, where a worker is packed beside other tasks, and no build
   # depends on it, so the DTE run never runs one. The site reads the
   # committed src/data/bench.json; this job's artifact is the next copy to
-  # commit. A runner's task re-measures only when its key changes (vx's
-  # source, or the harness and a rival's pin).
+  # commit. `--force` measures every runner in this one job, on this one
+  # machine: rows restored from another runner's run timed other CPUs.
+  # Main and a dispatch measure; a pull request reads the committed data.
   bench:
     name: Bench
-    if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -208,7 +209,7 @@ jobs:
       - name: vx run bench.data
         env:
           VX_CACHE_URL: ${{ steps.cache.outputs.url || env.VX_CACHE_URL }}
-        run: bun packages/vx/src/bin.ts run @vzn/vx-docs#bench.data --concurrency 1
+        run: bun packages/vx/src/bin.ts run @vzn/vx-docs#bench.data --concurrency 1 --force
       - name: Upload the benchmark data
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
