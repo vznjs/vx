@@ -251,6 +251,9 @@ export function dte(options: DteOptions = {}) {
       (await import('./github.js').then((g) => g.githubRelayToken(relay))))
 
   let nodes: ReadonlyMap<string, TaskNode> | undefined
+  // Core prints the footer after teardown, and its ideal needs the
+  // dependencies: the last run's graph, kept until the next `schedule`.
+  let ran: ReadonlyMap<string, TaskNode> | undefined
   /** The workspace names its cache dir (`cache.dir`): `config` reads it. */
   let namesCache = false
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
@@ -276,6 +279,7 @@ export function dte(options: DteOptions = {}) {
   const close = async (): Promise<void> => {
     const o = orchestrator
     orchestrator = undefined
+    ran = nodes
     nodes = undefined
     const ups = o?.warmUpsMs()
     const k = keep
@@ -422,6 +426,7 @@ export function dte(options: DteOptions = {}) {
 
     async schedule(graph, ctx) {
       nodes = graph
+      ran = undefined
       tails = undefined
       // A run that is not distributed reads nothing.
       if (orchestrator === undefined) return undefined
@@ -810,9 +815,9 @@ export function dte(options: DteOptions = {}) {
           replan()
           return o.execute(req)
         },
-        footer: () => o.footer(() => o.idealMs((id) => nodes?.get(id)?.deps ?? [], sizes)),
+        footer: () => o.footer(() => o.idealMs((id) => (nodes ?? ran)?.get(id)?.deps ?? [], sizes)),
         machines: () => o.machines(),
-        idealMs: () => o.idealMs((id) => nodes?.get(id)?.deps ?? [], sizes),
+        idealMs: () => o.idealMs((id) => (nodes ?? ran)?.get(id)?.deps ?? [], sizes),
         profile: () => o.profile(),
         running: (id) => o.where(id),
         demand(remaining, misses) {
