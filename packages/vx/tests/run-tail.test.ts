@@ -133,14 +133,14 @@ describe("vx's own steps", () => {
     log.stepEnd?.('vx:uploads', { durationMs: 300, ok: true })
     // Its list row, on the task grid: time, `success`, `internal` for the cache word.
     expect(out.text()).toMatch(/⏺︎ +300ms success internal vx:uploads\n/)
-    expect(region(out)).not.toContain('running internal vx:uploads')
+    expect(region(out)).not.toMatch(/running internal +vx:uploads/)
   })
 
   it('one before the run starts draws the region with no footer', async () => {
     const { out, log } = start()
     log.stepStart?.('vx:load')
-    await until(() => /running internal vx:load/.test(out.text()))
-    expect(out.text()).toMatch(/running internal vx:load/)
+    await until(() => /running internal +vx:load/.test(out.text()))
+    expect(out.text()).toMatch(/running internal +vx:load/)
     expect(out.text()).not.toContain('tasks')
     log.stepEnd?.('vx:load', { durationMs: 300, ok: true })
     log.runStart?.({ total: 0, concurrency: 1 })
