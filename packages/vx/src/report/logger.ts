@@ -29,8 +29,8 @@ import {
   formatSummarySection,
   neverStarted,
   ranUnsaved,
-  type CacheBucket,
   type RunContext,
+  type TaskBucket,
 } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 import {
@@ -376,7 +376,7 @@ export function defaultLogger(
   let notSaved = 0
   let skippedCount = 0
   // Each finished task's cache bucket by its key: its remote traffic moves it.
-  const buckets = new Map<string, CacheBucket>()
+  const buckets = new Map<string, TaskBucket>()
   // The graph is done and vx's own closing steps run: the region stays,
   // footer and step rows, until the footer replaces it (2026-10-15).
   let tail = false
@@ -1042,8 +1042,9 @@ export function defaultLogger(
         }
         const bucket = cacheBucketOf(outcome)
         if (bucket !== undefined) {
-          if (outcome.hash !== undefined) buckets.set(outcome.hash, bucket)
-          buckets.set(node.id, bucket)
+          const entry = { task: node.id, bucket }
+          if (outcome.hash !== undefined) buckets.set(outcome.hash, entry)
+          buckets.set(node.id, entry)
         }
         switch (outcome.status) {
           case 'success':

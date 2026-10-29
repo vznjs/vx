@@ -90,6 +90,11 @@ export interface InfoFacts {
   cacheEntries: number
   cacheBytes: number
   /**
+   * Why the cache index cannot be read (a file SQLite cannot open, and its
+   * fix); null when it reads. While set, the counts it holds read zero.
+   */
+  cacheIndexError: string | null
+  /**
    * Every setting (src/settings.ts) as a run with no flags takes it: its
    * variable's value, else the workspace's (after the `config` stage),
    * else null with source `default` (docs/schema.md names each default).
@@ -172,43 +177,60 @@ async function collectWorkspaceInfo(
   const metas = held ? await discoverProjects(root, lock, plugins, cacheDir, warn) : []
   const storeRoot =
     opts.cacheDir === undefined ? await resolveStoreRoot(root, workspaceConfig) : null
-  const cache = new Cache(cacheDir, undefined, undefined, undefined, 'inspect', storeRoot)
-  let stats
-  let orphans
-  let flaky: FlakyTask[]
+  // The index is read first and alone: one SQLite cannot read is a fact
+  // of the report, with its fix, not a refusal of it — the doctor is where
+  // a broken setup is diagnosed.
+  let stats: ReturnType<Cache['stats']> = {
+    entryCount: 0,
+    totalBytes: 0,
+    runCountLast24h: 0,
+    hitCountLast24h: 0,
+    restoredCountLast24h: 0,
+  }
+  let orphans = { orphans: 0, orphanBytes: 0 }
+  let flaky: FlakyTask[] = []
+  let indexError: string | null = null
+  let indexStore: string | undefined
+  try {
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, 'inspect', storeRoot)
+    try {
+      indexStore = cache.storeDir
+      stats = cache.stats()
+      orphans = await cache.orphanStats()
+      flaky = flakyTasks(cache.dbHandle())
+    } finally {
+      cache.close()
+    }
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    indexError = err.message
+  }
   let taskCount = 0
   let sandboxed = 0
+  // The run path's load — the lock, a plugin's `project` stage counted —
+  // so the doctor's task count is the number a run would see. No lock, or
+  // one a run would refuse, counts zero: broken configs are `vx lock`'s
+  // to report.
   try {
-    stats = cache.stats()
-    orphans = await cache.orphanStats()
-    flaky = flakyTasks(cache.dbHandle())
-    // The run path's load — the lock, a plugin's `project` stage counted —
-    // so the doctor's task count is the number a run would see. No lock, or
-    // one a run would refuse, counts zero: broken configs are `vx lock`'s
-    // to report.
-    try {
-      const loaded = await loadProjects({
-        workspaceRoot: root,
-        cacheDir,
-        plugins,
-        projectMetas: metas,
-        seeds: 'all',
-        closure: false,
-        configs: lock,
-        warn,
-      })
-      for (const p of loaded.projects.values()) {
-        const tasks = p.config.tasks ?? {}
-        taskCount += Object.keys(tasks).length
-        for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
-      }
-    } catch (err) {
-      if (!isUserError(err)) throw err
-      taskCount = 0
-      sandboxed = 0
+    const loaded = await loadProjects({
+      workspaceRoot: root,
+      cacheDir,
+      plugins,
+      projectMetas: metas,
+      seeds: 'all',
+      closure: false,
+      configs: lock,
+      warn,
+    })
+    for (const p of loaded.projects.values()) {
+      const tasks = p.config.tasks ?? {}
+      taskCount += Object.keys(tasks).length
+      for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
     }
-  } finally {
-    cache.close()
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    taskCount = 0
+    sandboxed = 0
   }
 
   const lockPresent = await Bun.file(lockfilePath(root)).exists()
@@ -216,7 +238,7 @@ async function collectWorkspaceInfo(
   const git = gitVersion()
   const statusCache = gitStatusCache(root)
   const sandbox = { ...(await probing), declared: sandboxed }
-  const cacheStore = cache.storeDir ?? storeRoot
+  const cacheStore = indexStore ?? storeRoot
   return {
     vx: VERSION,
     vxPath: vxPath(),
@@ -257,6 +279,7 @@ async function collectWorkspaceInfo(
     schemaVersion: SCHEMA_VERSION,
     cacheEntries: stats.entryCount,
     cacheBytes: stats.totalBytes,
+    cacheIndexError: indexError,
     settings: settingsFact(workspaceConfig),
     // A row-less artifact is indexed again only when its task asks for its
     // key; the rest only `vx cache clean` reclaims (after an upgrade's
