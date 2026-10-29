@@ -1172,9 +1172,11 @@ type OptionKind<V> = [V] extends [string]
       ? 'boolean'
       : [V] extends [(...args: never[]) => unknown]
         ? 'function'
-        : [V] extends [object]
-          ? 'object'
-          : 'any'
+        : [V] extends [readonly unknown[]]
+          ? 'array'
+          : [V] extends [object]
+            ? 'object'
+            : 'any'
 == type OutcomeView (src/report/events.ts)
 export interface OutcomeView {
   taskId: string

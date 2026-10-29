@@ -25,6 +25,7 @@ const keyless: DteAdapter = { keyless: true, spawn: () => {} }
 it('distributes a GitHub Actions run with a keyless adapter and a relay, naming no run', () => {
   delete process.env['VX_DTE_RUN']
   process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'https://token.example'
+  process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] = 'req-token'
   process.env['GITHUB_REPOSITORY_ID'] = '1'
   expect(subscribed({ relay: 'https://r', adapter: keyless })).toEqual(['onTaskComplete'])
   // A laptop, or a job with no relay, stays local.

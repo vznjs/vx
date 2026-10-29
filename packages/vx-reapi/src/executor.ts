@@ -130,6 +130,10 @@ async function decomposeOutputDir(
     return acc
   }
 
+  // The whole working directory's capture is `''`: `/name` was recorded
+  // under it, and a consumer grafted a directory with an empty name.
+  const join = (prefix: string, name: string): string =>
+    prefix === '' ? name : `${prefix}/${name}`
   const walk = (dir: Directory, segments: readonly string[], prefix: string): void => {
     if (segments.length === 0) {
       if (seen.has(prefix)) return
@@ -142,13 +146,13 @@ async function decomposeOutputDir(
     const matches = (name: string): boolean => head === '*' || name === head
     if (rest.length === 0) {
       for (const f of dir.files) {
-        const at = `${prefix}/${f.name}`
+        const at = join(prefix, f.name)
         if (!matches(f.name) || seen.has(at)) continue
         seen.add(at)
         files.push({ path: at, digest: f.digest, is_executable: f.is_executable })
       }
       for (const sl of dir.symlinks) {
-        const at = `${prefix}/${sl.name}`
+        const at = join(prefix, sl.name)
         if (!matches(sl.name) || seen.has(at)) continue
         seen.add(at)
         symlinks.push({ path: at, target: sl.target })
@@ -158,7 +162,7 @@ async function decomposeOutputDir(
       if (!matches(d.name)) continue
       const child = byDigest.get(d.digest.hash)
       if (child === undefined) continue
-      walk(child, rest, `${prefix}/${d.name}`)
+      walk(child, rest, join(prefix, d.name))
     }
   }
 
@@ -529,6 +533,13 @@ export function acceptsTask(task: TaskPlacement): boolean {
   return task.cacheable && !task.pinnedLocal
 }
 
+/**
+ * The longest a timer waits: one past 2^31-1 ms fires after 1 ms, so a
+ * month's `executeTimeoutMs` or `queueTimeoutMs` gave up on every action
+ * at once. A bound held to it waits about 24 days.
+ */
+const MAX_TIMER_MS = 2 ** 31 - 1
+
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
   // A zero or non-number bound stopped every action the moment it began
   // executing.
@@ -600,9 +611,17 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             return null
           })
         if (prior !== null) {
+          // The stdout blob too: a Read of an evicted one answers "none", and
+          // the replay printed nothing where the task had printed.
+          const stdoutBlob =
+            (prior.stdout_raw?.length ?? 0) === 0 &&
+            Number(prior.stdout_digest?.size_bytes ?? 0) > 0
+              ? [prior.stdout_digest!]
+              : []
           const referenced = [
             ...(prior.output_files ?? []).map((f) => f.digest),
             ...(prior.output_directories ?? []).map((d) => d.tree_digest),
+            ...stdoutBlob,
           ]
           // AC and CAS evict independently, so a record can outlive its
           // blobs. A gap means it cannot produce the outputs — fall through
@@ -929,11 +948,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       const queueTimer =
         opts.queueTimeoutMs === undefined
           ? undefined
-          : setTimeout(() => queued.abort(), opts.queueTimeoutMs)
+          : setTimeout(() => queued.abort(), Math.min(opts.queueTimeoutMs, MAX_TIMER_MS))
       const armStall = (): void => {
         clearTimeout(queueTimer)
         if (stallTimer !== undefined) return
-        stallTimer = setTimeout(() => stall.abort(), stallAfter)
+        stallTimer = setTimeout(() => stall.abort(), Math.min(stallAfter, MAX_TIMER_MS))
       }
       // The run's stop (Ctrl-C, an embedder's abort) cancels the operation
       // stream as the stall does; unheard, vx waited on the remote for as
@@ -992,6 +1011,8 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           )
         }
         if (stall.signal.aborted) {
+          // Closing the stream alone left the action on its worker.
+          if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           throw new UserError(
             `vx/reapi: ${req.taskId} was still executing ${stallAfter}ms after the worker ` +
               `started it and the server never reported a result — giving up on the remote ` +
@@ -1146,8 +1167,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               // A coarse capture is split into the paths its glob really names
               // before it is recorded — see decomposeOutputDir.
               const declaredGlobs = [
-                ...req.outputs.workspaceFiles,
-                ...req.outputs.files.map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
+                ...req.outputs.workspaceFiles.filter(isOutputGlob),
+                ...req.outputs.files
+                  .filter(isOutputGlob)
+                  .map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
               ].map((g) => normalizeGlob(g))
               const recorded: DecomposedOutputs = {
                 directories: [],
@@ -1327,6 +1350,13 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
  * would return no outputs with no error anywhere. An escaped segment
  * (`\[id\]`, a route directory) is literal: the path names it unescaped.
  */
+/**
+ * A `!` take-back names what is NOT an output (core's restore gate reads
+ * it): requested, `!dist/cache/**` was the path `!dist/cache`, and as a
+ * matcher `Bun.Glob('!x')` matches every path but `x`.
+ */
+const isOutputGlob = (glob: string): boolean => !glob.startsWith('!')
+
 export function globToOutputPath(glob: string): string {
   return literalHead(glob).path
 }
@@ -1398,9 +1428,10 @@ export function outputPathSets(
   const prefix = (p: string): string =>
     workingDirectory === '' && projectRel !== '' ? `${projectRel}/${p}` : p
   // `app/\[id\]/x` names the file `app/[id]/x`: `literalHead` unescapes.
-  const globs = [...req.outputs.files.map(prefix), ...req.outputs.workspaceFiles.map(rebase)].map(
-    (g) => normalizeGlob(g),
-  )
+  const globs = [
+    ...req.outputs.files.filter(isOutputGlob).map(prefix),
+    ...req.outputs.workspaceFiles.filter(isOutputGlob).map(rebase),
+  ].map((g) => normalizeGlob(g))
   const paths = new Set<string>()
   const files = new Set<string>()
   const dirs = new Set<string>()
@@ -1458,7 +1489,7 @@ export async function materialiseOutputs(
   const wholeTreeCapture = [
     ...(req.outputs?.files ?? []),
     ...(req.outputs?.workspaceFiles ?? []),
-  ].some((g) => globToOutputPath(g) === '')
+  ].some((g) => isOutputGlob(g) && globToOutputPath(g) === '')
   // `abs` names a file a declared glob matches: missing, it is a hole in a
   // declared output under either capture, and warning let `save` cache the
   // short tree under the key (F-8).
@@ -1478,8 +1509,10 @@ export async function materialiseOutputs(
   // the task (item 1038). A directory a LITERAL glob names is written whole.
   const projectRel = req.projectRel ?? toPosix(path.relative(req.workspaceRoot, req.cwd))
   const declared = [
-    ...(req.outputs?.files ?? []).map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
-    ...(req.outputs?.workspaceFiles ?? []),
+    ...(req.outputs?.files ?? [])
+      .filter(isOutputGlob)
+      .map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
+    ...(req.outputs?.workspaceFiles ?? []).filter(isOutputGlob),
   ].map((g) => normalizeGlob(g))
   const matchers = declared.map((g) => new Bun.Glob(g))
   // Core's restore gate: a `!` take-back, vx's own files and a

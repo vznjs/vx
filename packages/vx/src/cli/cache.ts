@@ -216,7 +216,7 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   else {
     const ws = await loadCliWorkspace(root)
     dir = ws.cacheDir
-    storeRoot = await ws.storeRoot
+    storeRoot = await ws.storeRoot()
   }
   if (parsed.olderThanMs === undefined && parsed.maxBytes === undefined) {
     return clear(args, root, dir, storeRoot, parsed)

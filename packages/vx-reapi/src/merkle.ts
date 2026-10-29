@@ -209,7 +209,9 @@ export async function buildInputTree(args: {
   // anyway so a warning naming several paths reads the same run to run.
   // Read READ_CONCURRENCY at once, inserted in sorted order below: one at a
   // time, 2 000 small inputs cost 304 ms of file-system round trips (F-36).
-  const sorted = [...args.paths].sort()
+  // Deduped: an upstream's output on disk that is also a declared input
+  // is named twice, and was read and counted twice.
+  const sorted = [...new Set(args.paths)].sort()
   const reads = await mapBounded(sorted, READ_CONCURRENCY, async (rel) => {
     const abs = path.join(args.workspaceRoot, rel)
     // lstat, not stat: a symlinked input must be REPRESENTED as a symlink.

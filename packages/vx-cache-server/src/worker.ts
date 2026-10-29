@@ -35,8 +35,9 @@ export interface Env {
   readonly AUDIENCE?: string
   /** `public`: a request with no token reads a repository ALLOW names. */
   readonly READ_ACCESS?: string
-  readonly MAX_CHECK_HASHES?: string
-  readonly MAX_UPLOAD_BYTES?: string
+  /** A string, or a number when `vars` names one. */
+  readonly MAX_CHECK_HASHES?: string | number
+  readonly MAX_UPLOAD_BYTES?: string | number
 }
 
 /** An object's key in the data center's cache. */

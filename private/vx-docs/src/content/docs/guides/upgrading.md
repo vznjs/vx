@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-devtools: one refusal body for every vx server
+
+@vzn/vx-history-server no longer exports errorJson; import it from @vzn/vx-devtools.
+
 ## cache: read each brace alternative of a glob alone
 
 a brace of directories (`{src,lib}`) or of `./` spellings (`{./src,lib}/**`) in inputs or outputs now means what each alternative means alone; CACHE_VERSION is vx-cache-v49, so every cached task misses once.

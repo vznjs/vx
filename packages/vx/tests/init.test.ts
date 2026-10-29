@@ -10,6 +10,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { migrateCommand, parseInitArgs } from '../src/cli/init.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
+import { definePlugin } from '../src/index.js'
 import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -251,6 +252,36 @@ describe('vx init --plugin <seam>', () => {
         expect(dry.code).toBe(0)
         expect(existsSync(path.join(root, 'plugins', 'graph.ts'))).toBe(false)
         expect(existsSync(path.join(root, 'plugins', 'key.ts'))).toBe(true)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a plugin scaffolded under a root package.json with no name loads',
+    async () => {
+      // A monorepo root often has no name. The plugin took the root's
+      // package as its own and `definePlugin` refused it: the scaffold's
+      // own "Declare it" step failed the next verb.
+      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-plugin-noname-'))
+      try {
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ private: true }))
+        const ok = await vx(root, ['init', '--plugin', 'key'])
+        expect([ok.code, ok.err]).toEqual([0, ''])
+        expect(ok.out.split('\n')[0]).toBe(
+          'wrote plugins/package.json and plugins/key.ts and plugins/key.test.ts',
+        )
+        // What the scaffolded module's `definePlugin(import.meta, …)` reads.
+        expect(definePlugin({ dir: path.join(root, 'plugins') }, { setup() {} }).name).toBe(
+          'workspace-plugins',
+        )
+        // CONTROL: a named root keeps its name for the plugin and gets no manifest.
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+        await rm(path.join(root, 'plugins'), { recursive: true })
+        expect((await vx(root, ['init', '--plugin', 'key'])).code).toBe(0)
+        expect(existsSync(path.join(root, 'plugins', 'package.json'))).toBe(false)
       } finally {
         await rm(root, { recursive: true, force: true })
       }

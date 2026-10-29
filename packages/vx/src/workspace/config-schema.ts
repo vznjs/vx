@@ -53,13 +53,6 @@ export function isCacheScope(v: unknown): v is string {
   return typeof v === 'string' && /^[\w.@/:-]{1,128}$/.test(v)
 }
 
-/**
- * A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
- * branch and a laptop on it reads (2026-10-17). The repository's
- * identity, not a remote's local name, so a clone whose `origin` is a fork
- * names the fork. A name may hold characters a scope may not; each
- * becomes `_`.
- */
 const BASE_BRANCH_RULE = "must be a branch name like 'main'"
 
 /**
@@ -74,6 +67,13 @@ function isBaseBranch(value: unknown): value is string {
   )
 }
 
+/**
+ * A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
+ * branch and a laptop on it reads (2026-10-17). The repository's
+ * identity, not a remote's local name, so a clone whose `origin` is a fork
+ * names the fork. A name may hold characters a scope may not; each
+ * becomes `_`.
+ */
 export function branchCacheScope(repo: string, branch: string): string {
   return `${repo.toLowerCase()}:${branch}`.replace(/[^\w.@/:-]/g, '_').slice(0, 128)
 }
@@ -264,18 +264,24 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     }
     const verbOwners = new Map<string, string>()
     const fileClaimants = new Map<string, { name: string; at: number }>()
+    const seenAt = new Map<object, number>()
     for (const [i, p] of (config.plugins as readonly unknown[]).entries()) {
       // A factory that declines returns nothing, and `cond && plugin()` is
       // false: both are skipped, as Vite skips them.
       if (isSkippedPlugin(p)) continue
       if (p === null || typeof p !== 'object') {
         // Nx's nx.json lists plugins by module name (`'@nx/vite/plugin'`);
-        // a vx plugin is the value its package's function returns.
+        // a vx plugin is the value its package's function returns, and
+        // `plugins: [otel]` is that function, not called.
         throw new UserError(
           `${configPath}: \`plugins[${i}]\` must be an object` +
             (typeof p === 'string'
               ? ` — a plugin is what its package's function returns (\`nx()\` from \`@vzn/vx-migrate\`), not a module name`
-              : ''),
+              : typeof p === 'function'
+                ? p.name === ''
+                  ? ' — it is a function; call the factory that returns the plugin'
+                  : ` — it is the function '${p.name}'; call it: ${p.name}()`
+                : ''),
         )
       }
       // The loose schema's shape (unknown-typed hooks) plus the one retired
@@ -303,6 +309,15 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           `${configPath}: \`plugins[${i}].name\` overrides the package name ('${String(plug.name)}' over '${pkg}') — a plugin's name is its package name; drop the field`,
         )
       }
+      // One instance twice (two presets sharing it) ran its setup, its
+      // handlers and its telemetry sinks twice. Two instances stay two.
+      const first = seenAt.get(p)
+      if (first !== undefined) {
+        throw new UserError(
+          `${configPath}: \`plugins[${i}]\` is \`plugins[${first}]\` again (plugin '${pkg}') — declare a plugin once`,
+        )
+      }
+      seenAt.set(p, i)
       // A misspelled hook (`excutor`, `setUp`) was never called and never
       // said: tasks ran here with the plugin's executor unheard (X-19).
       for (const key of Object.keys(plug)) {

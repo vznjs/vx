@@ -284,9 +284,9 @@ describe('resolveTurboCacheConfig', () => {
     expect(() =>
       resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'cache.example.com/' }),
     ).toThrow('TURBO_API must be an http(s) URL, got "cache.example.com"')
-    expect(() => resolveTurboCacheConfig({ token: 't' }, {}, { apiUrl: 'cache.example.com' })).toThrow(
-      'turbo.json remoteCache.apiUrl must be an http(s) URL, got "cache.example.com"',
-    )
+    expect(() =>
+      resolveTurboCacheConfig({ token: 't' }, {}, { apiUrl: 'cache.example.com' }),
+    ).toThrow('turbo.json remoteCache.apiUrl must be an http(s) URL, got "cache.example.com"')
   })
 
   it('refuses an url carrying user:pass@, from options or TURBO_API (gaps §8 L232)', () => {

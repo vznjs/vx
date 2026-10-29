@@ -47,7 +47,10 @@ that reads no ref (a detached HEAD with no default branch) asks nothing.
 The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,
-with each worker's measurements. A task that shared a crowded worker's
+with each worker's measurements. The upload starts as the last task
+ends, beside core's own end of run, and the plugin's teardown waits at
+most 2 s more for it (core bounds a teardown at 3 s); one not done by
+then is dropped and said, with how many timings it held. A task that shared a crowded worker's
 cores is sent as long as it would have taken alone, as local history
 keeps it. A refusal is said with the server's
 words, and a CI job with no token says so once (on GitHub Actions,
@@ -108,8 +111,9 @@ export default {
 The file is `{ "version": 1, "tasks": { "<task id>": <ms> } }`, keys
 sorted; an entry that is not a number of ms from 0 to 2^53 is dropped. A p50 recorded on this machine wins over it, and it wins over
 `assume`; like `assume`, it never feeds the workspace median. A task the
-run did not see keeps its time. A file that is not one warns and is read
-as empty, one it cannot write warns and the run goes on; `--dry` writes
+run did not see keeps its time, one another writer put there while the
+run ran included. A file that is not one warns and is read as empty, one
+it cannot write warns and the run goes on; `--dry` writes
 nothing.
 
 ## Reservations learned from history
@@ -149,7 +153,8 @@ plugins: [
 
 `vx history [--format pretty|json]` (a verb this plugin adds; `--help`
 prints its usage) shows what it learned per task and the reservation it
-will pack, with the budgets it packs into:
+will pack, with the budgets it packs into. Like a run, it reads
+each task as it is now: runs of an earlier command are not counted.
 
 ```
 $ vx history
