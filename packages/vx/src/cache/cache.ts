@@ -2394,6 +2394,11 @@ export class Cache implements CacheLayer {
     )
   }
 
+  /** False over a cache directory this process cannot write: a run keeps no record of itself there. */
+  get keepsRecords(): boolean {
+    return this.writeBlocked === null
+  }
+
   /**
    * A run over a cache directory it cannot write: one holding entries
    * serves its hits and saves nothing (2026-10-16), and the line this

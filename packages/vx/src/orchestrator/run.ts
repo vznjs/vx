@@ -1489,8 +1489,12 @@ async function runOnBus(
     // read `ok` over the exit 1 and fed the flaky list a pass (X-23).
     const historyAfterWait = keepAlive.children.length > 0 && !hold && stop.stoppedBy === undefined
     // A failed task's output, for `vx last` and an agent (run-failures.ts).
-    const recordFailures = (final: readonly TaskOutcome[]): void =>
-      writeRunFailures(prepared.cacheDir, runId, final, warnOf(log))
+    // A cache directory this user cannot write keeps none of the run's
+    // records: the run's one notice said so (readOnlyNotice).
+    const keeps = prepared.localCache.keepsRecords
+    const recordFailures = (final: readonly TaskOutcome[]): void => {
+      if (keeps) writeRunFailures(prepared.cacheDir, runId, final, warnOf(log))
+    }
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
         recordHistory(() => cache.recordRunBundle(records))
@@ -1530,8 +1534,10 @@ async function runOnBus(
       await prefetchDone
       await Promise.all([cache.drainUploads?.(), keeper?.settled()])
     })
-    writeRunSteps(prepared.cacheDir, runId, steps.ended, warnOf(log))
-    writeRunWarnings(prepared.cacheDir, runId, warned, warnOf(log))
+    if (keeps) {
+      writeRunSteps(prepared.cacheDir, runId, steps.ended, warnOf(log))
+      writeRunWarnings(prepared.cacheDir, runId, warned, warnOf(log))
+    }
     // An upload that failed after the rows went in: its row says so too.
     if (prepared.localCache.uploads.failed > 0 && stop.stoppedBy === undefined && !historyAfterWait)
       recordHistory(() => recordLateRemoteErrors(prepared.localCache, records.runs, runId))
