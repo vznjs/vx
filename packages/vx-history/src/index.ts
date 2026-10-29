@@ -79,12 +79,6 @@ export interface VxHistoryOptions {
    */
   readonly file?: string
   /**
-   * The branch whose history-server rows a run reads after its own branch's.
-   * Unset, the run's refs (`baseBranch`, a CI plugin's, else git's), as a
-   * remote cache reads them.
-   */
-  readonly defaultBranch?: string
-  /**
    * A vx-history server's URL (`@vzn/vx-history-server`), or
    * `VX_HISTORY_URL`. On a CI job with a token (GitHub's OIDC, or GitLab's
    * `VX_HISTORY_TOKEN`) each run asks it for its tasks' numbers, without
@@ -111,7 +105,6 @@ export interface VxHistoryOptions {
 // The provider's own default (50) serves `--dry` predictions; an ordering
 // hint needs less and reads a 2.5× smaller slice of the run history.
 const DEFAULT_WINDOW = 20
-const DEFAULT_BRANCH = 'main'
 
 // Each option is read in ONE place that a run's hooks and `vx history`
 // share: two copies of each let either drift unseen (item 805).
@@ -229,7 +222,7 @@ function assumptions(
   const ok: Record<string, number> = {}
   const bad: string[] = []
   for (const [id, ms] of Object.entries(options.assume ?? {})) {
-    if (typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER) ok[id] = ms
+    if (isDuration(ms)) ok[id] = ms
     else bad.push(id)
   }
   if (bad.length > 0) {
@@ -240,6 +233,22 @@ function assumptions(
   return ok
 }
 
+/**
+ * A duration a task can take, in ms. A chain's weight is its durations
+ * summed, and two `1e308`s (a timings file a CI cache handed over, or
+ * `assume`) summed to Infinity, which core refuses: the run failed in
+ * `schedule`. Under 2^53 ms, any chain's sum stays finite.
+ */
+const isDuration = (ms: unknown): ms is number =>
+  typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER
+
+/** The timings file's durations a run can take; the rest are not carried. */
+function carriedOf(read: Readonly<Record<string, number>>): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const [id, ms] of Object.entries(read)) if (isDuration(ms)) out[id] = ms
+  return out
+}
+
 /** Each option `VxHistoryOptions` names, with its kind: derived from the type, so the two cannot drift. */
 const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   window: 'number',
@@ -248,7 +257,6 @@ const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   reservations: 'object',
   assume: 'object',
   file: 'string',
-  defaultBranch: 'string',
   url: 'string',
   headers: 'object',
   issuer: 'string',
@@ -332,14 +340,6 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       })
     }
   }
-  // Read as `refs/heads/<name>`: `''`, a space or a full ref read
-  // nothing on every run, or the server refused the query.
-  const { defaultBranch } = options
-  if (defaultBranch !== undefined && !/^(?!refs\/)[^\s]+$/.test(defaultBranch)) {
-    throw new UserError(
-      `vxHistory() option "defaultBranch" must be a branch name (main), got ${JSON.stringify(defaultBranch)}`,
-    )
-  }
   // Checked here, not in a run's `setup`: `vx show` and a `--dry` plan
   // took a url no request can carry, and every run failed on it.
   if (options.url !== undefined) serverUrlOf(options.url)
@@ -366,7 +366,9 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         options.file === undefined ? undefined : path.resolve(ctx.workspaceRoot, options.file)
       // Loaded with the option: every run evaluates the workspace config.
       const carried =
-        file === undefined ? {} : (await import('./timings-file.js')).readTimings(file, ctx.warn)
+        file === undefined
+          ? {}
+          : carriedOf((await import('./timings-file.js')).readTimings(file, ctx.warn))
       const defs = taskDefinitions(nodes.values())
       if (file !== undefined)
         scheduled = {
@@ -408,19 +410,15 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       // With a history server, its numbers re-rank what has not started
       // when they land; the run never waits on them.
       remote ??= await serverOf()
-      if (remote !== undefined) {
+      // The run's refs, as a remote cache reads them: its branch, the
+      // branch it merges into, the default branch (`baseBranch`). `main`
+      // was assumed, so a `master` or `baseBranch: 'trunk'` repository
+      // read no trunk's numbers; a run with none asks nothing.
+      const refs = ctx.refs
+      if (remote !== undefined && refs.length > 0) {
         const server = remote
         let late = false
         stopImport = () => (late = true)
-        // The run's refs, as a remote cache reads them: its branch, the
-        // branch it merges into, the default branch. `main` was assumed, so
-        // a `master` or `baseBranch: 'trunk'` repository read no trunk's
-        // numbers. No ref goes on the wire: each is in its keys' hash.
-        const main = options.defaultBranch ?? DEFAULT_BRANCH
-        const refs =
-          options.defaultBranch === undefined && ctx.refs.length > 0
-            ? ctx.refs
-            : [`refs/heads/${ctx.branch ?? main}`, `refs/heads/${main}`]
         const weights = (async () => {
           const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]
           const got = await server.query([...new Set(refs)], hashes)
@@ -461,15 +459,18 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   // Loaded only when a server is named: every run evaluates the config.
   const serverOf = async (): Promise<HistoryServer | undefined> => {
     if ((options.url ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
+    // VX_HISTORY_URL alone: the workspace names no repository to ask for,
+    // so the URL is never read; parsed first, a malformed one failed the run.
+    if (named === undefined) return undefined
     const m = await import('./history-server.js')
     const url = serverUrlOf(options.url)
     if (url === undefined) return undefined
-    // VX_HISTORY_URL alone: the workspace names no repository to ask for.
-    if (named === undefined) return undefined
     return new m.HistoryServer(url, named, Bun.env, fetch, headers)
   }
   // What the run sends the history server at its end, by task definition.
-  let reported: { timings: Map<string, ServerTiming>; warn: (m: string) => void } | undefined
+  let reported: Reported | undefined
+  // The upload, once the run has ended.
+  let uploading: Upload | undefined
   // Stops the server's answer from landing once the run is over: no row
   // lands after the cache closes.
   let stopImport: (() => void) | undefined
@@ -497,12 +498,19 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       // Only the run that ran the tasks hears them: under DTE, the
       // orchestrator, with each worker's measurements.
       const timings = new Map<string, ServerTiming>()
-      reported = { timings, warn: ctx.warn }
+      const sent = (reported = { timings, warn: ctx.warn })
+      const server = remote
       ctx.on('onTaskComplete', (node, outcome) => {
         if (node.config.exec?.command === undefined) return
         const def = taskDefinitions([node]).get(node.id)
         const t = timing(outcome)
         if (def !== undefined && t !== undefined) timings.set(def, t)
+      })
+      // Every outcome is known here, and core's own end of run (history
+      // rows, cache uploads, telemetry) is still ahead: sent from teardown,
+      // a new OIDC token and the upload shared its 3 s bound.
+      ctx.on('onRunEnd', () => {
+        if (reported === sent) uploading ??= sendTimings(server, sent)
       })
     } else if (remote !== undefined) {
       if (ctx.ci)
@@ -535,34 +543,54 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     stopImport = undefined
     const server = remote
     const sent = reported
+    const up = uploading
     remote = undefined
     reported = undefined
-    if (server !== undefined && sent !== undefined) {
-      try {
-        await server.upload(sent.timings)
-      } catch (err) {
-        sent.warn(
-          `[vx] vx-history: the timings were not sent to the history server at ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
-        )
-      }
-    }
+    uploading = undefined
+    // Counted from here: the file's write below shares the bound.
+    const waited = server !== undefined && sent !== undefined ? waitFor(UPLOAD_WAIT_MS) : undefined
     const done = scheduled
     const wrote = inRun && changed
     scheduled = undefined
     inRun = false
-    if (!wrote || done === undefined) return
-    const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
-    const timings = await import('./timings-file.js')
+    // The file first: core bounds a teardown (3 s), and an upload ahead of
+    // it held the write hostage to the server's network. A failed write
+    // still sends.
     try {
-      timings.writeTimings(done.file, done.carried, table)
-    } catch (err) {
-      // Only the file is lost: said as the read is, not as a plugin failure.
-      fileWarn?.warn(
-        `[vx] vx-history: timings file ${done.file} not written: ${err instanceof Error ? err.message : String(err)}`,
-      )
-      return
+      if (wrote && done !== undefined) {
+        const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
+        const timings = await import('./timings-file.js')
+        // Over the file as it is now: a time another writer (a run in another
+        // worktree sharing it) put there since `schedule` read it is kept. Its
+        // fault, if any, was said when the run read it.
+        const now = timings.readTimings(done.file, () => {})
+        let written = true
+        try {
+          timings.writeTimings(done.file, { ...done.carried, ...now }, table)
+        } catch (err) {
+          // Only the file is lost: said as the read is, not as a plugin failure.
+          written = false
+          fileWarn?.warn(
+            `[vx] vx-history: timings file ${done.file} not written: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+        if (written && fileWarn !== undefined)
+          timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
+      }
+    } finally {
+      if (server !== undefined && sent !== undefined && waited !== undefined) {
+        const u = up ?? sendTimings(server, sent)
+        const late = await Promise.race([u.done.then(() => false), waited.done])
+        waited.cancel()
+        if (late) {
+          u.stop.abort()
+          const n = sent.timings.size
+          sent.warn(
+            `[vx] vx-history: the timings of ${n} task${n === 1 ? '' : 's'} were not sent to the history server at ${server.url}: no answer in the ${UPLOAD_WAIT_MS} ms a teardown waits`,
+          )
+        }
+      }
     }
-    if (fileWarn !== undefined) timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
   // serves both) and declared in the options; asked at every dispatch.
@@ -585,6 +613,45 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       )
   }
   return definePlugin(import.meta, hooks)
+}
+
+interface Reported {
+  readonly timings: Map<string, ServerTiming>
+  readonly warn: (m: string) => void
+}
+
+interface Upload {
+  /** Settles when sent, or once a failure is said; never rejects. */
+  readonly done: Promise<void>
+  readonly stop: AbortController
+}
+
+/**
+ * How long a teardown waits for the upload: under core's bound on one
+ * teardown (3 s, `teardownTimeoutMs`), so a dropped upload is said here,
+ * with what it dropped, and not as core's line that names no cause.
+ */
+const UPLOAD_WAIT_MS = 2_000
+
+function sendTimings(server: HistoryServer, sent: Reported): Upload {
+  const stop = new AbortController()
+  const done = server.upload(sent.timings, stop.signal).catch((err: unknown) => {
+    // Abandoned by teardown, which says so itself.
+    if (stop.signal.aborted) return
+    sent.warn(
+      `[vx] vx-history: the timings were not sent to the history server at ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  })
+  return { done, stop }
+}
+
+/** Resolves true after `ms`, unless cancelled first. */
+function waitFor(ms: number): { done: Promise<true>; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const done = new Promise<true>((resolve) => {
+    timer = setTimeout(() => resolve(true), ms)
+  })
+  return { done, cancel: () => clearTimeout(timer) }
 }
 
 /** Default multiplier over the largest peak RSS seen — the asymmetry: over-reserving costs some parallelism, under-reserving meets the OOM killer. */
@@ -737,6 +804,9 @@ async function historyCmd(
   const cache = new Cache(ctx.cacheDir)
   let table: HistoryTable
   try {
+    // Each task's rows of its definition as it is now, as `schedule` reads
+    // them: read with every definition's, a task whose command changed
+    // showed the old command's peak and a reservation no run packs.
     table = await new LocalHistoryProvider(
       cache.dbHandle(),
       window,

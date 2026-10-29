@@ -216,7 +216,7 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   else {
     const ws = await loadCliWorkspace(root)
     dir = ws.cacheDir
-    storeRoot = await ws.storeRoot
+    storeRoot = await ws.storeRoot()
   }
   if (parsed.olderThanMs === undefined && parsed.maxBytes === undefined) {
     return clear(args, root, dir, storeRoot, parsed)
@@ -224,10 +224,12 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   // A workspace that never ran has nothing to prune, and opening the cache
   // to find that out made it: `.vx/cache` with a database and a
   // `.gitignore`, where item 900 had held the dry run to making nothing
-  // (and a read-only checkout was refused as unwritable instead).
+  // (and a read-only checkout was refused as unwritable instead). So has a
+  // directory holding nothing vx wrote (`--cache-dir build`): opened, it got
+  // an index and a `*` .gitignore that hid the user's files from git.
   const dry = parsed.dryRun === true
   const json = parsed.format === 'json'
-  if (!existsSync(dir) && (storeRoot === null || !existsSync(storeRoot))) {
+  if (vxCacheEntries(dir).length === 0 && (storeRoot === null || !existsSync(storeRoot))) {
     printPruned({ evicted: 0, bytesFreed: 0, orphans: 0, orphanBytes: 0 }, dry, json)
     return 0
   }

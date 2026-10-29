@@ -862,6 +862,30 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
     )
     // CONTROL: any other non-object keeps the plain refusal.
     expect(refusal([42])).toBe('.vx/workspace.ts: `plugins[0]` must be an object')
+    // `plugins: [otel]`, the factory itself, was told only that it is no object.
+    expect(refusal([function otel() {}])).toBe(
+      ".vx/workspace.ts: `plugins[0]` must be an object — it is the function 'otel'; call it: otel()",
+    )
+  })
+
+  it('one plugin object listed twice is refused', async () => {
+    // Two presets that both carry one shared instance: its setup, every
+    // `ctx.on` handler and every telemetry sink ran twice, so each record
+    // was exported twice. Two instances of one package stay two plugins.
+    const { testPlugin } = await import('./helpers/plugin.js')
+    const p = testPlugin('@acme/shared', { teardown() {} })
+    const refusal = (plugins: unknown[]): string => {
+      try {
+        validateWorkspace({ plugins } as never, '.vx/workspace.ts')
+      } catch (err) {
+        return (err as Error).message
+      }
+      return ''
+    }
+    expect(refusal([p, false, p])).toBe(
+      ".vx/workspace.ts: `plugins[2]` is `plugins[0]` again (plugin '@acme/shared') — declare a plugin once",
+    )
+    expect(refusal([p, testPlugin('@acme/shared', { teardown() {} })])).toBe('')
   })
 
   it('an undefined, null or false entry is skipped, as Vite skips it', () => {

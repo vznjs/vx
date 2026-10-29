@@ -302,6 +302,17 @@ describe('plugin commands', () => {
     expect(err.join('')).not.toContain('Usage:')
   })
 
+  it('a name Object.prototype holds is no plugin verb', async () => {
+    // `plugin.commands[verb]` found the prototype's `toString`, and the
+    // dispatcher called its missing `run`: a TypeError, said as the plugin's crash.
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
+    for (const verb of ['toString', 'constructor', '__proto__']) {
+      err.length = 0
+      expect(await cli([verb])).toBe(1)
+      expect(err.join('')).toContain(`unknown command: ${verb}`)
+    }
+  })
+
   it('a typo of a PLUGIN verb gets the same "did you mean" a core verb gets', async () => {
     // The verbs this workspace's plugins declare are verbs here, and the
     // lookup that just failed already knows them: `vx helo` in a workspace

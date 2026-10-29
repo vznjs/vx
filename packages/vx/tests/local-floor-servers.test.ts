@@ -230,3 +230,38 @@ it('a server that exits before ready leaves nothing it forked running', async ()
     await floor.close()
   }
 }, 20_000)
+
+it('says why a server could not spawn, and closes after it', async () => {
+  // `runPersistent` hands back no child when the spawn throws: the floor
+  // read `.exited` off it, so the dependant failed on a TypeError instead
+  // of the reason, and `close()` threw on the same missing child.
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const floor = localFloor()
+  const heard: string[] = []
+  const r = await floor.execute({
+    taskId: 's#live',
+    workspaceRoot: dir,
+    outputs: { files: [], workspaceFiles: [] },
+    command: 'true',
+    forwardArgs: [],
+    cwd: dir,
+    env: { PATH: process.env['PATH'] },
+    envDefine: {},
+    capture: { stdout: false, stderr: false },
+    onStdout: () => {},
+    onStderr: (t) => heard.push(t),
+    servers: [
+      {
+        taskId: 's#srv',
+        command: 'exec sleep 60',
+        cwd: path.join(dir, 'gone'),
+        env: { PATH: process.env['PATH'] },
+      },
+    ],
+  })
+  expect(r.exitCode).toBe(1)
+  expect(heard.join('')).toContain(
+    `s#srv, which s#live depends on, did not start: failed to spawn persistent task: its working directory ${path.join(dir, 'gone')} does not exist`,
+  )
+  await floor.close()
+}, 20_000)

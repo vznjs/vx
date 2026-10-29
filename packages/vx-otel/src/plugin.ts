@@ -255,6 +255,12 @@ export function resolveOtelConfig(
       )
     }
   }
+  const tracesOn = tracesWanted && tracesUrl !== undefined
+  const metricsOn = metricsWanted && metricsUrl !== undefined
+  const logsOn = logsWanted && logsUrl !== undefined
+  // Nothing left to export declines as no endpoint does: a sink that sent
+  // nothing still loaded the exporter and had core build its records.
+  if (!tracesOn && !metricsOn && !logsOn) return undefined
 
   // A header value fetch refuses is refused here, by name: fetch's error
   // quotes the whole value, and the export warning printed it — an auth
@@ -387,9 +393,9 @@ export function resolveOtelConfig(
       }),
       logs: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_LOGS_HEADERS']), ...opts.headers }),
     },
-    ...(tracesWanted && tracesUrl !== undefined ? {} : { tracesEnabled: false }),
-    metricsEnabled: metricsWanted && metricsUrl !== undefined,
-    logsEnabled: logsWanted && logsUrl !== undefined,
+    ...(tracesOn ? {} : { tracesEnabled: false }),
+    metricsEnabled: metricsOn,
+    logsEnabled: logsOn,
     live: opts.live !== false,
     timeoutMs,
     // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` wins over the

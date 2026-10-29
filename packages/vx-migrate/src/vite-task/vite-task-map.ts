@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { type GeneratedProject, type GeneratedTask, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
+import { refuseTaskNames } from '../plugin-gaps.js'
 import { minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
@@ -386,6 +387,7 @@ export async function mapViteTaskWorkspace(
       `workspace dependencies spell (${n} task${n === 1 ? '' : 's'}) — add any other a task reads to ` +
       'inputs.env and exec.env.passThrough',
   )
+  refuseTaskNames(projects, 'task')
   return { projects, notes }
 }
 

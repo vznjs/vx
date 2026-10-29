@@ -19,6 +19,11 @@ when disabled (CI). When active:
   by `clearStatus`) for floor expiry, so the final state always
   lands. First draw after idle is immediate. Measured: 6,540 forced
   redraws ≈ 6.7 MB of ANSI on a 3,270-task warm run → ~20 KB.
+- `setRegion` also takes a function that builds the lines; it is
+  called when the region is next drawn, once, and its lines are kept
+  for the redraws writes cause. The logger passes one, so the events a
+  floor coalesces build nothing: 200 warm hits on a terminal, run
+  graph 62 → 9 ms (min of 30).
 - `write(chunk)` — any ordinary content — erases the region first
   (single line: `ESC[2K\r`; taller: `\r ESC[nA ESC[J`), writes the
   content, then redraws. The region can never interleave with task

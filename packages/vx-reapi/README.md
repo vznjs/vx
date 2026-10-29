@@ -37,7 +37,7 @@ and `onWarn` for a degraded-but-recovered call; `reapi()` refuses those four,
 reading files and warning through vx. With no endpoint configured (or a blank
 one) the plugin **declines** and costs nothing, so it is
 safe to leave declared. An endpoint that is not `host[:port]`, with an
-optional `grpc(s)://` or `http(s)://` scheme, or a gRPC resolver target
+optional `grpc(s)://` or `http(s)://` scheme (a trailing `/` is dropped), or a gRPC resolver target
 (`unix:`, `unix-abstract:`, `dns:`, `ipv4:`, `ipv6:`), is refused at startup
 with a line naming the setting. So is a TLS endpoint at an IP address:
 Bun's TLS refuses an IP as the server name, so name the server by host
@@ -49,7 +49,8 @@ boolean: a string (`process.env.X`) is refused.
 `instanceName` is the option form of `VX_REAPI_INSTANCE`; like the endpoint
 it is trimmed, and a blank one is unset. `headers`
 adds gRPC metadata to every call: a hosted server's API key goes there
-(`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`).
+(`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`); a name
+gRPC metadata cannot carry (a space, a `-bin` suffix) is refused at startup.
 `toolName` and `toolVersion` (default `vx`, `0.0.0`) fill each call's
 `RequestMetadata.tool_details`, and `correlatedInvocationsId` groups several
 runs as one build in a server's UI.
@@ -148,7 +149,7 @@ listed input (`@vzn/vx-lockfile` lists it on every cached task).
 This matters most under `--cache-download=none`, where deferral leaves no
 local cache entry behind, so vx's own probe misses on every later run
 and the record is what makes the second run cheap. Records are checked
-against the CAS first (`FindMissingBlobs`) — the action cache and the
+against the CAS first (`FindMissingBlobs`, the outputs and a stdout blob) — the action cache and the
 CAS evict independently, so a record that outlived its blobs falls
 through to a real execution rather than "succeeding" with nothing.
 The replay itself is a cache read too: a transport failure reading the
@@ -310,7 +311,8 @@ executed again on the same budget.
 Once a worker reports EXECUTING, the task's `exec.timeout` (or
 `executeTimeoutMs`) bounds the wait, and the bound holds across a
 re-attach: firing during the backoff between a dropped stream and its
-`WaitExecution`, it ends the task there rather than being lost.
+`WaitExecution`, it ends the task there rather than being lost. Past it
+the operation is cancelled too (a refused cancel is a warning).
 The run stopping (Ctrl-C, an embedder's abort) or the task's `exec.timeout`
 closes the stream and cancels the operation with `CancelOperation`, and an
 action not yet submitted is not sent. The task then ends as a killed local
@@ -337,12 +339,14 @@ A status the server answers with and no retry heals (PERMISSION_DENIED on
 Execute, a refused upload) fails the task with a line naming the task and
 the status, never as a vx "internal error".
 
-A failed READ is never a failed task. The execution-record lookup is a
+A failed RECORD read is never a failed task. The execution-record lookup is a
 shortcut past the worker, so a transport error there means "no usable record"
 and the task executes normally, with a warning naming why. The UPSTREAM record
 reads are the deliberate exception — those decide whether a dependency's bytes
 exist at all, and carrying on past a failure there is how an action runs
-without its inputs and caches the result.
+without its inputs and caches the result. A fresh execution's stdout or
+stderr that cannot be read fails the task, as a declared output does
+(above): those are the task's result, not a shortcut.
 
 ## Tests
 

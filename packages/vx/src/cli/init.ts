@@ -249,10 +249,37 @@ async function install(
   return steps.map((s) => s.argv.join(' '))
 }
 
+const PLUGINS_MANIFEST = `${JSON.stringify({ name: 'workspace-plugins', private: true }, null, 2)}\n`
+
+/** Whether the nearest package.json above `dir` has a name, as `definePlugin` needs. */
+function ownerNamed(dir: string): boolean {
+  for (let d = dir; ; d = path.dirname(d)) {
+    let text: string
+    try {
+      text = readFileSync(path.join(d, 'package.json'), 'utf8').replace(/^﻿/, '')
+    } catch {
+      if (path.dirname(d) === d) return false
+      continue
+    }
+    try {
+      const name = (JSON.parse(text) as { name?: unknown } | null)?.name
+      return typeof name === 'string' && name !== ''
+    } catch {
+      return false
+    }
+  }
+}
+
 /** Write `plugins/<seam>.ts` and its test under `root`: the workspace root, else the cwd. */
 async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promise<number> {
   const template = PLUGIN_TEMPLATES[seam]!
+  // `definePlugin` names the plugin by the nearest package.json, and a
+  // monorepo root often has no name: the plugin refused to load.
+  const manifest: [string, string][] = ownerNamed(path.join(root, 'plugins'))
+    ? []
+    : [[path.join('plugins', 'package.json'), PLUGINS_MANIFEST]]
   const files = [
+    ...manifest,
     [path.join('plugins', `${seam}.ts`), template.plugin],
     [path.join('plugins', `${seam}.test.ts`), template.test],
   ] as const

@@ -43,8 +43,9 @@ export function formatTaskExecutedLine(node, outcome, colors?, onPath?): string
 // ` flaky - failed N× before · N attempts`, dim — on a flaky task's row and
 // frame footer; '' when the run did not prove it flaky (`outcome.flaky`)
 export function flakyNote(outcome, colors?): string
-// ` ⊘ <blank> skipped <id> • blocked by <id>` — a skip never ran
-export function formatTaskSkippedLine(node, colors?, blockedBy?): string
+// ` ⊘ <blank> skipped <id> • blocked by <id>` (or `• needs linux-x64,
+// this is darwin-arm64`, its `exec.platforms`) — a skip never ran
+export function formatTaskSkippedLine(node, colors?, skip?: { blockedBy?; otherPlatform? }): string
 // ` ✗ <time> aborted <id>` — killed by a shutdown signal;
 // ` ◌ <blank> not run <id>` — the stop reached it before it ran
 export function formatTaskAbortedLine(node, outcome, colors?): string

@@ -101,7 +101,7 @@ export function formatTaskBlock(
   const corner = (s: string) => paint('', s, colors, { dim: true })
   // A ready server's frame reads as the live one does: marked, and running.
   const mark = persistentMark(node, colors)
-  const running = mark !== '' && outcome.status === 'success'
+  const running = mark !== '' && outcome.status === 'success' && outcome.serverExit === undefined
   const header = running ? paint(ACCENT, 'running', colors) : formatBlockHeader(outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${mark}${idPainted} ${corner('>')} ${header}`]
 
@@ -646,7 +646,7 @@ export function formatFrameClose(
   // so the close reads `running` (accent), not `success` — the ▸ marks
   // both ends of the frame as a long-lived task.
   const tail =
-    mark !== '' && outcome.status === 'success'
+    mark !== '' && outcome.status === 'success' && outcome.serverExit === undefined
       ? runningFooter(outcome, colors)
       : formatBlockFooter(outcome, colors)
   const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${tail}`

@@ -443,6 +443,34 @@ describe('formatRunSummary', () => {
       expect(lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()).toBe('remote 2↑')
     })
 
+    // On CI a failed task's read failed under its key, and its kept log
+    // (`cache.upload.failures`) landed under its id. Moved once per key,
+    // its miss went to -1 and the bar threw.
+    it('a task with traffic under both its key and its id counts once', () => {
+      const keys = new Map([
+        ['h-a#build', { uploading: 0, failures: ['download: connection refused'] }],
+        ['a#build', { uploading: 0, failures: [] }],
+      ])
+      const lines = formatRunSummary(
+        [cached('a#build', 'failed')],
+        10,
+        { enabled: false },
+        {
+          version: '0.0.0',
+          packageCount: 1,
+          remoteCacheEnabled: true,
+          cache: {
+            local: true,
+            localWrite: true,
+            remote: true,
+            traffic: { inFlight: 0, keys },
+            notDownloaded: () => 0,
+          },
+        },
+      )
+      expect(lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()).toBe('remote 1✗')
+    })
+
     it('CONTROL: with no run context the legend is the plain one', () => {
       const lines = formatRunSummary(run, 10)
       expect(lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()).toBe(
@@ -839,5 +867,11 @@ describe('formatOutcomeTable', () => {
     const plain = formatOutcomeTable(rows)
     expect(formatOutcomeTable(rows, { enabled: true }).map((l) => Bun.stripANSI(l))).toEqual(plain)
     expect(plain.join('\n')).not.toContain('\x1b')
+  })
+
+  it('names a task the stop reached before it ran `not run`, as its row and the footer do', () => {
+    const killed: TaskOutcome = { ...outcome('a#x', 'aborted', 130), wallclockStartNs: 1n }
+    const lines = formatOutcomeTable([killed, outcome('b#x', 'aborted', 1)])
+    expect(lines.slice(3).map((l) => l.split(/\s{2,}/)[1])).toEqual(['aborted', 'not run'])
   })
 })

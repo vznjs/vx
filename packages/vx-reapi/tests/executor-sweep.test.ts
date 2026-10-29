@@ -303,6 +303,20 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     })
   })
 
+  // The probe named the outputs and not the stdout blob, and a Read of an
+  // evicted blob answers "none": the replay printed nothing and core saved
+  // the entry with its logs gone, on every machine that hit the record.
+  it('a record whose stdout blob is gone executes', async () => {
+    fake.actions.set(execDigestFor('k-stdout-gone').hash, {
+      exit_code: 0,
+      stdout_digest: sha256(bytes('evicted stdout')),
+    })
+    fake.onExecute = () => ({ response: { result: { exit_code: 0, stdout_raw: bytes('ran\n') } } })
+    const before = executes()
+    const res = await withExecutor((run) => run(request({ cacheKey: 'k-stdout-gone' })))
+    expect([executes() - before, res.stdout]).toEqual([1, 'ran\n'])
+  })
+
   // DATA_LOSS, not UNAVAILABLE or INTERNAL: a transient Read is retried
   // (items 919, F-1).
   it('a replay whose stdout Read fails executes instead of failing the task', async () => {
@@ -1200,6 +1214,58 @@ describe.if(CHUNKING_SUPPORTED)('the record a success writes', () => {
     expect(record.output_directories.map((d) => d.path)).toEqual([
       'pkg/mods/a/gen',
       'pkg/mods/b/gen',
+    ])
+  })
+
+  // A first-segment wildcard at the workspace root captures `''`, and its
+  // matches were recorded as `/a/gen`: a consumer grafted them under a
+  // directory with an empty name, and the replay refused them as absolute.
+  it('a root glob whose first segment is the wildcard records root-relative paths', async () => {
+    const gen = (file: string): Directory => ({
+      files: [{ name: file, digest: put(file), is_executable: false }],
+      directories: [],
+      symlinks: [],
+    })
+    const via = (dir: Directory): Directory => ({
+      files: [{ name: 'f', digest: put('f'), is_executable: false }],
+      directories: [{ name: 'gen', digest: sha256(encodeDirectory(dir)) }],
+      symlinks: [],
+    })
+    const [ga, gb] = [gen('ga'), gen('gb')]
+    const [a, b] = [via(ga), via(gb)]
+    const treeRoot: Directory = {
+      files: [],
+      directories: [
+        { name: 'a', digest: sha256(encodeDirectory(a)) },
+        { name: 'b', digest: sha256(encodeDirectory(b)) },
+      ],
+      symlinks: [],
+    }
+    const tree = fake.put(encodeTree(treeRoot, [a, b, ga, gb]))
+    fake.onExecute = () => ({
+      response: {
+        result: { exit_code: 0, output_directories: [{ path: '', tree_digest: D(tree) }] },
+      },
+    })
+    await withExecutor((run) =>
+      run(
+        request({
+          cacheKey: 'k-root-split',
+          cwd: root,
+          outputs: { files: ['*/gen', '*/f'], workspaceFiles: [] },
+        }),
+      ),
+    )
+    const record = fake.actions.get(execDigestFor('k-root-split').hash) as {
+      output_directories: { path: string }[]
+      output_files: { path: string }[]
+    }
+    expect([
+      record.output_directories.map((d) => d.path),
+      record.output_files.map((f) => f.path),
+    ]).toEqual([
+      ['a/gen', 'b/gen'],
+      ['a/f', 'b/f'],
     ])
   })
 })
