@@ -917,6 +917,23 @@ describe('a ^name no project declares is refused (nx#32779)', () => {
     expect(nodes.get('app#test')?.deps).toEqual([])
   })
 
+  // Turbo's scheduler test grew a `side-quest` cluster (vercel/turborepo
+  // 7ceef2fe2): a task that depends on the build tree is not part of it.
+  it('a declared task that depends on the requested tree is not scheduled', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: { ...cmd('b'), dependsOn: ['^build'] },
+          side: { ...cmd('s'), dependsOn: ['build', '^build'] },
+        }),
+        project('lib', { build: cmd('b'), side: { ...cmd('s'), dependsOn: ['build'] } }),
+      ),
+      packageGraph: packageGraph({ app: ['lib'] }),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    expect([...nodes.keys()].sort()).toEqual(['app#build', 'lib#build'])
+  })
+
   it('a leaf that declares the name itself plans (the preset-spread shape)', () => {
     const nodes = buildTaskGraph({
       projects: projects(project('leaf', { build: { ...cmd('b'), dependsOn: ['^build'] } })),

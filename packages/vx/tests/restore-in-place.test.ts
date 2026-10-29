@@ -6,7 +6,7 @@
 // reads (Growth's parity probe, 2026-10-16); Turbo met none.
 
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { vx } from './helpers/parity.js'
@@ -164,6 +164,36 @@ it(
     expect(`${hit.code}\n${hit.err}`).toStartWith('0\n')
     expect(hit.out).toContain('1↓')
     expect([existsSync(dead), existsSync(live)]).toEqual([false, true])
+  },
+  TIMEOUT,
+)
+
+// Turbo stopped hard-linking cache entries (vercel/turborepo#1354): an
+// output edited in place after a save or a restore rewrote the entry, and
+// the next hit replayed the edit.
+it(
+  'an output edited in place after a save or a restore leaves the entry as saved',
+  async () => {
+    // Past the store's inline size, so the entry is a file of its own.
+    const { root, dir } = await workspace(
+      'mkdir -p dist && yes built | head -c 65536 > dist/out.txt',
+    )
+    const cacheDir = path.join(root, '.cache')
+    const out = path.join(dir, 'dist', 'out.txt')
+    const hit = async (): Promise<string> => {
+      await rm(path.join(dir, 'dist'), { recursive: true })
+      const r = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      expect(`${r.code}\n${r.err}`).toStartWith('0\n')
+      expect(r.out).toContain('1↓')
+      return readFileSync(out, 'utf8')
+    }
+    const first = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+    expect(`${first.code}\n${first.err}`).toStartWith('0\n')
+    const built = readFileSync(out, 'utf8')
+    await appendFile(out, 'after save\n')
+    expect(await hit()).toBe(built)
+    await appendFile(out, 'after restore\n')
+    expect(await hit()).toBe(built)
   },
   TIMEOUT,
 )

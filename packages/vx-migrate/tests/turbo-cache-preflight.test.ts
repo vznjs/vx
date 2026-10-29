@@ -102,7 +102,7 @@ function cache(preflight: boolean): TurboRemoteCache {
 }
 
 describe('resolveTurboCacheConfig: preflight', () => {
-  const base = { TURBO_API: 'http://cache', TURBO_TOKEN: 't' }
+  const base = { TURBO_API: 'http://cache', TURBO_TOKEN: 't', TURBO_TEAM: 'a' }
   it('is off by default, on from TURBO_PREFLIGHT or remoteCache.preflight, env over file', () => {
     expect(resolveTurboCacheConfig({}, base)!.preflight).toBe(false)
     expect(resolveTurboCacheConfig({}, { ...base, TURBO_PREFLIGHT: '1' })!.preflight).toBe(true)

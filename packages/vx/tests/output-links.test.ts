@@ -93,6 +93,23 @@ it.skipIf(process.platform === 'win32')(
   TIMEOUT,
 )
 
+// Turbo restores a link whose target is not there (vercel/turborepo#1071):
+// a build may leave one for a later step to fill.
+it.skipIf(process.platform === 'win32')(
+  'a dangling link inside the project comes back as the same link',
+  async () => {
+    const { root, dir } = await workspace(
+      'rm -rf dist && mkdir -p dist && echo a > dist/a.txt && ln -s later.txt dist/link.txt',
+    )
+    await ok(root)
+    rmSync(path.join(dir, 'dist'), { recursive: true })
+    expect(await ok(root)).toContain('1↓')
+    expect(readlinkSync(path.join(dir, 'dist/link.txt'))).toBe('later.txt')
+    expect(existsSync(path.join(dir, 'dist/later.txt'))).toBe(false)
+  },
+  TIMEOUT,
+)
+
 it.skipIf(process.platform === 'win32')(
   'a link pointed elsewhere since the hit is put back, even at the same length',
   async () => {

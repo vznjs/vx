@@ -387,6 +387,7 @@ const TOP_LISTS = [
 const GLOBAL_LISTS = ['inputs', 'env', 'passThroughEnv']
 const TASK_LISTS = ['dependsOn', 'outputs', 'env', 'passThroughEnv', 'with', 'dotEnv']
 const TASK_FLAGS = ['cache', 'persistent', 'interactive', 'interruptible']
+const ENV_LISTS = new Set(['globalEnv', 'globalPassThroughEnv', 'env', 'passThroughEnv'])
 
 /**
  * The shape of every field the mapper reads, refused by name. A number
@@ -402,12 +403,29 @@ function checkTurboShape(cfg: unknown, label: string): void {
     if (v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== 'string')))
       refuse(at, 'an array of strings')
   }
+  // Turbo refuses `$NAME` in an env list (`InvalidEnvPrefix`), its own
+  // `$TURBO_EXTENDS$` aside; mapped, core keyed a variable literally
+  // named `$NAME`, which is never set.
+  const envList = (v: unknown, at: string): void => {
+    list(v, at)
+    const bad = (v as string[] | undefined)?.find(
+      (x) => x.startsWith('$') && x !== '$TURBO_EXTENDS$',
+    )
+    if (bad !== undefined)
+      throw new UserError(
+        `${label}: ${at} holds ${JSON.stringify(bad)}: Turbo refuses a "$" before an env name — write ${JSON.stringify(bad.slice(1))}`,
+      )
+  }
   if (!isRecord(cfg)) refuse('the file', 'a JSON object')
   const c = cfg as Record<string, unknown>
-  for (const k of TOP_LISTS) list(c[k], k)
+  for (const k of TOP_LISTS) (ENV_LISTS.has(k) ? envList : list)(c[k], k)
   if (c['global'] !== undefined) {
     if (!isRecord(c['global'])) refuse('global', 'an object')
-    for (const k of GLOBAL_LISTS) list((c['global'] as Record<string, unknown>)[k], `global.${k}`)
+    for (const k of GLOBAL_LISTS)
+      (ENV_LISTS.has(k) ? envList : list)(
+        (c['global'] as Record<string, unknown>)[k],
+        `global.${k}`,
+      )
   }
   for (const field of ['tasks', 'pipeline']) {
     const tasks = c[field]
@@ -417,7 +435,7 @@ function checkTurboShape(cfg: unknown, label: string): void {
       const at = `${field}.${JSON.stringify(name)}`
       if (!isRecord(def)) refuse(at, 'an object')
       const d = def as Record<string, unknown>
-      for (const k of TASK_LISTS) list(d[k], `${at}.${k}`)
+      for (const k of TASK_LISTS) (ENV_LISTS.has(k) ? envList : list)(d[k], `${at}.${k}`)
       // Turbo 2.11 adds `{ mode, globs, withDefaults }` entries (`flatInputs`).
       const inputs = d['inputs']
       if (
@@ -1539,7 +1557,40 @@ export async function mapTurboWorkspace(
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   refuseTaskNames(projects, 'task')
+  sortOrderFree(projects)
   return { projects, notes, globals }
+}
+
+function byText(a: unknown, b: unknown): number {
+  const x = typeof a === 'string' ? a : JSON.stringify(a)
+  const y = typeof b === 'string' ? b : JSON.stringify(b)
+  return x < y ? -1 : x > y ? 1 : 0
+}
+
+function negationsLast(a: unknown, b: unknown): number {
+  const neg = (g: unknown) => Number(typeof g === 'string' && g.startsWith('!'))
+  return neg(a) - neg(b) || byText(a, b)
+}
+
+/**
+ * Turbo sorts a task's `outputs` and `dependsOn` before hashing, so
+ * reordering them in turbo.json keeps the hit (vercel/turborepo#2064).
+ * Core keys a config's lists as written, and gives neither list's order a
+ * meaning: an edge set, and a `!` output takes back from the positives
+ * wherever it stands (`outputMatcher`). Sorted here, negations last, so
+ * the reorder keys the same and a written config reads the same.
+ */
+function sortOrderFree(projects: readonly TurboMappedProject[]): void {
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const task = t.task
+      if (task === null) continue
+      if (Array.isArray(task['dependsOn'])) task['dependsOn'] = [...task['dependsOn']].sort(byText)
+      const outputs = (task['cache'] as { outputs?: Record<string, unknown> } | undefined)?.outputs
+      if (outputs === undefined) continue
+      for (const k of ['files', 'workspaceFiles'])
+        if (Array.isArray(outputs[k])) outputs[k] = [...outputs[k]].sort(negationsLast)
+    }
 }
 
 /**
@@ -2179,8 +2230,10 @@ function buildTask(
   const rewritesManifest = takeBacks.includes('!package.json')
 
   if (atRoot) wsOutFiles.unshift(...outFiles.splice(0))
-  const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
-  const ws = takingBack(wsOutFiles)
+  // Sorted here, before the passes that take them back from other tasks'
+  // inputs, so those `!` entries come in this order too (`sortOrderFree`).
+  const outputs: Record<string, unknown> = { files: takingBack(outFiles).sort(negationsLast) }
+  const ws = takingBack(wsOutFiles).sort(negationsLast)
   if (ws.length > 0) outputs.workspaceFiles = ws
   task.cache = {
     outputs,

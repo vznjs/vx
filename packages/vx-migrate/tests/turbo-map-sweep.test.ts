@@ -331,6 +331,129 @@ describe('turbo-map: what the sweep found unheld', () => {
     })
   })
 
+  // vercel/turborepo#1970: Turbo refuses `$NAME` in an env list. Mapped,
+  // core keyed a variable named `$FOO` that is never set, so an edit to
+  // FOO replayed the old build. CONTROL: `!FOO`, a `$` mid-name and
+  // Turbo's own `$TURBO_EXTENDS$` map.
+  it('a `$` before an env list entry is refused, as Turbo refuses it', async () => {
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const packageJson = { name: 'a', scripts: { build: 'b' } }
+    const said = async (cfg: object) => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(cfg))
+      return mapTurboWorkspace(
+        root,
+        [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
+        opts,
+      ).then(
+        () => 'mapped',
+        (e: unknown) => (e instanceof UserError ? e.message : String(e)),
+      )
+    }
+    expect([
+      await said({ tasks: { build: { env: ['$FOO'] } } }),
+      await said({ tasks: { build: { passThroughEnv: ['$P'] } } }),
+      await said({ globalEnv: ['$G'], tasks: { build: {} } }),
+      await said({ globalPassThroughEnv: ['$H'], tasks: { build: {} } }),
+      await said({ global: { env: ['$I'] }, tasks: { build: {} } }),
+      await said({ tasks: { build: { env: ['!FOO', 'A$B', '$TURBO_EXTENDS$'] } } }),
+    ]).toEqual([
+      'turbo.json: tasks."build".env holds "$FOO": Turbo refuses a "$" before an env name — write "FOO"',
+      'turbo.json: tasks."build".passThroughEnv holds "$P": Turbo refuses a "$" before an env name — write "P"',
+      'turbo.json: globalEnv holds "$G": Turbo refuses a "$" before an env name — write "G"',
+      'turbo.json: globalPassThroughEnv holds "$H": Turbo refuses a "$" before an env name — write "H"',
+      'turbo.json: global.env holds "$I": Turbo refuses a "$" before an env name — write "I"',
+      'mapped',
+    ])
+  })
+
+  // vercel/turborepo#2712: no `outputs` means none, as `[]` does; Turbo 1
+  // once read it as `dist/**` and `build/**`.
+  it('a task with no outputs caches none, as one with `[]`', async () => {
+    const t = await map(
+      { tasks: { build: {}, lint: { outputs: [] } } },
+      { a: { scripts: { build: 'b', lint: 'l' } } },
+    )
+    expect(t.projects[0]!.tasks.map((x) => [x.name, x.task!['cache']])).toEqual([
+      ['build', { outputs: { files: [] } }],
+      ['lint', { outputs: { files: [] } }],
+    ])
+  })
+
+  // vercel/turborepo#2064: Turbo sorts `outputs` and `dependsOn` before
+  // hashing, so a reorder keeps the hit. Mapped as written, the config
+  // vx keys moved and the task re-ran.
+  it('maps a reordered `outputs` and `dependsOn` to the same task', async () => {
+    const pkgs = { a: { scripts: { build: 'b', lint: 'l', test: 't' } } }
+    // Every task: a sibling's inputs take the outputs back with `!`.
+    const tasks = async (build: Record<string, unknown>) =>
+      (await map({ tasks: { lint: {}, test: {}, build } }, pkgs)).projects[0]!.tasks.map(
+        (x) => x.task!,
+      )
+    const all = await tasks({
+      dependsOn: ['lint', 'test'],
+      outputs: ['a/**', '!a/tmp/**', 'b/**', '!b/tmp/**'],
+    })
+    const reordered = await tasks({
+      dependsOn: ['test', 'lint'],
+      outputs: ['!b/tmp/**', 'b/**', '!a/tmp/**', 'a/**'],
+    })
+    expect(reordered).toEqual(all)
+    const one = all.find((t) => t['dependsOn'] !== undefined)!
+    // A `!` entry takes back from the positives in any order (core's
+    // outputMatcher), so the negations sorting last changes nothing.
+    expect(one['cache']).toEqual({ outputs: { files: ['a/**', 'b/**', '!a/tmp/**', '!b/tmp/**'] } })
+    expect(one['dependsOn']).toEqual(['lint', 'test'])
+  })
+
+  // vercel/turborepo#1472: a plain `turbo.json` takes comments too, line
+  // and block, between entries and before a string in an array.
+  it('reads comments in a plain `turbo.json`', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      `// top
+      { "tasks": { /* block */ "build": {
+        "dependsOn": [ /* before */ "^build" ], // after
+        /*
+          multi-line
+        */
+        "inputs": ["src/**"],
+      } } }`,
+    )
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const packageJson = { name: 'a', scripts: { build: 'b' } }
+    const m = await mapTurboWorkspace(
+      root,
+      [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
+      opts,
+    )
+    const t = m.projects[0]!.tasks[0]!.task!
+    expect([t['dependsOn'], t['inputs']]).toEqual([
+      ['^build'],
+      { files: ['src/**', 'package.json'] },
+    ])
+  })
+
+  // vercel/turborepo#1681: Turbo 1 dropped `baseBranch`, which old repos
+  // still spell; it neither fails the mapping nor reaches a task.
+  it('a top-level `baseBranch` maps nothing and fails nothing', async () => {
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const packageJson = { name: 'a', scripts: { build: 'b' } }
+    const map = async (cfg: object) => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(cfg))
+      const m = await mapTurboWorkspace(
+        root,
+        [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
+        opts,
+      )
+      return [m.projects[0]!.tasks, m.notes]
+    }
+    const tasks = { build: { inputs: ['src/**'] } }
+    expect(await map({ baseBranch: 'origin/main', tasks })).toEqual(await map({ tasks }))
+  })
+
   // vercel/turborepo#10083: Turbo refuses a directory holding both files.
   // Read first, `turbo.json` shadowed the `.jsonc` beside it in silence,
   // so an edit there keyed and ran nothing.
@@ -1657,7 +1780,7 @@ describe('turbo-map: `with`', () => {
       { build: ['^build'], ci: ['build'], deploy: ['build'], noop: ['^noop'] },
       // lib's `build` is Turbo's no-op node over lib's files (G-117), which
       // core supplies to a project with no `build`.
-      { lint: undefined, ci: ['lint', 'build'], deploy: [], noop: ['^noop'] },
+      { lint: undefined, ci: ['build', 'lint'], deploy: [], noop: ['^noop'] },
     ])
   })
 
@@ -1808,10 +1931,12 @@ describe('turbo-map: an uncached task keeps its key', () => {
 // #9718), keys Next's VERCEL_DEPLOYMENT_ID under skew protection (#9853)
 // and passes `BUILTIN_PASS_THROUGH_ENV` to every task, unhashed
 // (crates/turborepo-env). Unkeyed, a preview build replayed in
-// production; unpassed, a task ran without TZ.
+// production; unpassed, a task ran without TZ. Turbo 1 also keyed any
+// name holding THASH (vercel/turborepo#1461); Turbo 2 keys none.
 describe("turbo-map: Turbo's builtin env", () => {
   const live = [
     'GITHUB_SHA',
+    'SOMETHING_THASH_YES',
     'TZ',
     'VERCEL_ANALYTICS_ID',
     'VERCEL_DEPLOYMENT_ID',

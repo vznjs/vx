@@ -301,10 +301,20 @@ export function resolveTurboCacheConfig(
     fromFile(file.teamId)
   const teamSlug =
     options.teamSlug ?? set('TURBO_TEAM') ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
-  // Turbo's own default when a token or a team is set and no URL is:
-  // Vercel's hosted Remote Cache. A token alone is a configured cache, as it
-  // is for `turbo`; a URL or a team without one asks the OS keychain at
-  // `open`; none of them is the declined, local run.
+  // Turbo uses its remote only when linked, a team set (`is_linked`): a
+  // token without one ran remote here, team-less, where `turbo` runs local.
+  // An option naming the cache is vx's own, and stands.
+  const named =
+    options.url !== undefined || options.token !== undefined || options.oidc !== undefined
+  if (!named && teamId === undefined && teamSlug === undefined) {
+    if (token !== undefined)
+      warn(
+        'a Turbo token is set but no team (TURBO_TEAM, TURBO_TEAMID or .turbo/config.json): remote cache off for this run, as for turbo',
+      )
+    return undefined
+  }
+  // Turbo's own default when no URL is set: Vercel's hosted Remote Cache.
+  // A team without a token asks the OS keychain at `open`.
   // Each source with its name: TURBO_API was refused as a `url`
   // option the workspace never set.
   const [rawUrl, urlFrom] =
@@ -899,16 +909,31 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 /**
  * The repo's `.turbo/config.json`, by Turbo's field names and their
  * aliases (`apiurl`, `ApiUrl`, `APIURL`, …); `{}` when absent or unreadable.
+ * One that does not parse is named: Turbo refuses it, and read as absent
+ * in silence a linked repo lost its remote with no word.
  */
-function localConfigOf(root: string): TurboLocalConfig {
-  let raw: unknown
+function localConfigOf(root: string, warn: (message: string) => void): TurboLocalConfig {
+  let text: string
   try {
-    raw = JSON.parse(readFileSync(path.join(root, '.turbo', 'config.json'), 'utf8'))
+    text = readFileSync(path.join(root, '.turbo', 'config.json'), 'utf8')
     // quiet: a local config file: none read is none linked
   } catch {
     return {}
   }
-  if (typeof raw !== 'object' || raw === null) return {}
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (err) {
+    warn(
+      `.turbo/config.json does not parse as a JSON object (${(err as Error).message}): read as absent`,
+    )
+    return {}
+  }
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    const kind = Array.isArray(raw) ? 'an array' : raw === null ? 'null' : `a ${typeof raw}`
+    warn(`.turbo/config.json does not parse as a JSON object (${kind}): read as absent`)
+    return {}
+  }
   const byLower = new Map(Object.entries(raw).map(([k, v]) => [k.toLowerCase(), v]))
   return {
     apiUrl: byLower.get('apiurl'),
@@ -1004,12 +1029,13 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   let opened: { layer: TurboRemoteCache; warn: (m: string) => void } | undefined
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
+      const warn = (m: string) => ctx.warn(`[vx] plugin '@vzn/vx-migrate': ${m}`)
       const config = resolveTurboCacheConfig(
         options,
         Bun.env,
         remoteCacheOf(ctx.workspaceRoot),
-        localConfigOf(ctx.workspaceRoot),
-        (m) => ctx.warn(`[vx] plugin '@vzn/vx-migrate': ${m}`),
+        localConfigOf(ctx.workspaceRoot, warn),
+        warn,
       )
       if (config === undefined) return undefined
       // A signed download waits in a temp until its tag checks: in vx's

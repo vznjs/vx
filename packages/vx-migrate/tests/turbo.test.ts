@@ -184,6 +184,26 @@ describe('turbo()', () => {
     TIMEOUT,
   )
 
+  // Turbo folds the whole pipeline into its global hash (vercel/turborepo
+  // #1166): an edit to any task's definition misses every task. vx keys a
+  // task on its own resolved config, so only its own definition moves it.
+  it(
+    "an edit to another task's turbo.json definition keeps the hit; its own re-runs it",
+    async () => {
+      const opts = { cwd: root, tasks: ['lib#build'], log: silent(), handleSignals: false }
+      const status = async () => (await run(opts)).outcomes.map((o) => o.status)
+      expect(await status()).toEqual(['success'])
+      const turbo = structuredClone(TURBO_JSON)
+      turbo.tasks.test.outputs = ['coverage/**'] as never[]
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo, null, 2))
+      expect(await status()).toEqual(['cache-hit'])
+      turbo.tasks.build.env = ['NODE_ENV', 'BUILD_MODE']
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo, null, 2))
+      expect(await status()).toEqual(['success'])
+    },
+    TIMEOUT,
+  )
+
   it(
     'runs the graph, caches by the mapped blocks, and leaves `cache: false` tasks uncached',
     async () => {
@@ -794,12 +814,12 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.config.cache?.outputs.files).toEqual([
-        '!node_modules/**',
-        '!src/**',
-        '*/**',
         '*',
+        '*/**',
         '.medusa/**',
+        '!node_modules/**',
         '!package.json',
+        '!src/**',
       ])
       expect(warned).toContain(
         '[vx] vx-migrate: 2 tasks (build across 2 packages): output "*/**": vx cleans outputs before a run and a restore, so every untracked file this glob reaches is deleted; committed files are kept',
@@ -829,11 +849,11 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.config.cache?.outputs.files).toEqual([
-        '!node_modules/**',
-        '!src/**',
-        '*/**',
         '*',
+        '*/**',
+        '!node_modules/**',
         '!package.json',
+        '!src/**',
       ])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const dir = path.join(root, 'packages', 'app')
@@ -868,9 +888,9 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist/**', '**/dist'])
+      expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist', '**/dist/**'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist/**', '**/dist'])
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist', '**/dist/**'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const nested = path.join(root, 'packages', 'app', 'rsc', 'dist', 'r.js')
       expect((await build()).ok).toBe(true)
@@ -898,9 +918,9 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['test'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#test')?.outputs.files).toEqual(['coverage/**', '*.xml'])
+      expect(cacheOf('app#test')?.outputs.files).toEqual(['*.xml', 'coverage/**'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#test')?.outputs.files).toEqual(['coverage/**', '*.xml'])
+      expect(cacheOf('lib#test')?.outputs.files).toEqual(['*.xml', 'coverage/**'])
       const test = () => run({ cwd: root, tasks: ['test'], log: silent(), handleSignals: false })
       const report = path.join(root, 'packages', 'app', 'junit.xml')
       expect((await test()).ok).toBe(true)
@@ -930,9 +950,9 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*/**', 'dist-*'])
+      expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*', 'dist-*/**'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*/**', 'dist-*'])
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*', 'dist-*/**'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const out = path.join(root, 'packages', 'app', 'dist-esm', 'a.js')
       expect((await build()).ok).toBe(true)
@@ -958,14 +978,14 @@ describe('output negation', () => {
         (await planRun({ cwd: root, tasks: ['app#build'], log: silent() })).tasks.find(
           (t) => t.node.id === 'app#build',
         )!.node.config.cache
-      expect((await cacheOf())?.outputs.files).toEqual(['lib/**', '*.mjs'])
+      expect((await cacheOf())?.outputs.files).toEqual(['*.mjs', 'lib/**'])
       // A config the mapped task now lives beside: the kept mapping is
       // re-made, and the output takes the config back.
       await writeFile(
         path.join(root, 'packages', 'app', 'vx.config.mjs'),
         'export default { tasks: {} }\n',
       )
-      expect((await cacheOf())?.outputs.files).toEqual(['lib/**', '*.mjs', '!vx.config.mjs'])
+      expect((await cacheOf())?.outputs.files).toEqual(['*.mjs', 'lib/**', '!vx.config.mjs'])
     },
     TIMEOUT,
   )

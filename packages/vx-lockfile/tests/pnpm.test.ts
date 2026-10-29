@@ -489,6 +489,21 @@ snapshots:
     expect(digests(cross('7.0.0', '6.0.0'))).toEqual(before)
   })
 
+  // vercel/turborepo#2227: go-yaml refused an unquoted tarball URL with a
+  // `?` in a flow mapping, which pnpm writes for a private registry.
+  it('reads an unquoted tarball URL with a query, and keys it', () => {
+    const at = (q: string) =>
+      v9().replace(
+        'resolution: {integrity: sha512-baz3.0.0}',
+        `resolution: {integrity: sha512-baz3.0.0, tarball: https://r.example/baz.tgz?v=${q}}`,
+      )
+    const [one, two] = [digests(at('1')), digests(at('2'))]
+    expect([
+      one.get('packages/a') === two.get('packages/a'),
+      one.get('packages/b') === two.get('packages/b'),
+    ]).toEqual([true, false])
+  })
+
   it('refuses what is not a pnpm lockfile', () => {
     expect(() => parseLockfile('just: yaml\n')).toThrow(/unsupported lockfileVersion ""/)
     expect(() => parseLockfile('- a\n')).toThrow(/not a YAML document/)
