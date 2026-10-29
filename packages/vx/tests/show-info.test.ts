@@ -815,6 +815,19 @@ describe('vx info — the rendered rows', () => {
     sandbox: { available: true, reason: '', declared: 1, untraced: null },
   }
 
+  it('one cache hit is a hit, not hits', () => {
+    const row = (f: Partial<InfoFacts>): string | undefined =>
+      renderInfo({ ...healthy, ...f })
+        .split('\n')
+        .find((l) => l.startsWith('  task runs (24h)'))
+    expect(row({ runs24h: 1, hits24h: 1, restored24h: 0 })).toBe(
+      '  task runs (24h)   1 (1 cache hit: 1 up-to-date, 0 restored)',
+    )
+    expect(row({ runs24h: 1, hits24h: 0, restored24h: 0 })).toBe(
+      '  task runs (24h)   1 (0 cache hits)',
+    )
+  })
+
   it('names each setting a variable or the workspace changed, and where', () => {
     const out = renderInfo({
       ...healthy,
@@ -1000,6 +1013,10 @@ describe('vx info — the workers and memory rows', () => {
     // The workspace's number wins, and a quota beside it is still named.
     expect(describeWorkers({ count: 8, source: 'workspace', cores: 4, cpuQuota: 2 })).toBe(
       '8 — .vx/workspace.ts (4 cores, cgroup CPU quota 2)',
+    )
+    // A one-core machine has a core, not cores.
+    expect(describeWorkers({ count: 2, source: 'workspace', cores: 1, cpuQuota: null })).toBe(
+      '2 — .vx/workspace.ts (1 core)',
     )
     // A quota that does not bind (wider than the cores) is still named.
     expect(describeWorkers({ count: 4, source: 'cores', cores: 4, cpuQuota: 6 })).toBe(

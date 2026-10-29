@@ -81,3 +81,17 @@ it('every help line past the usage block fits 88 columns', () => {
     .join('\n')
   expect(body.split('\n').filter((l) => l.length > 88)).toEqual([])
 })
+
+// `vx lock --check` re-evaluates every config and compares; it keeps no
+// per-file digests to report, yet its help promised a report of them.
+it('vx lock --check is described as what it does', () => {
+  const text = verbHelpText('lock')
+  const at = text.indexOf('  vx lock --check')
+  expect(text.slice(at, text.indexOf('\n\n', at)).split('\n')).toEqual([
+    '  vx lock --check      Audit the lock: re-evaluate every config here and compare',
+    '                       it with the frozen object, find a config added or gone, and',
+    '                       check the graph rules. Exits 1 on drift (e.g. configs that',
+    '                       read env vars). Run it before the run in CI. With --format json',
+    '                       it prints {upToDate, audited, notAudited, problems}.',
+  ])
+})

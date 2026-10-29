@@ -26,7 +26,7 @@ prints names its own fix too.
 | `vx requires git: … is not inside a git work tree` | Run `git init` at the workspace root.                                   |
 | `vx requires git: failed to spawn 'git'`           | Install git.                                                            |
 | `--affected has no base here`                      | Set `baseBranch`, or pass `--affected=<ref>`.                           |
-| `--affected has no default on the base branch`     | On `main` itself, run `--all`: the cache skips what did not change.     |
+| `--affected has no default on the base branch`     | On `main` itself, run `--all`: the cache skips what did not change. `vx show` drops `--affected`. |
 | `… has unknown field "<key>"`                      | A typo, or a Turbo or Nx key: the message lists the fields vx allows.  |
 | `dependsOn cycle`                     | Remove one `dependsOn` edge of the loop it prints.                      |
 | `dependsOn … but no such project or task is declared`  | Fix the name, or declare that task in that package.                 |

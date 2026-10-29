@@ -292,7 +292,9 @@ export interface RunDetail {
 }
 
 export function getRun(db: Database, runId: string): RunDetail | null {
-  const tasks = listRuns(db, { runId, limit: 100_000 })
+  // In the order the run recorded them, as it printed them: `listRuns` is
+  // newest first, and the replay listed a dependency below its dependant.
+  const tasks = listRuns(db, { runId, limit: 100_000 }).reverse()
   if (tasks.length === 0) return null
   const startedAt = Math.min(...tasks.map((t) => t.startedAt))
   const endedAt = Math.max(...tasks.map((t) => t.endedAt))

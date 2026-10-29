@@ -446,3 +446,17 @@ describe('--profile names a file, checked before the run', () => {
     expect(stderr).not.toContain('--profile:')
   })
 })
+
+describe('a string value flag does not swallow the next flag', () => {
+  it('--branch <flag> is refused, as vx last --branch refuses it', () => {
+    // `vx run build --branch $EMPTY --dry` ran the build for real, recorded
+    // under a branch named `--dry`.
+    for (const verb of ['run', 'watch'] as const) {
+      expect(parseRunArgs(['build', '--branch', '--dry'], verb).error).toBe(
+        '--branch requires a value (got flag --dry; a value that starts with - needs --branch=--dry)',
+      )
+    }
+    expect(parseRunArgs(['build', '--branch=-x']).settings['run.branch']).toBe('-x')
+    expect(parseRunArgs(['build', '--branch', 'main']).settings['run.branch']).toBe('main')
+  })
+})

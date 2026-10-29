@@ -47,7 +47,7 @@ import {
   type ColorSupport,
 } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { findCwdProject } from './select.js'
+import { findCwdProject, rootSpelled } from './select.js'
 import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
 interface LastArgs {
@@ -153,6 +153,9 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     if (a === '--log') {
       const v = args[i + 1]
+      if (v === '') {
+        return { ...out, error: `--log requires a task id, like app#build${seeHelp('last')}` }
+      }
       if (v === undefined || v.startsWith('-')) bareLog = true
       else {
         out.log = v
@@ -183,6 +186,8 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('last', a)}${seeHelp('last')}` }
+    // Empty is no run id: '' is the start of every one.
+    if (a === '') continue
     if (out.runId !== undefined)
       return { ...out, error: `unexpected argument: ${a}${seeHelp('last')}` }
     out.runId = a
@@ -662,7 +667,7 @@ export function formatTaskRows(
     lines.push(
       paint(
         '',
-        `  … +${hits.length - HITS_SHOWN} more cache hits (the ${HITS_SHOWN} slowest restores shown) — vx last --format json lists every row`,
+        `  … +${hits.length - HITS_SHOWN} more cache hit${hits.length - HITS_SHOWN === 1 ? '' : 's'} (the ${HITS_SHOWN} slowest restores shown) — vx last --format json lists every row`,
         c,
         { dim: true },
       ),
@@ -717,18 +722,17 @@ export function formatRunList(
   const rows = runs.map(({ inv, id }) => ({
     head: `${inv.exitOk ? 'ok    ' : 'FAILED'} ${fmtWhen(inv.startedAt)}`,
     id,
-    counts:
-      `${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}` +
-      (inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''),
+    counts: `${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`,
+    failed: inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : '',
     ms: fmtMs(inv.totalDurationMs),
     command: inv.command,
   }))
   const idW = Math.max(...rows.map((r) => r.id.length))
-  const countsW = Math.max(...rows.map((r) => r.counts.length))
+  const countsW = Math.max(...rows.map((r) => r.counts.length + r.failed.length))
   const msW = Math.max(...rows.map((r) => r.ms.length))
   return rows.map(
     (r) =>
-      `${paint(r.head.startsWith('ok') ? SUCCESS : ERROR, r.head.slice(0, 6), c)}${paint('', r.head.slice(6), c, { dim: true })}  ${paint('', r.id.padEnd(idW), c, { bold: true })}  ${paint('', `${r.counts.padEnd(countsW)}  ${r.ms.padStart(msW)}  $`, c, { dim: true })} ${r.command}`,
+      `${paint(r.head.startsWith('ok') ? SUCCESS : ERROR, r.head.slice(0, 6), c)}${paint('', r.head.slice(6), c, { dim: true })}  ${paint('', r.id.padEnd(idW), c, { bold: true })}  ${paint('', r.counts, c, { dim: true })}${paint(ERROR, r.failed, c)}${paint('', `${' '.repeat(countsW - r.counts.length - r.failed.length)}  ${r.ms.padStart(msW)}  $`, c, { dim: true })} ${r.command}`,
   )
 }
 
@@ -772,7 +776,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
 
     if (parsed.stats === true) {
       const branch = currentBranch(root, undefined, parsed.branch)
-      return await printStats(db, parsed.task, parsed.format, branch)
+      const task = parsed.task === undefined ? undefined : await rootSpelled(root, parsed.task)
+      return await printStats(db, task, parsed.format, branch)
     }
 
     if (parsed.log !== undefined) {
@@ -780,7 +785,12 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         parsed.runId === undefined
           ? undefined
           : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
-      const log = taskLog(cacheDir, db, await bareTaskId(db, parsed.log), runId)
+      const log = taskLog(
+        cacheDir,
+        db,
+        await bareTaskId(db, await rootSpelled(root, parsed.log)),
+        runId,
+      )
       if (log === null) {
         throw new UserError(
           `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`} (a task id is project#task)`,

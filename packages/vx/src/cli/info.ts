@@ -113,7 +113,7 @@ export function renderInfo(f: InfoFacts, colors: ColorSupport = { enabled: false
     // the hits are a share of.
     [
       'task runs (24h)',
-      `${f.runs24h} (${f.hits24h} cache hits` +
+      `${f.runs24h} (${f.hits24h} cache hit${f.hits24h === 1 ? '' : 's'}` +
         (f.hits24h > 0
           ? `: ${f.hits24h - f.restored24h} up-to-date, ${f.restored24h} restored)`
           : ')'),
@@ -170,11 +170,11 @@ function describeSandbox(s: InfoFacts['sandbox']): string {
 /** `4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 — .vx/workspace.ts (4 cores)`. */
 export function describeWorkers(w: InfoFacts['workers']): string {
   const quota = w.cpuQuota === null ? '' : `, cgroup CPU quota ${trimCores(w.cpuQuota)}`
-  if (w.source === 'workspace') return `${w.count} — .vx/workspace.ts (${w.cores} cores${quota})`
-  if (w.source === 'env')
-    return `${w.count} — ${envName('run.concurrency')} (${w.cores} cores${quota})`
+  const cores = `${w.cores} core${w.cores === 1 ? '' : 's'}`
+  if (w.source === 'workspace') return `${w.count} — .vx/workspace.ts (${cores}${quota})`
+  if (w.source === 'env') return `${w.count} — ${envName('run.concurrency')} (${cores}${quota})`
   if (w.source === 'cgroup')
-    return `${w.count} — cgroup CPU quota ${trimCores(w.cpuQuota ?? w.count)} of ${w.cores} cores`
+    return `${w.count} — cgroup CPU quota ${trimCores(w.cpuQuota ?? w.count)} of ${cores}`
   return `${w.count} — the CPU count${quota}`
 }
 

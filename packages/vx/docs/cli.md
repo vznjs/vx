@@ -592,7 +592,7 @@ edge.
 Value flags (`--filter`, `--concurrency`, `--output-logs`,
 `--verbosity`, `--cache-dir`, …)
 accept both `--flag value` and `--flag=value`. In the space form,
-`--cache-dir` rejects a value
+`--cache-dir` and `--branch` reject a value
 starting with `-`: that is always a swallowed flag (an unquoted empty
 shell variable), never a path or task id. Use the `=` form for a literal
 leading dash.
@@ -3173,6 +3173,7 @@ says the task printed nothing. With
 `source` `'failure'`, `'cache'` or `null`. A task no run recorded is
 refused, exit 1. A bare name (`--log build`) is the one project that ran
 it; with several, the one the cwd is in, else it is refused listing them.
+`//#build` is the root project's, here and in `--stats`.
 `vx last app#build --log` reads the same as `--log app#build`: a `--log`
 with no value takes the positional as its task.
 

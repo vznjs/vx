@@ -769,6 +769,8 @@ async function isPartialClone(workspaceRoot: string): Promise<boolean> {
 export async function defaultAffectedBase(
   workspaceRoot: string,
   baseBranch: string | undefined,
+  /** The verb's way to take every project instead: `vx show` has no `--all`. */
+  instead = 'run --all (the cache skips what did not change)',
 ): Promise<string> {
   const found =
     (await baseBranchRef(workspaceRoot, baseBranch)) ??
@@ -784,7 +786,7 @@ export async function defaultAffectedBase(
   }
   if (found.onIt) {
     throw new UserError(
-      `--affected has no default on the base branch (${found.branch}): run --all (the cache skips what did not change), or name the last good commit, --affected=<sha>`,
+      `--affected has no default on the base branch (${found.branch}): ${instead}, or name the last good commit, --affected=<sha>`,
       'VX_E_AFFECTED_BASE',
     )
   }
