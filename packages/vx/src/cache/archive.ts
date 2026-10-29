@@ -1153,6 +1153,8 @@ interface Tree {
  */
 class Extractor {
   private readonly staged: Staged[] = []
+  /** Directories given owner write for a rename into them, with the mode to put back. */
+  private readonly reopened = new Map<string, number>()
   /** Empty output directories made, with the top of each chain created. */
   private readonly madeDirs: Array<{ dir: string; created: string }> = []
   private inflight: Promise<unknown>[] = []
@@ -1577,6 +1579,16 @@ class Extractor {
   async commit(
     metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
   ): Promise<void> {
+    try {
+      await this.commitAll(metaFor)
+    } finally {
+      this.closeReopened()
+    }
+  }
+
+  private async commitAll(
+    metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
+  ): Promise<void> {
     await this.drain()
     // One stat per directory, shared by the filesystem check and the group.
     const dirStats = new Map<string, Stats>()
@@ -1688,9 +1700,47 @@ class Extractor {
       const dir = path.dirname(s.target)
       await this.makeDirIn(t.base, dir)
       await this.assertStillContained(t.base, dir, checked)
-      await rename(s.tmp, s.target)
+      await this.renameInto(s.tmp, s.target)
     }
     await rm(t.at, { recursive: true, force: true })
+  }
+
+  /**
+   * `rename`, into a directory of this user's that withholds its own write
+   * (a task's `chmod 555 dist/ro`, which a hit now restores): the
+   * directory gets owner write and search for the rest of the commit, and
+   * its mode back after. Without it every later hit that changed a file
+   * there failed EACCES, as only root could replace it.
+   */
+  private async renameInto(from: string, to: string): Promise<void> {
+    try {
+      await rename(from, to)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EACCES' || !this.reopen(path.dirname(to)))
+        throw err
+      await rename(from, to)
+    }
+  }
+
+  private reopen(dir: string): boolean {
+    if (this.reopened.has(dir)) return false
+    const st = lstatSync(dir, { throwIfNoEntry: false })
+    if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
+    if ((st.mode & 0o300) === 0o300) return false
+    this.reopened.set(dir, st.mode & 0o7777)
+    chmodSync(dir, (st.mode & 0o7777) | 0o300)
+    return true
+  }
+
+  private closeReopened(): void {
+    for (const [dir, mode] of this.reopened) {
+      try {
+        chmodSync(dir, mode)
+      } catch {
+        // gone with an abort's cleanup
+      }
+    }
+    this.reopened.clear()
   }
 
   private async makeDirIn(base: string, dir: string): Promise<void> {
@@ -1745,7 +1795,7 @@ class Extractor {
    */
   private async place(s: Staged, mode: number, t: Date | undefined): Promise<void> {
     try {
-      await rename(s.tmp, s.target)
+      await this.renameInto(s.tmp, s.target)
     } catch (err) {
       if (!s.staged || (err as NodeJS.ErrnoException).code !== 'EXDEV') throw err
       const side = siblingTemp(s.target)
@@ -1756,7 +1806,7 @@ class Extractor {
           chmodSync(side, restoredMode(mode))
           if (t !== undefined) utimesSync(side, t, t)
         }
-        await rename(side, s.target)
+        await this.renameInto(side, s.target)
       } catch (e) {
         await unlink(side).catch(() => undefined)
         throw e
