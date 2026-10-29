@@ -2523,7 +2523,8 @@ The task graph has a cycle. The message names the loop; drop one of its
 
 A run reads its configs only from `.vx/projects.lock.json`, and that
 lock is missing, not one this vx reads (not JSON, another version, a
-hand-edited entry), or holds no entry for a project the workspace has.
+hand-edited entry), holds no entry for a project the workspace has, has
+not seen a `vx.config` written since, or locks one that is gone.
 Run `vx lock`, then the verb again. Commit the lock; `vx lock --check`
 on CI fails one that no longer matches the configs.
 
@@ -2548,11 +2549,11 @@ message is that plugin's or check's: do what it says.
 
 #### `VX_E_FS`
 
-The file system refused a write, or the cache index could not be opened:
-permissions, a full disk, a file where the cache directory goes, a
-directory where `cache.db` goes. The message names the path. Free space
-(`vx cache clean --max-size <size>` trims the cache), grant the write,
-or move the path away, then re-run.
+The file system refused a read or a write, or the cache index could not
+be opened: permissions, a full disk, a file where the cache directory
+goes, a directory where `cache.db` goes. The message names the path. Free
+space (`vx cache clean --max-size <size>` trims the cache), grant the
+access, or move the path away, then re-run.
 
 #### `VX_E_FDS`
 

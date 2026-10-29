@@ -347,11 +347,15 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         (err: NodeJS.ErrnoException) =>
           err.code === 'EACCES' || err.code === 'EPERM' ? err.code : null,
       )
-      throw new UserError(
-        denied !== null
-          ? `${LOCKFILE_NAME} locks ${rel}${named}, but its ${file} is not readable by this user (${denied})`
-          : `${LOCKFILE_NAME} locks ${rel}${named}, but its ${file} is gone — run \`vx lock\``,
-      )
+      throw denied !== null
+        ? new UserError(
+            `${LOCKFILE_NAME} locks ${rel}${named}, but its ${file} is not readable by this user (${denied})`,
+            'VX_E_FS',
+          )
+        : new UserError(
+            `${LOCKFILE_NAME} locks ${rel}${named}, but its ${file} is gone — run \`vx lock\``,
+            'VX_E_LOCK',
+          )
     }
     const loaded =
       withFile.length === 0 ? [] : frozenProjectConfigs(await lock(), withFile, workspaceRoot)
