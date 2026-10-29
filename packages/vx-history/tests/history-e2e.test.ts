@@ -241,7 +241,7 @@ describe('vx-history plugin end to end', () => {
       expect(c.declared).toBe(true)
       const pretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
       expect(pretty.exitCode).toBe(0)
-      const text = pretty.stdout.toString()
+      const text = Bun.stripANSI(pretty.stdout.toString())
       expect(text).toContain('budgets')
       expect(text).toMatch(/a#build\s+1\s+\S+\s+\d+ MB\s+\S+\s+\d+ MB$/m)
       expect(text).toMatch(/b#build\s+1\s+\S+\s+—\s+\S+\s+—$/m)
@@ -376,7 +376,7 @@ describe('vx-history plugin end to end', () => {
       const mb = (a.maxPeakRssBytes! * 2) / (1024 * 1024)
       expect(a.reservation).toEqual({ memory: Math.ceil(mb / 64) * 64 })
       const pretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
-      expect(pretty.stdout.toString()).toContain(' · 8192 MB (the memory option)\n')
+      expect(Bun.stripANSI(pretty.stdout.toString())).toContain(' · 8192 MB (the memory option)\n')
       // The same history with learning off and no memory option: nothing is
       // learned, and the budget says where it came from.
       await Bun.write(
@@ -391,7 +391,9 @@ describe('vx-history plugin end to end', () => {
       const offOut = JSON.parse(off.stdout.toString()) as typeof out
       expect(offOut.tasks.find((t) => t.id === 'a#build')!.reservation).toBeNull()
       const offPretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
-      expect(offPretty.stdout.toString()).toContain(' MB (what this process may use)\n')
+      expect(Bun.stripANSI(offPretty.stdout.toString())).toContain(
+        ' MB (what this process may use)\n',
+      )
     },
     TIMEOUT,
   )
