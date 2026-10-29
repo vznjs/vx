@@ -69,6 +69,26 @@ describe.skipIf(
     })
   })
 
+  // A global vx that hands off to the project's waits for it the whole run,
+  // and it hid nothing: `run()` hides, and the hand-off comes before it.
+  it('a vx that hands off hides its env from the vx it runs and its tasks', () => {
+    const canary = `c${crypto.randomUUID()}`
+    const script = `
+const { handOff } = await import(${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'handoff.ts'))})
+await handOff('sh', ['-c', ${JSON.stringify(READ_PARENT)}, 'sh', process.env.VX_TEST_CANARY.slice(0, 12)])
+`
+    const r = Bun.spawnSync({
+      cmd: [process.execPath, '-e', script],
+      env: { PATH: process.env['PATH'], VX_TEST_CANARY: canary },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect({ exit: r.exitCode, child: r.stdout.toString().trim() }).toEqual({
+      exit: 0,
+      child: 'CLEAN',
+    })
+  })
+
   // What hiding costs a command, printed for the record (owner,
   // 2026-10-13): min of 10 fresh processes, `bun:ffi` load included.
   it('prints what it costs', () => {

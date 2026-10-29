@@ -68,3 +68,6 @@ export function vxPath(): string // the compiled binary, else the source entry
   the shapes (a local install, none, the global itself, a pnpm symlink,
   a submodule, a worktree) for both halves, and
   `tests/workspace-root-file.test.ts` the root.
+- The vx that hands off waits out the run beside its tasks, so it hides
+  its env first (`util/hide-env`), as every verb does; it never reaches
+  the verb that would (`tests/hide-env.unsafe.test.ts`).
