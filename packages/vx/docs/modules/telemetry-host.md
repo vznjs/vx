@@ -27,7 +27,7 @@ export async function subscribeTelemetry(
 ```
 
 A plugin's `telemetry` may return one sink or an array. Each is checked
-before it is kept: an object, `wants` an array when present, and at
+before it is kept: an object, `wants` an array of known record kinds when present, and at
 least one of `onRecord` / `onRunSummary` a function — anything else is
 refused with the shape that arrived named. A plugin that throws during
 consultation is logged and skipped, and so is one whose `telemetry()`

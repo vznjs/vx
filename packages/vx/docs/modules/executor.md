@@ -53,7 +53,9 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   is shared, and to no other remote executor; `capacity` is how
   many tasks it runs at once (a positive integer, else the run is
   refused), which makes its tasks a POOL of that size instead of local
-  worker slots.
+  worker slots. Each flag (`remote`, `sandbox`, `servers`, `runtime`,
+  `exclusive`, `timeouts`) is `true`, `false` or absent, else the run is
+  refused: core reads it as `=== true`.
 - `TaskPlacement { taskId; projectName; projectDir; command; pinnedLocal;
 cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   before scheduling, so it cannot depend on anything resolved per attempt.
