@@ -64,8 +64,9 @@ alone decides what it reads and where it writes, by the server's
   `source_project_path` (GitLab 19.5+) names its own project: a fork's
   runs in the parent project with the fork's branch as its `ref_path`.
 
-A bad token is `401`. A server with `ALLOW` empty refuses every
-request: `401`, `the server admits no CI: set ALLOW`. A server that
+A bad token is `401`. A server with `ALLOW` empty does not start; a
+Worker, which cannot refuse to, refuses every request: `401`,
+`the server admits no CI: set ALLOW`. A server that
 cannot fetch the issuer's keys answers `502`: the token is not refused,
 so a client keeps the remote for its next request.
 
@@ -137,5 +138,7 @@ saying what to fix:
 ```
 
 A JSON body without `Content-Type: application/json` is `400`; an unknown
-route `404`; a route's wrong method `405` with `Allow`. Turbo's `teamId`
+route `404`; a route's wrong method `405` with `Allow`; a bucket that
+cannot be read or written `502`, and a failure the server did not
+expect `500`, each `message` what failed. Turbo's `teamId`
 and `slug` query parameters are `400`: the token names the repository.

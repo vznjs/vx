@@ -52,6 +52,7 @@ import {
   discoverCliProjects,
   loadCliProjects,
   loadCliWorkspace,
+  stageCacheDir,
 } from './workspace-config.js'
 
 /**
@@ -120,7 +121,7 @@ async function workspaceFingerprintClaims(
   const claims = fingerprintClaims(ws.plugins)
   const ctx = {
     workspaceRoot: root,
-    cacheDir: load.cacheDir ?? ws.cacheDir,
+    cacheDir: stageCacheDir(ws, load),
     warn: (m: string) => process.stderr.write(`${maskedLine(m)}\n`),
     projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
   }
@@ -131,8 +132,8 @@ async function workspaceFingerprintClaims(
   }
 }
 
-async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
-  return await discoverCliProjects(await findWorkspaceRoot(cwd))
+async function loadWorkspaceProjects(cwd: string, load: CliLoadOptions): Promise<ProjectMeta[]> {
+  return await discoverCliProjects(await findWorkspaceRoot(cwd), load)
 }
 
 export async function findCwdProject(cwd: string): Promise<string | null> {
@@ -146,9 +147,10 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
  */
 export async function findCwdSelection(
   cwd: string,
+  load: CliLoadOptions = {},
 ): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await discoverCliProjects(root)
+  const projects = await discoverCliProjects(root, load)
   const abs = path.resolve(cwd)
   const within = (dirOf: (p: ProjectMeta) => string): { name: string; dir: string } | null => {
     let best: { name: string; dir: string } | null = null
@@ -313,7 +315,7 @@ export async function resolveFilters(
   verb: 'run' | 'show' | 'watch' = 'run',
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await loadWorkspaceProjects(cwd)
+  const projects = await loadWorkspaceProjects(cwd, load)
   let parsed: ReturnType<typeof parseFilter>[]
   try {
     parsed = raw.map((r) => parseFilter(r, root))
@@ -436,10 +438,11 @@ export async function resolveFilters(
     onEmptyWalk: (f, matched) => {
       if (f.negate) return
       const which = matched.join(', ')
+      const several = matched.length > 1
       emptyWalks.push(
         f.onlyDeps
-          ? `filter "${f.raw}" matched ${which}, which depends on no project`
-          : `filter "${f.raw}" matched ${which}, and no project depends on it`,
+          ? `filter "${f.raw}" matched ${which}, which ${several ? 'depend' : 'depends'} on no project`
+          : `filter "${f.raw}" matched ${which}, and no project depends on ${several ? 'them' : 'it'}`,
       )
     },
   })
@@ -551,7 +554,7 @@ export async function pickTask(
   /** The projects `--filter` / `--affected` selected; every project when absent. */
   only?: ReadonlySet<string>,
 ): Promise<PickedTask | null | 'interrupted'> {
-  const projects = await loadWorkspaceProjects(cwd)
+  const projects = await loadWorkspaceProjects(cwd, load)
   // The staged load: a task a `project` plugin gave a config-less package
   // is on the menu, as it is in a run.
   const staged = await loadCliProjects(await findWorkspaceRoot(cwd), projects, 'all', load)

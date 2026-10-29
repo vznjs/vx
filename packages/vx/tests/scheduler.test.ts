@@ -923,6 +923,33 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     })
   }
 
+  it('a 50,000-deep chain of hits held behind its root is released without a stack overflow', async () => {
+    // Every hit restores before the root's exec ends, so each is held
+    // (item 963) and the root's finish releases the whole chain at once.
+    // Released by recursion, the walk threw RangeError at 30,000 hits and the
+    // run never resolved. The builder takes a 50,000-deep chain (item 737).
+    const DEPTH = 50_000
+    const chain = [node('p#t0')]
+    for (let i = 1; i < DEPTH; i++) chain.push(node(`p#t${i}`, [`p#t${i - 1}`]))
+    let restores = 0
+    let releaseRoot!: () => void
+    const rootHeld = new Promise<void>((r) => (releaseRoot = r))
+    const out = await runGraph({
+      nodes: nodes(...chain),
+      concurrency: 4,
+      restoreTier: new Set(chain.slice(1).map((n) => n.id)),
+      execute: async (n) => {
+        if (n.id === 'p#t0') {
+          await rootHeld
+          return success(n)
+        }
+        if (++restores === DEPTH - 1) releaseRoot()
+        return hit(n)
+      },
+    })
+    expect([out.size, out.get(`p#t${DEPTH - 1}`)?.status]).toEqual([DEPTH, 'cache-hit'])
+  })
+
   it("a failed dep of a restore-tier task skips the task's dependents, naming the root (item 963)", async () => {
     // The hit stays a hit (its key is its deps' inputs, not their outcome);
     // deploy ran green after check failed.
@@ -1338,6 +1365,44 @@ describe('runGraph restore-tier (local short-circuit)', () => {
         },
       })
       expect(calls).toContain('api#dev')
+    })
+
+    // Fail-fast and a stop finished it `skipped` / `aborted`: an outcome for
+    // a server the run was never going to start.
+    it('has no outcome when fail-fast stops the run before it is due', async () => {
+      const out = await runGraph({
+        nodes: new Map([...graph(), ['x#fail', node('x#fail')]]),
+        concurrency: 4,
+        restoreTier: tier,
+        continueMode: 'never',
+        execute: async (n) => {
+          if (n.id === 'x#fail') return failed(n)
+          if (n.id === 'db#migrate') await new Promise((r) => setTimeout(r, 20))
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(out.get('x#fail')?.status).toBe('failed')
+      expect(out.has('api#dev')).toBe(false)
+      expect(out.get('web#ci')?.status).toBe('skipped')
+    })
+
+    it('has no outcome when the run is stopped before it is due', async () => {
+      const controller = new AbortController()
+      const out = await runGraph({
+        nodes: graph(),
+        concurrency: 4,
+        restoreTier: tier,
+        signal: controller.signal,
+        execute: async (n) => {
+          if (n.id === 'db#migrate') {
+            controller.abort()
+            await new Promise((r) => setTimeout(r, 20))
+          }
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(out.has('api#dev')).toBe(false)
+      expect(out.get('web#ci')?.status).toBe('aborted')
     })
 
     it('is skipped as before when its own dependency failed', async () => {

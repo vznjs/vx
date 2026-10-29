@@ -20,7 +20,14 @@ import {
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
-import { maskedLine, nearest, type PluginSecrets, SecretBroker, UserError } from '../util/index.js'
+import {
+  maskedLine,
+  nearest,
+  type PluginSecrets,
+  SecretBroker,
+  thrownMessage,
+  UserError,
+} from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, Logger, RunStartInfo } from '../report/index.js'
 import type { CiContext } from './run-context.js'
@@ -60,7 +67,8 @@ export interface VxPlugin {
 
   /**
    * The workspace config, before anything is derived from it (concurrency,
-   * cacheDir, timeout, …). `plugins` is already fixed by the time this runs.
+   * cacheDir, timeout, …). `plugins` is already fixed by the time this runs:
+   * an edit to it is refused.
    * Core re-validates after each plugin, as it does a user's file.
    * `ctx.setBranch` names what the CI knows of the branch: its cache scope
    * and the commit it is compared with.
@@ -78,7 +86,7 @@ export interface VxPlugin {
    * (with no config; named by `name`, else its path). A project named by
    * its path takes `name`; one its config names keeps that name, and a
    * different name from an earlier plugin is refused, as is a directory
-   * outside the root. Two projects of one name are refused once the stage
+   * outside the root and the name `//` away from it. Two projects of one name are refused once the stage
    * ends. `deps` and `reach` from every plugin union then; a target that is
    * no project is refused.
    */
@@ -154,7 +162,7 @@ export interface VxPlugin {
    * on this machine, with the tasks running here right now. Return `false`
    * to hold it until something finishes (it is asked again then). Asked
    * many times per run, so it must be cheap and synchronous; a throw, or
-   * an answer that is a Promise, is reported once and the plugin admits
+   * an answer that is a Promise or not a boolean or undefined, is reported once and the plugin admits
    * from then on — a policy never
    * breaks a run. Restore-tier hits, tasks on an executor pool and groups
    * hold no local resources: never asked, never in `ctx.running`. When
@@ -224,7 +232,8 @@ export interface VxPlugin {
    * renderer in place. The first plugin, in declaration order, that
    * returns one renders the run; the rest are not asked. Not consulted
    * when an embedder passed its own `log`. A logger that throws hands the
-   * rest of the run back to core's renderer with one warning.
+   * rest of the run back to core's renderer with one warning; a hook that
+   * does not answer within the teardown bound (3 s) is passed over with one.
    */
   output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
 
@@ -459,7 +468,7 @@ export interface FingerprintClaim {
    * by `--affected` with the file's bytes at the base ref and in the
    * working tree (`null` where it does not exist). Return `undefined` to
    * select every project — the answer a claimant gives when it cannot
-   * tell.
+   * tell. A name that is not one of `ctx.projects` is refused.
    */
   affected(
     change: FingerprintChange,
@@ -852,7 +861,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       if (disabled.has(plugin)) return
       disabled.add(plugin)
       warn(
-        `[vx] plugin '${plugin.name}' threw in ${where}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx] plugin '${plugin.name}' threw in ${where}; disabled for this run: ${thrownMessage(err)}`,
       )
     }
     const ctx: PluginContext = {
@@ -949,9 +958,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       throw new PluginSetupError(
         plugin,
         // Masked at the source, as plugin-host.ts's `safe()` does (L-11).
-        maskedLine(
-          `plugin '${plugin.name}' failed in setup: ${err instanceof Error ? err.message : String(err)}`,
-        ),
+        maskedLine(`plugin '${plugin.name}' failed in setup: ${thrownMessage(err)}`),
       )
     }
   }

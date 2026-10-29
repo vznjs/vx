@@ -61,3 +61,23 @@ it('a deleted config the lock holds is refused, not silently dropped', async () 
     '✗ vx run  .vx/projects.lock.json locks packages/app ("app"), but its vx.config.mjs is gone — run `vx lock`',
   ])
 }, 30_000)
+
+it('the root project is named as the root, not as `.`', async () => {
+  const rootConfig = path.join(root, 'vx.config.mjs')
+  await Bun.write(
+    rootConfig,
+    `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+  )
+  expect((await vx(root, ['lock'])).code).toBe(0)
+  await unlink(rootConfig)
+  const run = await vx(root, ['run', 'build', '--all'])
+  expect([run.code, run.err.trim()]).toEqual([
+    1,
+    '✗ vx run  .vx/projects.lock.json locks the workspace root project ("fixture-root"), but its vx.config.mjs is gone — run `vx lock`',
+  ])
+  const check = await vx(root, ['lock', '--check'])
+  expect(check.code).toBe(1)
+  expect(check.err).toContain(
+    "✗ vx lock --check  the lock holds the workspace root project, which has no vx.config now — run 'vx lock'",
+  )
+}, 30_000)

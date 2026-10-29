@@ -131,7 +131,7 @@ over (in order):
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
    settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
-   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`)
+   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, `.npmrc`)
    and folds each whole into every task.
 
    The run reads each claimed root file once, before any task. A task
@@ -1284,8 +1284,10 @@ same way (its `--dry` only reads, and reads). The readers (`vx show`, `why`,
 `last`, `info`) open such a directory read-only and go on.
 Where the directory cannot be created at all (a read-only checkout with
 no cache yet) a run says `cannot create cache directory <path>
-(EACCES: …)`, naming the workspace `cache.dir` field and `--cache-dir`;
-the readers and `vx cache clean` find no cache and go on.
+(EACCES: …)` (`VX_E_FS`), naming the workspace `cache.dir` field and
+`--cache-dir`; a file where the directory or a parent of it goes is
+named as the one to move away. The readers and `vx cache clean` find no
+cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out
 of room is `[vx] cache save failed: ENOSPC …` (the task's work ran, the
