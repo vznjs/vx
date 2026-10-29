@@ -42,11 +42,11 @@ export const warnToStderr = (message: string): void => {
   sayLine('warn', message)
 }
 
-export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorkspace> {
-  const { workspaceConfig, plugins, branch } = await loadWorkspacePlugins(
-    workspaceRoot,
-    warnToStderr,
-  )
+export async function loadCliWorkspace(
+  workspaceRoot: string,
+  warn: (message: string) => void = warnToStderr,
+): Promise<CliWorkspace> {
+  const { workspaceConfig, plugins, branch } = await loadWorkspacePlugins(workspaceRoot, warn)
   return {
     workspaceConfig,
     plugins,
@@ -65,14 +65,9 @@ export async function discoverCliProjects(
   root: string,
   load: CliLoadOptions = {},
 ): Promise<ProjectMeta[]> {
-  const ws = await loadCliWorkspace(root)
-  return await discoverProjects(
-    root,
-    lockReader(root),
-    ws.plugins,
-    stageCacheDir(ws, load),
-    warnToStderr,
-  )
+  const warn = load.warn ?? warnToStderr
+  const ws = await loadCliWorkspace(root, warn)
+  return await discoverProjects(root, lockReader(root), ws.plugins, stageCacheDir(ws, load), warn)
 }
 
 /**
@@ -157,6 +152,12 @@ export interface CliLoadOptions {
    * `build` there, and a reader that skipped it showed less than a run.
    */
   closure?: boolean
+  /**
+   * Where a plugin's warning goes, stderr by default. `vx watch` re-reads
+   * the configs around every cycle, and the cycle's run says each warning
+   * itself: printed per read, one cycle said it seven times.
+   */
+  warn?: (message: string) => void
 }
 
 /**
@@ -171,7 +172,8 @@ export async function loadCliProjects(
   scope: 'all' | readonly string[] = 'all',
   opts: CliLoadOptions = {},
 ): Promise<Map<string, ProjectEntry>> {
-  const ws = await loadCliWorkspace(workspaceRoot)
+  const warn = opts.warn ?? warnToStderr
+  const ws = await loadCliWorkspace(workspaceRoot, warn)
   const { plugins } = ws
   const cacheDir = stageCacheDir(ws, opts)
   const loaded = await loadProjects({
@@ -184,7 +186,7 @@ export async function loadCliProjects(
       ? { closure: true as const, packageGraph: buildPackageGraph([...metas]) }
       : { closure: false as const }),
     configs: lockOfDiscovery(metas) ?? lockReader(workspaceRoot),
-    warn: warnToStderr,
+    warn,
   })
   return loaded.projects
 }

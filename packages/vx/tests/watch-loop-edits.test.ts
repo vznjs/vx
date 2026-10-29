@@ -139,6 +139,9 @@ describe('vx watch loop (e2e)', () => {
     await until(() => runWarned(w, 'WS-EDIT-SEEN'), 'the cycle under the edited workspace config')
     await Bun.sleep(SETTLE_MS)
     expect(w.cycles()).toBe(1)
+    // Said by the cycle's run alone: the watch re-reads the configs around
+    // each cycle, and each read printed it again (seven in one cycle).
+    expect(w.err().split('WS-EDIT-SEEN').length - 1).toBe(1)
     // The config is not key material: the task is a hit under it.
     expect(await executions(f.log)).toBe(1)
   }, 40_000)
