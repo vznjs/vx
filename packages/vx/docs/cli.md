@@ -2814,7 +2814,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v51 · index schema v49
+  cache versions    keys vx-cache-v51 · index schema v50
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -3216,15 +3216,14 @@ a hit's row tells. `--format json` lists every row.
 **Steps.** Below the tasks, the steps the run did not wait on (`vx:prefetch`, a
 remote's downloads beside the tasks), which its own output never shows:
 `success  vx:prefetch  1.20s  internal`. They are kept per run, the
-newest 50, in `<cache dir>/steps/<run id>.json`, written only by a run
-that had one; `--format json` adds them as `steps`.
+newest 50, as `steps` rows of cache.db, written only by a run that had
+one; `--format json` adds them as `steps`.
 
 **Warnings.** Below the steps, what the run warned of (a glob that
 matched no files, a remote's 403, a plugin's notice), each as it said
 it, colour stripped, under `warnings`: on a terminal they scroll past,
 and the footer keeps only their count. Kept per run like the steps, the
-newest 50, in `<cache dir>/warnings/<run id>.json`, written only by a
-run that warned.
+newest 50, as `warnings` rows, written only by a run that warned.
 
 **Re-run what failed.** A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
@@ -3356,15 +3355,24 @@ vx last --sql "SELECT date(started_at / 1000, 'unixepoch') AS day, SUM(exit_ok =
   FROM invocations GROUP BY day"
 # the input files a key folded
 vx last --sql "SELECT components FROM entry_inputs WHERE entry_hash = 'd6e223ce81dfdb2c'"
+# what the runs warned of, and the steps they did not wait on
+vx last --sql "SELECT run_id, text FROM warnings ORDER BY run_id DESC"
+vx last --sql "SELECT step, AVG(duration_ms) FROM steps GROUP BY step"
 ```
 
 The tables: `invocations` (one row per run), `runs` (one row per task
 per run, joined on `run_id`: status, duration, cache hit, cpu, peak and
 mean memory, attempts, timeout, skip and remote reasons, where it ran),
-`entries` (the cached keys), `entry_inputs` (each key's input
-components), `task_durations` and `task_outcomes` (what forecasts and
-flakiness read). `SELECT name, sql FROM sqlite_schema` lists them all.
-Times are epoch milliseconds. The history keeps 30 days.
+`steps` (`run_id`, `seq`, `step`, `duration_ms`, `ok`: the steps a run
+did not wait on), `warnings` (`run_id`, `seq`, `text`), `failures`
+(`run_id`, `task_id`, `input_moved`, `output`, `locations`,
+`sandbox_fix`: a failed task's output; the last two JSON), `entries`
+(the cached keys), `entry_inputs` (each key's input components),
+`task_durations` and `task_outcomes` (what forecasts and flakiness
+read), `lockfile_memos` (a lockfile plugin's parse, by file and
+claimant). `SELECT name, sql FROM sqlite_schema` lists them all. Times
+are epoch milliseconds. The history keeps 30 days; `steps`, `warnings`
+and `failures` the newest 50 runs that had any.
 
 A write is refused (`--sql reads only`, exit 1), and the query runs
 with SQLite's `query_only` on, so a `WITH` that hides one fails too;
@@ -3395,9 +3403,9 @@ a cached task, `inputs` the reads of its project no `inputs.files`
 glob matches (the terminal's `and, if the output depends on them, …`
 line). A task
 failed by `inputStability.severity: 'error'` adds `inputMoved`, the
-input that changed during the run. They live in `<cacheDir>/failures/<runId>.json`, the
-newest 50 failed runs; past those, or when the write was refused, a
-failed row reads `output: ''` and `locations: []`.
+input that changed during the run. They live in cache.db's `failures`
+rows, the newest 50 failed runs; past those, or when the write was
+refused, a failed row reads `output: ''` and `locations: []`.
 
 ### `--cache-dir`
 

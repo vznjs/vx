@@ -7,14 +7,15 @@
 // fallback for a project the file does not list and the `--affected`
 // diff are one implementation here, so a third lockfile is a parser.
 //
-// The digests are memoised on disk under the cache dir by the file's
-// xxh3, so a warm run pays one read + hash + a small JSON read, never a
-// parse; within one process (a run, a watch cycle) the file's size,
+// The digests are memoised in cache.db (`lockfile_memos`, one row per
+// lockfile and claimant) by the file's xxh3, so a warm run pays one read +
+// hash + one row read, never a parse; within one process (a run, a watch cycle) the file's size,
 // mtime, ctime and inode gate even the read; and per run the read happens once (a WeakMap
 // on the context core hands every `key` call of a run).
 
 import path from 'node:path'
-import { rename, stat } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
+import { type LockfileMemo, readLockfileMemo, writeLockfileMemo } from '../cache/index.js'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {
@@ -62,6 +63,12 @@ export interface LockfileClaimOptions {
    * parse. Called once per distinct content, under either scope.
    */
   readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+  /**
+   * Each importer's recorded dependency names, from the same text, kept in
+   * the memo so a staleness check reads them without a parse. Called once
+   * per distinct content.
+   */
+  readonly recorded?: (text: string) => ReadonlyMap<string, readonly string[]>
 }
 
 /**
@@ -89,6 +96,11 @@ export interface LockfileClaimHooks {
     readonly workspaceRoot: string
     readonly cacheDir: string
   }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
+  /** `recorded`'s answer for the file as it is now, as `importers` reads it; undefined when the file is absent or `recorded` is unset. */
+  recorded(ctx: {
+    readonly workspaceRoot: string
+    readonly cacheDir: string
+  }): Promise<ReadonlyMap<string, ReadonlySet<string>> | undefined>
 }
 
 interface Digests {
@@ -96,16 +108,7 @@ interface Digests {
   readonly lock: string
   readonly importers: ReadonlyMap<string, string>
   readonly edges: ReadonlyMap<string, LockfileImporter>
-}
-
-interface Memo {
-  version: number
-  claimant: string
-  lock: string
-  /** `extraFiles` → content hash when the digests were computed. */
-  extras?: Record<string, string>
-  importers: Record<string, string>
-  edges?: Record<string, LockfileImporter>
+  readonly recorded: ReadonlyMap<string, ReadonlySet<string>> | undefined
 }
 
 /**
@@ -202,6 +205,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       String(digest),
       String(options.extraFiles ?? ''),
       String(options.importers ?? ''),
+      String(options.recorded ?? ''),
     ].join('\0'),
   )
   if (scope !== 'project' && scope !== 'workspace') {
@@ -216,8 +220,18 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       extras: readonly string[]
       extraStats: Readonly<Record<string, string>>
       digests: Digests
+      /** The memo a run found no index to keep in (a discover before the first run's open). */
+      unsaved?: LockfileMemo
     }
   >()
+  // Workspace scope with nothing else to keep has nothing a memo saves.
+  const memoises =
+    scope === 'project' || options.importers !== undefined || options.recorded !== undefined
+  const readMemo = (cacheDir: string, lock: string) => {
+    const memo = readLockfileMemo(cacheDir, file, claimant)
+    if (memo === undefined || memo.version !== version || memo.lock !== lock) return undefined
+    return memo
+  }
   // Per run: every `key` call of one run gets the same context object.
   const perRun = new WeakMap<object, Promise<Digests>>()
 
@@ -227,7 +241,12 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     try {
       identity = identityOf(await stat(full))
     } catch {
-      const digests: Digests = { lock: '', importers: new Map(), edges: new Map() }
+      const digests: Digests = {
+        lock: '',
+        importers: new Map(),
+        edges: new Map(),
+        recorded: undefined,
+      }
       seen.set(workspaceRoot, { identity: 'gone', extras: [], extraStats: {}, digests })
       return digests
     }
@@ -235,26 +254,30 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     if (last !== undefined && last.identity === identity) {
       const now = await statsOf(workspaceRoot, last.extras)
       if (now.every((s, i) => s === last.extraStats[last.extras[i]!])) {
+        if (last.unsaved !== undefined && writeLockfileMemo(cacheDir, file, claimant, last.unsaved))
+          delete last.unsaved
         return last.digests
       }
     }
     const bytes = await Bun.file(full).bytes()
     const lockHash = xxh3hex(bytes)
-    const memoFile = path.join(cacheDir, 'lockfile-claims', `${file}.json`)
     // The extra files the last digest read, and their hashes now: a warm run
     // re-hashes the files the memo names and never parses to learn them.
-    const memo = await readMemo(memoFile, version, claimant, lockHash)
+    const memo = memoises ? readMemo(cacheDir, lockHash) : undefined
     let extras: Record<string, string> = {}
     let extraStats: Record<string, string> = {}
     let importers: ReadonlyMap<string, string> | undefined
     let edges: ReadonlyMap<string, LockfileImporter> = new Map()
+    let recorded: ReadonlyMap<string, readonly string[]> | undefined
+    let unsaved: LockfileMemo | undefined
     if (memo !== undefined) {
       const now = await hashExtras(workspaceRoot, Object.keys(memo.extras))
       if (Object.entries(memo.extras).every(([rel, h]) => now.hashes[rel] === h)) {
         extras = memo.extras
         extraStats = now.stats
-        importers = memo.importers
-        edges = memo.edges
+        importers = new Map(Object.entries(memo.importers))
+        edges = new Map(Object.entries(memo.edges as Record<string, LockfileImporter>))
+        recorded = memo.recorded === undefined ? undefined : new Map(Object.entries(memo.recorded))
       }
     }
     if (importers === undefined) {
@@ -268,9 +291,17 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
           ? new Map<string, string>()
           : digest(text, new Map(Object.entries(extras)))
       edges = options.importers?.(text) ?? new Map()
-      // Workspace scope with no edges to keep has nothing a memo saves.
-      if (scope === 'project' || options.importers !== undefined) {
-        await writeMemo(memoFile, { version, claimant, lock: lockHash }, extras, importers, edges)
+      recorded = options.recorded?.(text)
+      if (memoises) {
+        const kept: LockfileMemo = {
+          version,
+          lock: lockHash,
+          extras,
+          importers: Object.fromEntries(importers),
+          edges: Object.fromEntries(edges),
+          ...(recorded !== undefined ? { recorded: Object.fromEntries(recorded) } : {}),
+        }
+        if (!writeLockfileMemo(cacheDir, file, claimant, kept)) unsaved = kept
       }
     }
     const rels = Object.keys(extras)
@@ -278,8 +309,22 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       rels.length === 0
         ? lockHash
         : xxh3hex([lockHash, ...rels.map((r) => `${r}\0${extras[r]}`)].join('\0'))
-    const digests: Digests = { lock, importers, edges }
-    seen.set(workspaceRoot, { identity, extras: rels, extraStats, digests })
+    const digests: Digests = {
+      lock,
+      importers,
+      edges,
+      recorded:
+        recorded === undefined
+          ? undefined
+          : new Map([...recorded].map(([i, names]) => [i, new Set(names)])),
+    }
+    seen.set(workspaceRoot, {
+      identity,
+      extras: rels,
+      extraStats,
+      digests,
+      ...(unsaved !== undefined ? { unsaved } : {}),
+    })
     return digests
   }
   const loadOnce = (ctx: KeyHookContext): Promise<Digests> => {
@@ -339,8 +384,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
             // parser: `--affected` asks on every diff, and a cold parse of
             // a large lockfile was most of its selection's cost.
             async extraFiles(_file: string, bytes: Uint8Array, ctx: FingerprintContext) {
-              const memoFile = path.join(ctx.cacheDir, 'lockfile-claims', `${file}.json`)
-              const memo = await readMemo(memoFile, version, claimant, xxh3hex(bytes))
+              const memo = memoises ? readMemo(ctx.cacheDir, xxh3hex(bytes)) : undefined
               return memo !== undefined
                 ? Object.keys(memo.extras)
                 : options.extraFiles!(decode(bytes))
@@ -359,6 +403,10 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     async importers(ctx) {
       const digests = await load(ctx.workspaceRoot, ctx.cacheDir)
       return digests.lock === '' ? undefined : digests.edges
+    },
+    async recorded(ctx) {
+      const digests = await load(ctx.workspaceRoot, ctx.cacheDir)
+      return digests.lock === '' ? undefined : digests.recorded
     },
   }
 }
@@ -392,59 +440,6 @@ function digestFor(importers: ReadonlyMap<string, string>, importer: string): st
 /** The lockfile's importer path for a project directory: `.` for the root, POSIX otherwise. */
 function importerOf(workspaceRoot: string, projectDir: string): string {
   return relPosix(workspaceRoot, projectDir) || '.'
-}
-
-async function readMemo(
-  memoFile: string,
-  version: number,
-  claimant: string,
-  lock: string,
-): Promise<
-  | {
-      extras: Record<string, string>
-      importers: Map<string, string>
-      edges: Map<string, LockfileImporter>
-    }
-  | undefined
-> {
-  try {
-    const memo = (await Bun.file(memoFile).json()) as Memo
-    if (memo.version !== version || memo.claimant !== claimant || memo.lock !== lock) {
-      return undefined
-    }
-    return {
-      extras: memo.extras ?? {},
-      importers: new Map(Object.entries(memo.importers)),
-      edges: new Map(Object.entries(memo.edges ?? {})),
-    }
-  } catch {
-    return undefined
-  }
-}
-
-async function writeMemo(
-  memoFile: string,
-  identity: Pick<Memo, 'version' | 'claimant' | 'lock'>,
-  extras: Record<string, string>,
-  importers: ReadonlyMap<string, string>,
-  edges: ReadonlyMap<string, LockfileImporter>,
-): Promise<void> {
-  const memo: Memo = {
-    ...identity,
-    extras,
-    importers: Object.fromEntries(importers),
-    ...(edges.size > 0 ? { edges: Object.fromEntries(edges) } : {}),
-  }
-  // Write-then-rename: a reader never sees a half-written memo, and two
-  // concurrent runs each land a whole one.
-  const tmp = `${memoFile}.tmp-${process.pid}-${Date.now()}`
-  try {
-    await Bun.write(tmp, JSON.stringify(memo))
-    await rename(tmp, memoFile)
-  } catch {
-    // The memo is a speed-up, never a requirement: the digests are
-    // computed either way, and the next run computes them again.
-  }
 }
 
 function decode(bytes: Uint8Array): string {

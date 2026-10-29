@@ -44,6 +44,12 @@ and key derivation logic live here.
   transaction per run), the SQL binders, and the 30-day retention (run
   by a prune only, never a run's close; a dry-run prune deletes nothing,
   item 1004).
+- `run-notes.ts` — `keepRunNotes` / `keptSteps` / `keptWarnings` /
+  `keptFailures`: what a run said beside its rows (`steps`, `warnings`,
+  `failures`), the newest 50 runs per table (metrics.md).
+- `lockfile-memo.ts` — `readLockfileMemo` / `writeLockfileMemo`: a
+  lockfile claimant's parse, one `lockfile_memos` row per file and
+  claimant, on a connection of its own (lockfile-claim.md).
 - `schema.ts` — `createTables`: every table's DDL, the one place each is
   declared, with what each row means.
 - `cache.ts` — opening the index (`SCHEMA_VERSION` check and reset), the
@@ -744,7 +750,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v51'`; `SCHEMA_VERSION` is
-`'v49'`. Bump `CACHE_VERSION` when:
+`'v50'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

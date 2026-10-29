@@ -2,7 +2,7 @@
 // a lockfile change re-keys exactly the projects whose reachable packages
 // changed, `--affected` names the same projects, and a warm run reads the
 // memo instead of parsing.
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -13,6 +13,7 @@ import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { pnpm } from '../src/index.js'
 import { importerDigests, parseLockfile, recordedImporters } from '../src/pnpm.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
+import { editMemo, readMemo } from './helpers/memo.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 
@@ -654,12 +655,8 @@ describe('vx run with pnpm() declared', () => {
 
   it('a warm run reads the memo instead of parsing', async () => {
     await hashes()
-    const memoFile = path.join(root, '.vx', 'cache', 'lockfile-claims', 'pnpm-lock.yaml.json')
-    const memo = JSON.parse(await readFile(memoFile, 'utf8')) as {
-      version: number
-      lock: string
-      importers: Record<string, string>
-    }
+    const cacheDir = path.join(root, '.vx', 'cache')
+    const memo = readMemo(cacheDir, 'pnpm-lock.yaml')
     expect(Object.keys(memo.importers).sort()).toEqual([
       '.',
       'packages/a',
@@ -671,8 +668,9 @@ describe('vx run with pnpm() declared', () => {
     // same bytes would serve the module, and its memory, again) must key
     // on it — the proof the memo was read and the file not parsed.
     const before = await hashes()
-    memo.importers['packages/a'] = 'sentinel'
-    await writeFile(memoFile, JSON.stringify(memo))
+    editMemo(cacheDir, 'pnpm-lock.yaml', (m) => {
+      m.importers['packages/a'] = 'sentinel'
+    })
     await workspace('pnpm() /* fresh instance */')
     const planted = await hashes()
     expect(planted['a#build']).not.toBe(before['a#build'])
@@ -680,9 +678,9 @@ describe('vx run with pnpm() declared', () => {
     // A lockfile whose bytes changed ignores the stale memo.
     await writeFile(path.join(root, 'pnpm-lock.yaml'), v9({ pnpmfile: 'x' }))
     await workspace('pnpm() /* another */')
-    const fresh = JSON.parse(await readFile(memoFile, 'utf8')) as { lock: string }
+    const fresh = readMemo(cacheDir, 'pnpm-lock.yaml')
     await hashes()
-    const rewritten = JSON.parse(await readFile(memoFile, 'utf8')) as { lock: string }
+    const rewritten = readMemo(cacheDir, 'pnpm-lock.yaml')
     expect(rewritten.lock).not.toBe(fresh.lock)
   })
 })

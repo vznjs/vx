@@ -26,6 +26,8 @@ export interface LockfileClaimOptions {
   readonly part?: string // the key part's name as `vx why` shows it under the plugin; default 'deps'
   // importer dir → its links to other importers, memoised beside the digests
   readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+  // importer dir → the dependency names it records, memoised beside the digests
+  readonly recorded?: (text: string) => ReadonlyMap<string, readonly string[]>
 }
 export interface LockfileImporter {
   readonly deps: Readonly<Record<string, string>> // installed name → importer dir
@@ -39,6 +41,11 @@ export interface LockfileClaimHooks {
     workspaceRoot: string
     cacheDir: string
   }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
+  // the file's recorded names now, through the memo; undefined without the file or `recorded`
+  recorded(ctx: {
+    workspaceRoot: string
+    cacheDir: string
+  }): Promise<ReadonlyMap<string, ReadonlySet<string>> | undefined>
 }
 export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 
@@ -50,20 +57,24 @@ export function reachDigests(g: ReachGraph): string[]
 ```
 
 A plugin spreads `fingerprint` and `key` into `definePlugin(import.meta, …)`;
-`importers` is no hook, but what its own `discover` and `project` read.
+`importers` and `recorded` are no hooks, but what its own `discover` and `project` read.
 All are on the `@vzn/vx` façade.
 
 ## Construction rules
 
-- **Once per content.** The digests, and `importers`' answer beside
-  them, are memoised under the cache dir
-  (`lockfile-claims/<file>.json`) by `version`, the claimant (its
-  `part`, its `scope` and its functions' source: another claimant of the
-  file at the same `version` does not read it, nor a workspace-scope memo
-  a project-scope one) and the file's xxh3, so a
-  warm run pays one read, one hash and one small JSON read — never a
-  parse. Written to a temp name and renamed, so a reader never sees a
-  half memo and two concurrent runs each land a whole one; a memo that
+- **Once per content.** The digests, and `importers`' and `recorded`'s
+  answers beside them, are memoised in cache.db (`lockfile_memos`, one
+  row per file and claimant, `cache/lockfile-memo.ts`) by `version`, the
+  claimant (its `part`, its `scope` and its functions' source: another
+  claimant of the file at the same `version` does not read it, nor a
+  workspace-scope memo a project-scope one) and the file's xxh3, so a
+  warm run pays one read, one hash and one row read — never a parse.
+  Core owns the row; a plugin passes parsers. Its readers (a `discover`
+  hook, `--affected`'s selection) run before a run opens the index, so
+  each read or write opens the index on its own and closes it, and only
+  an index that exists with this vx's schema is read or written: a
+  `discover` before the first run keeps its parse in memory and the
+  same process's next load writes it once the index exists. A memo that
   cannot be written is a speed-up lost, not an error.
 - **Once per run.** Core hands every `key` call of one run the same
   context object; a `WeakMap` on it makes the stat + read happen once

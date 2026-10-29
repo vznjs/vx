@@ -523,10 +523,10 @@ describe('a root project stops at the walls: nested projects, .git, .vx', () => 
   // A grant INSIDE the repository's or vx's wall was not judged at all:
   // only a bind holding a wall was. `write: ['../.git/hooks/']` let a
   // sandboxed task plant a hook that runs unsandboxed at the next commit,
-  // and `../.vx/cache/failures/` wrote into vx's own store.
+  // and `../.vx/cache/compiled/` wrote into vx's own store.
   it('a write grant inside .git or vx’s cache is refused', async () => {
     await walled()
-    for (const inner of ['.git/hooks', '.git/refs/heads', '.vx/cache/failures']) {
+    for (const inner of ['.git/hooks', '.git/refs/heads', '.vx/cache/compiled']) {
       await mkdir(path.join(root, inner), { recursive: true })
       await expect(
         sandboxRequestFor(node(), { allow: { write: [`../${inner}/`] } }, root, undefined, []),

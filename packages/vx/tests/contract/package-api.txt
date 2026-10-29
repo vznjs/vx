@@ -1094,6 +1094,10 @@ export interface LockfileClaimHooks {
     readonly workspaceRoot: string
     readonly cacheDir: string
   }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
+  recorded(ctx: {
+    readonly workspaceRoot: string
+    readonly cacheDir: string
+  }): Promise<ReadonlyMap<string, ReadonlySet<string>> | undefined>
 }
 == type LockfileClaimOptions (src/orchestrator/lockfile-claim.ts)
 export interface LockfileClaimOptions {
@@ -1104,6 +1108,7 @@ export interface LockfileClaimOptions {
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
   readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+  readonly recorded?: (text: string) => ReadonlyMap<string, readonly string[]>
 }
 == type LockfileImporter (src/orchestrator/lockfile-claim.ts)
 export interface LockfileImporter {

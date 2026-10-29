@@ -2,7 +2,8 @@
 // (`run_output`) so an agent reads why a task failed without the terminal:
 // `vx last --format json` reads it.
 
-import { chmod, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { Database } from 'bun:sqlite'
+import { mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import {
@@ -14,7 +15,6 @@ import {
 import { MASKED, secretMask } from '../src/util/index.js'
 import { decodeOutputLog, failedOutputLog } from '../src/orchestrator/output-log.js'
 import { fileLocations } from '../src/report/path-links.js'
-import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -177,7 +177,19 @@ describe('vx last --format json (e2e)', () => {
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })
   })
-  const failures = (): string => path.join(root, '.vx', 'cache', 'failures')
+  const index = (): Database => new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+  const keptRuns = (): string[] => {
+    const db = index()
+    try {
+      return (
+        db.query('SELECT DISTINCT run_id FROM failures ORDER BY run_id').all() as {
+          run_id: string
+        }[]
+      ).map((r) => r.run_id)
+    } finally {
+      db.close()
+    }
+  }
 
   it(
     'a failed row carries its plain output and the files it names; a green one neither',
@@ -206,43 +218,58 @@ describe('vx last --format json (e2e)', () => {
       const [ok] = await lastRows(root)
       expect(ok!.status).toBe('success')
       expect(['output' in ok!, 'locations' in ok!]).toEqual([false, false])
-      // Two failed runs, two files; the green run wrote none.
-      expect((await readdir(failures())).length).toBe(2)
+      // Two failed runs, two kept; the green run kept none, and no file is written.
+      expect(keptRuns().length).toBe(2)
+      expect(await readdir(path.join(root, '.vx', 'cache'))).not.toContain('failures')
     },
     TIMEOUT,
   )
 
   it(
-    'a failed run with no file reads empty output; the newest 50 files are kept',
+    'a failed run with no kept row reads empty output; the newest 50 runs are kept',
     async () => {
-      for (const n of await readdir(failures())) await rm(path.join(failures(), n))
+      const wipe = index()
+      wipe.run('DELETE FROM failures')
+      wipe.close()
       expect((await vx(root, ['run', 'app#failnc'])).code).not.toBe(0)
-      const [mine] = await readdir(failures())
-      await rm(path.join(failures(), mine!))
+      const drop = index()
+      drop.run('DELETE FROM failures')
+      drop.close()
       const [row] = await lastRows(root)
       expect([row!.status, row!.output, row!.locations]).toEqual(['failed', '', []])
 
-      // Older than any run id vx mints now (UUIDv7: names sort by time).
-      const old = Array.from(
-        { length: 52 },
-        (_, i) => `00000000000000000000000${String(i).padStart(3, '0')}.json`,
-      )
-      for (const n of old) await writeFile(path.join(failures(), n), '{}')
+      // Older than any run id vx mints now (UUIDv7: ids sort by time).
+      const old = Array.from({ length: 52 }, (_, i) => `00000000-${String(i).padStart(3, '0')}`)
+      const seed = index()
+      for (const id of old)
+        seed.run(
+          "INSERT INTO failures(run_id, task_id, output, locations) VALUES (?, 'app#failnc', '', '[]')",
+          [id],
+        )
+      seed.close()
       expect((await vx(root, ['run', 'app#failnc'])).code).not.toBe(0)
-      const kept = (await readdir(failures())).sort()
+      const kept = keptRuns()
       expect(kept.length).toBe(50)
       expect(kept.slice(0, 49)).toEqual(old.slice(3))
       expect(kept[49]).toBe(
-        `${(JSON.parse((await vx(root, ['last', '--format', 'json'])).out) as { invocation: { runId: string } }).invocation.runId}.json`,
+        (
+          JSON.parse((await vx(root, ['last', '--format', 'json'])).out) as {
+            invocation: { runId: string }
+          }
+        ).invocation.runId,
       )
     },
     TIMEOUT,
   )
 
-  it.skipIf(skipAsRoot('a refused failures write'))(
+  it(
     'a refused write of the output does not change the verdict',
     async () => {
-      await chmod(failures(), 0o555)
+      const db = index()
+      db.run(
+        "CREATE TRIGGER refuse BEFORE INSERT ON failures BEGIN SELECT RAISE(FAIL, 'database or disk is full'); END",
+      )
+      db.close()
       try {
         const proc = Bun.spawn([process.execPath, BIN, 'run', 'app#failnc'], {
           cwd: root,
@@ -256,12 +283,15 @@ describe('vx last --format json (e2e)', () => {
           proc.exited,
         ])
         expect(code).toBe(1) // the task failing, as with the write
-        expect((out + err).match(/\[vx\] failed tasks' output not kept: .*EACCES.*/)?.length).toBe(
-          1,
-        )
+        expect(
+          (out + err).match(/\[vx\] failed tasks' output not kept: database or disk is full/g)
+            ?.length,
+        ).toBe(1)
         expect(out + err).not.toContain('internal error')
       } finally {
-        await chmod(failures(), 0o755)
+        const undo = index()
+        undo.run('DROP TRIGGER refuse')
+        undo.close()
       }
     },
     TIMEOUT,

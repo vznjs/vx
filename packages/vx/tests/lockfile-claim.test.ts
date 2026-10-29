@@ -2,10 +2,12 @@
 // fallback for an unlisted project and the `--affected` diff, with a fake
 // digest so the pins are about the shell and not a lockfile format. The
 // real formats are pinned in @vzn/vx-lockfile, one file per manager.
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import { Database } from 'bun:sqlite'
+import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { Cache } from '../src/cache/index.js'
 import { lockfileClaim, reachDigests } from '../src/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 
@@ -15,6 +17,8 @@ let calls: string[]
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-claim-'))
   await mkdir(path.join(root, '.vx', 'cache'), { recursive: true })
+  // The index a run makes: the memo is one of its rows.
+  new Cache(path.join(root, '.vx', 'cache')).close()
   calls = []
 })
 afterEach(async () => {
@@ -41,7 +45,44 @@ function claim(scope?: 'project' | 'workspace') {
 const ctx = () => ({ workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn() {} })
 const task = (dir: string) => ({ projectDir: path.join(root, dir) }) as TaskNode
 const lock = (text: string) => writeFile(path.join(root, 'bun.lock'), text)
-const MEMO = () => path.join(root, '.vx', 'cache', 'lockfile-claims', 'bun.lock.json')
+type Memo = {
+  version: number
+  extras: Record<string, string>
+  importers: Record<string, string>
+  edges: Record<string, unknown>
+  recorded: Record<string, string[]> | null
+}
+const JSON_COLUMNS = ['extras', 'importers', 'edges', 'recorded'] as const
+/** bun.lock's memo row the last write left, its JSON columns parsed. */
+function readMemo(): Memo {
+  const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+  try {
+    const row = db
+      .query(
+        "SELECT version, extras, importers, edges, recorded FROM lockfile_memos WHERE file = 'bun.lock' ORDER BY rowid DESC LIMIT 1",
+      )
+      .get() as Record<string, unknown>
+    for (const c of JSON_COLUMNS) row[c] = row[c] === null ? null : JSON.parse(row[c] as string)
+    return row as Memo
+  } finally {
+    db.close()
+  }
+}
+/** Rewrite that row as `edit` leaves it. */
+function editMemo(edit: (memo: Memo) => void): void {
+  const memo = readMemo()
+  edit(memo)
+  const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+  try {
+    db.run(
+      `UPDATE lockfile_memos SET extras = ?, importers = ?, edges = ?, recorded = ?
+       WHERE rowid = (SELECT MAX(rowid) FROM lockfile_memos WHERE file = 'bun.lock')`,
+      JSON_COLUMNS.map((c) => (memo[c] === null ? null : JSON.stringify(memo[c]))),
+    )
+  } finally {
+    db.close()
+  }
+}
 
 // bun.lock names a patch file by PATH and records no hash of it: an edited
 // patch left the lockfile byte-identical, every key unmoved, and
@@ -133,8 +174,9 @@ describe('extra files the lockfile names', () => {
     expect(await cold.extraFiles('bun.lock', bytes, fctx)).toEqual(['patches/p.patch'])
     await cold.hooks.key(task('packages/a'), ctx())
     const warm = counting()
-    const text = await readFile(MEMO(), 'utf8')
-    await writeFile(MEMO(), text.replace('"patches/p.patch"', '"patches/from-the-memo"'))
+    editMemo((m) => {
+      m.extras = { 'patches/from-the-memo': m.extras['patches/p.patch']! }
+    })
     expect(await warm.extraFiles('bun.lock', bytes, fctx)).toEqual(['patches/from-the-memo'])
     // Other bytes are not the memo's: parsed.
     const other = new TextEncoder().encode('packages/a=a2\nextra:patches/q.patch\n')
@@ -210,11 +252,9 @@ describe('key', () => {
     await first.key(task('packages/a'), run)
     await first.key(task('packages/b'), run)
     expect(calls).toHaveLength(1)
-    // The memo is on disk, keyed by version + content hash.
-    const memo = JSON.parse(await readFile(MEMO(), 'utf8')) as {
-      version: number
-      importers: Record<string, string>
-    }
+    // The memo is a row of cache.db, keyed by version + content hash, and no file.
+    const memo = readMemo()
+    expect(await readdir(path.join(root, '.vx', 'cache'))).not.toContain('lockfile-claims')
     expect(memo.version).toBe(1)
     expect(memo.importers).toEqual({ 'packages/a': 'a1' })
     // A fresh instance (a new process) reads the memo instead of parsing.
@@ -222,8 +262,9 @@ describe('key', () => {
     expect(await second.key(task('packages/a'), ctx())).toEqual({ deps: 'a1' })
     expect(calls).toHaveLength(1)
     // A planted memo is what keys the task: the proof the file was not parsed.
-    memo.importers['packages/a'] = 'planted'
-    await writeFile(MEMO(), JSON.stringify(memo))
+    editMemo((m) => {
+      m.importers['packages/a'] = 'planted'
+    })
     expect(await claim().key(task('packages/a'), ctx())).toEqual({ deps: 'planted' })
     expect(calls).toHaveLength(1)
     // Changed bytes ignore the stale memo and parse again.
@@ -284,13 +325,13 @@ describe('key', () => {
   })
 
   it('a memo it CANNOT write is a speed-up lost, never a failed run', async () => {
-    // The memo is written under the cache dir; if that write fails — a
+    // The memo is written into the cache index; if that write fails — a
     // read-only cache, a full disk, a path that is not a directory — the
     // digests were computed anyway and the run must carry on. The next run
     // simply computes them again.
     await lock('packages/a=a1\n')
     const blocked = path.join(root, 'not-a-dir')
-    await writeFile(blocked, 'this is a file, so lockfile-claims/ cannot be made under it')
+    await writeFile(blocked, 'this is a file, so no index can be made under it')
     const hooks = claim()
     const blockedCtx = { workspaceRoot: root, cacheDir: blocked, warn() {} }
     expect(await hooks.key(task('packages/a'), blockedCtx)).toEqual({ deps: 'a1' })
@@ -298,6 +339,23 @@ describe('key', () => {
     // memoised — the cost the memo exists to avoid, paid rather than fatal.
     expect(await claim().key(task('packages/a'), { ...blockedCtx })).toEqual({ deps: 'a1' })
     expect(calls.length).toBe(2)
+  })
+
+  // A `discover` hook reads the memo before a first run has made the index:
+  // the parse it pays then is kept once the index exists, by the same
+  // process's next read, though that read is served from memory.
+  it('a memo with no index to keep it in is kept once there is one', async () => {
+    await lock('packages/a=a1\n')
+    const cacheDir = path.join(root, 'fresh')
+    await mkdir(cacheDir)
+    const fresh = { ...ctx(), cacheDir }
+    const hooks = claim()
+    expect(await hooks.importers(fresh)).toEqual(new Map())
+    expect(await readdir(cacheDir)).toEqual([])
+    new Cache(cacheDir).close()
+    expect(await hooks.key(task('packages/a'), fresh)).toEqual({ deps: 'a1' })
+    expect(await claim().key(task('packages/a'), fresh)).toEqual({ deps: 'a1' })
+    expect(calls).toHaveLength(1)
   })
 
   it('refuses an unknown scope', () => {
@@ -334,14 +392,35 @@ describe('importers', () => {
     const want = new Map([['packages/a', { deps: { 'packages/b': 'packages/b' }, peers: {} }]])
     expect(await withImporters().importers(ctx())).toEqual(want)
     expect(calls).toHaveLength(1)
-    const memo = JSON.parse(await readFile(MEMO(), 'utf8')) as {
-      edges: Record<string, unknown>
-    }
-    memo.edges['packages/a'] = { deps: { b: 'planted' }, peers: {} }
-    await writeFile(MEMO(), JSON.stringify(memo))
+    editMemo((m) => {
+      m.edges['packages/a'] = { deps: { b: 'planted' }, peers: {} }
+    })
     expect(await withImporters().importers(ctx())).toEqual(
       new Map([['packages/a', { deps: { b: 'planted' }, peers: {} }]]),
     )
+    expect(calls).toHaveLength(1)
+  })
+
+  // A staleness check reads the names each importer records; parsed on every
+  // run before, by the plugin, into a file of its own under the cache dir.
+  it('recorded names are served from the memo in a new process', async () => {
+    const withRecorded = () =>
+      lockfileClaim({
+        file: 'bun.lock',
+        version: 1,
+        digest: () => new Map(),
+        recorded: (text) => {
+          calls.push(text)
+          return new Map([['.', text.trim().split(',')]])
+        },
+      })
+    expect(await withRecorded().recorded(ctx())).toBeUndefined()
+    await lock('a,b\n')
+    expect(await withRecorded().recorded(ctx())).toEqual(new Map([['.', new Set(['a', 'b'])]]))
+    editMemo((m) => {
+      m.recorded = { '.': ['planted'] }
+    })
+    expect(await withRecorded().recorded(ctx())).toEqual(new Map([['.', new Set(['planted'])]]))
     expect(calls).toHaveLength(1)
   })
 
