@@ -466,9 +466,21 @@ export function defaultLogger(
   const heldOver = (node: TaskNode): boolean =>
     node.config.exec?.persistent !== undefined && view.mode !== 'errors-only'
 
+  // A forced refresh the region has not been built for yet: the build
+  // takes the forecast pass the event asked for.
+  let forcePending = false
+  // The region is built when the writer draws it (`setRegion`'s function
+  // form), from the state as it is then: the events a forced-redraw floor
+  // coalesces build nothing.
   const refresh = (forced: boolean): void => {
     if (statusDead) return
-    let force = forced
+    const first = forecastFn === undefined && graphForecast !== undefined && !tail && !stopping
+    forcePending ||= forced || first
+    writer.setRegion(buildRegion, { force: forced || first })
+  }
+  const buildRegion = (): readonly string[] => {
+    let force = forcePending
+    forcePending = false
     const now = Date.now()
     // A task its executor still holds has not begun: its clock starts at
     // the first frame a machine runs it.
@@ -572,26 +584,23 @@ export function defaultLogger(
     const shownSteps: WorkerSlot[] = []
     for (const [id, startedMs] of steps)
       if (now - startedMs >= STEP_SHOWN_MS) shownSteps.push({ id, startedMs })
-    writer.setRegion(
-      formatStatusRegion(
-        {
-          pinnedPersistent,
-          // Every running task has a row: one beyond the slots follows them.
-          slots: [...slots, ...slotQueue],
-          size: slots.length,
-          ...(blocked !== undefined && !stopping ? { next: blocked } : {}),
-          ...(blockedBy !== undefined && !stopping ? { blockedBy } : {}),
-          ...(stopping ? { stopping } : {}),
-          ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
-          nowMs: Date.now(),
-          summaryLines,
-          ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
-          ...(expected !== undefined ? { expected } : {}),
-          ...(critical !== undefined ? { critical } : {}),
-        },
-        colors,
-      ),
-      { force },
+    return formatStatusRegion(
+      {
+        pinnedPersistent,
+        // Every running task has a row: one beyond the slots follows them.
+        slots: [...slots, ...slotQueue],
+        size: slots.length,
+        ...(blocked !== undefined && !stopping ? { next: blocked } : {}),
+        ...(blockedBy !== undefined && !stopping ? { blockedBy } : {}),
+        ...(stopping ? { stopping } : {}),
+        ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
+        nowMs: Date.now(),
+        summaryLines,
+        ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
+        ...(expected !== undefined ? { expected } : {}),
+        ...(critical !== undefined ? { critical } : {}),
+      },
+      colors,
     )
   }
   const tick = (): void => {
