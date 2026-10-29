@@ -476,7 +476,10 @@ into a directory no grant holds failed with no violation, and
 (`access`, `faccessat`, `faccessat2`) is traced too: a refused
 `./gen.sh || fallback` or `test -x src/gen.sh` went unreported. A hidden
 path answers `ENOENT`, as a missing one does, so a probe's `ENOENT` counts
-only where the host has the path; `EACCES` and `EPERM` always count. The
+only where the host has the path; `EACCES` and `EPERM` always count. A
+`chdir` is judged as a probe: `mkdir -p gen/deep`, refused at `gen`, then
+cds into it, and that `ENOENT` was reported, judged a write (nothing on
+the host) and fixed with a file grant `gen` that vx refuses beside `gen/`. The
 stat family stays untraced: a stop per stat cost `oxlint --type-aware`
 19% (min of 7, 679 → 811 ms) and `git status` 30% (57 → 74), where the
 execs and probes cost nothing measurable (688 and 58). Tracing it was tried
