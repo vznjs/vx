@@ -28,6 +28,8 @@ function main(argv: string[]): void {
   }
   const noAuth = values['no-auth']
   const host = values.host ?? (noAuth ? '127.0.0.1' : '0.0.0.0')
+  // Bun.serve reads '' as localhost: unreachable from another host or container.
+  if (host.trim() === '') fail(`--host: needs an address, got '${host}'`)
   if (noAuth && !LOOPBACK.has(host)) fail('--no-auth listens on loopback only')
   // Read from the environment, as the cache and history servers and the
   // relay's Worker read them: one way to configure every vx server.
