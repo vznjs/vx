@@ -34,7 +34,7 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   reverse edit.
 - A timed wait in a test is a claim about time: prove it with the
   shortest window that still fails without the fix. A kill grace is
-  `VX_KILL_GRACE_MS`; "the child is dead" is `tests/helpers/alive.ts`
+  `VX_TEST_KILL_GRACE` (a duration, `200ms`); "the child is dead" is `tests/helpers/alive.ts`
   (a zombie counts); "the task has started" is a marker file, never a
   sleep.
 - Use the session scratchpad, never bare `/tmp`.
