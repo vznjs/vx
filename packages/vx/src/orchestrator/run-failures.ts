@@ -9,7 +9,7 @@ import path from 'node:path'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
 import { PASS_STATUSES } from '../history/index.js'
-import { isFsRefusal, splitTaskId } from '../util/index.js'
+import { isFsRefusal, maskedLine, splitTaskId } from '../util/index.js'
 import { fileLocations, fileMemo, type OutputLocation } from '../report/index.js'
 
 /** Failed runs whose output is kept; run ids are UUIDv7, so names sort by age. */
@@ -224,10 +224,16 @@ export function taskLog(
       stdout: string
     } | null
     if (stored !== null) {
-      const output = Bun.stripANSI(
-        decodeOutputLog(stored.stdout)
-          .map((c) => c.text)
-          .join(''),
+      // An entry saved before masking, or by another machine, can hold a
+      // secret-named variable's value: masked as a hit's replay masks it.
+      // This process's env only: `vx last` loads no config, so a task's
+      // `env.define` / `env.secret` values are not known here.
+      const output = maskedLine(
+        Bun.stripANSI(
+          decodeOutputLog(stored.stdout)
+            .map((c) => c.text)
+            .join(''),
+        ),
       )
       return { ...base, source: 'cache', output }
     }
