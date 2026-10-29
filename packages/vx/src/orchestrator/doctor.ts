@@ -33,7 +33,15 @@ import {
 import { flakyTasks, type FlakyTask } from '../history/index.js'
 import type { VxPlugin } from './plugin.js'
 import { discoverProjects, loadProjects, loadWorkspacePlugins, lockReader } from './projects.js'
-import { atPath, envName, resolveSetting, SETTINGS, type SettingSource } from '../settings.js'
+import {
+  atPath,
+  envName,
+  parseSettingValue,
+  resolveSetting,
+  settingRefusal,
+  SETTINGS,
+  type SettingSource,
+} from '../settings.js'
 
 const warnToStderr = (message: string): void => {
   ui.say('warn', message)
@@ -102,7 +110,12 @@ export interface InfoFacts {
    */
   settings: Record<
     string,
-    { value: string | number | boolean | null; source: 'env' | 'workspace' | 'default' }
+    {
+      value: string | number | boolean | null
+      source: 'env' | 'workspace' | 'default'
+      /** Why a run refuses this variable's value; absent when it takes it. */
+      refused?: string
+    }
   >
   orphans: { artifacts: number; bytes: number }
   runs24h: number
@@ -135,6 +148,34 @@ export interface CollectInfoOptions {
 }
 
 export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): Promise<InfoFacts> {
+  // A variable a run refuses is a fact of the report, not a refusal of it:
+  // set aside while the workspace loads, so no deep reader throws on it.
+  const refused = refusedSettings()
+  for (const r of refused.values()) delete process.env[r.name]
+  try {
+    const facts = await collectInfoChecked(cwd, opts)
+    for (const [p, r] of refused)
+      facts.settings[p] = { value: r.raw, source: 'env', refused: r.reason }
+    return facts
+  } finally {
+    for (const r of refused.values()) process.env[r.name] = r.raw
+  }
+}
+
+/** Each set setting variable a run refuses, by path: its name, value and why. */
+function refusedSettings(): Map<string, { name: string; raw: string; reason: string }> {
+  const out = new Map<string, { name: string; raw: string; reason: string }>()
+  for (const s of SETTINGS) {
+    if (s.env === false) continue
+    const name = envName(s.path)
+    const raw = process.env[name]
+    if (raw === undefined || raw === '' || parseSettingValue(s.kind, raw) !== null) continue
+    out.set(s.path, { name, raw, reason: settingRefusal(s.path, name, raw) })
+  }
+  return out
+}
+
+async function collectInfoChecked(cwd: string, opts: CollectInfoOptions): Promise<InfoFacts> {
   const warn = opts.warn ?? warnToStderr
   // Both first: outside a workspace, or under a workspace config that does
   // not load, the doctor refuses at once, with no probe (~180 ms) ahead.

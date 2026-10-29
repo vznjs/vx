@@ -2870,7 +2870,11 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   (`cache.policy local:r (VX_CACHE_POLICY), run.timeout 30m (.vx/workspace)`).
   A setting not named runs at its default (`cache.policy`: every layer
   on, remote writes off off CI; `cache.scope`: a plugin's, else the
-  branch's from git). The JSON `settings` holds every one.
+  branch's from git). The JSON `settings` holds every one. A variable
+  a run refuses (`VX_RUN_TIMEOUT=abc`) does not stop the report, as it
+  stops every other verb: its row adds `, refused:` and why
+  (`run.timeout abc (VX_RUN_TIMEOUT, refused: …)`; `refused` in JSON),
+  and the other rows read as if it were unset.
 - `cache versions` are the two constants a bug report needs and the
   reset notice names: the key prefix (`CACHE_VERSION`; a bump orphans
   every entry) and the index schema (`SCHEMA_VERSION`; a mismatch drops
@@ -2899,8 +2903,9 @@ dir holds the entries), `cacheStoreBytes` (on disk, null with no store), `cacheV
 `schemaVersion`, `cacheEntries`, `cacheBytes`, `cacheIndexError` (why
 the index cannot be read, with the fix, else null; the counts it holds
 read 0 then), `settings` (every
-setting by path, `{ value, source }`, `source` one of `env` /
-`workspace` / `default`, `value` null for the default),
+setting by path, `{ value, source, refused }`, `source` one of `env` /
+`workspace` / `default`, `value` null for the default, `refused` why a
+run refuses the variable's value, absent when it takes it),
 `orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
 runs, as the row), `restored24h` (of those hits, the ones that restored
 outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
