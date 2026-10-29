@@ -2,6 +2,7 @@
 // first). Every docs page is served raw beside its HTML (`<page>.md`),
 // llms.txt indexes them, llms-full.txt is all of them in one file.
 import { getCollection, type CollectionEntry } from 'astro:content'
+import { fillBench } from '../bench/data.ts'
 
 export type Page = CollectionEntry<'docs'>
 
@@ -15,7 +16,7 @@ export async function agentPages(): Promise<Page[]> {
 export function pageMarkdown(p: Page): string {
   const description = p.data.description ? `\n\n> ${p.data.description}` : ''
   // An MDX page's component imports mean nothing to a reader.
-  const body = (p.body ?? '')
+  const body = fillBench(p.body ?? '')
     .replace(/^import .+ from '@astrojs\/starlight\/components'\n/gm, '')
     .trim()
   return `# ${p.data.title}${description}\n\n${body}\n`

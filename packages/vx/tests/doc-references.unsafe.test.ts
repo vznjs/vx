@@ -514,79 +514,39 @@ describe('CLAUDE.md names Bun APIs core actually calls', () => {
 })
 
 /**
- * The head-to-head table is the only table in the docs backed by a committed
- * data file (`private/vx-bench/results.json`): every cell is a runner's time
- * over the ideal run, and README and the compare pages quote onward from it.
- *
- * Numbers, not spellings: each displayed figure is parsed back to
- * milliseconds and compared against the file within the granularity the
- * page chose to print. Re-implementing the formatter here would only
- * restate its assumptions (CLAUDE.md § Rules: a platform unit is measured,
- * never asserted) — this asks what the page CLAIMS, not how it writes it.
+ * The head-to-head table is filled from the measured data when the site is
+ * built (2026-10-29: no benchmark figure is typed by hand): every cell is
+ * its runner's token for its row, in the columns' order, so no figure can
+ * sit under the wrong runner or row. The site's own tests hold the tokens
+ * to private/vx-docs/src/bench/format.ts and the rendered page.
  */
-describe('benchmarks.md quotes the run results.json recorded', () => {
-  /** `4 min 16 s`, `18.38 s`, `891 ms` → ms, with the step it was printed to. */
-  const parse = (raw: string): { ms: number; step: number } | null => {
-    let m = /^(\d+) min (\d+) s$/.exec(raw)
-    if (m !== null) return { ms: (Number(m[1]) * 60 + Number(m[2])) * 1000, step: 1000 }
-    m = /^(\d+(?:\.\d+)?) s$/.exec(raw)
-    if (m !== null) {
-      const decimals = (m[1]!.split('.')[1] ?? '').length
-      return { ms: Math.round(Number(m[1]) * 1000), step: 1000 / 10 ** decimals }
-    }
-    m = /^(\d+) ms$/.exec(raw)
-    return m === null ? null : { ms: Number(m[1]), step: 1 }
+describe("benchmarks.md's head-to-head is the measured data's", () => {
+  const METRIC: Record<string, string> = {
+    'Nothing changed': 'warm',
+    'Nothing changed, outputs restored': 'restore',
+    'Cold build': 'cold',
+    'Cold build: CPU the runner burns': 'cpu',
   }
-
-  type Row = Record<string, number | string>
-  const FIELD: Record<string, (r: Row, b: Record<string, number>) => number> = {
-    'Nothing changed**': (r, b) => (r['warmNoRestore'] as number) - b['warmNoRestore']!,
-    'Nothing changed, outputs restored': (r, b) => (r['warmRestore'] as number) - b['warmRestore']!,
-    'Cold build**': (r, b) => (r['fresh'] as number) - b['fresh']!,
-    'Cold build: CPU the runner burns': (r, b) => (r['freshCpu'] as number) - b['freshCpu']!,
-  }
-
-  it('every figure in the head-to-head table is the recorded overhead', () => {
+  it('every cell of the head-to-head table is its runner and row token', () => {
     const doc = readFileSync(path.join(pkg, 'docs', 'benchmarks.md'), 'utf8')
-    const results = JSON.parse(
-      readFileSync(path.join(repo, 'private', 'vx-bench', 'results.json'), 'utf8'),
-    ) as { tasks: number; baseline: Record<string, number>; rows: Row[] }
-    const by = (name: string): Row => results.rows.find((r) => r['runner'] === name)!
-    // The table's four columns, left to right.
-    const runners = ['vx', 'turbo', 'nx', 'vite-task'] as const
-
-    const start = doc.indexOf(`## Head to head: ${results.tasks.toLocaleString('en-US')} tasks`)
+    const start = doc.indexOf('\n## Head to head\n')
     expect(start).toBeGreaterThan(0)
     const table = doc.slice(start, doc.indexOf('**The ideal run** is', start))
+    const runners = ['vx', 'turbo', 'nx', 'vt']
     const wrong: string[] = []
     let rowsChecked = 0
-
     for (const line of table.split('\n')) {
-      if (!line.startsWith('| **')) continue
       const cells = line
         .trim()
         .replace(/^\||\|$/g, '')
         .split('|')
         .map((c) => c.trim())
-      const label = Object.keys(FIELD).find((k) => cells[0]! === `**${k.replace(/\*\*$/, '')}**`)
-      if (label === undefined) continue
+      const metric = METRIC[cells[0]!.replace(/\*\*/g, '')]
+      if (!line.startsWith('| **') || metric === undefined) continue
       rowsChecked += 1
-      cells.slice(1, 5).forEach((cell, i) => {
-        const runner = runners[i]!
-        const shown = parse(
-          cell
-            .replace(/\*\*/g, '')
-            .replace(/\s*\(.*$/, '')
-            .trim(),
-        )
-        const actual = Math.max(0, FIELD[label]!(by(runner), results.baseline))
-        if (shown === null) {
-          wrong.push(`${label}/${runner}: unreadable ${cell}`)
-          return
-        }
-        if (shown.ms !== Math.round(actual / shown.step) * shown.step) {
-          wrong.push(`${label}/${runner}: page ${shown.ms}ms, file ${actual.toFixed(1)}ms`)
-        }
+      cells.slice(1).forEach((cell, i) => {
+        const want = `%bench.${runners[i]}.${metric}%`
+        if (cell !== want) wrong.push(`${cells[0]}/${runners[i]}: ${cell}, not ${want}`)
       })
     }
     expect(rowsChecked).toBe(4)

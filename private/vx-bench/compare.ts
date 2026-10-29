@@ -1,12 +1,15 @@
 #!/usr/bin/env bun
 /**
  * Head-to-head benchmark: vx vs Turborepo vs Nx vs Vite Task (`vp run`,
- * from vite-plus) on ONE shared synthetic monorepo, every runner
- * configured identically. Writes private/vx-bench/RESULTS.md and
- * results.json, which the site is generated from (update-site.ts).
+ * from vite-plus) on ONE synthetic monorepo, every runner configured
+ * identically. Writes the runners' rows as JSON to OUT; the `bench.*` tasks
+ * (vx.config.ts) run one runner each, and the site reads their files.
  *
  *   bun private/vx-bench/compare.ts [reps=3]
- *   CONCURRENCY=10 COLD_REPS=1 RUNNERS=vx,turbo bun private/vx-bench/compare.ts
+ *   CONCURRENCY=10 COLD_REPS=1 RUNNERS=vx,turbo OUT=out.json bun private/vx-bench/compare.ts
+ *
+ * Turborepo, Nx and vite-plus are this package's pinned devDependencies,
+ * linked into the workspace: no install, so a run needs no network.
  *
  * The workspace is shape.ts (owner's spec, 2026-10-09): 29 levels of 50
  * libs and 100 apps, 50 terminal libs at level 15, one `e2e`
@@ -28,14 +31,14 @@
  * git what changed). vx runs as its compiled binary from a `vx lock`
  * snapshot, as every vx run does.
  */
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { summarize } from './ab.js'
 import { benchEnv } from './bench-env.js'
 import { listSchedule } from './ideal.js'
 import { deleteDist, missingDist } from './outputs.js'
-import { regressions } from './regress.js'
 import {
   APPS,
   BUILD_MS,
@@ -58,8 +61,8 @@ const COLD_REPS = Number(process.env.COLD_REPS ?? 1)
 // advantaged by a different default (vx defaults to CPU cores, Turbo to
 // 10, Nx to 3).
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 10)
-const OUT = process.env.OUT ?? import.meta.dir
-const vxRoot = path.resolve(import.meta.dir, '..', '..')
+const OUT = process.env.OUT ?? path.join(import.meta.dir, 'site', 'bench.json')
+const modules = path.join(import.meta.dir, 'node_modules')
 const PROJECTS = workspace()
 const BUILT = PROJECTS.filter((p) => 'build' in p.tasks).map((p) => `packages/${p.dir}`)
 const TASKS = PROJECTS.reduce((n, p) => n + Object.keys(p.tasks).length, 0)
@@ -137,11 +140,21 @@ async function generate(dir: string): Promise<void> {
   await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   // vx as a user tunes it for CI (2026-10-09: "config is part of
   // the experience"): the history plugin orders by the critical path a
-  // timings file from an earlier run recorded. The file sits outside .vx,
-  // so a cache wipe keeps it, as CI caches it between runners.
+  // timings file carries, as CI caches it between runners. The file holds
+  // each task's own duration, what an earlier run would record: the untimed
+  // seed run that recorded it cost a cold build (2 min 20 s). It sits
+  // outside .vx, so a cache wipe keeps it.
   // edges.ts stands in for the lockfile plugin: the workspace is never installed.
-  const history = path.join(vxRoot, 'packages', 'vx-history', 'src', 'index.ts')
-  const edges = path.join(vxRoot, 'private', 'vx-bench', 'edges.ts')
+  const history = path.join(modules, '@vzn', 'vx-history', 'src', 'index.ts')
+  const edges = path.join(import.meta.dir, 'edges.ts')
+  const timings: Record<string, number> = {}
+  for (const p of PROJECTS)
+    for (const [t, ms] of Object.entries(p.tasks))
+      if (t !== 'installDeps') timings[`${p.name}#${t}`] = ms
+  await json('vx-timings.json', {
+    version: 1,
+    tasks: Object.fromEntries(Object.entries(timings).sort(([a], [b]) => a.localeCompare(b))),
+  })
   await Bun.write(
     path.join(dir, '.vx/workspace.mjs'),
     `import { vxHistory } from ${JSON.stringify(history)}\n` +
@@ -305,72 +318,58 @@ interface Runner {
   clear: () => Promise<void>
 }
 
-let seedVx = async (): Promise<void> => {}
-
-async function buildRunners(dir: string): Promise<Runner[]> {
+async function buildRunners(dir: string, wanted: (name: string) => boolean): Promise<Runner[]> {
   const runners: Runner[] = []
 
   // vx — compile the standalone binary (the artifact real users install via
   // npm / release.yml). Comparing TS-source startup against Turbo's
   // and Nx's precompiled binaries would handicap vx unfairly.
-  const vxBin = path.join(dir, '.vx-runner')
-  const target = `bun-${process.platform}-${process.arch === 'x64' ? 'x64' : process.arch}`
-  const compiled = await sh(
-    [
-      'bun',
-      'build',
-      '--compile',
-      '--minify',
-      '--bytecode',
-      `--target=${target}`,
-      path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts'),
-      '--outfile',
-      vxBin,
-    ],
-    vxRoot,
-  )
-  // Bun 1.4.0's compiled binary carries a signature this macOS rejects
-  // (SIGKILL on launch, exit 137 — see docs/benchmarks.md); an ad-hoc
-  // re-sign repairs it, exactly as release.yml does. Fall back to the source
-  // tree only when the binary still cannot answer `--version`.
-  if (compiled.ok && process.platform === 'darwin')
-    await sh(['codesign', '-s', '-', '--force', vxBin], dir)
-  const binWorks = compiled.ok && (await sh([vxBin, '--version'], dir)).ok
-  if (compiled.ok && !binWorks)
-    console.error('  compiled vx binary does not launch; measuring from source')
-  const vxRun = binWorks
-    ? [vxBin]
-    : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
-  // A source build reports 0.0.0; the commit says which vx ran
-  // (2026-10-09: every bench table names its versions).
-  const rev = await sh(['git', 'rev-parse', '--short=9', 'HEAD'], vxRoot)
-  const vxCommit = rev.ok ? rev.out.trim() : ''
-  const vxVer = `${(await sh([...vxRun, '--version'], dir)).out.trim().replace(/ \(.*\)$/, '') || 'workspace'}${vxCommit ? ` @ ${vxCommit}` : ''}`
-  const conc = ['--concurrency', String(CONCURRENCY)]
-  const clearVx = () => rm(path.join(dir, '.vx', 'cache'), { recursive: true, force: true })
-  const suffix = compiled.ok ? '' : ' (ts-source)'
-  // Every run loads configs only from the lock, taken once here, before any rep.
-  const locked = await sh([...vxRun, 'lock'], dir)
-  if (!locked.ok) throw new Error(`vx lock failed:\n${locked.out}`)
-  // One untimed run, once git is in place, writes the timings file every
-  // timed rep reads.
-  seedVx = async () => {
-    const seeded = await sh([...vxRun, 'run', ...RUN_TASKS, '--all', ...conc], dir)
-    if (!seeded.ok) throw new Error(`vx seed run failed:\n${seeded.out}`)
-    await clearVx()
-    await deleteDist(dir)
+  if (wanted('vx')) {
+    const vxBin = path.join(dir, '.vx-runner')
+    const target = `bun-${process.platform}-${process.arch === 'x64' ? 'x64' : process.arch}`
+    const compiled = await sh(
+      [
+        'bun',
+        'build',
+        '--compile',
+        '--minify',
+        '--bytecode',
+        `--target=${target}`,
+        path.join(modules, '@vzn', 'vx', 'src', 'bin.ts'),
+        '--outfile',
+        vxBin,
+      ],
+      dir,
+    )
+    // Bun 1.4.0's compiled binary carries a signature this macOS rejects
+    // (SIGKILL on launch, exit 137 — see docs/benchmarks.md); an ad-hoc
+    // re-sign repairs it, exactly as release.yml does.
+    if (compiled.ok && process.platform === 'darwin')
+      await sh(['codesign', '-s', '-', '--force', vxBin], dir)
+    const version = await sh([vxBin, '--version'], dir)
+    if (!compiled.ok || !version.ok)
+      throw new Error(`the compiled vx does not launch:\n${compiled.out}${version.out}`)
+    // A source build reports 0.0.0; the commit says which vx ran
+    // (2026-10-09: every bench table names its versions). A task's sandbox
+    // hides .git, so CI's commit comes from its environment.
+    const rev = await sh(['git', 'rev-parse', '--short=9', 'HEAD'], import.meta.dir)
+    const vxCommit = process.env['GITHUB_SHA']?.slice(0, 9) ?? (rev.ok ? rev.out.trim() : '')
+    const vxVer = `${version.out.trim().replace(/ \(.*\)$/, '')}${vxCommit ? ` @ ${vxCommit}` : ''}`
+    // Every run loads configs only from the lock, taken once here, before any rep.
+    const locked = await sh([vxBin, 'lock'], dir)
+    if (!locked.ok) throw new Error(`vx lock failed:\n${locked.out}`)
+    runners.push({
+      name: 'vx',
+      version: vxVer,
+      run: [vxBin, 'run', ...RUN_TASKS, '--all', '--concurrency', String(CONCURRENCY)],
+      clear: () => rm(path.join(dir, '.vx', 'cache'), { recursive: true, force: true }),
+    })
   }
-  runners.push({
-    name: `vx${suffix}`,
-    version: vxVer,
-    run: [...vxRun, 'run', ...RUN_TASKS, '--all', ...conc],
-    clear: clearVx,
-  })
 
-  // turbo + nx + vite-plus — installed into the generated workspace.
+  // turbo + nx + vite-plus — this package's pinned installs, linked in.
   const bin = (t: string) => path.join(dir, 'node_modules', '.bin', t)
-  const turboV = await sh([bin('turbo'), '--version'], dir)
-  if (turboV.ok) {
+  const turboV = wanted('turbo') ? await sh([bin('turbo'), '--version'], dir) : null
+  if (turboV?.ok) {
     runners.push({
       name: 'turbo',
       version: turboV.out.trim(),
@@ -385,8 +384,8 @@ async function buildRunners(dir: string): Promise<Runner[]> {
       },
     })
   }
-  const nxV = await sh([bin('nx'), '--version'], dir)
-  if (nxV.ok) {
+  const nxV = wanted('nx') ? await sh([bin('nx'), '--version'], dir) : null
+  if (nxV?.ok) {
     runners.push({
       name: 'nx',
       version: (nxV.out.match(/Local:\s*v?([\d.]+)/)?.[1] ?? nxV.out.trim()).slice(0, 12),
@@ -394,8 +393,8 @@ async function buildRunners(dir: string): Promise<Runner[]> {
       clear: () => sh([bin('nx'), 'reset'], dir).then(() => undefined),
     })
   }
-  const vpV = await sh([bin('vp'), '--version'], dir)
-  if (vpV.ok) {
+  const vpV = wanted('vite-task') ? await sh([bin('vp'), '--version'], dir) : null
+  if (vpV?.ok) {
     runners.push({
       name: 'vite-task',
       version: vpV.out.match(/\d+\.\d+\.\d+/)?.[0] ?? vpV.out.trim(),
@@ -407,6 +406,22 @@ async function buildRunners(dir: string): Promise<Runner[]> {
     })
   }
   return runners
+}
+
+// The rivals at this package's pins (package.json), linked in rather than
+// installed: a run needs no registry, and its key sees the versions through
+// the lockfile. node_modules itself is a directory of the workspace, so the
+// caches a tool keeps there (Vite Task's) stay in it.
+const RIVALS: Record<string, string> = { turbo: 'turbo', nx: 'nx', 'vite-plus': 'vp' }
+async function linkRivals(dir: string): Promise<void> {
+  await mkdir(path.join(dir, 'node_modules', '.bin'), { recursive: true })
+  for (const [pkg, binName] of Object.entries(RIVALS)) {
+    await symlink(realpathSync(path.join(modules, pkg)), path.join(dir, 'node_modules', pkg))
+    await symlink(
+      realpathSync(path.join(modules, '.bin', binName)),
+      path.join(dir, 'node_modules', '.bin', binName),
+    )
+  }
 }
 
 // Stop any daemon a previous runner left running so it can't idle-contend
@@ -600,96 +615,65 @@ Reproduce: \`bun private/vx-bench/compare.ts ${REPS}\`.
 
 // ---- main ----
 
-const committed = (await Bun.file(path.join(import.meta.dir, 'results.json')).json()) as {
-  shape?: string
-  concurrency: number
-  rows: Row[]
-}
-const sameShape = committed.shape === 'levels-2026-10' && committed.concurrency === CONCURRENCY
-
-const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-compare-'))
-console.error(`scaffolding ${PROJECTS.length} projects, ${TASKS} tasks in ${ws} …`)
-await generate(ws)
-console.error('installing turbo + nx + vite-plus into the workspace …')
-const install = await sh(['bun', 'add', '-d', 'turbo', 'nx', 'vite-plus', '--no-save'], ws).catch(
-  () => null,
-)
-if (!install || !install.ok) await sh(['bun', 'add', '-d', 'turbo', 'nx', 'vite-plus'], ws)
-let runners = await buildRunners(ws)
-let rows: Row[] = []
-const only = process.env['RUNNERS']
-  ?.split(',')
+const ALL = ['vx', 'turbo', 'nx', 'vite-task']
+const only = (process.env['RUNNERS'] ?? ALL.join(','))
+  .split(',')
   .map((n) => n.trim())
   .filter(Boolean)
-if (only && only.length > 0) {
-  runners = runners.filter((r) => only.includes(r.name))
-  if (sameShape) rows = committed.rows.filter((r) => !only.includes(r.runner))
-}
-await gitInit(ws)
-if (runners.some((r) => r.name.startsWith('vx'))) await seedVx()
-console.error(`runners: ${runners.map((r) => `${r.name}@${r.version}`).join(', ')}`)
+const unknown = only.filter((n) => !ALL.includes(n))
+if (unknown.length > 0) throw new Error(`RUNNERS: no runner ${unknown.join(', ')}`)
 
-for (const r of runners) {
-  await quiesce(ws)
-  console.error(`measuring ${r.name} …`)
-  try {
+const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-compare-'))
+try {
+  console.error(`scaffolding ${PROJECTS.length} projects, ${TASKS} tasks in ${ws} …`)
+  await generate(ws)
+  await linkRivals(ws)
+  const runners = await buildRunners(ws, (name) => only.includes(name))
+  const missing = only.filter((n) => !runners.some((r) => r.name === n))
+  if (missing.length > 0) throw new Error(`${missing.join(', ')}: --version failed`)
+  await gitInit(ws)
+  console.error(`runners: ${runners.map((r) => `${r.name}@${r.version}`).join(', ')}`)
+
+  const rows: Row[] = []
+  for (const r of runners) {
+    await quiesce(ws)
+    console.error(`measuring ${r.name} …`)
     rows.push(await measure(r, ws))
-  } catch (err) {
-    const lines = (err as Error).message.split('\n').filter((l) => l.trim() !== '')
-    console.error(`  ${r.name} skipped: ${lines[0]} ${lines[1] ?? ''}`)
-    rows.push({
-      runner: r.name,
-      version: r.version,
-      fresh: NaN,
-      warmNoRestore: NaN,
-      warmRestore: NaN,
-      freshCpu: NaN,
-      warmNoRestoreCpu: NaN,
-      warmRestoreCpu: NaN,
-    })
   }
-}
-
-const ORDER = ['vx', 'turbo', 'nx', 'vite-task']
-rows.sort((a, b) => ORDER.indexOf(a.runner) - ORDER.indexOf(b.runner))
-console.error('measuring the baseline (ideal schedule, task CPU) …')
-const baseline = await measureBaseline(ws)
-const md = markdown(rows, baseline)
-await writeFile(path.join(OUT, 'RESULTS.md'), md)
-await writeFile(
-  path.join(OUT, 'results.json'),
-  JSON.stringify(
-    {
-      shape: 'levels-2026-10',
-      levels: LEVELS,
-      perLevel: PER_LEVEL,
-      terminals: TERMINALS,
-      packages: PROJECTS.length,
-      tasks: TASKS,
-      buildMs: BUILD_MS,
-      concurrency: CONCURRENCY,
-      reps: REPS,
-      coldReps: COLD_REPS,
-      date: new Date().toISOString(),
-      machine: `${os.platform()} ${os.arch()}, ${os.cpus().length} cores`,
-      rows,
-      baseline,
-    },
-    null,
-    2,
-  ) + '\n',
-)
-console.error('\n' + md)
-if (sameShape) {
-  const measured = new Set(runners.map((r) => r.name))
-  const slower = regressions(
-    committed.rows,
-    rows.filter((r) => measured.has(r.runner)),
+  rows.sort((a, b) => ALL.indexOf(a.runner) - ALL.indexOf(b.runner))
+  console.error('measuring the baseline (ideal schedule, task CPU) …')
+  const baseline = await measureBaseline(ws)
+  const cpu = os.cpus()
+  await mkdir(path.dirname(OUT), { recursive: true })
+  await writeFile(
+    OUT,
+    JSON.stringify(
+      {
+        shape: 'levels-2026-10',
+        levels: LEVELS,
+        perLevel: PER_LEVEL,
+        terminals: TERMINALS,
+        packages: PROJECTS.length,
+        tasks: TASKS,
+        buildMs: BUILD_MS,
+        concurrency: CONCURRENCY,
+        reps: REPS,
+        coldReps: COLD_REPS,
+        date: new Date().toISOString(),
+        machine: {
+          os: `${os.platform()} ${os.arch()}`,
+          cores: cpu.length,
+          cpu: cpu[0]?.model.trim() ?? 'unknown',
+          memoryGb: Math.round(os.totalmem() / 2 ** 30),
+        },
+        rows,
+        baseline,
+      },
+      null,
+      2,
+    ) + '\n',
   )
-  console.error(
-    slower.length === 0
-      ? 'no timing more than 10% slower than the committed run'
-      : `slower than the committed run by more than 10%:\n  ${slower.join('\n  ')}`,
-  )
+  console.error('\n' + markdown(rows, baseline))
+} finally {
+  await rm(ws, { recursive: true, force: true })
 }
-await rm(ws, { recursive: true, force: true })

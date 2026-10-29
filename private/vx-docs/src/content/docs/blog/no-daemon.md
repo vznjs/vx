@@ -6,19 +6,21 @@ authors:
 tags:
   - design
   - performance
-excerpt: 'vx has no background process watching your files. A run with nothing to do takes 799 ms on 9,603 tasks, and it can never act on a stale view of the tree.'
+excerpt: 'vx has no background process watching your files. A run with nothing to do stays quick, and it can never act on a stale view of the tree.'
 ---
 
-vx runs no background process. When nothing changed, a run over 9,603
-tasks still finishes in 799 ms.
+vx runs no background process. When nothing changed, a run over %bench.tasks%
+tasks still finishes in %bench.vx.warm%.
 
 | Runner    | Nothing changed | Daemon              |
 | --------- | --------------- | ------------------- |
-| vx        | 799 ms          | none                |
-| Turborepo | 927 ms          | not for `turbo run` |
-| Nx        | 24.15 s         | off, as in CI       |
+| vx        | %bench.vx.warm% | none                |
+| Turborepo | %bench.turbo.warm% | not for `turbo run` |
+| Nx        | %bench.nx.warm% | off, as in CI       |
 
-<small>Synthetic monorepo, 1,601 projects, 9,603 tasks · linux x64, 4 cores, concurrency 10 · vx 0be036747, Turborepo 2.11.10, Nx 24.0.1 · 2026-10-23 · [benchmarks](../../benchmarks/)</small>
+<small>Synthetic monorepo, %bench.projects% projects, %bench.tasks% tasks · concurrency %bench.concurrency% · [benchmarks](../../benchmarks/)</small>
+
+<small>%bench.provenance%</small>
 
 Nx runs a daemon by default. Turborepo shipped one and, since 2.8.11,
 no longer uses it for `turbo run`.
@@ -55,7 +57,7 @@ Config comes from the lock file, so no `vx.config.ts` is evaluated. A
 hit on an up-to-date tree only checks that the outputs are there
 ([how](../strict-output-ownership/)).
 
-That is the 799 ms. Nothing stays running after it, and a run in a
+That is the %bench.vx.warm%. Nothing stays running after it, and a run in a
 terminal, in CI or in a container gives the same answer.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

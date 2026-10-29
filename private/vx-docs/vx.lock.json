@@ -16,7 +16,7 @@
     "lint.oxlint": {
       "description": "oxlint with tsgolint-backed type-aware checks",
       "exec": {
-        "command": "oxlint --type-aware --type-check astro.config.mjs scripts src/components src/features src/nav src/pages src/plugins tests",
+        "command": "oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/features src/nav src/pages src/plugins tests",
         "sandbox": {
           "allow": {
             "read": [
@@ -30,13 +30,15 @@
         }
       },
       "dependsOn": [
-        "install"
+        "install",
+        "bench.data"
       ],
       "inputs": {
         "files": [
           "astro.config.mjs",
           "scripts/**",
           "src/env.d.ts",
+          "src/bench/**",
           "src/blog/**",
           "src/components/**",
           "src/features/**",
@@ -100,6 +102,7 @@
           "!src/content/docs/plugins/**",
           "!src/content/docs/cli/**",
           "!src/content/docs/schema/**",
+          "!src/data/**",
           "!public/_img/**",
           "!dist/**",
           "package.json"
@@ -178,11 +181,55 @@
         }
       }
     },
+    "bench.data": {
+      "description": "gather the head-to-head rows of @vzn/vx-bench#site.numbers → src/data/bench.json",
+      "dependsOn": [
+        "install",
+        "@vzn/vx-bench#site.numbers"
+      ],
+      "exec": {
+        "command": "bun scripts/bench-data.ts",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../vx-bench/site/**"
+            ],
+            "write": [
+              "src/data/bench.json"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "scripts/bench-data.ts",
+          "src/bench/format.ts",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": [
+            "src/data/bench.json"
+          ]
+        }
+      }
+    },
     "test": {
       "description": "bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)",
       "dependsOn": [
         "install",
         "import",
+        "bench.data",
         "build"
       ],
       "exec": {
@@ -226,6 +273,7 @@
           "tests/**",
           "src/content/docs/**",
           "src/components/demos/model/**",
+          "src/bench/**",
           "src/nav/**",
           "src/features/**",
           "src/assets/features/**",
@@ -261,6 +309,7 @@
           "!src/content/docs/plugins/**",
           "!src/content/docs/cli/**",
           "!src/content/docs/schema/**",
+          "!src/data/**",
           "!public/_img/**",
           "!dist/**"
         ],
@@ -329,6 +378,7 @@
       "dependsOn": [
         "install",
         "import",
+        "bench.data",
         "build.images"
       ],
       "exec": {
@@ -383,6 +433,7 @@
           "!src/content/docs/plugins/**",
           "!src/content/docs/cli/**",
           "!src/content/docs/schema/**",
+          "!src/data/**",
           "!public/_img/**",
           "!dist/**",
           "package.json"
@@ -443,6 +494,7 @@
       "description": "astro dev server (persistent)",
       "dependsOn": [
         "install",
+        "bench.data",
         "build.images"
       ],
       "exec": {
