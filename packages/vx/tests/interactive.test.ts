@@ -12,7 +12,7 @@ import type { TaskExecutor } from '../src/exec/executor.js'
 import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { type Logger } from '../src/report/index.js'
-import { run } from './helpers/orchestrator.js'
+import { planRun, run } from './helpers/orchestrator.js'
 import { placeTasks, terminalHolders } from '../src/orchestrator/placement.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
 
@@ -188,6 +188,8 @@ describe('the scheduler holds the terminal for one task', () => {
   })
 })
 
+const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+
 describe('a run', () => {
   let root: string
   beforeEach(async () => {
@@ -267,4 +269,21 @@ describe('a run', () => {
       said: ['said-a', 'said-b', 'said-c'],
     })
   }, 20_000)
+
+  // `--dry` previews the run on the same terminal: it planned two
+  // interactive servers the run refuses before any task starts.
+  it('--dry on a TTY refuses what the run refuses', async () => {
+    await project('a', 'interactive: true, persistent: {},')
+    await project('b', 'interactive: true, persistent: {},')
+    const said = (tty: boolean) =>
+      planRun({ cwd: root, tasks: ['go'], log: quiet, ...(tty ? { tty: true } : {}) }).then(
+        (p) => p.tasks.map((t) => t.node.id).sort(),
+        (e: Error) => e.message,
+      )
+    expect(await said(true)).toBe(
+      'a#go and b#go are persistent and interactive: a server holds the terminal until the run ends, so one run can hold one — run them in separate terminals',
+    )
+    // CONTROL: off a TTY nothing holds the terminal, and the plan stands.
+    expect(await said(false)).toEqual(['a#go', 'b#go'])
+  })
 })
