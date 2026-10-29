@@ -39,3 +39,28 @@ it('a git NFC path selects the project whose dir was discovered NFD', async () =
   const owners = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
   expect([...owners]).toEqual(['cafe'])
 })
+
+// vercel/turborepo#11137: names git quotes outside `-z` (CJK, Cyrillic,
+// an emoji, a space) each select their project, committed, edited in the
+// tree or untracked. CONTROL: an untouched project stays out.
+it('a changed file with a non-ASCII or spaced name selects its project', async () => {
+  const names = { cjk: '测试 文件.txt', cyr: 'файл.rs', emoji: 'emoji_🚀.md', quiet: 'q.txt' }
+  for (const [p, f] of Object.entries(names)) {
+    await mkdir(path.join(root, 'packages', p), { recursive: true })
+    if (p !== 'emoji') await writeFile(path.join(root, 'packages', p, f), '1\n')
+  }
+  gitIn(root)('add', '-A')
+  gitIn(root)('commit', '-qm', 'base')
+  await writeFile(path.join(root, 'packages', 'cjk', names.cjk), '2\n')
+  gitIn(root)('commit', '-qam', 'edit')
+  await writeFile(path.join(root, 'packages', 'cyr', names.cyr), '2\n')
+  await writeFile(path.join(root, 'packages', 'emoji', names.emoji), 'new\n')
+  const projects = Object.keys(names).map((name) => ({
+    name,
+    dir: path.join(root, 'packages', name),
+    packageJson: { name } as never,
+    configPath: null,
+  }))
+  const owners = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
+  expect([...owners].toSorted()).toEqual(['cjk', 'cyr', 'emoji'])
+})
