@@ -883,6 +883,32 @@ describe('LocalHistoryProvider', () => {
     }
   })
 
+  it('an invocation that recorded no task row does not widen the window to the whole table', async () => {
+    // A run whose every outcome is a group or aborted writes its header and
+    // no `runs` row. As the oldest invocation of the window it had no MIN(id),
+    // and the window fell back to every row ever recorded.
+    const cache = makeCache()
+    try {
+      const r = (hash: string, status: RunRecord['status'], durationMs: number, at: number) =>
+        mkRun({ hash, project: 'pkg', task: 'test', status, durationMs, startedAt: at })
+      const bundle = (runId: string, at: number, runs: RunRecord[]) =>
+        cache.recordRunBundle({
+          runs: runs.map((x) => ({ ...x, runId })),
+          invocation: mkInvocation(runId, at),
+        })
+      bundle('i1', 1000, [r('a', 'failed', 9000, 1000)])
+      bundle('i2', 2000, [])
+      bundle('i3', 3000, [r('c', 'success', 100, 3000)])
+      bundle('i4', 4000, [r('d', 'success', 100, 4000)])
+      const h = (await new LocalHistoryProvider(cache.dbHandle(), 3).loadFor(['pkg#test'])).get(
+        'pkg#test',
+      )!
+      expect([h.runs, h.successRate, h.p99DurationMs]).toEqual([2, 1, 100])
+    } finally {
+      cache.close()
+    }
+  })
+
   it('the default window is the last 50 invocations', async () => {
     const cache = makeCache()
     try {
@@ -942,7 +968,7 @@ describe('LocalHistoryProvider', () => {
       expect(bound).toEqual([])
       await provider.loadFor(['pkg#green', 'pkg#retried', 'pkg#broke'])
       expect(bound).toEqual([
-        ['get', 49],
+        ['get', 50],
         ['all', 0],
         ['get'],
         // The forecast: one statement for every task, not one per task.

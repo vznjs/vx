@@ -4,6 +4,7 @@ import {
   isOutOfFds,
   isUserError,
   OUT_OF_FDS_HINT,
+  thrownMessage,
 } from '../util/index.js'
 import {
   computeReverseDepCount,
@@ -804,7 +805,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       try {
         onFinish?.(outcome)
       } catch (err) {
-        const m = err instanceof Error ? err.message : String(err)
+        const m = thrownMessage(err)
         process.stderr.write(`[vx] onFinish observer threw for ${id}: ${m}\n`)
       }
       // A restore-tier task runs before its deps, but its DEPENDENTS keep
@@ -826,7 +827,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     // one carries.
     const blockedRestores = new Map<string, string | undefined>()
     const heldRelease = new Set<string>()
-    const release = (id: string): void => {
+    const blockOf = (id: string): void => {
       if (inRestoreTier(id) && continueMode !== 'always') {
         for (const dep of (nodes.get(id) as TaskNode).deps) {
           const u = outcomes.get(dep)
@@ -847,16 +848,33 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           }
         }
       }
-      const ds = dependents.get(id)
-      if (!ds) return
-      for (const d of ds) {
+    }
+    // Its block, then its dependents: one whose pending hits 0 is enqueued,
+    // or, when it is a held hit, released in turn before the next sibling.
+    // A frame stack, not recursion: a chain of held hits is released in one
+    // walk, and recursion threw RangeError on a 30,000-deep one.
+    const release = (root: string): void => {
+      const frames: { ds: readonly string[]; i: number }[] = []
+      const enter = (id: string): void => {
+        blockOf(id)
+        const ds = dependents.get(id)
+        if (ds !== undefined) frames.push({ ds, i: 0 })
+      }
+      enter(root)
+      while (frames.length > 0) {
+        const f = frames[frames.length - 1]!
+        if (f.i === f.ds.length) {
+          frames.pop()
+          continue
+        }
+        const d = f.ds[f.i++]!
         const rem = (pending.get(d) ?? 0) - 1
         pending.set(d, rem)
         if (rem !== 0) continue
         // Restore-tier dependents were already enqueued at startup (they
         // don't wait on deps); one that finished early releases its own
         // dependents now. Only an exec-tier dependent is enqueued.
-        if (heldRelease.delete(d)) release(d)
+        if (heldRelease.delete(d)) enter(d)
         else if (!inRestoreTier(d)) {
           execReady.push(d)
           readyAt.set(d, Date.now())
@@ -937,7 +955,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       try {
         onStart?.(node)
       } catch (err) {
-        const m = err instanceof Error ? err.message : String(err)
+        const m = thrownMessage(err)
         process.stderr.write(`[vx] onStart observer threw for ${node.id}: ${m}\n`)
       }
     }
@@ -1139,7 +1157,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               tick()
               return
             }
-            const message = err instanceof Error ? err.message : String(err)
+            const message = thrownMessage(err)
             // After the run's stop a rejection is the stop's doing (a probe
             // it killed, C-65): aborted, as any task it kills, and unsaid.
             const stopped = aborted()

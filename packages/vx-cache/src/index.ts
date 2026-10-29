@@ -15,6 +15,7 @@ import {
   type PluginOptionKinds,
   refuseUnknownOptions,
   type RemoteCacheLayer,
+  UserError,
   type VxPlugin,
 } from '@vzn/vx'
 
@@ -91,9 +92,11 @@ function proxyHeaders(
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || WIRE_HEADERS.has(name.toLowerCase()))
-      throw new Error(`${factory}: headers cannot set "${name}"`)
+      throw new UserError(`${factory} option "headers" cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
-      throw new Error(`${factory}: header "${name}" must be one line of text`)
+      throw new UserError(
+        `${factory} option "headers.${name}" must be one line of text (its value is not printed)`,
+      )
     out[name] = value
   }
   return out
@@ -139,6 +142,15 @@ const SMALL_ANSWER_BYTES = 64 * 1024
 /** A check's answer per hash asked: a hash, a size and a scope in JSON are under 150 bytes. */
 const CHECK_BYTES_PER_HASH = 512
 
+/**
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
+ * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
+ * overwrote the line before (core's `printable`, L-31).
+ */
+const printable = (s: string): string =>
+  // oxlint-disable-next-line no-control-regex
+  s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
   let said = ''
@@ -153,7 +165,7 @@ async function refusal(res: Response): Promise<Error> {
   } catch {
     // quiet: the status alone still names the refusal
   }
-  said = said.replace(/\s+/g, ' ').trim().slice(0, 200)
+  said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
@@ -368,7 +380,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     let jwt: unknown
     try {
       const res = await this.askOnce(ask)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) throw await refusal(res)
       jwt = ((await jsonUpTo(res, SMALL_ANSWER_BYTES, 'it')) as { value?: unknown } | null)?.value
       if (typeof jwt !== 'string' || jwt === '') throw new Error('no token in its answer')
     } catch (err) {
@@ -720,6 +732,13 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
  */
 export function vxCache(options: VxCacheOptions): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
+  // A NaN, zero or negative deadline aborted every request as it began.
+  for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
+    const ms = options[name]
+    if (ms !== undefined && !(Number.isFinite(ms) && ms > 0))
+      throw new UserError(`vxCache() option "${name}" must be a positive number of ms, got ${ms}`)
+  }
+  proxyHeaders('vxCache()', options.headers)
   namedOf(options)
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {

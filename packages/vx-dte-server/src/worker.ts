@@ -47,7 +47,7 @@ declare const caches: {
 declare const WebSocketPair: new () => { 0: Socket; 1: Socket }
 
 export interface Env {
-  readonly RELAY: DurableObjectNamespace
+  readonly RELAY?: DurableObjectNamespace
   /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow`, space separated. */
   readonly ALLOW?: string
   /** The `aud` every token must name; unset, the URL the relay is reached at. */
@@ -129,6 +129,13 @@ export default {
     if (session === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
     const refused = allowRefusal(env.ALLOW)
     if (refused !== undefined) return refuse(req, 403, refused)
+    if (env.RELAY === undefined) {
+      return refuse(
+        req,
+        403,
+        'RELAY: bind the RelayRun Durable Object as RELAY (wrangler.jsonc durable_objects)',
+      )
+    }
     const token = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1]
     const claimed = token === undefined ? undefined : claimedRun(token)
     const stub = env.RELAY.get(env.RELAY.idFromName(await sessionKey(session, claimed)))

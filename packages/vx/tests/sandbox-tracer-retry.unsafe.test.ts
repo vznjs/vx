@@ -129,6 +129,10 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
       await writeFile(path.join(dir, 'bare'), '')
       const r = await run('echo ran')
       expect([r.stdout, r.calls]).toEqual(['ran\nran\n', 2])
+      // vx's notice starts its own line: it read `…/strace: bare[vx] the sandbox's…`.
+      expect(r.streamed).toBe(
+        `${dir}/bin/strace: bare\n[vx] the sandbox's tracer (strace) failed on its own; running the task again\n`,
+      )
     })
 
     it('a task that timed out is not run again, whatever strace said', async () => {

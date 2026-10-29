@@ -27,7 +27,13 @@ import {
   type TaskOutcome,
   type TaskStatus,
 } from '../graph/index.js'
-import { maskedCommand, settleWithin, stageTimes, teardownTimeoutMs } from '../util/index.js'
+import {
+  maskedCommand,
+  settleWithin,
+  stageTimes,
+  teardownTimeoutMs,
+  thrownMessage,
+} from '../util/index.js'
 import type { RunEvent, RunEventSubscriber } from '../report/index.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
@@ -508,7 +514,7 @@ export function createTelemetrySource(args: {
     if (disabled.has(sink)) return
     disabled.add(sink)
     warn?.(
-      `[vx] telemetry sink '${label(sink)}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+      `[vx] telemetry sink '${label(sink)}' threw in ${hook}; disabled for this run: ${thrownMessage(err)}`,
     )
   }
   // Precompute which sinks want each kind, so per-event fan-out is a plain
@@ -712,9 +718,7 @@ export function createTelemetrySource(args: {
           } catch (err) {
             // A flush failure can never break the run — but it still costs
             // this sink its export, so say so rather than dropping it.
-            warn?.(
-              `[vx] telemetry sink '${label(sink)}' failed to flush: ${err instanceof Error ? err.message : String(err)}`,
-            )
+            warn?.(`[vx] telemetry sink '${label(sink)}' failed to flush: ${thrownMessage(err)}`)
           }
         }),
       )
