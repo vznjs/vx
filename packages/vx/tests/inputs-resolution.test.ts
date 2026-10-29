@@ -1822,6 +1822,19 @@ describe('inputs.files can only ever narrow the git file set', () => {
     expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('src', 'a.ts')])
   })
 
+  it('a glob into a directory that does not exist stays silent (Turbo #5404)', async () => {
+    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/**', 'gone/**', 'nonexistent/*/x.ts', 'src/a.ts/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('src', 'a.ts')])
+  })
+
   it('a literal that git DOES report resolves normally', async () => {
     // The other control: the guard must not fire on the ordinary case of naming
     // a tracked file by hand, which is common (`package.json`, `tsconfig.json`).
