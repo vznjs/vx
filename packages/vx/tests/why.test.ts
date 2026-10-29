@@ -791,7 +791,12 @@ describe('vx why after a run of only a group (X-50)', () => {
     const root = await makeWorkspace()
     try {
       // No config: `lib` has only the default `build`, a group, whose `^build` needs an edge source.
-      await writeEdges(root)
+      // A configured dependant gives a config-less package its default build.
+      await writeEdges(root, { app: ['lib'] })
+      const app = path.join(root, 'packages', 'app')
+      await mkdir(app, { recursive: true })
+      await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
+      await writeFile(path.join(app, 'vx.config.mjs'), 'export default { tasks: {} }\n')
       const lib = path.join(root, 'packages', 'lib')
       await mkdir(lib, { recursive: true })
       await writeFile(path.join(lib, 'package.json'), JSON.stringify({ name: 'lib' }))
