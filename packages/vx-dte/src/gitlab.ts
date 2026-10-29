@@ -68,8 +68,15 @@ async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
     CI_JOB_TOKEN: token,
     CI_COMMIT_SHA: sha,
   } = process.env
-  if (!base || !project || !token || !sha)
-    throw new Error('gitlab(): not in a GitLab job (CI_API_V4_URL, CI_JOB_TOKEN)')
+  if (!base || !project || !token || !sha) {
+    const missing = Object.entries({
+      CI_API_V4_URL: base,
+      CI_JOB_TOKEN: token,
+      CI_PROJECT_ID: project,
+      CI_COMMIT_SHA: sha,
+    }).flatMap(([k, v]) => (v ? [] : [k]))
+    throw new Error(`gitlab(): not in a GitLab job (${missing.join(', ')})`)
+  }
   const first = workers[0]!
   const slots = workers.map((w) => [slotOf(w), w.id] as const)
   // A merge request's pipeline is of its source branch; any other, of its

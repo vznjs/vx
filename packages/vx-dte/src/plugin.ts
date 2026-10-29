@@ -774,9 +774,13 @@ export function dte(options: DteOptions = {}) {
   })
 }
 
-/** A GitHub Actions job that may ask for OIDC tokens. */
+/** A GitHub Actions job that may ask for OIDC tokens: all githubProof() reads. */
 function onGitHub(): boolean {
-  return Boolean(process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] && process.env['GITHUB_REPOSITORY_ID'])
+  return Boolean(
+    process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] &&
+    process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] &&
+    process.env['GITHUB_REPOSITORY_ID'],
+  )
 }
 
 /** `VX_DTE_SECRET`: the run's, given. */
