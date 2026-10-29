@@ -1625,7 +1625,9 @@ async function runOnBus(
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            local.recordRunBundle(recordsOf(final, ok && first.code === 0))
+            // A stop ending the session is the usual end of a dev session,
+            // not a failure: the server's 130 is the stop's, as above.
+            local.recordRunBundle(recordsOf(final, ok && (stop.signal.aborted || first.code === 0)))
           } finally {
             local.close()
           }
