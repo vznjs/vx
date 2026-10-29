@@ -3494,13 +3494,13 @@ Frame anatomy:
 
 $ bun test
 
-├─ OUTPUT ──────────────────────────────────────────────────
+├─ OUTPUT ────────────────────────────────────────────────────
 
 2 pass
 error: expected 3, got 2
 1 fail
 
-├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────
 
 write ../shared/notes.txt
 

@@ -37,6 +37,8 @@ describe('a task killed by a signal', () => {
             // (a subshell's $$ is still the outer shell's pid).
             segv: { exec: { command: "sh -c 'kill -SEGV $$'; exit $?" } },
             slow: { exec: { command: 'sleep 5', timeout: '300ms' } },
+            partial: { exec: { command: 'printf half; sleep 5', timeout: '300ms' } },
+            whole: { exec: { command: 'echo whole; sleep 5', timeout: '300ms' } },
           },
         }
       `,
@@ -75,5 +77,22 @@ describe('a task killed by a signal', () => {
     expect(r.text).toContain('[vx] timed out after 300ms — killed (SIGTERM)')
     expect(r.text).not.toContain('is how the shell reports')
     expect(r.text).not.toContain('is 128 +')
+  })
+
+  // vx's note opens a line of its own, and only that: its leading newline
+  // made a blank line under the OUTPUT rule, or under a task's last line.
+  it("vx's note starts on its own line with no blank line before it", () => {
+    const rule = /├─ OUTPUT ─+\n\n/
+    const at = (name: string): string => {
+      const r = vx(root, ['run', name, '--all'])
+      const frame = r.text.slice(r.text.indexOf(`┌─ app#${name}`))
+      return frame.slice(frame.search(rule)).replace(rule, '').split('\n└─')[0]!
+    }
+    expect([at('slow'), at('whole'), at('partial'), at('killed')]).toEqual([
+      '[vx] timed out after 300ms — killed (SIGTERM)\n',
+      'whole\n[vx] timed out after 300ms — killed (SIGTERM)\n',
+      'half\n[vx] timed out after 300ms — killed (SIGTERM)\n',
+      expect.stringMatching(/^\[vx\] exit 137 is how the shell reports/),
+    ])
   })
 })

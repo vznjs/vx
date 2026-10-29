@@ -661,6 +661,12 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
     await rm(path.join(root, 'pkg', 'src', 'in.txt'))
     await withExecutor((run) => run(request({ cacheKey: 'k-vanished' })))
     expect(fake.actions.has(execDigestFor('k-vanished').hash)).toBe(false)
+    // So is a file that is now a directory: it was left out of the tree in
+    // silence, and the execution recorded under a key naming the file.
+    await mkdir(path.join(root, 'pkg', 'src', 'in.txt'))
+    await withExecutor((run) => run(request({ cacheKey: 'k-now-a-dir' })))
+    expect(fake.actions.has(execDigestFor('k-now-a-dir').hash)).toBe(false)
+    await rm(path.join(root, 'pkg', 'src', 'in.txt'), { recursive: true })
     // CONTROL: the keyed bytes back, the record is written.
     await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'in\n')
     await withExecutor((run) => run(request({ cacheKey: 'k-keyed' })))

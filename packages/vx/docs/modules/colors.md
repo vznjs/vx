@@ -40,8 +40,9 @@ export function paint(
 export function identityColor(name: string): string
 
 // util/report.ts: a meter is 50 cells, fewer to fit a narrower terminal;
-// the rule ends flush with it.
+// the rules (the footer's, a task frame's sections) end flush with it.
 export function barWidth(colors: ColorSupport): number
+export function ruleWidth(colors: ColorSupport): number
 export function gradientRule(colors: ColorSupport, mark?: string): string
 
 // report/plain-output.ts: `sink` with terminal escapes stripped from task
