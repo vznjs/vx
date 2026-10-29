@@ -11,9 +11,13 @@
  */
 export function deadline(timeoutMs: number): AbortSignal {
   const controller = new AbortController()
+  // A timer past 2^31-1 ms fires after 1 ms: a 30-day
+  // TURBO_REMOTE_CACHE_TIMEOUT aborted every request as it started.
   setTimeout(
     () => controller.abort(new Error(`no answer within ${timeoutMs} ms`)),
-    timeoutMs,
+    Math.min(timeoutMs, MAX_TIMER_MS),
   ).unref()
   return controller.signal
 }
+
+const MAX_TIMER_MS = 2 ** 31 - 1
