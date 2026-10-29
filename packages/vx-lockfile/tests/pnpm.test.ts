@@ -992,6 +992,36 @@ packages:
     expect(movedDirs(lock('sha512-q1'), lock('sha512-q2'))).toEqual(['packages/a'])
   })
 
+  it('a `node@runtime:` dependency is a package of the importer naming it (vercel/turborepo#13408)', () => {
+    // pnpm 10.14+ records `devEngines.runtime` with `onFail: download` so.
+    const lock = (rt: string) => `lockfileVersion: '9.0'
+importers:
+  .:
+    devDependencies:
+      node:
+        specifier: runtime:22.0.0
+        version: runtime:${rt}
+  packages/a:
+    dependencies:
+      leaf:
+        specifier: ^1
+        version: 1.0.0
+packages:
+  leaf@1.0.0:
+    resolution: {integrity: sha512-leaf}
+  node@runtime:${rt}:
+    resolution: {type: variations, variants: [{resolution: {integrity: sha256-${rt}}}]}
+snapshots:
+  leaf@1.0.0: {}
+  node@runtime:${rt}: {}
+`
+    expect(movedDirs(lock('22.0.0'), lock('22.1.0'))).toEqual(['.'])
+    // The resolution alone (same version, another download) moves it too.
+    expect(movedDirs(lock('22.0.0'), lock('22.0.0').replace('sha256-22.0.0', 'sha256-x'))).toEqual([
+      '.',
+    ])
+  })
+
   it('a `link:` outside every importer folds its target', () => {
     const lock = (target: string) =>
       v9().replace('version: link:../b', `version: link:../../vendor/${target}`)
