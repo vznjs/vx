@@ -109,6 +109,35 @@ describe('vx watch loop (e2e)', () => {
     )
   }, 40_000)
 
+  it('a cycle every task of which is a cache hit says so in one line', async () => {
+    // `--all` is the broad flow, where a hit prints no row, and watch
+    // prints no footer: a cycle back to cached bytes (an undo, a `git
+    // checkout`, a deleted file restored) printed `changed` and nothing,
+    // so a failure the cycle before stayed the last outcome on screen.
+    const w = (f.watch = startWatch(f.root, ['--all']))
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
+    await until(async () => (await executions(f.log)) === 2, 'the re-run after an edit')
+    await Bun.sleep(SETTLE_MS)
+    await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a1\n')
+    await until(() => w.out().includes('1 task cached'), 'the cached line')
+    await Bun.sleep(SETTLE_MS)
+    expect(await executions(f.log)).toBe(2)
+    expect(w.out().replace(/ +\d+ms/g, ' Nms')).toBe(
+      [
+        ' ⏺︎ Nms success miss     app#build',
+        'watching 1 project · 1 task',
+        '',
+        'changed app src/a.txt',
+        ' ⏺︎ Nms success miss     app#build',
+        '',
+        'changed app src/a.txt',
+        ' 1 task cached, nothing ran',
+        '',
+      ].join('\n'),
+    )
+  }, 40_000)
+
   it('the recorded command keeps its args shell-quoted, as `vx run` records them', async () => {
     // A bare join recorded `--filter a*`, which a shell globs when pasted.
     f.watch = startWatch(f.root, ['--filter', 'a*'])

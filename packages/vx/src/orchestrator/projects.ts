@@ -79,7 +79,12 @@ export async function loadWorkspacePlugins(
       branch.scope = facts.scope
       delete branch.trusted
     }
-    if (facts.base !== undefined) branch.base = facts.base
+    if (facts.base !== undefined) {
+      // Read into `--affected`'s `...[<base>]` filter.
+      if (typeof facts.base !== 'string' || !/^[^\s\0[\]-][^\s\0[\]]*$/.test(facts.base))
+        throw new UserError('setBranch: base must be a commit or a ref')
+      branch.base = facts.base
+    }
     if (facts.refs !== undefined) {
       if (!Array.isArray(facts.refs) || facts.refs.some((r) => !isRef(r)))
         throw new UserError('setBranch: refs must be a list of refs, each starting "refs/"')
@@ -331,7 +336,8 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     const present = await Promise.all(withFile.map((m) => Bun.file(m.configPath).exists()))
     const gone = withFile.find((_, i) => !present[i])
     if (gone !== undefined) {
-      const rel = relPosix(workspaceRoot, gone.dir) || '.'
+      // `.` read as a sentence's end: the notice cut the line there.
+      const rel = relPosix(workspaceRoot, gone.dir) || 'the workspace root project'
       const named = gone.name === pathName(workspaceRoot, gone.dir) ? '' : ` ("${gone.name}")`
       const file = relPosix(gone.dir, gone.configPath)
       // exists() says false for a file behind a directory this user may not
