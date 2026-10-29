@@ -54,7 +54,7 @@ beforeAll(async () => {
 
 const CI = 'vznjs/vx/.github/workflows/ci.yml@refs/heads/main'
 
-it("writes main from ci.yml's push to main, and a branch's own scope from its PR", async () => {
+it("writes main from ci.yml's push to main, and a PR's merge ref, never its head_ref", async () => {
   const main = { job_workflow_ref: CI, ref: 'refs/heads/main' }
   expect(await access({ ...main, event_name: 'push' })).toBe('refs/heads/main')
   // A dispatched run of main (a cold run) runs main's code, and its
@@ -67,7 +67,7 @@ it("writes main from ci.yml's push to main, and a branch's own scope from its PR
       ref: 'refs/pull/7/merge',
       head_ref: 'feat',
     }),
-  ).toBe('refs/heads/feat')
+  ).toBe('refs/pull/7/merge')
   // A worker dispatched on main may run a fork PR's code: its own token
   // is refused, and it writes only with the token its run lends it.
   const worker = {
