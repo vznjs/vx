@@ -271,9 +271,15 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       const named = message.startsWith(`${file}:`) ? message : `${file}: ${message}`
       return new Error(`${named} — regenerate it with \`${manager.name} install\``)
     }
-    return <A extends unknown[], R>(f: (...args: A) => R) =>
+    // Every reader takes the text first. A conflicted lockfile names two
+    // installs at once (yarn classic's line parser took the second side
+    // without a word), so each refuses it first: checked in the digest and
+    // edges alone, the extra files read before them refused pnpm, npm and
+    // bun lockfiles with a bare parse error.
+    return <A extends [string, ...unknown[]], R>(f: (...args: A) => R) =>
       (...args: A): R => {
         try {
+          if (CONFLICT.test(args[0])) throw new Error(`${file}: holds git merge conflict markers`)
           return f(...args)
         } catch (err) {
           throw refused(err)
@@ -287,22 +293,15 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       part: manager.name,
       version: DIGEST_VERSION,
       scope,
-      importers: guarded((text: string) => {
-        if (CONFLICT.test(text)) throw new Error(`${file}: holds git merge conflict markers`)
-        return manager.importers(text)
-      }),
+      importers: guarded((text: string) => manager.importers(text)),
       // Read before `digest` on the key path: a malformed bun.lock refused
       // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
       ...(extraFiles !== undefined
         ? { extraFiles: guarded((text: string) => extraFiles(text, affected ? undefined : root)) }
         : {}),
-      digest: guarded((text: string, files: ReadonlyMap<string, string>) => {
-        // A conflicted lockfile names two installs at once. Yarn classic's
-        // line parser took the second side without a word, so the key named
-        // an install that may not be the one on disk.
-        if (CONFLICT.test(text)) throw new Error(`${file}: holds git merge conflict markers`)
-        return manager.digest(text, files, root)
-      }),
+      digest: guarded((text: string, files: ReadonlyMap<string, string>) =>
+        manager.digest(text, files, root),
+      ),
     })
   }
   // One part name for every file: `npm shrinkwrap` renames the lockfile,
