@@ -1974,6 +1974,15 @@ describe('parseRunArgs', () => {
     expect(r.forwardArgs).toEqual(['--watch', '--bail'])
   })
 
+  // Turbo re-adds a `--` for yarn and bun, which swallow one, so a user's
+  // own reaches the script (vercel/turborepo#6422). Only the first `--`
+  // ends vx's flags; any later one is the task's argument.
+  it('a `--` after the first is forwarded to the task, not swallowed', () => {
+    const r = parseRunArgs(['build', '--', 'a', '--', '--b'])
+    expect(r.tasks).toEqual(['build'])
+    expect(r.forwardArgs).toEqual(['a', '--', '--b'])
+  })
+
   it('flags before `--` are parsed; flags after are forwarded literally', () => {
     const r = parseRunArgs(['--all', 'build', '--', '--verbosity', '--no-cache'])
     expect(r.all).toBe(true)
