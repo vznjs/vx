@@ -104,10 +104,24 @@ function keep(cacheDir: string, runId: string, tasks: TaskFailure[]): void {
   const tmp = `${file}.${process.pid}.tmp`
   writeFileSync(tmp, JSON.stringify({ runId, tasks }))
   renameSync(tmp, file)
-  const names = readdirSync(dir)
-    .filter((n) => n.endsWith('.json'))
-    .sort()
-  for (const n of names.slice(0, -KEPT)) rmSync(path.join(dir, n), { force: true })
+  trimKept(dir, KEPT)
+}
+
+/**
+ * Keep the newest `kept` runs' files in `dir`, and the temp files of runs
+ * no older: a writer that crashed between its write and its rename left
+ * `<runId>.json.<pid>.tmp`, which the trim of `.json` names never took. A
+ * live writer's temp is of a run newer than every kept one.
+ */
+export function trimKept(dir: string, kept: number): void {
+  const all = readdirSync(dir)
+  const names = all.filter((n) => n.endsWith('.json')).sort()
+  for (const n of names.slice(0, -kept)) rmSync(path.join(dir, n), { force: true })
+  if (names.length < kept) return
+  const oldest = names[names.length - kept]!
+  for (const n of all)
+    if (n.endsWith('.tmp') && n.slice(0, n.lastIndexOf('.json.') + 5) < oldest)
+      rmSync(path.join(dir, n), { force: true })
 }
 
 /**
@@ -162,15 +176,27 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
 /** What `runId`'s failures file holds, by task id; empty when the run kept none. */
 function storedFailures(cacheDir: string, runId: string): Map<string, StoredFailure> {
   const kept = new Map<string, StoredFailure>()
+  // A run id the caller typed names a file in failures/ only.
+  if (path.basename(runId) !== runId || runId === '..') return kept
+  let text: string
   try {
-    const stored = JSON.parse(
-      readFileSync(path.join(dirOf(cacheDir), `${runId}.json`), 'utf8'),
-    ) as RunFailures & { tasks: StoredFailure[] }
-    for (const t of stored.tasks) kept.set(t.taskId, t)
+    text = readFileSync(path.join(dirOf(cacheDir), `${runId}.json`), 'utf8')
   } catch (err) {
     // No file: the run kept no output.
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+    return kept
   }
+  // A file the disk left torn (a rename that landed before its data, on
+  // power loss) is output the run did not keep: it threw on every `vx last`
+  // until 50 newer runs rotated it out.
+  let stored: unknown
+  try {
+    stored = JSON.parse(text)
+  } catch {
+    return kept
+  }
+  const tasks = (stored as { tasks?: unknown } | null)?.tasks
+  if (Array.isArray(tasks)) for (const t of tasks as StoredFailure[]) kept.set(t.taskId, t)
   return kept
 }
 
