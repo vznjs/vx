@@ -245,3 +245,90 @@ it('takes an adapter spawn that throws as a worker that could not start', async 
     await rm(root, { recursive: true, force: true })
   }
 }, 30_000)
+
+// A worker let go before it joined that its adapter could not stop
+// (github(): its job had a runner) joins all the same: the run counts it
+// against its size's max again, rather than start one more beside it.
+it('counts a worker its adapter left running against its size again', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-order-'))
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  const env = { run: process.env['VX_DTE_RUN'], secret: process.env['VX_DTE_SECRET'] }
+  process.env['VX_DTE_RUN'] = crypto.randomUUID()
+  process.env['VX_DTE_SECRET'] = 'order-secret'
+  const spawned: string[] = []
+  const cancels: string[][] = []
+  const plugin = dte({
+    relay: relay.url,
+    workers: { small: { max: 1, cpu: 1, memory: '1GB' } },
+    adapter: {
+      spawn: (a) => void spawned.push(a.id),
+      cancel: async (ids) => {
+        cancels.push([...ids])
+        return ids
+      },
+    },
+  })
+  try {
+    await writeFile(path.join(root, 'f'), 'x')
+    const git = (...args: string[]) =>
+      Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...args], {
+        cwd: root,
+      })
+    git('init', '-q')
+    git('add', '.')
+    git('commit', '-qm', 'r')
+    const graph = new Map(
+      ['t1', 't2'].map((id) => [
+        id,
+        {
+          id,
+          deps: [],
+          projectDir: root,
+          config: { exec: { command: 'true' } },
+        } as unknown as TaskNode,
+      ]),
+    )
+    const warn = () => {}
+    const ex = (await plugin.executor!({
+      workspaceRoot: root,
+      cacheDir: root,
+      warn,
+      concurrency: 1,
+      artifacts: {},
+      cacheFacts: () => ({}),
+    } as never)) as { demand(remaining: ReadonlySet<string>, misses: ReadonlySet<string>): void }
+    await plugin.schedule!(graph, {
+      workspaceRoot: root,
+      cacheDir: root,
+      warn,
+      branch: null,
+      localCache: {
+        dbHandle: () => {
+          throw new Error('no history')
+        },
+      },
+      refine: () => {},
+      onRefine: () => {},
+      refining: async () => {},
+    } as never)
+    ex.demand(new Set(['t1']), new Set(['t1']))
+    for (let i = 0; i < 40 && spawned.length === 0; i++) await Bun.sleep(25)
+    expect(spawned).toEqual(['small#1'])
+    // Its work gone before it joined (a task of no project here is none): let go.
+    ex.demand(new Set(['elsewhere']), new Set())
+    for (let i = 0; i < 40 && cancels.length === 0; i++) await Bun.sleep(25)
+    expect(cancels).toEqual([['small#1']])
+    await Bun.sleep(100)
+    ex.demand(new Set(['t2', 'elsewhere']), new Set(['t2']))
+    await Bun.sleep(200)
+    expect({ spawned, cancels }).toEqual({ spawned: ['small#1'], cancels: [['small#1']] })
+  } finally {
+    await plugin.teardown?.({} as never)
+    await relay.stop()
+    if (env.run === undefined) delete process.env['VX_DTE_RUN']
+    else process.env['VX_DTE_RUN'] = env.run
+    if (env.secret === undefined) delete process.env['VX_DTE_SECRET']
+    else process.env['VX_DTE_SECRET'] = env.secret
+    await rm(root, { recursive: true, force: true })
+  }
+}, 30_000)

@@ -61,3 +61,53 @@ it('three writes of an untracked file under a held server name it', async () => 
     'vx watch: server.log has started 3 cycles in a row, written while a server was running — a persistent task rewrites it. Add it to .gitignore (a git-ignored path never starts a cycle); until then every write starts a cycle.\n',
   ])
 })
+
+// A server's log stamped to the second (`date +%s`) rewrites the same
+// bytes several times a second. Each such write is judged, finds nothing
+// changed and starts no cycle, and it reset the streak: the storm ran on
+// and was never named (14 cycles in 15 s, no notice).
+it('a same-bytes rewrite between a server’s changes leaves its streak counting', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-blame-'))
+  await writeFile(path.join(dir, 'app.ts'), 'v0\n')
+  gitInitCommit(dir)
+  const log = path.join(dir, 'server.log')
+  await writeFile(log, 'boot\n')
+  const atArm = gitFiles(dir)!
+  const judge = new ChangeJudge({
+    workspaceRoot: dir,
+    armedAt: 0,
+    held: () => true,
+    uncached: () => new Set(),
+    existedAtArm: atArm.listed,
+    trackedAtArm: atArm.tracked,
+  })
+  const printed: string[] = []
+  const spy = spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    printed.push(String(chunk))
+    return true
+  })
+  const judged: (string | undefined)[] = []
+  try {
+    for (let i = 1; i <= 3; i++) {
+      judge.lastCycle = { start: Date.now() - 1000, end: Date.now() - 500 }
+      for (const _ of [0, 1]) {
+        await writeFile(log, `t${i}\n`)
+        judge.pending.set(log, 'server.log')
+        judged.push(judge.judge())
+      }
+    }
+  } finally {
+    spy.mockRestore()
+  }
+  expect(judged).toEqual([
+    'server.log',
+    undefined,
+    'server.log',
+    undefined,
+    'server.log',
+    undefined,
+  ])
+  expect(printed).toEqual([
+    'vx watch: server.log has started 3 cycles in a row, written while a server was running — a persistent task rewrites it. Add it to .gitignore (a git-ignored path never starts a cycle); until then every write starts a cycle.\n',
+  ])
+})

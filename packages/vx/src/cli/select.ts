@@ -129,7 +129,7 @@ async function workspaceFingerprintClaims(
   return {
     files: new Set(claims.keys()),
     affected: (change) => claimedAffected(claims.get(change.file)!, change, ctx),
-    extraFiles: (file, bytes) => claimedExtraFiles(claims.get(file)!, file, bytes),
+    extraFiles: (file, bytes) => claimedExtraFiles(claims.get(file)!, file, bytes, ctx),
   }
 }
 

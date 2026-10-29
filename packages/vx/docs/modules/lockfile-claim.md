@@ -17,7 +17,7 @@ lockfile is a parser and nothing else.
 ```ts
 export interface LockfileClaimOptions {
   readonly file: string // the lockfile's name at the workspace root
-  // importer dir → digest; `files` is extraFiles' content hashes ('' when absent)
+  // importer dir → digest; `files` is extraFiles' content hashes ('' when absent; one there but unreadable refuses the key)
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   // root-relative files the lockfile names but does not pin (bun.lock's patches)
   readonly extraFiles?: (text: string) => readonly string[]
@@ -111,7 +111,7 @@ children first, each component folding its members and its child
 components' digests, both sorted. A member folds as its material AND the
 materials its edges land on (a self-loop aside): every member shares the
 component's digest, so a retarget between two members — an importer moved
-from `y@1.0.0` to `y@1.1.0`, both in one cycle — moved no key before item 1013. `DIGEST_VERSION` 5 (`@vzn/vx-lockfile`) retired the memos that folded the old way.
+from `y@1.0.0` to `y@1.1.0`, both in one cycle — moved no key before item 1013. `DIGEST_VERSION` 5 (`@vzn/vx-lockfile`) retired the memos that folded the old way. In a cycle, each member folds as a colour-refinement label: its material and the child digests its edges leave for, then its in-cycle targets' labels until no two labels part further. npm and bun key two copies of one version alike (`a/node_modules/foo` → bar@1, `node_modules/foo` → bar@2), and two members swapping copies, in the cycle or out of it, moved no key. A singleton folds as before, so an acyclic digest keeps its value.
 O(nodes + edges): 1000 importers
 over 3000 packages digest in ~20 ms where one traversal per importer
 took 400.
@@ -125,8 +125,10 @@ and the workspace-scope key. The memo records the files and their hashes,
 so a warm run re-hashes the files it names and parses only when one
 moved; within a process the same identity gates the read beside the
 lockfile's, taken before each file is hashed. The claim's `extraFiles`
-names them to core, and `--affected` hands a changed one in
-`change.extras`, so `affected` digests both sides with its bytes.
+names them to core, from the memo when it holds those bytes (a parse
+otherwise): `--affected` asks on every diff, and a cold parse of this
+repo's bun.lock was ~8 ms of its selection. `--affected` hands a changed
+one in `change.extras`, so `affected` digests both sides with its bytes.
 
 A named path may be a directory: a `file:` dependency a manager copies
 into `node_modules` at install, or a directory it links, recording only

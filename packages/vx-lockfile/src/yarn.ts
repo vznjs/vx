@@ -78,14 +78,13 @@ function parseBerry(text: string): Lockfile {
     if (keys === '__metadata') continue
     const e = record(raw) ?? {}
     const resolution = typeof e['resolution'] === 'string' ? e['resolution'] : keys
-    // Every field of the entry but the dependencies it links, so a field
-    // this parser has not heard of moves what reaches the entry: reading
-    // the resolution and checksum alone dropped the root workspace's
-    // `dependenciesMeta` (`built`, `unplugged`), which governs the whole
-    // install (item 933).
-    const material = Object.fromEntries(
-      Object.entries(e).filter(([k]) => k !== 'dependencies' && k !== 'peerDependencies'),
-    )
+    // Every field of the entry, so a field this parser has not heard of
+    // moves what reaches the entry: reading the resolution and checksum
+    // alone dropped the root workspace's `dependenciesMeta` (`built`,
+    // `unplugged`), which governs the whole install (item 933). Its
+    // dependency lists too: the edges say where each lands, not under
+    // which name, and two aliases swapping targets kept the key.
+    const material = e
     entries.set(resolution, {
       name: resolution.slice(0, resolution.indexOf('@', 1)),
       version: typeof e['version'] === 'string' ? e['version'] : '',
@@ -253,6 +252,14 @@ export function classicLinks(
         const asked = forced.get(name) ?? range
         // A `file:` range is a copy packed at install, as berry's (`linkedDir`).
         if (asked.startsWith('file:')) continue
+        // A `link:` symlinks its directory whatever the name: under another
+        // name (`"y": "link:../c"`) the name found no workspace.
+        if (asked.startsWith('link:')) {
+          const linked = joinPosix(dir, asked.slice('link:'.length))
+          if (linked !== undefined && linked !== dir && manifests.has(linked))
+            links.deps[name] = linked
+          continue
+        }
         if (target !== undefined && target !== dir && !lock.descriptors.has(`${name}@${asked}`)) {
           links.deps[name] = target
         }
@@ -597,7 +604,19 @@ export function importerDigests(
       if (targets.length === 0) material[from] += `\nunresolved\0${name}\0${range}`
     }
   }
-  if (lock.generation === 'berry') extend(lock, index, edges, extensions)
+  if (lock.generation === 'berry') {
+    // A `link:` or `portal:` to a workspace symlinks the workspace itself:
+    // its entry lists no dependencies, and as a leaf the linked
+    // workspace's bumps moved no key of the project linking it.
+    const dirOf = new Map<string, string>()
+    for (const [dir, id] of lock.workspaces) dirOf.set(id, dir)
+    for (const id of lock.entries.keys()) {
+      const target = linkedDir(lock, dirOf, id)
+      if (target !== undefined)
+        edges[index.get(id)!]!.push(index.get(lock.workspaces.get(target)!)!)
+    }
+    extend(lock, index, edges, extensions)
+  }
   const digests = reachDigests({ material, edges })
   // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
   // bits of a seed, so two lockfiles' globals could share one (item 682).

@@ -185,11 +185,14 @@ export function excludesLinks(text: string): boolean {
 
 /**
  * The last document's top-level `key`, parsed from its block alone (to
- * the next top-level key); undefined where pnpm wrote no such block.
+ * the next top-level key); undefined where pnpm wrote no such block. A
+ * CRLF file (a Windows checkout) heads it `key:\r\n`: found by `\n`
+ * alone, the block read as absent though the whole parse has it.
  */
 function topLevel(text: string, key: string): unknown {
   const doc = Math.max(text.lastIndexOf('\n---'), 0)
-  const head = `\n${key}:\n`
+  // The first line's ending says which: a second scan cost every LF run.
+  const head = text.charCodeAt(text.indexOf('\n') - 1) === 13 ? `\n${key}:\r\n` : `\n${key}:\n`
   const at = text.indexOf(head, doc)
   if (at < 0) return undefined
   const block = text.slice(at + 1)
@@ -382,12 +385,24 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
     // is a node of its own, so its version still counts.
     edges[from]!.push(node(key, `${key}\0${lock.resolutions.get(packageKey(key)) ?? ''}\0`))
   }
+  // A node folds the names it asks for as well as where they land: by
+  // its edges alone, two aliases swapping targets (`foo: npm:x`, `bar:
+  // npm:y` → the reverse) reached the same packages and kept the key,
+  // while `require('foo')` loads another package.
+  const named = (from: number, deps: ReadonlyMap<string, string>): void => {
+    material[from] += `\nnames\0${[...deps]
+      .map(([n, v]) => `${n}\0${v}`)
+      .sort()
+      .join('\0')}`
+  }
   for (const [dir, deps] of lock.importers) {
     const from = index.get(importerNode(dir))!
+    named(from, deps)
     for (const [name, version] of deps) link(from, dir, name, version)
   }
   for (const [key, deps] of lock.snapshots) {
     const from = index.get(key)!
+    named(from, deps)
     for (const [name, version] of deps) link(from, '.', name, version)
   }
   return { index, material, edges }

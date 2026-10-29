@@ -145,8 +145,8 @@ export default defineWorkspace({
 | `url` | `VX_CACHE_URL` | the server's URL: https, http only to `127.0.0.1`, `::1` or `localhost`; a redirect is not followed |
 | `issuer` | required | your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL |
 | `repository` | required | the repository, `org/name`, as `ALLOW` names it |
-| `timeoutMs` | 30 000 | how long one read or check may take, in ms (above 0, up to 2³¹−1) |
-| `uploadTimeoutMs` | 60 000 | how long one upload may take, in ms (above 0, up to 2³¹−1) |
+| `timeoutMs` | 30 000 | how long one read or check may wait for its answer, in ms (above 0, up to 2³¹−1); a download then brings at least 1 MiB a second over each |
+| `uploadTimeoutMs` | 60 000 | an upload sends at least 1 MiB a second over each, then is answered within one, in ms (above 0, up to 2³¹−1) |
 | `headers` | none | headers sent on every request, for a proxy in front of the server |
 
 `github()` or `gitlab()` from `@vzn/vx-ci` tells the cache which branch

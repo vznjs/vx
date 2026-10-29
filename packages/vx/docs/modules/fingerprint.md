@@ -39,18 +39,22 @@ project (`affected.ts`). A lockfile without the key is not parsed.
 
 The same holds for any file a claim's `extraFiles` names, and for a
 directory it names (a `file:` dependency a manager copies at install or links, or a `link:` / `portal:` directory that is no workspace):
-a changed path outside every project below the root loads the claims,
-and one equal to or under a named path asks the claimant about its
-lockfile. A directory's two sides are not its bytes; they differ, so only
-the projects reaching it move. A diff inside the projects loads no claim.
+any changed path loads the claims, and one equal to or under a named
+path asks the claimant about its lockfile. Every path, not only the ones
+no project owns: a `file:` directory or a patch may sit inside another
+project, and asking only the unowned ones selected that owner alone. A
+claimed file the diff does not name is read once and parsed once, with
+no git. A directory's two sides are not its bytes; they differ, so only
+the projects reaching it move.
 
 ## Claiming a file (`VxPlugin.fingerprint`)
 
 A plugin that reads a root file declares `fingerprint: { files:
-['bun.lock'], affected(change, ctx), extraFiles?(file, bytes) }`
+['bun.lock'], affected(change, ctx), extraFiles?(file, bytes, ctx) }`
 (`extraFiles`: the files a claimed file names that the plugin's key
 reads too, such as `bun.lock`'s patches and a `file:` dependency's
-directory). The schema refuses a
+directory; the same ones the key reads, since `--affected` asks about
+every changed path). The schema refuses a
 second claimant for one file. `fingerprintClaims(plugins)` in
 `plugin-host.ts` indexes the claims. `--affected`
 (`workspace/affected.ts`) asks the claimant's `affected` with the file's

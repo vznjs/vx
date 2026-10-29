@@ -141,7 +141,7 @@ export interface FingerprintClaims {
     extras?: ReadonlyMap<string, { before: Uint8Array | null; after: Uint8Array | null }>
   }): Promise<ReadonlySet<string> | undefined>
   /** The files a claimed file names that its claimant keys too; absent = it reads none. */
-  extraFiles?(file: string, bytes: Uint8Array): readonly string[] | undefined
+  extraFiles?(file: string, bytes: Uint8Array): Promise<readonly string[] | undefined>
 }
 
 /**
@@ -149,14 +149,14 @@ export interface FingerprintClaims {
  * the whole fix: a broken lockfile at the base ref is not the working
  * tree's to regenerate, and the bare refusal named neither.
  */
-function extraFilesOn(
+async function extraFilesOn(
   claims: FingerprintClaims,
   file: string,
   bytes: Uint8Array,
   side: string,
-): readonly string[] | undefined {
+): Promise<readonly string[] | undefined> {
   try {
-    return claims.extraFiles?.(file, bytes)
+    return await claims.extraFiles?.(file, bytes)
   } catch (err) {
     if (!(err instanceof Error)) throw err
     throw new UserError(
@@ -367,8 +367,8 @@ export async function affectedChanges(
   // changes no key.
   const wsConfig = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
   if (wsConfig !== undefined) return everything(wsConfig)
-  // Loading the workspace file costs an evaluation; only a changed ROOT
-  // name can be claimed, so a diff inside the projects never loads it.
+  // The workspace file is loaded once, for the extra files below and the
+  // changed root names after them.
   let claims: FingerprintClaims | undefined
   const loadClaims = async (): Promise<FingerprintClaims | undefined> =>
     (claims ??= await args.fingerprintClaims?.())
@@ -377,32 +377,33 @@ export async function affectedChanges(
   // patches, a `file:`, `link:` or `portal:` directory
   // a manager copies or links) is part of
   // that lockfile: a change to one, or under one, is a lockfile change the
-  // claimant answers with it. Only a path no project below the root owns
-  // can be one, so a diff inside the projects never loads the claims.
+  // claimant answers with it. It may sit inside another project's
+  // directory, so every changed path is asked: asking only the paths no
+  // project owned selected the owner and never the project the lockfile
+  // says reaches it.
   const extrasBy = new Map<
     string,
     Map<string, { before: Uint8Array | null; after: Uint8Array | null }>
   >()
-  const loose = changed.filter((rel) => {
-    const abs = path.join(rootDir, rel)
-    return !projects.some((p) => p.dir !== rootDir && abs.startsWith(p.dir + path.sep))
-  })
-  const extraClaims = loose.length > 0 ? await loadClaims() : undefined
+  const extraClaims = changed.length > 0 ? await loadClaims() : undefined
   for (const file of extraClaims?.files ?? []) {
     const after = await bytesOrNull(path.join(args.workspaceRoot, file))
-    const before = await gitBytesAt(args.workspaceRoot, base, file)
+    // An unchanged claimed file is the same bytes at the base: one read,
+    // one parse, no git.
+    const same = !changed.includes(file)
+    const before = same ? after : await gitBytesAt(args.workspaceRoot, base, file)
     const namedAfter =
-      after === null ? [] : extraFilesOn(extraClaims!, file, after, 'in the working tree')
+      after === null ? [] : await extraFilesOn(extraClaims!, file, after, 'in the working tree')
     const named = new Set([
-      ...(before === null
+      ...(before === null || same
         ? []
-        : (extraFilesOn(extraClaims!, file, before, 'as of the base ref') ?? [])),
+        : ((await extraFilesOn(extraClaims!, file, before, 'as of the base ref')) ?? [])),
       ...(namedAfter ?? []),
     ])
     const extras = new Map<string, { before: Uint8Array | null; after: Uint8Array | null }>()
     for (const rel of named) {
       const at = path.posix.normalize(rel).replace(/\/+$/, '')
-      if (loose.includes(at)) {
+      if (changed.includes(at)) {
         extras.set(rel, {
           before: await gitBytesAt(args.workspaceRoot, base, at),
           after: await bytesOrNull(path.join(args.workspaceRoot, at)),
@@ -411,7 +412,7 @@ export async function affectedChanges(
       }
       // A directory's sides are not its bytes: a file under it changed,
       // so they differ, and only the projects reaching it move.
-      const under = loose.filter((p) => p.startsWith(`${at}/`))
+      const under = changed.filter((p) => p.startsWith(`${at}/`))
       if (under.length > 0) {
         extras.set(rel, { before: null, after: new TextEncoder().encode(under.join('\0')) })
       }
@@ -422,7 +423,7 @@ export async function affectedChanges(
       // bun.lock names (the lockfile records no hash of them): it cannot
       // say which projects one reaches, so its edit widens.
       const patches = new Set(bunPatchFiles(after))
-      const patch = loose.find((p) => patches.has(p))
+      const patch = changed.find((p) => patches.has(p))
       if (patch !== undefined) return everything(patch)
     }
   }

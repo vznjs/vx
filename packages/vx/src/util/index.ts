@@ -119,7 +119,7 @@ export {
   wholeIgnored,
 } from './git-ignored.js'
 export { realPath, realpathOf } from './real-path.js'
-export { refuseSymlink, writeNoFollow } from './write-file.js'
+export { IGNORE_ALL, ignoreDir, refuseSymlink, writeNoFollow } from './write-file.js'
 export {
   heldSecrets,
   maskedCommand,

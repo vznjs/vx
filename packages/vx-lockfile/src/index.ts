@@ -17,7 +17,7 @@
 // each importer's `package.json` to its tasks' inputs.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { mkdir, rename, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -31,6 +31,7 @@ import {
   type ProjectMeta,
   definePlugin,
   lockfileClaim,
+  reachDigests,
   type VxPlugin,
 } from '@vzn/vx'
 
@@ -58,7 +59,38 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 22
+const DIGEST_VERSION = 23
+
+let memoVersion: number | undefined
+/**
+ * The memo's version: DIGEST_VERSION and the parsers' own source, with
+ * what core's `reachDigests` answers. The closures core sees wrap every parser alike,
+ * so a parser fix that forgot the bump replayed the digests the old one
+ * folded. Read once per process (~40 µs for the ten files); a plugin with
+ * no source beside it keys on DIGEST_VERSION alone.
+ */
+function digestVersion(): number {
+  if (memoVersion !== undefined) return memoVersion
+  // Core's fold by what it answers, not its text: a cycle's labels live in
+  // a helper it calls. The probe has a chain, a cycle, a self-loop and two
+  // copies of one material in and out of the cycle, so each branch shows.
+  let h = Bun.hash.xxHash3(
+    reachDigests({
+      material: ['a', 'b', 'x', 'x', 'y', 'z', 'x'],
+      edges: [[1, 2, 6], [0, 3], [0, 4], [5], [4], [], [0, 5]],
+    }).join('\0'),
+  )
+  try {
+    for (const f of readdirSync(import.meta.dir).sort()) {
+      if (/\.[cm]?[jt]s$/.test(f))
+        h = Bun.hash.xxHash3(readFileSync(path.join(import.meta.dir, f)), h) ^ h
+    }
+  } catch {
+    // Bundled: the source is not on disk.
+  }
+  memoVersion = DIGEST_VERSION * 2 ** 32 + Number(h & 0xffffffffn)
+  return memoVersion
+}
 
 interface Manager {
   readonly name: string
@@ -209,8 +241,13 @@ const MANAGERS = {
       // folded into the one digest every task folds re-keyed the whole
       // repo on each edit under it, its own build output included. A
       // `file:` one is a copy, so its content stays.
-      const linked = root === undefined ? undefined : (d: string) => isWorkspace(root, d)
-      return yarnLock().fileDeps(yarnParse(t), linked)
+      // Berry's file names its workspaces, and contentDirs reads them there.
+      const lock = yarnParse(t)
+      const linked =
+        root === undefined || lock.generation !== 'classic'
+          ? undefined
+          : (d: string) => isClassicWorkspace(root, d)
+      return yarnLock().fileDeps(lock, linked)
     },
     recorded: (t) => {
       const lock = yarnParse(t)
@@ -266,9 +303,15 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       const named = message.startsWith(`${file}:`) ? message : `${file}: ${message}`
       return new Error(`${named} — regenerate it with \`${manager.name} install\``)
     }
-    return <A extends unknown[], R>(f: (...args: A) => R) =>
+    // Every reader takes the text first. A conflicted lockfile names two
+    // installs at once (yarn classic's line parser took the second side
+    // without a word), so each refuses it first: checked in the digest and
+    // edges alone, the extra files read before them refused pnpm, npm and
+    // bun lockfiles with a bare parse error.
+    return <A extends [string, ...unknown[]], R>(f: (...args: A) => R) =>
       (...args: A): R => {
         try {
+          if (CONFLICT.test(args[0])) throw new Error(`${file}: holds git merge conflict markers`)
           return f(...args)
         } catch (err) {
           throw refused(err)
@@ -280,24 +323,17 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     return lockfileClaim({
       file,
       part: manager.name,
-      version: DIGEST_VERSION,
+      version: digestVersion(),
       scope,
-      importers: guarded((text: string) => {
-        if (CONFLICT.test(text)) throw new Error(`${file}: holds git merge conflict markers`)
-        return manager.importers(text)
-      }),
+      importers: guarded((text: string) => manager.importers(text)),
       // Read before `digest` on the key path: a malformed bun.lock refused
       // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
       ...(extraFiles !== undefined
         ? { extraFiles: guarded((text: string) => extraFiles(text, affected ? undefined : root)) }
         : {}),
-      digest: guarded((text: string, files: ReadonlyMap<string, string>) => {
-        // A conflicted lockfile names two installs at once. Yarn classic's
-        // line parser took the second side without a word, so the key named
-        // an install that may not be the one on disk.
-        if (CONFLICT.test(text)) throw new Error(`${file}: holds git merge conflict markers`)
-        return manager.digest(text, files, root)
-      }),
+      digest: guarded((text: string, files: ReadonlyMap<string, string>) =>
+        manager.digest(text, files, root),
+      ),
     })
   }
   // One part name for every file: `npm shrinkwrap` renames the lockfile,
@@ -375,12 +411,14 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         const before = folded(change.before)
         return before !== undefined && before === folded(change.after) ? [] : undefined
       },
-      extraFiles: (file, bytes) =>
-        extraFiles !== undefined && (manager.files as readonly string[]).includes(file)
-          ? guardedFor(file)((t: string) => extraFiles(t, undefined))(
-              new TextDecoder().decode(bytes),
-            )
-          : [],
+      // The files the key hashes, so the key's own claim answers, from its
+      // memo when it holds these bytes: `--affected` asks about every
+      // changed path, and a classic `link:` to a workspace named without
+      // the root widened an edit under that workspace to all.
+      extraFiles: async (file, bytes, ctx) =>
+        (await claimsAt(ctx.workspaceRoot)
+          .find((c) => c.file === file)
+          ?.claim.fingerprint.extraFiles?.(file, bytes, ctx)) ?? [],
     },
     async key(task, ctx) {
       let settings = settingsPerRun.get(ctx)
@@ -644,8 +682,14 @@ function manifestReader(
   }
 }
 
-/** Whether the root `package.json` `workspaces` globs name `dir`, read as `workspaceDirs` does. */
-function isWorkspace(root: string, dir: string): boolean {
+/**
+ * Whether the root `package.json` `workspaces` globs name `dir` as Yarn 1
+ * reads them: it takes no `!` glob and links the directory anyway (`yarn
+ * workspaces info` lists it, 1.22), as `manifestImporters` reads them.
+ * Honoured here, the excluded workspace's content, its build output
+ * included, re-keyed every task.
+ */
+function isClassicWorkspace(root: string, dir: string): boolean {
   let pkg: Record<string, unknown> | null
   try {
     pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as Record<
@@ -659,8 +703,7 @@ function isWorkspace(root: string, dir: string): boolean {
   const glob = (p: string): Bun.Glob => new Bun.Glob(p.replace(/^\.\//, '').replace(/\/+$/, ''))
   return (
     !dir.split('/').includes('node_modules') &&
-    globs.some((p) => !p.startsWith('!') && glob(p).match(dir)) &&
-    !globs.some((p) => p.startsWith('!') && glob(p.slice(1)).match(dir))
+    globs.some((p) => !p.startsWith('!') && glob(p).match(dir))
   )
 }
 

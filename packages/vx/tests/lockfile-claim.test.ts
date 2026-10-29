@@ -100,6 +100,47 @@ describe('extra files the lockfile names', () => {
     expect((await withExtras().key(task('packages/a'), ctx()))!['deps']).not.toBe(first)
   })
 
+  // Read as absent, an extra file that is there but unreadable folded as
+  // '' — the key of no patch at all — while settings files refuse so. A
+  // symlink loop is unreadable to root too (EACCES is not).
+  it('an extra file that is there but unreadable refuses the key, named', async () => {
+    const { symlink } = await import('node:fs/promises')
+    await lock('packages/a=a1\nextra:patches/p.patch\n')
+    await mkdir(path.join(root, 'patches'), { recursive: true })
+    await symlink('p.patch', path.join(root, 'patches', 'p.patch'))
+    await expect(withExtras().key(task('packages/a'), ctx())).rejects.toThrow(
+      'patches/p.patch: cannot be read (',
+    )
+    // CONTROL: an absent one is absent.
+    await rm(path.join(root, 'patches', 'p.patch'))
+    expect((await withExtras().key(task('packages/a'), ctx()))!['deps']).toBe('a1|patches/p.patch:')
+  })
+
+  // `--affected` asks which files a lockfile names for every diff (one may
+  // sit inside a project), and parsed the lockfile cold to learn what the
+  // memo already records for these bytes.
+  it("--affected's extra files come from the memo, not a parse", async () => {
+    const counting = () => {
+      const hooks = withExtras()
+      return { hooks, extraFiles: hooks.fingerprint!.extraFiles! }
+    }
+    await lock('packages/a=a1\nextra:patches/p.patch\n')
+    await patch('one')
+    const bytes = await Bun.file(path.join(root, 'bun.lock')).bytes()
+    const fctx = { ...ctx(), projects: [] }
+    // CONTROL: no memo yet, so the lockfile is parsed.
+    const cold = counting()
+    expect(await cold.extraFiles('bun.lock', bytes, fctx)).toEqual(['patches/p.patch'])
+    await cold.hooks.key(task('packages/a'), ctx())
+    const warm = counting()
+    const text = await readFile(MEMO(), 'utf8')
+    await writeFile(MEMO(), text.replace('"patches/p.patch"', '"patches/from-the-memo"'))
+    expect(await warm.extraFiles('bun.lock', bytes, fctx)).toEqual(['patches/from-the-memo'])
+    // Other bytes are not the memo's: parsed.
+    const other = new TextEncoder().encode('packages/a=a2\nextra:patches/q.patch\n')
+    expect(await warm.extraFiles('bun.lock', other, fctx)).toEqual(['patches/q.patch'])
+  })
+
   it('CONTROL: an unchanged extra file costs a warm run no parse', async () => {
     await lock('packages/a=a1\nextra:patches/p.patch\n')
     await patch('one')
@@ -434,6 +475,44 @@ describe('reachDigests', () => {
         edges: [[2], [4, 2], [1], [1], [1, 3]],
       })[0],
     ).toBe(before[0])
+  })
+
+  // npm and bun key a node by what it is, not where it sits, so two copies
+  // of one version are one material: `packages/a/node_modules/foo` → bar@1
+  // and `node_modules/foo` → bar@2. Two workspaces in a cycle swapping
+  // which copy each reaches gave the same lines and the same children,
+  // and a's install moved from bar@1 to bar@2 under its old key.
+  it('moves when cycle members swap two copies of one material that reach apart', () => {
+    // 0 ↔ 1 (a, b); 2 and 3 both `foo`, 2 → 4 bar1, 3 → 5 bar2.
+    const swap = (a: number, b: number) =>
+      reachDigests({
+        material: ['a', 'b', 'foo', 'foo', 'bar1', 'bar2'],
+        edges: [[1, a], [0, b], [4], [5], [], []],
+      })
+    expect(swap(3, 2)[0]).not.toBe(swap(2, 3)[0])
+    // CONTROL: a singleton's children already say where its edges land,
+    // so an acyclic digest keeps its value.
+    const single = reachDigests({ material: ['a', 'foo', 'bar1'], edges: [[1], [2], []] })[0]
+    expect(single).toBe('38108168b5ad6712')
+  })
+
+  // The same swap one step in: the two `foo` copies are members of the
+  // cycle themselves (each depends back on a), so their edges were named
+  // by material, and a reaching bar@1 or bar@2 was one line.
+  it('moves when cycle members swap two in-cycle copies of one material', () => {
+    // 0 ↔ 1 (a, b); 2 and 3 both `foo`, each → 0; 2 → 4 bar1, 3 → 5 bar2.
+    const swap = (a: number, b: number) =>
+      reachDigests({
+        material: ['a', 'b', 'foo', 'foo', 'bar1', 'bar2'],
+        edges: [[1, a], [0, b], [0, 4], [0, 5], [], []],
+      })
+    expect(swap(3, 2)[0]).not.toBe(swap(2, 3)[0])
+    // CONTROL: the same graph numbered otherwise digests alike.
+    const renumbered = reachDigests({
+      material: ['b', 'a', 'foo', 'foo', 'bar2', 'bar1'],
+      edges: [[1, 2], [0, 3], [1, 4], [1, 5], [], []],
+    })
+    expect(renumbered[1]).toBe(swap(2, 3)[0])
   })
 
   it('a member of a cycle shares its component digest', () => {

@@ -82,6 +82,15 @@ const judged = (i: ArtifactInfo): i is { size: number; durationMs: number } =>
 /** How often a task waiting on its download weighs running instead. */
 const JUDGE_EVERY_MS = 25
 
+/**
+ * The least a download is given against running its task. A stored
+ * duration is the command's alone, in whole ms (Turbo's wire sends 0 for
+ * a sub-ms task), and a budget under one weighing is none: a duration of
+ * 0 gave up every body not in by the first, 99% in or not, and ran the
+ * task beside the bytes already here.
+ */
+const LEAST_BUDGET_MS = JUDGE_EVERY_MS
+
 interface Download {
   readonly start: number
   received: number
@@ -415,7 +424,7 @@ export class LayeredCache implements CacheLayer {
       const info = this.infos.get(hash)
       if (info === undefined) continue
       if (!judged(info)) return pull
-      const budget = info.durationMs * 2
+      const budget = Math.max(info.durationMs * 2, LEAST_BUDGET_MS)
       const dl = this.downloads.get(hash)
       if (dl === undefined) continue
       const elapsed = performance.now() - dl.start

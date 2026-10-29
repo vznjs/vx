@@ -74,3 +74,10 @@ it('pnpm(): an optional dependency the install ignores is no stale lockfile', as
   )
   await expect(discover()).rejects.toThrow("does not list packages/c's dependency on @s/b")
 })
+
+it('pnpm(): the ignored list is read from a CRLF lockfile too', async () => {
+  // A Windows checkout writes CRLF: the list's block, found by its `\n`
+  // heading alone, read as none, and the run refused.
+  await writeFile(path.join(root, 'pnpm-lock.yaml'), LOCK("'@s/b'").replace(/\n/g, '\r\n'))
+  expect(await discover()).toEqual(['packages/b', 'packages/c'])
+})

@@ -15,7 +15,7 @@
 
 import path from 'node:path'
 import { rename, stat } from 'node:fs/promises'
-import { relPosix, xxh3, xxh3hex } from '../util/index.js'
+import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {
   FingerprintChange,
@@ -37,7 +37,7 @@ export interface LockfileClaimOptions {
   /**
    * Root-relative files the lockfile names whose BYTES the install uses but
    * the lockfile does not pin (bun.lock's `patchedDependencies` names a patch
-   * file and records no hash of it). Their content hashes ('' when absent)
+   * file and records no hash of it). Their content hashes ('' when absent; unreadable refuses)
    * reach `digest` as `files` and join the memo's identity, so an edited
    * patch moves the key (item 1014). A directory (a `file:` dependency the
    * install copies) hashes every file under it but `node_modules` and
@@ -108,16 +108,28 @@ interface Memo {
   edges?: Record<string, LockfileImporter>
 }
 
-/** A root-relative extra file's content hash, '' when absent; a path leaving the root is never read. */
+/**
+ * A root-relative extra file's content hash, '' when absent; a path leaving
+ * the root is never read. One there but unreadable (EACCES, a symlink loop)
+ * refuses, as a settings file does: folded as '', it keyed as no file at all.
+ */
 async function hashExtra(workspaceRoot: string, rel: string): Promise<string> {
   if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return 'outside-root'
   const abs = path.join(workspaceRoot, rel)
   try {
     return xxh3hex(await Bun.file(abs).bytes())
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'EISDIR') return hashDir(abs)
-    return ''
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'EISDIR') return hashDir(abs)
+    if (code === 'ENOENT' || code === 'ENOTDIR') return ''
+    throw unreadable(rel, err)
   }
+}
+
+function unreadable(rel: string, err: unknown): UserError {
+  return new UserError(
+    `${rel}: cannot be read (${err instanceof Error ? err.message : String(err)})`,
+  )
 }
 
 /**
@@ -322,7 +334,18 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         return names
       },
       ...(options.extraFiles !== undefined
-        ? { extraFiles: (_file: string, bytes: Uint8Array) => options.extraFiles!(decode(bytes)) }
+        ? {
+            // The memo records which files these exact bytes name, for this
+            // parser: `--affected` asks on every diff, and a cold parse of
+            // a large lockfile was most of its selection's cost.
+            async extraFiles(_file: string, bytes: Uint8Array, ctx: FingerprintContext) {
+              const memoFile = path.join(ctx.cacheDir, 'lockfile-claims', `${file}.json`)
+              const memo = await readMemo(memoFile, version, claimant, xxh3hex(bytes))
+              return memo !== undefined
+                ? Object.keys(memo.extras)
+                : options.extraFiles!(decode(bytes))
+            },
+          }
         : {}),
     },
     async key(task, ctx) {
@@ -430,6 +453,49 @@ function decode(bytes: Uint8Array): string {
 
 // --- Reach digests -----------------------------------------------------------
 
+/**
+ * Each member of a cycle as what it is and where its edges land, by
+ * colour refinement: a member starts as its material and the child
+ * digests its edges leave the cycle for, then folds its in-cycle
+ * targets' labels until no two labels part further. npm and bun key two
+ * copies of one version alike (`a/node_modules/foo` → bar@1,
+ * `node_modules/foo` → bar@2), so by material alone two members swapping
+ * copies, in the cycle or out of it, moved nothing. Two members left with
+ * one label have the same material, reach the same children, and their
+ * in-cycle edges land on labels alike to every depth. Telling such a pair
+ * apart takes an isomorphism test; it needs a cycle where copies of one
+ * version reach alike at every step, which no swap of what one reaches
+ * produces.
+ */
+function cycleLabels(
+  g: ReachGraph,
+  members: readonly number[],
+  childOf: (w: number) => string | undefined,
+): string[] {
+  let label = new Map<number, string>()
+  for (const m of members) {
+    const out = new Set<string>()
+    for (const w of g.edges[m]!) {
+      const child = w === m ? undefined : childOf(w)
+      if (child !== undefined) out.add(child)
+    }
+    label.set(m, xxh3hex(`${g.material[m]!}\0${[...out].sort().join('\0')}`))
+  }
+  let parts = new Set(label.values()).size
+  for (;;) {
+    const next = new Map<number, string>()
+    for (const m of members) {
+      const inner = new Set<string>()
+      for (const w of g.edges[m]!) if (w !== m && label.has(w)) inner.add(label.get(w)!)
+      next.set(m, xxh3hex(`${label.get(m)!}\0${[...inner].sort().join('\0')}`))
+    }
+    label = next
+    const now = new Set(label.values()).size
+    if (now === parts) return members.map((m) => label.get(m)!)
+    parts = now
+  }
+}
+
 /** A dependency graph: one material string per node and its out-edges by index. */
 export interface ReachGraph {
   readonly material: readonly string[]
@@ -500,11 +566,18 @@ export function reachDigests(g: ReachGraph): string[] {
       // share one digest, so retargeting an edge between two of them (an
       // importer's `y@1.0.0` → `y@1.1.0` inside one cycle) moved nothing
       // and replayed a stale output (item 1013). A self-loop reaches
-      // nothing new and is left out.
-      const lines = members.map((m) => {
-        const targets = [...new Set(g.edges[m]!.filter((w) => w !== m).map((w) => g.material[w]!))]
-        return `${g.material[m]!}\0${targets.sort().join('\0')}`
-      })
+      // nothing new and is left out. A singleton's children already say
+      // where its edges land, and its line stays as it was, so an acyclic
+      // digest keeps its value.
+      const lines =
+        members.length === 1
+          ? members.map((m) => {
+              const targets = [
+                ...new Set(g.edges[m]!.filter((w) => w !== m).map((w) => g.material[w]!)),
+              ]
+              return `${g.material[m]!}\0${targets.sort().join('\0')}`
+            })
+          : cycleLabels(g, members, (w) => (comp[w] === id ? undefined : compHash[comp[w]!]!))
       let h = xxh3(`members:${members.length}`)
       for (const line of lines.sort()) h = xxh3(`${line}\n`, h)
       h = xxh3(`children:${children.size}`, h)

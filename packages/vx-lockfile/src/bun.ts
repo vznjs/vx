@@ -11,7 +11,7 @@
 // Bun.JSONC is the parser: no dependency, and the file is Bun's own.
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
-import { depsOf, peerOnly, record, type Json } from './json.js'
+import { depsOf, peerOnly, record, stable, type Json } from './json.js'
 import { joinPosix } from './posix.js'
 
 export interface Lockfile {
@@ -103,7 +103,8 @@ export function parseLockfile(text: string): Lockfile {
   for (const [k, v] of Object.entries(record(d['patchedDependencies']) ?? {})) {
     patches.set(k, typeof v === 'string' ? v : JSON.stringify(v))
   }
-  const global = JSON.stringify(rest)
+  // Sorted: the order Bun writes the fields in says nothing of the install.
+  const global = stable(rest)
   return {
     version: String(d['lockfileVersion']),
     workspaces,
@@ -160,7 +161,7 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
   const out = new Map<string, LockfileImporter>()
   const viaLayout = (from: string, name: string): string | undefined => {
     const key = resolve(lock, from, name)
-    return key === undefined ? undefined : workspaceOf(lock.packages.get(key)!.id)
+    return key === undefined ? undefined : workspaceOf(lock, lock.packages.get(key)!.id)
   }
   for (const dir of lock.workspaces.keys()) {
     const from = importerFrom(lock, dir)
@@ -210,13 +211,19 @@ function workspaceSpecTarget(
 }
 
 /**
- * The workspace dir a package id installs: `b@workspace:packages/b`, or
- * the root, which Bun 1.4 writes `root@root:`.
+ * The workspace dir a package id installs: `b@workspace:packages/b`, the
+ * root, which Bun 1.4 writes `root@root:`, or a `link:` to a workspace's
+ * directory (`b@link:./packages/b`), which symlinks the workspace itself:
+ * read as a leaf, b's bumps moved no key of the project linking it.
  */
-function workspaceOf(id: string): string | undefined {
+function workspaceOf(lock: Lockfile, id: string): string | undefined {
   const at = id.indexOf('@workspace:', 1)
   if (at !== -1) return id.slice(at + '@workspace:'.length) || '.'
-  return id.endsWith('@root:') ? '.' : undefined
+  if (id.endsWith('@root:')) return '.'
+  const link = id.indexOf('@link:', 1)
+  if (link === -1) return undefined
+  const dir = joinPosix('.', id.slice(link + '@link:'.length))
+  return dir !== undefined && lock.workspaces.has(dir) ? dir : undefined
 }
 
 /**
@@ -348,7 +355,7 @@ export function importerDigests(
   // live on its importer — so the node points at the importer: what a
   // project can import through workspace package B is B's whole reach.
   for (const [p, e] of lock.packages) {
-    const dir = workspaceOf(e.id)
+    const dir = workspaceOf(lock, e.id)
     const target = dir === undefined ? undefined : importers.get(dir)
     if (target !== undefined) edges[index.get(p)!]!.push(target)
   }
