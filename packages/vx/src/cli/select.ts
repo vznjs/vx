@@ -137,6 +137,16 @@ async function loadWorkspaceProjects(cwd: string, load: CliLoadOptions): Promise
   return await discoverCliProjects(await findWorkspaceRoot(cwd), load)
 }
 
+/** `//#task`, Turbo's root package, as the root project's id: the name discovery gives it (D-39). */
+export async function rootSpelled(root: string, target: string): Promise<string> {
+  if (!target.startsWith('//#')) return target
+  const name = await discoverCliProjects(root).then(
+    (metas) => metas.find((m) => m.dir === root)?.name,
+    () => undefined,
+  )
+  return name === undefined ? target : `${name}#${target.slice(3)}`
+}
+
 export async function findCwdProject(cwd: string): Promise<string | null> {
   return (await findCwdSelection(cwd))?.name ?? null
 }
@@ -289,7 +299,12 @@ function refusalOf(err: unknown): Refusal {
  * else a plugin's (`setBranch`: a pull request's base commit), else the
  * merge base with `baseBranch`.
  */
-export async function affectedFilterFor(cwd: string, affected: string): Promise<string | Refusal> {
+export async function affectedFilterFor(
+  cwd: string,
+  affected: string,
+  /** What the verb does instead on the base branch (`defaultAffectedBase`). */
+  instead?: string,
+): Promise<string | Refusal> {
   const root = await findWorkspaceRoot(cwd)
   let base = affected || ((settingEnv('affectedBase') as string | undefined) ?? '')
   if (base === '') {
@@ -297,7 +312,7 @@ export async function affectedFilterFor(cwd: string, affected: string): Promise<
     try {
       base =
         ws.branch.base ??
-        (await defaultAffectedBase(root, configuredBaseBranch(ws.workspaceConfig)))
+        (await defaultAffectedBase(root, configuredBaseBranch(ws.workspaceConfig), instead))
     } catch (err) {
       if (!isUserError(err)) throw err
       return refusalOf(err)

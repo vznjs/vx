@@ -453,9 +453,11 @@ it. Editing `shared/preset.ts` selects every project whose config
 imports it, directly or through another shared file.
 
 - The scan reads the source; it runs nothing.
-- It follows relative imports, and a bare one the nearest tsconfig maps
-  through `paths` or `baseUrl`. Any other bare import is a package,
-  which the lockfile covers.
+- It follows relative imports (`'..'` included), package.json
+  `#imports` with a local target, and a bare one the nearest tsconfig
+  maps through `paths` or `baseUrl`. Any other bare import is a
+  package, which the lockfile covers. `vx watch` follows the same
+  imports.
 - It crosses projects as the config does: a config importing
   `../../packages/lib/preset.ts` is selected when that file, or one it
   imports, changes.
@@ -1299,7 +1301,8 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    removed a cycle fails, as `vx run` refuses, until it is back. A `.gitignore`
    there or in a project's parent directory is a cycle too: inputs are
    gitignore-aware, so it changes what keys read (X-136). A file a
-   config imports by relative path from outside the watched projects (a
+   config imports from disk (relative, `#imports` or a tsconfig alias,
+   as `--affected` follows) from outside the watched projects (a
    shared preset) is watched too, and its edit is a cycle that re-reads
    the configs; so is one inside a project, which re-reads the set as the
    config's own edit does (WD-14). A file the workspace config imports is loaded once per
@@ -3168,6 +3171,7 @@ says the task printed nothing. With
 `source` `'failure'`, `'cache'` or `null`. A task no run recorded is
 refused, exit 1. A bare name (`--log build`) is the one project that ran
 it; with several, the one the cwd is in, else it is refused listing them.
+`//#build` is the root project's, here and in `--stats`.
 `vx last app#build --log` reads the same as `--log app#build`: a `--log`
 with no value takes the positional as its task.
 

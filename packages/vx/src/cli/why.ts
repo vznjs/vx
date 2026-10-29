@@ -31,8 +31,8 @@ import {
   WARN,
 } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { findCwdProject } from './select.js'
-import { cliCacheDir, discoverCliProjects, parseCacheDirFlag } from './workspace-config.js'
+import { findCwdProject, rootSpelled } from './select.js'
+import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
 interface WhyArgs {
   target?: string
@@ -207,16 +207,6 @@ async function resolveTarget(
 
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
 
-/** `//#task`, Turbo's root package, as the root project's id: the name discovery gives it (D-39). */
-async function rootSpelled(root: string, target: string): Promise<string> {
-  if (!target.startsWith('//#')) return target
-  const name = await discoverCliProjects(root).then(
-    (metas) => metas.find((m) => m.dir === root)?.name,
-    () => undefined,
-  )
-  return name === undefined ? target : `${name}#${target.slice(3)}`
-}
-
 /** ` · up-to-date` or ` · restored` on a hit, as the run's summary said it; nothing otherwise. */
 function restoredWord(r: { restored: boolean | null }): string {
   return r.restored === null ? '' : r.restored ? ' · restored' : ' · up-to-date'
@@ -322,7 +312,12 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const t = why.thisRun!
     lines.push(`${ui.inline(ui.id(taskId), c)}${dim(` — run ${runId}`)}`)
     lines.push(`  ${dim('this run')}   ${runFacts(t)}`)
-    if (why.previousRun == null) {
+    if (why.previousRun == null && t.hash === '') {
+      // Only keyed runs are compared: a persistent task's tenth run read
+      // as its first, and the note saying why went unprinted.
+      lines.push(`  ${dim('previous')}   (none with a cache key)`)
+      lines.push(`  ${dim('verdict')}    ${why.note}`)
+    } else if (why.previousRun == null) {
       lines.push(`  ${dim('previous')}   (none — first recorded run of this task)`)
     } else {
       const p = why.previousRun
@@ -400,6 +395,9 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       )
       if (kinds.length > 0) {
         lines.push('', `  ${head('what to do')}:`)
+        // Its own column: a root cause's kind and the `written` row are
+        // not in the table above, and overflowed its width.
+        const todoW = Math.max(kindW, ...kinds.map((k) => k.length), writers.length > 0 ? 7 : 0)
         for (const k of kinds) {
           const todo =
             k === 'upstream'
@@ -410,12 +408,12 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
               : k === 'config'
                 ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
                 : WHAT_TO_DO[k]
-          lines.push(`    ${dim(k.padEnd(kindW))}  ${todo}`)
+          lines.push(`    ${dim(k.padEnd(todoW))}  ${todo}`)
         }
         if (writers.length > 0) {
           // A task re-writing a file a key reads moves that key every run:
           // the miss is right, and only moving the write ends it.
-          lines.push(`    ${dim('written'.padEnd(kindW))}  ${WRITTEN_TODO}`)
+          lines.push(`    ${dim('written'.padEnd(todoW))}  ${WRITTEN_TODO}`)
         }
       }
     } else if (why.hashChanged === true) {
