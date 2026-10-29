@@ -267,6 +267,44 @@ describe('vx-history plugin end to end', () => {
     TIMEOUT,
   )
 
+  // A run reads only the rows of a task as it is now (`taskDefinitions`);
+  // the verb read every definition's, so it showed a reservation the run
+  // no longer packs.
+  it(
+    '`vx history` shows a task whose command changed with none of its old rows',
+    async () => {
+      const config = (command: string) =>
+        `export default { tasks: { build: { exec: { command: ${JSON.stringify(command)} } }, other: { exec: { command: 'true' } } } }\n`
+      await pkg('a', config('true'))
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['vxHistory()']),
+      )
+      const r1 = await run({
+        cwd: root,
+        tasks: ['build', 'other'],
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(r1.ok).toBe(true)
+      await pkg('a', config('true # changed'))
+      Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'lock'], cwd: root })
+      const json = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+        cwd: root,
+      })
+      expect(json.exitCode).toBe(0)
+      const runs = Object.fromEntries(
+        (JSON.parse(json.stdout.toString()) as { tasks: { id: string; runs: number }[] }).tasks.map(
+          (t) => [t.id, t.runs],
+        ),
+      )
+      expect(runs).toEqual({ 'a#build': 0, 'a#other': 1 })
+    },
+    TIMEOUT,
+  )
+
   it(
     '`vx history` reads the window and the headroom the plugin was given',
     async () => {
@@ -433,7 +471,7 @@ describe('vx-history plugin end to end', () => {
       expect(summary.ok).toBe(true)
       expect(log.started[0]).toBe('b#build')
       expect(lines.filter((l) => l.includes('vx-history'))).toEqual([
-        '[vx] vx-history: assume ignores "a#build", "a#test" — each must be a finite number of ms',
+        '[vx] vx-history: assume ignores "a#build", "a#test" — each must be a number of ms from 0 to 2^53',
       ])
     },
     TIMEOUT,
