@@ -535,6 +535,19 @@ describe('vx run with pnpm() declared', () => {
     return Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
   }
 
+  it('a single package with no pnpm-workspace.yaml and no lockfile runs (Turbo #5002)', async () => {
+    // pnpm writes no lockfile for a package with no dependencies, and a
+    // single-package repo has no pnpm-workspace.yaml.
+    await rm(path.join(root, 'packages'), { recursive: true })
+    await rm(path.join(root, 'pnpm-workspace.yaml'))
+    await rm(path.join(root, 'pnpm-lock.yaml'))
+    await mkdir(path.join(root, 'src'))
+    await writeFile(path.join(root, 'src', 'index.js'), '// solo\n')
+    await writeFile(path.join(root, 'vx.config.mjs'), BUILD)
+    expect(await statuses()).toEqual({ '//#build': 'success' })
+    expect(await statuses()).toEqual({ '//#build': 'cache-hit' })
+  })
+
   it('a dependency bump re-keys only the projects that reach it', async () => {
     const before = await hashes()
     expect(await statuses()).toEqual({
