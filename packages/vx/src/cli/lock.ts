@@ -22,6 +22,7 @@ import {
   type RefusalParts,
   type UserError,
   secretMask,
+  type SecretMask,
   ui,
   sayNotice,
   refuseSymlink,
@@ -460,17 +461,20 @@ function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string;
     for (const task of Object.values(config.tasks ?? {}))
       for (const n of task?.exec?.env?.secret ?? []) named.add(n)
   }
-  const secrets: [value: string, name: string][] = []
+  // Each variable's own mask: what the output masks of it, a URL's
+  // password and a key's lines too, not only the whole value.
+  const secrets: [mask: SecretMask, name: string][] = []
   for (const [name, value] of Object.entries(process.env)) {
-    if (value !== undefined && secretMask([{ [name]: value }], named.has(name) ? [name] : []))
-      secrets.push([value, name])
+    const mask =
+      value === undefined ? null : secretMask([{ [name]: value }], named.has(name) ? [name] : [])
+    if (mask !== null) secrets.push([mask, name])
   }
   if (secrets.length === 0) return []
   const found: Array<{ at: string; name: string }> = []
   const walk = (project: string, at: string, v: unknown): void => {
     if (typeof v === 'string') {
-      for (const [value, name] of secrets)
-        if (v.includes(value)) found.push({ at: `${project}: ${at} holds $${name}`, name })
+      for (const [mask, name] of secrets)
+        if (mask.spans(v).length > 0) found.push({ at: `${project}: ${at} holds $${name}`, name })
     } else if (Array.isArray(v)) {
       v.forEach((x, i) => walk(project, `${at}[${i}]`, x))
     } else if (v !== null && typeof v === 'object') {

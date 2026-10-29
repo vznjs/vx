@@ -84,6 +84,24 @@ describe('vx lock and a secret in an evaluated config', () => {
     expect(r).toEqual({ code: 0, err: '', written: true })
   })
 
+  // The output masks a URL's password and each line of a PEM key: the lock
+  // looked for the whole value only, and wrote either piece.
+  it('refuses a piece of a value the output masks: a URL password, a key line', async () => {
+    const r = await lock(
+      `export default { tasks: { up: { exec: {
+  command: 'up --pw ' + new URL(process.env.DATABASE_URL).password + ' --key ' + process.env.SIGNING_KEY.split('\\n')[1],
+} } } }
+`,
+      {
+        DATABASE_URL: 'postgres://app:dbpass-value@db/app',
+        SIGNING_KEY: '-----BEGIN KEY-----\nkeyline-value-two\n-----END KEY-----',
+      },
+    )
+    expect([r.code, r.written]).toEqual([1, false])
+    expect(r.err).toContain('a: tasks.up.exec.command holds $DATABASE_URL\n')
+    expect(r.err).toContain('a: tasks.up.exec.command holds $SIGNING_KEY\n')
+  })
+
   it('locks a command the shell expands (control)', async () => {
     const r = await lock(
       `export default { tasks: { deploy: { exec: { command: 'deploy --token $API_TOKEN', env: { passThrough: ['API_TOKEN'] } } } } }\n`,

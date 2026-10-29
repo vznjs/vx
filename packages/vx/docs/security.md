@@ -238,8 +238,9 @@ task's `exec.env.define` values and the `inputs.env` values its
 local child gets, never `passThrough`; those values sit unmasked in the
 action's Command, which the remote stores in its CAS, as Bazel's
 `--action_env` does, so a secret a remote task needs is trusted to that
-remote. `vx lock` refuses to write a lock holding a secret value: the lock is
-committed (L-42).
+remote. `vx lock` refuses to write a lock holding a secret value, or
+any piece of one the output masks (a URL's password, a key's line): the
+lock is committed (L-42).
 
 Masking covers the text vx shows and stores, not a task's outputs: they
 are cached and uploaded as the task wrote them, so a build that bakes a
