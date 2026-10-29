@@ -56,6 +56,8 @@ function main(argv: string[]): void {
   } catch (err) {
     fail(`ALLOW: ${(err as Error).message}`)
   }
+  // An empty one started a server that refused every request.
+  if (allow.length === 0) fail(`set ALLOW\n${USAGE}`)
   try {
     timingDays = timingDaysOf(env.TIMING_DAYS)
   } catch (err) {

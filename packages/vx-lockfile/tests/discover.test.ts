@@ -326,7 +326,19 @@ describe('discover', () => {
         await mkdir(path.join(root, dir), { recursive: true })
         await writeFile(path.join(root, dir, 'package.json'), JSON.stringify({ name: 'x' }))
       }
-      if (c.name === 'pnpm') expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+      if (c.name === 'pnpm') {
+        expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+        // A `**` ending a negated glob matches zero directories, as pnpm
+        // reads it: `packages/fixtures` is no workspace, and the lock was
+        // refused as out of date for it until any install, forever.
+        await mkdir(path.join(root, 'packages/fixtures'), { recursive: true })
+        await writeFile(
+          path.join(root, 'packages/fixtures/package.json'),
+          JSON.stringify({ name: 'fx' }),
+        )
+        expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+        await rm(path.join(root, 'packages/fixtures'), { recursive: true })
+      }
       await mkdir(path.join(root, 'packages/f'), { recursive: true })
       await writeFile(path.join(root, 'packages/f/package.json'), JSON.stringify({ name: 'f' }))
       const warnings: string[] = []
