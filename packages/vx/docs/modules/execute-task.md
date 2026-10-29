@@ -259,11 +259,13 @@ by SIGSEGV in the last command, or that command exited 139 itself", and
 each signal carries what sends it — SIGKILL the OOM killer or a kill,
 SIGSEGV/SIGBUS/SIGILL/SIGFPE a crash in native code, SIGABRT an
 assertion or a JS runtime's heap limit, SIGPIPE a reader that left,
-SIGXCPU/SIGXFSZ a ulimit, SIGSYS a seccomp filter or the sandbox. A
-SIGINT/SIGTERM the runner saw gets no line: the task is aborted when
-the run is stopping, else failed; nor does any task that ends while
-the run is stopping, since the stop's own SIGKILL past the grace read
-as the OOM killer's. A timed-out step gets no line either: its
+SIGXCPU/SIGXFSZ a ulimit, SIGSYS a seccomp filter or the sandbox, and
+SIGINT/SIGTERM something outside vx (the task failed: the run was not
+stopping, item 1100; it read nothing, while a pipeline's same 143 was
+explained). No task that ends while the run is stopping gets a line,
+since the stop's own SIGKILL past the grace read as the OOM killer's,
+and a SIGINT/SIGTERM death waits a turn for a pending handler before
+it is judged: a Ctrl-C reaches the task and vx together. A timed-out step gets no line either: its
 own line names the timeout, and so does a spawn that threw
 (`RunResult.spawnFailed`, A-41): no shell ran, so its 127 is vx's, and
 `EMFILE` there is named with the `ulimit -n` to raise. Pinned in `tests/shell-verdict.test.ts` on real files and

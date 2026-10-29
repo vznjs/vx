@@ -96,9 +96,6 @@ function signalVerdict(code: number, signal: string | undefined): string | undef
     num = code - 128
   }
   if (name === undefined || num === undefined) return undefined
-  // A SIGINT/SIGTERM the runner saw is a shutdown or an outside stop, and
-  // the orchestrator reverts the task to aborted — that path has its own line.
-  if (signal !== undefined && (signal === 'SIGINT' || signal === 'SIGTERM')) return undefined
   const why = SIGNAL_WHY[name] ?? 'the process was killed by that signal'
   const how =
     signal !== undefined

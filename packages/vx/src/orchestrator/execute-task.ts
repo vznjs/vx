@@ -1107,7 +1107,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // about what sent it (259). One frame line names the rule. A spawn that
     // threw ran no shell: its 127 is vx's, and the line would send the
     // reader after a command that exists (A-41). A run's stop killed it
-    // itself: the SIGKILL past the grace read as the OOM killer's.
+    // itself: the SIGKILL past the grace read as the OOM killer's. A
+    // SIGINT/SIGTERM death waits a turn for a pending handler first, as the
+    // shutdown check below does: a Ctrl-C reaches the child and vx together.
+    if (
+      !res.timedOut &&
+      (res.signal === 'SIGINT' || res.signal === 'SIGTERM') &&
+      args.stopSignal?.aborted !== true
+    )
+      await new Promise((resolve) => setTimeout(resolve, 0))
     if (!res.timedOut && res.spawnFailed !== true && args.stopSignal?.aborted !== true) {
       const verdict = shellVerdict({
         code,

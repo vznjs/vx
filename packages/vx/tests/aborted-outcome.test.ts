@@ -212,8 +212,36 @@ describe('a task killed by a shutdown signal', () => {
       ).toEqual(['x', 'x', 'x'])
       expect(r.out).toContain('DIAGNOSTIC')
       expect(r.out).toContain('failed (exit 143, 128 + SIGTERM)')
+      // Why, in its frame: the line a pipeline's same 143 already got.
+      expect(r.out).toContain(
+        '[vx] exit 143 is how the shell reports a death by SIGTERM (15): something outside vx asked the process to stop',
+      )
       expect(r.out).not.toContain('killed by a shutdown signal')
       expect(await Bun.file(path.join(root, 'later.txt')).exists()).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  // The stop's own signal and the task's death can land in either order
+  // (a terminal's Ctrl-C reaches both): a death vx saw before its handler
+  // ran is the stop's, and gets no outside-vx line.
+  it(
+    'a task that dies with the run it stopped gets no outside-vx line',
+    async () => {
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default { tasks: { doomed: { exec: { command: 'echo working; kill -TERM $PPID $$' } } } }`,
+      )
+      git(root, 'init', '-q')
+      for (let i = 0; i < 5; i++) {
+        const r = vx(root, 'run', 'doomed')
+        expect(r.code).not.toBe(0)
+        expect(r.out).toContain('aborted')
+        expect(r.out).not.toContain('something outside vx')
+      }
     },
     TIMEOUT,
   )
