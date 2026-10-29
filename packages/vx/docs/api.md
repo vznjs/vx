@@ -36,6 +36,8 @@ export interface AffectedChanges {
   whole: ReadonlySet<string>
   wholeBy?: ReadonlyMap<string, string>
   nested?: readonly string[]
+  dirLinks?: ReadonlySet<string>
+  dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
 }
 ```
 
