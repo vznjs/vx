@@ -1,10 +1,10 @@
 // The Bun server: an S3-compatible bucket, and nothing else.
 
-import { createServer, type AddressInfo } from 'node:net'
+import { connect, createServer, type AddressInfo } from 'node:net'
 import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test'
 import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { oidcAuth } from '@vzn/vx-devtools'
-import { listen, s3Blobs } from '../src/bun.js'
+import { type Listening, listen, s3Blobs } from '../src/bun.js'
 import { blobName } from '../src/store.js'
 import { createCacheServer, limitsFrom } from '../src/server.js'
 import { conformance, scopeOf } from './conformance.js'
@@ -24,7 +24,7 @@ import {
 const LIMITS = { maxCheckHashes: 50, maxUploadBytes: 7 * 1024 * 1024 }
 
 let s3: FakeS3
-let server: Bun.Server<undefined>
+let server: Listening
 let iss: Issuer
 let token = ''
 
@@ -38,12 +38,12 @@ beforeAll(async () => {
     authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
     limits: LIMITS,
   })
-  server = listen(handle, '127.0.0.1', 0)
+  server = await listen(handle, '127.0.0.1', 0)
   token = await iss.sign(MAIN_JOB, server.url.origin)
 })
 
 afterAll(async () => {
-  await server.stop(true)
+  await server.stop()
   await s3.stop()
 })
 
@@ -79,6 +79,22 @@ it('names an object <issuer>/<repository>/<scope>/<hash>, each hashed, and check
     ).json()
   expect(await check([k])).toEqual({ [k]: { size: 1, scope: main } })
   expect(s3.log.slice(before).map((l) => l.split('?')[0])).toEqual([`HEAD /b/${name}`])
+})
+
+// node:http has a whole-request deadline (300 s) and Bun.serve had none:
+// a big upload at a steady pace is not cut, and one that stops is.
+it('ends a request that stops sending, and serves on', async () => {
+  const quick = await listen(async (req) => new Response(await req.text()), '127.0.0.1', 0, 200)
+  try {
+    const sock = connect(Number(quick.url.port), '127.0.0.1')
+    const closed = new Promise<void>((resolve) => sock.once('close', () => resolve()))
+    sock.on('error', () => {})
+    sock.write('PUT / HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\nx')
+    await closed
+    expect(await (await fetch(quick.url, { method: 'PUT', body: 'still' })).text()).toBe('still')
+  } finally {
+    await quick.stop()
+  }
 })
 
 it('names each repository apart', async () => {
