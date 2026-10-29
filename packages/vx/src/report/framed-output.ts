@@ -443,6 +443,7 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`
   const mb = bytes / 1024 / 1024
   if (mb < 1) return `${Math.round(bytes / 1024)}KB`
+  if (mb < 9.95) return `${mb.toFixed(1)}MB`
   if (mb < 1000) return `${Math.round(mb)}MB`
   const gb = mb / 1024
   return gb < 10 ? `${gb.toFixed(1)}GB` : `${Math.round(gb)}GB`

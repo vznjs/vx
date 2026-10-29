@@ -847,9 +847,9 @@ other persistent task`), and a non-zero exit makes the run exit 1
    straight over its rows:
 
    ```
-         time   usual  waited status  cache      cpu    mem  blocks worker       task
-        3.19s    ~18s   400ms running miss       180%  412MB      12 local        solid-js#types  critical path
-                ~6.0s         blocked                                            └ solid-element#build
+         time   usual  waited status  cache      cpu    mem outputs  blocks worker       task
+        3.19s    ~18s   400ms running miss      180%  412MB              12 local        solid-js#types  critical path
+                ~6.0s         blocked                                                    └ solid-element#build
    ```
 
    - **time**: the live elapsed time; no glyph and no spinner.
@@ -865,6 +865,8 @@ other persistent task`), and a non-zero exit makes the run exit 1
    - **cpu** and **mem**: the task's process tree now, looked at every
      500 ms only while this list draws (a pipe or CI reads nothing); on a
      finished row its average cores and peak memory, blank on a hit.
+   - **outputs**: on a finished row, the bytes of its outputs; on a hit
+     the files it restored, blank for a remote hit not yet downloaded.
    - **blocks**: how many tasks are downstream of it, all of them.
    - **worker**: `local`, or the machine an executor (`@vzn/vx-dte`)
      names, cut to 12 columns with `…`.

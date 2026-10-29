@@ -15,6 +15,7 @@ import {
 import {
   formatListHeader,
   formatTaskExecutedLine,
+  formatSize,
   formatTaskHitLine,
 } from '../src/report/framed-output.js'
 const NO = { enabled: false }
@@ -1373,6 +1374,9 @@ describe('list headers', () => {
     under('cpu', '240%')
     under('mem', '1.1GB')
     under('outputs', '12MB')
+    // Below 10 MB a size keeps one decimal: 1.2 MB is not 1MB.
+    expect(formatSize(1.2 * MB)).toBe('1.2MB')
+    expect(formatSize(340 * 1024)).toBe('340KB')
     under('blocks', '14')
     expect(head.indexOf('worker')).toBe(row.indexOf('linux-arm-r\u2026'))
     expect(head.indexOf('task')).toBe(row.indexOf('p#a'))
