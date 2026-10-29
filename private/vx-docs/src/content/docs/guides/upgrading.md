@@ -9,45 +9,13 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## cache: bump CACHE_VERSION to vx-cache-v50
+## land the second mega branch of open PRs
 
 CACHE_VERSION is vx-cache-v50: every cached task misses once after upgrading.
 
 ## land the mega branch of open PRs
 
 No migration note.
-
-## vx-devtools: match a GitLab CI file kept in another project
-
-An ALLOW entry for a GitLab project whose CI file is kept in another project names that file as GitLab does, `.gitlab-ci.yml@group/ci`; a plain `.gitlab-ci.yml` entry no longer admits its jobs.
-
-## vx-devtools: one refusal body for every vx server
-
-@vzn/vx-history-server no longer exports errorJson; import it from @vzn/vx-devtools.
-
-## cache: read each brace alternative of a glob alone
-
-a brace of directories (`{src,lib}`) or of `./` spellings (`{./src,lib}/**`) in inputs or outputs now means what each alternative means alone; CACHE_VERSION is vx-cache-v49, so every cached task misses once.
-
-## cli: spell vx cache clean's rehearsal flag --dry
-
-`vx cache clean --dry-run` → `vx cache clean --dry`
-
-## vx-history: read the run's refs, never a guessed main
-
-vxHistory({ defaultBranch }) is refused; set the workspace's baseBranch instead.
-
-## vx-migrate: name the cache server url and its bearer token
-
-turboCache({ apiUrl }) is turboCache({ url }); nxCache({ server, accessToken }) is nxCache({ url, token }).
-
-## cli: vx run --dry=pretty, the value every --format takes
-
-vx run --dry=text is now --dry=pretty (bare --dry is unchanged).
-
-## cli: vx cache clean --dry, as vx run and vx init spell it
-
-vx cache clean --dry-run is now --dry; its JSON field dryRun is dry, and Cache.prune takes { dry } in place of { dryRun }.
 
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 
