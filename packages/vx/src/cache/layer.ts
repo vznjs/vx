@@ -832,7 +832,7 @@ export interface CacheLayer {
   outputsPath(hash: string): string
   /** The stored artifact's compressed size, wherever it lives; undefined when none is stored. */
   artifactSize?(hash: string): number | undefined
-  /** The entry's output files' bytes, uncompressed; undefined when no entry is indexed. */
+  /** The output files' bytes, uncompressed, of the entry this process just saved; asked once. */
   outputBytes?(hash: string): number | undefined
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void

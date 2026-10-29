@@ -949,6 +949,12 @@ export class Cache implements CacheLayer {
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
   private readonly outputs: OutputIndex
+  /**
+   * Each entry `save()` wrote: its files' bytes, summed as the rows went in,
+   * for the miss row's `outputs` (a read back was one statement a miss;
+   * principle 9). Taken once, by `outputBytes`.
+   */
+  private readonly savedBytes = new Map<string, number>()
   private readonly folds: FoldMemo
   private readonly history: RunHistory
   /** What the remotes said they hold, across runs (remote-hits.ts). */
@@ -1758,7 +1764,7 @@ export class Cache implements CacheLayer {
   }
 
   /** An adoption's verdict: an artifact that fails the checks is a miss. */
-  private async adopted(indexing: Promise<void>): Promise<boolean> {
+  private async adopted(indexing: Promise<unknown>): Promise<boolean> {
     try {
       await indexing
       return true
@@ -1957,16 +1963,9 @@ export class Cache implements CacheLayer {
     return this.tarPath(hash)
   }
   outputBytes(hash: string): number | undefined {
-    return this.guard(
-      () =>
-        (
-          this.db
-            .query(
-              'SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM output_files WHERE entry_hash = e.hash) AS n FROM entries e WHERE e.hash = ?',
-            )
-            .get(hash) as { n: number } | null
-        )?.n,
-    )
+    const bytes = this.savedBytes.get(hash)
+    this.savedBytes.delete(hash)
+    return bytes
   }
   artifactSize(hash: string): number | undefined {
     return this.guard(
@@ -2520,7 +2519,7 @@ export class Cache implements CacheLayer {
       throw err
     })
     endPack()
-    await this.guard(() =>
+    const bytes = await this.guard(() =>
       this.writeArtifactAndIndex(
         args.hash,
         'tar' in packed ? packed.compressed : 'plan' in packed ? packed.saved : packed,
@@ -2533,6 +2532,7 @@ export class Cache implements CacheLayer {
         'tar' in packed ? packed.tar : undefined,
       ),
     )
+    this.savedBytes.set(args.hash, bytes)
   }
 
   /**
@@ -2842,7 +2842,7 @@ export class Cache implements CacheLayer {
      * scanned as is rather than decoded back out of the bytes just encoded.
      */
     tar?: Uint8Array,
-  ): Promise<void> {
+  ): Promise<number> {
     // Validate BEFORE anything touches the final path. `ingest()` feeds
     // us a temp of network bytes; a truncated/garbage body that went live first
     // would leave a corrupt `<hash>.tar.zst` behind (with no SQL row,
@@ -3064,6 +3064,7 @@ export class Cache implements CacheLayer {
     const upsertStdout = this.upsertStdout
     const deleteStdout = this.deleteStdout
     const outputs = this.outputs
+    let outputBytes = 0
     const insertEntryInput = this.insertEntryInput
     const inputComponents = meta.inputComponents
     // The artifact goes live INSIDE the write transaction, taken
@@ -3155,7 +3156,7 @@ export class Cache implements CacheLayer {
           hash,
           stdoutText.startsWith('\uFEFF') ? utf8.encode(stdoutText) : stdoutText,
         )
-      outputs.replaceFileRows(hash, outputFileRows)
+      outputBytes = outputs.replaceFileRows(hash, outputFileRows)
       // INSERT OR IGNORE: identical inputs derive this same hash, so a
       // re-save's row is identical — keep the first, skip the rest.
       if (inputComponents !== undefined && inputComponents.length > 0) {
@@ -3177,6 +3178,7 @@ export class Cache implements CacheLayer {
     }
     endTx()
     for (const a of aside) await rm(a, { recursive: true, force: true })
+    return outputBytes
   }
 
   private tempTreePath(hash: string): string {

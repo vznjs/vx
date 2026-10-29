@@ -131,7 +131,7 @@ export interface CacheLayer {
   hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string // a file-backed artifact's path; a small one lives in the index
   artifactSize?(hash: string): number | undefined // the stored artifact's compressed size, wherever it lives
-  outputBytes?(hash: string): number | undefined // the indexed entry's output files' bytes, uncompressed
+  outputBytes?(hash: string): number | undefined // the entry this process just saved: its files' bytes, uncompressed; asked once
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }
