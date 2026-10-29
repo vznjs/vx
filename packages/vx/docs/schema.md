@@ -1662,6 +1662,8 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
 `~/.codex/auth.json`. A store in home's `.config` or `.local/share` is
 denied again under `$XDG_CONFIG_HOME` or `$XDG_DATA_HOME`, which a task sees.
+Each is looked for as each task starts, so a store an earlier task of
+the run wrote (`npm config set` saving a token) is denied as well.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 vx's own stores are denied the same way: `~/.vx`, where every
