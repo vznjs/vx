@@ -45,10 +45,12 @@ export function buildBase(repo: string, sha: string, outfile: string): void {
     }
     run(['git', 'cat-file', '-e', `${sha}^{commit}`], repo)
     run(['sh', '-c', `git archive --format=tar ${sha} packages/vx | tar -x -C "${src}"`], repo)
-    // Its dependencies are this checkout's install: a base that moved one
-    // is timed with the head's copy, as no lockfile lives in packages/vx.
+    // Its dependencies are this checkout's install, reached through the
+    // bench's own link to core (the sandbox grants that path, not
+    // packages/vx): a base that moved one is timed with the head's copy, as
+    // no lockfile lives in packages/vx.
     symlinkSync(
-      path.join(repo, 'packages/vx/node_modules'),
+      path.join(import.meta.dir, 'node_modules/@vzn/vx/node_modules'),
       path.join(src, 'packages/vx/node_modules'),
     )
     run(

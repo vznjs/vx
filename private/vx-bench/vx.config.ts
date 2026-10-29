@@ -42,7 +42,8 @@ export default defineProject({
         command: 'bun perf-guard.ts && bun pr-bench.ts',
         // The commit pr-bench.ts times this checkout against (ci.yml sets it).
         env: { ...NO_TRANSPILER_CACHE, passThrough: ['VX_BENCH_BASE'] },
-        sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
+        // The base's source comes out of git's objects (pr-bench-base.ts).
+        sandbox: { allow: { read: ['**/*', '../../.git'], systemInfo: ['vfs.disk-space'] } },
       },
       inputs: {
         files: [

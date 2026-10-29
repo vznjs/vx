@@ -29,7 +29,8 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*"
+              "**/*",
+              "../../.git"
             ],
             "systemInfo": [
               "vfs.disk-space"
