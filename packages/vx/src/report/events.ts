@@ -9,7 +9,7 @@
 import { exitSignal } from '../exec/index.js'
 import type { InputChanges, TaskNode, TaskOutcome } from '../graph/index.js'
 import { isGroupTask } from '../graph/index.js'
-import { maskedCommand, secretMask } from '../util/index.js'
+import { heldSecrets, maskedCommand, type SecretMask, secretMask } from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { RunContext } from './summary.js'
 
@@ -122,10 +122,19 @@ export function busLogger(bus: EventBus): Logger {
   let done = false
   // A status line carries plugin warnings, and a remote layer's warning
   // quotes the server's reply, which may echo what it was sent (L-40).
-  const secrets = secretMask([process.env])
+  // Built again once a plugin's keychain answered: its token is in no env.
+  let secrets: SecretMask | null = null
+  let built = -1
+  const masked = (line: string): string => {
+    if (built !== heldSecrets()) {
+      built = heldSecrets()
+      secrets = secretMask([process.env])
+    }
+    return secrets?.mask(line) ?? line
+  }
   return {
-    status: (line) => bus.emit({ kind: 'run:status', line: secrets?.mask(line) ?? line }),
-    warn: (line) => bus.emit({ kind: 'run:status', line: secrets?.mask(line) ?? line, warn: true }),
+    status: (line) => bus.emit({ kind: 'run:status', line: masked(line) }),
+    warn: (line) => bus.emit({ kind: 'run:status', line: masked(line), warn: true }),
     taskStdout: (node, chunk) => bus.emit({ kind: 'task:stdout', node, chunk }),
     taskStderr: (node, chunk) => bus.emit({ kind: 'task:stderr', node, chunk }),
     taskComplete: (node, outcome) => bus.emit({ kind: 'task:complete', node, outcome }),

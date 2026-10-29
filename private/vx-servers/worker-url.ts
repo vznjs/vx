@@ -164,11 +164,33 @@ export function githubApi(repo: string, token: string, deps: ApiDeps, end: numbe
   }
 }
 
-async function git(...args: string[]): Promise<string> {
-  const p = Bun.spawn(['git', ...args], { stdout: 'pipe', stderr: 'inherit' })
+async function git(args: string[], cwd = process.cwd()): Promise<string> {
+  const p = Bun.spawn(['git', ...args], { cwd, stdout: 'pipe', stderr: 'inherit' })
   const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
   if (code !== 0) throw new Error(`git ${args.join(' ')} exited ${code}`)
   return out
+}
+
+/**
+ * The paths that differ between `base` and `HEAD`, both sides of a rename:
+ * Workers Builds builds a push whose files leave a watch path too, and
+ * git's rename detection names only where a file went.
+ */
+export async function changedSince(base: string, cwd = process.cwd()): Promise<string[]> {
+  const out = await git(['diff', '--name-only', '--no-renames', base, 'HEAD'], cwd)
+  return out.split('\n').filter((f) => f !== '')
+}
+
+export interface Compare {
+  commits: { sha: string }[]
+  files?: { filename: string; previous_filename?: string }[]
+}
+
+/** A compare's files, a rename's old path included, as `changedSince` names them. */
+export function compareFiles(compare: Compare): string[] {
+  return (compare.files ?? []).flatMap((f) =>
+    f.previous_filename === undefined ? [f.filename] : [f.previous_filename, f.filename],
+  )
 }
 
 if (import.meta.main) {
@@ -201,19 +223,15 @@ if (import.meta.main) {
   // The checkout is the PR's merge commit, or main's pushed one, one deep:
   // its first parent is the base. One deep, the parent is not here; the
   // commit still names it.
-  const base = /^parent ([0-9a-f]+)$/m.exec(await git('cat-file', '-p', 'HEAD'))![1]!
-  interface Compare {
-    commits: { sha: string }[]
-    files?: { filename: string }[]
-  }
+  const base = /^parent ([0-9a-f]+)$/m.exec(await git(['cat-file', '-p', 'HEAD']))![1]!
   const url = await workerUrl(
     worker,
     watch,
     deployed,
     {
       async changed() {
-        await git('fetch', '-q', '--depth=1', 'origin', base)
-        return (await git('diff', '--name-only', base, 'HEAD')).split('\n').filter((f) => f !== '')
+        await git(['fetch', '-q', '--depth=1', 'origin', base])
+        return changedSince(base)
       },
       async commits() {
         if (!pr) return [head]
@@ -225,7 +243,7 @@ if (import.meta.main) {
           .check_runs
       },
       async since(sha) {
-        return ((await api<Compare>(`compare/${sha}...${head}`)).files ?? []).map((f) => f.filename)
+        return compareFiles(await api<Compare>(`compare/${sha}...${head}`))
       },
       sleep: (ms) => Bun.sleep(ms),
       now: () => Date.now(),

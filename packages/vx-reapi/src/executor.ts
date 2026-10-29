@@ -9,7 +9,17 @@
 // anything depending on one, and `exec.remote: false` never reach an
 // executor. This declines the rest of what it cannot honour.
 
-import { mkdir, writeFile, chmod, readlink, realpath, rm, symlink, unlink } from 'node:fs/promises'
+import {
+  mkdir,
+  writeFile,
+  chmod,
+  readlink,
+  realpath,
+  rm,
+  statfs,
+  symlink,
+  unlink,
+} from 'node:fs/promises'
 import { constants, existsSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -1821,6 +1831,33 @@ async function materialiseTree(
   const byDigest = new Map<string, Directory>()
   tree.children.forEach((child, i) => byDigest.set(tree.childDigests[i]!, child))
 
+  // A Tree may name one subtree under many names, so 41 directories can
+  // expand to 2^41 paths, and the walk wrote until the disk gave out. Each
+  // path is an inode on disk: counted once per distinct directory, a Tree
+  // that expands past what the file system has free is refused unwritten.
+  const counted = new Map<string, number>()
+  const entries = (dir: Directory): number => {
+    let n = 1 + dir.files.length + dir.symlinks.length
+    for (const d of dir.directories) {
+      const node = byDigest.get(d.digest.hash)
+      if (node === undefined) continue
+      let below = counted.get(d.digest.hash)
+      if (below === undefined) {
+        below = entries(node)
+        counted.set(d.digest.hash, below)
+      }
+      n += below
+    }
+    return n
+  }
+  const expands = entries(tree.root)
+  const room = await freeEntries(destDir)
+  if (expands > room) {
+    throw new UserError(
+      `vx/reapi: the server's Tree for ${destDir} expands to ${expands < 1e6 ? expands : expands.toPrecision(2)} entries, more than the ${room} this file system has free — refused`,
+    )
+  }
+
   // Files are gathered from the whole tree before any is fetched: one
   // BatchReadBlobs per DIRECTORY was a round trip each, so a `dist/` of 200
   // directories restored in 200 sequential calls (F-18). Windows bound what
@@ -1894,6 +1931,20 @@ async function materialiseTree(
  */
 function masked(mode: number): number {
   return mode & 0o777 & ~process.umask()
+}
+
+/**
+ * The files `dir`'s file system can still create: its free inodes, or its
+ * free blocks where it keeps no inode count (btrfs reports 0 of 0). Asked of
+ * the nearest ancestor that exists; unbounded when none answers.
+ */
+async function freeEntries(dir: string): Promise<number> {
+  for (let at = dir; ; at = path.dirname(at)) {
+    // quiet: a path not there yet: its parent answers
+    const fs = await statfs(at).catch(() => null)
+    if (fs !== null) return fs.files > 0 ? fs.ffree : fs.bavail
+    if (path.dirname(at) === at) return Infinity
+  }
 }
 
 /** Output files `materialiseOutputs` writes at once. */

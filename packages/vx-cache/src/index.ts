@@ -106,6 +106,15 @@ function proxyHeaders(
 const scopeOf = (ref: string): string =>
   new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
 
+/**
+ * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
+ * reach the terminal, and an `ESC ]` or `\r` in them retitled it or
+ * overwrote the line before (core's `printable`, L-31).
+ */
+const printable = (s: string): string =>
+  // oxlint-disable-next-line no-control-regex
+  s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
   let said = ''
@@ -120,8 +129,21 @@ async function refusal(res: Response): Promise<Error> {
   } catch {
     // quiet: the status alone still names the refusal
   }
-  said = said.replace(/\s+/g, ' ').trim().slice(0, 200)
+  said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
+}
+
+/** A 200's JSON; one that is none (a website's page) names the likely fault, the url. */
+async function jsonOf(res: Response, path: string): Promise<unknown> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    const type = res.headers.get('content-type') ?? 'no content type'
+    throw new Error(
+      `${path} answered ${res.status} with ${type}, not JSON: is the url a vx-cache server?`,
+    )
+  }
 }
 
 /** A deadline that names itself: the runtime's own abort says only "The operation timed out." */
@@ -439,7 +461,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       const res = await this.request('/v1/capabilities', { method: 'GET' })
       if (res === undefined) return undefined
       if (res.status !== 200) throw await refusal(res)
-      const body = (await res.json()) as Record<string, unknown> | null
+      const body = (await jsonOf(res, '/v1/capabilities')) as Record<string, unknown> | null
       const named = limitsOf((k) => body?.[k])
       if (named === undefined) this.limitsUnnamed(`/v1/capabilities (HTTP ${res.status})`)
       return named
@@ -544,7 +566,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (res === undefined) return new Map()
     if (res.status !== 200) throw await refusal(res)
     if (limitsNamed(res) === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
-    const body = (await res.json()) as Record<string, unknown> | null
+    const body = (await jsonOf(res, '/v1/artifacts')) as Record<string, unknown> | null
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       throw new Error('the check answered no object of hashes')
     }

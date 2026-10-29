@@ -79,16 +79,29 @@ export async function loadWorkspacePlugins(
       branch.scope = facts.scope
       delete branch.trusted
     }
-    if (facts.base !== undefined) branch.base = facts.base
+    if (facts.base !== undefined) {
+      // Read into `--affected`'s `...[<base>]` filter.
+      if (typeof facts.base !== 'string' || !/^[^\s\0[\]-][^\s\0[\]]*$/.test(facts.base))
+        throw new UserError('setBranch: base must be a commit or a ref')
+      branch.base = facts.base
+    }
     if (facts.refs !== undefined) {
       if (!Array.isArray(facts.refs) || facts.refs.some((r) => !isRef(r)))
         throw new UserError('setBranch: refs must be a list of refs, each starting "refs/"')
       branch.refs = [...new Set(facts.refs)]
     }
   }
-  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) =>
-    validateWorkspace(workspaceConfig, `.vx/workspace (after plugin '${plugin.name}')`),
-  )
+  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) => {
+    const at = `.vx/workspace (after plugin '${plugin.name}')`
+    validateWorkspace(workspaceConfig, at)
+    // The run takes `plugins` from the file: an edited list validated and was dropped.
+    const now = workspaceConfig.plugins
+    if (now?.length !== list?.length || now?.some((p, i) => p !== list![i])) {
+      throw new UserError(
+        `${at}: \`plugins\` is fixed before the config stage, so an edit to it would change nothing — declare plugins in .vx/workspace`,
+      )
+    }
+  })
   return { workspaceConfig, plugins, branch }
 }
 

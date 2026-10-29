@@ -59,11 +59,19 @@ export function withProjectDir(p: string, projectRel: string, asGlob: boolean): 
   })
 }
 
-/** A workspace path relative to the project dir, or null when it lies outside. */
+/**
+ * A workspace path relative to the project dir, or null when it lies
+ * outside; `''` is the project dir itself, which Nx reads as the whole tree
+ * (`path_or_everything_under`). As a workspace path, `{projectRoot}` cached
+ * a literal core reads as another project's, and `{projectRoot}/` the empty
+ * path, which saved and keyed nothing.
+ */
 export function underProject(p: string, projectRel: string): string | null {
   if (projectRel === '.' || projectRel === '') return p
-  for (const dir of [masked(projectRel), projectRel])
-    if (p.startsWith(`${dir}/`)) return p.slice(dir.length + 1)
+  for (const dir of [masked(projectRel), projectRel]) {
+    if (p === dir) return ''
+    if (p.startsWith(`${dir}/`)) return p.slice(dir.length + 1).replace(/\/+$/, '')
+  }
   return null
 }
 
@@ -191,7 +199,7 @@ export function mapNxOutputs(
       const gs = g.slice(gn.length)
       const own = underProject(gs, projectRel)
       if (own !== null) {
-        outFiles.push(gn + withProjectDir(own, projectRel, true))
+        outFiles.push(gn + (own === '' ? '**' : withProjectDir(own, projectRel, true)))
         continue
       }
       const m = path.posix.normalize(gs).replace(/^\.\//, '')
