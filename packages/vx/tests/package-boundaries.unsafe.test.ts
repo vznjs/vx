@@ -178,6 +178,7 @@ describe('package boundaries', () => {
       // outputs reach, as core's save does.
       'outputDirPrefixes',
       'outputsOverlap',
+      'packageManagerPath',
       'planRun',
       'prepareRun',
       'pruneOrphanPersistentNotes',

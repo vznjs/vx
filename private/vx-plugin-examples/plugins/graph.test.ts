@@ -78,3 +78,22 @@ it('each named task waits on the one before it in id order', async () => {
     'c#build <- b#build',
   ])
 }, 20_000)
+
+// Id order alone put a#build before b#build even when a#build already
+// waits on b#build: the added edge closed a cycle and the run was refused.
+it('chains in dependency order, never closing a cycle', async () => {
+  await pkg(
+    'a',
+    `export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ['b#build'] } } }`,
+  )
+  for (const name of ['b', 'c']) {
+    await pkg(name, `export default { tasks: { build: { exec: { command: 'true' } } } }`)
+  }
+  await workspace(`chain('build')`)
+  const plan = await planRun({ cwd: root, tasks: ['build'], log: log() })
+  expect(plan.tasks.map((t) => `${t.node.id} <- ${t.deps.join(',')}`).sort()).toEqual([
+    'a#build <- b#build',
+    'b#build <- ',
+    'c#build <- a#build',
+  ])
+}, 20_000)

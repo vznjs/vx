@@ -9,6 +9,12 @@ export function shellExecutor(): VxPlugin {
     name: 'shell',
     async execute(req) {
       const started = Date.now()
+      // A stop before the spawn is work not to start: an abort fires no
+      // listener added after it, so the command would run unstopped.
+      if (req.signal?.aborted === true) {
+        const exitCode = req.signal.reason === 'SIGINT' ? 130 : 143
+        return { exitCode, durationMs: 0, stdout: '', stderr: '', violations: [], where: 'shell' }
+      }
       // vx's own `sh`: a bare name is looked up on `req.env`'s PATH, which
       // leads with the project's node_modules/.bin, where a dependency's
       // `sh` would run every command.
@@ -23,30 +29,47 @@ export function shellExecutor(): VxPlugin {
         stderr: 'pipe',
         detached: true,
       })
-      const stop = (): void => {
+      const kill = (signal: NodeJS.Signals): void => {
         try {
-          process.kill(-child.pid, 'SIGTERM')
+          process.kill(-child.pid, signal)
         } catch {
           // already gone
         }
       }
+      // Core abandons an executor 2 s after the abort: a group that ignores
+      // SIGTERM is killed before then, or it would run on unreached.
+      let killTimer: ReturnType<typeof setTimeout> | undefined
+      const stop = (): void => {
+        kill('SIGTERM')
+        killTimer = setTimeout(() => kill('SIGKILL'), 1_000)
+      }
       req.signal?.addEventListener('abort', stop, { once: true })
+      const readers: { cancel(): Promise<void> }[] = []
       const drain = async (stream: ReadableStream<Uint8Array>, on: (s: string) => void) => {
+        const reader = stream.getReader()
+        readers.push(reader)
         const decoder = new TextDecoder()
         let all = ''
-        for await (const chunk of stream) {
-          const text = decoder.decode(chunk, { stream: true })
+        for (let r = await reader.read(); !r.done; r = await reader.read()) {
+          const text = decoder.decode(r.value, { stream: true })
           all += text
           on(text)
         }
         return all
       }
-      const [stdout, stderr, exitCode] = await Promise.all([
+      const drained = Promise.all([
         drain(child.stdout, req.onStdout),
         drain(child.stderr, req.onStderr),
-        child.exited,
       ])
+      const exitCode = await child.exited
+      // A pipe ends only when every writer closes it: a process the command
+      // left running (`server &`) would hold the task open. What it writes
+      // after a short grace is not the task's.
+      const cut = setTimeout(() => readers.forEach((r) => void r.cancel()), 250)
+      const [stdout, stderr] = await drained
+      clearTimeout(cut)
       req.signal?.removeEventListener('abort', stop)
+      clearTimeout(killTimer)
       return {
         exitCode,
         durationMs: Date.now() - started,

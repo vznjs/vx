@@ -438,7 +438,9 @@ describe('pnpm()', () => {
       err = e
     }
     expect(isUserError(err)).toBe(true)
-    expect((err as Error).message).toBe(`pnpm() scope must be 'project' or 'workspace', not "file"`)
+    expect((err as Error).message).toBe(
+      `pnpm() option "scope" must be 'project' or 'workspace', got "file"`,
+    )
   })
 
   describe('affected', () => {
