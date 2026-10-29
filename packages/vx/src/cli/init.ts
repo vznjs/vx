@@ -163,7 +163,9 @@ function packageRoot(dirs: readonly string[], inGit: boolean): string | null {
 
 function declaresWorkspaces(dir: string): boolean {
   try {
-    const pj = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
+    const pj = JSON.parse(
+      readFileSync(path.join(dir, 'package.json'), 'utf8').replace(/^\uFEFF/, ''),
+    ) as {
       workspaces?: unknown
     }
     return pj.workspaces !== undefined
