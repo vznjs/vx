@@ -3106,7 +3106,8 @@ vx run app#test -- …`, with the arguments the run forwarded to the
 tasks that got them; a failed dependency, which never got them, gets a
 line of its own without them, X-140). The
 replayed `$ vx run …` or `$ vx watch …` line and that one keep each
-argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49).
+argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49);
+the re-run line quotes a task id the same way (`'app#it'\''s boom'`).
 
 **No runs yet.** Before any run, every form says so
 (`› vx last  no runs yet` with `fix  vx run`, exit 1; `--list` prints
@@ -3130,7 +3131,9 @@ id could be is refused as an unexpected argument).
 prints one task's output instead of the summary: in the latest run that
 recorded the task, or in RUNID's. A failed task's is the kept failure
 output; any other task's is its cache entry's log (the one a hit
-replays, masked as it was), so a passing task's log reads too, on a hit
+replays, masked as it was, and again with this process's secret values,
+as a hit's replay is; a task's `env.define` / `env.secret` values only
+the run knows), so a passing task's log reads too, on a hit
 or in the run that saved it. An uncached task that passed, or a skip,
 kept none, nor does a failed task past the newest 50 failed runs:
 stdout is empty and stderr says so, exit 0. A kept log that is empty
