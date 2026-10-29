@@ -5,11 +5,11 @@
 // The deep pins for each behaviour live in the suites `docs/parity.md`
 // maps; this file is the one place a Turbo reader can scan.
 
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { gitIn } from './helpers/workspace.js'
+import { gitIn, makeWorkspace } from './helpers/workspace.js'
 import {
   dry,
   makeParityWorkspace,
@@ -521,6 +521,61 @@ describe('Turbo parity — failures, output and reports', () => {
       const r = await vx(root, ['run', 'lint', '--all', '--force', '--concurrency', '1'])
       expect(r.code).toBe(0)
       expect(r.out + r.err).toContain('1 worker')
+    },
+    TIMEOUT,
+  )
+})
+
+// Turbo inferred a package from the cwd and injected its name into a
+// directory filter, so the same command selected differently by where it
+// ran (vercel/turborepo#11432, #11500). vx reads a `./` path from the
+// workspace root wherever it runs, and injects nothing (D-43).
+describe('Turbo parity — a directory filter run from a subdirectory', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeWorkspace({ prefix: 'vx-parity-turbo-subdir-' })
+    const config = `export default { tasks: { lint: { exec: { command: 'true' } } } }\n`
+    for (const dir of ['packages/apps', 'packages/apps/x', 'packages/apps/y']) {
+      await mkdir(path.join(root, dir), { recursive: true })
+      await writeFile(
+        path.join(root, dir, 'package.json'),
+        JSON.stringify({ name: path.basename(dir) }),
+      )
+      await writeFile(path.join(root, dir, 'vx.config.mjs'), config)
+    }
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'selects the same projects from the root and from the project the path is in, every time',
+    async () => {
+      const ids = async (cwd: string): Promise<string[]> => {
+        const r = await vx(path.join(root, cwd), [
+          'run',
+          'lint',
+          '--filter',
+          './packages/apps/*',
+          '--dry=json',
+        ])
+        expect(r.code).toBe(0)
+        return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
+      }
+      const want = ['packages/apps/x#lint', 'packages/apps/y#lint']
+      expect(await ids('.')).toEqual(want)
+      for (let i = 0; i < 3; i++) expect(await ids('packages/apps')).toEqual(want)
+      // CONTROL: the project's own path selects it alone.
+      const own = await vx(path.join(root, 'packages/apps'), [
+        'run',
+        'lint',
+        '--filter',
+        './packages/apps',
+        '--dry=json',
+      ])
+      expect((JSON.parse(own.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id)).toEqual([
+        'apps#lint',
+      ])
     },
     TIMEOUT,
   )
