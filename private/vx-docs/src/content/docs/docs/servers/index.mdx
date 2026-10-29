@@ -46,10 +46,11 @@ What that gives each run of `ci.yml`:
   `ALLOW is empty: set it to the CI workflows this server serves`.
 
 On GitLab, the workflow is the CI file:
-`https://gitlab.com:acme/web:.gitlab-ci.yml`. A merge request pipeline
-writes its source branch only when the token's `source_project_path`
-(GitLab 19.5+) names the project itself: a fork's merge request, run in
-your project, writes nothing.
+`https://gitlab.com:acme/web:.gitlab-ci.yml`.
+
+A merge request pipeline writes its source branch only when the token's
+`source_project_path` (GitLab 19.5+) names the project itself. A fork's
+merge request, run in your project, writes nothing.
 
 A CI file kept in another project is named as GitLab names it:
 `.gitlab-ci.yml@acme/ci`.
