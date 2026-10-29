@@ -63,6 +63,16 @@ describe('resolveOutputView', () => {
     expect(resolveOutputView({ outputLogs: 'full', flow: 'broad' }, {})).toEqual({ mode: 'full' })
   })
 
+  it('--output-logs beats VX_RUN_OUTPUT_LOGS, and the variable beats CI and flow', () => {
+    const env = { VX_RUN_OUTPUT_LOGS: 'none' }
+    expect(resolveOutputView({ outputLogs: 'full', flow: 'broad' }, env)).toEqual({ mode: 'full' })
+    expect(resolveOutputView({ flow: 'focused' }, env)).toEqual({ mode: 'none' })
+    expect(resolveOutputView({ flow: 'broad' }, { ...env, CI: '1' })).toEqual({
+      mode: 'none',
+      ci: true,
+    })
+  })
+
   it('no flow, no CI, no override → full (programmatic default)', () => {
     expect(resolveOutputView({}, {})).toEqual({ mode: 'full' })
   })
@@ -233,6 +243,20 @@ describe('defaultLogger visibility matrix — focused', () => {
     // never glues onto the frame.
     expect(out.text()).toBe(
       '┌─ one#test > $ noop\nline 1\nwarn 1\n└─ one#test ── (100ms) success\n\n',
+    )
+  })
+
+  it("a streamed task's blank lines are kept, and nothing is added after its stderr", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    const n = mkNode('one#test', { requested: true })
+    log.taskStart?.(n)
+    log.taskStdout(n, 'l1\n\n\n')
+    log.taskStderr(n, 'e1\n\n')
+    log.taskStdout(n, 'l4\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    expect(out.text()).toBe(
+      '┌─ one#test > $ noop\nl1\n\n\ne1\n\nl4\n└─ one#test ── (100ms) success\n\n',
     )
   })
 

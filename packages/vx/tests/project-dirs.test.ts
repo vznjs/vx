@@ -4,7 +4,7 @@
 // plugin, else by its root-relative path, `//` for the root. Core reads no
 // package.json and no package-manager member list.
 // Design: docs/design/language-agnostic-core-2026-10.md (PR 5).
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -77,6 +77,64 @@ describe('a project is a directory with a vx.config', () => {
       await write(path.join(root, 'tools/gen/vx.config.mjs'), config())
       expect(vx(root, 'lock').code).toBe(0)
       expect(planned(root, 'hello', '--all')).toEqual(['tools/gen#hello'])
+    },
+    TIMEOUT,
+  )
+
+  // Other runners skipped a directory starting with a dot or holding
+  // `__x__`, and took two directories of one base name for one project.
+  it(
+    'dot directories, underscored names and one base name at two paths are each a project',
+    async () => {
+      for (const dir of [
+        '.config/c',
+        '.dotdir/d',
+        'libs/__generated__',
+        'libs/_x_',
+        'x/same',
+        'y/same',
+      ])
+        await write(path.join(root, dir, 'vx.config.mjs'), config())
+      expect(vx(root, 'lock').code).toBe(0)
+      expect(planned(root, 'hello', '--all')).toEqual([
+        '.config/c#hello',
+        '.dotdir/d#hello',
+        'libs/__generated__#hello',
+        'libs/_x_#hello',
+        'x/same#hello',
+        'y/same#hello',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  // A workspace path with a space broke module resolution and spawns elsewhere.
+  it(
+    'a workspace and project at paths holding spaces and parentheses run, hit and restore',
+    async () => {
+      const spaced = await mkdtemp(path.join(os.tmpdir(), 'vx dirs (x) '))
+      try {
+        await write(path.join(spaced, '.vx/workspace.mjs'), 'export default {}\n')
+        gitInit(spaced)
+        const dir = path.join(spaced, 'my app (1)')
+        await write(
+          path.join(dir, 'vx.config.mjs'),
+          `export default { tasks: { build: {
+            exec: { command: 'echo ran >> runs.log && mkdir -p dist && cp "src/in put.txt" dist/out.txt && pwd > dist/cwd.txt' },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          } } }\n`,
+        )
+        await write(path.join(dir, 'src/in put.txt'), 'v1\n')
+        expect(vx(spaced, 'lock').code).toBe(0)
+        const read = (f: string) => Bun.file(path.join(dir, f)).text()
+        expect(vx(spaced, 'run', 'my app (1)#build').code).toBe(0)
+        expect(await read('dist/cwd.txt')).toBe(`${await realpath(dir)}\n`)
+        await rm(path.join(dir, 'dist'), { recursive: true })
+        expect(vx(spaced, 'run', 'my app (1)#build').code).toBe(0)
+        expect([await read('runs.log'), await read('dist/out.txt')]).toEqual(['ran\n', 'v1\n'])
+      } finally {
+        await rm(spaced, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )

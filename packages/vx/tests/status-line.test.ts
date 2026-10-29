@@ -4,6 +4,7 @@
 // writes its content, then redraws — and the run-end erase is
 // permanent.
 
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
   createOutputWriter,
@@ -1222,4 +1223,15 @@ describe('--output-logs hash-only', () => {
     expect(painted).toStartWith('\x1b[38;2;239;68;68mfailed\x1b[0m ')
     expect(painted).toEndWith('\x1b[2mabcdef0123456789\x1b[0m')
   })
+})
+
+// A cursor hidden while a run draws stays hidden when the run is killed
+// mid-draw. vx never hides it, so no exit path has to show it again.
+it('no source in core hides the cursor', async () => {
+  const src = path.join(import.meta.dir, '..', 'src')
+  const hiding: string[] = []
+  for (const f of new Bun.Glob('**/*.ts').scanSync(src)) {
+    if (/\?25l/.test(await Bun.file(path.join(src, f)).text())) hiding.push(f)
+  }
+  expect(hiding).toEqual([])
 })

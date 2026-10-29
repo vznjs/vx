@@ -62,3 +62,13 @@ describe('VX_CACHE_DIR of whitespace (D-160)', () => {
     expect(resolveCacheDir('/ws', null)).toBe(path.resolve('/ws', '.vx', 'cache'))
   })
 })
+
+describe('a relative VX_CACHE_DIR', () => {
+  // Resolved against the cwd, a run from a member made a second cache
+  // there and missed every entry the root's held.
+  it("is the workspace root's, whatever directory vx runs from", () => {
+    process.env['VX_CACHE_DIR'] = 'mycache'
+    expect(process.cwd()).not.toBe('/ws')
+    expect(resolveCacheDir('/ws', null)).toBe('/ws/mycache')
+  })
+})
