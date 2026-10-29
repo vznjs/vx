@@ -1078,6 +1078,29 @@ describe('config', () => {
     }
   })
 
+  // A server's 502 on an upload was final: the cache server could not read
+  // GitHub's keys once (a 10 s timeout), and a DTE worker's entry was lost,
+  // failing the task on the orchestrator (2026-10-29). A PUT names its hash,
+  // so sending it again is safe.
+  it('sends an upload again after a 5xx', async () => {
+    const srv = server()
+    try {
+      let down = 1
+      const flaky: typeof fetch = Object.assign(
+        (input: string | URL | Request, init?: RequestInit) =>
+          init?.method === 'PUT' && down-- > 0
+            ? Promise.resolve(new Response('could not read keys', { status: 502 }))
+            : fetch(input, init),
+        { preconnect: fetch.preconnect },
+      )
+      const token = await srv.token(MAIN_JOB)
+      await layer(srv.url, token, [MAIN], flaky).put('ab14', new Blob(['xy']), { durationMs: 1 })
+      expect(await layer(srv.url, token).has('ab14')).toEqual({ size: 2 })
+    } finally {
+      await srv.stop()
+    }
+  })
+
   // A URL of a website answers any path 200 with its page: JSON.parse's
   // "Unrecognized token '<'" named no fault.
   it('says a 200 that is no JSON is not a vx-cache server', async () => {
