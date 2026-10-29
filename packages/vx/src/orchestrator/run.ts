@@ -37,7 +37,6 @@ import {
   runGraph,
   taskDefinitions,
   type TaskNode,
-  type ReverseDepCounts,
   type TaskOutcome,
 } from '../graph/index.js'
 import { graphCounts } from './graph-memo.js'
@@ -914,12 +913,12 @@ async function runOnBus(
     const fault = executorFaults(warnOf(log))
     const footers = executors.filter((e) => e.footer !== undefined)
     const placers = executors.filter((e) => e.running !== undefined)
-    // Every row's `blocks`, the live list's and the results': one closure
-    // over the graph, built on the first row that asks.
-    let counted: ReverseDepCounts | undefined
-    const countsNow = (): ReverseDepCounts =>
+    // The scheduler's dependents count, and every row's `blocks` (the live
+    // list's and the results'): one closure over the graph, built on the
+    // first that asks.
+    let counted: ReadonlyMap<string, number> | undefined
+    const blocksNow = (): ReadonlyMap<string, number> =>
       (counted ??= graphCounts(nodes, hashCache.folds, hashCache.graph))
-    const blocksNow = (): ReadonlyMap<string, number> => countsNow().tasks
     // The live rows' `cpu` and `mem`; it looks only once the live list asks.
     const liveUsage = createLiveUsage()
     const runContext = {
@@ -981,7 +980,7 @@ async function runOnBus(
     // history's only if the region is still up a second in, so a warm run
     // never reads history.
     terminal?.forecast(
-      () => createForecast(nodes, new Map(), concurrency, blocksNow(), countsNow().all),
+      () => createForecast(nodes, new Map(), concurrency, blocksNow()),
       async () => {
         const ids: string[] = []
         for (const n of nodes.values()) if (!isGroupTask(n)) ids.push(n.id)
@@ -991,7 +990,7 @@ async function runOnBus(
           prepared.branch(),
           taskDefinitions(nodes.values()),
         ).p50sFor(ids)
-        return createForecast(nodes, p50s, concurrency, blocksNow(), countsNow().all)
+        return createForecast(nodes, p50s, concurrency, blocksNow())
       },
     )
 
@@ -1275,7 +1274,7 @@ async function runOnBus(
       nodes,
       concurrency,
       restoreConcurrency: options.restoreConcurrency ?? 2 * concurrency,
-      reverseDeps: () => countsNow().all,
+      reverseDeps: blocksNow,
       settledOf: (o) => deferredSaves.get(o.node.id),
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),

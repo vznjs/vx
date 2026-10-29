@@ -374,7 +374,7 @@ export interface RunRecord {
   cpuShare?: number // v49: the share of a core its threads got there; history divides its CPU by it
   queuedMs?: number // v51: waited ready for a slot
   outputBytes?: number // v51: its output files' bytes, restored or saved
-  blocks?: number // v51: the tasks downstream of it in the run
+  blocks?: number // v51: the tasks and groups downstream of it in the run
   flakyPasses?: number // v51: the flaky record its row quoted
   flakyFailures?: number
 }

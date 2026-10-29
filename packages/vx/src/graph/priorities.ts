@@ -164,7 +164,7 @@ export function computeReverseDepCount(
  * the closure is the cost (~100 ms at 11k nodes, 2026-10-29), each count
  * one popcount pass over it.
  */
-export function reverseDepCountsOver(
+function reverseDepCountsOver(
   nodes: ReadonlyMap<string, TaskNode>,
   counted: ReadonlyArray<ReadonlyMap<string, unknown> | undefined>,
 ): Map<string, number>[] {

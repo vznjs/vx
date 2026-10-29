@@ -38,7 +38,7 @@ export interface RunRecordsInput {
   host: HostContext
   /** Build the telemetry mirror; a run with no sink allocates none. */
   withTelemetry: boolean
-  /** Each task's count of the tasks downstream of it: the rows' `blocks`. */
+  /** Each task's count of the tasks and groups downstream of it (the scheduler's): the rows' `blocks`. */
   blocks?: ReadonlyMap<string, number>
   /** The run's remote failures by key, so far (`Cache.traffic`). */
   remoteTraffic?: ReadonlyMap<string, { failures: readonly string[] }>
