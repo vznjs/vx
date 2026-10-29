@@ -213,6 +213,23 @@ describe('--affected follows task edges (2026-10-04)', () => {
   )
 
   it(
+    'a group task is kept when a task it depends on is affected (vercel/turborepo#13805)',
+    async () => {
+      await commitEdit(
+        'pkgs/app/vx.config.mjs',
+        CONFIG.replace('  tasks: {', "  tasks: {\n    all: { dependsOn: ['build'] },"),
+      )
+      await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
+      expect(planned(['all'], '--affected=HEAD~1')).toEqual(['app#all', 'app#build', 'lib#build'])
+      // CONTROL: a change its closure does not reach leaves it out.
+      await commitEdit('pkgs/tool/src/index.ts', 'export const x = 3')
+      expect(vx(root, 'run', 'all', '--affected=HEAD~1', '--dry').exitCode).toBe(0)
+      expect(vx(root, 'run', 'all', '--affected=HEAD~1', '--dry').stdout).not.toContain('app#all')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a change no requested task reaches is a clean "nothing affected"',
     async () => {
       await commitEdit('pkgs/lib/src/index.test.ts', 'test 2')
