@@ -60,8 +60,20 @@ const STRACE_UNFINISHED_RE = new RegExp(
 const STRACE_RESUMED_RE = new RegExp(
   `^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>.*?=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
-/** The calls that ask whether a path is there rather than read it. */
-const PROBES = new Set(['execve', 'faccessat2', 'faccessat', 'access', 'statx', 'newfstatat'])
+/**
+ * The calls that ask whether a path is there rather than read it. A
+ * `chdir` creates nothing: one into a directory the host lacks (`mkdir -p`
+ * after its refused mkdir) was judged a write, and the fix named a file.
+ */
+const PROBES = new Set([
+  'execve',
+  'faccessat2',
+  'faccessat',
+  'access',
+  'statx',
+  'newfstatat',
+  'chdir',
+])
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
 /**
