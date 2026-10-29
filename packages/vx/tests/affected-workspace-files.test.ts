@@ -216,6 +216,33 @@ describe('--affected sees a workspaceFiles change', () => {
   )
 
   it(
+    'a root package.json edit re-keys nothing and selects nothing (vercel/turborepo#12469)',
+    async () => {
+      // As a real repo has it: an untracked output is a change --affected counts.
+      await write(path.join(root, '.gitignore'), 'dist/\n')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'ignore dist')
+      expect(vx(root, 'run', 'build', '--all').exitCode).toBe(0)
+      await write(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'r', workspaces: ['pkgs/*'], description: 'x' }, null, 2),
+      )
+      git(root, 'commit', '-qam', 'root manifest')
+      const plan = (...args: string[]) => {
+        const r = vx(root, 'run', 'build', ...args, '--dry=json')
+        if (r.exitCode !== 0) return r.stdout
+        return (JSON.parse(r.json) as { tasks: { id: string; cacheStatus: string }[] }).tasks.map(
+          (t) => `${t.id} ${t.cacheStatus}`,
+        )
+      }
+      // The two agree: the key did not move, so the diff selects nothing.
+      expect(plan('--all')).toEqual(['app#build hit-local'])
+      expect(plan('--affected=HEAD~1')).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  it(
     "a root file one task reads does not seed its project's uncached task (X-40)",
     async () => {
       // `shared/**` re-keys app#build alone, but the owner went into the
