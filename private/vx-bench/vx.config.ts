@@ -40,7 +40,8 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun perf-guard.ts && bun pr-bench.ts',
-        env: NO_TRANSPILER_CACHE,
+        // The commit pr-bench.ts times this checkout against (ci.yml sets it).
+        env: { ...NO_TRANSPILER_CACHE, passThrough: ['VX_BENCH_BASE'] },
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       inputs: {
@@ -48,6 +49,7 @@ export default defineProject({
           'perf-guard.ts',
           'perf-baseline.json',
           'pr-bench.ts',
+          'pr-bench-base.ts',
           'pr-bench-baseline.json',
           'quiet.ts',
           'bench-env.ts',
@@ -55,6 +57,8 @@ export default defineProject({
           'workspace-copy.ts',
           'package.json',
         ],
+        // A new base is a new yardstick: the bench runs again against it.
+        env: ['VX_BENCH_BASE'],
       },
       cache: {
         outputs: { files: [] },

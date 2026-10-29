@@ -21,7 +21,10 @@
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
-          }
+          },
+          "passThrough": [
+            "VX_BENCH_BASE"
+          ]
         },
         "sandbox": {
           "allow": {
@@ -39,12 +42,16 @@
           "perf-guard.ts",
           "perf-baseline.json",
           "pr-bench.ts",
+          "pr-bench-base.ts",
           "pr-bench-baseline.json",
           "quiet.ts",
           "bench-env.ts",
           "edges.ts",
           "workspace-copy.ts",
           "package.json"
+        ],
+        "env": [
+          "VX_BENCH_BASE"
         ]
       },
       "cache": {
