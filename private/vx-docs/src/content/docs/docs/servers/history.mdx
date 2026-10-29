@@ -65,8 +65,8 @@ AUDIENCE=https://history.example.com \
 bunx @vzn/vx-history-server --db vx-history.sqlite --port 8080
 ```
 
-```text
-✓ vx-history-server  listening on http://0.0.0.0:8080/
+```ansi
+[38;2;34;197;94m✓[0m [1mvx-history-server[0m  listening on [38;2;6;182;212mhttp://0.0.0.0:8080/[0m
 ```
 
 `--db` (default `vx-history.sqlite`), `--port` (default 8080) and
@@ -182,7 +182,7 @@ On Workers, each setting is a var in `wrangler.jsonc`.
 ## What it keeps
 
 One row per issuer, repository, branch and task, each stored plainly,
-so the table reads as it is. Each report folds into the row:
+so the table reads as it is. Each report updates the row:
 
 - `durationMs` and `cores`: `old × 0.7 + new × 0.3`. A task that got
   slower is followed within about three runs, and one odd run moves it

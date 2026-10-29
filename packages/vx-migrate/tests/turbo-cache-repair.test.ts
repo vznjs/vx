@@ -2,6 +2,7 @@
 // that does not verify) and saves it again so the good bytes go over the bad
 // (remote-lane `distrust`, 2026-10-24). turboCache()'s put asked HEAD first
 // and kept whatever the server held, so the bad entry stayed for every run.
+import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'bun:test'
 import { resolveTurboCacheConfig, TurboRemoteCache } from '../src/turbo-cache/index.js'
 
@@ -34,7 +35,7 @@ describe('turboCache() repairs an entry its own get could not use', () => {
         },
         {},
       )!
-      const c = new TurboRemoteCache(config, fetchImpl, '/tmp')
+      const c = new TurboRemoteCache(config, fetchImpl, tmpdir())
       if (signed) await expect(c.get('aa')).rejects.toThrow(/did not verify/)
       else await (await c.get('aa'))!.body.arrayBuffer()
       await c.put('aa', new Blob(['good']), { durationMs: 1 })
