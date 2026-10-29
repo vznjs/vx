@@ -272,8 +272,12 @@ const repoOf = (r: Repo): Repo => ({
 })
 
 function readAccessOf(opts: OidcOptions): boolean {
-  if (opts.readAccess !== undefined && opts.readAccess !== '' && opts.readAccess !== 'public')
-    throw new Error(`READ_ACCESS: public, or unset, not ${opts.readAccess}`)
+  const given: unknown = opts.readAccess
+  // A Worker var may be JSON: a list was refused "not public".
+  if (given !== undefined && given !== '' && given !== 'public')
+    throw new Error(
+      `READ_ACCESS: public, or unset, not ${typeof given === 'string' ? given : JSON.stringify(given)}`,
+    )
   return opts.readAccess === 'public'
 }
 

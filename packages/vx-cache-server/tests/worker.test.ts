@@ -90,6 +90,12 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
       'AUDIENCE: one string, the aud CI tokens name',
     ],
     [{ ALLOW: ALLOW_VAR, READ_ACCESS: 'yes' }, 500, 'READ_ACCESS: public, or unset, not yes'],
+    // wrangler.jsonc may write a var as JSON: a list was refused "not public".
+    [
+      { ALLOW: ALLOW_VAR, READ_ACCESS: ['public'] },
+      500,
+      'READ_ACCESS: public, or unset, not ["public"]',
+    ],
   ] as const) {
     const other = await start(bindings)
     try {
