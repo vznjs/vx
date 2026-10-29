@@ -104,11 +104,19 @@ describe('vx watch loop (e2e)', () => {
         .replace(/ +\d+%/g, ' C'),
     ).toBe(
       [
-        ' ⏺︎ Nms                 success miss C' + ' '.repeat(13) + '3B' + ' '.repeat(7) + '0 local        app#build',
+        ' ⏺︎ Nms                 success miss C' +
+          ' '.repeat(13) +
+          '3B' +
+          ' '.repeat(7) +
+          '0 local        app#build',
         'watching 1 project · 1 task',
         '',
         'changed app src/b.txt (+1 more)',
-        ' ⏺︎ Nms                 success miss C' + ' '.repeat(13) + '6B' + ' '.repeat(7) + '0 local        app#build',
+        ' ⏺︎ Nms                 success miss C' +
+          ' '.repeat(13) +
+          '6B' +
+          ' '.repeat(7) +
+          '0 local        app#build',
         '',
       ].join('\n'),
     )
@@ -135,11 +143,19 @@ describe('vx watch loop (e2e)', () => {
         .replace(/ +\d+%/g, ' C'),
     ).toBe(
       [
-        ' ⏺︎ Nms                 success miss C' + ' '.repeat(13) + '3B' + ' '.repeat(7) + '0 local        app#build',
+        ' ⏺︎ Nms                 success miss C' +
+          ' '.repeat(13) +
+          '3B' +
+          ' '.repeat(7) +
+          '0 local        app#build',
         'watching 1 project · 1 task',
         '',
         'changed app src/a.txt',
-        ' ⏺︎ Nms                 success miss C' + ' '.repeat(13) + '3B' + ' '.repeat(7) + '0 local        app#build',
+        ' ⏺︎ Nms                 success miss C' +
+          ' '.repeat(13) +
+          '3B' +
+          ' '.repeat(7) +
+          '0 local        app#build',
         '',
         'changed app src/a.txt',
         ' 1 task cached, nothing ran',
