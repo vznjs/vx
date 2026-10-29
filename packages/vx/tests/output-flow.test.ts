@@ -670,6 +670,19 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     expect(unfenced(text)).not.toContain('::endgroup::')
   })
 
+  // A cancelled job stops the run; what a task printed while it stopped
+  // printed raw, so its `::error::` became a real annotation.
+  it("an aborted task's output is fenced on GitHub Actions", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#build')
+    log.taskStdout(n, '::error::from-trap\n')
+    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 130, wallclockStartNs: 1n }))
+    const text = out.text()
+    expect(text).toContain('::error::from-trap')
+    expect(unfenced(text)).not.toContain('::error::from-trap')
+  })
+
   it("a server's output since ready is fenced on GitHub Actions", () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)

@@ -993,14 +993,16 @@ export function defaultLogger(
         }
         if (framed && output.some((c) => c.text.length > 0)) {
           emitBlock(
-            formatTaskBlock(
-              node,
-              outcome,
-              { output, ...dropped },
-              colors,
-              true,
-              forwardArgs,
-              links,
+            fenced(
+              formatTaskBlock(
+                node,
+                outcome,
+                { output, ...dropped },
+                colors,
+                true,
+                forwardArgs,
+                links,
+              ),
             ),
           )
           return
@@ -1173,14 +1175,16 @@ export function defaultLogger(
             // forceCommand: a requested task's frame shows `$ cmd`
             // whether it ran or was cached — same frame every run.
             emitBlock(
-              formatTaskBlock(
-                node,
-                outcome,
-                { output, ...dropped },
-                colors,
-                true,
-                forwardArgs,
-                links,
+              fenced(
+                formatTaskBlock(
+                  node,
+                  outcome,
+                  { output, ...dropped },
+                  colors,
+                  true,
+                  forwardArgs,
+                  links,
+                ),
               ),
             )
             return
