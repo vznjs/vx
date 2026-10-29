@@ -136,7 +136,7 @@ interface Participant {
   /** The relay's own notices it could not push yet. */
   queue: Message[]
   socket?: RelaySocket | undefined
-  /** When its socket dropped with no `leave`: it is gone `graceMs` on. */
+  /** When its socket dropped with no `leave`, or it joined: it is gone `graceMs` on. */
   droppedAt?: number
   /** A participant that joined on its socket: what that socket says first. */
   hello?: string
@@ -399,8 +399,9 @@ export function createRelay(opts: RelayOptions): Relay {
       // No one reads the host's.
       info: role === 'peer' ? (body.info ?? null) : null,
       queue: [],
-      // Off a socket until its join's opens: one whose client dropped
-      // during the upgrade lapses as a dropped one does.
+      // Let in before its socket opens: a client gone in between never
+      // opens it, and its host held the run for good (Bun's refused
+      // upgrade too). Its socket's `attach` clears this.
       droppedAt: Date.now(),
     }
     session.byId.set(p.id, p)

@@ -8,7 +8,7 @@ import { resolveTurboCacheConfig } from '../src/turbo-cache/index.js'
 
 const SHORT = 's'.repeat(20)
 const KEY = 'k'.repeat(32)
-const BASE = { apiUrl: 'https://cache.example', token: 't' }
+const BASE = { url: 'https://cache.example', token: 't' }
 
 function resolve(
   env: Record<string, string>,
