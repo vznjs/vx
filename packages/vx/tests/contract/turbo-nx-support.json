@@ -72,7 +72,7 @@
   {
     "key": "turbo.json globalEnv",
     "status": "mapped",
-    "reason": "Added to every task's `inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note."
+    "reason": "Added to every task's `inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note. Turbo's default keyed names (`VERCEL_ANALYTICS_ID`, `VERCEL_TARGET_ENV`, and `VERCEL_DEPLOYMENT_ID` on a Next package when `VERCEL_SKEW_PROTECTION_ENABLED=1`; written configs key it always) join it, and a `!` entry takes them back."
   },
   {
     "key": "turbo.json globalPassThroughEnv",
@@ -127,7 +127,7 @@
   {
     "key": "turbo.json tasks.*.inputs",
     "status": "mapped",
-    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO; a path git ignores is keyed by a `inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's."
+    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; the package's own `package.json` joins an explicit list, as Turbo keys it, unless a glob names or excludes it; unsafe globs get a TODO; a path git ignores is keyed by a `inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's."
   },
   {
     "key": "turbo.json tasks.*.interactive",
