@@ -3311,7 +3311,10 @@ combines only with `--follow`, `--format` and `--cache-dir`.
 `--sql <query>` runs one `SELECT` (or `WITH … SELECT`) over the run
 history and prints its rows: a table with a header, or with
 `--format json` `{ rows }`, one object per row keyed by column. It answers what no
-flag does: filter by task or project, group, trend.
+flag does: filter by task or project, group, trend. The table prints
+every column, a name repeated by a join's `SELECT *` (`run_id`) too;
+`--format json` refuses a repeated name, since an object holds one
+value per key: name each with `AS`.
 
 ```sh
 # a task's memory and cpu, run by run
