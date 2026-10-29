@@ -7,8 +7,9 @@
 import { readFileSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
-import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
+import { refuseUnknownOptions, secretNamed, UserError, type PluginOptionKinds } from '@vzn/vx'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
+import { printable } from './wire.js'
 
 export interface GithubOptions {
   /** The workers' workflow file in `.github/workflows` (default `vx-worker.yml`). */
@@ -79,6 +80,10 @@ const resetsAt = (at: number): string =>
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
   const workflow = options.workflow ?? 'vx-worker.yml'
+  if (workflow === '' || workflow.includes('/'))
+    throw new UserError(
+      `github() option "workflow" must be a file name in .github/workflows, such as vx-worker.yml, got ${JSON.stringify(workflow)}`,
+    )
   const handed = handedEnv(options.env ?? {})
   // The workers one demand starts, by size: one dispatch each.
   const waves = new Map<string, WorkerSpawn[]>()
@@ -131,7 +136,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
         return undefined
       })
       if (res === undefined || res.ok || res.status === 409) return
-      const text = (await res.text().catch(() => '')).slice(0, 200)
+      const text = printable((await res.text().catch(() => '')).slice(0, 200))
       const reset = limitReset(res)
       if (reset !== undefined && reset <= end) {
         await Bun.sleep(Math.max(0, reset - Date.now()))
@@ -170,7 +175,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
             if (reset !== undefined) held = Math.max(held, reset)
             failed(
               `reading ${runOf(run)}'s jobs`,
-              `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}${reset === undefined ? '' : resetsAt(reset)}`,
+              `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}${reset === undefined ? '' : resetsAt(reset)}`,
             )
             return
           }
@@ -261,7 +266,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
         }),
       })
       if (res.ok) break
-      const text = (await res.text()).slice(0, 200)
+      const text = printable((await res.text()).slice(0, 200))
       const reset = limitReset(res)
       if (reset !== undefined) {
         if (reset > end || closed)
@@ -386,7 +391,9 @@ export async function githubRelayToken(relay: string): Promise<string | undefine
 
 /**
  * `env` as the workflow's input: each name a variable's, each value one
- * line, since the workflow writes each as a line of `GITHUB_ENV`.
+ * line, since the workflow writes each as a line of `GITHUB_ENV`. No
+ * secret: a dispatch's inputs are shown with its run, and the worker
+ * job's log prints each step's env unmasked.
  */
 function handedEnv(env: Readonly<Record<string, string | undefined>>): string {
   const out: Record<string, string> = {}
@@ -395,6 +402,10 @@ function handedEnv(env: Readonly<Record<string, string | undefined>>): string {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || typeof value !== 'string' || /[\r\n]/.test(value))
       throw new UserError(
         `github(): env ${JSON.stringify(name)}: a variable's name, and a string of one line`,
+      )
+    if (secretNamed(name))
+      throw new UserError(
+        `github(): env ${JSON.stringify(name)} is a secret, which the worker job's log would show: give it to that job from secrets in its workflow`,
       )
     out[name] = value
   }

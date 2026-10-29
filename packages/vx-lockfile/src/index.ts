@@ -56,7 +56,7 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 20
+const DIGEST_VERSION = 21
 
 interface Manager {
   readonly name: string
@@ -78,6 +78,8 @@ interface Manager {
   readonly settingsText?: (file: string, text: string) => string | undefined
   /** The lockfile files a peer under `dependencies`: the manifest says which entries are peers. */
   readonly peersInManifest?: true
+  /** The file leaves out every `link:` dependency (pnpm's `excludeLinksFromLockfile`): the manifests name them. */
+  readonly linksUnrecorded?: (text: string) => boolean
   /**
    * Importers a format leaves out of the lockfile (yarn classic), from the
    * workspace's manifests through `manifest`; undefined where the file
@@ -125,6 +127,7 @@ const MANAGERS = {
           ? pnpmSettings().packageSettings(text)
           : undefined,
     peersInManifest: true,
+    linksUnrecorded: (t) => pnpmParse(t).excludesLinks,
   },
   bun: {
     name: 'bun',
@@ -170,8 +173,10 @@ const MANAGERS = {
       return out
     },
     // `.yarnrc` is Yarn 1's: `ignore-scripts true` there changes the install
-    // under an unchanged yarn.lock (probed, yarn 1.22).
-    settings: ['.yarnrc.yml', '.yarnrc'],
+    // under an unchanged yarn.lock (probed, yarn 1.22). Yarn 1 reads an
+    // option `.yarnrc` leaves unset from `.npmrc`: `production=true` there
+    // dropped every devDependency (probed, yarn 1.22).
+    settings: ['.yarnrc.yml', '.yarnrc', '.npmrc'],
     async manifestImporters(t, root, manifest) {
       const lock = yarnParse(t)
       if (lock.generation !== 'classic') return undefined
@@ -193,7 +198,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   const scope = options.scope ?? 'project'
   if (scope !== 'project' && scope !== 'workspace') {
     throw new UserError(
-      `${manager.name}() scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`,
+      `${manager.name}() option "scope" must be 'project' or 'workspace', got ${JSON.stringify(scope)}`,
     )
   }
   const extraFiles = manager.extraFiles
@@ -340,7 +345,8 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         )
         return []
       }
-      const { importers, file } = read
+      const { file } = read
+      let { importers } = read
       // A lockfile older than the manifests drops edges: a workspace it does
       // not list yet (a renamed folder, lerna's 31 added Nx projects) is
       // named by its path with none, and a dependency added to package.json
@@ -350,12 +356,16 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       // an install that is not on disk.
       if (file !== undefined) {
         const text = await Bun.file(path.join(ctx.workspaceRoot, file)).text()
+        const linksUnrecorded = manager.linksUnrecorded?.(text) === true
+        if (linksUnrecorded)
+          importers = await withManifestLinks(ctx.workspaceRoot, importers, manifest)
         const missing = await staleness(
           ctx.workspaceRoot,
           importers,
           await recordedOnce(ctx.cacheDir, file, text, manager.recorded),
           await dirs,
           manifest,
+          linksUnrecorded,
         )
         if (missing.length > 0) {
           throw new UserError(
@@ -545,7 +555,10 @@ async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<s
   const strip = (p: string): string => p.replace(/^\.\//, '').replace(/\/+$/, '')
   const excluded = globs
     .filter((p): p is string => typeof p === 'string' && p.startsWith('!'))
-    .map((p) => new Bun.Glob(strip(p.slice(1))))
+    // Matched as the manager does, over `<glob>/package.json`: a `**`
+    // ending a negated glob matches zero directories, so `!**/fixtures/**`
+    // leaves out `packages/fixtures` itself, as pnpm and npm install it.
+    .map((p) => new Bun.Glob(`${strip(p.slice(1))}/package.json`))
   const dirs = new Set<string>()
   for (const pattern of globs) {
     if (typeof pattern !== 'string' || pattern.startsWith('!')) continue
@@ -553,7 +566,7 @@ async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<s
     for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
       const dir = path.dirname(file).split(path.sep).join('/')
       if (dir === '.' || dir.split('/').includes('node_modules')) continue
-      if (!excluded.some((g) => g.match(dir))) dirs.add(dir)
+      if (!excluded.some((g) => g.match(`${dir}/package.json`))) dirs.add(dir)
     }
   }
   return [...dirs].sort()
@@ -571,6 +584,7 @@ async function staleness(
   recorded: ReadonlyMap<string, ReadonlySet<string>>,
   dirs: readonly string[],
   manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+  linksUnrecorded: boolean,
 ): Promise<string[]> {
   const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
   const missing = dirs.filter((d) => !importers.has(d)).map((d) => `the workspace ${d}`)
@@ -590,7 +604,8 @@ async function staleness(
     for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
       const declared = pkg[field]
       if (declared === null || typeof declared !== 'object') continue
-      for (const name of Object.keys(declared)) {
+      for (const [name, spec] of Object.entries(declared)) {
+        if (linksUnrecorded && typeof spec === 'string' && spec.startsWith('link:')) continue
         if (name !== own && names.has(name) && !deps.has(name)) {
           missing.push(`${importer}'s dependency on ${name}`)
         }
@@ -598,6 +613,36 @@ async function staleness(
     }
   }
   return [...new Set(missing)]
+}
+
+/**
+ * The importers with each one's `link:` dependencies on another importer
+ * added from its manifest, for a lockfile that leaves them out.
+ */
+async function withManifestLinks(
+  root: string,
+  importers: ReadonlyMap<string, LockfileImporter>,
+  manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+): Promise<ReadonlyMap<string, LockfileImporter>> {
+  const out = new Map<string, LockfileImporter>()
+  for (const [importer, links] of importers) {
+    const pkg = await manifest(importer === '.' ? root : path.join(root, importer))
+    const deps: Record<string, string> = { ...links.deps }
+    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+      const declared = pkg?.[field]
+      if (declared === null || typeof declared !== 'object') continue
+      for (const [name, spec] of Object.entries(declared)) {
+        if (typeof spec !== 'string' || !spec.startsWith('link:')) continue
+        const target = path
+          .relative(root, path.resolve(root, importer, spec.slice('link:'.length)))
+          .split(path.sep)
+          .join('/')
+        if (target !== importer && importers.has(target || '.')) deps[name] = target || '.'
+      }
+    }
+    out.set(importer, { ...links, deps })
+  }
+  return out
 }
 
 /**

@@ -16,16 +16,18 @@ export interface Lockfile {
   readonly packages: ReadonlyMap<string, Entry>
   /** Material every workspace folds. */
   readonly global: string
-  /** Directories `file:` dependencies link to: not the root, not a workspace. */
+  /** Directories `file:` dependencies link to or copy: not the root, not a workspace. */
   readonly fileDirs: readonly string[]
 }
 
 export interface Entry {
   readonly deps: ReadonlyMap<string, string>
-  /** version + resolved + integrity — whatever pins the bytes; '' for a link */
+  /** version + resolved + integrity — whatever pins the bytes; '' for a link, the root, a workspace */
   readonly resolution: string
   /** the path a `link: true` entry points at */
   readonly link: string | undefined
+  /** the `file:` directory an entry is a copy of (`install-links=true`) */
+  readonly copyOf: string | undefined
   readonly isWorkspace: boolean
   /** the peers it installs no entry for */
   readonly peers: ReadonlySet<string>
@@ -50,17 +52,32 @@ export function parseLockfile(text: string): Lockfile {
   for (const [p, raw] of Object.entries(raws)) {
     const e = record(raw) ?? {}
     const link = e['link'] === true && typeof e['resolved'] === 'string' ? e['resolved'] : undefined
+    // A tarball carries its integrity; a directory npm packed and copied
+    // (`install-links=true`) carries none, only its path.
+    const resolved = e['resolved']
+    const copyOf =
+      link === undefined &&
+      typeof resolved === 'string' &&
+      resolved.startsWith('file:') &&
+      typeof e['integrity'] !== 'string'
+        ? resolved.slice('file:'.length)
+        : undefined
+    const isWorkspace =
+      p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/') && isMember(p)
     packages.set(p, {
       deps: depsOf(e),
+      // The root's and a workspace's `version` is their own package.json's,
+      // not what npm installed: a release bump of the root re-keyed every
+      // task with node_modules unchanged.
       resolution:
-        link === undefined
+        link === undefined && p !== '' && !isWorkspace
           ? [e['version'], e['resolved'], e['integrity']]
               .map((v) => (typeof v === 'string' ? v : ''))
               .join('\0')
           : '',
       link,
-      isWorkspace:
-        p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/') && isMember(p),
+      copyOf,
+      isWorkspace,
       peers: peerOnly(e),
     })
   }
@@ -72,6 +89,7 @@ export function parseLockfile(text: string): Lockfile {
     if (e.link !== undefined && e.link !== '' && packages.get(e.link)?.isWorkspace !== true) {
       fileDirs.add(e.link)
     }
+    if (e.copyOf !== undefined) fileDirs.add(e.copyOf)
   }
   return { version, packages, global, fileDirs: [...fileDirs].sort() }
 }
@@ -140,13 +158,16 @@ export function importerDigests(
     material.push(`${p === '' || e.isWorkspace ? p : installName(p)}\0${e.resolution}`)
     edges.push([])
   }
-  // npm links a `file:` directory, so what a task reads is its content now,
-  // which the lockfile does not record: an edit to it replayed a stale hit.
+  // npm links a `file:` directory, or with `install-links=true` copies it,
+  // so what a task reads is its content now, which the lockfile does not
+  // record: an edit to it replayed a stale hit.
   for (const dir of lock.fileDirs) {
     const own = `\nfile\0${files.get(dir) ?? ''}`
     const i = index.get(dir)
+    for (const [p, e] of lock.packages) {
+      if (e.copyOf === dir || (i === undefined && e.link === dir)) material[index.get(p)!] += own
+    }
     if (i !== undefined) material[i] += own
-    else for (const [p, e] of lock.packages) if (e.link === dir) material[index.get(p)!] += own
   }
   for (const [p, e] of lock.packages) {
     const from = index.get(p)!

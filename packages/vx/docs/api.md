@@ -162,6 +162,7 @@ export class BoundedCapture {
     private readonly tailChars = CAPTURE_TAIL_CHARS,
   ) {}
   push(text: string, err = false): void
+  rebound(headChars: number, tailChars: number): BoundedCapture
   chunks(): CapturedChunk[]
   text(): string
 }
@@ -186,8 +187,7 @@ with (a pull request's base), for a bare `--affected`. `trusted`: the
 run has no scope, whatever git names (a merge queue's run,
 2026-10-18). The scope keys plugin entries only. `refs`: the refs a
 remote reads, in order (`CacheContext.refs`; 2026-10-25: a pull
-request its merge ref, then its head branch, then its base, then the
-default branch; a
+request its head branch, then its base, then the default branch; a
 merge queue or train only its base); unset, git's. A later plugin's
 field wins.
 
@@ -273,6 +273,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
   }): Promise<void>
@@ -411,6 +412,7 @@ export interface CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     absent?: boolean
@@ -1654,6 +1656,19 @@ export interface OutputView {
 }
 ```
 
+## `packageManagerPath`
+
+function · `src/exec/env.ts`
+
+The executable of the workspace's package manager: the root
+package.json's `packageManager`, else its lockfile, found on the root's
+`node_modules/.bin` and PATH. Learned once per root; null when the root
+names none or this machine has none.
+
+```ts
+export function packageManagerPath(root: string): string | null
+```
+
 ## `PERSISTENT_TODO`
 
 const · `src/workspace/migration.ts`
@@ -1681,6 +1696,8 @@ export interface PlannedTask {
   download?: 'deferred'
   remoteBytes?: number
   affected?: AffectedReason
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
+  blockedBy?: string
 }
 ```
 
@@ -1916,6 +1933,7 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry>
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
+  taskless: (name: string) => boolean
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache
@@ -2633,6 +2651,16 @@ export interface ScheduleHookContext extends BaseContext {
   refining(): Promise<void>
   onRefine(listener: () => void): void
 }
+```
+
+## `secretNamed`
+
+function · `src/util/secret-mask.ts`
+
+Whether vx masks a variable's value by its name alone (`NPM_TOKEN`, not `NPM_TOKEN_FILE`).
+
+```ts
+export function secretNamed(name: string): boolean
 ```
 
 ## `SecretRequest`

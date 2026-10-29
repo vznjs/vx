@@ -703,7 +703,9 @@ split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
 those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
-then masked in the same places.
+then masked in the same places. A token a plugin's OS keychain answered
+(`ctx.secret`) is masked in vx's own lines too (a plugin's warning, an
+error).
 
 Two `node_modules/.bin` directories are prepended to `PATH` so
 installed tools (`oxlint`, `vite`, etc.) run by name: the
@@ -957,7 +959,11 @@ watch` re-runs it on an edit there.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
-  upstream-hash propagation.
+  upstream-hash propagation. An entry rooted inside a nested project
+  (`dist/**` when `dist/` holds its own config) would key nothing, so
+  `vx lock` refuses it (`VX_E_NESTED_INPUT`): depend on that project's
+  task, or name its files in `inputs.workspaceFiles`. `**`, a sibling
+  and a `!` entry are fine.
 
 ##### `inputs.workspaceFiles` (optional, default `[]`)
 

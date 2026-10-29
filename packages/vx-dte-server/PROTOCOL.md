@@ -35,7 +35,7 @@ as long as the relay keeps it, while the messages keep their subprotocol.
 One request is HTTP, a websocket upgrade of `GET
 <relay>/v1/sessions/<session>/socket`. `<session>` is the session id, a random
 (v4) UUID, so no one can guess it; another answers `400`, another path
-`404`, another method `405`, a request that is no upgrade `426`. It carries
+`404`, another method `405` (`Allow: GET`), a request that is no upgrade `426`. It carries
 `Authorization: Bearer <token>` (§ Tokens).
 
 | Query       | Does                                                                         |

@@ -448,10 +448,14 @@ export function createRelay(opts: RelayOptions): Relay {
     sweep()
     const url = new URL(req.url)
     const m = /^\/v1\/sessions\/([^/]+)\/socket$/.exec(url.pathname)
-    if (m === null) throw new HttpError(404, 'no such route')
+    if (m === null)
+      throw new HttpError(
+        404,
+        `no route ${req.method} ${url.pathname.slice(0, 200)}: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`,
+      )
     const sessionId = m[1]!
     if (!SESSION_ID.test(sessionId)) throw new HttpError(400, 'session id is not a random UUID')
-    if (req.method !== 'GET') throw new HttpError(405, 'wrong method')
+    if (req.method !== 'GET') throw new HttpError(405, 'this route takes GET')
     const token = await authorize(req, opts.verify)
     // A session is its id within its repository, so another tenant that learns
     // an id cannot open it first.
@@ -529,9 +533,14 @@ export function createRelay(opts: RelayOptions): Relay {
         if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
           const id = `refused-${crypto.randomUUID()}`
           refusals.set(id, err)
-          return opts.upgrade('', id, req, protocol)
+          const res = opts.upgrade('', id, req, protocol)
+          // No socket will attach to take it.
+          if (res.status !== 101) refusals.delete(id)
+          return res
         }
-        return Response.json(errorBody(err), { status: err.status })
+        // The one route takes GET: a 405 names it, as HTTP has it.
+        const allow = err.status === 405 ? { headers: { allow: 'GET' } } : {}
+        return Response.json(errorBody(err), { status: err.status, ...allow })
       }
     },
     attach(key, id, socket) {

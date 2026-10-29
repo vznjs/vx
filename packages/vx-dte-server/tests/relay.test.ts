@@ -401,7 +401,12 @@ describe('the relay carries one run between its orchestrator and workers', () =>
       const res = await c.relay.fetch(
         new Request(`http://relay/v1/sessions/${R}/${verb}`, { method: 'POST', body: '{}' }),
       )
-      expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
+      expect([res.status, await res.json()]).toEqual([
+        404,
+        {
+          error: `no route POST /v1/sessions/${R}/${verb}: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`,
+        },
+      ])
     }
   })
 
@@ -674,6 +679,35 @@ describe('a host that keeps runs and holds websockets', () => {
     ])
   })
 
+  // A refused socket request is held for the socket its host attaches. One
+  // whose upgrade its host could not make (Bun's, with no
+  // Sec-WebSocket-Key) never attaches, and each was held for as long as
+  // the relay ran: any client, no token needed, grew its memory by one.
+  it('holds no refusal whose upgrade its host could not make', async () => {
+    const ids: string[] = []
+    const relay = createRelay({
+      verify: () => Promise.reject(new Error('unused')),
+      upgrade: (_key, id) => {
+        ids.push(id)
+        return Response.json({ error: 'not a websocket' }, { status: 426 })
+      },
+    })
+    const res = await relay.fetch(
+      new Request(`http://relay/v1/sessions/${R}/socket`, {
+        headers: { upgrade: 'websocket', 'sec-websocket-protocol': 'switchboard.v1' },
+      }),
+    )
+    expect(res.status).toBe(426)
+    const frames: unknown[] = []
+    const closed: (number | undefined)[] = []
+    const socket = {
+      send: (t: string) => void frames.push(JSON.parse(t)),
+      close: (c?: number) => void closed.push(c),
+    }
+    expect(relay.attach('', ids[0]!, socket)).toBe(false)
+    expect(closed).toEqual([GONE])
+  })
+
   // A join whose socket never opened (its client dropped during the
   // upgrade) left a participant with no socket and no drop time, which no
   // grace ever lapsed: a host's kept its session, refusing its own rejoin
@@ -859,5 +893,20 @@ it('refuses an empty --port: Number of it is 0, a random port', () => {
   expect([cli.exitCode, cli.stderr.toString()]).toEqual([
     2,
     '✗ vx-dte-server  --port: not a port: \n',
+  ])
+})
+
+// A 405 with no Allow named no method to use.
+it('answers a wrong method 405 naming GET, in Allow too', async () => {
+  const relay = createRelay({ upgrade: () => new Response(null, { status: 101 }) })
+  const res = await relay.fetch(
+    new Request('http://relay/v1/sessions/00000000-0000-4000-8000-000000000001/socket', {
+      method: 'POST',
+    }),
+  )
+  expect([res.status, res.headers.get('allow'), await res.json()]).toEqual([
+    405,
+    'GET',
+    { error: 'this route takes GET' },
   ])
 })

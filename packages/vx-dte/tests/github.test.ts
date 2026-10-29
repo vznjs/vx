@@ -121,6 +121,28 @@ it('hands its workers the variables env names, as the env input', async () => {
   expect(() => github({ env: { 'A-B': 'x' } })).toThrow('github(): env "A-B"')
 })
 
+// An empty or pathed workflow dispatched to a URL GitHub answers 404, and
+// the run said to commit a workflow file that was there all along.
+it('refuses a workflow that is not a file name in .github/workflows', () => {
+  for (const [workflow, got] of [
+    ['', '""'],
+    ['.github/workflows/w.yml', '".github/workflows/w.yml"'],
+  ] as const)
+    expect(() => github({ workflow })).toThrow(
+      `github() option "workflow" must be a file name in .github/workflows, such as vx-worker.yml, got ${got}`,
+    )
+  expect(() => github({ workflow: 'workers.yml' })).not.toThrow()
+})
+
+// A dispatch's inputs are no secret: the worker job's log prints its
+// steps' env, `GITHUB_ENV`'s too, unmasked.
+it('refuses to hand its workers a secret-named variable', () => {
+  expect(() => github({ env: { NPM_TOKEN: 'npm_secret-value' } })).toThrow(
+    'github(): env "NPM_TOKEN" is a secret',
+  )
+  expect(() => github({ env: { NPM_TOKEN_FILE: '/run/npm' } })).not.toThrow()
+})
+
 it('says why for each worker of a dispatch GitHub refused', async () => {
   const server = Bun.serve({
     port: 0,
@@ -142,6 +164,29 @@ it('says why for each worker of a dispatch GitHub refused', async () => {
       'small#1: github(): dispatching workers.yml: 403 nope: the job needs `permissions: actions: write` to start workers',
       'small#2: github(): dispatching workers.yml: 403 nope: the job needs `permissions: actions: write` to start workers',
     ])
+  } finally {
+    await server.stop(true)
+  }
+})
+
+// A server's words reach the terminal: an ESC in them retitled it and
+// overwrote the line vx printed before them.
+it("writes the controls in GitHub's words as escapes", async () => {
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: () => new Response('\x1b]0;PWNED\x07\rok', { status: 500 }),
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const why: string[] = []
+    void github({ workflow: 'workers.yml' }).spawn(spawn('small#1', 'small', (w) => why.push(w)))
+    for (let i = 0; i < 50 && why.length === 0; i++) await Bun.sleep(20)
+    expect(why).toEqual(['github(): dispatching workers.yml: 500 \\x1b]0;PWNED\\x07\\x0dok'])
   } finally {
     await server.stop(true)
   }

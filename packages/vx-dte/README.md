@@ -513,7 +513,8 @@ use your own instead.
   its deps ahead of it the same way.
 - A task runs with the orchestrator's environment under the worker's
   root. `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless
-  the task's `env.define` sets them.
+  the task's `env.define` sets them; `npm_execpath` is the workspace's
+  package manager on the worker, as core sets it on a local task.
 - A worker restores, by key, the declared outputs of every task the one
   it runs depends on, each after its own dependencies (an additive task's
   rewrite of an upstream file stands), unless it ran or restored them before. Files a task
@@ -861,7 +862,8 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of
   one workflow, one dispatch per size and demand. `GithubOptions` is
   `{ workflow?, env? }`: `workflow` defaults to `vx-worker.yml`; `env`
-  is variables every worker gets (one-line strings), sent as the
+  is variables every worker gets (one-line strings, no secret-named one:
+  the worker job's log shows them), sent as the
   dispatch's `env` input only when set, which `vx dte init`'s workflow
   exports. Its workers are `keyless`, and only jobs of the workflow runs
   it dispatched join as them. It
