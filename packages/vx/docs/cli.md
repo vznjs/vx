@@ -1554,7 +1554,7 @@ bound clears the cache. It operates on the entries and
 vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache clean ... --dry                    # Say what either policy would reap; delete nothing.
-vx cache clean ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
+vx cache clean ... --format json            # { dry, evicted, bytesFreed, orphans, orphanBytes }
 vx cache clean ... --cache-dir <path>       # The cache a run with the same flag uses.
 vx cache clean                              # No bound: clear the whole cache (below).
 vx cache clean --global                     # Also clear every other repository's store.
@@ -1721,7 +1721,7 @@ $ vx cache clean --global --dry
 
 It waits for a `vx run` on this workspace to finish first (the run's
 lock), as a trim does. With `--format json` it prints
-`{ dryRun, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
+`{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 
 ### Exit codes

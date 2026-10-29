@@ -267,7 +267,10 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
       if (fmt === '') {
-        return { ...out, error: `--dry= requires a format (pretty or json); bare --dry prints pretty` }
+        return {
+          ...out,
+          error: `--dry= requires a format (pretty or json); bare --dry prints pretty`,
+        }
       }
       // The values every --format takes.
       if (fmt !== 'pretty' && fmt !== 'json') {

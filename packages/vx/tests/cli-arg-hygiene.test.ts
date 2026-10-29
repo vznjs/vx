@@ -232,10 +232,12 @@ describe('vx cache clean value parsing', () => {
   })
 
   it('--dry rides along either policy flag and alone is a clear', () => {
-    expect(parsePruneArgs(['--older-than=30d', '--dry']).dryRun).toBe(true)
-    expect(parsePruneArgs(['--dry', '--max-size', '1G']).dryRun).toBe(true)
-    expect(parsePruneArgs(['--older-than=30d']).dryRun).toBeUndefined()
+    expect(parsePruneArgs(['--older-than=30d', '--dry']).dry).toBe(true)
+    expect(parsePruneArgs(['--dry', '--max-size', '1G']).dry).toBe(true)
+    expect(parsePruneArgs(['--older-than=30d']).dry).toBeUndefined()
     expect(parsePruneArgs(['--dry']).error).toBeUndefined()
+    // One name for a rehearsal on every verb: vx run and vx init spell it --dry.
+    expect(parsePruneArgs(['--dry-run']).error).toContain('unknown flag: --dry-run')
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--cache-dir=x', '--max-size=1G']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir']).error).toMatch(/requires a path/)
