@@ -258,7 +258,7 @@ export function dte(options: DteOptions = {}) {
     if (k !== undefined && ups !== undefined) {
       const { writeWarmUps } = await import('./warm-ups.js')
       await writeWarmUps(k.cache, k.root, learned, ups).catch((err: unknown) =>
-        k.warn(`dte: warm-ups not kept: ${err instanceof Error ? err.message : String(err)}`),
+        k.warn(`[vx] dte: warm-ups not kept: ${err instanceof Error ? err.message : String(err)}`),
       )
     }
     learned = new Map()
@@ -405,7 +405,7 @@ export function dte(options: DteOptions = {}) {
           tails = undefined
         } catch (err) {
           ctx.warn(
-            `dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,
+            `[vx] dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,
           )
         }
       }
@@ -416,7 +416,7 @@ export function dte(options: DteOptions = {}) {
           (m) => void (learned = m),
           (err: unknown) =>
             ctx.warn(
-              `dte: no warm-ups learned: ${err instanceof Error ? err.message : String(err)}`,
+              `[vx] dte: no warm-ups learned: ${err instanceof Error ? err.message : String(err)}`,
             ),
         )
       const guess = changedSinceParent(ctx.workspaceRoot).then(async (changed) => {
@@ -517,7 +517,7 @@ export function dte(options: DteOptions = {}) {
         // (2026-10-23).
         faulted: () => onChange(true),
         stalled: (waiting) =>
-          ctx.warn(`dte(): no task began or ended for a minute; waiting on\n${waiting}`),
+          ctx.warn(`[vx] dte(): no task began or ended for a minute; waiting on\n${waiting}`),
         warn: ctx.warn,
       })
       orchestrator = o

@@ -1048,7 +1048,11 @@ export class Orchestrator {
   }
 
   private unsent(what: string, to: string): (err: unknown) => void {
-    return unsent(this.o.warn ?? ((m) => void process.stderr.write(`[vx] ${m}\n`)), what, to)
+    return unsent(
+      (m) => (this.o.warn ?? ((l) => void process.stderr.write(`${l}\n`)))(`[vx] ${m}`),
+      what,
+      to,
+    )
   }
 
   /** Worker `a` began `task`: from now its cores are booked. */

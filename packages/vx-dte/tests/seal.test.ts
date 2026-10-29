@@ -206,7 +206,7 @@ it('a token it could not check refuses the worker by that cause, and says it', a
   expect(await o.poll()).toEqual([])
   const reason = 'its token could not be checked: GitHub keys: HTTP 503'
   expect((await until(a)).map((m) => m.body)).toEqual([{ type: 'refused', reason }])
-  expect(said).toEqual([`dte: refused a worker: ${reason}`])
+  expect(said).toEqual([`[vx] dte: refused a worker: ${reason}`])
 })
 
 it('loses a worker whose body the relay changed, and drops one it replays', async () => {
