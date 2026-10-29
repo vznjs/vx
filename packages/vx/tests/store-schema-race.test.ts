@@ -22,6 +22,16 @@ async function tmp(): Promise<string> {
 }
 
 /**
+ * A store shaped as `~/.vx/<id>/cache`, inside the test's own directory.
+ * The cache checks the two levels above a store as the user's own: at
+ * `<tmp>/store` the first was the temp dir itself, which a bare host's
+ * world-writable `/tmp` fails, so the store fell back to the index.
+ */
+function storeIn(root: string): string {
+  return path.join(root, 'vx', 'id', 'cache')
+}
+
+/**
  * What an older vx's open does to a store it finds without `entries`: makes
  * its own tables and stamps its own schema. `false` when the store's write
  * lock is held, as that open would then wait on its busy timeout.
@@ -71,7 +81,7 @@ function storeShape(storeFile: string): { columns: string[]; schema: string | un
 describe('store schema reset', () => {
   it('an older vx opening the store mid-reset cannot leave its tables under this schema', async () => {
     const root = await tmp()
-    const storeDir = path.join(root, 'store')
+    const storeDir = storeIn(root)
     const storeFile = path.join(storeDir, 'store.db')
     new Cache(path.join(root, 'a'), undefined, undefined, undefined, 'open', storeDir).close()
     // The store as an older vx left it.
@@ -106,7 +116,7 @@ describe('store schema reset', () => {
 
   it('a store already at this schema is opened without waiting on its write lock', async () => {
     const root = await tmp()
-    const storeDir = path.join(root, 'store')
+    const storeDir = storeIn(root)
     const storeFile = path.join(storeDir, 'store.db')
     new Cache(path.join(root, 'a'), undefined, undefined, undefined, 'open', storeDir).close()
     const holder = new Database(storeFile)

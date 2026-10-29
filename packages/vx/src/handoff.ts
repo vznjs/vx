@@ -126,8 +126,10 @@ async function outerWorkspaceFile(top: string): Promise<string | null> {
   try {
     // Plain `git`, as handoff imports nothing (the hand-off runs first).
     // Exit 1: not ignored, so the outer listing holds it; 0 ignored; 128 an error.
+    // `./`: check-ignore reads `:x` as pathspec magic and refuses `:(literal)`.
+    const rel = top.slice(outer.length + (outer === '/' ? 0 : 1))
     const p = Bun.spawnSync({
-      cmd: ['git', 'check-ignore', '-q', '--', top.slice(outer.length + (outer === '/' ? 0 : 1))],
+      cmd: ['git', 'check-ignore', '-q', '--', `./${rel}`],
       cwd: outer,
       stdin: 'ignore',
       stdout: 'ignore',
@@ -199,6 +201,14 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   const code = await child.exited
   const signal = child.signalCode
   if (signal === null) process.exit(code)
+  // Die of a stop signal the local vx died of, as vx itself does: a shell
+  // running vx in a script stops on Ctrl-C only when its child died of
+  // SIGINT, and an exit 130 ran the script's next line. The code below is
+  // the rest, and the fallback should the signal not land.
+  if (signal === 'SIGINT' || signal === 'SIGTERM' || signal === 'SIGHUP') {
+    process.removeAllListeners(signal)
+    process.kill(process.pid, signal)
+  }
   if (typeof signal === 'number') process.exit(128 + signal)
   const { constants } = await import('node:os')
   process.exit(128 + (constants.signals[signal] ?? 1))

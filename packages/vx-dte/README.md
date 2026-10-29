@@ -193,7 +193,18 @@ size as a matrix, each job named for its worker (`name: ${{ matrix.worker }}`):
 a job that ends badly before its worker joins marks that worker `failed`
 with the step it failed at, and the run starts another in its place. When the run ends it cancels each worker run it
 dispatched, so one still queued does not hold a runner the next run
-waits for. On GitHub Actions with a relay, the run names itself: no
+waits for. Every job of a repository shares its `GITHUB_TOKEN`'s API
+limit, 1000 requests an hour, so the run reads its workers' jobs at most
+every 30 s, asks with each answer's ETag (an unchanged answer is free),
+and asks nothing until a spent limit resets. A dispatch the limit refuses
+is sent again at the reset, if that comes within 5 minutes; past that it
+fails, naming when. A cancel the limit refuses is sent again at the
+reset, if that comes within a minute. A run that dies before it cancels
+(a cancelled or timed-out job) leaves it to the job's last step, which
+cancels each worker run the run listed in `RUNNER_TEMP`. Past both, a
+worker that starts reads its run's attempt (`parent`) first, and once
+that is over cancels its own workflow run, its queued fellows with it.
+On GitHub Actions with a relay, the run names itself: no
 `VX_DTE_RUN` to set. No secret: each side proves its key with the job's OIDC
 token, and the relay's token is an OIDC token for the relay's URL. Such a
 token lasts 5 minutes, so each side asks for a new one a minute before
@@ -251,6 +262,11 @@ jobs:
       # Name the tasks to run, as 'bun vx run build test --affected': with
       # none named, vx fails, listing the workspace's tasks.
       - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+      - name: Cancel the workers
+        if: cancelled()
+        run: |
+          [ -f "$RUNNER_TEMP/vx-dte-runs" ] || exit 0
+          while read -r run; do curl -sS -o /dev/null -X POST -H "authorization: Bearer $GITHUB_TOKEN" "$GITHUB_API_URL$run/cancel" || true; done < "$RUNNER_TEMP/vx-dte-runs"
 ```
 
 `vx dte init` writes both from `dte()`, the run's above and the workers' below,
@@ -285,10 +301,14 @@ on:
       workers: { required: true }
       # The variables github({ env }) hands the workers, as a JSON object.
       env: { required: false, default: '{}' }
+      # The run's attempt, which a worker reads first.
+      parent: { required: false, default: '' }
 
 permissions:
   contents: read
   id-token: write
+  # A worker of a run that is over cancels its own run.
+  actions: write
 
 jobs:
   worker:
@@ -305,6 +325,15 @@ jobs:
       VX_DTE_RELAY: ${{ inputs.relay }}
       VX_DTE_WORKER: ${{ matrix.worker }}
     steps:
+      - name: Leave if the run is over
+        if: inputs.parent != ''
+        env: { GH_TOKEN: '${{ github.token }}', PARENT: '${{ inputs.parent }}' }
+        run: |
+          runs="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs"
+          status=$(curl -fsS -H "authorization: Bearer $GH_TOKEN" "$runs/$PARENT" | jq -r .status) || exit 0
+          [ "$status" = completed ] || exit 0
+          echo "::notice::run $PARENT is over: cancelling this one"
+          curl -fsS -o /dev/null -X POST -H "authorization: Bearer $GH_TOKEN" "$runs/$GITHUB_RUN_ID/cancel"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: '${{ inputs.sha }}', persist-credentials: false }
       - env: { HANDED: '${{ inputs.env }}' }
@@ -364,9 +393,10 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
 
-# The image needs Bun; a job adds git if it lacks it.
+# The image needs Bun; a job adds git if it lacks it. By digest: a tag
+# can move under the same name.
 default:
-  image: oven/bun:1.4
+  image: oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d
 
 vx:
   rules:
@@ -460,7 +490,7 @@ use your own instead.
   task, once per worker, ready before it, and stops when the worker leaves;
   the orchestrator never starts it, and a worker no dependant reaches
   never does (2026-10-22).
-- A task whose key folds a runtime probe (`inputs.runtime`, such as
+- A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path
   under the worker's checkout root reads as the same path under this
@@ -524,7 +554,7 @@ use your own instead.
   tree, or the same commit with a tracked file changed, such as by a
   prepare step) is refused. Both sides read their tracked files as they
   are, so the same change on both is the same tree.
-- A task whose key folds a file the run's commit lacks (untracked, or
+- A task whose key hashes a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
   A dependency's declared output is not one: its worker restores it first.
@@ -831,7 +861,8 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of
   one workflow, one dispatch per size and demand. `GithubOptions` is
   `{ workflow?, env? }`: `workflow` defaults to `vx-worker.yml`; `env`
-  is variables every worker gets (one-line strings), sent as the
+  is variables every worker gets (one-line strings, no secret-named one:
+  the worker job's log shows them), sent as the
   dispatch's `env` input only when set, which `vx dte init`'s workflow
   exports. Its workers are `keyless`, and only jobs of the workflow runs
   it dispatched join as them. It

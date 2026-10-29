@@ -162,6 +162,7 @@ export class BoundedCapture {
     private readonly tailChars = CAPTURE_TAIL_CHARS,
   ) {}
   push(text: string, err = false): void
+  rebound(headChars: number, tailChars: number): BoundedCapture
   chunks(): CapturedChunk[]
   text(): string
 }
@@ -272,6 +273,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
   }): Promise<void>
@@ -410,6 +412,7 @@ export interface CacheLayer {
     outputFiles: string[]
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     absent?: boolean
@@ -1680,6 +1683,8 @@ export interface PlannedTask {
   download?: 'deferred'
   remoteBytes?: number
   affected?: AffectedReason
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
+  blockedBy?: string
 }
 ```
 
@@ -1915,6 +1920,7 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry>
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
+  taskless: (name: string) => boolean
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache
@@ -2632,6 +2638,16 @@ export interface ScheduleHookContext extends BaseContext {
   refining(): Promise<void>
   onRefine(listener: () => void): void
 }
+```
+
+## `secretNamed`
+
+function · `src/util/secret-mask.ts`
+
+Whether vx masks a variable's value by its name alone (`NPM_TOKEN`, not `NPM_TOKEN_FILE`).
+
+```ts
+export function secretNamed(name: string): boolean
 ```
 
 ## `SecretRequest`
