@@ -78,12 +78,6 @@ export interface VxHistoryOptions {
    */
   readonly file?: string
   /**
-   * The branch whose history-server rows a run reads after its own branch's.
-   * Unset, the run's refs (`baseBranch`, a CI plugin's, else git's), as a
-   * remote cache reads them.
-   */
-  readonly defaultBranch?: string
-  /**
    * A vx-history server's URL (`@vzn/vx-history-server`), or
    * `VX_HISTORY_URL`. On a CI job with a token (GitHub's OIDC, or GitLab's
    * `VX_HISTORY_TOKEN`) each run asks it for its tasks' numbers, without
@@ -110,7 +104,6 @@ export interface VxHistoryOptions {
 // The provider's own default (50) serves `--dry` predictions; an ordering
 // hint needs less and reads a 2.5× smaller slice of the run history.
 const DEFAULT_WINDOW = 20
-const DEFAULT_BRANCH = 'main'
 
 // Each option is read in ONE place that a run's hooks and `vx history`
 // share: two copies of each let either drift unseen (item 805).
@@ -245,7 +238,6 @@ const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   reservations: 'object',
   assume: 'object',
   file: 'string',
-  defaultBranch: 'string',
   url: 'string',
   headers: 'object',
   issuer: 'string',
@@ -365,19 +357,15 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       // With a history server, its numbers re-rank what has not started
       // when they land; the run never waits on them.
       remote ??= await serverOf()
-      if (remote !== undefined) {
+      // The run's refs, as a remote cache reads them: its branch, the
+      // branch it merges into, the default branch (`baseBranch`). `main`
+      // was assumed, so a `master` or `baseBranch: 'trunk'` repository
+      // read no trunk's numbers; a run with none asks nothing.
+      const refs = ctx.refs
+      if (remote !== undefined && refs.length > 0) {
         const server = remote
         let late = false
         stopImport = () => (late = true)
-        // The run's refs, as a remote cache reads them: its branch, the
-        // branch it merges into, the default branch. `main` was assumed, so
-        // a `master` or `baseBranch: 'trunk'` repository read no trunk's
-        // numbers. No ref goes on the wire: each is in its keys' hash.
-        const main = options.defaultBranch ?? DEFAULT_BRANCH
-        const refs =
-          options.defaultBranch === undefined && ctx.refs.length > 0
-            ? ctx.refs
-            : [`refs/heads/${ctx.branch ?? main}`, `refs/heads/${main}`]
         const weights = (async () => {
           const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]
           const got = await server.query([...new Set(refs)], hashes)

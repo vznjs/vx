@@ -382,6 +382,22 @@ describe('vx run with vxHistory({ url })', () => {
         `export default { plugins: [vxHistory({ url: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
     )
     Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: root })
+    // A branch with a commit: an unborn one names no ref to read.
+    Bun.spawnSync({
+      cmd: [
+        'git',
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@t',
+        'commit',
+        '-q',
+        '--allow-empty',
+        '-m',
+        'x',
+      ],
+      cwd: root,
+    })
   })
   afterAll(async () => {
     for (const k of Object.keys(Bun.env)) if (!(k in saved)) delete Bun.env[k]
@@ -427,6 +443,22 @@ describe('vx run with vxHistory({ url })', () => {
           `export default { plugins: [vxHistory({ url: ${JSON.stringify(dead)}, ...${JSON.stringify(NAMED)} })] }\n`,
       )
       Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      // A branch with a commit: an unborn one names no ref to read.
+      Bun.spawnSync({
+        cmd: [
+          'git',
+          '-c',
+          'user.name=t',
+          '-c',
+          'user.email=t@t',
+          'commit',
+          '-q',
+          '--allow-empty',
+          '-m',
+          'x',
+        ],
+        cwd: other,
+      })
       const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
       Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
       const cli = Bun.spawnSync({
@@ -449,6 +481,37 @@ describe('vx run with vxHistory({ url })', () => {
       await rm(other, { recursive: true, force: true })
     }
   }, 30_000)
+
+  // A run that names no ref (a detached HEAD, no default branch) asks
+  // nothing: `main` was guessed, reading a branch the repository may lack.
+  it('asks nothing when the run reads no ref', async () => {
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-norefs-'))
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory({ url: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      const git = (...args: string[]) =>
+        Bun.spawnSync({
+          cmd: ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', ...args],
+          cwd: other,
+        })
+      git('init', '-q', '-b', 'feat')
+      git('commit', '-q', '--allow-empty', '-m', 'x')
+      git('checkout', '-q', '--detach')
+      const before = seen.length
+      await run({ cwd: other, tasks: ['build'], handleSignals: false })
+      expect(seen.slice(before).filter((r) => r.path === '/v1/timings/query')).toEqual([])
+    } finally {
+      await rm(other, { recursive: true, force: true })
+    }
+  })
 
   // `main` was assumed: a repository whose trunk is another branch read
   // no trunk's numbers on any branch.

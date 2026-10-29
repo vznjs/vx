@@ -19,7 +19,7 @@ import { vxHistory } from '@vzn/vx-history'
 export default { plugins: [vxHistory()] }
 ```
 
-`vxHistory({ window?, assume?, file?, defaultBranch?, url?, issuer?, repository?, headers?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
+`vxHistory({ window?, assume?, file?, url?, issuer?, repository?, headers?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
 
 `assume` is for the run that has no history: a fresh CI runner. It names durations (task id → ms) for tasks the history has not seen, so a long leaf task — a docs build, a cross-compile — starts first instead of last:
 
@@ -42,8 +42,8 @@ GitHub's endpoint, or a 429, 502, 503 or 504 from the server, is asked
 again up to three times), each run asks it
 for its tasks' numbers, by task definition, in the refs the run reads,
 as a remote cache does: its branch's, the branch it merges into, then
-the default branch's (`baseBranch`, else git's or the CI's). `defaultBranch`
-instead reads its branch's, then that branch's.
+the default branch's (`baseBranch`, else git's or the CI's). A run
+that reads no ref (a detached HEAD with no default branch) asks nothing.
 The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,
