@@ -15,7 +15,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
-import { seeHelp } from './help.js'
+import { refuse, seeHelp } from './help.js'
 import {
   fingerprintClaims,
   forwardedSignal,
@@ -24,7 +24,13 @@ import {
   type RunOptions,
   shellQuote,
 } from '../orchestrator/index.js'
-import { findWorkspaceRoot, LOCKFILE_NAME, NO_LOCK, type ProjectMeta } from '../workspace/index.js'
+import {
+  findWorkspaceRoot,
+  LOCKFILE_NAME,
+  NO_LOCK,
+  type ProjectMeta,
+  WORKSPACE_CONFIG_FILENAMES,
+} from '../workspace/index.js'
 import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './workspace-config.js'
 import { resolveSetting } from '../settings.js'
 import {
@@ -45,7 +51,7 @@ import {
   printable,
   restartTimings,
   sayNotice,
-  sayLine,
+  ui,
 } from '../util/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
 import { isCacheHit } from '../graph/index.js'
@@ -101,16 +107,11 @@ export function watchRefusal(parsed: RunArgs): string | null {
 
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args, 'watch')
-  if (parsed.error) {
-    sayNotice('error', 'vx watch', `${parsed.error}${seeHelp('watch')}`)
-    return 1
-  }
+  if (parsed.error) return refuse('watch', args, `${parsed.error}${seeHelp('watch')}`, 'VX_E_USAGE')
 
   const refused = watchRefusal(parsed)
-  if (refused !== null) {
-    sayLine('error', refused, 'vx watch')
-    return 1
-  }
+  if (refused !== null)
+    return refuse('watch', args, refused.replace(/^vx watch: /, ''), 'VX_E_USAGE')
   if (parsed.tasks.length === 0) {
     sayNotice(
       'error',
@@ -159,7 +160,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // Said once the loop is down, the last line: written as the signal
   // landed, the aborted cycle's summary printed below it.
   const stopped = (): number => {
-    if (stop.signal.reason === 'SIGINT') process.stdout.write('\nvx watch: stopped\n')
+    if (stop.signal.reason === 'SIGINT') {
+      process.stdout.write('\n')
+      ui.say('info', 'vx watch: stopped', 'out')
+    }
     return 0
   }
   process.once('SIGTERM', () => stop.abort('SIGTERM'))
@@ -475,6 +479,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   }
   let windowOpened = 0
 
+  const hasWorkspaceFile = (): boolean =>
+    WORKSPACE_CONFIG_FILENAMES.some((n) => fs.existsSync(path.join(workspaceRoot, n)))
   const lockAbs = path.join(workspaceRoot, LOCKFILE_NAME)
   const lockStamp = (): string => {
     try {
@@ -538,10 +544,28 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             lockAtRun = lockStamp()
             const relocked = lockAtRun !== lockSeen
             lockSeen = lockAtRun
+            // The file marks the root, and `vx run` refuses without it; a
+            // cycle ran on with no workspace config, its plugins gone and
+            // its tasks named by path.
+            if (!hasWorkspaceFile()) {
+              process.stdout.write(`\nchanged ${label}\n`)
+              throw new Error(
+                `no .vx/workspace.ts in ${workspaceRoot}; restore it, or stop vx watch`,
+              )
+            }
             if (reread) await rearm(false)
-            process.stdout.write(`\nchanged ${label}\n`)
+            process.stdout.write('\n')
+            ui.say('info', `changed ${label}`, 'out')
             if (!relocked) sayUnlocked(changes.changed)
             if (stop.aborted) break
+            // A file a `.gitignore` edit stops ignoring is an input from this
+            // cycle on, and was not on the arm's inventory: its deletion read
+            // as a file born and gone since, and ran nothing.
+            if (
+              atArm !== undefined &&
+              changes.changed.some((p) => path.basename(p) === '.gitignore')
+            )
+              for (const p of gitFiles(workspaceRoot)?.listed ?? []) atArm.listed.add(p)
             restartTimings()
             // On the mtime clock, as the arm is: from `Date.now()` a write the
             // run made within a tick of it carried an earlier mtime and read as
@@ -587,7 +611,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config
         // was never an event.
-        if (reread && !stop.aborted) {
+        if (reread && !stop.aborted && hasWorkspaceFile()) {
           reread = false
           await rearm()
         }
@@ -636,7 +660,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // unconditional segments AND this run's declared output containers. Read
   // through `isIgnoredPath` rather than captured, because `rearm` replaces
   // the filter when the selection changes.
-  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel), args.poll)
+  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel, true), args.poll)
   const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle =>
     pool.arm(dir, recursive, onEvent)
 
@@ -726,6 +750,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     // too: its edit can add an output or a `workspaceFiles` input.
     if (shapesWatchedSet(filename) || configImportFiles.includes(abs) || linkChanged(abs))
       reread = true
+    // Inside a project (any repo whose root is one) no import arm hears it.
+    if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
     trigger(`${proj.name} ${filename}`, abs)
   }
   const armProject = (proj: ProjectMeta): void => {
@@ -791,6 +817,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               configImportFiles.includes(abs)
             )
               reread = true
+            if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
             const owner = ownerOf(abs)
             trigger(
               owner === undefined
@@ -851,6 +878,17 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const importArms = new Map<string, WatchHandle>()
   let importNames = new Map<string, Set<string>>()
   const staleNamed = new Map<string, number>()
+  const sayStaleImport = (abs: string): void => {
+    // One line per save, not per event: a save is often two.
+    const now = Date.now()
+    if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
+    staleNamed.set(abs, now)
+    ui.say(
+      'warn',
+      `vx watch: ${printable(path.relative(workspaceRoot, abs))} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
+      'out',
+    )
+  }
   const armImports = (): void => {
     const inProject = (f: string): boolean => projectDirs.some((d) => f.startsWith(d + path.sep))
     const want = new Map<string, Set<string>>()
@@ -882,13 +920,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               trigger(`config import ${rel}`, abs)
               return
             }
-            // One line per save, not per event: a save is often two.
-            const now = Date.now()
-            if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
-            staleNamed.set(abs, now)
-            process.stdout.write(
-              `vx watch: ${printable(rel)} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
-            )
+            sayStaleImport(abs)
           }),
         )
         armedAs.set(dir, inodeOf(dir) ?? '')
@@ -965,11 +997,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
   const sayWatching = (count: number): void => {
     const tasks = lastTasks === undefined ? '' : ` · ${plural(lastTasks, 'task')}`
-    process.stdout.write(`watching ${plural(count, 'project')}${tasks}\n`)
+    ui.say('info', `watching ${plural(count, 'project')}${tasks}`, 'out')
   }
   const debugArms = resolveSetting('debug.watch', undefined).value === true
   const sayArmed = (count: number): void => {
-    if (debugArms) process.stderr.write(`vx watch: armed ${plural(count, 'project')}\n`)
+    if (debugArms) ui.say('info', `vx watch: armed ${plural(count, 'project')}`)
   }
 
   const rearm = async (say = true): Promise<void> => {
@@ -1008,7 +1040,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       dropMode()
       workspaceWide = next.workspaceWide
       armMode(next.projects)
-    } else if (!workspaceWide) {
+    } else if (workspaceWide) wide = next.projects
+    else {
       streamed = oneStream ? toStream(next.projects) : []
       const inStream = new Set(streamed.map((s) => s.proj))
       const own = next.projects.filter((p) => !inStream.has(p))

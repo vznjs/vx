@@ -22,7 +22,16 @@ import {
   type ManagedInstall,
 } from './upgrade.js'
 import { VERSION } from '../version.js'
-import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError, sayNotice } from '../util/index.js'
+import {
+  detectColors,
+  DOT_VX_GITATTRIBUTES,
+  DOT_VX_GITIGNORE,
+  paint,
+  SUCCESS,
+  ui,
+  UserError,
+  sayNotice,
+} from '../util/index.js'
 import {
   findWorkspaceRoot,
   PROJECT_CONFIG_FILENAMES,
@@ -249,10 +258,37 @@ async function install(
   return steps.map((s) => s.argv.join(' '))
 }
 
+const PLUGINS_MANIFEST = `${JSON.stringify({ name: 'workspace-plugins', private: true }, null, 2)}\n`
+
+/** Whether the nearest package.json above `dir` has a name, as `definePlugin` needs. */
+function ownerNamed(dir: string): boolean {
+  for (let d = dir; ; d = path.dirname(d)) {
+    let text: string
+    try {
+      text = readFileSync(path.join(d, 'package.json'), 'utf8').replace(/^﻿/, '')
+    } catch {
+      if (path.dirname(d) === d) return false
+      continue
+    }
+    try {
+      const name = (JSON.parse(text) as { name?: unknown } | null)?.name
+      return typeof name === 'string' && name !== ''
+    } catch {
+      return false
+    }
+  }
+}
+
 /** Write `plugins/<seam>.ts` and its test under `root`: the workspace root, else the cwd. */
 async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promise<number> {
   const template = PLUGIN_TEMPLATES[seam]!
+  // `definePlugin` names the plugin by the nearest package.json, and a
+  // monorepo root often has no name: the plugin refused to load.
+  const manifest: [string, string][] = ownerNamed(path.join(root, 'plugins'))
+    ? []
+    : [[path.join('plugins', 'package.json'), PLUGINS_MANIFEST]]
   const files = [
+    ...manifest,
     [path.join('plugins', `${seam}.ts`), template.plugin],
     [path.join('plugins', `${seam}.test.ts`), template.test],
   ] as const
@@ -278,10 +314,13 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
   const workspaceFile =
     WORKSPACE_CONFIG_FILENAMES.find((n) => existsSync(path.join(root, n))) ?? '.vx/workspace.ts'
+  const c = detectColors(process.stdout)
+  const dim = (t: string): string => paint('', t, c, { dim: true })
+  const bold = (t: string): string => paint('', t, c, { bold: true })
   process.stdout.write(
-    `${args.dry ? 'would write' : 'wrote'} ${files.map(([rel]) => rel).join(' and ')}\n` +
-      `Declare it in ${workspaceFile}: import { ${factory} } from '../plugins/${seam}.ts', then plugins: [${factory}(…)]\n` +
-      `Test it: bun test plugins/${seam}.test.ts (needs @vzn/vx installed)\n`,
+    `${paint(SUCCESS, args.dry ? 'would write' : 'wrote', c, { bold: true })} ${files.map(([rel]) => bold(rel)).join(' and ')}\n` +
+      `${dim('Declare it in')} ${workspaceFile}${dim(':')} ${bold(`import { ${factory} } from '../plugins/${seam}.ts'`)}${dim(', then')} ${bold(`plugins: [${factory}(…)]`)}\n` +
+      `${dim('Test it:')} ${bold(`bun test plugins/${seam}.test.ts`)} ${dim('(needs @vzn/vx installed)')}\n`,
   )
   return 0
 }
@@ -398,7 +437,7 @@ async function starter(
   if (kept.length > 0) rows.push(['kept', ...kept])
   if (replaced.length > 0) rows.push(['replaced', ...replaced])
   if (args.dry) {
-    for (const f of files) process.stdout.write(`── ${f.path} ──\n${f.contents}\n`)
+    for (const f of files) ui.print('out', ui.excerpt(f.path, f.contents))
     ui.print('out', ui.report(`vx init ${VERSION}`, [...rows, null, ['next', next]]))
     return 0
   }

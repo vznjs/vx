@@ -47,6 +47,7 @@ import type { SandboxConfig } from '../config.js'
 import {
   armTimeout,
   drainOrAbort,
+  lineEnds,
   POST_EXIT_CUT_LINE,
   shellQuote,
   withForwardArgs,
@@ -69,6 +70,7 @@ import {
   isTmpdirRefusal,
   procfsIsOwn,
   TMPDIR_HINT,
+  ui,
   UserError,
   xxh3hex,
 } from '../util/index.js'
@@ -1613,7 +1615,8 @@ function seatbeltSpells(grant: string, kind: 'read' | 'write', name: boolean): b
   const at = name ? m.index : m.index + m[0].length - 2
   if (!warnedUnspellable.has(`${kind} ${grant}`)) {
     warnedUnspellable.add(`${kind} ${grant}`)
-    process.stderr.write(
+    ui.say(
+      'warn',
       `[vx] sandbox: the ${kind} grant ${grant} names a literal ${grant[at + (name ? 0 : 1)]}, ` +
         `which the macOS sandbox reads as a pattern and cannot spell as a name, so it is not ` +
         `granted. Rename it, or grant the directory above it: ` +
@@ -2106,8 +2109,9 @@ async function runSandboxedOnce(
   let partial = ''
   let straceSpoke = false
   const [out, err] = pipes.streams(proc)
+  const ends = lineEnds(args.onStdout, args.onStderr)
   const streams = Promise.all([
-    streamToString(out, args.onStdout, ac.signal, args.capture?.stdout ?? true),
+    streamToString(out, ends.onStdout, ac.signal, args.capture?.stdout ?? true),
     streamToString(
       err,
       (chunk) => {
@@ -2116,7 +2120,7 @@ async function runSandboxedOnce(
         const lines = (partial + chunk).split('\n')
         partial = (lines.pop() ?? '').slice(0, 512)
         if (lines.some((l) => STRACE_OWN_ERROR.test(l))) straceSpoke = true
-        args.onStderr?.(chunk)
+        ends.onStderr?.(chunk)
       },
       ac.signal,
       args.capture?.stderr ?? true,
@@ -2133,8 +2137,9 @@ async function runSandboxedOnce(
   if (timeout.timedOut()) ac.abort()
   else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
-  if (cut) args.onStderr?.(POST_EXIT_CUT_LINE)
-  const stderr = cut ? streamed + POST_EXIT_CUT_LINE : streamed
+  const cutLine = ends.own(POST_EXIT_CUT_LINE)
+  if (cut) args.onStderr?.(cutLine)
+  const stderr = cut ? streamed + cutLine : streamed
   args.liveChildren?.delete(proc)
   releaseGroup(proc)
   closeSignalChannel(proc)
@@ -2880,7 +2885,8 @@ function writeGrantMatchedNothing(grant: string, within: string): void {
   // As a committed config spells them (B-97): the absolute path held only
   // on the machine that printed it, as in `outsideWritesHint`.
   const dir = grantSpelled(grantPrefix(grant), within)
-  process.stderr.write(
+  ui.say(
+    'warn',
     `[vx] sandbox: the write grant ${jsString(grantSpelled(grant, within))} matches nothing ` +
       `yet, and a read grant mounts its directory read-only, so a file the task creates under ` +
       `it will fail with "Read-only file system". A bind mount covers what exists when the ` +
@@ -3002,7 +3008,8 @@ let warnedNoTrace = false
 function warnUntraced(why: string): void {
   if (warnedNoTrace) return
   warnedNoTrace = true
-  process.stderr.write(
+  ui.say(
+    'warn',
     `[vx] sandbox: ${why}, so sandboxed tasks run without the report of the reads the sandbox denied; ` +
       `the sandbox still enforces\n`,
   )

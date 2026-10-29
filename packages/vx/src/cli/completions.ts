@@ -5,7 +5,7 @@
 // project names are not (a completion that evaluates configs on every
 // Tab is the wrong price).
 
-import { acceptedFlags, CORE_VERBS, flagHint, seeHelp } from './help.js'
+import { acceptedFlags, CORE_VERBS, flagHint, refuse, seeHelp } from './help.js'
 import { nearest, sayNotice } from '../util/index.js'
 import { setting } from '../settings.js'
 
@@ -146,12 +146,12 @@ export async function completionsCmd(
   if (args.length !== 1 || !(SHELLS as readonly string[]).includes(shell ?? '')) {
     const flag = args.find((a) => a.startsWith('-'))
     if (flag !== undefined) {
-      sayNotice(
-        'error',
-        'vx completions',
+      return refuse(
+        'completions',
+        args,
         `unknown flag: ${flag}${flagHint('completions', flag)}${seeHelp('completions')}`,
+        'VX_E_USAGE',
       )
-      return 1
     }
     const one = shell !== undefined && args.length === 1
     // One edit: shell names are three or four letters, so two edits took

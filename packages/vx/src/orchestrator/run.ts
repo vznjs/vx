@@ -92,6 +92,7 @@ import {
   teardownPlugins,
 } from './plugin-host.js'
 import { createSteps } from './steps.js'
+import { liveSocketPath, serveLive } from './run-live.js'
 import { writeRunSteps, writeRunWarnings } from './run-steps.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
@@ -458,7 +459,8 @@ async function runOnBus(
   // name the task; the check is on the root so both shapes are caught.
   // Compared canonical: a root reached through a symlink (`run({ cwd })`,
   // macOS's /var/folders) and the inner vx's realpath'd cwd are one tree.
-  const outerRoot = process.env[VX_RUN_WORKSPACE_ENV]
+  // Empty is unset: resolved, '' named the cwd.
+  const outerRoot = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
     await teardown()
     prepared.cache.close()
@@ -698,11 +700,13 @@ async function runOnBus(
   // because the normal path closes before the persistent-task wait —
   // holding the handle open for a dev server's whole lifetime would be
   // worse.
+  let live: ReturnType<typeof serveLive> | undefined
   let cacheClosed = false
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
     cacheClosed = true
     cache.close()
+    live?.unlisten()
     // Released with the handle: before a persistent task's wait, on every
     // exit path (see run-lock.ts for why a run holds one at all). AWAITED:
     // fired and forgotten, the release lost the race with the CLI's exit —
@@ -722,6 +726,16 @@ async function runOnBus(
       }),
     ),
   )
+  // Answers `vx last --live` while the lock is held (run-live.ts).
+  live = serveLive({
+    socketPath: liveSocketPath(prepared.workspaceRoot),
+    bus,
+    runId,
+    command: maskInvocation(invocationCommand(options.command ?? process.argv.slice(1))),
+    startedAt: Date.now(),
+    nodes: () => nodes.values(),
+    warnings: () => warned,
+  })
   try {
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
@@ -1253,6 +1267,13 @@ async function runOnBus(
         keeper?.taskDone(o)
         log.taskComplete(o.node, o)
         demand.finished(o.node.id)
+        // A server that dies while the graph runs is no longer running:
+        // its pin stayed `running` under the line naming its exit.
+        const server = o.status === 'success' ? persistentRegistry.get(o.node.id) : undefined
+        if (server !== undefined && o.serverExit === undefined)
+          void server.exited.then((code) => {
+            if (code !== 0 && !graphOver && !stop.signal.aborted) o.serverExit = code
+          })
       },
       // A crash a hand-broken lock entry caused is named as that; asked
       // only here, so a run that does not crash pays nothing.
@@ -1653,6 +1674,7 @@ async function runOnBus(
     // floor for a throw a later change adds, not a path a row can drive.
     log.runEnd?.()
     log.runDone?.()
+    live?.dispose()
     stop.detach()
     // Plugins installed at the top of run() get their bus subscriptions
     // released here. Idempotent; safe even if installPlugins threw.

@@ -10,6 +10,7 @@
 
 import { createHash } from 'node:crypto'
 import { type ActionResult, type Digest, ReapiClient, type ReapiOptions } from './wire.js'
+import { ui } from '@vzn/vx'
 
 /** The artifact's `output_files` path. Constant: the AC entry holds exactly one. */
 const ARTIFACT_PATH = 'vx-artifact.tar.zst'
@@ -82,7 +83,7 @@ export class ReapiRemoteCache {
   constructor(opts: ReapiOptions) {
     this.client = new ReapiClient(opts)
     this.endpoint = opts.endpoint
-    this.onWarn = opts.onWarn ?? ((m) => void process.stderr.write(`${m}\n`))
+    this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', m))
   }
 
   /** A fault the cache works around, said once per kind (2026-10-23: none is silent). */

@@ -213,6 +213,35 @@ describe('a refusal under --format json', () => {
     // past bun's 5 s default.
   }, 30_000)
 
+  // `--format json` as the verb's own word, and the verbs that take no
+  // flag: each refused with prose alone and an empty stdout.
+  it('a refusal of the JSON flag itself, or by a verb that prints no JSON, answers a code', async () => {
+    const codes = await Promise.all([
+      refusal(['--format', 'json']),
+      refusal(['--format=json']),
+      refusal(['help', '--bogus', '--format', 'json']),
+      refusal(['help', 'bogus', '--format', 'json']),
+      refusal(['version', '--format', 'json']),
+      // Verbs that print no JSON refuse the request, as a usage error.
+      refusal(['watch', 'build', '--format', 'json']),
+      refusal(['watch', 'build', '--dry=json']),
+      refusal(['upgrade', '--format', 'json']),
+      refusal(['completions', '--format', 'json']),
+    ])
+    expect(codes).toEqual([
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+      // `vx help` takes one word: the JSON flag is the word too many.
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+      'VX_E_USAGE',
+    ])
+  })
+
   // The loader's own refusals open with `Workspace config …`, not the path,
   // and answered VX_E_REFUSED; a config's own throw answered VX_E_INTERNAL.
   it('a workspace file that does not load is VX_E_CONFIG', async () => {
@@ -258,6 +287,10 @@ describe('errorCode', () => {
       errorCode(errno('EMFILE')),
       errorCode(errno('EACCES')),
       errorCode(new TypeError('boom')),
+      errorCode(new UserError("Project config /ws/packages/a/vx.config.ts: cannot find 'x'")),
+      errorCode(
+        new UserError('Workspace config at /ws/.vx/workspace.ts did not export a default object'),
+      ),
     ]).toEqual([
       'VX_E_CYCLE',
       'VX_E_REFUSED',
@@ -266,6 +299,8 @@ describe('errorCode', () => {
       'VX_E_FDS',
       'VX_E_FS',
       'VX_E_INTERNAL',
+      'VX_E_CONFIG',
+      'VX_E_CONFIG',
     ])
   })
 

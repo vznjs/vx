@@ -120,6 +120,20 @@ describe('vx run inside a task', () => {
     }
   }, 30_000)
 
+  // An empty marker is unset, as every empty VX_* variable is: resolved,
+  // '' named the cwd, so a run from the root was refused as nested (and
+  // the run lock's check refused it the same way).
+  it('an empty VX_RUN_WORKSPACE is no outer run', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { lint: { exec: { command: 'echo lint' } } } }`,
+    )
+    const r = await runVx(root, ['lint', '--all'], { VX_RUN_WORKSPACE: '', VX_RUN_TASK: '' })
+    expect(r.text).not.toContain('inside')
+    expect(r.code).toBe(0)
+  }, 30_000)
+
   it('a task that runs another vx verb in its own workspace is untouched (control)', async () => {
     await addProject(
       root,

@@ -94,6 +94,9 @@ export function execWrap(command: string): string // `exec <command>` when execW
 
 export function armTimeout(proc, timeoutMs): { timedOut(): boolean; settle(): Promise<void> }
 export const POST_EXIT_CUT_LINE: string
+// The two output callbacks wrapped to learn whether the output ends mid-line;
+// `own(text)` breaks the line before vx's note only then.
+export function lineEnds(onStdout?, onStderr?): { onStdout?; onStderr?; own(text: string): string }
 export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<boolean>
 export function spawnFailureText(err: unknown, cwd: string, what?: string): string
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
@@ -218,7 +221,8 @@ backgrounded holds the pipes open, and a reader that waited for EOF
 hung the run. `drainOrAbort` gives the readers `POST_EXIT_DRAIN_MS`
 (250 ms) to reach EOF, then aborts them and resolves true; the caller
 then sends `POST_EXIT_CUT_LINE` through `onStderr` and appends it to the
-result's `stderr`, so a cut is never silent (nx#35302 reproduced on vx,
+result's `stderr` (after a newline only when the output ended mid-line,
+`lineEnds`), so a cut is never silent (nx#35302 reproduced on vx,
 2026-09-24). A timeout aborts the readers at once, with its own line.
 The sandboxed runner does the same; on Linux bwrap's PID namespace
 kills the leftover with the shell, so there the bound is unreachable.

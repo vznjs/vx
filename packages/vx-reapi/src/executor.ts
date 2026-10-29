@@ -28,6 +28,7 @@ import {
   isUserError,
   normalizeGlob,
   restorableOutput,
+  ui,
   UserError,
   withForwardArgs,
 } from '@vzn/vx'
@@ -130,6 +131,10 @@ async function decomposeOutputDir(
     return acc
   }
 
+  // The whole working directory's capture is `''`: `/name` was recorded
+  // under it, and a consumer grafted a directory with an empty name.
+  const join = (prefix: string, name: string): string =>
+    prefix === '' ? name : `${prefix}/${name}`
   const walk = (dir: Directory, segments: readonly string[], prefix: string): void => {
     if (segments.length === 0) {
       if (seen.has(prefix)) return
@@ -142,13 +147,13 @@ async function decomposeOutputDir(
     const matches = (name: string): boolean => head === '*' || name === head
     if (rest.length === 0) {
       for (const f of dir.files) {
-        const at = `${prefix}/${f.name}`
+        const at = join(prefix, f.name)
         if (!matches(f.name) || seen.has(at)) continue
         seen.add(at)
         files.push({ path: at, digest: f.digest, is_executable: f.is_executable })
       }
       for (const sl of dir.symlinks) {
-        const at = `${prefix}/${sl.name}`
+        const at = join(prefix, sl.name)
         if (!matches(sl.name) || seen.has(at)) continue
         seen.add(at)
         symlinks.push({ path: at, target: sl.target })
@@ -158,7 +163,7 @@ async function decomposeOutputDir(
       if (!matches(d.name)) continue
       const child = byDigest.get(d.digest.hash)
       if (child === undefined) continue
-      walk(child, rest, `${prefix}/${d.name}`)
+      walk(child, rest, join(prefix, d.name))
     }
   }
 
@@ -529,6 +534,13 @@ export function acceptsTask(task: TaskPlacement): boolean {
   return task.cacheable && !task.pinnedLocal
 }
 
+/**
+ * The longest a timer waits: one past 2^31-1 ms fires after 1 ms, so a
+ * month's `executeTimeoutMs` or `queueTimeoutMs` gave up on every action
+ * at once. A bound held to it waits about 24 days.
+ */
+const MAX_TIMER_MS = 2 ** 31 - 1
+
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
   // A zero or non-number bound stopped every action the moment it began
   // executing.
@@ -541,7 +553,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
     }
   }
   // No listener is no reason to say nothing.
-  const warn = opts.warn ?? ((m: string) => void process.stderr.write(`${m}\n`))
+  const warn = opts.warn ?? ((m: string) => ui.say('warn', m))
   // One Capabilities round trip per executor, not per task — the answer
   // cannot change mid-run, and a 400-task graph would otherwise ask 400 times.
   let capsPromise: ReturnType<ReapiClient['capabilities']> | undefined
@@ -600,9 +612,17 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             return null
           })
         if (prior !== null) {
+          // The stdout blob too: a Read of an evicted one answers "none", and
+          // the replay printed nothing where the task had printed.
+          const stdoutBlob =
+            (prior.stdout_raw?.length ?? 0) === 0 &&
+            Number(prior.stdout_digest?.size_bytes ?? 0) > 0
+              ? [prior.stdout_digest!]
+              : []
           const referenced = [
             ...(prior.output_files ?? []).map((f) => f.digest),
             ...(prior.output_directories ?? []).map((d) => d.tree_digest),
+            ...stdoutBlob,
           ]
           // AC and CAS evict independently, so a record can outlive its
           // blobs. A gap means it cannot produce the outputs — fall through
@@ -929,11 +949,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       const queueTimer =
         opts.queueTimeoutMs === undefined
           ? undefined
-          : setTimeout(() => queued.abort(), opts.queueTimeoutMs)
+          : setTimeout(() => queued.abort(), Math.min(opts.queueTimeoutMs, MAX_TIMER_MS))
       const armStall = (): void => {
         clearTimeout(queueTimer)
         if (stallTimer !== undefined) return
-        stallTimer = setTimeout(() => stall.abort(), stallAfter)
+        stallTimer = setTimeout(() => stall.abort(), Math.min(stallAfter, MAX_TIMER_MS))
       }
       // The run's stop (Ctrl-C, an embedder's abort) cancels the operation
       // stream as the stall does; unheard, vx waited on the remote for as
@@ -992,6 +1012,8 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           )
         }
         if (stall.signal.aborted) {
+          // Closing the stream alone left the action on its worker.
+          if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           throw new UserError(
             `vx-reapi: ${req.taskId} was still executing ${stallAfter}ms after the worker ` +
               `started it and the server never reported a result — giving up on the remote ` +
@@ -1146,8 +1168,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               // A coarse capture is split into the paths its glob really names
               // before it is recorded — see decomposeOutputDir.
               const declaredGlobs = [
-                ...req.outputs.workspaceFiles,
-                ...req.outputs.files.map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
+                ...req.outputs.workspaceFiles.filter(isOutputGlob),
+                ...req.outputs.files
+                  .filter(isOutputGlob)
+                  .map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
               ].map((g) => normalizeGlob(g))
               const recorded: DecomposedOutputs = {
                 directories: [],
@@ -1329,6 +1353,13 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
  * would return no outputs with no error anywhere. An escaped segment
  * (`\[id\]`, a route directory) is literal: the path names it unescaped.
  */
+/**
+ * A `!` take-back names what is NOT an output (core's restore gate reads
+ * it): requested, `!dist/cache/**` was the path `!dist/cache`, and as a
+ * matcher `Bun.Glob('!x')` matches every path but `x`.
+ */
+const isOutputGlob = (glob: string): boolean => !glob.startsWith('!')
+
 export function globToOutputPath(glob: string): string {
   return literalHead(glob).path
 }
@@ -1400,9 +1431,10 @@ export function outputPathSets(
   const prefix = (p: string): string =>
     workingDirectory === '' && projectRel !== '' ? `${projectRel}/${p}` : p
   // `app/\[id\]/x` names the file `app/[id]/x`: `literalHead` unescapes.
-  const globs = [...req.outputs.files.map(prefix), ...req.outputs.workspaceFiles.map(rebase)].map(
-    (g) => normalizeGlob(g),
-  )
+  const globs = [
+    ...req.outputs.files.filter(isOutputGlob).map(prefix),
+    ...req.outputs.workspaceFiles.filter(isOutputGlob).map(rebase),
+  ].map((g) => normalizeGlob(g))
   const paths = new Set<string>()
   const files = new Set<string>()
   const dirs = new Set<string>()
@@ -1460,7 +1492,7 @@ export async function materialiseOutputs(
   const wholeTreeCapture = [
     ...(req.outputs?.files ?? []),
     ...(req.outputs?.workspaceFiles ?? []),
-  ].some((g) => globToOutputPath(g) === '')
+  ].some((g) => isOutputGlob(g) && globToOutputPath(g) === '')
   // `abs` names a file a declared glob matches: missing, it is a hole in a
   // declared output under either capture, and warning let `save` cache the
   // short tree under the key (F-8).
@@ -1480,8 +1512,10 @@ export async function materialiseOutputs(
   // the task (item 1038). A directory a LITERAL glob names is written whole.
   const projectRel = req.projectRel ?? toPosix(path.relative(req.workspaceRoot, req.cwd))
   const declared = [
-    ...(req.outputs?.files ?? []).map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
-    ...(req.outputs?.workspaceFiles ?? []),
+    ...(req.outputs?.files ?? [])
+      .filter(isOutputGlob)
+      .map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
+    ...(req.outputs?.workspaceFiles ?? []).filter(isOutputGlob),
   ].map((g) => normalizeGlob(g))
   const matchers = declared.map((g) => new Bun.Glob(g))
   // Core's restore gate: a `!` take-back, vx's own files and a
@@ -1515,39 +1549,43 @@ export async function materialiseOutputs(
   )
   // Batch the small ones into one round trip; anything larger goes over
   // ByteStream, which is also the only path that can be compressed.
-  const small = files.filter((f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024)
-  const batched = await client.batchReadBlobs(small.map((f) => f.digest))
-
-  await mapBounded(files, WRITE_CONCURRENCY, async (f) => {
-    const abs = fence.lexical(req.cwd, f.path)
-    await fence.dir(path.dirname(abs))
-    await makeDir(path.dirname(abs), created)
-    await fence.landing(abs)
-    // Inlined only when it has bytes: an ActionResult read back through
-    // proto-loader (the execution-record replay) carries `contents` as an
-    // EMPTY Buffer on every file, and taking that as inline wrote each
-    // replayed output empty (item 827). An empty file is the next branch.
-    // Inline bytes are held to the digest they ride with, as fetched ones
-    // are in wire.ts: a server's wrong inline copy was written as the output
-    // and cached under the key (F-8). A mismatch fetches the blob instead.
-    const inline =
-      f.contents !== undefined &&
-      f.contents.length > 0 &&
-      digestWith(client.digest, f.contents).hash === f.digest.hash
-    const bytes = inline
-      ? f.contents! // inlined by the server (`inline_output_files`): zero fetches
-      : Number(f.digest.size_bytes) === 0
-        ? new Uint8Array()
-        : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
-    if (bytes === null) {
-      missing(f.path, f.digest.hash, abs)
-      return
-    }
-    await writeOutput(abs, bytes, created)
-    // REAPI carries the executable bit per output; a build that produces a
-    // script and a later task that runs it depends on it surviving.
-    if (f.is_executable === true) await chmod(abs, masked(0o755))
-  })
+  // A window at a time, as a Tree's files are: one batch read of every
+  // small output held them all in memory at once.
+  for (const window of fetchWindows(files, (f) => f.digest)) {
+    const batched = await client.batchReadBlobs(
+      window.filter((f) => isSmallBlob(f.digest)).map((f) => f.digest),
+    )
+    await mapBounded(window, WRITE_CONCURRENCY, async (f) => {
+      const abs = fence.lexical(req.cwd, f.path)
+      await fence.dir(path.dirname(abs))
+      await makeDir(path.dirname(abs), created)
+      await fence.landing(abs)
+      // Inlined only when it has bytes: an ActionResult read back through
+      // proto-loader (the execution-record replay) carries `contents` as an
+      // EMPTY Buffer on every file, and taking that as inline wrote each
+      // replayed output empty (item 827). An empty file is the next branch.
+      // Inline bytes are held to the digest they ride with, as fetched ones
+      // are in wire.ts: a server's wrong inline copy was written as the output
+      // and cached under the key (F-8). A mismatch fetches the blob instead.
+      const inline =
+        f.contents !== undefined &&
+        f.contents.length > 0 &&
+        digestWith(client.digest, f.contents).hash === f.digest.hash
+      const bytes = inline
+        ? f.contents! // inlined by the server (`inline_output_files`): zero fetches
+        : Number(f.digest.size_bytes) === 0
+          ? new Uint8Array()
+          : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
+      if (bytes === null) {
+        missing(f.path, f.digest.hash, abs)
+        return
+      }
+      await writeOutput(abs, bytes, created)
+      // REAPI carries the executable bit per output; a build that produces a
+      // script and a later task that runs it depends on it surviving.
+      if (f.is_executable === true) await chmod(abs, masked(0o755))
+    })
+  }
 
   // `OutputSymlink` — a declared output that is a link, not a file. Restoring
   // it as a copy would silently change what the next task sees.
@@ -1786,7 +1824,7 @@ async function placeSymlink(
 /** Stdout up to this size is recorded inline (`stdout_raw`) rather than as a CAS blob. */
 const INLINE_STDOUT_BYTES = 64 * 1024
 
-/** Small blobs a tree restore holds in memory at once, fetched batched. */
+/** Small blobs a restore holds in memory at once, fetched batched. */
 const TREE_FETCH_WINDOW_BYTES = 64 * 1024 * 1024
 
 /**
@@ -1885,18 +1923,9 @@ async function materialiseTree(
   }
   await walk(tree.root, destDir, declared === null)
 
-  const isSmall = (f: { digest: Digest }): boolean =>
-    f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024
-  for (let i = 0; i < files.length;) {
-    let held = 0
-    let j = i
-    while (j < files.length && (j === i || held < TREE_FETCH_WINDOW_BYTES)) {
-      if (isSmall(files[j]!.f)) held += Number(files[j]!.f.digest.size_bytes)
-      j++
-    }
-    const window = files.slice(i, j)
+  for (const window of fetchWindows(files, (w) => w.f.digest)) {
     const batched = await client.batchReadBlobs(
-      window.filter((w) => isSmall(w.f)).map((w) => w.f.digest),
+      window.filter((w) => isSmallBlob(w.f.digest)).map((w) => w.f.digest),
     )
     await mapBounded(window, WRITE_CONCURRENCY, async ({ abs, f }) => {
       const bytes =
@@ -1915,8 +1944,28 @@ async function materialiseTree(
       // Permission bits only: a server's setuid or setgid bit is not a build output's.
       if (mode !== undefined) await chmod(abs, masked(mode))
     })
+  }
+}
+
+/** A blob fetched in a batch read, and so held in memory with its window. */
+const isSmallBlob = (d: Digest): boolean =>
+  Number(d.size_bytes) > 0 && Number(d.size_bytes) <= 1024 * 1024
+
+/** `items` cut where their small blobs reach `TREE_FETCH_WINDOW_BYTES`. */
+function fetchWindows<T>(items: readonly T[], digestOf: (item: T) => Digest): T[][] {
+  const windows: T[][] = []
+  for (let i = 0; i < items.length;) {
+    let held = 0
+    let j = i
+    while (j < items.length && (j === i || held < TREE_FETCH_WINDOW_BYTES)) {
+      const d = digestOf(items[j]!)
+      if (isSmallBlob(d)) held += Number(d.size_bytes)
+      j++
+    }
+    windows.push(items.slice(i, j))
     i = j
   }
+  return windows
 }
 
 /**

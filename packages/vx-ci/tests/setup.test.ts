@@ -153,10 +153,14 @@ it('takes only its own CI and --debs, and says what is wrong', async () => {
     [['github', '--debs'], '--debs needs a directory'],
     [['github', '--x'], 'unknown argument: --x'],
   ]
-  for (const [argv, said] of cases)
-    await expect(runSetup('github', argv, os.tmpdir())).rejects.toThrow(
+  for (const [argv, said] of cases) {
+    const err = await runSetup('github', argv, os.tmpdir()).catch((e: unknown) => e)
+    // A usage refusal, as core's are, for a reader of the JSON.
+    expect([(err as Error).message, (err as { code?: string }).code]).toEqual([
       `${said}\nUsage: vx setup github [--debs <dir>]`,
-    )
+      'VX_E_USAGE',
+    ])
+  }
 })
 
 it('prints its usage for --help and exits 0', async () => {
@@ -169,7 +173,9 @@ it('prints its usage for --help and exits 0', async () => {
   } finally {
     process.stdout.write = write
   }
-  expect(printed).toEqual(Array(3).fill('Usage: vx setup github [--debs <dir>]\n'))
+  expect(printed.map(Bun.stripANSI)).toEqual(
+    Array(3).fill('Usage: vx setup github [--debs <dir>]\n'),
+  )
 })
 
 // vx-worker.yml restores by `vx-setup-debs-<runner.os>-<runner.arch>-`

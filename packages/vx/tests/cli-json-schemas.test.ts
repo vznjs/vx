@@ -81,6 +81,8 @@ const CONFIG = (dep: boolean) => `export default {
       exec: { command: 'test -f ../../flag || { echo src/a.txt:1:2; exit 1; }' },
       inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
+    // Waits for a file: a run in progress, for vx last --live.
+    hold: { exec: { command: 'while [ ! -f ../../go ]; do sleep 0.05; done' } },
     // Inputs that match nothing: a warning, which vx last keeps.
     lost: { exec: { command: 'true' }, inputs: { files: ['nowhere/**'] }, cache: { outputs: { files: [] } } },
   },
@@ -180,7 +182,17 @@ beforeAll(async () => {
   await unlink(path.join(root, 'flag'))
   expect(vx(['run', 'lib#flaky', '--force']).code).toBe(1)
 
-  for (const a of [[], ['kitchen'], ['bare'], ['kitchen#all'], ['build']]) json('show', a)
+  // A task no selected project declares lists none: `[]`, which both the
+  // list and the task-list branch held, so it matched two `oneOf` branches.
+  for (const a of [
+    [],
+    ['kitchen'],
+    ['bare'],
+    ['kitchen#all'],
+    ['build'],
+    ['build', '--filter', 'bare'],
+  ])
+    json('show', a)
   json('info', [])
   json('why', ['app#build'])
   json('why', ['app#fail'])
@@ -191,6 +203,15 @@ beforeAll(async () => {
   json('last', ['--stats'])
   expect(vx(['run', 'lib#lost']).code).toBe(0)
   json('last', [])
+  const held = Bun.spawn({
+    cmd: [process.execPath, BIN, 'run', 'lib#hold'],
+    cwd: root,
+    env: { ...process.env, NO_COLOR: '1' },
+  })
+  for (let i = 0; i < 400 && vx(['last', '--live']).code !== 0; i++) await Bun.sleep(50)
+  json('last', ['--live'])
+  await writeFile(path.join(root, 'go'), '')
+  expect(await held.exited).toBe(0)
   json('last', ['--sql', 'SELECT project, task, cpu_ms, remote_error FROM runs'])
   // The flaky task passes again: the replayed failure names that run (`fixedIn`).
   await writeFile(path.join(root, 'flag'), '')
@@ -386,6 +407,15 @@ describe('read verbs hold their --format json to a checked-in schema', () => {
     const { vx: _, ...missing } = facts
     expect(validate(s, missing)).toEqual(['$: missing vx'])
     expect(validate(s, { ...facts, projects: 1.5 })).toEqual(['$.projects: number is not integer'])
+  })
+
+  // `VX_RUN_CONCURRENCY` set, the workers' source is `env`: the schema
+  // refused what `vx info --json` printed.
+  it('info: the workers count from the variable conforms', () => {
+    const facts = outputs['info']![0] as { workers: Record<string, unknown> }
+    expect(
+      validate(schema('info'), { ...facts, workers: { ...facts.workers, source: 'env' } }),
+    ).toEqual([])
   })
 
   it('every object a schema declares closes its key set', () => {
@@ -626,8 +656,8 @@ describe('each schema object is its source type', () => {
 
   it('cache', () => {
     expect(def('cache', 'prune')).toEqual(
-      keys<PruneResult & { dryRun: boolean }>({
-        dryRun: true,
+      keys<PruneResult & { dry: boolean }>({
+        dry: true,
         evicted: true,
         bytesFreed: true,
         orphans: true,
@@ -635,7 +665,7 @@ describe('each schema object is its source type', () => {
       }),
     )
     expect(def('cache', 'clear')).toEqual(
-      keys<ClearResult>({ dryRun: true, cleared: true, bytesFreed: true }),
+      keys<ClearResult>({ dry: true, cleared: true, bytesFreed: true }),
     )
   })
 

@@ -40,21 +40,30 @@ function gone(w: { err: () => string }): () => Promise<void> {
 describe("vx watch over a project's parent made again", () => {
   const f = useWatchFixture()
 
-  it('a parent removed, then made again, is watched again', async () => {
-    f.watch = startWatch(f.root, ['--all'], ARMS)
-    const w = f.watch
-    await until(() => w.out().includes('watching '), 'the watching marker')
-    await initialOnly(w, f.log)
-    await recreate(f.root, true, gone(w))
-    await until(() => arms(w, 1) === 2, 'the re-arm after the parent came back')
-    const before = await executions(f.log)
-    await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
-    await until(
-      async () => (await executions(f.log)) > before,
-      'the edit after the parent came back',
-    )
-    expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a2\n')
-  }, 40_000)
+  // Polled too: the parent's arm is non-recursive, and the poller sampled
+  // files alone there, so it never heard the directory come back.
+  it.each([
+    ['', ['--all']],
+    [' (--poll)', ['--all', '--poll']],
+  ])(
+    'a parent removed, then made again, is watched again%s',
+    async (_mode, select) => {
+      f.watch = startWatch(f.root, select, ARMS)
+      const w = f.watch
+      await until(() => w.out().includes('watching '), 'the watching marker')
+      await initialOnly(w, f.log)
+      await recreate(f.root, true, gone(w))
+      await until(() => arms(w, 1) === 2, 'the re-arm after the parent came back')
+      const before = await executions(f.log)
+      await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
+      await until(
+        async () => (await executions(f.log)) > before,
+        'the edit after the parent came back',
+      )
+      expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a2\n')
+    },
+    40_000,
+  )
 
   it('a parent made again inside one window is watched again', async () => {
     f.watch = startWatch(f.root, ['--all'], ARMS)

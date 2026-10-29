@@ -19,6 +19,7 @@ import {
   machineMemoryBytes,
   machineParallelism,
   treeBytes,
+  ui,
 } from '../util/index.js'
 import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
@@ -35,7 +36,7 @@ import { discoverProjects, loadProjects, loadWorkspacePlugins, lockReader } from
 import { atPath, envName, resolveSetting, SETTINGS, type SettingSource } from '../settings.js'
 
 const warnToStderr = (message: string): void => {
-  process.stderr.write(`${message}\n`)
+  ui.say('warn', message)
 }
 
 /** The doctor's facts, typed: what `--format json` prints and the pretty rows render. */
@@ -242,7 +243,7 @@ async function collectWorkspaceInfo(
   return {
     vx: VERSION,
     vxPath: vxPath(),
-    handedOffFrom: process.env['VX_HANDED_OFF'] ?? null,
+    handedOffFrom: process.env['VX_HANDED_OFF'] || null,
     // An unsupported Bun does not stop a run, it makes the run's ANSWERS
     // wrong (util/bun-version.ts measures which). The row a reader already
     // consults for "is my setup sane" is where that belongs: a warning on

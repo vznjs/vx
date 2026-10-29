@@ -15,6 +15,7 @@ import {
   strField,
   type DigestFunctionName,
 } from './merkle.js'
+import { ui } from '@vzn/vx'
 
 /**
  * Default bytes per ByteStream message.
@@ -498,6 +499,15 @@ export class ReapiClient {
     // and quotes it in the error, so an auth header's secret reached each
     // degrade warning (item 928). Refused once, here, by key alone.
     for (const [k, v] of Object.entries(this.headers)) {
+      // A name too: refused on every call, it degraded the cache to misses
+      // and read as an unreachable server to the executor. A `-bin` name
+      // takes bytes, which a string header is not.
+      const name = k.toLowerCase()
+      if (!/^[0-9a-z_.-]+$/.test(name) || name.endsWith('-bin')) {
+        throw new Error(
+          `reapi: header name ${JSON.stringify(k)} is not one gRPC metadata can carry (lowercase letters, digits, "-", "_" and ".", not ending "-bin")`,
+        )
+      }
       if (!/^[ -~]*$/.test(v)) {
         throw new Error(
           `reapi: header ${JSON.stringify(k)} holds a character gRPC metadata cannot carry (printable ASCII only) — check it (its value is not printed)`,
@@ -513,7 +523,7 @@ export class ReapiClient {
     // not silently lengthen every metadata probe too.
     this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
     // No listener is no reason to say nothing.
-    this.onWarn = opts.onWarn ?? ((m) => void process.stderr.write(`${m}\n`))
+    this.onWarn = opts.onWarn ?? ((m) => ui.say('warn', m))
     // A zero, negative or non-number deadline ended every call as it began.
     for (const [name, ms] of [
       ['callTimeoutMs', this.callTimeoutMs],

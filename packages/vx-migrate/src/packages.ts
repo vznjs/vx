@@ -5,7 +5,7 @@
 import { constants, existsSync, type Dirent } from 'node:fs'
 import { access, readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { PROJECT_CONFIG_FILENAMES, UserError } from '@vzn/vx'
+import { PROJECT_CONFIG_FILENAMES, ui, UserError } from '@vzn/vx'
 import {
   BUN_GLOB_WILDCARDS,
   EXTGLOB,
@@ -641,8 +641,9 @@ async function readManifest(root: string, dir: string, file: string): Promise<st
       () => false,
     )
     if (searchable) unreadable(err, file)
-    process.stderr.write(
-      `vx: ${shownDir(root, dir)} is not readable by this user — skipped, with any project in it\n`,
+    ui.say(
+      'warn',
+      `vx: ${shownDir(root, dir)} is not readable by this user — skipped, with any project in it`,
     )
     return null
   }
@@ -768,8 +769,9 @@ export async function discoverPackages(
     shared.sort()
     const shown =
       shared.slice(0, 2).join('; ') + (shared.length > 2 ? `; and ${shared.length - 2} more` : '')
-    process.stderr.write(
-      `vx: left out, as no project can be addressed by a name several manifests share (none has a vx config): ${shown}\n`,
+    ui.say(
+      'warn',
+      `vx: left out, as no project can be addressed by a name several manifests share (none has a vx config): ${shown}`,
     )
   }
 

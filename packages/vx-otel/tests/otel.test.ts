@@ -2203,7 +2203,7 @@ describe('the standard OTLP env a pipeline already sets', () => {
       [],
     ])
     expect(warns).toEqual([
-      '[vx] vx-otel: compression "zstd" is not gzip or none — sent uncompressed',
+      '[vx] vx-otel: OTEL_EXPORTER_OTLP_COMPRESSION "zstd" is not gzip or none — sent uncompressed',
     ])
   })
 

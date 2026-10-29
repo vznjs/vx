@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
-import { refuseUnknownOptions, secretNamed, UserError, type PluginOptionKinds } from '@vzn/vx'
+import { refuseUnknownOptions, secretNamed, UserError, ui, type PluginOptionKinds } from '@vzn/vx'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
 import { printable } from './wire.js'
 
@@ -22,6 +22,13 @@ export interface GithubOptions {
    * for this commit. An undefined one is left out.
    */
   readonly env?: Readonly<Record<string, string | undefined>>
+}
+
+interface Job {
+  readonly name: string
+  readonly status: string
+  readonly conclusion: string | null
+  readonly steps?: readonly { name: string; conclusion: string | null }[]
 }
 
 const KEYS: PluginOptionKinds<GithubOptions> = {
@@ -77,6 +84,9 @@ function limitReset(res: Response): number | undefined {
 const resetsAt = (at: number): string =>
   `; the repository's API limit resets at ${new Date(at).toISOString()}`
 
+/** The jobs a matrix makes in one workflow run at most: one dispatch's workers. */
+const MATRIX_MAX = 256
+
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
   const workflow = options.workflow ?? 'vx-worker.yml'
@@ -114,7 +124,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const cancelled = new Set<string>()
   // A poll or cancel that failed is said, each cause once (2026-10-23: no
   // fault is silent): a job that ended badly went unseen, a run held runners.
-  let warn = (m: string): void => void process.stderr.write(`${m}\n`)
+  let warn = (m: string): void => ui.say('warn', m)
   const said = new Set<string>()
   const runOf = (run: string): string => `workflow run ${run.slice(run.lastIndexOf('/') + 1)}`
   const failed = (what: string, why: string): void => {
@@ -153,48 +163,62 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const letGo = (run: string, workers: ReadonlyMap<string, WorkerSpawn>): void => {
     if (![...workers.keys()].every((id) => cancelled.has(id))) return
     watched.delete(run)
-    runs.splice(runs.indexOf(run), 1)
+    // Let go already (a cancel while its dispatch wrote RUNNER_TEMP).
+    const i = runs.indexOf(run)
+    if (i < 0) return
+    runs.splice(i, 1)
     const p = cancelOf(run).finally(() => pending.delete(p))
     pending.add(p)
+  }
+  /**
+   * Every page of `run`'s jobs: a wave of more than 100 workers is a run of
+   * more than 100 jobs. Undefined when unread, or when a one-page run has
+   * not changed since the last read (a 304 costs no API limit).
+   */
+  const jobsOf = async (run: string): Promise<Job[] | undefined> => {
+    const all: Job[] = []
+    for (let page = 1; ; page++) {
+      const tag = page === 1 ? etags.get(run) : undefined
+      const res = await call(
+        `${run}/jobs?per_page=100&page=${page}`,
+        tag === undefined ? {} : { headers: { 'if-none-match': tag } },
+      ).catch((err: unknown) => {
+        failed(`reading ${runOf(run)}'s jobs`, err instanceof Error ? err.message : String(err))
+        return undefined
+      })
+      if (res === undefined || res.status === 304) return undefined
+      if (!res.ok) {
+        const reset = limitReset(res)
+        if (reset !== undefined) held = Math.max(held, reset)
+        failed(
+          `reading ${runOf(run)}'s jobs`,
+          `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}${reset === undefined ? '' : resetsAt(reset)}`,
+        )
+        return undefined
+      }
+      const body = (await res.json().catch((err: unknown) => {
+        failed(
+          `reading ${runOf(run)}'s jobs`,
+          `no JSON: ${err instanceof Error ? err.message : String(err)}`,
+        )
+        return undefined
+      })) as { jobs?: Job[] } | null | undefined
+      if (body === undefined) return undefined
+      const jobs = body?.jobs ?? []
+      all.push(...jobs)
+      // A first page's tag says nothing of the next: only a run of one page is asked by it.
+      const etag = res.headers.get('etag')
+      if (page === 1 && etag !== null && jobs.length < 100) etags.set(run, etag)
+      else etags.delete(run)
+      if (jobs.length < 100) return all
+    }
   }
   const look = (ms: number): void => {
     watch = setTimeout(() => {
       void Promise.all(
         [...watched].map(async ([run, workers]) => {
-          const tag = etags.get(run)
-          const res = await call(
-            `${run}/jobs?per_page=100`,
-            tag === undefined ? {} : { headers: { 'if-none-match': tag } },
-          ).catch((err: unknown) => {
-            failed(`reading ${runOf(run)}'s jobs`, err instanceof Error ? err.message : String(err))
-            return undefined
-          })
-          if (res === undefined || res.status === 304) return
-          if (!res.ok) {
-            const reset = limitReset(res)
-            if (reset !== undefined) held = Math.max(held, reset)
-            failed(
-              `reading ${runOf(run)}'s jobs`,
-              `${res.status} ${printable((await res.text().catch(() => '')).slice(0, 200))}${reset === undefined ? '' : resetsAt(reset)}`,
-            )
-            return
-          }
-          const etag = res.headers.get('etag')
-          if (etag !== null) etags.set(run, etag)
-          const { jobs = [] } = ((await res.json().catch((err: unknown) => {
-            failed(
-              `reading ${runOf(run)}'s jobs`,
-              `no JSON: ${err instanceof Error ? err.message : String(err)}`,
-            )
-            return null
-          })) ?? {}) as {
-            jobs?: {
-              name: string
-              status: string
-              conclusion: string | null
-              steps?: { name: string; conclusion: string | null }[]
-            }[]
-          }
+          const jobs = await jobsOf(run)
+          if (jobs === undefined) return
           for (const j of jobs) {
             const a = workers.get(j.name)
             if (a === undefined || j.status !== 'completed') continue
@@ -339,14 +363,15 @@ export function github(options: GithubOptions = {}): DteAdapter {
     },
     spawn(a) {
       const wave = waves.get(a.size)
-      if (wave !== undefined) {
+      // A full wave dispatches as it is; the next worker starts another.
+      if (wave !== undefined && wave.length < MATRIX_MAX) {
         wave.push(a)
         return
       }
       const workers = [a]
       waves.set(a.size, workers)
       queueMicrotask(() => {
-        waves.delete(a.size)
+        if (waves.get(a.size) === workers) waves.delete(a.size)
         const p = dispatch(a.size, workers)
           .catch((err: unknown) => {
             const why = err instanceof Error ? err.message : String(err)

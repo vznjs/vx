@@ -172,6 +172,12 @@ export class BoundedCapture {
 
 function · `src/workspace/config-schema.ts`
 
+A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
+branch and a laptop on it reads (2026-10-17). The repository's
+identity, not a remote's local name, so a clone whose `origin` is a fork
+names the fork. A name may hold characters a scope may not; each
+becomes `_`.
+
 ```ts
 export function branchCacheScope(repo: string, branch: string): string
 ```
@@ -585,7 +591,7 @@ function · `src/orchestrator/plugin.ts`
 
 The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
 The name is read from the package the calling module belongs to — the
-nearest `package.json` above it — and stamped where the workspace loader
+nearest `package.json` above it that has a name — and stamped where the workspace loader
 checks for it, so a plugin cannot be named anything but its package.
 
 ```ts
@@ -2847,7 +2853,7 @@ export interface TaskHistory {
 class · `src/orchestrator/task-log-buffer.ts`
 
 Bounded per-run capture. `append` keeps a chunk LIST + running char count per
-task, evicting whole chunks from the head past `TASK_LOG_TAIL_CHARS` — no
+task, evicting from the head past `TASK_LOG_TAIL_CHARS` — no
 string concatenation until `drain`, so a cache-hit replay (one big chunk) is
 one array push, zero copies. `finish` decides retention; `drain` emits the
 bundle, failures first.
@@ -2959,6 +2965,7 @@ export interface TaskOutcome {
   failedOutput?: string
   runLog?: string
   notReady?: 'timeout' | 'exited' | 'spawn'
+  serverExit?: number
   inputMoved?: string
   where?: string
   carried?: true
@@ -3222,6 +3229,9 @@ export const place = (text: string): Inline => (text === 'local' ? text : id(tex
 export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
 export function inline(x: Inline, c: ColorSupport): string
 export function status(t: Tone, verb: string, headline: Inline): Block
+export function tagged(t: Tone, line: string, c: ColorSupport): string
+export function say(t: Tone, line: string, stream: 'out' | 'err' = 'err'): void
+export function excerpt(title: string, body: string): Block
 export function text(...items: Inline[]): Block
 export function why(line: Inline): Block
 export type FieldRow = readonly [label: string, ...values: Inline[]] | null
@@ -3235,8 +3245,10 @@ export interface NoticeParts {
   tone: Tone
   verb: string
   headline: Inline
+  /** What is wrong, one fact a line. */
   what?: readonly Inline[]
   why?: Inline
+  /** A source frame, below the facts. */
   code?: string
   fix?: Inline
 }

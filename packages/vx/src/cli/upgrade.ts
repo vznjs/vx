@@ -20,7 +20,7 @@ import { constants, existsSync, readFileSync } from 'node:fs'
 import { createPublicKey, verify } from 'node:crypto'
 import { access, chmod, chown, link, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { flagHint, seeHelp } from './help.js'
+import { flagHint, refuse, seeHelp } from './help.js'
 import { resolveRegistry, type Registry } from './registry.js'
 import { UserError, sayNotice, ui } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
@@ -341,6 +341,14 @@ export async function releaseBinary(
 ): Promise<Uint8Array | null> {
   const registry = resolveRegistry(pkg.split('/')[0]!)
   const release = verifiedRelease(await fetchManifest(pkg, spec, undefined, registry), pkg, key)
+  // npm signs every version it published: the signature proves the bytes,
+  // not that they are the version asked for, so a mirror could hand back an
+  // older one.
+  if (spec !== 'latest' && release.version !== spec) {
+    throw new UserError(
+      `vx upgrade: the npm registry answered ${pkg}@${spec} with version ${release.version} — refusing to install; nothing replaced`,
+    )
+  }
   if (release.version === current) return null
   announce(release.version)
   return binaryFromTarball(await downloadVerified(release, registry))
@@ -776,23 +784,39 @@ async function named<T>(what: string, run: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function upgradeCmd(argv: readonly string[]): Promise<number> {
+interface UpgradeArgs {
+  global: boolean
+  tag?: string
+  error?: string
+  /** The error names an unknown flag: `--format json` reads it as JSON. */
+  flag?: true
+}
+
+export function parseUpgradeArgs(argv: readonly string[]): UpgradeArgs {
   const global = argv.some((a) => a === '-g' || a === '--global')
   const args = argv.filter((a) => a !== '-g' && a !== '--global')
   const unknown = args.find((a) => a.startsWith('-'))
   if (unknown !== undefined) {
-    sayNotice(
-      'error',
-      'vx upgrade',
-      `unknown flag: ${unknown}${flagHint('upgrade', unknown)}${seeHelp('upgrade')}`,
-    )
-    return 1
+    return {
+      global,
+      flag: true,
+      error: `unknown flag: ${unknown}${flagHint('upgrade', unknown)}${seeHelp('upgrade')}`,
+    }
   }
   // One release is installed; a second tag was dropped without a word and
   // the first one went in (`vx upgrade v0.0.22 v0.0.23`).
   const [tag, extra] = args
   if (extra !== undefined) {
-    sayNotice('error', 'vx upgrade', `unexpected argument: ${extra}${seeHelp('upgrade')}`)
+    return { global, error: `unexpected argument: ${extra}${seeHelp('upgrade')}` }
+  }
+  return tag === undefined ? { global } : { global, tag }
+}
+
+export async function upgradeCmd(argv: readonly string[]): Promise<number> {
+  const { global, tag, error, flag } = parseUpgradeArgs(argv)
+  if (error !== undefined && flag === true) return refuse('upgrade', argv, error, 'VX_E_USAGE')
+  if (error !== undefined) {
+    sayNotice('error', 'vx upgrade', error)
     return 1
   }
   // A mistyped tag is the mistake to name, before any guard about this install.
@@ -803,7 +827,7 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
     )
   }
   const dest = process.execPath
-  const handedOffFrom = process.env['VX_HANDED_OFF']
+  const handedOffFrom = process.env['VX_HANDED_OFF'] || undefined
   if (global) {
     // A launcher from before -g handed the call over: the global is the one that did.
     const version = await targetVersion(tag)

@@ -32,9 +32,9 @@ The package exports `turbo`, `nx`, `turboCache`, `nxCache` and their options typ
 
 Until `bunx @vzn/vx-migrate` writes native config, `vx run build --all` maps every package's `build` script the way `turbo run build` would: `dependsOn` edges (`^build`, same-package deps, `pkg#task`), `inputs` as every task's key and `outputs` as the cache block, `env` / `passThroughEnv`, `cache: false`, `persistent`. Turbo's global fields (`globalDependencies`, `globalEnv`, `globalPassThroughEnv`, Turbo 1's `globalDotEnv`) are inlined into every task; a `*` env name (`NEXT_PUBLIC_*`) expands over the run's environment, as Turbo matches it; `*` is Turbo's only wildcard (`\*`, a leading `\!`, `?` and `[` are literal), and a literal vx cannot key (unkey's `NEXT_PUBLIC_\*`) is left out, reported once only when the run's environment sets it; per-package `turbo.json` overlays apply. A `turbo.jsonc` (Turbo 2.5+) is read wherever a `turbo.json` would be, at the root and in a package; a workspace root with neither is refused, naming the fix. Turbo 2's framework inference (a package on `next` has `NEXT_PUBLIC_*` and `NEXT_DEPLOYMENT_ID` hashed and passed; Turbo's whole table, `expo`, `nuxt`, `remix`, `@sveltejs/kit` and the rest, each package taking the first framework it matches, as Turbo does, and leaving out names under the platform's `TURBO_CI_VENDOR_ENV_KEY`) applies too: the prefix expands over the run's environment into that package's tasks, and a task's `!` entry takes names back (`bunx @vzn/vx-migrate`, which writes files for another environment, names each framework and its packages in a note instead). What runs is what a migration would have written, minus the file: the key a task derives here equals the key the written config would derive.
 
-| Option | Meaning                                                         |
-| ------ | --------------------------------------------------------------- |
-| `root` | Directory holding `turbo.json`. Defaults to the workspace root. |
+| Option | Meaning                                                                                                     |
+| ------ | ----------------------------------------------------------------------------------------------------------- |
+| `root` | Directory holding `turbo.json`, relative to the workspace root or absolute. Defaults to the workspace root. |
 
 ### Locking
 
@@ -95,7 +95,7 @@ Until `bunx @vzn/vx-migrate` writes native config, `vx run build --all` maps eve
 
 | Option  | Meaning                                                                                                                                                      |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `root`  | Directory holding `nx.json`. Defaults to the workspace root.                                                                                                 |
+| `root`  | Directory holding `nx.json`, relative to the workspace root or absolute. Defaults to the workspace root.                                                     |
 | `graph` | An exported graph (`nx graph --file=<path>`) to read instead of keeping a snapshot; with it set the plugin never runs `nx`. Relative to `root`, or absolute. |
 
 ### Module boundaries
@@ -386,7 +386,9 @@ a launcher's `--package <name>` / `-p <name>` (`pnpm dlx --package
 netlify-cli netlify dev`, D-112). A
 script whose name no task may carry (`lint#fix`, `^up`; the schema's
 rule, item 1000) is left out with a TODO rather than written into a
-config every later command refuses, and a `__proto__` script is written
+config every later command refuses; a Turbo task, Nx target or Vite Task
+task of such a name is too, under `turbo()` and `nx()` as well as in the
+written configs, and a `__proto__` script is written
 as a computed key, since a literal `__proto__:` sets the prototype. An
 existing `.vx/workspace.*` in any extension the loader reads (`.mts`
 included) is kept, and `--force` REPLACES a package's config of another
@@ -537,7 +539,7 @@ import { turboCache } from '@vzn/vx-migrate'
 export default defineWorkspace({
   plugins: [
     turboCache({
-      apiUrl: 'https://cache.example.com',
+      url: 'https://cache.example.com',
       token: process.env.CACHE_TOKEN,
       teamSlug: 'acme',
       // Optional: sign uploads and verify downloads (Turbo's artifact signature).
@@ -549,11 +551,11 @@ export default defineWorkspace({
 
 Off CI a run reads the remote and does not write it unless its policy names the remote. Give the write token only to the default branch's CI and a read-only one to laptops and pull request jobs: the server's token is the boundary (`docs/security.md` § Cache poisoning). The same holds for `nxCache()`.
 
-Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `bunx turbo login && bunx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. Below the environment, in Turbo's order: a Vercel build's `VERCEL_ARTIFACTS_TOKEN` and `VERCEL_ARTIFACTS_OWNER` (the team id, where `TURBO_TOKEN` with a team is not set), then the repo's `.turbo/config.json` (what `turbo link` writes: `apiUrl`, `teamId`, `teamSlug`, `token`), then the root `turbo.json`'s `remoteCache` (`apiUrl`, `teamId`, `teamSlug`), whose `enabled: false` declines unless the options name a cache. A team with no `apiUrl` also means Vercel's. With a URL or a team but no token, the token comes from the OS keychain ([Tokens](#tokens-and-the-os-keychain)); with none of the three the plugin **declines** and the run stays local.
+Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no URL means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `bunx turbo login && bunx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. Below the environment, in Turbo's order: a Vercel build's `VERCEL_ARTIFACTS_TOKEN` and `VERCEL_ARTIFACTS_OWNER` (the team id, where `TURBO_TOKEN` with a team is not set), then the repo's `.turbo/config.json` (what `turbo link` writes: `apiUrl`, `teamId`, `teamSlug`, `token`), then the root `turbo.json`'s `remoteCache` (`apiUrl`, `teamId`, `teamSlug`), whose `enabled: false` declines unless the options name a cache. A team with no URL also means Vercel's. With a URL or a team but no token, the token comes from the OS keychain ([Tokens](#tokens-and-the-os-keychain)); with none of the three the plugin **declines** and the run stays local.
 
 | Option            | Environment variable                                                                                              | Meaning                                                                                                                                                                                                                                                                                               |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apiUrl`          | `TURBO_API`                                                                                                       | base URL of the cache server; default with a token: `https://vercel.com/api`; http(s) only; a `user:pass@` in it is refused                                                                                                                                                                           |
+| `url`             | `TURBO_API`                                                                                                       | base URL of the cache server; default with a token: `https://vercel.com/api`; http(s) only; a `user:pass@` in it is refused                                                                                                                                                                           |
 | `token`           | `TURBO_TOKEN`                                                                                                     | Bearer token on every request; then OIDC, `.turbo/config.json`, the OS keychain                                                                                                                                                                                                                       |
 | `oidc`            | `ACTIONS_ID_TOKEN_REQUEST_URL`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN` (GitHub sets them)                               | `true` or `{ tokenUrl, revokeUrl, audience, params }` (`TurboOidcOptions`): exchange the GitHub Actions job's OIDC token for a short-lived one ([OIDC](#oidc-on-github-actions))                                                                                                                      |
 | `teamId`          | `TURBO_TEAMID`                                                                                                    | `teamId` query parameter (Vercel's `team_` form only, as Turbo sends it); folded into the signature                                                                                                                                                                                                   |
@@ -562,7 +564,7 @@ Every option falls back to the tool's own environment variable, so a self-hosted
 | `timeoutMs`       | `TURBO_REMOTE_CACHE_TIMEOUT`, then `remoteCache.timeout` (seconds)                                                | HEAD/GET/POST deadline (default 30 s; 0 none)                                                                                                                                                                                                                                                         |
 | `uploadTimeoutMs` | `TURBO_REMOTE_CACHE_UPLOAD_TIMEOUT`, then `remoteCache.uploadTimeout` (seconds)                                   | PUT deadline (default 60 s; 0 none)                                                                                                                                                                                                                                                                   |
 | `retries`         | —                                                                                                                 | resends of a request answered 5xx (not 501) or never connected (default 1, Turbo's); a 429 waits out the limit; 0 turns both off                                                                                                                                                                      |
-| `preflight`       | `TURBO_PREFLIGHT` (1 or 0), then `remoteCache.preflight`                                                          | send Turbo's `OPTIONS` preflight before each artifact request and go where its `Location` points (relative to `apiUrl`); the token goes along only when the API's `Access-Control-Allow-Headers` admits `Authorization`; a redirected preflight is not followed (default off)                         |
+| `preflight`       | `TURBO_PREFLIGHT` (1 or 0), then `remoteCache.preflight`                                                          | send Turbo's `OPTIONS` preflight before each artifact request and go where its `Location` points (relative to the URL); the token goes along only when the API's `Access-Control-Allow-Headers` admits `Authorization`; a redirected preflight is not followed (default off)                          |
 | `scope`           | —                                                                                                                 | `RemoteScope`: `'header'` (default): every read names the run's refs, own branch first, in `x-artifact-read-scopes`; `'key'`: each entry is keyed on its ref, a read asks every ref's key in one batch (a server that ignores the header)                                                             |
 
 The signature is Turbo's current scheme (`artifact-signature:v2`: prefix, hash, team id and body, each length-prefixed, under HMAC-SHA256, base64 in `x-artifact-tag`). A signed body is written to a temp file before its tag can be checked, so one past core's artifact ceiling (2 GiB, at zstd's bound) is refused as it passes it, and is a miss.
@@ -578,18 +580,18 @@ import { defineWorkspace } from '@vzn/vx/config'
 import { nxCache } from '@vzn/vx-migrate'
 
 export default defineWorkspace({
-  plugins: [nxCache({ server: 'https://cache.example.com', accessToken: process.env.CACHE_TOKEN })],
+  plugins: [nxCache({ url: 'https://cache.example.com', token: process.env.CACHE_TOKEN })],
 })
 ```
 
 Every option falls back to the tool's own environment variable, and a missing token to the OS keychain ([Tokens](#tokens-and-the-os-keychain)); with no server the plugin **declines** and the run stays local.
 
-| Option        | Environment variable                       | Meaning                                                                       |
-| ------------- | ------------------------------------------ | ----------------------------------------------------------------------------- |
-| `server`      | `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`       | base URL of the cache server; http(s) only; a `user:pass@` in it is refused   |
-| `accessToken` | `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` | Bearer token, else the OS keychain; `''` (option or variable): an open server |
-| `timeoutMs`   | —                                          | per-request deadline (default 30 s; a positive number of ms)                  |
-| `retries`     | —                                          | resends, as `turboCache()`'s (default 1)                                      |
+| Option      | Environment variable                       | Meaning                                                                       |
+| ----------- | ------------------------------------------ | ----------------------------------------------------------------------------- |
+| `url`       | `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`       | base URL of the cache server; http(s) only; a `user:pass@` in it is refused   |
+| `token`     | `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` | Bearer token, else the OS keychain; `''` (option or variable): an open server |
+| `timeoutMs` | —                                          | per-request deadline (default 30 s; a positive number of ms)                  |
+| `retries`   | —                                          | resends, as `turboCache()`'s (default 1)                                      |
 
 The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefetch pass calls `get`) is a `GET` whose body is cancelled before it answers. The wire carries no producing-task duration, so a remote hit reports none.
 

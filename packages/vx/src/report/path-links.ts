@@ -6,6 +6,7 @@
 
 import { statSync } from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 // `src/a.ts`, `./a.ts:12`, `/abs/a.ts:12:5`, tsc's `src/a.ts(12,5)`. Not
 // after a word, dot, slash or `@`, so a URL's path or a scoped name's tail
@@ -29,7 +30,8 @@ export function linkPaths(text: string, dir: string, isFile: (abs: string) => bo
   return text.replace(PATH, (match: string, file: string) => {
     const abs = path.resolve(dir, file)
     if (!isFile(abs)) return match
-    return `\x1b]8;;file://${encodeURI(abs)}\x1b\\${match}\x1b]8;;\x1b\\`
+    // Not `encodeURI`: it keeps a `#` or `?`, which the URL reads as its fragment or query.
+    return `\x1b]8;;${pathToFileURL(abs).href}\x1b\\${match}\x1b]8;;\x1b\\`
   })
 }
 

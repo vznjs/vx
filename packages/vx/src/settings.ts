@@ -15,8 +15,7 @@ import {
 export type SettingKind =
   | { readonly type: 'int'; readonly min: number }
   | { readonly type: 'concurrency' }
-  // `zero`: 0 is a value ("wait for nothing not already done"), not a typo.
-  | { readonly type: 'duration'; readonly timer?: true; readonly zero?: true }
+  | { readonly type: 'duration'; readonly timer?: true }
   // `off`: `false` is a value, 0 bytes (the thing the size bounds is off).
   | { readonly type: 'size'; readonly off?: true }
   | { readonly type: 'bool' }
@@ -323,7 +322,7 @@ export function parseSettingValue(kind: SettingKind, raw: unknown): unknown {
       return parseConcurrency(typeof raw === 'number' ? String(raw) : raw)
     case 'duration': {
       const n = typeof raw === 'string' ? parseDuration(raw) : null
-      if (n === null || (n === 0 && kind.zero !== true)) return null
+      if (n === null || n === 0) return null
       return kind.timer === true && n > MAX_TIMEOUT_MS ? null : n
     }
     case 'size':

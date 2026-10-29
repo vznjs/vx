@@ -17,7 +17,19 @@ import {
   whyDidThisRerun,
 } from '../history/index.js'
 import { resolveRunId } from '../orchestrator/index.js'
-import { MASKED, nearMatches, printable, refusal, UserError } from '../util/index.js'
+import {
+  detectColors,
+  ERROR,
+  MASKED,
+  nearMatches,
+  paint,
+  printable,
+  refusal,
+  SUCCESS,
+  ui,
+  UserError,
+  WARN,
+} from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
 import { cliCacheDir, discoverCliProjects, parseCacheDirFlag } from './workspace-config.js'
@@ -146,6 +158,25 @@ async function resolveTarget(
       .query('SELECT 1 FROM runs WHERE project = ? AND task = ? ORDER BY id DESC LIMIT 1')
       .get(project, task)
     if (hit !== null) return target
+  } else {
+    // A bare name reads only its own task's rows: the DISTINCT over every
+    // pair sorted the whole history (24 of 26 ms at 58k rows), and its list
+    // serves only the miss's suggestions below.
+    const matches = (
+      db.query('SELECT DISTINCT project FROM runs WHERE task = ? ORDER BY project').all(target) as {
+        project: string
+      }[]
+    ).map((r) => `${r.project}#${target}`)
+    if (matches.length === 1) return matches[0]!
+    if (matches.length > 1) {
+      const here = await cwdProject()
+      if (here !== null && matches.includes(`${here}#${target}`)) return `${here}#${target}`
+      throw new UserError(
+        `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
+          matches.map((m) => `  ${m}`).join('\n'),
+        'VX_E_AMBIGUOUS',
+      )
+    }
   }
   const pairs = db
     .query('SELECT DISTINCT project, task FROM runs ORDER BY project, task')
@@ -165,17 +196,6 @@ async function resolveTarget(
     throw new UserError(
       `vx why: no recorded runs for "${target}"${suggest(target, ids, invoked)}`,
       'VX_E_NO_HISTORY',
-    )
-  }
-  const matches = ids.filter((id) => id.endsWith(`#${target}`))
-  if (matches.length === 1) return matches[0]!
-  if (matches.length > 1) {
-    const here = await cwdProject()
-    if (here !== null && matches.includes(`${here}#${target}`)) return `${here}#${target}`
-    throw new UserError(
-      `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
-        matches.map((m) => `  ${m}`).join('\n'),
-      'VX_E_AMBIGUOUS',
     )
   }
   throw new UserError(
@@ -264,8 +284,9 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       if (parsed.format === 'json') {
         process.stdout.write(`${JSON.stringify({ taskId, why: null, diff: null, explanation })}\n`)
       } else {
+        const c = detectColors(process.stdout)
         process.stdout.write(
-          `${taskId}: recorded runs carry no run id — showing the latest cache entry instead\n` +
+          `${ui.inline(ui.id(taskId), c)}: recorded runs carry no run id — showing the latest cache entry instead\n` +
             (explanation.latestEntry !== null
               ? `  hash ${explanation.latestEntry.hash} · $ ${explanation.latestEntry.command}\n`
               : '  (no cache entry either)\n'),
@@ -294,14 +315,17 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     }
 
     const lines: string[] = []
+    const c = detectColors(process.stdout)
+    const dim = (text: string): string => paint('', text, c, { dim: true })
+    const head = (text: string): string => paint('', text, c, { bold: true })
     const t = why.thisRun!
-    lines.push(`${taskId} — run ${runId}`)
-    lines.push(`  this run   ${runFacts(t)}`)
+    lines.push(`${ui.inline(ui.id(taskId), c)}${dim(` — run ${runId}`)}`)
+    lines.push(`  ${dim('this run')}   ${runFacts(t)}`)
     if (why.previousRun == null) {
-      lines.push('  previous   (none — first recorded run of this task)')
+      lines.push(`  ${dim('previous')}   (none — first recorded run of this task)`)
     } else {
       const p = why.previousRun
-      lines.push(`  previous   ${runFacts(p)}`)
+      lines.push(`  ${dim('previous')}   ${runFacts(p)}`)
       // The key moved and the diff says by what: the verdict names it, so
       // an env-only change reads as one line, not "inputs differ" above a
       // table to scan.
@@ -310,9 +334,13 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
       )
       lines.push(
-        `  verdict    ${
+        `  ${dim('verdict')}    ${
           why.hashChanged === true && moved.length > 0
-            ? `cache key changed: ${moved.slice(0, 3).join(', ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}`
+            ? paint(
+                WARN,
+                `cache key changed: ${moved.slice(0, 3).join(', ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}`,
+                c,
+              )
             : why.note
         }`,
       )
@@ -321,7 +349,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     if (diff.entries.length > 0) {
       lines.push('')
       lines.push(
-        `  what changed (${diff.entries.length} component${diff.entries.length === 1 ? '' : 's'}, ${diff.unchangedCount} unchanged):`,
+        `  ${head('what changed')}${dim(` (${diff.entries.length} component${diff.entries.length === 1 ? '' : 's'}, ${diff.unchangedCount} unchanged)`)}:`,
       )
       const kindW = Math.max(...diff.entries.map((e) => e.kind.length), 4)
       for (const e of diff.entries) {
@@ -335,11 +363,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
                 ? `- ${e.before}`
                 : `${e.before} → ${e.after}`
         lines.push(
-          `    ${e.change.padEnd(7)} ${e.kind.padEnd(kindW)}  ${printable(e.name)}  ${beforeAfter}`.trimEnd(),
+          `    ${paint(CHANGE_HUE[e.change] ?? WARN, e.change.padEnd(7), c)} ${dim(e.kind.padEnd(kindW))}  ${printable(e.name)}  ${dim(beforeAfter)}`.trimEnd(),
         )
       }
       if (roots.length > 0) {
-        lines.push('', '  root cause:')
+        lines.push('', `  ${head('root cause')}:`)
         for (const r of roots.slice(0, ROOTS_SHOWN)) {
           const what = r.entries.map((e) =>
             e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
@@ -351,9 +379,9 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         if (roots.length > ROOTS_SHOWN) lines.push(`    and ${roots.length - ROOTS_SHOWN} more`)
       }
       if (writers.length > 0) {
-        lines.push('', '  changed during a run:')
+        lines.push('', `  ${head('changed during a run')}:`)
         for (const w of writers) {
-          lines.push(`    ${printable(w.file)}  while ${w.writers.join(', ')} ran`)
+          lines.push(`    ${printable(w.file)}  ${dim(`while ${w.writers.join(', ')} ran`)}`)
         }
       }
       const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
@@ -370,7 +398,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
           k in WHAT_TO_DO && !(k === 'upstream' && (roots.length > 0 || upstream.length === 0)),
       )
       if (kinds.length > 0) {
-        lines.push('', '  what to do:')
+        lines.push('', `  ${head('what to do')}:`)
         for (const k of kinds) {
           const todo =
             k === 'upstream'
@@ -381,16 +409,16 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
               : k === 'config'
                 ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
                 : WHAT_TO_DO[k]
-          lines.push(`    ${k.padEnd(kindW)}  ${todo}`)
+          lines.push(`    ${dim(k.padEnd(kindW))}  ${todo}`)
         }
         if (writers.length > 0) {
           // A task re-writing a file a key reads moves that key every run:
           // the miss is right, and only moving the write ends it.
-          lines.push(`    ${'written'.padEnd(kindW)}  ${WRITTEN_TODO}`)
+          lines.push(`    ${dim('written'.padEnd(kindW))}  ${WRITTEN_TODO}`)
         }
       }
     } else if (why.hashChanged === true) {
-      lines.push(`  detail     ${diff.note}`)
+      lines.push(`  ${dim('detail')}     ${diff.note}`)
     }
     process.stdout.write(`${lines.join('\n')}\n`)
     return 0
@@ -400,6 +428,8 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 }
 
 const ROOTS_SHOWN = 5
+
+const CHANGE_HUE: Record<string, string> = { added: SUCCESS, removed: ERROR, changed: WARN }
 
 const WRITTEN_TODO =
   'a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files'

@@ -8,7 +8,8 @@
 
 import { createHash } from 'node:crypto'
 import { type Bytes, type CipherState, Handshake, MAX_PLAINTEXT } from './noise.js'
-import { unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
+import { RelayError, unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
+import { ui } from '@vzn/vx'
 
 /**
  * What admits a side: the run's key (Noise's psk), or each side's CI
@@ -310,7 +311,7 @@ export function sealOrchestrator(
   me: Participant,
   run: string,
   proof: Proof,
-  warn: (message: string) => void = (m) => void process.stderr.write(`${m}\n`),
+  warn: (message: string) => void = (m) => ui.say('warn', m),
 ): Participant {
   const unsent = (what: string, to: string) => unsentBy((m) => warn(`[vx] ${m}`), what, to)
   const sessions = new Map<string, Session>()
@@ -350,7 +351,9 @@ export function sealOrchestrator(
     resumed: (f) => me.resumed(f),
     async send(to, body) {
       const s = sessions.get(to)
-      if (s === undefined) throw new Error(`no session with ${to}`)
+      // Lost or never admitted: the relay's own answer for a peer it does
+      // not know, which a caller takes as gone, not as a refused send.
+      if (s === undefined) throw new RelayError(404, `no session with ${to}`)
       await s.send(body, (sealed) => me.send(to, sealed))
     },
     async poll(signal) {

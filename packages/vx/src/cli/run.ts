@@ -20,7 +20,14 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { envFlagOn, hasControl, parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
+import {
+  detectColors,
+  envFlagOn,
+  hasControl,
+  parseDecimalInt,
+  sayNotice,
+  sayLine,
+} from '../util/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
 import { formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -65,7 +72,7 @@ export interface RunArgs {
   poll?: true
   forwardArgs: string[]
   verbosity: number
-  dry: 'text' | 'json' | undefined
+  dry: 'pretty' | 'json' | undefined
   profile: string | undefined
   /**
    * `--affected[=<base>]`. When undefined the flag wasn't passed.
@@ -192,7 +199,9 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
         out.excludeDependencies = [...new Set([...out.excludeDependencies, ...names])]
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
-      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
+      // Whitespace named a directory in spaces; `VX_CACHE_DIR` and `cache.dir` refuse it.
+      if (v === undefined || v.trim() === '')
+        return { ...out, error: `--cache-dir requires a path` }
       // Unlike every other value flag, a cache dir is an arbitrary
       // string — nothing about its shape rejects a swallowed flag. An
       // unquoted empty shell var (`--cache-dir $EMPTY --force`) would
@@ -263,14 +272,18 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
         return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
       out.verbosity = n
     } else if (a === '--dry') {
-      out.dry = 'text'
+      out.dry = 'pretty'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
       if (fmt === '') {
-        return { ...out, error: `--dry= requires a format (text or json); bare --dry prints text` }
+        return {
+          ...out,
+          error: `--dry= requires a format (pretty or json); bare --dry prints pretty`,
+        }
       }
-      if (fmt !== 'text' && fmt !== 'json') {
-        return { ...out, error: `--dry must be text or json (got ${fmt})` }
+      // The values every --format takes.
+      if (fmt !== 'pretty' && fmt !== 'json') {
+        return { ...out, error: `--dry must be pretty or json (got ${fmt})` }
       }
       out.dry = fmt
     } else if (a === '--profile') {
@@ -285,7 +298,10 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       out.affected = ''
     } else if (a?.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
-    } else if (verb === 'watch' && a === '--poll') {
+    } else if (a === '--poll') {
+      // The edit-distance hint offered vx run `--all`, a different flag.
+      if (verb === 'run')
+        return { ...out, error: `unknown flag: --poll (a vx watch flag: vx watch --poll <task>)` }
       out.poll = true
     } else if (a !== undefined && settingFlagOf(a) !== undefined) {
       const { s: set, name } = settingFlagOf(a)!
@@ -673,7 +689,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     if (parsed.dry === 'json') {
       process.stdout.write(formatPlanJson(plan, scopeOut.affectedBase))
     } else {
-      process.stdout.write(formatPlanText(plan))
+      process.stdout.write(formatPlanText(plan, detectColors(process.stdout)))
     }
     return 0
   }

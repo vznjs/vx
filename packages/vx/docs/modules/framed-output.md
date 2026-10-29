@@ -88,7 +88,7 @@ export function formatPersistentList(nodes, colors?): string[] // `▸ <id> runn
 
 $ oxlint --type-aware --type-check
 
-├─ OUTPUT ──────────────────────────────────────────────────
+├─ OUTPUT ────────────────────────────────────────────────────
 
 Found 0 warnings and 0 errors.
 

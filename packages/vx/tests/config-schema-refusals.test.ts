@@ -862,6 +862,30 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
     )
     // CONTROL: any other non-object keeps the plain refusal.
     expect(refusal([42])).toBe('.vx/workspace.ts: `plugins[0]` must be an object')
+    // `plugins: [otel]`, the factory itself, was told only that it is no object.
+    expect(refusal([function otel() {}])).toBe(
+      ".vx/workspace.ts: `plugins[0]` must be an object — it is the function 'otel'; call it: otel()",
+    )
+  })
+
+  it('one plugin object listed twice is refused', async () => {
+    // Two presets that both carry one shared instance: its setup, every
+    // `ctx.on` handler and every telemetry sink ran twice, so each record
+    // was exported twice. Two instances of one package stay two plugins.
+    const { testPlugin } = await import('./helpers/plugin.js')
+    const p = testPlugin('@acme/shared', { teardown() {} })
+    const refusal = (plugins: unknown[]): string => {
+      try {
+        validateWorkspace({ plugins } as never, '.vx/workspace.ts')
+      } catch (err) {
+        return (err as Error).message
+      }
+      return ''
+    }
+    expect(refusal([p, false, p])).toBe(
+      ".vx/workspace.ts: `plugins[2]` is `plugins[0]` again (plugin '@acme/shared') — declare a plugin once",
+    )
+    expect(refusal([p, testPlugin('@acme/shared', { teardown() {} })])).toBe('')
   })
 
   it('an undefined, null or false entry is skipped, as Vite skips it', () => {
@@ -1107,5 +1131,37 @@ describe('a backslash separator or a drive letter in a task glob', () => {
       taskRefusal(task({ files: ['app/\\[id\\]/**', 'src/\\{b\\}.ts', '\\!x', 'x\\\\y'] })),
     ).toBeNull()
     expect(taskRefusal(task({ files: ['src/C:/x', 'ab:/x', 'src/**'] }))).toBeNull()
+  })
+})
+
+// `exec.retries` overrides `run.retries` and is the same setting kind: a
+// count past 2^53 is no count either names (run.retries refused it, a
+// task's took it).
+describe('exec.retries', () => {
+  it('is refused past the safe integers, as run.retries is', () => {
+    expect(refusal({ run: { retries: 2 ** 60 } })).toBe(
+      `${WS}: \`run.retries\` must be a non-negative integer (got ${2 ** 60})`,
+    )
+    expect(taskRefusal({ exec: { command: 'x', retries: 2 ** 60 } })).toBe(
+      `${CFG}: tasks.t.exec.retries must be a non-negative integer (got ${2 ** 60})`,
+    )
+    // Control: a large safe count is taken.
+    expect(taskRefusal({ exec: { command: 'x', retries: 2 ** 31 } })).toBeNull()
+  })
+})
+
+// A file's switch is a boolean, never its string: `decompress: 'false'` is
+// refused, and `embeddings: 'false'` was taken as off.
+describe('cache.store.embeddings', () => {
+  it("refuses the string 'false', as a bool setting refuses it", () => {
+    expect(refusal({ cache: { store: { decompress: 'false' } } })).toBe(
+      `${WS}: \`cache.store.decompress\` must be true or false (got "false")`,
+    )
+    expect(refusal({ cache: { store: { embeddings: 'false' } } })).toBe(
+      `${WS}: \`cache.store.embeddings\` must be false, or a size like '32KiB' (got "false")`,
+    )
+    // Control: the boolean is off, and a size is a size.
+    expect(refusal({ cache: { store: { embeddings: false } } })).toBeNull()
+    expect(refusal({ cache: { store: { embeddings: '0' } } })).toBeNull()
   })
 })

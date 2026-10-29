@@ -12,6 +12,7 @@ import {
   flakyNote,
   pathNote,
   whereNote,
+  formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
   type OutputChunk,
@@ -43,6 +44,7 @@ import {
   detectColors,
   envFlagOn,
   type ColorSupport,
+  ui,
 } from '../util/index.js'
 import { isCacheHit } from '../graph/index.js'
 import { failedLabel, outcomeWord, ranNoCache } from './events.js'
@@ -403,7 +405,8 @@ export function defaultLogger(
   // deferred to runEnd (owner: '✗ line, continue, all full frames at
   // the end'). 'full'/CI keeps frames inline.
   const deferredFailures: string[] = []
-  const pinnedPersistent: string[] = []
+  // Each ready server's outcome: one whose child has exited (`serverExit`) is no longer pinned.
+  const pinnedPersistent: TaskOutcome[] = []
   let flushedFailures = false
   // A persistent task (dev server, watcher, daemon) is the one task kind
   // nothing bounds: a one-shot command's output ends when it exits, but a
@@ -466,9 +469,21 @@ export function defaultLogger(
   const heldOver = (node: TaskNode): boolean =>
     node.config.exec?.persistent !== undefined && view.mode !== 'errors-only'
 
+  // A forced refresh the region has not been built for yet: the build
+  // takes the forecast pass the event asked for.
+  let forcePending = false
+  // The region is built when the writer draws it (`setRegion`'s function
+  // form), from the state as it is then: the events a forced-redraw floor
+  // coalesces build nothing.
   const refresh = (forced: boolean): void => {
     if (statusDead) return
-    let force = forced
+    const first = forecastFn === undefined && graphForecast !== undefined && !tail && !stopping
+    forcePending ||= forced || first
+    writer.setRegion(buildRegion, { force: forced || first })
+  }
+  const buildRegion = (): readonly string[] => {
+    let force = forcePending
+    forcePending = false
     const now = Date.now()
     // A task its executor still holds has not begun: its clock starts at
     // the first frame a machine runs it.
@@ -572,26 +587,25 @@ export function defaultLogger(
     const shownSteps: WorkerSlot[] = []
     for (const [id, startedMs] of steps)
       if (now - startedMs >= STEP_SHOWN_MS) shownSteps.push({ id, startedMs })
-    writer.setRegion(
-      formatStatusRegion(
-        {
-          pinnedPersistent,
-          // Every running task has a row: one beyond the slots follows them.
-          slots: [...slots, ...slotQueue],
-          size: slots.length,
-          ...(blocked !== undefined && !stopping ? { next: blocked } : {}),
-          ...(blockedBy !== undefined && !stopping ? { blockedBy } : {}),
-          ...(stopping ? { stopping } : {}),
-          ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
-          nowMs: Date.now(),
-          summaryLines,
-          ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
-          ...(expected !== undefined ? { expected } : {}),
-          ...(critical !== undefined ? { critical } : {}),
-        },
-        colors,
-      ),
-      { force },
+    return formatStatusRegion(
+      {
+        pinnedPersistent: pinnedPersistent
+          .filter((o) => o.serverExit === undefined)
+          .map((o) => o.node.id),
+        // Every running task has a row: one beyond the slots follows them.
+        slots: [...slots, ...slotQueue],
+        size: slots.length,
+        ...(blocked !== undefined && !stopping ? { next: blocked } : {}),
+        ...(blockedBy !== undefined && !stopping ? { blockedBy } : {}),
+        ...(stopping ? { stopping } : {}),
+        ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
+        nowMs: Date.now(),
+        summaryLines,
+        ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
+        ...(expected !== undefined ? { expected } : {}),
+        ...(critical !== undefined ? { critical } : {}),
+      },
+      colors,
     )
   }
   const tick = (): void => {
@@ -735,7 +749,7 @@ export function defaultLogger(
         writer.write('\n')
         streamMidLine = false
       }
-      writer.writeTo(errOut, `${line}\n`)
+      writer.writeTo(errOut, `${ui.tagged('warn', line, colors)}\n`)
     },
     runStart(info) {
       total = info.total
@@ -1013,7 +1027,7 @@ export function defaultLogger(
           // A persistent task's outcome arrives at READY; the child
           // keeps running until the orchestrator SIGTERMs it at run
           // end — pin it so its liveness stays visible.
-          pinnedPersistent.push(node.id)
+          pinnedPersistent.push(outcome)
           // …and capture what it writes from here on. A live-streaming
           // node already owns the terminal, so buffering it would emit
           // its output twice.
@@ -1081,8 +1095,7 @@ export function defaultLogger(
           // The word carries the outcome (skips/failures included); the
           // key is what this mode exists to show — absent for a task
           // that never computed one (skipped, uncacheable).
-          const key = outcome.hash === undefined ? '' : ` ${outcome.hash}`
-          emitLine(`${outcomeWord(outcome)} ${node.id}${key}`)
+          emitLine(formatTaskHashLine(node, outcome, colors))
           return
         }
         case 'errors-only':

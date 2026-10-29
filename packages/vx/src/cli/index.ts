@@ -3,8 +3,9 @@
 
 import { VERSION } from '../version.js'
 import { checkSettingsEnv } from '../settings.js'
-import { CORE_VERBS, flagHint, printHelp, refusedWord, seeHelp } from './help.js'
+import { CORE_VERBS, flagHint, printHelp, refuse, refusedWord, seeHelp } from './help.js'
 import {
+  detectColors,
   errorDocument,
   hideEnvFromTasks,
   sayNotice,
@@ -94,12 +95,12 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       // `vx help <plugin verb>`: a plugin verb owns its own help.
       const [verb, extra] = rest
       if (extra !== undefined) {
-        sayNotice(
-          'error',
-          'vx help',
+        return refuse(
+          'help',
+          rest,
           `${refusedWord(extra)}: ${extra}${flagHint('help', extra)} (see \`vx help\`)`,
+          'VX_E_USAGE',
         )
-        return 1
       }
       const core = verb !== undefined && (CORE_VERBS as readonly string[]).includes(verb)
       if (verb !== undefined && !core) {
@@ -108,21 +109,21 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         const resolved = await (await plugins()).resolvePluginCommand(verb)
         const unknown = resolved === null || 'declaredVerbs' in resolved
         if (unknown && verb.startsWith('-')) {
-          sayNotice(
-            'error',
-            'vx help',
+          return refuse(
+            'help',
+            rest,
             `unknown flag: ${verb}${flagHint('help', verb)} (see \`vx help\`)`,
+            'VX_E_USAGE',
           )
-          return 1
         }
         if (unknown) {
           const declared = resolved === null ? [] : resolved.declaredVerbs
-          sayNotice(
-            'error',
-            'vx help',
+          return refuse(
+            'help',
+            rest,
             `unknown command: ${verb}${didYouMeanVerb(verb, declared)} (see \`vx help\`)`,
+            'VX_E_UNKNOWN_COMMAND',
           )
-          return 1
         }
         if (resolved !== null && !('loadError' in resolved)) return dispatch(verb, ['--help'])
       }
@@ -135,14 +136,17 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       // takes no more of is refused, as every other verb refuses one.
       const extra = rest[0]
       if (extra !== undefined) {
-        sayNotice(
-          'error',
-          'vx version',
+        return refuse(
+          'version',
+          rest,
           `${refusedWord(extra)}: ${extra}${flagHint('version', extra)}${seeHelp('version')}`,
+          'VX_E_USAGE',
         )
-        return 1
       }
-      process.stdout.write(`vx ${VERSION}\n`)
+      // Painted, and the same words piped: a script reads `vx <version>`.
+      process.stdout.write(
+        `${ui.inline([ui.cmd('vx'), ' ', ui.tone('info', VERSION)], detectColors(process.stdout))}\n`,
+      )
       return 0
     }
     case 'run':
@@ -213,7 +217,8 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         tone: 'error' | 'info' = 'error',
       ): number => {
         sayNotice(tone, 'vx', text.replace(/^vx: /, '').trimEnd())
-        if (wantsJson(rest))
+        // `vx --format json` puts the flag where the verb goes.
+        if (wantsJson([command, ...rest]))
           process.stdout.write(errorDocument(code, maskedLine(text.split('\n')[0]!)))
         return 1
       }

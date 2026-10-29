@@ -5,7 +5,7 @@
 // whole, best first.
 
 import { VERSION } from '../version.js'
-import { parseDecimalInt } from '../util/index.js'
+import { detectColors, paint, parseDecimalInt, ui } from '../util/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 
 const SITE = 'https://vznjs.github.io/vx/'
@@ -20,7 +20,7 @@ interface DocsArgs {
   error?: string
 }
 
-function parseDocsArgs(args: readonly string[]): DocsArgs {
+export function parseDocsArgs(args: readonly string[]): DocsArgs {
   const out: DocsArgs = { terms: [], limit: DEFAULT_LIMIT, json: false }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
@@ -124,6 +124,8 @@ export async function loadPages(
 interface Section {
   page: string
   heading: string
+  /** The heading's id on the site; absent for the page's opening. */
+  id?: string
   text: string
 }
 
@@ -131,18 +133,31 @@ interface Section {
 function sections(page: string, md: string): Section[] {
   const out: Section[] = []
   let heading = ''
+  let id: string | undefined
   let lines: string[] = []
   let fence = false
+  // The site numbers a repeated id (`usage`, `usage-1`) over every `##` to
+  // `######` heading of the page, as import-docs.ts's `headingIds` does:
+  // cli.md repeats Usage per verb, and each linked the first.
+  const seen = new Map<string, number>()
   const flush = () => {
     const text = lines.join('\n').trim()
-    if (text !== '') out.push({ page, heading, text })
+    if (text !== '') out.push({ page, heading, ...(id !== undefined ? { id } : {}), text })
   }
   for (const line of md.split('\n')) {
     if (/^\s*(```|~~~)/.test(line)) fence = !fence
-    const h = fence ? null : /^#{1,4} (.+)$/.exec(line)
-    if (h !== null) {
+    const h = fence ? null : /^(#{1,6}) (.+)$/.exec(line)
+    let slug: string | undefined
+    if (h !== null && h[1]!.length > 1) {
+      const base = anchor(h[2]!.replace(/`/g, '').trim())
+      const n = seen.get(base) ?? 0
+      seen.set(base, n + 1)
+      slug = n === 0 ? base : `${base}-${n}`
+    }
+    if (h !== null && h[1]!.length <= 4) {
       flush()
-      heading = h[1]!.replace(/`/g, '').trim()
+      heading = h[2]!.replace(/`/g, '').trim()
+      id = slug ?? anchor(heading)
       lines = [line]
     } else lines.push(line)
   }
@@ -189,7 +204,7 @@ export function searchDocs(
   return (exact.length > 0 ? exact : scored).slice(0, limit).map(({ s }) => ({
     page: s.page,
     heading: s.heading,
-    url: s.heading === '' ? pageUrl(s.page) : `${pageUrl(s.page)}#${anchor(s.heading)}`,
+    url: s.id === undefined ? pageUrl(s.page) : `${pageUrl(s.page)}#${s.id}`,
     text: s.text,
   }))
 }
@@ -227,16 +242,20 @@ export async function docsCmd(
     return 0
   }
   if (hits.length === 0) {
-    process.stdout.write(
+    ui.say(
+      'warn',
       `vx docs: no section of the docs at ${ref} holds every word of "${query}"; try fewer words, or ${SITE}llms.txt\n`,
+      'out',
     )
     return 0
   }
+  const c = detectColors(process.stdout)
   process.stdout.write(
     hits
-      .map(
-        (h) =>
-          `── ${h.page}.md${h.heading === '' ? '' : ` § ${h.heading}`} · ${h.url}\n\n${h.text}\n`,
+      .map((h) =>
+        c.enabled
+          ? `${ui.render([ui.excerpt(`${h.page}.md${h.heading === '' ? '' : ` § ${h.heading}`}`, h.text)], c)}${paint('', h.url, c, { dim: true })}\n`
+          : `── ${h.page}.md${h.heading === '' ? '' : ` § ${h.heading}`} · ${h.url}\n\n${h.text}\n`,
       )
       .join('\n'),
   )

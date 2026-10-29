@@ -95,6 +95,19 @@ describe('outputPathSets', () => {
     expect(sets.outputPaths).toEqual([''])
     expect(sets.legacyDirectories).toEqual([''])
   })
+
+  // A take-back names what is NOT an output: it was requested as the path
+  // `!dist/cache`, or as `''` (the whole working directory) for `!*.map`.
+  it('a ! take-back requests no output path', () => {
+    expect(outputPathSets(req(['dist/**', '!dist/cache/**', '!*.map']), '')).toEqual({
+      outputPaths: ['dist'],
+      legacyFiles: [],
+      legacyDirectories: ['dist'],
+    })
+    expect(outputPathSets(req(['dist/**', '!dist/x'], ['!y']), '', 'pkg').outputPaths).toEqual([
+      'pkg/dist',
+    ])
+  })
 })
 
 describe('commandEnvironment', () => {

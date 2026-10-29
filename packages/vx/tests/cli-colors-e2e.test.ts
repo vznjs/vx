@@ -1,9 +1,10 @@
 // Colour, end to end. `detectColors` is held in colors.test.ts; this holds
 // the CLI to it: `vx run` paints only when FORCE_COLOR asks off a TTY (the
 // suite's pipes are not one), and NO_COLOR wins; a task runs with colour
-// forced and vx strips it where its own output is plain; every other verb prints
-// plain text whatever is set, so a script that forces colour for a run's
-// log still parses `vx show` or a `--dry` plan.
+// forced and vx strips it where its own output is plain. Every verb paints
+// as a run does (VZN, 2026-10-26: no line of vx reads plain white): on when
+// forced, plain into a pipe. Help alone paints only a terminal, so a script
+// that greps `vx help` in CI reads plain text.
 
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -88,20 +89,20 @@ describe('vx paints only a run, and only as the env asks', () => {
   )
 
   it(
-    'every other verb is plain under FORCE_COLOR=1',
+    'every verb paints as a run does: on when forced, plain into a pipe',
     () => {
       const verbs = [
         ['why', 'app#build'],
         ['last'],
         ['last', '--list'],
         ['run', 'build', '--all', '--dry'],
-        ['help'],
         ['version'],
       ]
       expect(painted(['run', 'build', '--all'], {})).toBe(false)
-      expect(verbs.filter((v) => painted(v, { FORCE_COLOR: '1' })).map((v) => v.join(' '))).toEqual(
-        [],
-      )
+      expect(
+        verbs.map((v) => [v.join(' '), painted(v, {}), painted(v, { FORCE_COLOR: '1' })]),
+      ).toEqual(verbs.map((v) => [v.join(' '), false, true]))
+      expect(painted(['help'], { FORCE_COLOR: '1' })).toBe(false)
       // A verb drawn with the ui components paints as a run does: on when
       // forced, plain into a pipe (log-design).
       const clean = ['cache', 'clean', '--max-size', '1G', '--dry']

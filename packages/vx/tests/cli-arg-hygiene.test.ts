@@ -146,6 +146,14 @@ describe('vx watch rejects flags it cannot honor', () => {
     expect(stderr).toContain('--verbosity')
   })
 
+  it("names --poll as vx watch's when vx run is given it", () => {
+    // The edit-distance hint offered `--all`, a different flag.
+    expect(parseRunArgs(['build', '--poll']).error).toBe(
+      'unknown flag: --poll (a vx watch flag: vx watch --poll <task>)',
+    )
+    expect(parseRunArgs(['build', '--poll'], 'watch').poll).toBe(true)
+  })
+
   it('still parses --verbosity for vx run', () => {
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
   })
@@ -232,10 +240,12 @@ describe('vx cache clean value parsing', () => {
   })
 
   it('--dry rides along either policy flag and alone is a clear', () => {
-    expect(parsePruneArgs(['--older-than=30d', '--dry']).dryRun).toBe(true)
-    expect(parsePruneArgs(['--dry', '--max-size', '1G']).dryRun).toBe(true)
-    expect(parsePruneArgs(['--older-than=30d']).dryRun).toBeUndefined()
+    expect(parsePruneArgs(['--older-than=30d', '--dry']).dry).toBe(true)
+    expect(parsePruneArgs(['--dry', '--max-size', '1G']).dry).toBe(true)
+    expect(parsePruneArgs(['--older-than=30d']).dry).toBeUndefined()
     expect(parsePruneArgs(['--dry']).error).toBeUndefined()
+    // One name for a rehearsal on every verb: vx run and vx init spell it --dry.
+    expect(parsePruneArgs(['--dry-run']).error).toContain('unknown flag: --dry-run')
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--cache-dir=x', '--max-size=1G']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir']).error).toMatch(/requires a path/)
@@ -368,7 +378,7 @@ describe('a refused value says what the flag takes (E-36)', () => {
     ).toEqual([
       "--concurrency must be a positive integer, or a share of the cores like '50%' (got 0)",
       '--verbosity must be a non-negative integer (got high)',
-      '--dry must be text or json (got yaml)',
+      '--dry must be pretty or json (got yaml)',
     ])
   })
 })

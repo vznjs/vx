@@ -281,7 +281,8 @@ its platform's GitHub-hosted runner (`ubuntu-latest` for none named,
 `github({ runsOn: { small: 'ubuntu-latest-16-cores' } })` names, as
 `gitlab({ tags })` does. It installs with the package manager your lockfile
 names and runs vx as `bun vx`, which runs the repo's own and never
-downloads one, as `pnpm exec` does. `--dry` prints it; a file you changed
+downloads one, as `pnpm exec` does (Yarn too: Bun reads no Plug'n'Play,
+so a Yarn workspace sets `nodeLinker: node-modules`). `--dry` prints it; a file you changed
 is kept unless `--force`. For the sizes above:
 
 ```yaml
@@ -844,7 +845,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     - `scale`, how many workers: `plan` (above), `backlog` (cores for
       what is ready or running, Spark's dynamic allocation).
       `tests/sim.test.ts` plays main's runs with each.
-- `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
+- `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (unset or empty,
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
   `VX_DTE_WORKER` (its name). It is
   described only by the cores and memory its machine reports. It exits 0
@@ -860,10 +861,12 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
 - `docker(options: DockerOptions)` starts workers as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of
-  one workflow, one dispatch per size and demand. `GithubOptions` is
-  `{ workflow?, env? }`: `workflow` defaults to `vx-worker.yml`; `env`
-  is variables every worker gets (one-line strings, no secret-named one:
-  the worker job's log shows them), sent as the
+  one workflow, one dispatch per size and demand (at most 256 workers,
+  a matrix's limit). `GithubOptions` is `{ workflow?, runsOn?, env? }`:
+  `workflow` defaults to `vx-worker.yml`; `runsOn` is the runner label
+  of each size, which `vx dte init` writes; `env` is variables every
+  worker gets (one-line strings, no secret-named one: the worker job's
+  log shows them), sent as the
   dispatch's `env` input only when set, which `vx dte init`'s workflow
   exports. Its workers are `keyless`, and only jobs of the workflow runs
   it dispatched join as them. It

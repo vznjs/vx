@@ -102,8 +102,10 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
     else if (a === '--no-install') out.noInstall = true
     else if (a === '--format' || a?.startsWith('--format=')) {
       const v = a === '--format' ? args[++i] : a.slice('--format='.length)
+      if (v === undefined || v === '')
+        return { ...out, error: '--format requires a value: pretty or json' }
       if (v !== 'json' && v !== 'pretty') {
-        return { ...out, error: `--format must be pretty or json (got ${v ?? 'nothing'})` }
+        return { ...out, error: `--format must be pretty or json (got ${v})` }
       }
       out.json = v === 'json'
     } else if (a === '--native' || a === '--keep') {
@@ -114,6 +116,8 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
       out.mode = mode
     } else if (a === '--from' || a?.startsWith('--from=')) {
       const v = a === '--from' ? args[++i] : a.slice('--from='.length)
+      if (v === undefined || v === '')
+        return { ...out, error: '--from requires a value: turbo, nx, vite-task or scripts' }
       if (v !== 'turbo' && v !== 'nx' && v !== 'vite-task' && v !== 'scripts') {
         return { ...out, error: '--from must be turbo, nx, vite-task or scripts' }
       }
@@ -144,13 +148,11 @@ async function noRootReason(cwd: string, err: Error): Promise<Error> {
 export async function migrateCmd(args: readonly string[]): Promise<number> {
   const parsed = parseMigrateArgs(args)
   if (parsed.help) {
-    process.stdout.write(`${USAGE}\n`)
+    ui.say('info', USAGE, 'out')
     return 0
   }
-  if (parsed.error) {
-    process.stderr.write(`vx-migrate: ${parsed.error}\n`)
-    return 1
-  }
+  // Thrown, so the bin answers it as JSON too when that was asked.
+  if (parsed.error) throw new UserError(parsed.error, 'VX_E_USAGE')
   const reads: LoadReads = new Map()
   // An Nx repo with no package.json (Nx pinned in `.nx/installation`):
   // nothing is installable, so its configs run on core alone.
@@ -580,7 +582,7 @@ async function keep(
     args,
   )
   if (args.json)
-    for (const [label, value] of steps) process.stderr.write(`vx-migrate: ${label}: ${value}\n`)
+    for (const [label, value] of steps) ui.say('info', `vx-migrate: ${label}: ${value}`)
   const ignore = existsSync(path.join(root, '.vx', '.gitignore')) ? [] : ['.vx/.gitignore']
   if (!args.dry) {
     if (before === undefined) {
@@ -629,7 +631,7 @@ async function keep(
     )
     return 0
   }
-  if (args.dry && before === undefined) process.stdout.write(`── ${name} ──\n${text}\n`)
+  if (args.dry && before === undefined) ui.print('out', ui.excerpt(name, text))
   // A run reads only the lock; with the plugins installed it is written
   // now, else `next` names `vx lock` after the install.
   const lock = !args.dry && !next.includes(' lock && ') ? await lockWorkspace(root) : undefined

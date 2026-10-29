@@ -181,7 +181,7 @@ describe('3: one key moving file → inline → file', () => {
       expect(r.orphanBytes).toBeGreaterThan(fileSize)
       expect(await restored(cache, 'aaaaaaaaaaaaaaaa')).toEqual({ 'out.txt': hex('small') })
       // `--max-size 1B` counts and evicts it: a row whose artifact is inline is present.
-      expect(await cache.prune({ maxBytes: 1, dryRun: true })).toEqual({
+      expect(await cache.prune({ maxBytes: 1, dry: true })).toEqual({
         evicted: 1,
         bytesFreed: size,
         orphans: 0,
@@ -376,7 +376,7 @@ describe('8: prune over inline artifacts', () => {
       const two = storedArtifact(cache, 'h2')!.byteLength
       const one = storedArtifact(cache, 'h1')!.byteLength
       // A dry run counts and deletes nothing.
-      expect(await cache.prune({ maxBytes: two, dryRun: true })).toEqual({
+      expect(await cache.prune({ maxBytes: two, dry: true })).toEqual({
         evicted: 1,
         bytesFreed: one,
         orphans: 0,
@@ -421,7 +421,7 @@ describe('8: prune over inline artifacts', () => {
         (h) => storedArtifact(cache, h)!.byteLength,
       )
       expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: sizes[0]! + sizes[1]! })
-      const dry = await cache.prune({ olderThanMs: Date.now() - 24 * HOUR, dryRun: true })
+      const dry = await cache.prune({ olderThanMs: Date.now() - 24 * HOUR, dry: true })
       expect({ orphans: dry.orphans, orphanBytes: dry.orphanBytes }).toEqual({
         orphans: 1,
         orphanBytes: size,
