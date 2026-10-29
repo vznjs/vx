@@ -26,6 +26,7 @@ export interface ParsedFilter {
   exactDir?: true // `//`: the project at `matcher` itself, never the ones under it
   tag?: true // tag:<pattern>: `matcher` is a glob over the projects' tags
   dirFallback?: ParsedFilter // `apps/*` naming no project: read as ./apps/*
+  within?: ParsedFilter // `<pattern>{<dir>}`: name matches narrowed to that path form
 }
 
 // throws a UserError for a path that climbs out of workspaceRoot (`../`, `{..}`), naming `typed`
