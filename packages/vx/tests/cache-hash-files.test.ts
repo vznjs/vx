@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { statSync } from 'node:fs'
-import { Cache, FILE_HASH_RACY_MS } from '../src/cache/index.js'
+import { indexDb, Cache, FILE_HASH_RACY_MS } from '../src/cache/index.js'
 
 let dir: string
 let cache: Cache
@@ -44,10 +44,9 @@ describe('Cache.hashFiles', () => {
     expect(batch.has(path.join(dir, 'missing.txt'))).toBe(false)
     expect(batch.size).toBe(2)
     // Both paths are memoised now (b by the batch): a row each.
-    const rows = cache
-      .dbHandle()
-      .query('SELECT path FROM file_hashes ORDER BY path')
-      .all() as Array<{ path: string }>
+    const rows = indexDb(cache).query('SELECT path FROM file_hashes ORDER BY path').all() as Array<{
+      path: string
+    }>
     expect(rows.map((r) => r.path)).toEqual([a, b])
   })
 
@@ -55,7 +54,7 @@ describe('Cache.hashFiles', () => {
     const a = path.join(dir, 'bytes.txt')
     await aged(a, 'from bytes\n')
     const fromBytes = cache.hashBytes(new TextEncoder().encode('from bytes\n'), a)
-    const rowsBefore = cache.dbHandle().query('SELECT COUNT(*) AS n FROM file_hashes').get() as {
+    const rowsBefore = indexDb(cache).query('SELECT COUNT(*) AS n FROM file_hashes').get() as {
       n: number
     }
     expect(rowsBefore.n).toBe(0)
@@ -92,10 +91,9 @@ describe('Cache.hashFiles', () => {
     expect(batch.get(target)).toBe(await cache.hashFile(target))
     // A symlink is never memoised: the row would key on the link's own
     // stat, not its target's.
-    const rows = cache
-      .dbHandle()
-      .query('SELECT path FROM file_hashes ORDER BY path')
-      .all() as Array<{ path: string }>
+    const rows = indexDb(cache).query('SELECT path FROM file_hashes ORDER BY path').all() as Array<{
+      path: string
+    }>
     expect(rows.map((r) => r.path)).toEqual([target])
   })
 
@@ -157,8 +155,7 @@ describe('Cache.hashFiles', () => {
       }
       planted[field] += 1
       const plant = () =>
-        cache
-          .dbHandle()
+        indexDb(cache)
           .query(
             'UPDATE file_hashes SET mtime_ms = ?, size_bytes = ?, ctime_ms = ?, ino = ?, content_hash = ? WHERE path = ?',
           )
@@ -205,7 +202,7 @@ describe('Cache.hashFiles', () => {
       await aged(b, 'beta\n')
       expect(await ro.hashFile(a)).toBe(await cache.hashFile(a))
       expect((await ro.hashFiles([b])).get(b)).toBe(await cache.hashFile(b))
-      const rows = ro.dbHandle().query('SELECT COUNT(*) AS n FROM file_hashes').get() as {
+      const rows = indexDb(ro).query('SELECT COUNT(*) AS n FROM file_hashes').get() as {
         n: number
       }
       expect(rows.n).toBe(0)
@@ -225,8 +222,7 @@ describe('Cache.hashFiles', () => {
     await aged(b, 'beta\n')
     await cache.hashFile(a)
     await cache.hashFiles([b])
-    const rows = cache
-      .dbHandle()
+    const rows = indexDb(cache)
       .query('SELECT path, mtime_ms, ctime_ms FROM file_hashes ORDER BY path')
       .all() as Array<{ path: string; mtime_ms: number; ctime_ms: number }>
     expect(rows.map((r) => r.path)).toEqual([a, b].sort())
@@ -261,7 +257,7 @@ describe('Cache.hashFiles', () => {
       const elapsed = Date.now() - t0
       expect(batch).toBe(single)
       if (elapsed >= FILE_HASH_RACY_MS) continue
-      const rows = cache.dbHandle().query('SELECT path FROM file_hashes WHERE path = ?').all(a)
+      const rows = indexDb(cache).query('SELECT path FROM file_hashes WHERE path = ?').all(a)
       expect(rows).toEqual([])
       judged = true
     }
@@ -275,8 +271,7 @@ describe('Cache.hashFiles', () => {
 describe('file_hashes retention', () => {
   const DAY = 24 * 60 * 60 * 1000
   function seed(p: string, seenAt: number): void {
-    cache
-      .dbHandle()
+    indexDb(cache)
       .query(
         "INSERT INTO file_hashes(path, mtime_ms, size_bytes, ctime_ms, ino, content_hash, seen_at) VALUES (?, 1, 1, 1, 1, 'x', ?)",
       )
@@ -284,7 +279,7 @@ describe('file_hashes retention', () => {
   }
   function paths(): string[] {
     return (
-      cache.dbHandle().query('SELECT path FROM file_hashes ORDER BY path').all() as Array<{
+      indexDb(cache).query('SELECT path FROM file_hashes ORDER BY path').all() as Array<{
         path: string
       }>
     ).map((r) => r.path)

@@ -6,7 +6,7 @@
 import { Database } from 'bun:sqlite'
 import { expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
-import { FoldMemo } from '../src/cache/fold-memo.js'
+import { IndexFoldMemo } from '../src/cache/fold-memo.js'
 import { buildTaskGraph, type ProjectEntry } from '../src/graph/task-graph.js'
 import { memoGraph, type GraphMemo } from '../src/orchestrator/graph-memo.js'
 import { buildPackageGraph } from '../src/workspace/package-graph.js'
@@ -37,7 +37,7 @@ const memoOn = (lock: string, list = metas): GraphMemo => {
   db.exec(
     'CREATE TABLE fold_memo (task_id TEXT PRIMARY KEY, probe TEXT NOT NULL, key TEXT NOT NULL, seen_at INTEGER NOT NULL)',
   )
-  return { folds: new FoldMemo(db, true), lock, metas: list }
+  return { folds: new IndexFoldMemo(db, true), lock, metas: list }
 }
 
 const options = (projects: Map<string, ProjectEntry>, list = metas) => ({

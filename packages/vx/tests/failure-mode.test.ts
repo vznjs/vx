@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
-import { Cache, KEYED_RUNS_SQL, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache, KEYED_RUNS_SQL, type RunRecord } from '../src/cache/index.js'
 import {
   classifyFailureMode,
   detectFlaky,
@@ -71,7 +71,7 @@ async function withRuns(
   const cache = new Cache(dir)
   try {
     if (rows.length > 0) cache.recordRuns(rows)
-    await fn(cache.dbHandle(), cache)
+    await fn(indexDb(cache), cache)
   } finally {
     cache.close()
     rmSync(dir, { recursive: true, force: true })

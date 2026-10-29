@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import {
+  indexDb,
   Cache,
   pluginCache,
   PLUGIN_ENTRY_MAX_BYTES,
@@ -91,7 +92,7 @@ const remoteOf = (remote: RemoteCacheLayer, read = true, write = true): Resolved
 describe('ctx.cache', () => {
   it('has answers true after a put and false for an absent key, through the local store', async () => {
     const c = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [],
       scope: undefined,
@@ -105,9 +106,9 @@ describe('ctx.cache', () => {
 
   it('has answers through a remote layer, and a remote hit is kept locally', async () => {
     const remote = wire()
-    const db = localStore().dbHandle()
+    const db = indexDb(localStore())
     const writer = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [remoteOf(remote)],
       scope: undefined,
@@ -131,7 +132,7 @@ describe('ctx.cache', () => {
   it('a put never replaces an entry, locally or remotely', async () => {
     const remote = wire()
     const c = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [remoteOf(remote)],
       scope: undefined,
@@ -152,7 +153,7 @@ describe('ctx.cache', () => {
     const remote = wire()
     remote.store.set(xxh3hex('vx-plugin\0org/a\0x'), bytes('timings'))
     const c = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: { ...FULL, remoteRead: false },
       remotes: [remoteOf(remote, false, true)],
       scope: undefined,
@@ -166,7 +167,7 @@ describe('ctx.cache', () => {
     const remote = wire({ batch: true })
     remote.store.set(xxh3hex('vx-plugin\0org/a\0x'), bytes('timings'))
     const c = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: { localRead: false, localWrite: true, remoteRead: false, remoteWrite: true },
       remotes: [remoteOf(remote, false, true)],
       scope: undefined,
@@ -178,7 +179,7 @@ describe('ctx.cache', () => {
   it('a read-only policy keeps a put out of the remote', async () => {
     const remote = wire()
     const c = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: { ...FULL, remoteWrite: false },
       remotes: [remoteOf(remote, true, false)],
       scope: undefined,
@@ -189,7 +190,7 @@ describe('ctx.cache', () => {
   })
 
   it('names are the plugin own: another plugin reads none of them', async () => {
-    const db = localStore().dbHandle()
+    const db = indexDb(localStore())
     const remote = wire()
     await pluginCache('org/a', {
       db,
@@ -211,14 +212,14 @@ describe('ctx.cache', () => {
   it('a scoped run reads the default entry when asked and writes only its own', async () => {
     const remote = wire()
     const plain = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [remoteOf(remote)],
       scope: undefined,
     })
     await plain.put('shared', bytes('main'))
     const scoped = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [remoteOf(remote)],
       scope: 'pr-1',
@@ -226,7 +227,7 @@ describe('ctx.cache', () => {
     expect(text(await scoped.get('shared', false))).toBe('main')
     await scoped.put('mine', bytes('pr'))
     const other = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [remoteOf(remote)],
       scope: undefined,
@@ -237,7 +238,7 @@ describe('ctx.cache', () => {
   it("a scoped run asks one key per read: the scope's, or the default with scoped false", async () => {
     const remote = wire({ batch: true })
     const scoped = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: { ...FULL, localRead: false },
       remotes: [remoteOf(remote)],
       scope: 'pr-1',
@@ -266,7 +267,7 @@ describe('ctx.cache', () => {
   it('a scoped hasMany finds what the local store holds, as get does', async () => {
     const remote = wire({ batch: true })
     const c = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [remoteOf(remote)],
       scope: 'pr-1',
@@ -284,14 +285,14 @@ describe('ctx.cache', () => {
   it('hasMany is one probe per layer, and null when a remote cannot batch', async () => {
     const remote = wire({ batch: true })
     const c = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [remoteOf(remote)],
       scope: undefined,
     })
     await c.put('b', bytes('2'))
     const fresh = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [remoteOf(remote)],
       scope: undefined,
@@ -300,7 +301,7 @@ describe('ctx.cache', () => {
     expect(await fresh.hasMany(['a', 'b', 'c'])).toEqual(new Set(['b']))
     expect(remote.calls).toEqual(['hasMany 3'])
     const noBatch = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [remoteOf(wire())],
       scope: undefined,
@@ -313,7 +314,7 @@ describe('ctx.cache', () => {
   it('a failing remote is an absent answer, never a throw, and said once per kind', async () => {
     const said: string[] = []
     const c = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [
         { ...remoteOf(wire({ fail: true, batch: true })), onError: (e) => said.push(e.message) },
@@ -339,7 +340,7 @@ describe('ctx.cache', () => {
     const key = xxh3hex('vx-plugin\0org/a\0big')
     remote.store.set(key, new Uint8Array(PLUGIN_ENTRY_MAX_BYTES + 1))
     const c = pluginCache('org/a', {
-      db: localStore().dbHandle(),
+      db: indexDb(localStore()),
       policy: FULL,
       remotes: [remoteOf(remote)],
       scope: undefined,
@@ -353,7 +354,7 @@ describe('ctx.cache', () => {
     // Security on #3580: an odd body read as empty bytes was kept locally,
     // and write-once then hid every later good body on this machine.
     const key = xxh3hex('vx-plugin\0org/a\0x')
-    const db = localStore().dbHandle()
+    const db = indexDb(localStore())
     for (const body of [
       new Blob([]),
       new Response(null),

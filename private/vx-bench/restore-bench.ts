@@ -21,19 +21,21 @@ if (root === undefined || ws === undefined) {
   process.exit(2)
 }
 const reps = Number(repsArg ?? 5)
-const { Cache } = (await import(path.join(root, 'packages/vx/src/cache/index.ts'))) as {
-  Cache: new (dir: string) => {
-    restoreOutputs(hash: string, projectDir: string): Promise<void>
-    dbHandle(): Database
-    close(): void
-  }
+interface BenchCache {
+  restoreOutputs(hash: string, projectDir: string): Promise<void>
+  dbHandle?(): Database
+  close(): void
+}
+const { Cache, indexDb } = (await import(path.join(root, 'packages/vx/src/cache/index.ts'))) as {
+  Cache: new (dir: string) => BenchCache
+  // A before-arm older than `indexDb` hands the handle out as `dbHandle()`.
+  indexDb?: (cache: BenchCache) => Database
 }
 // `entries` lives in the shared store DB (SCHEMA v32), which only the
 // Cache knows how to locate.
 const cache = new Cache(path.join(ws, '.vx/cache'))
-const hashes = (cache.dbHandle().query('SELECT hash FROM entries').all() as { hash: string }[]).map(
-  (r) => r.hash,
-)
+const db = indexDb === undefined ? cache.dbHandle!() : indexDb(cache)
+const hashes = (db.query('SELECT hash FROM entries').all() as { hash: string }[]).map((r) => r.hash)
 const dest = path.join(ws, '.restore-bench')
 const dirs = hashes.map((_, i) => path.join(dest, String(i)))
 const times: number[] = []

@@ -7,7 +7,7 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import { Cache, CACHE_VERSION, SCHEMA_VERSION } from '../cache/index.js'
+import { indexDb, Cache, CACHE_VERSION, SCHEMA_VERSION } from '../cache/index.js'
 import { PLUGIN_HOOKS, type WorkspaceConfig } from '../config.js'
 import {
   cgroupCpuQuota,
@@ -245,7 +245,7 @@ async function collectWorkspaceInfo(
       indexStore = cache.storeDir
       stats = cache.stats()
       orphans = await cache.orphanStats()
-      flaky = flakyTasks(cache.dbHandle())
+      flaky = flakyTasks(indexDb(cache))
     } finally {
       cache.close()
     }

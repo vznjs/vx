@@ -105,7 +105,7 @@ least 13 characters, `vx last --list` prints. `vx why` and `vx last`
 take ids through it.
 
 Every function but `diffKeyComponents` and `upstreamTask` takes an open `bun:sqlite`
-`Database` (the caller owns the `Cache` lifecycle — `cache.dbHandle()`),
+`Database` (the caller owns the `Cache` lifecycle — `indexDb(cache)`),
 returns JSON-safe shapes (bigint spans as decimal strings, like
 `WireEvent.timeUnixNano`), and never throws on a missing row:
 `found: false`, `null`, or an empty list, with a `note` that says which

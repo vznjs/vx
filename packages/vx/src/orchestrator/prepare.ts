@@ -20,6 +20,7 @@ import {
   UserError,
 } from '../util/index.js'
 import {
+  indexDb,
   Cache,
   type CacheLayer,
   applyCacheFlags,
@@ -834,7 +835,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       let own = pluginCaches.get(plugin)
       if (own === undefined) {
         own = pluginCache(plugin, {
-          db: localCache.dbHandle(),
+          db: indexDb(localCache),
           policy,
           remotes,
           scope: cacheScope,

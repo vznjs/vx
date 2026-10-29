@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { Cache, FILE_HASH_RACY_MS } from '../src/cache/index.js'
+import { indexDb, Cache, FILE_HASH_RACY_MS } from '../src/cache/index.js'
 
 let root: string
 let cacheDir: string
@@ -36,7 +36,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }))
  * then SQLITE_FULL.
  */
 function fill(cache: Cache, insert: (i: number, pad: string) => void): void {
-  const db = cache.dbHandle()
+  const db = indexDb(cache)
   const { page_count } = db.query('PRAGMA page_count').get() as { page_count: number }
   db.exec(`PRAGMA max_page_count = ${page_count}`)
   let i = 0
@@ -70,16 +70,14 @@ describe('a full index', () => {
       writeFileSync(a, 'alpha')
       writeFileSync(b, 'beta')
       await Bun.sleep(FILE_HASH_RACY_MS + 20) // past the racy window: a row would be written
-      const junk = cache
-        .dbHandle()
-        .query(
-          'INSERT INTO file_hashes(path, mtime_ms, size_bytes, ctime_ms, ino, content_hash, seen_at) VALUES (?, 0, 0, 0, 0, ?, 0)',
-        )
+      const junk = indexDb(cache).query(
+        'INSERT INTO file_hashes(path, mtime_ms, size_bytes, ctime_ms, ino, content_hash, seen_at) VALUES (?, 0, 0, 0, 0, ?, 0)',
+      )
       fill(cache, (i, pad) => junk.run(`/junk/${i}`, pad))
-      const before = cache.dbHandle().query('SELECT COUNT(*) AS n FROM file_hashes').get()
+      const before = indexDb(cache).query('SELECT COUNT(*) AS n FROM file_hashes').get()
       expect(await cache.hashFile(a)).toMatch(/^[0-9a-f]{40}$/)
       expect((await cache.hashFiles([b])).get(b)).toMatch(/^[0-9a-f]{40}$/)
-      expect(cache.dbHandle().query('SELECT COUNT(*) AS n FROM file_hashes').get()).toEqual(before)
+      expect(indexDb(cache).query('SELECT COUNT(*) AS n FROM file_hashes').get()).toEqual(before)
     } finally {
       cache.close()
     }
@@ -89,11 +87,9 @@ describe('a full index', () => {
     const cache = new Cache(cacheDir)
     try {
       await save(cache, 'h1')
-      const junk = cache
-        .dbHandle()
-        .query(
-          "INSERT INTO output_files(entry_hash, path, size_bytes, mode, mtime_ms) VALUES ('h1', ?, 0, 0, 0)",
-        )
+      const junk = indexDb(cache).query(
+        "INSERT INTO output_files(entry_hash, path, size_bytes, mode, mtime_ms) VALUES ('h1', ?, 0, 0, 0)",
+      )
       fill(cache, (i, pad) => junk.run(`junk/${i}/${pad}`))
       cache.recordOutputStamps('h1', proj, root)
       const paths =
@@ -129,7 +125,7 @@ describe('a full disk', () => {
     try {
       await save(cache, 'h1', true)
       await save(cache, 'h2', true)
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       const real = db.transaction.bind(db)
       let failed = false
       const spy = spyOn(db, 'transaction').mockImplementation(((fn: () => void) => {
@@ -164,7 +160,7 @@ describe('a full disk', () => {
     const cache = new Cache(cacheDir)
     try {
       await save(cache, 'h1')
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       const real = db.transaction.bind(db)
       let failed = 0
       const spy = spyOn(db, 'transaction').mockImplementation(((fn: () => void) => {
@@ -193,7 +189,7 @@ describe('a full disk', () => {
     try {
       await save(cache, 'h1')
       expect(await cache.get('h1')).not.toBeNull() // queues an accessed_at write
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       const real = db.prepare.bind(db)
       const spy = spyOn(db, 'prepare').mockImplementation(((sql: string) => {
         if (sql.startsWith('UPDATE entries SET accessed_at')) {

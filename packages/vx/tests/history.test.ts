@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { afterEach, describe, expect, it, vi } from 'bun:test'
-import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
 import { EmptyHistoryProvider, LocalHistoryProvider } from '../src/history/index.js'
 
 function mkRun(args: {
@@ -672,10 +672,7 @@ describe('LocalHistoryProvider', () => {
         }),
       ),
     ])
-    const table = await new LocalHistoryProvider(cache.dbHandle(), 10).loadFor([
-      'a#build',
-      'b#build',
-    ])
+    const table = await new LocalHistoryProvider(indexDb(cache), 10).loadFor(['a#build', 'b#build'])
     expect(table.get('a#build')?.maxPeakRssBytes).toBe(900 * 1024 * 1024)
     expect(table.get('a#build')?.maxCpuParallelism).toBeCloseTo((1.5 + 2.6 + 0.8) / 3, 5)
     expect(table.get('b#build')?.maxPeakRssBytes).toBeUndefined()
@@ -734,7 +731,7 @@ describe('LocalHistoryProvider', () => {
           cacheHit: true,
         },
       ])
-      const table = await new LocalHistoryProvider(cache.dbHandle(), 10).loadFor([
+      const table = await new LocalHistoryProvider(indexDb(cache), 10).loadFor([
         'a#build',
         'b#build',
       ])
@@ -775,10 +772,7 @@ describe('LocalHistoryProvider', () => {
         at(5, task, last),
       ]
       cache.recordRuns([...shape('test', 'failed'), ...shape('lint', 'success')])
-      const table = await new LocalHistoryProvider(cache.dbHandle()).loadFor([
-        'pkg#test',
-        'pkg#lint',
-      ])
+      const table = await new LocalHistoryProvider(indexDb(cache)).loadFor(['pkg#test', 'pkg#lint'])
       const pick = (id: string) => {
         const h = table.get(id)!
         return {
@@ -827,7 +821,7 @@ describe('LocalHistoryProvider', () => {
           attempts: 3,
         })),
       )
-      const table = await new LocalHistoryProvider(cache.dbHandle()).loadFor(['pkg#slow'])
+      const table = await new LocalHistoryProvider(indexDb(cache)).loadFor(['pkg#slow'])
       expect(table.get('pkg#slow')?.failureMode).toBe('stable')
     } finally {
       cache.close()
@@ -847,7 +841,7 @@ describe('LocalHistoryProvider', () => {
         startedAt: 1000,
       })
       cache.recordRuns([{ ...row, peakRssBytes: 4096, cpuMs: 500 }])
-      const h = (await new LocalHistoryProvider(cache.dbHandle()).loadFor(['pkg#build'])).get(
+      const h = (await new LocalHistoryProvider(indexDb(cache)).loadFor(['pkg#build'])).get(
         'pkg#build',
       )!
       expect([
@@ -877,10 +871,7 @@ describe('LocalHistoryProvider', () => {
           }),
         )
       cache.recordRuns([...rows('odd', [30, 10, 20, 50, 40]), ...rows('even', [40, 10, 30, 20])])
-      const table = await new LocalHistoryProvider(cache.dbHandle()).loadFor([
-        'pkg#odd',
-        'pkg#even',
-      ])
+      const table = await new LocalHistoryProvider(indexDb(cache)).loadFor(['pkg#odd', 'pkg#even'])
       expect([table.get('pkg#odd')!.p50DurationMs, table.get('pkg#even')!.p50DurationMs]).toEqual([
         30, 30,
       ])
@@ -904,7 +895,7 @@ describe('LocalHistoryProvider', () => {
       bundle('i1', 1000, [r('a', 'test', 9000, 1000)])
       bundle('i2', 2000, [r('b', 'test', 200, 2000), r('c', 'lint', 1, 2001)])
       bundle('i3', 3000, [r('d', 'test', 100, 3000)])
-      const h = (await new LocalHistoryProvider(cache.dbHandle(), 2).loadFor(['pkg#test'])).get(
+      const h = (await new LocalHistoryProvider(indexDb(cache), 2).loadFor(['pkg#test'])).get(
         'pkg#test',
       )!
       expect([h.runs, h.p99DurationMs]).toEqual([2, 200])
@@ -930,7 +921,7 @@ describe('LocalHistoryProvider', () => {
       bundle('i2', 2000, [])
       bundle('i3', 3000, [r('c', 'success', 100, 3000)])
       bundle('i4', 4000, [r('d', 'success', 100, 4000)])
-      const h = (await new LocalHistoryProvider(cache.dbHandle(), 3).loadFor(['pkg#test'])).get(
+      const h = (await new LocalHistoryProvider(indexDb(cache), 3).loadFor(['pkg#test'])).get(
         'pkg#test',
       )!
       expect([h.runs, h.successRate, h.p99DurationMs]).toEqual([2, 1, 100])
@@ -955,7 +946,7 @@ describe('LocalHistoryProvider', () => {
       bundle('i1', 1000, [r('a', 'failed', 1000)])
       bundle('i2', 2000, [])
       bundle('i3', 3000, [r('b', 'success', 3000)])
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       const h = (await new LocalHistoryProvider(db, 2).loadFor(['pkg#test'])).get('pkg#test')!
       expect([h.runs, h.successRate]).toEqual([1, 1])
       // Control: the window that reaches i1 counts its failure.
@@ -985,7 +976,7 @@ describe('LocalHistoryProvider', () => {
           }),
         ),
       )
-      const h = (await new LocalHistoryProvider(cache.dbHandle()).loadFor(['pkg#test'])).get(
+      const h = (await new LocalHistoryProvider(indexDb(cache)).loadFor(['pkg#test'])).get(
         'pkg#test',
       )!
       expect([h.runs, h.successRate]).toEqual([50, 1])
@@ -1010,7 +1001,7 @@ describe('LocalHistoryProvider', () => {
         run('retried', 'success', 2),
         run('broke', 'failed', 1),
       ])
-      const db = cache.dbHandle()
+      const db = indexDb(cache)
       const bound: unknown[][] = []
       const query = db.query.bind(db)
       vi.spyOn(db, 'query').mockImplementation(((sql: string) => {
@@ -1116,25 +1107,25 @@ describe('a reading handle prunes no history', () => {
       ],
       invocation: mkInvocation('r-' + old, old),
     })
-    expect(counts(writer.dbHandle())).toEqual([1, 1])
+    expect(counts(indexDb(writer))).toEqual([1, 1])
     // Released without its own close, which would prune: the rows under
     // test are the reader's to keep. `true` finalizes the writer's prepared
     // statements, which a plain close waits on with the file held open.
-    writer.dbHandle().close(true)
+    indexDb(writer).close(true)
 
     const reader = Cache.inspect(dir)
-    expect(counts(reader.dbHandle())).toEqual([1, 1])
+    expect(counts(indexDb(reader))).toEqual([1, 1])
     reader.close()
 
     const again = new Cache(dir)
-    expect(counts(again.dbHandle())).toEqual([1, 1])
+    expect(counts(indexDb(again))).toEqual([1, 1])
     again.close()
     const pruner = new Cache(dir)
-    expect(counts(pruner.dbHandle())).toEqual([1, 1])
+    expect(counts(indexDb(pruner))).toEqual([1, 1])
     await pruner.prune({ olderThanMs: 0 })
     pruner.close()
     const after = Cache.inspect(dir)
-    expect(counts(after.dbHandle())).toEqual([0, 0])
+    expect(counts(indexDb(after))).toEqual([0, 0])
     after.close()
   })
 })

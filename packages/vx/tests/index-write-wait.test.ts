@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
+import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
 
 let dir: string
 beforeEach(async () => {
@@ -113,7 +113,7 @@ it("a run's history waits for another process's write lock", async () => {
   const second = new Cache(path.join(dir, 'cache'))
   try {
     await whileHeld(() => second.recordRuns([run('c'), run('d')]))
-    const rows = second.dbHandle().query('SELECT hash FROM runs ORDER BY hash').all()
+    const rows = indexDb(second).query('SELECT hash FROM runs ORDER BY hash').all()
     expect(rows).toEqual([{ hash: 'a' }, { hash: 'b' }, { hash: 'c' }, { hash: 'd' }])
   } finally {
     second.close()
@@ -136,7 +136,7 @@ it("a hit's output stamps wait for another process's write lock", async () => {
     // The read that lands pending stamps (`loadOutputDirsBatch` flushes them).
     await whileHeld(() => cache.loadOutputDirsBatch(['k']))
     const st = await stat(path.join(projectDir, 'dist', 'out.txt'))
-    expect(cache.dbHandle().query('SELECT path, ino FROM output_stamps').all()).toEqual([
+    expect(indexDb(cache).query('SELECT path, ino FROM output_stamps').all()).toEqual([
       { path: 'dist/out.txt', ino: st.ino },
     ])
   } finally {
