@@ -843,35 +843,41 @@ other persistent task`), and a non-zero exit makes the run exit 1
    each one's id (`app#dev │ Local: http://localhost:5173`), except
    under `--output-logs errors-only`, `hash-only` or `none`; a single
    requested server in the focused flow streams raw from its frame.
-3. **The running list** — one row per worker (`--concurrency`), always,
-   so its height never changes. A task stays in its slot for its whole
-   life; a task running beyond the slots gets a row after them until
-   one frees, and none is ever folded away. Both lists share one grid,
-   each under its own header, dim and underlined across the whole line,
-   straight over its rows:
+3. **The running list** — one row per running task, under the title
+   `Running`; a worker with nothing to run adds no blank row, so the
+   footer sits right under the list. A task stays in its slot for its
+   whole life; a task running beyond the slots gets a row after them
+   until one frees, and none is ever folded away. Both lists share one
+   grid, each under its title (`Finished` over the results, `Running`
+   over this one, bold violet) and its header, dim and underlined
+   across the whole line, straight over its rows:
 
    ```
-         time   usual  waited status  cache      cpu    mem outputs  blocks worker       task
-        3.19s    ~18s   400ms running miss      180%  412MB              12 local        solid-js#types  critical path
-                ~6.0s         blocked                                                    └ solid-element#build
+    Running
+         time   usual status  cache      cpu    mem outputs  blocks worker       task
+        3.19s    ~18s running miss      180%  412MB              12 local        solid-js#types  critical path
+                ~6.0s blocked                                                    └ solid-element#build
    ```
 
    - **time**: the live elapsed time; no glyph and no spinner.
    - **usual**: the task's executed p50 from local history, fixed while
-     the time counts up toward it. The results list's `±usual` is how
-     far a run landed from it, `+6.00s` red or `−1.40s` green, only
-     past a fifth either way and never on a hit.
-   - **waited**: how long the task sat ready for a free slot; blank
-     under 50 ms.
+     the time counts up toward it; `unknown` for a task history never
+     timed. History is read once, on the first row that asks, so a run
+     that executes nothing never reads it. The results list's `±usual`
+     is how far a run landed from it, `+6.00s` red or `−1.40s` green
+     past a fifth either way, dim within it, `unknown` with no history,
+     and blank on a hit.
    - **status** and **cache**: `running` and `miss`, or `no-cache` for a
      task with no `cache` block (or a `--no-cache` run); finished rows
      say `local` or `remote` on a hit.
-   - **cpu** and **mem**: the task's process tree now, looked at every
-     500 ms only while this list draws (a pipe or CI reads nothing); on a
-     finished row its average cores and peak memory, blank on a hit.
+   - **cpu** and **mem**: the task's process tree's average cores since
+     it started and its peak memory so far, looked at every 500 ms only
+     while this list draws (a pipe or CI reads nothing); on a finished
+     row its average cores and peak memory over the whole run, blank on
+     a hit.
    - **outputs**: on a finished row, the bytes of its outputs: on a hit
-     the files it restored, on a miss the files it saved; blank for a
-     remote hit not yet downloaded.
+     the files it restored, on a miss the files it wrote, saved or not;
+     blank for a remote hit not yet downloaded.
    - **blocks**: how many tasks and groups are downstream of it, all
      of them: the count the scheduler ranks by.
    - **worker**: `local`, or the machine an executor (`@vzn/vx-dte`)
@@ -880,8 +886,8 @@ other persistent task`), and a non-zero exit makes the run exit 1
    The rows no task runs in hold the tasks the scheduler has picked for
    the next free workers, as many as there are free rows and nothing
    further ahead, each nested under the running task it waits on with
-   its usual time; the rest stay blank. When an executor places tasks,
-   the rows are only what runs: no blank or nested row, blocked tasks
+   its usual time. When an executor places tasks,
+   the rows are only what runs: no nested row, blocked tasks
    are the tasks line's dim `N blocked` alone. `critical path` (red)
    follows the running task the longest unfinished chain waits on; its
    row in the list says it too once it ends.
@@ -3683,8 +3689,8 @@ on a terminal or not; a note vx prints before it is not part of it.
 A broad run looks like:
 
 ```
- ⇢     4ms                 success local                                 local        @vzn/vx#format-check
- ⏺︎   5.20s                 success miss                                  local        @vzn/vx#test
+ ⇢     4ms         success local                                 local        @vzn/vx#format-check
+ ⏺︎   5.20s         success miss                                  local        @vzn/vx#test
 
 ─ vx 0.0.0 ───────────────────────────────────────────────────
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱

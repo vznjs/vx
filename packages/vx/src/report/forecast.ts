@@ -12,8 +12,6 @@ export interface LiveForecast {
   critical?: string
   /** Tasks not started because a dependency has not finished: the tasks line's `blocked`. */
   waiting: number
-  /** Each running task's p50, where history knows it: the row's expected duration. */
-  expected?: ReadonlyMap<string, number>
   /**
    * Tasks not started because a dependency has not finished, in the order
    * the scheduler would start them, at most one per worker: what an idle
@@ -27,8 +25,6 @@ export interface LiveForecast {
    * counts under both.
    */
   blockedBy: ReadonlyMap<string, number>
-  /** Each task's usual time (its executed p50), for the results' `±usual`. */
-  usual?: ReadonlyMap<string, number>
 }
 
 /** A task an unfinished dependency holds back, and what holds it: the running task its longest chain waits on, else that dependency. */
@@ -97,12 +93,7 @@ export function createForecast(
   }
 
   return (finished, running, nowMs) => {
-    const expected = new Map<string, number>()
     let waiting = 0
-    for (const id of running.keys()) {
-      const p = cost.get(id)
-      if (p !== undefined) expected.set(id, p)
-    }
     const end = new Map<string, number>()
     // The running task each node's longest chain waits on.
     const head = new Map<string, string>()
@@ -156,16 +147,14 @@ export function createForecast(
       const d = rank.get(id)
       if (d !== undefined && d > 0) blockedBy.set(id, d)
     }
-    if (!known) return { waiting, expected, blocked: held, blockedBy, usual: cost }
+    if (!known) return { waiting, blocked: held, blockedBy }
     const critical = chainEnd === undefined ? undefined : head.get(chainEnd)
     return {
       etaMs: Math.max(chain, work / workers),
       ...(critical !== undefined ? { critical } : {}),
       waiting,
-      expected,
       blocked: held,
       blockedBy,
-      usual: cost,
     }
   }
 }

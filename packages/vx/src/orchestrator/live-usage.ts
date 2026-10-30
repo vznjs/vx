@@ -1,6 +1,9 @@
-// The live list's `cpu` and `mem`: what each running task's process tree
-// uses now. Looked at on a timer only once the list asks for a row, so a
-// run with no live list (a pipe, CI) registers pids and reads nothing.
+// The live list's `cpu` and `mem`: each running task's process tree's
+// average cores since it started and its peak memory so far, the values
+// its results row shows once it ends (2026-10-29: the live row showed the
+// last half second's, and a task's row changed meaning as it finished).
+// Looked at on a timer only once the list asks for a row, so a run with
+// no live list (a pipe, CI) registers pids and reads nothing.
 // The look is async and off the dispatch path: a slow one skips a tick.
 
 import { sampleTrees, type TreeUsage } from '../exec/index.js'
@@ -19,7 +22,10 @@ const everyInterval: Every = (ms, fn) => {
 
 interface Tracked {
   pid: number
-  last?: { ts: number; cpuMs: number }
+  startedAt: number
+  /** The most CPU time the tree has shown: a descendant that exits takes its share out of the sum. */
+  cpuMs: number
+  peakRssBytes: number
   now?: LiveUsage
 }
 
@@ -51,13 +57,12 @@ export function createLiveUsage(
       for (const [id, t] of entries) {
         const u = usage.get(t.pid)
         if (u === undefined || tracked.get(id) !== t) continue
-        // A descendant that exited takes its CPU out of the live sum, so
-        // an interval can read negative: none is shown below zero.
-        if (t.last !== undefined && ts > t.last.ts) {
-          const cores = Math.max(0, (u.cpuMs - t.last.cpuMs) / (ts - t.last.ts))
-          t.now = { cores: Math.round(cores * 100) / 100, rssBytes: u.rssBytes }
+        t.cpuMs = Math.max(t.cpuMs, u.cpuMs)
+        t.peakRssBytes = Math.max(t.peakRssBytes, u.rssBytes)
+        if (ts > t.startedAt) {
+          const cores = t.cpuMs / (ts - t.startedAt)
+          t.now = { cores: Math.round(cores * 100) / 100, rssBytes: t.peakRssBytes }
         }
-        t.last = { ts, cpuMs: u.cpuMs }
       }
     } catch {
       // A failed look is a missing point, never a broken run.
@@ -71,7 +76,7 @@ export function createLiveUsage(
 
   return {
     track(taskId, pid) {
-      const t: Tracked = { pid }
+      const t: Tracked = { pid, startedAt: now(), cpuMs: 0, peakRssBytes: 0 }
       tracked.set(taskId, t)
       start()
       return () => {

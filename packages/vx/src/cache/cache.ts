@@ -2502,7 +2502,16 @@ export class Cache implements CacheLayer {
     if (!this.write) return
     // A cache that reads saves only on a miss. One that does not (`--force`)
     // re-executes a key it may hold: that entry is kept as it is.
-    if (!this.read && this.guard(() => this.storedHere(args.hash))) return
+    // The kept entry's bytes are this run's too (same key): the row's
+    // `outputs` counts them as a hit would.
+    if (!this.read && this.guard(() => this.storedHere(args.hash))) {
+      const rows = this.loadOutputFilesBatch([args.hash]).get(args.hash) ?? []
+      this.savedBytes.set(
+        args.hash,
+        rows.reduce((n, r) => n + r.size, 0),
+      )
+      return
+    }
     // The cache directory is the constructor's (`mkdirSync`, with a
     // refusal recorded for `assertWritable`); re-creating it here and
     // again in `writeArtifactAndIndex` cost every save two thread-pool

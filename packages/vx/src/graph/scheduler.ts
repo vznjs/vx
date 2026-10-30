@@ -309,8 +309,7 @@ export interface ScheduleOptions {
    */
   onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
-  /** `queuedMs`: how long the task waited ready for a slot, when it did. */
-  onStart?: (node: TaskNode, queuedMs?: number) => void
+  onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
   /**
    * Where the line naming a rejected `execute` goes, before its failed
@@ -970,10 +969,9 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         return undefined
       }
     }
-    const started = (node: TaskNode, queuedMs = 0): void => {
+    const started = (node: TaskNode): void => {
       try {
-        if (queuedMs > 0) onStart?.(node, queuedMs)
-        else onStart?.(node)
+        onStart?.(node)
       } catch (err) {
         const m = thrownMessage(err)
         ui.say('warn', `[vx] onStart observer threw for ${node.id}: ${m}\n`)
@@ -1112,7 +1110,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         const settle = settleInPlace(node, upstream)
         let now: TaskOutcome | undefined
         if (settle !== undefined) {
-          if (!demoted.has(id)) started(node, queuedMs)
+          if (!demoted.has(id)) started(node)
           try {
             now = settle()
           } catch {
@@ -1142,7 +1140,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // the dispatch loop (it would strand the tick with the slot held).
         // A demoted task's second dispatch is the same task, already started,
         // as is one whose settle threw.
-        if (!demoted.has(id) && settle === undefined) started(node, queuedMs)
+        if (!demoted.has(id) && settle === undefined) started(node)
 
         // `.then(onFulfilled, onRejected)` — NOT `.then(f).catch(g)`. The
         // rejection arm handles ONLY `execute()` rejecting; a throw from

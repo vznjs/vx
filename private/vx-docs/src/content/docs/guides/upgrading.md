@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## report: drop waited, show usual from the first row, title lists
+
+Logger.taskStart takes only the node; the task:start event carries no waitedMs.
+
 ## vx-devtools: read issuer keys through the Worker shared cache
 
 OidcOptions.fetchJson is called as fetchJson(url, fresh): fresh is true for a reload of keys already read, which must reach the issuer. A fetchJson that took one argument still works.

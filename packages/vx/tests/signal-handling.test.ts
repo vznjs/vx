@@ -655,8 +655,8 @@ describe('signal handling during vx run (e2e)', () => {
         .filter((l) => l.endsWith(' app#t') || l.endsWith(' app#after'))
         .map((l) => l.replace(/^ (\S+) +[\d.]+m?s /, ' $1 <t> '))
       expect(rows).toEqual([
-        ' ✗ <t>                 aborted                                     1 local        app#t',
-        ' ◌                         not run                                     0              app#after',
+        ' ✗ <t>         aborted                                     1 local        app#t',
+        ' ◌                 not run                                     0              app#after',
       ])
     },
     TIMEOUT,

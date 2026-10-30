@@ -72,6 +72,7 @@ import {
   bracketLiteralHint,
   markUnsaved,
   saveMiss,
+  unsavedOutputBytes,
   type OutputDirSnapshot,
   type SaveFacts,
 } from './miss-save.js'
@@ -1347,6 +1348,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let movedFails: string | undefined
   let own: Awaited<ReturnType<typeof ownOutputs>>
   let saved = false
+  // An unsaved miss's outputs, as a save's are counted: its row's `outputs`.
+  let unsavedBytes: number | undefined
   if (
     effectiveExitCode === 0 &&
     willSave &&
@@ -1408,7 +1411,17 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // entry is in; without one, the save is taken as done.
     if (args.deferredSaves !== undefined) args.deferredSaves.set(node.id, landed)
     else saved = true
-  } else if (cfgCacheable && !remoteOnly && !deferralRequested && args.noDependants !== true) {
+  } else if (cfgCacheable && !remoteOnly && !deferralRequested && args.noDependants === true) {
+    // Nothing reads after it, so nothing to mark: only its row's `outputs`.
+    if (effectiveExitCode === 0)
+      unsavedBytes = await unsavedOutputBytes({
+        node,
+        workspaceRoot: args.workspaceRoot,
+        nestedProjectDirs: args.nestedProjectDirs,
+        outputs,
+        wsOutputs,
+      })
+  } else if (cfgCacheable && !remoteOnly && !deferralRequested) {
     // Ran here and saves nothing — failed, a read-only policy, a tainted
     // upstream, a key that no longer held — yet it wrote what a save would
     // have marked, and may have rewritten an input the re-check before a
@@ -1422,7 +1435,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (moved !== undefined) {
       forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
     } else {
-      await markUnsaved({
+      unsavedBytes = await markUnsaved({
         node,
         workspaceRoot: args.workspaceRoot,
         nestedProjectDirs: args.nestedProjectDirs,
@@ -1572,6 +1585,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(unkeyed ? { unkeyed: true as const } : {}),
     ...(keylessBy !== undefined ? { keylessBy } : {}),
     ...(saved ? { saved: true as const } : {}),
+    ...(unsavedBytes !== undefined ? { outputBytes: unsavedBytes } : {}),
     ...(effectiveExitCode !== 0 && output !== undefined
       ? { failedOutput: failedOutputLog(output, willSave || args.keepRun !== undefined, storeMask) }
       : {}),

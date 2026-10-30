@@ -624,7 +624,7 @@ export default defineProject({
     ],
     example: {
       lang: 'ansi',
-      code: '$ vx run test --all\n\n \x1b[38;2;239;68;68m◼︎\x1b[0m     \x1b[2m4ms\x1b[0m                 \x1b[38;2;239;68;68mfailed\x1b[0m  \x1b[2mmiss\x1b[0m                                  local        \x1b[38;2;232;121;249m@demo/app\x1b[0m\x1b[2m#\x1b[0m\x1b[38;2;96;165;250mtest\x1b[0m \x1b[2mflaky - passed 3× before\x1b[0m',
+      code: '$ vx run test --all\n\n \x1b[38;2;239;68;68m◼︎\x1b[0m     \x1b[2m4ms\x1b[0m         \x1b[38;2;239;68;68mfailed\x1b[0m  \x1b[2mmiss\x1b[0m                                  local        \x1b[38;2;232;121;249m@demo/app\x1b[0m\x1b[2m#\x1b[0m\x1b[38;2;96;165;250mtest\x1b[0m \x1b[2mflaky - passed 3× before\x1b[0m',
     },
     image: 'flaky-detection.png',
     imageAlt: 'A failed task row marked flaky, with its history.',

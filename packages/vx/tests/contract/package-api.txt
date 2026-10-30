@@ -1116,7 +1116,7 @@ export interface Logger {
     context?: RunContext
     startedAtMs?: number
   }): void
-  taskStart?(node: TaskNode, info?: { waitedMs?: number }): void
+  taskStart?(node: TaskNode): void
   runEnd?(): void
   stepStart?(id: string): void
   stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
@@ -1521,6 +1521,7 @@ export interface RunContext {
   whereRunning?: (taskId: string) => string | null | undefined
   usage?: (taskId: string) => { cores: number; rssBytes: number } | undefined
   blocks?: () => ReadonlyMap<string, number>
+  usual?: (taskId: string) => number | undefined
   concurrency?: number
   remoteCacheEnabled: boolean
   cacheScope?: string | undefined
@@ -1570,7 +1571,7 @@ export interface RunContextRecord {
 == type RunEvent (src/report/events.ts)
 export type RunEvent =
   | { kind: 'run:start'; info: RunStartInfo }
-  | { kind: 'task:start'; node: TaskNode; waitedMs?: number }
+  | { kind: 'task:start'; node: TaskNode }
   | { kind: 'task:stdout'; node: TaskNode; chunk: string }
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }

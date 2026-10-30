@@ -294,12 +294,12 @@ const STATUS_COL = 7 // "success" / "running" / "skipped" / "aborted" / "not run
 const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
 const BLOCKED_COL = 7 // `blocks`: how many tasks are downstream of the row's
 const USUAL_COL = 7 // "~18s" live, "+6.0s" / "−1m 05s" after
-const WAITED_COL = 7 // the time cell's width: "1.20s"
 const CPU_COL = 5 // "180%", "1200%"
 const MEM_COL = 6 // "412MB", "1.1GB", "1023MB"
 const OUT_COL = 7 // `outputs`: "12MB", "900B"
 const WORKER_COL = 12 // `local`, or a plugin's name for the machine, cut at 12
-/** The list header's colour: violet-400, the summary rule's first stop. */
+/** A list title's colour: violet-400, the summary rule's first stop. */
+const HEADING = '#a78bfa'
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
@@ -380,7 +380,7 @@ function taskGlyph(o: TaskOutcome, colors: ColorSupport): string {
 }
 
 /**
- * One reported task row on the list grid: `<glyph> <time> <usual> <waited>
+ * One reported task row on the list grid: `<glyph> <time> <usual>
  * <status> <cache> <cpu> <mem> <blocks> <worker> <name>`. `glyph` is
  * pre-painted; status/cache are raw text + color, padded to their
  * columns; `paintedId` carries identity coloring. `ms = null` blanks the
@@ -402,14 +402,13 @@ export function formatTaskRow(
   const ca = cell(cache, cacheColor, CACHE_COL - Math.max(0, status.length - STATUS_COL), colors)
   const usual = cells.usual ?? { text: '', painted: '' }
   const us = `${' '.repeat(Math.max(0, USUAL_COL - usual.text.length))}${usual.painted}`
-  const waited = cells.waitedMs === undefined ? '' : formatElapsed(cells.waitedMs)
   const cpu = cells.cpu === undefined ? '' : `${Math.round(cells.cpu * 100)}%`
   const mem = cells.memBytes === undefined ? '' : formatSize(cells.memBytes)
   const out = cells.outputBytes === undefined ? '' : formatSize(cells.outputBytes)
   const blocks = cells.blocks ?? ''
   const worker = workerName(cells.worker ?? '')
   return (
-    ` ${glyph} ${timeCell(ms, colors)} ${us} ${right(waited, WAITED_COL, colors)} ${st} ${ca} ` +
+    ` ${glyph} ${timeCell(ms, colors)} ${us} ${st} ${ca} ` +
     `${right(cpu, CPU_COL, colors)} ${right(mem, MEM_COL, colors)} ${right(out, OUT_COL, colors)} ` +
     `${' '.repeat(Math.max(0, BLOCKED_COL - blocks.length))}${paint(WARN, blocks, colors)} ` +
     `${placeCell(worker, colors)}${' '.repeat(WORKER_COL - worker.length)} ${paintedId}`
@@ -420,8 +419,6 @@ export function formatTaskRow(
 export interface RowCells {
   /** After the time, pre-painted: `~18s` live, `+6.0s` / `−1.4s` after. */
   usual?: { text: string; painted: string }
-  /** How long the task waited ready for a slot. */
-  waitedMs?: number
   /** Cores in use (live) or on average (after): 1.8 prints `180%`. */
   cpu?: number
   /** Resident memory now (live) or at its peak (after). */
@@ -467,14 +464,6 @@ function workerName(name: string): string {
   return name.length > WORKER_COL ? `${name.slice(0, WORKER_COL - 1)}\u2026` : name
 }
 
-/**
- * A wait worth a cell: under 50 ms the task started at once, the
- * scheduler's own tick and a sibling's spawn, not a full pool.
- */
-export function waited(ms: number | undefined): boolean {
-  return ms !== undefined && ms >= 50
-}
-
 /** A task's average cores over its run: CPU time over wall time. */
 function coresOf(o: TaskOutcome): number | undefined {
   return o.cpuMs === undefined || o.durationMs <= 0 ? undefined : o.cpuMs / o.durationMs
@@ -482,19 +471,36 @@ function coresOf(o: TaskOutcome): number | undefined {
 
 /**
  * The results list's `±usual` cell: how far an executed task ran from its
- * usual time, `+6.0s` red or `−1.4s` green, only past a fifth of the usual
- * either way; blank with no usual time to compare.
+ * usual time, `+6.0s` red or `−1.4s` green past a fifth of the usual either
+ * way, dim within it; `unknown` (null) with no history for the task, blank
+ * (undefined) with no history to ask. A blank within a fifth read as no
+ * usual at all (2026-10-29).
  */
-function usualDelta(
+export function usualCell(
   ms: number,
-  usualMs: number | undefined,
+  usualMs: number | null | undefined,
   colors: ColorSupport = NO_COLOR,
 ): { text: string; painted: string } {
-  if (usualMs === undefined || usualMs <= 0 || Math.abs(ms - usualMs) <= usualMs * 0.2)
-    return { text: '', painted: '' }
+  if (usualMs === undefined) return { text: '', painted: '' }
+  if (usualMs === null || usualMs <= 0) return unknownUsual(colors)
   const d = ms - usualMs
-  const text = `${d > 0 ? '+' : '\u2212'}${formatElapsed(Math.abs(d), true)}`
+  const text = `${d >= 0 ? '+' : '\u2212'}${formatElapsed(Math.abs(d), true)}`
+  if (Math.abs(d) <= usualMs * 0.2) return { text, painted: paint('', text, colors, { dim: true }) }
   return { text, painted: paint(d > 0 ? ERROR : SUCCESS, text, colors) }
+}
+
+/** The `usual` cell of a task history has never timed. */
+export function unknownUsual(colors: ColorSupport = NO_COLOR): { text: string; painted: string } {
+  return { text: 'unknown', painted: paint('', 'unknown', colors, { dim: true }) }
+}
+
+/**
+ * The title over a task list: what its rows are, as the rows' header
+ * names its columns (2026-10-29: two lists, one grid, told apart by
+ * nothing).
+ */
+export function formatListTitle(title: string, colors: ColorSupport = NO_COLOR): string {
+  return ` ${paint(HEADING, title, colors, { bold: true })}`
 }
 
 /**
@@ -516,7 +522,7 @@ export function formatRunningHeader(colors: ColorSupport = NO_COLOR): string {
 
 function header(usual: string, colors: ColorSupport): string {
   const head =
-    `   ${'time'.padStart(TIME_COL)} ${usual.padStart(USUAL_COL)} ${'waited'.padStart(WAITED_COL)} ` +
+    `   ${'time'.padStart(TIME_COL)} ${usual.padStart(USUAL_COL)} ` +
     `${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${'cpu'.padStart(CPU_COL)} ` +
     `${'mem'.padStart(MEM_COL)} ${'outputs'.padStart(OUT_COL)} ${'blocks'.padStart(BLOCKED_COL)} ${'worker'.padEnd(WORKER_COL)} task`
   return paint('', head, colors, { dim: true, underline: true })
@@ -557,15 +563,18 @@ export function formatTaskExecutedLine(
   colors: ColorSupport = NO_COLOR,
   onPath = false,
   blocks?: number,
-  usualMs?: number,
+  usualMs?: number | null,
 ): string {
   return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath, {
     ...executedCells(o, blocks),
-    usual: usualDelta(o.durationMs, usualMs, colors),
+    // A hit's time is a restore's, not the task's: nothing to compare.
+    ...(o.status === 'success' || o.status === 'failed'
+      ? { usual: usualCell(o.durationMs, usualMs, colors) }
+      : {}),
   })
 }
 
-/** An executed task's cells: where and how long it waited, its average cores and peak memory. */
+/** An executed task's cells: where it ran, its average cores and peak memory. */
 export function executedCells(o: TaskOutcome, blocks: number | undefined): RowCells {
   const cores = coresOf(o)
   return {
@@ -581,7 +590,6 @@ function ranCells(o: TaskOutcome, blocks: number | undefined): RowCells {
     // A skip reached no machine.
     ...(o.status === 'skipped' ? {} : { worker: o.where ?? 'local' }),
     ...(blocks !== undefined ? { blocks: String(blocks) } : {}),
-    ...(waited(o.queuedMs) ? { waitedMs: o.queuedMs! } : {}),
     ...(o.outputBytes !== undefined ? { outputBytes: o.outputBytes } : {}),
   }
 }

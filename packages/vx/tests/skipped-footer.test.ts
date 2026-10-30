@@ -49,7 +49,7 @@ describe('a skipped task', () => {
     expect(r.code).toBe(1)
     expect(r.text).toContain('1 failed · 1 skipped · 2 total')
     expect(r.text).toContain(
-      ' ⊘                         skipped                                     0              app#build • blocked by lib#build\n',
+      ' ⊘                 skipped                                     0              app#build • blocked by lib#build\n',
     )
     expect(r.text).not.toContain('Skipped:')
     expect(r.text.trimEnd().split('\n').at(-1)).toMatch(/^ {2}time {6}/)

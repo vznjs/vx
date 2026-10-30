@@ -53,6 +53,7 @@ export interface RunContext {
   whereRunning?: (taskId: string) => string | null | undefined // a running task's executor
   usage?: (taskId: string) => { cores: number; rssBytes: number } | undefined // a running row's live cpu and mem
   blocks?: () => ReadonlyMap<string, number> // each task's downstream count: the rows' `blocks`
+  usual?: (taskId: string) => number | undefined // a task's p50 from history, read once on first ask: the rows' `usual`
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
   cacheScope?: string | undefined // the run's scope (info row: `scope vznjs/vx:feat-x`)

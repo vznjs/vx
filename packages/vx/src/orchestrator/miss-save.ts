@@ -298,9 +298,26 @@ export type UnsavedArgs = Pick<
  * A miss that ran here and saves nothing (it failed, the policy writes
  * nothing, an upstream failed, its key no longer held) still wrote its
  * outputs, and a same-project reader after it must see them as it sees a
- * save's: resolved and marked the same way.
+ * save's: resolved and marked the same way. Returns their bytes, the
+ * row's `outputs`: blank, an unsaved miss read as one that wrote nothing.
  */
-export async function markUnsaved(a: UnsavedArgs): Promise<void> {
+export async function markUnsaved(a: UnsavedArgs): Promise<number> {
+  const { outputFiles, wsOutputFiles } = await resolveUnsaved(a)
+  markWritten(a, outputFiles, wsOutputFiles)
+  return sizeOf(a.node.projectDir, outputFiles) + sizeOf(a.workspaceRoot, wsOutputFiles)
+}
+
+/** An unsaved miss nothing reads after: only the bytes of its outputs, its row's `outputs`. */
+export async function unsavedOutputBytes(
+  a: Pick<UnsavedArgs, 'node' | 'workspaceRoot' | 'nestedProjectDirs' | 'outputs' | 'wsOutputs'>,
+): Promise<number> {
+  const { outputFiles, wsOutputFiles } = await resolveUnsaved(a)
+  return sizeOf(a.node.projectDir, outputFiles) + sizeOf(a.workspaceRoot, wsOutputFiles)
+}
+
+async function resolveUnsaved(
+  a: Pick<UnsavedArgs, 'node' | 'workspaceRoot' | 'nestedProjectDirs' | 'outputs' | 'wsOutputs'>,
+): Promise<{ outputFiles: string[]; wsOutputFiles: string[] }> {
   const endResolve = span('miss: resolve outputs')
   const outputFiles = await resolveOutputs({
     projectDir: a.node.projectDir,
@@ -312,7 +329,14 @@ export async function markUnsaved(a: UnsavedArgs): Promise<void> {
     outputs: a.wsOutputs,
   })
   endResolve()
-  markWritten(a, outputFiles, wsOutputFiles)
+  return { outputFiles, wsOutputFiles }
+}
+
+/** The bytes of `files` (absolute, or under `base`); one gone since it was listed counts none. */
+function sizeOf(base: string, files: readonly string[]): number {
+  let n = 0
+  for (const f of files) n += statSync(path.resolve(base, f), { throwIfNoEntry: false })?.size ?? 0
+  return n
 }
 
 /**

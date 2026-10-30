@@ -227,6 +227,11 @@ export interface RunContext {
   usage?: (taskId: string) => { cores: number; rssBytes: number } | undefined
   /** Each task's count of the tasks downstream of it in the run, built on first ask: the rows' `blocks`. */
   blocks?: () => ReadonlyMap<string, number>
+  /**
+   * A task's usual duration from history, read once on the first ask;
+   * undefined for a task it never timed: every row's `usual`.
+   */
+  usual?: (taskId: string) => number | undefined
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
   remoteCacheEnabled: boolean

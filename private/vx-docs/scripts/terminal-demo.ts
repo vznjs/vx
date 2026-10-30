@@ -119,6 +119,9 @@ export function normalize(svg: string): string {
     svg
       .replace(/height="\d+"|viewBox="[^"]*"|y="\d+"|style="animation-delay:[^"]*"/g, '')
       .replace(/\d+(\.\d+)?(ms|s)\b/g, 'N')
+      // How far a row ran from its usual time is a timing, its sign and
+      // colour with it.
+      .replace(/<tspan[^>]*>[+\u2212]N<\/tspan>/g, '±N')
       // A row's cpu and peak memory are measured, as a duration is.
       .replace(/\d+%/g, 'N%')
       .replace(/\d+(\.\d+)?(B|KB|MB|GB)\b/g, 'N B')
@@ -174,6 +177,22 @@ function run(): string {
       if (g.exitCode !== 0) throw new Error(`git ${args[0]}: ${g.stderr.toString()}`)
     }
     const lines: Span[][] = []
+    // An unshown run first, saving nothing: its timings are the history the
+    // shown rows' `usual` reads, as on any repo vx has run in before. The
+    // demo's cold run still misses.
+    const history = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.join(ROOT, 'packages/vx/src/bin.ts'),
+        'run',
+        'ci',
+        '--all',
+        '--no-cache',
+      ],
+      cwd: root,
+      env: { ...process.env, HOME: home, CI: undefined },
+    })
+    if (history.exitCode !== 0) throw new Error(`history run failed: ${history.stderr.toString()}`)
     for (const pass of ['cold', 'warm']) {
       const r = Bun.spawnSync({
         cmd: [process.execPath, path.join(ROOT, 'packages/vx/src/bin.ts'), 'run', 'ci', '--all'],

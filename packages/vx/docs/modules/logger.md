@@ -26,7 +26,7 @@ export interface Logger {
     context?: RunContext // the live summary section's context
     startedAtMs?: number
   }): void
-  taskStart?(node: TaskNode, info?: { waitedMs?: number }): void // waitedMs: how long it sat ready for a slot, when it did
+  taskStart?(node: TaskNode): void
   runEnd?(): void // the graph is done; vx's closing steps follow
   stepStart?(id: string): void // one of vx's own steps (`vx:keys`) began; never a task
   stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void

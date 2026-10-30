@@ -107,23 +107,6 @@ describe('createForecast', () => {
     expect(over.waiting).toBe(1)
   })
 
-  it("names each running task's p50, the row's expected duration", () => {
-    const f = createForecast(nodes, p50s, 8)
-    const r = f(
-      new Set(['p#a']),
-      new Map([
-        ['p#b', 0],
-        ['p#x', 0],
-      ]),
-      100,
-    )
-    expect([...(r.expected ?? [])]).toEqual([['p#b', 2000]])
-    // A running task past its p50 still says it: the row's value is fixed.
-    expect([...(f(new Set(['p#a']), new Map([['p#b', 0]]), 9000).expected ?? [])]).toEqual([
-      ['p#b', 2000],
-    ])
-  })
-
   it('costs nothing for a group or a task history never saw', () => {
     const g = graph(node('p#x'), node('p#all', ['p#x', 'p#y'], true), node('p#y'))
     const f = createForecast(
@@ -287,8 +270,9 @@ describe('rows under an executor that places tasks', () => {
     )
     expect(lines).toEqual([
       '',
-      '      time   usual  waited status  cache      cpu    mem outputs  blocks worker       task',
-      '     500ms                 running miss                                0 small#2      p#a',
+      ' Running',
+      '      time   usual status  cache      cpu    mem outputs  blocks worker       task',
+      '     500ms         running miss                                0 small#2      p#a',
     ])
   })
 
@@ -307,8 +291,8 @@ describe('rows under an executor that places tasks', () => {
       },
       { enabled: false },
     )
-    expect(lines[2]).toBe(
-      '     500ms                 running miss                                0 small#2      p#a  critical path',
+    expect(lines[3]).toBe(
+      '     500ms         running miss                                0 small#2      p#a  critical path',
     )
   })
 
@@ -333,12 +317,13 @@ describe('rows under an executor that places tasks', () => {
     const rows = out.text().split(/[\n\r]/)
     expect(rows.find((l) => l.endsWith('p#a  critical path'))).toBeDefined()
     expect(rows.find((l) => /success .*p#d$/.test(l))).toBeDefined()
-    // The list's header, once, over its first row.
+    // The list's title and header, once, over its first row.
+    expect(rows.filter((l) => Bun.stripANSI(l) === ' Finished')).toHaveLength(1)
     expect(
       rows.filter(
         (l) =>
-          l ===
-          '      time  ±usual  waited status  cache      cpu    mem outputs  blocks worker       task',
+          Bun.stripANSI(l) ===
+          '      time  ±usual status  cache      cpu    mem outputs  blocks worker       task',
       ),
     ).not.toHaveLength(0)
   })
@@ -460,8 +445,8 @@ describe('a worker row says when it holds the critical path', () => {
       },
       { enabled: false },
     )
-    expect(lines[2]).toEndWith(' 0 local        p#a  critical path')
-    expect(lines[3]).toEndWith(' 0 local        p#d')
+    expect(lines[3]).toEndWith(' 0 local        p#a  critical path')
+    expect(lines[4]).toEndWith(' 0 local        p#d')
   })
 
   // 2026-10-27 counted only direct dependents; 2026-10-29: `blocks` is
@@ -589,17 +574,19 @@ describe('free worker rows hold the planned tasks', () => {
     ])
     expect(frame()).toEqual([
       expect.stringMatching(/running (?:miss|no-cache) +3 local +p#a$/),
-      '                           blocked                                                    └ p#c',
-      '                           blocked                                                    └ p#b',
+      '                   blocked                                                    └ p#c',
+      '                   blocked                                                    └ p#b',
     ])
     log.runEnd?.()
   })
 
-  it('a free row with nothing planned stays blank, so the list keeps its height', () => {
+  // No blank row for a free worker: ten of them were ten empty lines
+  // between the list and its footer (2026-10-29).
+  it('a free row with nothing planned adds no blank row', () => {
     const { log, frame } = live([{ id: 'p#c', by: 'p#a' }])
     expect(frame()).toEqual([
       expect.stringMatching(/running (?:miss|no-cache) +1 local +p#a$/),
-      '                           blocked                                                    └ p#c',
+      '                   blocked                                                    └ p#c',
       '',
     ])
     log.runEnd?.()
@@ -647,14 +634,14 @@ describe('the live view knows blocked tasks from the graph, from the first frame
     const r = live(['p#a', 'p#x', 'p#y', 'p#b', 'p#c'])
     expect(r.asked).toBe(0)
     expect(r.rows).toEqual([
-      '                           blocked                                                    └ p#b',
-      '                           blocked                                                    └ p#c',
+      '                   blocked                                                    └ p#b',
+      '                   blocked                                                    └ p#c',
     ])
   })
 
-  it('a free row with nothing planned is blank', () => {
+  it('a free row with nothing planned shows nothing: the footer follows', () => {
     const r = live(['p#a', 'p#x', 'p#y'])
-    expect(r.rows).toEqual(['', ''])
+    expect(r.rows).toEqual(['', '─ vx ─────────────────────────────────────────────────────────'])
   })
 })
 

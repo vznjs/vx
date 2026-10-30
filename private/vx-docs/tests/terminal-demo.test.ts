@@ -14,6 +14,17 @@ describe('terminal-demo --check', () => {
     expect(normalize(timeRow([]))).toBe(normalize(all))
   })
 
+  // A row's distance from its usual time is a timing: its sign, and so
+  // its colour (dim within a fifth, red slower, green faster), vary by run.
+  it('ignores how far a row ran from its usual time, sign and colour', () => {
+    const row = (delta: string): string => `<text x="18" y="40">  8ms ${delta} success</text>`
+    expect(normalize(row(DIM('+1ms')))).toBe(normalize(row(DIM('\u22127ms'))))
+    expect(normalize(row('<tspan fill="rgb(239,68,68)">+12ms</tspan>'))).toBe(
+      normalize(row(DIM('\u22121ms'))),
+    )
+    expect(normalize(row('unknown'))).not.toBe(normalize(row(DIM('+1ms'))))
+  })
+
   it('still sees a changed word', () => {
     expect(normalize(timeRow(['max 9ms']).replace('time', 'took'))).not.toBe(
       normalize(timeRow(['max 9ms'])),
