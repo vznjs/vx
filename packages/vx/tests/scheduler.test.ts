@@ -512,6 +512,43 @@ describe('runGraph', () => {
       })
     })
 
+    it('counts exactly across the closure in column blocks', () => {
+      // The closure sweeps a few hundred 32-bit words at a time so they
+      // stay in cache: 3,000 nodes span several blocks, so a dependent in
+      // a later block, an edge whose bit falls before the block, and a
+      // count summed over blocks are each checked against a plain walk,
+      // over every task and over a counted subset.
+      let seed = 7
+      const rand = (n: number): number => {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        return seed % n
+      }
+      const ids = Array.from({ length: 3000 }, (_, i) => `p#t${i}`)
+      const deps = ids.map((_, i) =>
+        i === 0 ? [] : [...new Set(Array.from({ length: 1 + rand(4) }, () => ids[rand(i)]!))],
+      )
+      const order = ids.map((_, i) => i).sort(() => rand(3) - 1)
+      const m = nodes(...order.map((i) => node(ids[i]!, deps[i])))
+      const dependents = new Map<string, string[]>(ids.map((id) => [id, []]))
+      ids.forEach((id, i) => deps[i]!.forEach((d) => dependents.get(d)!.push(id)))
+      const counted = new Map(ids.filter(() => rand(3) > 0).map((id) => [id, true]))
+      const walk = (id: string, only?: ReadonlyMap<string, unknown>): number => {
+        const seen = new Set<string>()
+        const stack = [...dependents.get(id)!]
+        while (stack.length > 0) {
+          const d = stack.pop()!
+          if (seen.has(d)) continue
+          seen.add(d)
+          stack.push(...dependents.get(d)!)
+        }
+        return only === undefined ? seen.size : [...seen].filter((d) => only.has(d)).length
+      }
+      const all = computeReverseDepCount(m)
+      const some = computeReverseDepCount(m, counted)
+      expect(ids.filter((id) => all.get(id) !== walk(id))).toEqual([])
+      expect(ids.filter((id) => some.get(id) !== walk(id, counted))).toEqual([])
+    })
+
     it('prefers a DEEP chain over a wider shallow fan-out', async () => {
       // The consequence of the row above, end to end, on the one graph
       // shape where direct and transitive counts disagree about the

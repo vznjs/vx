@@ -412,7 +412,7 @@ export function formatTaskRow(
     ` ${glyph} ${timeCell(ms, colors)} ${us} ${right(waited, WAITED_COL, colors)} ${st} ${ca} ` +
     `${right(cpu, CPU_COL, colors)} ${right(mem, MEM_COL, colors)} ${right(out, OUT_COL, colors)} ` +
     `${' '.repeat(Math.max(0, BLOCKED_COL - blocks.length))}${paint(WARN, blocks, colors)} ` +
-    `${worker === '' ? '' : ui.inline(ui.place(worker), colors)}${' '.repeat(WORKER_COL - worker.length)} ${paintedId}`
+    `${placeCell(worker, colors)}${' '.repeat(WORKER_COL - worker.length)} ${paintedId}`
   )
 }
 
@@ -447,6 +447,19 @@ export function formatSize(bytes: number): string {
   if (mb < 1000) return `${Math.round(mb)}MB`
   const gb = mb / 1024
   return gb < 10 ? `${gb.toFixed(1)}GB` : `${Math.round(gb)}GB`
+}
+
+// A run names a handful of workers over thousands of rows: each painted
+// once (escaping and painting per row was ~12 ms of a 9,603-task warm run).
+const placeCells = new WeakMap<ColorSupport, Map<string, string>>()
+
+function placeCell(worker: string, colors: ColorSupport): string {
+  if (worker === '') return ''
+  let byName = placeCells.get(colors)
+  if (byName === undefined) placeCells.set(colors, (byName = new Map()))
+  let painted = byName.get(worker)
+  if (painted === undefined) byName.set(worker, (painted = ui.inline(ui.place(worker), colors)))
+  return painted
 }
 
 /** A worker's name in its 12 columns: a longer one ends in `…`. */
