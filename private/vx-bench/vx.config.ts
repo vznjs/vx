@@ -40,14 +40,17 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun perf-guard.ts && bun pr-bench.ts',
-        env: NO_TRANSPILER_CACHE,
-        sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
+        // The commit pr-bench.ts times this checkout against (ci.yml sets it).
+        env: { ...NO_TRANSPILER_CACHE, passThrough: ['VX_BENCH_BASE'] },
+        // The base's source comes out of git's objects (pr-bench-base.ts).
+        sandbox: { allow: { read: ['**/*', '../../.git'], systemInfo: ['vfs.disk-space'] } },
       },
       inputs: {
         files: [
           'perf-guard.ts',
           'perf-baseline.json',
           'pr-bench.ts',
+          'pr-bench-base.ts',
           'pr-bench-baseline.json',
           'quiet.ts',
           'bench-env.ts',
@@ -55,6 +58,8 @@ export default defineProject({
           'workspace-copy.ts',
           'package.json',
         ],
+        // A new base is a new yardstick: the bench runs again against it.
+        env: ['VX_BENCH_BASE'],
       },
       cache: {
         outputs: { files: [] },
@@ -86,13 +91,12 @@ export default defineProject({
 
     // The site's head-to-head (2026-10-29: no figure on the site is typed by
     // hand). One task per runner, each writing its rows to site/<runner>.json,
-    // which @vzn/vx-docs#import gathers into the site's bench.json. vx's is
-    // keyed on its source through install's ^build, so every change to vx
-    // re-measures it; a rival's is keyed on the harness and the pins in
-    // package.json alone, so it re-measures only when either changes. One
-    // runner at a time on a machine of its own: CI's Bench job (ci.yml)
-    // runs them with `--concurrency 1` before main's run, which restores
-    // them; a DTE worker is packed beside other tasks.
+    // which @vzn/vx-docs#bench.data gathers into the site's bench.json. vx's is
+    // keyed on its source through install's ^build, a rival's on the
+    // harness and the pins in package.json. One runner at a time on a
+    // machine of its own: only CI's Bench job (ci.yml) runs them, with
+    // `--concurrency 1 --force`, so all four time the same CPU, and no build
+    // depends on them, so a DTE worker, packed beside other tasks, never does.
     ...Object.fromEntries(
       (['vx', 'turbo', 'nx', 'vite-task'] as const).map((runner) => [
         `bench.${runner}`,
@@ -102,9 +106,6 @@ export default defineProject({
           exec: {
             command: 'bun compare.ts 3',
             timeout: '30m',
-            // Never on a DTE worker, packed beside other tasks: a run that
-            // misses the Bench job's rows measures here.
-            remote: false,
             env: {
               define: {
                 ...NO_TRANSPILER_CACHE.define,

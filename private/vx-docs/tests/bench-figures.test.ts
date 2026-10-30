@@ -13,6 +13,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { RUNNERS, TOKEN, figures, type BenchData, type RunnerResult } from '../src/bench/format.ts'
 import { FIGURES } from '../src/bench/data.ts'
+import docs from '../vx.config.ts'
 
 const site = path.resolve(import.meta.dir, '..')
 const content = path.join(site, 'src', 'content', 'docs')
@@ -205,7 +206,21 @@ describe('no benchmark figure on the site is typed by hand', () => {
     const config = readFileSync(path.join(site, 'astro.config.mjs'), 'utf8')
     expect(config).toContain('mdastPlugins: [bench, mermaid, dataCharts]')
     const tasks = readFileSync(path.join(site, 'vx.config.ts'), 'utf8')
-    expect(tasks).toContain("dependsOn: ['install', 'import', 'bench.data', 'build.images'],")
     expect(tasks).toContain("dependsOn: ['install', '@vzn/vx-bench#site.numbers'],")
+  })
+
+  // A benchmark times its machine, so it runs only in CI's Bench job, one
+  // runner at a time on a machine of its own. A build that depended on
+  // the rows ran all four on a fresh clone's `vx run build --all`
+  // (check.build-cold, main 7813301) and on DTE workers.
+  it('no task but bench.data depends on the benchmarks', () => {
+    const tasks = docs.tasks as Record<string, { dependsOn?: readonly string[] }>
+    const pulling = Object.entries(tasks)
+      .filter(([name]) => name !== 'bench.data')
+      .filter(([, t]) =>
+        (t.dependsOn ?? []).some((d) => d === 'bench.data' || d.startsWith('@vzn/vx-bench#')),
+      )
+      .map(([name]) => name)
+    expect(pulling).toEqual([])
   })
 })

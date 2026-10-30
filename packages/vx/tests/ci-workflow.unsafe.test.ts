@@ -12,6 +12,7 @@ const dir = path.resolve(import.meta.dir, '..', '..', '..', '.github', 'workflow
 
 interface Step {
   id?: string
+  name?: string
   uses?: string
   run?: string
   if?: string
@@ -46,28 +47,33 @@ const checkout = (j: Job | undefined): Step | undefined =>
 describe('ci.yml', () => {
   // The run only plans and dispatches: Linux x64, so every macOS and arm
   // runner is a worker's. The benchmarks run beside it on a runner of
-  // their own; every run waits for the site's benchmark rows first.
+  // their own, and it waits for none of them: no build depends on one.
   it('is one run, and the benchmarks beside it', () => {
     const top =
       "github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size"
-    const afterBench = `!cancelled() && (needs.bench.result == 'success' || needs.bench.result == 'skipped') && ${top}`
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
-      ['linux', 'VX DTE', 'ubuntu-latest', afterBench, 'bench'],
-      ['bench', 'Bench', 'ubuntu-latest', top, undefined],
+      ['linux', 'VX DTE', 'ubuntu-latest', top, undefined],
+      [
+        'bench',
+        'Bench',
+        'ubuntu-latest',
+        "github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
+        undefined,
+      ],
       ['perf', 'Perf', 'ubuntu-latest', top, undefined],
     ])
   })
 
   // The site's head-to-head rows are timed on a machine of their own, one
-  // runner at a time, before the DTE run restores them: a benchmark never
-  // runs under DTE (2026-10-29).
+  // runner at a time; the site reads the committed data, so a benchmark
+  // never runs under DTE (2026-10-29).
   it('measures the site benchmark off the DTE run, one runner at a time', () => {
     const bench = doc.jobs['bench']!
     expect(JSON.stringify(bench)).not.toContain('VX_DTE')
-    expect(bench.steps?.at(-1)?.run).toBe(
-      "bun packages/vx/src/bin.ts run site.numbers --concurrency 1 ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}",
+    expect(bench.steps?.find((s) => s.name === 'vx run bench.data')?.run).toBe(
+      'bun packages/vx/src/bin.ts run @vzn/vx-docs#bench.data --concurrency 1 --force',
     )
   })
 
@@ -93,7 +99,7 @@ describe('ci.yml', () => {
       group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
       'cancel-in-progress': "${{ github.event_name == 'pull_request' }}",
     })
-    expect(doc.jobs['linux']!.if).toContain("&& github.event.action != 'closed' && ")
+    expect(doc.jobs['linux']!.if).toStartWith("github.event.action != 'closed' && ")
   })
 
   // The run fetches a merge-base itself when it needs one (--affected,

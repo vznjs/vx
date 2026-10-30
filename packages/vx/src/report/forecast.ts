@@ -19,9 +19,10 @@ export interface LiveForecast {
    */
   blocked?: readonly BlockedTask[]
   /**
-   * Each running task's count of the tasks downstream of it (a group,
-   * which runs nothing, looked through): its row's `blocks` cell, why they
-   * are not running. A task downstream of two running tasks counts under both.
+   * Each running task's count of what is downstream of it, the
+   * scheduler's own count (`computeReverseDepCount`): its row's `blocks`
+   * cell, why they are not running. A node downstream of two running tasks
+   * counts under both.
    */
   blockedBy: ReadonlyMap<string, number>
 }
@@ -50,8 +51,8 @@ export function createForecast(
   nodes: ReadonlyMap<string, TaskNode>,
   p50s: ReadonlyMap<string, number>,
   concurrency: number,
-  /** Each task's count of the tasks downstream of it (`blocksCounts`); computed here when absent. */
-  downstream: ReadonlyMap<string, number> = blocksCounts(nodes),
+  /** Every node's dependents count, the scheduler's baseline and the rows' `blocks`; computed here when absent. */
+  rank: ReadonlyMap<string, number> = computeReverseDepCount(nodes),
 ): Forecast {
   // Dependencies before dependents, once: each call is one pass over it.
   const order: TaskNode[] = []
@@ -83,9 +84,8 @@ export function createForecast(
     if (p !== undefined) cost.set(n.id, p)
   }
   const workers = Math.max(1, concurrency)
-  // The scheduler's own baseline ranking, most dependents first, ties in
-  // graph order: once per run, as the scheduler computes it.
-  const rank = computeReverseDepCount(nodes)
+  // The scheduler's own baseline ranking (`rank`), most dependents first,
+  // ties in graph order.
   const position = new Map(order.map((n, i) => [n.id, i]))
   const before = (a: string, b: string): boolean => {
     const d = (rank.get(a) ?? 0) - (rank.get(b) ?? 0)
@@ -144,7 +144,7 @@ export function createForecast(
       work += own
     }
     for (const id of running.keys()) {
-      const d = downstream.get(id)
+      const d = rank.get(id)
       if (d !== undefined && d > 0) blockedBy.set(id, d)
     }
     if (!known) return { waiting, blocked: held, blockedBy }
@@ -157,15 +157,4 @@ export function createForecast(
       blockedBy,
     }
   }
-}
-
-/**
- * Each task's `blocks`: how many tasks, a group's own looked through and
- * none counted, sit downstream of it in the run, each once (2026-10-29:
- * every task it holds back, not only the next ones).
- */
-export function blocksCounts(nodes: ReadonlyMap<string, TaskNode>): Map<string, number> {
-  const tasks = new Map<string, true>()
-  for (const n of nodes.values()) if (!isGroupTask(n)) tasks.set(n.id, true)
-  return computeReverseDepCount(nodes, tasks)
 }

@@ -31,7 +31,7 @@ export {
   warnOf,
 } from './logger.js'
 export { formatPersistentList } from './framed-output.js'
-export { blocksCounts, createForecast } from './forecast.js'
+export { createForecast } from './forecast.js'
 export { fileLocations, fileMemo, type OutputLocation } from './path-links.js'
 export { plainOutput } from './plain-output.js'
 export type { LiveUsage } from './status-line.js'

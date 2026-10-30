@@ -51,11 +51,7 @@ jobs:
   # reads the remote cache; @vzn/vx-ci writes the job summary.
   linux:
     name: VX DTE
-    # The run waits for the site's benchmark rows (the bench job) and
-    # restores them: a benchmark never runs under DTE, where a worker is
-    # packed beside other tasks and would time its neighbours.
-    needs: bench
-    if: "!cancelled() && (needs.bench.result == 'success' || needs.bench.result == 'skipped') && github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size"
+    if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 25
     # A push to main deploys the docs site the run built.
@@ -164,15 +160,17 @@ jobs:
           [ -f "$RUNNER_TEMP/vx-dte-runs" ] || exit 0
           while read -r run; do curl -sS -o /dev/null -X POST -H "authorization: Bearer $GITHUB_TOKEN" "$GITHUB_API_URL$run/cancel" || true; done < "$RUNNER_TEMP/vx-dte-runs"
 
-  # The site's head-to-head rows (@vzn/vx-bench#site.numbers), on a runner
-  # of their own and one runner at a time, before the DTE run: that run
-  # restores them from the remote cache, so it never runs a benchmark,
-  # and main's deploys the site with them. A runner's task re-measures
-  # only when its key changes (vx's source, or the harness and a rival's
-  # pin); a PR measures what its diff affects.
+  # The site's head-to-head data (@vzn/vx-docs#bench.data), on a runner
+  # of their own and one runner at a time: a benchmark never runs under
+  # DTE, where a worker is packed beside other tasks, and no build
+  # depends on it, so the DTE run never runs one. The site reads the
+  # committed src/data/bench.json; this job's artifact is the next copy to
+  # commit. `--force` measures every runner in this one job, on this one
+  # machine: rows restored from another runner's run timed other CPUs.
+  # Main and a dispatch measure; a pull request reads the committed data.
   bench:
     name: Bench
-    if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -203,15 +201,20 @@ jobs:
           restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
       - name: Set up the sandbox
         run: bun packages/vx/src/bin.ts setup github
-      # The cache server the DTE run reads, so its restore finds these rows.
+      # The rows of runners whose key did not move come from the cache.
       - name: Pick the cache server
         if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
         id: cache
         run: bun private/vx-servers/worker-url.ts private/vx-cache-service VX_CACHE_URL
-      - name: vx run site.numbers
+      - name: vx run bench.data
         env:
           VX_CACHE_URL: ${{ steps.cache.outputs.url || env.VX_CACHE_URL }}
-        run: bun packages/vx/src/bin.ts run site.numbers --concurrency 1 ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+        run: bun packages/vx/src/bin.ts run @vzn/vx-docs#bench.data --concurrency 1 --force
+      - name: Upload the benchmark data
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-data
+          path: private/vx-docs/measured/bench.json
 
   # The benchmarks, on a runner of their own: they time the machine, and a
   # DTE worker is packed for the run's wall time, not a task's
@@ -242,5 +245,14 @@ jobs:
           restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
       - name: Set up the sandbox
         run: bun packages/vx/src/bin.ts setup github
+      # The commit pr-bench.ts times this checkout against: the PR's base,
+      # or main before the push. A shallow clone holds neither.
+      - name: Fetch the base commit
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          case "$BASE" in ''|0000000000000000000000000000000000000000) exit 0 ;; esac
+          git fetch --no-tags --depth=1 origin "$BASE"
+          echo "VX_BENCH_BASE=$BASE" >> "$GITHUB_ENV"
       - name: vx run check.perf
         run: bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}

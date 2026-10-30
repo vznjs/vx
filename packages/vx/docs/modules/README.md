@@ -186,6 +186,7 @@ here, itself or in a brace group.
 | File                                         | Topic                                                                                                                 |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | [`runner.md`](./runner.md)                   | `src/exec/runner.ts` — `runCommand`, `runPersistent`, `shellQuote`.                                                   |
+| [`runner.md`](./runner.md#spawning-rules)    | `src/exec/spawn-off.ts` — `spawnOff`: a task's spawn on a thread of its own, off the scheduler's.                     |
 | [`kill-tree.md`](./kill-tree.md)             | `src/exec/kill-tree.ts` — `killTree`: a task's process group dies with it (timeout, signal, shutdown).                |
 | [`proc-sample.md`](./proc-sample.md)         | `src/exec/proc-sample.ts` — `sampleTrees`: a running task's process tree CPU and memory, for `task.sample`.           |
 | [`env.md`](./env.md)                         | `src/exec/env.ts` — child env composition; `src/util/essential-env.ts` — the essential allowlist.                     |

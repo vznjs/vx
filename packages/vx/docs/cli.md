@@ -878,7 +878,8 @@ other persistent task`), and a non-zero exit makes the run exit 1
    - **outputs**: on a finished row, the bytes of its outputs: on a hit
      the files it restored, on a miss the files it wrote, saved or not;
      blank for a remote hit not yet downloaded.
-   - **blocks**: how many tasks are downstream of it, all of them.
+   - **blocks**: how many tasks and groups are downstream of it, all
+     of them: the count the scheduler ranks by.
    - **worker**: `local`, or the machine an executor (`@vzn/vx-dte`)
      names, cut to 12 columns with `…`.
 

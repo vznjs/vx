@@ -106,6 +106,8 @@ export interface ScheduleOptions {
   reprioritize?: (apply: (priorities: ReadonlyMap<string, number>) => void) => void
   /** The baseline ranking under `priorities`: `schedule` in .vx/workspace.ts. */
   strategy?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  /** The `most-work` baseline already counted (`computeReverseDepCount`), asked only when used. */
+  reverseDeps?: () => ReadonlyMap<string, number>
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */
   restoreTier?: ReadonlySet<string>
   /** Servers held until the caller adds their remote-hit dependants to `restoreTier` (the ids it added). */
@@ -187,6 +189,12 @@ A `heldServers` server does not dispatch until its promise answers: the
 dependants it names join the restore lane, and it is idle when every
 dependant is then in the tier, else it dispatches as usual
 (`orchestrator/held-servers.ts` asks the remote).
+
+A run counts dependents once: the `most-work` baseline is also every
+row's `blocks`, groups counted as the scheduler counts them, and the
+orchestrator remembers it with the graph (`graphCounts`, keyed by the graph
+token and the node ids). A second count for the rows alone was a pass of
+its own (2026-10-29).
 
 The ranking lives in `src/graph/priorities.ts`, a file with no runtime
 import at all. The Learn page's scheduler simulator bundles it for the

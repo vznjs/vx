@@ -12,7 +12,12 @@
 // it is never remembered.
 
 import type { FoldMemo } from '../cache/index.js'
-import { buildTaskGraph, declaredTask, type TaskNode } from '../graph/index.js'
+import {
+  buildTaskGraph,
+  computeReverseDepCount,
+  declaredTask,
+  type TaskNode,
+} from '../graph/index.js'
 import { xxh3hex } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import { codeIdentity } from './run-keys.js'
@@ -137,4 +142,48 @@ function rebuilt(
     nodes.set(node.id, node)
   }
   return nodes
+}
+
+/**
+ * The run's dependents count, the scheduler's baseline and every row's
+ * `blocks`, read back with the graph it was counted on: the closure over a
+ * 9,603-task graph (11k nodes) was ~100 ms of every warm run, the same each
+ * time (2026-10-29). `token` names the graph's edges (`memoGraph`, undefined
+ * once anything edited them), the node ids which of them this run kept
+ * (`--affected` prunes under the same token).
+ */
+export function graphCounts(
+  nodes: ReadonlyMap<string, TaskNode>,
+  folds: FoldMemo | undefined,
+  token: string | undefined,
+): Map<string, number> {
+  if (folds === undefined || token === undefined) return computeReverseDepCount(nodes)
+  // Not `counts`: those rows held a second count the rows no longer show.
+  const id = `\0dependents\0${token}`
+  const probe = xxh3hex([...nodes.keys()].join('\0'))
+  const row = folds.get(id, probe)
+  if (row !== undefined) {
+    const back = countsOf(row, nodes)
+    if (back !== undefined) return back
+  }
+  const counts = computeReverseDepCount(nodes)
+  folds.set(id, probe, JSON.stringify([...nodes.keys()].map((k) => counts.get(k)!)))
+  return counts
+}
+
+function countsOf(
+  row: string,
+  nodes: ReadonlyMap<string, TaskNode>,
+): Map<string, number> | undefined {
+  let all: number[]
+  try {
+    all = JSON.parse(row) as number[]
+  } catch {
+    return undefined
+  }
+  if (all?.length !== nodes.size) return undefined
+  const counts = new Map<string, number>()
+  let i = 0
+  for (const id of nodes.keys()) counts.set(id, all[i++]!)
+  return counts
 }

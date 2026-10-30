@@ -156,6 +156,18 @@ export function computeReverseDepCount(
   /** Count only these dependents (the exec tier); every one when absent. */
   counted?: ReadonlyMap<string, unknown>,
 ): Map<string, number> {
+  return reverseDepCountsOver(nodes, [counted])[0]!
+}
+
+/**
+ * `computeReverseDepCount` once per entry of `counted`, from ONE closure:
+ * the closure is the cost (~100 ms at 11k nodes, 2026-10-29), each count
+ * one popcount pass over it.
+ */
+function reverseDepCountsOver(
+  nodes: ReadonlyMap<string, TaskNode>,
+  counted: ReadonlyArray<ReadonlyMap<string, unknown> | undefined>,
+): Map<string, number>[] {
   // Exact transitive-dependent COUNTS need closure SETS (diamonds
   // double-count under naive summing). Set-of-strings closures are
   // O(N²) entries and took 8.5s on a 1090-package, 100-layer repo;
@@ -202,12 +214,15 @@ export function computeReverseDepCount(
   // half the words of indexing by insertion order on a layered graph.
   const pos = new Int32Array(n)
   for (let t = 0; t < tail; t++) pos[topo[t]!] = t
-  const mask = new Uint32Array(words)
-  if (counted === undefined) mask.fill(0xffffffff)
-  else
-    for (let t = 0; t < tail; t++) if (counted.has(ids[topo[t]!]!)) mask[t >>> 5]! |= 1 << (t & 31)
+  const masks = counted.map((only) => {
+    const mask = new Uint32Array(words)
+    if (only === undefined) mask.fill(0xffffffff)
+    else
+      for (let t = 0; t < tail; t++) if (only.has(ids[topo[t]!]!)) mask[t >>> 5]! |= 1 << (t & 31)
+    return mask
+  })
   const closure = new Uint32Array(n * words)
-  const counts = new Map<string, number>()
+  const all = masks.map(() => new Map<string, number>())
   for (let t = tail - 1; t >= 0; t--) {
     const i = topo[t]!
     const base = t * words
@@ -217,20 +232,23 @@ export function computeReverseDepCount(
       const rbase = r * words
       for (let w = r >>> 5; w < words; w++) closure[base + w]! |= closure[rbase + w]!
     }
-    let count = 0
-    for (let w = t >>> 5; w < words; w++) {
-      let v = closure[base + w]! & mask[w]!
-      v = v - ((v >>> 1) & 0x55555555)
-      v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
-      count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+    for (let m = 0; m < masks.length; m++) {
+      const mask = masks[m]!
+      let count = 0
+      for (let w = t >>> 5; w < words; w++) {
+        let v = closure[base + w]! & mask[w]!
+        v = v - ((v >>> 1) & 0x55555555)
+        v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
+        count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+      }
+      all[m]!.set(ids[i]!, count)
     }
-    counts.set(ids[i]!, count)
   }
   // Cycle-stranded nodes (never topo-visited) can't occur — the graph
   // builder rejects cycles — but a missing Map entry would silently
   // sort as undefined, so default them defensively to 0.
-  for (const id of ids) if (!counts.has(id)) counts.set(id, 0)
-  return counts
+  for (const counts of all) for (const id of ids) if (!counts.has(id)) counts.set(id, 0)
+  return all
 }
 
 /**

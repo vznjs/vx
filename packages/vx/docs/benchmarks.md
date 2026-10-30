@@ -238,6 +238,15 @@ between two CI runs of one commit. A 60 ms sleep added to vx's startup failed th
 nothing-changed case (0.83 → 1.24). Record a change meant to move it
 with `vx run @vzn/vx-bench#vs-turbo.update`.
 
+The ratio alone let main grow slower one PR at a time: every step stayed
+inside 1.3×. So each held case is also timed against the base commit's
+own vx (`VX_BENCH_BASE`: the PR's base, or main before a push), compiled
+in the same job from `git archive` of `packages/vx` and run in its own
+copy of the workspace, locked by itself. Each pair runs vx, the base,
+then Turbo, and a restore or nothing-changed min more than 1.15× the
+base's fails: three checks of one change read restore at 0.96 to 1.09
+of its base.
+
 `private/vx-bench/real/nightly.ts` re-runs the repos on
 [Real repos](#real-repos) each night against the tool they ship with,
 on this checkout's vx, and exits 1 with a `LOSS` line for any case vx
@@ -332,32 +341,23 @@ Each runner is one task, `@vzn/vx-bench#bench.<runner>` (`vx`, `turbo`,
 `nx`, `vite-task`), which runs `compare.ts` for that runner alone and
 writes its rows to `private/vx-bench/site/<runner>.json`.
 
-`@vzn/vx-docs#bench.data` gathers the four files into the site's
-`src/data/bench.json`, and the site's build depends on it. A build with
-no data fails; so does a page naming an unknown token.
+`@vzn/vx-docs#bench.data` gathers the four files into
+`measured/bench.json`. The site's build reads its committed copy,
+`src/data/bench.json`. A build with no data fails; so does a page naming
+an unknown token.
 
-vx's task is keyed on vx's source, so every change to vx re-measures it
-and the next deploy shows it.
+The line under the table names each runner's version, date and machine.
 
-A rival's task is keyed on the harness and the versions pinned in
-`private/vx-bench/package.json` alone.
+Only CI's Bench job runs them, on main and on a dispatch: `vx run
+@vzn/vx-docs#bench.data --concurrency 1 --force` on a 4-core Linux
+runner of its own, one runner at a time. `--force` measures all four on
+that one machine, never a row cached from another runner's CPU. It
+uploads `measured/bench.json` as the `bench-data` artifact.
 
-So a rival re-measures only when its pin or the harness changes; every
-other run restores its rows from the cache. The line under the table
-names each runner's version, date and machine.
-
-CI's Bench job runs `vx run site.numbers --concurrency 1` on a 4-core
-Linux runner of its own, one runner at a time: on main every runner, on
-a pull request what its diff affects.
-
-The DTE run that builds the site comes after it and restores the rows
-from the cache. A benchmark never runs under DTE: a worker is packed
-beside other tasks, so it would time its neighbours. Each `bench.*` task
-sets `exec.remote: false`, so a missed row is measured on the run's own
-machine, never a worker.
-
-A pull request stores its rows in its own branch's scope, which main
-never reads.
+No build depends on the
+benchmarks, so neither the DTE run, where a worker is packed beside
+other tasks and would time its neighbours, nor a fresh clone's `vx run
+build` ever runs one. New figures land as a commit of the job's file.
 
 The tasks run outside the sandbox, which on Linux traces every process
 they start: under it vx's cold overhead read 55.61 s against 7.01 s

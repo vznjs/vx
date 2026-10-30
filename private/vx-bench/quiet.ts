@@ -52,6 +52,8 @@ export function tracerCpuMs(): number {
 /** One rep of an arm: vx's and Turbo's ms, back to back, and the cores others kept busy meanwhile. */
 export interface Pair {
   vx: number
+  /** The base commit's vx, when the job times one. */
+  base?: number
   turbo: number
   others: number
 }

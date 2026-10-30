@@ -30,8 +30,7 @@
         }
       },
       "dependsOn": [
-        "install",
-        "bench.data"
+        "install"
       ],
       "inputs": {
         "files": [
@@ -39,6 +38,7 @@
           "scripts/**",
           "src/env.d.ts",
           "src/bench/**",
+          "src/data/bench.json",
           "src/blog/**",
           "src/components/**",
           "src/features/**",
@@ -102,7 +102,6 @@
           "!src/content/docs/plugins/**",
           "!src/content/docs/cli/**",
           "!src/content/docs/schema/**",
-          "!src/data/**",
           "!public/_img/**",
           "!dist/**",
           "package.json"
@@ -182,7 +181,7 @@
       }
     },
     "bench.data": {
-      "description": "gather the head-to-head rows of @vzn/vx-bench#site.numbers → src/data/bench.json",
+      "description": "gather the head-to-head rows of @vzn/vx-bench#site.numbers → measured/bench.json",
       "dependsOn": [
         "install",
         "@vzn/vx-bench#site.numbers"
@@ -201,7 +200,7 @@
               "../vx-bench/site/**"
             ],
             "write": [
-              "src/data/bench.json"
+              "measured/bench.json"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -219,7 +218,7 @@
       "cache": {
         "outputs": {
           "files": [
-            "src/data/bench.json"
+            "measured/bench.json"
           ]
         }
       }
@@ -229,7 +228,6 @@
       "dependsOn": [
         "install",
         "import",
-        "bench.data",
         "build"
       ],
       "exec": {
@@ -274,6 +272,7 @@
           "src/content/docs/**",
           "src/components/demos/model/**",
           "src/bench/**",
+          "src/data/bench.json",
           "src/nav/**",
           "src/features/**",
           "src/assets/features/**",
@@ -309,7 +308,6 @@
           "!src/content/docs/plugins/**",
           "!src/content/docs/cli/**",
           "!src/content/docs/schema/**",
-          "!src/data/**",
           "!public/_img/**",
           "!dist/**"
         ],
@@ -378,7 +376,6 @@
       "dependsOn": [
         "install",
         "import",
-        "bench.data",
         "build.images"
       ],
       "exec": {
@@ -433,7 +430,6 @@
           "!src/content/docs/plugins/**",
           "!src/content/docs/cli/**",
           "!src/content/docs/schema/**",
-          "!src/data/**",
           "!public/_img/**",
           "!dist/**",
           "package.json"
@@ -494,7 +490,6 @@
       "description": "astro dev server (persistent)",
       "dependsOn": [
         "install",
-        "bench.data",
         "build.images"
       ],
       "exec": {

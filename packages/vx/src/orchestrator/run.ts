@@ -39,6 +39,7 @@ import {
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
+import { graphCounts } from './graph-memo.js'
 import {
   mark,
   stageTimes,
@@ -70,7 +71,6 @@ import { excludedTaint } from './excluded-keys.js'
 import { dependedOn, keyUpstream } from './upstream.js'
 import { createLiveUsage } from './live-usage.js'
 import {
-  blocksCounts,
   busLogger,
   createEventBus,
   createForecast,
@@ -913,10 +913,12 @@ async function runOnBus(
     const fault = executorFaults(warnOf(log))
     const footers = executors.filter((e) => e.footer !== undefined)
     const placers = executors.filter((e) => e.running !== undefined)
-    // Every row's `blocks`, the live list's and the results': one closure
-    // over the graph, built on the first row that asks.
-    let blocks: ReadonlyMap<string, number> | undefined
-    const blocksNow = (): ReadonlyMap<string, number> => (blocks ??= blocksCounts(nodes))
+    // The scheduler's dependents count, and every row's `blocks` (the live
+    // list's and the results'): one closure over the graph, built on the
+    // first that asks.
+    let counted: ReadonlyMap<string, number> | undefined
+    const blocksNow = (): ReadonlyMap<string, number> =>
+      (counted ??= graphCounts(nodes, hashCache.folds, hashCache.graph))
     // Every row's `usual` and the forecast's timings: history read once, on
     // the first row that asks, so a run that executes nothing never reads
     // it. It was read only a second into a live run, so rows before that,
@@ -1285,6 +1287,7 @@ async function runOnBus(
       nodes,
       concurrency,
       restoreConcurrency: options.restoreConcurrency ?? 2 * concurrency,
+      reverseDeps: blocksNow,
       settledOf: (o) => deferredSaves.get(o.node.id),
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),

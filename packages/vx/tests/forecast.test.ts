@@ -450,7 +450,7 @@ describe('a worker row says when it holds the critical path', () => {
   })
 
   // 2026-10-27 counted only direct dependents; 2026-10-29: `blocks` is
-  // every task downstream, as the results list counts it, each once.
+  // every node downstream, each once: the count the scheduler ranks by.
   it('the forecast counts every task downstream of each running task', () => {
     // a runs, b and c wait on it, d on c; e runs, f waits on it; x is ready.
     const f = createForecast(
@@ -481,7 +481,7 @@ describe('a worker row says when it holds the critical path', () => {
     expect(r.waiting).toBe(4)
   })
 
-  it('a task waiting on two running tasks counts under both, a group looked through', () => {
+  it('a task waiting on two running tasks counts under both, a group counted', () => {
     // g is a group over a and e; h waits on g and on e.
     const f = createForecast(
       graph(
@@ -501,9 +501,10 @@ describe('a worker row says when it holds the critical path', () => {
       ]),
       0,
     )
+    // The scheduler's count: g and h downstream of each.
     expect([...r.blockedBy].sort(([x], [y]) => x.localeCompare(y))).toEqual([
-      ['p#a', 1],
-      ['p#e', 1],
+      ['p#a', 2],
+      ['p#e', 2],
     ])
   })
 })

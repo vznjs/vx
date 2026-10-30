@@ -29,14 +29,18 @@ describe.skipIf(process.platform !== 'linux')('a deadline seen after the child e
     const seen: unknown[] = []
     for (let i = 0; i < TRIES; i++) {
       let pid = 0
+      // The child spawns on the spawn thread: its pid comes a turn later.
+      let spawned!: (pid: number) => void
+      const started = new Promise<number>((r) => (spawned = r))
       const spawnedAt = Date.now()
       const running = runCommand({
         command: 'true',
         cwd: os.tmpdir(),
         env: process.env,
         timeoutMs: TIMEOUT_MS,
-        onSpawn: (p) => (pid = p),
+        onSpawn: (p) => spawned((pid = p)),
       })
+      await started
       stallPastDeadline(pid, spawnedAt)
       const res = await running
       seen.push({ exitCode: res.exitCode, timedOut: res.timedOut })
@@ -48,14 +52,18 @@ describe.skipIf(process.platform !== 'linux')('a deadline seen after the child e
     const seen: unknown[] = []
     for (let i = 0; i < TRIES; i++) {
       let pid = 0
+      // The child spawns on the spawn thread: its pid comes a turn later.
+      let spawned!: (pid: number) => void
+      const started = new Promise<number>((r) => (spawned = r))
       const spawnedAt = Date.now()
       const running = runCommand({
         command: 'sleep 30',
         cwd: os.tmpdir(),
         env: process.env,
         timeoutMs: TIMEOUT_MS,
-        onSpawn: (p) => (pid = p),
+        onSpawn: (p) => spawned((pid = p)),
       })
+      await started
       expect(isAlive(pid)).toBe(true)
       while (Date.now() < spawnedAt + TIMEOUT_MS + 50) {}
       seen.push((await running).timedOut)
@@ -67,6 +75,9 @@ describe.skipIf(process.platform !== 'linux')('a deadline seen after the child e
     const seen: unknown[] = []
     for (let i = 0; i < TRIES; i++) {
       let pid = 0
+      // The child spawns on the spawn thread: its pid comes a turn later.
+      let spawned!: (pid: number) => void
+      const started = new Promise<number>((r) => (spawned = r))
       const spawnedAt = Date.now()
       const spawn = runPersistent({
         command: 'exit 3',
@@ -74,8 +85,9 @@ describe.skipIf(process.platform !== 'linux')('a deadline seen after the child e
         env: process.env,
         readyWhen: 'never-printed',
         timeoutMs: TIMEOUT_MS,
-        onSpawn: (p) => (pid = p),
+        onSpawn: (p) => spawned((pid = p)),
       })
+      await started
       stallPastDeadline(pid, spawnedAt)
       const err = await spawn.ready.then(
         () => undefined,

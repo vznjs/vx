@@ -167,6 +167,14 @@ held to its start; at the exit, `end` lets everything go; and an
   stat per entry on every spawn. The task's PATH still decides what
   the command resolves, inside the shell; `argv0` keeps `$0` the `sh`
   it always was.
+- **Thread:** on Linux, a `runCommand` child is spawned on a thread of
+  its own (`spawn-off.ts`). Bun's spawn holds its thread until the child
+  has exec'd, ~0.6 ms a task, and on a cold run that thread is the
+  scheduler's. The pipes are vx's own descriptors (`TaskPipes`), which
+  every thread shares, so they are made and read on the scheduler's
+  thread as before; only the spawn and the wait for its exit move. A
+  terminal handed over and Bun's own pipes (macOS) keep the spawn here,
+  as do `runPersistent` and the sandbox's spawn.
 - **`exec`:** a plain `word args…` command runs as `exec word args…`, so
   the program replaces the shell. A shell builtin keeps the shell (each
   one bash's `compgen -b` lists, bash-only `pushd` among them), and so
@@ -440,6 +448,10 @@ spawn returned left a `kill -9`'s orphan in 4 of 40 runs under load
   across chunks, newline-terminated marker, reject-on-exit-before-
   ready. Ready-on-spawn + orchestrator wiring are covered by the
   persistent e2e suite (`tests/persistent.test.ts`).
+- `tests/spawn-off.test.ts`: on Linux `runCommand` calls no `Bun.spawn`
+  on its own thread and still reads the exit, both streams and the CPU;
+  a spawn that throws keeps its code; a child spawned off the thread
+  reports its signal and is killed on request.
 - Pipes (X-113): `runCommand` and `runPersistent` open `/dev/stdout` and
   `/dev/stderr` by path, the first task's output ends at its exit, and
   every descriptor a task took (plain, cut, spawn-failed, persistent)
