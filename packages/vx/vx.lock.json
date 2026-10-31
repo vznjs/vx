@@ -4449,20 +4449,6 @@
     },
     "build": {
       "description": "nothing to build — core is consumed as source; the release binaries are build.bun",
-      "dependsOn": [
-        "source"
-      ]
-    },
-    "source": {
-      "description": "the source dependants import: a key, not a build",
-      "exec": {
-        "command": "true",
-        "sandbox": {
-          "allow": {
-            "read": []
-          }
-        }
-      },
       "inputs": {
         "files": [
           "src/**",
@@ -4470,11 +4456,6 @@
           "tsconfig.json",
           "package.json"
         ]
-      },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
       }
     },
     "check.sandbox-canary": {

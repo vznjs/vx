@@ -834,8 +834,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
         `openat(${linkPath[layout]}/src/index.js) = -1 ENOENT  [${realpathSync(ui)}/src/index.js]`,
         `vx: @x/app#test read \`packages/x-ui\` through \`${link}\`, and its key includes no task ` +
           'of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
-          'reaches one (`^build` where @x/ui#build keys its sources, or a `source` task: ' +
-          '`@x/ui#source`), or grant and key the files yourself (`allow.read` plus ' +
+          'reaches one (`^build`, where @x/ui#build keys its sources), or grant and key ' +
+          'the files yourself (`allow.read` plus ' +
           '`inputs.workspaceFiles`).',
       ]
       const first = testOutcome(await runTest())

@@ -1693,7 +1693,7 @@ one line naming the package and the edge that would key it. Declaring
 `cache` can only narrow this grant, never widen one: a task with no
 `cache` keeps it whole, having no key to be stale, and your own `allow`
 grants never depend on it. The key answers for the package, not the
-file: an edge to `ui#source` (inputs `src/**`) covers a read of
+file: an edge to `ui#build` (inputs `src/**`) covers a read of
 `ui/README.md` too.
 
 **A missing write grant fails the task.** On macOS seatbelt refuses the

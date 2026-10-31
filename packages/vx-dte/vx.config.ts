@@ -47,14 +47,8 @@ export default defineProject({
 
     build: {
       description: 'nothing to build — consumed as source',
-      dependsOn: ['^build', 'source'],
-    },
-
-    source: {
-      description: 'the source dependants import: a key, not a build',
-      exec: { command: 'true', sandbox: { allow: { read: [] } } },
+      dependsOn: ['^build'],
       inputs: { files: ['src/**'] },
-      cache: { outputs: { files: [] } },
     },
 
     ci: {
