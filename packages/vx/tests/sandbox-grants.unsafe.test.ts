@@ -1014,8 +1014,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
         expect(r?.sandboxViolationLines?.at(-1)).toBe(
           'vx: @x/app#test read `packages/x-core` through `packages/x-ui/node_modules/@x/core`, ' +
             'and its key includes no task of @x/core, so an edit there would not re-run it. Add a ' +
-            '`dependsOn` edge that reaches one (`^build` where @x/core#build keys its sources, or ' +
-            'a `source` task: `@x/core#source`), or grant and key the files yourself ' +
+            '`dependsOn` edge that reaches one (`^build`, where @x/core#build keys its sources), ' +
+            'or grant and key the files yourself ' +
             '(`allow.read` plus `inputs.workspaceFiles`).',
         )
       },
