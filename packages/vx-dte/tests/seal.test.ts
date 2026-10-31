@@ -596,6 +596,28 @@ it('asks GitHub for an OIDC token again after a 5xx, three tries at most, never 
   expect(calls).toBe(1)
 })
 
+// 2026-10-31, PR #4887: GitHub's token endpoint held one request open, and
+// that one try spent the whole 10 s budget, so small#5 never joined.
+it('asks GitHub for an OIDC token again when a try hangs, within the same budget', async () => {
+  let calls = 0
+  const issuer = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    idleTimeout: 0,
+    fetch() {
+      calls++
+      return calls === 1 ? new Promise<Response>(() => {}) : Response.json({ value: 'tok' })
+    },
+  })
+  stops.push(async () => {
+    await issuer.stop(true)
+  })
+  const started = performance.now()
+  expect(await oidcToken(`http://127.0.0.1:${issuer.port}/token?v=1`, 'b', 'aud')).toBe('tok')
+  expect(calls).toBe(2)
+  expect(performance.now() - started).toBeLessThan(5_000)
+}, 15_000)
+
 // A refusal said only its status, and an answer with no token returned
 // undefined, which the relay then refused as no token at all.
 it("says GitHub's own words when it refuses a token, and an answer that holds none", async () => {
