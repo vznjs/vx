@@ -40,17 +40,22 @@ const GITHUB = 'https://token.actions.githubusercontent.com'
 /** GitHub's keys are read again for a key not among them at most this often. */
 const KEYS_REREAD_MS = 60_000
 
+/** One try at GitHub's token endpoint, which answers in well under a second. */
+const TOKEN_TRY_MS = 3_000
+
 /**
- * An OIDC token for `audience` from GitHub's token endpoint. A 5xx or a
- * dropped connection is tried again, three tries in 10 s at most: one 503
- * ended a worker before it joined (PR #4146, 2026-10-23).
+ * An OIDC token for `audience` from GitHub's token endpoint. A 5xx, a
+ * dropped connection or a try that hangs past 3 s is tried again, three
+ * tries in 10 s at most: one 503 ended a worker before it joined (PR #4146,
+ * 2026-10-23), and one held request spent the whole budget (PR #4887,
+ * 2026-10-31).
  */
 export async function oidcToken(url: string, bearer: string, audience: string): Promise<string> {
   const until = performance.now() + 10_000
   for (let attempt = 1; ; attempt++) {
     const res = await fetch(`${url}&audience=${encodeURIComponent(audience)}`, {
       headers: { authorization: `bearer ${bearer}` },
-      signal: AbortSignal.timeout(Math.max(1, until - performance.now())),
+      signal: AbortSignal.timeout(Math.max(1, Math.min(TOKEN_TRY_MS, until - performance.now()))),
     }).catch((err: unknown) => (err instanceof Error ? err.message : String(err)))
     if (typeof res !== 'string' && res.ok) {
       // quiet: a body that is not JSON holds no token, said below
