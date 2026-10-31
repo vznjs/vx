@@ -1110,7 +1110,7 @@ through its `inputs`, and one with no `inputs` is keyless, so a key that
 folds it is never stored or read. A persistent task counts the same way,
 so a cached e2e behind a dev server keyed on its sources re-runs when
 they change.
-The coverage is per package, not per file: an edge to `ui#source`
+The coverage is per package, not per file: an edge to `ui#build`
 (inputs `src/**`) also admits a read of `ui/README.md`, whose edit moves
 no key — the same limit a grant wider than a task's own inputs already
 has. A task with no `cache` keeps every link, having no key to be stale.

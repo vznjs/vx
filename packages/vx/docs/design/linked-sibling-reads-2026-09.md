@@ -6,6 +6,10 @@
 > narrow core's own grant, never widen one (a bounded departure from the
 > 2026-09-05 decision, which still holds for the user's grants).
 >
+> **2026-10-31:** the repo's `source` tasks below are gone. Each
+> package's `build` is a keyed group (`inputs` with no `exec`), which
+> keys the same source with no process.
+>
 > **Corrected by step 2's key-level rows (R4):** rule 5's "where U
 > declares `cache`" rested on the claim below that an uncached task's
 > hash "folds no files". It folds every file of its project: no `cache`

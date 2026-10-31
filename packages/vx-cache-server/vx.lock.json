@@ -8,30 +8,13 @@
     "build": {
       "description": "nothing to build — consumed as source",
       "dependsOn": [
-        "^build",
-        "source"
-      ]
-    },
-    "source": {
-      "description": "the source dependants import: a key, not a build",
-      "exec": {
-        "command": "true",
-        "sandbox": {
-          "allow": {
-            "read": []
-          }
-        }
-      },
+        "^build"
+      ],
       "inputs": {
         "files": [
           "src/**",
           "package.json"
         ]
-      },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
       }
     },
     "ci": {

@@ -737,7 +737,7 @@ next?".
   key folds a task of it, because an unkeyed read is exactly the stale
   hit the sandbox exists to rule out. A task with no `cache` keeps the
   whole grant, having no key to be stale. The coverage is per package,
-  not per file (an edge to `ui#source` also admits `ui/README.md`), the
+  not per file (an edge to `ui#build` also admits `ui/README.md`), the
   same limit a grant wider than a task's own inputs already has.
 
 - **macOS violation reporting is lossy under load, and stays so

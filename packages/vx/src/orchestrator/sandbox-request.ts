@@ -446,8 +446,8 @@ export function withheldLinkLine(taskId: string, w: WithheldLink): string {
   return (
     `vx: ${taskId} read \`${w.target}\` through \`${w.link}\`, and its key includes no task of ` +
     `${w.name}, so an edit there would not re-run it. Add a \`dependsOn\` edge that ` +
-    `reaches one (\`^build\` where ${w.name}#build keys its sources, or a \`source\` task: ` +
-    `\`${w.name}#source\`), or grant and key the files yourself (\`allow.read\` plus ` +
+    `reaches one (\`^build\`, where ${w.name}#build keys its sources), or grant and key ` +
+    `the files yourself (\`allow.read\` plus ` +
     `\`inputs.workspaceFiles\`).`
   )
 }
