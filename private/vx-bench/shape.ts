@@ -116,8 +116,22 @@ function hash(s: string): number {
   return h >>> 0
 }
 
+// Each task spells its seconds to its own number of decimals, so no two of a
+// project's commands are the same text. Vite Task keys a task on its command
+// and inputs, not its name: test and typecheck (both build / 2) were one key,
+// and its cold run replayed one of the pair rather than running it.
+const DECIMALS: Record<TaskName, number> = {
+  installDeps: 3,
+  build: 3,
+  lint: 4,
+  test: 5,
+  publish: 6,
+  typecheck: 7,
+}
+
 /** `sleep` in seconds, as every runner's command spells it. */
-const sleepOf = (ms: number): string => `sleep ${(ms / 1000).toFixed(3)}`
+const sleepOf = (ms: number, task: TaskName): string =>
+  `sleep ${(ms / 1000).toFixed(DECIMALS[task])}`
 
 /**
  * A task's command, identical in every runner. `build` also writes
@@ -131,7 +145,7 @@ const sleepOf = (ms: number): string => `sleep ${(ms / 1000).toFixed(3)}`
  * 5 ms of a build's 13, 2026-11-01).
  */
 export function command(p: Project, task: TaskName): string {
-  const sleep = sleepOf(p.tasks[task]!)
+  const sleep = sleepOf(p.tasks[task]!, task)
   if (task !== 'build') return sleep
   return (
     `${sleep} && mkdir -p dist && cat src/*.js > dist/index.js && ` +

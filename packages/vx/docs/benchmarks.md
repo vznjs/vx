@@ -286,6 +286,10 @@ Each task sleeps: build %bench.task.build%, test and typecheck
 
 That is long enough that the tasks, not any tool's own work, set the pace.
 
+No two of a project's commands are the same text: each task spells its
+seconds to its own decimals. Vite Task keys a task on its command and
+inputs, so test and typecheck were one key and it ran one of the pair.
+
 `build` writes 200 KB of incompressible random bytes plus a file made
 from its dependencies' outputs. The bench times what CI runs: a cold
 build, a run with nothing changed, and a restore from cache.

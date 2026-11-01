@@ -12,6 +12,27 @@ const projects = workspace()
 const byName = new Map(projects.map((p) => [p.name, p]))
 
 describe('the benchmark workspace', () => {
+  // Vite Task keys a task on its command and inputs: two tasks of one
+  // project with one command text are one key, and its cold run replays one.
+  it("gives each of a project's tasks its own command, at any BENCH_BUILD_MS", async () => {
+    for (const ms of ['300', '0']) {
+      const r = Bun.spawnSync(
+        [
+          'bun',
+          '-e',
+          `import { command, workspace } from './shape.ts'
+          for (const p of workspace()) {
+            const all = Object.keys(p.tasks).filter((t) => t !== 'installDeps').map((t) => command(p, t))
+            if (new Set(all).size !== all.length) { console.log(p.name, all.join(' | ')); process.exit(1) }
+          }`,
+        ],
+        { cwd: path.join(import.meta.dir, '..'), env: { ...process.env, BENCH_BUILD_MS: ms } },
+      )
+      expect(r.stdout.toString(), `BENCH_BUILD_MS=${ms}`).toBe('')
+      expect(r.exitCode).toBe(0)
+    }
+  })
+
   it('has 29 levels of 50 libs, 100 apps, 50 terminal libs and one e2e', () => {
     const count = (k: Project['kind']) => projects.filter((p) => p.kind === k).length
     expect({
