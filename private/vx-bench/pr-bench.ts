@@ -8,16 +8,18 @@
 // both tools at the same concurrency, interleaved reps, min of each. Time
 // on a shared runner moves with the box, so what is held is the RATIO
 // vx / turbo taken in the same job: a slower box slows both. Restore and
-// nothing-changed are the runner's own overhead and are held: a case fails
-// when its ratio grew past TOLERANCE over the recorded one. Cold is printed
-// from one warm-up run, not held: 200 spawns on 4 cores moved its ratio from 0.71 to 1.12 between
-// two CI runs of one commit (2026-10-12). A case vx loses prints LOSS.
+// nothing-changed are the runner's own overhead, and cold is the overhead
+// the site publishes: each is held, and fails when vx is slower than Turbo
+// or past the base commit's vx by BASE_TOLERANCE; restore and noop also
+// when their ratio grew past TOLERANCE over the recorded one. Cold was printed only, from one warm-up
+// (200 spawns on 4 cores read 0.71 and 1.12 in two CI runs of one commit,
+// 2026-10-12); the quietest pairs of quiet.ts now hold it.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { benchEnv } from './bench-env.js'
 import { BENCH_WORKSPACE } from './edges.js'
-import { baseFails, buildBase } from './pr-bench-base.js'
+import { baseFails, buildBase, HELD, turboFails } from './pr-bench-base.js'
 import { enoughQuiet, machineBusyMs, type Pair, quietest, tracerCpuMs } from './quiet.js'
 import { copyWorkspace, outputMtimes } from './workspace-copy.js'
 
@@ -31,13 +33,19 @@ const QUIET_CORES = 0.5
 const CONCURRENCY = 4
 /** A ratio past baseline × this fails. */
 const TOLERANCE = 1.3
+/**
+ * The cases held to their recorded ratio. Not cold: Turbo's cold moved
+ * from 3047 to 2219 ms between two CI runners of one day while vx read
+ * 2117 and 2088, so the ratio swung past 1.3× with nothing changed; the
+ * base and Turbo hold it.
+ */
+const RATIO_HELD: readonly string[] = ['restore', 'noop']
 const BASELINE = path.join(import.meta.dir, 'pr-bench-baseline.json')
 const update = process.argv.includes('--update')
 /** The commit this checkout is held to (CI: the PR's base, or main before the push); unset times no base. */
 const BASE = process.env.VX_BENCH_BASE || undefined
 
-const ARMS = ['cold', 'restore', 'noop'] as const
-const HELD: readonly Arm[] = ['restore', 'noop']
+const ARMS = HELD
 type Arm = (typeof ARMS)[number]
 type Tool = 'vx' | 'base' | 'turbo'
 
@@ -220,23 +228,19 @@ try {
     return { vx, turbo, others, ...(base === undefined ? {} : { base }) }
   }
   // Warm both tools once, then interleave: vx and Turbo alternate within each rep.
-  // A check reps only the held arms and prints cold from the warm-up: cold
-  // reps were 14 of its 44 runs and most of its time (102 s on CI, the
-  // longest task of a full run, 2026-10-23).
   for (const tool of tools) time(tool, 'cold')
   if (update) best.clear()
   // Each arm reps until REPS of its pairs ran quiet (MAX_REPS at most),
   // and its ratio is the min of each tool over its REPS quietest pairs.
-  const arms = update ? ARMS : HELD
-  const pairs = new Map<Arm, Pair[]>(arms.map((a) => [a, []]))
+  const pairs = new Map<Arm, Pair[]>(ARMS.map((a) => [a, []]))
   for (let rep = 0; rep < MAX_REPS; rep++) {
-    const left = arms.filter(
+    const left = ARMS.filter(
       (a) => pairs.get(a)!.length < REPS || !enoughQuiet(pairs.get(a)!, REPS, QUIET_CORES),
     )
     if (left.length === 0) break
     for (const arm of left) pairs.get(arm)!.push(pair(arm, rep))
   }
-  for (const arm of arms) {
+  for (const arm of ARMS) {
     const ran = pairs.get(arm)!
     const kept = quietest(ran, REPS)
     best.set(`vx ${arm}`, Math.min(...kept.map((p) => p.vx)))
@@ -267,8 +271,7 @@ try {
     console.log(
       `${arm.padEnd(9)} ${best.get(`vx ${arm}`)!.toFixed(0).padStart(5)} ms  ${best.get(`turbo ${arm}`)!.toFixed(0).padStart(5)} ms  ${r.toFixed(2).padStart(8)}  ${was?.toFixed(2) ?? '-'}`,
     )
-    if (r > 1) console.log(`LOSS ${arm}: vx is slower than Turbo (${r.toFixed(2)}×)`)
-    if (HELD.includes(arm) && was !== undefined && r > was * TOLERANCE) {
+    if (RATIO_HELD.includes(arm) && was !== undefined && r > was * TOLERANCE) {
       fails.push(
         `${arm}: vx/turbo ${was.toFixed(2)} → ${r.toFixed(2)}, past ${TOLERANCE}× the baseline`,
       )
@@ -290,6 +293,17 @@ try {
           `${arm.padEnd(9)} vx ${held[arm]!.vx.toFixed(0)} ms, base ${BASE.slice(0, 9)} ${held[arm]!.base!.toFixed(0)} ms`,
         )
     fails.push(...baseFails(held, HELD))
+    fails.push(
+      ...turboFails(
+        Object.fromEntries(
+          HELD.map((arm) => [
+            arm,
+            { vx: best.get(`vx ${arm}`)!, turbo: best.get(`turbo ${arm}`)! },
+          ]),
+        ),
+        HELD,
+      ),
+    )
     for (const f of fails) console.log(`FAIL ${f}`)
     process.exitCode = fails.length > 0 ? 1 : 0
   }

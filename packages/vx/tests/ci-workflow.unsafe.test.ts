@@ -49,6 +49,8 @@ describe('ci.yml', () => {
   // runner is a worker's. The benchmarks run beside it on a runner of
   // their own, and it waits for none of them: no build depends on one.
   it('is one run, and the benchmarks beside it', () => {
+    // The benchmarks' machine: a kept runner when BENCH_RUNNER names one.
+    const bench = "${{ vars.BENCH_RUNNER || 'ubuntu-latest' }}"
     const top =
       "github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size"
     expect(
@@ -58,11 +60,11 @@ describe('ci.yml', () => {
       [
         'bench',
         'Bench',
-        'ubuntu-latest',
+        bench,
         "github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
         undefined,
       ],
-      ['perf', 'Perf', 'ubuntu-latest', top, undefined],
+      ['perf', 'Perf', bench, top, undefined],
     ])
   })
 

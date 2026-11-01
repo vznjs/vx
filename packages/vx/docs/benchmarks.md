@@ -208,11 +208,11 @@ sandbox, as the check is.
 
 `private/vx-bench/pr-bench.ts` runs in every PR's gate after
 perf-guard.ts, in the same task (`@vzn/vx-bench#check.perf`), so the
-two benchmarks never share a machine; it takes about 20 s. One 100-package
+two benchmarks never share a machine; it takes about a minute. One 100-package
 workspace (build then test, copy-sized tasks), this checkout's vx
 compiled as released against Turborepo 2.11.10 (pinned in
-`private/vx-bench/package.json`), both at concurrency 4: restore
-and nothing-changed as pairs, vx then Turbo back to back, and cold once.
+`private/vx-bench/package.json`), both at concurrency 4: cold, restore
+and nothing-changed as pairs, vx then Turbo back to back.
 Each tool runs in its own copy of the workspace: Turbo rewrites every
 output on a warm hit, so in one shared tree vx's nothing-changed run
 found them changed and restored all 100, and the case timed a restore
@@ -229,12 +229,15 @@ beside them, 30 pairs at most, and takes the min of each tool over its
 7 quietest; when none of that many ran quiet it says `BUSY` and holds
 the ratio anyway. Under the sandbox, two busy loops for the first 25 s
 cost 9 more pairs per arm and left both ratios at or below a quiet run's.
-What is held is the ratio
-vx / turbo: a restore or nothing-changed ratio grown past 1.3×
-its value in `private/vx-bench/pr-bench-baseline.json` (the CI
-runner's) fails, and a case vx loses prints `LOSS`. Cold is printed,
-not held, so a check runs it once (`--update` reps it): 200 spawns on 4 cores moved its ratio from 0.71 to 1.12
-between two CI runs of one commit. A 60 ms sleep added to vx's startup failed the
+Every case is held, and vx is never slower than Turbo: a case whose
+vx min is above Turbo's fails, as does a restore or nothing-changed
+ratio vx / turbo grown past 1.3× its value in
+`private/vx-bench/pr-bench-baseline.json` (the CI runner's). Cold's
+ratio is not held to its record: Turbo's cold read 3047 and 2219 ms on
+two CI runners of one day while vx read 2117 and 2088. Cold is held too: it is the overhead the site publishes, and
+printed only, from one run (200 spawns on 4 cores read 0.71 and 1.12 in
+two CI runs of one commit), it read vx 1.12× Turbo for weeks with every PR
+passing. A 60 ms sleep added to vx's startup failed the
 nothing-changed case (0.83 → 1.24). Record a change meant to move it
 with `vx run @vzn/vx-bench#vs-turbo.update`.
 
@@ -243,8 +246,7 @@ inside 1.3×. So each held case is also timed against the base commit's
 own vx (`VX_BENCH_BASE`: the PR's base, or main before a push), compiled
 in the same job from `git archive` of `packages/vx` and run in its own
 copy of the workspace, locked by itself. Each pair runs vx, the base,
-then Turbo, and a restore or nothing-changed min more than 1.15× the
-base's fails: three checks of one change read restore at 0.96 to 1.09
+then Turbo, and a case's min more than 1.15× the base's fails: three checks of one change read restore at 0.96 to 1.09
 of its base.
 
 `private/vx-bench/real/nightly.ts` re-runs the repos on

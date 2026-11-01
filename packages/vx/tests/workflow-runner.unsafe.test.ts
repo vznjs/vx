@@ -54,7 +54,8 @@ for (const file of files) {
   for (const [name, job] of jobsOf(file)) {
     const steps = job.steps ?? []
     if (!steps.some(runsVxTask)) continue
-    if (!String(job['runs-on'] ?? '').startsWith('ubuntu')) continue
+    // A kept runner's label reads `vars.BENCH_RUNNER || 'ubuntu-latest'`.
+    if (!String(job['runs-on'] ?? '').includes('ubuntu')) continue
     if (distributed(job) || steps.some(distributed)) {
       runs.push(`${file}#${name}`)
       continue
