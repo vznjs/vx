@@ -109,7 +109,6 @@ export interface GitEnumeration {
   ignored: readonly string[] // what status named as ignored (`--ignored=matching`), root-relative, sorted
   startedAtMs: number // Date.now() before the spawns
   blobCheck: IndexBlobCheck // the blob-size check's input (A-60)
-  indexOids: readonly string[] // each OID the listing's entries hold, once: what catFile is asked (A-60)
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null> // blob sizes (A-60)
 }
 export interface IndexBlobs {

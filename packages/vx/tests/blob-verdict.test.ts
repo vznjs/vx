@@ -168,3 +168,30 @@ it('asks the blob sizes while the index listing runs, not after it', async () =>
     'keep.txt',
   ])
 })
+
+it('sizes only the blobs it still trusts', async () => {
+  // A dirty path is distrusted before the check, so its blob's size is
+  // never read. Listing every index OID up front cost each run 17-35 ms
+  // on the 9,603-task workspace, a warm run whose verdict was memoized
+  // included (2026-11-01).
+  git('init', '-q')
+  await writeFile(path.join(root, 'keep.txt'), 'k\n')
+  await writeFile(path.join(root, 'dirty.txt'), 'd\n')
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  const dirtyOid = Bun.spawnSync(['git', 'rev-parse', 'HEAD:dirty.txt'], { cwd: root })
+    .stdout.toString()
+    .trim()
+  await writeFile(path.join(root, 'dirty.txt'), 'changed\n')
+  await Bun.sleep(150)
+  const asked: string[] = []
+  const m = memo()
+  const known = m.knownBlobSizes
+  m.knownBlobSizes = (oids) => {
+    asked.push(...oids)
+    return known(oids)
+  }
+  expect(await trusted(m)).toEqual(['keep.txt'])
+  expect(asked.length).toBe(1)
+  expect(asked).not.toContain(dirtyOid)
+})

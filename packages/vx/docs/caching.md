@@ -184,7 +184,8 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     (an add rewrote a resized entry to one whose size fits) trusts no
     OID, as the enumeration does. A changed index spawns
     `git ls-files -s -v -z --debug` for the recorded sizes, takes each
-    blob's size from `blob_sizes` (fixed for its OID), and asks one
+    still-trusted blob's size from `blob_sizes` (fixed for its OID),
+    and asks one
     `git cat-file --batch-check` for the ones not yet known, beside
     the listing rather than after it (65 ms
     over 3,000 loose objects, 10 ms packed). The sizes it learns are
