@@ -1091,7 +1091,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const script =
     opts.terminal === true
       ? undefined
-      : spareScript(opts.cwd, opts.env as Record<string, string>, execWrap(fullCommand))
+      : spareScript(opts.cwd, opts.env, execWrap(fullCommand))
   const spare = script === undefined ? undefined : takeSpare()
   const onSpare = spare === undefined ? undefined : await runOnSpare(spare, script!)
   const pipes = onSpare === undefined ? new TaskPipes(opts.terminal) : spare!.pipes

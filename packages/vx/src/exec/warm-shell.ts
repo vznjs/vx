@@ -93,15 +93,18 @@ const quote = (v: string): string => `'${v.replaceAll("'", "'\\''")}'`
  */
 export function spareScript(
   cwd: string,
-  env: Readonly<Record<string, string>>,
+  env: Readonly<Record<string, string | undefined>>,
   command: string,
 ): string | undefined {
   // A script past what one pipe write lands whole would hold vx's thread.
   if (command.length > SCRIPT_BYTES) return undefined
   let out = `exec 3<&-\ncd -- ${quote(cwd)} 2>/dev/null || exit 127\nunset OLDPWD\n`
   for (const k in env) {
+    const v = env[k]
+    // Undefined unsets the name: a spawn drops it.
+    if (v === undefined) continue
     if (!NAME.test(k)) return undefined
-    out += `export ${k}=${quote(env[k]!)}\n`
+    out += `export ${k}=${quote(v)}\n`
   }
   out += `${command}\n`
   return Buffer.byteLength(out) > SCRIPT_BYTES ? undefined : out

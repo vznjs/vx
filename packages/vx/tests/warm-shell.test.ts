@@ -48,6 +48,17 @@ describe.skipIf(!linux)('a task runs in a shell started before it', () => {
     }
   })
 
+  // A run's env holds `undefined` for a name it unsets; a spawn drops it.
+  it('leaves a name the env holds as undefined unset, as a spawn does', async () => {
+    const res = await runCommand({
+      command: 'echo "${VX_GONE-unset}"',
+      cwd,
+      env: { ...env, VX_GONE: undefined } as unknown as Record<string, string>,
+    })
+    expect(res.exitCode).toBe(0)
+    expect(res.stdout).toBe('unset\n')
+  })
+
   it('fails a task whose directory is gone as a spawn that threw', async () => {
     const res = await runCommand({ command: 'true', cwd: path.join(cwd, 'gone'), env })
     expect(res.spawnFailed).toBe(true)
