@@ -3,6 +3,7 @@
 // time the same tree.
 import { realpathSync } from 'node:fs'
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { benchEnv } from './bench-env.js'
 import {
@@ -18,6 +19,15 @@ import {
 
 const modules = path.join(import.meta.dir, 'node_modules')
 
+/** The package manager every runner reads from the workspace's package.json. */
+const PACKAGE_MANAGER = { name: 'bun', version: '1.4.2' }
+
+// Vite Task installs the workspace's `packageManager` into its data
+// directory before a run, from the npm registry: on a fresh CI home every
+// timed run, and in a sandbox a denied connection. `linkRivals` seeds this
+// directory with the bun running the bench, so no run downloads anything.
+const VITE_PLUS_DATA = path.join(os.tmpdir(), 'vx-bench-vite-plus-data')
+
 /** Every runner's environment, as CI runs them: Nx's daemon off, telemetry and cloud off. */
 export const RUNNER_ENV = benchEnv({
   NO_COLOR: '1',
@@ -28,6 +38,7 @@ export const RUNNER_ENV = benchEnv({
   // The workspace has no .env file; Nx still reads up to ten candidates
   // per task (2.7 s of a 25 s warm run at 9,603 tasks, 2026-10-12).
   NX_LOAD_DOT_ENV_FILES: 'false',
+  XDG_DATA_HOME: VITE_PLUS_DATA,
 })
 
 export type Rival = 'turbo' | 'nx' | 'vite-task'
@@ -112,7 +123,7 @@ export async function generate(
     name: 'bench-root',
     version: '0.0.0',
     private: true,
-    packageManager: 'bun@1.4.2',
+    packageManager: `${PACKAGE_MANAGER.name}@${PACKAGE_MANAGER.version}`,
     workspaces: ['packages/*'],
   })
   await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
@@ -296,6 +307,7 @@ export function gitInit(dir: string): void {
 // caches a tool keeps there (Vite Task's) stay in it.
 const RIVALS: Record<string, string> = { turbo: 'turbo', nx: 'nx', 'vite-plus': 'vp' }
 export async function linkRivals(dir: string): Promise<void> {
+  await seedVitePlus()
   await mkdir(path.join(dir, 'node_modules', '.bin'), { recursive: true })
   for (const [pkg, binName] of Object.entries(RIVALS)) {
     await symlink(realpathSync(path.join(modules, pkg)), path.join(dir, 'node_modules', pkg))
@@ -304,4 +316,18 @@ export async function linkRivals(dir: string): Promise<void> {
       path.join(dir, 'node_modules', '.bin', binName),
     )
   }
+}
+
+// Vite Task's layout of an installed package manager: a lock file beside
+// `<version>/<name>/bin/<name>`. A run checks that they exist; it starts
+// neither.
+async function seedVitePlus(): Promise<void> {
+  const { name, version } = PACKAGE_MANAGER
+  const root = path.join(VITE_PLUS_DATA, 'vite-plus', 'package_manager', name)
+  const bin = path.join(root, version, name, 'bin')
+  await mkdir(bin, { recursive: true })
+  await writeFile(path.join(root, `${version}.lock`), '')
+  await symlink(process.execPath, path.join(bin, name)).catch((err: NodeJS.ErrnoException) => {
+    if (err.code !== 'EEXIST') throw err
+  })
 }

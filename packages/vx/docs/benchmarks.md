@@ -290,6 +290,9 @@ No two of a project's commands are the same text: each task spells its
 seconds to its own decimals. Vite Task keys a task on its command and
 inputs, so test and typecheck were one key and it ran one of the pair.
 
+Vite Task installs the workspace's package manager before a run. The bench
+seeds its data directory with the bun it runs on, so no run downloads.
+
 `build` writes 200 KB of incompressible random bytes plus a file made
 from its dependencies' outputs. The bench times what CI runs: a cold
 build, a run with nothing changed, and a restore from cache.
