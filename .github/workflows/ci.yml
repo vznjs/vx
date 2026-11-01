@@ -210,9 +210,12 @@ jobs:
         with:
           name: bench-data
           path: private/vx-docs/measured/bench.json
+      # The measured numbers, unless vx reads worse in them than on the
+      # live site: then the site keeps its numbers (scripts/bench-pick.ts).
       - name: Use the measured numbers
+        id: pick
         if: github.event_name == 'push'
-        run: cp private/vx-docs/measured/bench.json private/vx-docs/src/data/bench.json
+        run: bun private/vx-docs/scripts/bench-pick.ts
       # GitHub hands the job's runtime token, which uploads the site's
       # artifact, only to JavaScript actions: this hands it to the run,
       # whose env isolation passes it to the deploy task alone.
@@ -228,6 +231,13 @@ jobs:
         env:
           VX_CACHE_URL: ${{ steps.cache.outputs.url || env.VX_CACHE_URL }}
         run: bun packages/vx/src/bin.ts run @vzn/vx-docs#deploy.pages
+      - name: Fail on a vx regression
+        if: steps.pick.outputs.held != ''
+        env:
+          HELD: ${{ steps.pick.outputs.held }}
+        run: |
+          echo "::error::vx reads worse than the live site on $HELD; the site kept its numbers"
+          exit 1
 
   # The benchmarks, on a runner of their own: they time the machine, and a
   # DTE worker is packed for the run's wall time, not a task's

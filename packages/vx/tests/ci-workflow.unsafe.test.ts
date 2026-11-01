@@ -190,12 +190,14 @@ describe('ci.yml', () => {
       'Use the measured numbers',
       'Hand the Pages token to the run',
       'Deploy the site',
+      'Fail on a vx regression',
     ])
     const step = (name: string | undefined): Step => job.steps!.find((s) => s.name === name)!
-    for (const name of after.slice(2)) expect(step(name).if).toBe(push)
-    expect(step('Use the measured numbers').run).toBe(
-      'cp private/vx-docs/measured/bench.json private/vx-docs/src/data/bench.json',
-    )
+    for (const name of after.slice(2, -1)) expect(step(name).if).toBe(push)
+    // The site never shows a vx figure worse than it shows now: a worse run
+    // keeps the live numbers, deploys the rest, then fails the job.
+    expect(step('Use the measured numbers').run).toBe('bun private/vx-docs/scripts/bench-pick.ts')
+    expect(step('Fail on a vx regression').if).toBe("steps.pick.outputs.held != ''")
     expect(step('Hand the Pages token to the run').with?.['script']).toContain(
       "core.exportVariable('ACTIONS_RUNTIME_TOKEN'",
     )
