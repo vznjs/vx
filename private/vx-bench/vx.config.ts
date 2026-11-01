@@ -105,10 +105,13 @@ export default defineProject({
           ...(runner === 'vx' ? { dependsOn: ['install'] } : {}),
           exec: {
             command: 'bun compare.ts 3',
-            timeout: '30m',
+            timeout: '40m',
             env: {
               define: {
                 ...NO_TRANSPILER_CACHE.define,
+                // The median of three cold runs: one let a single run move
+                // the site's cold figure by seconds (2026-11-01).
+                COLD_REPS: '3',
                 RUNNERS: runner,
                 OUT: `site/${runner}.json`,
               },

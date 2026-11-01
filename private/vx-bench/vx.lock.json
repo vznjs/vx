@@ -119,10 +119,11 @@
       ],
       "exec": {
         "command": "bun compare.ts 3",
-        "timeout": "30m",
+        "timeout": "40m",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "COLD_REPS": "3",
             "RUNNERS": "vx",
             "OUT": "site/vx.json"
           },
@@ -156,10 +157,11 @@
       "description": "compare.ts: turbo on the 9,603-task head-to-head → site/turbo.json",
       "exec": {
         "command": "bun compare.ts 3",
-        "timeout": "30m",
+        "timeout": "40m",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "COLD_REPS": "3",
             "RUNNERS": "turbo",
             "OUT": "site/turbo.json"
           },
@@ -192,10 +194,11 @@
       "description": "compare.ts: nx on the 9,603-task head-to-head → site/nx.json",
       "exec": {
         "command": "bun compare.ts 3",
-        "timeout": "30m",
+        "timeout": "40m",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "COLD_REPS": "3",
             "RUNNERS": "nx",
             "OUT": "site/nx.json"
           },
@@ -228,10 +231,11 @@
       "description": "compare.ts: vite-task on the 9,603-task head-to-head → site/vite-task.json",
       "exec": {
         "command": "bun compare.ts 3",
-        "timeout": "30m",
+        "timeout": "40m",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "COLD_REPS": "3",
             "RUNNERS": "vite-task",
             "OUT": "site/vite-task.json"
           },

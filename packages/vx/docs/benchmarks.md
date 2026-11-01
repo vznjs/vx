@@ -353,7 +353,9 @@ The line under the table names each runner's version, date and machine.
 Only CI's Bench job runs them, on main and on a dispatch: `vx run
 @vzn/vx-docs#bench.data --concurrency 1 --force` on a 4-core Linux
 runner of its own, one runner at a time. `--force` measures all four on
-that one machine, never a row cached from another runner's CPU. It
+that one machine, never a row cached from another runner's CPU. A
+cold figure is the median of three cold runs (`COLD_REPS=3`): one let a
+single run move it by seconds. It
 uploads `measured/bench.json` as the `bench-data` artifact.
 
 On main the job then copies that file over `src/data/bench.json` and
