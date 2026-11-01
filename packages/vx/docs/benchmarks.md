@@ -230,9 +230,11 @@ beside them, 30 pairs at most, and takes the min of each tool over its
 the ratio anyway. Under the sandbox, two busy loops for the first 25 s
 cost 9 more pairs per arm and left both ratios at or below a quiet run's.
 Every case is held, and vx is never slower than Turbo: a case whose
-vx min is above Turbo's fails, as does a ratio vx / turbo grown past
-1.3× its value in `private/vx-bench/pr-bench-baseline.json` (the CI
-runner's). Cold is held too: it is the overhead the site publishes, and
+vx min is above Turbo's fails, as does a restore or nothing-changed
+ratio vx / turbo grown past 1.3× its value in
+`private/vx-bench/pr-bench-baseline.json` (the CI runner's). Cold's
+ratio is not held to its record: Turbo's cold read 3047 and 2219 ms on
+two CI runners of one day while vx read 2117 and 2088. Cold is held too: it is the overhead the site publishes, and
 printed only, from one run (200 spawns on 4 cores read 0.71 and 1.12 in
 two CI runs of one commit), it read vx 1.12× Turbo for weeks with every PR
 passing. A 60 ms sleep added to vx's startup failed the
