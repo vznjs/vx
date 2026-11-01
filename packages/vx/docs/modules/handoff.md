@@ -29,7 +29,8 @@ export async function localVx(
   uid?: number,
 ): Promise<string | null>
 // run it with this process's stdio and arguments, pass on a signal sent to
-// this vx alone, exit with its code; die of the SIGINT, SIGTERM or SIGHUP it
+// this vx alone (from its first instant: the handlers precede the spawn),
+// exit with its code; die of the SIGINT, SIGTERM or SIGHUP it
 // died of (another signal: 128 + signo), so a script running vx stops too
 export async function handOff(bin: string, args: readonly string[]): Promise<never>
 // the git top-level holding `dir` (a `.git` dir, or a worktree's `.git` file;

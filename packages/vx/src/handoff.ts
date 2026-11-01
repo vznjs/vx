@@ -223,15 +223,19 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   // hides the env on every verb, is never reached here. Imported here:
   // a start that hands off nothing pays nothing.
   await (await import('./util/index.js')).hideEnvFromTasks()
-  const child = Bun.spawn([bin, ...args], {
+  // The handlers come first: a signal landing between the spawn and them
+  // killed this vx and left the local one running, orphaned (main
+  // dc9d49c). A handler runs on the event loop, after the spawn returned.
+  let child: Bun.Subprocess | undefined
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.on(sig, () => {
+      if (!inForeground()) child?.kill(sig)
+    })
+  }
+  child = Bun.spawn([bin, ...args], {
     stdio: ['inherit', 'inherit', 'inherit'],
     env: { ...process.env, VX_HANDED_OFF: process.execPath },
   })
-  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
-    process.on(sig, () => {
-      if (!inForeground()) child.kill(sig)
-    })
-  }
   const code = await child.exited
   const signal = child.signalCode
   if (signal === null) process.exit(code)
