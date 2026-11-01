@@ -12,9 +12,9 @@
 // (100 packages): the site's cold runs its tasks for two minutes.
 //
 // Every tool runs in its own copy. vx, the base and Turbo run in
-// interleaved pairs, min of each over the quietest pairs (quiet.ts); Nx and
-// Vite Task, many times slower outside cold, run once per case, three times
-// when within reach of vx. A held case fails when vx is slower than any
+// interleaved pairs, min of each over the quietest pairs (quiet.ts). Nx and
+// Vite Task run every case on the cold workspace against vx there
+// (SMALL_RIVALS), once, three times when within reach of vx. A held case fails when vx is slower than any
 // rival or uses more CPU than one CPU_HELD names, or when vx is slower than
 // the base's vx in more of its quiet pairs than chance explains (a sign
 // test, pr-bench-base.ts): no slack for a regression to land a slice at a
@@ -33,6 +33,7 @@ import {
   SITE_ARMS,
   undecided,
   type Arm,
+  type Match,
   type Rival,
 } from './pr-bench-base.js'
 import { deleteDist } from './outputs.js'
@@ -50,6 +51,13 @@ const QUIET_CORES = 0.5
 const CONCURRENCY = 10
 /** The cold workspace: the site's levels up to this one, which name only each other. */
 const COLD_LEVELS = 2
+/**
+ * The rivals timed on the cold workspace in every case, against vx there:
+ * at the site's size their restore and nothing-changed take 20-40 s a run,
+ * many times vx's (the site: Nx 12.0 s, Vite Task 10.4 s against vx's
+ * 0.58), and filling Nx's cache there took minutes of the check.
+ */
+const SMALL_RIVALS = ['nx', 'vite-task'] as const
 /** Nx or Vite Task within this factor of vx's best runs twice more. */
 const REACH = 1.25
 /** The commit this checkout is held to (CI: the PR's base, or main before the push); unset times no base. */
@@ -97,6 +105,7 @@ async function bench(
   projects: ReturnType<typeof workspace>,
   vx: string,
   baseVx: string | undefined,
+  rivals: readonly Rival[],
 ): Promise<Bench> {
   const ws = await mkdtemp(path.join(os.tmpdir(), `vx-prbench-${name}-`))
   scratch.push(ws)
@@ -104,7 +113,7 @@ async function bench(
   await linkRivals(ws)
   must([vx, 'lock'], ws)
   gitInit(ws)
-  const tools: Tool[] = baseVx === undefined ? ['vx', ...RIVALS] : ['vx', 'base', ...RIVALS]
+  const tools: Tool[] = baseVx === undefined ? ['vx', ...rivals] : ['vx', 'base', ...rivals]
   const dirs = {} as Record<Tool, string>
   for (const tool of tools) {
     dirs[tool] = `${ws}-${tool}`
@@ -114,7 +123,7 @@ async function bench(
   if (baseVx !== undefined) must([baseVx, 'lock'], dirs.base)
   const vxRun = ['run', ...RUN_TASKS, '--all', '--concurrency', String(CONCURRENCY)]
   const runs = { vx: [vx, ...vxRun], base: [baseVx ?? '', ...vxRun] } as Record<Tool, string[]>
-  for (const rival of RIVALS) runs[rival] = rivalRuns(dirs[rival], CONCURRENCY)[rival].run
+  for (const rival of rivals) runs[rival] = rivalRuns(dirs[rival], CONCURRENCY)[rival].run
   return {
     dirs,
     runs,
@@ -148,13 +157,13 @@ try {
     all.filter((p) => p.level <= COLD_LEVELS && p.kind !== 'e2e'),
     vx,
     baseVx,
+    RIVALS,
   )
-  const site = await bench('site', all, vx, baseVx)
+  const site = await bench('site', all, vx, baseVx, ['turbo'])
   const benchOf = (arm: Arm): Bench => (SITE_ARMS.includes(arm) ? site : small)
   const paired: readonly Tool[] = BASE === undefined ? ['vx', 'turbo'] : ['vx', 'base', 'turbo']
 
-  const time = async (tool: Tool, arm: Arm): Promise<Best> => {
-    const b = benchOf(arm)
+  const time = async (tool: Tool, arm: Arm, b = benchOf(arm)): Promise<Best> => {
     if (arm === 'cold') await b.clear(tool)
     if (arm !== 'noop') await deleteDist(b.dirs[tool])
     const before =
@@ -197,11 +206,10 @@ try {
       ...(base === undefined ? {} : { base: base.ms }),
     }
   }
-  // Fill each tool's caches once: the cold workspace's first cold rep does it there.
-  for (const tool of [...paired, 'nx', 'vite-task'] as const) {
-    await time(tool, 'cold')
-    must(site.runs[tool], site.dirs[tool])
-  }
+  // Fill each tool's caches once: the cold workspace's first cold rep does it
+  // there. Nx and Vite Task run only the cold workspace (SMALL_RIVALS).
+  for (const tool of [...paired, ...SMALL_RIVALS] as const) await time(tool, 'cold')
+  for (const tool of paired) must(site.runs[tool], site.dirs[tool])
   // Each arm reps until REPS of its pairs ran quiet, and on while its quiet
   // pairs lean slower than the base without proving it (MAX_REPS at most).
   const pairs = new Map<Arm, CpuPair[]>(HELD.map((a) => [a, []]))
@@ -220,7 +228,7 @@ try {
     if (left.length === 0) break
     for (const arm of left) pairs.get(arm)!.push(await pair(arm, rep))
   }
-  const best = new Map<Arm, { vx: Best; base?: Best } & Partial<Record<Rival, Best>>>()
+  const best = new Map<Arm, { vx: Best; base?: Best } & Partial<Record<Rival, Match>>>()
   for (const arm of HELD) {
     const ran = pairs.get(arm)!
     const kept = quietest(ran, REPS) as CpuPair[]
@@ -229,16 +237,30 @@ try {
       ms: min(kept.map((p) => p[tool]!)),
       cpuMs: min(kept.map((p) => p.cpu[tool]!)),
     })
-    const b: { vx: Best; base?: Best } & Partial<Record<Rival, Best>> = {
-      vx: of('vx'),
-      turbo: of('turbo'),
+    const fold = (runs: Best[]): Best => ({
+      ms: min(runs.map((r) => r.ms)),
+      cpuMs: min(runs.map((r) => r.cpuMs)),
+    })
+    const vxBest = of('vx')
+    const b: { vx: Best; base?: Best } & Partial<Record<Rival, Match>> = {
+      vx: vxBest,
+      turbo: { vx: vxBest, rival: of('turbo') },
       ...(BASE === undefined ? {} : { base: of('base') }),
     }
-    for (const rival of ['nx', 'vite-task'] as const) {
-      const runs = [await time(rival, arm)]
-      const near = (r: Best) => r.ms < b.vx.ms * REACH || r.cpuMs < b.vx.cpuMs * REACH
-      if (near(runs[0]!)) runs.push(await time(rival, arm), await time(rival, arm))
-      b[rival] = { ms: min(runs.map((r) => r.ms)), cpuMs: min(runs.map((r) => r.cpuMs)) }
+    // vx on the cold workspace in this arm, the yardstick of the rivals timed there.
+    const vxSmall =
+      benchOf(arm) === small
+        ? vxBest
+        : fold([
+            await time('vx', arm, small),
+            await time('vx', arm, small),
+            await time('vx', arm, small),
+          ])
+    for (const rival of SMALL_RIVALS) {
+      const runs = [await time(rival, arm, small)]
+      const near = (r: Best) => r.ms < vxSmall.ms * REACH || r.cpuMs < vxSmall.cpuMs * REACH
+      if (near(runs[0]!)) runs.push(await time(rival, arm, small), await time(rival, arm, small))
+      b[rival] = { vx: vxSmall, rival: fold(runs) }
     }
     best.set(arm, b)
     const others = Math.max(...kept.map((p) => p.others))
@@ -258,10 +280,20 @@ try {
   const tools: readonly Tool[] = BASE === undefined ? ['vx', ...RIVALS] : ['vx', 'base', ...RIVALS]
   console.log(`case      ${tools.map((t) => t.padStart(18)).join('')}   (wall ms / CPU ms)`)
   for (const arm of HELD) {
-    const b = best.get(arm)! as Partial<Record<Tool, Best>>
-    const cell = (t: Tool) =>
-      (b[t] === undefined ? '-' : `${b[t].ms.toFixed(0)} / ${b[t].cpuMs.toFixed(0)}`).padStart(18)
-    console.log(`${arm.padEnd(9)} ${tools.map(cell).join('')}`)
+    const b = best.get(arm)!
+    const at = (t: Tool): Best | undefined =>
+      t === 'vx' ? b.vx : t === 'base' ? b.base : b[t]?.rival
+    const cell = (t: Tool) => {
+      const x = at(t)
+      return (x === undefined ? '-' : `${x.ms.toFixed(0)} / ${x.cpuMs.toFixed(0)}`).padStart(18)
+    }
+    const small = SMALL_RIVALS.map((r) => b[r]!.vx).find((x) => x !== b.vx)
+    console.log(
+      `${arm.padEnd(9)} ${tools.map(cell).join('')}` +
+        (small === undefined
+          ? ''
+          : `   (vx on the cold workspace: ${small.ms.toFixed(0)} / ${small.cpuMs.toFixed(0)})`),
+    )
   }
   const fails = [
     ...baseFails(Object.fromEntries(HELD.map((arm) => [arm, quietBase(arm)])), HELD),

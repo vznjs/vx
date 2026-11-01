@@ -50,25 +50,30 @@ export interface Best {
 
 const NAME: Record<Rival, string> = { turbo: 'Turbo', nx: 'Nx', 'vite-task': 'Vite Task' }
 
+/** vx and a rival, timed on one workspace. */
+export interface Match {
+  vx: Best
+  rival: Best
+}
+
 /** Every held arm vx was slower than a rival in, or used more CPU than a rival `CPU_HELD` names. */
 export function rivalFails(
-  best: Readonly<Partial<Record<Arm, { vx: Best } & Partial<Record<Rival, Best>>>>>,
+  best: Readonly<Partial<Record<Arm, Partial<Record<Rival, Match>>>>>,
   held: readonly Arm[],
 ): string[] {
   const fails: string[] = []
   for (const arm of held) {
-    const b = best[arm]
-    if (b === undefined) continue
     for (const rival of RIVALS) {
-      const r = b[rival]
-      if (r === undefined) continue
-      if (b.vx.ms > r.ms)
+      const m = best[arm]?.[rival]
+      if (m === undefined) continue
+      const { vx, rival: r } = m
+      if (vx.ms > r.ms)
         fails.push(
-          `${arm}: vx ${b.vx.ms.toFixed(0)} ms against ${NAME[rival]} ${r.ms.toFixed(0)} ms: vx is slower than ${NAME[rival]}`,
+          `${arm}: vx ${vx.ms.toFixed(0)} ms against ${NAME[rival]} ${r.ms.toFixed(0)} ms: vx is slower than ${NAME[rival]}`,
         )
-      if (CPU_HELD.includes(rival) && b.vx.cpuMs > r.cpuMs)
+      if (CPU_HELD.includes(rival) && vx.cpuMs > r.cpuMs)
         fails.push(
-          `${arm}: vx ${b.vx.cpuMs.toFixed(0)} ms CPU against ${NAME[rival]} ${r.cpuMs.toFixed(0)} ms: vx uses more CPU than ${NAME[rival]}`,
+          `${arm}: vx ${vx.cpuMs.toFixed(0)} ms CPU against ${NAME[rival]} ${r.cpuMs.toFixed(0)} ms: vx uses more CPU than ${NAME[rival]}`,
         )
     }
   }

@@ -232,8 +232,11 @@ other processes kept busy while it ran (`/proc/stat`, less the bench's
 own CPU, its children's and the sandbox's strace). A case reps until 7
 pairs ran with at most half a core busy beside them, and takes each
 tool's min over its 7 quietest; with none that quiet it says `BUSY` and
-holds anyway. Nx and Vite Task, many times slower outside cold, run once
-per case, three times when within a quarter of vx.
+holds anyway. Nx and Vite Task run every case on the 100-package
+workspace, against vx timed there: at the site's size their restore and
+nothing-changed take 20-40 s a run, many times vx's, and filling Nx's
+cache took minutes. Each runs once, three times when within a quarter of
+vx.
 
 vx is the best of every runner in every case. A case fails when vx is
 slower than any rival, or uses more CPU than Turbo or Nx. Vite Task may

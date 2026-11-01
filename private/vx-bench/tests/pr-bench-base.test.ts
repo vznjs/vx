@@ -53,9 +53,18 @@ it('passes the base commit to the bench and keys the check on it', () => {
 // process per run does less than a shell per task.
 it('fails a case vx is slower than any rival in, or uses more CPU than Turbo or Nx in', () => {
   const t = (ms: number, cpuMs: number) => ({ ms, cpuMs })
+  const vs = (vx: ReturnType<typeof t>, rival: ReturnType<typeof t>) => ({ vx, rival })
   const best = {
-    cold: { vx: t(1000, 900), turbo: t(1100, 1000), nx: t(9000, 800), 'vite-task': t(990, 100) },
-    noop: { vx: t(500, 600), turbo: t(600, 700), nx: t(9000, 9000), 'vite-task': t(9000, 50) },
+    cold: {
+      turbo: vs(t(1000, 900), t(1100, 1000)),
+      nx: vs(t(1000, 900), t(9000, 800)),
+      'vite-task': vs(t(1000, 900), t(990, 100)),
+    },
+    noop: {
+      turbo: vs(t(500, 600), t(600, 700)),
+      nx: vs(t(80, 90), t(9000, 9000)),
+      'vite-task': vs(t(80, 90), t(9000, 50)),
+    },
   }
   expect(rivalFails(best, ['cold', 'noop'])).toEqual([
     'cold: vx 900 ms CPU against Nx 800 ms: vx uses more CPU than Nx',
