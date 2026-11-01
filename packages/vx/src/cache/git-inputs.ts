@@ -1942,7 +1942,8 @@ export async function startGitEnumeration(
   // null when the status spawn failed (non-repo / git error).
   const worktreeDirty = dirty === null ? null : dirty.size > 0
   // Before `trusted` drops a path: the blob check sizes every entry's blob.
-  const indexOids = [...new Set(oids.values())]
+  // A non-regular mode rides its value (`100755:<oid>`); cat-file takes the OID.
+  const indexOids = [...new Set(Array.from(oids.values(), (v) => v.slice(v.lastIndexOf(':') + 1)))]
   const trusted = dirty === null || indexMoved ? new Map<string, string>() : oids
   if (dirty !== null) {
     for (const rel of dirty) trusted.delete(rel)
