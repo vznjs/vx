@@ -85,6 +85,7 @@ export function criticalPath(
   const memo = new Map<string, number>()
   for (let head = 0; head < tail; head++) memo.set(nodes[queue[head]!]!.id, score[queue[head]!]!)
   // A node on a cycle is never released: its own duration.
-  for (let i = 0; i < count; i++) if (scored[i] === 0) memo.set(nodes[i]!.id, ownDuration(nodes[i]!))
+  for (let i = 0; i < count; i++)
+    if (scored[i] === 0) memo.set(nodes[i]!.id, ownDuration(nodes[i]!))
   return memo
 }
