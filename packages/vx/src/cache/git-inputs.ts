@@ -1038,8 +1038,13 @@ async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo)
     // OIDs are the listing's. One after the other, a cold 9,603-task run
     // waited on the listing's 70-95 ms before the first spawn (2026-11-01).
     const listing = blobCheck.blobs()
-    const sizes = memo?.knownBlobSizes(enumeration.indexOids) ?? new Map<string, number>()
-    const unknown = enumeration.indexOids.filter((oid) => !sizes.has(oid))
+    // Only what is still trusted: a path dropped already needs no size.
+    // Built here, not with the listing: a run whose verdict is memoized
+    // never needs it, and on 9,603 tasks it cost 17-35 ms (2026-11-01).
+    // A non-regular mode rides its value (`100755:<oid>`); cat-file takes the OID.
+    const oids = [...new Set(Array.from(trusted.values(), (v) => v.slice(v.lastIndexOf(':') + 1)))]
+    const sizes = memo?.knownBlobSizes(oids) ?? new Map<string, number>()
+    const unknown = oids.filter((oid) => !sizes.has(oid))
     const asked = unknown.length > 0 ? enumeration.catFile(unknown.join('\n') + '\n') : undefined
     const [blobs, run] = await Promise.all([listing, asked])
     if (blobs === null) {
@@ -1574,8 +1579,6 @@ export interface GitEnumeration {
   startedAtMs: number
   /** The blob-size check's input (`dropResizedOids`). */
   blobCheck: IndexBlobCheck
-  /** Each OID the listing's regular entries hold, once: what the check asks `catFile` for. */
-  indexOids: readonly string[]
   /** `git cat-file --batch-check` over `stdin`'s OIDs; null when it could not spawn. */
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null>
 }
@@ -1941,9 +1944,6 @@ export async function startGitEnumeration(
   // this same status spawn so `run()` needs no second `git status`.
   // null when the status spawn failed (non-repo / git error).
   const worktreeDirty = dirty === null ? null : dirty.size > 0
-  // Before `trusted` drops a path: the blob check sizes every entry's blob.
-  // A non-regular mode rides its value (`100755:<oid>`); cat-file takes the OID.
-  const indexOids = [...new Set(Array.from(oids.values(), (v) => v.slice(v.lastIndexOf(':') + 1)))]
   const trusted = dirty === null || indexMoved ? new Map<string, string>() : oids
   if (dirty !== null) {
     for (const rel of dirty) trusted.delete(rel)
@@ -2003,7 +2003,6 @@ export async function startGitEnumeration(
         ? []
         : [...stripPrefixFromSet(new Set(parsedStatus.ignored), gitPrefix)].sort(),
     startedAtMs,
-    indexOids,
     blobCheck: {
       key: indexKey,
       async blobs() {
