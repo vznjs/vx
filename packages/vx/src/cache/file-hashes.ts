@@ -72,6 +72,9 @@ export class FileHashStore {
   /** Each of `oids` whose size a `rememberBlobSizes` stored: one `IN` query per 900. */
   knownBlobSizes(oids: readonly string[]): Map<string, number> {
     const out = new Map<string, number>()
+    // An empty memo (a cold cache) answers nothing: 40,030 lookups there
+    // cost a 9,603-task run 57 ms before its first task (2026-11-01).
+    if (this.db.query('SELECT 1 FROM blob_sizes LIMIT 1').get() === null) return out
     for (let i = 0; i < oids.length; i += 900) {
       const chunk = oids.slice(i, i + 900)
       const rows = this.db
