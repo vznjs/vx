@@ -130,6 +130,9 @@ import { behindLink } from './linked-inputs.js'
  * this, so the file time trails the last use by at most this much, and
  * the policy reads the file time plus this as the last use.
  */
+// About 1.3 ms of inserts per turn: a task's exit waits at most that.
+const HELD_SLICE = 250
+
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
 /**
@@ -945,6 +948,9 @@ export class Cache implements CacheLayer {
   private adoptStats = 0
   /** The artifact directory's names, listed once past `ADOPT_STATS`; this process's writes kept in it. */
   private artifactNames: Set<string> | undefined
+  private heldBlobSizes: Array<[string, number]> | undefined
+  private heldTimer: ReturnType<typeof setTimeout> | undefined
+  private heldRest: () => Array<[string, number]> = () => []
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
@@ -1589,7 +1595,32 @@ export class Cache implements CacheLayer {
   }
   /** `BlobSizeMemo`: remember blob sizes, honouring the local WRITE axis. */
   rememberBlobSizes(sizes: ReadonlyMap<string, number>): void {
-    this.guard(() => this.files.rememberBlobSizes(sizes))
+    if (this.heldBlobSizes !== undefined) for (const e of sizes) this.heldBlobSizes.push(e)
+    else this.guard(() => this.files.rememberBlobSizes(sizes))
+  }
+  /**
+   * Hold the blob sizes remembered from now on until `storeHeldBlobSizes`
+   * or `close`: a run learns them before its first task, where storing
+   * 40,030 cost a cold 9,603-task run 217 ms (2026-11-01).
+   */
+  holdBlobSizes(): void {
+    this.heldBlobSizes ??= []
+  }
+  /**
+   * Store the held blob sizes `HELD_SLICE` per event-loop turn from the
+   * next turn on, while the run's tasks run; `close` stores the rest.
+   */
+  storeHeldBlobSizes(): void {
+    const held = this.heldBlobSizes
+    this.heldBlobSizes = undefined
+    if (held === undefined || held.length === 0) return
+    let at = 0
+    const step = (): void => {
+      this.guard(() => this.files.rememberBlobSizes(new Map(held.slice(at, (at += HELD_SLICE)))))
+      this.heldTimer = at < held.length ? setTimeout(step, 0) : undefined
+    }
+    this.heldRest = () => held.slice(at)
+    this.heldTimer = setTimeout(step, 0)
   }
   /** `BlobSizeMemo`: the paths an index with this digest distrusts, when known. */
   blobVerdict(digest: string): string[] | undefined {
@@ -3541,6 +3572,11 @@ export class Cache implements CacheLayer {
 
   close(): void {
     try {
+      clearTimeout(this.heldTimer)
+      const held = this.heldBlobSizes ?? (this.heldTimer !== undefined ? this.heldRest() : [])
+      this.heldBlobSizes = undefined
+      this.heldTimer = undefined
+      if (held.length > 0) this.files.rememberBlobSizes(new Map(held))
       this.flushAccessed()
       this.outputs.flushOutputDirs()
       this.folds.flush()

@@ -1283,6 +1283,7 @@ async function runOnBus(
       }
     }
     let lockBroken: boolean | undefined
+    prepared.localCache.storeHeldBlobSizes()
     const outcomes = await runGraph({
       nodes,
       concurrency,

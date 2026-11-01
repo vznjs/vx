@@ -186,7 +186,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     `git ls-files -s -v -z --debug` for the recorded sizes, takes each
     blob's size from `blob_sizes` (fixed for its OID), and asks one
     `git cat-file --batch-check` for the ones not yet known (65 ms
-    over 3,000 loose objects, 10 ms packed). The check is by size,
+    over 3,000 loose objects, 10 ms packed). The sizes it learns are
+    stored while the tasks run, not before the first one (40,030 cost
+    217 ms there at 9,603 tasks), and a cold cache skips the lookup.
+    The check is by size,
     so a filter that keeps the size (a `filter` driver such as
     `tr a-z A-Z`), removed after an add, still leaves a blob that
     stands for other bytes: probed, the run hit the build of the

@@ -776,6 +776,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // 1,000 projects when it ran before the spawn.
     const settleIgnored = askIgnoredOutputs(gatedOutputs(nodes, workspaceRoot), workspaceRoot)
     const enumeration = await enumerating
+    localCache.holdBlobSizes()
     await applyGitEnumeration(
       enumeration,
       workspaceRoot,
