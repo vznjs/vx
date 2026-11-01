@@ -5,7 +5,9 @@ import {
   SIGNIFICANCE,
   SITE_ARMS,
   tailAtLeast,
-  turboFails,
+  rivalFails,
+  CPU_HELD,
+  RIVALS,
   undecided,
 } from '../pr-bench-base.js'
 import config from '../vx.config.js'
@@ -46,13 +48,21 @@ it('passes the base commit to the bench and keys the check on it', () => {
   expect(task?.inputs?.env).toContain('VX_BENCH_BASE')
 })
 
-// vx is never slower than Turbo: a held arm vx lost was a printed LOSS that
-// passed (cold 1.12, noop 1.14 recorded, 2026-10-12 to 11-01).
-it('fails a held arm vx is slower than Turbo in', () => {
-  const best = { cold: { vx: 1010, turbo: 1000 }, noop: { vx: 90, turbo: 100 } }
-  expect(turboFails(best, ['cold', 'noop'])).toEqual([
-    'cold: vx 1010 ms against Turbo 1000 ms: vx is slower than Turbo',
+// vx is the best of all runners in every case (2026-11-01): slower than
+// any rival fails, and so does more CPU than any but Vite Task, whose one
+// process per run does less than a shell per task.
+it('fails a case vx is slower than any rival in, or uses more CPU than Turbo or Nx in', () => {
+  const t = (ms: number, cpuMs: number) => ({ ms, cpuMs })
+  const best = {
+    cold: { vx: t(1000, 900), turbo: t(1100, 1000), nx: t(9000, 800), 'vite-task': t(990, 100) },
+    noop: { vx: t(500, 600), turbo: t(600, 700), nx: t(9000, 9000), 'vite-task': t(9000, 50) },
+  }
+  expect(rivalFails(best, ['cold', 'noop'])).toEqual([
+    'cold: vx 900 ms CPU against Nx 800 ms: vx uses more CPU than Nx',
+    'cold: vx 1000 ms against Vite Task 990 ms: vx is slower than Vite Task',
   ])
+  expect(RIVALS).toEqual(['turbo', 'nx', 'vite-task'])
+  expect(CPU_HELD).toEqual(['turbo', 'nx'])
 })
 
 it('holds cold too, the overhead the site publishes', () => {

@@ -32,18 +32,45 @@ export type Arm = (typeof HELD)[number]
  */
 export const SITE_ARMS: readonly Arm[] = ['restore', 'noop']
 
-/** The held arms vx was slower than Turbo in, timed in the same pairs. */
-export function turboFails(
-  best: Readonly<Record<string, { vx: number; turbo: number }>>,
-  held: readonly string[],
+/** The rivals a check times vx against. */
+export const RIVALS = ['turbo', 'nx', 'vite-task'] as const
+export type Rival = (typeof RIVALS)[number]
+
+/**
+ * The rivals vx may use less CPU than none of: all but Vite Task, whose
+ * one process per run does less than vx's shell per task.
+ */
+export const CPU_HELD: readonly Rival[] = ['turbo', 'nx']
+
+/** A tool's best wall and CPU ms in one arm. */
+export interface Best {
+  ms: number
+  cpuMs: number
+}
+
+const NAME: Record<Rival, string> = { turbo: 'Turbo', nx: 'Nx', 'vite-task': 'Vite Task' }
+
+/** Every held arm vx was slower than a rival in, or used more CPU than a rival `CPU_HELD` names. */
+export function rivalFails(
+  best: Readonly<Partial<Record<Arm, { vx: Best } & Partial<Record<Rival, Best>>>>>,
+  held: readonly Arm[],
 ): string[] {
   const fails: string[] = []
   for (const arm of held) {
     const b = best[arm]
-    if (b === undefined || b.vx <= b.turbo) continue
-    fails.push(
-      `${arm}: vx ${b.vx.toFixed(0)} ms against Turbo ${b.turbo.toFixed(0)} ms: vx is slower than Turbo`,
-    )
+    if (b === undefined) continue
+    for (const rival of RIVALS) {
+      const r = b[rival]
+      if (r === undefined) continue
+      if (b.vx.ms > r.ms)
+        fails.push(
+          `${arm}: vx ${b.vx.ms.toFixed(0)} ms against ${NAME[rival]} ${r.ms.toFixed(0)} ms: vx is slower than ${NAME[rival]}`,
+        )
+      if (CPU_HELD.includes(rival) && b.vx.cpuMs > r.cpuMs)
+        fails.push(
+          `${arm}: vx ${b.vx.cpuMs.toFixed(0)} ms CPU against ${NAME[rival]} ${r.cpuMs.toFixed(0)} ms: vx uses more CPU than ${NAME[rival]}`,
+        )
+    }
   }
   return fails
 }

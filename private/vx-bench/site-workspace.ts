@@ -5,9 +5,62 @@ import { realpathSync } from 'node:fs'
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { benchEnv } from './bench-env.js'
-import { DEPENDS_ON, SOURCE_FILES, command, source, workspace, type TaskName } from './shape.js'
+import {
+  DEPENDS_ON,
+  RUN_TASKS,
+  SOURCE_FILES,
+  command,
+  source,
+  workspace,
+  type Project,
+  type TaskName,
+} from './shape.js'
 
 const modules = path.join(import.meta.dir, 'node_modules')
+
+/** Every runner's environment, as CI runs them: Nx's daemon off, telemetry and cloud off. */
+export const RUNNER_ENV = benchEnv({
+  NO_COLOR: '1',
+  CI: '1',
+  TURBO_TELEMETRY_DISABLED: '1',
+  DO_NOT_TRACK: '1',
+  NX_CLOUD: 'false',
+  // The workspace has no .env file; Nx still reads up to ten candidates
+  // per task (2.7 s of a 25 s warm run at 9,603 tasks, 2026-10-12).
+  NX_LOAD_DOT_ENV_FILES: 'false',
+})
+
+export type Rival = 'turbo' | 'nx' | 'vite-task'
+
+/** A rival's run in `dir`, and how its cache is emptied: a command, then paths removed. */
+export interface RivalRun {
+  run: string[]
+  clear: { command?: string[]; paths: string[] }
+}
+
+/** Each rival's run of the site's tasks at `concurrency`, from the workspace's linked bins. */
+export function rivalRuns(dir: string, concurrency: number): Record<Rival, RivalRun> {
+  const bin = (t: string) => path.join(dir, 'node_modules', '.bin', t)
+  return {
+    turbo: {
+      run: [bin('turbo'), 'run', ...RUN_TASKS, `--concurrency=${concurrency}`],
+      clear: {
+        command: [bin('turbo'), 'daemon', 'stop'],
+        paths: ['.turbo', 'node_modules/.cache/turbo'],
+      },
+    },
+    nx: {
+      run: [bin('nx'), 'run-many', '-t', ...RUN_TASKS, `--parallel=${concurrency}`],
+      clear: { command: [bin('nx'), 'reset'], paths: [] },
+    },
+    'vite-task': {
+      // Flags before the task name: after it they are the task's arguments,
+      // and the run fell back to the default limit of 4.
+      run: [bin('vp'), 'run', '-r', '--concurrency-limit', String(concurrency), 'vp-all'],
+      clear: { paths: ['node_modules/.vite/task-cache'] },
+    },
+  }
+}
 const PROJECTS = workspace()
 
 function git(args: string[], cwd: string): void {
@@ -29,8 +82,15 @@ const VP: Record<TaskName, string> = {
   typecheck: 'vp-typecheck',
 }
 
-/** The site workspace in `dir`: every runner's config over shape.ts, at `concurrency`. */
-export async function generate(dir: string, concurrency: number): Promise<void> {
+/**
+ * The site workspace in `dir`: every runner's config over shape.ts, at
+ * `concurrency`. `projects`, when given, must name every dependency it holds.
+ */
+export async function generate(
+  dir: string,
+  concurrency: number,
+  projects: readonly Project[] = PROJECTS,
+): Promise<void> {
   const json = (p: string, obj: unknown) =>
     writeFile(path.join(dir, p), JSON.stringify(obj, null, 2) + '\n')
 
@@ -66,7 +126,7 @@ export async function generate(dir: string, concurrency: number): Promise<void> 
   const history = path.join(modules, '@vzn', 'vx-history', 'src', 'index.ts')
   const edges = path.join(import.meta.dir, 'edges.ts')
   const timings: Record<string, number> = {}
-  for (const p of PROJECTS)
+  for (const p of projects)
     for (const [t, ms] of Object.entries(p.tasks))
       if (t !== 'installDeps') timings[`${p.name}#${t}`] = ms
   await json('vx-timings.json', {
@@ -104,7 +164,7 @@ export async function generate(dir: string, concurrency: number): Promise<void> 
     analytics: false,
   })
 
-  for (const p of PROJECTS) {
+  for (const p of projects) {
     const rel = path.join('packages', p.dir)
     const abs = path.join(dir, rel)
     await mkdir(path.join(abs, 'src'), { recursive: true })
@@ -209,6 +269,10 @@ export async function generate(dir: string, concurrency: number): Promise<void> 
 // the one where vx's git-OID hashing does zero file reads.
 export function gitInit(dir: string): void {
   git(['init', '-q'], dir)
+  // No background gc or maintenance: 38k loose objects start one after the
+  // commit, which packed them away under a copy of the tree being taken.
+  git(['config', 'gc.auto', '0'], dir)
+  git(['config', 'maintenance.auto', 'false'], dir)
   git(['add', '-A'], dir)
   git(
     [

@@ -204,47 +204,51 @@ vx run @vzn/vx-bench#perf.update   # then commit perf-baseline.json
 Run it through `vx run`: the baseline's times are taken under the task
 sandbox, as the check is.
 
-### The per-PR bench against Turborepo and the base
+### The per-PR bench against every rival and the base
 
 `private/vx-bench/pr-bench.ts` runs in every PR's gate after
 perf-guard.ts, in the same task (`@vzn/vx-bench#check.perf`), so the
 two benchmarks never share a machine. It times this checkout's vx,
 compiled as released, against the base commit's vx (`VX_BENCH_BASE`: the
 PR's base, or main before a push, built in the same job from `git archive`
-of `packages/vx`) and Turborepo (pinned in `private/vx-bench/package.json`).
+of `packages/vx`), Turborepo, Nx and Vite Task (pinned in
+`private/vx-bench/package.json`).
 
-Restore and nothing-changed run on the site's own workspace
-(`site-workspace.ts`: 1,601 packages, 9,603 tasks, concurrency 10), with
-no task sleeping. On the old 100-package workspace a per-task cost the
-site pays 9,603 times was noise: #4892 added 17-35 ms to every site run
-and passed. Cold runs on a 100-package workspace (build then test,
-copy-sized tasks, concurrency 4): the site's cold runs tasks for two
-minutes.
+Every runner runs the site's own workspace as the site configures it
+(`site-workspace.ts`), with no task sleeping. Restore and nothing-changed
+run on the whole of it (1,601 packages, 9,603 tasks): on the old
+100-package workspace a per-task cost the site pays 9,603 times was
+noise, and #4892 added 17-35 ms to every site run and passed. Cold runs on
+its first two levels (100 packages): the site's cold runs tasks for two
+minutes. Each tool runs in its own copy: Turbo rewrites every output on a
+warm hit, so in one shared tree vx's nothing-changed run restored them all
+(2026-10-28). The bench fails if a vx nothing-changed run rewrites an
+output.
 
-Each tool runs in its own copy of a workspace: Turbo rewrites every
-output on a warm hit, so in one shared tree vx's nothing-changed run
-restored them all (2026-10-28). The bench fails if a vx nothing-changed
-run rewrites an output.
+vx, the base and Turbo run in pairs, vx and the base each first in turn.
+Other processes slow vx more than Turbo (four busy loops moved the
+nothing-changed ratio from 0.90 to 1.28), so each pair reads the cores
+other processes kept busy while it ran (`/proc/stat`, less the bench's
+own CPU, its children's and the sandbox's strace). A case reps until 7
+pairs ran with at most half a core busy beside them, and takes each
+tool's min over its 7 quietest; with none that quiet it says `BUSY` and
+holds anyway. Nx and Vite Task, many times slower outside cold, run once
+per case, three times when within a quarter of vx.
 
-Other processes on the machine slow vx more than Turbo (four busy loops
-moved the nothing-changed ratio from 0.90 to 1.28), so each pair reads
-the cores other processes kept busy while it ran (`/proc/stat`, less the
-bench's own CPU, its children's and the sandbox's strace). A pair runs
-vx and the base, each first in turn, then Turbo. A case reps until 7
-pairs ran with at most half a core busy beside them, 30 at most, and
-takes each tool's min over its 7 quietest; with none that quiet it says
-`BUSY` and holds anyway.
+vx is the best of every runner in every case. A case fails when vx is
+slower than any rival, or uses more CPU than Turbo or Nx. Vite Task may
+use less CPU: it runs one process where vx runs a shell per task.
 
-A case fails when vx's min is above Turbo's, or when vx ran slower than
-the base in more of its quiet pairs than chance explains (a sign test,
-p < 0.002). There is no slack: a 4% tolerance let a regression land 3% at
-a time. A case whose pairs lean slower without proving it keeps adding
-pairs, 40 at most. Simulated, an unchanged vx fails 0.7% of cases, and one
-slower in 3 of 4 pairs fails 63%.
+A case also fails when vx ran slower than the base in more of its quiet
+pairs than chance explains (a sign test, p < 0.002). There is no slack: a
+4% tolerance let a regression land 3% at a time. A case whose pairs lean
+slower without proving it keeps adding pairs, 40 at most. Simulated, an
+unchanged vx fails 0.7% of cases, and one slower in 3 of 4 pairs fails
+63%.
 
 The base is main, the code whose numbers the site shows, timed on the
-same machine in the same minute: the site's own figures cannot hold a PR,
-as five commits of one day whose vx timed level side by side read
+same machine in the same minute. The site's own figures cannot hold a
+PR: five commits of one day whose vx timed level side by side read
 nothing-changed at 0.87 to 1.33 of Turbo on the CI machines they drew.
 
 `private/vx-bench/real/nightly.ts` re-runs the repos on

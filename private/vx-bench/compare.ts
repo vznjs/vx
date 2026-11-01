@@ -35,10 +35,16 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { summarize } from './ab.js'
-import { benchEnv } from './bench-env.js'
 import { listSchedule } from './ideal.js'
 import { deleteDist, missingDist } from './outputs.js'
-import { generate, gitInit, linkRivals } from './site-workspace.js'
+import {
+  generate,
+  gitInit,
+  linkRivals,
+  RUNNER_ENV,
+  rivalRuns,
+  type Rival,
+} from './site-workspace.js'
 import {
   APPS,
   BUILD_MS,
@@ -62,17 +68,6 @@ const modules = path.join(import.meta.dir, 'node_modules')
 const PROJECTS = workspace()
 const BUILT = PROJECTS.filter((p) => 'build' in p.tasks).map((p) => `packages/${p.dir}`)
 const TASKS = PROJECTS.reduce((n, p) => n + Object.keys(p.tasks).length, 0)
-
-const RUNNER_ENV = benchEnv({
-  NO_COLOR: '1',
-  CI: '1',
-  TURBO_TELEMETRY_DISABLED: '1',
-  DO_NOT_TRACK: '1',
-  NX_CLOUD: 'false',
-  // The workspace has no .env file; Nx still reads up to ten candidates
-  // per task (2.7 s of a 25 s warm run at 9,603 tasks, 2026-10-12).
-  NX_LOAD_DOT_ENV_FILES: 'false',
-})
 
 /**
  * Wall time and CPU time of one invocation. CPU is the runner process plus
@@ -156,43 +151,36 @@ async function buildRunners(dir: string, wanted: (name: string) => boolean): Pro
 
   // turbo + nx + vite-plus — this package's pinned installs, linked in.
   const bin = (t: string) => path.join(dir, 'node_modules', '.bin', t)
+  const rivals = rivalRuns(dir, CONCURRENCY)
+  const clear = (r: Rival) => async () => {
+    const { command, paths } = rivals[r].clear
+    if (command !== undefined) await sh(command, dir)
+    for (const p of paths) await rm(path.join(dir, p), { recursive: true, force: true })
+  }
   const turboV = wanted('turbo') ? await sh([bin('turbo'), '--version'], dir) : null
-  if (turboV?.ok) {
+  if (turboV?.ok)
     runners.push({
       name: 'turbo',
       version: turboV.out.trim(),
-      run: [bin('turbo'), 'run', ...RUN_TASKS, `--concurrency=${CONCURRENCY}`],
-      clear: async () => {
-        await sh([bin('turbo'), 'daemon', 'stop'], dir)
-        await rm(path.join(dir, '.turbo'), { recursive: true, force: true })
-        await rm(path.join(dir, 'node_modules', '.cache', 'turbo'), {
-          recursive: true,
-          force: true,
-        })
-      },
+      run: rivals.turbo.run,
+      clear: clear('turbo'),
     })
-  }
   const nxV = wanted('nx') ? await sh([bin('nx'), '--version'], dir) : null
-  if (nxV?.ok) {
+  if (nxV?.ok)
     runners.push({
       name: 'nx',
       version: (nxV.out.match(/Local:\s*v?([\d.]+)/)?.[1] ?? nxV.out.trim()).slice(0, 12),
-      run: [bin('nx'), 'run-many', '-t', ...RUN_TASKS, `--parallel=${CONCURRENCY}`],
-      clear: () => sh([bin('nx'), 'reset'], dir).then(() => undefined),
+      run: rivals.nx.run,
+      clear: clear('nx'),
     })
-  }
   const vpV = wanted('vite-task') ? await sh([bin('vp'), '--version'], dir) : null
-  if (vpV?.ok) {
+  if (vpV?.ok)
     runners.push({
       name: 'vite-task',
       version: vpV.out.match(/\d+\.\d+\.\d+/)?.[0] ?? vpV.out.trim(),
-      // Flags before the task name: after it they are the task's arguments,
-      // and the run fell back to the default limit of 4.
-      run: [bin('vp'), 'run', '-r', '--concurrency-limit', String(CONCURRENCY), 'vp-all'],
-      clear: () =>
-        rm(path.join(dir, 'node_modules', '.vite', 'task-cache'), { recursive: true, force: true }),
+      run: rivals['vite-task'].run,
+      clear: clear('vite-task'),
     })
-  }
   return runners
 }
 
