@@ -191,7 +191,7 @@ describe('ci.yml', () => {
       'Hand the Pages token to the run',
       'Deploy the site',
     ])
-    const step = (name: string): Step => job.steps!.find((s) => s.name === name)!
+    const step = (name: string | undefined): Step => job.steps!.find((s) => s.name === name)!
     for (const name of after.slice(2)) expect(step(name).if).toBe(push)
     expect(step('Use the measured numbers').run).toBe(
       'cp private/vx-docs/measured/bench.json private/vx-docs/src/data/bench.json',
