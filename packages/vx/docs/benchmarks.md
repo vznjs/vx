@@ -257,7 +257,7 @@ loses.
 ## Head to head
 
 Every figure in this section is filled in when the site is built, from
-the latest measured run (2026-10-29: no benchmark figure is typed by hand).
+main's latest measured run (2026-10-29: no benchmark figure is typed by hand).
 
 On GitHub the page shows the `%bench.…%` tokens instead.
 
@@ -356,10 +356,16 @@ runner of its own, one runner at a time. `--force` measures all four on
 that one machine, never a row cached from another runner's CPU. It
 uploads `measured/bench.json` as the `bench-data` artifact.
 
+On main the job then copies that file over `src/data/bench.json` and
+runs `@vzn/vx-docs#deploy.pages`, so each main push puts its own numbers
+live. The site deploys only from this job: a deploy from main's run would
+ship the committed copy, older than the live one (2026-11-01).
+
 No build depends on the
 benchmarks, so neither the DTE run, where a worker is packed beside
 other tasks and would time its neighbours, nor a fresh clone's `vx run
-build` ever runs one. New figures land as a commit of the job's file.
+build` ever runs one. A pull request's build reads the committed copy;
+refresh it with a commit of the job's file now and then.
 
 The tasks run outside the sandbox, which on Linux traces every process
 they start: under it vx's cold overhead read 55.61 s against 7.01 s
