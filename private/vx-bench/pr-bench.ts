@@ -137,7 +137,8 @@ try {
   const bin = path.join(import.meta.dir, 'node_modules', '@vzn', 'vx', 'src', 'bin.ts')
   must(
     ['bun', 'build', '--compile', '--minify', '--bytecode', bin, '--outfile', vx],
-    import.meta.dir,
+    // The compiler writes its scratch file into its cwd.
+    os.tmpdir(),
   )
   if (baseVx !== undefined && BASE !== undefined)
     buildBase(path.resolve(import.meta.dir, '../..'), BASE, baseVx)

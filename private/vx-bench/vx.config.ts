@@ -49,7 +49,15 @@ export default defineProject({
           passThrough: ['VX_BENCH_BASE'],
         },
         // The base's source comes out of git's objects (pr-bench-base.ts).
-        sandbox: { allow: { read: ['**/*', '../../.git'], systemInfo: ['vfs.disk-space'] } },
+        // Nx keeps its sockets and native cache in ~/.nx and /tmp/.nx: the
+        // sandbox's own temp path is longer than a socket path may be.
+        sandbox: {
+          allow: {
+            read: ['**/*', '../../.git'],
+            write: ['~/.nx/', '/tmp/.nx/'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
       },
       inputs: {
         files: [

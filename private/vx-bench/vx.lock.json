@@ -33,6 +33,10 @@
               "**/*",
               "../../.git"
             ],
+            "write": [
+              "~/.nx/",
+              "/tmp/.nx/"
+            ],
             "systemInfo": [
               "vfs.disk-space"
             ]
