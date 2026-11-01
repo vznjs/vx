@@ -296,6 +296,28 @@ describe('the compiled binary hands off', () => {
     expect([await p.exited, out]).toEqual([0, 'ready\ngot-term\n'])
   })
 
+  // main dc9d49c: a SIGTERM that landed between the spawn and the
+  // handlers killed the global vx, and the local vx ran on, orphaned. The
+  // signal here is raised the moment the spawn returns, so a handler
+  // installed after it is always too late.
+  it('passes on a SIGTERM that arrives as the local vx starts', async () => {
+    const bin = path.join(root, 'traps', 'vx-early')
+    exe(
+      bin,
+      "trap 'echo got-term; exit 0' TERM\ni=0; while [ $i -lt 40 ]; do sleep 0.05; i=$((i+1)); done",
+    )
+    const p = Bun.spawn({
+      cmd: [
+        process.execPath,
+        '-e',
+        `const spawn = Bun.spawn; Bun.spawn = (...a) => { const c = spawn(...a); process.kill(process.pid, 'SIGTERM'); return c }; const { handOff } = await import(${JSON.stringify(HANDOFF)}); await handOff(${JSON.stringify(bin)}, [])`,
+      ],
+      env: { PATH: process.env['PATH'] ?? '' },
+      stdout: 'pipe',
+    })
+    expect([await p.exited, await new Response(p.stdout).text()]).toEqual([0, 'got-term\n'])
+  })
+
   // A shell running `vx run` in a script stops on Ctrl-C only when its
   // child DIED of SIGINT; handed off, vx exited 130 and the script ran
   // its next line (cli.md § Exit codes: vx dies of the signal).
