@@ -165,7 +165,8 @@ jobs:
     # runner's label): one runner takes one job at a time, so Bench and
     # Perf never time each other. Unset, each gets a fresh hosted VM.
     runs-on: ${{ vars.BENCH_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 45
+    # Three cold runs per runner (vx-bench's bench.*): about 35 min.
+    timeout-minutes: 60
     permissions:
       contents: read
       id-token: write
