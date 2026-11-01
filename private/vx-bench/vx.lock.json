@@ -12,7 +12,7 @@
       ]
     },
     "check.perf": {
-      "description": "perf-guard.ts then pr-bench.ts: hot-path counts and vx vs Turborepo ratios against their baselines",
+      "description": "perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and Turborepo",
       "dependsOn": [
         "install"
       ],
@@ -20,7 +20,8 @@
         "command": "bun perf-guard.ts && bun pr-bench.ts",
         "env": {
           "define": {
-            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "BENCH_BUILD_MS": "0"
           },
           "passThrough": [
             "VX_BENCH_BASE"
@@ -44,7 +45,10 @@
           "perf-baseline.json",
           "pr-bench.ts",
           "pr-bench-base.ts",
-          "pr-bench-baseline.json",
+          "site-workspace.ts",
+          "shape.ts",
+          "prng.ts",
+          "outputs.ts",
           "quiet.ts",
           "bench-env.ts",
           "edges.ts",
@@ -58,30 +62,6 @@
       "cache": {
         "outputs": {
           "files": []
-        }
-      }
-    },
-    "vs-turbo.update": {
-      "description": "pr-bench.ts --update: record this platform in pr-bench-baseline.json",
-      "dependsOn": [
-        "install"
-      ],
-      "exec": {
-        "command": "bun pr-bench.ts --update",
-        "env": {
-          "define": {
-            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
-          }
-        },
-        "sandbox": {
-          "allow": {
-            "read": [
-              "**/*"
-            ],
-            "write": [
-              "pr-bench-baseline.json"
-            ]
-          }
         }
       }
     },
@@ -141,6 +121,7 @@
           "ab.ts",
           "outputs.ts",
           "bench-env.ts",
+          "site-workspace.ts",
           "package.json",
           "edges.ts"
         ]
@@ -179,6 +160,7 @@
           "ab.ts",
           "outputs.ts",
           "bench-env.ts",
+          "site-workspace.ts",
           "package.json"
         ]
       },
@@ -216,6 +198,7 @@
           "ab.ts",
           "outputs.ts",
           "bench-env.ts",
+          "site-workspace.ts",
           "package.json"
         ]
       },
@@ -253,6 +236,7 @@
           "ab.ts",
           "outputs.ts",
           "bench-env.ts",
+          "site-workspace.ts",
           "package.json"
         ]
       },
