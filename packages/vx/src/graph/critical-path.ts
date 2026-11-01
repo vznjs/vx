@@ -29,14 +29,26 @@ export function criticalPath(
       ? (p50s[Math.floor(p50s.length / 2)] ?? DEFAULT_DURATION_MS)
       : DEFAULT_DURATION_MS
 
-  const dependentsOf = new Map<string, string[]>()
-  for (const n of nodes) {
-    for (const upstreamId of n.deps) {
-      const list = dependentsOf.get(upstreamId)
-      if (list) list.push(n.id)
-      else dependentsOf.set(upstreamId, [n.id])
+  // Integer ids and flat arrays: Maps keyed by id strings and an array per
+  // node were 53 ms of a 9,603-task run's schedule stage (2026-11-01).
+  const count = nodes.length
+  const index = new Map<string, number>()
+  for (let i = 0; i < count; i++) index.set(nodes[i]!.id, i)
+  // Each node's dependents, as one flat list sliced by `first`.
+  const ups: number[] = []
+  const first = new Int32Array(count + 1)
+  for (let i = 0; i < count; i++) {
+    for (const up of nodes[i]!.deps) {
+      const u = index.get(up)
+      if (u === undefined) continue
+      first[u + 1]!++
+      ups.push(u, i)
     }
   }
+  for (let i = 0; i < count; i++) first[i + 1]! += first[i]!
+  const next = first.slice(0, count)
+  const dependents = new Int32Array(ups.length / 2)
+  for (let e = 0; e < ups.length; e += 2) dependents[next[ups[e]!]!++] = ups[e + 1]!
   // A group runs nothing, so it has no history; the median would charge it
   // a whole task and let a gate outrank the longest chain (PR #3286).
   const ownDuration = (n: TaskNode): number =>
@@ -47,33 +59,33 @@ export function criticalPath(
   // Reverse-topological pass: a node's value is final once every dependent's
   // is, so start from the sinks (no dependents) and release each upstream
   // when its last dependent has been scored.
-  const memo = new Map<string, number>()
-  const nodeById = new Map<string, TaskNode>(nodes.map((n) => [n.id, n]))
-  const pending = new Map<string, number>()
-  const queue: TaskNode[] = []
-  for (const n of nodes) {
-    const count = dependentsOf.get(n.id)?.length ?? 0
-    pending.set(n.id, count)
-    if (count === 0) queue.push(n)
+  const score = new Float64Array(count)
+  const scored = new Uint8Array(count)
+  const pending = new Int32Array(count)
+  const queue = new Int32Array(count)
+  let tail = 0
+  for (let i = 0; i < count; i++) {
+    pending[i] = first[i + 1]! - first[i]!
+    if (pending[i] === 0) queue[tail++] = i
   }
-  let head = 0
-  while (head < queue.length) {
-    const n = queue[head++]!
+  for (let head = 0; head < tail; head++) {
+    const i = queue[head]!
     let downstream = 0
-    for (const dep of dependentsOf.get(n.id) ?? []) {
-      const d = memo.get(dep) ?? 0
+    for (let e = first[i]!; e < first[i + 1]!; e++) {
+      const d = score[dependents[e]!]!
       if (d > downstream) downstream = d
     }
-    memo.set(n.id, ownDuration(n) + downstream)
-    for (const up of n.deps) {
-      const left = (pending.get(up) ?? 0) - 1
-      pending.set(up, left)
-      if (left === 0) {
-        const upNode = nodeById.get(up)
-        if (upNode) queue.push(upNode)
-      }
+    score[i] = ownDuration(nodes[i]!) + downstream
+    scored[i] = 1
+    for (const up of nodes[i]!.deps) {
+      const u = index.get(up)
+      if (u !== undefined && --pending[u]! === 0) queue[tail++] = u
     }
   }
-  for (const n of nodes) if (!memo.has(n.id)) memo.set(n.id, ownDuration(n))
+  const memo = new Map<string, number>()
+  for (let head = 0; head < tail; head++) memo.set(nodes[queue[head]!]!.id, score[queue[head]!]!)
+  // A node on a cycle is never released: its own duration.
+  for (let i = 0; i < count; i++)
+    if (scored[i] === 0) memo.set(nodes[i]!.id, ownDuration(nodes[i]!))
   return memo
 }
