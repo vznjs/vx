@@ -201,53 +201,60 @@ take main's and run it again):
 vx run @vzn/vx-bench#perf.update   # then commit perf-baseline.json
 ```
 
-Run it through `vx run`: the baseline's times are taken under the task
-sandbox, as the check is.
+Run it through `vx run`.
 
-### The per-PR bench against Turborepo
+### The per-PR bench against every rival and the base
 
 `private/vx-bench/pr-bench.ts` runs in every PR's gate after
 perf-guard.ts, in the same task (`@vzn/vx-bench#check.perf`), so the
-two benchmarks never share a machine; it takes about a minute. One 100-package
-workspace (build then test, copy-sized tasks), this checkout's vx
-compiled as released against Turborepo 2.11.10 (pinned in
-`private/vx-bench/package.json`), both at concurrency 4: cold, restore
-and nothing-changed as pairs, vx then Turbo back to back.
-Each tool runs in its own copy of the workspace: Turbo rewrites every
-output on a warm hit, so in one shared tree vx's nothing-changed run
-found them changed and restored all 100, and the case timed a restore
-(2026-10-28; the bench now fails if a vx nothing-changed run rewrites
-an output). The true nothing-changed ratio is 1.14, not the 0.93 the
-shared tree recorded.
-Other processes on the machine slow vx more than Turbo (four busy
-loops moved the nothing-changed ratio from 0.90 to 1.28; check.perf and
-two test shards beside it, from 0.97 to 1.25 on one commit), so each
-pair also reads the cores other processes kept busy while it ran
-(`/proc/stat`, less the bench's own CPU, its children's and the sandbox's
-strace). An arm reps until 7 pairs ran with at most half a core busy
-beside them, 30 pairs at most, and takes the min of each tool over its
-7 quietest; when none of that many ran quiet it says `BUSY` and holds
-the ratio anyway. Under the sandbox, two busy loops for the first 25 s
-cost 9 more pairs per arm and left both ratios at or below a quiet run's.
-Every case is held, and vx is never slower than Turbo: a case whose
-vx min is above Turbo's fails, as does a restore or nothing-changed
-ratio vx / turbo grown past 1.3× its value in
-`private/vx-bench/pr-bench-baseline.json` (the CI runner's). Cold's
-ratio is not held to its record: Turbo's cold read 3047 and 2219 ms on
-two CI runners of one day while vx read 2117 and 2088. Cold is held too: it is the overhead the site publishes, and
-printed only, from one run (200 spawns on 4 cores read 0.71 and 1.12 in
-two CI runs of one commit), it read vx 1.12× Turbo for weeks with every PR
-passing. A 60 ms sleep added to vx's startup failed the
-nothing-changed case (0.83 → 1.24). Record a change meant to move it
-with `vx run @vzn/vx-bench#vs-turbo.update`.
+two benchmarks never share a machine. It times this checkout's vx,
+compiled as released, against the base commit's vx (`VX_BENCH_BASE`: the
+PR's base, or main before a push, built in the same job from `git archive`
+of `packages/vx`), Turborepo, Nx and Vite Task (pinned in
+`private/vx-bench/package.json`). The task runs outside the sandbox, as
+the site's bench does: the sandbox's tracer stops every runner at each
+traced call and would be timed. Traced, vx's cold run took 5.6 s against
+Vite Task's 5.3 s; untraced, 2.1 s against 2.8 s.
 
-The ratio alone let main grow slower one PR at a time: every step stayed
-inside 1.3×. So each held case is also timed against the base commit's
-own vx (`VX_BENCH_BASE`: the PR's base, or main before a push), compiled
-in the same job from `git archive` of `packages/vx` and run in its own
-copy of the workspace, locked by itself. Each pair runs vx, the base,
-then Turbo, and a case's min more than 1.15× the base's fails: three checks of one change read restore at 0.96 to 1.09
-of its base.
+Every runner runs the site's own workspace as the site configures it
+(`site-workspace.ts`), with no task sleeping. Restore and nothing-changed
+run on the whole of it (1,601 packages, 9,603 tasks): on the old
+100-package workspace a per-task cost the site pays 9,603 times was
+noise, and #4892 added 17-35 ms to every site run and passed. Cold runs on
+its first two levels (100 packages): the site's cold runs tasks for two
+minutes. Each tool runs in its own copy: Turbo rewrites every output on a
+warm hit, so in one shared tree vx's nothing-changed run restored them all
+(2026-10-28). The bench fails if a vx nothing-changed run rewrites an
+output.
+
+vx, the base and Turbo run in pairs, vx and the base each first in turn.
+Other processes slow vx more than Turbo (four busy loops moved the
+nothing-changed ratio from 0.90 to 1.28), so each pair reads the cores
+other processes kept busy while it ran (`/proc/stat`, less the bench's
+own CPU and its children's). A case reps until 7
+pairs ran with at most half a core busy beside them, and takes each
+tool's min over its 7 quietest; with none that quiet it says `BUSY` and
+holds anyway. Nx and Vite Task run every case on the 100-package
+workspace, against vx timed there: at the site's size their restore and
+nothing-changed take 20-40 s a run, many times vx's, and filling Nx's
+cache took minutes. Each runs once, three times when within a quarter of
+vx.
+
+vx is the best of every runner in every case. A case fails when vx is
+slower than any rival, or uses more CPU than Turbo or Nx. Vite Task may
+use less CPU: it runs one process where vx runs a shell per task.
+
+A case also fails when vx ran slower than the base in more of its quiet
+pairs than chance explains (a sign test, p < 0.002). There is no slack: a
+4% tolerance let a regression land 3% at a time. A case whose pairs lean
+slower without proving it keeps adding pairs, 40 at most. Simulated, an
+unchanged vx fails 0.7% of cases, and one slower in 3 of 4 pairs fails
+63%.
+
+The base is main, the code whose numbers the site shows, timed on the
+same machine in the same minute. The site's own figures cannot hold a
+PR: five commits of one day whose vx timed level side by side read
+nothing-changed at 0.87 to 1.33 of Turbo on the CI machines they drew.
 
 `private/vx-bench/real/nightly.ts` re-runs the repos on
 [Real repos](#real-repos) each night against the tool they ship with,
@@ -280,6 +287,13 @@ Each task sleeps: build %bench.task.build%, test and typecheck
 %bench.task.test%, lint %bench.task.lint%, publish %bench.task.publish%.
 
 That is long enough that the tasks, not any tool's own work, set the pace.
+
+No two of a project's commands are the same text: each task spells its
+seconds to its own decimals. Vite Task keys a task on its command and
+inputs, so test and typecheck were one key and it ran one of the pair.
+
+Vite Task installs the workspace's package manager before a run. The bench
+seeds its data directory with the bun it runs on, so no run downloads.
 
 `build` writes 200 KB of incompressible random bytes plus a file made
 from its dependencies' outputs. The bench times what CI runs: a cold

@@ -1,254 +1,275 @@
-// The per-PR bench against Turborepo (2026-10-12): a run that takes
-// seconds and fails when this checkout's vx loses ground to Turbo.
+// The per-PR bench against every rival and the base commit's vx
+// (2026-10-12): fails when this checkout's vx loses ground to any of them.
 //
-//   bun pr-bench.ts            check against pr-bench-baseline.json
-//   bun pr-bench.ts --update   record this platform's ratios
+//   bun pr-bench.ts
 //
-// One small workspace (PROJECTS packages, build → test, cp-sized tasks),
-// both tools at the same concurrency, interleaved reps, min of each. Time
-// on a shared runner moves with the box, so what is held is the RATIO
-// vx / turbo taken in the same job: a slower box slows both. Restore and
-// nothing-changed are the runner's own overhead, and cold is the overhead
-// the site publishes: each is held, and fails when vx is slower than Turbo
-// or past the base commit's vx by BASE_TOLERANCE; restore and noop also
-// when their ratio grew past TOLERANCE over the recorded one. Cold was printed only, from one warm-up
-// (200 spawns on 4 cores read 0.71 and 1.12 in two CI runs of one commit,
-// 2026-10-12); the quietest pairs of quiet.ts now hold it.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+// Both workspaces are the site's own (site-workspace.ts), every runner
+// configured as the site configures it, with the tasks' sleeps at
+// BENCH_BUILD_MS (check.perf sets 0). Restore and nothing-changed run on the
+// whole of it (1,601 packages, 9,603 tasks): on a 100-package workspace a
+// per-task cost the site pays 9,603 times read as noise, and #4892 added
+// 17-35 ms to every site run and passed. Cold runs on its first two levels
+// (100 packages): the site's cold runs its tasks for two minutes.
+//
+// Every tool runs in its own copy. vx, the base and Turbo run in
+// interleaved pairs, min of each over the quietest pairs (quiet.ts). Nx and
+// Vite Task run every case on the cold workspace against vx there
+// (SMALL_RIVALS), once, three times when within reach of vx. A held case fails when vx is slower than any
+// rival or uses more CPU than one CPU_HELD names, or when vx is slower than
+// the base's vx in more of its quiet pairs than chance explains (a sign
+// test, pr-bench-base.ts): no slack for a regression to land a slice at a
+// time.
+import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { benchEnv } from './bench-env.js'
-import { BENCH_WORKSPACE } from './edges.js'
-import { baseFails, buildBase, HELD, turboFails } from './pr-bench-base.js'
+import {
+  baseFails,
+  type BasePair,
+  type Best,
+  buildBase,
+  HELD,
+  rivalFails,
+  RIVALS,
+  SITE_ARMS,
+  undecided,
+  type Arm,
+  type Match,
+  type Rival,
+} from './pr-bench-base.js'
+import { deleteDist } from './outputs.js'
 import { enoughQuiet, machineBusyMs, type Pair, quietest, tracerCpuMs } from './quiet.js'
+import { RUN_TASKS, workspace } from './shape.js'
+import { generate, gitInit, linkRivals, RUNNER_ENV, rivalRuns } from './site-workspace.js'
 import { copyWorkspace, outputMtimes } from './workspace-copy.js'
 
-const PROJECTS = 100
-/** The pairs of each held arm its ratio comes from: the quietest. */
+/** The pairs of each held arm its figures come from: the quietest. */
 const REPS = 7
-/** Pairs an arm runs at most, waiting for REPS quiet ones. */
-const MAX_REPS = 30
+/** Pairs an arm runs at most, waiting for REPS quiet ones or the base's verdict. */
+const MAX_REPS = 40
 /** A pair is quiet when other processes kept at most this many cores busy beside it. */
 const QUIET_CORES = 0.5
-const CONCURRENCY = 4
-/** A ratio past baseline × this fails. */
-const TOLERANCE = 1.3
+const CONCURRENCY = 10
+/** The cold workspace: the site's levels up to this one, which name only each other. */
+const COLD_LEVELS = 2
 /**
- * The cases held to their recorded ratio. Not cold: Turbo's cold moved
- * from 3047 to 2219 ms between two CI runners of one day while vx read
- * 2117 and 2088, so the ratio swung past 1.3× with nothing changed; the
- * base and Turbo hold it.
+ * The rivals timed on the cold workspace in every case, against vx there:
+ * at the site's size their restore and nothing-changed take 20-40 s a run,
+ * many times vx's (the site: Nx 12.0 s, Vite Task 10.4 s against vx's
+ * 0.58), and filling Nx's cache there took minutes of the check.
  */
-const RATIO_HELD: readonly string[] = ['restore', 'noop']
-const BASELINE = path.join(import.meta.dir, 'pr-bench-baseline.json')
-const update = process.argv.includes('--update')
+const SMALL_RIVALS = ['nx', 'vite-task'] as const
+/** Nx or Vite Task within this factor of vx's best runs twice more. */
+const REACH = 1.25
 /** The commit this checkout is held to (CI: the PR's base, or main before the push); unset times no base. */
 const BASE = process.env.VX_BENCH_BASE || undefined
 
-const ARMS = HELD
-type Arm = (typeof ARMS)[number]
-type Tool = 'vx' | 'base' | 'turbo'
+type Tool = 'vx' | 'base' | Rival
+/** A pair as quiet.ts judges it, with each tool's CPU. */
+type CpuPair = Pair & { cpu: Partial<Record<Tool, number>> }
 
 /** CPU ms every child this process spawned used: with its own and its tracer's, a pair's neighbours are what is left. */
 let childCpuMs = 0
-function sh(cmd: string[], cwd: string): { ok: boolean; out: string } {
-  // Turbo's telemetry writes ~/.config/turborepo, which the task sandbox refuses.
-  const env = benchEnv({ TURBO_TELEMETRY_DISABLED: '1', DO_NOT_TRACK: '1' })
-  const r = Bun.spawnSync(cmd, { cwd, env, stdout: 'pipe', stderr: 'pipe' })
-  if (r.resourceUsage !== undefined) childCpuMs += Number(r.resourceUsage.cpuTime.total) / 1000
-  return { ok: r.exitCode === 0, out: r.stdout.toString() + r.stderr.toString() }
+function sh(cmd: string[], cwd: string): { ok: boolean; out: string; cpuMs: number } {
+  const r = Bun.spawnSync(cmd, { cwd, env: RUNNER_ENV, stdout: 'pipe', stderr: 'pipe' })
+  const cpuMs = r.resourceUsage === undefined ? 0 : Number(r.resourceUsage.cpuTime.total) / 1000
+  childCpuMs += cpuMs
+  return { ok: r.exitCode === 0, out: r.stdout.toString() + r.stderr.toString(), cpuMs }
 }
 const ownCpuMs = (): number => {
   const u = process.cpuUsage()
   return (u.user + u.system) / 1000 + childCpuMs + tracerCpuMs()
 }
-function must(cmd: string[], cwd: string): string {
+function must(cmd: string[], cwd: string): { out: string; cpuMs: number } {
   const r = sh(cmd, cwd)
   if (!r.ok) throw new Error(`${cmd.join(' ')} failed:\n${r.out.slice(-2000)}`)
-  return r.out
+  return r
 }
 
-const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-prbench-'))
-try {
-  const json = (p: string, v: unknown) => writeFile(path.join(ws, p), JSON.stringify(v) + '\n')
-  await writeFile(path.join(ws, '.gitignore'), 'node_modules\ndist\n.vx/cache/\n.turbo\n')
-  await json('package.json', {
-    name: 'bench-root',
-    private: true,
-    packageManager: 'bun@1.4.2',
-    workspaces: ['packages/*'],
-  })
-  await Bun.write(path.join(ws, '.vx/workspace.mjs'), BENCH_WORKSPACE)
-  await json('turbo.json', {
-    tasks: {
-      build: { dependsOn: ['^build'], inputs: ['src/**'], outputs: ['dist/**'] },
-      test: { dependsOn: ['build'], inputs: ['src/**'], outputs: [] },
-    },
-  })
-  for (let i = 0; i < PROJECTS; i++) {
-    const name = `pkg-${i}`
-    const deps: Record<string, string> = {}
-    for (const j of [i - 1, i - 4, i - 9]) if (j >= 0) deps[`pkg-${j}`] = 'workspace:*'
-    const dir = path.join(ws, 'packages', name)
-    await mkdir(path.join(dir, 'src'), { recursive: true })
-    await writeFile(path.join(dir, 'src', 'index.js'), `export const v = ${i}\n`)
-    await json(`packages/${name}/package.json`, {
-      name,
-      version: '0.0.0',
-      dependencies: deps,
-      scripts: { build: 'mkdir -p dist && cp src/index.js dist/out.js', test: 'true' },
-    })
-    await writeFile(
-      path.join(dir, 'vx.config.mjs'),
-      `export default { tasks: {
-  build: { dependsOn: ['^build'], exec: { command: 'mkdir -p dist && cp src/index.js dist/out.js' },
-    inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
-  test: { dependsOn: ['build'], exec: { command: 'true' },
-    inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
-} }\n`,
-    )
-  }
-  const turbo = path.join(import.meta.dir, 'node_modules', '.bin', 'turbo')
-  must(['ln', '-s', path.join(import.meta.dir, 'node_modules'), 'node_modules'], ws)
-  for (const args of [
-    ['init', '-q'],
-    ['add', '-A'],
-    ['commit', '-qm', 'fixture'],
-  ]) {
-    must(
-      ['git', '-c', 'user.email=b@vx', '-c', 'user.name=b', '-c', 'commit.gpgsign=false', ...args],
-      ws,
-    )
-  }
-  const vx = path.join(ws, '.vx-bin')
-  const bin = path.join(import.meta.dir, 'node_modules', '@vzn', 'vx', 'src', 'bin.ts')
-  must(['bun', 'build', '--compile', '--minify', '--bytecode', bin, '--outfile', vx], ws)
-  // Every run reads configs only from the lock.
-  must([vx, 'lock'], ws)
-  // vx times a copy too, made as the base's is: timing the tree git wrote
-  // against a copy of it read restore 1.10-1.13× slower for one binary in
-  // both arms (three local runs, 2026-10-29).
-  const vxWs = `${ws}-vx`
-  copyWorkspace(ws, vxWs)
-  // Turbo times its own copy: it rewrites every output on a warm hit, and in
-  // one shared tree vx's next noop restored all of them.
-  const turboWs = `${ws}-turbo`
-  copyWorkspace(ws, turboWs)
-  // The base times its own copy, locked by itself: a run's memo is named by
-  // the code that wrote it, so one tree shared by two builds missed on each.
-  const baseWs = `${ws}-base`
-  const baseVx = path.join(baseWs, '.vx-base')
-  if (BASE !== undefined) {
-    copyWorkspace(ws, baseWs)
-    buildBase(path.resolve(import.meta.dir, '../..'), BASE, baseVx)
-    must([baseVx, 'lock'], baseWs)
-  }
-  const dirs = { vx: vxWs, base: baseWs, turbo: turboWs }
-  const tools: readonly Tool[] = BASE === undefined ? ['vx', 'turbo'] : ['vx', 'base', 'turbo']
+/** One workspace the bench times, each tool in its own copy. */
+interface Bench {
+  dirs: Record<Tool, string>
+  runs: Record<Tool, string[]>
+  clear: (tool: Tool) => Promise<void>
+}
 
-  const vxRun = ['run', 'build', 'test', '--all', `--concurrency=${CONCURRENCY}`]
-  const runs: Record<Tool, string[]> = {
-    vx: [vx, ...vxRun],
-    base: [baseVx, ...vxRun],
-    turbo: [turbo, 'run', 'build', 'test', `--concurrency=${CONCURRENCY}`, '--no-daemon'],
+const scratch: string[] = []
+
+/**
+ * The site's workspace over `projects`, locked by vx before its commit (as
+ * the site does), then copied once per tool: Turbo rewrites every output on
+ * a warm hit, so in one shared tree vx's next noop restored all of them.
+ * The base locks its own copy: a run's memo is named by the code that wrote it.
+ */
+async function bench(
+  name: string,
+  projects: ReturnType<typeof workspace>,
+  vx: string,
+  baseVx: string | undefined,
+  rivals: readonly Rival[],
+): Promise<Bench> {
+  const ws = await mkdtemp(path.join(os.tmpdir(), `vx-prbench-${name}-`))
+  scratch.push(ws)
+  await generate(ws, CONCURRENCY, projects)
+  await linkRivals(ws)
+  must([vx, 'lock'], ws)
+  gitInit(ws)
+  const tools: Tool[] = baseVx === undefined ? ['vx', ...rivals] : ['vx', 'base', ...rivals]
+  const dirs = {} as Record<Tool, string>
+  for (const tool of tools) {
+    dirs[tool] = `${ws}-${tool}`
+    scratch.push(dirs[tool])
+    copyWorkspace(ws, dirs[tool])
   }
-  const wipeOutputs = (cwd: string) =>
-    sh(
-      [
-        'git',
-        'clean',
-        '-fdXq',
-        '-e',
-        '!node_modules',
-        '-e',
-        '!.vx',
-        '-e',
-        '!.vx/**',
-        '-e',
-        '!.turbo',
-        '-e',
-        '!.turbo/**',
-        '-e',
-        '!.vx-bin',
-        '-e',
-        '!.vx-base',
-      ],
-      cwd,
-    )
-  // Each tool's own cache only: Turbo's cold rep must not empty vx's before vx's restore rep.
-  // `.vx/cache`, not `.vx`: the lock lives there.
-  const wipeCache = (tool: Tool) => {
-    sh(
-      [
-        'rm',
-        '-rf',
-        ...(tool === 'turbo' ? ['.turbo', 'node_modules/.cache/turbo'] : ['.vx/cache']),
-      ],
-      dirs[tool],
-    )
+  if (baseVx !== undefined) must([baseVx, 'lock'], dirs.base)
+  const vxRun = ['run', ...RUN_TASKS, '--all', '--concurrency', String(CONCURRENCY)]
+  const runs = { vx: [vx, ...vxRun], base: [baseVx ?? '', ...vxRun] } as Record<Tool, string[]>
+  for (const rival of rivals) runs[rival] = rivalRuns(dirs[rival], CONCURRENCY)[rival].run
+  return {
+    dirs,
+    runs,
+    clear: async (tool) => {
+      if (tool === 'vx' || tool === 'base') {
+        // `.vx/cache`, not `.vx`: the workspace config lives there.
+        await rm(path.join(dirs[tool], '.vx', 'cache'), { recursive: true, force: true })
+        return
+      }
+      const { command, paths } = rivalRuns(dirs[tool], CONCURRENCY)[tool].clear
+      if (command !== undefined) sh(command, dirs[tool])
+      for (const p of paths) await rm(path.join(dirs[tool], p), { recursive: true, force: true })
+    },
   }
-  const best = new Map<string, number>()
-  const time = (tool: Tool, arm: Arm) => {
-    if (arm === 'cold') {
-      wipeCache(tool)
-      wipeOutputs(dirs[tool])
-    } else if (arm === 'restore') wipeOutputs(dirs[tool])
+}
+
+const vx = path.join(os.tmpdir(), `vx-prbench-bin-${process.pid}`)
+const baseVx = BASE === undefined ? undefined : `${vx}-base`
+try {
+  const bin = path.join(import.meta.dir, 'node_modules', '@vzn', 'vx', 'src', 'bin.ts')
+  must(
+    ['bun', 'build', '--compile', '--minify', '--bytecode', bin, '--outfile', vx],
+    // The compiler writes its scratch file into its cwd.
+    os.tmpdir(),
+  )
+  if (baseVx !== undefined && BASE !== undefined)
+    buildBase(path.resolve(import.meta.dir, '../..'), BASE, baseVx)
+  const all = workspace()
+  const small = await bench(
+    'cold',
+    all.filter((p) => p.level <= COLD_LEVELS && p.kind !== 'e2e'),
+    vx,
+    baseVx,
+    RIVALS,
+  )
+  const site = await bench('site', all, vx, baseVx, ['turbo'])
+  const benchOf = (arm: Arm): Bench => (SITE_ARMS.includes(arm) ? site : small)
+  const paired: readonly Tool[] = BASE === undefined ? ['vx', 'turbo'] : ['vx', 'base', 'turbo']
+
+  const time = async (tool: Tool, arm: Arm, b = benchOf(arm)): Promise<Best> => {
+    if (arm === 'cold') await b.clear(tool)
+    if (arm !== 'noop') await deleteDist(b.dirs[tool])
     const before =
-      tool !== 'turbo' && arm === 'noop' ? JSON.stringify(outputMtimes(dirs[tool])) : ''
+      (tool === 'vx' || tool === 'base') && arm === 'noop'
+        ? JSON.stringify(outputMtimes(b.dirs[tool]))
+        : ''
     const t0 = Bun.nanoseconds()
-    must(runs[tool], dirs[tool])
+    const { cpuMs } = must(b.runs[tool], b.dirs[tool])
     const ms = (Bun.nanoseconds() - t0) / 1e6
     // A noop that rewrote an output timed a restore, not a noop.
-    if (before !== '' && JSON.stringify(outputMtimes(dirs[tool])) !== before)
+    if (before !== '' && JSON.stringify(outputMtimes(b.dirs[tool])) !== before)
       throw new Error(`${tool} noop rewrote outputs: the arm timed a restore`)
-    const k = `${tool} ${arm}`
-    best.set(k, Math.min(best.get(k) ?? Infinity, ms))
-    return ms
+    return { ms, cpuMs }
   }
   // vx and the base, in turn first, then Turbo, back to back, and the cores
   // other processes kept busy over them: the machine's busy time less this
   // process's and its children's. In turn: with vx always first, right
   // behind the last pair's Turbo, a CI-only change read noop 1.24× its own
   // base (#4885).
-  const pair = (arm: Arm, rep: number): Pair => {
+  const pair = async (arm: Arm, rep: number): Promise<CpuPair> => {
     const busy0 = machineBusyMs()
     const own0 = ownCpuMs()
     const t0 = Bun.nanoseconds()
     const baseFirst = BASE !== undefined && rep % 2 === 1
-    const early = baseFirst ? time('base', arm) : undefined
-    const vx = time('vx', arm)
-    const base = BASE === undefined ? undefined : (early ?? time('base', arm))
-    const turbo = time('turbo', arm)
+    const early = baseFirst ? await time('base', arm) : undefined
+    const v = await time('vx', arm)
+    const base = BASE === undefined ? undefined : (early ?? (await time('base', arm)))
+    const turbo = await time('turbo', arm)
     const busy1 = machineBusyMs()
     const wall = (Bun.nanoseconds() - t0) / 1e6
     const others =
       busy0 === undefined || busy1 === undefined
         ? 0
         : Math.max(0, busy1 - busy0 - (ownCpuMs() - own0)) / wall
-    return { vx, turbo, others, ...(base === undefined ? {} : { base }) }
+    return {
+      vx: v.ms,
+      turbo: turbo.ms,
+      others,
+      cpu: { vx: v.cpuMs, turbo: turbo.cpuMs, ...(base === undefined ? {} : { base: base.cpuMs }) },
+      ...(base === undefined ? {} : { base: base.ms }),
+    }
   }
-  // Warm both tools once, then interleave: vx and Turbo alternate within each rep.
-  for (const tool of tools) time(tool, 'cold')
-  if (update) best.clear()
-  // Each arm reps until REPS of its pairs ran quiet (MAX_REPS at most),
-  // and its ratio is the min of each tool over its REPS quietest pairs.
-  const pairs = new Map<Arm, Pair[]>(ARMS.map((a) => [a, []]))
+  // Fill each tool's caches once: the cold workspace's first cold rep does it
+  // there. Nx and Vite Task run only the cold workspace (SMALL_RIVALS).
+  for (const tool of [...paired, ...SMALL_RIVALS] as const) await time(tool, 'cold')
+  for (const tool of paired) must(site.runs[tool], site.dirs[tool])
+  // Each arm reps until REPS of its pairs ran quiet, and on while its quiet
+  // pairs lean slower than the base without proving it (MAX_REPS at most).
+  const pairs = new Map<Arm, CpuPair[]>(HELD.map((a) => [a, []]))
+  const quietBase = (arm: Arm): BasePair[] =>
+    pairs
+      .get(arm)!
+      .filter((p) => p.base !== undefined && p.others <= QUIET_CORES)
+      .map((p) => ({ vx: p.vx, base: p.base! }))
   for (let rep = 0; rep < MAX_REPS; rep++) {
-    const left = ARMS.filter(
-      (a) => pairs.get(a)!.length < REPS || !enoughQuiet(pairs.get(a)!, REPS, QUIET_CORES),
+    const left = HELD.filter(
+      (a) =>
+        pairs.get(a)!.length < REPS ||
+        !enoughQuiet(pairs.get(a)!, REPS, QUIET_CORES) ||
+        (BASE !== undefined && undecided(quietBase(a))),
     )
     if (left.length === 0) break
-    for (const arm of left) pairs.get(arm)!.push(pair(arm, rep))
+    for (const arm of left) pairs.get(arm)!.push(await pair(arm, rep))
   }
-  for (const arm of ARMS) {
+  const best = new Map<Arm, { vx: Best; base?: Best } & Partial<Record<Rival, Match>>>()
+  for (const arm of HELD) {
     const ran = pairs.get(arm)!
-    const kept = quietest(ran, REPS)
-    best.set(`vx ${arm}`, Math.min(...kept.map((p) => p.vx)))
-    best.set(`turbo ${arm}`, Math.min(...kept.map((p) => p.turbo)))
-    if (BASE !== undefined) best.set(`base ${arm}`, Math.min(...kept.map((p) => p.base!)))
+    const kept = quietest(ran, REPS) as CpuPair[]
+    const min = (xs: number[]) => Math.min(...xs)
+    const of = (tool: 'vx' | 'base' | 'turbo'): Best => ({
+      ms: min(kept.map((p) => p[tool]!)),
+      cpuMs: min(kept.map((p) => p.cpu[tool]!)),
+    })
+    const fold = (runs: Best[]): Best => ({
+      ms: min(runs.map((r) => r.ms)),
+      cpuMs: min(runs.map((r) => r.cpuMs)),
+    })
+    const vxBest = of('vx')
+    const b: { vx: Best; base?: Best } & Partial<Record<Rival, Match>> = {
+      vx: vxBest,
+      turbo: { vx: vxBest, rival: of('turbo') },
+      ...(BASE === undefined ? {} : { base: of('base') }),
+    }
+    // vx on the cold workspace in this arm, the yardstick of the rivals timed there.
+    const vxSmall =
+      benchOf(arm) === small
+        ? vxBest
+        : fold([
+            await time('vx', arm, small),
+            await time('vx', arm, small),
+            await time('vx', arm, small),
+          ])
+    for (const rival of SMALL_RIVALS) {
+      const runs = [await time(rival, arm, small)]
+      const near = (r: Best) => r.ms < vxSmall.ms * REACH || r.cpuMs < vxSmall.cpuMs * REACH
+      if (near(runs[0]!)) runs.push(await time(rival, arm, small), await time(rival, arm, small))
+      b[rival] = { vx: vxSmall, rival: fold(runs) }
+    }
+    best.set(arm, b)
     const others = Math.max(...kept.map((p) => p.others))
+    const vsBase = quietBase(arm)
     console.log(
-      `${arm}: ${ran.length} pairs, the ${kept.length} quietest with ≤ ${others.toFixed(2)} cores busy beside them`,
+      `${arm}: ${ran.length} pairs, the ${kept.length} quietest with ≤ ${others.toFixed(2)} cores busy beside them` +
+        (BASE === undefined
+          ? ''
+          : `; vx slower than the base in ${vsBase.filter((p) => p.vx > p.base).length} of ${vsBase.length} quiet pairs`),
     )
     if (others > QUIET_CORES)
       console.log(
@@ -256,62 +277,34 @@ try {
       )
   }
 
-  const ratios = Object.fromEntries(
-    ARMS.map((arm) => [arm, best.get(`vx ${arm}`)! / best.get(`turbo ${arm}`)!]),
-  ) as Record<Arm, number>
-  const baseline = (await Bun.file(BASELINE)
-    .json()
-    .catch(() => ({}))) as Partial<Record<string, Record<Arm, number>>>
-  const platform = `${process.platform}-${process.arch}`
-  const fails: string[] = []
-  console.log(`case      vx        turbo     vx/turbo  baseline`)
-  for (const arm of ARMS) {
-    const was = baseline[platform]?.[arm]
-    const r = ratios[arm]
-    console.log(
-      `${arm.padEnd(9)} ${best.get(`vx ${arm}`)!.toFixed(0).padStart(5)} ms  ${best.get(`turbo ${arm}`)!.toFixed(0).padStart(5)} ms  ${r.toFixed(2).padStart(8)}  ${was?.toFixed(2) ?? '-'}`,
-    )
-    if (RATIO_HELD.includes(arm) && was !== undefined && r > was * TOLERANCE) {
-      fails.push(
-        `${arm}: vx/turbo ${was.toFixed(2)} → ${r.toFixed(2)}, past ${TOLERANCE}× the baseline`,
-      )
+  const tools: readonly Tool[] = BASE === undefined ? ['vx', ...RIVALS] : ['vx', 'base', ...RIVALS]
+  console.log(`case      ${tools.map((t) => t.padStart(18)).join('')}   (wall ms / CPU ms)`)
+  for (const arm of HELD) {
+    const b = best.get(arm)!
+    const at = (t: Tool): Best | undefined =>
+      t === 'vx' ? b.vx : t === 'base' ? b.base : b[t]?.rival
+    const cell = (t: Tool) => {
+      const x = at(t)
+      return (x === undefined ? '-' : `${x.ms.toFixed(0)} / ${x.cpuMs.toFixed(0)}`).padStart(18)
     }
-  }
-  if (update) {
-    baseline[platform] = Object.fromEntries(
-      ARMS.map((a) => [a, Number(ratios[a].toFixed(3))]),
-    ) as Record<Arm, number>
-    await writeFile(BASELINE, JSON.stringify(baseline, null, 2) + '\n')
-    console.log(`recorded ${platform} in pr-bench-baseline.json`)
-  } else {
-    const held = Object.fromEntries(
-      HELD.map((arm) => [arm, { vx: best.get(`vx ${arm}`)!, base: best.get(`base ${arm}`) }]),
+    const small = SMALL_RIVALS.map((r) => b[r]!.vx).find((x) => x !== b.vx)
+    console.log(
+      `${arm.padEnd(9)} ${tools.map(cell).join('')}` +
+        (small === undefined
+          ? ''
+          : `   (vx on the cold workspace: ${small.ms.toFixed(0)} / ${small.cpuMs.toFixed(0)})`),
     )
-    if (BASE !== undefined)
-      for (const arm of HELD)
-        console.log(
-          `${arm.padEnd(9)} vx ${held[arm]!.vx.toFixed(0)} ms, base ${BASE.slice(0, 9)} ${held[arm]!.base!.toFixed(0)} ms`,
-        )
-    fails.push(...baseFails(held, HELD))
-    fails.push(
-      ...turboFails(
-        Object.fromEntries(
-          HELD.map((arm) => [
-            arm,
-            { vx: best.get(`vx ${arm}`)!, turbo: best.get(`turbo ${arm}`)! },
-          ]),
-        ),
-        HELD,
-      ),
-    )
-    for (const f of fails) console.log(`FAIL ${f}`)
-    process.exitCode = fails.length > 0 ? 1 : 0
   }
+  const fails = [
+    ...baseFails(Object.fromEntries(HELD.map((arm) => [arm, quietBase(arm)])), HELD),
+    ...rivalFails(Object.fromEntries(best), HELD),
+  ]
+  for (const f of fails) console.log(`FAIL ${f}`)
+  process.exitCode = fails.length > 0 ? 1 : 0
 } finally {
   if (!process.env.KEEP) {
-    await rm(ws, { recursive: true, force: true })
-    await rm(`${ws}-vx`, { recursive: true, force: true })
-    await rm(`${ws}-turbo`, { recursive: true, force: true })
-    await rm(`${ws}-base`, { recursive: true, force: true })
-  } else console.log(ws)
+    for (const dir of scratch) await rm(dir, { recursive: true, force: true })
+    await rm(vx, { force: true })
+    if (baseVx !== undefined) await rm(baseVx, { force: true })
+  } else console.log(scratch.join('\n'))
 }

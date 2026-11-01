@@ -12,6 +12,7 @@ const HARNESS = [
   'ab.ts',
   'outputs.ts',
   'bench-env.ts',
+  'site-workspace.ts',
   'package.json',
 ]
 
@@ -30,20 +31,27 @@ export default defineProject({
     // shards and the Turbo ratio failed a commit its rerun passed. Not in
     // `ci`: CI runs it in a job of its own, off the DTE run (ci.yml `perf`).
     // perf-guard.ts: exact work counts and box-normalized times of core's
-    // hot paths against perf-baseline.json. pr-bench.ts: vx / turbo time
-    // ratios on one small workspace, held to pr-bench-baseline.json, from
-    // the pairs no other process disturbed (quiet.ts). Core's source
+    // hot paths against perf-baseline.json. pr-bench.ts: vx against the base
+    // commit's vx and Turborepo, restore and nothing-changed on the site's
+    // workspace, from the pairs no other process disturbed (quiet.ts). Core's source
     // reaches the key through install's ^build.
     'check.perf': {
       description:
-        'perf-guard.ts then pr-bench.ts: hot-path counts and vx vs Turborepo ratios against their baselines',
+        'perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and every rival',
       dependsOn: ['install'],
       exec: {
         command: 'bun perf-guard.ts && bun pr-bench.ts',
         // The commit pr-bench.ts times this checkout against (ci.yml sets it).
-        env: { ...NO_TRANSPILER_CACHE, passThrough: ['VX_BENCH_BASE'] },
-        // The base's source comes out of git's objects (pr-bench-base.ts).
-        sandbox: { allow: { read: ['**/*', '../../.git'], systemInfo: ['vfs.disk-space'] } },
+        // The site's workspace with no sleeps: restore and nothing-changed run no task.
+        env: {
+          ...NO_TRANSPILER_CACHE,
+          define: { ...NO_TRANSPILER_CACHE.define, BENCH_BUILD_MS: '0' },
+          passThrough: ['VX_BENCH_BASE'],
+        },
+        // No sandbox, as the site's bench.* tasks: its tracer would be timed.
+        // It stops every runner at each traced call, and vx makes more of
+        // them than Vite Task: traced, vx's cold run took 5.6 s against Vite
+        // Task's 5.3 s; untraced, 2.1 s against 2.8 s (2026-11-01).
       },
       inputs: {
         files: [
@@ -51,7 +59,10 @@ export default defineProject({
           'perf-baseline.json',
           'pr-bench.ts',
           'pr-bench-base.ts',
-          'pr-bench-baseline.json',
+          'site-workspace.ts',
+          'shape.ts',
+          'prng.ts',
+          'outputs.ts',
           'quiet.ts',
           'bench-env.ts',
           'edges.ts',
@@ -63,16 +74,6 @@ export default defineProject({
       },
       cache: {
         outputs: { files: [] },
-      },
-    },
-
-    'vs-turbo.update': {
-      description: 'pr-bench.ts --update: record this platform in pr-bench-baseline.json',
-      dependsOn: ['install'],
-      exec: {
-        command: 'bun pr-bench.ts --update',
-        env: NO_TRANSPILER_CACHE,
-        sandbox: { allow: { read: ['**/*'], write: ['pr-bench-baseline.json'] } },
       },
     },
 
