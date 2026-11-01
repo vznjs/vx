@@ -9,7 +9,7 @@
 // beyond a run. Linux only, where a task's pipes are vx's own descriptors.
 
 import { closeSync, writeSync } from 'node:fs'
-import { shellArgv } from '../util/index.js'
+import { taskShell } from '../util/index.js'
 import { guardLine, spawnGuarded } from './kill-tree.js'
 import { heldPipe, TaskPipes } from './pipes.js'
 import { type OffChild, spawnOff } from './spawn-off.js'
@@ -39,10 +39,20 @@ const WAIT = '. /dev/fd/3'
 function start(): Spare | undefined {
   const fds = heldPipe()
   if (fds === undefined) return undefined
+  let cmd: (guard: number | undefined) => string[]
+  try {
+    const sh = taskShell()
+    cmd = (guard) => [sh, '-c', (guard === undefined ? '' : guardLine(4)) + WAIT]
+  } catch {
+    // No shell on vx's PATH: the task's own spawn says so.
+    closeSync(fds[0]!)
+    closeSync(fds[1]!)
+    return undefined
+  }
   const pipes = new TaskPipes()
   const child = spawnGuarded((guard) =>
     spawnOff({
-      cmd: shellArgv((guard === undefined ? '' : guardLine(4)) + WAIT),
+      cmd: cmd(guard),
       argv0: 'sh',
       cwd: '/',
       env: {},

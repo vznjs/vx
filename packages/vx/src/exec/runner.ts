@@ -1089,9 +1089,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   let proc: Child
   // A spare shell takes the task when there is one (warm-shell.ts).
   const script =
-    opts.terminal === true
-      ? undefined
-      : spareScript(opts.cwd, opts.env, execWrap(fullCommand))
+    opts.terminal === true ? undefined : spareScript(opts.cwd, opts.env, execWrap(fullCommand))
   const spare = script === undefined ? undefined : takeSpare()
   const onSpare = spare === undefined ? undefined : await runOnSpare(spare, script!)
   const pipes = onSpare === undefined ? new TaskPipes(opts.terminal) : spare!.pipes
