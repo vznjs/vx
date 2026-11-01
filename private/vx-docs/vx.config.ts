@@ -361,12 +361,10 @@ export default defineProject({
       },
     },
 
-    // The site's part of main's `release`.
-    release: { dependsOn: ['deploy.pages'] },
-    // Main's deploy, a task of the run (2026-10-24): once the site's
-    // own checks pass it goes live beside the rest of the run. The Pages
-    // actions ran after the whole run, 33 s of main's workflow. The job's
-    // tokens it passes through work from any worker (ci.yml).
+    // Main's deploy, a task (2026-10-24: the Pages actions were 33 s of
+    // main's workflow). CI's Bench job runs it once it has measured, so
+    // the site ships the numbers of its own commit (2026-11-01: a deploy
+    // in main's run shipped the committed copy, older than the live one).
     'deploy.pages': {
       description: 'deploy dist/ to GitHub Pages (GitHub Actions only)',
       dependsOn: ['ci'],

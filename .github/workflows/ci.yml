@@ -54,13 +54,10 @@ jobs:
     if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    # A push to main deploys the docs site the run built.
-    environment: ${{ github.event_name == 'push' && 'github-pages' || '' }}
     permissions:
       id-token: write
       # Dispatching and cancelling the workers.
       actions: write
-      pages: write
       # release.sync gives each GitHub release its post's body.
       contents: write
       # The relay's Workers Builds check names a PR's Preview.
@@ -113,24 +110,13 @@ jobs:
         if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
         id: cache
         run: bun private/vx-servers/worker-url.ts private/vx-cache-service VX_CACHE_URL
-      # The Pages deploy is a task of the run (@vzn/vx-docs#deploy.pages,
-      # 2026-10-24). GitHub hands the job's runtime token, which
-      # uploads the site's artifact, only to JavaScript actions: this hands
-      # it to the run, whose env isolation passes it to that task alone.
-      - name: Hand the Pages token to the run
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN)
-            core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL)
       # Plans the graph, starts the workers its width needs, then
       # orchestrates them. A PR runs what its diff affects, inputs outside
       # a project included (2026-10-23); main runs everything.
       # The tasks say what each needs: `ci` is every change's checks, the
       # platform's own tests on Mac workers included, and main's `release`
-      # adds the release binaries, their launch checks, the release notes
-      # and the site's deploy.
+      # adds the release binaries, their launch checks and the release
+      # notes. The site deploys from the Bench job, with its numbers.
       - name: vx run
         env:
           VX_DTE_RELAY: ${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}
@@ -163,14 +149,18 @@ jobs:
   # The site's head-to-head data (@vzn/vx-docs#bench.data), on a runner
   # of their own and one runner at a time: a benchmark never runs under
   # DTE, where a worker is packed beside other tasks, and no build
-  # depends on it, so the DTE run never runs one. The site reads the
-  # committed src/data/bench.json; this job's artifact is the next copy to
-  # commit. `--force` measures every runner in this one job, on this one
-  # machine: rows restored from another runner's run timed other CPUs.
-  # Main and a dispatch measure; a pull request reads the committed data.
+  # depends on it, so the DTE run never runs one. `--force` measures every
+  # runner in this one job, on this one machine: rows restored from
+  # another runner's run timed other CPUs. Main and a dispatch measure; a
+  # pull request reads the committed src/data/bench.json.
+  # A push to main then deploys the site with the numbers it just measured
+  # (2026-11-01): from 10-29 the job only uploaded them, and the site kept
+  # showing the last committed copy. The deploy is here, not in the run:
+  # a run's deploy would ship the committed copy, older than the live one.
   bench:
     name: Bench
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    environment: ${{ github.event_name == 'push' && 'github-pages' || '' }}
     # BENCH_RUNNER names the machine kept for benchmarks (a self-hosted
     # runner's label): one runner takes one job at a time, so Bench and
     # Perf never time each other. Unset, each gets a fresh hosted VM.
@@ -179,6 +169,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      pages: write
       # The cache server's Workers Builds check names a PR's Preview.
       checks: read
     env:
@@ -218,6 +209,24 @@ jobs:
         with:
           name: bench-data
           path: private/vx-docs/measured/bench.json
+      - name: Use the measured numbers
+        if: github.event_name == 'push'
+        run: cp private/vx-docs/measured/bench.json private/vx-docs/src/data/bench.json
+      # GitHub hands the job's runtime token, which uploads the site's
+      # artifact, only to JavaScript actions: this hands it to the run,
+      # whose env isolation passes it to the deploy task alone.
+      - name: Hand the Pages token to the run
+        if: github.event_name == 'push'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN)
+            core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL)
+      - name: Deploy the site
+        if: github.event_name == 'push'
+        env:
+          VX_CACHE_URL: ${{ steps.cache.outputs.url || env.VX_CACHE_URL }}
+        run: bun packages/vx/src/bin.ts run @vzn/vx-docs#deploy.pages
 
   # The benchmarks, on a runner of their own: they time the machine, and a
   # DTE worker is packed for the run's wall time, not a task's

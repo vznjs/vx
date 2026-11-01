@@ -69,8 +69,7 @@ describe('ci.yml', () => {
   })
 
   // The site's head-to-head rows are timed on a machine of their own, one
-  // runner at a time; the site reads the committed data, so a benchmark
-  // never runs under DTE (2026-10-29).
+  // runner at a time, so a benchmark never runs under DTE (2026-10-29).
   it('measures the site benchmark off the DTE run, one runner at a time', () => {
     const bench = doc.jobs['bench']!
     expect(JSON.stringify(bench)).not.toContain('VX_DTE')
@@ -166,25 +165,46 @@ describe('ci.yml', () => {
     expect(doc.jobs['linux']!.steps!.some((s) => s.run?.includes(' setup ') === true)).toBe(false)
   })
 
-  // docs.yml was its own workflow, its own install and sandbox runtime, for
-  // a site the run already builds (2026-10-23: fold workflows into
-  // vx tasks on DTE). The deploy is a task of the run on a push to main
-  // (2026-10-24): the Pages actions after the run were 33 s.
-  it('deploys the docs site as a task of the run, on a push to main', () => {
-    const job = doc.jobs['linux']!
-    const main = "github.event_name == 'push' && github.ref == 'refs/heads/main'"
-    const run = job.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
-    // Push runs only on main (`on.push.branches`), so `release` is main's.
-    expect(run).toContain("${{ github.event_name == 'push' && 'release' || '' }}")
-    expect((doc.on ?? doc.true)!['push']).toEqual({ branches: ['main'] })
-    const token = job.steps!.find((s) => s.uses?.startsWith('actions/github-script@'))!
-    expect(token.if).toBe(main)
-    expect(token.with?.['script']).toContain("core.exportVariable('ACTIONS_RUNTIME_TOKEN'")
+  // docs.yml was its own workflow, its own install and sandbox runtime
+  // (2026-10-23). The deploy is a task (2026-10-24: the Pages actions
+  // were 33 s), run by the Bench job once it has measured: a deploy in
+  // main's run shipped the committed numbers, older than the live ones
+  // (2026-11-01).
+  it('deploys the docs site from the Bench job, with the numbers it measured', () => {
+    const push = "github.event_name == 'push'"
+    const run = doc.jobs['linux']!
+    expect(run.environment).toBeUndefined()
+    expect(run.permissions?.['pages']).toBeUndefined()
+    expect(run.steps!.some((s) => s.uses?.startsWith('actions/github-script@'))).toBe(false)
+    expect(
+      readFileSync(path.join(dir, '../../private/vx-docs/vx.config.ts'), 'utf8'),
+    ).not.toContain("release: { dependsOn: ['deploy.pages'] }")
+    const job = doc.jobs['bench']!
+    expect(job.environment).toBe(`\${{ ${push} && 'github-pages' || '' }}`)
+    expect([job.permissions?.['pages'], job.permissions?.['id-token']]).toEqual(['write', 'write'])
+    const names = job.steps!.map((s) => s.name)
+    const after = names.slice(names.indexOf('vx run bench.data'))
+    expect(after).toEqual([
+      'vx run bench.data',
+      'Upload the benchmark data',
+      'Use the measured numbers',
+      'Hand the Pages token to the run',
+      'Deploy the site',
+    ])
+    const step = (name: string): Step => job.steps!.find((s) => s.name === name)!
+    for (const name of after.slice(2)) expect(step(name).if).toBe(push)
+    expect(step('Use the measured numbers').run).toBe(
+      'cp private/vx-docs/measured/bench.json private/vx-docs/src/data/bench.json',
+    )
+    expect(step('Hand the Pages token to the run').with?.['script']).toContain(
+      "core.exportVariable('ACTIONS_RUNTIME_TOKEN'",
+    )
+    expect(step('Deploy the site').run).toBe(
+      'bun packages/vx/src/bin.ts run @vzn/vx-docs#deploy.pages',
+    )
     expect(job.steps!.some((s) => /deploy-pages|upload-pages-artifact/.test(s.uses ?? ''))).toBe(
       false,
     )
-    expect(job.environment).toBe("${{ github.event_name == 'push' && 'github-pages' || '' }}")
-    expect([job.permissions?.['pages'], job.permissions?.['id-token']]).toEqual(['write', 'write'])
   })
 
   // A run is what a developer would write (2026-10-23: "super
