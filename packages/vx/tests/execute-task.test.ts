@@ -25,6 +25,7 @@ import { addProject, gitInit, makeWorkspace as makeWorkspaceRoot } from './helpe
 import { Cache, GitFilesCache, type CacheEntry } from '../src/cache/index.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import * as spawnOffModule from '../src/exec/spawn-off.js'
+import * as warmShellModule from '../src/exec/warm-shell.js'
 import { UserError } from '../src/util/index.js'
 import { RestoreDemoted, type TaskNode, type TaskOutcome } from '../src/graph/index.js'
 import type { ExecuteRequest, TaskExecutor } from '../src/exec/index.js'
@@ -2703,19 +2704,22 @@ describe('execute-task edges', () => {
     const heard: Logger = { ...log, taskStderr: (_n, c) => void stderr.push(c) }
     const refusal = () =>
       Object.assign(new Error('EMFILE: too many open files, socketpair'), { code: 'EMFILE' })
-    // Both spawns a task may take: here, and on the spawn thread (Linux).
+    // Every spawn a task may take: here, on the spawn thread (Linux), and
+    // a spare shell an earlier test started, which holds no new descriptor.
     const emfile = spyOn(Bun, 'spawn').mockImplementation(() => {
       throw refusal()
     })
     const emfileOff = spyOn(spawnOffModule, 'spawnOff').mockImplementation(() =>
       Promise.reject(refusal()),
     )
+    const noSpare = spyOn(warmShellModule, 'takeSpare').mockReturnValue(undefined)
     let o: TaskOutcome
     try {
       o = await executeTask(baseArgs(b, node(b, { exec: { command: 'echo hi' } }), heard))
     } finally {
       emfile.mockRestore()
       emfileOff.mockRestore()
+      noSpare.mockRestore()
     }
     expect([o.status, o.exitCode, stderr.join('')]).toEqual([
       'failed',

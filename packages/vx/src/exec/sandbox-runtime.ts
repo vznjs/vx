@@ -58,10 +58,10 @@ import {
   spawnFailureText,
   streamToString,
   resourceUsageToCpuRss,
-  TaskPipes,
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
+import { TaskPipes } from './pipes.js'
 import { watchTree } from './proc-sample.js'
 import {
   BUN_GLOB_WILDCARDS,

@@ -175,6 +175,18 @@ held to its start; at the exit, `end` lets everything go; and an
   thread as before; only the spawn and the wait for its exit move. A
   terminal handed over and Bun's own pipes (macOS) keep the spawn here,
   as do `runPersistent` and the sandbox's spawn.
+- **Spare shell:** on Linux, a task's shell is started before the task
+  is asked for (`warm-shell.ts`), so the slot that frees does not wait
+  for sh to exec: 200 `sleep 0.02` took 4.4 ms each past their sleep
+  spawned fresh, 2.7 ms on a spare. Two spares wait at most, each on
+  its own pipes, with no directory or env of a task, blocked reading
+  descriptor 3. The task's script, written when one is taken, closes
+  that descriptor, `cd`s to the task's directory (127 when it is gone,
+  reported as a spawn that threw), drops the `OLDPWD` that `cd` set,
+  exports the task's env and runs the command. The task still has a
+  shell of its own, so its CPU and memory read as before, and a spare
+  holds no run open. An env name sh cannot export, a script over
+  60 KiB, or a terminal spawns fresh.
 - **`exec`:** a plain `word args…` command runs as `exec word args…`, so
   the program replaces the shell. A shell builtin keeps the shell (each
   one bash's `compgen -b` lists, bash-only `pushd` among them), and so
@@ -452,6 +464,9 @@ spawn returned left a `kill -9`'s orphan in 4 of 40 runs under load
   on its own thread and still reads the exit, both streams and the CPU;
   a spawn that throws keeps its code; a child spawned off the thread
   reports its signal and is killed on request.
+- `tests/warm-shell.test.ts`: a task on a spare spawns no shell; it sees
+  the env, directory, descriptors and `$0` a fresh shell gives; a task
+  whose directory is gone fails as a spawn that threw.
 - Pipes (X-113): `runCommand` and `runPersistent` open `/dev/stdout` and
   `/dev/stderr` by path, the first task's output ends at its exit, and
   every descriptor a task took (plain, cut, spawn-failed, persistent)

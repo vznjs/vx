@@ -17,6 +17,8 @@ export interface OffChild {
   readonly signalCode: NodeJS.Signals | null
   resourceUsage(): ResourceUsage | undefined
   kill(signal?: NodeJS.Signals | number): void
+  /** Hold the process open from now until the child exits: a spawn with `held: false` does not. */
+  hold(): void
 }
 
 export interface OffSpawn {
@@ -27,6 +29,8 @@ export interface OffSpawn {
   /** Each a descriptor number or `'ignore'`: a stream cannot cross threads. */
   stdio: Array<number | 'ignore'>
   detached?: boolean
+  /** False: the child keeps no run alive until `hold()` (a spare shell waiting for its task). */
+  held?: boolean
 }
 
 // The worker as source, not a file: a compiled vx carries only its entry
@@ -56,6 +60,7 @@ self.onmessage = (e) => {
 `
 
 interface Pending {
+  held: () => boolean
   spawned: (pid: number) => void
   failed: (err: Error) => void
   exit: (m: {
@@ -81,12 +86,12 @@ function thread(): Worker {
       pending.delete(m.id)
       const err = new Error(m.error.message) as NodeJS.ErrnoException
       if (m.error.code !== undefined) err.code = m.error.code
-      settleLive(-1)
+      if (p.held()) settleLive(-1)
       p.failed(err)
     } else if (m.pid !== undefined) p.spawned(m.pid)
     else {
       pending.delete(m.id)
-      settleLive(-1)
+      if (p.held()) settleLive(-1)
       p.exit(m)
     }
   }
@@ -107,7 +112,9 @@ function settleLive(delta: number): void {
 export function spawnOff(opts: OffSpawn): Promise<OffChild> {
   const w = thread()
   const id = nextId++
-  settleLive(1)
+  let held = opts.held !== false
+  if (held) settleLive(1)
+  const { held: _, ...spawn } = opts
   return new Promise((resolve, reject) => {
     let exitCode: number | null = null
     let signalCode: NodeJS.Signals | null = null
@@ -115,6 +122,7 @@ export function spawnOff(opts: OffSpawn): Promise<OffChild> {
     let onExit!: (code: number) => void
     const exited = new Promise<number>((r) => (onExit = r))
     pending.set(id, {
+      held: () => held,
       failed: reject,
       spawned: (pid) =>
         resolve({
@@ -128,6 +136,11 @@ export function spawnOff(opts: OffSpawn): Promise<OffChild> {
           },
           resourceUsage: () => usage,
           kill: (signal) => w.postMessage({ kill: id, signal }),
+          hold: () => {
+            if (held || exitCode !== null || signalCode !== null) return
+            held = true
+            settleLive(1)
+          },
         }),
       exit: (m) => {
         exitCode = m.exitCode
@@ -136,6 +149,6 @@ export function spawnOff(opts: OffSpawn): Promise<OffChild> {
         onExit(exitCode ?? 1)
       },
     })
-    w.postMessage({ id, opts })
+    w.postMessage({ id, opts: spawn })
   })
 }
