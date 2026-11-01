@@ -281,7 +281,7 @@ Each task sleeps: build %bench.task.build%, test and typecheck
 
 That is long enough that the tasks, not any tool's own work, set the pace.
 
-`build` writes 200 KB of seeded incompressible bytes plus a file made
+`build` writes 200 KB of incompressible random bytes plus a file made
 from its dependencies' outputs. The bench times what CI runs: a cold
 build, a run with nothing changed, and a restore from cache.
 
