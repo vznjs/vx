@@ -358,9 +358,12 @@ cold figure is the median of three cold runs (`COLD_REPS=3`): one let a
 single run move it by seconds. It
 uploads `measured/bench.json` as the `bench-data` artifact.
 
-On main the job then copies that file over `src/data/bench.json` and
-runs `@vzn/vx-docs#deploy.pages`, so each main push puts its own numbers
-live. The site deploys only from this job: a deploy from main's run would
+On main the job then runs `scripts/bench-gate.ts` and
+`@vzn/vx-docs#deploy.pages`. The gate reads the live site's `bench.json`
+and takes the new run only when vx's overhead as a share of Turbo's is no
+higher on any figure (nothing changed, restored, cold, CPU). Otherwise the
+live numbers stay, the docs still deploy, and the job fails: the site
+never shows vx worse against Turbo (2026-11-01). The site deploys only from this job: a deploy from main's run would
 ship the committed copy, older than the live one (2026-11-01).
 
 No build depends on the

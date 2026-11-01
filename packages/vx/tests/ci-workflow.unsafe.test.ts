@@ -190,11 +190,16 @@ describe('ci.yml', () => {
       'Use the measured numbers',
       'Hand the Pages token to the run',
       'Deploy the site',
+      'Hold vx to the live numbers',
     ])
     const step = (name: string | undefined): Step => job.steps!.find((s) => s.name === name)!
-    for (const name of after.slice(2)) expect(step(name).if).toBe(push)
+    for (const name of after.slice(2, 5)) expect(step(name).if).toBe(push)
+    // The site never shows vx worse against Turbo (2026-11-01).
     expect(step('Use the measured numbers').run).toBe(
-      'cp private/vx-docs/measured/bench.json private/vx-docs/src/data/bench.json',
+      `bun private/vx-docs/scripts/bench-gate.ts https://vznjs.github.io/vx/bench.json | tee /dev/stderr | grep '^published=' >> "$GITHUB_OUTPUT"`,
+    )
+    expect(step('Hold vx to the live numbers').if).toBe(
+      `${push} && steps.gate.outputs.published != 'true'`,
     )
     expect(step('Hand the Pages token to the run').with?.['script']).toContain(
       "core.exportVariable('ACTIONS_RUNTIME_TOKEN'",

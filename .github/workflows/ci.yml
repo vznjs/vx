@@ -210,9 +210,13 @@ jobs:
         with:
           name: bench-data
           path: private/vx-docs/measured/bench.json
+      # The site never shows vx worse against Turbo than it shows now
+      # (2026-11-01): a run that would is not published, the live numbers
+      # stay, and the job fails once the docs are deployed.
       - name: Use the measured numbers
         if: github.event_name == 'push'
-        run: cp private/vx-docs/measured/bench.json private/vx-docs/src/data/bench.json
+        id: gate
+        run: bun private/vx-docs/scripts/bench-gate.ts https://vznjs.github.io/vx/bench.json | tee /dev/stderr | grep '^published=' >> "$GITHUB_OUTPUT"
       # GitHub hands the job's runtime token, which uploads the site's
       # artifact, only to JavaScript actions: this hands it to the run,
       # whose env isolation passes it to the deploy task alone.
@@ -228,6 +232,11 @@ jobs:
         env:
           VX_CACHE_URL: ${{ steps.cache.outputs.url || env.VX_CACHE_URL }}
         run: bun packages/vx/src/bin.ts run @vzn/vx-docs#deploy.pages
+      - name: Hold vx to the live numbers
+        if: github.event_name == 'push' && steps.gate.outputs.published != 'true'
+        run: |
+          echo "::error::vx is worse against Turbo than the live site: fix it, the site keeps its numbers"
+          exit 1
 
   # The benchmarks, on a runner of their own: they time the machine, and a
   # DTE worker is packed for the run's wall time, not a task's
