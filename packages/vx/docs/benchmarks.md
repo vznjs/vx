@@ -201,8 +201,7 @@ take main's and run it again):
 vx run @vzn/vx-bench#perf.update   # then commit perf-baseline.json
 ```
 
-Run it through `vx run`: the baseline's times are taken under the task
-sandbox, as the check is.
+Run it through `vx run`.
 
 ### The per-PR bench against every rival and the base
 
@@ -212,7 +211,10 @@ two benchmarks never share a machine. It times this checkout's vx,
 compiled as released, against the base commit's vx (`VX_BENCH_BASE`: the
 PR's base, or main before a push, built in the same job from `git archive`
 of `packages/vx`), Turborepo, Nx and Vite Task (pinned in
-`private/vx-bench/package.json`).
+`private/vx-bench/package.json`). The task runs outside the sandbox, as
+the site's bench does: the sandbox's tracer stops every runner at each
+traced call and would be timed. Traced, vx's cold run took 5.6 s against
+Vite Task's 5.3 s; untraced, 2.1 s against 2.8 s.
 
 Every runner runs the site's own workspace as the site configures it
 (`site-workspace.ts`), with no task sleeping. Restore and nothing-changed
@@ -229,7 +231,7 @@ vx, the base and Turbo run in pairs, vx and the base each first in turn.
 Other processes slow vx more than Turbo (four busy loops moved the
 nothing-changed ratio from 0.90 to 1.28), so each pair reads the cores
 other processes kept busy while it ran (`/proc/stat`, less the bench's
-own CPU, its children's and the sandbox's strace). A case reps until 7
+own CPU and its children's). A case reps until 7
 pairs ran with at most half a core busy beside them, and takes each
 tool's min over its 7 quietest; with none that quiet it says `BUSY` and
 holds anyway. Nx and Vite Task run every case on the 100-package

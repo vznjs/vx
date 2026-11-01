@@ -159,7 +159,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   `@vzn/vx-servers#test.live` (brings up the compose file of all three), `@vzn/vx-migrate#nx.install`
   (the npm registry), `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac worker) and
-  `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task}` (the tracer would be timed) are
+  `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task}` and `#check.perf` (the tracer would be timed) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
 - Every package's suite is its `test` task, so `vx run ci --all` gates
   them all; CI runs nothing but vx tasks (a workspace step is a design

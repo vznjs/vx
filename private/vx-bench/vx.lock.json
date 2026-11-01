@@ -12,7 +12,7 @@
       ]
     },
     "check.perf": {
-      "description": "perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and Turborepo",
+      "description": "perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and every rival",
       "dependsOn": [
         "install"
       ],
@@ -26,21 +26,6 @@
           "passThrough": [
             "VX_BENCH_BASE"
           ]
-        },
-        "sandbox": {
-          "allow": {
-            "read": [
-              "**/*",
-              "../../.git"
-            ],
-            "write": [
-              "~/.nx/",
-              "/tmp/.nx/"
-            ],
-            "systemInfo": [
-              "vfs.disk-space"
-            ]
-          }
         }
       },
       "inputs": {

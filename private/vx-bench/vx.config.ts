@@ -37,7 +37,7 @@ export default defineProject({
     // reaches the key through install's ^build.
     'check.perf': {
       description:
-        'perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and Turborepo',
+        'perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and every rival',
       dependsOn: ['install'],
       exec: {
         command: 'bun perf-guard.ts && bun pr-bench.ts',
@@ -48,16 +48,10 @@ export default defineProject({
           define: { ...NO_TRANSPILER_CACHE.define, BENCH_BUILD_MS: '0' },
           passThrough: ['VX_BENCH_BASE'],
         },
-        // The base's source comes out of git's objects (pr-bench-base.ts).
-        // Nx keeps its sockets and native cache in ~/.nx and /tmp/.nx: the
-        // sandbox's own temp path is longer than a socket path may be.
-        sandbox: {
-          allow: {
-            read: ['**/*', '../../.git'],
-            write: ['~/.nx/', '/tmp/.nx/'],
-            systemInfo: ['vfs.disk-space'],
-          },
-        },
+        // No sandbox, as the site's bench.* tasks: its tracer would be timed.
+        // It stops every runner at each traced call, and vx makes more of
+        // them than Vite Task: traced, vx's cold run took 5.6 s against Vite
+        // Task's 5.3 s; untraced, 2.1 s against 2.8 s (2026-11-01).
       },
       inputs: {
         files: [
