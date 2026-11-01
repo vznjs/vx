@@ -2295,7 +2295,10 @@ describe('the headline Nx column runs nx:run-commands', () => {
   it('the harness writes them, and benchmarks.md keeps the run-script read', () => {
     const root = path.resolve(import.meta.dir, '..', '..', '..')
     const bench = readFileSync(path.join(root, 'packages', 'vx', 'docs', 'benchmarks.md'), 'utf8')
-    const harness = readFileSync(path.join(root, 'private', 'vx-bench', 'site-workspace.ts'), 'utf8')
+    const harness = readFileSync(
+      path.join(root, 'private', 'vx-bench', 'site-workspace.ts'),
+      'utf8',
+    )
     expect([...harness.matchAll(/executor: '(nx:[\w-]+)'/g)].map((m) => m[1])).toEqual([
       'nx:noop',
       'nx:run-commands',
