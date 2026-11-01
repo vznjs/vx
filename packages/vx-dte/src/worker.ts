@@ -33,7 +33,6 @@ import {
 import { childrenCpuMs, describeCpu, readPs, topBetween } from './cpu-account.js'
 import {
   bytesOf,
-  HELD_EVERY,
   HOST_ENV,
   PART_LISTS,
   type DepOrder,
@@ -242,7 +241,7 @@ export async function runWorker(opts: {
       result: wired,
       load: frame(),
     }
-    for (const part of parts(end)) await me.send('orchestrator', part)
+    for (const part of parts(end)) await say(part)
   }
 
   // A message the relay would not take is said, each kind once (2026-10-23):
@@ -258,15 +257,48 @@ export async function runWorker(opts: {
       what,
       'the orchestrator',
     )
+  /** Tasks whose command ended, saving: a task begun beside one is said with its `end`. */
+  const saving = new Set<string>()
+  /** Begun tasks not said yet. */
+  let starts: string[] = []
+  /** `m` to the orchestrator, with the begun tasks waiting on it: one frame. */
+  const say = (m: ToOrchestrator): Promise<void> => {
+    const waiting = starts.map((task): ToOrchestrator => ({ type: 'start', task }))
+    starts = []
+    return me.send(
+      'orchestrator',
+      waiting.length === 0 ? m : { type: 'together', messages: [...waiting, m] },
+    )
+  }
+  const sayStarts = (): void => {
+    const last = starts.pop()
+    if (last === undefined) return
+    void say({ type: 'start', task: last, load: frame() }).catch(unsent('start'))
+  }
+  /**
+   * A begun task is said at once, unless a task beside it saves: then with
+   * that task's `end`, its turnover one message, or the report within the
+   * heartbeat if the save is longer.
+   */
+  const begin = (task: string): void => {
+    starts.push(task)
+    if (saving.size === 0) sayStarts()
+  }
+  // A heartbeat with nothing said: its live report, which is how the
+  // orchestrator hears it. Never a second in one: any message carries load.
+  me.quiet(() => {
+    void say({ type: 'report', running: [...running.keys()], load: frame() }).catch(
+      unsent('report'),
+    )
+  })
   /** Runs a task the orchestrator sent: it fits what this worker has free. */
   const start = (m: RunOrder): void => {
     let ran = false
     const done = (): void => {
       if (ran) return
       ran = true
-      void me
-        .send('orchestrator', { type: 'ran', task: m.task, load: frame() })
-        .catch(unsent('ran'))
+      saving.add(m.task)
+      void say({ type: 'ran', task: m.task, load: frame() }).catch(unsent('ran'))
     }
     const p = runTask(m, done)
       .catch(async (err: unknown) => {
@@ -286,9 +318,7 @@ export async function runWorker(opts: {
         }
         const reason = err instanceof Error ? err.message : String(err)
         ui.print('err', ui.status('error', m.task, `could not run: ${reason}`))
-        await me
-          .send('orchestrator', { type: 'fault', task: m.task, reason })
-          .catch(unsent('fault'))
+        await say({ type: 'fault', task: m.task, reason }).catch(unsent('fault'))
       })
       .finally(() => work.delete(p))
     work.add(p)
@@ -321,9 +351,7 @@ export async function runWorker(opts: {
     const stop = new AbortController()
     running.set(m.task, stop)
     // Not awaited: the task does not wait on the relay to say it began.
-    void me
-      .send('orchestrator', { type: 'start', task: m.task, load: frame() })
-      .catch(unsent('start'))
+    begin(m.task)
     try {
       const differs = await runtimeDiffers(m)
       if (differs !== undefined) {
@@ -525,16 +553,11 @@ export async function runWorker(opts: {
       })
     } finally {
       running.delete(m.task)
+      saving.delete(m.task)
+      if (saving.size === 0) sayStarts()
     }
   }
 
-  // What it holds, every `HELD_EVERY` heartbeats: the orchestrator's lease on each task.
-  const held = setInterval(() => {
-    if (running.size === 0) return
-    void me
-      .send('orchestrator', { type: 'held', running: [...running.keys()], load: frame() })
-      .catch(unsent('held'))
-  }, HELD_EVERY * me.heartbeatMs)
   try {
     for (;;) {
       let messages
@@ -608,7 +631,6 @@ export async function runWorker(opts: {
   } finally {
     process.off('SIGINT', onInt)
     process.off('SIGTERM', onTerm)
-    clearInterval(held)
     trees.stop()
     for (const c of running.values()) c.abort()
     await Promise.all(work)

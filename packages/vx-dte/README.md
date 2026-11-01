@@ -457,8 +457,10 @@ use your own instead.
   One the run started is held to the size it was started as, so
   `local()` workers sharing a host split it rather than each take all of
   it. Each frame it sends (a task begun, a command ended, a task saved,
-  its heartbeat) carries its machine's load: cores busy over the last
-  second and memory in use. A task goes to it only when it fits now: while
+  its report) carries its machine's load: cores busy over the last
+  second and memory in use. A heartbeat with nothing else to say, it
+  sends its report: that load and the tasks it runs. A begun task its
+  report no longer names goes back to the queue at once. A task goes to it only when it fits now: while
   one of its cores is free and the task's memory fits. What a worker has
   in use is what its running tasks used on their last run (history's
   measured CPU and peak RAM), or its live load plus what was sent since
@@ -587,8 +589,8 @@ use your own instead.
 - The relay stores nothing, so a restart forgets the run. The orchestrator
   joins again as its host and each worker joins again as itself, for two
   heartbeats (4 s on the default); tasks keep running meanwhile, and what
-  either side sent goes again once both are back, taken once. Leases
-  wait while either is away, and a worker sent a task it runs already
+  either side sent goes again once both are back, taken once. A worker
+  keeps what it runs, and one sent a task it runs already
   does not run it again, so no work repeats. One not back by then
   ends: a worker's tasks run elsewhere, an orchestrator's run fails.
   Joining has the same 10 s in all, its socket and request together: a
@@ -611,13 +613,13 @@ use your own instead.
   orchestrator's at its run's end is the final call that closes the run,
   and a worker's when it is done. Either whose socket drops without it
   dials again, 3 times within 10 s, and the relay keeps it, and its run,
-  for those 10 s; past them the run is over. A peer quiet on a socket that never
-  closed is lost within two heartbeats (4 s on the default): only a
-  peer heard from for none of a heartbeat and a half is probed (an
-  empty numbered send), which it acks at once; either side hearing
-  nothing from the other for 1.9 heartbeats loses it, a worker by
-  ending, and saying so. A quiet pair trades one probe and its ack each heartbeat and a
-  half, the relay answers neither, and nobody pings. An orchestrator
+  for those 10 s; past them the run is over. Each side says something to
+  the other at least every heartbeat, and never twice in one for that
+  alone: whatever it has, grouped into one frame; else a worker its
+  report and the orchestrator a beat (an empty numbered send). Either
+  side hearing nothing from the other for 1.9 heartbeats (4 s on the
+  default) loses it, a worker by ending, and saying so. Nobody probes,
+  the relay answers neither, and nobody pings. An orchestrator
   with no worker yet asks the relay an empty frame instead; a frame the
   relay leaves unanswered a heartbeat closes the socket, which is dialed
   again.
@@ -628,10 +630,12 @@ use your own instead.
   ends the run, as a dead orchestrator would.
 - Each send is numbered for its receiver and held until the receiver
   acknowledges it, so one a socket or the relay dropped goes again after
-  a heartbeat, or at once on a new socket; the receiver takes each once,
-  in order. An ack rides the next send back, and those with none to ride
-  go together in one frame per half heartbeat: no message of its own on
-  a busy run.
+  a heartbeat and a half, or at once on a new socket; the receiver takes
+  each once, in order. An ack rides the next send back, which goes within
+  a heartbeat: never a frame of its own.
+- What a worker has to say at one moment goes as one message: a task it
+  begins while another saves is said with that one's `end`, or with its
+  report within the heartbeat.
 - A run where no task began or ended for a minute warns what it waits
   on, a line a task: which worker, and whether it runs or saves.
 - A message the relay would not take is a warning naming it, its

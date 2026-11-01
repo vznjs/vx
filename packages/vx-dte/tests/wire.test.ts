@@ -207,10 +207,12 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
 }
 
 // Each frame is a message a relay host may bill: pings at two a heartbeat
-// were nearly all of a run's (2026-10-23). Quiet, a pair trades one probe
-// and its ack each heartbeat and a half (2026-10-23: "if not ask
-// to send") and pings nothing; talking, it is asked nothing.
-it('a quiet pair trades one probe and its ack, a talking one none, and none pings', async () => {
+// were nearly all of a run's (2026-10-23). Each side says something every
+// heartbeat, never twice in one for that alone (2026-11-01: "You do minimum
+// comms. You group whatever can be. You send data at least every 2s.
+// During that frame you never repeat"): quiet, one beat a side a heartbeat,
+// its acks inside; talking, no beat from the talker, and nobody pings.
+it('each side of a quiet pair beats once a heartbeat, a talking side never, and none pings', async () => {
   const { url, pings, frames, answers } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
@@ -218,32 +220,40 @@ it('a quiet pair trades one probe and its ack, a talking one none, and none ping
   frames.length = 0
   answers.length = 0
   await Bun.sleep(2_600)
-  const probe = /"sends":\[\{"to":"[^"]+","body":\{"seq":\d+(,"acked":\d+)?\}\}\]/
+  const beat = (to: string) =>
+    new RegExp(`"sends":\\[\\{"to":"${to}","body":\\{"seq":\\d+(,"acked":\\d+)?\\}\\}\\]`)
   const quiet = frames.splice(0)
-  // Five heartbeats: the orchestrator's probe and the worker's ack each
-  // one and a half. Before, each side asked the relay a heartbeat and
-  // pinged it twice.
-  expect([quiet.length >= 4, quiet.length <= 8]).toEqual([true, true])
-  expect(quiet.filter((f) => probe.test(f)).length).toBeLessThanOrEqual(4)
+  // Five heartbeats: a beat from each side each one, nothing else.
+  const fromO = quiet.filter((f) => beat(a.id).test(f)).length
+  const fromA = quiet.filter((f) => beat('host').test(f)).length
+  expect([fromO >= 4, fromO <= 6, fromA >= 4, fromA <= 6]).toEqual([true, true, true, true])
+  expect(quiet.length).toBe(fromO + fromA)
   // Neither waits on the relay's answer to either, so it sends none.
   expect(answers).toEqual([])
   const t = performance.now()
   for (let i = 0; performance.now() - t < 2_500; i++) {
-    // A probe due as the talk began may still go.
+    // A beat due as the talk began may still go.
     if (performance.now() - t < 500) frames.length = 0
     await a.send('orchestrator', i)
     await Bun.sleep(50)
   }
-  expect([frames.filter((f) => probe.test(f) || f.includes('"sends":[]')), pings]).toEqual([[], []])
+  const talking = frames.splice(0)
+  expect([talking.filter((f) => beat('host').test(f) || f.includes('"sends":[]')), pings]).toEqual([
+    [],
+    [],
+  ])
+  // The quiet side still beats once a heartbeat, carrying its acks: four
+  // heartbeats of talk counted.
+  expect(talking.filter((f) => beat(a.id).test(f)).length).toBeLessThanOrEqual(5)
   await a.leave()
   await o.leave()
 }, 15_000)
 
 // PR #4317's run (2026-10-24): two workers each sent `ran` a moment
 // before their orchestrator's next probe was due. The orchestrator, having
-// heard them, probed no more and acked half a heartbeat later; the worker,
-// its send unacked, did not probe, and judged it silent first.
-it('a worker that sends just before the next probe still hears its orchestrator', async () => {
+// heard them, probed no more and acked later; the worker judged it silent
+// first. Now each side beats on its own clock.
+it('a worker that sends just before the orchestrator’s next beat still hears its orchestrator', async () => {
   const { url, frames } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)

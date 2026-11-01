@@ -1,10 +1,10 @@
 // The orchestrator's relay participant on a thread of its own.
 //
-// Liveness is in the protocol: a peer quiet 1.9 heartbeats is lost, and a
-// quiet one is probed and acks at once. On the orchestrator's loop, its
-// own sync work held those acks: in CI run 40886829588 (2026-10-29) it
-// said nothing for 12 s and every worker then running ended, stopping 13
-// tasks. Here the socket, its acks, probes and redials run on a thread the
+// Liveness is in the protocol: each side speaks every heartbeat, and a
+// peer quiet 1.9 heartbeats is lost. On the orchestrator's loop, its own
+// sync work held its beats: in CI run 40886829588 (2026-10-29) it said
+// nothing for 12 s and every worker then running ended, stopping 13
+// tasks. Here the socket, its acks, beats and redials run on a thread the
 // run's work never holds; the run talks to it by messages.
 
 import { RelayError, type Participant, type RelayMessage } from './wire.js'
@@ -141,6 +141,8 @@ export async function joinOffLoop(
     resumed(f) {
       onResumed = f
     },
+    // The thread's own wire beats for the run: its loop may be held.
+    quiet() {},
     async send(to, body) {
       await call({ type: 'send', to, body })
     },

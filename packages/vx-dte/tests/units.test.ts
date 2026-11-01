@@ -219,6 +219,7 @@ it('a send to a worker the relay would not take is said', async () => {
         heartbeatMs: me.heartbeatMs,
         online: true,
         resumed: () => {},
+        quiet: () => {},
         poll: (signal) => me.poll(signal),
         remove: (id) => me.remove(id),
         leave: () => me.leave(),
@@ -393,15 +394,86 @@ it('a task a worker runs across a relay restart and its orchestrator’s absence
         }
         if (m.type === 'end') await o.send(from, { type: 'exit' })
       }
-    expect(seen.filter((t) => t !== 'held')).toEqual(['joined', 'start', 'ran', 'end'])
+    expect(seen.filter((t) => t !== 'report')).toEqual(['joined', 'start', 'ran', 'end'])
     expect(await code).toBe(0)
   } finally {
     await served.stop()
   }
 })
 
-// An orchestrator may send a task again to the worker running it (its lease
-// ended while the relay was away): it is not run twice.
+// 2026-11-01: "You do minimum comms. You group whatever can be. You send
+// data at least every 2s." A quiet worker's heartbeat is its live report;
+// a task begun while another saves is said with that one's `end`.
+it('a worker reports when quiet, and says a task begun beside a save with its end, as one', async () => {
+  const root = await tmp()
+  const served = servedRelay({ heartbeatMs: 500 })
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const { artifacts } = fakeArtifacts()
+    artifacts.save = () => Bun.sleep(400)
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order = (task: string): RunOrder => ({
+      task,
+      key: `k-${task}`,
+      runKey: runKey(R, task),
+      deps: [],
+      nested: [],
+      // t2 runs past t1's save, so t1's `end` is the next thing said.
+      command: task === 't1' ? 'true' : 'sleep 0.6',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    const seen: unknown[] = []
+    let worker = ''
+    const said = (m: { type: string; task?: string; messages?: unknown[] }): unknown =>
+      m.type === 'together'
+        ? (m.messages as { type: string; task?: string }[]).map(said)
+        : m.type === 'report'
+          ? `report ${(m as unknown as { running: string[] }).running.join(',')}`
+          : `${m.type} ${m.task}`
+    for (let i = 0; i < 100 && !seen.some((m) => String(m) === 'end t2'); i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string; task?: string }
+        if (from === 'relay') {
+          if (m.type !== 'joined') continue
+          worker = m.id!
+          await o.send(worker, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+          continue
+        }
+        seen.push(said(m))
+        // Its first report, idle: then t1, and t2 the moment t1's command ends.
+        if (seen.length === 1)
+          await o.send(worker, { type: 'batch', root, realRoot: root, tasks: [order('t1')] })
+        if (m.type === 'ran' && m.task === 't1')
+          await o.send(worker, { type: 'batch', root, realRoot: root, tasks: [order('t2')] })
+      }
+    await o.send(worker, { type: 'exit' })
+    expect(seen[0]).toBe('report ')
+    const events = seen.filter((m) => !String(m).startsWith('report'))
+    expect(events).toEqual(['start t1', 'ran t1', ['start t2', 'end t1'], 'ran t2', 'end t2'])
+    expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+})
+
+// An orchestrator may send a task again to the worker running it (a batch
+// resent across a relay restart): it is not run twice.
 it('a worker sent a task it runs already does not run it again', async () => {
   const root = await tmp()
   const served = servedRelay({ heartbeatMs: 500 })
@@ -920,7 +992,7 @@ it('sends a worker what its booking fits, though its load reads low; busier than
     // Its machine busier than booked: the core a task freed stays taken.
     await b.say({ type: 'start', task: 't5', load: { cpu: 4, memory: 0 } })
     await b.finish('t5')
-    await b.say({ type: 'held', running: ['t6', 't7', 't8'], load: { cpu: 4, memory: 0 } })
+    await b.say({ type: 'report', running: ['t6', 't7', 't8'], load: { cpu: 4, memory: 0 } })
     const t9 = h.o.execute(h.req('t9'))
     await Bun.sleep(50)
     expect(h.o.where('t9')).toBeNull()
@@ -1103,7 +1175,7 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   const done = ['t1', 't2'].map((id) => h.o.execute(h.req(id)))
   expect(await a.batches()).toEqual([['t1', 't2']])
   for (const t of ['t1', 't2']) await a.begin(t)
-  await a.say({ type: 'held', running: ['t1', 't2'], load: { cpu: 1.5, memory: 0, tasks: 1.2 } })
+  await a.say({ type: 'report', running: ['t1', 't2'], load: { cpu: 1.5, memory: 0, tasks: 1.2 } })
   // PR #4214's run asked 7 workers and cancelled each a second later: what each plan saw.
   h.o.planned({
     start: ['small'],
@@ -1794,41 +1866,40 @@ it('a worker that could not run a task it began gets no more; two such fail it',
   }
 })
 
-it('a task a worker stops saying it holds goes back when its lease ends', async () => {
-  // At 100 ms a beat, the test process held its loop past 190 ms once on
-  // CI and its worker lost the orchestrator (main ae800d6, 2026-10-26).
+// A report is the worker's whole state (2026-11-01: "the other reports
+// live"): a begun task it names no more goes back at once, not at a lease's
+// end. One not begun yet, or ended, is not missing.
+it('a begun task its worker’s report names no more goes back at once', async () => {
   const beat = 300
-  const h = await harness(new Map([node('t1')]), undefined, beat)
+  const h = await harness(new Map([node('t1'), node('t2')]), undefined, beat)
   try {
-    const a = await h.worker(1)
+    const a = await h.worker(2)
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
-    expect(await a.batches()).toEqual([['t1']])
-    // One `held` lasts three heartbeats: a worker says it every one.
-    await a.say({ type: 'held', running: ['t1'], queued: [] })
-    const said = performance.now()
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    // Its report crossed the batch: neither was begun, neither moves.
+    await a.say({ type: 'report', running: [], load: { cpu: 0, memory: 0 } })
+    await a.begin('t1')
+    await a.begin('t2')
+    await a.finish('t2')
+    await Bun.sleep(50)
+    expect(h.o.where('t1')).toBe('worker#1')
     const b = await h.worker(1)
-    // Alive, holding nothing: t1's lease ends and it moves.
-    const alive = setInterval(() => void a.say({ type: 'held', running: [], queued: [] }), 50)
-    try {
-      let got: string[][] = []
-      for (let i = 0; i < 3 && got.length === 0; i++) got = await b.batches()
-      expect(got).toEqual([['t1']])
-      // A `held` lasts three heartbeats: well under a lease of six.
-      expect(performance.now() - said).toBeLessThan(6 * beat)
-    } finally {
-      clearInterval(alive)
-    }
+    await a.say({ type: 'report', running: [], load: { cpu: 0, memory: 0 } })
+    const said = performance.now()
+    expect(await b.batches()).toEqual([['t1']])
+    expect(performance.now() - said).toBeLessThan(beat)
   } finally {
     await h.stop()
   }
 })
 
 // The relay restarts while a worker runs t1, and the orchestrator is away
-// a heartbeat; another worker polls past t1's lease, which no `held`
-// renewed. It stays the worker's, not run again elsewhere (2026-10-25:
-// "make sure on rejoin we don't repeat work").
-it('a task held across a relay restart stays its worker’s: its lease waits for both to be back', async () => {
+// a heartbeat; another worker polls past the time a lease used to end. It
+// stays the worker's, not run again elsewhere (2026-10-25: "make sure on
+// rejoin we don't repeat work").
+it('a task begun across a relay restart stays its worker’s', async () => {
   const beat = 400
   const h = await harness(new Map([node('t1')]), undefined, beat)
   try {
@@ -1837,7 +1908,7 @@ it('a task held across a relay restart stays its worker’s: its lease waits for
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
     await a.begin('t1')
-    await a.say({ type: 'held', running: ['t1'], queued: [] })
+    await a.say({ type: 'report', running: ['t1'], load: { cpu: 1, memory: 0 } })
     const heldAt = performance.now()
     const b = await h.worker(1)
     h.served.refuse = (r) => decodeURIComponent(r.url).includes('"role":"host"')
@@ -1846,8 +1917,7 @@ it('a task held across a relay restart stays its worker’s: its lease waits for
     // jitter of up to half a beat, and a 500 ms refusal of 600 left a
     // loaded runner 100 ms for it and the dial (CI, PR #4867).
     setTimeout(() => (h.served.refuse = undefined), beat)
-    // Half a beat past the lease of 3 heartbeats from that `held`, half a
-    // beat before the lease the rejoin renewed (at least 4 from it) ends.
+    // Past the lease of 3 heartbeats this once had.
     const until = heldAt + beat * 3.5
     const got: string[] = []
     while (performance.now() < until)
@@ -1858,52 +1928,12 @@ it('a task held across a relay restart stays its worker’s: its lease waits for
   }
 })
 
-// The loop expired leases before it read the batch it polled: a `held`
-// read late came too late, and the task ran again on
-// another worker (main CI, 2026-10-27).
-it('a held read late renews its lease before the lease is judged', async () => {
-  const beat = 300
-  const h = await harness(new Map([node('t1')]), undefined, beat)
-  // The poll in flight when `lag` is set returns its batch late.
-  let lag = 0
-  const me = (h.o as unknown as { o: { me: { poll: (s: AbortSignal) => Promise<unknown[]> } } }).o
-    .me
-  const poll = me.poll.bind(me)
-  me.poll = async (signal) => {
-    const got = await poll(signal)
-    if (lag > 0) await Bun.sleep(lag)
-    lag = 0
-    return got
-  }
-  try {
-    const a = await h.worker(1)
-    await Bun.sleep(50)
-    void h.o.execute(h.req('t1'))
-    expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
-    const b = await h.worker(1)
-    await a.say({ type: 'held', running: ['t1'], queued: [] })
-    await Bun.sleep(beat * 2.3)
-    // Said within the lease (3 beats), read after it: the loop was busy.
-    lag = beat
-    await a.say({ type: 'held', running: ['t1'], queued: [] })
-    const until = performance.now() + beat * 2
-    const got: string[] = []
-    while (performance.now() < until)
-      for (const m of await b.poll()) got.push((m.body as { type: string }).type)
-    expect(got.filter((t) => t === 'batch')).toEqual([])
-    expect(h.o.where('t1')).toBe('worker#1')
-  } finally {
-    await h.stop()
-  }
-})
-
 // Main 32f73ed: a run stuck 13 min said nothing of what it waited on
 // (2026-10-23).
-it('a task whose command ended keeps its lease while its worker holds it, and a quiet run says what it waits on', async () => {
+it('a task whose command ended stays its worker’s while it saves, and a quiet run says what it waits on', async () => {
   const waiting: string[] = []
-  // A quiet worker is probed at 1.5 heartbeats and lost at 1.9: at 100 ms,
-  // 40 ms of a loaded runner's stall lost the new worker (CI, 2026-10-25).
+  // A quiet worker is lost at 1.9 heartbeats: at 100 ms, 40 ms of a loaded
+  // runner's stall lost the new worker (CI, 2026-10-25).
   const beat = 200
   const h = await harness(new Map([node('t1')]), undefined, beat, undefined, undefined, {
     stalled: (w) => waiting.push(w),
@@ -1914,15 +1944,16 @@ it('a task whose command ended keeps its lease while its worker holds it, and a 
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
-    // Held each beat from the batch on, as a worker says it. Begun after
-    // `ran` and `b`'s join, a runner's 400 ms stall there ended the lease
-    // before the first `held` (CI, 2026-10-28).
-    const alive = setInterval(() => void a.say({ type: 'held', running: ['t1'] }), beat)
+    // Reported each beat, as a worker says it.
+    const alive = setInterval(
+      () => void a.say({ type: 'report', running: ['t1'], load: { cpu: 0, memory: 0 } }),
+      beat,
+    )
     try {
       await a.begin('t1')
       await a.say({ type: 'ran', task: 't1' })
       const b = await h.worker(1)
-      // Saving, it still holds t1: past a run's lease (0.6 s here), t1 stays.
+      // Saving, it still runs t1: t1 stays.
       expect(await b.batches()).toEqual([])
       expect(await b.batches()).toEqual([])
     } finally {
@@ -2095,7 +2126,7 @@ it('sends a dependency a worker could not read over the remotes’ copy, and the
 // dependency it could not read again, longer than a lease: the lease
 // ending meanwhile called the worker faulty and gave the task to another.
 for (const sent of [true, false])
-  it(`a task ended while its dependency is sent again keeps no lease (${sent ? 'sent' : 'not sent'})`, async () => {
+  it(`a task ended while its dependency is sent again goes to no other worker (${sent ? 'sent' : 'not sent'})`, async () => {
     const beat = 300
     const faults: string[] = []
     const h = await harness(new Map([node('t')]), undefined, beat, undefined, undefined, {

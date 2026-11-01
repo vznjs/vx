@@ -4,14 +4,6 @@
 
 import type { CacheFacts, CapturedChunk, ExecuteResult, SandboxConfig } from '@vzn/vx'
 
-/**
- * A worker says what it holds every this many heartbeats, and a task's
- * lease is three of them. Every heartbeat (2026-10-25: the fastest, not
- * a free plan's message count): a task its worker dropped while alive
- * goes back in 15 s, not 90.
- */
-export const HELD_EVERY = 1
-
 /** A worker's `join` info. */
 export interface WorkerInfo {
   readonly v: 1
@@ -153,8 +145,16 @@ export type ToOrchestrator =
   | { type: 'start'; task: string; load?: Load }
   /** Its command is done; its outputs save now, its cores are free. */
   | { type: 'ran'; task: string; load?: Load }
-  /** Each heartbeat while it runs any: what it runs, which renews its lease on each. */
-  | { type: 'held'; running: string[]; load?: Load }
+  /**
+   * Every heartbeat, busy or idle: what it runs and its machine's live
+   * load. A begun task it no longer names goes back.
+   */
+  | { type: 'report'; running: string[]; load: Load }
+  /**
+   * Messages said at one moment, as one: a task's `start` waits on the
+   * `end` of the task saving beside it, so a worker's turnover is one frame.
+   */
+  | { type: 'together'; messages: ToOrchestrator[] }
   /** It could not run a task it began, not a non-zero exit: a full disk, a failed unpack. */
   | { type: 'fault'; task: string; reason: string }
   /** It ran the task and saved it under `key`; its output is in that entry. */
