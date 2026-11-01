@@ -11,6 +11,28 @@ import path from 'node:path'
 /** A held arm's vx past its base × this fails: three local checks of one change read restore at 0.96 to 1.09 of its base. */
 export const BASE_TOLERANCE = 1.15
 
+/**
+ * The arms a check holds. Cold too: it is the overhead the site publishes,
+ * and printed only, it read vx 1.12× Turbo for weeks with every PR passing.
+ */
+export const HELD = ['cold', 'restore', 'noop'] as const
+
+/** The held arms vx was slower than Turbo in, timed in the same pairs. */
+export function turboFails(
+  best: Readonly<Record<string, { vx: number; turbo: number }>>,
+  held: readonly string[],
+): string[] {
+  const fails: string[] = []
+  for (const arm of held) {
+    const b = best[arm]
+    if (b === undefined || b.vx <= b.turbo) continue
+    fails.push(
+      `${arm}: vx ${b.vx.toFixed(0)} ms against Turbo ${b.turbo.toFixed(0)} ms: vx is slower than Turbo`,
+    )
+  }
+  return fails
+}
+
 /** The held arms whose vx time grew past the tolerance over the base's. */
 export function baseFails(
   best: Readonly<Record<string, { vx: number; base?: number | undefined }>>,

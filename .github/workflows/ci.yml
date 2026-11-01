@@ -171,7 +171,10 @@ jobs:
   bench:
     name: Bench
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    # BENCH_RUNNER names the machine kept for benchmarks (a self-hosted
+    # runner's label): one runner takes one job at a time, so Bench and
+    # Perf never time each other. Unset, each gets a fresh hosted VM.
+    runs-on: ${{ vars.BENCH_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
     permissions:
       contents: read
@@ -223,7 +226,7 @@ jobs:
   perf:
     name: Perf
     if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.BENCH_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 25
     env:
       GITHUB_TOKEN: ${{ github.token }}
