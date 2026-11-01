@@ -1825,6 +1825,8 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
 
   it('every descriptor a task took is closed after it: plain, cut, spawn-failed, persistent', async () => {
     await runCommand({ command: 'true', cwd, env })
+    // The spare shells that call started hold their pipes once spawned.
+    await Bun.sleep(50)
     const before = openFds()
     for (let i = 0; i < 20; i++) await runCommand({ command: 'echo a; echo b >&2', cwd, env })
     // The drain bound cancels the readers while a backgrounded child holds the pipe.
@@ -1837,7 +1839,8 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     spawn.child!.kill('SIGKILL')
     await spawn.child!.exited
     await Bun.sleep(50)
-    expect([...openFds()].filter((fd) => !before.has(fd))).toEqual([])
+    // By count: a spare taken is replaced by one on other descriptors.
+    expect(openFds().size).toBe(before.size)
   }, 10_000)
 })
 

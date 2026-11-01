@@ -77,6 +77,7 @@ src/exec/executor.ts
 src/exec/index.ts
 src/exec/kill-tree.ts
 src/exec/local-executor.ts
+src/exec/pipes.ts
 src/exec/proc-sample.ts
 src/exec/runner.ts
 src/exec/sandbox-binds.ts
@@ -85,6 +86,7 @@ src/exec/sandbox-paths.ts
 src/exec/sandbox-runtime.ts
 src/exec/sandbox-violations.ts
 src/exec/spawn-off.ts
+src/exec/warm-shell.ts
 src/graph/critical-path.ts
 src/graph/default-build.ts
 src/graph/definition.ts
