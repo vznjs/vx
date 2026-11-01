@@ -1033,16 +1033,20 @@ async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo)
   const key = blobCheck.key
   let resized = key === undefined ? undefined : memo?.blobVerdict(key)
   if (resized === undefined) {
-    const blobs = await blobCheck.blobs()
+    // The sizes are asked beside the listing: both read the index the
+    // enumeration listed (the listing refuses one written since), so the
+    // OIDs are the listing's. One after the other, a cold 9,603-task run
+    // waited on the listing's 70-95 ms before the first spawn (2026-11-01).
+    const listing = blobCheck.blobs()
+    const sizes = memo?.knownBlobSizes(enumeration.indexOids) ?? new Map<string, number>()
+    const unknown = enumeration.indexOids.filter((oid) => !sizes.has(oid))
+    const asked = unknown.length > 0 ? enumeration.catFile(unknown.join('\n') + '\n') : undefined
+    const [blobs, run] = await Promise.all([listing, asked])
     if (blobs === null) {
       trusted.clear()
       return
     }
-    const unique = [...new Set(blobs.oids)]
-    const sizes = memo?.knownBlobSizes(unique) ?? new Map<string, number>()
-    const unknown = unique.filter((oid) => !sizes.has(oid))
-    if (unknown.length > 0) {
-      const run = await enumeration.catFile(unknown.join('\n') + '\n')
+    if (run !== undefined) {
       if (run === null || run.exitCode !== 0) {
         trusted.clear()
         return
@@ -1570,6 +1574,8 @@ export interface GitEnumeration {
   startedAtMs: number
   /** The blob-size check's input (`dropResizedOids`). */
   blobCheck: IndexBlobCheck
+  /** Each OID the listing's regular entries hold, once: what the check asks `catFile` for. */
+  indexOids: readonly string[]
   /** `git cat-file --batch-check` over `stdin`'s OIDs; null when it could not spawn. */
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null>
 }
@@ -1935,6 +1941,8 @@ export async function startGitEnumeration(
   // this same status spawn so `run()` needs no second `git status`.
   // null when the status spawn failed (non-repo / git error).
   const worktreeDirty = dirty === null ? null : dirty.size > 0
+  // Before `trusted` drops a path: the blob check sizes every entry's blob.
+  const indexOids = [...new Set(oids.values())]
   const trusted = dirty === null || indexMoved ? new Map<string, string>() : oids
   if (dirty !== null) {
     for (const rel of dirty) trusted.delete(rel)
@@ -1994,6 +2002,7 @@ export async function startGitEnumeration(
         ? []
         : [...stripPrefixFromSet(new Set(parsedStatus.ignored), gitPrefix)].sort(),
     startedAtMs,
+    indexOids,
     blobCheck: {
       key: indexKey,
       async blobs() {

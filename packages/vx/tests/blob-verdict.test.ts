@@ -137,3 +137,34 @@ it('a verdict is keyed by the workspace too: a nested workspace on the same inde
   expect(await trusted(m)).toEqual(['sub/keep.txt'])
   expect(await trusted(m, path.join(root, 'sub'))).toEqual(['keep.txt'])
 })
+
+it('asks the blob sizes while the index listing runs, not after it', async () => {
+  // Both answers come from the index the enumeration read, so neither
+  // waits on the other: one after the other cost a cold 9,603-task run
+  // the listing's whole wall before its first task (2026-11-01).
+  git('init', '-q')
+  await writeFile(path.join(root, 'keep.txt'), 'k\n')
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  await Bun.sleep(150)
+  const enumeration = await startGitEnumeration(root, ['.'])
+  let asked!: () => void
+  const catFileAsked = new Promise<void>((r) => (asked = r))
+  const blobs = enumeration.blobCheck.blobs.bind(enumeration.blobCheck)
+  enumeration.blobCheck.blobs = async () => {
+    await catFileAsked
+    return blobs()
+  }
+  const catFile = enumeration.catFile
+  enumeration.catFile = (stdin) => {
+    asked()
+    return catFile(stdin)
+  }
+  const cache = new GitFilesCache()
+  const done = applyGitEnumeration(enumeration, root, [root], cache, false, memo())
+  const timeout = Bun.sleep(5_000).then(() => 'stuck')
+  expect(await Promise.race([done.then(() => 'done'), timeout])).toBe('done')
+  expect([...(cache.oidsFor(root)?.keys() ?? [])].map((p) => relPosix(root, p))).toEqual([
+    'keep.txt',
+  ])
+})
