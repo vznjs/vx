@@ -3,7 +3,7 @@
 // 15 that nothing depends on; one `e2e` project depending on every edge
 // (the apps and those 50). Cross-level edges, no cycles: a project depends
 // only on lower levels. Five core libs most projects use, 20 source files
-// per project, a `typecheck` task, and each build writes 200 KB of seeded
+// per project, a `typecheck` task, and each build writes 200 KB of
 // incompressible bytes. Durations keep the owner's ratios (build 1, lint
 // 0.25, test 0.5, publish 0.1) scaled by BENCH_BUILD_MS: a task only has to
 // outlast any runner's own per-task work.
@@ -47,6 +47,11 @@ export const DEPENDS_ON: Record<TaskName, readonly string[]> = {
 
 export const RUN_TASKS: readonly TaskName[] = ['build', 'lint', 'test', 'publish', 'typecheck']
 
+// Not shorter to save the cold run's time: the graph is work-bound (critical
+// path first or FIFO end within 0.1 s), yet at 100 ms vx's cold overhead read
+// 7.81 and 8.00 s against 7.01 and 7.08 s at 300 (interleaved, 2026-11-01):
+// shorter tasks leave a runner's own work less time to hide beside them, so
+// the figure would move with the workload rather than the runner.
 export const BUILD_MS = Number(process.env.BENCH_BUILD_MS ?? 300)
 const OUTPUT_BYTES = 200 * 1024
 
@@ -116,24 +121,24 @@ const sleepOf = (ms: number): string => `sleep ${(ms / 1000).toFixed(3)}`
 
 /**
  * A task's command, identical in every runner. `build` also writes
- * dist/index.js from the sources plus a checksum of its dependencies'
+ * dist/index.js from the sources plus a checksum line of each dependency's
  * dist/index.js (so an upstream change reaches every output downstream, as
- * a bundle's would), and OUTPUT_BYTES of AES-CTR keystream keyed
- * by the project's name: seeded, the same bytes every run, and
- * incompressible, so no cache can shrink the artifact away.
+ * a bundle's would), and OUTPUT_BYTES of /dev/urandom: incompressible, so
+ * no cache can shrink the artifact away. Every program started here is
+ * time each runner's cold row pays and none controls, so each task starts
+ * as few as the workload allows: `cksum` reads the files itself (no `cat`
+ * pipe), and `head` reads the kernel's random bytes (openssl's start was
+ * 5 ms of a build's 13, 2026-11-01).
  */
 export function command(p: Project, task: TaskName): string {
   const sleep = sleepOf(p.tasks[task]!)
   if (task !== 'build') return sleep
-  const key = (
-    hash(p.name).toString(16).padStart(8, '0') + hash(`${p.name}#`).toString(16).padStart(8, '0')
-  ).repeat(2)
   return (
     `${sleep} && mkdir -p dist && cat src/*.js > dist/index.js && ` +
     (p.deps.length === 0
       ? ''
-      : `cat ${p.deps.map((d) => `../${d.slice('@bench/'.length)}/dist/index.js`).join(' ')} | cksum >> dist/index.js && `) +
-    `openssl enc -aes-128-ctr -K ${key} -iv 0 -in /dev/zero 2>/dev/null | head -c ${OUTPUT_BYTES} > dist/blob.bin`
+      : `cksum ${p.deps.map((d) => `../${d.slice('@bench/'.length)}/dist/index.js`).join(' ')} >> dist/index.js && `) +
+    `head -c ${OUTPUT_BYTES} /dev/urandom > dist/blob.bin`
   )
 }
 
