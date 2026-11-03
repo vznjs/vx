@@ -115,7 +115,7 @@ function startGuard(): void {
     guardFd = fd
     guardProc = guard
     // A clean exit strikes what it released: the EOF kills what is listed.
-    process.once('exit', flushStrikes)
+    process.once('exit', flushGuard)
     // A guard that has died (killed, the OOM killer) is handed to no later
     // spawn: its pipe is broken, and a shell whose printf buffers (bash as
     // macOS's sh) flushed the failed `+<pgid>` line into the task's own
@@ -136,7 +136,7 @@ function startGuard(): void {
 function stopGuard(): void {
   const fd = guardFd
   guardFd = null
-  strikes = ''
+  pending = ''
   guardProc?.kill('SIGKILL')
   if (typeof fd !== 'number') return
   try {
@@ -166,21 +166,40 @@ function guardWrite(line: string): void {
 }
 
 /**
- * Strikes waiting for this turn's one write. Each line was a write of its
- * own and a wake of the guard's shell: on a cold run of 500 tasks, 38 ms
- * of vx's main thread and most of the guard's 140 ms of CPU (2026-11-03).
- * A strike that waits a turn kills nothing more if vx dies in it: the
- * group has ended, and its number is not reused within a turn.
+ * Lines waiting for this turn's one write: strikes, and the listings of
+ * spare shells. Each line was a write of its own and a wake of the
+ * guard's shell: on a cold run of 500 tasks, 38 ms of vx's main thread
+ * for the strikes and 140 ms of the guard's CPU (2026-11-03). A strike
+ * that waits a turn kills nothing more if vx dies in it: the group has
+ * ended, and its number is not reused within a turn.
  */
-let strikes = ''
-let strikeTimer: ReturnType<typeof setImmediate> | undefined
+let pending = ''
+let pendingTimer: ReturnType<typeof setImmediate> | undefined
 
-function flushStrikes(): void {
-  if (strikeTimer !== undefined) clearImmediate(strikeTimer)
-  strikeTimer = undefined
-  const lines = strikes
-  strikes = ''
+function queueLine(line: string): void {
+  pending += line
+  pendingTimer ??= setImmediate(flushGuard)
+}
+
+/** Write the lines this turn queued now: before a listed child is handed its work. */
+export function flushGuard(): void {
+  if (pendingTimer !== undefined) clearImmediate(pendingTimer)
+  pendingTimer = undefined
+  const lines = pending
+  pending = ''
   if (lines !== '') guardWrite(lines)
+}
+
+/**
+ * List `pid`'s group from vx's side, for a child that runs nothing until
+ * vx hands it work (a spare shell waiting on its script): the line goes
+ * with the turn's others, and `flushGuard` before the hand-over. A spare
+ * vx dies before listing reads the end of its script's pipe and exits,
+ * having run nothing. Starts the guard.
+ */
+export function listGroup(pid: number): void {
+  startGuard()
+  if (typeof guardFd === 'number' && pid > 0) queueLine(`+${pid}\n`)
 }
 
 /**
@@ -248,10 +267,7 @@ export function releaseGroup(child: Child): void {
   if (!(child.pid > 0)) return
   const hold = holds.get(child.pid)
   if (hold !== undefined) hold.released = true
-  else {
-    strikes += `-${child.pid}\n`
-    strikeTimer ??= setImmediate(flushStrikes)
-  }
+  else queueLine(`-${child.pid}\n`)
 }
 
 /**

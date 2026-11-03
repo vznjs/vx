@@ -23,6 +23,8 @@ export function signalThrough(child: Child, fd: number): void
 export function closeSignalChannel(child: Child): void
 export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child // guard: the pipe's fd in the child
 export function guardLine(fd: number): string // the shell line that lists `$$`'s group and closes the pipe
+export function listGroup(pid: number): void // vx lists a child that runs nothing until handed work (a spare shell)
+export function flushGuard(): void // write the turn's queued lines now
 export function releaseGroup(child: Child): void
 export function holdGroups(children: readonly Child[]): () => void
 export function releaseServerGroup(child: Child): void
@@ -60,9 +62,13 @@ gets a copy of that end and lists itself: its shell writes `+$$` first
 and closes the copy (`guardLine`; a program that is not a shell, the
 port bridge's socat, is `exec`'d after it), and vx writes
 `-<pgid>` (`releaseGroup`) once it is done with the task, beside the
-`liveChildren` entry. The strikes of one event-loop turn go in one write
-at its end, and a clean exit writes any still waiting: a write each held
-a cold run's main thread (500 tasks, 38 ms) and woke the guard per line.
+`liveChildren` entry. A spare shell (`warm-shell.ts`) runs nothing until
+vx writes its script, so vx lists its group itself (`listGroup`) and
+writes the line before the script (`flushGuard`); a spare vx dies before
+listing reads the end of its script's pipe and exits. vx's lines of one
+event-loop turn go in one write at its end, and a clean exit writes any
+still waiting: a write each held a cold run's main thread (500 tasks,
+38 ms for the strikes) and woke the guard per line (140 ms of its CPU).
 A struck group has ended, so a `kill -9` inside that turn kills nothing
 more. When vx and every child that has not yet listed
 itself have closed their ends, the guard's read ends, and it SIGKILLs every group
