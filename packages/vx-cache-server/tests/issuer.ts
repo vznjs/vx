@@ -3,12 +3,12 @@
 
 import { exportJWK, generateKeyPair, type JWK, type JWTPayload, SignJWT } from 'jose'
 import { type Allowed, parseAllow } from '@vzn/vx-devtools'
-import { type Job, scopeOf } from './conformance.js'
+import { type Job, hashOf } from './conformance.js'
 
 export const GITHUB = 'https://token.actions.githubusercontent.com'
 export const REPO = 'acme/app'
 /** The headers naming acme/app at GitHub, as every request names its repository. */
-export const NAMED = { 'vx-issuer': scopeOf(GITHUB), 'vx-repository': scopeOf(REPO) }
+export const NAMED = { 'vx-issuer': hashOf(GITHUB), 'vx-repository': hashOf(REPO) }
 /** The workflow a token's job runs, as GitHub names it, up to its `@`. */
 export const WORKFLOW = `${REPO}/.github/workflows/ci.yml`
 

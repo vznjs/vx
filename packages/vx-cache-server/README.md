@@ -118,9 +118,10 @@ drops the copy in the data center it reaches: R2 had let those bytes go.
 
 The bucket's own lifecycle rule expires artifacts, by age since they
 were written; the server runs no sweep. An artifact's object name is
-`<issuer>/<repository>/<scope>/<hash>`, the first three each hashed (a
-client sends a scope as its ref's hash, never the ref), so one rule
-for the whole bucket is the one there is, for example 1 day:
+`<issuer>/<repository>/<ref>/<hash>`, each a readable folder
+(`https%3A%2F%2Ftoken.actions.githubusercontent.com/acme%2Fapp/refs%2Fheads%2Fmain/<hash>`),
+so deleting one branch's prefix prunes that branch alone. One age rule
+covers the bucket, for example 1 day:
 
 ```sh
 bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
@@ -145,9 +146,9 @@ over a bucket of your own (`src/index.ts`):
   (`{ maxCheckHashes, maxUploadBytes }`) over
   `DEFAULT_LIMITS`.
 - `blobName(issuer, repository, scope, hash)` is an artifact's object name,
-  `<issuer>/<repository>/<scope>/<hash>`, issuer and repository each the first 128 bits
-  of their SHA-256 in hex and `scope` the ref's hash as a client sends
-  it (PROTOCOL.md § Keys), so no segment is a plain value.
+  `<issuer>/<repository>/<scope>/<hash>`, issuer and repository each
+  percent-encoded and `scope` the encoded ref as a client sends it
+  (PROTOCOL.md § Keys), so a slash in any part never starts a folder.
 - `ALLOW` and the CI token check are [`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)'s,
   the check every vx server shares.
 - `SCOPE_HEADER` (`vx-scope`) and `LIMIT_HEADERS` are the header names

@@ -226,12 +226,12 @@ that misses an expired result runs the task and stores it again.
 
 ## How it stores results
 
-A result's name in the bucket is
-`<hash(issuer)>/<hash(repository)>/<hash(branch)>/<key>`.
+A result's name in the bucket is `<issuer>/<repository>/<branch>/<key>`,
+each part one folder, percent-encoded so a slash stays inside it:
+`acme%2Fapp/refs%2Fheads%2Fmain/<key>` under the issuer's folder.
 
-Each hash is the first 128 bits of a SHA-256, in hex, so the bucket
-names no repository and no branch. One repository never reads another's
-results.
+To **prune one branch**, delete its folder. One repository never reads
+another's results.
 
 A result is never rewritten: a second upload of the same key keeps the
 first bytes.
@@ -257,9 +257,9 @@ Turbo's routes under `/v1`, each read naming the branches it reads
 | `POST /v1/artifacts` | `{ hashes, scopes }`: each hash's size and the first branch holding it |
 | `GET /v1/capabilities` | the limits |
 
-A branch on the wire is its hash, the first 128 bits of the ref's
-SHA-256 as 32 lowercase hex characters (`refs/heads/main` is
-`f921bd05e68b03740c450e565e0e6173`). A plain ref is refused with `400`.
+A branch on the wire is its ref, percent-encoded (`refs/heads/main` is
+`refs%2Fheads%2Fmain`), the same name as its folder. Any other spelling
+is refused with `400`.
 
 Any server that speaks the protocol can stand in for this one.
 

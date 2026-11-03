@@ -7,7 +7,7 @@ import { oidcAuth } from '@vzn/vx-devtools'
 import { listen, s3Blobs } from '../src/bun.js'
 import { blobName } from '../src/store.js'
 import { createCacheServer, limitsFrom } from '../src/server.js'
-import { conformance, scopeOf } from './conformance.js'
+import { conformance, hashOf, scopeOf } from './conformance.js'
 import { fakeS3, type FakeS3 } from './fake-s3.js'
 import {
   ALLOW,
@@ -55,7 +55,7 @@ conformance('Bun with S3', {
   ...LIMITS,
 })
 
-it('names an object <issuer>/<repository>/<scope>/<hash>, each hashed, and checks one HEAD per hash and scope', async () => {
+it('names an object <issuer>/<repository>/<ref>/<hash>, each a readable folder, and checks one HEAD per hash and scope', async () => {
   const k = 'abc123'
   await fetch(new URL(`/v1/artifacts/${k}`, server.url), {
     method: 'PUT',
@@ -63,10 +63,11 @@ it('names an object <issuer>/<repository>/<scope>/<hash>, each hashed, and check
     headers: { ...NAMED, authorization: `Bearer ${token}` },
   })
   const main = scopeOf('refs/heads/main')
-  const name = await blobName(GITHUB, REPO, main, k)
-  // The write's scope is its token's ref hashed by the server, as a client hashes it.
-  expect(name).toBe(`${NAMED['vx-issuer']}/${NAMED['vx-repository']}/${main}/abc123`)
-  expect([...s3.objects.keys()].join()).not.toMatch(/refs|github|acme/)
+  const name = blobName(GITHUB, REPO, main, k)
+  // One folder per issuer, repository and branch, so pruning a branch is deleting its prefix.
+  expect(name).toBe(
+    'https%3A%2F%2Ftoken.actions.githubusercontent.com/acme%2Fapp/refs%2Fheads%2Fmain/abc123',
+  )
   expect(s3.objects.get(`/b/${name}`)).toEqual(new TextEncoder().encode('x'))
   const before = s3.log.length
   const check = async (hashes: string[]) =>
@@ -78,14 +79,18 @@ it('names an object <issuer>/<repository>/<scope>/<hash>, each hashed, and check
       })
     ).json()
   expect(await check([k])).toEqual({ [k]: { size: 1, scope: main } })
-  expect(s3.log.slice(before).map((l) => l.split('?')[0])).toEqual([`HEAD /b/${name}`])
+  expect(s3.log.slice(before).map((l) => l.split('?')[0])).toEqual([`HEAD /b/${encodeURI(name)}`])
 })
 
-it('names each repository apart', async () => {
-  const a = scopeOf('refs/heads/a')
-  const name = await blobName('i', '1', a, 'f')
-  expect(await blobName('j', '1', a, 'f')).not.toBe(name)
-  expect(await blobName('i', '2', a, 'f')).not.toBe(name)
+it('names each repository and branch apart, a slash never starting a folder', () => {
+  const a = scopeOf('refs/heads/a/b')
+  const name = blobName('i', 'o/r', a, 'f')
+  expect(name).toBe('i/o%2Fr/refs%2Fheads%2Fa%2Fb/f')
+  expect(blobName('j', 'o/r', a, 'f')).not.toBe(name)
+  expect(blobName('i', 'o/r2', a, 'f')).not.toBe(name)
+  expect(blobName('i', 'o', scopeOf('r/refs/heads/a/b'), 'f')).not.toBe(name)
+  // A repository is one folder however many groups its path has.
+  expect(blobName('i', 'g/s/r', a, 'f').split('/')).toHaveLength(4)
 })
 
 it('reads the limits from the environment, and refuses one that is not a count', () => {
@@ -288,8 +293,8 @@ it('reads AUDIENCE without the blanks around it', async () => {
     const res = await fetch(new URL('/v1/capabilities', base), {
       headers: {
         authorization: `Bearer ${token}`,
-        'vx-issuer': scopeOf(at),
-        'vx-repository': scopeOf(REPO),
+        'vx-issuer': hashOf(at),
+        'vx-repository': hashOf(REPO),
       },
     })
     expect(res.status).toBe(200)
@@ -575,7 +580,7 @@ it('answers 502 naming the bucket on every route while the bucket fails', async 
       await ask(
         'POST',
         '/v1/artifacts',
-        JSON.stringify({ hashes: ['ab'], scopes: [scopeOf('x')] }),
+        JSON.stringify({ hashes: ['ab'], scopes: [scopeOf('refs/heads/x')] }),
       ),
     ]
     expect(await Promise.all(answers.map(async (r) => [r.status, await r.json()]))).toEqual([

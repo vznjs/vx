@@ -105,9 +105,12 @@ function proxyHeaders(
   return out
 }
 
-/** A ref's scope, an issuer or a repository on the wire: its SHA-256's first 128 bits in hex, never the value (2026-10-25). */
-const scopeOf = (ref: string): string =>
-  new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
+/** An issuer or a repository on the wire: its SHA-256's first 128 bits in hex, never the value (2026-10-25). */
+const hashOf = (text: string): string =>
+  new Bun.CryptoHasher('sha256').update(text).digest('hex').slice(0, 32)
+
+/** A ref's scope on the wire: the ref, percent-encoded, its folder's name on the server (2026-11-03). */
+const scopeOf = (ref: string): string => encodeURIComponent(ref)
 
 /**
  * A body's first `max` bytes as text, the rest cancelled unread, and
@@ -408,8 +411,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
   ) {
     this.endpoint = config.url
     this.named = {
-      'vx-issuer': scopeOf(config.issuer),
-      'vx-repository': scopeOf(config.repository),
+      'vx-issuer': hashOf(config.issuer),
+      'vx-repository': hashOf(config.repository),
     }
   }
 

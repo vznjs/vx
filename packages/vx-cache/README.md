@@ -91,8 +91,7 @@ refused write (a job that reads only) turns off writes alone. Any other
 refusal is a warning naming the server's own words, and the task reads
 as a miss.
 
-Every read names scopes, each a ref's hash (no ref goes on the wire
-plain). A check names the run's refs in order (its branch, then the
+Every read names scopes, each a ref, percent-encoded. A check names the run's refs in order (its branch, then the
 branch it merges into, then the default branch; on CI `github()` or
 `gitlab()` from `@vzn/vx-ci` names them, so declare it too: without it
 a run reads git's branch and the default branch only), and the first ref
