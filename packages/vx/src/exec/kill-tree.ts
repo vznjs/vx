@@ -98,6 +98,9 @@ let guardProc: Child | undefined
  */
 const GUARD_STALL_MS = 1_000
 
+/** Bytes per write to the guard: under a socket's buffer on every platform. */
+const GUARD_PIECE = 1024
+
 function startGuard(): void {
   if (guardFd !== undefined) return
   guardFd = null
@@ -149,12 +152,14 @@ function stopGuard(): void {
 function guardWrite(line: string): void {
   if (typeof guardFd !== 'number') return
   const deadline = Date.now() + GUARD_STALL_MS
-  // A batch of strikes can be more than the queue takes at once: the rest
-  // is written as the guard drains it.
+  // A turn's batch can be more than the queue takes at once: it goes in
+  // pieces, the rest as the guard drains it. Whole, a 22 KB batch was
+  // refused on macOS while the guard drained (EAGAIN to the deadline), and
+  // the guard was stopped under a live run.
   let bytes = Buffer.from(line)
   for (;;) {
     try {
-      const n = writeSync(guardFd, bytes)
+      const n = writeSync(guardFd, bytes, 0, Math.min(bytes.length, GUARD_PIECE))
       if (n === bytes.length) return
       bytes = bytes.subarray(n)
     } catch (err) {
