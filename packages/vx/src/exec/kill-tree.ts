@@ -114,6 +114,8 @@ function startGuard(): void {
     const fd = guard.stdio[3] as number
     guardFd = fd
     guardProc = guard
+    // A clean exit strikes what it released: the EOF kills what is listed.
+    process.once('exit', flushStrikes)
     // A guard that has died (killed, the OOM killer) is handed to no later
     // spawn: its pipe is broken, and a shell whose printf buffers (bash as
     // macOS's sh) flushed the failed `+<pgid>` line into the task's own
@@ -134,6 +136,7 @@ function startGuard(): void {
 function stopGuard(): void {
   const fd = guardFd
   guardFd = null
+  strikes = ''
   guardProc?.kill('SIGKILL')
   if (typeof fd !== 'number') return
   try {
@@ -146,16 +149,38 @@ function stopGuard(): void {
 function guardWrite(line: string): void {
   if (typeof guardFd !== 'number') return
   const deadline = Date.now() + GUARD_STALL_MS
+  // A batch of strikes can be more than the queue takes at once: the rest
+  // is written as the guard drains it.
+  let bytes = Buffer.from(line)
   for (;;) {
     try {
-      writeSync(guardFd, line)
-      return
+      const n = writeSync(guardFd, bytes)
+      if (n === bytes.length) return
+      bytes = bytes.subarray(n)
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EAGAIN' || Date.now() >= deadline) break
       Bun.sleepSync(1)
     }
   }
   stopGuard()
+}
+
+/**
+ * Strikes waiting for this turn's one write. Each line was a write of its
+ * own and a wake of the guard's shell: on a cold run of 500 tasks, 38 ms
+ * of vx's main thread and most of the guard's 140 ms of CPU (2026-11-03).
+ * A strike that waits a turn kills nothing more if vx dies in it: the
+ * group has ended, and its number is not reused within a turn.
+ */
+let strikes = ''
+let strikeTimer: ReturnType<typeof setImmediate> | undefined
+
+function flushStrikes(): void {
+  if (strikeTimer !== undefined) clearImmediate(strikeTimer)
+  strikeTimer = undefined
+  const lines = strikes
+  strikes = ''
+  if (lines !== '') guardWrite(lines)
 }
 
 /**
@@ -223,7 +248,10 @@ export function releaseGroup(child: Child): void {
   if (!(child.pid > 0)) return
   const hold = holds.get(child.pid)
   if (hold !== undefined) hold.released = true
-  else guardWrite(`-${child.pid}\n`)
+  else {
+    strikes += `-${child.pid}\n`
+    strikeTimer ??= setImmediate(flushStrikes)
+  }
 }
 
 /**

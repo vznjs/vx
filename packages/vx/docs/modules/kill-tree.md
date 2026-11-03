@@ -60,7 +60,11 @@ gets a copy of that end and lists itself: its shell writes `+$$` first
 and closes the copy (`guardLine`; a program that is not a shell, the
 port bridge's socat, is `exec`'d after it), and vx writes
 `-<pgid>` (`releaseGroup`) once it is done with the task, beside the
-`liveChildren` entry. When vx and every child that has not yet listed
+`liveChildren` entry. The strikes of one event-loop turn go in one write
+at its end, and a clean exit writes any still waiting: a write each held
+a cold run's main thread (500 tasks, 38 ms) and woke the guard per line.
+A struck group has ended, so a `kill -9` inside that turn kills nothing
+more. When vx and every child that has not yet listed
 itself have closed their ends, the guard's read ends, and it SIGKILLs every group
 still listed: the unsandboxed and the macOS sandboxed spawns get what
 bwrap's `--die-with-parent` gives a Linux sandboxed task (item 860,
