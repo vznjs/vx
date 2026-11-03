@@ -3,6 +3,13 @@
 // the file. The compile target doesn't allow top-level await.
 import { handOff, localVx, upgradesOnlyItself, vxPath } from './handoff.js'
 
+// JSC tiers a function up to its optimizing JITs after a fixed count of
+// calls, and on a cold run of 500 tasks those compiles were a quarter of
+// vx's CPU, on cores the tasks need. Four times the count (2026-11-03,
+// cold site workspace on 2 cores): -100 ms wall and -250 ms CPU cold,
+// noop and restore no slower.
+Bun.unsafe.setJITPolicy(4)
+
 let settled = false
 
 async function main(): Promise<void> {
