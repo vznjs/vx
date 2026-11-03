@@ -1010,23 +1010,6 @@ export interface IndexBlobCheck {
   rekey(): Promise<string | undefined>
 }
 
-/**
- * Drop each trusted OID whose blob is not the size the index recorded for
- * the worktree file (A-60). A clean filter's blob differs from the file it
- * was added from, and git holds a stat-clean entry clean without re-reading
- * it once the filter is gone (`core.autocrlf` turned off, a `.gitattributes`
- * rule removed): `status` and the filter gate, which reads today's config,
- * both let the blob stand for bytes it does not hold. Which paths an index
- * distrusts is a function of the index alone, so `memo` keeps the verdict
- * by a hash of the index file and a warm run reads one row: the `--debug`
- * listing and a lookup per entry cost 550 ms at 100,000 files (2026-10-02).
- * An index with no verdict spawns that listing (the recorded sizes), asks
- * the per-OID sizes, and `cat-file` for the ones `memo` lacks; the verdict
- * is stored only if the index is still the one it was read from. A smudged
- * (racy) entry records 0 and is hashed from disk. An answer that cannot be
- * read trusts nothing. A filter that keeps the size (`tr a-z A-Z`) is not
- * caught: only a read of every trusted file would be (caching.md, step 12).
- */
 /** At most `n` contiguous parts of `items`, none under `CAT_FILE_MIN`: a spawn costs more than a few lookups. */
 function chunks<T>(items: readonly T[], n: number): T[][] {
   const parts = Math.min(n, Math.ceil(items.length / CAT_FILE_MIN))
@@ -1052,6 +1035,23 @@ export function checkBlobSizes(enumeration: GitEnumeration, memo?: BlobSizeMemo)
   return check
 }
 
+/**
+ * Drop each trusted OID whose blob is not the size the index recorded for
+ * the worktree file (A-60). A clean filter's blob differs from the file it
+ * was added from, and git holds a stat-clean entry clean without re-reading
+ * it once the filter is gone (`core.autocrlf` turned off, a `.gitattributes`
+ * rule removed): `status` and the filter gate, which reads today's config,
+ * both let the blob stand for bytes it does not hold. Which paths an index
+ * distrusts is a function of the index alone, so `memo` keeps the verdict
+ * by a hash of the index file and a warm run reads one row: the `--debug`
+ * listing and a lookup per entry cost 550 ms at 100,000 files (2026-10-02).
+ * An index with no verdict spawns that listing (the recorded sizes), asks
+ * the per-OID sizes, and `cat-file` for the ones `memo` lacks; the verdict
+ * is stored only if the index is still the one it was read from. A smudged
+ * (racy) entry records 0 and is hashed from disk. An answer that cannot be
+ * read trusts nothing. A filter that keeps the size (`tr a-z A-Z`) is not
+ * caught: only a read of every trusted file would be (caching.md, step 12).
+ */
 async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo): Promise<void> {
   const { trusted, blobCheck } = enumeration
   if (trusted.size === 0) return
