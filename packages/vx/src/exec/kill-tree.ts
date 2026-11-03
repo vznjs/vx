@@ -151,17 +151,18 @@ function stopGuard(): void {
 
 function guardWrite(line: string): void {
   if (typeof guardFd !== 'number') return
-  const deadline = Date.now() + GUARD_STALL_MS
+  let deadline = Date.now() + GUARD_STALL_MS
   // A turn's batch can be more than the queue takes at once: it goes in
-  // pieces, the rest as the guard drains it. Whole, a 22 KB batch was
-  // refused on macOS while the guard drained (EAGAIN to the deadline), and
-  // the guard was stopped under a live run.
+  // pieces as the guard drains it, and only a guard that takes nothing for
+  // the whole stall is gone. With one deadline for the batch, 2000 strikes
+  // outlasted it on macOS and the guard was stopped under a live run.
   let bytes = Buffer.from(line)
   for (;;) {
     try {
       const n = writeSync(guardFd, bytes, 0, Math.min(bytes.length, GUARD_PIECE))
       if (n === bytes.length) return
       bytes = bytes.subarray(n)
+      deadline = Date.now() + GUARD_STALL_MS
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EAGAIN' || Date.now() >= deadline) break
       Bun.sleepSync(1)
@@ -174,9 +175,9 @@ function guardWrite(line: string): void {
  * Lines waiting for this turn's one write: strikes, and the listings of
  * spare shells. Each line was a write of its own and a wake of the
  * guard's shell: on a cold run of 500 tasks, 38 ms of vx's main thread
- * for the strikes and 140 ms of the guard's CPU (2026-11-03). A strike
- * that waits a turn kills nothing more if vx dies in it: the group has
- * ended, and its number is not reused within a turn.
+ * for the strikes and 140 ms of the guard's CPU (2026-11-03). If vx dies
+ * in the turn a task ended, what that task left in the background dies
+ * with it, as when vx dies a moment before the task ends.
  */
 let pending = ''
 let pendingTimer: ReturnType<typeof setImmediate> | undefined

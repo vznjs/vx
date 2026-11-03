@@ -1704,6 +1704,8 @@ describe('runCommand — the rows its sweep asked for', () => {
           cwd: ${JSON.stringify(dir)},
           env: { PATH: process.env.PATH ?? '' },
         })
+        // Strikes go to the guard once per turn, beside the turn's others.
+        await new Promise((r) => setImmediate(r))
         process.kill(process.pid, 'SIGKILL')
       `
     const proc = Bun.spawn([process.execPath, '-e', script], {

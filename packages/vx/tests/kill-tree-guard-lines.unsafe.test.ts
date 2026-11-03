@@ -57,19 +57,33 @@ it.skipIf(process.platform !== 'linux' || strace === null)(
         }
       `
       const proc = Bun.spawn(
-        [strace!, '-f', '-e', 'trace=write', '-s', '64', '-o', log, process.execPath, '-e', script],
+        [
+          strace!,
+          '-f',
+          '-e',
+          'trace=write',
+          '-s',
+          '256',
+          '-o',
+          log,
+          process.execPath,
+          '-e',
+          script,
+        ],
         { stdout: 'ignore', stderr: 'pipe' },
       )
       expect(await proc.exited).toBe(0)
       const lines = readFileSync(log, 'utf8').split('\n')
+      // One write can list several spares: every `+pid` line in it counts.
       const listings = lines.flatMap((l) => {
-        const m = /^(\d+) write\(\d+, "\+(\d+)/.exec(l)
-        return m === null ? [] : [{ writer: m[1], listed: m[2] }]
+        const m = /^(\d+)\s+write\(\d+, "(\+[^"]*)"/.exec(l)
+        if (m === null) return []
+        return [...m[2]!.matchAll(/\+(\d+)/g)].map((p) => ({ writer: m[1], listed: p[1] }))
       })
-      // The first task spawns fresh and lists itself; the spares after it
-      // are listed by vx.
+      // A task on a fresh shell lists itself; a spare is listed by vx. At
+      // most the first task runs on a fresh shell.
       const self = listings.filter((l) => l.writer === l.listed)
-      expect([listings.length >= 4, self.length]).toEqual([true, 1])
+      expect([listings.length >= 4, self.length <= 1]).toEqual([true, true])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
