@@ -156,7 +156,7 @@ export type ToOrchestrator =
    */
   | { type: 'together'; messages: ToOrchestrator[] }
   /** It could not run a task it began, not a non-zero exit: a full disk, a failed unpack. */
-  | { type: 'fault'; task: string; reason: string }
+  | { type: 'fault'; task: string; reason: string; load?: Load }
   /** It ran the task and saved it under `key`; its output is in that entry. */
   | { type: 'end'; task: string; key: string; result: WiredResult; load?: Load }
   /**
@@ -165,7 +165,7 @@ export type ToOrchestrator =
    * task's 9000 violations was over the relay's 1 MiB, and the run waited
    * for it (2026-10-25).
    */
-  | ({ type: 'part'; task: string } & Partial<Pick<WiredResult, PartList>>)
+  | ({ type: 'part'; task: string; load?: Load } & Partial<Pick<WiredResult, PartList>>)
 
 /**
  * A message's JSON in UTF-8 bytes, what a relay frame holds: counted in

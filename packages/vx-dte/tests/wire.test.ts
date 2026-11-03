@@ -207,12 +207,12 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
 }
 
 // Each frame is a message a relay host may bill: pings at two a heartbeat
-// were nearly all of a run's (2026-10-23). Each side says something every
-// heartbeat, never twice in one for that alone (2026-11-01: "You do minimum
-// comms. You group whatever can be. You send data at least every 2s.
-// During that frame you never repeat"): quiet, one beat a side a heartbeat,
-// its acks inside; talking, no beat from the talker, and nobody pings.
-it('each side of a quiet pair beats once a heartbeat, a talking side never, and none pings', async () => {
+// were nearly all of a run's (2026-10-23). Only a worker quiet a heartbeat
+// speaks, and the orchestrator answers with its ack alone (2026-11-03:
+// "heartbeat only goes if none comes at all for 2s"; the orchestrator
+// "only sends orders"): quiet, a beat and its ack a heartbeat; talking, no
+// beat, and nobody pings.
+it('a quiet worker beats once a heartbeat, its orchestrator only acks, a talking worker never beats, and none pings', async () => {
   const { url, pings, frames, answers } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
@@ -220,14 +220,14 @@ it('each side of a quiet pair beats once a heartbeat, a talking side never, and 
   frames.length = 0
   answers.length = 0
   await Bun.sleep(2_600)
-  const beat = (to: string) =>
-    new RegExp(`"sends":\\[\\{"to":"${to}","body":\\{"seq":\\d+(,"acked":\\d+)?\\}\\}\\]`)
+  const beat = new RegExp(`"sends":\\[\\{"to":"host","body":\\{"seq":\\d+(,"acked":\\d+)?\\}\\}\\]`)
+  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"acked":\\d+\\}\\}\\]`)
   const quiet = frames.splice(0)
-  // Five heartbeats: a beat from each side each one, nothing else.
-  const fromO = quiet.filter((f) => beat(a.id).test(f)).length
-  const fromA = quiet.filter((f) => beat('host').test(f)).length
-  expect([fromO >= 4, fromO <= 6, fromA >= 4, fromA <= 6]).toEqual([true, true, true, true])
-  expect(quiet.length).toBe(fromO + fromA)
+  // Five heartbeats: the worker's beat each one and the orchestrator's ack of it.
+  const beats = quiet.filter((f) => beat.test(f)).length
+  const acks = quiet.filter((f) => ack.test(f)).length
+  expect([beats >= 4, beats <= 6, acks >= 4, acks <= 6]).toEqual([true, true, true, true])
+  expect(quiet.length).toBe(beats + acks)
   // Neither waits on the relay's answer to either, so it sends none.
   expect(answers).toEqual([])
   const t = performance.now()
@@ -238,32 +238,26 @@ it('each side of a quiet pair beats once a heartbeat, a talking side never, and 
     await Bun.sleep(50)
   }
   const talking = frames.splice(0)
-  expect([talking.filter((f) => beat('host').test(f) || f.includes('"sends":[]')), pings]).toEqual([
-    [],
-    [],
-  ])
-  // The quiet side still beats once a heartbeat, carrying its acks: four
+  expect([talking.filter((f) => beat.test(f) || f.includes('"sends":[]')), pings]).toEqual([[], []])
+  // Its acks go together, at most one frame a half heartbeat: four
   // heartbeats of talk counted.
-  expect(talking.filter((f) => beat(a.id).test(f)).length).toBeLessThanOrEqual(5)
+  expect(talking.filter((f) => ack.test(f)).length).toBeLessThanOrEqual(9)
   await a.leave()
   await o.leave()
 }, 15_000)
 
 // PR #4317's run (2026-10-24): two workers each sent `ran` a moment
-// before their orchestrator's next probe was due. The orchestrator, having
-// heard them, probed no more and acked later; the worker judged it silent
-// first. Now each side beats on its own clock.
-it('a worker that sends just before the orchestrator’s next beat still hears its orchestrator', async () => {
+// before a probe was due, and the worker judged its orchestrator silent
+// first. Now a send stands for the worker's beat, and its ack answers it.
+it('a worker that sends just before its next beat still hears its orchestrator', async () => {
   const { url, frames } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
-  const probe = new RegExp(
-    `"sends":\\[\\{"to":"${a.id}","body":\\{"seq":\\d+(,"acked":\\d+)?\\}\\}\\]`,
-  )
+  const probe = /"sends":\[\{"to":"host","body":\{"seq":\d+(,"acked":\d+)?\}\}\]/
   frames.length = 0
   while (!frames.some((f) => probe.test(f))) await Bun.sleep(5)
-  await Bun.sleep(710)
+  await Bun.sleep(450)
   await a.send('orchestrator', 'ran')
   const polls = (async () => {
     for (;;) await a.poll()

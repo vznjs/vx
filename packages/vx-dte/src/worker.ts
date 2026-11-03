@@ -261,8 +261,12 @@ export async function runWorker(opts: {
   const saving = new Set<string>()
   /** Begun tasks not said yet. */
   let starts: string[] = []
-  /** `m` to the orchestrator, with the begun tasks waiting on it: one frame. */
-  const say = (m: ToOrchestrator): Promise<void> => {
+  /**
+   * `m` to the orchestrator with its machine's load, which every frame
+   * carries, and the begun tasks waiting on it: one frame.
+   */
+  const say = (event: ToOrchestrator): Promise<void> => {
+    const m = { ...event, load: frame() } as ToOrchestrator
     const waiting = starts.map((task): ToOrchestrator => ({ type: 'start', task }))
     starts = []
     return me.send(

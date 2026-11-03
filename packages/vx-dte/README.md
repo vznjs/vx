@@ -457,7 +457,7 @@ use your own instead.
   One the run started is held to the size it was started as, so
   `local()` workers sharing a host split it rather than each take all of
   it. Each frame it sends (a task begun, a command ended, a task saved,
-  its report) carries its machine's load: cores busy over the last
+  its report, a fault) carries its machine's load: cores busy over the last
   second and memory in use. A heartbeat with nothing else to say, it
   sends its report: that load and the tasks it runs. A begun task its
   report no longer names goes back to the queue at once. A task goes to it only when it fits now: while
@@ -613,13 +613,12 @@ use your own instead.
   orchestrator's at its run's end is the final call that closes the run,
   and a worker's when it is done. Either whose socket drops without it
   dials again, 3 times within 10 s, and the relay keeps it, and its run,
-  for those 10 s; past them the run is over. Each side says something to
-  the other at least every heartbeat, and never twice in one for that
-  alone: whatever it has, grouped into one frame; else a worker its
-  report and the orchestrator a beat (an empty numbered send). Either
-  side hearing nothing from the other for 1.9 heartbeats (4 s on the
-  default) loses it, a worker by ending, and saying so. Nobody probes,
-  the relay answers neither, and nobody pings. An orchestrator
+  for those 10 s; past them the run is over. A worker that said nothing
+  for a heartbeat sends its report; the orchestrator never speaks on a
+  timer, only orders and the acks of what it heard. Either side hearing
+  nothing from the other for 1.9 heartbeats (4 s on the default) loses it,
+  a worker by ending, and saying so. Nobody probes, the relay answers
+  neither, and nobody pings. An orchestrator
   with no worker yet asks the relay an empty frame instead; a frame the
   relay leaves unanswered a heartbeat closes the socket, which is dialed
   again.
@@ -631,8 +630,8 @@ use your own instead.
 - Each send is numbered for its receiver and held until the receiver
   acknowledges it, so one a socket or the relay dropped goes again after
   a heartbeat and a half, or at once on a new socket; the receiver takes
-  each once, in order. An ack rides the next send back, which goes within
-  a heartbeat: never a frame of its own.
+  each once, in order. An ack rides the next send back; the orchestrator's,
+  with no order to ride, go together after half a heartbeat.
 - What a worker has to say at one moment goes as one message: a task it
   begins while another saves is said with that one's `end`, or with its
   report within the heartbeat.

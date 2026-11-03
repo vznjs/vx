@@ -170,8 +170,9 @@ export interface Participant {
    */
   resumed(f: (peer?: string) => void): void
   /**
-   * `f` is told when this side said nothing to `peer` a heartbeat: it says
-   * something now (a worker its live report). Untold, the wire sends a beat.
+   * A worker's `f` is told when it said nothing to its orchestrator a
+   * heartbeat: it says something now, its live report. Untold, the wire
+   * sends a beat. The orchestrator is never told: it speaks on no timer.
    */
   quiet(f: (peer: string) => void): void
   send(to: string, body: unknown): Promise<void>
@@ -260,12 +261,31 @@ export async function join(
   >()
   /** Each sender's sends taken in order, and those that came ahead of a gap. */
   const taken = new Map<string, { upTo: number; ahead: Map<number, unknown> }>()
-  /**
-   * Acks owed, by peer: each rides the next send to its peer, which goes
-   * within a heartbeat (a beat, if nothing else): never a frame of its own.
-   */
+  /** Acks owed, by peer: each rides the next send to its peer. */
   const owing = new Set<string>()
-  /** When this side last sent each peer anything: one quiet a heartbeat says something. */
+  /**
+   * The orchestrator sends only orders and acks: an ack no order carried
+   * goes on its own after half a heartbeat, every peer's in one frame. A
+   * worker's ride its next send, which it makes within a heartbeat.
+   */
+  let acking: ReturnType<typeof setTimeout> | undefined
+  const flushAcks = (): void => {
+    acking = undefined
+    if (left || ended !== undefined) return
+    for (const peer of [...owing]) {
+      const upTo = taken.get(peer)?.upTo
+      owing.delete(peer)
+      // quiet: a lost ack only costs a resend, which is dropped as seen
+      if (upTo !== undefined) put(peer, { acked: upTo } satisfies Acked).catch(() => undefined)
+    }
+  }
+  const owe = (peer: string): void => {
+    owing.add(peer)
+    if (role !== 'orchestrator' || acking !== undefined) return
+    acking = setTimeout(flushAcks, heartbeatMs / 2)
+    acking.unref()
+  }
+  /** When this side last sent each peer anything: a worker quiet a heartbeat says something. */
   const said = new Map<string, number>()
   let onQuiet: ((peer: string) => void) | undefined
   /** The ack owed `to`, if any, for a send to it to carry; and `to` was just said to. */
@@ -325,7 +345,7 @@ export async function join(
           t.ahead.delete(t.upTo)
           if (next !== BEAT) out.push({ from, body: next })
         }
-        owing.add(from)
+        owe(from)
       } else if (isNumbered(body)) {
         if (body.acked !== undefined) settle(from, body.acked)
         let t = taken.get(from)
@@ -336,7 +356,7 @@ export async function join(
           t.ahead.delete(t.upTo)
           if (next !== BEAT) out.push({ from, body: next })
         }
-        owing.add(from)
+        owe(from)
       } else out.push({ from, body })
     }
     return out
@@ -371,9 +391,9 @@ export async function join(
     if (now !== undefined) heldIds.delete(now)
   }
   /**
-   * Each side says something to each peer at least every heartbeat, never
-   * twice in one for that alone: what it has, or, with nothing, its live
-   * report (`quiet`) or a beat. Either loses a peer quiet `LOST_BEATS`.
+   * A worker says something to its orchestrator whenever it said nothing
+   * a heartbeat: its live report (`quiet`), or a beat. The orchestrator
+   * answers with orders and acks only. Either loses a peer quiet `LOST_BEATS`.
    */
   const listen = (): void => {
     // With no socket nobody is heard: the redial or rejoin decides.
@@ -394,6 +414,8 @@ export async function join(
         nudge()
         continue
       }
+      // The orchestrator never speaks on a timer: its workers do.
+      if (role === 'orchestrator') continue
       if (now - (said.get(peer) ?? 0) < heartbeatMs) continue
       said.set(peer, now)
       if (onQuiet !== undefined) {
@@ -571,8 +593,8 @@ export async function join(
     else again()
   }
   // Every tenth of a heartbeat, so a peer quiet `LOST_BEATS` is lost within
-  // two heartbeats (4 s on the default) of its last word, and each side
-  // speaks within a tenth of its heartbeat.
+  // two heartbeats (4 s on the default) of its last word, and a quiet
+  // worker speaks within a tenth of its heartbeat.
   const listening = setInterval(listen, heartbeatMs / 10)
   listening.unref()
   if (role === 'worker') heard.set('orchestrator', performance.now())
@@ -680,6 +702,7 @@ export async function join(
     async leave() {
       leaving = true
       clearInterval(listening)
+      clearTimeout(acking)
       // The final call (2026-10-25): the relay keeps one whose socket
       // dropped for its redial, so only `leave` ends it, and a host's
       // session, at once. A socket that drops under it is dialed again

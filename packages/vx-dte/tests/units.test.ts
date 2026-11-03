@@ -439,6 +439,7 @@ it('a worker reports when quiet, and says a task begun beside a save with its en
       memory: 0,
     })
     const seen: unknown[] = []
+    const unloaded: unknown[] = []
     let worker = ''
     const said = (m: { type: string; task?: string; messages?: unknown[] }): unknown =>
       m.type === 'together'
@@ -456,6 +457,11 @@ it('a worker reports when quiet, and says a task begun beside a save with its en
           continue
         }
         seen.push(said(m))
+        // Every frame carries its machine's load (2026-11-03: "with each
+        // event we should always send resources").
+        const last =
+          m.type === 'together' ? (m as unknown as { messages: unknown[] }).messages.at(-1) : m
+        if (!('load' in (last as object))) unloaded.push(said(m))
         // Its first report, idle: then t1, and t2 the moment t1's command ends.
         if (seen.length === 1)
           await o.send(worker, { type: 'batch', root, realRoot: root, tasks: [order('t1')] })
@@ -464,6 +470,7 @@ it('a worker reports when quiet, and says a task begun beside a save with its en
       }
     await o.send(worker, { type: 'exit' })
     expect(seen[0]).toBe('report ')
+    expect(unloaded).toEqual([])
     const events = seen.filter((m) => !String(m).startsWith('report'))
     expect(events).toEqual(['start t1', 'ran t1', ['start t2', 'end t1'], 'ran t2', 'end t2'])
     expect(await code).toBe(0)
