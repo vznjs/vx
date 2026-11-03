@@ -791,6 +791,11 @@ is on):
    deletes the key's inline bytes, and upserts the `entries` row (taskId, command, exit code,
    duration, size, stdout, timestamps), the `output_files` fingerprint
    rows, and the entry's one `entry_inputs` row (`INSERT OR IGNORE`).
+   Saves that reach this step in one event-loop turn share the
+   transaction, each in a savepoint of its own: a refused write undoes
+   only its own rows and artifact. A BEGIN and COMMIT per save were half
+   the index time on a cold run's main thread (500 saves, 81 of 164 ms,
+   2026-11-03).
    Concurrent readers see either no entry or a complete entry — never a
    partial one — and bytes and rows go live together: the rename waits
    for the write lock, so no other writer's rows land beside it, and a

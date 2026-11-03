@@ -10,7 +10,7 @@
 
 import { closeSync, writeSync } from 'node:fs'
 import { taskShell } from '../util/index.js'
-import { guardLine, spawnGuarded } from './kill-tree.js'
+import { flushGuard, listGroup } from './kill-tree.js'
 import { heldPipe, TaskPipes } from './pipes.js'
 import { type OffChild, spawnOff } from './spawn-off.js'
 
@@ -39,10 +39,9 @@ const WAIT = '. /dev/fd/3'
 function start(): Spare | undefined {
   const fds = heldPipe()
   if (fds === undefined) return undefined
-  let cmd: (guard: number | undefined) => string[]
+  let sh: string
   try {
-    const sh = taskShell()
-    cmd = (guard) => [sh, '-c', (guard === undefined ? '' : guardLine(4)) + WAIT]
+    sh = taskShell()
   } catch {
     // No shell on vx's PATH: the task's own spawn says so.
     closeSync(fds[0]!)
@@ -50,22 +49,20 @@ function start(): Spare | undefined {
     return undefined
   }
   const pipes = new TaskPipes()
-  const child = spawnGuarded((guard) =>
-    spawnOff({
-      cmd: cmd(guard),
-      argv0: 'sh',
-      cwd: '/',
-      env: {},
-      detached: true,
-      held: false,
-      stdio: [
-        'ignore',
-        ...(pipes.stdio as [number, number]),
-        fds[0]!,
-        ...(guard === undefined ? [] : [guard]),
-      ],
-    }),
-  )
+  // vx lists the spare's group itself, with the turn's other lines: the
+  // spare runs nothing before `runOnSpare` flushes them.
+  const child = spawnOff({
+    cmd: [sh, '-c', WAIT],
+    argv0: 'sh',
+    cwd: '/',
+    env: {},
+    detached: true,
+    held: false,
+    stdio: ['ignore', ...(pipes.stdio as [number, number]), fds[0]!],
+  }).then((c) => {
+    listGroup(c.pid)
+    return c
+  })
   const settled = child.finally(() => {
     pipes.spawned()
     closeSync(fds[0]!)
@@ -135,6 +132,8 @@ export async function runOnSpare(spare: Spare, script: string): Promise<OffChild
     return undefined
   }
   try {
+    // Its group listed before it runs a line of the task.
+    flushGuard()
     writeSync(spare.script, script)
   } catch {
     child.kill('SIGKILL')
