@@ -234,11 +234,16 @@ export async function runWorker(opts: {
         present.set(k, Promise.resolve())
         holds.set(k, names(m.project, m.outputs))
       }
+    const endedAt = Date.now()
+    const t = times.get(m.task)
     const end: ToOrchestrator = {
       type: 'end',
       task: m.task,
       key: saved,
       result: wired,
+      startedAt: t?.startedAt ?? endedAt,
+      ranAt: t?.ranAt ?? endedAt,
+      endedAt,
       load: frame(),
     }
     for (const part of parts(end)) await say(part)
@@ -257,52 +262,47 @@ export async function runWorker(opts: {
       what,
       'the orchestrator',
     )
-  /** Tasks whose command ended, saving: a task begun beside one is said with its `end`. */
-  const saving = new Set<string>()
-  /** Begun tasks not said yet. */
-  let starts: string[] = []
+  /** Each running task's times: begun, and its command's end once it ran. */
+  const times = new Map<string, { startedAt: number; ranAt?: number }>()
+  /** Tasks whose command ended, not said yet: each rides the next message. */
+  const ran = new Set<string>()
+  /** The last batch read: its report names what it runs as of that batch. */
+  let batch = 0
   /**
-   * `m` to the orchestrator with its machine's load, which every frame
-   * carries, and the begun tasks waiting on it: one frame.
+   * `m` to the orchestrator in one frame with its machine's load, which
+   * every frame carries, and each waiting `ran`: none is ever sent alone.
    */
   const say = (event: ToOrchestrator): Promise<void> => {
-    const m = { ...event, load: frame() } as ToOrchestrator
-    const waiting = starts.map((task): ToOrchestrator => ({ type: 'start', task }))
-    starts = []
+    const m = { ...event, load: { ...frame(), at: Date.now() } } as ToOrchestrator
+    // Its `end` says it ran.
+    if (m.type === 'end') ran.delete(m.task)
+    const riding: ToOrchestrator[] = []
+    for (const task of ran) {
+      const t = times.get(task)
+      if (t?.ranAt !== undefined)
+        riding.push({ type: 'ran', task, startedAt: t.startedAt, ranAt: t.ranAt })
+    }
+    ran.clear()
     return me.send(
       'orchestrator',
-      waiting.length === 0 ? m : { type: 'together', messages: [...waiting, m] },
+      riding.length === 0 ? m : { type: 'together', messages: [...riding, m] },
     )
-  }
-  const sayStarts = (): void => {
-    const last = starts.pop()
-    if (last === undefined) return
-    void say({ type: 'start', task: last, load: frame() }).catch(unsent('start'))
-  }
-  /**
-   * A begun task is said at once, unless a task beside it saves: then with
-   * that task's `end`, its turnover one message, or the report within the
-   * heartbeat if the save is longer.
-   */
-  const begin = (task: string): void => {
-    starts.push(task)
-    if (saving.size === 0) sayStarts()
   }
   // A heartbeat with nothing said: its live report, which is how the
   // orchestrator hears it. Never a second in one: any message carries load.
   me.quiet(() => {
-    void say({ type: 'report', running: [...running.keys()], load: frame() }).catch(
+    void say({ type: 'report', running: [...running.keys()], batch, load: frame() }).catch(
       unsent('report'),
     )
   })
   /** Runs a task the orchestrator sent: it fits what this worker has free. */
   const start = (m: RunOrder): void => {
-    let ran = false
+    const t: { startedAt: number; ranAt?: number } = { startedAt: Date.now() }
+    times.set(m.task, t)
     const done = (): void => {
-      if (ran) return
-      ran = true
-      saving.add(m.task)
-      void say({ type: 'ran', task: m.task, load: frame() }).catch(unsent('ran'))
+      if (t.ranAt !== undefined) return
+      t.ranAt = Date.now()
+      ran.add(m.task)
     }
     const p = runTask(m, done)
       .catch(async (err: unknown) => {
@@ -322,9 +322,13 @@ export async function runWorker(opts: {
         }
         const reason = err instanceof Error ? err.message : String(err)
         ui.print('err', ui.status('error', m.task, `could not run: ${reason}`))
+        ran.delete(m.task)
         await say({ type: 'fault', task: m.task, reason }).catch(unsent('fault'))
       })
-      .finally(() => work.delete(p))
+      .finally(() => {
+        work.delete(p)
+        times.delete(m.task)
+      })
     work.add(p)
   }
 
@@ -354,8 +358,6 @@ export async function runWorker(opts: {
   const runTask = async (m: RunOrder, free: () => void): Promise<void> => {
     const stop = new AbortController()
     running.set(m.task, stop)
-    // Not awaited: the task does not wait on the relay to say it began.
-    begin(m.task)
     try {
       const differs = await runtimeDiffers(m)
       if (differs !== undefined) {
@@ -557,8 +559,6 @@ export async function runWorker(opts: {
       })
     } finally {
       running.delete(m.task)
-      saving.delete(m.task)
-      if (saving.size === 0) sayStarts()
     }
   }
 
@@ -613,13 +613,13 @@ export async function runWorker(opts: {
           // Every batch of a run names the same orchestrator root.
           root = m.root
           realRoot = m.realRoot
+          batch = m.n
           if (m.sandboxes !== undefined) {
             if (floor === undefined) floor = localFloor(m.sandboxes)
             else await floor.rearm(m.sandboxes)
           }
           for (const t of m.tasks) {
-            // One it runs already, sent again (its lease ended while the
-            // relay was away): it is not run twice.
+            // One it runs already is not run twice.
             if (running.has(t.task)) continue
             const deps = ahead.get(t.task)
             ahead.delete(t.task)

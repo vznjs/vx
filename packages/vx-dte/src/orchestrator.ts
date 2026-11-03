@@ -68,7 +68,9 @@ interface Job {
   ended?: true
   /** When it was sent to its worker. */
   sentAt?: number
-  /** When its worker began it. */
+  /** The batch that sent it, by its worker's count: a report of that batch or later names it. */
+  batch?: number
+  /** When its worker began it: its send, then the time its worker says. */
   startedAt?: number
   /** When its worker said its command ended: it saves since. */
   ranAt?: number
@@ -111,8 +113,10 @@ interface Worker {
   readonly usage: Usage
   /** Sent to it and not finished: running there or in its queue. */
   readonly busy: Map<string, Job>
-  /** Of `busy`, the ones it began. */
+  /** Of `busy`, the ones it began: each one sent, as a worker runs what it takes at once. */
   readonly started: Set<string>
+  /** Batches sent it: each batch's `n`. */
+  batches: number
   usedCores: number
   usedMemory: number
   /** Its machine's use as its last frame said, and when this machine heard it. */
@@ -966,8 +970,11 @@ export class Orchestrator {
             }
             tasks.push({ ...order, deps: [] })
           }
+          const n = ++a.batches
+          for (const { job } of part) job.batch = n
           const batch = {
             type: 'batch',
+            n,
             root: this.o.root,
             realRoot: this.realRoot,
             tasks,
@@ -976,7 +983,12 @@ export class Orchestrator {
           await this.o.me.send(a.id, batch)
           a.usage.messagesIn++
           a.usage.bytesIn += bytesOf(batch)
-          for (const { job } of part) pending.delete(job)
+          for (const { job } of part) {
+            pending.delete(job)
+            // Sent, it runs: its worker takes only what it has room for.
+            this.begun(a, job.req.taskId)
+          }
+          this.pumpSoon()
         }
       })
       .catch((err: unknown) => {
@@ -1018,6 +1030,7 @@ export class Orchestrator {
     delete job.sentAt
     delete job.ended
     delete job.ranAt
+    delete job.batch
     const begun = a.started.delete(job.req.taskId)
     // Stopped, it runs nowhere again; the cancel sent its worker has no one to answer it.
     if (job.req.signal?.aborted === true) {
@@ -1082,7 +1095,13 @@ export class Orchestrator {
   }
 
   /** Worker `a` ran `task` and saved it under `key`: it is done there, and done here once restored. */
-  private async finish(a: Worker, task: string, key: string, head: WiredResult): Promise<void> {
+  private async finish(
+    a: Worker,
+    task: string,
+    key: string,
+    head: WiredResult,
+    endedAt: number | undefined,
+  ): Promise<void> {
     const job = a.busy.get(task)
     if (job === undefined) return
     // A dependency's remote copy did not read back there (a truncated
@@ -1106,7 +1125,7 @@ export class Orchestrator {
         return
       }
     }
-    const endAt = performance.now()
+    const endAt = endedAt ?? performance.now()
     this.traceTask(a, job, head, endAt)
     a.busy.delete(task)
     this.unhold(a, job)
@@ -1383,6 +1402,7 @@ export class Orchestrator {
         label,
         busy: new Map(),
         started: new Set(),
+        batches: 0,
         has: new Set(),
         // Its name first, before any batch.
         chain: this.cache()
@@ -1449,20 +1469,32 @@ export class Orchestrator {
         const a = this.workers.get(from)
         if (a === undefined) continue
         const said = body as ToOrchestrator
-        for (const m of said.type === 'together' ? said.messages : [said]) {
+        const frame = said.type === 'together' ? said.messages : [said]
+        // A worker's times, read against its clock as this frame left it:
+        // no two machines' clocks agree.
+        const now = performance.now()
+        let at: number | undefined
+        for (const m of frame) if ('load' in m && m.load?.at !== undefined) at = Number(m.load.at)
+        const here = (t: unknown): number | undefined =>
+          at === undefined || typeof t !== 'number' || !Number.isFinite(at - t)
+            ? undefined
+            : Math.min(now, now - (at - t))
+        for (const m of frame) {
           if ('load' in m && m.load !== undefined) this.heard(a, m.load)
           if (m.type !== 'report') this.movedAt = performance.now()
-          if (m.type === 'start') {
-            this.begun(a, m.task)
-            this.pumpSoon()
-          } else if (m.type === 'report') {
-            // Every task it began and has not ended is in its report: one
-            // missing it no longer runs, and goes back at once.
+          if (m.type === 'report') {
+            // Every task of the batches it read that has not ended is in its
+            // report: one missing it no longer runs, and goes back at once.
             const running = new Set(m.running)
-            for (const t of running) this.begun(a, t)
+            const read = Number(m.batch) || 0
             const back: Job[] = []
             for (const [t, j] of [...a.busy])
-              if (a.started.has(t) && j.ended !== true && !running.has(t)) {
+              if (
+                a.started.has(t) &&
+                j.ended !== true &&
+                (j.batch ?? 0) <= read &&
+                !running.has(t)
+              ) {
                 const again = this.retry(a, j, 'not in its report')
                 if (again !== undefined) back.push(again)
               }
@@ -1480,7 +1512,8 @@ export class Orchestrator {
             this.begun(a, m.task)
             this.unhold(a, j)
             // Its worker still says it holds it while it saves.
-            j.ranAt = performance.now()
+            j.startedAt = here(m.startedAt) ?? j.startedAt ?? now
+            j.ranAt = here(m.ranAt) ?? now
             this.pumpSoon()
           } else if (m.type === 'fault') {
             const j = a.busy.get(m.task)
@@ -1517,8 +1550,14 @@ export class Orchestrator {
             }
             // Not awaited: one task's restore holds no other message.
             const j = a.busy.get(m.task)
-            if (j !== undefined) j.ended = true
-            void this.finish(a, m.task, m.key, result as WiredResult)
+            if (j !== undefined) {
+              j.ended = true
+              const began = here(m.startedAt)
+              const ran = here(m.ranAt)
+              if (began !== undefined) j.startedAt = began
+              if (ran !== undefined) j.ranAt = ran
+            }
+            void this.finish(a, m.task, m.key, result as WiredResult, here(m.endedAt))
           }
         }
       }
