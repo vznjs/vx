@@ -115,15 +115,51 @@ export function secretMask(
     for (const name in source) {
       const value = source[name]
       if (secretNamed(name)) add(value)
-      if (value?.includes('://') === true && value.includes('@')) {
-        for (const m of value.matchAll(URL_PASSWORD)) add(m[1])
-      }
+      if (value?.includes('://') === true && value.includes('@'))
+        for (const pw of urlPasswords(value)) add(pw)
     }
     for (const name of named) add(source[name])
   }
   // This process's secrets: the environment's and the held ones.
   if (sources.includes(process.env)) for (const value of held) add(value)
   if (values.size === 0) return null
+  const found = [...values]
+  for (const m of masks) if (sameValues(m.values, found)) return m.mask
+  if (masks.length >= MASKS_KEPT) masks.shift()
+  const mask = maskOf(values)
+  masks.push({ values: found, mask })
+  return mask
+}
+
+/**
+ * Masks built, with the values each masks: every task of a run asks for
+ * the same one, and building it (a sort, a RegExp the engine compiles
+ * again) took 30 ms of a cold run's main thread at 500 tasks. The values
+ * are read fresh on every call; only the same values reuse a mask.
+ */
+const masks: Array<{ values: readonly string[]; mask: SecretMask }> = []
+const MASKS_KEPT = 8
+
+function sameValues(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
+/** Each URL value's passwords, found once: the value decides them. */
+const urlPasswordsOf = new Map<string, string[]>()
+
+function urlPasswords(value: string): string[] {
+  let found = urlPasswordsOf.get(value)
+  if (found === undefined) {
+    found = []
+    for (const m of value.matchAll(URL_PASSWORD)) if (m[1] !== undefined) found.push(m[1])
+    urlPasswordsOf.set(value, found)
+  }
+  return found
+}
+
+function maskOf(values: ReadonlySet<string>): SecretMask {
   // Longest first, so a value holding another is replaced whole.
   const sorted = [...values].sort((a, b) => b.length - a.length)
   const pattern = new RegExp(
