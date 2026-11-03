@@ -222,6 +222,9 @@ export function listGroup(pid: number): void {
  */
 export function spawnGuarded<C = Child>(spawn: (guard: number | undefined) => C): C {
   startGuard()
+  // The turn's lines go first, as they did one write each: a child's own
+  // listing behind them, not raced by a batch vx writes once it runs.
+  flushGuard()
   if (typeof guardFd !== 'number') return spawn(undefined)
   handingTo = guardProc?.pid
   try {
