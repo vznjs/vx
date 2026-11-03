@@ -950,6 +950,8 @@ export class Cache implements CacheLayer {
   private artifactNames: Set<string> | undefined
   private heldBlobSizes: Array<[string, number]> | undefined
   private heldTimer: ReturnType<typeof setTimeout> | undefined
+  /** Saves' index writes waiting for this turn's one transaction (`indexInBatch`). */
+  private indexQueue: Array<{ write: () => void; settle: (err?: unknown) => void }> = []
   private heldRest: () => Array<[string, number]> = () => []
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
@@ -3208,7 +3210,7 @@ export class Cache implements CacheLayer {
       // Built inside the try: on a database a stopping run closed while a
       // download streamed in, building it throws, and the temp or tree
       // the body went to stayed behind.
-      this.db.transaction(index).immediate()
+      await this.indexInBatch(index)
     } catch (err) {
       endTx()
       const left = renamed ?? tree ?? tmpPath
@@ -3219,6 +3221,56 @@ export class Cache implements CacheLayer {
     endTx()
     for (const a of aside) await rm(a, { recursive: true, force: true })
     return outputBytes
+  }
+
+  /**
+   * Run `write` in a write transaction shared with every other save's that
+   * arrives in this turn: settles once it has committed, or rejects with
+   * its own error (its savepoint rolled back) or the commit's. A cold run's
+   * saves land a few per turn, and a transaction each spent half its index
+   * time on BEGIN and COMMIT on the main thread, the run's busiest
+   * (2026-11-03: 81 of 164 ms over 500 saves).
+   */
+  private indexInBatch(write: () => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.indexQueue.push({
+        write,
+        settle: (err) => (err === undefined ? resolve() : reject(err)),
+      })
+      if (this.indexQueue.length === 1) setImmediate(() => this.flushIndex())
+    })
+  }
+
+  private flushIndex(): void {
+    const batch = this.indexQueue
+    if (batch.length === 0) return
+    this.indexQueue = []
+    const failed = new Map<number, unknown>()
+    try {
+      this.db
+        .transaction(() => {
+          for (let i = 0; i < batch.length; i++) {
+            // An error SQLite answers by rolling the whole transaction
+            // back (a full disk, a busy lock) leaves none to go on in: the
+            // rest are not run, and fail with it.
+            if (failed.size > 0 && !this.db.inTransaction) {
+              failed.set(i, failed.values().next().value)
+              continue
+            }
+            try {
+              // Nested: a savepoint, so one write's failure undoes only its own rows.
+              this.db.transaction(batch[i]!.write)()
+            } catch (err) {
+              failed.set(i, err)
+            }
+          }
+        })
+        .immediate()
+    } catch (err) {
+      for (let i = 0; i < batch.length; i++) batch[i]!.settle(failed.get(i) ?? err)
+      return
+    }
+    for (let i = 0; i < batch.length; i++) batch[i]!.settle(failed.get(i))
   }
 
   private tempTreePath(hash: string): string {
@@ -3572,6 +3624,7 @@ export class Cache implements CacheLayer {
 
   close(): void {
     try {
+      this.flushIndex()
       clearTimeout(this.heldTimer)
       const held = this.heldBlobSizes ?? (this.heldTimer !== undefined ? this.heldRest() : [])
       this.heldBlobSizes = undefined
