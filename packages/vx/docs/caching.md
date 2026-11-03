@@ -185,10 +185,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     OID, as the enumeration does. A changed index spawns
     `git ls-files -s -v -z --debug` for the recorded sizes, takes each
     still-trusted blob's size from `blob_sizes` (fixed for its OID),
-    and asks one
-    `git cat-file --batch-check` for the ones not yet known, beside
-    the listing rather than after it (65 ms
-    over 3,000 loose objects, 10 ms packed). The sizes it learns are
+    and asks `git cat-file --batch-check` for the ones not yet known,
+    one per core (256 OIDs or more each), beside the listing rather
+    than after it (one took 30 ms over 2,505 loose objects, four 14).
+    A whole-tree run starts the check as its cache opens, beside the
+    config load and graph build. The sizes it learns are
     stored while the tasks run, not before the first one (40,030 cost
     217 ms there at 9,603 tasks), and a cold cache skips the lookup.
     The check is by size,
