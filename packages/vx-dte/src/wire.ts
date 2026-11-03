@@ -42,16 +42,17 @@ export function unsent(
  */
 const FIRST_REDIAL_MS = 250
 /**
- * A peer quiet this many is lost: a live one says something every
- * heartbeat, so one missed beat is not a loss. Checked each tenth, loss
- * lands by two (4 s on the default).
+ * A peer quiet this many heartbeats is lost (6 s on the default): the one
+ * number the others derive from.
  */
-const LOST_BEATS = 1.9
+const LOST_BEATS = 3
 /**
- * A send unacknowledged this long goes again: its ack rides the receiver's
- * next send, which comes within a heartbeat.
+ * A worker quiet half of `LOST_BEATS` sends its report (3 s), and its
+ * orchestrator's ack answers it: one late frame is not a loss.
  */
-const RESEND_BEATS = 1.5
+const QUIET_BEATS = LOST_BEATS / 2
+/** A send unacknowledged as long goes again: its ack comes within it. */
+const RESEND_BEATS = LOST_BEATS / 2
 /** Why a worker ends on its orchestrator's silence. */
 export const ORCHESTRATOR_SILENT = 'relay: the orchestrator went silent'
 /**
@@ -392,7 +393,7 @@ export async function join(
   }
   /**
    * A worker says something to its orchestrator whenever it said nothing
-   * a heartbeat: its live report (`quiet`), or a beat. The orchestrator
+   * `QUIET_BEATS`: its live report (`quiet`), or a beat. The orchestrator
    * answers with orders and acks only. Either loses a peer quiet `LOST_BEATS`.
    */
   const listen = (): void => {
@@ -416,7 +417,7 @@ export async function join(
       }
       // The orchestrator never speaks on a timer: its workers do.
       if (role === 'orchestrator') continue
-      if (now - (said.get(peer) ?? 0) < heartbeatMs) continue
+      if (now - (said.get(peer) ?? 0) < QUIET_BEATS * heartbeatMs) continue
       said.set(peer, now)
       if (onQuiet !== undefined) {
         onQuiet(peer)

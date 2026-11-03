@@ -207,12 +207,11 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
 }
 
 // Each frame is a message a relay host may bill: pings at two a heartbeat
-// were nearly all of a run's (2026-10-23). Only a worker quiet a heartbeat
-// speaks, and the orchestrator answers with its ack alone (2026-11-03:
-// "heartbeat only goes if none comes at all for 2s"; the orchestrator
-// "only sends orders"): quiet, a beat and its ack a heartbeat; talking, no
-// beat, and nobody pings.
-it('a quiet worker beats once a heartbeat, its orchestrator only acks, a talking worker never beats, and none pings', async () => {
+// were nearly all of a run's (2026-10-23). Only a worker quiet 1.5
+// heartbeats speaks (2026-11-03: "Make probe 3s"), and the orchestrator
+// answers with its ack alone (the orchestrator "only sends orders"):
+// quiet, a beat and its ack each 3 s; talking, no beat, and nobody pings.
+it('a quiet worker beats once each heartbeat and a half, its orchestrator only acks, a talking worker never beats, and none pings', async () => {
   const { url, pings, frames, answers } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
@@ -223,10 +222,10 @@ it('a quiet worker beats once a heartbeat, its orchestrator only acks, a talking
   const beat = new RegExp(`"sends":\\[\\{"to":"host","body":\\{"seq":\\d+(,"acked":\\d+)?\\}\\}\\]`)
   const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"acked":\\d+\\}\\}\\]`)
   const quiet = frames.splice(0)
-  // Five heartbeats: the worker's beat each one and the orchestrator's ack of it.
+  // 3.5 quiet spans of 1.5 heartbeats: the worker's beat each and the orchestrator's ack of it.
   const beats = quiet.filter((f) => beat.test(f)).length
   const acks = quiet.filter((f) => ack.test(f)).length
-  expect([beats >= 4, beats <= 6, acks >= 4, acks <= 6]).toEqual([true, true, true, true])
+  expect([beats >= 2, beats <= 4, acks >= 2, acks <= 4]).toEqual([true, true, true, true])
   expect(quiet.length).toBe(beats + acks)
   // Neither waits on the relay's answer to either, so it sends none.
   expect(answers).toEqual([])
@@ -257,7 +256,7 @@ it('a worker that sends just before its next beat still hears its orchestrator',
   const probe = /"sends":\[\{"to":"host","body":\{"seq":\d+(,"acked":\d+)?\}\}\]/
   frames.length = 0
   while (!frames.some((f) => probe.test(f))) await Bun.sleep(5)
-  await Bun.sleep(450)
+  await Bun.sleep(700)
   await a.send('orchestrator', 'ran')
   const polls = (async () => {
     for (;;) await a.poll()
@@ -681,7 +680,7 @@ it('drops a socket the relay stopped answering, and carries on over a new one', 
 // A Cloudflare relay over its daily limit answers no frame: a send waited
 // for its answer forever, and the run with it (CI on #3888, 2026-10-22).
 // Owner, 2026-10-23: "if it does not reply for 10s its dead".
-it('a worker whose relay answers nothing ends, and the orchestrator loses it, within two heartbeats', async () => {
+it('a worker whose relay answers nothing ends, and the orchestrator loses it, within three heartbeats', async () => {
   const { url, drop } = dropping()
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
@@ -696,9 +695,9 @@ it('a worker whose relay answers nothing ends, and the orchestrator loses it, wi
   const read = []
   for (let i = 0; i < 10 && read.length === 0; i++) read.push(...(await o.poll()))
   expect(read).toEqual([{ from: 'relay', body: { type: 'lost', id: a.id } }])
-  expect(performance.now() - at).toBeLessThan(2_500)
+  expect(performance.now() - at).toBeLessThan(3_600)
   await o.leave()
-}, 5_000)
+}, 6_000)
 
 it('a worker ends when its orchestrator’s relay answers nothing, the run’s close unheard', async () => {
   const { url, drop } = dropping()

@@ -613,11 +613,12 @@ use your own instead.
   orchestrator's at its run's end is the final call that closes the run,
   and a worker's when it is done. Either whose socket drops without it
   dials again, 3 times within 10 s, and the relay keeps it, and its run,
-  for those 10 s; past them the run is over. A worker that said nothing
-  for a heartbeat sends its report; the orchestrator never speaks on a
-  timer, only orders and the acks of what it heard. Either side hearing
-  nothing from the other for 1.9 heartbeats (4 s on the default) loses it,
-  a worker by ending, and saying so. Nobody probes, the relay answers
+  for those 10 s; past them the run is over. Either side hearing nothing
+  from the other for 3 heartbeats (6 s on the default) loses it, and the
+  rest follows from that: a worker that said nothing for half of it (3 s)
+  sends its report; the orchestrator never speaks on a timer, only orders
+  and the acks of what it heard; a send unacknowledged for 3 s goes again.
+  A worker that loses its orchestrator ends, and says so. Nobody probes, the relay answers
   neither, and nobody pings. An orchestrator
   with no worker yet asks the relay an empty frame instead; a frame the
   relay leaves unanswered a heartbeat closes the socket, which is dialed
@@ -663,7 +664,7 @@ between two wide parts keeps it. One a remaining task needs for its size
 stays, and so does one a later task needs when its size's `max` is
 spent, since none could start in its place. A lost worker's tasks run again on
 another, and the run starts one in its place. A worker is lost when its
-socket closes, when it says nothing for 1.9 heartbeats, or at
+socket closes, when it says nothing for 3 heartbeats (6 s), or at
 once when its adapter sees its process or job end. Workers start at the first
 task the cache does not answer, so a warm run starts none. Once one has
 joined, its warm-up is what the next of its size takes at the least: work
