@@ -2,7 +2,7 @@
 // what a request carries. Every string a client sends is opaque to the
 // server, which only compares it, so a client can send it encrypted.
 
-/** The scope (a ref's hash) a download reads: `GET /v1/artifacts/<hash>`. */
+/** The scope (a ref, percent-encoded) a download reads: `GET /v1/artifacts/<hash>`. */
 export const SCOPE_HEADER = 'vx-scope'
 
 /**
