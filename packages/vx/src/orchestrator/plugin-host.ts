@@ -33,6 +33,7 @@ import type {
   DiscoverContext,
   ExecutorContext,
   FingerprintChange,
+  FingerprintDigests,
   FingerprintContext,
   GraphHookContext,
   KeyHookContext,
@@ -396,20 +397,40 @@ export async function claimedAffected(
 }
 
 /**
- * `FingerprintClaim.removed`'s answer for a deleted project, held to
- * `claimedAffected`'s rules; `null` when the plugin does not implement it.
+ * `FingerprintClaim.digests`' answer for `file`; `undefined` when the
+ * plugin has none. A digest of a name no project carries, or a value that
+ * is not a string, is refused by name: `vx lock` would commit it.
  */
-export async function claimedRemoved(
+export async function claimedDigests(
   plugin: VxPlugin,
-  gone: { readonly file: string; readonly dir: string; readonly before: Uint8Array | null },
+  file: string,
   ctx: FingerprintContext,
-): Promise<Set<string> | undefined | null> {
-  const removed = plugin.fingerprint?.removed
-  if (removed === undefined) return null
-  const answer = await safe(plugin, 'fingerprint', () =>
-    removed.call(plugin.fingerprint, gone, ctx),
+): Promise<FingerprintDigests | undefined> {
+  const digests = plugin.fingerprint?.digests
+  if (digests === undefined) return undefined
+  const answer: unknown = await safe(plugin, 'fingerprint', () =>
+    digests.call(plugin.fingerprint, file, ctx),
   )
-  return projectNames(plugin, answer, ctx)
+  if (answer === undefined) return undefined
+  const { hash, projects } = (answer ?? {}) as Partial<FingerprintDigests>
+  if (
+    typeof hash !== 'string' ||
+    typeof projects !== 'object' ||
+    projects === null ||
+    Object.values(projects).some((d) => typeof d !== 'string')
+  ) {
+    throw new UserError(
+      `plugin '${plugin.name}' failed in fingerprint: digests returned ${describeValue(answer)}, not { hash, projects: { name: digest } }`,
+    )
+  }
+  const known = new Set(ctx.projects.map((p) => p.name))
+  const stray = Object.keys(projects).find((n) => !known.has(n))
+  if (stray !== undefined) {
+    throw new UserError(
+      `plugin '${plugin.name}' failed in fingerprint: digest of ${JSON.stringify(stray)}, which is not a project in this workspace`,
+    )
+  }
+  return { hash, projects }
 }
 
 async function projectNames(

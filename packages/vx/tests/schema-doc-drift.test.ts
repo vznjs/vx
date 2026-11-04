@@ -602,7 +602,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(`{ plugins: [${plugin('p', '{}')}] }`),
   ],
   [
-    "plugins[<i>].fingerprint of plugin '<name>' must be { files: [name, …], affected: function, extraFiles?: function, removed?: function }",
+    "plugins[<i>].fingerprint of plugin '<name>' must be { files: [name, …], affected: function, extraFiles?: function, digests?: function }",
     workspaceConfig(`{ plugins: [${plugin('p', '{ fingerprint: { files: [] } }')}] }`),
   ],
   [

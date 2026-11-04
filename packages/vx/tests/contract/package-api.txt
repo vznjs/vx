@@ -905,14 +905,19 @@ export interface FingerprintClaim {
     bytes: Uint8Array,
     ctx: FingerprintContext,
   ): readonly string[] | Promise<readonly string[]>
-  removed?(
-    gone: { readonly file: string; readonly dir: string; readonly before: Uint8Array | null },
+  digests?(
+    file: string,
     ctx: FingerprintContext,
-  ): Iterable<string> | undefined | Promise<Iterable<string> | undefined>
+  ): FingerprintDigests | undefined | Promise<FingerprintDigests | undefined>
 }
 == type FingerprintContext (src/orchestrator/plugin.ts)
 export interface FingerprintContext extends BaseContext {
   readonly projects: ReadonlyArray<{ readonly name: string; readonly dir: string }>
+}
+== type FingerprintDigests (src/orchestrator/plugin.ts)
+export interface FingerprintDigests {
+  readonly hash: string
+  readonly projects: Readonly<Record<string, string>>
 }
 == type FoldMemo (src/cache/fold-memo.ts)
 export interface FoldMemo {

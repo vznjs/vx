@@ -1,6 +1,6 @@
-// A deleted project takes its edges with it, so core asks the lockfile as
-// of the base who linked to it (`FingerprintClaim.removed`): only those
-// projects are selected, not every one.
+// A deleted project takes its edges with it, so `--affected` reads them
+// from the base commit's `.vx/dependencies.lock.json`, the edges this
+// plugin's `discover` gave `vx lock`: only those projects are selected.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

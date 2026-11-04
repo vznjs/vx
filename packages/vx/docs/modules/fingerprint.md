@@ -51,12 +51,13 @@ the projects reaching it move.
 
 A plugin that reads a root file declares `fingerprint: { files:
 ['bun.lock'], affected(change, ctx), extraFiles?(file, bytes, ctx),
-removed?(gone, ctx) }`
+digests?(file, ctx) }`
 (`extraFiles`: the files a claimed file names that the plugin's key
 reads too, such as `bun.lock`'s patches and a `file:` dependency's
 directory; the same ones the key reads, since `--affected` asks about
-every changed path; `removed`: who linked to a deleted project, from
-the claimed file as of the base). The schema refuses a
+every changed path; `digests`: each project's digest now and the hash of
+the bytes it came from (`FingerprintDigests`), which `vx lock` records in
+`.vx/dependencies.lock.json` so `--affected` never parses the base side). The schema refuses a
 second claimant for one file. `fingerprintClaims(plugins)` in
 `plugin-host.ts` indexes the claims. `--affected`
 (`workspace/affected.ts`) asks the claimant's `affected` with the file's

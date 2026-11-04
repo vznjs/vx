@@ -111,9 +111,9 @@ All are on the `@vzn/vx` façade.
 - **`affected`** digests both sides and names the projects whose digest
   moved; a side that is absent (the file appeared or went) answers
   `undefined`, and so does `scope: 'workspace'`.
-- **`removed`** (with `importers`) parses the base side and names the
-  projects whose importer linked to the deleted one; no file at the
-  base, or a root importer link (it reaches every key), answers
+- **`digests`** answers each project's digest (its importer's, or its
+  nearest listed ancestor's, with the root's) and the file's hash, for
+  `vx lock` to record; `scope: 'workspace'` and a missing file answer
   `undefined`.
 - **`scope: 'workspace'`** folds the file's hash into every task and
   never digests: the whole file, the coarsest key there is. With

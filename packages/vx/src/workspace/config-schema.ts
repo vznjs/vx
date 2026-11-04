@@ -440,7 +440,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           files?: unknown
           affected?: unknown
           extraFiles?: unknown
-          removed?: unknown
+          digests?: unknown
         } | null
         if (
           claim === null ||
@@ -449,10 +449,10 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           claim.files.length === 0 ||
           typeof claim.affected !== 'function' ||
           (claim.extraFiles !== undefined && typeof claim.extraFiles !== 'function') ||
-          (claim.removed !== undefined && typeof claim.removed !== 'function')
+          (claim.digests !== undefined && typeof claim.digests !== 'function')
         ) {
           throw new UserError(
-            `${configPath}: \`plugins[${i}].fingerprint\` of plugin '${pkg}' must be { files: [name, …], affected: function, extraFiles?: function, removed?: function }`,
+            `${configPath}: \`plugins[${i}].fingerprint\` of plugin '${pkg}' must be { files: [name, …], affected: function, extraFiles?: function, digests?: function }`,
           )
         }
         for (const file of claim.files as unknown[]) {

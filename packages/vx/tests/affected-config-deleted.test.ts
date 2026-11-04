@@ -70,24 +70,15 @@ it('deleting a whole project selects its dependants', async () => {
   expect(tasks[0]!.affected).toMatchObject({ file: 'packages/lib/vx.config.mjs' })
 })
 
-// The project's edges went with it, so core asks the claimant that keeps
-// them: `FingerprintClaim.removed`, with the claimed file as of the base.
-const depsClaim = (removed: string) =>
-  pluginSource(
-    'vx-test-deps',
-    `{ fingerprint: { files: ['deps.lock'], affected: () => [], ${removed} } }`,
-  )
-
-async function dropLibWith(claim: string): Promise<string> {
-  const root = await makeWorkspace({ prefix: 'vx-affected-projdel-claim-', edges: {} })
+// The project's edges went with it, so selection reads them from the base
+// commit's `.vx/dependencies.lock.json`, which `vx lock` writes.
+async function dropLib(lockedAtBase: boolean): Promise<string> {
+  const root = await makeWorkspace({ prefix: 'vx-affected-projdel-lock-', edges: { app: ['lib'] } })
   made.push(root)
-  await Bun.write(
-    path.join(root, '.vx/workspace.mjs'),
-    localWorkspaceSource([edgesSource({ app: ['lib'] }), claim]),
-  )
-  await Bun.write(path.join(root, 'deps.lock'), 'app -> lib\n')
   for (const name of ['app', 'lib', 'other'])
     await addProject(root, name, { config: config(['src/**']), files: { 'src/x': '1\n' } })
+  if (lockedAtBase) await lock(root)
+  else await rm(path.join(root, '.vx/dependencies.lock.json'), { force: true })
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'init')
@@ -98,22 +89,71 @@ async function dropLibWith(claim: string): Promise<string> {
   return root
 }
 
-it('a deleted project selects only the dependants its claimant names', async () => {
-  const root = await dropLibWith(
-    depsClaim(
-      `removed: (gone) => gone.file === 'deps.lock' && gone.dir === 'packages/lib' &&
-        new TextDecoder().decode(gone.before).includes('app -> lib') ? ['app'] : undefined`,
-    ),
-  )
+it('a deleted project selects only the dependants the base dependencies lock records', async () => {
+  const root = await dropLib(true)
+  const recorded = JSON.parse(gitIn(root)('show', 'HEAD~1:.vx/dependencies.lock.json')) as {
+    projects: Record<string, { deps?: string[] }>
+  }
+  expect(recorded.projects['packages/app']).toEqual({ deps: ['packages/lib'] })
   const tasks = await dry(root, ['build', '--affected=HEAD~1'])
   expect(tasks.map((t) => t.id)).toEqual(['app#build'])
   expect(tasks[0]!.affected).toMatchObject({ file: 'packages/lib/vx.config.mjs' })
 })
 
-it('a deleted project no claimant answers for selects every project', async () => {
-  for (const removed of ['', 'removed: () => undefined']) {
-    const root = await dropLibWith(depsClaim(removed))
-    const tasks = await dry(root, ['build', '--affected=HEAD~1'])
-    expect(tasks.map((t) => t.id).sort()).toEqual(['app#build', 'other#build'])
-  }
+it('a deleted project with no dependencies lock at the base selects every project', async () => {
+  const root = await dropLib(false)
+  const tasks = await dry(root, ['build', '--affected=HEAD~1'])
+  expect(tasks.map((t) => t.id).sort()).toEqual(['app#build', 'other#build'])
+})
+
+// A changed claimed file: the base side's digests are the ones `vx lock`
+// recorded for those bytes, so the claimant digests only the head side.
+// `affected` names `other` to prove it was not asked.
+it('a claimed file change reads the base digests from the dependencies lock', async () => {
+  const root = await makeWorkspace({ prefix: 'vx-affected-recorded-', edges: {} })
+  made.push(root)
+  const claim = pluginSource(
+    'vx-test-deps',
+    `{ fingerprint: { files: ['deps.lock'], affected: () => ['other'],
+      digests: async (file, ctx) => {
+        const text = await Bun.file(ctx.workspaceRoot + '/deps.lock').text()
+        return { hash: Bun.hash.xxHash3(text).toString(16).padStart(16, '0'),
+          projects: Object.fromEntries(ctx.projects.map((p) =>
+            [p.name, text.split('\\n').find((l) => l.startsWith(p.name + ' ')) ?? ''])) }
+      } } }`,
+  )
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([edgesSource(), claim]),
+  )
+  await Bun.write(path.join(root, 'deps.lock'), 'app 1\nlib 1\nother 1\n')
+  for (const name of ['app', 'lib', 'other'])
+    await addProject(root, name, { config: config(['src/**']), files: { 'src/x': '1\n' } })
+  await lock(root)
+  const git = gitIn(root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'init')
+  await Bun.write(path.join(root, 'deps.lock'), 'app 2\nlib 1\nother 1\n')
+  git('commit', '-qam', 'bump app')
+  const tasks = await dry(root, ['build', '--affected=HEAD~1'])
+  expect(tasks.map((t) => t.id)).toEqual(['app#build'])
+})
+
+// `vx lock` rewrites the record on every dependency change; the key folds
+// the digests already, so the file itself selects nothing, not the root
+// project whose `**` lists it.
+it('a rewritten dependencies lock alone selects nothing', async () => {
+  const root = await makeWorkspace({ prefix: 'vx-affected-depslock-', edges: {} })
+  made.push(root)
+  await Bun.write(path.join(root, 'vx.config.mjs'), config(['**']))
+  await addProject(root, 'app', { config: config(['src/**']), files: { 'src/x': '1\n' } })
+  await lock(root)
+  const git = gitIn(root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'init')
+  const file = path.join(root, '.vx/dependencies.lock.json')
+  await Bun.write(file, (await Bun.file(file).text()).replace('{', '{ '))
+  git('commit', '-qam', 'relock')
+  const tasks = await dry(root, ['build', '--affected=HEAD~1'])
+  expect(tasks.map((t) => t.id)).toEqual([])
 })

@@ -417,7 +417,7 @@ What counts as a change:
   selects it, as in Nx. The key still hashes it, so the task misses when
   it changed.
 - What `vx lock` writes is left out (`.vx/projects.lock.json`,
-  `.vx/.gitattributes`, `.vx/.gitignore`, each project's `vx.lock.json`
+  `.vx/dependencies.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, each project's `vx.lock.json`
   review copy), so `vx lock` never marks a project affected by itself.
   `.vx/projects.lock.json` counts entry by entry when the base has
   one: a project whose locked config changed is selected whole (a run
@@ -443,10 +443,12 @@ directory. Only a plugin that cannot tell selects everything, as
 
 **A deleted project selects its dependants.** Their keys lost an
 upstream, and the edge that named them went with the project, so vx asks
-the lockfile as of the base who linked to it (`FingerprintClaim.removed`,
-as `@vzn/vx-lockfile` answers) and selects those, naming the deleted
-`vx.config` as the reason. With no claimant that answers, it selects
-every project. A project that moved is no deletion: its config, the same bytes
+the base commit's `.vx/dependencies.lock.json` (written by `vx lock`)
+who linked to it and selects those, naming the deleted `vx.config` as
+the reason. With no such file at the base, it selects every project.
+The same file holds each claimed file's per-project digests and the
+hash of the bytes they came from, so a changed lockfile whose base
+bytes match the record is digested on the head side only. A project that moved is no deletion: its config, the same bytes
 in its new directory, selects only it, by its files. A dependency a plugin's `discover` drops without deleting a
 project is the plugin's to claim (`VxPlugin.fingerprint`, as the
 lockfile plugins do).
@@ -1843,6 +1845,13 @@ config and checks the rules.
 `vx lock` evaluates every `vx.config.*` and writes the resolved configs
 to `.vx/projects.lock.json`. Runs read the lock, never the configs:
 after you edit one, run `vx lock` and commit the lock.
+
+Beside it, `.vx/dependencies.lock.json` records each project's edges and
+each claimed file's per-project digests (`FingerprintClaim.digests`),
+pretty-printed so a dependency change reads as a diff. Commit it too:
+`--affected` reads the base commit's copy to find a deleted project's
+dependants and a changed lockfile's base digests, and `vx lock --check`
+fails when it is missing or stale.
 
 ### Usage
 

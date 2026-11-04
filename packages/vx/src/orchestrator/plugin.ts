@@ -492,18 +492,24 @@ export interface FingerprintClaim {
     ctx: FingerprintContext,
   ): readonly string[] | Promise<readonly string[]>
   /**
-   * The projects (by name) that depended on a project `--affected` finds
-   * deleted: its directory `gone.dir` (root-relative POSIX) and the claimed
-   * `file`'s bytes at the base ref (`null` where it did not exist). The
-   * edge went with the project, so only the file that recorded it can say
-   * who lost an upstream. Every claimant that implements it is asked, and
-   * the answers are unioned; `undefined`, or no claimant implementing it,
-   * selects every project.
+   * Each project's digest of the claimed `file` as it is now, by project
+   * name, with `hash`, the identity of the bytes they came from (the
+   * file's xxh3 when nothing else is folded). `vx lock` records them in
+   * `.vx/dependencies.lock.json`, and `--affected` reads the base's copy
+   * there instead of asking `affected` to parse the base side, when its
+   * `hash` is the base file's xxh3. `undefined`: nothing to record.
    */
-  removed?(
-    gone: { readonly file: string; readonly dir: string; readonly before: Uint8Array | null },
+  digests?(
+    file: string,
     ctx: FingerprintContext,
-  ): Iterable<string> | undefined | Promise<Iterable<string> | undefined>
+  ): FingerprintDigests | undefined | Promise<FingerprintDigests | undefined>
+}
+
+/** `FingerprintClaim.digests`' answer. */
+export interface FingerprintDigests {
+  readonly hash: string
+  /** Project name → its digest of the file. */
+  readonly projects: Readonly<Record<string, string>>
 }
 
 export interface FingerprintChange {

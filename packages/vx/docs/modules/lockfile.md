@@ -72,6 +72,38 @@ nothing staged starts reading the lock when it finds the workspace root,
 beside discovery; a missing lock still refuses at the config load, after
 any refusal that comes first.
 
+### `.vx/dependencies.lock.json` (`dependencies-lock.ts`)
+
+```ts
+export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock.json'
+export interface DependenciesLock {
+  version: number
+  projects: Record<string, { deps?: string[]; reach?: string[] }> // dir → the dirs it links to
+  files: Record<string, { hash: string; projects: Record<string, string> }> // claimed file → its hash, dir → digest
+}
+export function dependenciesLock(
+  root: string,
+  metas: readonly ProjectMeta[],
+  files: ReadonlyMap<string, { hash: string; projects: Readonly<Record<string, string>> }>, // by project name
+): DependenciesLock
+export function dependenciesLockText(lock: DependenciesLock): string
+export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLock | null
+export async function writeDependenciesLock(root: string, lock: DependenciesLock): Promise<void>
+```
+
+`vx lock` writes it beside the lock, pretty-printed and committed:
+each project's `discover` edges and each claimed file's
+`FingerprintClaim.digests`, keyed by directory and sorted, so the
+same workspace writes the same bytes. `--affected` reads the base
+commit's copy (`git show`): a deleted project's dependants are the
+projects whose edges name its directory, and a changed claimed file
+whose base bytes hash to the recorded `hash` takes its base digests
+from the record, never a parse. `parseDependenciesLock` answers null
+for a missing file, another version or another shape, and selection
+then falls back (every project for a deletion, the claimant's
+`affected` for a change). `vx lock --check` holds it to a fresh
+derivation once the lock itself holds.
+
 ## Invariants
 
 - Deliberate asymmetry: runs TRUST the lock outright — a

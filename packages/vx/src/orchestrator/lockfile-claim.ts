@@ -378,33 +378,22 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         }
         return names
       },
-      // The base's file says who linked to the gone importer; without it,
-      // or without the links, every project.
-      ...(options.importers !== undefined
-        ? {
-            removed(gone, ctx) {
-              if (gone.before === null) return undefined
-              let edges: ReadonlyMap<string, LockfileImporter>
-              try {
-                edges = options.importers!(decode(gone.before))
-              } catch (err) {
-                throw new Error(
-                  `${err instanceof Error ? err.message : String(err)} (as of the base ref)`,
-                )
-              }
-              const held = new Set<string>()
-              for (const [dir, links] of edges) {
-                const to = [...Object.values(links.deps), ...Object.values(links.peers)]
-                if (to.includes(gone.dir)) held.add(dir)
-              }
-              // The root's links reach every project's key.
-              if (held.has('.')) return undefined
-              return ctx.projects
-                .filter((p) => held.has(importerOf(ctx.workspaceRoot, p.dir)))
-                .map((p) => p.name)
-            },
-          }
-        : {}),
+      // What `vx lock` commits, so `--affected` reads the base's digests
+      // instead of parsing the base's file.
+      async digests(_file: string, ctx: FingerprintContext) {
+        if (scope === 'workspace') return undefined
+        const digests = await load(ctx.workspaceRoot, ctx.cacheDir)
+        if (digests.lock === '') return undefined
+        return {
+          hash: digests.lock,
+          projects: Object.fromEntries(
+            ctx.projects.map((p) => [
+              p.name,
+              digestFor(digests.importers, importerOf(ctx.workspaceRoot, p.dir)),
+            ]),
+          ),
+        }
+      },
       ...(options.extraFiles !== undefined
         ? {
             // The memo records which files these exact bytes name, for this

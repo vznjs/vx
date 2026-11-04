@@ -356,6 +356,7 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     'vx.lock.json',
     '.vx/.gitattributes',
     '.vx/.gitignore',
+    '.vx/dependencies.lock.json',
     '.vx/tmp/1z2-a/0',
   ]
   // A project's own files that only share a name with vx's (2026-10-17):
@@ -367,6 +368,7 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     'a/b/vx.lock.json',
     'a/b/.vx/.gitattributes',
     'a/b/.vx/.gitignore',
+    'a/b/.vx/dependencies.lock.json',
     'a/b/.vx/tmp/1z2-a/0',
   ]
   // Names one character away from an ignored one. If any of these is excluded
@@ -390,6 +392,7 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     'vx.lock.json.bak',
     '.gitattributes',
     '.vx/.gitignore.bak',
+    '.vx/dependencies.lock.json.bak',
     '.vx/tmpl/x',
   ]
 

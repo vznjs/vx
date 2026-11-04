@@ -18,8 +18,15 @@ import {
   notAWorkTree,
   relPosix,
   UserError,
+  xxh3hex,
 } from '../util/index.js'
 import { LOCKFILE_NAME, lockKey } from './lockfile.js'
+import {
+  DEPENDENCIES_LOCK_NAME,
+  type DependenciesLock,
+  dependantsOf,
+  parseDependenciesLock,
+} from './dependencies-lock.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
@@ -143,12 +150,10 @@ export interface FingerprintClaims {
   }): Promise<ReadonlySet<string> | undefined>
   /** The files a claimed file names that its claimant keys too; absent = it reads none. */
   extraFiles?(file: string, bytes: Uint8Array): Promise<readonly string[] | undefined>
-  /** Who depended on a deleted project (`dir`, root-relative POSIX); `undefined` = all, `null` = the claimant does not say. */
-  removed?(gone: {
-    file: string
-    dir: string
-    before: Uint8Array | null
-  }): Promise<ReadonlySet<string> | undefined | null>
+  /** Each project's digest of a claimed file now (`FingerprintClaim.digests`); absent or undefined = none. */
+  digests?(
+    file: string,
+  ): Promise<{ hash: string; projects: Readonly<Record<string, string>> } | undefined>
 }
 
 /**
@@ -394,6 +399,12 @@ export async function affectedChanges(
   if (wsConfig !== undefined) return everything(wsConfig)
   // The workspace file is loaded once, for the extra files below and the
   // changed root names after them.
+  // The base commit's `vx lock` record, read once and only when asked.
+  let baseDeps: Promise<DependenciesLock | null> | undefined
+  const baseDependencies = (): Promise<DependenciesLock | null> =>
+    (baseDeps ??= gitBytesAt(args.workspaceRoot, base, DEPENDENCIES_LOCK_NAME).then(
+      parseDependenciesLock,
+    ))
   let claims: FingerprintClaims | undefined
   const loadClaims = async (): Promise<FingerprintClaims | undefined> =>
     (claims ??= await args.fingerprintClaims?.())
@@ -452,6 +463,28 @@ export async function affectedChanges(
       if (patch !== undefined) return everything(patch)
     }
   }
+  // The projects whose digest of `file` moved, from the base's recorded
+  // digests and the claimant's now: the base side is never parsed. Null
+  // when the base recorded none for these bytes (no lock, or another
+  // hash) or the claimant gives none now: `affected` answers then.
+  const recordedMoves = async (
+    asked: FingerprintClaims,
+    file: string,
+    before: Uint8Array | null,
+    after: Uint8Array | null,
+  ): Promise<ReadonlySet<string> | null> => {
+    if (before === null || after === null || asked.digests === undefined) return null
+    const was = (await baseDependencies())?.files[file]
+    if (was === undefined || was.hash !== xxh3hex(before)) return null
+    const now = await asked.digests(file)
+    if (now === undefined) return null
+    const moved = new Set<string>()
+    for (const p of projects) {
+      const d = was.projects[lockKey(rootDir, p.dir)]
+      if (d === undefined || d !== now.projects[p.name]) moved.add(p.name)
+    }
+    return moved
+  }
   const claimedOwned = new Map<string, string>()
   const rootNamesChanged = changed.filter((p) => !p.includes('/'))
   for (const file of extrasBy.keys()) {
@@ -461,12 +494,11 @@ export async function affectedChanges(
   for (const file of rootNamesChanged) {
     if (claimed === undefined || !claimed.files.has(file)) continue
     const extras = extrasBy.get(file)
-    const answer = await claimed.affected({
-      file,
-      before: await gitBytesAt(args.workspaceRoot, base, file),
-      after: await bytesOrNull(path.join(args.workspaceRoot, file)),
-      ...(extras !== undefined ? { extras } : {}),
-    })
+    const before = await gitBytesAt(args.workspaceRoot, base, file)
+    const after = await bytesOrNull(path.join(args.workspaceRoot, file))
+    const answer =
+      (extras === undefined ? await recordedMoves(claimed, file, before, after) : undefined) ??
+      (await claimed.affected({ file, before, after, ...(extras !== undefined ? { extras } : {}) }))
     const why =
       extras === undefined || changed.includes(file)
         ? file
@@ -537,23 +569,6 @@ export async function affectedChanges(
     }
   }
 
-  // Every claimant that keeps edges answers; none answering is "cannot tell".
-  const dependantsOf = async (dir: string): Promise<ReadonlySet<string> | undefined> => {
-    const asked = await loadClaims()
-    if (asked?.removed === undefined) return undefined
-    const names = new Set<string>()
-    let answered = false
-    for (const file of asked.files) {
-      const before = await gitBytesAt(args.workspaceRoot, base, file)
-      const answer = await asked.removed({ file, dir, before })
-      if (answer === null) continue
-      if (answer === undefined) return undefined
-      answered = true
-      for (const name of answer) names.add(name)
-    }
-    return answered ? names : undefined
-  }
-
   // A config or manifest that makes an existing directory a project took
   // files from the project above it.
   const markers = changed.filter((rel) => PROJECT_MARKERS.has(path.posix.basename(rel)))
@@ -562,12 +577,16 @@ export async function affectedChanges(
     // A config the base had in a directory that is no project now: the
     // project is gone, and with it the edge naming who depended on it,
     // while their keys lost an upstream. Today's graph cannot say who; the
-    // claimed file that recorded the edge (a lockfile) can, as of the base.
+    // base's dependencies lock can. Without one, every project.
     // A config that moved, the same bytes under a new project, is no
     // loss: its files select it where it lives.
+    const nameAt = new Map(projects.map((p) => [lockKey(rootDir, p.dir), p.name]))
     for (const gone of await removedProjectConfigs(args.workspaceRoot, atBase, projects)) {
-      const held = await dependantsOf(path.posix.dirname(gone))
-      if (held === undefined) return everything(gone)
+      const recorded = await baseDependencies()
+      if (recorded === null) return everything(gone)
+      const held = dependantsOf(recorded, path.posix.dirname(gone)).flatMap(
+        (d) => nameAt.get(d) ?? [],
+      )
       for (const name of held) {
         owned.add(name)
         whole.add(name)
@@ -620,7 +639,12 @@ export async function affectedChanges(
 }
 
 /** What vx writes under `.vx`, which no key reads (cache/inputs.ts `ALWAYS_IGNORE`). */
-const VX_OWN: ReadonlySet<string> = new Set([LOCKFILE_NAME, '.vx/.gitattributes', '.vx/.gitignore'])
+const VX_OWN: ReadonlySet<string> = new Set([
+  LOCKFILE_NAME,
+  DEPENDENCIES_LOCK_NAME,
+  '.vx/.gitattributes',
+  '.vx/.gitignore',
+])
 
 const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 /**
