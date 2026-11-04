@@ -126,22 +126,23 @@ const ON_BEHALF = new Set(['pull_request_target', 'issue_comment', 'workflow_run
  * queue's (`merge_group`) run writes its base branch, which its code is
  * about to become (2026-10-25: "just strip it"); only its ref is renamed:
  * anyone can push a branch named like a queue ref. A run of an event in
- * `ON_BEHALF` writes nothing. A GitLab merge request pipeline writes its source branch
- * only when `source_project_path` names its own project: a fork's runs in
- * the parent project with the fork's branch as its `ref_path`, and a
- * GitLab before 19.5 names no source project.
+ * `ON_BEHALF` writes nothing. A GitLab run writes only when the code and
+ * the job are its project's own (`source_project_path`, `job_project_path`):
+ * a fork's merge request runs in the parent project with the fork's branch
+ * as its `ref_path`, and so may a child pipeline of one or a mirrored pull
+ * request, which were not checked. A merge request pipeline must name its
+ * source project: a GitLab before 19.5 names none.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
-  if (iss !== GITHUB && claims['pipeline_source'] === 'merge_request_event') {
-    const own = (claim: string) => {
+  if (iss !== GITHUB) {
+    // Absent is its own, but where it must be named: a merge request's.
+    const own = (claim: string, required: boolean) => {
       const p = claims[claim]
+      if (p === undefined) return !required
       return typeof p === 'string' && same(p, String(claims['project_path']))
     }
-    if (
-      !own('source_project_path') ||
-      (claims['job_project_path'] !== undefined && !own('job_project_path'))
-    )
-      return undefined
+    const mr = claims['pipeline_source'] === 'merge_request_event'
+    if (!own('source_project_path', mr) || !own('job_project_path', false)) return undefined
   }
   const event = claims['event_name']
   if (ON_BEHALF.has(event as string)) return undefined

@@ -48,9 +48,11 @@ What that gives each run of `ci.yml`:
 On GitLab, the workflow is the CI file:
 `https://gitlab.com:acme/web:.gitlab-ci.yml`.
 
-A merge request pipeline writes its source branch only when the token's
-`source_project_path` (GitLab 19.5+) names the project itself. A fork's
-merge request, run in your project, writes nothing.
+A run writes only when the token's `source_project_path` and
+`job_project_path` name the project itself. A fork's merge request, or a
+child pipeline of one, writes nothing.
+
+A merge request pipeline must name its source project (GitLab 19.5+).
 
 A CI file kept in another project is named as GitLab names it:
 `.gitlab-ci.yml@acme/ci`.

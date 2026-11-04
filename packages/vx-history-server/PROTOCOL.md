@@ -25,8 +25,9 @@ is `403`. A token writes its own ref (`refs/heads/<branch>`; a
 `head_ref`; a `merge_group` run,
 `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, its base branch); a
 `pull_request_target`, `issue_comment` or `workflow_run` run reads only,
-and so does a GitLab merge request pipeline whose `source_project_path` (GitLab 19.5+)
-does not name its own project. A query names its
+and so does a GitLab run whose `source_project_path` or `job_project_path`
+names another project, or a merge request pipeline naming no source project
+(GitLab before 19.5). A query names its
 repository; a token of another is `403`. A server whose `READ_ACCESS`
 is `public` takes a query with no token for a repository `ALLOW` names;
 an upload with none is `403`.

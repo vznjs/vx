@@ -469,6 +469,27 @@ describe('GitLab merge request pipelines', () => {
     expect(await held(main, 'b2', 'refs/heads/main')).toBe(404)
   })
 
+  // The check keyed on `merge_request_event` alone: a child pipeline of a
+  // fork's (`parent_pipeline`), or a mirrored pull request
+  // (`external_pull_request_event`), runs the fork's code and wrote its branch.
+  it.each(['parent_pipeline', 'external_pull_request_event', 'pipeline'])(
+    "a %s run of another project's code writes nothing",
+    async (source) => {
+      const base = { pipeline_source: source, ref_path: 'refs/heads/main' }
+      const fork = await lab({ ...base, source_project_path: 'eve/app' })
+      expect(await detail(await write(fork, 'b4'))).toEqual([403, 'this request reads only'])
+      const elsewhere = await lab({ ...base, job_project_path: 'eve/app' })
+      expect(await detail(await write(elsewhere, 'b5'))).toEqual([403, 'this request reads only'])
+      // Control: its own code writes its branch.
+      const own = await lab({
+        ...base,
+        source_project_path: 'acme/app',
+        job_project_path: 'acme/app',
+      })
+      expect((await write(own, 'b6')).status).toBe(204)
+    },
+  )
+
   it("the project's own merge request writes its source branch", async () => {
     const own = await lab({
       ...MR,
