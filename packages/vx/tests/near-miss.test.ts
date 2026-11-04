@@ -14,6 +14,13 @@ describe('nearest', () => {
   it('prefers the nearer of two candidates', () => {
     expect(nearest('tset', ['test', 'tests'])).toBe('test')
   })
+  // `--ALL` was three edits from `--all` and hinted nothing; `Build`
+  // against `build` is one, but `BUILD` was five.
+  it('offers a candidate that differs only in case, however many letters', () => {
+    expect(nearest('--ALL', ['--all', '--affected'])).toBe('--all')
+    expect(nearest('BUILD', ['build', 'test'])).toBe('build')
+    expect(nearest('WEB', ['web', 'Web'])).toBe('web')
+  })
 })
 
 describe('nearMatches', () => {
