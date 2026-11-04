@@ -3,14 +3,7 @@
 // an artifact is one object, named by its issuer, repository name, scope and
 // hash, and a read names the exact scope it wants (2026-10-25).
 
-import {
-  type Access,
-  type Authorize,
-  errorJson,
-  hashPart,
-  notAllowed,
-  Refusal,
-} from '@vzn/vx-devtools'
+import { type Access, type Authorize, errorJson, notAllowed, Refusal } from '@vzn/vx-devtools'
 import { isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
 import { blobName, type Blobs } from './store.js'
 
@@ -64,8 +57,22 @@ export function limitsFrom(env: object): Partial<Limits> {
 /** A held artifact's bytes never change (2026-10-25). */
 const IMMUTABLE = 'private, max-age=31536000, immutable'
 
-/** A scope on the wire: its ref's `hashPart`, so no ref is ever sent or stored plain (2026-10-25). */
-const SCOPE = /^[0-9a-f]{32}$/
+/**
+ * A scope on the wire: a ref (`refs/…`), percent-encoded as
+ * `encodeURIComponent` does, its folder's name (2026-11-03). One spelling
+ * per ref, so no two scopes name one folder; at most 512 characters, so
+ * a name stays under a bucket's 1024-byte key.
+ */
+const SCOPE_MAX = 512
+const isScope = (scope: string): boolean => {
+  if (scope.length > SCOPE_MAX || !scope.startsWith('refs%2F')) return false
+  try {
+    return encodeURIComponent(decodeURIComponent(scope)) === scope
+  } catch {
+    // quiet: a broken escape (`%E0`) is a bad scope, which the caller refuses `400`.
+    return false
+  }
+}
 
 export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response> {
   const { blobs, authorize } = opts
@@ -74,14 +81,17 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     Object.entries(LIMIT_HEADERS).map(([k, h]) => [h, String(limits[k as keyof Limits])]),
   )
 
-  /** The scope a client names: a ref's hash, read as it is. */
+  /** The scope a client names: a ref, percent-encoded, read as it is. */
   const scopeOf = (scope: unknown): string => {
-    if (typeof scope !== 'string' || !SCOPE.test(scope)) {
-      throw new Refusal(400, "scope: a ref's hash, 32 hex digits (PROTOCOL.md § Keys)")
+    if (typeof scope !== 'string' || !isScope(scope)) {
+      throw new Refusal(
+        400,
+        `scope: a ref, percent-encoded, up to ${SCOPE_MAX} characters (PROTOCOL.md § Keys)`,
+      )
     }
     return scope
   }
-  const nameOf = (access: Access, scope: string, hash: string): Promise<string> =>
+  const nameOf = (access: Access, scope: string, hash: string): string =>
     blobName(access.issuer, access.repository, scope, hash)
   /** A read of the bucket: one it fails is its fault, `502`, never the server's `500`. */
   const read = async <T>(ask: Promise<T>): Promise<T> => {
@@ -93,9 +103,9 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
 
   /** The token's own scope, the one place it writes. */
-  const writeScope = (access: Access): Promise<string> => {
+  const writeScope = (access: Access): string => {
     if (access.write === undefined) throw new Refusal(403, 'this request reads only')
-    return hashPart(access.write)
+    return encodeURIComponent(access.write)
   }
 
   /**
@@ -103,14 +113,15 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
    * the order to read them; up to `max` lookups, hashes times scopes.
    */
   async function queryOf(req: Request, max: number) {
-    const body = await readJson(req, max * 140 + 100)
+    // Each lookup a hash (≤ 128) or a scope (≤ SCOPE_MAX), quoted and comma'd.
+    const body = await readJson(req, max * (SCOPE_MAX + 140) + 100)
     const hashes = field(body, 'hashes')
     const scopes = field(body, 'scopes')
     if (!Array.isArray(hashes) || !hashes.every((h) => typeof h === 'string' && isHash(h))) {
       throw new Refusal(400, 'hashes: a list of 1 to 128 hex digits each')
     }
     if (!Array.isArray(scopes) || scopes.length === 0) {
-      throw new Refusal(400, "scopes: a list of refs' hashes, in the order to read them")
+      throw new Refusal(400, 'scopes: a list of refs, percent-encoded, in the order to read them')
     }
     if (hashes.length * scopes.length > max) {
       throw new Refusal(400, `hashes × scopes: up to ${max} lookups`)
@@ -122,7 +133,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
     const scope = scopeOf(req.headers.get(SCOPE_HEADER))
-    const blob = await read(blobs.get(await nameOf(access, scope, hash)))
+    const blob = await read(blobs.get(nameOf(access, scope, hash)))
     if (blob === null) return errorJson(404, 'no artifact under this key')
     return new Response(blob.body, {
       headers: {
@@ -139,7 +150,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
     const scope = scopeOf(req.headers.get(SCOPE_HEADER))
-    const size = await read(blobs.size(await nameOf(access, scope, hash)))
+    const size = await read(blobs.size(nameOf(access, scope, hash)))
     if (size === null) return new Response(null, { status: 404 })
     return new Response(null, {
       headers: { 'content-length': String(size), 'cache-control': IMMUTABLE },
@@ -153,7 +164,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const { hashes, scopes } = await queryOf(req, limits.maxCheckHashes)
     const sizes = await Promise.all(
       hashes.map((hash) =>
-        Promise.all(scopes.map(async (s) => read(blobs.size(await nameOf(access, s, hash))))),
+        Promise.all(scopes.map((s) => read(blobs.size(nameOf(access, s, hash))))),
       ),
     )
     const held = Object.fromEntries(
@@ -175,7 +186,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   async function put(req: Request, hash: string): Promise<Response> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
-    const name = await nameOf(access, await writeScope(access), hash)
+    const name = nameOf(access, writeScope(access), hash)
     const length = contentLength(req)
     if (length > limits.maxUploadBytes) {
       throw new Refusal(413, `an upload is at most ${limits.maxUploadBytes} bytes`)

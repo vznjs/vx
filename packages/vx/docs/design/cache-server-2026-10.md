@@ -15,12 +15,13 @@ page changes in the same PR as the item it describes.
   the Worker runs in workerd (miniflare), the image in Docker, and the
   bucket is an in-memory S3 that Bun's own client talks to.
 - Shipped: no database (2026-10-25). An artifact is one object named
-  `<issuer>/<id>/<scope>/<hash>`, the first three each hashed
-  (2026-10-25: nothing else, no tier); its size is
+  `<issuer>/<repository>/<ref>/<hash>`, each a readable,
+  percent-encoded folder (2026-11-03, replacing 10-25's hashed parts:
+  pruning one branch is deleting its prefix; no tier); its size is
   the bucket's metadata, and a put replaces a name whole, so racing
   uploads keep one whole artifact and nodes share nothing but the bucket.
   Expiry is one bucket lifecycle rule by age; the server sweeps nothing,
-  and no prefix tells main from a branch.
+  and the server deletes nothing itself.
 - Shipped: every read names exact scopes (2026-10-25: the whole
   point of scope is exact keys) on Turbo's routes (2026-10-25: "use
   turbo"): `GET`, `HEAD` and `PUT /v1/artifacts/<hash>`, a download's

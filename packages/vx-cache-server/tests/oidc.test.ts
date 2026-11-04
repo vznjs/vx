@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from 'bun:test'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
 import { oidcAuth, parseAllow } from '@vzn/vx-devtools'
 import { createCacheServer } from '../src/server.js'
-import { scopeOf } from './conformance.js'
+import { hashOf, scopeOf } from './conformance.js'
 import { NAMED } from './issuer.js'
 import { memBlobs } from './mem-blobs.js'
 
@@ -264,7 +264,7 @@ describe('CI OIDC tokens', () => {
       "repository acme/9 is not in this server's ALLOW",
     ])
     // A token of a repository ALLOW names, sent naming another.
-    const named = { ...NAMED, 'vx-repository': scopeOf('acme/other') }
+    const named = { ...NAMED, 'vx-repository': hashOf('acme/other') }
     const res = await handle(
       new Request(`${AUD}/v1/artifacts/d4`, {
         headers: {
@@ -338,7 +338,7 @@ describe('READ_ACCESS=public', () => {
         headers: { ...NAMED, 'content-type': 'application/json' },
       }),
     )
-    expect(await detail(res)).toEqual([413, 'the body is at most 70100 bytes'])
+    expect(await detail(res)).toEqual([413, 'the body is at most 326100 bytes'])
     expect(pulled).toBeLessThan(10)
   })
 
@@ -351,7 +351,7 @@ describe('READ_ACCESS=public', () => {
       headers: { 'content-length': '1' },
     })
     expect(await detail(write)).toEqual([403, 'this request reads only'])
-    const other = await tokenless(h, { ...NAMED, 'vx-repository': scopeOf('acme/other') })
+    const other = await tokenless(h, { ...NAMED, 'vx-repository': hashOf('acme/other') })
     expect(await detail(other)).toEqual([403, "the repository named is not in this server's ALLOW"])
   })
 
@@ -413,7 +413,7 @@ it("answers 502 while the issuer's keys cannot be read, never 401", async () => 
 // fork's branch as its `ref_path`: a fork's branch `main` wrote main.
 describe('GitLab merge request pipelines', () => {
   const GITLAB = 'https://gitlab.com'
-  const AT = { 'vx-issuer': scopeOf(GITLAB), 'vx-repository': scopeOf('acme/app') }
+  const AT = { 'vx-issuer': hashOf(GITLAB), 'vx-repository': hashOf('acme/app') }
   let lab: (claims: JWTPayload) => Promise<string>
   let h: (req: Request) => Promise<Response>
   beforeAll(async () => {
@@ -482,7 +482,7 @@ describe('GitLab merge request pipelines', () => {
 
 describe('GitLab CI tokens', () => {
   const GITLAB = 'https://gitlab.example.com'
-  const named = { 'vx-issuer': scopeOf(GITLAB), 'vx-repository': scopeOf('acme/app') }
+  const named = { 'vx-issuer': hashOf(GITLAB), 'vx-repository': hashOf('acme/app') }
   const server = async (allowVar: string) => {
     const { privateKey, publicKey } = await generateKeyPair('RS256')
     const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }

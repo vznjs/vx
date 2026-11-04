@@ -122,8 +122,8 @@ describe('VxCacheLayer', () => {
   })
   afterAll(() => srv.stop())
 
-  it("uploads, checks and downloads one artifact, asking each ref's exact key, hashed", async () => {
-    const [f, main] = [await hashPart('refs/heads/f'), await hashPart(MAIN)]
+  it("uploads, checks and downloads one artifact, asking each ref's exact folder", async () => {
+    const [f, main] = ['refs%2Fheads%2Ff', 'refs%2Fheads%2Fmain']
     const c = layer(srv.url, write, ['refs/heads/f', MAIN])
     expect(await c.has('aa11')).toBeNull()
     await c.put('aa11', new Blob(['hello']), { durationMs: 1 })
@@ -139,7 +139,7 @@ describe('VxCacheLayer', () => {
     expect([await got!.body.text(), srv.seen.at(-1)!.scope]).toEqual(['hello', main])
     expect(await c.get('bb22')).toBeNull()
     expect(srv.seen.slice(-2).map((r) => r.scope)).toEqual([f, main])
-    // No ref goes on the wire plain (2026-10-25).
+    // A ref goes on the wire percent-encoded: its slashes never split its folder.
     expect(srv.seen.filter((r) => `${r.body} ${r.scope}`.includes('refs/'))).toEqual([])
   })
 
@@ -429,7 +429,7 @@ describe("the server's limits", () => {
         expect(hashes.length * scopes.length).toBeLessThanOrEqual(2)
       }
       expect(await (await c.get('ab12'))!.body.text()).toBe('held')
-      expect(srv.seen.at(-1)!.scope).toBe(await hashPart(MAIN))
+      expect(srv.seen.at(-1)!.scope).toBe(encodeURIComponent(MAIN))
     } finally {
       await srv.stop()
     }

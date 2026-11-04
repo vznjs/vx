@@ -24,9 +24,9 @@ are refused; there is no events route.
 
 The server never reads a hash or an artifact's bytes. It only stores
 them and compares hashes for equality, so a client may send them
-encrypted (a keyed hash for names, a cipher for bytes). No ref goes on
-the wire plain: a scope is its ref's hash (§ Keys), and the server
-hashes the token's ref the same way to find where a write goes.
+encrypted (a keyed hash for names, a cipher for bytes). A scope is its
+ref, percent-encoded (§ Keys), and the server encodes the token's ref
+the same way to find where a write goes.
 
 ## Repository
 
@@ -75,8 +75,10 @@ so a client keeps the remote for its next request.
 ## Keys
 
 An artifact lives in one scope, and a key names both: `{ scope, hash }`.
-`scope` is a ref's hash: the first 128 bits of the SHA-256 of its UTF-8
-(`refs/heads/main`), 32 lowercase hex digits; a plain ref is `400`.
+`scope` is a ref, percent-encoded as JavaScript's `encodeURIComponent`
+does (`refs/heads/main` is `refs%2Fheads%2Fmain`), at most 512
+characters. Any other spelling (a plain ref, another encoding of it, a
+name not under `refs/`) is `400`, so one ref is one scope.
 `GET` and `HEAD` name one scope in `vx-scope`; a check names
 its scopes in its body.
 `hash` is 1 to 128 hex digits. A read is exact: the server answers the scope named and no
