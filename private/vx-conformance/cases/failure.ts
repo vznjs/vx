@@ -107,4 +107,24 @@ export default [
     workspace: one({ command: 'echo hi', inputs: ['src/**'] }),
     steps: [{ run: 'biuld', expect: { exit: 'fail' } }],
   }),
+
+  defineCase({
+    id: 'failure/task-cycle-refused',
+    category: 'failure',
+    kind: 'correctness',
+    title: 'Tasks that depend on each other in a cycle fail the run before any runs',
+    from: ['default-build-cycle-key', 'task-graph'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: { command: 'echo build', inputs: ['src/**'], dependsOn: ['check'] },
+            check: { command: 'echo check', inputs: ['src/**'], dependsOn: ['build'] },
+          },
+          files: { 'src/a.txt': 'a' },
+        },
+      },
+    },
+    steps: [{ run: 'build', expect: { exit: 'fail', notRan: ['a#build', 'a#check'] } }],
+  }),
 ]

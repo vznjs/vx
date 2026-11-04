@@ -186,9 +186,19 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
     const r = await sh(argv)
     if (r.exit !== 0) throw new Error(`setup \`${argv.join(' ')}\` exited ${r.exit}:\n${r.out}`)
   }
+  // A tool that refuses a config when it is written (vx at `vx lock`)
+  // refuses every run until the config changes: each run reads as that
+  // refusal, exit 1, nothing run.
+  let refused: string | null = null
   const configure = async (ws: WorkspaceSpec) => {
-    for (const argv of await adapter.configure(root, ws, (p, t) => marked(ws, p, t)))
-      await setup(argv)
+    refused = null
+    for (const argv of await adapter.configure(root, ws, (p, t) => marked(ws, p, t))) {
+      const r = await sh(argv)
+      if (r.exit !== 0) {
+        refused = `$ ${argv.join(' ')}\n${r.out}`
+        break
+      }
+    }
   }
   let ws = c.workspace
   await writeWorkspace(root, ws)
@@ -248,7 +258,8 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       'run' in step
         ? adapter.run(step.run, step.projects)
         : adapter.affected(step.affected, step.base)
-    const r = await sh(argv, 'env' in step ? step.env : {})
+    const r =
+      refused === null ? await sh(argv, 'env' in step ? step.env : {}) : { exit: 1, out: refused }
     const marks = ((await readMaybe(path.join(root, RAN))) ?? '').split('\n').filter(Boolean)
     const files: Record<string, string | null> = {}
     for (const f of Object.keys(step.expect.files ?? {}))

@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 78,
+    "ported": 79,
     "rest": {
       "pending": [
         "abort",
@@ -24,7 +24,6 @@
         "committed-case",
         "committed-through-link",
         "conflict-markers",
-        "default-build-cycle-key",
         "default-build-not-declared",
         "deferred-output-link",
         "dev",
@@ -101,6 +100,7 @@
         "vx-lockfile/npm-nested-workspace",
         "vx-lockfile/overrides-precise",
         "vx-lockfile/root-workspace-dep",
+        "watch-loop-dump",
         "whole-second-stamps",
         "wildcard-depends",
         "workspace",
@@ -853,6 +853,7 @@
         "real-path",
         "recursive-run",
         "refusal-notice",
+        "refused-run-region.unsafe",
         "repo-facts-disk",
         "resave-aside",
         "reserved-names",
@@ -2693,6 +2694,30 @@
           "status": "fail",
           "step": 1,
           "detail": "succeeded, expected a failure"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/task-cycle-refused",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "Tasks that depend on each other in a cycle fail the run before any runs",
+      "from": [
+        "default-build-cycle-key",
+        "task-graph"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
         },
         "vite-task": {
           "status": "pass"

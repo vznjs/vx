@@ -1,11 +1,11 @@
 # Task runner conformance
 
-71 cases, each a small workspace and the outcome a user sees: which commands ran, the files left on disk, the exit code. Every tool runs sandboxed. A tool that cannot express a case scores it `–` and it leaves its percentage.
+72 cases, each a small workspace and the outcome a user sees: which commands ran, the files left on disk, the exit code. Every tool runs sandboxed. A tool that cannot express a case scores it `–` and it leaves its percentage.
 
 | | vx this commit | turbo 2.11.10 | nx 24.0.2 | vite-task 1.4.0 |
 |---|---|---|---|---|
-| **all** | 97% (69/71) | 90% (64/71) | 89% (63/71) | 81% (52/64) |
-| correctness | 98% (55/56) | 91% (51/56) | 86% (48/56) | 82% (42/51) |
+| **all** | 97% (70/72) | 90% (65/72) | 89% (64/72) | 82% (53/65) |
+| correctness | 98% (56/57) | 91% (52/57) | 86% (49/57) | 83% (43/52) |
 | efficiency | 93% (14/15) | 87% (13/15) | 100% (15/15) | 77% (10/13) |
 | graph | 100% (10/10) | 90% (9/10) | 100% (10/10) | 90% (9/10) |
 | inputs | 95% (21/22) | 86% (19/22) | 95% (21/22) | 73% (16/22) |
@@ -13,17 +13,17 @@
 | env | 100% (6/6) | 100% (6/6) | 83% (5/6) | 100% (6/6) |
 | cache | 100% (5/5) | 100% (5/5) | 100% (5/5) | 80% (4/5) |
 | logs | 0% (0/1) | 100% (1/1) | 100% (1/1) | 100% (1/1) |
-| failure | 100% (7/7) | 100% (7/7) | 86% (6/7) | 100% (7/7) |
+| failure | 100% (8/8) | 100% (8/8) | 88% (7/8) | 100% (8/8) |
 | affected | 100% (7/7) | 100% (7/7) | 71% (5/7) | – |
 
 ## Where the cases come from
 
-Each case is drawn from vx's own tests. Of the 1145 test files in this repo:
+Each case is drawn from vx's own tests. Of the 1147 test files in this repo:
 
-- 78 are carried by a case;
+- 79 are carried by a case;
 - 106 are pending: guards an outcome any task runner shows: a case can carry it.
 - 599 are vx-only: guards a vx capability the others lack (sandbox, lock, DTE, history, plugins, servers, vx-only verbs).
-- 286 are internal: tests vx code directly, or vx’s own wording and layout, not an outcome.
+- 287 are internal: tests vx code directly, or vx’s own wording and layout, not an outcome.
 - 76 are docs: holds docs, the site, releases or the repo to the code.
 
 ## Where they differ (23)
@@ -235,7 +235,7 @@ Each case is drawn from vx's own tests. Of the 1145 test files in this repo:
 - ✓ **nx**
 - – **vite-task**: needs affected
 
-## Where they agree (48)
+## Where they agree (49)
 
 - `^build` builds every dependency before the project that needs it (`graph/deps-first`)
 - Running one project's task runs what it depends on, and nothing else (`graph/one-project-pulls-its-deps`)
@@ -285,3 +285,4 @@ Each case is drawn from vx's own tests. Of the 1145 test files in this repo:
 - Fixing a failed task’s input makes the next run pass and build (`failure/fixed-then-passes`)
 - A task killed by a signal fails the run and is not cached (`failure/killed-by-signal`)
 - A task that writes to stderr and exits 0 succeeds (`failure/stderr-is-not-failure`)
+- Tasks that depend on each other in a cycle fail the run before any runs (`failure/task-cycle-refused`)
