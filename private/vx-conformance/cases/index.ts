@@ -11,6 +11,7 @@ import failureTimeout from './failure-timeout.ts'
 import failure from './failure.ts'
 import gitInputs from './git-inputs.ts'
 import gitRootProject from './git-root-project.ts'
+import graphMore from './graph-more.ts'
 import graphOnly from './graph-only.ts'
 import graphPattern from './graph-pattern.ts'
 import graphSelect from './graph-select.ts'
@@ -36,6 +37,7 @@ export const CASES: Case[] = [
   ...graphSelect,
   ...graphOnly,
   ...graphPattern,
+  ...graphMore,
   ...gitRootProject,
   ...configGraph,
   ...inputs,

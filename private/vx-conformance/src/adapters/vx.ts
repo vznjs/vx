@@ -90,6 +90,7 @@ export const vx: Adapter = {
     VX,
     'run',
     task,
+    ...(opts.also ?? []),
     ...(opts.select
       ? opts.select.flatMap((s) => ['--filter', pnpmFilter(s)])
       : projects

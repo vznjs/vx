@@ -353,6 +353,7 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
     const tool = (
       'run' in step
         ? adapter.run(step.run, step.projects, {
+            ...(step.also ? { also: step.also } : {}),
             ...(step.select ? { select: step.select } : {}),
             ...(step.only ? { only: true } : {}),
             ...(step.args ? { args: step.args } : {}),
