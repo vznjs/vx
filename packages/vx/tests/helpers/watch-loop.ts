@@ -46,8 +46,14 @@ export interface Watch {
   cycles: () => number
 }
 
-/** Watches still running: a wait that times out shows what each said. */
-const live = new Set<Watch>()
+/**
+ * Watches running, or ended in the last minute: a wait that times out shows
+ * what each said. A Mac flake timed out on the watching marker with no
+ * watch to show: the watch had exited, and its output and code went with
+ * it.
+ */
+const live = new Map<Watch, number | undefined>()
+const RECENT_MS = 60_000
 
 /** The last lines of a stream, enough to see where a watch stopped. */
 const tail = (text: string): string => text.split('\n').slice(-40).join('\n')
@@ -64,10 +70,13 @@ export async function until(
   }
   // A CI flake that said only "timed out waiting for the watching marker"
   // could not be told from a slow runner or a stuck cycle.
-  const said = [...live].map(
-    (w) =>
-      `\nwatch ${w.proc.pid} stdout:\n${tail(w.out())}\nwatch ${w.proc.pid} stderr:\n${tail(w.err())}`,
-  )
+  const said = [...live]
+    .filter(([, endedAt]) => endedAt === undefined || Date.now() - endedAt < RECENT_MS)
+    .map(([w, endedAt]) => {
+      const state =
+        endedAt === undefined ? 'running' : `exited ${w.proc.exitCode ?? w.proc.signalCode}`
+      return `\nwatch ${w.proc.pid} (${state}) stdout:\n${tail(w.out())}\nwatch ${w.proc.pid} stderr:\n${tail(w.err())}`
+    })
   throw new Error(`timed out waiting for ${what}${said.join('')}`)
 }
 
@@ -123,8 +132,12 @@ export function startWatch(
     err: () => err,
     cycles: () => out.split('\n').filter((l) => l.startsWith('changed ')).length,
   }
-  live.add(w)
-  void proc.exited.then(() => live.delete(w))
+  live.set(w, undefined)
+  void proc.exited.then(() => {
+    live.set(w, Date.now())
+    for (const [old, endedAt] of live)
+      if (endedAt !== undefined && Date.now() - endedAt >= RECENT_MS) live.delete(old)
+  })
   return w
 }
 

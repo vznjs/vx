@@ -413,7 +413,7 @@ describe('the watch fixture', () => {
       (e: Error) => e.message,
     )
     expect(said).toStartWith('timed out waiting for nothing\n')
-    expect(said).toContain(`watch ${f.watch.proc.pid} stdout:\n`)
+    expect(said).toContain(`watch ${f.watch.proc.pid} (running) stdout:\n`)
     expect(said).toContain('watching')
     seen.push(String(f.watch.proc.pid))
   })
