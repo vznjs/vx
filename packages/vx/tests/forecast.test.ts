@@ -6,14 +6,15 @@ import { describe, expect, it, spyOn } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { createForecast } from '../src/report/forecast.js'
 import { defaultLogger } from '../src/report/logger.js'
-import { formatStatusRegion, type StatusStream } from '../src/report/status-line.js'
+import { formatStatusRegion } from '../src/report/status-line.js'
+import { type StatusStream } from '../src/ui/live-region.js'
 import { formatSummarySection } from '../src/report/summary.js'
 import {
   notifyEscape,
   PROGRESS_CLEAR,
   progressEscape,
   terminalSignals,
-} from '../src/report/terminal-signals.js'
+} from '../src/ui/terminal-signals.js'
 
 const node = (id: string, deps: string[] = [], group = false): TaskNode =>
   ({
@@ -270,7 +271,7 @@ describe('rows under an executor that places tasks', () => {
     )
     expect(lines).toEqual([
       '',
-      ' Running',
+      expect.stringMatching(/^─ Running \d+ ─+$/),
       '      time   usual status  cache      cpu    mem outputs  blocks worker       task',
       '     500ms         running miss                                0 small#2      p#a',
     ])
@@ -318,7 +319,7 @@ describe('rows under an executor that places tasks', () => {
     expect(rows.find((l) => l.endsWith('p#a  critical path'))).toBeDefined()
     expect(rows.find((l) => /success .*p#d$/.test(l))).toBeDefined()
     // The list's title and header, once, over its first row.
-    expect(rows.filter((l) => Bun.stripANSI(l) === ' Finished')).toHaveLength(1)
+    expect(rows.filter((l) => Bun.stripANSI(l).startsWith('─ Tasks '))).toHaveLength(1)
     expect(
       rows.filter(
         (l) =>
@@ -641,7 +642,7 @@ describe('the live view knows blocked tasks from the graph, from the first frame
 
   it('a free row with nothing planned shows nothing: the footer follows', () => {
     const r = live(['p#a', 'p#x', 'p#y'])
-    expect(r.rows).toEqual(['', '─ vx ─────────────────────────────────────────────────────────'])
+    expect(r.rows).toEqual(['', `─ Summary ${'─'.repeat(52)}`])
   })
 })
 

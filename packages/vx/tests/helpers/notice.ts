@@ -1,8 +1,8 @@
 // What a refusal line prints as its notice, plain: tests state the
 // refusal's words and let the component lay them out (tests/ui.test.ts
 // and tests/refusal-notice.test.ts hold the layout itself).
-import { lineNotice } from '../../src/util/refusal-notice.js'
-import { render, type Tone } from '../../src/util/ui.js'
+import { lineNotice } from '../../src/ui/refusal.js'
+import { render, type Tone } from '../../src/ui/index.js'
 
 /** `vx run: …` lines (each may carry indented lines under it) as notices. */
 export function noticed(text: string, tone: Tone = 'error'): string {

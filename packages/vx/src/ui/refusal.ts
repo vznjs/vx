@@ -2,9 +2,10 @@
 // carries, a config refusal's frame, or a plain message laid out a fact a
 // line. The flat message stays what `--format json` and logs carry.
 
-import { configRefusal } from './config-frame.js'
-import type { RefusalParts } from './errors.js'
-import { notice, print, type Block, type Inline, type Tone } from './ui.js'
+import { configRefusal, type RefusalParts } from '../util/index.js'
+import { notice, type Block, type Inline } from './components.js'
+import { print } from './terminal.js'
+import type { Tone } from './theme.js'
 
 // A sentence break before a capital, a backtick or a paren: vx joins
 // its facts with these.
@@ -55,7 +56,7 @@ export function refusalNotice(
 ): Block {
   const c = parts === undefined ? configRefusal(message, opts.cwd ?? process.cwd()) : undefined
   if (c !== undefined) {
-    const what: Inline[] = [{ style: 'bold', text: c.where }, c.problem]
+    const what: Inline[] = [{ style: 'strong', text: c.where }, c.problem]
     return notice({
       tone: 'error',
       verb,

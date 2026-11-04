@@ -73,10 +73,10 @@ import {
   isTmpdirRefusal,
   procfsIsOwn,
   TMPDIR_HINT,
-  ui,
   UserError,
   xxh3hex,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import {
   bindableReads,
   bindableWrites,

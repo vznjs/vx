@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { defaultLogger } from '../src/report/logger.js'
-import type { StatusStream } from '../src/report/status-line.js'
+import type { StatusStream } from '../src/ui/live-region.js'
 
 function tty(): StatusStream & { text(): string } {
   const chunks: string[] = []

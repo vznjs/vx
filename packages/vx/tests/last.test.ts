@@ -9,7 +9,11 @@ import { parseLastArgs } from '../src/cli/last.js'
 import { formatRunList, formatTaskRows } from '../src/cli/last.js'
 import type { RunSummaryRow } from '../src/history/index.js'
 import { noticed } from './helpers/notice.js'
-import { ERROR, paint } from '../src/util/index.js'
+import * as ui from '../src/ui/index.js'
+
+/** A block's lines, as plain text unless `c` paints. */
+const L = (b: ui.Block | readonly ui.Block[], c: ui.ColorSupport = { enabled: false }): string[] =>
+  [b].flat().flatMap((x) => x.lines(c))
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -109,10 +113,13 @@ describe('vx last (e2e)', () => {
       const unique = await vx(root, ['last', ids[0]!.slice(0, common + 1)])
       expect({ code: unique.code, head: unique.out.split('\n')[0] }).toEqual({
         code: 0,
-        head: `run ${ids[0]} — ok`,
+        head: expect.stringMatching(new RegExp(`^─ Run ${ids[0]} ─+$`)),
       })
       const why = await vx(root, ['why', 'app#build', '--run', ids[1]!.slice(0, common + 1)])
-      expect(why.out.split('\n')[0]).toBe(`app#build — run ${ids[1]}`)
+      expect(why.out.split('\n').slice(0, 2)).toEqual([
+        expect.stringMatching(/^─ Why app#build ─+$/),
+        `  run       ${ids[1]}`,
+      ])
       const shared = await vx(root, ['last', ids[0]!.slice(0, common)])
       expect({ code: shared.code, err: shared.err }).toEqual({
         code: 1,
@@ -129,14 +136,12 @@ describe('vx last (e2e)', () => {
     async () => {
       const r = await vx(root, ['last'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('run ')
-      expect(r.out).toContain('— ok')
-      expect(r.out).toContain('$ ')
+      expect(r.out).toMatch(/^─ Run \S+ ─+\n  status +ok\n  command +vx run build --all\n/)
       // The second run found the output in place: a hit that restored nothing.
       expect(r.out).toContain('1 task · 1 hit (1 up-to-date, 0 restored)')
       expect(r.out).toMatch(/up-to-date\s+app#build/)
       // CONTROL: an ok run has nothing to re-run.
-      expect(r.out).not.toContain('re-run what failed')
+      expect(r.out).not.toMatch(/^  next /m)
     },
     TIMEOUT,
   )
@@ -172,14 +177,15 @@ describe('vx last (e2e)', () => {
     async () => {
       const r = await vx(root, ['last', '--list'])
       expect(r.code).toBe(0)
-      const lines = r.out.trim().split('\n')
-      expect(lines.length).toBe(2)
-      expect(lines[0]).toContain('ok')
+      // The Runs rule, a header, then a row per run.
+      const lines = r.out.trimEnd().split('\n')
+      expect(lines.length).toBe(4)
+      expect(lines[2]!.trim()).toStartWith('ok')
       // The newest line's run id replays that exact run.
-      const runId = lines[0]!.trim().split(/\s+/)[2]!
+      const runId = lines[2]!.trim().split(/\s+/)[2]!
       const detail = await vx(root, ['last', runId])
       expect(detail.code).toBe(0)
-      expect(detail.out).toContain(`run ${runId}`)
+      expect(detail.out).toStartWith(`─ Run ${runId}`)
     },
     TIMEOUT,
   )
@@ -195,7 +201,7 @@ describe('vx last (e2e)', () => {
         expect(r1.code).toBe(0)
         const there = await vx(other, ['last', '--list', '--cache-dir', 'elsewhere'])
         expect(there.code).toBe(0)
-        expect(there.out.trim().split('\n').length).toBe(1)
+        expect(there.out.trimEnd().split('\n').length).toBe(3)
         expect(there.out).toContain('ok')
         const here = await vx(other, ['last', '--list'])
         expect(here.out.trim()).toBe('› vx last  no runs yet')
@@ -222,7 +228,7 @@ describe('vx last (e2e)', () => {
       expect(r1.code).not.toBe(0)
       const r = await vx(root, ['last'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('— FAILED')
+      expect(r.out).toMatch(/^  status +FAILED$/m)
       expect(r.out).toContain('1 failed')
       // The row reads as the frame did: the exit code, and no signal part
       // for a plain exit (item 260).
@@ -230,17 +236,15 @@ describe('vx last (e2e)', () => {
       expect(r.out).not.toContain('128 +')
       // The last line is the command that re-runs what failed, with the
       // arguments the run forwarded.
-      expect(r.out.trimEnd().split('\n').at(-1)).toBe('  re-run what failed: vx run app#boom')
+      expect(r.out.trimEnd().split('\n').at(-1)).toBe('  next      vx run app#boom')
       await vx(root, ['run', 'boom', '--all', '--', 'x', 'y'])
       const fwd = await vx(root, ['last'])
-      expect(fwd.out.trimEnd().split('\n').at(-1)).toBe(
-        '  re-run what failed: vx run app#boom -- x y',
-      )
+      expect(fwd.out.trimEnd().split('\n').at(-1)).toBe('  next      vx run app#boom -- x y')
       // A dependency never got the args (X-140): pasted with them, the line
       // ran another command under another key than the one that failed.
       await vx(root, ['run', 'app#after', '--', 'x', 'y'])
       const dep = await vx(root, ['last'])
-      expect(dep.out.trimEnd().split('\n').at(-1)).toBe('  re-run what failed: vx run app#boom')
+      expect(dep.out.trimEnd().split('\n').at(-1)).toBe('  next      vx run app#boom')
     },
     TIMEOUT,
   )
@@ -252,9 +256,9 @@ describe('vx last (e2e)', () => {
       // command for whoever pasted the line.
       await vx(root, ['run', 'boom', '--all', '--', 'a b', 'c;echo X'])
       const lines = (await vx(root, ['last'])).out.trimEnd().split('\n')
-      expect([lines[1], lines.at(-1)]).toEqual([
-        `  $ vx run boom --all -- 'a b' 'c;echo X'`,
-        `  re-run what failed: vx run app#boom -- 'a b' 'c;echo X'`,
+      expect([lines[2], lines.at(-1)]).toEqual([
+        `  command   vx run boom --all -- 'a b' 'c;echo X'`,
+        `  next      vx run app#boom -- 'a b' 'c;echo X'`,
       ])
     },
     TIMEOUT,
@@ -266,7 +270,7 @@ describe('vx last (e2e)', () => {
       // Joined bare, `app#it's boom` pasted as an unclosed quote.
       await vx(root, ['run', "it's boom", '--all'])
       const lines = (await vx(root, ['last'])).out.trimEnd().split('\n')
-      expect(lines.at(-1)).toBe(`  re-run what failed: vx run 'app#it'\\''s boom'`)
+      expect(lines.at(-1)).toBe(`  next      vx run 'app#it'\\''s boom'`)
     },
     TIMEOUT,
   )
@@ -301,7 +305,7 @@ describe('vx last (e2e)', () => {
       expect(r.out).toMatch(/skipped\s+app#after.*  after app#boom failed$/m)
       // Only the failures are re-run; the skip follows them.
       const rerun = r.out.trimEnd().split('\n').at(-1)!
-      expect(rerun.startsWith('  re-run what failed: vx run ')).toBe(true)
+      expect(rerun.startsWith('  next      vx run ')).toBe(true)
       expect(rerun.split(' vx run ')[1]!.split(' ').sort()).toEqual([
         'app#boom',
         'app#dev',
@@ -351,14 +355,21 @@ describe('vx last (e2e)', () => {
       expect(failed.code).not.toBe(0)
       expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
       // CONTROL: the plain replay is the green run.
-      expect((await vx(root, ['last'])).out.split('\n')[0]).toEndWith('— ok')
+      expect((await vx(root, ['last'])).out.split('\n')[1]).toMatch(/^  status +ok$/)
       const r = await vx(root, ['last', '--failed'])
+      expect(r.out.split('\n')[2]).toBe('  command   vx run boom --all')
       expect({ code: r.code, head: r.out.split('\n').slice(0, 2) }).toEqual({
         code: 0,
-        head: [expect.stringMatching(/^run \S+ — FAILED$/), '  $ vx run boom --all'],
+        head: [expect.stringMatching(/^─ Run \S+ ─+$/), '  status    FAILED'],
       })
-      const all = (await vx(root, ['last', '--list', '20'])).out.trim().split('\n')
-      const only = (await vx(root, ['last', '--list', '20', '--failed'])).out.trim().split('\n')
+      const rows = async (args: string[]): Promise<string[]> =>
+        (await vx(root, ['last', '--list', '20', ...args])).out
+          .trimEnd()
+          .split('\n')
+          .slice(2)
+          .map((l) => l.trim())
+      const all = await rows([])
+      const only = await rows(['--failed'])
       expect(all.some((l) => l.startsWith('ok'))).toBe(true)
       // Column widths are the listed rows' own, so compare past the padding.
       const cells = (l: string): string => l.replace(/ {2,}/g, '  ')
@@ -626,14 +637,14 @@ describe('formatTaskRows', () => {
     [60_000, '1m 0s'],
     [119_600, '2m 0s'], // not `1m 60s` (item 1034)
   ])('formats %dms as %s', (ms, want) => {
-    expect(formatTaskRows([row('t', { durationMs: ms })])[1]).toContain(want)
+    expect(L(formatTaskRows([row('t', { durationMs: ms })]))[1]).toContain(want)
   })
 
   it('a zero-duration task reports no cpu ratio rather than NaN', () => {
     // cpuMs / durationMs with both zero is NaN, and the guard that stops
     // it fails nothing else in the suite. A replay showing `NaN× cpu` is
     // a report that lies about what the run did.
-    const line = formatTaskRows([row('t', { durationMs: 0, cpuMs: 0 })])[1]!
+    const line = L(formatTaskRows([row('t', { durationMs: 0, cpuMs: 0 })]))[1]!
     expect(line).not.toContain('NaN')
     expect(line).not.toContain('Infinity')
     expect(line).not.toContain('cpu')
@@ -644,9 +655,9 @@ describe('formatTaskRows', () => {
     [1, '1 sandbox violation'],
     [2, '2 sandbox violations'],
   ])('reports %d sandbox violations as "%s"', (n, want) => {
-    const line = formatTaskRows([
-      row('t', { status: 'failed', exitCode: 1, sandboxViolations: n }),
-    ])[1]!
+    const line = L(
+      formatTaskRows([row('t', { status: 'failed', exitCode: 1, sandboxViolations: n })]),
+    )[1]!
     // The SUFFIX, exactly — not `toContain`. `'1 sandbox violations'`
     // contains `'1 sandbox violation'`, so a containment assertion passes
     // on the wrong plural and the mutation survived this row the first
@@ -660,25 +671,27 @@ describe('formatTaskRows', () => {
   })
 
   it('names what a remote read or write of the key met (the footer counts it ✗)', () => {
-    const line = formatTaskRows([
-      row('t', { remoteError: 'download: connection refused; upload: 503' }),
-    ])[1]!
+    const line = L(
+      formatTaskRows([row('t', { remoteError: 'download: connection refused; upload: 503' })]),
+    )[1]!
     expect(line.slice(line.indexOf('h') + 1).trim()).toBe(
       'remote ✗ download: connection refused; upload: 503',
     )
-    expect(formatTaskRows([row('t')])[1]).not.toContain('remote')
+    expect(L(formatTaskRows([row('t')]))[1]).not.toContain('remote')
   })
 
   // A platform skip and what it blocked are no failure (the run exits 0),
   // and the replay read `after p#mac failed` under an `ok` header.
   it('a skip behind another platform says so, not that its blocker failed', () => {
-    const lines = formatTaskRows([
-      row('mac', { status: 'skipped', exitCode: 0, cached: false, hash: '' }),
-      row('macdep', { status: 'skipped', exitCode: 1, blockedBy: 'p#mac', hash: '' }),
-      row('boom', { status: 'failed', exitCode: 3 }),
-      row('after', { status: 'skipped', exitCode: 1, blockedBy: 'p#boom', hash: '' }),
-      row('fast', { status: 'skipped', exitCode: 1, hash: '' }),
-    ])
+    const lines = L(
+      formatTaskRows([
+        row('mac', { status: 'skipped', exitCode: 0, cached: false, hash: '' }),
+        row('macdep', { status: 'skipped', exitCode: 1, blockedBy: 'p#mac', hash: '' }),
+        row('boom', { status: 'failed', exitCode: 3 }),
+        row('after', { status: 'skipped', exitCode: 1, blockedBy: 'p#boom', hash: '' }),
+        row('fast', { status: 'skipped', exitCode: 1, hash: '' }),
+      ]),
+    )
     const reason = (task: string): string => {
       const line = lines.find((l) => l.includes(`p#${task} `))!
       return line.slice(line.indexOf('ms') + 2).trim()
@@ -692,19 +705,21 @@ describe('formatTaskRows', () => {
   })
 
   it('names where an executor ran a task, and nothing for one run here', () => {
-    expect(formatTaskRows([row('t', { placement: 'small#1' })])[1]).toMatch(/#t@small#1 /)
-    expect(formatTaskRows([row('t')])[1]).not.toContain('@')
+    expect(L(formatTaskRows([row('t', { placement: 'small#1' })]))[1]).toMatch(/#t@small#1 /)
+    expect(L(formatTaskRows([row('t')]))[1]).not.toContain('@')
   })
 
   it('orders failed, then executed and skipped, then hits, and folds the hits past sixteen', () => {
     const hits = Array.from({ length: 30 }, (_, i) => hit(i, 100 - i))
-    const lines = formatTaskRows([
-      ...hits.slice(0, 10),
-      row('ran'),
-      row('boom', { status: 'failed', exitCode: 3 }),
-      ...hits.slice(10),
-      row('after', { status: 'skipped', blockedBy: 'p#boom' }),
-    ])
+    const lines = L(
+      formatTaskRows([
+        ...hits.slice(0, 10),
+        row('ran'),
+        row('boom', { status: 'failed', exitCode: 3 }),
+        ...hits.slice(10),
+        row('after', { status: 'skipped', blockedBy: 'p#boom' }),
+      ]),
+    )
     const words = lines.slice(1).map((l) => l.trim().split(/\s+/)[0])
     expect(words.slice(0, 3)).toEqual(['failed', 'success', 'skipped'])
     expect(words.slice(3, 19).every((w) => w === 'restored-local')).toBe(true)
@@ -713,25 +728,25 @@ describe('formatTaskRows', () => {
     const shown = lines.slice(4, 20).map((l) => /hit(\d+)/.exec(l)![1])
     expect(shown).toEqual(Array.from({ length: 16 }, (_, i) => String(i)))
     expect(lines.at(-1)).toBe(
-      '  … +14 more cache hits (the 16 slowest restores shown) — vx last --format json lists every row',
+      '  … +14 more cache hits (the 16 slowest restores shown): `vx last --format json` lists every row',
     )
   })
 
   it('one hit past sixteen folds as a hit, not hits', () => {
-    const lines = formatTaskRows(Array.from({ length: 17 }, (_, i) => hit(i, i)))
+    const lines = L(formatTaskRows(Array.from({ length: 17 }, (_, i) => hit(i, i))))
     expect(lines.at(-1)).toBe(
-      '  … +1 more cache hit (the 16 slowest restores shown) — vx last --format json lists every row',
+      '  … +1 more cache hit (the 16 slowest restores shown): `vx last --format json` lists every row',
     )
   })
 
   it('sixteen hits list in full, no fold (control)', () => {
-    const lines = formatTaskRows(Array.from({ length: 16 }, (_, i) => hit(i, i)))
+    const lines = L(formatTaskRows(Array.from({ length: 16 }, (_, i) => hit(i, i))))
     expect(lines.length).toBe(17)
     expect(lines.some((l) => l.includes('more cache hits'))).toBe(false)
   })
 
   it('a run with nothing recorded renders no rows', () => {
-    expect(formatTaskRows([])).toEqual([])
+    expect(L(formatTaskRows([]))).toEqual([])
   })
 })
 
@@ -754,31 +769,37 @@ describe('vx last --list rows', () => {
   // with the hits, so a failed run's count read as noise.
   it('paints the failed count as the replay header does', () => {
     const c = { enabled: true }
-    const [row] = formatRunList([{ inv: inv({ exitOk: false, failedCount: 2 }), id: 'r' }], c)
-    expect(row).toContain(paint(ERROR, ' · 2 failed', c))
+    const [row] = L(
+      formatRunList([{ inv: inv({ exitOk: false, failedCount: 2 }), id: 'r' }]),
+      c,
+    ).slice(1)
+    expect(row).toContain(ui.paint('error', ' · 2 failed', c))
   })
 
   it('aligns the counts, duration and command across runs whose counts differ', () => {
     expect(
-      formatRunList([
-        {
-          inv: inv({
-            exitOk: false,
-            taskCount: 6,
-            hitCount: 1,
-            upToDateCount: 1,
-            failedCount: 2,
-            totalDurationMs: 336,
-          }),
-          id: '01a1186a-4231',
-        },
-        { inv: inv({ hitCount: 4, upToDateCount: 4 }), id: '01a11869-c28c' },
-        { inv: inv({ taskCount: 1, totalDurationMs: 1500 }), id: '01a11869-c1e8a' },
-      ]),
+      L(
+        formatRunList([
+          {
+            inv: inv({
+              exitOk: false,
+              taskCount: 6,
+              hitCount: 1,
+              upToDateCount: 1,
+              failedCount: 2,
+              totalDurationMs: 336,
+            }),
+            id: '01a1186a-4231',
+          },
+          { inv: inv({ hitCount: 4, upToDateCount: 4 }), id: '01a11869-c28c' },
+          { inv: inv({ taskCount: 1, totalDurationMs: 1500 }), id: '01a11869-c1e8a' },
+        ]),
+      ),
     ).toEqual([
-      'FAILED 2026-10-07T22:09:06.700Z  01a1186a-4231   6 tasks · 1 hit (1 up-to-date, 0 restored) · 2 failed  336ms  $ vx run build --all',
-      'ok     2026-10-07T22:09:06.700Z  01a11869-c28c   4 tasks · 4 hits (4 up-to-date, 0 restored)             20ms  $ vx run build --all',
-      'ok     2026-10-07T22:09:06.700Z  01a11869-c1e8a  1 task · 0 hits                                        1.50s  $ vx run build --all',
+      '          when                      run             tasks                                                   time  command',
+      '  FAILED  2026-10-07T22:09:06.700Z  01a1186a-4231   6 tasks · 1 hit (1 up-to-date, 0 restored) · 2 failed  336ms  vx run build --all',
+      '  ok      2026-10-07T22:09:06.700Z  01a11869-c28c   4 tasks · 4 hits (4 up-to-date, 0 restored)             20ms  vx run build --all',
+      '  ok      2026-10-07T22:09:06.700Z  01a11869-c1e8a  1 task · 0 hits                                        1.50s  vx run build --all',
     ])
   })
 })

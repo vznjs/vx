@@ -9,7 +9,7 @@ first of which is marked as `prepareRun` returns and holds the graph,
 key and schedule hooks, so a plugin's cost is its own row — and
 `span(label)` accumulates the repeated per-task operations: the probe,
 the restore, the miss and the save, each split into its steps. The
-labels are listed below. `printTimings()` writes the table to stderr
+labels are listed below. `timingLines()` gives the table, which the run prints to stderr as a `ui.trace`
 at the end of the run, and at the end of a `--dry` run — a dry run is
 how the prepare stages get profiled on a real repo with no install to
 run against.

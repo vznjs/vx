@@ -14,7 +14,7 @@ import {
   unique,
 } from './sandbox-paths.js'
 import type { SandboxedRunArgs } from './sandbox-runtime.js'
-import { ui } from '../util/index.js'
+import * as ui from '../ui/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 

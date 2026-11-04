@@ -806,7 +806,8 @@ describe('vx run with bun() declared', () => {
     )
     // d gained e, and c and a build after d; e and b, whose closures did not move, are not.
     expect(affected()).toBe(
-      '  project  dir         tasks\n' +
+      `${'─ Projects 3 '}${'─'.repeat(49)}\n` +
+        '  project  dir         tasks\n' +
         '  a        packages/a  2 tasks\n' +
         '  c        packages/c  2 tasks\n' +
         '  d        packages/d  2 tasks\n',

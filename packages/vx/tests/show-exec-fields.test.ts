@@ -7,7 +7,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { gradientRule } from '../src/util/index.js'
+import { panelTop } from '../src/ui/index.js'
+
+const gradientRule = (c: { enabled: boolean }, title: string): string => panelTop(title, c)
 
 // `vx lock`, then `vx show`: show reads the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -63,7 +65,6 @@ export default {
       }).stdout.toString()
     expect([show('a#repl'), show('a#quiet'), show('a#tsc')]).toEqual([
       [
-        '',
         gradientRule({ enabled: false }, 'a#repl'),
         '  dir              packages/a',
         '  command          node',
@@ -73,7 +74,6 @@ export default {
         '',
       ].join('\n'),
       [
-        '',
         gradientRule({ enabled: false }, 'a#quiet'),
         '  dir          packages/a',
         '  command      true',
@@ -81,7 +81,6 @@ export default {
         '',
       ].join('\n'),
       [
-        '',
         gradientRule({ enabled: false }, 'a#tsc'),
         '  dir                      packages/a',
         '  command                  tsc -b',
@@ -136,7 +135,6 @@ export default {
     }).stdout.toString()
     expect(out).toBe(
       [
-        '',
         gradientRule({ enabled: false }, 'a#tsc'),
         '  dir                      packages/a',
         '  command                  tsc -b',

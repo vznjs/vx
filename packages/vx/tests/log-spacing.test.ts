@@ -6,7 +6,7 @@ import { rm } from 'node:fs/promises'
 import { expect, it } from 'bun:test'
 import { defaultLogger } from '../src/report/logger.js'
 import type { TaskNode } from '../src/graph/index.js'
-import type { StatusStream } from '../src/report/status-line.js'
+import type { StatusStream } from '../src/ui/live-region.js'
 import { addProject, makeWorkspace, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import { run } from './helpers/orchestrator.js'
 
@@ -50,7 +50,7 @@ it(
     const out = await runs('echo broke >&2; exit 1')
     // A slow `vx:close` on a loaded box prints its row between them.
     expect(out).toMatch(
-      /└─ app#lint ── \([^)]+\) failed \(exit 1\)\n\n(?: ⏺︎ +\S+ success internal vx:\w+\n\n)?─ vx /,
+      /└─ app#lint ── \([^)]+\) failed \(exit 1\)\n\n(?: ⏺︎ +\S+ success internal vx:\w+\n\n)?─ Summary /,
     )
   },
   TIMEOUT,
@@ -62,7 +62,7 @@ it(
     const out = await runs('true')
     // The last row may be an internal step the run waited on (`vx:close` on
     // a loaded box), not only a task.
-    expect(out).toMatch(/success (?:no-cache .* app#\w+|internal +local +vx:\w+)\n\n─ vx /)
+    expect(out).toMatch(/success (?:no-cache .* app#\w+|internal +local +vx:\w+)\n\n─ Summary /)
   },
   TIMEOUT,
 )

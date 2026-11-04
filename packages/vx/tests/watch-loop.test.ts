@@ -67,7 +67,7 @@ describe('vx watch loop (e2e)', () => {
     // The cycle's invocation row names the verb, as `vx run`'s does; the
     // process.argv fallback recorded the bin's absolute path in its place.
     const last = Bun.spawnSync([process.execPath, BIN, 'last', '--list'], { cwd: f.root })
-    expect(last.stdout.toString()).toContain('$ vx watch build --all')
+    expect(last.stdout.toString()).toMatch(/ {2}vx watch build --all\n/)
 
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
     await until(async () => (await executions(f.log)) === 2, 'the re-run after an edit')
@@ -175,7 +175,7 @@ describe('vx watch loop (e2e)', () => {
     await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     const last = Bun.spawnSync([process.execPath, BIN, 'last', '--list'], { cwd: f.root })
-    expect(last.stdout.toString()).toContain("$ vx watch build --filter 'a*'")
+    expect(last.stdout.toString()).toContain("  vx watch build --filter 'a*'\n")
   }, 40_000)
 
   it('a re-lock re-runs, and a config edit alone does not change the command (item 971)', async () => {

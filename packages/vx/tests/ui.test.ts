@@ -1,7 +1,7 @@
 // The output components (org/devex/log-design.md): each one's layout with
 // colors off, and the colors it owns with them on.
 import { describe, expect, it } from 'bun:test'
-import { ui } from '../src/util/index.js'
+import * as ui from '../src/ui/index.js'
 
 const OFF = { enabled: false }
 const ON = { enabled: true }
@@ -63,7 +63,8 @@ describe('ui components', () => {
         '  next      vx run build --all\n',
     )
     const painted = ui.render([ui.report('vx', rows)], ON)
-    expect(painted).toContain('\x1b[2mfrom    \x1b[0m  turbo.json')
+    // The label is meta (dim), the value a fact (slate-300), a level above it.
+    expect(painted).toContain('\x1b[2mfrom    \x1b[0m  \x1b[38;2;203;213;225mturbo.json\x1b[0m')
     expect(painted).toContain('\x1b[1mvx run build --all\x1b[0m')
   })
 
@@ -114,5 +115,28 @@ describe('ui components', () => {
     expect(out).toContain('x\\x1b]0;t\\x07\\x0dy')
     // oxlint-disable-next-line no-control-regex
     expect(out.replace(/\x1b\[[0-9;]*m/g, '').match(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g)).toBeNull()
+  })
+})
+
+describe('wrap', () => {
+  it('breaks at a space and hangs a continuation under the value column', () => {
+    // Cut by the column, `uncach|ed` split a word and the next row started
+    // at the box's edge, under the label.
+    expect(
+      ui.wrap('  todo      add inputs and outputs, or the task always runs uncached', 40),
+    ).toEqual(
+      [
+        '  todo      add inputs and outputs, or',
+        '            the task always runs',
+        '            uncached',
+      ].map((r) => r.padEnd(40)),
+    )
+  })
+
+  it('cuts a word longer than the row, and carries its colour on', () => {
+    expect(ui.wrap('\x1b[2mabcdefghijklmnopqrstuvwxyz\x1b[0m end', 20)).toEqual([
+      '\x1b[2mabcdefghijklmnopqrst\x1b[0m',
+      `\x1b[2muvwxyz\x1b[0m end${' '.repeat(10)}`,
+    ])
   })
 })

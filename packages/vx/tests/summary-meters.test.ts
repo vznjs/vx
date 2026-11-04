@@ -80,7 +80,7 @@ function legend(lines: string[], label: string): string {
  */
 function segments(s: SummaryStats, label: string): number[] {
   const lines = formatSummarySection(s, 1000, { enabled: true })
-  const i = lines.findIndex((l) => stripAnsi(l).trimStart().startsWith(label))
+  const i = lines.findIndex((l) => stripAnsi(l).replace(/^│/, '').trimStart().startsWith(label))
   if (i < 0) return []
   // Split on escape sequences and keep the runs that are made of cells.
   return lines[i]!.split(ANSI)

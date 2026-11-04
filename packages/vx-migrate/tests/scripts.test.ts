@@ -15,7 +15,8 @@ import { adoptionNext } from '../src/migrate.js'
 
 /** A report row's value lines, e.g. every `note`. */
 function row(out: string, label: string): string[] {
-  const lines = out.split('\n')
+  // A coloured report is a panel: its rows sit between `│ ` and ` │`.
+  const lines = out.split('\n').map((l) => l.replace(/^│ (.*) │$/, '$1').trimEnd())
   const at = lines.findIndex((l) => l.startsWith(`  ${label.padEnd(8)}  `))
   if (at === -1) return []
   const values = [lines[at]!.slice(12)]

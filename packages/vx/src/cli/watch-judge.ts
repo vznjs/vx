@@ -5,7 +5,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { filesBehind } from '../cache/index.js'
-import { printable, ui, xxh3 } from '../util/index.js'
+import { printable, xxh3 } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import { gitIgnored, gitSpeller } from './watch-filter.js'
 import { modifiedBefore } from './watch-fs.js'
 

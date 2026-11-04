@@ -45,14 +45,9 @@ import {
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
-import {
-  hangupIgnored,
-  maskedLine,
-  printable,
-  restartTimings,
-  sayNotice,
-  ui,
-} from '../util/index.js'
+import { hangupIgnored, maskedLine, printable, restartTimings } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { sayNotice } from '../ui/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
 import { isCacheHit } from '../graph/index.js'
 import { resolveOutputView } from '../report/index.js'
@@ -72,7 +67,7 @@ function sayAllCached(opts: RunOptions, outcomes: readonly { status: string }[])
   const mode = resolveOutputView(opts).mode
   if (mode !== 'broad' && mode !== 'errors-only' && mode !== 'none') return
   const n = outcomes.length
-  process.stdout.write(` ${n === 1 ? '1 task' : `${n} tasks`} cached, nothing ran\n`)
+  ui.print('out', ui.line(' ', n === 1 ? '1 task' : `${n} tasks`, ' cached, nothing ran'))
 }
 
 /** Wait this long after the last filesystem event before re-running. */
@@ -167,7 +162,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // landed, the aborted cycle's summary printed below it.
   const stopped = (): number => {
     if (stop.signal.reason === 'SIGINT') {
-      process.stdout.write('\n')
+      ui.print('out', ui.gap())
       ui.say('info', 'vx watch: stopped', 'out')
     }
     return 0
@@ -564,13 +559,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // cycle ran on with no workspace config, its plugins gone and
             // its tasks named by path.
             if (!hasWorkspaceFile()) {
-              process.stdout.write(`\nchanged ${label}\n`)
+              ui.print('out', ui.gap())
+              ui.say('info', `changed ${label}`, 'out')
               throw new Error(
                 `no .vx/workspace.ts in ${workspaceRoot}; restore it, or stop vx watch`,
               )
             }
             if (reread) await rearm(false)
-            process.stdout.write('\n')
+            ui.print('out', ui.gap())
             ui.say('info', `changed ${label}`, 'out')
             if (!relocked) sayUnlocked(changes.changed)
             if (stop.aborted) break

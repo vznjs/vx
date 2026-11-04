@@ -3252,34 +3252,42 @@ export interface TreeUsage {
 
 ## `ui`
 
-namespace · `src/util/ui.ts`
+namespace · `src/ui/kit.ts`
 
 ```ts
-export type Tone = 'ok' | 'warn' | 'error' | 'info'
-export type Inline = string | { readonly style: Style; readonly text: string } | readonly Inline[]
+export const cmd = (text: string): Inline => ({ style: 'strong', text })
+export function code(frame: string): Block
+export const dim = (text: string): Inline => ({ style: 'muted', text })
+export function excerpt(title: string, body: string): Block
+export function fields(rows: readonly FieldRow[]): Block
+export function fix(action: Inline): Block
+export function gap(): Block
+export const id = (text: string): Inline => ({ style: 'id', text })
+export function inline(x: Inline, c: ColorSupport): string
+export function line(...items: Inline[]): Block
+export function next(command: Inline): Block
+export function notice(p: NoticeParts): Block
+export const path = (text: string): Inline => ({ style: 'strong', text })
+export const place = (text: string): Inline => (text === 'local' ? dim(text) : id(text))
+export function render(blocks: readonly Block[], colors: ColorSupport): string
+export function report(title: string, rows: readonly FieldRow[]): Block
+export function section(title: string, ...body: Block[]): Block
+export function section(title: string, count: Inline, ...body: Block[]): Block
+export function section(title: string, ...rest: (Block | Inline)[]): Block
+export function status(t: Tone, verb: string, headline: Inline): Block
+export const strong = (text: string): Inline => ({ style: 'strong', text })
+export function table(columns: readonly Column[], rows: readonly (readonly Inline[])[]): Block
+export function tagged(t: Tone, line: string, c: ColorSupport): string
+export function text(...items: Inline[]): Block
+export const tone = (t: Style, text: string, bold = false): Inline =>
+  bold ? { style: t, text, bold } : { style: t, text }
+export function why(line: Inline): Block
 export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
 }
-export const id = (text: string): Inline => ({ style: 'id', text })
-export const path = (text: string): Inline => ({ style: 'bold', text })
-export const cmd = (text: string): Inline => ({ style: 'bold', text })
-export const dim = (text: string): Inline => ({ style: 'dim', text })
-export const place = (text: string): Inline => (text === 'local' ? text : id(text))
-export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
-export function inline(x: Inline, c: ColorSupport): string
-export function status(t: Tone, verb: string, headline: Inline): Block
-export function tagged(t: Tone, line: string, c: ColorSupport): string
-export function say(t: Tone, line: string, stream: 'out' | 'err' = 'err'): void
-export function excerpt(title: string, body: string): Block
-export function text(...items: Inline[]): Block
-export function why(line: Inline): Block
+export type Column = string | { readonly title: string; readonly align: 'right' }
 export type FieldRow = readonly [label: string, ...values: Inline[]] | null
-export function fields(rows: readonly FieldRow[]): Block
-export function fix(action: Inline): Block
-export function next(command: Inline): Block
-export function report(mark: string, rows: readonly FieldRow[]): Block
-export function table(columns: readonly string[], rows: readonly (readonly Inline[])[]): Block
-export function code(frame: string): Block
+export type Inline = string | Token | readonly Inline[]
 export interface NoticeParts {
   tone: Tone
   verb: string
@@ -3291,9 +3299,34 @@ export interface NoticeParts {
   code?: string
   fix?: Inline
 }
-export function notice(p: NoticeParts): Block
-export function render(blocks: readonly Block[], colors: ColorSupport): string
-export function print(stream: 'out' | 'err', ...blocks: Block[]): void
+export interface ColorSupport {
+  enabled: boolean
+  readonly columns?: number | undefined
+}
+export type Style =
+  | 'ok'
+  | 'warn'
+  | 'error'
+  | 'info'
+  | 'aborted'
+  | 'notRun'
+  | 'local'
+  | 'remote'
+  | 'heading'
+  | 'term'
+  | 'value'
+  | 'muted'
+  | 'strong'
+  | 'label'
+  | 'border'
+  | 'plain'
+export type Tone = 'ok' | 'warn' | 'error' | 'info'
+export function colorsOf(stream: StreamName): ReturnType<typeof detectColors>
+export function data(stream: StreamName, bytes: string): void
+export function print(stream: StreamName, ...blocks: Block[]): void
+export function say(t: Tone, line: string, stream: StreamName = 'err'): void
+export function transient(line: Inline): () => void
+export type StreamName = 'out' | 'err'
 ```
 
 ## `UserError`

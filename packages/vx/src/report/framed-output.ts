@@ -27,48 +27,25 @@
 
 import { withForwardArgs } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { formatElapsed, maskedCommand, printable } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import {
-  formatElapsed,
-  identityColor,
-  maskedCommand,
+  fileMemo,
+  hasEscape,
+  idParts,
+  lastRedraw,
+  leavesStyle,
+  linkPaths,
   paint,
-  printable,
   ruleWidth,
-  ui,
+  STYLE_END,
   type ColorSupport,
-} from '../util/index.js'
+  type Style,
+} from '../ui/index.js'
 import { neverStarted } from './summary.js'
 import { outcomeLabel, outcomeWord, ranNoCache, skippedReason } from './events.js'
-import { fileMemo, linkPaths } from './path-links.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
-// Ends any colour a task's output left on, so vx's own lines below never
-// take it (a task killed mid-write leaves one open).
-export const RESET = '\x1b[0m'
-
-/** Whether `text`'s last colour code sets a style rather than resetting it. */
-export function leavesStyle(text: string): boolean {
-  const at = text.lastIndexOf('\x1b[')
-  if (at < 0) return false
-  const sgr = /^\[([\d;]*)m/.exec(text.slice(at + 1, at + 64))
-  // Not a colour code (a cursor move): look no further, as a reset costs nothing.
-  if (sgr === null) return true
-  return sgr[1] !== '' && sgr[1] !== '0'
-}
-
-const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
-// Identity hues (`identityColor`) are outside the status palette (green /
-// red / yellow / cyan) so a task id can never read as an outcome. Each
-// half of an id hashes its own name: same project, same hue; same target,
-// same hue, in every run, list and region row.
-
-const SUCCESS = '#22c55e' // green-500 — success / fresh
-const WARN = '#eab308' // yellow-500 — skipped
-const ERROR = '#ef4444' // red-500 — failed
-const ABORTED = '#f97316' // orange-500 — killed by a shutdown signal
-const LOCAL = '#38bdf8' // sky-400 — local cache hit
-const REMOTE = '#2563eb' // blue-600 — remote cache hit
-
 /** A piece of a task's output, as written: `err` for stderr. */
 export interface OutputChunk {
   text: string
@@ -111,11 +88,11 @@ export function formatTaskBlock(
   const output = body.output ?? []
 
   const idPainted = paintTaskId(node, colors, { bold: true })
-  const corner = (s: string) => paint('', s, colors, { dim: true })
+  const corner = (s: string) => paint('muted', s, colors)
   // A ready server's frame reads as the live one does: marked, and running.
   const mark = persistentMark(node, colors)
   const running = mark !== '' && outcome.status === 'success' && outcome.serverExit === undefined
-  const header = running ? paint(ACCENT, 'running', colors) : formatBlockHeader(outcome, colors)
+  const header = running ? paint('info', 'running', colors) : formatBlockHeader(outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${mark}${idPainted} ${corner('>')} ${header}`]
 
   // The command section shows what actually ran — executed tasks
@@ -149,9 +126,7 @@ export function formatTaskBlock(
 
 /** What a bounded capture dropped from its head, so a capped log never reads as whole. */
 function droppedNote(lost: number, colors: ColorSupport): string {
-  return paint('', `… ${lost} earlier character${lost === 1 ? '' : 's'} dropped`, colors, {
-    dim: true,
-  })
+  return paint('muted', `… ${lost} earlier character${lost === 1 ? '' : 's'} dropped`, colors)
 }
 
 /**
@@ -163,7 +138,7 @@ function pushStreamSection(
   lines: string[],
   text: string,
   title: string,
-  color: string,
+  color: Style,
   lost: number,
   colors: ColorSupport,
 ): void {
@@ -173,7 +148,7 @@ function pushStreamSection(
     lines.push(droppedNote(lost, colors))
   }
   pushBodyLines(lines, text)
-  if (leavesStyle(text)) lines.push(`${lines.pop()}${RESET}`)
+  if (leavesStyle(text)) lines.push(`${lines.pop()}${STYLE_END}`)
   lines.push('')
 }
 
@@ -193,7 +168,7 @@ function pushOutputSection(
   link?: (line: string) => string,
 ): void {
   if (output.every((c) => c.text.trim().length === 0)) return
-  lines.push(sectionLine('OUTPUT', '', colors), '')
+  lines.push(sectionLine('OUTPUT', 'strong', colors), '')
   if (lost > 0) {
     lines.push(droppedNote(lost, colors))
   }
@@ -216,10 +191,10 @@ function pushOutputSection(
   for (const l of body) {
     const text = link === undefined ? l.text : link(l.text)
     if (!l.err || !colors.enabled) lines.push(text)
-    else lines.push(l.text.includes('\x1b') ? text : paint(ERROR, text, colors))
+    else lines.push(hasEscape(l.text) ? text : paint('error', text, colors))
   }
-  const styled = output.findLast((c) => c.text.includes('\x1b['))
-  if (styled !== undefined && leavesStyle(styled.text)) lines.push(`${lines.pop()}${RESET}`)
+  const styled = output.findLast((c) => hasEscape(c.text))
+  if (styled !== undefined && leavesStyle(styled.text)) lines.push(`${lines.pop()}${STYLE_END}`)
   lines.push('')
 }
 
@@ -230,9 +205,9 @@ function pushOutputSection(
  * the frame width, and sections get vertical margins so content stands
  * clear of the furniture.
  */
-function sectionLine(title: string, color: string, colors: ColorSupport): string {
-  const corner = (s: string) => paint('', s, colors, { dim: true })
-  const label = paint(color, title, colors, { bold: true })
+function sectionLine(title: string, color: Style, colors: ColorSupport): string {
+  const corner = (s: string) => paint('muted', s, colors)
+  const label = paint(color, title, colors, true)
   // As wide as the footer's rule, so the frames and the footer line up.
   const rule = corner('─'.repeat(Math.max(1, ruleWidth(colors) - 4 - title.length)))
   return `${corner('├─')} ${label} ${rule}`
@@ -260,13 +235,7 @@ export function paintIdParts(
   colors: ColorSupport,
   opts: { bold?: boolean; sep?: '#' | ':' } = {},
 ): string {
-  const dim = (t: string) => paint('', t, colors, { dim: true })
-  const { sep = '#', ...style } = opts
-  return (
-    paint(identityColor(hueSource), projectText, colors, style) +
-    dim(sep) +
-    paint(identityColor(taskText), taskText, colors, style)
-  )
+  return idParts(hueSource, projectText, taskText, colors, opts)
 }
 
 function paintId(
@@ -298,15 +267,14 @@ const CPU_COL = 5 // "180%", "1200%"
 const MEM_COL = 6 // "412MB", "1.1GB", "1023MB"
 const OUT_COL = 7 // `outputs`: "12MB", "900B"
 const WORKER_COL = 12 // `local`, or a plugin's name for the machine, cut at 12
-/** A list title's colour: violet-400, the summary rule's first stop. */
-const HEADING = '#a78bfa'
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
   let raw = ms === null ? '' : formatElapsed(ms)
   // `1000.00s` is wider than the cell; minutes fit it up to `99m 59s`.
   if (ms !== null && raw.length > TIME_COL) raw = formatElapsed(ms, true)
-  return ' '.repeat(Math.max(0, TIME_COL - raw.length)) + paint('', raw, colors, { dim: true })
+  // The time is the row's fact (value level); the cells around it are meta.
+  return ' '.repeat(Math.max(0, TIME_COL - raw.length)) + paint('value', raw, colors)
 }
 
 /**
@@ -314,13 +282,8 @@ function timeCell(ms: number | null, colors: ColorSupport): string {
  * An empty color string renders the text dim (used for the `miss` cache
  * word); empty text is a blank cell.
  */
-function cell(text: string, color: string, width: number, colors: ColorSupport): string {
-  const painted =
-    text === ''
-      ? ''
-      : color === ''
-        ? paint('', text, colors, { dim: true })
-        : paint(color, text, colors)
+function cell(text: string, color: Style | '', width: number, colors: ColorSupport): string {
+  const painted = text === '' ? '' : paint(color === '' ? 'muted' : color, text, colors)
   return painted + ' '.repeat(Math.max(0, width - text.length))
 }
 
@@ -343,34 +306,34 @@ function glyphShape(o: TaskOutcome): string {
 }
 
 /** Task-axis word + color (a cache hit is a success). */
-function statusOf(o: TaskOutcome): { word: string; color: string } {
+function statusOf(o: TaskOutcome): { word: string; color: Style } {
   switch (o.status) {
     case 'failed':
-      return { word: 'failed', color: ERROR }
+      return { word: 'failed', color: 'error' }
     case 'skipped':
-      return { word: 'skipped', color: WARN }
+      return { word: 'skipped', color: 'warn' }
     default:
-      return { word: 'success', color: SUCCESS }
+      return { word: 'success', color: 'ok' }
   }
 }
 
 /** Cache-axis word + color. Empty for states that never reached the cache. */
-function cacheOf(o: TaskOutcome): { word: string; color: string } {
+function cacheOf(o: TaskOutcome): { word: string; color: Style } {
   switch (o.status) {
     case 'success':
     case 'failed':
       // A task no cache answered for never consulted one: not a miss.
-      return { word: ranNoCache(o) ? 'no-cache' : 'miss', color: '' } // dim
+      return { word: ranNoCache(o) ? 'no-cache' : 'miss', color: 'muted' } // dim
     case 'cache-hit':
       return o.restored === false
-        ? { word: 'fresh', color: SUCCESS }
-        : { word: 'local', color: LOCAL }
+        ? { word: 'fresh', color: 'ok' }
+        : { word: 'local', color: 'local' }
     case 'cache-hit-remote':
       return o.restored === false
-        ? { word: 'fresh', color: SUCCESS }
-        : { word: 'remote', color: REMOTE }
+        ? { word: 'fresh', color: 'ok' }
+        : { word: 'remote', color: 'remote' }
     default:
-      return { word: '', color: '' }
+      return { word: '', color: 'muted' }
   }
 }
 
@@ -390,9 +353,9 @@ export function formatTaskRow(
   glyph: string,
   ms: number | null,
   status: string,
-  statusColor: string,
+  statusColor: Style | '',
   cache: string,
-  cacheColor: string,
+  cacheColor: Style | '',
   paintedId: string,
   colors: ColorSupport = NO_COLOR,
   cells: RowCells = {},
@@ -410,7 +373,7 @@ export function formatTaskRow(
   return (
     ` ${glyph} ${timeCell(ms, colors)} ${us} ${st} ${ca} ` +
     `${right(cpu, CPU_COL, colors)} ${right(mem, MEM_COL, colors)} ${right(out, OUT_COL, colors)} ` +
-    `${' '.repeat(Math.max(0, BLOCKED_COL - blocks.length))}${paint(WARN, blocks, colors)} ` +
+    `${' '.repeat(Math.max(0, BLOCKED_COL - blocks.length))}${paint(blocks === '0' ? 'muted' : 'value', blocks, colors)} ` +
     `${placeCell(worker, colors)}${' '.repeat(WORKER_COL - worker.length)} ${paintedId}`
   )
 }
@@ -432,7 +395,7 @@ export interface RowCells {
 }
 
 function right(text: string, width: number, colors: ColorSupport): string {
-  return ' '.repeat(Math.max(0, width - text.length)) + paint('', text, colors, { dim: true })
+  return ' '.repeat(Math.max(0, width - text.length)) + paint('muted', text, colors)
 }
 
 /** `900B`, `412MB`, `1.1GB`: one width for a size, whatever it is. */
@@ -485,22 +448,13 @@ export function usualCell(
   if (usualMs === null || usualMs <= 0) return unknownUsual(colors)
   const d = ms - usualMs
   const text = `${d >= 0 ? '+' : '\u2212'}${formatElapsed(Math.abs(d), true)}`
-  if (Math.abs(d) <= usualMs * 0.2) return { text, painted: paint('', text, colors, { dim: true }) }
-  return { text, painted: paint(d > 0 ? ERROR : SUCCESS, text, colors) }
+  if (Math.abs(d) <= usualMs * 0.2) return { text, painted: paint('muted', text, colors) }
+  return { text, painted: paint(d > 0 ? 'error' : 'ok', text, colors) }
 }
 
 /** The `usual` cell of a task history has never timed. */
 export function unknownUsual(colors: ColorSupport = NO_COLOR): { text: string; painted: string } {
-  return { text: 'unknown', painted: paint('', 'unknown', colors, { dim: true }) }
-}
-
-/**
- * The title over a task list: what its rows are, as the rows' header
- * names its columns (2026-10-29: two lists, one grid, told apart by
- * nothing).
- */
-export function formatListTitle(title: string, colors: ColorSupport = NO_COLOR): string {
-  return ` ${paint(HEADING, title, colors, { bold: true })}`
+  return { text: 'unknown', painted: paint('muted', 'unknown', colors) }
 }
 
 /**
@@ -525,7 +479,7 @@ function header(usual: string, colors: ColorSupport): string {
     `   ${'time'.padStart(TIME_COL)} ${usual.padStart(USUAL_COL)} ` +
     `${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${'cpu'.padStart(CPU_COL)} ` +
     `${'mem'.padStart(MEM_COL)} ${'outputs'.padStart(OUT_COL)} ${'blocks'.padStart(BLOCKED_COL)} ${'worker'.padEnd(WORKER_COL)} task`
-  return paint('', head, colors, { dim: true, underline: true })
+  return paint('label', head, colors)
 }
 
 /** Compact one-liner for a cache hit with nothing to replay. */
@@ -551,8 +505,8 @@ export function formatTaskHashLine(
   o: TaskOutcome,
   colors: ColorSupport = NO_COLOR,
 ): string {
-  const color = o.status === 'aborted' ? ABORTED : statusOf(o).color
-  const key = o.hash === undefined ? '' : ` ${paint('', o.hash, colors, { dim: true })}`
+  const color = o.status === 'aborted' ? 'aborted' : statusOf(o).color
+  const key = o.hash === undefined ? '' : ` ${paint('muted', o.hash, colors)}`
   return `${paint(color, outcomeWord(o), colors)} ${paintTaskId(node, colors)}${key}`
 }
 
@@ -624,7 +578,8 @@ function formatOutcomeRow(
 
 /** `critical path`: the row's task held the run's end while others ran beside it. */
 export function pathNote(colors: ColorSupport = NO_COLOR): string {
-  return `  ${paint(ERROR, 'critical path', colors)}`
+  // A fact worth knowing, not a failure: never red.
+  return `  ${paint('info', 'critical path', colors)}`
 }
 
 /** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */
@@ -637,7 +592,7 @@ function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
  * on the row, as a worker's name has no width to pad to (2026-10-21).
  */
 function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
-  return `${paint('', ' \u00b7', colors, { dim: true })} ${ui.inline(ui.place(where), colors)}`
+  return `${paint('muted', ' \u00b7', colors)} ${ui.inline(ui.place(where), colors)}`
 }
 
 /**
@@ -655,7 +610,7 @@ export function flakyNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): stri
   }
   if ((o.attempts ?? 1) > 1) said.push(`${o.attempts} attempts`)
   const text = said.length === 0 ? 'flaky' : `flaky - ${said.join(' \u00b7 ')}`
-  return ` ${paint('', text, colors, { dim: true })}`
+  return ` ${paint('muted', text, colors)}`
 }
 
 /**
@@ -670,13 +625,13 @@ export function formatTaskSkippedLine(
   blocks?: number,
 ): string {
   const why = skippedReason(skip)
-  const suffix = why === '' ? '' : ` ${paint('', `• ${why}`, colors, { dim: true })}`
+  const suffix = why === '' ? '' : ` ${paint('muted', `• ${why}`, colors)}`
   return (
     formatTaskRow(
-      paint(WARN, '\u2298', colors),
+      paint('warn', '\u2298', colors),
       null,
       'skipped',
-      WARN,
+      'warn',
       '',
       '',
       paintTaskId(node, colors),
@@ -701,7 +656,7 @@ export function formatTaskAbortedLine(
   const bl: RowCells = blocks === undefined ? {} : { blocks: String(blocks) }
   if (neverStarted(o)) {
     return formatTaskRow(
-      paint('', '\u25cc', colors, { dim: true }),
+      paint('muted', '\u25cc', colors),
       null,
       'not run',
       '',
@@ -713,10 +668,10 @@ export function formatTaskAbortedLine(
     )
   }
   return formatTaskRow(
-    paint(ABORTED, '\u2717', colors),
+    paint('aborted', '\u2717', colors),
     o.durationMs,
     'aborted',
-    ABORTED,
+    'aborted',
     '',
     '',
     id,
@@ -737,7 +692,7 @@ export function formatFrameOpen(
   colors: ColorSupport = NO_COLOR,
   forwardArgs: readonly string[] = [],
 ): string {
-  const corner = (t: string) => paint('', t, colors, { dim: true })
+  const corner = (t: string) => paint('muted', t, colors)
   const cmd = shownCommand(node, forwardArgs)
   const mark = persistentMark(node, colors)
   return `${corner('┌─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
@@ -769,7 +724,7 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // glob matches and the user decides.
   const fix = outcome.sandboxFix
   const line = fix === undefined ? undefined : sandboxFixLine(fix)
-  const dim = (text: string): string => paint('', text, colors, { dim: true })
+  const dim = (text: string): string => paint('muted', text, colors)
   const note =
     fix === undefined
       ? []
@@ -794,7 +749,7 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // vx's own notes (`vx: …`) explain a failure; they are not denials.
   const denials = body.filter((l) => !l.startsWith('vx: ')).length
   return [
-    sectionLine(denials > 0 ? `SANDBOX VIOLATIONS (${denials})` : 'SANDBOX', ERROR, colors),
+    sectionLine(denials > 0 ? `SANDBOX VIOLATIONS (${denials})` : 'SANDBOX', 'error', colors),
     '',
     ...body,
     '',
@@ -807,7 +762,7 @@ export function formatFrameClose(
   outcome: TaskOutcome,
   colors: ColorSupport = NO_COLOR,
 ): string {
-  const corner = (t: string) => paint('', t, colors, { dim: true })
+  const corner = (t: string) => paint('muted', t, colors)
   const mark = persistentMark(node, colors)
   // A persistent task's child keeps running past this "ready" outcome,
   // so the close reads `running` (accent), not `success` — the ▸ marks
@@ -831,11 +786,11 @@ function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string {
 }
 
 function persistentMark(node: TaskNode, colors: ColorSupport): string {
-  return node.config.exec?.persistent !== undefined ? `${paint(ACCENT, '▸', colors)} ` : ''
+  return node.config.exec?.persistent !== undefined ? `${paint('info', '▸', colors)} ` : ''
 }
 
 function runningFooter(o: TaskOutcome, colors: ColorSupport): string {
-  return ` ${paint('', `(${formatElapsed(o.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
+  return ` ${paint('muted', `(${formatElapsed(o.durationMs)})`, colors)} ${paint('info', 'running', colors)}`
 }
 
 /**
@@ -862,8 +817,8 @@ export function formatPersistentTailBlock(
   const stderr = body.stderr ?? ''
   if (stdout.trim().length === 0 && stderr.trim().length === 0) return ''
   const lines: string[] = [formatFrameOpen(node, colors, forwardArgs)]
-  pushStreamSection(lines, stdout, 'STDOUT (since ready)', SUCCESS, dropped.stdout ?? 0, colors)
-  pushStreamSection(lines, stderr, 'STDERR (since ready)', ERROR, dropped.stderr ?? 0, colors)
+  pushStreamSection(lines, stdout, 'STDOUT (since ready)', 'ok', dropped.stdout ?? 0, colors)
+  pushStreamSection(lines, stderr, 'STDERR (since ready)', 'error', dropped.stderr ?? 0, colors)
   lines.push(formatFrameClose(node, outcome, colors))
   return lines.join('\n') + '\n'
 }
@@ -874,38 +829,14 @@ export function formatPersistentTailBlock(
  * logs read apart. `text` holds whole lines, its last newline cut off.
  */
 export function formatKeptLines(node: TaskNode, text: string, colors: ColorSupport): string {
-  const prefix = `${paintTaskId(node, colors)} ${paint('', '│', colors, { dim: true })} `
+  const prefix = `${paintTaskId(node, colors)} ${paint('muted', '│', colors)} `
   return text
     .split('\n')
     .map((line) => {
       const shown = lastRedraw(line)
-      return `${prefix}${shown}${leavesStyle(shown) ? RESET : ''}\n`
+      return `${prefix}${shown}${leavesStyle(shown) ? STYLE_END : ''}\n`
     })
     .join('')
-}
-
-// eslint-disable-next-line no-control-regex -- ESC is the point
-const LINE_RESET = /\r|\x1b\[[12]K|\x1b\[[01]?G/g
-// eslint-disable-next-line no-control-regex -- ESC is the point
-const TRAILING_RESETS = /(?:\r|\x1b\[[12]K|\x1b\[[01]?G)+$/
-// eslint-disable-next-line no-control-regex -- ESC is the point
-const SGR = /\x1b\[[0-9;]*m/g
-
-/**
- * What a line shows once its redraws have played: the text after its last
- * `\r`, line erase (`CSI 1K`/`2K`) or move to column 1 (`CSI G`), with the
- * colours set before it. Written after an id prefix, a dev server's redraw
- * (`\x1b[2K\x1b[1Gbuilt in 30ms`, a `10%\r100%` progress line) erased or
- * overwrote the prefix on a terminal. A reset that ends the line, as in
- * CRLF, redraws nothing.
- */
-function lastRedraw(line: string): string {
-  if (!line.includes('\r') && !line.includes('\x1b')) return line
-  const text = line.replace(TRAILING_RESETS, '')
-  let cut = -1
-  for (const m of text.matchAll(LINE_RESET)) cut = m.index + m[0].length
-  if (cut === -1) return text
-  return (text.slice(0, cut).match(SGR) ?? []).join('') + text.slice(cut)
 }
 
 /**
@@ -921,28 +852,28 @@ export function formatPersistentList(
 ): string[] {
   return nodes.map(
     (n) =>
-      `  ${paint(ACCENT, '▸', colors)} ${paintTaskId(n, colors)} ${paint('', 'running', colors, { dim: true })}`,
+      `  ${paint('info', '▸', colors)} ${paintTaskId(n, colors)} ${paint('muted', 'running', colors)}`,
   )
 }
 
 function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
   const shortHash = o.hash ? o.hash.slice(0, 8) : ''
-  const dim = (s: string) => paint('', s, colors, { dim: true })
+  const dim = (s: string) => paint('muted', s, colors)
   const word = outcomeLabel(o)
   switch (o.status) {
     case 'cache-hit':
-      return `${paint(SUCCESS, word, colors)} ${dim(`• ${shortHash}`)}`
+      return `${paint('ok', word, colors)} ${dim(`• ${shortHash}`)}`
     case 'cache-hit-remote':
       // A remote restore is the one hit painted accent: bytes came off the wire.
-      return `${paint(o.restored === false ? SUCCESS : ACCENT, word, colors)} ${dim(`• ${shortHash}`)}`
+      return `${paint(o.restored === false ? 'ok' : 'info', word, colors)} ${dim(`• ${shortHash}`)}`
     case 'failed':
       // The command lives in its own `├─ command` section; the header
       // carries the outcome like every other status.
-      return paint(ERROR, word, colors, { bold: true })
+      return paint('error', word, colors, true)
     case 'skipped':
-      return paint(WARN, word, colors)
+      return paint('warn', word, colors)
     case 'aborted':
-      return paint(ABORTED, word, colors)
+      return paint('aborted', word, colors)
     default:
       return dim(word)
   }
@@ -956,7 +887,7 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
   // saved" on the strength of it. The stored time lives on
   // `TaskOutcome.storedDurationMs`.) Status differs by outcome — see
   // formatStatusTag.
-  const dur = paint('', `(${formatElapsed(o.durationMs)})`, colors, { dim: true })
+  const dur = paint('muted', `(${formatElapsed(o.durationMs)})`, colors)
   const tag = formatStatusTag(o, colors)
   return ` ${dur} ${tag}${flakyNote(o, colors)}`
 }
@@ -965,13 +896,13 @@ function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
   const word = outcomeLabel(o)
   switch (o.status) {
     case 'failed':
-      return paint(ERROR, word, colors, { bold: true })
+      return paint('error', word, colors, true)
     case 'skipped':
-      return paint(WARN, word, colors)
+      return paint('warn', word, colors)
     case 'aborted':
-      return paint(ABORTED, word, colors)
+      return paint('aborted', word, colors)
     default:
-      return paint('', word, colors, { dim: true })
+      return paint('muted', word, colors)
   }
 }
 

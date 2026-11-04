@@ -7,72 +7,35 @@ import type { TaskOutcome } from '../graph/index.js'
 import { tallyOutcomes } from './tally.js'
 import { outcomeLabel, projectOutcome, ranNoCache } from './events.js'
 import { isGroupTask } from '../graph/index.js'
+import { formatBytes, formatElapsed } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import {
+  bar,
   barWidth,
-  ERROR,
-  formatBytes,
-  formatElapsed,
-  gradientRule,
-  identityColor,
+  gauge,
+  idParts,
   paint,
-  SUCCESS,
-  ui,
-  WARN,
+  panelTop,
   type ColorSupport,
-} from '../util/index.js'
+  type Segment,
+  type Style,
+} from '../ui/index.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
-// Cache provenance hues (owner): local light blue, remote dark blue —
-// yellow is skipped's color on both meters.
-const LOCAL = '#38bdf8' // sky-400
-const REMOTE = '#2563eb' // blue-600
-const ABORTED = '#f97316' // orange-500: red's neighbour, not a failure
-const NOT_RUN = '#a855f7' // purple-500: stopped before it began, apart from every other state
-const RUNNING = '#06b6d4' // cyan-500: ui's info
-const ACCENT = '#06b6d4' // cyan-500: the live region's running word
-
-/**
- * Stacked state meter: one ▰ run per bucket, proportional cells via
- * largest-remainder, every non-zero bucket guaranteed at least one
- * cell. Color carries the state; the color-coded numbers ride beside
- * the bar.
- */
+/** A meter of the run's states; a segment with no style is dim, `▱` the work left. */
 function segmentBar(
-  segments: readonly { n: number; color: string; glyph?: string; dim?: boolean }[],
+  segments: readonly { n: number; color: Style | ''; glyph?: string; dim?: boolean }[],
   colors: ColorSupport,
 ): string {
-  const total = segments.reduce((sum, seg) => sum + seg.n, 0)
-  if (total === 0) return ''
-  const width = barWidth(colors)
-  const exact = segments.map((seg) => (seg.n / total) * width)
-  const cells = exact.map(Math.floor)
-  let leftover = width - cells.reduce((sum, c) => sum + c, 0)
-  const order = exact
-    .map((e, i) => ({ i, frac: e - Math.floor(e) }))
-    .sort((x, y) => y.frac - x.frac)
-  for (const { i } of order) {
-    if (leftover === 0) break
-    cells[i]!++
-    leftover--
-  }
-  for (let i = 0; i < segments.length; i++) {
-    if (segments[i]!.n > 0 && cells[i] === 0) {
-      const biggest = cells.indexOf(Math.max(...cells))
-      cells[biggest]!--
-      cells[i] = 1
-    }
-  }
-  return segments
-    .map((seg, i) =>
-      // An empty segment paints nothing: no escape pair around no cell.
-      cells[i] === 0
-        ? ''
-        : paint(seg.color, (seg.glyph ?? '\u25b0').repeat(cells[i]!), colors, {
-            ...(seg.dim === true ? { dim: true } : {}),
-          }),
-    )
-    .join('')
+  return bar(
+    segments.map((seg): Segment => ({
+      n: seg.n,
+      style: seg.color === '' || seg.dim === true ? 'muted' : seg.color,
+      ...(seg.glyph !== undefined ? { cell: seg.glyph } : {}),
+    })),
+    colors,
+  )
 }
 
 /** Aggregate counts feeding the summary section — buildable from a
@@ -282,12 +245,12 @@ export function formatSummarySection(
   const blocked = stats.blocked ?? 0
   const remainder = {
     n: Math.max(0, left - running - scheduled - blocked),
-    color: '',
+    color: 'muted' as const,
     glyph: '\u25b1',
     dim: true,
   }
 
-  const dim = (txt: string) => paint('', txt, colors, { dim: true })
+  const dim = (txt: string) => paint('muted', txt, colors)
   const row = (label: string, value: string): string => `  ${dim(label.padEnd(8))}  ${value}`
   const join = (parts: string[]): string => parts.join(` ${dim('\u00b7')} `)
 
@@ -296,13 +259,12 @@ export function formatSummarySection(
   // the run counts, each state its own segment (2026-10-14).
   const runTotal = stats.total + aborted + notRun
   const taskParts: string[] = []
-  if (stats.failed > 0)
-    taskParts.push(paint(ERROR, `${stats.failed} failed`, colors, { bold: true }))
-  if (stats.successful > 0) taskParts.push(paint(SUCCESS, `${stats.successful} success`, colors))
-  if (stats.skipped > 0) taskParts.push(paint(WARN, `${stats.skipped} skipped`, colors))
-  if (aborted > 0) taskParts.push(paint(ABORTED, `${aborted} aborted`, colors))
-  if (notRun > 0) taskParts.push(paint(NOT_RUN, `${notRun} not run`, colors))
-  if (running > 0) taskParts.push(paint(RUNNING, `${running} running`, colors))
+  if (stats.failed > 0) taskParts.push(paint('error', `${stats.failed} failed`, colors, true))
+  if (stats.successful > 0) taskParts.push(paint('ok', `${stats.successful} success`, colors))
+  if (stats.skipped > 0) taskParts.push(paint('warn', `${stats.skipped} skipped`, colors))
+  if (aborted > 0) taskParts.push(paint('aborted', `${aborted} aborted`, colors))
+  if (notRun > 0) taskParts.push(paint('notRun', `${notRun} not run`, colors))
+  if (running > 0) taskParts.push(paint('info', `${running} running`, colors))
   if (scheduled > 0) taskParts.push(dim(`${scheduled} scheduled`))
   if (blocked > 0) taskParts.push(dim(`${blocked} blocked`))
   // What is not done yet, running included: the count the bar's unfilled part shows.
@@ -310,14 +272,14 @@ export function formatSummarySection(
   if (runTotal > 0) taskParts.push(dim(`${runTotal} total`))
   const taskBar = segmentBar(
     [
-      { n: stats.failed, color: ERROR },
-      { n: stats.successful, color: SUCCESS },
-      { n: stats.skipped, color: WARN },
-      { n: aborted, color: ABORTED },
-      { n: notRun, color: NOT_RUN },
-      { n: running, color: RUNNING },
-      { n: scheduled, color: '', dim: true },
-      { n: blocked, color: '', dim: true },
+      { n: stats.failed, color: 'error' },
+      { n: stats.successful, color: 'ok' },
+      { n: stats.skipped, color: 'warn' },
+      { n: aborted, color: 'aborted' },
+      { n: notRun, color: 'notRun' },
+      { n: running, color: 'info' },
+      { n: scheduled, color: 'muted', dim: true },
+      { n: blocked, color: 'muted', dim: true },
       remainder,
     ],
     colors,
@@ -325,12 +287,8 @@ export function formatSummarySection(
   // Bars on the label row, color-coded legend on its own line below,
   // indented to the bar column (2 indent + 8 label + 2 gap = 12).
   const legend = (parts: string[]): string => `${' '.repeat(12)}${join(parts)}`
-  // Version rides the wordmark rule when run context is present (final
-  // footer); the live region passes none and keeps a bare `vx`.
-  const lines: string[] = [
-    '',
-    gradientRule(colors, context !== undefined ? `vx ${context.version}` : 'vx'),
-  ]
+  // The panel's body; its box goes round it at the end.
+  const lines: string[] = []
 
   // Run context (final footer only): the projects bar leads the meter
   // stack — the projects in the run (yellow) vs the rest of the workspace (dim).
@@ -342,12 +300,12 @@ export function formatSummarySection(
         context.packageCount === 0
           ? 0
           : Math.min(width, Math.max(1, Math.round((context.packageCount / wsTotal) * width)))
-      const bar =
-        paint(WARN, '▰'.repeat(cells), colors) +
-        paint('', '▱'.repeat(width - cells), colors, { dim: true })
       lines.push(
-        row('projects', bar),
-        legend([paint(WARN, `${context.packageCount} affected`, colors), dim(`${wsTotal} total`)]),
+        row('projects', gauge(cells, 'warn', colors)),
+        legend([
+          paint('warn', `${context.packageCount} affected`, colors),
+          dim(`${wsTotal} total`),
+        ]),
       )
     }
   }
@@ -376,17 +334,17 @@ export function formatSummarySection(
     const b = cacheBuckets(stats, layers)
     const cacheBar = segmentBar(
       [
-        { n: b.miss, color: ERROR },
-        { n: b.notSaved, color: WARN },
-        { n: b.noCache, color: '', dim: true },
-        { n: b.upToDate, color: SUCCESS },
-        { n: b.restoredLocal, color: LOCAL },
-        { n: b.saved, color: LOCAL },
-        { n: b.restoredRemote, color: REMOTE },
-        { n: b.uploaded, color: REMOTE },
-        { n: b.uploading, color: ACCENT },
-        { n: b.remoteFailed, color: ERROR },
-        { n: stats.skipped, color: WARN },
+        { n: b.miss, color: 'error' },
+        { n: b.notSaved, color: 'warn' },
+        { n: b.noCache, color: 'muted', dim: true },
+        { n: b.upToDate, color: 'ok' },
+        { n: b.restoredLocal, color: 'local' },
+        { n: b.saved, color: 'local' },
+        { n: b.restoredRemote, color: 'remote' },
+        { n: b.uploaded, color: 'remote' },
+        { n: b.uploading, color: 'info' },
+        { n: b.remoteFailed, color: 'error' },
+        { n: stats.skipped, color: 'warn' },
         remainder,
       ],
       colors,
@@ -397,13 +355,13 @@ export function formatSummarySection(
       // either layer) and `∅` no cache, both local; `↓` restored from a
       // layer, `↑` saved to it; `✗` a remote read or write failed, `⇡` still
       // uploading. Each count is its bar segment's, glyph and number in its colour.
-      const n = (count: number, glyph: string, color: string, dim = false): string[] =>
-        count > 0 ? [paint(color, `${count}${glyph}`, colors, dim ? { dim: true } : {})] : []
+      const n = (count: number, glyph: string, color: Style): string[] =>
+        count > 0 ? [paint(color, `${count}${glyph}`, colors)] : []
       const local = [
-        ...(layers.local ? n(b.upToDate, '\u2713', SUCCESS) : []),
-        ...n(b.noCache, '\u2205', '', true),
-        ...(layers.local ? n(b.restoredLocal, '\u2193', LOCAL) : []),
-        ...(layers.localWrite ? n(b.saved, '\u2191', LOCAL) : []),
+        ...(layers.local ? n(b.upToDate, '\u2713', 'ok') : []),
+        ...n(b.noCache, '\u2205', 'muted'),
+        ...(layers.local ? n(b.restoredLocal, '\u2193', 'local') : []),
+        ...(layers.localWrite ? n(b.saved, '\u2191', 'local') : []),
       ]
       // The layer words are dim; only the counts carry colour (2026-10-15).
       if (local.length > 0) cacheParts.push(`${dim('local')} ${local.join(' ')}`)
@@ -413,29 +371,29 @@ export function formatSummarySection(
         count === 0
           ? []
           : bytes === undefined || bytes === 0
-            ? n(count, glyph, REMOTE)
-            : [...n(count, glyph, REMOTE), dim(formatBytes(bytes))]
+            ? n(count, glyph, 'remote')
+            : [...n(count, glyph, 'remote'), dim(formatBytes(bytes))]
       const remote = [
         ...sized(b.restoredRemote, '\u2193', layers.downloads?.bytes),
         ...sized(b.uploaded, '\u2191', layers.uploads?.bytes),
-        ...n(b.remoteFailed, '\u2717', ERROR),
-        ...n(b.uploading, '\u21e1', ACCENT),
+        ...n(b.remoteFailed, '\u2717', 'error'),
+        ...n(b.uploading, '\u21e1', 'info'),
       ]
       if (layers.remote && remote.length > 0)
         cacheParts.push(`${dim('remote')} ${remote.join(' ')}`)
-      if (b.miss > 0) cacheParts.push(paint(ERROR, `${b.miss} miss`, colors))
-      if (b.notSaved > 0) cacheParts.push(paint(WARN, `${b.notSaved} not saved`, colors))
+      if (b.miss > 0) cacheParts.push(paint('error', `${b.miss} miss`, colors))
+      if (b.notSaved > 0) cacheParts.push(paint('warn', `${b.notSaved} not saved`, colors))
       const notDownloaded = layers.notDownloaded()
-      if (notDownloaded > 0) cacheParts.push(paint(WARN, `${notDownloaded} not downloaded`, colors))
+      if (notDownloaded > 0)
+        cacheParts.push(paint('warn', `${notDownloaded} not downloaded`, colors))
     } else {
-      if (miss > 0) cacheParts.push(paint(ERROR, `${miss} miss`, colors))
-      if (noCache > 0) cacheParts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
-      if (stats.upToDate > 0)
-        cacheParts.push(paint(SUCCESS, `${stats.upToDate} up-to-date`, colors))
+      if (miss > 0) cacheParts.push(paint('error', `${miss} miss`, colors))
+      if (noCache > 0) cacheParts.push(paint('muted', `${noCache} no-cache`, colors))
+      if (stats.upToDate > 0) cacheParts.push(paint('ok', `${stats.upToDate} up-to-date`, colors))
       if (stats.restoredLocal > 0)
-        cacheParts.push(paint(LOCAL, `${stats.restoredLocal} local`, colors))
+        cacheParts.push(paint('local', `${stats.restoredLocal} local`, colors))
       if (stats.restoredRemote > 0)
-        cacheParts.push(paint(REMOTE, `${stats.restoredRemote} remote`, colors))
+        cacheParts.push(paint('remote', `${stats.restoredRemote} remote`, colors))
     }
     // Skipped tasks ride the bar, yellow like the tasks meter, so the two
     // bars fill alike; their count is the tasks legend's alone (the footer
@@ -472,9 +430,9 @@ export function formatSummarySection(
   // The live run's forecast leads the spread: the one number on the row
   // that is about the future.
   if (stats.etaMs !== undefined)
-    timeParts.push(paint(ACCENT, `${formatEta(stats.etaMs)} left`, colors))
+    timeParts.push(paint('info', `${formatEta(stats.etaMs)} left`, colors))
   else if (stats.overMs !== undefined)
-    timeParts.push(paint(ACCENT, `${formatOver(stats.overMs)} over`, colors))
+    timeParts.push(paint('info', `${formatOver(stats.overMs)} over`, colors))
   for (const p of spreadParts) timeParts.push(dim(p))
   const timeRow = row('time', join(timeParts))
   // Run-shape footer (final summary only): worker pool + cache mode,
@@ -518,7 +476,18 @@ export function formatSummarySection(
   } else {
     lines.push('', timeRow)
   }
-  return lines
+  // The Summary panel; the final one names the vx that ran it (the live
+  // one has no context yet).
+  return [
+    '',
+    panelTop(
+      'Summary',
+      colors,
+      undefined,
+      context !== undefined ? `vx ${context.version}` : undefined,
+    ),
+    ...lines,
+  ]
 }
 
 /**
@@ -537,7 +506,7 @@ function warnRows(
     warnings.map((w) => Bun.stripANSI(w).split('\n')[0]!.trim()).filter((w) => w !== ''),
   ).size
   if (n === 0) return []
-  return [row('warn', paint(WARN, `${n} ${n === 1 ? 'warning' : 'warnings'} above`, colors))]
+  return [row('warn', paint('warn', `${n} ${n === 1 ? 'warning' : 'warnings'} above`, colors))]
 }
 
 /**
@@ -581,18 +550,16 @@ export function formatOutcomeTable(
   }
   const pad = (text: string, width: number) => ' '.repeat(Math.max(0, width - text.length))
   const header = `${'TASK'.padEnd(widths.task)}  ${'STATUS'.padEnd(widths.status)}  ${'DURATION'.padStart(widths.duration)}`
-  const dim = (t: string) => paint('', t, colors, { dim: true })
+  const dim = (t: string) => paint('muted', t, colors)
   return [
     '',
-    paint(TABLE_HEADER, header, colors, { bold: true }),
+    paint('heading', header, colors, true),
     dim('-'.repeat(header.length)),
     ...rows.map((r) => {
       const { node } = r.o
       const id =
         node.projectName !== undefined && node.taskName !== undefined
-          ? paint(identityColor(node.projectName), node.projectName, colors) +
-            dim('#') +
-            paint(identityColor(node.taskName), node.taskName, colors)
+          ? idParts(node.projectName, node.projectName, node.taskName, colors)
           : r.task
       const status = paint(tableStatusColor(r.o), r.status, colors)
       return `${id}${pad(r.task, widths.task)}  ${status}${pad(r.status, widths.status)}  ${pad(r.duration, widths.duration)}${dim(r.duration)}`
@@ -600,19 +567,16 @@ export function formatOutcomeTable(
   ]
 }
 
-/** violet-400, as the task list's header. */
-const TABLE_HEADER = '#a78bfa'
-
-function tableStatusColor(o: TaskOutcome): string {
+function tableStatusColor(o: TaskOutcome): Style {
   switch (o.status) {
     case 'failed':
-      return ERROR
+      return 'error'
     case 'skipped':
-      return WARN
+      return 'warn'
     case 'aborted':
-      return neverStarted(o) ? NOT_RUN : ABORTED
+      return neverStarted(o) ? 'notRun' : 'aborted'
     default:
-      return SUCCESS
+      return 'ok'
   }
 }
 

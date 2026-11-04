@@ -1012,7 +1012,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     // invented a task with no command.
     expect(rows.map((r) => r.split(/\s+/)[0])).toEqual(['one#hello'])
     // Nothing prints below the footer (owner rule).
-    const footer = lines.findIndex((l) => l.startsWith('─ vx '))
+    const footer = lines.findIndex((l) => l.startsWith('─ Summary '))
     expect(header).toBeGreaterThan(-1)
     expect(footer).toBeGreaterThan(header)
   })

@@ -39,7 +39,7 @@ snapshot) and the plugin capabilities (below).
 
 ## Module map
 
-Core is organised as **ten modules** plus five root files. A module
+Core is organised as **eleven modules** plus five root files. A module
 is a directory under `src/` with an `index.ts` contract — cross-module
 imports go through that contract, never into internal files — or a
 single root file when it has no internals to hide. The design and
@@ -49,6 +49,7 @@ migration history live in
 | Module         | Form                        | Contract highlights                                                                                                                                 |
 | -------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                                    |
+| `ui`           | dir + `index.ts`            | the only module that draws: tokens, components, panels, the live region, `print` / `say` / `data`; the façade's `ui` is its plugin kit              |
 | `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                        |
 | `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/projects.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, claimed root files |
 | `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                               |

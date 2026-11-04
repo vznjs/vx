@@ -1,52 +1,55 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { detectColors, paint } from '../src/util/colors.js'
+import { detectColors, paint } from '../src/ui/index.js'
 import { restoreEnv } from './helpers/env.js'
 
 describe('paint', () => {
   it('returns the bare text when colors are disabled', () => {
-    expect(paint('red', 'hello', { enabled: false })).toBe('hello')
+    expect(paint('error', 'hello', { enabled: false })).toBe('hello')
   })
 
-  it('wraps text with a truecolor escape + reset when enabled', () => {
-    const out = paint('red', 'hello', { enabled: true })
+  it('wraps a hue in a truecolor escape + reset when enabled', () => {
+    const out = paint('error', 'hello', { enabled: true })
     expect(out.startsWith('\x1b[')).toBe(true)
     expect(out.endsWith('\x1b[0m')).toBe(true)
     expect(out).toContain('hello')
-    // ansi-16m truecolor sequence — we don't pin the exact RGB
-    // (Bun.color may resolve named colors slightly differently across
-    // versions), but the shape is fixed.
-    // Match just the truecolor part of the sequence — the leading
-    // ESC is implied. Avoids embedding U+001B in a regex literal,
-    // which oxlint flags via no-control-regex.
     expect(out).toMatch(/\[38;2;\d+;\d+;\d+m/)
   })
 
-  it('layers bold and dim with the color', () => {
-    const out = paint('green', 'x', { enabled: true }, { bold: true, dim: true })
+  it('layers bold with a hue', () => {
+    const out = paint('ok', 'x', { enabled: true }, true)
     expect(out).toContain('\x1b[1m')
-    expect(out).toContain('\x1b[2m')
+    expect(out).toMatch(/\[38;2;\d+;\d+;\d+m/)
   })
 
-  it('emits bold/dim alone when no color is given', () => {
-    const out = paint('', 'x', { enabled: true }, { bold: true })
-    expect(out).toBe('\x1b[1mx\x1b[0m')
+  it('strong is bold alone, muted dim alone', () => {
+    expect(paint('strong', 'x', { enabled: true })).toBe('\x1b[1mx\x1b[0m')
+    expect(paint('muted', 'x', { enabled: true })).toBe('\x1b[2mx\x1b[0m')
   })
 
-  it('returns plain text when no color and no formatting are given even if enabled', () => {
-    expect(paint('', 'plain', { enabled: true })).toBe('plain')
+  it('plain stays plain even when enabled', () => {
+    expect(paint('plain', 'plain', { enabled: true })).toBe('plain')
   })
 
   // The footer's projects bar painted its empty dim remainder when every
   // project was in the run: an escape pair around no cell.
   it('paints no escape pair around empty text', () => {
-    expect(paint('#22c55e', '', { enabled: true }, { bold: true, dim: true })).toBe('')
+    expect(paint('ok', '', { enabled: true }, true)).toBe('')
   })
 })
 
 describe('detectColors', () => {
   const orig = { ...process.env }
 
-  const CI_VARS = ['GITHUB_ACTIONS', 'GITLAB_CI', 'BUILDKITE', 'CIRCLECI']
+  const CI_VARS = [
+    'CI',
+    'GITHUB_ACTIONS',
+    'GITLAB_CI',
+    'BUILDKITE',
+    'CIRCLECI',
+    'TF_BUILD',
+    'JENKINS_URL',
+    'TEAMCITY_VERSION',
+  ]
   beforeEach(() => {
     delete process.env['NO_COLOR']
     delete process.env['FORCE_COLOR']
@@ -68,16 +71,22 @@ describe('detectColors', () => {
     expect(detectColors({ isTTY: false } as NodeJS.WriteStream).enabled).toBe(true)
   })
 
-  // GitHub Actions and GitLab render ANSI in a piped log, which read plain (2026-10-22).
-  it('paints a piped log on a CI that renders colour, unless NO_COLOR or FORCE_COLOR=0', () => {
+  // A CI log looks like the terminal: every CI paints its piped log, the
+  // generic `CI` and the CIs that set none too (only four vendors did).
+  it('paints a piped log on every CI, unless NO_COLOR or FORCE_COLOR=0', () => {
     const piped = { isTTY: false } as NodeJS.WriteStream
+    const on = { TF_BUILD: 'True', JENKINS_URL: 'https://ci.example/', TEAMCITY_VERSION: '2025.1' }
     expect(
       CI_VARS.map((v) => {
         for (const c of CI_VARS) delete process.env[c]
-        process.env[v] = 'true'
+        process.env[v] = on[v as keyof typeof on] ?? 'true'
         return detectColors(piped).enabled
       }),
-    ).toEqual([true, true, true, true])
+    ).toEqual(CI_VARS.map(() => true))
+    for (const c of CI_VARS) delete process.env[c]
+    process.env['CI'] = 'false'
+    expect(detectColors(piped).enabled).toBe(false)
+    process.env['CI'] = 'true'
     process.env['FORCE_COLOR'] = '0'
     expect(detectColors(piped).enabled).toBe(false)
     delete process.env['FORCE_COLOR']

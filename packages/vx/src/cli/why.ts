@@ -18,19 +18,9 @@ import {
   whyDidThisRerun,
 } from '../history/index.js'
 import { resolveRunId } from '../orchestrator/index.js'
-import {
-  detectColors,
-  ERROR,
-  MASKED,
-  nearMatches,
-  paint,
-  printable,
-  refusal,
-  SUCCESS,
-  ui,
-  UserError,
-  WARN,
-} from '../util/index.js'
+import { MASKED, nearMatches, printable, refusal, UserError } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import type { Style } from '../ui/index.js'
 import { runRules } from '../settings.js'
 import { buildPackageGraph, findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
@@ -305,14 +295,23 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       // the persisted entry metadata so the verb still says something useful.
       const explanation = explainCacheKey(db, taskId)
       if (parsed.format === 'json') {
-        process.stdout.write(`${JSON.stringify({ taskId, why: null, diff: null, explanation })}\n`)
+        ui.data('out', `${JSON.stringify({ taskId, why: null, diff: null, explanation })}\n`)
       } else {
-        const c = detectColors(process.stdout)
-        process.stdout.write(
-          `${ui.inline(ui.id(taskId), c)}: recorded runs carry no run id — showing the latest cache entry instead\n` +
-            (explanation.latestEntry !== null
-              ? `  hash ${explanation.latestEntry.hash} · $ ${explanation.latestEntry.command}\n`
-              : '  (no cache entry either)\n'),
+        ui.print(
+          'out',
+          ui.section(
+            'Why',
+            taskId,
+            ui.text('recorded runs carry no run id: the latest cache entry instead'),
+            ui.fields(
+              explanation.latestEntry !== null
+                ? [
+                    ['key', explanation.latestEntry.hash],
+                    ['command', ui.cmd(explanation.latestEntry.command)],
+                  ]
+                : [['key', 'no cache entry either']],
+            ),
+          ),
         )
       }
       return 0
@@ -341,27 +340,22 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const writers = inputWriters(db, root, taskId, diff.entries, roots)
 
     if (parsed.format === 'json') {
-      process.stdout.write(`${JSON.stringify({ taskId, runId, why, diff, roots, writers })}\n`)
+      ui.data('out', `${JSON.stringify({ taskId, runId, why, diff, roots, writers })}\n`)
       return 0
     }
 
-    const lines: string[] = []
-    const c = detectColors(process.stdout)
-    const dim = (text: string): string => paint('', text, c, { dim: true })
-    const head = (text: string): string => paint('', text, c, { bold: true })
     const t = why.thisRun!
-    lines.push(`${ui.inline(ui.id(taskId), c)}${dim(` — run ${runId}`)}`)
-    lines.push(`  ${dim('this run')}   ${runFacts(t)}`)
+    const head: ui.FieldRow[] = [
+      ['run', runId],
+      ['this run', runFacts(t)],
+    ]
     if (why.previousRun == null && t.hash === '') {
       // Only keyed runs are compared: a persistent task's tenth run read
       // as its first, and the note saying why went unprinted.
-      lines.push(`  ${dim('previous')}   (none with a cache key)`)
-      lines.push(`  ${dim('verdict')}    ${why.note}`)
+      head.push(['previous', 'none with a cache key'], ['verdict', why.note])
     } else if (why.previousRun == null) {
-      lines.push(`  ${dim('previous')}   (none — first recorded run of this task)`)
+      head.push(['previous', 'none: first recorded run of this task'])
     } else {
-      const p = why.previousRun
-      lines.push(`  ${dim('previous')}   ${runFacts(p)}`)
       // The key moved and the diff says by what: the verdict names it, so
       // an env-only change reads as one line, not "inputs differ" above a
       // table to scan.
@@ -369,56 +363,71 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       const moved = diff.entries.map((e) =>
         e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
       )
-      lines.push(
-        `  ${dim('verdict')}    ${
+      head.push(
+        ['previous', runFacts(why.previousRun)],
+        [
+          'verdict',
           why.hashChanged === true && moved.length > 0
-            ? paint(
-                WARN,
+            ? ui.tone(
+                'warn',
                 `cache key changed: ${moved.slice(0, 3).join(', ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}`,
-                c,
               )
-            : why.note
-        }`,
+            : why.note,
+        ],
       )
     }
+    if (diff.entries.length === 0 && why.hashChanged === true) head.push(['detail', diff.note])
+    const blocks: ui.Block[] = [ui.section('Why', taskId, ui.fields(head))]
 
     if (diff.entries.length > 0) {
-      lines.push('')
-      lines.push(
-        `  ${head('what changed')}${dim(` (${diff.entries.length} component${diff.entries.length === 1 ? '' : 's'}, ${diff.unchangedCount} unchanged)`)}:`,
+      blocks.push(
+        ui.section(
+          'What changed',
+          `${diff.entries.length} of ${diff.entries.length + diff.unchangedCount}`,
+          ui.table(
+            ['change', 'kind', 'name', 'before → after'],
+            diff.entries.map((e) => [
+              ui.tone(CHANGE_HUE[e.change] ?? 'warn', e.change),
+              e.kind,
+              ui.strong(printable(e.name)),
+              // A secret-named env input shows its name and its change, no hash.
+              e.before === MASKED || e.after === MASKED
+                ? ''
+                : e.change === 'added'
+                  ? `+ ${e.after}`
+                  : e.change === 'removed'
+                    ? `- ${e.before}`
+                    : `${e.before} → ${e.after}`,
+            ]),
+          ),
+        ),
       )
-      const kindW = Math.max(...diff.entries.map((e) => e.kind.length), 4)
-      for (const e of diff.entries) {
-        // A secret-named env input shows its name and its change, no hash.
-        const beforeAfter =
-          e.before === MASKED || e.after === MASKED
-            ? ''
-            : e.change === 'added'
-              ? `+ ${e.after}`
-              : e.change === 'removed'
-                ? `- ${e.before}`
-                : `${e.before} → ${e.after}`
-        lines.push(
-          `    ${paint(CHANGE_HUE[e.change] ?? WARN, e.change.padEnd(7), c)} ${dim(e.kind.padEnd(kindW))}  ${printable(e.name)}  ${dim(beforeAfter)}`.trimEnd(),
-        )
-      }
       if (roots.length > 0) {
-        lines.push('', `  ${head('root cause')}:`)
-        for (const r of roots.slice(0, ROOTS_SHOWN)) {
+        const lines: ui.Inline[] = roots.slice(0, ROOTS_SHOWN).map((r) => {
           const what = r.entries.map((e) =>
             e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
           )
-          lines.push(
-            `    ${r.chain.join(' \u2190 ')} \u2190 ${what.slice(0, 3).join(', ')}${what.length > 3 ? ` and ${what.length - 3} more` : ''}`,
-          )
-        }
-        if (roots.length > ROOTS_SHOWN) lines.push(`    and ${roots.length - ROOTS_SHOWN} more`)
+          return [
+            ...r.chain.flatMap((id, i) => [...(i > 0 ? [ui.dim(' \u2190 ')] : []), ui.id(id)]),
+            ui.dim(' \u2190 '),
+            ui.strong(
+              `${what.slice(0, 3).join(', ')}${what.length > 3 ? ` and ${what.length - 3} more` : ''}`,
+            ),
+          ]
+        })
+        if (roots.length > ROOTS_SHOWN) lines.push(`and ${roots.length - ROOTS_SHOWN} more`)
+        blocks.push(ui.section('Root cause', ui.text(...lines)))
       }
       if (writers.length > 0) {
-        lines.push('', `  ${head('changed during a run')}:`)
-        for (const w of writers) {
-          lines.push(`    ${printable(w.file)}  ${dim(`while ${w.writers.join(', ')} ran`)}`)
-        }
+        blocks.push(
+          ui.section(
+            'Changed during a run',
+            ui.table(
+              ['file', 'written while'],
+              writers.map((w) => [ui.path(printable(w.file)), w.writers.join(', ')]),
+            ),
+          ),
+        )
       }
       const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
       // An upstream row names the task to ask next: the command, not a
@@ -433,31 +442,26 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
           k in WHAT_TO_DO && !(k === 'upstream' && (roots.length > 0 || upstream.length === 0)),
       )
       if (kinds.length > 0) {
-        lines.push('', `  ${head('what to do')}:`)
-        // Its own column: a root cause's kind and the `written` row are
-        // not in the table above, and overflowed its width.
-        const todoW = Math.max(kindW, ...kinds.map((k) => k.length), writers.length > 0 ? 7 : 0)
+        const todo: ui.FieldRow[] = []
         for (const k of kinds) {
           if (k === 'upstream') {
-            for (const todo of upstream) lines.push(`    ${dim(k.padEnd(todoW))}  ${todo}`)
+            todo.push([k, ...upstream])
             continue
           }
-          const todo =
+          todo.push([
+            k,
             k === 'config'
               ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
-              : WHAT_TO_DO[k]
-          lines.push(`    ${dim(k.padEnd(todoW))}  ${todo}`)
+              : WHAT_TO_DO[k]!,
+          ])
         }
-        if (writers.length > 0) {
-          // A task re-writing a file a key reads moves that key every run:
-          // the miss is right, and only moving the write ends it.
-          lines.push(`    ${dim('written'.padEnd(todoW))}  ${WRITTEN_TODO}`)
-        }
+        // A task re-writing a file a key reads moves that key every run:
+        // the miss is right, and only moving the write ends it.
+        if (writers.length > 0) todo.push(['written', WRITTEN_TODO])
+        blocks.push(ui.section('What to do', ui.fields(todo)))
       }
-    } else if (why.hashChanged === true) {
-      lines.push(`  ${dim('detail')}     ${diff.note}`)
     }
-    process.stdout.write(`${lines.join('\n')}\n`)
+    ui.print('out', ...blocks)
     return 0
   } finally {
     cache.close()
@@ -466,7 +470,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 
 const ROOTS_SHOWN = 5
 
-const CHANGE_HUE: Record<string, string> = { added: SUCCESS, removed: ERROR, changed: WARN }
+const CHANGE_HUE: Record<string, Style> = { added: 'ok', removed: 'error', changed: 'warn' }
 
 type DiffEntry = ReturnType<typeof cacheKeyDiff>['entries'][number]
 

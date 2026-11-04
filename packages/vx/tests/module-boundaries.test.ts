@@ -26,27 +26,30 @@ function moduleOf(rel: string): string {
 
 const ALLOWED: Record<string, readonly string[]> = {
   util: [],
+  // `ui`: the only module that draws (tokens, components, the live region,
+  // the streams). `util` for the refusal parts a notice lays out.
+  ui: ['util'],
   config: [],
   version: [],
   // `settings`: every setting's path, env name, flag and parse (src/settings.ts).
-  settings: ['util'],
+  settings: ['util', 'ui'],
   // `handoff`: the hand-off to a project's own vx runs before anything else
   // loads, so it stands alone; the doctor reports which vx ran. `util` only
   // as a lazy import on the submodule path: git spawned with vx's git env
   // and resolved PATH, as every other git spawn is.
-  handoff: ['util'],
+  handoff: ['util', 'ui'],
   // `version`: the lock records which vx validated it.
   // `handoff`: the git top-level, learned once for the hand-off and the root walk.
-  workspace: ['util', 'config', 'version', 'settings', 'handoff'],
-  graph: ['util', 'config', 'workspace'],
-  cache: ['util', 'config'],
-  exec: ['util', 'config'],
+  workspace: ['util', 'config', 'version', 'settings', 'handoff', 'ui'],
+  graph: ['util', 'config', 'workspace', 'ui'],
+  cache: ['util', 'config', 'ui'],
+  exec: ['util', 'config', 'ui'],
   // `history`: read-only SQL over what runs left behind; it never runs,
   // renders or writes a run, so it reaches nothing that does.
-  history: ['util', 'graph', 'cache'],
+  history: ['util', 'graph', 'cache', 'ui'],
   // `report`: renders the outcomes it is handed; it never runs a task or
   // reads the cache, so it reaches neither orchestrator nor cache.
-  report: ['util', 'settings', 'exec', 'graph'],
+  report: ['util', 'settings', 'exec', 'graph', 'ui'],
   orchestrator: [
     'util',
     'config',
@@ -59,6 +62,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     'exec',
     'history',
     'report',
+    'ui',
   ],
   // `handoff`: init walks to the git top-level and says the workspace file it wrote is there.
   cli: [
@@ -73,6 +77,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     'history',
     'orchestrator',
     'report',
+    'ui',
   ],
   index: [
     'util',
@@ -86,16 +91,18 @@ const ALLOWED: Record<string, readonly string[]> = {
     'history',
     'orchestrator',
     'report',
+    'ui',
   ],
   // `index`: bin lazy-loads the façade so a plugin's `@vzn/vx` resolves
   // to this copy (registerCoreAlias). `version`: a lone `--version` is
   // answered before the dispatcher loads.
-  bin: ['util', 'version', 'handoff', 'cli', 'index'],
+  bin: ['util', 'version', 'handoff', 'cli', 'index', 'ui'],
 }
 
 // Modules whose contract (index.ts) is the only legal cross-module
 // import target. The ratchet is complete: every directory module.
 const CONTRACTED: readonly string[] = [
+  'ui',
   'cache',
   'exec',
   'util',
@@ -193,8 +200,14 @@ describe('module boundaries', () => {
 
   it('contracted modules are imported only via their index', async () => {
     const edges = await collectEdges()
+    // `vx --version` answers before anything loads: its one painted line is
+    // the ui module's, imported alone (the ui barrel loads util, ~20 ms).
+    const ALONE = new Set(['bin.ts → ui/version-line'])
     const violations = edges.filter(
-      (e) => CONTRACTED.includes(e.toModule) && e.to !== `${e.toModule}/index`,
+      (e) =>
+        CONTRACTED.includes(e.toModule) &&
+        e.to !== `${e.toModule}/index` &&
+        !ALONE.has(`${e.from} → ${e.to}`),
     )
     expect(
       violations.map((v) => `${v.from} → ${v.specifier} (must import ${v.toModule}/index)`),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { refusal } from '../src/util/errors.js'
-import { lineNotice, messageParts, refusalNotice } from '../src/util/refusal-notice.js'
-import { render } from '../src/util/ui.js'
+import { lineNotice, messageParts, refusalNotice } from '../src/ui/refusal.js'
+import { render } from '../src/ui/index.js'
 
 const plain = (b: Parameters<typeof render>[0][number]): string => render([b], { enabled: false })
 

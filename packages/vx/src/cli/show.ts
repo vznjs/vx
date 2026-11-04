@@ -13,17 +13,15 @@ import { isDefaultBuild } from '../graph/index.js'
 import { affectedTaskProjects } from '../orchestrator/index.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
-  type ColorSupport,
-  detectColors,
   listed,
   nearMatches,
   relPosix,
   secretMask,
   type SecretMask,
   UserError,
-  sayNotice,
-  ui,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { sayNotice } from '../ui/index.js'
 import { affectedFilterFor, resolveFilters } from './select.js'
 import {
   discoverCliProjects,
@@ -193,7 +191,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
         `no projects: ${EMPTY_LOCK.charAt(0).toLowerCase()}${EMPTY_LOCK.slice(1)}`,
       )
     const shown = metas.filter((m) => inSelection(m.name))
-    process.stdout.write(renderList(root, shown, projects, parsed.format, colorsOut()))
+    emit(renderList(root, shown, projects, parsed.format))
     return 0
   }
 
@@ -250,7 +248,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
           : `no selected project declares ${projectName} (${n} outside the selection ${n === 1 ? 'does' : 'do'})`,
       )
     }
-    process.stdout.write(renderTaskAcross(root, shown, projectName!, parsed.format, colorsOut()))
+    emit(renderTaskAcross(root, shown, projectName!, parsed.format))
     return 0
   }
 
@@ -260,9 +258,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const dir = projectDir(root, meta)
 
   if (taskName === undefined) {
-    process.stdout.write(
-      renderProject(meta.name, dir, config, meta.configPath !== null, parsed.format, colorsOut()),
-    )
+    emit(renderProject(meta.name, dir, config, meta.configPath !== null, parsed.format))
     return 0
   }
 
@@ -273,7 +269,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       'VX_E_UNKNOWN_TASK',
     )
   }
-  process.stdout.write(renderTask(meta.name, dir, taskName, task, parsed.format, colorsOut()))
+  emit(renderTask(meta.name, dir, taskName, task, parsed.format))
   return 0
 }
 
@@ -346,8 +342,13 @@ function shownConfig(config: ProjectConfig | null): ProjectConfig | null {
   }
 }
 
-const colorsOut = (): ColorSupport => detectColors(process.stdout)
-const PLAIN: ColorSupport = { enabled: false }
+/** What `vx show` prints: JSON a program reads, or blocks a person does. */
+type Shown = string | readonly ui.Block[]
+
+function emit(shown: Shown): void {
+  if (typeof shown === 'string') ui.data('out', shown)
+  else if (shown.length > 0) ui.print('out', ...shown)
+}
 
 /** One block of several, with no blank line between them. */
 const joined = (blocks: readonly ui.Block[]): ui.Block => ({
@@ -359,8 +360,7 @@ function renderList(
   metas: readonly ProjectMeta[],
   projects: ReadonlyMap<string, ProjectEntry>,
   format: 'pretty' | 'json',
-  colors: ColorSupport = PLAIN,
-): string {
+): Shown {
   const rows = metas.map((meta) => {
     const tasks = projects.get(meta.name)?.config.tasks ?? {}
     return {
@@ -375,7 +375,7 @@ function renderList(
   if (format === 'json') {
     return `${JSON.stringify(rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })))}\n`
   }
-  if (rows.length === 0) return ''
+  if (rows.length === 0) return []
   const anyTags = rows.some((r) => r.tags.length > 0)
   const cells = rows.map((r) => {
     const n = r.tasks.length
@@ -392,7 +392,7 @@ function renderList(
     return [ui.id(r.name), r.dir, tasks, ...(anyTags ? [r.tags.join(', ')] : [])]
   })
   const columns = ['project', 'dir', 'tasks', ...(anyTags ? ['tags'] : [])]
-  return ui.render([ui.table(columns, cells)], colors)
+  return [ui.section('Projects', String(rows.length), ui.table(columns, cells))]
 }
 
 function renderProject(
@@ -401,8 +401,7 @@ function renderProject(
   config: ProjectConfig | null,
   hasConfigFile: boolean,
   format: 'pretty' | 'json',
-  colors: ColorSupport = PLAIN,
-): string {
+): Shown {
   if (format === 'json') {
     // Round-trip so the printed object is exactly the JSON form of the
     // resolved config (drops `undefined` fields).
@@ -421,7 +420,7 @@ function renderProject(
   const blocks = tasks.map(([taskName, task]) =>
     joined([ui.text(ui.id(`${name}#${taskName}`)), ui.fields(taskRows(task))]),
   )
-  return ui.render([ui.report(name, head), ...blocks], colors)
+  return [ui.section(name, ui.fields(head), ...blocks)]
 }
 
 function renderTask(
@@ -430,13 +429,12 @@ function renderTask(
   taskName: string,
   task: TaskConfig,
   format: 'pretty' | 'json',
-  colors: ColorSupport = PLAIN,
-): string {
+): Shown {
   if (format === 'json') {
     const obj = { name, dir, task: taskName, config: shownTask(task) }
     return `${JSON.stringify(obj)}\n`
   }
-  return ui.render([taskReport(name, dir, taskName, task)], colors)
+  return [taskReport(name, dir, taskName, task)]
 }
 
 function renderTaskAcross(
@@ -444,8 +442,7 @@ function renderTaskAcross(
   declaring: readonly ProjectEntry[],
   taskName: string,
   format: 'pretty' | 'json',
-  colors: ColorSupport,
-): string {
+): Shown {
   if (format === 'json') {
     const list = declaring.map((p) => ({
       name: p.name,
@@ -455,22 +452,14 @@ function renderTaskAcross(
     }))
     return `${JSON.stringify(list)}\n`
   }
-  if (declaring.length === 0) return ''
-  return ui.render(
-    [
-      joined(
-        declaring.map((p) =>
-          taskReport(p.name, relPosix(root, p.dir) || '.', taskName, p.config.tasks![taskName]!),
-        ),
-      ),
-    ],
-    colors,
+  return declaring.map((p) =>
+    taskReport(p.name, relPosix(root, p.dir) || '.', taskName, p.config.tasks![taskName]!),
   )
 }
 
-/** `─ app#build ───`, the project's dir, then every field the run reads. */
+/** The `app#build` panel: the project's dir, then every field the run reads. */
 function taskReport(name: string, dir: string, taskName: string, task: TaskConfig): ui.Block {
-  return ui.report(`${name}#${taskName}`, [['dir', dir], ...taskRows(task)])
+  return ui.section(`${name}#${taskName}`, ui.fields([['dir', dir], ...taskRows(task)]))
 }
 
 /** Every field the run reads, in the order the schema declares them. */

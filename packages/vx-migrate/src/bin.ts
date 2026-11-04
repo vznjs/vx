@@ -27,6 +27,9 @@ try {
   const { migrateCmd } = await import('./migrate.js')
   process.exitCode = await migrateCmd(process.argv.slice(2))
 } catch (err) {
+  // `ui` by namespace: a core older than it has none, and its refusal
+  // still reaches the reader.
+  const ui = (core as Partial<typeof core>).ui
   // Asked for JSON (`vx init --dry --format json` hands a Turbo or Nx repo
   // here), a refusal is core's error document on stdout too
   // (schemas/error.json): stdout was empty.
@@ -38,14 +41,11 @@ try {
     const docs = code.startsWith('VX_E_')
       ? { docs: `https://vznjs.github.io/vx/cli/#${code.toLowerCase()}` }
       : {}
-    process.stdout.write(
-      `${JSON.stringify({ ok: false, error: { code, message: `vx-migrate: ${message}`, ...docs } })}\n`,
-    )
+    const doc = `${JSON.stringify({ ok: false, error: { code, message: `vx-migrate: ${message}`, ...docs } })}\n`
+    if (ui === undefined) process.stdout.write(doc)
+    else ui.data('out', doc)
   }
   if (isUserError(err)) {
-    // `ui` by namespace: a core older than it has none, and its refusal
-    // still reaches the reader.
-    const ui = (core as Partial<typeof core>).ui
     if (ui === undefined) process.stderr.write(`vx-migrate: ${err.message}\n`)
     else ui.say('error', `vx-migrate: ${err.message}`)
     process.exitCode = 1

@@ -7,7 +7,8 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { UserError, sayLine } from '../util/index.js'
+import { UserError } from '../util/index.js'
+import { sayLine } from '../ui/index.js'
 import {
   discoverProjects,
   loadProjects,

@@ -4,7 +4,8 @@
 // class with the endpoint named. The order across remotes, the local store
 // and provenance are `LayeredCache`'s; nothing here knows another remote.
 
-import { machineParallelism, thrownMessage, ui } from '../util/index.js'
+import { machineParallelism, thrownMessage } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
 import type { ArtifactInfo, RemoteCacheLayer } from './layered-cache.js'
 

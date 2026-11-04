@@ -55,8 +55,8 @@ it('vx last shows the warnings a run said, plain, in pretty and json', () => {
   expect(json.warnings[0]).toContain('matched no files')
   expect(json.warnings[0]).not.toContain('\x1b[')
   const pretty = vx('last').out
-  expect(pretty).toContain('\n  warnings\n')
-  expect(pretty).toContain(`    ${json.warnings[0]!.split('\n')[0]}`)
+  expect(pretty).toMatch(/\n─ Warnings 1 ─+\n/)
+  expect(pretty).toContain(`  ${json.warnings[0]!.split('\n')[0]}`)
   // A table `vx last --sql` reads, and no file beside the index.
   const sql = JSON.parse(
     vx(

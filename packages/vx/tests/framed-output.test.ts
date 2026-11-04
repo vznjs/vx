@@ -58,24 +58,24 @@ describe('identity hues never read as an outcome', () => {
   // constants: the guarantee IS the disjointness.
   const read = (...parts: string[]) =>
     readFileSync(path.resolve(import.meta.dir, '..', 'src', ...parts), 'utf8')
-  const src = read('report', 'framed-output.ts')
+  const src = read('ui', 'theme.ts')
   const hue = (name: string): string => {
-    const m = new RegExp(`^const ${name} = '(#[0-9a-fA-F]{6})'`, 'm').exec(src)
-    if (m === null) throw new Error(`no hue constant named ${name}`)
+    const m = new RegExp(`^  ${name}: '(#[0-9a-fA-F]{6})'`, 'm').exec(src)
+    if (m === null) throw new Error(`no hue named ${name}`)
     return m[1]!.toLowerCase()
   }
   const identityPalette = (): string[] => {
-    const block = /const IDENTITY_PALETTE = \[([\s\S]*?)\] as const/.exec(read('util', 'colors.ts'))
-    if (block === null) throw new Error('no IDENTITY_PALETTE block')
+    const block = /const IDENTITY = \[([\s\S]*?)\]/.exec(src)
+    if (block === null) throw new Error('no IDENTITY block')
     return [...block[1]!.matchAll(/'(#[0-9a-fA-F]{6})'/g)].map((m) => m[1]!.toLowerCase())
   }
 
   it('the identity palette and the status palette share no hue', () => {
-    const status = ['ACCENT', 'SUCCESS', 'WARN', 'ERROR', 'ABORTED', 'LOCAL', 'REMOTE'].map(hue)
+    const status = ['info', 'ok', 'warn', 'error', 'aborted', 'notRun', 'local', 'remote'].map(hue)
     const identity = identityPalette()
     // Non-vacuity: a regex that silently stopped matching would otherwise
     // pass by comparing two empty sets.
-    expect(status.length).toBe(7)
+    expect(status.length).toBe(8)
     expect(identity.length).toBeGreaterThanOrEqual(7)
     expect(identity.filter((h) => status.includes(h))).toEqual([])
   })

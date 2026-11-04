@@ -8,8 +8,8 @@ import os from 'node:os'
 import path from 'node:path'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { formatTaskBlock } from '../src/report/framed-output.js'
-import { fileMemo, linkPaths } from '../src/report/path-links.js'
-import { terminalLinks } from '../src/report/terminal-signals.js'
+import { fileMemo, linkPaths } from '../src/ui/links.js'
+import { terminalLinks } from '../src/ui/terminal-signals.js'
 
 const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-links-')))
 const dir = path.join(root, 'pkg')

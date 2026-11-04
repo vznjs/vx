@@ -347,9 +347,15 @@ describe('a task picked on a terminal', () => {
         cwd: root,
         env: { ...process.env, NO_COLOR: '1' },
       })
-      expect({ code, command: last.stdout.toString().split('\n')[1] }).toEqual({
+      expect({
+        code,
+        command: last.stdout
+          .toString()
+          .split('\n')
+          .find((l) => l.startsWith('  command ')),
+      }).toEqual({
         code: 0,
-        command: '  $ vx run app#build -- x',
+        command: expect.stringMatching(/^ {2}command +vx run app#build -- x$/),
       })
     } finally {
       await rm(root, { recursive: true, force: true })

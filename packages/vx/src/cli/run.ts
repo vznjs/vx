@@ -20,16 +20,11 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere, undeclaredTasks } from './task-verb.js'
-import {
-  detectColors,
-  envFlagOn,
-  hasControl,
-  parseDecimalInt,
-  sayNotice,
-  sayLine,
-} from '../util/index.js'
+import { envFlagOn, hasControl, parseDecimalInt } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { sayNotice, sayLine } from '../ui/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
-import { formatPlanJson, formatPlanText } from './plan-format.js'
+import { formatPlanJson, planReport } from './plan-format.js'
 
 export interface RunArgs {
   /** Failure propagation (`--continue[=never|deps-ok|always]`). */
@@ -672,8 +667,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // `--dry=json` prints a plan even when there is nothing to run: a script
   // reading stdout broke exactly then (Growth, 2026-10-16).
   const nothingToRun = (): 0 => {
-    if (parsed.dry === 'json')
-      process.stdout.write(formatPlanJson({ tasks: [] }, scopeOut.affectedBase))
+    if (parsed.dry === 'json') ui.data('out', formatPlanJson({ tasks: [] }, scopeOut.affectedBase))
     return 0
   }
   if ('nothingSelected' in resolved) {
@@ -715,9 +709,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       return unknownTask(`no projects declare task(s): ${tasks.join(', ')}`)
     }
     if (parsed.dry === 'json') {
-      process.stdout.write(formatPlanJson(plan, scopeOut.affectedBase))
+      ui.data('out', formatPlanJson(plan, scopeOut.affectedBase))
     } else {
-      process.stdout.write(formatPlanText(plan, detectColors(process.stdout)))
+      ui.print('out', planReport(plan))
     }
     return 0
   }

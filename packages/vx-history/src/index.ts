@@ -805,7 +805,7 @@ async function historyCmd(
     // A plugin verb owns its help; completions offer `--help` for every verb.
     if (a === '--help' || a === '-h') {
       ui.say('info', 'Usage: vx history [--format pretty|json]', 'out')
-      process.stdout.write('\n')
+      ui.print('out', ui.gap())
       ui.say(
         'info',
         'What vx-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.',
@@ -881,7 +881,7 @@ async function historyCmd(
     }
   })
   if (format === 'json') {
-    process.stdout.write(`${JSON.stringify({ window, budgets, tasks: rows })}\n`)
+    ui.data('out', `${JSON.stringify({ window, budgets, tasks: rows })}\n`)
     return 0
   }
   // The table's module loads with the verb, off every run's path.

@@ -23,3 +23,22 @@ export function envFlag(name: string): boolean {
   const v = process.env[name]
   return v !== undefined && v !== '' && v !== '0' && v.toLowerCase() !== 'false'
 }
+
+/**
+ * The variables that mark a CI, each of which turns vx's colour on
+ * (ui/theme.ts): a test of the colour decision off CI drops them all, as
+ * the runner it runs on sets `CI` itself.
+ */
+export function dropCi(env: Record<string, string | undefined>): void {
+  for (const name of [
+    'CI',
+    'GITHUB_ACTIONS',
+    'GITLAB_CI',
+    'BUILDKITE',
+    'CIRCLECI',
+    'TF_BUILD',
+    'JENKINS_URL',
+    'TEAMCITY_VERSION',
+  ])
+    delete env[name]
+}

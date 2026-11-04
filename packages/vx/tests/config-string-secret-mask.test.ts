@@ -13,7 +13,9 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { pickTask } from '../src/cli/select.js'
 import { run } from '../src/orchestrator/index.js'
 import { type Logger } from '../src/report/index.js'
-import { gradientRule } from '../src/util/index.js'
+import { panelTop } from '../src/ui/index.js'
+
+const gradientRule = (c: { enabled: boolean }, title: string): string => panelTop(title, c)
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const TOKEN = 'tokenvalue123'
@@ -84,7 +86,6 @@ const leaks = (text: string): boolean => text.includes(TOKEN) || text.includes(P
 it('vx show masks every string of the task', () => {
   expect(vx(['show', 'app#t'])).toBe(
     [
-      '',
       gradientRule({ enabled: false }, 'app#t'),
       '  dir             packages/app',
       '  description     deploys *** ***',
@@ -98,7 +99,6 @@ it('vx show masks every string of the task', () => {
   )
   expect(vx(['show', 'app#srv'])).toBe(
     [
-      '',
       gradientRule({ enabled: false }, 'app#srv'),
       '  dir         packages/app',
       '  command     true',
@@ -176,12 +176,12 @@ it("vx why names a runtime probe's row masked, and the history holds no value", 
     'changed runtime echo *** $(cat stamp) (2)',
   ])
   const pretty = vx(['why', 'app#t'])
-  expect(pretty.split('\n').filter((l) => l.startsWith('    changed runtime'))).toEqual([
+  expect(pretty.split('\n').filter((l) => /^ {2}changed +runtime/.test(l))).toEqual([
     expect.stringMatching(
-      /^ {4}changed runtime {2}echo \*\*\* \$\(cat stamp\) {2}[0-9a-f]{16} → [0-9a-f]{16}$/,
+      /^ {2}changed +runtime +echo \*\*\* \$\(cat stamp\) {2,}[0-9a-f]{16} → [0-9a-f]{16}$/,
     ),
     expect.stringMatching(
-      /^ {4}changed runtime {2}echo \*\*\* \$\(cat stamp\) \(2\) {2}[0-9a-f]{16} → [0-9a-f]{16}$/,
+      /^ {2}changed +runtime +echo \*\*\* \$\(cat stamp\) \(2\) {2,}[0-9a-f]{16} → [0-9a-f]{16}$/,
     ),
   ])
   expect(leaks(pretty)).toBe(false)

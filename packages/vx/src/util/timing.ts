@@ -9,7 +9,6 @@
 // prints (a push per stage, ~15 a run): a telemetry sink draws them as
 // spans (`stageTimes`). The per-call `span`s stay off unless enabled.
 
-import { detectColors, paint } from './colors.js'
 const enabled = process.env.VX_DEBUG_TIMING === 'true' || process.env.VX_DEBUG_TIMING === '1'
 let t0 = Bun.nanoseconds()
 // The wall clock at t0, read then: `performance.timeOrigin` plus the
@@ -88,9 +87,9 @@ export function span(label: string): () => void {
   }
 }
 
-/** Print the stage table (once, at the end of a run). No-op unless enabled. */
-export function printTimings(): void {
-  if (!enabled || marks.length === 0) return
+/** The stage table's lines (once, at the end of a run); none unless enabled. */
+export function timingLines(): string[] | undefined {
+  if (!enabled || marks.length === 0) return undefined
   const width = Math.max(...marks.map(([l]) => l.length))
   let prev = 0
   const lines = ['[vx timing]  stage'.padEnd(width + 14) + '    own   cumulative']
@@ -118,16 +117,5 @@ export function printTimings(): void {
       '             (wall per call, summed; concurrent calls overlap — compare spans, not totals)',
     )
   }
-  const c = detectColors(process.stderr)
-  process.stderr.write(
-    `${lines
-      .map((l) =>
-        l.startsWith('[vx timing]')
-          ? `${paint('#06b6d4', '[vx timing]', c, { bold: true })}${paint('', l.slice(11), c, { dim: true })}`
-          : l.startsWith('             (')
-            ? paint('', l, c, { dim: true })
-            : l,
-      )
-      .join('\n')}\n`,
-  )
+  return lines
 }

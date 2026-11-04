@@ -1,7 +1,8 @@
 // A CI log's view of the CLI (item 249): every verb, piped, with CI set,
-// carries no escape sequence and no carriage return. The status line and
-// the colour decision each have their unit pins; this is the whole
-// output as a log file receives it.
+// is coloured like the terminal, and carries no other escape (no cursor
+// move, no erase, no title) and no carriage return: nothing is redrawn.
+// The status line and the colour decision each have their unit pins; this
+// is the whole output as a log file receives it.
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -31,7 +32,7 @@ function vx(
   }
 }
 
-describe('a CI log receives the CLI plain', () => {
+describe('a CI log receives the CLI coloured, never redrawn', () => {
   let root: string
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-ci-output-' })
@@ -58,7 +59,7 @@ describe('a CI log receives the CLI plain', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('no escape sequence and no carriage return, on a miss, a hit, a failure, and the readers', () => {
+  it('colour and no other escape or carriage return, on a miss, a hit, a failure, and the readers', () => {
     const verbs: [string[], number][] = [
       [['run', 'build', '--all'], 0],
       [['run', 'build', '--all'], 0],
@@ -71,7 +72,10 @@ describe('a CI log receives the CLI plain', () => {
     for (const [args, code] of verbs) {
       const r = vx(root, { CI: '1' }, args)
       expect(`${args.join(' ')}: ${r.code}`).toBe(`${args.join(' ')}: ${code}`)
-      expect(`${args.join(' ')}: ${r.text}`).not.toContain('\x1b')
+      expect(`${args.join(' ')}: ${r.text}`).toContain('\x1b[')
+      // oxlint-disable-next-line no-control-regex -- the escapes are what this reads
+      const other = r.text.replace(/\x1b\[[0-9;]*m/g, '')
+      expect(`${args.join(' ')}: ${other}`).not.toContain('\x1b')
       expect(`${args.join(' ')}: ${r.text}`).not.toContain('\r')
     }
   }, 30_000)

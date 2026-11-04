@@ -30,20 +30,15 @@ import {
 } from '../orchestrator/index.js'
 import { outcomeWord, type WireEvent } from '../report/index.js'
 import {
-  detectColors,
-  ERROR,
   formatElapsed,
   nearest,
-  paint,
   parseDecimalInt,
   refusal,
   splitTaskId,
-  SUCCESS,
   UserError,
-  sayNotice,
-  ui,
-  type ColorSupport,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { sayNotice } from '../ui/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
 import { cliCacheDir, parseCacheDirFlag, rootSpelled } from './workspace-config.js'
@@ -316,7 +311,7 @@ async function printStats(
     )
   }
   if (format === 'json') {
-    process.stdout.write(`${JSON.stringify({ window: provider.recent, branch, stats })}\n`)
+    ui.data('out', `${JSON.stringify({ window: provider.recent, branch, stats })}\n`)
     return 0
   }
   if (stats.length === 0) {
@@ -325,33 +320,37 @@ async function printStats(
   }
   const pct = (r: number): string => `${Math.round(r * 100)}%`
   const ms = (v: number | null): string => (v === null ? '-' : fmtMs(v))
-  const rows = [
-    ['task', 'runs', 'p50', 'p99', 'pass', 'hit', 'failure mode', 'peak rss', 'cpu'],
-    ...stats.map((s) => [
-      s.taskId,
-      String(s.runs),
-      ms(s.p50DurationMs),
-      ms(s.p99DurationMs),
-      pct(s.successRate),
-      pct(s.hitRate),
-      s.failureMode,
-      s.maxPeakRssBytes === null ? '-' : formatBytes(s.maxPeakRssBytes),
-      s.maxCpuParallelism === null ? '-' : `${s.maxCpuParallelism.toFixed(1)}×`,
-    ]),
-  ]
-  const widths = rows[0]!.map((_, c) => Math.max(...rows.map((r) => r[c]!.length)))
-  const c = detectColors(process.stdout)
-  const lines = rows.map((r, i) =>
-    r
-      .map((cell, col) => {
-        const padded = col === r.length - 1 ? cell : cell.padEnd(widths[col]!)
-        if (i === 0) return paint('', padded, c, { dim: true })
-        return col === 0 ? `${ui.inline(ui.id(cell), c)}${padded.slice(cell.length)}` : padded
-      })
-      .join('  ')
-      .trimEnd(),
+  const right = (title: string): ui.Column => ({ title, align: 'right' })
+  ui.print(
+    'out',
+    ui.section(
+      'Task stats',
+      ui.table(
+        [
+          'task',
+          right('runs'),
+          right('p50'),
+          right('p99'),
+          right('pass'),
+          right('hit'),
+          'failure mode',
+          right('peak rss'),
+          right('cpu'),
+        ],
+        stats.map((s) => [
+          ui.id(s.taskId),
+          String(s.runs),
+          ms(s.p50DurationMs),
+          ms(s.p99DurationMs),
+          pct(s.successRate),
+          pct(s.hitRate),
+          s.failureMode,
+          s.maxPeakRssBytes === null ? '-' : formatBytes(s.maxPeakRssBytes),
+          s.maxCpuParallelism === null ? '-' : `${s.maxCpuParallelism.toFixed(1)}×`,
+        ]),
+      ),
+    ),
   )
-  process.stdout.write(`${lines.join('\n')}\n`)
   return 0
 }
 
@@ -413,7 +412,7 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
       )
     }
     const rows = values.map((v) => Object.fromEntries(columns.map((c, i) => [c, v[i]])))
-    process.stdout.write(`${JSON.stringify({ rows })}\n`)
+    ui.data('out', `${JSON.stringify({ rows })}\n`)
     return 0
   }
   if (values.length === 0) return 0
@@ -424,15 +423,13 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
       : v instanceof Uint8Array
         ? `<${v.length} bytes>`
         : String(v)
-  const table = [columns, ...values.map((r) => r.map((v) => cell(v as Parameters<typeof cell>[0])))]
-  const widths = table[0]!.map((_, c) => Math.max(...table.map((r) => r[c]!.length)))
-  const lines = table.map((r) =>
-    r
-      .map((v, c) => v.padEnd(widths[c]!))
-      .join('  ')
-      .trimEnd(),
+  ui.print(
+    'out',
+    ui.table(
+      columns,
+      values.map((r) => r.map((v) => ui.strong(cell(v as Parameters<typeof cell>[0])))),
+    ),
   )
-  process.stdout.write(`${lines.join('\n')}\n`)
   return 0
 }
 
@@ -465,12 +462,15 @@ async function printLive(
   const line = (text: string): void => {
     if (snapshot === undefined) {
       snapshot = JSON.parse(text) as LiveSnapshot
-      if (format === 'json') process.stdout.write(`${text}\n`)
-      else process.stdout.write(`${formatLive(snapshot).join('\n')}\n`)
+      if (format === 'json') ui.data('out', `${text}\n`)
+      else ui.print('out', ...formatLive(snapshot))
       return
     }
-    if (format === 'json') process.stdout.write(`${text}\n`)
-    else process.stdout.write(formatLiveEvent(JSON.parse(text) as WireEvent))
+    if (format === 'json') ui.data('out', `${text}\n`)
+    else {
+      const event = formatLiveEvent(JSON.parse(text) as WireEvent)
+      if (event !== undefined) ui.print('out', event)
+    }
   }
   try {
     await Bun.connect({
@@ -507,49 +507,72 @@ async function printLive(
   return 0
 }
 
-function formatLive(s: LiveSnapshot): string[] {
+function formatLive(s: LiveSnapshot): ui.Block[] {
   const count = (status: string): number => s.tasks.filter((t) => t.status === status).length
   const running = count('running')
   const waiting = count('waiting')
   const failed = count('failed')
-  const lines = [
-    `run ${s.live.runId} — running ${fmtMs(s.live.elapsedMs)}`,
-    `  $ ${s.live.command}`,
-    `  ${running} running · ${s.tasks.length - running - waiting} ended${failed > 0 ? ` · ${failed} failed` : ''} · ${waiting} waiting`,
-    '',
-  ]
-  const width = Math.max(...s.tasks.map((t) => t.status.length), 7)
-  const idWidth = Math.max(...s.tasks.map((t) => t.taskId.length), 0)
   const now = s.live.startedAt + s.live.elapsedMs
-  for (const t of s.tasks) {
-    const ms =
-      t.durationMs !== null ? t.durationMs : t.startedAt !== null ? now - t.startedAt : null
-    lines.push(
-      `  ${t.status.padEnd(width)}  ${ms === null ? t.taskId : `${t.taskId.padEnd(idWidth)}  ${fmtMs(ms)}`}`,
-    )
-  }
-  if (s.warnings.length > 0) {
-    lines.push('', '  warnings', ...s.warnings.flatMap((w) => w.split('\n').map((l) => `    ${l}`)))
-  }
-  return lines
+  const blocks = [
+    ui.section(
+      'Run',
+      s.live.runId,
+      ui.fields([
+        ['status', ui.tone('info', `running ${fmtMs(s.live.elapsedMs)}`)],
+        ['command', ui.cmd(s.live.command)],
+        [
+          'tasks',
+          `${running} running · ${s.tasks.length - running - waiting} ended${failed > 0 ? ` · ${failed} failed` : ''} · ${waiting} waiting`,
+        ],
+      ]),
+    ),
+    ui.section(
+      'Tasks',
+      String(s.tasks.length),
+      ui.table(
+        ['status', 'task', { title: 'time', align: 'right' }],
+        s.tasks.map((t) => {
+          const ms =
+            t.durationMs !== null ? t.durationMs : t.startedAt !== null ? now - t.startedAt : null
+          return [
+            ui.tone(
+              t.status === 'failed' ? 'error' : t.status === 'running' ? 'info' : 'muted',
+              t.status,
+            ),
+            ui.id(t.taskId),
+            ms === null ? '' : fmtMs(ms),
+          ]
+        }),
+      ),
+    ),
+  ]
+  if (s.warnings.length > 0)
+    blocks.push(ui.section('Warnings', String(s.warnings.length), ui.text(...s.warnings)))
+  return blocks
 }
 
-/** One followed event as a line: a task's output prefixed by its id, an end, a warning. */
-function formatLiveEvent(e: WireEvent): string {
+/** One followed event: a task's output under its id, an end, a warning. */
+function formatLiveEvent(e: WireEvent): ui.Block | undefined {
   switch (e.kind) {
     case 'task:stdout':
     case 'task:stderr':
-      return e.chunk
-        .replace(/\n$/, '')
-        .split('\n')
-        .map((l) => `${e.taskId} │ ${l}\n`)
-        .join('')
+      return ui.text(
+        ...e.chunk
+          .replace(/\n$/, '')
+          .split('\n')
+          .map((l): ui.Inline => [ui.id(e.taskId), ui.dim(' │ '), ui.tone('plain', l)]),
+      )
     case 'task:complete':
-      return `${outcomeWord(e.outcome)}  ${e.outcome.taskId}  ${fmtMs(e.outcome.durationMs)}\n`
+      return ui.text([
+        ui.tone(e.outcome.status === 'failed' ? 'error' : 'ok', outcomeWord(e.outcome)),
+        '  ',
+        ui.id(e.outcome.taskId),
+        ui.dim(`  ${fmtMs(e.outcome.durationMs)}`),
+      ])
     case 'run:status':
-      return 'warn' in e ? `warn  ${Bun.stripANSI(e.line)}\n` : ''
+      return 'warn' in e ? ui.status('warn', 'warn', Bun.stripANSI(e.line)) : undefined
     default:
-      return ''
+      return undefined
   }
 }
 
@@ -633,16 +656,17 @@ const HITS_SHOWN = 16
  * The steps the run did not wait on (`vx:prefetch`), which its own output
  * never showed (2026-10-16): here for debugging, marked `internal`.
  */
-function formatStepRows(steps: readonly RunStep[], c: ColorSupport): string[] {
-  if (steps.length === 0) return []
-  const idW = Math.max(...steps.map((s) => s.id.length), 4)
-  return [
-    '',
-    ...steps.map(
-      (s) =>
-        `  ${paint(s.ok ? SUCCESS : ERROR, (s.ok ? 'success' : 'failed').padEnd(17), c)} ${paint('', s.id.padEnd(idW), c, { bold: true })}  ${paint('', `${fmtMs(s.durationMs).padStart(8)}  internal`, c, { dim: true })}`,
-    ),
-  ]
+function formatStepRows(steps: readonly RunStep[]): ui.Block | undefined {
+  if (steps.length === 0) return undefined
+  return ui.table(
+    ['', '', { title: '', align: 'right' }, ''],
+    steps.map((s) => [
+      ui.tone(s.ok ? 'ok' : 'error', s.ok ? 'success' : 'failed'),
+      ui.strong(s.id),
+      fmtMs(s.durationMs),
+      'internal',
+    ]),
+  )
 }
 
 /**
@@ -656,10 +680,9 @@ function formatStepRows(steps: readonly RunStep[], c: ColorSupport): string[] {
 
 export function formatTaskRows(
   tasks: readonly RunSummaryRow[],
-  c: ColorSupport = { enabled: false },
   /** Task id → the input that moved under it, from the run's kept failures. */
   inputMoved: ReadonlyMap<string, string> = new Map(),
-): string[] {
+): ui.Block[] {
   if (tasks.length === 0) return []
   const failed = tasks.filter((t) => t.status === 'failed')
   const hits = tasks.filter((t) => t.status !== 'failed' && t.cacheHit === true)
@@ -669,15 +692,10 @@ export function formatTaskRows(
     ? [...hits].sort((a, b) => b.durationMs - a.durationMs).slice(0, HITS_SHOWN)
     : hits
   const ordered = [...failed, ...rest, ...shownHits]
-  const at = (t: (typeof ordered)[number]): string =>
-    t.placement !== null ? `@${t.placement}` : ''
-  const idW = Math.max(...ordered.map((t) => `${t.project}#${t.task}${at(t)}`.length), 4)
   const skippedHere = new Set(
     tasks.filter((t) => t.status === 'skipped').map((t) => `${t.project}#${t.task}`),
   )
-  const lines = ['']
-  for (const t of ordered) {
-    const id = `${t.project}#${t.task}${at(t)}`
+  const rows = ordered.map((t): ui.Inline[] => {
     // The terminal summary's own word for a task that runs every time
     // by design; a reader must not take its row for a miss.
     // A failure's row reads as the frame did — `failed (exit 137)` —
@@ -690,29 +708,28 @@ export function formatTaskRows(
         : t.cacheHit === true && t.restored !== null
           ? outcomeWord({ status: t.status as 'cache-hit', restored: t.restored })
           : t.status
-    const hue = t.status === 'failed' ? ERROR : t.status === 'skipped' ? '' : SUCCESS
-    lines.push(
-      `  ${paint(hue, status.padEnd(17), c, { dim: hue === '' })} ${ui.inline(ui.id(id), c)}${' '.repeat(idW - id.length)}  ${fmtMs(t.durationMs).padStart(8)}` +
-        paint(
-          '',
-          `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-            reasonParts(t, skippedHere, inputMoved.get(`${t.project}#${t.task}`)),
-          c,
-          { dim: true },
-        ),
-    )
-  }
-  if (folded) {
-    lines.push(
-      paint(
-        '',
-        `  … +${hits.length - HITS_SHOWN} more cache hit${hits.length - HITS_SHOWN === 1 ? '' : 's'} (the ${HITS_SHOWN} slowest restores shown) — vx last --format json lists every row`,
-        c,
-        { dim: true },
+    const hue = t.status === 'failed' ? 'error' : t.status === 'skipped' ? 'muted' : 'ok'
+    return [
+      ui.tone(hue, status),
+      [
+        ui.id(`${t.project}#${t.task}`),
+        ...(t.placement !== null ? [ui.dim(`@${t.placement}`)] : []),
+      ],
+      fmtMs(t.durationMs),
+      (
+        `${t.hash !== '' ? t.hash : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
+        reasonParts(t, skippedHere, inputMoved.get(`${t.project}#${t.task}`))
+      ).trim(),
+    ]
+  })
+  const blocks = [ui.table(['status', 'task', { title: 'time', align: 'right' }, 'key'], rows)]
+  if (folded)
+    blocks.push(
+      ui.text(
+        `… +${hits.length - HITS_SHOWN} more cache hit${hits.length - HITS_SHOWN === 1 ? '' : 's'} (the ${HITS_SHOWN} slowest restores shown): \`vx last --format json\` lists every row`,
       ),
     )
-  }
-  return lines
+  return blocks
 }
 
 /**
@@ -756,22 +773,20 @@ export function formatRunList(
     >
     id: string
   }[],
-  c: ColorSupport = { enabled: false },
-): string[] {
-  const rows = runs.map(({ inv, id }) => ({
-    head: `${inv.exitOk ? 'ok    ' : 'FAILED'} ${fmtWhen(inv.startedAt)}`,
-    id,
-    counts: `${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`,
-    failed: inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : '',
-    ms: fmtMs(inv.totalDurationMs),
-    command: inv.command,
-  }))
-  const idW = Math.max(...rows.map((r) => r.id.length))
-  const countsW = Math.max(...rows.map((r) => r.counts.length + r.failed.length))
-  const msW = Math.max(...rows.map((r) => r.ms.length))
-  return rows.map(
-    (r) =>
-      `${paint(r.head.startsWith('ok') ? SUCCESS : ERROR, r.head.slice(0, 6), c)}${paint('', r.head.slice(6), c, { dim: true })}  ${paint('', r.id.padEnd(idW), c, { bold: true })}  ${paint('', r.counts, c, { dim: true })}${paint(ERROR, r.failed, c)}${paint('', `${' '.repeat(countsW - r.counts.length - r.failed.length)}  ${r.ms.padStart(msW)}  $`, c, { dim: true })} ${r.command}`,
+): ui.Block {
+  return ui.table(
+    ['', 'when', 'run', 'tasks', { title: 'time', align: 'right' }, 'command'],
+    runs.map(({ inv, id }) => [
+      inv.exitOk ? ui.tone('ok', 'ok') : ui.tone('error', 'FAILED'),
+      fmtWhen(inv.startedAt),
+      ui.strong(id),
+      [
+        ui.dim(`${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`),
+        ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
+      ],
+      fmtMs(inv.totalDurationMs),
+      ui.cmd(inv.command),
+    ]),
   )
 }
 
@@ -846,7 +861,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         )
       }
       if (parsed.format === 'json') {
-        process.stdout.write(`${JSON.stringify(log)}\n`)
+        ui.data('out', `${JSON.stringify(log)}\n`)
         return 0
       }
       if (log.source === null) {
@@ -872,7 +887,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       } else if (log.output === '') {
         sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)
       }
-      process.stdout.write(log.output)
+      // The task's own bytes, as it wrote them.
+      ui.data('out', log.output)
       return 0
     }
 
@@ -882,7 +898,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
           ? failedInvocations(db, parsed.list)
           : listInvocations(db, { limit: parsed.list })
       if (parsed.format === 'json') {
-        process.stdout.write(`${JSON.stringify(invocations)}\n`)
+        ui.data('out', `${JSON.stringify(invocations)}\n`)
         return 0
       }
       if (invocations.length === 0) {
@@ -890,11 +906,14 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         ui.print('out', ui.status('info', 'vx last', none))
         return 0
       }
-      const lines = formatRunList(
-        invocations.map((inv) => ({ inv, id: shortRunId(db, inv.runId) })),
-        detectColors(process.stdout),
+      ui.print(
+        'out',
+        ui.section(
+          'Runs',
+          String(invocations.length),
+          formatRunList(invocations.map((inv) => ({ inv, id: shortRunId(db, inv.runId) }))),
+        ),
       )
-      process.stdout.write(`${lines.join('\n')}\n`)
       return 0
     }
 
@@ -943,7 +962,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       })
       const steps = keptSteps(db, inv.runId)
       const warnings = keptWarnings(db, inv.runId)
-      process.stdout.write(
+      ui.data(
+        'out',
         `${JSON.stringify({
           invocation: inv,
           tasks,
@@ -954,36 +974,43 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       return 0
     }
 
-    const c = detectColors(process.stdout)
-    const dim = (s: string): string => paint('', s, c, { dim: true })
-    const lines: string[] = []
-    lines.push(
-      `${paint('', 'run', c, { bold: true })} ${paint('', inv.runId, c, { bold: true })} ${dim('—')} ${inv.exitOk ? paint(SUCCESS, 'ok', c) : paint(ERROR, 'FAILED', c)}`,
-    )
-    lines.push(`  ${dim('$')} ${paint('', inv.command, c, { bold: true })}`)
-    lines.push(
-      dim(
-        `  ${fmtWhen(inv.startedAt)} · ${fmtMs(inv.totalDurationMs)}` +
-          `${inv.branch !== null ? ` · ${inv.branch}` : ''}` +
-          `${inv.commitSha !== null ? ` @ ${inv.commitSha.slice(0, 8)}${inv.dirty === true ? '+dirty' : ''}` : ''}` +
-          `${inv.ci ? ` · CI${inv.ciProvider !== null ? ` (${inv.ciProvider})` : ''}` : ''}`,
-      ),
-    )
-    lines.push(
-      dim(`  ${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`) +
-        `${inv.failedCount > 0 ? paint(ERROR, ` · ${inv.failedCount} failed`, c) : ''}`,
-    )
     const moved = new Map<string, string>()
     if (inv.failedCount > 0) {
       for (const f of runFailures(db, inv.runId)?.tasks ?? [])
         if (f.inputMoved !== undefined) moved.set(f.taskId, f.inputMoved)
     }
-    lines.push(...formatTaskRows(detail?.tasks ?? [], c, moved))
-    lines.push(...formatStepRows(keptSteps(db, inv.runId), c))
+    const blocks: ui.Block[] = [
+      ui.section(
+        'Run',
+        inv.runId,
+        ui.fields([
+          ['status', inv.exitOk ? ui.tone('ok', 'ok') : ui.tone('error', 'FAILED', true)],
+          ['command', ui.cmd(inv.command)],
+          [
+            'when',
+            `${fmtWhen(inv.startedAt)} · ${fmtMs(inv.totalDurationMs)}` +
+              `${inv.branch !== null ? ` · ${inv.branch}` : ''}` +
+              `${inv.commitSha !== null ? ` @ ${inv.commitSha.slice(0, 8)}${inv.dirty === true ? '+dirty' : ''}` : ''}` +
+              `${inv.ci ? ` · CI${inv.ciProvider !== null ? ` (${inv.ciProvider})` : ''}` : ''}`,
+          ],
+          [
+            'tasks',
+            [
+              ui.dim(`${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`),
+              ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
+            ],
+          ],
+        ]),
+      ),
+    ]
+    const taskRows = formatTaskRows(detail?.tasks ?? [], moved)
+    if (taskRows.length > 0)
+      blocks.push(ui.section('Tasks', String(detail?.tasks.length ?? 0), ...taskRows))
+    const stepRows = formatStepRows(keptSteps(db, inv.runId))
+    if (stepRows !== undefined) blocks.push(ui.section('Steps', stepRows))
     const warnings = keptWarnings(db, inv.runId)
-    if (warnings.length > 0) {
-      lines.push('', '  warnings', ...warnings.flatMap((w) => w.split('\n').map((l) => `    ${l}`)))
-    }
+    if (warnings.length > 0)
+      blocks.push(ui.section('Warnings', String(warnings.length), ui.text(...warnings)))
     // The next command after reading a failed run, with the arguments the
     // run forwarded to the tasks that got them (a failure under `-- --shard
     // 2` is that shard's); a dependency never got them, so its line has none.
@@ -996,14 +1023,11 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         const ids = failed
           .filter((t) => t.forwarded === withArgs)
           .map((t) => shellQuote(`${t.project}#${t.task}`))
-        if (ids.length > 0)
-          rerun.push(
-            `  ${dim('re-run what failed:')} ${paint('', `vx run ${ids.join(' ')}${withArgs ? args : ''}`, c, { bold: true })}`,
-          )
+        if (ids.length > 0) rerun.push(`vx run ${ids.join(' ')}${withArgs ? args : ''}`)
       }
-      lines.push('', ...rerun)
+      blocks.push(ui.fields([['next', ...rerun.map((r) => ui.cmd(r))]]))
     }
-    process.stdout.write(`${lines.join('\n')}\n`)
+    ui.print('out', ...blocks)
     return 0
   } finally {
     cache.close()

@@ -10,6 +10,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace } from './helpers/workspace.js'
+import { dropCi } from './helpers/env.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 60_000
@@ -39,6 +40,7 @@ function output(args: string[], env: Record<string, string>): string {
   const base = { ...process.env }
   delete base['NO_COLOR']
   delete base['FORCE_COLOR']
+  dropCi(base)
   const p = Bun.spawnSync({
     cmd: [process.execPath, BIN, ...args],
     cwd: root,

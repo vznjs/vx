@@ -4,7 +4,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { ui } from '../util/index.js'
+import * as ui from '../ui/index.js'
 
 /** Directories whose changes never trigger a re-run, wherever they appear. */
 export const IGNORED_SEGMENTS = ['node_modules', '.git']

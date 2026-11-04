@@ -27,25 +27,11 @@ export {
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
 export { envFlagOn } from './env-flag.js'
-export {
-  detectColors,
-  dumbTerminal,
-  ERROR,
-  identityColor,
-  paint,
-  SUCCESS,
-  WARN,
-  type ColorSupport,
-} from './colors.js'
-export { barWidth, gradientRule, ruleWidth } from './report.js'
-import * as ui from './ui.js'
-export { refusalNotice, sayLine, sayNotice } from './refusal-notice.js'
-export { ui }
 export { keysSorted, xxh3, xxh3hex } from './hash.js'
 export {
   beginRun,
   mark,
-  printTimings,
+  timingLines,
   restartTimings,
   span,
   stageTimes,

@@ -23,17 +23,14 @@ import {
 } from './upgrade.js'
 import { VERSION } from '../version.js'
 import {
-  detectColors,
   DOT_VX_GITATTRIBUTES,
   DOT_VX_GITIGNORE,
-  paint,
   refuseSymlink,
-  sayNotice,
-  SUCCESS,
-  ui,
   UserError,
   writeNoFollow,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { sayNotice } from '../ui/index.js'
 import {
   findWorkspaceRoot,
   PROJECT_CONFIG_FILENAMES,
@@ -279,8 +276,9 @@ async function install(
     let said = ''
     const decoder = new TextDecoder()
     for await (const chunk of proc.stderr) {
-      process.stderr.write(chunk)
-      said += decoder.decode(chunk, { stream: true })
+      const text = decoder.decode(chunk, { stream: true })
+      ui.data('err', text)
+      said += text
     }
     const code = await proc.exited
     if (code !== 0) {
@@ -351,13 +349,22 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
   const workspaceFile =
     WORKSPACE_CONFIG_FILENAMES.find((n) => existsSync(path.join(root, n))) ?? '.vx/workspace.ts'
-  const c = detectColors(process.stdout)
-  const dim = (t: string): string => paint('', t, c, { dim: true })
-  const bold = (t: string): string => paint('', t, c, { bold: true })
-  process.stdout.write(
-    `${paint(SUCCESS, args.dry ? 'would write' : 'wrote', c, { bold: true })} ${files.map(([rel]) => bold(rel)).join(' and ')}\n` +
-      `${dim('Declare it in')} ${workspaceFile}${dim(':')} ${bold(`import { ${factory} } from '../plugins/${seam}.ts'`)}${dim(', then')} ${bold(`plugins: [${factory}(…)]`)}\n` +
-      `${dim('Test it:')} ${bold(`bun test plugins/${seam}.test.ts`)} ${dim('(needs @vzn/vx installed)')}\n`,
+  const names = files.flatMap(([rel], i) => [...(i > 0 ? [' and '] : []), ui.strong(rel)])
+  ui.print('out', ui.line(ui.tone('ok', args.dry ? 'would write' : 'wrote', true), ' ', ...names))
+  ui.print(
+    'out',
+    ui.line(
+      'Declare it in ',
+      ui.path(workspaceFile),
+      ': ',
+      ui.cmd(`import { ${factory} } from '../plugins/${seam}.ts'`),
+      ', then ',
+      ui.cmd(`plugins: [${factory}(…)]`),
+    ),
+  )
+  ui.print(
+    'out',
+    ui.line('Test it: ', ui.cmd(`bun test plugins/${seam}.test.ts`), ' (needs @vzn/vx installed)'),
   )
   return 0
 }
@@ -460,7 +467,8 @@ async function starter(
   const declare = `declare a task in ${kept.find((f) => f.startsWith('vx.config.')) ?? config}, then vx lock && vx run <task>`
   const next = `${noGit ? 'git init, ' : ''}${hasScripts(pkgRoot) ? `bunx @vzn/vx-migrate${args.mjs ? ' --mjs' : ''} to make package.json scripts tasks, or ${declare}` : declare}`
   if (args.json === true) {
-    process.stdout.write(
+    ui.data(
+      'out',
       `${JSON.stringify({ dry: true, source: 'no turbo.json or nx.json', files, kept, replaced, todos: [], notes: [], next, installs })}\n`,
     )
     return 0

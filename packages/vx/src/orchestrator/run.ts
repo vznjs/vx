@@ -44,7 +44,7 @@ import {
   mark,
   stageTimes,
   MAX_TIMEOUT_MS,
-  printTimings,
+  timingLines,
   ulid,
   isLiteralPattern,
   listed,
@@ -54,12 +54,17 @@ import {
   secretMask,
   isFsRefusal,
   isUserError,
-  detectColors,
-  type ColorSupport,
   SecretBroker,
   thrownMessage,
-  type ui,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
+
+/** The stage table `VX_DEBUG_TIMING=1` asks for, on stderr. */
+function printTimings(): void {
+  const lines = timingLines()
+  if (lines !== undefined) ui.print('err', ui.trace(lines))
+}
+import { detectColors, type ColorSupport } from '../ui/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from '../graph/index.js'
 import { commandWriteReach, prepareSandbox } from './sandbox-request.js'

@@ -72,7 +72,6 @@ export function formatTaskRow(
 export function formatListHeader(colors?): string
 export function formatRunningHeader(colors?): string
 // the bold violet title over each list: `Finished`, `Running`
-export function formatListTitle(title, colors?): string
 // `±usual`: the distance from `usualMs`, `unknown` for null, blank for undefined
 export function usualCell(ms, usualMs, colors?): { text; painted }
 // the `usual` cell of a task history never timed

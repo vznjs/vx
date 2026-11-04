@@ -1,6 +1,6 @@
 // `commands`: a CLI verb. `vx cache-dir` prints where this workspace's cache
 // lives. The verb's return value is the exit code.
-import { definePlugin, type VxPlugin } from '@vzn/vx'
+import { definePlugin, ui, type VxPlugin } from '@vzn/vx'
 
 export function cacheDirVerb(): VxPlugin {
   return definePlugin(import.meta, {
@@ -9,10 +9,10 @@ export function cacheDirVerb(): VxPlugin {
         description: "print this workspace's cache directory",
         run(argv, ctx) {
           if (argv.length > 0) {
-            console.error(`vx cache-dir: takes no arguments, got ${argv.join(' ')}`)
+            ui.say('error', `vx cache-dir: takes no arguments, got ${argv.join(' ')}`)
             return 2
           }
-          console.log(ctx.cacheDir)
+          ui.data('out', `${ctx.cacheDir}\n`)
           return 0
         },
       },

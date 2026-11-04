@@ -7,7 +7,7 @@
 import { rm } from 'node:fs/promises'
 import { expect, it } from 'bun:test'
 import { defaultLogger } from '../src/report/logger.js'
-import type { StatusStream } from '../src/report/status-line.js'
+import type { StatusStream } from '../src/ui/live-region.js'
 import { addProject, makeWorkspace, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import { run } from './helpers/orchestrator.js'
 
@@ -47,7 +47,7 @@ it(
       expect(err.text()).toContain('app#build: cache.outputs matched no files')
       expect(out.text()).not.toContain('matched no files')
       expect(out.text()).toMatch(/app#build/)
-      expect(out.text()).toContain('─ vx ')
+      expect(out.text()).toContain('─ Summary ')
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
     }

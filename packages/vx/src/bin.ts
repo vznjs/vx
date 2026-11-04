@@ -21,32 +21,14 @@ async function main(): Promise<void> {
     // `vx --version` needs one leaf module; the dispatcher and the util
     // barrel it pulled in were 20 ms of its 28 (2026-10-01).
     if (argv.length === 1 && (argv[0] === '--version' || argv[0] === 'version')) {
-      // `Bun.stdout`, not `process.stdout`: the Node stream's first touch is
-      // ~7 ms, half of this verb (2026-10-02). A reader gone (EPIPE) is no
-      // failure of the line.
       // Handed off, it says which vx ran and which one handed it the call.
       const from = process.env['VX_HANDED_OFF'] || undefined
       const where = from === undefined ? '' : ` (${vxPath()}, handed off from ${from})`
-      // Painted as every other line; piped, the same words a script reads.
-      // Decided here, not by util's `detectColors`: the util barrel was the
-      // 20 ms above, and `node:tty` 17 ms; fd 1 as a character device is the
-      // TTY answer. A CI's log is not painted for this one line.
-      const [{ VERSION }, { fstatSync }] = await Promise.all([
+      const [{ VERSION }, { printVersion }] = await Promise.all([
         import('./version.js'),
-        import('node:fs'),
+        import('./ui/version-line.js'),
       ])
-      const env = process.env
-      const on = env['NO_COLOR']
-        ? false
-        : env['FORCE_COLOR'] !== undefined
-          ? env['FORCE_COLOR'] !== '0' && env['FORCE_COLOR'] !== 'false'
-          : env['TERM'] !== 'dumb' && fstatSync(1).isCharacterDevice()
-      const sgr = (code: string, text: string): string =>
-        on ? `\x1b[${code}m${text}\x1b[0m` : text
-      await Bun.write(
-        Bun.stdout,
-        `${sgr('1', 'vx')} ${sgr('38;2;6;182;212', VERSION)}${where === '' ? '' : sgr('2', where)}\n`,
-      ).catch(() => {})
+      await printVersion(VERSION, where)
       settled = true
       return
     }
@@ -64,8 +46,9 @@ async function main(): Promise<void> {
     // is set, and `exitOnceFlushed` exits after both streams have ended.
     process.exitCode = code
   } catch (err) {
+    const ui = await import('./ui/index.js')
+    const { refusalNotice } = ui
     const {
-      detectColors,
       errorCode,
       errorDocument,
       fsRefusalHint,
@@ -74,17 +57,12 @@ async function main(): Promise<void> {
       isUserError,
       maskedLine,
       OUT_OF_FDS_HINT,
-      refusalNotice,
-      ui,
       wantsJson,
     } = await import('./util/index.js')
     // A plugin's failure quotes what it was told (a remote's reply, a
     // header), and a config's own throw is its author's text: a secret in
     // either reached stderr whole (L-11).
-    const say = (line: string): void =>
-      void process.stderr.write(
-        `${ui.tagged('error', maskedLine(line), detectColors(process.stderr))}\n`,
-      )
+    const say = (line: string): void => ui.say('error', maskedLine(line))
     // UserError (workspace not found, cycle, config invalid, ...) —
     // print the message only; the stack is noise the user can't act
     // on. Everything else gets the full stack so internal bugs are
@@ -100,7 +78,7 @@ async function main(): Promise<void> {
         named === null ? err.message : err.message.slice(named[0].length),
         err.parts,
       )
-      process.stderr.write(maskedLine(ui.render([block], detectColors(process.stderr))))
+      ui.data('err', maskedLine(ui.render([block], ui.colorsOf('err'))))
     } else if (isOutOfFds(err)) {
       say(`vx: ${err.message} — ${OUT_OF_FDS_HINT}\n`)
     } else if (isFsRefusal(err)) {
@@ -114,7 +92,7 @@ async function main(): Promise<void> {
     // stdout got nothing to parse, and only prose on stderr to branch on.
     if (wantsJson(argv)) {
       const message = err instanceof Error ? err.message : String(err)
-      process.stdout.write(errorDocument(errorCode(err), maskedLine(message)))
+      ui.data('out', errorDocument(errorCode(err), maskedLine(message)))
     }
     // Same reason as the success path above: a large stderr is truncated by
     // `process.exit` too, and an error message cut in half is the one a
@@ -174,7 +152,7 @@ function withCauses(err: unknown): string {
 process.on('beforeExit', () => {
   if (settled) return
   settled = true
-  ;(require('./util/index.js') as typeof import('./util/index.js')).ui.say(
+  ;(require('./ui/index.js') as typeof import('./ui/index.js')).say(
     'error',
     'vx: the run stopped before it finished: something it awaited can never settle (a plugin hook?)',
   )

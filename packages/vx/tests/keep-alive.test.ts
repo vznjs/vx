@@ -221,8 +221,8 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     })()
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     const deadline = Date.now() + 10_000
-    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
-    expect(out).toContain('─ vx ')
+    while (!out.includes('─ Summary ') && Date.now() < deadline) await Bun.sleep(20)
+    expect(out).toContain('─ Summary ')
     expect(isAlive(pid)).toBe(true)
 
     proc.kill('SIGINT')
@@ -278,8 +278,8 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       })()
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       const deadline = Date.now() + 10_000
-      while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
-      expect(out).toContain('─ vx ')
+      while (!out.includes('─ Summary ') && Date.now() < deadline) await Bun.sleep(20)
+      expect(out).toContain('─ Summary ')
       proc.kill(signal)
       expect(await proc.exited).toBe(code)
       await reading
@@ -332,7 +332,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     })()
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     const deadline = Date.now() + 10_000
-    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
+    while (!out.includes('─ Summary ') && Date.now() < deadline) await Bun.sleep(20)
     writeFileSync(path.join(dir, 'go'), '')
     while (!out.includes('AFTER') && Date.now() < deadline) await Bun.sleep(20)
     expect(out).toContain('AFTER')
@@ -372,7 +372,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       await waitForPid(path.join(app, 'pid.txt'), 10_000),
     ]
     const deadline = Date.now() + 10_000
-    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
+    while (!out.includes('─ Summary ') && Date.now() < deadline) await Bun.sleep(20)
     const pinned = out.split('\n').filter((l) => l.trim().startsWith('▸'))
     expect(pinned.map((l) => l.trim())).toEqual(['▸ api#dev running', '▸ app#dev running'])
     expect(pids.map(isAlive)).toEqual([true, true])
@@ -411,7 +411,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     const err = new Response(proc.stderr).text()
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     const deadline = Date.now() + 10_000
-    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
+    while (!out.includes('─ Summary ') && Date.now() < deadline) await Bun.sleep(20)
     // db was gone before the summary; the old wait ended at once.
     const exitedEarly = await Promise.race([proc.exited.then(() => true), Bun.sleep(500)])
     expect([exitedEarly ?? false, isAlive(pid)]).toEqual([false, true])
@@ -479,8 +479,8 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     })()
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     const deadline = Date.now() + 10_000
-    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
-    expect(out).toContain('─ vx ')
+    while (!out.includes('─ Summary ') && Date.now() < deadline) await Bun.sleep(20)
+    expect(out).toContain('─ Summary ')
     expect(isAlive(pid)).toBe(true)
     proc.kill('SIGINT')
     expect(await proc.exited).toBe(130)

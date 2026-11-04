@@ -68,7 +68,7 @@ async function lastLine(
   const line = last.stdout
     .toString()
     .split('\n')
-    .filter((l) => l.startsWith('  $ '))
+    .filter((l) => l.startsWith('  command '))
   const holding: string[] = []
   for (const f of await walk(path.join(root, '.vx', 'cache')))
     if ((await readFile(f)).includes(secret.slice(-8))) holding.push(path.relative(root, f))
@@ -78,14 +78,14 @@ async function lastLine(
 describe('a secret forwarded after -- in the invocation line', () => {
   it('is masked in vx last and absent from the cache directory', async () => {
     expect(await lastLine(SECRET)).toEqual({
-      line: ['  $ vx run a#deploy -- --token=***'],
+      line: ['  command   vx run a#deploy -- --token=***'],
       holding: [],
     })
   })
 
   it('a value holding a quote is masked as the shell-quoted line spells it (X-45)', async () => {
     expect(await lastLine("super'secretvalue123")).toEqual({
-      line: ["  $ vx run a#deploy -- '--token=***'"],
+      line: ["  command   vx run a#deploy -- '--token=***'"],
       holding: [],
     })
   })
@@ -99,12 +99,12 @@ describe('a secret forwarded after -- in the invocation line', () => {
         exec: config(`{ define: { DEPLOY_TOKEN: '${SECRET}' } }`),
         env: {},
       }),
-    ).toEqual({ line: ['  $ vx run a#deploy -- --token=***'], holding: [] })
+    ).toEqual({ line: ['  command   vx run a#deploy -- --token=***'], holding: [] })
     expect(
       await lastLine(SECRET, {
         exec: config(`{ passThrough: ['GH_PAT'], secret: ['GH_PAT'] }`),
         env: { GH_PAT: SECRET },
       }),
-    ).toEqual({ line: ['  $ vx run a#deploy -- --token=***'], holding: [] })
+    ).toEqual({ line: ['  command   vx run a#deploy -- --token=***'], holding: [] })
   })
 })

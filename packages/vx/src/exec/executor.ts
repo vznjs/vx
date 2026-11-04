@@ -16,7 +16,8 @@
 import type { SandboxConfig } from '../config.js'
 import type { CaptureConfig, RunResult } from './runner.js'
 import type { ResolvedSandboxConfig, SandboxViolation } from './sandbox-runtime.js'
-import { thrownMessage, UserError, type ui } from '../util/index.js'
+import { thrownMessage, UserError } from '../util/index.js'
+import * as ui from '../ui/index.js'
 
 /** Sandbox baselines + the user's resolved sandbox block, when the task is sandboxed. */
 export interface ExecuteSandbox {

@@ -1097,7 +1097,7 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(text()).toContain('┌─ one#boom')
     expect(text()).toContain('failed (exit 7)')
     // Summary still prints.
-    expect(text()).toContain('─ vx ')
+    expect(text()).toContain('─ Summary ')
     // No failed-id row in the summary (count in legend; frame above).
     expect(text()).not.toContain(
       '                   failed                                                     one#boom',
@@ -1179,7 +1179,8 @@ describe('flow e2e against a real fixture workspace', () => {
     const text = captureStdout()
     const code = await cliRun(['run', '--all', 'fresh'])
     expect(code).toBe(0)
-    expect(text()).toContain('┌─ one#fresh')
+    // A CI log is coloured like the terminal: the words under the paint.
+    expect(Bun.stripANSI(text())).toContain('┌─ one#fresh')
     expect(text()).toContain('FRESH-OUTPUT')
   })
 

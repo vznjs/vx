@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## ui: draw every line vx prints from one UI kit
+
+the façade's `ui` is the new kit: `report(title, rows)`, `table(columns, rows)` with `Column`s, and `Style`/`Inline` from src/ui replace the src/util/ui.ts forms.
+
 ## vx-cache-server: keep artifacts in issuer/repo/branch folders
 
 a vx-cache scope on the wire is its ref percent-encoded (refs%2Fheads%2Fmain), not its hash; a hashed scope is refused with 400. blobName() is synchronous and names readable folders, so artifacts stored before are not read again (they expire in a day). Deploy the server and vxCache() together.
