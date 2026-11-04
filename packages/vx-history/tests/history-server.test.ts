@@ -954,4 +954,67 @@ describe('vx run with vxHistory({ url })', () => {
       await rm(other, { recursive: true, force: true })
     }
   })
+
+  // A ref over the 512 characters a server takes was a 400 for the whole
+  // query, and the run read no ref's numbers, its base branch's too.
+  it('reads the other refs when one is too long for the server', async () => {
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-long-ref-'))
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { baseBranch: 'main', plugins: [vxHistory({ url: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      // 502 characters: each part under a file name's 255.
+      const branch = `${'a'.repeat(250)}/${'b'.repeat(251)}`
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', branch], cwd: other })
+      Bun.spawnSync({
+        cmd: [
+          'git',
+          '-c',
+          'user.name=t',
+          '-c',
+          'user.email=t@t',
+          'commit',
+          '-q',
+          '--allow-empty',
+          '-m',
+          'x',
+        ],
+        cwd: other,
+      })
+      const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+      Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
+      const before = seen.length
+      // Not spawnSync: the server answers from this process.
+      const cli = Bun.spawn({
+        cmd: [process.execPath, bin, 'run', 'build', '--all'],
+        cwd: other,
+        env: { ...Bun.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [out, err, code] = await Promise.all([
+        new Response(cli.stdout).text(),
+        new Response(cli.stderr).text(),
+        cli.exited,
+      ])
+      const said = `${out}${err}`.split('\n').filter((l) => l.startsWith('[vx] vx-history:'))
+      const query = seen.slice(before).find((r) => r.path === '/v1/timings/query')
+      expect([code, said, (JSON.parse(query!.body) as { refs: string[] }).refs]).toEqual([
+        0,
+        [
+          `[vx] vx-history: refs/heads/${branch} is 513 characters, over the 512 a history server takes: the run does not read it`,
+        ],
+        ['refs/heads/main'],
+      ])
+    } finally {
+      await rm(other, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
