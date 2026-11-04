@@ -104,7 +104,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
     }
 
     it('passes when the cache directory is granted', async () => {
-      expect((await outcome(['node_modules/.cache/'])).slice(0, 2)).toEqual(['success', 0])
+      // Its command prints nothing: any output is what went wrong.
+      expect(await outcome(['node_modules/.cache/'])).toEqual(['success', 0, ''])
     })
 
     it('CONTROL: fails when it is not', async () => {
