@@ -278,12 +278,12 @@ export default [
       projects: {
         outer: {
           dir: 'packages/outer',
-          tasks: { build: { command: 'echo outer', inputs: ['**'] } },
+          tasks: { build: { command: 'echo outer', inputs: ['**'], outputs: [] } },
           files: { 'a.txt': 'o' },
         },
         inner: {
           dir: 'packages/outer/inner',
-          tasks: { build: { command: 'echo inner', inputs: ['**'] } },
+          tasks: { build: { command: 'echo inner', inputs: ['**'], outputs: [] } },
           files: { 'a.txt': 'i' },
         },
       },

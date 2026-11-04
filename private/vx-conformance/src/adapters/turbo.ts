@@ -25,7 +25,7 @@ export const turbo: Adapter = {
           dependsOn: spec.dependsOn ?? [],
           ...(spec.inputs ? { inputs: spec.inputs } : {}),
           ...(spec.env ? { env: spec.env } : {}),
-          outputs: spec.outputs ?? [],
+          ...(spec.outputs ? { outputs: spec.outputs } : {}),
           ...(spec.cache === false ? { cache: false } : {}),
         }
     }

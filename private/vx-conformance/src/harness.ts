@@ -128,6 +128,10 @@ export function check(
     const start = marks.indexOf(`+${b}`)
     if (end === -1 || start === -1 || end > start) return `${b} started before ${a} finished`
   }
+  if (expect.ifReplayed && !started.includes(expect.ifReplayed.task))
+    for (const [f, want] of Object.entries(expect.ifReplayed.files))
+      if ((files[f] ?? null) !== want)
+        return `${expect.ifReplayed.task} replayed and left ${f} ${files[f] === null || files[f] === undefined ? 'missing' : JSON.stringify(files[f])}, expected ${want === null ? 'none' : JSON.stringify(want)}`
   for (const [f, stale] of Object.entries(expect.filesNot ?? {}))
     if (files[f] === stale) return `${f} is ${JSON.stringify(stale)}, a stale result`
   for (const text of expect.output ?? [])
@@ -267,6 +271,7 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
     for (const f of [
       ...Object.keys(step.expect.files ?? {}),
       ...Object.keys(step.expect.filesNot ?? {}),
+      ...Object.keys(step.expect.ifReplayed?.files ?? {}),
     ])
       files[f] = await readMaybe(path.join(root, f))
     const failed = check(step.expect, r.exit, r.out, marks, files)

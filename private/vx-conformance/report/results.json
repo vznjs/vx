@@ -2260,6 +2260,58 @@
       }
     },
     {
+      "id": "outputs/unlisted-not-clobbered",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A replayed task that lists no outputs leaves a file it wrote, and the user then edited, alone",
+      "why": "A default guesses what the task writes; restoring a file nobody declared overwrites the user’s bytes with an old copy.",
+      "from": [
+        "restore-declared-only",
+        "undeclared-writes"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "a#build replayed and left packages/a/dist/report.txt \"report\\n\", expected \"mine\\n\""
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/unlisted-not-conjured",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A replayed task that lists no outputs does not bring back a file the user deleted",
+      "why": "Nothing declared it an output; a replay that recreates it puts back bytes the user removed.",
+      "from": [
+        "restore-declared-only",
+        "undeclared-writes"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "env/declared-reaches-task",
       "category": "env",
       "kind": "correctness",

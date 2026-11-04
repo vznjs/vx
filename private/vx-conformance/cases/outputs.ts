@@ -288,4 +288,51 @@ export default [
       { run: 'build', projects: ['b'], expect: { exit: 0, files: { [out('b')]: 'b\n' } } },
     ],
   }),
+
+  defineCase({
+    id: 'outputs/unlisted-not-clobbered',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A replayed task that lists no outputs leaves a file it wrote, and the user then edited, alone',
+    why: 'A default guesses what the task writes; restoring a file nobody declared overwrites the user’s bytes with an old copy.',
+    from: ['restore-declared-only', 'undeclared-writes'],
+    workspace: one({
+      command: 'mkdir -p dist && echo report > dist/report.txt',
+      inputs: ['src/**'],
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/dist/report.txt': 'mine\n' } },
+      // Running the command again writes it fresh, which is right; a replay must not touch it.
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          ifReplayed: { task: 'a#build', files: { 'packages/a/dist/report.txt': 'mine\n' } },
+        },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/unlisted-not-conjured',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'A replayed task that lists no outputs does not bring back a file the user deleted',
+    why: 'Nothing declared it an output; a replay that recreates it puts back bytes the user removed.',
+    from: ['restore-declared-only', 'undeclared-writes'],
+    workspace: one({ command: 'echo report > report.txt', inputs: ['src/**'] }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/report.txt': null } },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          ifReplayed: { task: 'a#build', files: { 'packages/a/report.txt': null } },
+        },
+      },
+    ],
+  }),
 ]

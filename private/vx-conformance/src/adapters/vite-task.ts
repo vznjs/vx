@@ -1,6 +1,6 @@
 // Vite Task (`vp run`, from vite-plus): a vite.config.ts per project with
 // `run.tasks`. Omitted inputs or outputs are left to its automatic tracking,
-// its default; the neutral "no outputs" is `output: []`.
+// its default.
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Adapter } from '../adapter.ts'
@@ -39,7 +39,7 @@ export const viteTask: Adapter = {
                 : {
                     ...(spec.inputs ? { input: spec.inputs } : {}),
                     ...(spec.env ? { env: spec.env } : {}),
-                    output: spec.outputs ?? [],
+                    ...(spec.outputs ? { output: spec.outputs } : {}),
                   },
           },
         ]),

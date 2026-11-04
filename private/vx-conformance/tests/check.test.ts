@@ -51,3 +51,12 @@ test('filesNot fails only the stale text', () => {
     'f is "old", a stale result',
   )
 })
+
+test('ifReplayed judges the files only when the task did not run', () => {
+  const want = { ifReplayed: { task: 'a#b', files: { f: 'mine' } } }
+  expect(check(want, 0, '', ['+a#b', '-a#b'], { f: 'fresh' })).toBeNull()
+  expect(check(want, 0, '', [], { f: 'mine' })).toBeNull()
+  expect(check(want, 0, '', [], { f: 'old' })).toBe(
+    'a#b replayed and left f "old", expected "mine"',
+  )
+})

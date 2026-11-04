@@ -43,8 +43,8 @@ export const vx: Adapter = {
             ...(spec.inputs
               ? { inputs: { files: spec.inputs, ...(spec.env ? { env: spec.env } : {}) } }
               : {}),
-            ...(spec.inputs && spec.cache !== false
-              ? { cache: { outputs: { files: spec.outputs ?? [] } } }
+            ...(spec.inputs && spec.outputs && spec.cache !== false
+              ? { cache: { outputs: { files: spec.outputs } } }
               : {}),
           },
         ]),

@@ -14,7 +14,7 @@ export interface TaskSpec {
   inputs?: string[]
   /** Environment variables whose values key the task. */
   env?: string[]
-  /** Project-relative globs the task writes, stored and restored with it. */
+  /** Project-relative globs the task writes, stored and restored with it. Omitted: the tool's default; `[]`: none. */
   outputs?: string[]
   /** `false`: never replayed from a cache. Default `true`. */
   cache?: boolean
@@ -52,6 +52,8 @@ export interface Expect {
   files?: Record<string, string | null>
   /** Workspace-relative file → text it must not hold: a stale result, where more than one fresh one is right. */
   filesNot?: Record<string, string>
+  /** When this task (`project#task`) did not run its command, these files hold exactly this. */
+  ifReplayed?: { task: string; files: Record<string, string | null> }
 }
 
 export type Step =

@@ -72,7 +72,7 @@ export const nx: Adapter = {
               ...(spec.dependsOn ?? []).filter((d) => d.startsWith('^')).map((d) => `${d}-inputs`),
               ...(spec.env ?? []).map((e) => ({ env: e })),
             ],
-            outputs: (spec.outputs ?? []).map(rooted),
+            ...(spec.outputs ? { outputs: spec.outputs.map(rooted) } : {}),
             cache: spec.cache !== false,
           },
         ]),
