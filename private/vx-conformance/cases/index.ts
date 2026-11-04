@@ -19,6 +19,7 @@ import graphSelect from './graph-select.ts'
 import graphShape from './graph-shape.ts'
 import graph from './graph.ts'
 import inputsAMore from './inputs-a-more.ts'
+import inputsBMore from './inputs-b-more.ts'
 import inputsGlobs from './inputs-globs.ts'
 import inputsRoot from './inputs-root.ts'
 import inputsRuns from './inputs-runs.ts'
@@ -47,6 +48,7 @@ export const CASES: Case[] = [
   ...inputsGlobs,
   ...inputsRoot,
   ...inputsRuns,
+  ...inputsBMore,
   ...gitInputs,
   ...inputsAMore,
   ...outputs,
