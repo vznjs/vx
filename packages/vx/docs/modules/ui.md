@@ -13,9 +13,9 @@ reads with `data`. Nothing else writes to a stream, prints with
 The screen looks like a TUI and is not one: panels stacked top to
 bottom, written into the scrollback line by line. Nothing is hidden,
 cut, scrolled or placed side by side; a long line wraps inside its
-panel. A pipe and a CI log get the same components: off colour a panel
-is its rule `─ Title ───` and its bare lines, the bytes a test or
-`grep` reads.
+panel. A CI log gets the same coloured panels (only the live redraw is
+gone). A plain pipe gets the same components off colour: a panel is its
+rule `─ Title ───` and its bare lines, the bytes a test or `grep` reads.
 
 ## Files
 
