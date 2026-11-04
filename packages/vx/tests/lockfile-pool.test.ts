@@ -109,3 +109,15 @@ test('an index with no pool entry is refused, and named on a crash path', async 
   await expect(readLockfile(root)).rejects.toThrow('no task 3 in its pool — re-run `vx lock`')
   expect(lockEntryBroken(root)).toBe(true)
 })
+
+test('a pooled task that is not a task is named on a crash path', async () => {
+  await Bun.write(
+    lockfilePath(root),
+    JSON.stringify({
+      version: LOCKFILE_VERSION,
+      pool: { task: ['echo hi'] },
+      projects: { a: entry({ build: 0 as never }) },
+    }),
+  )
+  expect(lockEntryBroken(root)).toBe(true)
+})
