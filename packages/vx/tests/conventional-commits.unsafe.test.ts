@@ -31,6 +31,8 @@ it("the PR's title is a Conventional Commits header", () => {
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
 const KNOWN = new Set([
+  // #4909's first commit, pushed before its subject was cut: 82 chars.
+  'c06443abb95ae880949aa349802eaade1c58b144',
   '92f8f41369c5c8ebe41934bb31c8eeddda32b1a1',
   // The second mega branch's, made before the row held it: `style`, a type the row does not take.
   '9f41d72685a623eccfff8dd8a49dda186e273029',
