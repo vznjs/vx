@@ -24,10 +24,15 @@ when disabled (CI). When active:
   for the redraws writes cause. The logger passes one, so the events a
   floor coalesces build nothing: 200 warm hits on a terminal, run
   graph 62 → 9 ms (min of 30).
-- `write(chunk)` — any ordinary content — erases the region first
-  (single line: `ESC[2K\r`; taller: `\r ESC[nA ESC[J`), writes the
-  content, then redraws. The region can never interleave with task
-  output. The erase always uses the height of the **previous** draw;
+- `write(chunk)` — any ordinary content — lands with the next frame
+  (the same `forceFloorMs` floor): the frame erases the region
+  (single line: `ESC[2K\r`; taller: `\r ESC[nA ESC[J`), writes all the
+  content since the last frame, then redraws, as ONE write. The region
+  can never interleave with task output. A frame whose region bytes
+  match what is shown writes nothing. 2,000 tasks on a terminal:
+  866 → 290 ms CPU, 8.6 → 1.1 MB, 6,057 → 165 writes. A timer holding
+  content keeps the process open until it lands; `clearStatus`,
+  `hold` and `writeTo` hand pending content over first. The erase always uses the height of the **previous** draw;
   the new draw establishes the new height, so the region may grow and
   shrink freely (pins arriving).
 - `writeTo(target, chunk)` does the same for another stream on the

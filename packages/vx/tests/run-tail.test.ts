@@ -23,6 +23,10 @@ function tty(): StatusStream & { text(): string } {
 }
 
 const ERASE = '\x1b[J'
+// The region last drawn: a frame writes the rows it adds and then the
+// region, behind the erase of whichever came last.
+const lastRegion = (text: string): string =>
+  text.slice(Math.max(text.lastIndexOf(ERASE), text.lastIndexOf('\x1b[2K\r')))
 
 // A loaded runner can fire the 100 ms ticker late; wait for the draw itself.
 async function until(drawn: () => boolean): Promise<void> {
@@ -74,12 +78,14 @@ describe('uploads still running at the end of a run', () => {
     const { out, log, settle } = start()
     log.runEnd?.()
     await Bun.sleep(50)
-    const shown = out.text().slice(out.text().lastIndexOf(ERASE))
+    const shown = lastRegion(out.text())
     expect(shown).toContain('remote 1⇡')
     // The worker rows are gone: the graph is done.
     expect(shown).not.toContain('p#a')
     // A warning in the tail prints above the region, which stays.
     log.status('warning')
+    // It lands with the next frame, the floor's 30 ms at most.
+    await until(() => out.text().includes('warning'))
     expect(out.text().slice(out.text().lastIndexOf('warning'))).toContain('remote 1⇡')
     settle()
     log.runDone?.()
@@ -99,8 +105,7 @@ describe("vx's own steps", () => {
     const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, { forceFloorMs: 0 })
     return { out, log, concurrency }
   }
-  const region = (out: { text(): string }): string =>
-    out.text().slice(out.text().lastIndexOf(ERASE))
+  const region = (out: { text(): string }): string => lastRegion(out.text())
 
   it('one quicker than 150 ms shows nowhere', async () => {
     const { out, log } = start()
