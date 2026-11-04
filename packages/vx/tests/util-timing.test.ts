@@ -87,10 +87,13 @@ describe('the VX_DEBUG_TIMING table', () => {
   it("the clock starts at the module's load, not the process's", async () => {
     // 50 ms of the child's own work before the import: a mark taken right
     // after it reads near zero, where a process-start origin reads ≥ 50.
+    // The mark comes before the UI kit loads: taken after, it timed the
+    // kit's import (87 ms on a loaded CI worker). The kit imports this
+    // module, so it cannot load before the 50 ms either.
     const out = await child(
-      `mark('a')\nprintTimings()`,
+      `printTimings()`,
       '1',
-      `const t = Bun.nanoseconds()\nwhile (Bun.nanoseconds() - t < 50e6) {}\nconst { mark, timingLines } = await import(${JSON.stringify(TIMING)})\nconst { print, trace } = await import(${JSON.stringify(UI)})\nconst printTimings = () => print('err', trace(timingLines()))`,
+      `const t = Bun.nanoseconds()\nwhile (Bun.nanoseconds() - t < 50e6) {}\nconst { mark, timingLines } = await import(${JSON.stringify(TIMING)})\nmark('a')\nconst { print, trace } = await import(${JSON.stringify(UI)})\nconst printTimings = () => print('err', trace(timingLines()))`,
     )
     const a = markRow.exec(out.split('\n')[1] ?? '')
     expect(a?.[1]).toBe('a')
