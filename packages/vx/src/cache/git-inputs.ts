@@ -1649,7 +1649,12 @@ export function gitPathspecs(
  * and a fresh checkout is all such entries. A layout this does not read
  * answers false.
  */
-function hasRacyEntry(index: Uint8Array, mtimeSec: number, oidBytes: number): boolean {
+function hasRacyEntry(
+  index: Uint8Array,
+  mtimeSec: number,
+  oidBytes: number,
+  ctimeOnly = false,
+): boolean {
   const view = new DataView(index.buffer, index.byteOffset, index.byteLength)
   if (index.length < 12 || view.getUint32(0) !== 0x44495243) return false
   const version = view.getUint32(4)
@@ -1659,7 +1664,9 @@ function hasRacyEntry(index: Uint8Array, mtimeSec: number, oidBytes: number): bo
   for (let i = 0; i < count; i++) {
     const flagsAt = at + 40 + oidBytes
     if (flagsAt + 2 > index.length) return false
-    if (view.getUint32(at + 8) >= mtimeSec) return true
+    const mtimeRacy = view.getUint32(at + 8) >= mtimeSec
+    // `ctimeOnly`: racy by ctime where git's own rule, on mtime, is blind.
+    if (ctimeOnly ? !mtimeRacy && view.getUint32(at) >= mtimeSec : mtimeRacy) return true
     let pathAt = flagsAt + 2
     if (version >= 3 && (view.getUint16(flagsAt) & 0x4000) !== 0) pathAt += 2
     // v4 opens the path with a varint (bytes of the previous path to drop).
@@ -1671,6 +1678,57 @@ function hasRacyEntry(index: Uint8Array, mtimeSec: number, oidBytes: number): bo
   return false
 }
 
+/**
+ * git compares a file's ctime to the second only, and its racy rule reads
+ * mtime alone: a same-size rewrite that keeps (or restores) an older mtime,
+ * made in the second an index recorded the file, keeps every stat git
+ * compares, and `status` calls it clean. Only an index holding an entry
+ * whose ctime, not its mtime, reaches the second it was written can hide
+ * one (git re-hashes an entry racy by mtime); then each trusted file
+ * changed in or after that second goes back to `hashFile`. A warm run's
+ * index is written long after its files: one scan, no stat.
+ */
+function dropSameSecondRewrites(
+  trusted: Map<string, string>,
+  workspaceRoot: string,
+  writtenSec: number | false,
+): void {
+  if (writtenSec === false) return
+  for (const rel of trusted.keys()) {
+    try {
+      if (Math.floor(lstatSync(path.join(workspaceRoot, rel)).ctimeMs / 1000) >= writtenSec)
+        trusted.delete(rel)
+    } catch {
+      trusted.delete(rel)
+    }
+  }
+}
+
+/**
+ * The second an index was written, when it holds an entry racy by ctime
+ * alone (see `dropSameSecondRewrites`); `false` when it holds none. An index
+ * that cannot be read vouches for nothing: second 0.
+ */
+function ctimeRacy(
+  read: { bytes: Uint8Array; st: Stats } | undefined,
+  oidBytes: number,
+): number | false {
+  if (read === undefined) return 0
+  const writtenSec = Math.floor(read.st.mtimeMs / 1000)
+  return hasRacyEntry(read.bytes, writtenSec, oidBytes, true) ? writtenSec : false
+}
+
+function readIndexFile(file: string): { bytes: Uint8Array; st: Stats } | undefined {
+  try {
+    const st = lstatSync(file)
+    return { bytes: readFileSync(file), st }
+  } catch {
+    return undefined
+  }
+}
+
+const oidBytesOf = (format: 'sha1' | 'sha256'): number => (format === 'sha256' ? 32 : 20)
+
 /** A private copy a run older than this may still have handed to `status`. */
 const STALE_INDEX_MS = 60_000
 
@@ -1680,11 +1738,7 @@ function racyIndex(
   objectFormat: 'sha1' | 'sha256',
 ): boolean {
   if (GIT_LOCATION_ENV.some((name) => process.env[name] !== undefined)) return false
-  return hasRacyEntry(
-    read.bytes,
-    Math.floor(read.st.mtimeMs / 1000),
-    objectFormat === 'sha256' ? 32 : 20,
-  )
+  return hasRacyEntry(read.bytes, Math.floor(read.st.mtimeMs / 1000), oidBytesOf(objectFormat))
 }
 
 /**
@@ -1704,12 +1758,15 @@ async function refreshedIndex(
     stdin?: string,
     env?: Record<string, string>,
   ) => Promise<GitRun | null>,
+  oidBytes: number,
 ): Promise<string | undefined> {
   const { bytes, hash, st } = read
   const dir = path.dirname(indexFile)
   const name = `vx-index-${hash}`
   const copy = path.join(dir, name)
-  if (existsSync(copy)) return copy
+  // A copy refreshed in the second its files last changed would send every
+  // run after it to `dropSameSecondRewrites`: it is refreshed again instead.
+  if (existsSync(copy) && ctimeRacy(readIndexFile(copy), oidBytes) === false) return copy
   const tmp = `${copy}.${process.pid}`
   try {
     writeFileSync(tmp, bytes)
@@ -1915,10 +1972,14 @@ export async function startGitEnumeration(
       index === undefined ? undefined : { GIT_INDEX_FILE: index },
     )
   // An index with no racy entry is read as it is: `status` spawns now.
+  let statusCopy: string | undefined
   const statusRun =
     read === undefined || indexFile === undefined || !racyIndex(read, facts!.objectFormat)
       ? spawnStatus(undefined)
-      : refreshedIndex(indexFile, read, spawnGit).then(spawnStatus)
+      : refreshedIndex(indexFile, read, spawnGit, oidBytesOf(facts!.objectFormat)).then((copy) => {
+          statusCopy = copy
+          return spawnStatus(copy)
+        })
   const running = Promise.all([listing, statusRun, varsRun])
   const gitPrefix = facts?.prefix ?? ''
   const gitDir = facts?.commonDir ?? ''
@@ -2026,6 +2087,15 @@ export async function startGitEnumeration(
   })
   if (vars !== null && vars.exitCode === 0 && fileModeIgnored(vars.stdout)) {
     restampModes(trusted, workspaceRoot)
+  }
+  // Both the index the user's git wrote and the copy `status` read (when
+  // it read one) recorded stats; either may hold one. The index's own
+  // bytes are the ones read above, not read again.
+  if (indexFile !== undefined && trusted.size > 0) {
+    const oidBytes = oidBytesOf(facts!.objectFormat)
+    dropSameSecondRewrites(trusted, workspaceRoot, ctimeRacy(read, oidBytes))
+    if (statusCopy !== undefined && trusted.size > 0)
+      dropSameSecondRewrites(trusted, workspaceRoot, ctimeRacy(readIndexFile(statusCopy), oidBytes))
   }
   if (parsedStatus !== null && parsedStatus.undecodable.size > 0) {
     undecodable.push(...stripPrefixFromSet(parsedStatus.undecodable, gitPrefix))

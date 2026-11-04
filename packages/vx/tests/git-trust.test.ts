@@ -12,6 +12,13 @@ import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
+/**
+ * git sees a same-size rewrite in the second an index recorded it only by
+ * ctime, which it reads to the second, so vx hashes a file changed in the
+ * index's second itself. The fixtures' index is written a second later.
+ */
+const nextSecond = () => Bun.sleep(1000 - (Date.now() % 1000) + 5)
+
 const TIMEOUT = 30_000
 
 let root: string
@@ -170,6 +177,7 @@ describe('an index blob a filter wrote that no longer applies', () => {
       // by its stat rather than re-reading it as racy.
       const past = new Date(Date.now() - 10_000)
       await utimes(file, past, past)
+      await nextSecond()
       git('-c', 'core.autocrlf=true', 'add', file)
       expect(git('status', '--porcelain', '-uno', '--', '.')).toBe('')
       // The shape: the index still holds the committed LF blob.
@@ -401,6 +409,7 @@ exec '${real}' "$@"
       await writeFile(file, 'aa\r\n')
       const past = new Date(Date.now() - 10_000)
       await utimes(file, past, past)
+      await nextSecond()
       git('-c', 'core.autocrlf=true', 'add', file)
       const rel = path.relative(root, file)
       const lf = git('rev-parse', `HEAD:${rel}`).trim()
