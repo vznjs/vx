@@ -33,6 +33,7 @@ import {
 } from '../src/exec/sandbox-runtime.js'
 import { portBridgeSocket } from '../src/exec/sandbox-runtime.js'
 import { killTree } from '../src/exec/kill-tree.js'
+import { peakRssBytes } from '../src/exec/runner.js'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
 import * as violations from '../src/exec/sandbox-violations.js'
 import { taskRoot } from './helpers/sandbox-fixture.js'
@@ -728,7 +729,13 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         [true],
         false,
       ])
-      expect([r.cpuMs, r.peakRssBytes]).toEqual([undefined, undefined])
+      // A look lands only if the sandbox's start plus the task outlast one
+      // interval, as on a slow runner (140 ms, 34 MB; main, 2026-11-01). The
+      // law is that no number is vx's own: bwrap's wait read the peak vx
+      // had at exec (B-3), never below vx's own high-water mark.
+      const own = peakRssBytes(process.resourceUsage().maxRSS)
+      expect(r.peakRssBytes === undefined || r.peakRssBytes < own).toBe(true)
+      expect(r.cpuMs === undefined).toBe(r.peakRssBytes === undefined)
     } finally {
       spy.mockRestore()
     }
