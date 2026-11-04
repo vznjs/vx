@@ -35,6 +35,7 @@ export interface RunArgs {
   dry: 'pretty' | 'json' | undefined
   profile: string | undefined // 'profile.json' default
   affected: string | undefined // '' = default base; else ref
+  spaced?: { flag: '--affected' | '--profile'; value: string } // the word after a bare one, read as a task
   error?: string // parser-error message
 }
 
