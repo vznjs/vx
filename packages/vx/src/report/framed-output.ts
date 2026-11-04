@@ -26,7 +26,7 @@
 // `--ui=stream` mode.
 
 import { withForwardArgs } from '../exec/index.js'
-import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { isCacheHit, isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { formatElapsed, maskedCommand, printable } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import {
@@ -546,7 +546,7 @@ export function formatRecordedRow(
       ? formatTaskSkippedLine(node, colors, undefined, blocks)
       : o.status === 'aborted'
         ? formatTaskAbortedLine(node, o, colors, blocks)
-        : o.status === 'cache-hit' || o.status === 'cache-hit-remote'
+        : isCacheHit(o.status)
           ? formatTaskHitLine(node, o, colors, false, blocks)
           : formatTaskExecutedLine(node, o, colors, false, blocks)
   return note === '' ? row : `${row}  ${paint('muted', note, colors)}`
