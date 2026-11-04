@@ -1,0 +1,29 @@
+import type { Feature, WorkspaceSpec } from './spec.ts'
+
+/** A task's command as the tool must run it: the case's command, with the harness's marks around it. */
+export type Command = (project: string, task: string) => string
+
+/**
+ * One tool under test. An adapter only translates: the neutral workspace
+ * into the tool's own config, a neutral run into the tool's own CLI. It never
+ * decides an outcome.
+ */
+export interface Adapter {
+  name: string
+  /** The package whose version the report names. */
+  pkg: string
+  /** Bins linked into the workspace's node_modules/.bin. */
+  bins: string[]
+  /** What the tool's config cannot express: a case needing one is not applicable. */
+  lacks: Feature[]
+  /** Variables every invocation of the tool sees. */
+  env: Record<string, string>
+  /** Prepare the case's home (`home`) before any run: what the tool would otherwise fetch. */
+  seed?(home: string): Promise<void>
+  /** Write the tool's config for `ws` into `dir`. Returns the commands to run after (each an argv). */
+  configure(dir: string, ws: WorkspaceSpec, command: Command): Promise<string[][]>
+  /** Run `task` in every project declaring it, or in `projects` and what they depend on. */
+  run(task: string, projects?: string[]): string[]
+  /** Run `task` where the changes since `base` reach. */
+  affected(task: string, base: string): string[]
+}

@@ -1,0 +1,2882 @@
+{
+  "coverage": {
+    "ported": 78,
+    "rest": {
+      "pending": [
+        "abort",
+        "aborted-outcome",
+        "affected-base-notes",
+        "affected-config-deleted",
+        "affected-default-pages",
+        "affected-dry-reasons",
+        "affected-flagged",
+        "affected-linked-inputs",
+        "affected-shallow",
+        "affected-sparse-tasks",
+        "affected-submodule",
+        "brace-inputs",
+        "brace-outputs",
+        "builtins-restore",
+        "cache",
+        "cache-gitignore",
+        "cache-hygiene",
+        "cleaned-tracked-reader",
+        "committed-case",
+        "committed-through-link",
+        "conflict-markers",
+        "default-build-cycle-key",
+        "default-build-not-declared",
+        "deferred-output-link",
+        "dev",
+        "dot-slash-globs",
+        "dotenv-isolation",
+        "env-path-delimiter",
+        "exclude-dependencies-key",
+        "filter",
+        "forward-args-group",
+        "forward-args-verbatim",
+        "fs-clock-lag",
+        "hangup-ignored",
+        "held-persistent",
+        "held-servers",
+        "hit-snapshot-stray",
+        "ignored-outputs",
+        "in-run-writes",
+        "ingest-output-link",
+        "input-overlap",
+        "inputs-property",
+        "inputs-resolution",
+        "interactive",
+        "keyed-group-config",
+        "kill-tree",
+        "member-cwd",
+        "nested-input",
+        "nested-repo-inputs",
+        "no-output-hit",
+        "one-alternative-brace",
+        "output-clean-link-git",
+        "output-collision",
+        "output-dirs-snapshot",
+        "output-empty-dir",
+        "output-glob-links",
+        "output-never-dotvx",
+        "output-reach",
+        "output-scan-root",
+        "output-wipe-guard",
+        "overlapping-outputs",
+        "persistent",
+        "persistent-ready-timeout",
+        "persistent-shutdown",
+        "persistent-stop-before-spawn",
+        "restore-dir-mode",
+        "restore-dir-target",
+        "restore-link-git",
+        "restore-link-swap",
+        "restore-link-swap-rename",
+        "retries",
+        "root-project",
+        "run-concurrency",
+        "runtime-inputs",
+        "runtime-path-delimiter",
+        "runtime-probe-exit",
+        "server-crash-fail-fast",
+        "server-crash-through-group",
+        "signal-handling",
+        "stop-listener",
+        "stop-signal-before-spawn",
+        "task-glob-brackets",
+        "task-level-inputs",
+        "task-shell",
+        "task-timeout",
+        "task-tree-kill",
+        "timeout-bounds",
+        "unkeyed-upstream",
+        "unreadable-input",
+        "vx-lockfile/closure-per-project",
+        "vx-lockfile/dependency-names",
+        "vx-lockfile/extra-in-project",
+        "vx-lockfile/file-dir-dep",
+        "vx-lockfile/link-outside-root",
+        "vx-lockfile/link-to-workspace",
+        "vx-lockfile/npm-nested-workspace",
+        "vx-lockfile/overrides-precise",
+        "vx-lockfile/root-workspace-dep",
+        "whole-second-stamps",
+        "wildcard-depends",
+        "workspace",
+        "workspace-files",
+        "workspace-files-nested-repo",
+        "workspace-root-file",
+        "workspace-unreadable",
+        "write-through-link"
+      ],
+      "vx-only": [
+        "branch-scope",
+        "cache-adopt-listing",
+        "cache-adopt-sweep",
+        "cache-clean",
+        "cache-clean-verb",
+        "cache-dir-home",
+        "cache-dir-selection",
+        "cache-prune-policy",
+        "cache-scope",
+        "cache-subcommand-pointers",
+        "cgroup",
+        "cli-picker",
+        "completions",
+        "completions-shells",
+        "config",
+        "config-builtins-blame",
+        "config-builtins-round",
+        "config-bytecode",
+        "config-chdir",
+        "config-check-blind",
+        "config-commonjs-hint",
+        "config-corpus.unsafe",
+        "config-error-audit",
+        "config-eval",
+        "config-eval-sync-loop",
+        "config-frame",
+        "config-function-export",
+        "config-global-leak",
+        "config-import-specifiers",
+        "config-missing-import",
+        "config-pnp-import",
+        "config-refusals-pinned",
+        "config-schema-cache-keys",
+        "config-schema-exec-keys",
+        "config-schema-fuzz",
+        "config-schema-project-keys",
+        "config-schema-refusals",
+        "config-schema-task-string",
+        "config-schema-workspace-keys",
+        "config-stage-verbs",
+        "config-staleness",
+        "config-string-secret-mask",
+        "config-types-schema",
+        "config-umask",
+        "config-umask-concurrent",
+        "configless-fence",
+        "contract-cli-surface",
+        "contract-cli-wire",
+        "contract-config-schema",
+        "contract-discovery",
+        "contract-exit-codes",
+        "contract-exit-codes-init",
+        "contract-exit-codes-states",
+        "contract-lockfile",
+        "contract-package-api",
+        "contract-plugin-api.unsafe",
+        "contract-plugin-env.unsafe",
+        "contract-profile-wire",
+        "contract-stored-format",
+        "contract-task-globs",
+        "core-alias",
+        "critical-path",
+        "discover-stage",
+        "discovery-node-modules",
+        "discovery-refusals",
+        "download-policy",
+        "dry-json-stdout",
+        "dte-sandbox.unsafe",
+        "executor",
+        "executor-demand",
+        "executor-error-secret-mask",
+        "executor-fallback",
+        "executor-sync-result",
+        "flaky",
+        "forecast",
+        "frozen-deleted-config",
+        "frozen-selection",
+        "graph-memo",
+        "graph-memo-run",
+        "handoff",
+        "help-bad-setting-env",
+        "help-colors",
+        "help-lazy-plugins",
+        "history",
+        "history-definition",
+        "history-fetch.unsafe",
+        "history-forecast-branch",
+        "history-p50s",
+        "history.unsafe",
+        "info-bad-setting-env",
+        "info-corrupt-index",
+        "info-git-status-cache",
+        "info-lock",
+        "init",
+        "init-global-berry",
+        "init-lockfile-plugin.unsafe",
+        "init-next-task",
+        "init-no-manifest",
+        "inspect-no-create",
+        "last",
+        "last-attempts",
+        "last-empty",
+        "last-input-moved",
+        "last-live",
+        "last-log",
+        "last-root-spelling",
+        "last-sql",
+        "last-stats",
+        "last-stats-branch",
+        "last-stopped-run",
+        "last-warnings",
+        "layered-cache",
+        "live-usage",
+        "local-fallbacks",
+        "local-floor-servers",
+        "lock",
+        "lock-bracket-literal",
+        "lock-check-broken",
+        "lock-discover-stage",
+        "lock-graph-rules",
+        "lock-help",
+        "lock-nested-workspace-name",
+        "lock-review-files",
+        "lock-secret",
+        "lock-shadowed-config",
+        "lockfile-boundary",
+        "lockfile-claim",
+        "metrics",
+        "migration",
+        "near-miss",
+        "own-rss-high-water",
+        "placement",
+        "placement-async-hints",
+        "plan-format",
+        "plan-predict",
+        "plugin",
+        "plugin-cache",
+        "plugin-cache-scoped-has",
+        "plugin-capabilities",
+        "plugin-commands",
+        "plugin-e2e",
+        "plugin-error-code",
+        "plugin-error-secret-mask",
+        "plugin-executor-abort",
+        "plugin-hook-tables",
+        "plugin-json-schemas.unsafe",
+        "plugin-name",
+        "plugin-output",
+        "plugin-pipeline",
+        "plugin-run-facts",
+        "plugin-run-record",
+        "plugin-setup-warn",
+        "plugin-teardown",
+        "plugin-templates.unsafe",
+        "plugin-thrown-values",
+        "plugin-unknown-options",
+        "plugin-warn-secret-mask",
+        "proc-sample-env",
+        "proc-sample.unsafe",
+        "project-tags",
+        "registry",
+        "remote-artifact-names",
+        "remote-duration",
+        "remote-faults-said.unsafe",
+        "remote-held-gone",
+        "remote-open",
+        "remote-policy-notice",
+        "remote-prefetch",
+        "remote-sandbox-arm.unsafe",
+        "sandbox-abort-before-spawn.unsafe",
+        "sandbox-arg-too-long.unsafe",
+        "sandbox-bridge-socket.unsafe",
+        "sandbox-canary-home.unsafe",
+        "sandbox-chdir-denied.unsafe",
+        "sandbox-credential-stores.unsafe",
+        "sandbox-deny-scan",
+        "sandbox-deny-scan.unsafe",
+        "sandbox-dirfd-quote.unsafe",
+        "sandbox-empty-grant-spelling.unsafe",
+        "sandbox-empty-outputs.unsafe",
+        "sandbox-fd-records",
+        "sandbox-fix",
+        "sandbox-git-config.unsafe",
+        "sandbox-git-discovery.unsafe",
+        "sandbox-glob-chars.unsafe",
+        "sandbox-grant-ancestors.unsafe",
+        "sandbox-grant-remove.unsafe",
+        "sandbox-grant-through-link.unsafe",
+        "sandbox-grants.unsafe",
+        "sandbox-helper-env.unsafe",
+        "sandbox-hidden-reads.unsafe",
+        "sandbox-hint",
+        "sandbox-hint-spelling.unsafe",
+        "sandbox-host-helpers.unsafe",
+        "sandbox-host-services.unsafe",
+        "sandbox-lifecycle.unsafe",
+        "sandbox-mkdir-ancestor.unsafe",
+        "sandbox-network-patterns.unsafe",
+        "sandbox-noscan-dir.unsafe",
+        "sandbox-noscan-gone.unsafe",
+        "sandbox-observer-drain.unsafe",
+        "sandbox-output-link.unsafe",
+        "sandbox-parent-env.unsafe",
+        "sandbox-paths",
+        "sandbox-placeholder-nested.unsafe",
+        "sandbox-port-bridge-ready.unsafe",
+        "sandbox-port-held.unsafe",
+        "sandbox-prewarm.unsafe",
+        "sandbox-proxy-denials.unsafe",
+        "sandbox-proxy-ready.unsafe",
+        "sandbox-readonly-masks.unsafe",
+        "sandbox-records-key.unsafe",
+        "sandbox-request",
+        "sandbox-run-direct.unsafe",
+        "sandbox-runtime.unsafe",
+        "sandbox-scratch-probe.unsafe",
+        "sandbox-session-guard.unsafe",
+        "sandbox-signal-notice.unsafe",
+        "sandbox-strace-argv",
+        "sandbox-temp-hint.unsafe",
+        "sandbox-temp-vars.unsafe",
+        "sandbox-timeout-clock.unsafe",
+        "sandbox-trace-exit.unsafe",
+        "sandbox-tracer-retry.unsafe",
+        "sandbox-usage.unsafe",
+        "sandbox-violation-secret-mask.unsafe",
+        "sandbox-widened-reads.unsafe",
+        "sandbox-write-glob-new-file.unsafe",
+        "schedule-refine",
+        "schedule-strategy",
+        "scheduler-properties",
+        "scoped-config-loading",
+        "seatbelt-profile",
+        "secret-mask",
+        "secret-mask-multiline",
+        "secret-mask-reuse",
+        "secret-prompt-quiet",
+        "secrets",
+        "selection-graph-reuse",
+        "self-config-keyed",
+        "settings",
+        "show-affected",
+        "show-default-build",
+        "show-empty",
+        "show-empty-list",
+        "show-error-prefix",
+        "show-exec-fields",
+        "show-info",
+        "show-multiline",
+        "show-root-slash",
+        "show-select",
+        "slow-download",
+        "steps",
+        "stop-during-download",
+        "stop-during-upload",
+        "tally",
+        "telemetry",
+        "telemetry-async-hooks",
+        "telemetry-command-secret-mask",
+        "telemetry-lifecycle",
+        "telemetry-trace-facts",
+        "timing-dry",
+        "unlocked-config",
+        "unscoped-vx.unsafe",
+        "upgrade",
+        "upgrade-write-preflight",
+        "vx-cache-server/bun",
+        "vx-cache-server/oidc",
+        "vx-cache-server/r2-blobs",
+        "vx-cache-server/r2-held",
+        "vx-cache-server/r2-put",
+        "vx-cache-server/start-line",
+        "vx-cache-server/worker",
+        "vx-cache/oidc-endpoint",
+        "vx-cache/oidc-said-once",
+        "vx-cache/refusals",
+        "vx-cache/url-source",
+        "vx-cache/vx-cache",
+        "vx-ci/cache-scope",
+        "vx-ci/empty-options",
+        "vx-ci/github",
+        "vx-ci/gitlab",
+        "vx-ci/lazy-load",
+        "vx-ci/off-actions",
+        "vx-ci/setup",
+        "vx-ci/unknown-options",
+        "vx-devtools/hostile-tokens",
+        "vx-devtools/oidc",
+        "vx-devtools/parse-allow",
+        "vx-devtools/terminal",
+        "vx-dte-server/oidc",
+        "vx-dte-server/relay",
+        "vx-dte-server/start-line",
+        "vx-dte-server/stores-nothing",
+        "vx-dte-server/template",
+        "vx-dte-server/worker",
+        "vx-dte-server/worker-sockets",
+        "vx-dte/cpu-account",
+        "vx-dte/docker",
+        "vx-dte/forecast",
+        "vx-dte/github",
+        "vx-dte/gitlab",
+        "vx-dte/init",
+        "vx-dte/jsdoc",
+        "vx-dte/local-e2e",
+        "vx-dte/local-e2e-saves",
+        "vx-dte/noise",
+        "vx-dte/outputs",
+        "vx-dte/planner",
+        "vx-dte/planner-properties",
+        "vx-dte/plugin-order",
+        "vx-dte/run-id",
+        "vx-dte/seal",
+        "vx-dte/sim",
+        "vx-dte/trace",
+        "vx-dte/tree",
+        "vx-dte/units",
+        "vx-dte/warm-ups",
+        "vx-dte/wire",
+        "vx-history-server/bun",
+        "vx-history-server/start-line",
+        "vx-history-server/worker",
+        "vx-history/assume",
+        "vx-history/history-e2e",
+        "vx-history/history-schema",
+        "vx-history/history-server",
+        "vx-history/history-view",
+        "vx-history/lazy-load",
+        "vx-history/resource-estimates",
+        "vx-history/server-answers",
+        "vx-history/timings-file",
+        "vx-history/unknown-options",
+        "vx-lockfile/bun",
+        "vx-lockfile/bun-catalog-precise",
+        "vx-lockfile/bun-patch-precise",
+        "vx-lockfile/discover",
+        "vx-lockfile/discover-parity",
+        "vx-lockfile/entry-shapes",
+        "vx-lockfile/io-refusals",
+        "vx-lockfile/lazy-load",
+        "vx-lockfile/lockfile-choice",
+        "vx-lockfile/lockfile-shapes",
+        "vx-lockfile/memo-identity",
+        "vx-lockfile/npm",
+        "vx-lockfile/pnpm",
+        "vx-lockfile/pnpm-exclude-links",
+        "vx-lockfile/pnpm-ignored-optional",
+        "vx-lockfile/pnpm-workspace-precise",
+        "vx-lockfile/refusal-message",
+        "vx-lockfile/rehoist-identity",
+        "vx-lockfile/settings",
+        "vx-lockfile/unknown-options",
+        "vx-lockfile/yarn",
+        "vx-lockfile/yarn-bound-descriptor",
+        "vx-lockfile/yarn-classic-link-workspace",
+        "vx-lockfile/yarn-numeric-range",
+        "vx-lockfile/yarn-package-extensions",
+        "vx-lockfile/yarn-package-settings",
+        "vx-lockfile/yarn-transparent-workspaces",
+        "vx-migrate/adopt",
+        "vx-migrate/adoption-script-hooks",
+        "vx-migrate/adoption-task-names",
+        "vx-migrate/cache-timeout-options",
+        "vx-migrate/cache-url-at-call",
+        "vx-migrate/contract-cli",
+        "vx-migrate/delegated-script-aliases",
+        "vx-migrate/glob-grammar",
+        "vx-migrate/head-stamp-reftable",
+        "vx-migrate/helpers-sweep",
+        "vx-migrate/keychain-token",
+        "vx-migrate/mapping-cache",
+        "vx-migrate/migrate",
+        "vx-migrate/migrate-nx-adopted-notes",
+        "vx-migrate/migrate-nx-npm-env",
+        "vx-migrate/migrate-nx-workspace",
+        "vx-migrate/migrate-scripts-cli",
+        "vx-migrate/migrate-turbo-dotenv-preset",
+        "vx-migrate/migrate-turbo-drop-turbo",
+        "vx-migrate/migrate-turbo-env-preset",
+        "vx-migrate/migrate-turbo-env-wildcard",
+        "vx-migrate/migrate-turbo-framework-env",
+        "vx-migrate/migrate-turbo-framework-prefix",
+        "vx-migrate/migrate-turbo-lockfile-note",
+        "vx-migrate/migrate-turbo-preset-takeback",
+        "vx-migrate/migrate-turbo-sealed-tsconfig",
+        "vx-migrate/migrate-turbo-tracked-outputs",
+        "vx-migrate/migrate-vite-task",
+        "vx-migrate/no-conflict-markers",
+        "vx-migrate/no-install-next",
+        "vx-migrate/nx",
+        "vx-migrate/nx-atomized-outputs",
+        "vx-migrate/nx-boundaries",
+        "vx-migrate/nx-cache",
+        "vx-migrate/nx-cache-sweep",
+        "vx-migrate/nx-call-edge",
+        "vx-migrate/nx-command",
+        "vx-migrate/nx-command-sweep",
+        "vx-migrate/nx-config-name-clash",
+        "vx-migrate/nx-dependent-outputs",
+        "vx-migrate/nx-deps-dedupe",
+        "vx-migrate/nx-deps-projects",
+        "vx-migrate/nx-dotenv",
+        "vx-migrate/nx-env-ready-when",
+        "vx-migrate/nx-exec",
+        "vx-migrate/nx-exec-cwd-live",
+        "vx-migrate/nx-exec-errors",
+        "vx-migrate/nx-exec-live",
+        "vx-migrate/nx-exec-missing-package",
+        "vx-migrate/nx-exec-missing-package-live",
+        "vx-migrate/nx-exec-return",
+        "vx-migrate/nx-exec-return-live",
+        "vx-migrate/nx-exec-stale-graph",
+        "vx-migrate/nx-executors",
+        "vx-migrate/nx-export-lerna",
+        "vx-migrate/nx-extglob-outputs",
+        "vx-migrate/nx-forward-todo",
+        "vx-migrate/nx-graph-edges",
+        "vx-migrate/nx-helpers-sweep",
+        "vx-migrate/nx-init-e2e-live",
+        "vx-migrate/nx-input-keyed-group",
+        "vx-migrate/nx-input-projects",
+        "vx-migrate/nx-input-projects-deps",
+        "vx-migrate/nx-legacy-executors",
+        "vx-migrate/nx-lerna-order",
+        "vx-migrate/nx-map-sweep",
+        "vx-migrate/nx-migrate-nx-exec",
+        "vx-migrate/nx-negated-implicit",
+        "vx-migrate/nx-no-package-json",
+        "vx-migrate/nx-npm-tag-deps",
+        "vx-migrate/nx-outputs-outside",
+        "vx-migrate/nx-parity-live",
+        "vx-migrate/nx-project-root-path",
+        "vx-migrate/nx-release-publish",
+        "vx-migrate/nx-root-outside",
+        "vx-migrate/nx-root-tsconfig",
+        "vx-migrate/nx-run-commands-args-name-live",
+        "vx-migrate/nx-run-commands-decoration",
+        "vx-migrate/nx-run-commands-override-live",
+        "vx-migrate/nx-run-script-env",
+        "vx-migrate/nx-self-call",
+        "vx-migrate/nx-self-edge",
+        "vx-migrate/nx-shape-fixtures",
+        "vx-migrate/nx-skipped-edge",
+        "vx-migrate/nx-sync-note",
+        "vx-migrate/nx-target-normalize",
+        "vx-migrate/nx-task-env",
+        "vx-migrate/nx-tracked-output-input",
+        "vx-migrate/nx-uncached-outputs",
+        "vx-migrate/nx-unknown-named-input",
+        "vx-migrate/nx-unlisted-projects",
+        "vx-migrate/nx-upstream",
+        "vx-migrate/own-file-outputs",
+        "vx-migrate/packages",
+        "vx-migrate/packages-errors-doc",
+        "vx-migrate/packages-foreign-owner",
+        "vx-migrate/packages-git-top",
+        "vx-migrate/packages-glob-order",
+        "vx-migrate/packages-globstar-claim",
+        "vx-migrate/packages-hidden-member",
+        "vx-migrate/packages-member-alias",
+        "vx-migrate/packages-name-hash",
+        "vx-migrate/packages-nested-root",
+        "vx-migrate/packages-outside-member",
+        "vx-migrate/packages-unreadable",
+        "vx-migrate/paths",
+        "vx-migrate/plugin-gaps",
+        "vx-migrate/pnpm-root-flag",
+        "vx-migrate/remote-breaker",
+        "vx-migrate/remote-cache-carry",
+        "vx-migrate/remote-cache-degrade",
+        "vx-migrate/remote-retry",
+        "vx-migrate/script-command",
+        "vx-migrate/script-hooks-skipped",
+        "vx-migrate/scripts",
+        "vx-migrate/scripts-lerna-packages",
+        "vx-migrate/scripts-lifecycle-build",
+        "vx-migrate/scripts-load-messages",
+        "vx-migrate/scripts-member-sibling",
+        "vx-migrate/scripts-nameless-member",
+        "vx-migrate/scripts-next-line",
+        "vx-migrate/scripts-own-script-chain",
+        "vx-migrate/scripts-package-manager",
+        "vx-migrate/scripts-persistent-runner-refs",
+        "vx-migrate/scripts-pn",
+        "vx-migrate/scripts-root-bin",
+        "vx-migrate/scripts-root-name-clash",
+        "vx-migrate/scripts-root-note-manager",
+        "vx-migrate/scripts-root-reason",
+        "vx-migrate/scripts-serves-dlx",
+        "vx-migrate/scripts-yarn-pnp",
+        "vx-migrate/shared-outputs",
+        "vx-migrate/taken-back-literal",
+        "vx-migrate/token-redirect",
+        "vx-migrate/tracked-outputs",
+        "vx-migrate/tsc-buildinfo",
+        "vx-migrate/turbo",
+        "vx-migrate/turbo-cache",
+        "vx-migrate/turbo-cache-exit",
+        "vx-migrate/turbo-cache-preflight",
+        "vx-migrate/turbo-cache-repair",
+        "vx-migrate/turbo-cache-scope",
+        "vx-migrate/turbo-cache-signature-rules",
+        "vx-migrate/turbo-cache-sweep",
+        "vx-migrate/turbo-cache-temp-dir",
+        "vx-migrate/turbo-caret-stop",
+        "vx-migrate/turbo-dependency-outputs",
+        "vx-migrate/turbo-dotenv-globs",
+        "vx-migrate/turbo-entry-root-edge",
+        "vx-migrate/turbo-env-key",
+        "vx-migrate/turbo-env-literal-once",
+        "vx-migrate/turbo-env-switches",
+        "vx-migrate/turbo-global-takeback",
+        "vx-migrate/turbo-ignored-inputs",
+        "vx-migrate/turbo-map-shell-names",
+        "vx-migrate/turbo-map-spliced-dedupe",
+        "vx-migrate/turbo-map-sweep",
+        "vx-migrate/turbo-nested-inputs",
+        "vx-migrate/turbo-noop-node",
+        "vx-migrate/turbo-oidc",
+        "vx-migrate/turbo-output-mode",
+        "vx-migrate/turbo-package-tags",
+        "vx-migrate/turbo-persistent-unreached",
+        "vx-migrate/turbo-proto-names",
+        "vx-migrate/turbo-root-engines",
+        "vx-migrate/turbo-scriptless-task",
+        "vx-migrate/turbo-staged-output",
+        "vx-migrate/turbo-v1-root-deps",
+        "vx-migrate/turbo-wild-literal-output",
+        "vx-migrate/unknown-options",
+        "vx-migrate/vite-task-backslash",
+        "vx-migrate/vite-task-env-wildcard",
+        "vx-migrate/vite-task-glued-globstar",
+        "vx-migrate/vite-task-nested-run",
+        "vx-migrate/workspace-keys",
+        "vx-migrate/yarn-berry-no-lock",
+        "vx-otel/boolean-options",
+        "vx-otel/collector",
+        "vx-otel/compression-env-warning",
+        "vx-otel/contract-otlp",
+        "vx-otel/header-content-type",
+        "vx-otel/header-option-type",
+        "vx-otel/header-unset",
+        "vx-otel/option-kinds",
+        "vx-otel/otel",
+        "vx-otel/redirect-headers",
+        "vx-otel/run-unaffected",
+        "vx-otel/timeout-env-warning",
+        "vx-otel/timeout-option",
+        "vx-otel/tls",
+        "vx-otel/unknown-options",
+        "vx-reapi/boolean-options",
+        "vx-reapi/cache-ac-refused",
+        "vx-reapi/cache-sweep",
+        "vx-reapi/cancel-operation",
+        "vx-reapi/capabilities-retry",
+        "vx-reapi/decode-sweep",
+        "vx-reapi/encoding",
+        "vx-reapi/exec-e2e",
+        "vx-reapi/executor",
+        "vx-reapi/executor-auth",
+        "vx-reapi/executor-helpers-sweep",
+        "vx-reapi/executor-no-stale-replay",
+        "vx-reapi/executor-sweep",
+        "vx-reapi/factory-capabilities",
+        "vx-reapi/fake-reapi",
+        "vx-reapi/integrity",
+        "vx-reapi/materialise-concurrency",
+        "vx-reapi/materialise-fence",
+        "vx-reapi/merkle",
+        "vx-reapi/merkle-sweep",
+        "vx-reapi/no-env",
+        "vx-reapi/no-stale-hit",
+        "vx-reapi/option-kinds",
+        "vx-reapi/plugin",
+        "vx-reapi/plugin-sweep",
+        "vx-reapi/queue-timeout",
+        "vx-reapi/read-bounds",
+        "vx-reapi/reapi-e2e",
+        "vx-reapi/record-digest-sizes",
+        "vx-reapi/request-metadata-action",
+        "vx-reapi/stream-cache",
+        "vx-reapi/string-map-options",
+        "vx-reapi/timeout-options",
+        "vx-reapi/tls",
+        "vx-reapi/unknown-options",
+        "vx-reapi/vx-run-e2e",
+        "vx-reapi/wedged",
+        "vx-reapi/wire",
+        "vx-reapi/wire-exec-sweep",
+        "vx-reapi/wire-exec-unavailable",
+        "vx-reapi/wire-only-options",
+        "vx-reapi/wire-sweep",
+        "why",
+        "why-config-hint",
+        "why-verdict",
+        "workspace-config",
+        "workspace-config-purity",
+        "workspace-guard-bun",
+        "workspace-load-messages"
+      ],
+      "internal": [
+        "admit-warning-prefix",
+        "alive-helper.unsafe",
+        "always-dead-server-taint",
+        "archive-extract-meta",
+        "archive-security",
+        "artifact-ceiling",
+        "artifact-checksum",
+        "artifact-pack-properties",
+        "bin-reader-gone",
+        "bin-stdout",
+        "binary-launch",
+        "bins-executable.unsafe",
+        "blob-verdict",
+        "bun-file-exists-sites",
+        "bun-floor",
+        "bun-test-import-descriptors",
+        "bun-version",
+        "cache-baseline",
+        "cache-close-old-bun",
+        "cache-close.unsafe",
+        "cache-disk-full",
+        "cache-get-many",
+        "cache-hash-files",
+        "cache-holds-nothing",
+        "cache-inline",
+        "cache-open-busy",
+        "cache-out-of-fds",
+        "cache-perf",
+        "cache-save-batch",
+        "cache-save-lock",
+        "cache-store",
+        "cache-store-moved",
+        "cache-unreadable",
+        "capture-cap",
+        "ci-env-readers",
+        "ci-output",
+        "cli",
+        "cli-arg-hygiene",
+        "cli-bare",
+        "cli-cache-dir-stages",
+        "cli-colors-e2e",
+        "cli-error-secret-mask",
+        "cli-help-synopsis",
+        "cli-hint-every-verb",
+        "cli-json-schemas",
+        "cli-nonutf8-args",
+        "cli-refusal-see-help",
+        "cli-streams",
+        "cli-verb-sections",
+        "closure-search",
+        "colors",
+        "continue-cache-properties",
+        "core-source-key.unsafe",
+        "disk-full.unsafe",
+        "dispatched-verbs",
+        "enumeration-equivalence",
+        "error-codes",
+        "errors",
+        "events",
+        "exclude-dependencies-properties",
+        "exec-word-quotes",
+        "execute-task",
+        "exit-codes-complete",
+        "exit-held-loop",
+        "file-url-paths",
+        "filter-properties",
+        "fixture-helpers",
+        "fold-memo",
+        "footer-run-id",
+        "forward-args-frame",
+        "framed-output",
+        "free-port",
+        "gates",
+        "git-env",
+        "git-listing-temp",
+        "git-oid",
+        "git-optional-locks",
+        "git-reftable.unsafe",
+        "git-spawns-once",
+        "git-subdir-workspace",
+        "git-trust",
+        "gitlink-without-git",
+        "graph-counts",
+        "group-key-once",
+        "hash-list",
+        "held-blob-sizes",
+        "held-server-exit",
+        "held-server-output",
+        "hide-env.unsafe",
+        "home-guard",
+        "index-schema-race",
+        "index-write-wait",
+        "inflight",
+        "inputs-glob-fuzz",
+        "invocation-secret-mask",
+        "keep-alive",
+        "keep-alive-sigkill",
+        "key-fold",
+        "kill-tree-guard-backlog",
+        "kill-tree-guard-lines.unsafe",
+        "kill-tree-guard-zombie.unsafe",
+        "kill-tree-hold",
+        "kill-tree-proc.unsafe",
+        "left-running-save",
+        "load-reads",
+        "local-shortcircuit",
+        "log-spacing",
+        "miss-save-marks",
+        "narrow-terminal",
+        "no-auto-install.unsafe",
+        "no-cache-word",
+        "no-git-on-path",
+        "no-nested-run.unsafe",
+        "no-shell-on-path",
+        "npm-launcher",
+        "npm-launcher-sh",
+        "options-resolve",
+        "orchestrator",
+        "orchestrator-remote",
+        "orchestrator-run",
+        "output-memory.unsafe",
+        "package-entry-shims.unsafe",
+        "package-graph",
+        "package-json-bom",
+        "painted-output",
+        "persistent-lifecycle-properties.unsafe",
+        "persistent-sandbox-hint.unsafe",
+        "plain-output",
+        "port-bridge-dial",
+        "posix-rel-paths",
+        "prepare-perf",
+        "prepare-run",
+        "project-dirs",
+        "project-loader",
+        "prune-inline-frees",
+        "read-once.unsafe",
+        "reading-verbs-git",
+        "ready-wait-notice",
+        "real-path",
+        "recursive-run",
+        "refusal-notice",
+        "repo-facts-disk",
+        "resave-aside",
+        "reserved-names",
+        "resolve-cache",
+        "restore-artifact-replaced",
+        "restore-exdev",
+        "restore-git-spawns",
+        "restore-occupied-parent",
+        "restore-partial-commit",
+        "restore-ported",
+        "restore-rows-held",
+        "restore-unreadable-stale",
+        "rng",
+        "run-artifacts",
+        "run-bus-subscribers",
+        "run-context",
+        "run-history-blocks",
+        "run-history-columns",
+        "run-history-row-cells",
+        "run-id",
+        "run-keys",
+        "run-lock",
+        "run-lock-e2e",
+        "run-lock-fs",
+        "run-lock-owner",
+        "run-lock-recycled.unsafe",
+        "run-option-shapes",
+        "run-outcome-retry-timeout-properties",
+        "run-output-coalesce",
+        "run-output-paths",
+        "run-record-completeness",
+        "run-records",
+        "run-refusal-stderr",
+        "run-shapes",
+        "run-spaced-value",
+        "run-store",
+        "run-tail",
+        "runner",
+        "runtime-probe-secret-mask",
+        "save-index-from-plan",
+        "save-lane",
+        "save-output-moved-size",
+        "scale-graph",
+        "scan-tar-bytes",
+        "schema-reset-notice",
+        "schema-unknown-keys",
+        "scoped-git-graph",
+        "server-death-properties",
+        "settle-now",
+        "shared-store",
+        "shared-store-memos",
+        "shell-verdict",
+        "shell-verdict-sandbox",
+        "shell-verdict-secret-mask",
+        "skipped-footer",
+        "spawn-off",
+        "sqlite-query-only.unsafe",
+        "stable-keys",
+        "staged-once",
+        "stale-hit-memo",
+        "status-line",
+        "status-vocabulary",
+        "stop-display",
+        "store-schema-race",
+        "summary",
+        "summary-meters",
+        "summary-skipped-cached",
+        "syscall-repeats.unsafe",
+        "taint-properties",
+        "taint-tracker",
+        "tar-numeric-fields",
+        "tar-roundtrip-fuzz",
+        "tar-stream",
+        "task-artifacts",
+        "task-glob-bun-1-4-4",
+        "task-hash",
+        "task-hash-properties",
+        "task-log-buffer",
+        "task-platforms",
+        "task-verb",
+        "term-dumb",
+        "terminal.unsafe",
+        "timeout-exit-race.unsafe",
+        "tmpdir-refusal",
+        "tool-not-on-path",
+        "tree-states-key",
+        "tree-store-torn",
+        "ui",
+        "ui-only-output.unsafe",
+        "ulid",
+        "uncached-key-once",
+        "user-error-classify",
+        "util-hash",
+        "util-num",
+        "util-paths",
+        "util-procfs",
+        "util-settle",
+        "util-size",
+        "util-tail",
+        "util-timing",
+        "util-which",
+        "vanished-artifact",
+        "version-fast-path",
+        "warm-shell",
+        "watch-affected",
+        "watch-anchored-scope",
+        "watch-claimed-files",
+        "watch-cycle-clock",
+        "watch-empty-dir",
+        "watch-ignore-submodule",
+        "watch-initial-readiness",
+        "watch-judge-fence",
+        "watch-judge-label",
+        "watch-judge-properties",
+        "watch-label-live-path",
+        "watch-label-workspace-wide",
+        "watch-linked-input",
+        "watch-loop",
+        "watch-loop-edits",
+        "watch-loop-members",
+        "watch-loop-selfwrite",
+        "watch-loop-uncached",
+        "watch-mode-change",
+        "watch-nested-boundary",
+        "watch-new-member-edit",
+        "watch-one-stream",
+        "watch-poll-output-beside-input",
+        "watch-pool-close",
+        "watch-project-dir-write",
+        "watch-ready-interrupt",
+        "watch-recreated-dirs",
+        "watch-restored-output",
+        "watch-root-scope",
+        "watch-rules",
+        "watch-server-blame",
+        "watch-signals",
+        "watch-symlink-retarget",
+        "watch-timing",
+        "watch-transient-file",
+        "watch-tree-linux",
+        "watch-unignored-deletion",
+        "watch-workspace-file-gone",
+        "watch-ws-import-in-project",
+        "workspace-files-shared-memo",
+        "zstd-frames"
+      ],
+      "docs": [
+        "agent-skill",
+        "api-break",
+        "api-break.unsafe",
+        "api-reference",
+        "architecture-doc-drift",
+        "architecture-doc-drift.unsafe",
+        "auto-release.unsafe",
+        "bench-percent",
+        "build-npm.unsafe",
+        "caching-doc-drift",
+        "ci-workflow.unsafe",
+        "cli-doc-drift",
+        "cli-json-doc",
+        "config-levels-doc",
+        "contract-versioning-doc",
+        "conventional",
+        "conventional-commits.unsafe",
+        "dependency-licenses.unsafe",
+        "dependency-rules",
+        "dependency-spec",
+        "doc-class-pins.unsafe",
+        "doc-comments-attached.unsafe",
+        "doc-references",
+        "doc-references.unsafe",
+        "docs",
+        "docs-examples.unsafe",
+        "env-doc-drift",
+        "error-codes-repo.unsafe",
+        "examples.unsafe",
+        "execution-doc-drift",
+        "exports-referenced.unsafe",
+        "features-inventory.unsafe",
+        "markdown-anchors",
+        "module-boundaries",
+        "module-page-claims",
+        "module-shape-drift",
+        "module-surface-drift",
+        "no-old-names.unsafe",
+        "npm-pack.unsafe",
+        "output-doc-drift",
+        "package-boundaries.unsafe",
+        "plugin-env-documented.unsafe",
+        "plugin-exports-documented.unsafe",
+        "plugin-hooks-doc-drift",
+        "plugin-hooks-doc-drift.unsafe",
+        "plugin-options-documented.unsafe",
+        "readme-imports.unsafe",
+        "readme-links.unsafe",
+        "readme-words.unsafe",
+        "release",
+        "release-notes",
+        "release-provenance.unsafe",
+        "schema-doc-drift",
+        "shard-partition",
+        "signed-cache-guide.unsafe",
+        "site-bench-percent.unsafe",
+        "site-configure-claims.unsafe",
+        "site-plugins-ship-table.unsafe",
+        "site-quickstart-run.unsafe",
+        "site-samples.unsafe",
+        "site-transcripts.unsafe",
+        "site-troubleshooting.unsafe",
+        "site-upgrading.unsafe",
+        "skills-install.unsafe",
+        "suite-coverage.unsafe",
+        "supply-chain.unsafe",
+        "telemetry-doc",
+        "third-party-notices.unsafe",
+        "try-it.unsafe",
+        "turbo-nx-support",
+        "turbo-nx-support-flags.unsafe",
+        "turbo-nx-wording.unsafe",
+        "upgrading-page",
+        "upstream",
+        "upstream-ledger.unsafe",
+        "workflow-runner.unsafe"
+      ]
+    }
+  },
+  "tools": {
+    "vx": "this commit",
+    "turbo": "2.11.10",
+    "nx": "24.0.2",
+    "vite-task": "1.4.0"
+  },
+  "cases": [
+    {
+      "id": "graph/deps-first",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "`^build` builds every dependency before the project that needs it",
+      "from": [
+        "parity-turbo",
+        "parity-nx",
+        "graph-order"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/one-project-pulls-its-deps",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Running one project's task runs what it depends on, and nothing else",
+      "from": [
+        "parity-turbo",
+        "parity-nx",
+        "task-selection"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/same-project-dependency",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A bare name in dependsOn waits on the same project’s task",
+      "from": [
+        "parity-turbo",
+        "task-graph"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/explicit-task-edge",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "`lib#build` in dependsOn runs that task first, with no package dependency",
+      "from": [
+        "parity-turbo",
+        "parity-nx",
+        "task-edge-selection"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/diamond-runs-once",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "A dependency two projects share builds once per run",
+      "from": [
+        "scheduler",
+        "task-graph-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/transitive-through-taskless",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "`^build` reaches a dependency’s dependency when the middle project has no build",
+      "why": "app reads lib’s output through mid; skipping lib leaves app reading nothing.",
+      "from": [
+        "parity-turbo",
+        "graph-pipeline-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "graph/dependents-not-pulled",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "Running a library’s task does not run the projects that depend on it",
+      "from": [
+        "task-selection",
+        "select"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/task-in-some-projects",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A task only some projects declare runs in exactly those",
+      "from": [
+        "task-selection",
+        "bare-name-default-build"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/project-dir-with-spaces",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A project whose directory holds spaces builds, caches and restores",
+      "from": [
+        "parity-nx",
+        "workspace-path-chars"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/task-name-with-colon",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A task named `test:unit` runs as its own task",
+      "from": [
+        "parity-nx",
+        "cli-task-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/unchanged-replays",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A second run over an unchanged tree replays instead of running",
+      "from": [
+        "parity-turbo",
+        "parity-nx-hashing",
+        "repeated-runs.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/edit",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Editing an input runs the task again",
+      "from": [
+        "parity-turbo-hashing",
+        "inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/same-size-edit",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A same-size edit right after a commit runs the task again",
+      "from": [
+        "parity-turbo-hashing",
+        "git-racy-index",
+        "hash-scenarios"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/new-file",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A new file under an input glob runs the task again",
+      "from": [
+        "inputs",
+        "parity-turbo-hashing"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/deleted-file",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Deleting an input runs the task again",
+      "from": [
+        "parity-turbo-hashing",
+        "absent-input"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/renamed-file",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Renaming an input runs the task again",
+      "from": [
+        "stale-hit-git",
+        "inputs-moved"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/nested-dir",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit deep in a nested input directory runs the task again",
+      "from": [
+        "parity-turbo-hashing",
+        "nested-dirs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/odd-file-name",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit to an input named with spaces, `$` and quotes runs the task again",
+      "from": [
+        "hash-scenarios",
+        "git-enum-unicode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/unicode-file-name",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit to an input with a non-ASCII name runs the task again",
+      "from": [
+        "git-enum-unicode",
+        "affected-unicode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/revert-replays-old",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Undoing an edit replays the first run’s outputs, not the edited ones",
+      "from": [
+        "parity-turbo-hashing",
+        "hash-scenarios",
+        "stale-hit"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-inputs-ignored",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A file outside the task’s inputs changes nothing",
+      "from": [
+        "parity-turbo",
+        "inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/negated-glob",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A file a `!` input pattern takes back changes nothing",
+      "from": [
+        "parity-turbo-hashing",
+        "patterns-doc-drift"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/gitignored-not-input",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A gitignored file under an input glob changes nothing",
+      "why": "Ignored files are local state (logs, caches); keying on them makes every machine miss.",
+      "from": [
+        "ignored-inputs",
+        "parity-nx-hashing",
+        "parity-turbo-hashing"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 5,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "ran a#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "inputs/untracked-file",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A new file git does not track yet is an input",
+      "from": [
+        "parity-turbo-hashing",
+        "git-pending-reads"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/executable-bit",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Making an input executable runs the task again",
+      "why": "The mode is part of what the task reads: a build that copies a script ships it runnable or not.",
+      "from": [
+        "stale-hit"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/out.txt is \"plain\\n\", expected \"exec\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/out.txt is \"plain\\n\", expected \"exec\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/out.txt is \"plain\\n\", expected \"exec\\n\""
+        }
+      }
+    },
+    {
+      "id": "inputs/dependency-edit-cascades",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Editing a dependency rebuilds the projects that read its output",
+      "from": [
+        "parity-turbo",
+        "parity-nx-hashing",
+        "hash-chain"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run ui#build, app#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/sibling-untouched",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "Editing one project does not rerun a project that does not depend on it",
+      "from": [
+        "parity-turbo-hashing-env",
+        "hash-chain"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/dependency-non-input-edit",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "An edit to a file outside a dependency’s build inputs does not rebuild its dependents",
+      "from": [
+        "parity-nx-hashing"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/nested-project-excluded",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A project nested inside another keeps its files out of the outer project’s inputs",
+      "from": [
+        "nested-boundary",
+        "parity-nx-hashing"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran outer#build, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran outer#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "inputs/symlink-retarget",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Pointing an input symlink at another file runs the task again",
+      "from": [
+        "stale-hit",
+        "linked-inputs",
+        "path-links"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/out.txt is \"a\\n1\\n\", expected \"a\\n2\\n\""
+        }
+      }
+    },
+    {
+      "id": "inputs/default-inputs-cache",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A task that lists no inputs is still replayed when nothing changed",
+      "why": "Each tool has a default for unlisted inputs (the project’s files, or what the command read); none needs a list to cache.",
+      "from": [
+        "configless-default-build",
+        "cache-declaration-warnings"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "fail",
+          "step": 2,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/default-inputs-edit",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A task that lists no inputs runs again when its project’s sources change",
+      "from": [
+        "configless-default-build"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/restored-on-hit",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Deleted outputs come back from the cache with the same bytes",
+      "from": [
+        "parity-turbo",
+        "parity-nx",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/restored-on-hit-without-rerun",
+      "category": "outputs",
+      "kind": "efficiency",
+      "title": "Deleted outputs are restored, not rebuilt",
+      "from": [
+        "parity-turbo",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/edited-output-restored",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output edited by hand is put back on the next run",
+      "why": "The run’s result is the tree the inputs produce; a hand edit left in place ships bytes no build made.",
+      "from": [
+        "stale-hit",
+        "restore-keep-rewrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/stale-output-removed-on-rebuild",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A rebuild leaves no output the new inputs no longer produce",
+      "why": "A file a renamed source used to produce would otherwise ship from dist forever.",
+      "from": [
+        "outputs-clean",
+        "output-flow"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/old.txt exists, expected none"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/old.txt exists, expected none"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/old.txt exists, expected none"
+        }
+      }
+    },
+    {
+      "id": "outputs/stale-output-removed-on-restore",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Restoring an older entry leaves no file a later build added",
+      "why": "The restored tree must be the one that entry’s inputs produce.",
+      "from": [
+        "outputs-clean",
+        "restore-staging",
+        "stale-hit"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/dist/b.txt exists, expected none"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/dist/b.txt exists, expected none"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/dist/b.txt exists, expected none"
+        }
+      }
+    },
+    {
+      "id": "outputs/stray-file-removed-on-restore",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A stray file dropped in an output directory is gone after a restore",
+      "why": "Outputs are what the task wrote; a leftover file in dist ships in the package.",
+      "from": [
+        "stale-hit",
+        "output-dirs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/stray.txt exists, expected none"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/stray.txt exists, expected none"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/stray.txt exists, expected none"
+        }
+      }
+    },
+    {
+      "id": "outputs/undeclared-not-restored",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Only declared outputs are restored",
+      "from": [
+        "restore-declared-only",
+        "undeclared-writes"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/negated-output",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A `!` output pattern keeps that file out of the cache",
+      "from": [
+        "negated-outputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/executable-bit-restored",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An executable output comes back executable",
+      "from": [
+        "restore-umask",
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/symlink-restored",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A symlink output comes back as the same link",
+      "from": [
+        "output-links",
+        "restore-link-out"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/latest.txt is missing"
+        }
+      }
+    },
+    {
+      "id": "outputs/nested-and-binary",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Nested output directories and binary bytes restore intact",
+      "from": [
+        "artifact-roundtrip",
+        "png-intact.unsafe",
+        "archive-restore-fuzz"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/dependency-restored-for-dependent",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A dependency’s deleted outputs are back before a rebuilding dependent reads them",
+      "from": [
+        "parity-turbo",
+        "uncached-upstream-key"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/same-command-two-projects",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Two projects with the same command and the same sources keep their own outputs",
+      "why": "The command runs in each project’s own directory; one project’s bytes restored into the other is a wrong tree.",
+      "from": [
+        "parity-nx",
+        "keyed-projects"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/declared-reaches-task",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A declared variable reaches the command",
+      "from": [
+        "env",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/declared-change-reruns",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Changing a declared variable runs the task again",
+      "from": [
+        "parity-turbo",
+        "parity-turbo-hashing-env",
+        "env-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/back-to-old-value",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Going back to an earlier value restores that value’s outputs",
+      "from": [
+        "parity-turbo-hashing-env",
+        "env-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/unset-vs-empty",
+      "category": "env",
+      "kind": "correctness",
+      "title": "An unset variable and an empty one are different values",
+      "from": [
+        "parity-turbo-hashing-env",
+        "env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 2,
+          "detail": "packages/a/dist/out.txt is \"unset\\n\", expected \"\\n\""
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/name-case-sensitive",
+      "category": "env",
+      "kind": "correctness",
+      "title": "`MODE` and `mode` are different variables",
+      "from": [
+        "parity-turbo-hashing-env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/undeclared-change-ignored",
+      "category": "env",
+      "kind": "efficiency",
+      "title": "A variable the task does not declare changes nothing",
+      "from": [
+        "parity-turbo-hashing-env",
+        "env-reads-complete"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/uncached-runs-every-time",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A task with caching off runs on every run",
+      "from": [
+        "parity-turbo",
+        "uncached-no-lookup"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "logs/replay-shows-log",
+      "category": "logs",
+      "kind": "correctness",
+      "title": "A replayed task shows the output its run printed",
+      "from": [
+        "parity-turbo",
+        "replay-fidelity",
+        "output-log"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "fail",
+          "step": 2,
+          "detail": "output lacks \"printed-by-build\""
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/command-change-reruns",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "Changing a task’s command runs it again",
+      "from": [
+        "parity-turbo-hashing-env",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/dependency-command-change-cascades",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "Changing a dependency’s command rebuilds the projects that read its output",
+      "from": [
+        "parity-turbo-hashing-env",
+        "hash-chain"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run ui#build, app#build"
+        }
+      }
+    },
+    {
+      "id": "cache/outputs-change-rekeys",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "Declaring a new output runs the task again so the cache holds it",
+      "why": "An entry saved before the output was declared does not hold it; a hit would restore a tree without it.",
+      "from": [
+        "parity-turbo",
+        "task-hash-derive",
+        "output-shape"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/survives-checkout-copy",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Committing a change keeps the entry the uncommitted run saved",
+      "from": [
+        "parity-turbo-hashing",
+        "hash-scenarios"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/exit-code-fails-run",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that exits non-zero fails the run",
+      "from": [
+        "run-exit-codes",
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/never-cached",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A failed task is not replayed as a success next time",
+      "from": [
+        "parity-turbo",
+        "parity-nx",
+        "run-failures-store"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/dependents-skipped",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A failed dependency stops the projects that need it from running",
+      "from": [
+        "parity-turbo",
+        "parity-nx",
+        "continue-taint"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/fixed-then-passes",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "Fixing a failed task’s input makes the next run pass and build",
+      "from": [
+        "run-failures-store",
+        "failed-output-whole"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/killed-by-signal",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task killed by a signal fails the run and is not cached",
+      "from": [
+        "signal-death",
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/stderr-is-not-failure",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that writes to stderr and exits 0 succeeds",
+      "from": [
+        "run-output",
+        "warnings-stderr"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/missing-task-in-filter",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "Asking for a task no project declares fails the run",
+      "why": "A typo that exits 0 lets CI pass having checked nothing.",
+      "from": [
+        "task-typo-verb",
+        "cli-task-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/change-reaches-dependents",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A committed change selects its project and every project that depends on it",
+      "from": [
+        "affected",
+        "affected-dependents",
+        "parity-nx"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#test"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        }
+      }
+    },
+    {
+      "id": "affected/leaf-change-stays-put",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A change in a project nothing depends on selects only that project",
+      "from": [
+        "affected",
+        "affected-tasks"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        }
+      }
+    },
+    {
+      "id": "affected/nothing-changed",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "With nothing changed, an affected run runs nothing and succeeds",
+      "from": [
+        "parity-nx",
+        "affected-count-placeholder"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        }
+      }
+    },
+    {
+      "id": "affected/uncommitted-change",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "An uncommitted edit counts as a change",
+      "from": [
+        "affected",
+        "affected-head-range"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        }
+      }
+    },
+    {
+      "id": "affected/untracked-file",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A new file git does not track yet counts as a change",
+      "from": [
+        "affected",
+        "git-pending-reads"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        }
+      }
+    },
+    {
+      "id": "affected/deleted-file",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A deleted file counts as a change to its project",
+      "from": [
+        "affected-moves"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#test"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        }
+      }
+    },
+    {
+      "id": "affected/root-file-reaches-nobody",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A change to a root file no task reads selects nothing",
+      "from": [
+        "affected-workspace-files",
+        "affected-default-text"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        }
+      }
+    }
+  ]
+}
