@@ -71,8 +71,6 @@ export interface RunSummaryRow {
   attempts: number | null
   /** Milliseconds it waited, ready, for a slot (v51); null when it never queued. */
   queuedMs: number | null
-  /** Bytes of the outputs its save stored or its hit restored (v51); null when none. */
-  outputBytes: number | null
 }
 
 export interface ListRunsArgs {
@@ -136,7 +134,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
               blocked_by AS blockedBy, timed_out AS timedOut,
               sandbox_violations AS sandboxViolations, not_ready AS notReady,
               forward_args IS NOT NULL AS forwarded, remote_error AS remoteError, attempts,
-              queued_ms AS queuedMs, output_bytes AS outputBytes
+              queued_ms AS queuedMs
        FROM runs ${clause} ORDER BY id DESC LIMIT ?`,
     )
     .all(...params, limit) as RawRow[]
