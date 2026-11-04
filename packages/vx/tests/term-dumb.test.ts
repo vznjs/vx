@@ -6,13 +6,14 @@
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { createOutputWriter, type StatusStream } from '../src/ui/live-region.js'
 import { detectColors } from '../src/ui/index.js'
-import { restoreEnv } from './helpers/env.js'
+import { dropCi, restoreEnv } from './helpers/env.js'
 
 const orig = { ...process.env }
 beforeEach(() => {
   delete process.env['NO_COLOR']
   delete process.env['FORCE_COLOR']
   process.env['TERM'] = 'dumb'
+  dropCi(process.env)
 })
 afterEach(() => {
   restoreEnv(orig)
