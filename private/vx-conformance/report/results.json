@@ -2491,6 +2491,9 @@
         "replay-fidelity",
         "output-log"
       ],
+      "choices": {
+        "vx": "a hit prints one line; `vx last --log <task>` shows the stored output"
+      },
       "outcomes": {
         "vx": {
           "status": "fail",

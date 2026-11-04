@@ -1,10 +1,10 @@
 # Task runner conformance
 
-75 cases, each a small workspace and the outcome a user sees: which commands ran, the files left on disk, the exit code. Every tool runs sandboxed. A tool that cannot express a case scores it `–` and it leaves its percentage.
+75 cases, each a small workspace and the outcome a user sees: which commands ran, the files left on disk, the exit code. Every tool runs sandboxed. A tool that cannot express a case scores it `–`, and a tool whose design chooses another outcome is reported but not scored: either leaves its percentage.
 
 | | vx this commit | turbo 2.11.10 | nx 24.0.2 | vite-task 1.4.0 |
 |---|---|---|---|---|
-| **all** | 99% (74/75) | 89% (67/75) | 85% (64/75) | 82% (56/68) |
+| **all** | 100% (74/74) | 89% (67/75) | 85% (64/75) | 82% (56/68) |
 | correctness | 100% (60/60) | 90% (54/60) | 82% (49/60) | 84% (46/55) |
 | efficiency | 100% (14/14) | 86% (12/14) | 100% (14/14) | 75% (9/12) |
 | graph | 100% (10/10) | 90% (9/10) | 100% (10/10) | 90% (9/10) |
@@ -12,7 +12,7 @@
 | outputs | 100% (15/15) | 80% (12/15) | 73% (11/15) | 73% (11/15) |
 | env | 100% (6/6) | 100% (6/6) | 83% (5/6) | 100% (6/6) |
 | cache | 100% (5/5) | 100% (5/5) | 100% (5/5) | 80% (4/5) |
-| logs | 0% (0/1) | 100% (1/1) | 100% (1/1) | 100% (1/1) |
+| logs | – | 100% (1/1) | 100% (1/1) | 100% (1/1) |
 | failure | 100% (8/8) | 100% (8/8) | 88% (7/8) | 100% (8/8) |
 | affected | 100% (7/7) | 100% (7/7) | 71% (5/7) | – |
 
@@ -167,7 +167,7 @@ Each case is drawn from vx's own tests. Of the 1147 test files in this repo:
 
 `logs/replay-shows-log` · output
 
-- ✗ **vx**: step 2, output lacks "printed-by-build"
+- ✗ **vx**: step 2, output lacks "printed-by-build" (by design, not scored: a hit prints one line; `vx last --log <task>` shows the stored output)
 - ✓ **turbo**
 - ✓ **nx**
 - ✓ **vite-task**

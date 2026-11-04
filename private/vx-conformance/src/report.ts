@@ -35,6 +35,7 @@ export interface Results {
     title: string
     why?: string
     from: string[]
+    choices?: Record<string, string>
     outcomes: Record<string, Outcome>
   }[]
 }
@@ -50,7 +51,9 @@ export async function toolVersion(a: Adapter): Promise<string> {
 type Row = Results['cases'][number]
 
 function score(rows: Row[], tool: string): string {
-  const applicable = rows.filter((r) => r.outcomes[tool]?.status !== 'n/a')
+  const applicable = rows.filter(
+    (r) => r.outcomes[tool]?.status !== 'n/a' && r.choices?.[tool] === undefined,
+  )
   if (applicable.length === 0) return '–'
   const pass = applicable.filter((r) => r.outcomes[tool]?.status === 'pass').length
   return `${Math.round((pass / applicable.length) * 100)}% (${pass}/${applicable.length})`
@@ -74,14 +77,15 @@ export function renderReport(r: Results): string {
       '',
       ...tools.map((t) => {
         const o = c.outcomes[t]!
-        return `- ${MARK[o.status]} **${t}**${o.detail ? `: ${o.step ? `step ${o.step}, ` : ''}${o.detail}` : ''}`
+        const choice = c.choices?.[t]
+        return `- ${MARK[o.status]} **${t}**${o.detail ? `: ${o.step ? `step ${o.step}, ` : ''}${o.detail}` : ''}${choice ? ` (by design, not scored: ${choice})` : ''}`
       }),
       '',
     ].join('\n')
   return [
     '# Task runner conformance',
     '',
-    `${r.cases.length} cases, each a small workspace and the outcome a user sees: which commands ran, the files left on disk, the exit code. Every tool runs sandboxed. A tool that cannot express a case scores it \`–\` and it leaves its percentage.`,
+    `${r.cases.length} cases, each a small workspace and the outcome a user sees: which commands ran, the files left on disk, the exit code. Every tool runs sandboxed. A tool that cannot express a case scores it \`–\`, and a tool whose design chooses another outcome is reported but not scored: either leaves its percentage.`,
     '',
     head,
     line('**all**', r.cases),

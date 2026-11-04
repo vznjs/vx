@@ -37,7 +37,9 @@ A case is `correctness` when failing it leaves a wrong tree or exit code,
 `efficiency` when failing it reruns work nothing asked for, and `output`
 when it is only about what the run prints: a log is never correctness. `why` says
 why the outcome is right where a tool could argue for another. `from`
-names the vx tests the case is drawn from.
+names the vx tests the case is drawn from. `choices` names a tool whose
+design picks another outcome on purpose, and why: its result is reported,
+not scored.
 
 ## Adapters
 

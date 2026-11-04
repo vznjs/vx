@@ -113,6 +113,8 @@ export interface Case {
   /** The vx tests or issues this case was drawn from. */
   from: string[]
   needs?: Feature[]
+  /** Tool → why it chose another outcome by design: its result is reported, not scored. */
+  choices?: Record<string, string>
   workspace: WorkspaceSpec
   steps: Step[]
 }

@@ -23,6 +23,9 @@ export default [
     kind: 'output',
     title: 'A replayed task shows the output its run printed',
     from: ['parity-turbo', 'replay-fidelity', 'output-log'],
+    choices: {
+      vx: 'a hit prints one line; `vx last --log <task>` shows the stored output',
+    },
     workspace: one({
       command: 'echo printed-by-build && ' + CONCAT,
       inputs: ['src/**'],

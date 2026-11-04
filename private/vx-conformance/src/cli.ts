@@ -108,6 +108,7 @@ const results: Results = {
     title: c.title,
     ...(c.why ? { why: c.why } : {}),
     from: c.from,
+    ...(c.choices ? { choices: c.choices } : {}),
     outcomes: Object.fromEntries(tools.map((t) => [t.name, outcomeOf(t.name, c.id)])),
   })),
 }
