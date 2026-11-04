@@ -241,7 +241,7 @@ export function dte(options: DteOptions = {}) {
   // With no scheme the run failed in the executor as a bare "Invalid URL".
   if (options.relay !== undefined && !/^https?:\/\//.test(options.relay)) {
     throw new UserError(
-      `dte() option "relay" must be an http(s) URL, got ${JSON.stringify(options.relay)}`,
+      `dte() option "relay" must be an http(s) URL, got ${JSON.stringify(shown(options.relay))}`,
     )
   }
   // On GitHub Actions with none given, one for the relay's URL.
@@ -385,7 +385,7 @@ export function dte(options: DteOptions = {}) {
             throw new UserError(`vx dte worker: needs ${missing.join(', and ')}`)
           }
           if (!/^https?:\/\//.test(relay))
-            throw new UserError(`vx dte worker: VX_DTE_RELAY must be http(s), got ${relay}`)
+            throw new UserError(`vx dte worker: VX_DTE_RELAY must be http(s), got ${shown(relay)}`)
           const secret = givenSecret()
           if (secret === undefined && !onGitHub()) {
             throw new UserError(
@@ -1017,4 +1017,9 @@ export async function changedSinceParent(workspaceRoot: string): Promise<string[
 export function homeOf(sizes: readonly Size[], host: string): string | undefined {
   const of = new Set(sizes.filter((s) => s.max > 0).map((s) => s.platform))
   return of.has(host) && of.size > 1 ? host : undefined
+}
+
+/** A relay URL as a refusal may print it: a `user:pass@` would reach the CI log. */
+function shown(url: string): string {
+  return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i, '$1***@')
 }

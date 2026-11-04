@@ -580,6 +580,24 @@ describe('HistoryServer', () => {
     )
     expect(refusal({ url: 'https://h.example/' })).toBe('taken')
   })
+
+  // nx#37667 kept credentials out of printed URLs: a refusal goes to the CI log.
+  it('prints a refused url without its credentials', () => {
+    const refusal = (url: string): string => {
+      try {
+        vxHistory({ ...NAMED, url })
+        return 'taken'
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect(refusal('http://u:s3cret@h.example')).toBe(
+      'vxHistory(): url must be https (http only to 127.0.0.1, ::1 or localhost), got http://***@h.example',
+    )
+    expect(refusal('https://u:s3cret@h.example/v1')).toBe(
+      "vxHistory(): url is the server's base, without /v1: https://***@h.example",
+    )
+  })
 })
 
 describe('vx run with vxHistory({ url })', () => {

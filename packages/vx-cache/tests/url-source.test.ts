@@ -22,3 +22,14 @@ it('names the url option when the URL came from it', () => {
     'vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got c.example',
   )
 })
+
+// nx#37667 kept credentials out of printed URLs. A refusal goes to the CI
+// log, so a `user:pass@` in the URL is printed as `***`.
+it('prints a refused URL without its credentials', () => {
+  expect(() => resolveVxCacheConfig({ ...NAMED, url: 'http://u:s3cret@c.example' }, {})).toThrow(
+    'vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got http://***@c.example',
+  )
+  expect(() =>
+    resolveVxCacheConfig(NAMED, { VX_CACHE_URL: 'https://u:s3cret@c.example/v1' }),
+  ).toThrow("vxCache(): VX_CACHE_URL is the server's base, without /v1: https://***@c.example")
+})

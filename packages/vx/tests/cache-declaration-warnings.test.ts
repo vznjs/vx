@@ -117,42 +117,46 @@ describe('cache declarations that match nothing', () => {
     expect(await runTask('lost')).toEqual([])
   })
 
-  it('an output directory linked out of the project refuses the task by name (M-61, X-88)', async () => {
-    // Every file under a `dist` that links out is outside the project. The
-    // save once dropped them and stored an empty entry under a warning; the
-    // task is refused instead, and nothing is saved. Canonical root: the
-    // refusal names real paths.
-    root = realpathSync(root)
-    const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-decl-out-'))
-    try {
-      await writeFile(path.join(outside, 'creds.txt'), 'not yours\n')
-      await writeFile(
-        path.join(root, 'packages', 'app', 'vx.config.mjs'),
-        `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} dist' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } } } }\n`,
-      )
-      const lines: string[] = []
-      const summary = await run({
-        cwd: root,
-        tasks: ['linked'],
-        projects: ['app'],
-        log: {
-          ...logger(lines),
-          taskStderr: (_node: unknown, line: string) => {
-            lines.push(line.trimEnd())
+  // A literal output read through a linked parent is nx#37661 (2026-11).
+  it.each(['dist/**', 'dist/creds.txt', 'dist/', 'dist'])(
+    'an output directory linked out of the project refuses the task by name (M-61, X-88): %s',
+    async (output) => {
+      // Every file under a `dist` that links out is outside the project. The
+      // save once dropped them and stored an empty entry under a warning; the
+      // task is refused instead, and nothing is saved. Canonical root: the
+      // refusal names real paths.
+      root = realpathSync(root)
+      const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-decl-out-'))
+      try {
+        await writeFile(path.join(outside, 'creds.txt'), 'not yours\n')
+        await writeFile(
+          path.join(root, 'packages', 'app', 'vx.config.mjs'),
+          `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} dist' },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [${JSON.stringify(output)}] } } } } }\n`,
+        )
+        const lines: string[] = []
+        const summary = await run({
+          cwd: root,
+          tasks: ['linked'],
+          projects: ['app'],
+          log: {
+            ...logger(lines),
+            taskStderr: (_node: unknown, line: string) => {
+              lines.push(line.trimEnd())
+            },
           },
-        },
-        handleSignals: false,
-      })
-      expect(summary.ok).toBe(false)
-      const app = path.join(root, 'packages', 'app')
-      expect(lines.filter((l) => l.includes('symbolic link'))).toEqual([
-        `[vx] app#linked: ${path.join(app, 'dist')} is a symbolic link to ${realpathSync(outside)}, outside ${app} — vx never cleans, saves or restores declared outputs through a link that leaves the project. Remove the link and re-run, or stop declaring outputs under it.`,
-      ])
-    } finally {
-      await rm(outside, { recursive: true, force: true })
-    }
-  })
+          handleSignals: false,
+        })
+        expect(summary.ok).toBe(false)
+        const app = path.join(root, 'packages', 'app')
+        expect(lines.filter((l) => l.includes('symbolic link'))).toEqual([
+          `[vx] app#linked: ${path.join(app, 'dist')} is a symbolic link to ${realpathSync(outside)}, outside ${app} — vx never cleans, saves or restores declared outputs through a link that leaves the project. Remove the link and re-run, or stop declaring outputs under it.`,
+        ])
+      } finally {
+        await rm(outside, { recursive: true, force: true })
+      }
+    },
+  )
 
   it('and a workspaceFiles directory linked out of the workspace (M-65)', async () => {
     // The root-anchored side drops every file under a linked-out directory

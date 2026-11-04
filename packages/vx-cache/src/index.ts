@@ -852,6 +852,11 @@ function namedOf(options: VxCacheOptions): { issuer: string; repository: string 
 /** The longest delay a timer holds. */
 const MAX_TIMER_MS = 2 ** 31 - 1
 
+/** `url` as a refusal may print it: a `user:pass@` would reach the CI log. */
+function shown(url: string): string {
+  return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i, '$1***@')
+}
+
 /**
  * https, or http to this machine: every request carries the CI token, and
  * http:// to another host sent it in clear.
@@ -875,11 +880,13 @@ export function resolveVxCacheConfig(
   const from = options.url === undefined ? 'VX_CACHE_URL' : 'url'
   if (!secure(url))
     throw new UserError(
-      `vxCache(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${url}`,
+      `vxCache(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${shown(url)}`,
     )
   // Each route is the url's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
-    throw new UserError(`vxCache(): ${from} is the server's base, without /v1: ${url.slice(0, -3)}`)
+    throw new UserError(
+      `vxCache(): ${from} is the server's base, without /v1: ${shown(url.slice(0, -3))}`,
+    )
   return {
     url,
     ...named,

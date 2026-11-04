@@ -574,6 +574,14 @@ export default { plugins: [dte({ relay: ${JSON.stringify(relay)}, workers: { sma
   expect(said({ VX_DTE_RELAY: 'relay.example.com' })).toStartWith(
     '✗ vx dte worker  VX_DTE_RELAY must be http(s), got relay.example.com\n',
   )
+  // nx#37667: a refusal reaches the CI log, so a `user:pass@` prints as `***`.
+  expect(said({ VX_DTE_RELAY: 'wss://u:s3cret@relay.example.com' })).toStartWith(
+    '✗ vx dte worker  VX_DTE_RELAY must be http(s), got wss://***@relay.example.com\n',
+  )
+  await workspace('wss://u:s3cret@relay.example.com')
+  expect(said({})).toContain(
+    'dte() option "relay" must be an http(s) URL, got "wss://***@relay.example.com"',
+  )
 })
 
 it('vx dte worker names only what it lacks', async () => {

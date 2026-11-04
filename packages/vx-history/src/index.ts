@@ -277,6 +277,11 @@ function namedOf(issuer: unknown, repository: unknown): Named {
   return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
+/** `url` as a refusal may print it: a `user:pass@` would reach the CI log. */
+function shown(url: string): string {
+  return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i, '$1***@')
+}
+
 /**
  * https, or http to this machine: every request carries the CI token, and
  * http:// to another host sent it in clear.
@@ -299,12 +304,12 @@ function serverUrlOf(
   const from = option === undefined ? 'VX_HISTORY_URL' : 'url'
   if (!secure(url))
     throw new UserError(
-      `vxHistory(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${url}`,
+      `vxHistory(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${shown(url)}`,
     )
   // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
     throw new UserError(
-      `vxHistory(): ${from} is the server's base, without /v1: ${url.slice(0, -3)}`,
+      `vxHistory(): ${from} is the server's base, without /v1: ${shown(url.slice(0, -3))}`,
     )
   return url
 }
