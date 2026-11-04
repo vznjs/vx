@@ -184,7 +184,7 @@ export const PERSISTENT_TODO =
   'persistent task — set persistent.readyWhen (regex matched against output) so ' +
   'dependents unblock on readiness, and consider exec.timeout to bound the wait'
 == const place (src/ui/components.ts)
-export const place = (text: string): Inline => (text === 'local' ? text : id(text))
+export const place = (text: string): Inline => (text === 'local' ? dim(text) : id(text))
 == const PLATFORMS (src/config.ts)
 export const PLATFORMS = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const
 == const PLUGIN_HOOKS (src/config.ts)
@@ -1900,6 +1900,7 @@ export type Style =
   | 'remote'
   | 'heading'
   | 'term'
+  | 'value'
   | 'muted'
   | 'strong'
   | 'label'

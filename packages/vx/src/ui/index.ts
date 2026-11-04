@@ -22,8 +22,6 @@ export {
   inline,
   next,
   notice,
-  panelBottom,
-  panelRow,
   panelTop,
   path,
   place,

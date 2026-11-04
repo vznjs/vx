@@ -3268,7 +3268,7 @@ export function line(...items: Inline[]): Block
 export function next(command: Inline): Block
 export function notice(p: NoticeParts): Block
 export const path = (text: string): Inline => ({ style: 'strong', text })
-export const place = (text: string): Inline => (text === 'local' ? text : id(text))
+export const place = (text: string): Inline => (text === 'local' ? dim(text) : id(text))
 export function render(blocks: readonly Block[], colors: ColorSupport): string
 export function report(title: string, rows: readonly FieldRow[]): Block
 export function section(title: string, ...body: Block[]): Block
@@ -3314,6 +3314,7 @@ export type Style =
   | 'remote'
   | 'heading'
   | 'term'
+  | 'value'
   | 'muted'
   | 'strong'
   | 'label'

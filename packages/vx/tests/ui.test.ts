@@ -63,7 +63,8 @@ describe('ui components', () => {
         '  next      vx run build --all\n',
     )
     const painted = ui.render([ui.report('vx', rows)], ON)
-    expect(painted).toContain('\x1b[2mfrom    \x1b[0m  \x1b[2mturbo.json\x1b[0m')
+    // The label is meta (dim), the value a fact (slate-300), a level above it.
+    expect(painted).toContain('\x1b[2mfrom    \x1b[0m  \x1b[38;2;203;213;225mturbo.json\x1b[0m')
     expect(painted).toContain('\x1b[1mvx run build --all\x1b[0m')
   })
 

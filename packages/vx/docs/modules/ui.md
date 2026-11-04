@@ -11,17 +11,17 @@ reads with `data`. Nothing else writes to a stream, prints with
 [`docs/design/ui-2026-11.md`](../design/ui-2026-11.md).
 
 The screen looks like a TUI and is not one: panels stacked top to
-bottom, written into the scrollback line by line. Nothing is hidden,
-cut, scrolled or placed side by side; a long line wraps inside its
-panel. A CI log gets the same coloured panels (only the live redraw is
-gone). A plain pipe gets the same components off colour: a panel is its
-rule `─ Title ───` and its bare lines, the bytes a test or `grep` reads.
+bottom, written into the scrollback line by line. A panel is its title
+rule `─ Title ───` and its lines, with no box. Nothing is hidden, cut,
+scrolled or placed side by side. Any CI gets the same coloured panels
+(only the live redraw is gone). A plain pipe gets the same layout off
+colour, the bytes a test or `grep` reads.
 
 ## Files
 
 - `theme.ts`: the tokens. `Style`, `Tone`, `SYMBOL`, `INDENT`, the hues,
   `paint`, `detectColors`, `dumbTerminal`, `barWidth`, `ruleWidth`.
-- `components.ts`: inline tokens and blocks, the panel parts, `wrap`,
+- `components.ts`: inline tokens and blocks, the panel rule, `wrap`,
   `render`.
 - `terminal.ts`: the streams. `print`, `say`, `data`, `transient`,
   `colorsOf`.
@@ -56,7 +56,7 @@ id(text) place(text) path(text) cmd(text) strong(text) dim(text) tone(style, tex
 inline(x, colors) width(x) idParts(hueSource, project, task, colors, opts)
 
 // blocks
-section(title, count?, ...blocks)  // a panel: ╭─ Title count ─╮ │ … │ ╰─╯
+section(title, count?, ...blocks)  // a panel: ─ Title count ───, then its lines
 status(tone, verb, headline)       // ✗ vx lock  lock not written
 line(...items) gap()               // one line at the margin; a blank line
 text(...items) why(line)           // indented facts; an indented dim line
@@ -68,8 +68,8 @@ excerpt(title, body)               // a file shown whole
 code(frame) notice(parts: NoticeParts) trace(lines)
 bar(segments: Segment[], colors) gauge(filled, style, colors)
 
-// panel parts, for a panel drawn a row at a time (the run's Tasks list)
-panelTop(title, colors, count?, note?) panelRow(content, colors) panelBottom(colors)
+// a panel's rule, for a panel drawn a row at a time (the run's Tasks list)
+panelTop(title, colors, count?, note?)
 wrap(line, width): string[]        // never cuts; a colour carries across rows
 
 render(blocks, colors): string     // blocks a blank line apart, trailing newline
@@ -122,14 +122,18 @@ export function sayLine(tone: Tone, line: string, verb?: string): void // lineNo
   `id` paints a `project#task` in each half's own hue (`identityHue`),
   the `#` dim; the identity palette shares no hue with a status
   (`tests/framed-output.test.ts`). `place` paints where a task runs as
-  `id` does; `local` stays plain.
-- No line reads plain white: plain words are dim, commands bold, values a
-  tone. A panel title is violet bold, its box a quiet grey.
+  `id` does; `local` is meta (dim).
+- Five levels, one look each, brightest first (`Style` in `theme.ts`):
+  1 outcome, a tone (its glyph and status word bold); 2 name, a title
+  (violet bold), an id's hues, a command (bold); 3 value, the fact
+  (slate-300); 4 meta, a label, unit, hint or count (dim); 5 chrome, a
+  rule (quiet grey). A plain string takes the level of where it sits: a
+  field's value or a sentence is a value. No line reads plain white.
 - Text is printed with every control byte but a tab and a line break as
   `\xNN`: a notice quotes paths and names, and one holding `ESC ]0;`
   retitled the terminal. An inline carries no escape of its own.
 - Content sits 2 spaces in; labels are one dim column at least 8 wide.
-- A panel is the terminal's width up to 120 columns (100 off a terminal).
+- A panel's rule is flush with the bars beside their labels (`ruleWidth`).
 - Colours are decided at print time per stream, so a `Block` renders
   plain into a test with `{ enabled: false }`.
 - Task output is never boxed: a failure's frame keeps its own rules, and
@@ -137,13 +141,13 @@ export function sayLine(tone: Tone, line: string, verb?: string): void // lineNo
 
 ## Colour detection
 
-| Env                                                               | Result                                                   |
-| ----------------------------------------------------------------- | -------------------------------------------------------- |
-| `NO_COLOR=<non-empty>`                                            | off — overrides `FORCE_COLOR`                            |
-| `FORCE_COLOR=0` / `false`                                         | off, even on a TTY                                       |
-| `FORCE_COLOR=<any other>` or `=`                                  | on                                                       |
-| `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE` or `CIRCLECI` = `true` | on: their log renders colour though the output is a pipe |
-| neither                                                           | on iff `stream.isTTY === true` and `TERM` is not `dumb`  |
+| Env                                                                                                                                        | Result                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `NO_COLOR=<non-empty>`                                                                                                                     | off — overrides `FORCE_COLOR`                                     |
+| `FORCE_COLOR=0` / `false`                                                                                                                  | off, even on a TTY                                                |
+| `FORCE_COLOR=<any other>` or `=`                                                                                                           | on                                                                |
+| any CI: `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, `TF_BUILD`, `JENKINS_URL` or `TEAMCITY_VERSION` set, not `0`/`false` | on: a CI log looks like the terminal, though the output is a pipe |
+| neither                                                                                                                                    | on iff `stream.isTTY === true` and `TERM` is not `dumb`           |
 
 `0` and `false` are the convention's "off" (supports-color, chalk,
 Node). `orchestrator.run()` passes `{ enabled: false }` when the caller

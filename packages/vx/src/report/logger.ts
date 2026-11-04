@@ -697,15 +697,6 @@ export function defaultLogger(
     const was = panelOpen
     if (was === undefined) return
     panelOpen = undefined
-    const bottom = ui.panelBottom(colors)
-    if (bottom === undefined) return
-    if (was === 'Warnings') {
-      writer.writeTo(errOut, `${bottom}\n`)
-      return
-    }
-    inPanel = true
-    emitLine(bottom)
-    inPanel = false
   }
   const emitRow = (line: string): void => {
     if (!panels) {
@@ -716,10 +707,10 @@ export function defaultLogger(
     inPanel = true
     if (panelOpen !== 'Tasks') {
       emitLine(ui.panelTop('Tasks', colors))
-      emitLine(ui.panelRow(formatListHeader(colors), colors))
+      emitLine(formatListHeader(colors))
       panelOpen = 'Tasks'
     }
-    emitLine(ui.panelRow(line, colors))
+    emitLine(line)
     inPanel = false
   }
   // formatTaskBlock returns '' for group tasks (no exec) — skip the
@@ -808,7 +799,7 @@ export function defaultLogger(
       const rows = line
         .replace(/\n+$/, '')
         .split('\n')
-        .map((l) => ui.panelRow(ui.tagged('warn', l, colors), colors))
+        .map((l) => ui.tagged('warn', l, colors))
       writer.writeTo(errOut, `${rows.join('\n')}\n`)
     },
     runStart(info) {

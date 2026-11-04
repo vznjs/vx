@@ -12,7 +12,6 @@ import {
   type WorkerSlot,
 } from '../src/report/status-line.js'
 import { createOutputWriter, type StatusStream } from '../src/ui/live-region.js'
-import { panelRow } from '../src/ui/index.js'
 import {
   formatListHeader,
   formatRunningHeader,
@@ -1432,10 +1431,10 @@ describe('list headers', () => {
       ON,
     )
     // The title over it says what the list is, bold in the summary's violet.
-    expect(Bun.stripANSI(live[1]!)).toStartWith('╭─ Running 1 ')
+    expect(Bun.stripANSI(live[1]!)).toStartWith('─ Running 1 ')
     expect(live[1]).toContain('\x1b[1m\x1b[38;2;167;139;250mRunning\x1b[0m')
     // The header is the panel's first row.
-    expect(live[2]).toBe(panelRow(formatRunningHeader(ON), ON))
+    expect(live[2]).toBe(formatRunningHeader(ON))
     expect(underlined(formatRunningHeader(ON))).toBe(
       '      time   usual status  cache      cpu    mem outputs  blocks worker       task',
     )
@@ -1443,7 +1442,7 @@ describe('list headers', () => {
       '      time  ±usual status  cache      cpu    mem outputs  blocks worker       task',
     )
     // No blank line between a header and its first row.
-    expect(Bun.stripANSI(live[3]!)).toMatch(/ a#b +│$/)
+    expect(Bun.stripANSI(live[3]!)).toMatch(/ a#b$/)
   })
 })
 

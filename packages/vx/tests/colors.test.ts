@@ -40,7 +40,16 @@ describe('paint', () => {
 describe('detectColors', () => {
   const orig = { ...process.env }
 
-  const CI_VARS = ['GITHUB_ACTIONS', 'GITLAB_CI', 'BUILDKITE', 'CIRCLECI']
+  const CI_VARS = [
+    'CI',
+    'GITHUB_ACTIONS',
+    'GITLAB_CI',
+    'BUILDKITE',
+    'CIRCLECI',
+    'TF_BUILD',
+    'JENKINS_URL',
+    'TEAMCITY_VERSION',
+  ]
   beforeEach(() => {
     delete process.env['NO_COLOR']
     delete process.env['FORCE_COLOR']
@@ -62,16 +71,22 @@ describe('detectColors', () => {
     expect(detectColors({ isTTY: false } as NodeJS.WriteStream).enabled).toBe(true)
   })
 
-  // GitHub Actions and GitLab render ANSI in a piped log, which read plain (2026-10-22).
-  it('paints a piped log on a CI that renders colour, unless NO_COLOR or FORCE_COLOR=0', () => {
+  // A CI log looks like the terminal: every CI paints its piped log, the
+  // generic `CI` and the CIs that set none too (only four vendors did).
+  it('paints a piped log on every CI, unless NO_COLOR or FORCE_COLOR=0', () => {
     const piped = { isTTY: false } as NodeJS.WriteStream
+    const on = { TF_BUILD: 'True', JENKINS_URL: 'https://ci.example/', TEAMCITY_VERSION: '2025.1' }
     expect(
       CI_VARS.map((v) => {
         for (const c of CI_VARS) delete process.env[c]
-        process.env[v] = 'true'
+        process.env[v] = on[v as keyof typeof on] ?? 'true'
         return detectColors(piped).enabled
       }),
-    ).toEqual([true, true, true, true])
+    ).toEqual(CI_VARS.map(() => true))
+    for (const c of CI_VARS) delete process.env[c]
+    process.env['CI'] = 'false'
+    expect(detectColors(piped).enabled).toBe(false)
+    process.env['CI'] = 'true'
     process.env['FORCE_COLOR'] = '0'
     expect(detectColors(piped).enabled).toBe(false)
     delete process.env['FORCE_COLOR']

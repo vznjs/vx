@@ -10,7 +10,6 @@ import {
   LABEL_MIN,
   paint,
   paintHex,
-  panelWidth,
   RESET,
   ruleWidth,
   SYMBOL,
@@ -45,7 +44,7 @@ export const strong = (text: string): Inline => ({ style: 'strong', text })
 /** A secondary fact. */
 export const dim = (text: string): Inline => ({ style: 'muted', text })
 /** Where a task runs (`small#1`): its name's hue in every row and block; `local` plain. */
-export const place = (text: string): Inline => (text === 'local' ? text : id(text))
+export const place = (text: string): Inline => (text === 'local' ? dim(text) : id(text))
 /** Text in a tone's colour, bold if asked. */
 export const tone = (t: Style, text: string, bold = false): Inline =>
   bold ? { style: t, text, bold } : { style: t, text }
@@ -114,9 +113,11 @@ export function width(x: Inline): number {
 const block = (lines: (c: ColorSupport) => string[]): Block => ({ lines })
 const lines = (x: Inline, c: ColorSupport): string[] => inline(x, c).split('\n')
 
-/** Plain words dim, each `command` in them bold: no line of vx reads plain white. */
+/** Plain words at the value level, each `command` in them bold. */
 function prose(text: string): Inline {
-  return text.split(/(`[^`\n]+`)/).map((p, i) => (i % 2 === 1 ? cmd(p) : p === '' ? p : dim(p)))
+  return text
+    .split(/(`[^`\n]+`)/)
+    .map((p, i) => (i % 2 === 1 ? cmd(p) : p === '' ? p : { style: 'value' as const, text: p }))
 }
 
 /**
@@ -214,42 +215,30 @@ export function wrap(line: string, w: number): string[] {
 const border = (s: string, c: ColorSupport): string => paint('border', s, c)
 
 /**
- * A panel's top: `╭─ Title count ──── note ─╮`, the title bold in the
- * brand hue. Off colour it is the section rule, `─ Title count ────`.
+ * A panel's top: the rule `─ Title count ──── note ─`, its title bold in
+ * the brand hue, the rule a quiet grey. A panel has no box: its lines sit
+ * under the rule as they are, so a terminal, a CI log and a pipe read the
+ * same layout (off colour, the same characters unpainted).
  */
 export function panelTop(title: string, c: ColorSupport, count?: Inline, note?: Inline): string {
   if (!c.enabled) return ruleLine(title, count, c, note)
-  const w = panelWidth(c)
-  const head = `${title}${count === undefined ? '' : ` ${inline(count, { enabled: false })}`}`
-  const tail = note === undefined ? '' : ` ${inline(note, { enabled: false })} `
-  const dashes = Math.max(1, w - 6 - Bun.stringWidth(head) - Bun.stringWidth(tail))
+  const plain = { enabled: false }
+  const head = `─ ${title}${count === undefined ? '' : ` ${inline(count, plain)}`} `
+  const tail = note === undefined ? '' : ` ${inline(note, plain)} ─`
+  const dashes = Math.max(
+    note === undefined ? 8 : 3,
+    ruleWidth(c) - Bun.stringWidth(head) - Bun.stringWidth(tail),
+  )
   return (
-    border('╭─ ', c) +
+    border('─ ', c) +
     paint('heading', title, c) +
     (count === undefined ? '' : ` ${inline(typeof count === 'string' ? dim(count) : count, c)}`) +
     ' ' +
     border('─'.repeat(dashes), c) +
-    (note === undefined ? '' : ` ${inline(typeof note === 'string' ? dim(note) : note, c)} `) +
-    border('─╮', c)
+    (note === undefined
+      ? ''
+      : ` ${inline(typeof note === 'string' ? dim(note) : note, c)} ${border('─', c)}`)
   )
-}
-
-/**
- * One line inside a panel: `│ content │`, padded to the box, wrapped onto
- * more rows when it is wider. Off colour, the line itself.
- */
-export function panelRow(content: string, c: ColorSupport): string {
-  if (!c.enabled) return content
-  const side = border('│', c)
-  return wrap(content, panelWidth(c) - 4)
-    .map((r) => `${side} ${r} ${side}`)
-    .join('\n')
-}
-
-/** A panel's bottom: `╰────╯`. Off colour a panel has none: undefined. */
-export function panelBottom(c: ColorSupport): string | undefined {
-  if (!c.enabled) return undefined
-  return border(`╰${'─'.repeat(panelWidth(c) - 2)}╯`, c)
 }
 
 /**
@@ -264,12 +253,7 @@ export function section(title: string, ...rest: (Block | Inline)[]): Block {
   const body = (counted ? rest.slice(1) : rest) as Block[]
   return block((c) => {
     const inner = body.flatMap((b, i) => (i === 0 ? b.lines(c) : ['', ...b.lines(c)]))
-    const bottom = panelBottom(c)
-    return [
-      panelTop(title, c, count),
-      ...inner.flatMap((l) => panelRow(l, c).split('\n')),
-      ...(bottom === undefined ? [] : [bottom]),
-    ]
+    return [panelTop(title, c, count), ...inner]
   })
 }
 
@@ -398,7 +382,7 @@ export function table(columns: readonly Column[], rows: readonly (readonly Inlin
   return block((c) => {
     const titles = columns.map((col) => (typeof col === 'string' ? col : col.title))
     const right = columns.map((col) => typeof col !== 'string' && col.align === 'right')
-    const cells = rows.map((r) => r.map((x) => inline(typeof x === 'string' ? dim(x) : x, c)))
+    const cells = rows.map((r) => r.map((x) => inline(typeof x === 'string' ? prose(x) : x, c)))
     const widths = titles.map((h, i) =>
       Math.max(h.length, ...rows.map((r) => (r[i] === undefined ? 0 : width(r[i]!)))),
     )

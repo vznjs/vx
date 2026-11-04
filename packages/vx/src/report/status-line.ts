@@ -1,7 +1,7 @@
 // The live region's panels: Warnings, Running and the live Summary,
 // redrawn in place under the log by the ui module's writer.
 
-import { paint, panelBottom, panelRow, panelTop, type ColorSupport } from '../ui/index.js'
+import { paint, panelTop, type ColorSupport } from '../ui/index.js'
 import {
   formatRunningHeader,
   formatTaskRow,
@@ -144,12 +144,7 @@ export function formatStepLine(
 
 /** `rows` in a panel titled `title`, counted. */
 function panel(title: string, count: string, rows: readonly string[], c: ColorSupport): string[] {
-  const bottom = panelBottom(c)
-  return [
-    panelTop(title, c, count),
-    ...rows.flatMap((r) => panelRow(r, c).split('\n')),
-    ...(bottom === undefined ? [] : [bottom]),
-  ]
+  return [panelTop(title, c, count), ...rows]
 }
 
 /**

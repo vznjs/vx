@@ -10,10 +10,23 @@ export interface ColorSupport {
 }
 
 /**
- * A style every component and inline token draws with. Tones say how a
- * thing went; `local`/`remote` say where a cache answer came from; `muted`
- * is the default for words (no line of vx reads plain white); `strong` is
- * what to read or type; `heading` titles a section.
+ * A style every component and inline token draws with, by the level of
+ * what it marks. Five levels, each one look, brightest first:
+ *
+ *   1 outcome   how a thing went: a tone (`ok` `warn` `error` `info`,
+ *               `aborted`, `notRun`), its glyph and status word bold
+ *   2 name      what it is about: a title (`heading`), an id's hues, a
+ *               command or path to type (`strong`, `term`), where a
+ *               cache answer came from (`local`, `remote`)
+ *   3 value     the fact itself: a field's value, a table cell, a
+ *               sentence (`value`, a soft light grey: no line of vx
+ *               reads plain white)
+ *   4 meta      what frames a fact: a label, a unit, a hint, a count
+ *               (`muted`, `label`)
+ *   5 chrome    rules and separators (`border`)
+ *
+ * A component picks the level; a plain string takes the level of where it
+ * sits (a value in a field, meta in a title's count).
  */
 export type Style =
   | 'ok'
@@ -26,6 +39,7 @@ export type Style =
   | 'remote'
   | 'heading'
   | 'term'
+  | 'value'
   | 'muted'
   | 'strong'
   | 'label'
@@ -46,10 +60,11 @@ const HUE: Record<Style, string> = {
   remote: '#2563eb', // blue-600
   heading: '#a78bfa', // violet-400: the brand's first stop
   term: '#22d3ee', // cyan-400: a flag, a selector, an example to type
+  value: '#cbd5e1', // slate-300: the fact, one step under a name
   muted: '',
   strong: '',
   label: '',
-  border: '#6e7681', // a panel's box: quiet, never a tone
+  border: '#6e7681', // a panel's rule: quiet, never a tone
   plain: '',
 }
 
@@ -90,7 +105,7 @@ export function identityHue(name: string): string {
  *   NO_COLOR non-empty          → off (overrides FORCE_COLOR)
  *   FORCE_COLOR=0 or =false     → off, even on a TTY
  *   FORCE_COLOR any other value → on (the empty string too)
- *   a CI whose log renders ANSI (`ciPaints`) → on
+ *   any CI (`onCi`)             → on: a CI log looks like the terminal
  *   else: on iff the stream is a TTY that is not `TERM=dumb`.
  * `0` and `false` are the convention's "off" (supports-color, chalk,
  * Node); reading every non-empty value as on painted a piped CI log that
@@ -102,7 +117,7 @@ export function detectColors(stream: NodeJS.WriteStream = process.stdout): Color
     ? false
     : force !== undefined
       ? force !== '0' && force !== 'false'
-      : ciPaints() || (stream.isTTY === true && !dumbTerminal())
+      : onCi() || (stream.isTTY === true && !dumbTerminal())
   return {
     enabled,
     get columns() {
@@ -111,15 +126,29 @@ export function detectColors(stream: NodeJS.WriteStream = process.stdout): Color
   }
 }
 
-/** A CI whose log viewer renders ANSI colour though the job's output is a pipe. */
-function ciPaints(): boolean {
-  const env = process.env
-  return (
-    env['GITHUB_ACTIONS'] === 'true' ||
-    env['GITLAB_CI'] === 'true' ||
-    env['BUILDKITE'] === 'true' ||
-    env['CIRCLECI'] === 'true'
-  )
+/**
+ * The variables a CI sets, each on when non-empty and not `0`/`false`:
+ * the generic `CI` most set, and the ones of CIs that set no `CI` (Azure
+ * Pipelines' `TF_BUILD`, Jenkins' `JENKINS_URL`, TeamCity's
+ * `TEAMCITY_VERSION`). A CI log gets the same colours as a terminal; one
+ * whose viewer shows raw escapes is turned off with `NO_COLOR`.
+ */
+const CI_VARS = [
+  'CI',
+  'GITHUB_ACTIONS',
+  'GITLAB_CI',
+  'BUILDKITE',
+  'CIRCLECI',
+  'TF_BUILD',
+  'JENKINS_URL',
+  'TEAMCITY_VERSION',
+] as const
+
+function onCi(): boolean {
+  return CI_VARS.some((name) => {
+    const v = process.env[name]
+    return v !== undefined && v !== '' && v !== '0' && v.toLowerCase() !== 'false'
+  })
 }
 
 /** `TERM=dumb` can neither paint nor move the cursor: vx prints to it as off a terminal. */
@@ -187,15 +216,6 @@ export function paint(style: Style, text: string, c: ColorSupport, bold = false)
 export function barWidth(c: ColorSupport): number {
   const columns = c.columns
   return columns === undefined ? BAR_MAX : Math.max(10, Math.min(BAR_MAX, columns - BAR_LABEL))
-}
-
-/**
- * A panel's outer width: the terminal's, at most 120 columns;
- * 100 where a coloured stream has no width (a CI log).
- */
-export function panelWidth(c: ColorSupport): number {
-  const columns = c.columns
-  return columns === undefined ? 100 : Math.max(40, Math.min(120, columns))
 }
 
 /** A rule's width: flush with the bars beside their labels. */

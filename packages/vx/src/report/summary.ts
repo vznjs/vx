@@ -15,8 +15,6 @@ import {
   gauge,
   idParts,
   paint,
-  panelBottom,
-  panelRow,
   panelTop,
   type ColorSupport,
   type Segment,
@@ -480,7 +478,6 @@ export function formatSummarySection(
   }
   // The Summary panel; the final one names the vx that ran it (the live
   // one has no context yet).
-  const bottom = panelBottom(colors)
   return [
     '',
     panelTop(
@@ -489,8 +486,7 @@ export function formatSummarySection(
       undefined,
       context !== undefined ? `vx ${context.version}` : undefined,
     ),
-    ...lines.flatMap((l) => panelRow(l, colors).split('\n')),
-    ...(bottom === undefined ? [] : [bottom]),
+    ...lines,
   ]
 }
 

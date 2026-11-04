@@ -273,7 +273,8 @@ function timeCell(ms: number | null, colors: ColorSupport): string {
   let raw = ms === null ? '' : formatElapsed(ms)
   // `1000.00s` is wider than the cell; minutes fit it up to `99m 59s`.
   if (ms !== null && raw.length > TIME_COL) raw = formatElapsed(ms, true)
-  return ' '.repeat(Math.max(0, TIME_COL - raw.length)) + paint('muted', raw, colors)
+  // The time is the row's fact (value level); the cells around it are meta.
+  return ' '.repeat(Math.max(0, TIME_COL - raw.length)) + paint('value', raw, colors)
 }
 
 /**
@@ -372,7 +373,7 @@ export function formatTaskRow(
   return (
     ` ${glyph} ${timeCell(ms, colors)} ${us} ${st} ${ca} ` +
     `${right(cpu, CPU_COL, colors)} ${right(mem, MEM_COL, colors)} ${right(out, OUT_COL, colors)} ` +
-    `${' '.repeat(Math.max(0, BLOCKED_COL - blocks.length))}${paint('warn', blocks, colors)} ` +
+    `${' '.repeat(Math.max(0, BLOCKED_COL - blocks.length))}${paint(blocks === '0' ? 'muted' : 'value', blocks, colors)} ` +
     `${placeCell(worker, colors)}${' '.repeat(WORKER_COL - worker.length)} ${paintedId}`
   )
 }
@@ -577,7 +578,8 @@ function formatOutcomeRow(
 
 /** `critical path`: the row's task held the run's end while others ran beside it. */
 export function pathNote(colors: ColorSupport = NO_COLOR): string {
-  return `  ${paint('error', 'critical path', colors)}`
+  // A fact worth knowing, not a failure: never red.
+  return `  ${paint('info', 'critical path', colors)}`
 }
 
 /** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */
