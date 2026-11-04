@@ -270,18 +270,21 @@ export async function runCase(c: Case, adapter: Adapter): Promise<Outcome> {
       status: 'n/a',
       detail: `needs ${c.needs.filter((f) => adapter.lacks.includes(f)).join(', ')}`,
     }
-  const root = realpathSync(mkdtempSync(path.join(BASE, `conf-${adapter.name}-`)))
+  const box = realpathSync(mkdtempSync(path.join(BASE, `conf-${adapter.name}-`)))
+  // Files outside the repository sit beside it, in the one directory the run may write.
+  const root = c.workspace.outside ? path.join(box, 'repo') : box
   try {
-    return await play(c, adapter, root)
+    if (c.workspace.outside) await writeFiles(path.join(box, 'outside'), c.workspace.outside)
+    return await play(c, adapter, root, box)
   } finally {
-    if (process.env['CONFORMANCE_KEEP']) console.error(`kept ${root}`)
-    else rmSync(root, { recursive: true, force: true })
+    if (process.env['CONFORMANCE_KEEP']) console.error(`kept ${box}`)
+    else rmSync(box, { recursive: true, force: true })
   }
 }
 
-async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
+async function play(c: Case, adapter: Adapter, root: string, box: string): Promise<Outcome> {
   const sh = (argv: string[], env: Record<string, string> = {}, cwd = root) =>
-    sandboxed(root, cwd, argv, { ...adapter.env, ...env })
+    sandboxed(root, cwd, argv, { ...adapter.env, ...env }, undefined, false, box)
   const install = () => setup([process.execPath, 'install', '--offline', '--no-progress'])
   const setup = async (argv: string[]) => {
     const r = await sh(argv)
@@ -416,6 +419,7 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
             },
             step.expect.within === undefined ? undefined : step.expect.within * 1000,
             c.needs?.includes('sandbox') === true,
+            box,
           )
         : { exit: 1, out: refused }
     const left: string[] = step.expect.alone

@@ -995,16 +995,16 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 878,
-        "of": 880
+        "pass": 893,
+        "of": 895
       },
       "correctness": {
-        "pass": 733,
-        "of": 733
+        "pass": 744,
+        "of": 744
       },
       "efficiency": {
-        "pass": 136,
-        "of": 138
+        "pass": 140,
+        "of": 142
       },
       "data": {
         "pass": 9,
@@ -1031,8 +1031,8 @@
         "of": 35
       },
       "inputs": {
-        "pass": 279,
-        "of": 279
+        "pass": 294,
+        "of": 294
       },
       "outputs": {
         "pass": 214,
@@ -1053,16 +1053,16 @@
     },
     "turbo": {
       "all": {
-        "pass": 562,
-        "of": 812
+        "pass": 566,
+        "of": 827
       },
       "correctness": {
         "pass": 475,
-        "of": 671
+        "of": 682
       },
       "efficiency": {
-        "pass": 83,
-        "of": 133
+        "pass": 87,
+        "of": 137
       },
       "data": {
         "pass": 4,
@@ -1089,8 +1089,8 @@
         "of": 35
       },
       "inputs": {
-        "pass": 179,
-        "of": 270
+        "pass": 183,
+        "of": 285
       },
       "outputs": {
         "pass": 157,
@@ -1111,16 +1111,16 @@
     },
     "nx": {
       "all": {
-        "pass": 574,
-        "of": 834
+        "pass": 581,
+        "of": 849
       },
       "correctness": {
-        "pass": 444,
-        "of": 689
+        "pass": 447,
+        "of": 700
       },
       "efficiency": {
-        "pass": 126,
-        "of": 137
+        "pass": 130,
+        "of": 141
       },
       "data": {
         "pass": 4,
@@ -1147,8 +1147,8 @@
         "of": 33
       },
       "inputs": {
-        "pass": 174,
-        "of": 279
+        "pass": 181,
+        "of": 294
       },
       "outputs": {
         "pass": 156,
@@ -1169,16 +1169,16 @@
     },
     "vite-task": {
       "all": {
-        "pass": 466,
-        "of": 685
+        "pass": 470,
+        "of": 700
       },
       "correctness": {
         "pass": 390,
-        "of": 570
+        "of": 581
       },
       "efficiency": {
-        "pass": 74,
-        "of": 107
+        "pass": 78,
+        "of": 111
       },
       "data": {
         "pass": 2,
@@ -1205,8 +1205,8 @@
         "of": 29
       },
       "inputs": {
-        "pass": 170,
-        "of": 271
+        "pass": 174,
+        "of": 286
       },
       "outputs": {
         "pass": 134,
@@ -16141,6 +16141,420 @@
         "vite-task": {
           "status": "n/a",
           "detail": "needs affected"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-file-dependency-edit-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit inside a `file:` dependency beside the repository runs the task of the project depending on it",
+      "why": "The directory is outside the repository: no git status shows the edit, and the lockfile names only its path.",
+      "from": [
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-file-dependency-edit-spares-others",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "An edit inside a `file:` dependency beside the repository replays the projects that do not depend on it",
+      "from": [
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-file-dependency-retarget-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Pointing a `file:` dependency at another directory beside the repository runs the task again",
+      "from": [
+        "vx-lockfile/file-dir-dep",
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-dependency-edit-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit inside a `link:` dependency beside the repository runs the task of the project depending on it, with no install",
+      "why": "node_modules holds a link to the directory: the edit is what the task reads, and nothing else changed.",
+      "from": [
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-dependency-new-file-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A file added to a `link:` dependency beside the repository runs the task of the project depending on it",
+      "from": [
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-dependency-edit-spares-others",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "An edit inside a `link:` dependency beside the repository replays the projects that do not depend on it",
+      "from": [
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-dependency-retarget-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Pointing a `link:` dependency at another directory beside the repository runs the task again",
+      "from": [
+        "vx-lockfile/file-dir-dep",
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-dependency-reinstall-replays",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "Installing again with a `link:` dependency beside the repository unchanged replays the task",
+      "from": [
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/link-dir-dependency-new-file-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A file added to a `link:` directory dependency runs the task of the project depending on it, with no install",
+      "from": [
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/link-dir-dependency-edit-spares-others",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "An edit inside a `link:` directory dependency replays the projects that do not depend on it",
+      "from": [
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/link-dir-dependency-retarget-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Pointing a `link:` dependency at another directory in the repository runs the task again",
+      "from": [
+        "vx-lockfile/file-dir-dep",
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/link-dep-inside-other-project-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit to a `link:` dependency kept inside another project’s directory runs the task of the project depending on it",
+      "why": "The edit is under `other`’s directory, but `lib` is the project that reads it.",
+      "from": [
+        "vx-lockfile/extra-in-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/link-alias-swap-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Swapping which `link:` directories two dependency names point at runs the task again",
+      "why": "The same directories are linked, but `foo` now reads the other one.",
+      "from": [
+        "vx-lockfile/dependency-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/alias-retarget-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Pointing a dependency name at another package, the import name unchanged, runs the task again",
+      "why": "The task imports `foo` either way; what `foo` is changed.",
+      "from": [
+        "vx-lockfile/dependency-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-alias-edit-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit behind a dependency installed under another name, linked from beside the repository, runs the task again",
+      "from": [
+        "vx-lockfile/dependency-names",
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
         }
       }
     },

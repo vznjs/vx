@@ -21,7 +21,9 @@ root-level ones, `env` names (keyed), `passThrough` names (not keyed),
 `runtime` commands, `cache: false`, `timeout`, `retries`, `persistent`,
 `dependencyInputs: false`, and `sandbox` (the task may read only its
 inputs, write only its outputs, and reach no network, beyond what it is
-granted). Its steps write, delete, chmod and
+granted). A workspace may also hold `outside` files: a directory beside
+the repository (`../outside`), as a `file:` or `link:` dependency there
+is. Its steps write, delete, chmod and
 link files, run `sh`, install, commit, change the config, check the tree,
 and run a task (or several): in some projects, by selectors, from a directory, with
 args, a concurrency limit, a signal sent mid-run, going on past a failure,

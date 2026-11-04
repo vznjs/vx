@@ -26,7 +26,7 @@ export function caseHome(root: string): string {
   return path.join(root, '.home')
 }
 
-/** `argv` run in `cwd` (inside `root`), able to write only under `root`. */
+/** `argv` run in `cwd` (inside `root`), able to write only under `bind` (`root` or a directory holding it). */
 export async function sandboxed(
   root: string,
   cwd: string,
@@ -40,6 +40,7 @@ export async function sandboxed(
    * still ends the run's process when the harness goes.
    */
   hostProc = false,
+  bind = root,
 ): Promise<Result> {
   if (BWRAP === null)
     throw new Error('bwrap not found: the conformance suite runs every tool sandboxed')
@@ -58,8 +59,8 @@ export async function sandboxed(
       '--tmpfs',
       '/tmp',
       '--bind',
-      root,
-      root,
+      bind,
+      bind,
       '--unshare-net',
       ...(hostProc ? [] : ['--unshare-pid']),
       '--unshare-ipc',

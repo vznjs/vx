@@ -62,6 +62,12 @@ export interface WorkspaceSpec {
   projects: Record<string, ProjectSpec>
   /** Files to create, relative to the workspace root. */
   files?: Record<string, string>
+  /**
+   * Files to create outside the repository, relative to `../outside` from
+   * the workspace root: a dependency that lives beside the checkout. A step
+   * reaches them as `../outside/...`.
+   */
+  outside?: Record<string, string>
   /** Tasks ordered by an edge may write into one output tree: a tool that refuses such a pair unless told is told. */
   sharedOutputs?: boolean
 }
