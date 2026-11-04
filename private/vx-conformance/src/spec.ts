@@ -14,6 +14,8 @@ export interface TaskSpec {
   inputs?: string[]
   /** Environment variables whose values key the task. */
   env?: string[]
+  /** Environment variables that reach the command but never key the task. */
+  passThrough?: string[]
   /** Project-relative globs the task writes, stored and restored with it. Omitted: the tool's default; `[]`: none. */
   outputs?: string[]
   /** Workspace-root-relative globs that also key the task, in any directory. */
@@ -36,6 +38,14 @@ export interface TaskSpec {
    * up; until then nothing that depends on it starts.
    */
   persistent?: true | { ready: string }
+  /** `false`: what the task depends on runs first, but its inputs never key this task. Default: they do. */
+  dependencyInputs?: false
+  /**
+   * The command runs isolated: it may read only its inputs (and its
+   * dependencies' installs) plus `read`, write only its outputs plus
+   * `write`, and reach no network unless `network`.
+   */
+  sandbox?: { read?: string[]; write?: string[]; network?: true }
 }
 
 export interface ProjectSpec {
@@ -43,6 +53,8 @@ export interface ProjectSpec {
   dir?: string
   /** Names of the workspace projects this one depends on (package.json `dependencies`). */
   deps?: string[]
+  /** Labels a selector can pick the project by. */
+  tags?: string[]
   tasks?: Record<string, TaskSpec>
   /** Files to create, relative to the project's directory. */
   files?: Record<string, string>
@@ -52,6 +64,12 @@ export interface WorkspaceSpec {
   projects: Record<string, ProjectSpec>
   /** Files to create, relative to the workspace root. */
   files?: Record<string, string>
+  /**
+   * Files to create outside the repository, relative to `../outside` from
+   * the workspace root: a dependency that lives beside the checkout. A step
+   * reaches them as `../outside/...`.
+   */
+  outside?: Record<string, string>
   /** Tasks ordered by an edge may write into one output tree: a tool that refuses such a pair unless told is told. */
   sharedOutputs?: boolean
 }
@@ -85,12 +103,28 @@ export interface Expect {
 }
 
 /** A stop sent to a run in flight. */
+/** What a watch ran in one phase. */
+export interface WatchExpect extends Pick<Expect, 'ran' | 'notRan'> {
+  /** Each of these tasks started exactly this many times in the phase. */
+  times?: Record<string, number>
+}
+
+export interface WatchPhase {
+  /** Files written (workspace-relative) to start the phase; `null` deletes. Written in order, at once. */
+  write?: Record<string, string | null>
+  /** A shell line run in the root to start the phase, after `write`. */
+  sh?: string
+  expect: WatchExpect
+}
+
 export interface Stop {
   signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP' | 'SIGQUIT'
   /** Workspace-relative file a task creates; the signal is sent once it exists (or after 30 s). */
   when: string
   /** The runner was started with this signal ignored, as `nohup` starts it. */
   ignored?: true
+  /** Workspace-relative file whose appearance, after the first signal, sends the signal again: a second Ctrl-C. */
+  again?: string
 }
 
 export interface TreeCheck {
@@ -142,9 +176,33 @@ export type Step =
       only?: true
       /** At most this many tasks at once. */
       concurrency?: number
+      /** A failed task does not stop the run: what depends on it runs too. The run still fails. */
+      continue?: true
+      /** Run every task, ignoring the cache's entries, and save the results. */
+      force?: true
+      /** Replay from the cache but save nothing to it. */
+      readOnlyCache?: true
+      /** Plan the run without running any task. */
+      dry?: true
       /** Stop the run as Ctrl-C or a supervisor does: `signal` to the runner's process group once `when` exists. */
       stop?: Stop
+      /** The runner's input stream is a pipe left open and never written, as a terminal nobody types in is. */
+      openStdin?: true
       expect: Expect
+    }
+  /**
+   * Watch `watch` (every project declaring it, or `projects`): `start` is
+   * what its first run runs; each phase's edits are made once the tool has
+   * been quiet a while, and what it runs after them is that phase's. Then
+   * the watch is stopped as Ctrl-C stops it.
+   */
+  | {
+      watch: string
+      projects?: string[]
+      start: WatchExpect
+      phases: WatchPhase[]
+      /** The tree once the watch stopped. */
+      files?: Record<string, string | null>
     }
   /** Write files (workspace-relative); `null` deletes. */
   | { write: Record<string, string | null> }
@@ -175,6 +233,8 @@ export interface Selector {
   name?: string
   /** A workspace-relative directory, or a glob over directories: the projects there. */
   dir?: string
+  /** The projects carrying this tag. */
+  tag?: string
   /** Also take the matched projects' dependencies, their dependents, or their dependents and all those depend on. */
   with?: 'dependencies' | 'dependents' | 'dependents-and-dependencies'
   /** `false`: leave the matched projects out, keeping only what `with` adds. */
@@ -201,6 +261,8 @@ export type Category =
   | 'affected'
   | 'report'
   | 'failure'
+  | 'sandbox'
+  | 'watch'
 
 /** What a case needs from a tool beyond running tasks in order. A tool without it cannot express the case. */
 export type Feature =
@@ -226,6 +288,24 @@ export type Feature =
   | 'runtime-inputs'
   /** More than one task named in one run (`also`). */
   | 'multi-task'
+  /** A run that goes on past a failure, running what depends on it. */
+  | 'continue'
+  /** A run that ignores cache entries and saves fresh ones. */
+  | 'force'
+  /** A run that reads the cache and writes nothing to it. */
+  | 'read-only-cache'
+  /** A run that plans and runs nothing. */
+  | 'dry-run'
+  /** Variables that reach a task without keying it. */
+  | 'pass-through-env'
+  /** A dependency ordered first whose inputs do not key the task. */
+  | 'dependency-inputs-off'
+  /** A task kept from reading, writing and reaching what it does not declare. */
+  | 'sandbox'
+  /** A run that stays up and runs tasks again on each edit. */
+  | 'watch'
+  /** Projects selected by a tag they carry. */
+  | 'select-tag'
 
 export interface Case {
   /** `category/slug`, unique. */

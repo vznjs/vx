@@ -27,6 +27,8 @@ export interface Adapter {
   configure(dir: string, ws: WorkspaceSpec, command: Command): Promise<string[][]>
   /** Run `task` in every project declaring it, or in `projects` and what they depend on. */
   run(task: string, projects?: string[], opts?: RunOptions): string[]
+  /** Watch `task` in every project declaring it, or in `projects`: a run that stays up. Required unless it `lacks` `watch`. */
+  watch?(task: string, projects?: string[]): string[]
   /** Run `task` where the changes since `base` reach. */
   affected(task: string, base: string): string[]
   /** What the tool reports about its last run, per `project#task`, from its own output, files or API. */
@@ -45,11 +47,19 @@ export interface RunOptions {
   only?: boolean
   /** Forwarded to the requested tasks' commands (a CLI's `-- <args>`). */
   args?: string[]
+  /** Go on past a failure. */
+  continue?: boolean
+  /** Ignore cache entries; save fresh ones. */
+  force?: boolean
+  /** Read the cache, write nothing. */
+  readOnlyCache?: boolean
+  /** Plan only. */
+  dry?: boolean
 }
 
 /** A selector in the pnpm filter grammar Turborepo, Vite Task and vx share. */
 export function pnpmFilter(s: Selector): string {
-  const base = s.name ?? (s.with ? `{./${s.dir}}` : `./${s.dir}`)
+  const base = s.tag ? `tag:${s.tag}` : (s.name ?? (s.with ? `{./${s.dir}}` : `./${s.dir}`))
   const caret = s.self === false ? '^' : ''
   const walked =
     s.with === 'dependencies'

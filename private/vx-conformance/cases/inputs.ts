@@ -212,6 +212,51 @@ export default [
   }),
 
   defineCase({
+    id: 'inputs/executable-bit-behind-link',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'Making the file an input link points at executable runs the task again',
+    why: 'The link is unchanged; only its target’s mode moved, and the task reads that mode.',
+    from: ['linked-inputs', 'stale-hit'],
+    workspace: one(
+      {
+        command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/out.txt',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+      },
+      { 'src/a.txt': 'a\n', 'tools/run.sh': 'echo hi\n' },
+    ),
+    steps: [
+      { link: { 'packages/a/src/run.sh': '../tools/run.sh' } },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'plain\n' } } },
+      { chmod: { 'packages/a/tools/run.sh': 0o755 } },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'exec\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/dependencies-swapped-rerun-consumer',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'Two dependencies that swap contents, at the same output path, run the project built on them again',
+    why: 'Each dependency’s files are a set the other had: a key that folds them without their order replays the old result.',
+    from: ['parity-turbo-hashing', 'task-hash-derive'],
+    workspace: {
+      projects: {
+        one: chainProject('one', [], { files: { 'src/a.txt': 'x\n' } }),
+        two: chainProject('two', [], { files: { 'src/a.txt': 'y\n' } }),
+        app: chainProject('app', ['one', 'two']),
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: 'x\ny\napp\n' } } },
+      { write: { 'packages/one/src/a.txt': 'y\n', 'packages/two/src/a.txt': 'x\n' } },
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: 'y\nx\napp\n' } } },
+    ],
+  }),
+
+  defineCase({
     id: 'inputs/dependency-edit-cascades',
     category: 'inputs',
     kind: 'correctness',

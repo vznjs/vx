@@ -13,7 +13,7 @@
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { depsOf, record, stable } from './json.js'
-import { joinPosix } from './posix.js'
+import { joinPosix, resolvePosix } from './posix.js'
 import { parseSyml } from './syml.js'
 
 export interface Lockfile {
@@ -412,7 +412,7 @@ function linkPath(dirOf: ReadonlyMap<string, string>, id: string): string | unde
     return undefined
   }
   const from = dirOf.get(locator)
-  return from === undefined ? undefined : joinPosix(from, m[1]!)
+  return from === undefined ? undefined : resolvePosix(from, m[1]!)
 }
 
 /**

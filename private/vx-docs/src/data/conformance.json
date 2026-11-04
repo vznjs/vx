@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 167,
+    "ported": 191,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -68,11 +68,8 @@
         "contract-task-globs",
         "core-alias",
         "critical-path",
-        "discover-stage",
         "discovery-node-modules",
         "discovery-refusals",
-        "download-policy",
-        "dry-json-stdout",
         "dte-sandbox.unsafe",
         "executor",
         "executor-demand",
@@ -135,6 +132,7 @@
         "lock-secret",
         "lock-shadowed-config",
         "lockfile-boundary",
+        "lockfile-pool",
         "lockfile-claim",
         "metrics",
         "migration",
@@ -186,12 +184,10 @@
         "sandbox-bridge-socket.unsafe",
         "sandbox-canary-home.unsafe",
         "sandbox-chdir-denied.unsafe",
-        "sandbox-credential-stores.unsafe",
         "sandbox-deny-scan",
         "sandbox-deny-scan.unsafe",
         "sandbox-dirfd-quote.unsafe",
         "sandbox-empty-grant-spelling.unsafe",
-        "sandbox-empty-outputs.unsafe",
         "sandbox-fd-records",
         "sandbox-fix",
         "sandbox-git-config.unsafe",
@@ -199,14 +195,10 @@
         "sandbox-glob-chars.unsafe",
         "sandbox-grant-ancestors.unsafe",
         "sandbox-grant-remove.unsafe",
-        "sandbox-grant-through-link.unsafe",
-        "sandbox-grants.unsafe",
         "sandbox-helper-env.unsafe",
-        "sandbox-hidden-reads.unsafe",
         "sandbox-hint",
         "sandbox-hint-spelling.unsafe",
         "sandbox-host-helpers.unsafe",
-        "sandbox-host-services.unsafe",
         "sandbox-lifecycle.unsafe",
         "sandbox-mkdir-ancestor.unsafe",
         "sandbox-network-patterns.unsafe",
@@ -214,13 +206,11 @@
         "sandbox-noscan-gone.unsafe",
         "sandbox-observer-drain.unsafe",
         "sandbox-output-link.unsafe",
-        "sandbox-parent-env.unsafe",
         "sandbox-paths",
         "sandbox-placeholder-nested.unsafe",
         "sandbox-port-bridge-ready.unsafe",
         "sandbox-port-held.unsafe",
         "sandbox-prewarm.unsafe",
-        "sandbox-proxy-denials.unsafe",
         "sandbox-proxy-ready.unsafe",
         "sandbox-readonly-masks.unsafe",
         "sandbox-records-key.unsafe",
@@ -346,7 +336,6 @@
         "vx-lockfile/bun",
         "vx-lockfile/bun-catalog-precise",
         "vx-lockfile/bun-patch-precise",
-        "vx-lockfile/discover",
         "vx-lockfile/discover-parity",
         "vx-lockfile/entry-shapes",
         "vx-lockfile/io-refusals",
@@ -652,7 +641,6 @@
         "capture-cap",
         "ci-env-readers",
         "ci-output",
-        "cli",
         "cli-arg-hygiene",
         "cli-bare",
         "cli-cache-dir-stages",
@@ -667,8 +655,8 @@
         "cli-verb-sections",
         "closure-search",
         "colors",
-        "continue-cache-properties",
         "core-source-key.unsafe",
+        "dependencies-lock",
         "dev",
         "disk-full.unsafe",
         "dispatched-verbs",
@@ -719,7 +707,6 @@
         "kill-tree-guard-zombie.unsafe",
         "kill-tree-hold",
         "kill-tree-proc.unsafe",
-        "left-running-save",
         "load-reads",
         "local-shortcircuit",
         "log-spacing",
@@ -769,7 +756,6 @@
         "restore-git-spawns",
         "restore-link-swap",
         "restore-link-swap-rename",
-        "restore-occupied-parent",
         "restore-partial-commit",
         "restore-ported",
         "restore-rows-held",
@@ -798,7 +784,6 @@
         "run-spaced-value",
         "run-store",
         "run-tail",
-        "runner",
         "runtime-probe-secret-mask",
         "save-index-from-plan",
         "save-lane",
@@ -877,14 +862,11 @@
         "watch-judge-fence",
         "watch-judge-label",
         "watch-judge-properties",
-        "watch-label-live-path",
         "watch-label-workspace-wide",
         "watch-linked-input",
         "watch-loop",
         "watch-loop-dump",
-        "watch-loop-edits",
         "watch-loop-members",
-        "watch-loop-selfwrite",
         "watch-loop-uncached",
         "watch-mode-change",
         "watch-nested-boundary",
@@ -894,7 +876,6 @@
         "watch-pool-close",
         "watch-project-dir-write",
         "watch-ready-interrupt",
-        "watch-recreated-dirs",
         "watch-restored-output",
         "watch-root-scope",
         "watch-rules",
@@ -902,7 +883,6 @@
         "watch-signals",
         "watch-symlink-retarget",
         "watch-timing",
-        "watch-transient-file",
         "watch-tree-linux",
         "watch-unignored-deletion",
         "watch-workspace-file-gone",
@@ -1007,178 +987,202 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 860,
-        "of": 860
+        "pass": 925,
+        "of": 925
       },
       "correctness": {
-        "pass": 716,
-        "of": 716
+        "pass": 767,
+        "of": 767
       },
       "efficiency": {
-        "pass": 135,
-        "of": 135
+        "pass": 149,
+        "of": 149
       },
       "data": {
         "pass": 9,
         "of": 9
       },
       "graph": {
-        "pass": 134,
-        "of": 134
+        "pass": 140,
+        "of": 140
       },
       "config": {
         "pass": 7,
         "of": 7
       },
       "failure": {
-        "pass": 68,
-        "of": 68
+        "pass": 72,
+        "of": 72
       },
       "affected": {
-        "pass": 94,
-        "of": 94
+        "pass": 95,
+        "of": 95
       },
       "cache": {
-        "pass": 31,
-        "of": 31
+        "pass": 36,
+        "of": 36
       },
       "inputs": {
-        "pass": 278,
-        "of": 278
+        "pass": 297,
+        "of": 297
       },
       "outputs": {
-        "pass": 214,
-        "of": 214
+        "pass": 218,
+        "of": 218
       },
       "env": {
-        "pass": 25,
-        "of": 25
+        "pass": 27,
+        "of": 27
       },
       "report": {
         "pass": 9,
         "of": 9
+      },
+      "sandbox": {
+        "pass": 11,
+        "of": 11
+      },
+      "watch": {
+        "pass": 13,
+        "of": 13
       }
     },
     "turbo": {
       "all": {
-        "pass": 553,
-        "of": 803
+        "pass": 585,
+        "of": 853
       },
       "correctness": {
-        "pass": 468,
-        "of": 664
+        "pass": 487,
+        "of": 701
       },
       "efficiency": {
-        "pass": 81,
-        "of": 131
+        "pass": 94,
+        "of": 144
       },
       "data": {
         "pass": 4,
         "of": 8
       },
       "graph": {
-        "pass": 87,
-        "of": 119
+        "pass": 88,
+        "of": 121
       },
       "config": {
         "pass": 3,
         "of": 3
       },
       "failure": {
-        "pass": 20,
-        "of": 41
+        "pass": 23,
+        "of": 45
       },
       "affected": {
         "pass": 59,
-        "of": 94
+        "of": 95
       },
       "cache": {
-        "pass": 23,
-        "of": 31
+        "pass": 28,
+        "of": 36
       },
       "inputs": {
-        "pass": 179,
-        "of": 270
+        "pass": 185,
+        "of": 288
       },
       "outputs": {
-        "pass": 157,
-        "of": 212
+        "pass": 158,
+        "of": 216
       },
       "env": {
-        "pass": 21,
-        "of": 25
+        "pass": 23,
+        "of": 27
       },
       "report": {
         "pass": 4,
         "of": 8
+      },
+      "sandbox": {
+        "pass": 1,
+        "of": 1
+      },
+      "watch": {
+        "pass": 13,
+        "of": 13
       }
     },
     "nx": {
       "all": {
-        "pass": 569,
-        "of": 828
+        "pass": 589,
+        "of": 865
       },
       "correctness": {
-        "pass": 442,
-        "of": 686
+        "pass": 454,
+        "of": 715
       },
       "efficiency": {
-        "pass": 123,
-        "of": 134
+        "pass": 131,
+        "of": 142
       },
       "data": {
         "pass": 4,
         "of": 8
       },
       "graph": {
-        "pass": 100,
-        "of": 123
+        "pass": 105,
+        "of": 128
       },
       "config": {
         "pass": 0,
         "of": 6
       },
       "failure": {
-        "pass": 33,
-        "of": 51
+        "pass": 34,
+        "of": 53
       },
       "affected": {
         "pass": 55,
-        "of": 94
+        "of": 95
       },
       "cache": {
-        "pass": 29,
-        "of": 31
+        "pass": 32,
+        "of": 34
       },
       "inputs": {
-        "pass": 173,
-        "of": 278
+        "pass": 182,
+        "of": 297
       },
       "outputs": {
         "pass": 156,
-        "of": 212
+        "of": 216
       },
       "env": {
-        "pass": 19,
-        "of": 25
+        "pass": 21,
+        "of": 27
       },
       "report": {
         "pass": 4,
         "of": 8
+      },
+      "sandbox": {
+        "pass": 0,
+        "of": 1
+      },
+      "watch": {
+        "pass": 0,
+        "of": 0
       }
     },
     "vite-task": {
       "all": {
-        "pass": 461,
-        "of": 680
+        "pass": 473,
+        "of": 712
       },
       "correctness": {
-        "pass": 388,
-        "of": 568
+        "pass": 392,
+        "of": 592
       },
       "efficiency": {
-        "pass": 71,
-        "of": 104
+        "pass": 79,
+        "of": 112
       },
       "data": {
         "pass": 2,
@@ -1186,39 +1190,47 @@
       },
       "graph": {
         "pass": 77,
-        "of": 104
+        "of": 106
       },
       "config": {
         "pass": 3,
         "of": 3
       },
       "failure": {
-        "pass": 26,
-        "of": 31
+        "pass": 27,
+        "of": 33
       },
       "affected": {
         "pass": 0,
         "of": 0
       },
       "cache": {
-        "pass": 27,
-        "of": 28
+        "pass": 29,
+        "of": 30
       },
       "inputs": {
-        "pass": 169,
-        "of": 270
+        "pass": 174,
+        "of": 289
       },
       "outputs": {
-        "pass": 134,
-        "of": 212
+        "pass": 135,
+        "of": 216
       },
       "env": {
-        "pass": 23,
-        "of": 24
+        "pass": 25,
+        "of": 26
       },
       "report": {
         "pass": 2,
         "of": 8
+      },
+      "sandbox": {
+        "pass": 1,
+        "of": 1
+      },
+      "watch": {
+        "pass": 0,
+        "of": 0
       }
     }
   },
@@ -1813,6 +1825,35 @@
         },
         "vite-task": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/peer-workspace-dependency-orders-and-keys",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A workspace package named only as a peer is built first, and an edit to it runs the consumer again",
+      "why": "The workspace links the peer in: the consumer’s build reads it as it reads any dependency.",
+      "from": [
+        "parity-turbo",
+        "vx-lockfile/discover"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
         }
       }
     },
@@ -2547,6 +2588,111 @@
           "status": "fail",
           "step": 1,
           "detail": "succeeded, expected a failure"
+        }
+      }
+    },
+    {
+      "id": "graph/select-by-tag",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A tag selects exactly the projects carrying it",
+      "from": [
+        "filter",
+        "filter-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        }
+      }
+    },
+    {
+      "id": "graph/select-by-tag-glob",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A `*` in a tag selects the projects carrying any tag it matches",
+      "from": [
+        "filter",
+        "filter-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        }
+      }
+    },
+    {
+      "id": "graph/select-exclude-tag",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A tag excluded takes the projects carrying it out of the selection",
+      "from": [
+        "filter",
+        "filter-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        }
+      }
+    },
+    {
+      "id": "graph/select-tag-with-dependencies",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A tag and its dependencies select the tagged projects and what they depend on",
+      "from": [
+        "filter",
+        "filter-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs select-walk"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs select-tag"
         }
       }
     },
@@ -3661,6 +3807,32 @@
       }
     },
     {
+      "id": "graph/new-depends-on-edge-keys-consumer",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A `dependsOn` edge added to a task orders and keys it: an edit to the dependency then runs it again",
+      "from": [
+        "parity-turbo",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "did not run app#build"
+        }
+      }
+    },
+    {
       "id": "graph/root-task-before-member",
       "category": "graph",
       "kind": "correctness",
@@ -4259,6 +4431,64 @@
           "status": "fail",
           "step": 3,
           "detail": "packages/a/dist/out.txt is \"plain\\n\", expected \"exec\\n\""
+        }
+      }
+    },
+    {
+      "id": "inputs/executable-bit-behind-link",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Making the file an input link points at executable runs the task again",
+      "why": "The link is unchanged; only its target’s mode moved, and the task reads that mode.",
+      "from": [
+        "linked-inputs",
+        "stale-hit"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/out.txt is \"plain\\n\", expected \"exec\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/out.txt is \"plain\\n\", expected \"exec\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/out.txt is \"plain\\n\", expected \"exec\\n\""
+        }
+      }
+    },
+    {
+      "id": "inputs/dependencies-swapped-rerun-consumer",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Two dependencies that swap contents, at the same output path, run the project built on them again",
+      "why": "Each dependency’s files are a set the other had: a key that folds them without their order replays the old result.",
+      "from": [
+        "parity-turbo-hashing",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/app/dist/out.txt is \"x\\ny\\napp\\n\", expected \"y\\nx\\napp\\n\""
         }
       }
     },
@@ -7113,6 +7343,66 @@
           "status": "fail",
           "step": 5,
           "detail": "packages/a/out/LICENSE is \"license v1\", expected \"license v2\""
+        }
+      }
+    },
+    {
+      "id": "outputs/committed-output-mode-change-kept",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A committed file under the outputs made executable is not made plain again by a replay",
+      "why": "A replay writes back the entry’s copy and mode: the committed `chmod +x` would be undone.",
+      "from": [
+        "stale-hit-git"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/tool.sh is not executable"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/tool.sh is not executable"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/tool.sh is not executable"
+        }
+      }
+    },
+    {
+      "id": "outputs/force-added-ignored-output-kept",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A file force-added to git under ignored outputs, then edited and committed, is not reverted by a replay",
+      "why": "git tracks the file though its directory is ignored: a replay would write the old copy over it.",
+      "from": [
+        "stale-hit-git"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/keep.txt is \"keep v1\\n\", expected \"keep v2\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/keep.txt is \"keep v1\\n\", expected \"keep v2\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/keep.txt is \"keep v1\\n\", expected \"keep v2\\n\""
         }
       }
     },
@@ -10864,6 +11154,64 @@
         },
         "vite-task": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/file-in-place-of-output-directory-kept",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A replay where a plain file stands in place of the output directory fails, and keeps the file",
+      "why": "No output glob selects that file: deleting it to restore would destroy work nothing declared, and the task itself could not run there either.",
+      "from": [
+        "restore-occupied-parent",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "succeeded, expected a failure"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/background-writer-not-saved",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A task that exits while a child it started still writes its outputs is not replayed with the partial tree",
+      "why": "Saved at exit, the entry holds the outputs half written: every replay restores that half.",
+      "from": [
+        "left-running-save",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
         }
       }
     },
@@ -15489,6 +15837,63 @@
       }
     },
     {
+      "id": "affected/lockfile-change-selects-its-closure",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A committed dependency change selects the projects whose dependencies hold it, through a linked workspace too, and no other",
+      "why": "c changed no file of its own: only the lockfile says what it can now import.",
+      "from": [
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run b#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        }
+      }
+    },
+    {
+      "id": "inputs/catalog-change-reruns-its-readers",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A catalog entry pointed elsewhere runs the task of the project that takes it, and no other",
+      "why": "The project’s own manifest still says `catalog:`: only the root and the lockfile change.",
+      "from": [
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
       "id": "inputs/reinstall-without-change-replays",
       "category": "inputs",
       "kind": "efficiency",
@@ -16137,6 +16542,420 @@
         "vite-task": {
           "status": "n/a",
           "detail": "needs affected"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-file-dependency-edit-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit inside a `file:` dependency beside the repository runs the task of the project depending on it",
+      "why": "The directory is outside the repository: no git status shows the edit, and the lockfile names only its path.",
+      "from": [
+        "vx-lockfile/outside-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-file-dependency-edit-spares-others",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "An edit inside a `file:` dependency beside the repository replays the projects that do not depend on it",
+      "from": [
+        "vx-lockfile/outside-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-file-dependency-retarget-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Pointing a `file:` dependency at another directory beside the repository runs the task again",
+      "from": [
+        "vx-lockfile/outside-dir-dep",
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-dependency-edit-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit inside a `link:` dependency beside the repository runs the task of the project depending on it, with no install",
+      "why": "node_modules holds a link to the directory: the edit is what the task reads, and nothing else changed.",
+      "from": [
+        "vx-lockfile/outside-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-dependency-new-file-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A file added to a `link:` dependency beside the repository runs the task of the project depending on it",
+      "from": [
+        "vx-lockfile/outside-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-dependency-edit-spares-others",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "An edit inside a `link:` dependency beside the repository replays the projects that do not depend on it",
+      "from": [
+        "vx-lockfile/outside-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-dependency-retarget-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Pointing a `link:` dependency at another directory beside the repository runs the task again",
+      "from": [
+        "vx-lockfile/outside-dir-dep",
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-dependency-reinstall-replays",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "Installing again with a `link:` dependency beside the repository unchanged replays the task",
+      "from": [
+        "vx-lockfile/outside-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/link-dir-dependency-new-file-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A file added to a `link:` directory dependency runs the task of the project depending on it, with no install",
+      "from": [
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/link-dir-dependency-edit-spares-others",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "An edit inside a `link:` directory dependency replays the projects that do not depend on it",
+      "from": [
+        "vx-lockfile/file-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/link-dir-dependency-retarget-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Pointing a `link:` dependency at another directory in the repository runs the task again",
+      "from": [
+        "vx-lockfile/file-dir-dep",
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/link-dep-inside-other-project-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit to a `link:` dependency kept inside another project’s directory runs the task of the project depending on it",
+      "why": "The edit is under `other`’s directory, but `lib` is the project that reads it.",
+      "from": [
+        "vx-lockfile/extra-in-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/link-alias-swap-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Swapping which `link:` directories two dependency names point at runs the task again",
+      "why": "The same directories are linked, but `foo` now reads the other one.",
+      "from": [
+        "vx-lockfile/dependency-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/alias-retarget-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Pointing a dependency name at another package, the import name unchanged, runs the task again",
+      "why": "The task imports `foo` either way; what `foo` is changed.",
+      "from": [
+        "vx-lockfile/dependency-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/outside-link-alias-edit-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit behind a dependency installed under another name, linked from beside the repository, runs the task again",
+      "from": [
+        "vx-lockfile/dependency-names",
+        "vx-lockfile/outside-dir-dep"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
         }
       }
     },
@@ -18632,6 +19451,60 @@
         },
         "nx": {
           "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/second-stop-kills-at-once",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A second Ctrl-C kills a task still in its cleanup at once, and leaves nothing running",
+      "why": "The user pressed it again to stop now: a runner that waits out the cleanup ignores them.",
+      "from": [
+        "signal-handling"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 15 s"
+        }
+      }
+    },
+    {
+      "id": "failure/stdin-read-sees-eof",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that reads its input stream sees it end, though the runner’s own stays open, and the run finishes",
+      "why": "A task handed the terminal, or a pipe nobody closes, waits forever for input no one types.",
+      "from": [
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 20 s"
         },
         "vite-task": {
           "status": "pass"
@@ -22223,7 +23096,8 @@
       "why": "Nothing the remaining projects read changed; the deleted one has no task left to run.",
       "from": [
         "affected",
-        "affected-moves"
+        "affected-moves",
+        "vx-lockfile/deleted-project"
       ],
       "outcomes": {
         "vx": {
@@ -23141,6 +24015,259 @@
       }
     },
     {
+      "id": "failure/continue-runs-past-a-failure",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "Asked to continue, a run goes on past a failed task and still fails",
+      "why": "Going on is what the user asked for; a green exit would hide the failure.",
+      "from": [
+        "continue-taint",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs continue"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs continue"
+        }
+      }
+    },
+    {
+      "id": "failure/continue-saves-nothing-built-on-a-failure",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that ran past its dependency’s failure is not replayed once the dependency is fixed",
+      "why": "It was built on a failed dependency: replaying it would keep that result after the fix.",
+      "from": [
+        "continue-taint",
+        "continue-cache-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs continue"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs continue"
+        }
+      }
+    },
+    {
+      "id": "cache/force-runs-and-refreshes",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A forced run runs every task past its cache entry, and the next run replays what it saved",
+      "from": [
+        "parity-turbo",
+        "parity-nx",
+        "cli"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs force"
+        }
+      }
+    },
+    {
+      "id": "cache/read-only-replays-and-saves-nothing",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A run that only reads the cache replays a hit, and saves nothing for a miss",
+      "from": [
+        "download-policy",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs read-only-cache"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs read-only-cache"
+        }
+      }
+    },
+    {
+      "id": "cache/dry-run-runs-and-saves-nothing",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A planned run runs no task, writes no output, and saves nothing",
+      "from": [
+        "dry-json-stdout",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs dry-run"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs dry-run"
+        }
+      }
+    },
+    {
+      "id": "env/pass-through-reaches-task",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A variable passed through reaches the task",
+      "from": [
+        "env",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/pass-through-change-replays",
+      "category": "env",
+      "kind": "efficiency",
+      "title": "A change to a variable passed through, not keyed, replays the task",
+      "from": [
+        "env",
+        "parity-turbo-hashing-env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/dependency-inputs-off-replays",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A task ordered after a dependency, but not keyed on it, replays when only the dependency changes",
+      "from": [
+        "parity-nx-hashing",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs dependency-inputs-off"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/linked-worktree-replays-main-checkout",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A linked git worktree of the same commit replays what the main checkout built",
+      "why": "Same commit, same inputs: the second checkout asks nothing new of the task.",
+      "from": [
+        "parity-turbo-hashing"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/workspace-through-link-replays",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A run started through a link to the workspace replays what the real path built",
+      "why": "Same files, same commit: only the path the shell shows differs.",
+      "from": [
+        "discover-stage"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "report/cache-miss",
       "category": "report",
       "kind": "data",
@@ -23357,6 +24484,642 @@
           "status": "fail",
           "step": 3,
           "detail": "reports no outputBytes"
+        }
+      }
+    },
+    {
+      "id": "sandbox/undeclared-env-hidden",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "A variable the task does not declare never reaches it",
+      "why": "A variable that reaches the command but not its key changes the output under the same key: a later run replays the wrong result.",
+      "from": [
+        "env",
+        "sandbox-parent-env.unsafe",
+        "parity-turbo-hashing-env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/dist/out.txt is \"leaked\", expected \"unset\""
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "sandbox/declared-reads-and-writes-pass",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that reads its inputs and writes its outputs succeeds",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/undeclared-read-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that reads a project file it never declared fails",
+      "why": "The file is outside the key: an edit to it would replay a stale result.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "sandbox-hidden-reads.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/granted-read-passes",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may read a file it is granted beyond its inputs",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/other-project-read-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that reads another project’s source fails",
+      "from": [
+        "sandbox-grants.unsafe",
+        "nested-boundary"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/undeclared-write-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that writes outside its outputs fails, and the file is not left behind",
+      "why": "The cache never stores that file: a replay would leave the tree without it.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "sandbox-empty-outputs.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/other-project-write-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that writes into another project fails, and leaves that project as it was",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/source-write-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that rewrites its own source fails, and the source is kept",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/credential-store-hidden",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task cannot read the user’s SSH key",
+      "from": [
+        "sandbox-credential-stores.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/network-refused",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task with no network grant cannot reach a server the run started",
+      "why": "A response is an input no key holds: the next run replays it whatever the server says now.",
+      "from": [
+        "sandbox-host-services.unsafe",
+        "sandbox-proxy-denials.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox, ready"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox, persistent, ready"
+        }
+      }
+    },
+    {
+      "id": "sandbox/link-out-of-grants-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task cannot read an undeclared file through a link inside its inputs",
+      "from": [
+        "sandbox-grant-through-link.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "watch/edit-reruns-its-project",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "An edit to a project’s input runs its task again, and the result is current",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/edit-spares-other-projects",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "An edit to one project runs nothing in a project that does not depend on it",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/edit-reruns-dependants",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "An edit to a dependency runs it and the project built on it, which ends current",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/own-outputs-start-nothing",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "What a task writes to its outputs does not run it again",
+      "why": "Answered as an edit, a build’s own dist would run it forever.",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/same-bytes-start-nothing",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Saving a file with the same bytes runs nothing",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/burst-is-one-run",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Several files saved at once run the task once",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/deleted-input-reruns",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Deleting an input runs the task again, without it",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/file-in-new-directory-reruns",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A file in a directory made after the watch started runs the task again",
+      "why": "A watch armed on the directories that existed at start never hears the new one.",
+      "from": [
+        "watch-recreated-dirs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/rename-over-reruns",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A save that writes a temporary file and renames it over the input runs the task again",
+      "why": "Editors save this way: the input’s file is replaced, not written.",
+      "from": [
+        "watch-label-live-path",
+        "watch-transient-file"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/ignored-writes-start-nothing",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Writes to files git ignores run nothing",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/ignored-burst-keeps-the-edit",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "An edit saved among many writes to ignored files still runs the task, once",
+      "why": "Dropped with the noise around it, the edit leaves the result stale.",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/non-input-edit-runs-nothing",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "An edit to a project file no task reads runs nothing",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/edits-in-turn-each-run",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Edits made one after another each run the task, and the last one wins",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-selfwrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
         }
       }
     }

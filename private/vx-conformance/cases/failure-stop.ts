@@ -307,4 +307,50 @@ export default [
     workspace: a({ t: { command: 'echo t' } }),
     steps: [{ run: 't', concurrency: 0, expect: { within: 30 } }],
   }),
+
+  defineCase({
+    id: 'failure/second-stop-kills-at-once',
+    category: 'failure',
+    kind: 'correctness',
+    title: 'A second Ctrl-C kills a task still in its cleanup at once, and leaves nothing running',
+    why: 'The user pressed it again to stop now: a runner that waits out the cleanup ignores them.',
+    from: ['signal-handling'],
+    workspace: a({
+      slow: {
+        // The cleanup ignores the signal itself: only a kill ends it.
+        command: `trap 'trap "" INT; touch cleaning; sleep 30; echo late > late.txt' INT; touch started; ${LOOP}`,
+      },
+    }),
+    steps: [
+      {
+        run: 'slow',
+        stop: { ...stop('SIGINT'), again: 'packages/a/cleaning' },
+        expect: { exit: 'fail', within: 15, alone: true, files: { 'packages/a/late.txt': null } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'failure/stdin-read-sees-eof',
+    category: 'failure',
+    kind: 'correctness',
+    title:
+      'A task that reads its input stream sees it end, though the runner’s own stays open, and the run finishes',
+    why: 'A task handed the terminal, or a pipe nobody closes, waits forever for input no one types.',
+    from: ['runner'],
+    workspace: a({
+      build: {
+        command: 'mkdir -p dist && cat > dist/out.txt && echo done >> dist/out.txt',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+      },
+    }),
+    steps: [
+      {
+        run: 'build',
+        openStdin: true,
+        expect: { exit: 0, within: 20, files: { 'packages/a/dist/out.txt': 'done\n' } },
+      },
+    ],
+  }),
 ]

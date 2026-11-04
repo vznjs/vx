@@ -26,6 +26,7 @@ import {
   type ReportCheck,
   type TaskReport,
   type TreeCheck,
+  type WatchExpect,
   type WorkspaceSpec,
 } from './spec.ts'
 
@@ -43,6 +44,16 @@ export interface Outcome {
 /** Where a run's marks go: each command appends `+id` when it starts and `-id` when it ends. */
 const RAN = '.ran'
 
+/**
+ * Where an isolated task's marks go: a tool may grant it no file at the
+ * workspace root, so a directory of the case's home, which every case
+ * ignores, is granted instead.
+ */
+export const ISOLATED_RAN = '.home/marks/ran'
+
+/** Where a watch lists the marks each of its phases wrote. */
+const WATCHED = '.watched'
+
 /** Where a supervised run lists the processes it left alive. */
 const LEFT = '.left'
 
@@ -55,7 +66,10 @@ export function marked(ws: WorkspaceSpec, project: string, task: string): string
   const p = ws.projects[project]
   const cmd = p?.tasks?.[task]?.command
   if (p === undefined || cmd === undefined) throw new Error(`no task ${project}#${task}`)
-  const ran = path.posix.join(path.posix.relative(projectDir(project, p), '.'), RAN)
+  const ran = path.posix.join(
+    path.posix.relative(projectDir(project, p), '.'),
+    p.tasks?.[task]?.sandbox ? ISOLATED_RAN : RAN,
+  )
   const id = `${project}#${task}`
   const script = `printf '+%s\\n' '${id}' >> ${ran} && (${cmd}) && printf -- '-%s\\n' '${id}' >> ${ran}`
   // Forwarded args land after the whole line: an inner shell takes them as its `$@`.
@@ -146,6 +160,20 @@ async function linkTool(root: string, adapter: Adapter): Promise<void> {
   await symlink(realpathSync(path.join(MODULES, adapter.pkg)), pkg)
   for (const b of adapter.bins)
     await symlink(realpathSync(path.join(MODULES, '.bin', b)), path.join(bin, b))
+}
+
+/** One watch phase's marks against what it should have run. */
+function checkWatch(want: WatchExpect, marks: string[]): string | null {
+  const started = marks.filter((m) => m.startsWith('+')).map((m) => m.slice(1))
+  const missed = (want.ran ?? []).filter((t) => !started.includes(t))
+  if (missed.length > 0) return `did not run ${missed.join(', ')}`
+  const extra = (want.notRan ?? []).filter((t) => started.includes(t))
+  if (extra.length > 0) return `ran ${extra.join(', ')}, expected it left alone`
+  for (const [t, n] of Object.entries(want.times ?? {})) {
+    const got = started.filter((s) => s === t).length
+    if (got !== n) return `ran ${t} ${got} times, expected ${n}`
+  }
+  return null
 }
 
 export function check(
@@ -260,18 +288,21 @@ export async function runCase(c: Case, adapter: Adapter): Promise<Outcome> {
       status: 'n/a',
       detail: `needs ${c.needs.filter((f) => adapter.lacks.includes(f)).join(', ')}`,
     }
-  const root = realpathSync(mkdtempSync(path.join(BASE, `conf-${adapter.name}-`)))
+  const box = realpathSync(mkdtempSync(path.join(BASE, `conf-${adapter.name}-`)))
+  // Files outside the repository sit beside it, in the one directory the run may write.
+  const root = c.workspace.outside ? path.join(box, 'repo') : box
   try {
-    return await play(c, adapter, root)
+    if (c.workspace.outside) await writeFiles(path.join(box, 'outside'), c.workspace.outside)
+    return await play(c, adapter, root, box)
   } finally {
-    if (process.env['CONFORMANCE_KEEP']) console.error(`kept ${root}`)
-    else rmSync(root, { recursive: true, force: true })
+    if (process.env['CONFORMANCE_KEEP']) console.error(`kept ${box}`)
+    else rmSync(box, { recursive: true, force: true })
   }
 }
 
-async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
+async function play(c: Case, adapter: Adapter, root: string, box: string): Promise<Outcome> {
   const sh = (argv: string[], env: Record<string, string> = {}, cwd = root) =>
-    sandboxed(root, cwd, argv, { ...adapter.env, ...env })
+    sandboxed(root, cwd, argv, { ...adapter.env, ...env }, undefined, false, box)
   const install = () => setup([process.execPath, 'install', '--offline', '--no-progress'])
   const setup = async (argv: string[]) => {
     const r = await sh(argv)
@@ -354,11 +385,53 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       await configure(ws)
       continue
     }
+    if ('watch' in step) {
+      if (adapter.watch === undefined)
+        throw new Error(`${adapter.name} has no watch: list it in lacks`)
+      for (const f of [RAN, ISOLATED_RAN, WATCHED]) await rm(path.join(root, f), { force: true })
+      await mkdir(path.dirname(path.join(root, ISOLATED_RAN)), { recursive: true })
+      const tool = adapter
+        .watch(step.watch, step.projects)
+        .map((a, j) => (j === 0 && a.startsWith('node_modules/') ? path.join(root, a) : a))
+      const plan = {
+        watch: {
+          phases: step.phases.map(({ write, sh }) => ({ write, sh })),
+          marks: [RAN, ISOLATED_RAN],
+          out: WATCHED,
+        },
+      }
+      const argv = [process.execPath, SUPERVISE, JSON.stringify(plan), ...tool]
+      const r =
+        refused === null
+          ? await sandboxed(root, root, argv, adapter.env, 600_000, false, box)
+          : { exit: 1, out: refused }
+      const slices: string[] = JSON.parse((await readMaybe(path.join(root, WATCHED))) ?? '[]')
+      const files: Record<string, string | null> = {}
+      for (const f of Object.keys(step.files ?? {})) files[f] = await readMaybe(path.join(root, f))
+      const failed =
+        [step.start, ...step.phases.map((p) => p.expect)]
+          .map((want, j) => {
+            const why = checkWatch(want, (slices[j] ?? '').split('\n').filter(Boolean))
+            return why === null ? null : `${j === 0 ? 'first run' : `after edit ${j}`}: ${why}`
+          })
+          .find((why) => why !== null) ?? check({ files: step.files ?? {} }, 0, r.out, [], files)
+      if (failed !== null)
+        return {
+          status: 'fail',
+          step: i + 1,
+          detail: slices.length === 0 ? `${failed} (the watch never ran a task)` : failed,
+          log: `$ ${tool.join(' ')}\n${r.out}`.slice(-4000),
+        }
+      continue
+    }
     await rm(path.join(root, RAN), { force: true })
+    await rm(path.join(root, ISOLATED_RAN), { force: true })
+    await mkdir(path.dirname(path.join(root, ISOLATED_RAN)), { recursive: true })
     const cwd = 'cwd' in step && step.cwd ? path.join(root, step.cwd) : root
     await rm(path.join(root, LEFT), { force: true })
     const stop = 'stop' in step ? step.stop : undefined
     if (stop) await rm(path.join(root, stop.when), { force: true })
+    if (stop?.again) await rm(path.join(root, stop.again), { force: true })
     const tool = (
       'run' in step
         ? adapter.run(step.run, step.projects, {
@@ -367,19 +440,25 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
             ...(step.only ? { only: true } : {}),
             ...(step.args ? { args: step.args } : {}),
             ...(step.concurrency !== undefined ? { concurrency: step.concurrency } : {}),
+            ...(step.continue ? { continue: true } : {}),
+            ...(step.force ? { force: true } : {}),
+            ...(step.readOnlyCache ? { readOnlyCache: true } : {}),
+            ...(step.dry ? { dry: true } : {}),
           })
         : adapter.affected(step.affected, step.base)
     )
       // An adapter names its bin from the root; started elsewhere, that path is the root's.
       .map((a, j) => (j === 0 && a.startsWith('node_modules/') ? path.join(root, a) : a))
+    const openStdin = 'openStdin' in step && step.openStdin
     const argv =
-      stop || step.expect.alone
+      stop || step.expect.alone || openStdin
         ? [
             process.execPath,
             SUPERVISE,
             JSON.stringify({
               ...(stop ? { stop } : {}),
               ...(step.expect.alone ? { left: LEFT } : {}),
+              ...(openStdin ? { openStdin: true } : {}),
             }),
             ...tool,
           ]
@@ -399,12 +478,16 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
                 : {}),
             },
             step.expect.within === undefined ? undefined : step.expect.within * 1000,
+            c.needs?.includes('sandbox') === true,
+            box,
           )
         : { exit: 1, out: refused }
     const left: string[] = step.expect.alone
       ? JSON.parse((await readMaybe(path.join(root, LEFT))) ?? '[]')
       : []
-    const marks = ((await readMaybe(path.join(root, RAN))) ?? '').split('\n').filter(Boolean)
+    const marks: string[] = []
+    for (const f of [RAN, ISOLATED_RAN])
+      marks.push(...((await readMaybe(path.join(root, f))) ?? '').split('\n').filter(Boolean))
     const files: Record<string, string | null> = {}
     for (const f of [
       ...Object.keys(step.expect.files ?? {}),

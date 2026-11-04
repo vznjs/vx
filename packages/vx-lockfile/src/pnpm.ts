@@ -13,7 +13,7 @@
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { record, stable } from './json.js'
-import { joinPosix } from './posix.js'
+import { joinPosix, resolvePosix } from './posix.js'
 
 export interface Lockfile {
   readonly version: string
@@ -359,7 +359,7 @@ export function fileDeps(lock: Lockfile): string[] {
 }
 
 function linkTarget(lock: Lockfile, dir: string, version: string): string | undefined {
-  return version.startsWith('link:') ? joinPosix(dir, version.slice('link:'.length)) : undefined
+  return version.startsWith('link:') ? resolvePosix(dir, version.slice('link:'.length)) : undefined
 }
 
 function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {

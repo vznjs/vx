@@ -12,7 +12,7 @@
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { depsOf, peerOnly, record, stable, type Json } from './json.js'
-import { joinPosix } from './posix.js'
+import { joinPosix, resolvePosix } from './posix.js'
 
 export interface Lockfile {
   readonly version: string
@@ -278,8 +278,8 @@ function fileDir(lock: Lockfile, id: string): string | undefined {
   if (file !== -1) return id.slice(file + '@file:'.length)
   const link = id.indexOf('@link:', 1)
   if (link === -1) return undefined
-  const dir = joinPosix('.', id.slice(link + '@link:'.length))
-  return dir === undefined || lock.workspaces.has(dir) ? undefined : dir
+  const dir = resolvePosix('.', id.slice(link + '@link:'.length))
+  return lock.workspaces.has(dir) ? undefined : dir
 }
 
 /**

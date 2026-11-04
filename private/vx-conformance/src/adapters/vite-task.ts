@@ -27,6 +27,18 @@ export const viteTask: Adapter = {
     'ready',
     'runtime-inputs',
     'multi-task',
+    // A failure stops the run; `--cache` and `--no-cache` turn caching on
+    // or off, never reads apart from writes; no plan without running;
+    // nothing keeps a command from what it never declared.
+    'continue',
+    'force',
+    'read-only-cache',
+    // `vp run` has no watch mode.
+    'watch',
+    'dry-run',
+    'sandbox',
+    // A filter picks by name or directory; packages carry no tags.
+    'select-tag',
   ],
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1', VITE_PLUS_TELEMETRY_DISABLED: '1' },
   // Vite Task installs the workspace's `packageManager` from the registry
@@ -62,6 +74,7 @@ export const viteTask: Adapter = {
                         }
                       : {}),
                     ...(spec.env ? { env: spec.env } : {}),
+                    ...(spec.passThrough ? { untrackedEnv: spec.passThrough } : {}),
                     ...(spec.outputs || spec.rootOutputs
                       ? {
                           output: [

@@ -47,6 +47,11 @@ claimed file the diff does not name is read once and parsed once, with
 no git. A directory's two sides are not its bytes; they differ, so only
 the projects reaching it move.
 
+A named path above the root (a `file:` or `link:` directory beside the
+checkout, `../vendor/dep`) is read and hashed into the key like one
+inside it. Git holds no base for it, so `--affected` sees an edit there
+only when the lockfile changes too.
+
 ## Claiming a file (`VxPlugin.fingerprint`)
 
 A plugin that reads a root file declares `fingerprint: { files:
