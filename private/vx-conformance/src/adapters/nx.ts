@@ -100,4 +100,28 @@ export const nx: Adapter = {
     `--base=${base}`,
     '--outputStyle=stream',
   ],
+  // Each run rewrites run.json in its cache directory.
+  report: async (root) => {
+    const [file] = await Array.fromAsync(
+      new Bun.Glob('.home/.nx/*/cache/run.json').scan({ cwd: root, dot: true }),
+    )
+    const run = await Bun.file(path.join(root, file!)).json()
+    return Object.fromEntries(
+      run.tasks.map((t: NxTask) => [
+        `${t.projectName}#${t.target}`,
+        {
+          cache: t.cacheStatus.includes('hit') ? 'hit' : 'miss',
+          durationMs: Date.parse(t.endTime) - Date.parse(t.startTime),
+        },
+      ]),
+    )
+  },
+}
+
+interface NxTask {
+  projectName: string
+  target: string
+  cacheStatus: string
+  startTime: string
+  endTime: string
 }

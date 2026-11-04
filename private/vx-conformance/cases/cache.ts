@@ -18,26 +18,6 @@ export default [
   }),
 
   defineCase({
-    id: 'logs/replay-shows-log',
-    category: 'logs',
-    kind: 'output',
-    title: 'A replayed task shows the output its run printed',
-    from: ['parity-turbo', 'replay-fidelity', 'output-log'],
-    choices: {
-      vx: 'a hit prints one line; `vx last --log <task>` shows the stored output',
-    },
-    workspace: one({
-      command: 'echo printed-by-build && ' + CONCAT,
-      inputs: ['src/**'],
-      outputs: ['dist/**'],
-    }),
-    steps: [
-      { run: 'build', expect: { exit: 0 } },
-      { run: 'build', expect: { exit: 0, notRan: ['a#build'], output: ['printed-by-build'] } },
-    ],
-  }),
-
-  defineCase({
     id: 'cache/command-change-reruns',
     category: 'cache',
     kind: 'correctness',

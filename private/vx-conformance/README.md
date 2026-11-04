@@ -2,14 +2,14 @@
 
 One suite of task-runner behaviours, run against **vx**, **Turborepo**, **Nx**
 and **Vite Task**. Each case is a small workspace and the outcome a user
-sees: which commands ran, the files left on disk, the exit code. The score
-per tool and category, and every case where the tools differ, are in
-[report/REPORT.md](report/REPORT.md).
+sees: which commands ran, the files left on disk, the exit code, and the
+data the tool reports about the run. The results (every case, what each
+tool did, each tool's score) are the site's conformance page, written to
+`private/vx-docs/src/data/conformance.json`.
 
 ```sh
-bun src/cli.ts                    # every case, every tool → report/
+bun src/cli.ts                    # every case, every tool → the site's data
 bun src/cli.ts --tool nx --case outputs/ --verbose
-bun src/cli.ts --check vx         # vx against the committed report (CI)
 ```
 
 ## A case
@@ -28,33 +28,38 @@ config, and run a task; each run says what must hold:
 | `order`  | `[a, b]`: a's command finished before b's started      |
 | `files`  | each file holds exactly this text, or (`null`) is gone |
 | `output` | the run's output holds this text                       |
+| `report` | the tool reports this about a task's run               |
 
 Every run also fails a tool that starts one task twice. The harness puts a
 mark before and after each command, so "ran" means the command ran, not
 what a tool's log claims.
 
 A case is `correctness` when failing it leaves a wrong tree or exit code,
-`efficiency` when failing it reruns work nothing asked for, and `output`
-when it is only about what the run prints: a log is never correctness. `why` says
+`efficiency` when failing it reruns work nothing asked for, and `data`
+when it is about what the tool reports of a run: cache status, time, CPU,
+memory, output size, read from its output, files or API. How a log reads
+is not measured. `why` says
 why the outcome is right where a tool could argue for another. `from`
-names the vx tests the case is drawn from. `choices` names a tool whose
-design picks another outcome on purpose, and why: its result is reported,
-not scored.
+names the vx tests the case is drawn from.
 
 ## Adapters
 
 An adapter writes the tool's own config from the neutral workspace and
-maps a run to its CLI. It decides nothing. Where a tool needs an idiom to
+maps a run to its CLI, and reads what the tool reports about a run from
+the richest place the tool offers. It decides nothing. Where a tool needs an idiom to
 mean the same thing, the adapter uses the one its docs teach:
 
 - **Turborepo**: a package.json script per task, a `project#task` entry
-  in turbo.json each.
+  in turbo.json each. Runs pass `--summarize`; the report is its run summary.
 - **Nx**: an `nx:run-commands` target per task; each task's inputs are a
   named input, and each `^task` in `dependsOn` adds the dependency's own
-  (`^build-inputs`, Nx's `^production` idiom).
+  (`^build-inputs`, Nx's `^production` idiom). The report is the cache's
+  `run.json`.
 - **Vite Task**: `run.tasks` in each project's vite.config.ts. It selects
-  by package only, so `affected` cases are not applicable to it.
+  by package only, so `affected` cases are not applicable to it. The report
+  is `vp run --last-details`.
 - **vx**: a vx.config.mjs per project, `bun()` for the edges, `vx lock`.
+  The report is `vx last --format json`.
 
 ## Sandbox
 

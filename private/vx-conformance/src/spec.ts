@@ -54,7 +54,26 @@ export interface Expect {
   filesNot?: Record<string, string>
   /** When this task (`project#task`) did not run its command, these files hold exactly this. */
   ifReplayed?: { task: string; files: Record<string, string | null> }
+  /** What the tool reports about this task's run, through its output, files or API. */
+  report?: { task: string } & ReportCheck
 }
+
+/** What a tool can report about one task's run. */
+export interface TaskReport {
+  /** Whether this run replayed the task from a cache. */
+  cache?: 'hit' | 'miss'
+  /** How long the task took in this run: its command on a miss, its restore on a hit. */
+  durationMs?: number
+  cpuMs?: number
+  peakMemoryBytes?: number
+  /** Bytes of the outputs the task wrote or restored. */
+  outputBytes?: number
+}
+
+/** Each metric named must be reported: `cache` exactly, the rest within `[min, max]`. */
+export type ReportCheck = {
+  cache?: 'hit' | 'miss'
+} & { [K in Exclude<keyof TaskReport, 'cache'>]?: [number, number] }
 
 export type Step =
   /** Run `task` in every project that declares it, or only in `projects` (and what they depend on). */
@@ -83,9 +102,10 @@ export type Step =
 /**
  * `correctness`: a tool that fails it leaves a wrong tree or a wrong exit
  * code. `efficiency`: one that fails it reruns work nothing asked for.
- * `output`: what the run prints; never correctness.
+ * `data`: what the tool reports about a run (time, CPU, memory, output
+ * size): measurable, unlike how its log reads.
  */
-export type Kind = 'correctness' | 'efficiency' | 'output'
+export type Kind = 'correctness' | 'efficiency' | 'data'
 
 export type Category =
   | 'graph'
@@ -95,7 +115,7 @@ export type Category =
   | 'cache'
   | 'config'
   | 'affected'
-  | 'logs'
+  | 'report'
   | 'failure'
 
 /** What a case needs from a tool beyond running tasks in order. A tool without it cannot express the case. */
@@ -113,8 +133,6 @@ export interface Case {
   /** The vx tests or issues this case was drawn from. */
   from: string[]
   needs?: Feature[]
-  /** Tool → why it chose another outcome by design: its result is reported, not scored. */
-  choices?: Record<string, string>
   workspace: WorkspaceSpec
   steps: Step[]
 }

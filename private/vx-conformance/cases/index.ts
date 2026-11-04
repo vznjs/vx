@@ -6,6 +6,7 @@ import failure from './failure.ts'
 import graph from './graph.ts'
 import inputs from './inputs.ts'
 import outputs from './outputs.ts'
+import report from './report.ts'
 
 /** Every case, in the report's order. */
 export const CASES: Case[] = [
@@ -16,4 +17,5 @@ export const CASES: Case[] = [
   ...cache,
   ...failure,
   ...affected,
+  ...report,
 ]

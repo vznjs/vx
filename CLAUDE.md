@@ -104,8 +104,8 @@ packages/vx-dte-server  the reference relay of `@vzn/vx-dte` (PROTOCOL.md): pass
                         OIDC tokens; imports only jose, not even core
 private/vx-bench        synthetic workspace generator + runners (vx / turbo / nx)
 private/vx-conformance  one neutral suite of task-runner outcomes (cases/), run sandboxed against vx, Turbo, Nx and
-                        Vite Task through thin adapters; report/ is the score and every difference; `check.conformance`
-                        (CI) pins vx's outcomes to it. src/inventory.ts sorts every test file by whether a case can carry it
+                        Vite Task through thin adapters; `conformance` (on demand, not in `ci`) writes the results the
+                        site's conformance page renders. src/inventory.ts sorts every test file by whether a case can carry it
 private/vx-servers      compose.yaml: the dte, cache and history servers' images in one file
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
                         `metadata.internal`, so that command offers nothing else; tests/skills-install.unsafe.test.ts)
@@ -163,7 +163,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   (the npm registry), `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac worker) and
   `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task}` and `#check.perf` (the tracer would be timed), and
-  `@vzn/vx-conformance#test`, `#check.conformance` and `#conformance` (each drives bubblewrap itself) are
+  `@vzn/vx-conformance#test` and `#conformance` (each drives bubblewrap itself) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
 - Every package's suite is its `test` task, so `vx run ci --all` gates
   them all; CI runs nothing but vx tasks (a workspace step is a design

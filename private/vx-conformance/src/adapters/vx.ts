@@ -63,4 +63,29 @@ export const vx: Adapter = {
     ...(projects ? projects.flatMap((p) => ['--filter', p]) : ['--all']),
   ],
   affected: (task, base) => [VX, 'run', task, `--affected=${base}`],
+  report: async (_root, read) => {
+    const last = JSON.parse(await read([VX, 'last', '--format', 'json']))
+    return Object.fromEntries(
+      last.tasks.map((t: VxTask) => [
+        `${t.project}#${t.task}`,
+        {
+          cache: t.cacheHit ? 'hit' : 'miss',
+          durationMs: t.durationMs,
+          ...(t.cpuMs !== null ? { cpuMs: t.cpuMs } : {}),
+          ...(t.peakRssBytes !== null ? { peakMemoryBytes: t.peakRssBytes } : {}),
+          ...(t.outputBytes != null ? { outputBytes: t.outputBytes } : {}),
+        },
+      ]),
+    )
+  },
+}
+
+interface VxTask {
+  project: string
+  task: string
+  cacheHit: boolean
+  durationMs: number
+  cpuMs: number | null
+  peakRssBytes: number | null
+  outputBytes?: number | null
 }

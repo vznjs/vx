@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { check, marked } from '../src/harness.ts'
+import { check, checkReport, marked } from '../src/harness.ts'
 
 const marks = ['+lib#build', '-lib#build', '+app#build', '-app#build']
 
@@ -58,5 +58,17 @@ test('ifReplayed judges the files only when the task did not run', () => {
   expect(check(want, 0, '', [], { f: 'mine' })).toBeNull()
   expect(check(want, 0, '', [], { f: 'old' })).toBe(
     'a#b replayed and left f "old", expected "mine"',
+  )
+})
+
+test('a report check needs each metric named, within its bounds', () => {
+  expect(
+    checkReport({ cache: 'hit', durationMs: [0, 100] }, { cache: 'hit', durationMs: 12 }),
+  ).toBeNull()
+  expect(checkReport({ cache: 'hit' }, { cache: 'miss' })).toBe('reports cache miss, expected hit')
+  expect(checkReport({ cpuMs: [100, 200] }, { cache: 'miss' })).toBe('reports no cpuMs')
+  expect(checkReport({ cpuMs: [100, 200] }, undefined)).toBe('reports no cpuMs')
+  expect(checkReport({ outputBytes: [5000, 5000] }, { outputBytes: 4999 })).toBe(
+    'reports outputBytes 4999, expected 5000–5000',
   )
 })

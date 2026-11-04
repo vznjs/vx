@@ -1,6 +1,6 @@
 // Turborepo: a package.json script per task, turbo.json entries per
 // `project#task` (a case may give two projects' tasks different inputs).
-import { writeFile } from 'node:fs/promises'
+import { readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Adapter } from '../adapter.ts'
 import { projectDir } from '../spec.ts'
@@ -40,6 +40,7 @@ export const turbo: Adapter = {
     'run',
     task,
     '--ui=stream',
+    '--summarize',
     ...(projects ?? []).map((p) => `--filter=${p}`),
   ],
   affected: (task, base) => [
@@ -49,6 +50,32 @@ export const turbo: Adapter = {
     'run',
     task,
     '--ui=stream',
+    '--summarize',
     '--affected',
   ],
+  // `--summarize` writes .turbo/runs/<id>.json per run.
+  report: async (root) => {
+    const dir = path.join(root, '.turbo', 'runs')
+    const runs = (await readdir(dir)).filter((f) => f.endsWith('.json'))
+    const newest = await Promise.all(
+      runs.map(async (f) => ({ f, t: (await stat(path.join(dir, f))).mtimeMs })),
+    )
+    newest.sort((a, b) => b.t - a.t)
+    const summary = await Bun.file(path.join(dir, newest[0]!.f)).json()
+    return Object.fromEntries(
+      summary.tasks.map((t: TurboTask) => [
+        t.taskId,
+        {
+          cache: t.cache.status === 'HIT' ? 'hit' : 'miss',
+          durationMs: t.execution.endTime - t.execution.startTime,
+        },
+      ]),
+    )
+  },
+}
+
+interface TurboTask {
+  taskId: string
+  cache: { status: string }
+  execution: { startTime: number; endTime: number }
 }

@@ -8,40 +8,11 @@
     "ci": {
       "dependsOn": [
         "lint",
-        "test",
-        "check.conformance"
+        "test"
       ]
     },
-    "check.conformance": {
-      "description": "bun src/cli.ts --check vx: every case against vx, as report/results.json records",
-      "dependsOn": [
-        "install"
-      ],
-      "exec": {
-        "command": "bun src/cli.ts --check vx",
-        "timeout": "10m",
-        "env": {
-          "define": {
-            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
-          }
-        }
-      },
-      "inputs": {
-        "files": [
-          "src/**",
-          "cases/**",
-          "package.json",
-          "report/results.json"
-        ]
-      },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
-    },
     "conformance": {
-      "description": "bun src/cli.ts: every case against vx, Turborepo, Nx and Vite Task → report/",
+      "description": "bun src/cli.ts: every case against vx, Turborepo, Nx and Vite Task → vx-docs/src/data/conformance.json",
       "dependsOn": [
         "install"
       ],

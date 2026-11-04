@@ -1,5 +1,6 @@
-// The report: one score per tool and category, then every case where the
-// tools disagree, each with what each tool did.
+// The results: the data the site's conformance page renders (every case,
+// what each tool did, each tool's score per kind and category), and the
+// score table the CLI prints.
 import path from 'node:path'
 import type { Adapter } from './adapter.ts'
 import type { Outcome } from './harness.ts'
@@ -11,6 +12,8 @@ export interface Coverage {
   ported: number
   /** Files of each other verdict that no case cites. */
   rest: Record<Verdict, string[]>
+  /** What each verdict means. */
+  verdicts: Record<Verdict, string>
 }
 
 /** How much of vx's own suite the cases carry. */
@@ -21,13 +24,22 @@ export function coverage(cases: Case[]): Coverage {
     rest: Object.fromEntries(
       Object.entries(INVENTORY).map(([v, files]) => [v, files.filter((f) => !cited.has(f))]),
     ) as Record<Verdict, string[]>,
+    verdicts: VERDICTS,
   }
+}
+
+/** Cases a tool passed, of those it could express. */
+export interface Score {
+  pass: number
+  of: number
 }
 
 export interface Results {
   coverage: Coverage
   /** Tool → version. */
   tools: Record<string, string>
+  /** Tool → `all`, each kind and each category → its score. */
+  scores: Record<string, Record<string, Score>>
   cases: {
     id: string
     category: Category
@@ -35,7 +47,6 @@ export interface Results {
     title: string
     why?: string
     from: string[]
-    choices?: Record<string, string>
     outcomes: Record<string, Outcome>
   }[]
 }
@@ -50,80 +61,42 @@ export async function toolVersion(a: Adapter): Promise<string> {
 
 type Row = Results['cases'][number]
 
-function score(rows: Row[], tool: string): string {
-  const applicable = rows.filter(
-    (r) => r.outcomes[tool]?.status !== 'n/a' && r.choices?.[tool] === undefined,
-  )
-  if (applicable.length === 0) return '–'
-  const pass = applicable.filter((r) => r.outcomes[tool]?.status === 'pass').length
-  return `${Math.round((pass / applicable.length) * 100)}% (${pass}/${applicable.length})`
+function score(rows: Row[], tool: string): Score {
+  const applicable = rows.filter((r) => r.outcomes[tool]?.status !== 'n/a')
+  return {
+    pass: applicable.filter((r) => r.outcomes[tool]?.status === 'pass').length,
+    of: applicable.length,
+  }
 }
 
-const MARK = { pass: '✓', fail: '✗', 'n/a': '–' } as const
+/** Each tool's score over all cases, each kind and each category. */
+export function scores(tools: string[], rows: Row[]): Results['scores'] {
+  const groups: [string, Row[]][] = [
+    ['all', rows],
+    ...[...new Set(rows.map((r) => r.kind))].map((k): [string, Row[]] => [
+      k,
+      rows.filter((r) => r.kind === k),
+    ]),
+    ...[...new Set(rows.map((r) => r.category))].map((c): [string, Row[]] => [
+      c,
+      rows.filter((r) => r.category === c),
+    ]),
+  ]
+  return Object.fromEntries(
+    tools.map((t) => [t, Object.fromEntries(groups.map(([g, rs]) => [g, score(rs, t)]))]),
+  )
+}
 
-export function renderReport(r: Results): string {
+const percent = (s: Score | undefined) =>
+  s === undefined || s.of === 0 ? '–' : `${Math.round((s.pass / s.of) * 100)}% (${s.pass}/${s.of})`
+
+/** The score table, as the CLI prints it. */
+export function scoreTable(r: Pick<Results, 'tools' | 'scores'>): string {
   const tools = Object.keys(r.tools)
-  const categories = [...new Set(r.cases.map((c) => c.category))]
-  const head = `| | ${tools.map((t) => `${t} ${r.tools[t]}`).join(' | ')} |\n|---|${tools.map(() => '---').join('|')}|`
-  const line = (label: string, rows: Row[]) =>
-    `| ${label} | ${tools.map((t) => score(rows, t)).join(' | ')} |`
-  const differ = r.cases.filter((c) => new Set(tools.map((t) => c.outcomes[t]?.status)).size > 1)
-  const allFail = r.cases.filter((c) => tools.every((t) => c.outcomes[t]?.status === 'fail'))
-  const caseBlock = (c: Row) =>
-    [
-      `### ${c.title}`,
-      '',
-      `\`${c.id}\` · ${c.kind}${c.why ? ` · ${c.why}` : ''}`,
-      '',
-      ...tools.map((t) => {
-        const o = c.outcomes[t]!
-        const choice = c.choices?.[t]
-        return `- ${MARK[o.status]} **${t}**${o.detail ? `: ${o.step ? `step ${o.step}, ` : ''}${o.detail}` : ''}${choice ? ` (by design, not scored: ${choice})` : ''}`
-      }),
-      '',
-    ].join('\n')
+  const groups = Object.keys(r.scores[tools[0]!] ?? {})
   return [
-    '# Task runner conformance',
-    '',
-    `${r.cases.length} cases, each a small workspace and the outcome a user sees: which commands ran, the files left on disk, the exit code. Every tool runs sandboxed. A tool that cannot express a case scores it \`–\`, and a tool whose design chooses another outcome is reported but not scored: either leaves its percentage.`,
-    '',
-    head,
-    line('**all**', r.cases),
-    line(
-      'correctness',
-      r.cases.filter((c) => c.kind === 'correctness'),
-    ),
-    line(
-      'efficiency',
-      r.cases.filter((c) => c.kind === 'efficiency'),
-    ),
-    ...categories.map((cat) =>
-      line(
-        cat,
-        r.cases.filter((c) => c.category === cat),
-      ),
-    ),
-    '',
-    '## Where the cases come from',
-    '',
-    `Each case is drawn from vx's own tests. Of the ${r.coverage.ported + Object.values(r.coverage.rest).flat().length} test files in this repo:`,
-    '',
-    `- ${r.coverage.ported} are carried by a case;`,
-    ...(Object.keys(VERDICTS) as Verdict[]).map(
-      (v) => `- ${r.coverage.rest[v].length} are ${v}: ${VERDICTS[v]}.`,
-    ),
-    '',
-    `## Where they differ (${differ.length})`,
-    '',
-    ...differ.map(caseBlock),
-    ...(allFail.length > 0
-      ? [`## Where every tool fails (${allFail.length})`, '', ...allFail.map(caseBlock)]
-      : []),
-    `## Where they agree (${r.cases.length - differ.length - allFail.length})`,
-    '',
-    ...r.cases
-      .filter((c) => !differ.includes(c) && !allFail.includes(c))
-      .map((c) => `- ${c.title} (\`${c.id}\`)`),
-    '',
+    `| | ${tools.map((t) => `${t} ${r.tools[t]}`).join(' | ')} |`,
+    `|---|${tools.map(() => '---').join('|')}|`,
+    ...groups.map((g) => `| ${g} | ${tools.map((t) => percent(r.scores[t]![g])).join(' | ')} |`),
   ].join('\n')
 }

@@ -19,7 +19,14 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Adapter } from './adapter.ts'
 import { caseHome, sandboxed } from './sandbox.ts'
-import { projectDir, type Case, type Expect, type WorkspaceSpec } from './spec.ts'
+import {
+  projectDir,
+  type Case,
+  type Expect,
+  type ReportCheck,
+  type TaskReport,
+  type WorkspaceSpec,
+} from './spec.ts'
 
 export type Status = 'pass' | 'fail' | 'n/a'
 
@@ -146,6 +153,22 @@ export function check(
   return null
 }
 
+/** Whether `got` reports each metric `want` names, within its bounds. */
+export function checkReport(want: ReportCheck, got: TaskReport | undefined): string | null {
+  for (const [metric, bound] of Object.entries(want)) {
+    const value = got?.[metric as keyof TaskReport]
+    if (value === undefined) return `reports no ${metric}`
+    if (typeof bound === 'string') {
+      if (value !== bound) return `reports ${metric} ${value}, expected ${bound}`
+      continue
+    }
+    const [min, max] = bound as [number, number]
+    if (typeof value !== 'number' || value < min || value > max)
+      return `reports ${metric} ${value}, expected ${min}–${max}`
+  }
+  return null
+}
+
 async function checkTree(
   root: string,
   want: { executable?: string[]; links?: Record<string, string> },
@@ -181,7 +204,8 @@ export async function runCase(c: Case, adapter: Adapter): Promise<Outcome> {
   try {
     return await play(c, adapter, root)
   } finally {
-    rmSync(root, { recursive: true, force: true })
+    if (process.env['CONFORMANCE_KEEP']) console.error(`kept ${root}`)
+    else rmSync(root, { recursive: true, force: true })
   }
 }
 
@@ -274,7 +298,13 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       ...Object.keys(step.expect.ifReplayed?.files ?? {}),
     ])
       files[f] = await readMaybe(path.join(root, f))
-    const failed = check(step.expect, r.exit, r.out, marks, files)
+    let failed = check(step.expect, r.exit, r.out, marks, files)
+    if (failed === null && step.expect.report !== undefined && refused === null) {
+      const { task, ...want } = step.expect.report
+      const read = async (argv: string[]) => (await sh(argv)).out
+      const got = await adapter.report(root, read).catch(() => ({}))
+      failed = checkReport(want, (got as Record<string, TaskReport>)[task])
+    }
     if (failed !== null)
       return {
         status: 'fail',

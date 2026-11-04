@@ -13,31 +13,16 @@ export default defineProject({
     },
 
     ci: {
-      dependsOn: ['lint', 'test', 'check.conformance'],
+      dependsOn: ['lint', 'test'],
     },
 
-    // vx's outcome on every case, against the committed report: a case vx
-    // passed and now fails is a regression, a new pass is recorded with
-    // `conformance`. The rivals' outcomes move only with their pins.
-    // No sandbox: the harness runs each tool in a bubblewrap sandbox of its
-    // own, which vx's sandbox cannot nest.
-    'check.conformance': {
-      description:
-        'bun src/cli.ts --check vx: every case against vx, as report/results.json records',
-      dependsOn: ['install'],
-      exec: {
-        command: 'bun src/cli.ts --check vx',
-        timeout: '10m',
-        env: { define: NO_TRANSPILER_CACHE },
-      },
-      inputs: { files: [...SUITE, 'report/results.json'] },
-      cache: { outputs: { files: [] } },
-    },
-
-    // Every case against every tool: rewrites report/. Run it after a case
-    // or a pin changes, and commit the report.
+    // Every case against every tool: rewrites the site's conformance data.
+    // On demand, not in `ci`: run it after a case or a pin changes, and
+    // commit the data. No sandbox: the harness runs each tool in a
+    // bubblewrap sandbox of its own, which vx's sandbox cannot nest.
     conformance: {
-      description: 'bun src/cli.ts: every case against vx, Turborepo, Nx and Vite Task → report/',
+      description:
+        'bun src/cli.ts: every case against vx, Turborepo, Nx and Vite Task → vx-docs/src/data/conformance.json',
       dependsOn: ['install'],
       exec: {
         command: 'bun src/cli.ts',

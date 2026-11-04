@@ -1,4 +1,7 @@
-import type { Feature, WorkspaceSpec } from './spec.ts'
+import type { Feature, TaskReport, WorkspaceSpec } from './spec.ts'
+
+/** Runs a command in the case's sandbox; resolves to its output. */
+export type Read = (argv: string[]) => Promise<string>
 
 /** A task's command as the tool must run it: the case's command, with the harness's marks around it. */
 export type Command = (project: string, task: string) => string
@@ -26,4 +29,6 @@ export interface Adapter {
   run(task: string, projects?: string[]): string[]
   /** Run `task` where the changes since `base` reach. */
   affected(task: string, base: string): string[]
+  /** What the tool reports about its last run, per `project#task`, from its own output, files or API. */
+  report(root: string, read: Read): Promise<Record<string, TaskReport>>
 }
