@@ -990,12 +990,12 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 907,
-        "of": 908
+        "pass": 911,
+        "of": 912
       },
       "correctness": {
-        "pass": 751,
-        "of": 751
+        "pass": 755,
+        "of": 755
       },
       "efficiency": {
         "pass": 147,
@@ -1026,12 +1026,12 @@
         "of": 35
       },
       "inputs": {
-        "pass": 294,
-        "of": 294
+        "pass": 296,
+        "of": 296
       },
       "outputs": {
-        "pass": 214,
-        "of": 214
+        "pass": 216,
+        "of": 216
       },
       "env": {
         "pass": 27,
@@ -1052,12 +1052,12 @@
     },
     "turbo": {
       "all": {
-        "pass": 579,
-        "of": 840
+        "pass": 580,
+        "of": 844
       },
       "correctness": {
-        "pass": 482,
-        "of": 689
+        "pass": 483,
+        "of": 693
       },
       "efficiency": {
         "pass": 93,
@@ -1088,12 +1088,12 @@
         "of": 35
       },
       "inputs": {
-        "pass": 183,
-        "of": 285
+        "pass": 184,
+        "of": 287
       },
       "outputs": {
         "pass": 157,
-        "of": 212
+        "of": 214
       },
       "env": {
         "pass": 23,
@@ -1114,12 +1114,12 @@
     },
     "nx": {
       "all": {
-        "pass": 581,
-        "of": 849
+        "pass": 582,
+        "of": 853
       },
       "correctness": {
-        "pass": 447,
-        "of": 700
+        "pass": 448,
+        "of": 704
       },
       "efficiency": {
         "pass": 130,
@@ -1150,12 +1150,12 @@
         "of": 33
       },
       "inputs": {
-        "pass": 181,
-        "of": 294
+        "pass": 182,
+        "of": 296
       },
       "outputs": {
         "pass": 156,
-        "of": 212
+        "of": 214
       },
       "env": {
         "pass": 21,
@@ -1177,11 +1177,11 @@
     "vite-task": {
       "all": {
         "pass": 470,
-        "of": 700
+        "of": 704
       },
       "correctness": {
         "pass": 390,
-        "of": 581
+        "of": 585
       },
       "efficiency": {
         "pass": 78,
@@ -1213,11 +1213,11 @@
       },
       "inputs": {
         "pass": 174,
-        "of": 286
+        "of": 288
       },
       "outputs": {
         "pass": 134,
-        "of": 212
+        "of": 214
       },
       "env": {
         "pass": 25,
@@ -4278,6 +4278,64 @@
       }
     },
     {
+      "id": "inputs/executable-bit-behind-link",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Making the file an input link points at executable runs the task again",
+      "why": "The link is unchanged; only its target’s mode moved, and the task reads that mode.",
+      "from": [
+        "linked-inputs",
+        "stale-hit"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/out.txt is \"plain\\n\", expected \"exec\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/out.txt is \"plain\\n\", expected \"exec\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/out.txt is \"plain\\n\", expected \"exec\\n\""
+        }
+      }
+    },
+    {
+      "id": "inputs/dependencies-swapped-rerun-consumer",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Two dependencies that swap contents, at the same output path, run the project built on them again",
+      "why": "Each dependency’s files are a set the other had: a key that folds them without their order replays the old result.",
+      "from": [
+        "parity-turbo-hashing",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/app/dist/out.txt is \"x\\ny\\napp\\n\", expected \"y\\nx\\napp\\n\""
+        }
+      }
+    },
+    {
       "id": "inputs/dependency-edit-cascades",
       "category": "inputs",
       "kind": "correctness",
@@ -7128,6 +7186,66 @@
           "status": "fail",
           "step": 5,
           "detail": "packages/a/out/LICENSE is \"license v1\", expected \"license v2\""
+        }
+      }
+    },
+    {
+      "id": "outputs/committed-output-mode-change-kept",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A committed file under the outputs made executable is not made plain again by a replay",
+      "why": "A replay writes back the entry’s copy and mode: the committed `chmod +x` would be undone.",
+      "from": [
+        "stale-hit-git"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/tool.sh is not executable"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/tool.sh is not executable"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/tool.sh is not executable"
+        }
+      }
+    },
+    {
+      "id": "outputs/force-added-ignored-output-kept",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A file force-added to git under ignored outputs, then edited and committed, is not reverted by a replay",
+      "why": "git tracks the file though its directory is ignored: a replay would write the old copy over it.",
+      "from": [
+        "stale-hit-git"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/keep.txt is \"keep v1\\n\", expected \"keep v2\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/keep.txt is \"keep v1\\n\", expected \"keep v2\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/out/keep.txt is \"keep v1\\n\", expected \"keep v2\\n\""
         }
       }
     },
