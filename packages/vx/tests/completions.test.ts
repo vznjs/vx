@@ -2,7 +2,8 @@
 // help text `vx <verb> --help` prints — one source, so a flag cannot be
 // documented and not completed.
 
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { completionScript, completionsCmd, FLAG_VALUES, verbFlags } from '../src/cli/completions.js'
@@ -373,5 +374,31 @@ describe('completionsCmd', () => {
     expect(two.err).not.toContain('(got')
     const bad = await capture(['tcsh'], [])
     expect(bad.err).toContain('(got tcsh)')
+  })
+})
+
+// turbo#14915 (2026-11): completion broke where a run would refuse. A shell
+// rc evals `vx completions` in any directory, so it needs no workspace and
+// survives a broken one.
+describe('vx completions, wherever the shell starts', () => {
+  const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+  const complete = (cwd: string) =>
+    Bun.spawnSync([process.execPath, BIN, 'completions', 'bash'], { cwd, stderr: 'pipe' })
+
+  it('prints the script outside any workspace and in one whose workspace.ts throws', () => {
+    const bare = mkdtempSync(path.join(os.tmpdir(), 'vx-complete-bare-'))
+    const broken = mkdtempSync(path.join(os.tmpdir(), 'vx-complete-broken-'))
+    try {
+      Bun.spawnSync(['git', 'init', '-q'], { cwd: broken })
+      mkdirSync(path.join(broken, '.vx'))
+      writeFileSync(path.join(broken, '.vx', 'workspace.ts'), 'throw new Error("boom")\n')
+      for (const cwd of [bare, broken]) {
+        const p = complete(cwd)
+        expect([p.exitCode, p.stdout.toString().includes('complete -F _vx vx')]).toEqual([0, true])
+      }
+    } finally {
+      rmSync(bare, { recursive: true, force: true })
+      rmSync(broken, { recursive: true, force: true })
+    }
   })
 })
