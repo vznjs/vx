@@ -23,6 +23,10 @@ beforeEach(async () => {
   cacheDir = path.join(root, 'cache')
   proj = path.join(root, 'p')
   await mkdir(path.join(proj, 'dist'), { recursive: true })
+  // A store's home is owner-only; `os.tmpdir()` is not (Linux's /tmp), and
+  // a store under it fell back to the index, so its cases failed there or,
+  // worse, passed on the index alone.
+  await mkdir(path.join(root, 'home'))
 })
 
 afterEach(async () => {
@@ -220,7 +224,7 @@ describe('4: a reset keeps the inline artifacts', () => {
   })
 
   it("an older vx's reset of the store drops what it knows and leaves `artifacts` alone", async () => {
-    const store = path.join(root, 'store')
+    const store = path.join(root, 'home', '.vx', 'id', 'cache')
     const open = (): Cache =>
       new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
         embeddings: 32 * 1024,
@@ -472,7 +476,7 @@ describe('a workspace index that held its entries itself, moved to a store', () 
   // found in `main` first, and the save's bytes would land beside the
   // workspace's index while its rows went to the store.
   it("saves its inline bytes into the store, where another workspace's lookup finds them", async () => {
-    const store = path.join(root, 'store')
+    const store = path.join(root, 'home', '.vx', 'id', 'cache')
     const own = new Cache(cacheDir, undefined, undefined, undefined, 'open', null, {
       embeddings: 32 * 1024,
       decompress: false,
@@ -555,7 +559,7 @@ describe('12: the inline table’s own layout sentinel', () => {
   })
 
   it("a store at another vx's schema and layout drops the store's inline artifacts", async () => {
-    const store = path.join(root, 'store')
+    const store = path.join(root, 'home', '.vx', 'id', 'cache')
     const open = (): Cache =>
       new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
         embeddings: 32 * 1024,
@@ -580,7 +584,7 @@ describe('12: the inline table’s own layout sentinel', () => {
   })
 
   it('an index whose entries come back from a store stamps the table it makes', async () => {
-    const store = path.join(root, 'store')
+    const store = path.join(root, 'home', '.vx', 'id', 'cache')
     new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
       embeddings: 32 * 1024,
       decompress: false,
