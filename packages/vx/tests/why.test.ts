@@ -89,13 +89,14 @@ describe('vx why (e2e)', () => {
     async () => {
       const r = await vx(root, ['why', 'app#build'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('app#build — run ')
+      expect(r.out).toStartWith('─ Why app#build ')
       expect(r.out).toContain('cache key changed')
-      expect(r.out).toContain('what changed')
+      expect(r.out).toContain('─ What changed ')
       // The exact changed component: the edited input file, kind `file`.
       expect(r.out).toMatch(/changed\s+file\s+.*input\.txt/)
       // Each changed kind gets what to do about it, once.
-      expect(r.out).toContain(`  what to do:\n    file  ${WHAT_TO_DO['file']}\n`)
+      expect(r.out).toMatch(/\n─ What to do ─+\n {2}file {6}(.*)\n$/)
+      expect(r.out).toEndWith(`  file      ${WHAT_TO_DO['file']}\n`)
     },
     TIMEOUT,
   )
@@ -208,7 +209,7 @@ for (const m of ['query', 'prepare']) {
       const r = await vx(root, ['why', 'app#build'])
       expect(r.code).toBe(0)
       // The output was in place: a hit that restored nothing says so.
-      expect(r.out).toMatch(/^  this run   \S+ · cache-hit · up-to-date · key [0-9a-f]+$/m)
+      expect(r.out).toMatch(/^  this run  \S+ · cache-hit · up-to-date · key [0-9a-f]+$/m)
       expect(r.out).not.toContain('cache hit ·')
       expect(r.out).toContain('served from cache')
     },
@@ -284,7 +285,7 @@ describe('vx why (e2e) — every component kind names its row', () => {
       )
       await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
       const pkg = await why({ APP_MODE: 'prod' })
-      expect(pkg).toMatch(/what changed \(1 component, \d+ unchanged\)/)
+      expect(pkg).toMatch(/─ What changed 1 of \d+ /)
       expect(pkg).toMatch(/changed\s+file\s+packages\/app\/package\.json\s+\w+ → \w+/)
 
       // No plugin claims the lockfile, so no key folds it: a hit.
@@ -300,12 +301,11 @@ describe('vx why (e2e) — every component kind names its row', () => {
       await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), 'export {}\n// v2\n')
       await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
       const up = await why({ APP_MODE: 'prod' })
-      expect(up).toMatch(/what changed \(1 component, \d+ unchanged\)/)
+      expect(up).toMatch(/─ What changed 1 of \d+ /)
       expect(up).toMatch(/changed\s+upstream\s+lib#build\s+\w+ → \w+/)
       // One `vx why` walks to the file, and what to do is the file's.
-      expect(up).toContain(
-        '  root cause:\n    app#build ← lib#build ← file packages/lib/src/index.js\n\n' +
-          '  what to do:\n    file      an edit re-runs by design;',
+      expect(up).toMatch(
+        /\n─ Root cause ─+\n {2}app#build ← lib#build ← file packages\/lib\/src\/index\.js\n\n─ What to do ─+\n {2}file {6}an edit re-runs by design;/,
       )
 
       // CONTROL: a hit carries no row.
@@ -627,7 +627,7 @@ describe('vx why (e2e) — the exact lines', () => {
     async () => {
       const r = await vx(root, ['why', 'lint'])
       expect(r.code).toBe(0)
-      expect(r.out.split('\n')[0]).toMatch(/^a#lint — run \S+$/)
+      expect(r.out.split('\n')[0]).toMatch(/^─ Why a#lint ─+$/)
     },
     TIMEOUT,
   )
@@ -679,19 +679,20 @@ describe('vx why (e2e) — the exact lines', () => {
       const r = await vx(root, ['why', 'app#build'])
       expect(r.code).toBe(0)
       const lines = r.out.split('\n')
-      expect(lines).toContain('  what changed (3 components, 3 unchanged):')
-      const head = lines.indexOf('  what changed (3 components, 3 unchanged):')
-      const rows = lines.slice(head + 1, lines.indexOf('', head))
+      const head = lines.findIndex((l) => l.startsWith('─ What changed 3 of 6 '))
+      expect(head).toBeGreaterThan(0)
+      // Under the rule, the table's header, then its rows.
+      const rows = lines.slice(head + 2, lines.indexOf('', head))
       expect(rows).toHaveLength(3)
       // package.json is a file row like any other: core keys no package file.
       expect(rows[0]).toMatch(
-        /^ {4}changed file {2}packages\/app\/package\.json {2}[0-9a-f]+ → [0-9a-f]+$/,
+        /^ {2}changed {2}file {2}packages\/app\/package\.json {2}[0-9a-f]+ → [0-9a-f]+$/,
       )
-      expect(rows[1]).toMatch(/^ {4}added {3}file {2}packages\/app\/src\/new\.txt {2}\+ [0-9a-f]+$/)
-      expect(rows[2]).toMatch(/^ {4}removed file {2}packages\/app\/src\/old\.txt {2}- [0-9a-f]+$/)
+      expect(rows[1]).toMatch(/^ {2}added {4}file {2}packages\/app\/src\/new\.txt {3}\+ [0-9a-f]+$/)
+      expect(rows[2]).toMatch(/^ {2}removed {2}file {2}packages\/app\/src\/old\.txt {3}- [0-9a-f]+$/)
       // One line per kind, in the rows' order, padded as they are.
-      expect(lines.slice(lines.indexOf('  what to do:') + 1, -1)).toEqual([
-        `    file  ${WHAT_TO_DO['file']}`,
+      expect(lines.slice(lines.findIndex((l) => l.startsWith('─ What to do ')) + 1, -1)).toEqual([
+        `  file      ${WHAT_TO_DO['file']}`,
       ])
     },
     TIMEOUT,
@@ -718,9 +719,9 @@ describe('vx why (e2e) — the exact lines', () => {
       try {
         const r = await vx(root, ['why', 'app#build'])
         const lines = r.out.split('\n')
-        expect(lines).toContain('    added   legacy  x  + ab')
-        expect(lines.slice(lines.indexOf('  what to do:') + 1, -1)).toEqual([
-          `    file    ${WHAT_TO_DO['file']}`,
+        expect(lines).toContainEqual(expect.stringMatching(/^ {2}added +legacy +x +\+ ab$/))
+        expect(lines.slice(lines.findIndex((l) => l.startsWith('─ What to do ')) + 1, -1)).toEqual([
+          `  file      ${WHAT_TO_DO['file']}`,
         ])
       } finally {
         const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
@@ -760,11 +761,9 @@ describe('vx why (e2e) — the exact lines', () => {
       db.close()
       try {
         const lines = (await vx(root, ['why', 'app#build'])).out.split('\n')
-        expect(lines.filter((l) => l.startsWith('    ') && l.includes('format'))).toEqual([
-          expect.stringMatching(
-            /^ {4}changed format {2}cache-version {2}vx-cache-v0 → vx-cache-v\d+$/,
-          ),
-          `    format  ${WHAT_TO_DO['format']}`,
+        expect(lines.filter((l) => l.startsWith('  ') && l.includes('format'))).toEqual([
+          expect.stringMatching(/^ {2}changed +format +cache-version +vx-cache-v0 → vx-cache-v\d+$/),
+          `  format    ${WHAT_TO_DO['format']}`,
         ])
       } finally {
         const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
@@ -794,7 +793,7 @@ describe('vx why (e2e) — the exact lines', () => {
     async () => {
       edit("UPDATE runs SET cache_hit = NULL WHERE project = 'app' AND task = 'build'")
       const r = await vx(root, ['why', 'app#build'])
-      expect(r.out.split('\n')[1]).toMatch(/^ {2}this run {3}\S+ · success · key [0-9a-f]+$/)
+      expect(r.out.split('\n')[2]).toMatch(/^ {2}this run {2}\S+ · success · key [0-9a-f]+$/)
     },
     TIMEOUT,
   )
@@ -816,7 +815,7 @@ describe('vx why (e2e) — the exact lines', () => {
       db.close()
       try {
         const r = await vx(root, ['why', 'app#build'])
-        expect(r.out.split('\n')[1]).toMatch(/^ {2}this run {3}\S+ · skipped · no key$/)
+        expect(r.out.split('\n')[2]).toMatch(/^ {2}this run {2}\S+ · skipped · no key$/)
       } finally {
         const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
         back
@@ -834,8 +833,8 @@ describe('vx why (e2e) — the exact lines', () => {
       edit('DELETE FROM entry_inputs')
       const r = await vx(root, ['why', 'app#build'])
       expect(r.code).toBe(0)
-      expect(r.out).not.toContain('what changed')
-      expect(r.out.split('\n').filter((l) => l.startsWith('  detail     '))).toHaveLength(1)
+      expect(r.out).not.toContain('What changed')
+      expect(r.out.split('\n').filter((l) => l.startsWith('  detail    '))).toHaveLength(1)
     },
     TIMEOUT,
   )
@@ -846,11 +845,15 @@ describe('vx why (e2e) — the exact lines', () => {
       edit('UPDATE runs SET run_id = NULL')
       const pretty = await vx(root, ['why', 'app#build'])
       expect(pretty.code).toBe(0)
-      const [first, second] = pretty.out.split('\n')
-      expect(first).toBe(
-        'app#build: recorded runs carry no run id — showing the latest cache entry instead',
-      )
-      expect(second).toMatch(/^ {2}hash [0-9a-f]+ · \$ cat src\/\*\.txt > out\.txt$/)
+      const lines = pretty.out.split('\n')
+      expect(lines.slice(0, 2)).toEqual([
+        expect.stringMatching(/^─ Why app#build ─+$/),
+        '  recorded runs carry no run id: the latest cache entry instead',
+      ])
+      expect(lines.slice(3, 5)).toEqual([
+        expect.stringMatching(/^ {2}key {7}[0-9a-f]+$/),
+        '  command   cat src/*.txt > out.txt',
+      ])
       const json = await vx(root, ['why', 'app#build', '--format', 'json'])
       const parsed = JSON.parse(json.out) as Record<string, unknown>
       expect(Object.keys(parsed)).toEqual(['taskId', 'why', 'diff', 'explanation'])
@@ -858,7 +861,7 @@ describe('vx why (e2e) — the exact lines', () => {
       edit('DELETE FROM entries')
       const bare = await vx(root, ['why', 'app#build'])
       expect(bare.code).toBe(0)
-      expect(bare.out.split('\n')[1]).toBe('  (no cache entry either)')
+      expect(bare.out.split('\n')[3]).toBe('  key       no cache entry either')
     },
     TIMEOUT,
   )
@@ -981,9 +984,9 @@ describe('vx why — a secret-named env input', () => {
             .filter((l) => /^\s+changed\s+env\s/.test(l))
             .map((l) => l.trim().replace(/[0-9a-f]{16}/g, '<hash>')),
         ).toEqual([
-          'changed env   API_TOKEN',
+          'changed  env   API_TOKEN',
           // CONTROL: a name with no secret word keeps its hashes.
-          'changed env   REGION  <hash> → <hash>',
+          'changed  env   REGION     <hash> → <hash>',
         ])
         const json = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out) as {
           diff: { entries: { kind: string; name: string; before?: string; after?: string }[] }
@@ -1023,9 +1026,9 @@ describe('vx why — a secret-named env input', () => {
             .filter((l) => /^\s+changed\s+env\s/.test(l))
             .map((l) => l.trim().replace(/[0-9a-f]{16}/g, '<hash>')),
         ).toEqual([
-          'changed env   GH_PAT',
+          'changed  env   GH_PAT',
           // CONTROL: a name neither the rule nor the task calls secret.
-          'changed env   REGION  <hash> → <hash>',
+          'changed  env   REGION  <hash> → <hash>',
         ])
         const json = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out) as {
           diff: { entries: { kind: string; name: string; before?: string; after?: string }[] }
@@ -1075,16 +1078,16 @@ describe('vx why — an input another task rewrites', () => {
         await vx(root, ['run', 'app#build'])
         const r = await vx(root, ['why', 'app#build'])
         expect(r.code).toBe(0)
-        expect(r.out).toContain(
-          '  changed during a run:\n    packages/lib/src/gen.txt  while app#build ran\n',
+        expect(r.out).toMatch(
+          /\n─ Changed during a run ─+\n {2}file {22}written while\n {2}packages\/lib\/src\/gen\.txt {2}app#build\n/,
         )
         expect(r.out).toContain('a task that writes a file a key reads re-keys it every run')
         // The `written` row is padded with the kinds it stands beside: a
         // lone `file` kind left it one column of its own.
         const own = (await vx(root, ['why', 'lib#check'])).out.split('\n')
-        expect(own.slice(own.indexOf('  what to do:') + 1, -1)).toEqual([
-          `    file     ${WHAT_TO_DO['file']}`,
-          '    written  a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files',
+        expect(own.slice(own.findIndex((l) => l.startsWith('─ What to do ')) + 1, -1)).toEqual([
+          `  file      ${WHAT_TO_DO['file']}`,
+          '  written   a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files',
         ])
         const j = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out)
         expect(j.writers).toEqual([
@@ -1118,10 +1121,10 @@ describe('vx why — a task that never records a key', () => {
         const r = await vx(root, ['why', 'app#dev'])
         expect(r.code).toBe(0)
         const lines = r.out.split('\n')
-        expect(lines[1]).toMatch(/^ {2}this run {3}\S+ · success · executed · no key$/)
-        expect(lines.slice(2)).toEqual([
-          '  previous   (none with a cache key)',
-          '  verdict    this task recorded no cache key (skipped, or a persistent task) — nothing to compare',
+        expect(lines[2]).toMatch(/^ {2}this run {2}\S+ · success · executed · no key$/)
+        expect(lines.slice(3)).toEqual([
+          '  previous  none with a cache key',
+          '  verdict   this task recorded no cache key (skipped, or a persistent task) — nothing to compare',
           '',
         ])
       } finally {

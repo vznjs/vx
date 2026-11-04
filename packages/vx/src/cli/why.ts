@@ -301,10 +301,8 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
           'out',
           ui.section(
             'Why',
-            ui.text([
-              ui.id(taskId),
-              ui.dim(': recorded runs carry no run id; the latest cache entry instead'),
-            ]),
+            taskId,
+            ui.text('recorded runs carry no run id: the latest cache entry instead'),
             ui.fields(
               explanation.latestEntry !== null
                 ? [

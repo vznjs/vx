@@ -43,8 +43,8 @@ describe('vx why — a config change', () => {
     expect(vx(root, 'run', 'build', '--all').code).toBe(0)
     const r = vx(root, 'why', 'app#build')
     expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
-    expect(r.out.split('\n').filter((l) => l.startsWith('    config  '))).toEqual([
-      "    config  the task's evaluated config changed (its vx.config or a file it imports); `vx show app#build` prints it as it is now",
+    expect(r.out.split('\n').filter((l) => l.startsWith('  config    '))).toEqual([
+      "  config    the task's evaluated config changed (its vx.config or a file it imports); `vx show app#build` prints it as it is now",
     ])
     // Three vx processes: past bun's 5 s default on a loaded macOS runner.
   }, 60_000)

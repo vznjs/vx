@@ -64,12 +64,12 @@ describe('vx why names what moved the key', () => {
       await vx(root, ['run', 'build', '--all'], { MODE: 'prod' })
       const env = await vx(root, ['why', 'app#build'])
       expect(env.code).toBe(0)
-      expect(verdict(env.out)).toBe('verdict    cache key changed: env MODE')
+      expect(verdict(env.out)).toBe('verdict   cache key changed: env MODE')
 
       await writeFile(path.join(app(), 'src', 'a.txt'), 'v2\n')
       await vx(root, ['run', 'build', '--all'], { MODE: 'test' })
       expect(verdict((await vx(root, ['why', 'app#build'])).out)).toBe(
-        'verdict    cache key changed: env MODE, file packages/app/src/a.txt',
+        'verdict   cache key changed: env MODE, file packages/app/src/a.txt',
       )
     },
     TIMEOUT,
@@ -82,7 +82,7 @@ describe('vx why names what moved the key', () => {
       await vx(root, ['run', 'build', '--all'], { MODE: 'same' })
       await vx(root, ['run', 'build', '--all'], { MODE: 'same' })
       expect(verdict((await vx(root, ['why', 'app#build'])).out)).toStartWith(
-        'verdict    cache key unchanged',
+        'verdict   cache key unchanged',
       )
     },
     TIMEOUT,
@@ -106,14 +106,14 @@ describe('vx why names what moved the key', () => {
       )
       await vx(root, ['run', 'build', '--all'], { MODE: 'same' })
       expect(verdict((await vx(root, ['why', 'app#build'])).out)).toBe(
-        'verdict    cache key changed: config',
+        'verdict   cache key changed: config',
       )
       const inApp = Bun.spawnSync({
         cmd: [process.execPath, BIN, 'why', 'build'],
         cwd: app(),
         env: process.env,
       })
-      expect([inApp.exitCode, inApp.stdout.toString().split('\n')[0]?.split(' ')[0]]).toEqual([
+      expect([inApp.exitCode, inApp.stdout.toString().split('\n')[0]?.split(' ')[2]]).toEqual([
         0,
         'app#build',
       ])
@@ -143,7 +143,7 @@ describe('vx why advice for an upstream row leads somewhere', () => {
   const todo = (out: string): string[] =>
     out
       .split('\n')
-      .filter((l) => /^ {4}upstream {2}/.test(l))
+      .filter((l) => /^ {2}upstream {2}/.test(l))
       .map((l) => l.trim())
   let root = ''
   afterAll(async () => {
@@ -265,7 +265,7 @@ describe('vx why names the task with no inputs that keeps a key from hitting', (
       const why = await vx(root, ['why', 'app#build'])
       expect(why.code).toBe(0)
       expect(verdict(why.out)).toBe(
-        'verdict    never cached: its key includes app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate',
+        'verdict   never cached: its key includes app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate',
       )
     },
     TIMEOUT,
@@ -298,7 +298,7 @@ describe('vx why after a run that left a dependency out', () => {
         await vx(root, ['run', 'app#test', '--exclude-dependencies'])
         await vx(root, ['run', 'app#test', '--exclude-dependencies'])
         expect(verdict((await vx(root, ['why', 'app#test'])).out)).toBe(
-          'verdict    cache key unchanged — the previous run on this key built on a dependency it left out (app#build, --exclude-dependencies), so it saved nothing and there was nothing to hit',
+          'verdict   cache key unchanged — the previous run on this key built on a dependency it left out (app#build, --exclude-dependencies), so it saved nothing and there was nothing to hit',
         )
       } finally {
         await rm(root, { recursive: true, force: true })
