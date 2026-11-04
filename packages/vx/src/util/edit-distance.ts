@@ -37,9 +37,14 @@ export function nearest(
   // Two edits rewrite half of a word of four letters or fewer (`--poll`
   // read as `--all`, `vx test` as `last`), unless they swap two letters.
   const short = maxEdits === 2 && name.replace(/^-+/, '').length <= 4
+  // The same word in another case is the nearest whatever its length:
+  // `--ALL` is three edits from `--all`, `BUILD` five from `build`.
+  const lower = name.toLowerCase()
+  const list = [...candidates]
+  for (const c of list) if (c !== name && c.toLowerCase() === lower) return c
   let best: string | undefined
   let bestD = maxEdits + 1
-  for (const c of candidates) {
+  for (const c of list) {
     // Capped one past the budget, so "past it" never reads as within it:
     // `--continue-on-error` was nine edits from `--concurrency`, capped to
     // the three `vx run`'s same-prefix hint allows, and offered.

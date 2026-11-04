@@ -583,7 +583,9 @@ Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest flag the verb accepts when one is within two edits
 (`unknown flag: --concurency (did you mean --concurrency?)`); a name of
 four letters or fewer gets one edit or a swap of two letters, so
-`--poll` is not hinted `--all` nor `vx test` `last`. Every verb
+`--poll` is not hinted `--all` nor `vx test` `last`. The same name in
+another case is always hinted (`--ALL` hints `--all`), as is a task or
+project name (`BUILD` hints `build`). Every verb
 does this against its own usage line and `--help`: `vx info --formt`
 hints `--format`, `vx lock --chek` hints `--check`, `vx upgrade --hlp`
 hints `--help`, and `--json` on a verb that takes `--format` hints
