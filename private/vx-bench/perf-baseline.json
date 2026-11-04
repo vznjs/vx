@@ -31,7 +31,7 @@
       },
       "cold run @100": {
         "hash xxh3": 8057,
-        "spawn git": 6,
+        "spawn git": 8,
         "spawn sh": 200,
         "sqlite statement": 2748
       },

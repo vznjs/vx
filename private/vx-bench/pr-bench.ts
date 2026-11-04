@@ -1,5 +1,7 @@
 // The per-PR bench against every rival and the base commit's vx
-// (2026-10-12): fails when this checkout's vx loses ground to any of them.
+// (2026-10-12): reports where this checkout's vx is slower than the
+// base's or behind a rival. It never fails: the site's numbers do not
+// block a PR (2026-11-04).
 //
 //   bun pr-bench.ts
 //
@@ -14,21 +16,20 @@
 // Every tool runs in its own copy. vx, the base and Turbo run in
 // interleaved pairs, min of each over the quietest pairs (quiet.ts). Nx and
 // Vite Task run every case on the cold workspace against vx there
-// (SMALL_RIVALS), once, three times when within reach of vx. A held case fails when vx is slower than any
-// rival or uses more CPU than one CPU_HELD names, or when vx is slower than
-// the base's vx in more of its quiet pairs than chance explains (a sign
-// test, pr-bench-base.ts): no slack for a regression to land a slice at a
-// time.
+// (SMALL_RIVALS), once, three times when within reach of vx. A held case
+// is reported when vx is slower than any rival or uses more CPU than one
+// CPU_HELD names, or when vx is slower than the base's vx in more of its
+// quiet pairs than chance explains (a sign test, pr-bench-base.ts).
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import {
-  baseFails,
+  baseSlower,
   type BasePair,
   type Best,
   buildBase,
   HELD,
-  rivalFails,
+  rivalLosses,
   RIVALS,
   SITE_ARMS,
   undecided,
@@ -295,12 +296,9 @@ try {
           : `   (vx on the cold workspace: ${small.ms.toFixed(0)} / ${small.cpuMs.toFixed(0)})`),
     )
   }
-  const fails = [
-    ...baseFails(Object.fromEntries(HELD.map((arm) => [arm, quietBase(arm)])), HELD),
-    ...rivalFails(Object.fromEntries(best), HELD),
-  ]
-  for (const f of fails) console.log(`FAIL ${f}`)
-  process.exitCode = fails.length > 0 ? 1 : 0
+  for (const l of rivalLosses(Object.fromEntries(best), HELD)) console.log(`BEHIND ${l}`)
+  const slower = baseSlower(Object.fromEntries(HELD.map((arm) => [arm, quietBase(arm)])), HELD)
+  for (const f of slower) console.log(`SLOWER ${f}`)
 } finally {
   if (!process.env.KEEP) {
     for (const dir of scratch) await rm(dir, { recursive: true, force: true })

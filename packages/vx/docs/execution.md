@@ -96,9 +96,9 @@ terminal and a task succeeding or failing. Read it alongside
  │       when an attributes file could rewrite bytes. An index the
  │       cache holds no blob-size verdict for (keyed by the index
  │       file's hash, A-60) adds `ls-files --debug` for the recorded
- │       sizes and `cat-file --batch-check` for the blob sizes
- │       `blob_sizes` lacks: an OID whose blob is not the recorded size
- │       is not trusted. The run's HashCache is created
+ │       sizes and `cat-file --batch-check` (one per core) for the
+ │       blob sizes `blob_sizes` lacks: an OID whose blob is not the
+ │       recorded size is not trusted. The run's HashCache is created
  │       after it.
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects

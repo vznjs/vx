@@ -12,6 +12,7 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import {
   applyGitEnumeration,
   type BlobSizeMemo,
+  checkBlobSizes,
   GitFilesCache,
   startGitEnumeration,
 } from '../src/cache/index.js'
@@ -194,4 +195,79 @@ it('sizes only the blobs it still trusts', async () => {
   expect(await trusted(m)).toEqual(['keep.txt'])
   expect(asked.length).toBe(1)
   expect(asked).not.toContain(dirtyOid)
+})
+
+/** A committed tree of `n` files plus one resized entry, `big.txt`, past the racy window. */
+async function manyFiles(n: number): Promise<void> {
+  git('init', '-q')
+  for (let i = 0; i < n; i++) await writeFile(path.join(root, `f${i}.txt`), `${i}\n`)
+  await writeFile(path.join(root, 'big.txt'), 'aa\n')
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  await writeFile(path.join(root, 'big.txt'), 'aa\r\n')
+  const past = new Date(Date.now() - 10_000)
+  await utimes(path.join(root, 'big.txt'), past, past)
+  git('-c', 'core.autocrlf=true', 'add', 'big.txt')
+  await Bun.sleep(150)
+}
+
+it('sizes the blobs with one cat-file per core, and still distrusts a resized one', async () => {
+  // A fresh clone's objects are loose: one cat-file over 2,505 of them took
+  // 30 ms before a cold run's first task, four took 14 (2026-11-03).
+  await manyFiles(600)
+  const enumeration = await startGitEnumeration(root, ['.'])
+  const runs: number[] = []
+  const catFile = enumeration.catFile
+  enumeration.catFile = (stdin) => {
+    runs.push(stdin.split('\n').filter(Boolean).length)
+    return catFile(stdin)
+  }
+  const cache = new GitFilesCache()
+  await applyGitEnumeration(enumeration, root, [root], cache, false, memo())
+  const cores = Math.max(1, navigator.hardwareConcurrency)
+  expect(runs.length).toBe(Math.min(cores, Math.ceil(601 / 256)))
+  expect(runs.reduce((a, b) => a + b, 0)).toBe(601)
+  const kept = [...(cache.oidsFor(root)?.keys() ?? [])].map((p) => relPosix(root, p))
+  expect(kept).toHaveLength(600)
+  expect(kept).not.toContain('big.txt')
+})
+
+it('one failed cat-file of several trusts no OID', async () => {
+  if (navigator.hardwareConcurrency < 2) return // one core asks one cat-file: covered above
+  await manyFiles(600)
+  const enumeration = await startGitEnumeration(root, ['.'])
+  let calls = 0
+  const catFile = enumeration.catFile
+  enumeration.catFile = (stdin) =>
+    ++calls === 2 ? Promise.resolve({ exitCode: 128, stdout: '' }) : catFile(stdin)
+  const cache = new GitFilesCache()
+  await applyGitEnumeration(enumeration, root, [root], cache, false, memo())
+  expect(calls).toBeGreaterThan(1)
+  expect(cache.oidsFor(root)?.size ?? 0).toBe(0)
+})
+
+it('a check started before the graph is the one the graph waits on', async () => {
+  // A run starts it as its cache opens, beside the config load and graph
+  // build: after them, a cold 100-package run waited 40-50 ms on it before
+  // its first task (2026-11-03). The graph must not size the blobs again.
+  await manyFiles(3)
+  const enumeration = await startGitEnumeration(root, ['.'])
+  let calls = 0
+  const catFile = enumeration.catFile
+  enumeration.catFile = (stdin) => {
+    calls++
+    return catFile(stdin)
+  }
+  const m = memo()
+  const early = checkBlobSizes(enumeration, m)
+  expect(checkBlobSizes(enumeration, m)).toBe(early)
+  await early
+  const cache = new GitFilesCache()
+  await applyGitEnumeration(enumeration, root, [root], cache, false, m)
+  expect(calls).toBe(1)
+  expect([...(cache.oidsFor(root)?.keys() ?? [])].map((p) => relPosix(root, p)).sort()).toEqual([
+    'f0.txt',
+    'f1.txt',
+    'f2.txt',
+  ])
 })
