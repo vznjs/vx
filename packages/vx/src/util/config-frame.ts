@@ -11,7 +11,7 @@ import path from 'node:path'
 // or a top-level `<file> has unknown field …`, from a project's vx.config
 // or the workspace's .vx/workspace.ts.
 const HEAD =
-  /^(\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s)(?:: (?:(tasks\.[^\s:]+)(:?)|`([^`\n]+)`|task name ("(?:[^"\\\n]|\\.)+")))? /
+  /^(\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s)(?:: (?:(tasks\.[^\s:]+)(:?)|`([^`\n]+)`|task name ("(?:[^"\\\n]|\\.)*")))? /
 
 /**
  * The message with its file named at `line:col`, relative to `cwd`, and a
@@ -114,7 +114,14 @@ function locate(
     let next = -1
     for (let j = segments.length; j > i && next < 0; j--) {
       const name = segments.slice(i, j).join('.')
-      const re = new RegExp(`(?<![\\w$.])(['"\`]?)${escapeRe(name)}\\1\\s*:`, 'g')
+      // An empty key is quoted, or every `:` matched; a control character
+      // is in the source as its escape (`'\u001b'`).
+      const spelled = JSON.stringify(name).slice(1, -1)
+      const names = spelled === name ? escapeRe(name) : `${escapeRe(name)}|${escapeRe(spelled)}`
+      const re = new RegExp(
+        `(?<![\\w$.])(['"\`]${name === '' ? '' : '?'})(?:${names})\\1\\s*:`,
+        'g',
+      )
       re.lastIndex = pos
       const m = re.exec(source)
       if (m === null || m.index >= end) continue
