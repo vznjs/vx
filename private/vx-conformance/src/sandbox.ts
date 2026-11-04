@@ -34,13 +34,25 @@ export interface Running {
   drained: Promise<void>
 }
 
-/** `argv` started in `cwd` (inside `root`), able to write only under `root`; killing it ends its whole PID namespace. */
+/**
+ * `argv` started in `cwd` (inside `root`), able to write only under `bind`
+ * (`root` or a directory holding it); killing it ends its whole PID namespace
+ * unless `hostProc`.
+ */
 export function spawnSandboxed(
   root: string,
   cwd: string,
   argv: string[],
   env: Record<string, string>,
   timeoutMs?: number,
+  /**
+   * The host's /proc and PID namespace in place of fresh ones: a tool that
+   * sandboxes its own tasks (vx's bwrap) cannot mount a proc inside a fresh
+   * one, and the PIDs it reads there must be its own. `--die-with-parent`
+   * still ends the run's process when the harness goes.
+   */
+  hostProc = false,
+  bind = root,
 ): Running {
   if (BWRAP === null)
     throw new Error('bwrap not found: the conformance suite runs every tool sandboxed')
@@ -54,15 +66,14 @@ export function spawnSandboxed(
       '/',
       '--dev',
       '/dev',
-      '--proc',
-      '/proc',
+      ...(hostProc ? ['--bind', '/proc', '/proc'] : ['--proc', '/proc']),
       '--tmpfs',
       '/tmp',
       '--bind',
-      root,
-      root,
+      bind,
+      bind,
       '--unshare-net',
-      '--unshare-pid',
+      ...(hostProc ? [] : ['--unshare-pid']),
       '--unshare-ipc',
       '--die-with-parent',
       '--new-session',
@@ -104,16 +115,18 @@ export function spawnSandboxed(
   return { proc, out: () => stdout + stderr, drained }
 }
 
-/** `argv` run in `cwd` (inside `root`), able to write only under `root`. */
+/** `argv` run in `cwd` (inside `root`), able to write only under `bind`; see `spawnSandboxed`. */
 export async function sandboxed(
   root: string,
   cwd: string,
   argv: string[],
   env: Record<string, string>,
   timeoutMs = 120_000,
+  hostProc = false,
+  bind = root,
 ): Promise<Result> {
   const started = performance.now()
-  const { proc, out, drained } = spawnSandboxed(root, cwd, argv, env, timeoutMs)
+  const { proc, out, drained } = spawnSandboxed(root, cwd, argv, env, timeoutMs, hostProc, bind)
   const [exit] = await Promise.all([proc.exited, drained])
   if (process.env['CONFORMANCE_DEBUG'])
     console.error(

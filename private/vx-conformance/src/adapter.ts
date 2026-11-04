@@ -47,11 +47,19 @@ export interface RunOptions {
   only?: boolean
   /** Forwarded to the requested tasks' commands (a CLI's `-- <args>`). */
   args?: string[]
+  /** Go on past a failure. */
+  continue?: boolean
+  /** Ignore cache entries; save fresh ones. */
+  force?: boolean
+  /** Read the cache, write nothing. */
+  readOnlyCache?: boolean
+  /** Plan only. */
+  dry?: boolean
 }
 
 /** A selector in the pnpm filter grammar Turborepo, Vite Task and vx share. */
 export function pnpmFilter(s: Selector): string {
-  const base = s.name ?? (s.with ? `{./${s.dir}}` : `./${s.dir}`)
+  const base = s.tag ? `tag:${s.tag}` : (s.name ?? (s.with ? `{./${s.dir}}` : `./${s.dir}`))
   const caret = s.self === false ? '^' : ''
   const walked =
     s.with === 'dependencies'

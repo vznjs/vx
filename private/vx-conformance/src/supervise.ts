@@ -15,8 +15,16 @@ import { constants } from 'node:os'
 
 interface Options {
   /** `waitMs`: how long to wait for `when` before the signal goes anyway (default 30 s). */
-  stop?: { signal: NodeJS.Signals; when: string; ignored?: boolean; waitMs?: number }
+  stop?: {
+    signal: NodeJS.Signals
+    when: string
+    ignored?: boolean
+    again?: string
+    waitMs?: number
+  }
   left?: string
+  /** The tool's stdin is a pipe this holds open and never writes. */
+  openStdin?: boolean
 }
 
 const [json, ...argv] = process.argv.slice(2)
@@ -27,7 +35,10 @@ const stop = opts.stop
 const cmd = stop?.ignored
   ? ['sh', '-c', `trap '' ${stop.signal.slice(3)}; exec "$@"`, 'sh', ...argv]
   : argv
-const proc = Bun.spawn(cmd, { stdio: ['ignore', 'inherit', 'inherit'], detached: true })
+const proc = Bun.spawn(cmd, {
+  stdio: [opts.openStdin ? 'pipe' : 'ignore', 'inherit', 'inherit'],
+  detached: true,
+})
 
 if (stop) {
   const deadline = Date.now() + (stop.waitMs ?? 30_000)
@@ -35,12 +46,22 @@ if (stop) {
     if (existsSync(stop.when)) break
     await Bun.sleep(20)
   }
-  if (proc.exitCode === null && proc.signalCode === null) {
+  const signal = (): void => {
+    if (proc.exitCode !== null || proc.signalCode !== null) return
     try {
       process.kill(-proc.pid, stop.signal)
     } catch {
       // the group is gone: the tool exited in between
     }
+  }
+  signal()
+  if (stop.again) {
+    const again = Date.now() + 30_000
+    while (proc.exitCode === null && proc.signalCode === null && Date.now() < again) {
+      if (existsSync(stop.again)) break
+      await Bun.sleep(20)
+    }
+    signal()
   }
 }
 

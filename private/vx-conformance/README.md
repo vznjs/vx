@@ -17,12 +17,19 @@ bun src/cli.ts --tool nx --case outputs/ --verbose
 A case speaks no tool's language. Its workspace names projects, their
 dependencies and their tasks: a `sh` command, `dependsOn` (`^build`,
 `build`, `lib#build`), `inputs` and `outputs` as project-relative globs,
-root-level ones, `env` names, `runtime` commands, `cache: false`,
-`timeout`, `retries`, `persistent`. Its steps write, delete, chmod and
+root-level ones, `env` names (keyed), `passThrough` names (not keyed),
+`runtime` commands, `cache: false`, `timeout`, `retries`, `persistent`,
+`dependencyInputs: false`, and `sandbox` (the task may read only its
+inputs, write only its outputs, and reach no network, beyond what it is
+granted). A workspace may also hold `outside` files: a directory beside
+the repository (`../outside`), as a `file:` or `link:` dependency there
+is. Its steps write, delete, chmod and
 link files, run `sh`, install, commit, change the config, check the tree,
 and run a task (or several): in some projects, by selectors, from a directory, with
-args, a concurrency limit, or a signal sent mid-run. Each run says what
-must hold:
+args, a concurrency limit, a signal sent mid-run (and again, as a second
+Ctrl-C), its stdin held open as an idle terminal, going on past a failure,
+forced past the cache, reading the cache without writing it, or planned
+without running; or watch a task. Each run says what must hold:
 
 | Field        | Holds when                                             |
 | ------------ | ------------------------------------------------------ |
@@ -51,6 +58,11 @@ still running 10 s later is killed with its sandbox.
 Every run also fails a tool that starts one task twice. The harness puts a
 mark before and after each command, so "ran" means the command ran, not
 what a tool's log claims.
+
+The `sandbox` category is isolation: an undeclared variable, file read,
+file write, credential store or network connection a task cannot reach.
+A tool that cannot isolate a task scores those cases not applicable,
+except the variable case, which needs no isolation feature to pass.
 
 A case is `correctness` when failing it leaves a wrong tree or exit code,
 `efficiency` when failing it reruns work nothing asked for, and `data`
@@ -82,8 +94,10 @@ mean the same thing, the adapter uses the one its docs teach:
   by package only, runs one task per run and has no watch mode, so
   `affected`, several-task and watch cases are not applicable to it. The report
   is `vp run --last-details`.
-- **vx**: a vx.config.mjs per project, `bun()` for the edges, `vx lock`.
-  The report is `vx last --format json`. Watch is `vx watch`.
+- **vx**: a vx.config.mjs per project, `bun()` for the edges, `vx lock`,
+  and its default cache store (in the case's home, so a linked worktree
+  shares it). An isolated task is `exec.sandbox`. The report is
+  `vx last --format json`. Watch is `vx watch`.
 
 ## Sandbox
 
@@ -91,7 +105,9 @@ Every command a tool runs goes through bubblewrap: the filesystem
 read-only except the case's directory, no network, a fresh home inside
 the case, and its own PID namespace, so a daemon dies with the run. No
 case can read another's cache or reach a remote one. Without `bwrap` the
-suite refuses to run.
+suite refuses to run. A case that needs `sandbox` keeps the host's `/proc`
+and PID namespace, as a tool's own bwrap cannot mount a proc inside a
+fresh one and reads its own PIDs there.
 
 ## Coverage
 

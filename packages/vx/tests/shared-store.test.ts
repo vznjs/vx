@@ -231,24 +231,40 @@ describe('the shared store', () => {
     }
   })
 
-  it('a workspace that held its own entries moves them out once, keeping its history', async () => {
+  it('a workspace that held its own entries moves them into the store, keeping its history', async () => {
     const a = await workspace()
     process.env['VX_CACHE_DIR'] = '.vx/cache'
     await build(a)
     delete process.env['VX_CACHE_DIR']
-    // The index held `entries`: left in place, it would shadow the store's.
-    expect((await build(a)).status).toBe('success')
-    expect((await build(a)).status).toBe('cache-hit')
+    await rm(path.join(a.pkg, 'out.txt'))
+    // The entry moved with its artifact: the store replays it.
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: true })
+    expect(await readFile(path.join(a.pkg, 'out.txt'), 'utf8')).toBe('hi\n')
+    expect(storedKeys(await store(), 'store.db')).toHaveLength(1)
+    // The index held `entries`: left in place, they would shadow the store's.
+    expect(storedKeys(path.join(a.root, '.vx', 'cache'))).toEqual([])
     expect(rows(a, 'SELECT status FROM runs ORDER BY id')).toEqual([
-      { status: 'success' },
       { status: 'success' },
       { status: 'cache-hit' },
     ])
     // The move is vx's own upkeep: nothing printed (2026-10-06).
     expect(said(a)).toEqual({
-      log: ['task app#build success', 'task app#build success', 'task app#build cache-hit'],
+      log: ['task app#build success', 'task app#build cache-hit'],
       err: [],
     })
+  })
+
+  it("a repository's first commit keeps what the run before it saved", async () => {
+    // No remote and no commit: the workspace holds its entries. The first
+    // commit gives the repository an identity, and so a store.
+    const a = await workspace('hi\n', null)
+    await build(a)
+    expect(existsSync(path.join(home, '.vx'))).toBe(false)
+    gitIn(a.root)('add', '-A')
+    gitIn(a.root)('-c', 'user.email=t@vx', '-c', 'user.name=t', 'commit', '-q', '-m', 'first')
+    await rm(path.join(a.pkg, 'out.txt'))
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: true })
+    expect(storedKeys(await store(), 'store.db')).toHaveLength(1)
   })
 
   it('another repository keeps its own store', async () => {

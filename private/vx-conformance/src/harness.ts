@@ -45,6 +45,13 @@ export interface Outcome {
 /** Where a run's marks go: each command appends `+id` when it starts and `-id` when it ends. */
 const RAN = '.ran'
 
+/**
+ * Where an isolated task's marks go: a tool may grant it no file at the
+ * workspace root, so a directory of the case's home, which every case
+ * ignores, is granted instead.
+ */
+export const ISOLATED_RAN = '.home/marks/ran'
+
 /** Where a supervised run lists the processes it left alive. */
 const LEFT = '.left'
 
@@ -67,7 +74,10 @@ export function marked(ws: WorkspaceSpec, project: string, task: string): string
   const p = ws.projects[project]
   const cmd = p?.tasks?.[task]?.command
   if (p === undefined || cmd === undefined) throw new Error(`no task ${project}#${task}`)
-  const ran = path.posix.join(path.posix.relative(projectDir(project, p), '.'), RAN)
+  const ran = path.posix.join(
+    path.posix.relative(projectDir(project, p), '.'),
+    p.tasks?.[task]?.sandbox ? ISOLATED_RAN : RAN,
+  )
   const id = `${project}#${task}`
   const script = `printf '+%s\\n' '${id}' >> ${ran} && (${cmd}) && printf -- '-%s\\n' '${id}' >> ${ran}`
   // Forwarded args land after the whole line: an inner shell takes them as its `$@`.
@@ -274,12 +284,15 @@ export async function runCase(c: Case, adapter: Adapter): Promise<Outcome> {
       detail: `needs ${c.needs.filter((f) => adapter.lacks.includes(f)).join(', ')}`,
     }
   return await everyPlay(c.races ?? 1, async () => {
-    const root = realpathSync(mkdtempSync(path.join(BASE, `conf-${adapter.name}-`)))
+    const box = realpathSync(mkdtempSync(path.join(BASE, `conf-${adapter.name}-`)))
+    // Files outside the repository sit beside it, in the one directory the run may write.
+    const root = c.workspace.outside ? path.join(box, 'repo') : box
     try {
-      return await play(c, adapter, root)
+      if (c.workspace.outside) await writeFiles(path.join(box, 'outside'), c.workspace.outside)
+      return await play(c, adapter, root, box)
     } finally {
-      if (process.env['CONFORMANCE_KEEP']) console.error(`kept ${root}`)
-      else rmSync(root, { recursive: true, force: true })
+      if (process.env['CONFORMANCE_KEEP']) console.error(`kept ${box}`)
+      else rmSync(box, { recursive: true, force: true })
     }
   })
 }
@@ -298,9 +311,9 @@ export async function everyPlay(
   return { status: 'pass' }
 }
 
-async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
+async function play(c: Case, adapter: Adapter, root: string, box: string): Promise<Outcome> {
   const sh = (argv: string[], env: Record<string, string> = {}, cwd = root) =>
-    sandboxed(root, cwd, argv, { ...adapter.env, ...env })
+    sandboxed(root, cwd, argv, { ...adapter.env, ...env }, undefined, false, box)
   const install = () => setup([process.execPath, 'install', '--offline', '--no-progress'])
   const setup = async (argv: string[]) => {
     const r = await sh(argv)
@@ -384,11 +397,13 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       continue
     }
     if ('watch' in step) {
-      if (adapter.watch === undefined) throw new Error(`${adapter.name} has no watch`)
+      if (adapter.watch === undefined)
+        throw new Error(`${adapter.name} has no watch: list it in lacks`)
       if (refused !== null)
         return { status: 'fail', step: i + 1, detail: 'refused the config', log: refused }
       const failed = await watch(
         root,
+        box,
         adapter.env,
         adapter
           .watch(step.watch, step.projects)
@@ -408,10 +423,13 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       continue
     }
     await rm(path.join(root, RAN), { force: true })
+    await rm(path.join(root, ISOLATED_RAN), { force: true })
+    await mkdir(path.dirname(path.join(root, ISOLATED_RAN)), { recursive: true })
     const cwd = 'cwd' in step && step.cwd ? path.join(root, step.cwd) : root
     await rm(path.join(root, LEFT), { force: true })
     const stop = 'stop' in step ? step.stop : undefined
     if (stop) await rm(path.join(root, stop.when), { force: true })
+    if (stop?.again) await rm(path.join(root, stop.again), { force: true })
     const tool = (
       'run' in step
         ? adapter.run(step.run, step.projects, {
@@ -420,19 +438,25 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
             ...(step.only ? { only: true } : {}),
             ...(step.args ? { args: step.args } : {}),
             ...(step.concurrency !== undefined ? { concurrency: step.concurrency } : {}),
+            ...(step.continue ? { continue: true } : {}),
+            ...(step.force ? { force: true } : {}),
+            ...(step.readOnlyCache ? { readOnlyCache: true } : {}),
+            ...(step.dry ? { dry: true } : {}),
           })
         : adapter.affected(step.affected, step.base)
     )
       // An adapter names its bin from the root; started elsewhere, that path is the root's.
       .map((a, j) => (j === 0 && a.startsWith('node_modules/') ? path.join(root, a) : a))
+    const openStdin = 'openStdin' in step && step.openStdin
     const argv =
-      stop || step.expect.alone
+      stop || step.expect.alone || openStdin
         ? [
             process.execPath,
             SUPERVISE,
             JSON.stringify({
               ...(stop ? { stop } : {}),
               ...(step.expect.alone ? { left: LEFT } : {}),
+              ...(openStdin ? { openStdin: true } : {}),
             }),
             ...tool,
           ]
@@ -452,12 +476,16 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
                 : {}),
             },
             step.expect.within === undefined ? undefined : step.expect.within * 1000,
+            c.needs?.includes('sandbox') === true,
+            box,
           )
         : { exit: 1, out: refused }
     const left: string[] = step.expect.alone
       ? JSON.parse((await readMaybe(path.join(root, LEFT))) ?? '[]')
       : []
-    const marks = ((await readMaybe(path.join(root, RAN))) ?? '').split('\n').filter(Boolean)
+    const marks: string[] = []
+    for (const f of [RAN, ISOLATED_RAN])
+      marks.push(...((await readMaybe(path.join(root, f))) ?? '').split('\n').filter(Boolean))
     const files: Record<string, string | null> = {}
     for (const f of [
       ...Object.keys(step.expect.files ?? {}),
@@ -503,21 +531,26 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
  */
 async function watch(
   root: string,
+  box: string,
   env: Record<string, string>,
   argv: string[],
   phases: WatchPhase[],
   reconfigure: (next: (ws: WorkspaceSpec) => WorkspaceSpec) => Promise<string | null>,
   shell: (cmd: string) => Promise<void>,
 ): Promise<{ detail: string; log: string } | null> {
-  await rm(path.join(root, RAN), { force: true })
-  await rm(path.join(root, STOP), { force: true })
+  for (const f of [RAN, ISOLATED_RAN, STOP]) await rm(path.join(root, f), { force: true })
+  await mkdir(path.dirname(path.join(root, ISOLATED_RAN)), { recursive: true })
   const stop = { signal: 'SIGINT', when: STOP, waitMs: 3_600_000 }
   const supervised = [process.execPath, SUPERVISE, JSON.stringify({ stop }), ...argv]
-  const w = spawnSandboxed(root, root, supervised, env)
+  const w = spawnSandboxed(root, root, supervised, env, undefined, false, box)
   let exited = false
   void w.proc.exited.then(() => (exited = true))
-  const marks = async () =>
-    ((await readMaybe(path.join(root, RAN))) ?? '').split('\n').filter(Boolean)
+  const marks = async () => {
+    const all: string[] = []
+    for (const f of [RAN, ISOLATED_RAN])
+      all.push(...((await readMaybe(path.join(root, f))) ?? '').split('\n').filter(Boolean))
+    return all
+  }
   const log = () => `$ ${argv.join(' ')}\n${w.out()}`.slice(-4000)
   try {
     for (const [j, phase] of phases.entries()) {

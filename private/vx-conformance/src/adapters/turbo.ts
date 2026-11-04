@@ -30,7 +30,19 @@ export const turbo: Adapter = {
   // dependsOn names tasks exactly; a `*` is no pattern. No per-task time
   // limit, no retries, no ready line: a persistent task's dependants (where
   // Turborepo allows any) start at once.
-  lacks: ['task-pattern', 'timeout', 'retries', 'ready', 'runtime-inputs'],
+  // A task always keys on its dependencies' hashes, and nothing keeps a
+  // command from the files, network or home it never declared.
+  lacks: [
+    'task-pattern',
+    'timeout',
+    'retries',
+    'ready',
+    'runtime-inputs',
+    'dependency-inputs-off',
+    'sandbox',
+    // A filter picks by name, directory or change; packages carry no tags.
+    'select-tag',
+  ],
   env: { TURBO_TELEMETRY_DISABLED: '1', DO_NOT_TRACK: '1', NO_COLOR: '1' },
   async configure(dir, ws, command) {
     // Turbo names the root package `//`.
@@ -59,6 +71,7 @@ export const turbo: Adapter = {
           dependsOn: (spec.dependsOn ?? []).map(dep),
           ...(inputs ? { inputs } : {}),
           ...(spec.env ? { env: spec.env } : {}),
+          ...(spec.passThrough ? { passThroughEnv: spec.passThrough } : {}),
           ...(outputs ? { outputs } : {}),
           ...(spec.cache === false || spec.persistent ? { cache: false } : {}),
           ...(spec.persistent ? { persistent: true } : {}),
@@ -84,6 +97,10 @@ export const turbo: Adapter = {
     ...(opts.select ? opts.select.map(pnpmFilter) : (projects ?? [])).map((f) => `--filter=${f}`),
     ...(opts.only ? ['--only'] : []),
     ...(opts.concurrency !== undefined ? [`--concurrency=${opts.concurrency}`] : []),
+    ...(opts.continue ? ['--continue=always'] : []),
+    ...(opts.force ? ['--force'] : []),
+    ...(opts.readOnlyCache ? ['--cache=local:r'] : []),
+    ...(opts.dry ? ['--dry=json'] : []),
     ...(opts.args ? ['--', ...opts.args] : []),
   ],
   affected: (task, base) => [

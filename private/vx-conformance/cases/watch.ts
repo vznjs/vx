@@ -7,6 +7,7 @@ import { CONCAT, chainProject } from './shapes.ts'
 
 const OUT = 'packages/app/dist/out.txt'
 const A = 'packages/app/src/a.txt'
+const DOCS = 'packages/docs/dist/out.txt'
 
 /** A cached build of `src/**` into `dist/`. */
 const build = (command = CONCAT, extra: Partial<TaskSpec> = {}): TaskSpec => ({
@@ -62,7 +63,7 @@ export default [
     kind: 'correctness',
     title: 'Editing a source file while watching rebuilds with the new content',
     why: 'Rerunning a task when what it reads changes is the whole point of watching. The output must hold the new source, not the one the watch started with. A watch that misses the edit leaves a stale build that looks fresh, so the user tests old code and trusts the result.',
-    from: ['watch-loop'],
+    from: ['watch-loop', 'watch-loop-edits', 'watch-loop-selfwrite'],
     workspace: app(),
     phases: [
       firstBuild,
@@ -75,7 +76,7 @@ export default [
     kind: 'efficiency',
     title: 'Editing a file the task does not read reruns nothing',
     why: 'The task said which files it reads, and the edited file is not one of them. Running it again would build the same output from the same inputs. Work done for a file nobody reads only delays the result the user is waiting for, and in a large project that wait comes with every save.',
-    from: ['watch-loop', 'watch-rules'],
+    from: ['watch-loop', 'watch-rules', 'watch-loop-edits', 'watch-loop-selfwrite'],
     workspace: app(),
     phases: [
       firstBuild,
@@ -88,7 +89,7 @@ export default [
     kind: 'efficiency',
     title: 'Saving a file without changing it reruns nothing',
     why: 'An editor that saves on focus loss, or a formatter with nothing to fix, writes the same bytes again. The task reads the content of its files, and the content did not change. A rerun here repeats work whose result is already on disk, and it happens on every idle save.',
-    from: ['watch-loop', 'watch-mode-change'],
+    from: ['watch-loop', 'watch-mode-change', 'watch-loop-edits', 'watch-loop-selfwrite'],
     workspace: app(),
     phases: [firstBuild, { write: { [A]: 'a1\n' }, expect: { notRan: ['app#build'] } }],
   }),
@@ -128,7 +129,13 @@ export default [
     kind: 'correctness',
     title: 'Deleting a source file rebuilds without it',
     why: 'A deleted file is no longer part of what the task reads, so the output built with it is now wrong. Keeping that output would ship code the user just removed. A deletion is a change to the inputs exactly as an edit is, and the next build must show the tree as it now stands.',
-    from: ['watch-transient-file', 'watch-unignored-deletion', 'watch-label-live-path'],
+    from: [
+      'watch-transient-file',
+      'watch-unignored-deletion',
+      'watch-label-live-path',
+      'watch-loop-edits',
+      'watch-loop-selfwrite',
+    ],
     workspace: app({ files: { 'src/b.txt': 'b1\n' } }),
     phases: [
       initial(['app#build'], { [OUT]: 'a1\nb1\n' }),
@@ -142,8 +149,9 @@ export default [
   watchCase({
     id: 'watch/file-in-new-directory-reruns',
     kind: 'correctness',
-    title: 'A file added in a new folder under the inputs rebuilds with it',
-    why: 'A pattern over a folder covers its subfolders, including ones made after the watch started. Creating a folder and a file in it is a normal edit while adding a feature. A watch that only follows the folders it saw at the start misses this file, and the build silently leaves it out.',
+    title:
+      'A file added in new folders under the inputs rebuilds with it, and so does its next edit',
+    why: 'A pattern over a folder covers its subfolders, including ones made after the watch started. Creating folders and a file in them is a normal edit while adding a feature. A watch that only follows the folders it saw at the start misses the file, or its next edit, and the build goes stale.',
     from: ['watch-tree-linux', 'watch-recreated-dirs'],
     workspace: app(
       {},
@@ -152,8 +160,12 @@ export default [
     phases: [
       firstBuild,
       {
-        write: { 'packages/app/src/sub/c.txt': 'c1\n' },
+        write: { 'packages/app/src/sub/deep/c.txt': 'c1\n' },
         expect: { ran: ['app#build'], files: { [OUT]: 'a1\nc1\n' } },
+      },
+      {
+        write: { 'packages/app/src/sub/deep/c.txt': 'c2\n' },
+        expect: { ran: ['app#build'], files: { [OUT]: 'a1\nc2\n' } },
       },
     ],
   }),
@@ -176,7 +188,7 @@ export default [
     kind: 'efficiency',
     title: 'A change to a git-ignored file among the sources reruns nothing',
     why: 'Ignored files are scratch: logs, editor swap files, local caches. They are not part of what the task builds from, and a cache key does not see them. A rerun on each of their writes is busy work, and when the task itself writes such a file it can keep the watch busy forever.',
-    from: ['watch-loop-selfwrite', 'watch-root-scope', 'watch-judge-fence'],
+    from: ['watch-loop-selfwrite', 'watch-root-scope', 'watch-judge-fence', 'watch-loop-edits'],
     workspace: app({ files: { '.gitignore': '*.log\n' } }),
     phases: [
       firstBuild,
@@ -189,7 +201,13 @@ export default [
     kind: 'efficiency',
     title: 'A build’s own output does not start it again',
     why: 'The task writes its output after reading its inputs, and the output is not one of them. Treating that write as a new change would build once more, or loop for good. After one edit the task should run exactly once, and then the watch should go quiet until the user changes something.',
-    from: ['watch-loop-uncached', 'watch-rules', 'watch-project-dir-write'],
+    from: [
+      'watch-loop-uncached',
+      'watch-rules',
+      'watch-project-dir-write',
+      'watch-loop-edits',
+      'watch-loop-selfwrite',
+    ],
     workspace: app(),
     phases: [
       firstBuild,
@@ -240,7 +258,7 @@ export default [
     kind: 'efficiency',
     title: 'Many files changed at once, as a checkout does, rebuild once',
     why: 'Switching branches or pulling rewrites many files within a moment. Together they are one change, and one build over all of them gives the final result. Building once per file repeats the same work many times and shows results for trees that never existed in between.',
-    from: ['watch-loop-edits', 'watch-loop'],
+    from: ['watch-loop-edits', 'watch-loop', 'watch-loop-selfwrite'],
     workspace: app(),
     phases: [
       firstBuild,
@@ -258,7 +276,7 @@ export default [
     kind: 'correctness',
     title: 'An editor’s save by renaming a temporary file over the source rebuilds',
     why: 'Many editors write a temporary file and rename it over the original, so the file is replaced rather than edited in place. The source still changed, and the build must hold the new content. A watch that only follows edits in place misses every save from such an editor.',
-    from: ['watch-loop-edits', 'watch-label-live-path'],
+    from: ['watch-loop-edits', 'watch-label-live-path', 'watch-transient-file'],
     workspace: app(),
     phases: [
       firstBuild,
@@ -335,7 +353,7 @@ export default [
     kind: 'correctness',
     title: 'Editing a library rebuilds it, then the app that depends on it',
     why: 'The app’s build reads what the library’s build produces, so it must run after it, on the new output. Building the app first, or not at all, leaves it built against the old library. Order matters under a watch exactly as much as it does in a plain run.',
-    from: ['watch-loop-members', 'watch-rules'],
+    from: ['watch-loop-members', 'watch-rules', 'watch-loop-edits', 'watch-loop-selfwrite'],
     workspace: chain(),
     phases: [
       initial(['lib#build', 'app#build'], { [OUT]: 'lib\napp\n' }),
@@ -371,7 +389,12 @@ export default [
     kind: 'efficiency',
     title: 'Editing one project reruns nothing in an unrelated one',
     why: 'Two projects with no dependency between them share no inputs. An edit in one cannot change the other’s output. Rebuilding every project on any edit makes watching a large workspace as slow as building all of it, which is the cost watching was supposed to avoid.',
-    from: ['watch-nested-boundary', 'watch-anchored-scope'],
+    from: [
+      'watch-nested-boundary',
+      'watch-anchored-scope',
+      'watch-loop-edits',
+      'watch-loop-selfwrite',
+    ],
     workspace: { projects: { app: chainProject('app'), docs: chainProject('docs') } },
     phases: [
       initial(['app#build', 'docs#build'], { [OUT]: 'app\n' }),
@@ -525,6 +548,45 @@ export default [
         write: { 'shared/o.txt': 'o2\n' },
         expect: { ran: ['app#build'], files: { [OUT]: 'a1\no2\n' } },
       },
+    ],
+  }),
+
+  watchCase({
+    id: 'watch/ignored-burst-keeps-the-edit',
+    kind: 'correctness',
+    title: 'An edit saved among many writes to git-ignored files still rebuilds, once',
+    why: 'A test run or a dev server can write dozens of ignored logs in the moment the user saves a source. The logs are noise, but the source edit among them is a real change. A watch that drops the burst with its noise leaves the build stale; one that answers each write rebuilds many times.',
+    from: ['watch-loop-edits', 'watch-loop-selfwrite'],
+    workspace: app({ files: { '.gitignore': '*.log\n' } }),
+    phases: [
+      firstBuild,
+      {
+        write: {
+          ...Object.fromEntries(
+            Array.from({ length: 30 }, (_, n) => [`packages/app/run${n}.log`, `${n}\n`]),
+          ),
+          [A]: 'a2\n',
+        },
+        expect: { ran: ['app#build'], files: { [OUT]: 'a2\n' } },
+      },
+    ],
+  }),
+
+  watchCase({
+    id: 'watch/edits-in-turn-each-rebuild',
+    kind: 'correctness',
+    title: 'Edits to two projects, one after another, each rebuild their project and the last wins',
+    why: 'A watch stays up for many edits, not one, and each must be answered as the first was. After the first rebuild the watch has to listen again, in every project it follows. One that hears only the first change, or only its first project, leaves later edits unbuilt while it still looks alive.',
+    from: ['watch-loop-edits', 'watch-loop-selfwrite'],
+    workspace: { projects: { app: chainProject('app'), docs: chainProject('docs') } },
+    phases: [
+      initial(['app#build', 'docs#build'], { [OUT]: 'app\n', [DOCS]: 'docs\n' }),
+      { write: { [A]: 'app2\n' }, expect: { ran: ['app#build'], files: { [OUT]: 'app2\n' } } },
+      {
+        write: { 'packages/docs/src/a.txt': 'docs2\n' },
+        expect: { ran: ['docs#build'], files: { [DOCS]: 'docs2\n' } },
+      },
+      { write: { [A]: 'app3\n' }, expect: { ran: ['app#build'], files: { [OUT]: 'app3\n' } } },
     ],
   }),
 ]

@@ -27,6 +27,16 @@ function chain(): WorkspaceSpec {
 
 const FROM = ['filter', 'filter-properties']
 
+/** site and admin tagged web, api tagged scope:api and depending on lib; lib untagged. */
+const tagged = (): WorkspaceSpec => ({
+  projects: {
+    site: { ...p(), tags: ['web', 'scope:site'] },
+    admin: { ...p(), tags: ['web'] },
+    api: { ...p(['lib']), tags: ['scope:api'] },
+    lib: p(),
+  },
+})
+
 function selects(c: {
   slug: string
   title: string
@@ -42,6 +52,7 @@ function selects(c: {
   for (const s of c.select) {
     if (s.with) needs.add('select-walk')
     if (s.dir) needs.add('select-dir')
+    if (s.tag) needs.add('select-tag')
   }
   return defineCase({
     id: `graph/select-${c.slug}`,
@@ -399,5 +410,45 @@ export default [
         expect: { exit: 'fail', notRan: ['app#check', 'ui#check', 'utils#check', 'lib#check'] },
       },
     ],
+  }),
+
+  selects({
+    slug: 'by-tag',
+    title: 'A tag selects exactly the projects carrying it',
+    why: 'A tag is a label the user put on projects so they can be picked as a group, such as every service or every library. Selecting by it must take exactly those projects. Taking more runs work nobody asked for; taking fewer skips a project the user believes was built or tested.',
+    workspace: tagged(),
+    select: [{ tag: 'web' }],
+    ran: ['site', 'admin'],
+    notRan: ['api', 'lib'],
+  }),
+
+  selects({
+    slug: 'by-tag-glob',
+    title: 'A `*` in a tag selects the projects carrying any tag it matches',
+    why: 'A pattern in a tag picks every tag it matches, as a pattern in a name picks every name. Users group tags by prefix, such as scope:web and scope:api, to select a family at once. Matching only the literal text selects nothing, so the run passes while it built none of them.',
+    workspace: tagged(),
+    select: [{ tag: 'scope:*' }],
+    ran: ['site', 'api'],
+    notRan: ['admin', 'lib'],
+  }),
+
+  selects({
+    slug: 'exclude-tag',
+    title: 'A tag excluded takes the projects carrying it out of the selection',
+    why: 'Excluding a tag says to leave out every project carrying it, such as slow end-to-end suites. The rest of the selection must still run. A tool that ignores the exclusion runs the work the user just opted out of; one that drops too much skips projects the user expects checked.',
+    workspace: tagged(),
+    select: [{ name: '*' }, { tag: 'web', exclude: true }],
+    ran: ['api', 'lib'],
+    notRan: ['site', 'admin'],
+  }),
+
+  selects({
+    slug: 'tag-with-dependencies',
+    title: 'A tag and its dependencies select the tagged projects and what they depend on',
+    why: 'Selecting a tag with its dependencies means the tagged projects and everything they need to build. A tagged app cannot build without its libraries, even untagged ones. Leaving them out fails the run or builds against stale output; adding unrelated projects runs work nobody asked for.',
+    workspace: tagged(),
+    select: [{ tag: 'scope:api', with: 'dependencies' }],
+    ran: ['api', 'lib'],
+    notRan: ['site', 'admin'],
   }),
 ]

@@ -824,6 +824,57 @@ const cases: Case[] = [
   }),
 
   defineCase({
+    id: 'outputs/committed-output-mode-change-kept',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'A committed file under the outputs made executable is not made plain again by a replay',
+    why: 'The user committed a mode change to a file that sits under the outputs. A replay writes back the cached copy with its old mode and quietly undoes that commit. The tree must keep what the user changed and committed, since the task itself never ran to produce a new one.',
+    from: ['stale-hit-git'],
+    workspace: one(
+      {
+        command: 'mkdir -p out && cat src/*.txt > out/out.txt',
+        inputs: ['src/**'],
+        outputs: ['out/**'],
+      },
+      { 'src/a.txt': 'a\n', 'out/tool.sh': 'echo tool\n', '.gitignore': 'out/out.txt\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { run: 'build', expect: { exit: 0 } },
+      { chmod: { 'packages/a/out/tool.sh': 0o755 } },
+      { commit: 'tool is executable' },
+      { run: 'build', expect: { exit: 0 } },
+      { check: { executable: ['packages/a/out/tool.sh'] } },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/force-added-ignored-output-kept',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A file force-added to git under ignored outputs, then edited and committed, is not reverted by a replay',
+    why: 'Git tracks the file although its folder is ignored, because the user added it on purpose and then edited and committed it. A replay that writes the cached copy over it destroys committed work. The tree must keep what version control holds, not what an older run left behind.',
+    from: ['stale-hit-git'],
+    workspace: one(
+      {
+        command: 'mkdir -p out && cat src/*.txt > out/out.txt',
+        inputs: ['src/**'],
+        outputs: ['out/**'],
+      },
+      { 'src/a.txt': 'a\n', 'out/keep.txt': 'keep v1\n', '.gitignore': 'out/\n' },
+    ),
+    steps: [
+      { sh: 'git add -f packages/a/out/keep.txt && git commit -q -m keep' },
+      { run: 'build', expect: { exit: 0 } },
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/out/keep.txt': 'keep v2\n' } },
+      { sh: 'git add -f packages/a/out/keep.txt && git commit -q -m "keep v2"' },
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/out/keep.txt': 'keep v2\n' } } },
+    ],
+  }),
+
+  defineCase({
     id: 'outputs/codegen-rewrites-committed-output',
     category: 'outputs',
     kind: 'correctness',

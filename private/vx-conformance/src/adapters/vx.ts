@@ -3,6 +3,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pnpmFilter, type Adapter } from '../adapter.ts'
+import { ISOLATED_RAN } from '../harness.ts'
 import { projectDir } from '../spec.ts'
 
 const LOCKFILE = path.join(
@@ -25,7 +26,7 @@ export const vx: Adapter = {
   pkg: '@vzn/vx',
   bins: ['vx'],
   lacks: [],
-  env: { NO_COLOR: '1', VX_CACHE_DIR: '.vx/cache' },
+  env: { NO_COLOR: '1' },
   async configure(dir, ws, command) {
     await mkdir(path.join(dir, '.vx'), { recursive: true })
     await writeFile(
@@ -42,7 +43,25 @@ export const vx: Adapter = {
             {
               exec: {
                 command: command(name, t),
-                ...(spec.env ? { env: { passThrough: spec.env } } : {}),
+                ...(spec.env || spec.passThrough
+                  ? { env: { passThrough: [...(spec.env ?? []), ...(spec.passThrough ?? [])] } }
+                  : {}),
+                ...(spec.sandbox
+                  ? {
+                      sandbox: {
+                        allow: {
+                          read: [...(spec.inputs ?? []), ...(spec.sandbox.read ?? [])],
+                          // The harness marks an isolated task's start and end there.
+                          write: [
+                            ...(spec.outputs ?? []),
+                            ...(spec.sandbox.write ?? []),
+                            `${path.dirname(path.join(dir, ISOLATED_RAN))}/`,
+                          ],
+                          ...(spec.sandbox.network ? { network: true } : {}),
+                        },
+                      },
+                    }
+                  : {}),
                 ...(spec.timeout !== undefined ? { timeout: `${spec.timeout * 1000}ms` } : {}),
                 ...(spec.retries !== undefined ? { retries: spec.retries } : {}),
                 ...(spec.persistent
@@ -62,6 +81,7 @@ export const vx: Adapter = {
                       ...(spec.rootInputs ? { workspaceFiles: spec.rootInputs } : {}),
                       ...(spec.runtime ? { workspaceRuntime: spec.runtime } : {}),
                       ...(spec.env ? { env: spec.env } : {}),
+                      ...(spec.dependencyInputs === false ? { tasks: [] } : {}),
                     },
                   }
                 : {}),
@@ -81,7 +101,7 @@ export const vx: Adapter = {
       )
       await writeFile(
         path.join(dir, projectDir(name, p), 'vx.config.mjs'),
-        `export default ${JSON.stringify({ name, tasks }, null, 2)}\n`,
+        `export default ${JSON.stringify({ name, ...(p.tags ? { tags: p.tags } : {}), tasks }, null, 2)}\n`,
       )
     }
     return [[VX, 'lock']]
@@ -98,6 +118,10 @@ export const vx: Adapter = {
         : ['--all']),
     ...(opts.only ? ['--exclude-dependencies'] : []),
     ...(opts.concurrency !== undefined ? [`--concurrency=${opts.concurrency}`] : []),
+    ...(opts.continue ? ['--continue'] : []),
+    ...(opts.force ? ['--force'] : []),
+    ...(opts.readOnlyCache ? ['--cache-policy=local:r'] : []),
+    ...(opts.dry ? ['--dry'] : []),
     ...(opts.args ? ['--', ...opts.args] : []),
   ],
   affected: (task, base) => [VX, 'run', task, `--affected=${base}`],

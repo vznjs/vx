@@ -71,6 +71,9 @@ export async function behindLink(
     return NOTHING_BEHIND
   }
   if (seen.has(real)) return NOTHING_BEHIND
+  // A repository's own store, as a `.git/**` input names nothing: walked,
+  // every commit and index write re-keyed the task. Its target string keys.
+  if (real.split(path.sep).includes('.git')) return NOTHING_BEHIND
   if (st.isFile()) return `file\0${await hashFile(real).catch(absentOr)}`
   if (!st.isDirectory()) return 'special'
   const inner = new Set(seen).add(real)

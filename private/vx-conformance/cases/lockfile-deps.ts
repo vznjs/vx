@@ -180,6 +180,24 @@ function overridden(overrides?: Record<string, string>): WorkspaceSpec {
 }
 const rootWith = (ws: WorkspaceSpec, extra: object) => rootManifest(ws.projects, extra)
 
+const READ_X = 'cat "$(ls -d node_modules/x ../../node_modules/x 2>/dev/null | head -1)/v.txt"'
+
+/** a takes x from the root's catalog, which points at vendor/`dir`; b takes nothing. */
+function catalogued(dir: string): WorkspaceSpec {
+  const projects: WorkspaceSpec['projects'] = {
+    a: reader('a', { x: 'catalog:' }, READ_X),
+    b: reader('b', {}, 'cat src/a.txt'),
+  }
+  return {
+    projects,
+    files: {
+      ...vendored('x1', 'x'),
+      ...vendored('x2', 'x'),
+      'package.json': rootManifest(projects, { catalog: { x: `file:./vendor/${dir}` } }),
+    },
+  }
+}
+
 /** The root installs `foo` and `bar` from the named vendor directories; a reads both through the root. */
 function rootAliases(foo: string, bar: string): WorkspaceSpec {
   const projects = {
@@ -195,6 +213,37 @@ function rootAliases(foo: string, bar: string): WorkspaceSpec {
       }),
     },
   }
+}
+
+/** A local package `name` beside the repository, at `../outside/<dir>`, holding v.txt = `<dir>`. */
+function outsideVendored(dir: string, name: string) {
+  return {
+    [`${dir}/package.json`]: JSON.stringify({ name, version: '1.0.0' }),
+    [`${dir}/v.txt`]: `${dir}\n`,
+  }
+}
+
+/** From a project's directory to `../outside/<dir>` beside the repository. */
+const OUT = '../../../outside'
+
+/** lib → dep (`protocol` + a directory beside the repository); other depends on nothing. */
+function outsideDir(protocol: 'file:' | 'link:', dir = 'dep'): WorkspaceSpec {
+  return {
+    projects: {
+      lib: reader('lib', { dep: `${protocol}${OUT}/${dir}` }, 'cat node_modules/dep/*.txt'),
+      other: reader('other', {}, 'cat src/a.txt'),
+    },
+    outside: { ...outsideVendored('dep', 'dep'), ...outsideVendored('dep2', 'dep') },
+  }
+}
+
+/** a installs `foo` and `bar`, each a `link:` to the named vendor directory. */
+function linkAliases(foo: string, bar: string): ProjectSpec {
+  return reader(
+    'a',
+    { foo: `link:../../vendor/${foo}`, bar: `link:../../vendor/${bar}` },
+    'cat node_modules/foo/v.txt node_modules/bar/v.txt',
+  )
 }
 
 export default [
@@ -248,6 +297,51 @@ export default [
       { run: 'build', expect: { exit: 0 } },
       ...bumpY,
       { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+    ],
+  }),
+
+  defineCase({
+    id: 'affected/lockfile-change-selects-its-closure',
+    category: 'affected',
+    kind: 'correctness',
+    title:
+      'A committed dependency change selects the projects whose dependencies hold it, through a linked workspace too, and no other',
+    why: 'The changed project edited no file of its own; only the lockfile records that a dependency it uses moved. That dependency is what it now imports, so its result can change. Selecting by changed files alone misses it, and selecting every project on any lockfile change runs far too much.',
+    from: [FROM_CLOSURE],
+    needs: ['affected'],
+    workspace: closures(),
+    steps: [
+      ...bumpY,
+      { commit: 'bump y' },
+      {
+        affected: 'build',
+        base: 'HEAD~1',
+        expect: { exit: 0, ran: ['b#build', 'c#build'], notRan: ['a#build'] },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/catalog-change-reruns-its-readers',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A catalog entry pointed elsewhere runs the task of the project that takes it, and no other',
+    why: 'The project’s own manifest still says catalog:, so its files do not change; only the root and the lockfile do. The package it installs is now different, and so is what its build reads. The project that takes that entry must run again, and projects that do not take it must replay.',
+    from: [FROM_CLOSURE],
+    workspace: catalogued('x1'),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'x1\n' } } },
+      {
+        write: {
+          'package.json': rootWith(catalogued('x2'), { catalog: { x: 'file:./vendor/x2' } }),
+        },
+      },
+      { install: true },
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['a#build'], notRan: ['b#build'], files: { [out('a')]: 'x2\n' } },
+      },
     ],
   }),
 
@@ -754,6 +848,284 @@ export default [
       { write: { 'packages/lib/src/a.txt': 'lib2\n' } },
       { commit: 'change lib' },
       { affected: 'build', base: 'HEAD~1', expect: { exit: 0, ran: ['lib#build', 'app#build'] } },
+    ],
+  }),
+  // Local directory dependencies beside the repository, and `link:` ones:
+  // a link installs nothing, so an edit behind it reaches the task with no
+  // install, and the lockfile still names only the path.
+  defineCase({
+    id: 'inputs/outside-file-dependency-edit-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'An edit inside a `file:` dependency beside the repository runs the task of the project depending on it',
+    why: 'The dependency lives beside the repository, so no git status shows the edit and the lockfile names only its path. The task still reads its files through the install. A key built only from the repository misses the change and replays a result built from the old code.',
+    from: ['vx-lockfile/outside-dir-dep'],
+    workspace: outsideDir('file:'),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
+      { write: { '../outside/dep/v.txt': 'dep v2\n' } },
+      { install: true },
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['lib#build'], files: { [out('lib')]: 'dep v2\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/outside-file-dependency-edit-spares-others',
+    category: 'inputs',
+    kind: 'efficiency',
+    title:
+      'An edit inside a `file:` dependency beside the repository replays the projects that do not depend on it',
+    why: 'Only the projects that depend on the outside folder read its files. An edit there cannot change the output of a project that never installs it. Running those projects again for a change they do not read spends a full build on each, every time the shared folder moves.',
+    from: ['vx-lockfile/outside-dir-dep'],
+    workspace: outsideDir('file:'),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { '../outside/dep/v.txt': 'dep v2\n' } },
+      { install: true },
+      { run: 'build', expect: { exit: 0, notRan: ['other#build'] } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/outside-file-dependency-retarget-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'Pointing a `file:` dependency at another directory beside the repository runs the task again',
+    why: 'Pointing the dependency at another folder changes the code the task installs and reads, even if the name stays the same. The manifest and lockfile record the new path. A key that does not follow the new folder’s content replays a result built from the old folder.',
+    from: ['vx-lockfile/outside-dir-dep', FROM_CLOSURE],
+    workspace: outsideDir('file:'),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
+      { write: { 'packages/lib/package.json': manifest('lib', { dep: `file:${OUT}/dep2` }) } },
+      { install: true },
+      { run: 'build', expect: { exit: 0, ran: ['lib#build'], files: { [out('lib')]: 'dep2\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/outside-link-dependency-edit-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'An edit inside a `link:` dependency beside the repository runs the task of the project depending on it, with no install',
+    why: 'node_modules holds a link to the folder, so an edit there is what the task reads at once, with no install. Nothing in the repository changed, and git sees nothing. A key that only looks inside the repository replays the old output while the code it read has moved.',
+    from: ['vx-lockfile/outside-dir-dep'],
+    workspace: outsideDir('link:'),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
+      { write: { '../outside/dep/v.txt': 'dep v2\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['lib#build'], files: { [out('lib')]: 'dep v2\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/outside-link-dependency-new-file-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A file added to a `link:` dependency beside the repository runs the task of the project depending on it',
+    why: 'A linked folder is read live, so a file added there is part of what the task can import, with no install. Adding a module is as much a change as editing one. A key that only hashed the files present at install time misses it, and the build replays without the new file.',
+    from: ['vx-lockfile/outside-dir-dep'],
+    workspace: outsideDir('link:'),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { '../outside/dep/w.txt': 'new\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['lib#build'], files: { [out('lib')]: 'dep\nnew\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/outside-link-dependency-edit-spares-others',
+    category: 'inputs',
+    kind: 'efficiency',
+    title:
+      'An edit inside a `link:` dependency beside the repository replays the projects that do not depend on it',
+    why: 'Only the projects that link the outside folder read its files. An edit there cannot change the output of a project that does not depend on it. Running every project on such an edit spends builds that produce the same bytes and makes a shared folder cost the whole workspace.',
+    from: ['vx-lockfile/outside-dir-dep'],
+    workspace: outsideDir('link:'),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { '../outside/dep/v.txt': 'dep v2\n' } },
+      { run: 'build', expect: { exit: 0, notRan: ['other#build'] } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/outside-link-dependency-retarget-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'Pointing a `link:` dependency at another directory beside the repository runs the task again',
+    why: 'Pointing the link at another folder changes the code behind the same name, though the name is unchanged. The task reads the new folder’s files from then on. A key that keeps hashing the old target, or only the name, replays a result built from code that is no longer installed.',
+    from: ['vx-lockfile/outside-dir-dep', FROM_CLOSURE],
+    workspace: outsideDir('link:'),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
+      { write: { 'packages/lib/package.json': manifest('lib', { dep: `link:${OUT}/dep2` }) } },
+      { install: true },
+      { run: 'build', expect: { exit: 0, ran: ['lib#build'], files: { [out('lib')]: 'dep2\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/outside-link-dependency-reinstall-replays',
+    category: 'inputs',
+    kind: 'efficiency',
+    title:
+      'Installing again with a `link:` dependency beside the repository unchanged replays the task',
+    why: 'Installing again with nothing changed leaves the same link to the same folder with the same files. The task reads exactly what it read before, so its result is already on disk. Running it again because an install touched node_modules costs a full build for nothing.',
+    from: ['vx-lockfile/outside-dir-dep'],
+    workspace: outsideDir('link:'),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { install: true },
+      { run: 'build', expect: { exit: 0, notRan: ['lib#build', 'other#build'] } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/link-dir-dependency-new-file-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A file added to a `link:` directory dependency runs the task of the project depending on it, with no install',
+    why: 'A linked folder is read live, so a file added to it is something the task can now import, with no install step. Adding a module is as much a change as editing one. A key that only covers files known at install time replays the old build without the new file.',
+    from: ['vx-lockfile/file-dir-dep'],
+    workspace: fileDir('link:../../vendor/dep'),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'vendor/dep/w.txt': 'new\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['lib#build'], files: { [out('lib')]: 'dep\nnew\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/link-dir-dependency-edit-spares-others',
+    category: 'inputs',
+    kind: 'efficiency',
+    title:
+      'An edit inside a `link:` directory dependency replays the projects that do not depend on it',
+    why: 'Only the projects that link the folder read its files. An edit inside it cannot change the output of a project that does not depend on it. Running those projects again spends a build each on bytes that cannot differ, on every save in the shared folder.',
+    from: ['vx-lockfile/file-dir-dep'],
+    workspace: fileDir('link:../../vendor/dep'),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'vendor/dep/v.txt': 'dep v2\n' } },
+      { run: 'build', expect: { exit: 0, notRan: ['other#build'] } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/link-dir-dependency-retarget-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'Pointing a `link:` dependency at another directory in the repository runs the task again',
+    why: 'Pointing the link at another folder in the repository changes the code behind the same name. The task reads the new folder from then on. A key that keeps hashing the old folder, or only the dependency’s name, replays a result built from code that is no longer linked.',
+    from: ['vx-lockfile/file-dir-dep', FROM_CLOSURE],
+    workspace: {
+      projects: { lib: reader('lib', { x: 'link:../../vendor/x1' }, 'cat node_modules/x/v.txt') },
+      files: { ...vendored('x1', 'x'), ...vendored('x2', 'x') },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'x1\n' } } },
+      { write: { 'packages/lib/package.json': manifest('lib', { x: 'link:../../vendor/x2' }) } },
+      { install: true },
+      { run: 'build', expect: { exit: 0, ran: ['lib#build'], files: { [out('lib')]: 'x2\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/link-dep-inside-other-project-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'An edit to a `link:` dependency kept inside another project’s directory runs the task of the project depending on it',
+    why: 'The edited folder sits inside another project’s directory, but the dependant links it and reads its files. Which project owns the folder on disk does not decide who reads it. A key that charges the edit only to the owner replays the dependant with code it no longer reads.',
+    from: ['vx-lockfile/extra-in-project'],
+    workspace: {
+      ...extraInProject(),
+      projects: {
+        ...extraInProject().projects,
+        lib: reader('lib', { dep: 'link:../other/vendor' }, 'cat node_modules/dep/v.txt'),
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'v1\n' } } },
+      { write: { 'packages/other/vendor/v.txt': 'v2\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['lib#build'], files: { [out('lib')]: 'v2\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/link-alias-swap-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'Swapping which `link:` directories two dependency names point at runs the task again',
+    why: 'The same two folders are linked as before, but each name now points at the other one. The task imports by name, so it now reads different code. A key that only collects the set of linked folders sees no change and replays a result built from the old pairing.',
+    from: ['vx-lockfile/dependency-names'],
+    workspace: {
+      projects: { a: linkAliases('x1', 'y1') },
+      files: { ...vendored('x1', 'x'), ...vendored('y1', 'y') },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'x1\ny1\n' } } },
+      { write: { 'packages/a/package.json': linkAliases('y1', 'x1').files!['package.json']! } },
+      { install: true },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'y1\nx1\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/alias-retarget-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'Pointing a dependency name at another package, the import name unchanged, runs the task again',
+    why: 'The task imports the same name either way, but that name now resolves to a different package. What the task reads has changed even though its source has not. A key that sees only the import name, not what it installs to, replays a result built from the old package.',
+    from: ['vx-lockfile/dependency-names'],
+    workspace: {
+      projects: { a: reader('a', { foo: 'file:../../vendor/x1' }, 'cat node_modules/foo/v.txt') },
+      files: { ...vendored('x1', 'x'), ...vendored('y1', 'y') },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'x1\n' } } },
+      { write: { 'packages/a/package.json': manifest('a', { foo: 'file:../../vendor/y1' }) } },
+      { install: true },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'y1\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/outside-link-alias-edit-reruns',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'An edit behind a dependency installed under another name, linked from beside the repository, runs the task again',
+    why: 'The dependency is installed under another name and linked from beside the repository, so neither git nor the name shows the edit. The task still reads the linked files. A key that follows only repository files, or the package’s own name, replays an output built from the old code.',
+    from: ['vx-lockfile/dependency-names', 'vx-lockfile/outside-dir-dep'],
+    workspace: {
+      projects: { a: reader('a', { foo: `link:${OUT}/dep` }, 'cat node_modules/foo/v.txt') },
+      outside: outsideVendored('dep', 'dep'),
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'dep\n' } } },
+      { write: { '../outside/dep/v.txt': 'dep v2\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'dep v2\n' } } },
     ],
   }),
 ]

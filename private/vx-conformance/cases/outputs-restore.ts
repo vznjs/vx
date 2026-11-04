@@ -618,4 +618,41 @@ export const outputsRestore = [
       },
     ],
   }),
+
+  defineCase({
+    id: 'outputs/file-in-place-of-output-directory-kept',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A replay where a plain file stands in place of the output directory fails, and keeps the file',
+    why: 'No output pattern selects a plain file where the output folder should be, so it is work nothing declared. Deleting it to make room for the restore would destroy it. The task itself could not run there either, so failing and keeping the file is the only safe outcome.',
+    from: ['restore-occupied-parent', 'parity-turbo'],
+    workspace: one({ command: CONCAT, inputs: ['src/**'], outputs: ['dist/**'] }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { sh: 'rm -rf packages/a/dist && echo mine > packages/a/dist' },
+      { run: 'build', expect: { exit: 'fail', files: { 'packages/a/dist': 'mine\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/background-writer-not-saved',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A task that exits while a child it started still writes its outputs is not replayed with the partial tree',
+    why: 'The task exited while a child process it started was still writing the outputs. Saved at that moment, the cache entry holds a half-written tree. Every later replay restores that half, so the build looks done and green while files are missing or cut short.',
+    from: ['left-running-save', 'runner'],
+    workspace: one({
+      command:
+        'mkdir -p dist && echo early > dist/out.txt && (sleep 2; echo late > dist/out.txt) &',
+      inputs: ['src/**'],
+      outputs: ['dist/**'],
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { sh: 'sleep 4 && rm -rf packages/a/dist' },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+    ],
+  }),
 ]
