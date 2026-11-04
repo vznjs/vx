@@ -6,6 +6,7 @@ import cache from './cache.ts'
 import configGraph from './config-graph.ts'
 import envRuntime from './env-runtime.ts'
 import env from './env.ts'
+import failureMore from './failure-more.ts'
 import failureStop from './failure-stop.ts'
 import failureTimeout from './failure-timeout.ts'
 import failure from './failure.ts'
@@ -57,6 +58,7 @@ export const CASES: Case[] = [
   ...failure,
   ...failureStop,
   ...failureTimeout,
+  ...failureMore,
   ...persistentServers,
   ...persistentReady,
   ...affected,
