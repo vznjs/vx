@@ -17,6 +17,7 @@ const GITLAB_KEYS = [
   'CI_MERGE_REQUEST_SOURCE_BRANCH_NAME',
   'CI_MERGE_REQUEST_SOURCE_PROJECT_PATH',
   'CI_MERGE_REQUEST_DIFF_BASE_SHA',
+  'CI_MERGE_REQUEST_TARGET_BRANCH_SHA',
   'CI_MERGE_REQUEST_TARGET_BRANCH_NAME',
   'CI_EXTERNAL_PULL_REQUEST_SOURCE_BRANCH_NAME',
   'CI_EXTERNAL_PULL_REQUEST_TARGET_BRANCH_NAME',
@@ -70,7 +71,7 @@ it('the default branch keeps the default keys; another branch or tag gets its ow
 
 it("a merge request names its source branch, a fork's in the fork, and its diff base", async () => {
   const mr = {
-    CI_MERGE_REQUEST_EVENT_TYPE: 'merged_result',
+    CI_MERGE_REQUEST_EVENT_TYPE: 'detached',
     CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: 'feat-x',
     CI_MERGE_REQUEST_DIFF_BASE_SHA: 'b4se',
     CI_MERGE_REQUEST_TARGET_BRANCH_NAME: 'release',
@@ -94,6 +95,25 @@ it("a merge request names its source branch, a fork's in the fork, and its diff 
   })
 })
 
+// A merged results pipeline runs the merge of the source onto the
+// target's head: compared with the diff base, every change the target
+// took since the branch forked was affected too, and ran.
+it('a merged results pipeline is compared with the target head it merged onto', async () => {
+  const merged = {
+    CI_MERGE_REQUEST_EVENT_TYPE: 'merged_result',
+    CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: 'feat-x',
+    CI_MERGE_REQUEST_DIFF_BASE_SHA: 'b4se',
+    CI_MERGE_REQUEST_TARGET_BRANCH_SHA: 't4rget',
+    CI_MERGE_REQUEST_TARGET_BRANCH_NAME: 'release',
+  }
+  expect(await branchOf(job('refs/merge-requests/7/merge', merged))).toMatchObject({
+    base: 't4rget',
+  })
+  // Without the target's head (an older GitLab), the diff base.
+  const { CI_MERGE_REQUEST_TARGET_BRANCH_SHA: _, ...older } = merged
+  expect(await branchOf(job('refs/merge-requests/7/merge', older))).toMatchObject({ base: 'b4se' })
+})
+
 // A GitHub pull request mirrored to GitLab runs as an external pull
 // request pipeline: no CI_MERGE_REQUEST_* variables, and the branch it
 // merges into went unread.
@@ -111,7 +131,10 @@ it('an external pull request reads the branch it merges into', async () => {
   })
 })
 
-it('a merge train is trusted: no scope, compared with its diff base, reading only its target', async () => {
+// A car of a train is merged onto the car ahead of it (its first parent),
+// whose own pipeline runs that car's changes: compared with the diff
+// base, every car ran every car ahead's changes again.
+it('a merge train is trusted: no scope, compared with the car ahead, reading only its target', async () => {
   const train = job('refs/merge-requests/7/train', {
     CI_MERGE_REQUEST_EVENT_TYPE: 'merge_train',
     CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: 'feat-x',
@@ -120,7 +143,7 @@ it('a merge train is trusted: no scope, compared with its diff base, reading onl
   })
   expect(await branchOf(train)).toEqual({
     trusted: true,
-    base: 'b4se',
+    base: 'HEAD^1',
     refs: ['refs/heads/release'],
   })
   // 2026-10-25: a train reads its target only, never the default branch.
