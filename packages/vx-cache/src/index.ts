@@ -112,6 +112,9 @@ const hashOf = (text: string): string =>
 /** A ref's scope on the wire: the ref, percent-encoded, its folder's name on the server (2026-11-03). */
 const scopeOf = (ref: string): string => encodeURIComponent(ref)
 
+/** The longest scope a server takes (PROTOCOL.md § Keys), so a folder's name fits a bucket's key. */
+const SCOPE_MAX = 512
+
 /**
  * A body's first `max` bytes as text, the rest cancelled unread, and
  * whether there was more: an answer is read no further than vx needs, so
@@ -953,14 +956,24 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
             ? '[vx] vx-cache: this job gets no OIDC token (give it `permissions: id-token: write`): it reads only'
             : '[vx] vx-cache: no CI token for the cache server (name an id_tokens entry VX_CACHE_TOKEN): it reads only',
         )
-      if (ctx.refs.length === 0) {
+      // A scope the server cannot name was a 400 on every check, and the
+      // run read nothing, its base branch's artifacts too.
+      const refs = [...new Set(ctx.refs)].filter((ref) => {
+        const length = scopeOf(ref).length
+        if (length <= SCOPE_MAX) return true
+        ctx.warn(
+          `[vx] vx-cache: ${ref} is ${length} characters percent-encoded, over the ${SCOPE_MAX} a cache folder's name takes: the run does not read it`,
+        )
+        return false
+      })
+      if (refs.length === 0) {
         ctx.warn(
           '[vx] vx-cache: the run reads no ref, so it names no key; remote cache off for this run',
         )
         return undefined
       }
       const layer = new VxCacheLayer(config)
-      layer.refs = [...new Set(ctx.refs)]
+      layer.refs = refs
       layer.lent = ctx.lent
       layer.warn = ctx.warn
       return layer
