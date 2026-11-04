@@ -319,6 +319,25 @@ async function clear(
   storeRoot: string | null,
   parsed: PruneArgs,
 ): Promise<number> {
+  // A clear beside a run deletes what the run is restoring or saving; it
+  // waits for the run's lock, as a trim does, and only then reads what to
+  // delete: read first, what the run saved meanwhile went uncounted.
+  const release =
+    parsed.dry === true ? async () => {} : await acquireRunLock(root, { log: warnToStderr })
+  try {
+    return clearHeld(args, root, dir, storeRoot, parsed)
+  } finally {
+    await release()
+  }
+}
+
+function clearHeld(
+  args: readonly string[],
+  root: string,
+  dir: string,
+  storeRoot: string | null,
+  parsed: PruneArgs,
+): number {
   // The store the index recorded and today's (a changed HOME, an origin
   // added) both go; a directory with no index is not a vx cache to delete.
   const targets: string[] = []
@@ -374,17 +393,10 @@ async function clear(
         ? readdirSync(t).map((e) => path.join(t, e))
         : [t]
   const bytes = doomed.reduce((n, t) => n + entries(t).reduce((m, e) => m + treeBytes(e), 0), 0)
-  if (!dry && doomed.length > 0) {
-    // A clear beside a run deletes what the run is restoring or saving; it
-    // waits for the run's lock, as a trim does.
-    const release = await acquireRunLock(root, { log: warnToStderr })
-    try {
-      for (const t of doomed) {
-        for (const e of entries(t)) rmSync(e, { recursive: true, force: true })
-        if (t === named && readdirSync(t).length === 0) rmSync(t, { recursive: true })
-      }
-    } finally {
-      await release()
+  if (!dry) {
+    for (const t of doomed) {
+      for (const e of entries(t)) rmSync(e, { recursive: true, force: true })
+      if (t === named && readdirSync(t).length === 0) rmSync(t, { recursive: true })
     }
   }
   const shown = doomed.map((t) => (path.relative(root, t).startsWith('..') ? t : relPosix(root, t)))
