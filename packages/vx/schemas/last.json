@@ -242,6 +242,8 @@
         "peakRssBytes",
         "peakCores",
         "avgRssBytes",
+        "queuedMs",
+        "outputBytes",
         "placement",
         "wallclockStartNs",
         "wallclockEndNs",
@@ -287,6 +289,14 @@
         "avgRssBytes": {
           "type": ["integer", "null"],
           "description": "mean resident memory over the samples; null when nothing sampled"
+        },
+        "queuedMs": {
+          "type": ["integer", "null"],
+          "description": "milliseconds it waited, ready, for a slot; null when it never queued"
+        },
+        "outputBytes": {
+          "type": ["integer", "null"],
+          "description": "bytes of the outputs its save stored or its hit restored; null when none"
         },
         "placement": {
           "type": ["string", "null"],
