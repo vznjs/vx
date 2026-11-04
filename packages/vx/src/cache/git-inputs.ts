@@ -8,11 +8,15 @@
 import os from 'node:os'
 import path from 'node:path'
 import {
+  closeSync,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -1752,7 +1756,7 @@ export async function startGitEnumeration(
     stdin?: string,
     env?: Record<string, string>,
   ): Promise<GitRun | null> => {
-    const spawn = <Out extends 'pipe' | Bun.BunFile>(stdout: Out) =>
+    const spawn = <Out extends 'pipe' | number>(stdout: Out) =>
       Bun.spawn({
         // `status` refreshes the index when it can take `index.lock`, so
         // the user's own `git add` or `commit` failed on the lock while a
@@ -1769,23 +1773,30 @@ export async function startGitEnumeration(
     // loading configs while git lists, and a pipe held a 10 MB listing
     // until the thread came back to drain it 64 KiB at a time (~90 ms of
     // a warm 5,000-project run). In a directory of its own, so no link
-    // another user planted in a shared temp directory takes the bytes. A
-    // temp directory that takes none falls back to the pipe.
-    let dir: string | undefined
+    // another user planted in a shared temp directory takes the bytes, and
+    // the directory goes the moment the file is open: a run stopped
+    // mid-listing (a Ctrl-C before the run's signal handlers, or a kill)
+    // runs no `finally`, and each left a `vx-git-*` behind. A temp
+    // directory that takes none falls back to the pipe.
+    let fd: number | undefined
     try {
-      dir = mkdtempSync(path.join(os.tmpdir(), 'vx-git-'))
+      const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-git-'))
+      try {
+        fd = openSync(path.join(dir, 'out'), 'w+', 0o600)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
     } catch {
-      dir = undefined
+      fd = undefined
     }
     try {
       let stdout: Uint8Array
       let stderr: string
       let exitCode: number
-      if (dir !== undefined) {
-        const out = path.join(dir, 'out')
-        const proc = spawn(Bun.file(out))
+      if (fd !== undefined) {
+        const proc = spawn(fd)
         ;[stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
-        stdout = await Bun.file(out).bytes()
+        stdout = readWhole(fd)
       } else {
         const piped = spawn('pipe')
         ;[stdout, stderr, exitCode] = await Promise.all([
@@ -1799,7 +1810,7 @@ export async function startGitEnumeration(
     } catch {
       return null
     } finally {
-      if (dir !== undefined) rmSync(dir, { recursive: true, force: true })
+      if (fd !== undefined) closeSync(fd)
     }
   }
   const startedAtMs = Date.now()
@@ -2258,4 +2269,16 @@ export async function applyGitEnumeration(
     cache.setLazyOids(workspaceRoot, rootOids)
     cache.setWorkspaceRoot(workspaceRoot)
   }
+}
+
+/** The whole of a file held only by `fd`, from its start. */
+function readWhole(fd: number): Uint8Array {
+  const bytes = new Uint8Array(fstatSync(fd).size)
+  let at = 0
+  while (at < bytes.length) {
+    const n = readSync(fd, bytes, at, bytes.length - at, at)
+    if (n === 0) break
+    at += n
+  }
+  return at === bytes.length ? bytes : bytes.subarray(0, at)
 }
