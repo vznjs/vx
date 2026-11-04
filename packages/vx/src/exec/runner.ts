@@ -100,6 +100,8 @@ export interface RunOptions {
    * handler can SIGTERM everything still alive mid-run.
    */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /** The run's stop (`ExecuteRequest.signal`): one that lands before the child is in `liveChildren` stops it here. */
+  signal?: AbortSignal
   /** Told the child's pid once it is spawned (telemetry samples its tree). */
   onSpawn?: (pid: number) => void
   /**
@@ -1082,6 +1084,18 @@ function argTooLongHint(command: string, wrapped: boolean): string {
   )
 }
 
+/** A stop's own sweep, for a child it missed: the polite signal, then SIGKILL past the grace. */
+async function stopLate(proc: Child, signal: 'SIGINT' | 'SIGTERM'): Promise<void> {
+  const letGo = holdGroups([proc])
+  try {
+    killTree(proc, signal)
+    for (const c of await untilGroupsGone([proc], killGraceMs(TIMEOUT_SIGKILL_GRACE_MS)))
+      killTree(c, 'SIGKILL')
+  } finally {
+    letGo()
+  }
+}
+
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const start = Date.now()
   const fullCommand = withForwardArgs(opts.command, opts.forwardArgs)
@@ -1147,6 +1161,10 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     }
 
   opts.liveChildren?.add(proc)
+  // The spawn is awaited (off the thread, or on a spare shell), and the
+  // command runs meanwhile: a stop that landed then swept a live set
+  // without it, and the run waited out the whole command (CI, 2026-11-04).
+  if (opts.signal?.aborted === true) void stopLate(proc, stopSignal(opts.signal.reason))
   opts.onSpawn?.(proc.pid)
   const timeout = armTimeout(proc, opts.timeoutMs)
   const ac = new AbortController()
