@@ -40,7 +40,10 @@ it('prints the cache directory; an argument is exit 2', async () => {
     expect(await verb.run([], ctx)).toBe(0)
     expect(out.mock.calls).toEqual([['/ws/.vx/cache\n']])
     expect(await verb.run(['x'], ctx)).toBe(2)
-    expect(err.mock.calls).toEqual([['vx cache-dir: takes no arguments, got x\n']])
+    // On CI the line is coloured: the words are what this asserts.
+    expect(err.mock.calls.map(([l]) => Bun.stripANSI(String(l)))).toEqual([
+      'vx cache-dir: takes no arguments, got x\n',
+    ])
   } finally {
     out.mockRestore()
     err.mockRestore()
