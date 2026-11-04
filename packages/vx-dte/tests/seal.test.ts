@@ -566,6 +566,18 @@ it('admits only a worker of a workflow run the orchestrator dispatched, when it 
   }
 })
 
+// Only the token request counts: a test file before this one in the same
+// process may still be dialing a port the OS has since handed this issuer
+// (CI, 2026-11-04: a stray request made 3 of 2).
+function isTokenAsk(req: Request): boolean {
+  const u = new URL(req.url)
+  return (
+    u.pathname === '/token' &&
+    u.searchParams.get('audience') === 'aud' &&
+    req.headers.get('authorization') === 'bearer b'
+  )
+}
+
 // PR #4146, 2026-10-23: one 503 from GitHub's token endpoint ended small#2
 // before it joined.
 it('asks GitHub for an OIDC token again after a 5xx, three tries at most, never after a 4xx', async () => {
@@ -574,7 +586,8 @@ it('asks GitHub for an OIDC token again after a 5xx, three tries at most, never 
   const issuer = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
-    fetch() {
+    fetch(req) {
+      if (!isTokenAsk(req)) return new Response(null, { status: 404 })
       calls++
       const status = fail.shift()
       return status === undefined ? Response.json({ value: 'tok' }) : new Response(null, { status })
@@ -604,7 +617,8 @@ it('asks GitHub for an OIDC token again when a try hangs, within the same budget
     port: 0,
     hostname: '127.0.0.1',
     idleTimeout: 0,
-    fetch() {
+    fetch(req) {
+      if (!isTokenAsk(req)) return new Response(null, { status: 404 })
       calls++
       return calls === 1 ? new Promise<Response>(() => {}) : Response.json({ value: 'tok' })
     },
