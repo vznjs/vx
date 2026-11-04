@@ -52,15 +52,16 @@ describe('vx last names a retried task’s attempts', () => {
       await vx(root, ['run', 'app#flaky', 'app#boom', 'app#once', '--continue=always'])
       const rows = (await vx(root, ['last'])).out
         .split('\n')
-        .filter((l) => /^ {2}(success|failed) /.test(l))
+        .filter((l) => / (success|failed) /.test(l))
         .map((l) => {
-          const cells = l.trim().split(/\s{2,}/)
-          return [cells[0], cells[1], cells.at(-1)]
+          // The grid's status word, the id, then what rides the row.
+          const [, id, note] = /(app#\w+)(.*)$/.exec(l)!
+          return [/ (success|failed) /.exec(l)![1], id, note!.trim()]
         })
         // The order is the summary's (ends, durations), not this row's.
         .toSorted((a, b) => String(a[1]).localeCompare(String(b[1])))
       expect(rows).toEqual([
-        ['failed (exit 4)', 'app#boom', '2 attempts'],
+        ['failed', 'app#boom', 'exit 4  2 attempts'],
         ['success', 'app#flaky', '2 attempts'],
         ['success', 'app#once', expect.not.stringContaining('attempt')],
       ])

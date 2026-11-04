@@ -163,12 +163,11 @@ describe('exec.platforms', () => {
     ])
     const text = formatPlanText(plan)
     expect(text.split('\n').filter((l) => l.includes('skipped'))).toEqual([
-      expect.stringMatching(new RegExp(`^  ·  app#(after|other) +skipped — `)),
-      expect.stringMatching(new RegExp(`^  ·  app#(after|other) +skipped — `)),
-      '3 task(s) planned, 1 no-cache, 2 skipped.',
+      expect.stringMatching(/^ ⊘ +skipped +1 +app#after {2}blocked by app#other$/),
+      expect.stringMatching(/^ ⊘ +skipped +2 +app#other {2}needs /),
+      '  tasks     3 planned · 1 no-cache · 2 skipped',
     ])
-    expect(text).toContain(`skipped — needs ${OTHER}, this is ${HOST}`)
-    expect(text).toContain('skipped — blocked by app#other')
+    expect(text).toContain('app#after  blocked by app#other')
   })
 
   it('--dry refuses on CI as the run does', async () => {

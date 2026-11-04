@@ -11,12 +11,13 @@ vx run build --filter @demo/web --dry
 ```
 
 ```ansi
-[1mwould run:[0m
-  [38;2;234;179;8m▶[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [38;2;234;179;8mcache miss — would exec [0m  [2m47fb6826[0m[2m  ~14ms[0m
-  [38;2;234;179;8m▶[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m   [38;2;234;179;8mcache miss — would exec [0m  [2mea61da13[0m[2m  ~14ms[0m
+[38;2;110;118;129m─ [0m[1m[38;2;167;139;250mPlan[0m [2m2[0m [38;2;110;118;129m─────────────────────────────────────────────────────[0m
+[2m[4m      time   usual status  cache      cpu    mem outputs  blocks worker       task[0m
+ [38;2;6;182;212m⏺︎[0m            [2m~4ms[0m [38;2;6;182;212mrun[0m     [2mmiss[0m                                [2m0[0m [2mlocal[0m        [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+ [38;2;6;182;212m⏺︎[0m            [2m~9ms[0m [38;2;6;182;212mrun[0m     [2mmiss[0m                                [38;2;203;213;225m1[0m [2mlocal[0m        [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
-[2m2 task(s) planned, 2 would run.[0m
-[2mpredicted: ~28ms wall · ~28ms total execution[0m
+  [2mtasks    [0m  [38;2;203;213;225m2 planned · 2 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~13ms wall · ~13ms total execution[0m
 ```
 
 From inside `packages/web`, `vx run build` does the same: with no filter, vx

@@ -139,7 +139,7 @@ describe('vx last (e2e)', () => {
       expect(r.out).toMatch(/^─ Run \S+ ─+\n  status +ok\n  command +vx run build --all\n/)
       // The second run found the output in place: a hit that restored nothing.
       expect(r.out).toContain('1 task · 1 hit (1 up-to-date, 0 restored)')
-      expect(r.out).toMatch(/up-to-date\s+app#build/)
+      expect(r.out).toMatch(/success fresh .* app#build$/m)
       // CONTROL: an ok run has nothing to re-run.
       expect(r.out).not.toMatch(/^  next /m)
     },
@@ -158,7 +158,7 @@ describe('vx last (e2e)', () => {
       // 150 MB peaks between that and a few times it — kilobytes read as
       // a process that used nothing, bytes×1024 as one that used
       // gigabytes (the Linux defect of 2026-09-12).
-      expect(miss.out).toMatch(/success\s+app#build\s+\S+\s+\S+  \d+(\.\d)? MB · \d+\.\d× cpu$/m)
+      expect(miss.out).toMatch(/success miss +\d+% +\d+MB .* app#build$/m)
       const missJson = JSON.parse((await vx(root, ['last', missRun, '--format', 'json'])).out) as {
         tasks: { peakRssBytes: number | null; cpuMs: number | null }[]
       }
@@ -166,8 +166,8 @@ describe('vx last (e2e)', () => {
       expect(missJson.tasks[0]!.peakRssBytes).toBeLessThan(1024 * 1024 * 1024)
       expect(missJson.tasks[0]!.cpuMs).toBeGreaterThan(0)
       const hit = await vx(root, ['last', hitRun])
-      expect(hit.out).toMatch(/up-to-date\s+app#build\s+\S+\s+\S+$/m)
-      expect(hit.out).not.toContain('× cpu')
+      // A hit's cpu and mem do not apply: blank, not `—`.
+      expect(hit.out).toMatch(/success fresh {22}\d+B +\d+ local +app#build$/m)
     },
     TIMEOUT,
   )
@@ -232,7 +232,7 @@ describe('vx last (e2e)', () => {
       expect(r.out).toContain('1 failed')
       // The row reads as the frame did: the exit code, and no signal part
       // for a plain exit (item 260).
-      expect(r.out).toMatch(/failed \(exit 3\)\s+app#boom/)
+      expect(r.out).toMatch(/failed .* app#boom  exit 3$/m)
       expect(r.out).not.toContain('128 +')
       // The last line is the command that re-runs what failed, with the
       // arguments the run forwarded.
@@ -282,9 +282,7 @@ describe('vx last (e2e)', () => {
       expect(r1.code).not.toBe(0)
       const r = await vx(root, ['last'])
       expect(r.code).toBe(0)
-      expect(r.out).toMatch(
-        /failed \(exit 137\)\s+app#killed\s+\S+ms\s+\S+\s+no-cache.*128 \+ SIGKILL$/m,
-      )
+      expect(r.out).toMatch(/failed  no-cache .* app#killed  exit 137  128 \+ SIGKILL$/m)
     },
     TIMEOUT,
   )
@@ -297,12 +295,12 @@ describe('vx last (e2e)', () => {
       const r = await vx(root, ['last'])
       expect(r.code).toBe(0)
       // A timeout reads as the reason, not as the SIGTERM its 143 is.
-      expect(r.out).toMatch(/failed \(exit 143\)\s+app#slow.*  timed out$/m)
+      expect(r.out).toMatch(/failed .* app#slow  exit 143  timed out$/m)
       expect(r.out).not.toContain('128 + SIGTERM')
       // A never-ready server keeps the child's own exit and names why.
-      expect(r.out).toMatch(/failed \(exit 2\)\s+app#dev.*  never ready: exited$/m)
+      expect(r.out).toMatch(/failed .* app#dev  exit 2  never ready: exited$/m)
       // A skip names the failure that blocked it.
-      expect(r.out).toMatch(/skipped\s+app#after.*  after app#boom failed$/m)
+      expect(r.out).toMatch(/skipped .* app#after  after app#boom failed$/m)
       // Only the failures are re-run; the skip follows them.
       const rerun = r.out.trimEnd().split('\n').at(-1)!
       expect(rerun.startsWith('  next      vx run ')).toBe(true)
@@ -416,7 +414,7 @@ describe('vx last tells a restored hit from an up-to-date one (e2e)', () => {
     async () => {
       const r = await vx(root, ['last'])
       expect(r.out).toContain('1 task · 1 hit (0 up-to-date, 1 restored: 1 local, 0 remote)')
-      expect(r.out).toMatch(/restored-local\s+app#build/)
+      expect(r.out).toMatch(/success local .* app#build$/m)
       const json = JSON.parse((await vx(root, ['last', '--format', 'json'])).out) as {
         invocation: {
           upToDateCount: number
@@ -457,8 +455,8 @@ describe('vx last lists rows in the order the run recorded them (e2e)', () => {
         await vx(root, ['run', 'app#three'])
         const rows = (await vx(root, ['last'])).out
           .split('\n')
-          .filter((l) => /^ {2}success /.test(l))
-          .map((l) => l.trim().split(/\s+/)[1])
+          .filter((l) => / success /.test(l))
+          .map((l) => l.trim().split(/\s+/).at(-1))
         const json = JSON.parse((await vx(root, ['last', '--format', 'json'])).out) as {
           tasks: { task: string }[]
         }
@@ -629,13 +627,15 @@ describe('formatTaskRows', () => {
   // unasserted — `<` → `<=` at both duration cuts, the divide-by-zero
   // guard, the violation count's `> 0`, and its plural. All five passed
   // the whole suite together.
+  // The run's own time cell: seconds to 999.99s, then minutes.
+  const noteOf = (line: string, id = 'p#t'): string =>
+    line.slice(line.indexOf(`${id}`) + id.length).trim()
   it.each([
     [999, '999ms'],
     [1000, '1.00s'], // AT the cut, not around it (item 503)
     [59_994, '59.99s'],
-    [59_999, '1m 0s'], // rounds to a minute: not `60.00s` (item 1034)
-    [60_000, '1m 0s'],
-    [119_600, '2m 0s'], // not `1m 60s` (item 1034)
+    [119_600, '119.60s'],
+    [1_000_000, '16m 40s'],
   ])('formats %dms as %s', (ms, want) => {
     expect(L(formatTaskRows([row('t', { durationMs: ms })]))[1]).toContain(want)
   })
@@ -647,7 +647,7 @@ describe('formatTaskRows', () => {
     const line = L(formatTaskRows([row('t', { durationMs: 0, cpuMs: 0 })]))[1]!
     expect(line).not.toContain('NaN')
     expect(line).not.toContain('Infinity')
-    expect(line).not.toContain('cpu')
+    expect(line).not.toContain('%')
   })
 
   it.each([
@@ -664,19 +664,17 @@ describe('formatTaskRows', () => {
     // time it was written (item 510). Zero says nothing at all: a failed
     // task that violated nothing must not read as though the sandbox were
     // involved.
-    expect(line.slice(line.indexOf('h') + 1).trim()).toBe(want)
+    expect(noteOf(line)).toBe(`exit 1${want === '' ? '' : `  ${want}`}`)
     // CONTROL: the row is otherwise intact, so none of the above can pass
     // on a formatter that dropped the line.
-    expect(line).toContain('failed (exit 1)')
+    expect(line).toContain('failed  miss')
   })
 
   it('names what a remote read or write of the key met (the footer counts it ✗)', () => {
     const line = L(
       formatTaskRows([row('t', { remoteError: 'download: connection refused; upload: 503' })]),
     )[1]!
-    expect(line.slice(line.indexOf('h') + 1).trim()).toBe(
-      'remote ✗ download: connection refused; upload: 503',
-    )
+    expect(noteOf(line)).toBe('remote ✗ download: connection refused; upload: 503')
     expect(L(formatTaskRows([row('t')]))[1]).not.toContain('remote')
   })
 
@@ -692,12 +690,13 @@ describe('formatTaskRows', () => {
         row('fast', { status: 'skipped', exitCode: 1, hash: '' }),
       ]),
     )
-    const reason = (task: string): string => {
-      const line = lines.find((l) => l.includes(`p#${task} `))!
-      return line.slice(line.indexOf('ms') + 2).trim()
-    }
+    const reason = (task: string): string =>
+      noteOf(
+        lines.find((l) => l.endsWith(`p#${task}`) || l.includes(`p#${task} `))!,
+        `p#${task}`,
+      )
     expect([reason('mac'), reason('macdep'), reason('after'), reason('fast')]).toEqual([
-      'no-cache  needs another platform',
+      'needs another platform',
       'after p#mac skipped: needs another platform',
       'after p#boom failed',
       '',
@@ -705,8 +704,8 @@ describe('formatTaskRows', () => {
   })
 
   it('names where an executor ran a task, and nothing for one run here', () => {
-    expect(L(formatTaskRows([row('t', { placement: 'small#1' })]))[1]).toMatch(/#t@small#1 /)
-    expect(L(formatTaskRows([row('t')]))[1]).not.toContain('@')
+    expect(L(formatTaskRows([row('t', { placement: 'small#1' })]))[1]).toMatch(/ small#1 +p#t$/)
+    expect(L(formatTaskRows([row('t')]))[1]).toMatch(/ local +p#t$/)
   })
 
   it('orders failed, then executed and skipped, then hits, and folds the hits past sixteen', () => {
@@ -720,9 +719,11 @@ describe('formatTaskRows', () => {
         row('after', { status: 'skipped', blockedBy: 'p#boom' }),
       ]),
     )
-    const words = lines.slice(1).map((l) => l.trim().split(/\s+/)[0])
-    expect(words.slice(0, 3)).toEqual(['failed', 'success', 'skipped'])
-    expect(words.slice(3, 19).every((w) => w === 'restored-local')).toBe(true)
+    const words = lines
+      .slice(1)
+      .map((l) => /(?:failed|success|skipped) +(?:miss|local|p#)/.exec(l)?.[0].replace(/ +/, ' '))
+    expect(words.slice(0, 3)).toEqual(['failed miss', 'success miss', 'skipped p#'])
+    expect(words.slice(3, 19).every((w) => w === 'success local')).toBe(true)
     expect(lines.length).toBe(1 + 3 + 16 + 1)
     // The sixteen shown are the slowest restores, in that order.
     const shown = lines.slice(4, 20).map((l) => /hit(\d+)/.exec(l)![1])

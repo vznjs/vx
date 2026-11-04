@@ -353,7 +353,7 @@ export default defineProject({
     ],
     example: {
       lang: 'ansi',
-      code: '$ vx run ci --dry\nwould run:\n  ✓  @demo/web#lint  cache hit (local)         d11668f9\n  ▶  @demo/web#test  cache miss — would exec   1ca82629\n\n2 task(s) planned, 1 cache hit (1 local), 1 would run.',
+      code: '$ vx run ci --dry\n\x1b[38;2;110;118;129m─ \x1b[0m\x1b[1m\x1b[38;2;167;139;250mPlan\x1b[0m \x1b[2m2\x1b[0m \x1b[38;2;110;118;129m─────────────────────────────────────────────────────\x1b[0m\n\x1b[2m\x1b[4m      time   usual status  cache      cpu    mem outputs  blocks worker       task\x1b[0m\n \x1b[38;2;34;197;94m⇢\x1b[0m                 \x1b[38;2;34;197;94mcached\x1b[0m  \x1b[38;2;56;189;248mlocal\x1b[0m                               \x1b[2m0\x1b[0m \x1b[2mlocal\x1b[0m        \x1b[38;2;244;114;182m@demo/web\x1b[0m\x1b[2m#\x1b[0m\x1b[38;2;232;121;249mlint\x1b[0m\n \x1b[38;2;6;182;212m⏺︎\x1b[0m                 \x1b[38;2;6;182;212mrun\x1b[0m     \x1b[2mmiss\x1b[0m                                \x1b[2m0\x1b[0m \x1b[2mlocal\x1b[0m        \x1b[38;2;244;114;182m@demo/web\x1b[0m\x1b[2m#\x1b[0m\x1b[38;2;96;165;250mtest\x1b[0m\n\n  \x1b[2mtasks   \x1b[0m  \x1b[38;2;203;213;225m2 planned · 1 cache hit (1 local) · 1 would run\x1b[0m',
     },
     image: 'dry-run.png',
     imageAlt: 'vx run --dry listing predicted hits and misses.',

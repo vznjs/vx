@@ -50,6 +50,10 @@ export interface RunSummaryRow {
   avgRssBytes: number | null
   /** Where an executor ran it (`small#1`, v44); null = here. */
   placement: string | null
+  /** The bytes of its outputs: what its save stored, or its hit restored (v51). */
+  outputBytes: number | null
+  /** How many tasks were downstream of it (v51). */
+  blocks: number | null
   // High-precision spans relative to run start. Decimal strings on the wire
   // (bigints aren't JSON-safe); use BigInt or Number on the client.
   wallclockStartNs: string | null
@@ -123,6 +127,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
               cache_hit AS cacheHit, restored, cached, hash,
               cpu_ms AS cpuMs, peak_rss_bytes AS peakRssBytes,
               peak_cores AS peakCores, avg_rss_bytes AS avgRssBytes, placement,
+              output_bytes AS outputBytes, blocks,
               wallclock_start_ns AS wallclockStartNs, wallclock_end_ns AS wallclockEndNs,
               blocked_by AS blockedBy, timed_out AS timedOut,
               sandbox_violations AS sandboxViolations, not_ready AS notReady,
