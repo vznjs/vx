@@ -1848,7 +1848,7 @@ after you edit one, run `vx lock` and commit the lock.
 
 Beside it, `.vx/dependencies.lock.json` records each project's edges and
 each claimed file's per-project digests (`FingerprintClaim.digests`),
-pretty-printed so a dependency change reads as a diff. Commit it too:
+minified as the config lock is, since only vx reads it. Commit it too:
 `--affected` reads the base commit's copy to find a deleted project's
 dependants and a changed lockfile's base digests, and `vx lock --check`
 fails when it is missing or stale.

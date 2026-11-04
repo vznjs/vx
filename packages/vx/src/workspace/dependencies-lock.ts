@@ -56,9 +56,9 @@ export function dependenciesLock(
   return { version: DEPENDENCIES_LOCK_VERSION, projects, files: out }
 }
 
-/** The committed text: pretty, so a dependency change reads as a diff. */
+/** Minified, as the config lock: only vx reads it, and minified JSON parses faster. */
 function dependenciesLockText(lock: DependenciesLock): string {
-  return `${JSON.stringify(lock, null, 2)}\n`
+  return `${JSON.stringify(lock)}\n`
 }
 
 /** Written beside its name and renamed over it, as `writeLockfile`: a reader never sees half a file. */

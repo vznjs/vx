@@ -14,6 +14,7 @@
     "*.tsbuildinfo",
     "pnpm-lock.yaml",
     "**/.vx/projects.lock.json",
+    "**/.vx/dependencies.lock.json",
     "**/vx.lock.json",
     "packages/vx/tests/contract/lock.json",
     ".mcp.json",

@@ -90,7 +90,7 @@ export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLoc
 export async function writeDependenciesLock(root: string, lock: DependenciesLock): Promise<void>
 ```
 
-`vx lock` writes it beside the lock, pretty-printed and committed:
+`vx lock` writes it beside the lock, minified (only vx reads it) and committed:
 each project's `discover` edges and each claimed file's
 `FingerprintClaim.digests`, keyed by directory and sorted, so the
 same workspace writes the same bytes. `--affected` reads the base
