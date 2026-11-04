@@ -15,7 +15,7 @@ export CACHE_ALLOW='https://token.actions.githubusercontent.com:o/r:ci.yml'
 export HISTORY_ALLOW="$CACHE_ALLOW"
 export CACHE_AUDIENCE="http://127.0.0.1:$CACHE_PORT" HISTORY_AUDIENCE="http://127.0.0.1:$HISTORY_PORT"
 export S3_BUCKET=b S3_ENDPOINT='http://127.0.0.1:1' S3_ACCESS_KEY_ID=a S3_SECRET_ACCESS_KEY=s
-trap 'docker compose down -v --rmi local >/dev/null 2>&1' EXIT
+trap 'docker compose down -v --rmi local >/dev/null 2>&1 || true' EXIT
 docker compose up -d --build --quiet-pull
 for svc in dte cache history; do
   ready=

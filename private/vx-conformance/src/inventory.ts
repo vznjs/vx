@@ -1127,6 +1127,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'error-codes-repo.unsafe',
     'examples.unsafe',
     'execution-doc-drift',
+    'exit-trap-cleanup.unsafe',
     'exports-referenced.unsafe',
     'features-inventory.unsafe',
     'markdown-anchors',

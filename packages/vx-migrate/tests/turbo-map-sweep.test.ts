@@ -367,6 +367,45 @@ describe('turbo-map: what the sweep found unheld', () => {
     ])
   })
 
+  // Mapped, core refused each naming the package, as if its own config held it.
+  it('an absolute path in a glob list is refused naming turbo.json, as Turbo refuses it', async () => {
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const packageJson = { name: 'a', scripts: { build: 'b' } }
+    const said = async (cfg: object) => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(cfg))
+      return mapTurboWorkspace(
+        root,
+        [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
+        opts,
+      ).then(
+        () => 'mapped',
+        (e: unknown) => (e instanceof UserError ? e.message : String(e)),
+      )
+    }
+    const tail =
+      'Turbo refuses an absolute path — name it relative to the package, or to the root with $TURBO_ROOT$/'
+    expect([
+      await said({ tasks: { build: { outputs: ['/abs/**'] } } }),
+      await said({ tasks: { build: { inputs: ['!/abs'] } } }),
+      await said({ tasks: { build: { inputs: ['$TURBO_ROOT$//abs'] } } }),
+      await said({ tasks: { build: { inputs: [{ globs: ['/x'] }] } } }),
+      await said({ globalDependencies: ['/etc/hosts'], tasks: { build: {} } }),
+      await said({ global: { inputs: ['/g'] }, tasks: { build: {} } }),
+      await said({
+        tasks: { build: { inputs: ['src/**', '$TURBO_ROOT$/x'], outputs: ['!dist/x'] } },
+      }),
+    ]).toEqual([
+      `turbo.json: tasks."build".outputs holds "/abs/**": ${tail}`,
+      `turbo.json: tasks."build".inputs holds "!/abs": ${tail}`,
+      `turbo.json: tasks."build".inputs holds "$TURBO_ROOT$//abs": ${tail}`,
+      `turbo.json: tasks."build".inputs holds "/x": ${tail}`,
+      `turbo.json: globalDependencies holds "/etc/hosts": ${tail}`,
+      `turbo.json: global.inputs holds "/g": ${tail}`,
+      'mapped',
+    ])
+  })
+
   // vercel/turborepo#2712: no `outputs` means none, as `[]` does; Turbo 1
   // once read it as `dist/**` and `build/**`.
   it('a task with no outputs caches none, as one with `[]`', async () => {

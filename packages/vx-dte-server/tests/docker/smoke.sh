@@ -9,7 +9,7 @@ tag="vx-dte-server-smoke:$$"
 port=18788
 docker build -q -t "$tag" .
 name=$(docker run -d --rm --network host "$tag" --no-auth --port "$port")
-trap 'docker rm -f "$name" >/dev/null 2>&1; docker rmi -f "$tag" >/dev/null 2>&1' EXIT
+trap 'docker rm -f "$name" >/dev/null 2>&1 || true; docker rmi -f "$tag" >/dev/null 2>&1 || true' EXIT
 ready=
 for _ in $(seq 50); do
   if docker logs "$name" 2>&1 | grep -q "vx-dte-server  listening on"; then ready=1; break; fi

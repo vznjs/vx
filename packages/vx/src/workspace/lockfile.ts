@@ -169,6 +169,23 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
 }
 
 /**
+ * The project entries of a lock's bytes with its pool put back, or null
+ * for bytes that do not parse as a lock: an entry compares across two
+ * locks only once both are read the same way.
+ */
+export function lockEntries(bytes: Uint8Array | null): Record<string, unknown> | null {
+  if (bytes === null) return null
+  try {
+    const lock = JSON.parse(new TextDecoder().decode(bytes)) as Pooled
+    if (typeof lock?.projects !== 'object' || lock.projects === null) return null
+    pooledIn(lock)
+    return lock.projects
+  } catch {
+    return null
+  }
+}
+
+/**
  * A task or task part that two places in the lock hold alike is written once,
  * in `pool`, and each place holds its index. Each slot is one the schema
  * types as an object, so a number there can only be an index. Big
