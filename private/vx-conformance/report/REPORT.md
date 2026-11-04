@@ -1,14 +1,14 @@
 # Task runner conformance
 
-72 cases, each a small workspace and the outcome a user sees: which commands ran, the files left on disk, the exit code. Every tool runs sandboxed. A tool that cannot express a case scores it `–` and it leaves its percentage.
+73 cases, each a small workspace and the outcome a user sees: which commands ran, the files left on disk, the exit code. Every tool runs sandboxed. A tool that cannot express a case scores it `–` and it leaves its percentage.
 
 | | vx this commit | turbo 2.11.10 | nx 24.0.2 | vite-task 1.4.0 |
 |---|---|---|---|---|
-| **all** | 97% (70/72) | 90% (65/72) | 89% (64/72) | 82% (53/65) |
-| correctness | 98% (56/57) | 91% (52/57) | 86% (49/57) | 83% (43/52) |
-| efficiency | 93% (14/15) | 87% (13/15) | 100% (15/15) | 77% (10/13) |
+| **all** | 99% (72/73) | 89% (65/73) | 86% (63/73) | 82% (54/66) |
+| correctness | 100% (58/58) | 90% (52/58) | 83% (48/58) | 83% (44/53) |
+| efficiency | 100% (14/14) | 86% (12/14) | 100% (14/14) | 75% (9/12) |
 | graph | 100% (10/10) | 90% (9/10) | 100% (10/10) | 90% (9/10) |
-| inputs | 95% (21/22) | 86% (19/22) | 95% (21/22) | 73% (16/22) |
+| inputs | 100% (23/23) | 83% (19/23) | 87% (20/23) | 74% (17/23) |
 | outputs | 100% (13/13) | 77% (10/13) | 77% (10/13) | 69% (9/13) |
 | env | 100% (6/6) | 100% (6/6) | 83% (5/6) | 100% (6/6) |
 | cache | 100% (5/5) | 100% (5/5) | 100% (5/5) | 80% (4/5) |
@@ -26,7 +26,7 @@ Each case is drawn from vx's own tests. Of the 1147 test files in this repo:
 - 287 are internal: tests vx code directly, or vx’s own wording and layout, not an outcome.
 - 76 are docs: holds docs, the site, releases or the repo to the code.
 
-## Where they differ (23)
+## Where they differ (24)
 
 ### `^build` reaches a dependency’s dependency when the middle project has no build
 
@@ -91,13 +91,22 @@ Each case is drawn from vx's own tests. Of the 1147 test files in this repo:
 - ✓ **nx**
 - ✗ **vite-task**: step 4, packages/a/dist/out.txt is "a\n1\n", expected "a\n2\n"
 
-### A task that lists no inputs is still replayed when nothing changed
+### A task that lists no inputs never replays a stale result when a file it reads changes
 
-`inputs/default-inputs-cache` · efficiency · Each tool has a default for unlisted inputs (the project’s files, or what the command read); none needs a list to cache.
+`inputs/unlisted-file-never-stale` · correctness · A default guesses what the task reads; a file outside the guess changes and the cache replays the old bytes.
 
-- ✗ **vx**: step 2, ran a#build, expected it replayed or left out
+- ✓ **vx**
+- ✗ **turbo**: step 3, packages/a/dist/out.txt is "one\n", expected "two\n"
+- ✗ **nx**: step 3, packages/a/dist/out.txt is "one\n", expected "two\n"
+- ✓ **vite-task**
+
+### A task that lists no inputs never replays a stale result when a variable it reads changes
+
+`inputs/unlisted-env-never-stale` · correctness · A cache keyed on files alone replays the output of a value the command no longer sees.
+
+- ✓ **vx**
 - ✓ **turbo**
-- ✓ **nx**
+- ✗ **nx**: step 2, packages/a/dist/out.txt is "dev\n", a stale result
 - ✓ **vite-task**
 
 ### A rebuild leaves no output the new inputs no longer produce
@@ -147,7 +156,7 @@ Each case is drawn from vx's own tests. Of the 1147 test files in this repo:
 
 ### A replayed task shows the output its run printed
 
-`logs/replay-shows-log` · correctness
+`logs/replay-shows-log` · output
 
 - ✗ **vx**: step 2, output lacks "printed-by-build"
 - ✓ **turbo**

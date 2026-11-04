@@ -1842,26 +1842,55 @@
       }
     },
     {
-      "id": "inputs/default-inputs-cache",
+      "id": "inputs/unlisted-file-never-stale",
       "category": "inputs",
-      "kind": "efficiency",
-      "title": "A task that lists no inputs is still replayed when nothing changed",
-      "why": "Each tool has a default for unlisted inputs (the project’s files, or what the command read); none needs a list to cache.",
+      "kind": "correctness",
+      "title": "A task that lists no inputs never replays a stale result when a file it reads changes",
+      "why": "A default guesses what the task reads; a file outside the guess changes and the cache replays the old bytes.",
       "from": [
         "configless-default-build",
         "cache-declaration-warnings"
       ],
       "outcomes": {
         "vx": {
+          "status": "pass"
+        },
+        "turbo": {
           "status": "fail",
-          "step": 2,
-          "detail": "ran a#build, expected it replayed or left out"
+          "step": 3,
+          "detail": "packages/a/dist/out.txt is \"one\\n\", expected \"two\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/out.txt is \"one\\n\", expected \"two\\n\""
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/unlisted-env-never-stale",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A task that lists no inputs never replays a stale result when a variable it reads changes",
+      "why": "A cache keyed on files alone replays the output of a value the command no longer sees.",
+      "from": [
+        "configless-default-build",
+        "env-reads-complete"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
         },
         "turbo": {
           "status": "pass"
         },
         "nx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 2,
+          "detail": "packages/a/dist/out.txt is \"dev\\n\", a stale result"
         },
         "vite-task": {
           "status": "pass"
@@ -2403,7 +2432,7 @@
     {
       "id": "logs/replay-shows-log",
       "category": "logs",
-      "kind": "correctness",
+      "kind": "output",
       "title": "A replayed task shows the output its run printed",
       "from": [
         "parity-turbo",

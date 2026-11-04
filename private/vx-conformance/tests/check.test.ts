@@ -44,3 +44,10 @@ test('a marked command finds the run log from its project directory', () => {
     "printf '+%s\\n' 'a#build' >> ../../../.ran && (true) && printf -- '-%s\\n' 'a#build' >> ../../../.ran",
   )
 })
+
+test('filesNot fails only the stale text', () => {
+  expect(check({ filesNot: { f: 'old' } }, 0, '', [], { f: 'new' })).toBeNull()
+  expect(check({ filesNot: { f: 'old' } }, 0, '', [], { f: 'old' })).toBe(
+    'f is "old", a stale result',
+  )
+})

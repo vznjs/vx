@@ -34,7 +34,8 @@ mark before and after each command, so "ran" means the command ran, not
 what a tool's log claims.
 
 A case is `correctness` when failing it leaves a wrong tree or exit code,
-and `efficiency` when failing it reruns work nothing asked for. `why` says
+`efficiency` when failing it reruns work nothing asked for, and `output`
+when it is only about what the run prints: a log is never correctness. `why` says
 why the outcome is right where a tool could argue for another. `from`
 names the vx tests the case is drawn from.
 

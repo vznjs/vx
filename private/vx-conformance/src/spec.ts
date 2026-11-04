@@ -50,6 +50,8 @@ export interface Expect {
   output?: string[]
   /** Workspace-relative file → its exact content, or `null`: it does not exist. */
   files?: Record<string, string | null>
+  /** Workspace-relative file → text it must not hold: a stale result, where more than one fresh one is right. */
+  filesNot?: Record<string, string>
 }
 
 export type Step =
@@ -79,8 +81,9 @@ export type Step =
 /**
  * `correctness`: a tool that fails it leaves a wrong tree or a wrong exit
  * code. `efficiency`: one that fails it reruns work nothing asked for.
+ * `output`: what the run prints; never correctness.
  */
-export type Kind = 'correctness' | 'efficiency'
+export type Kind = 'correctness' | 'efficiency' | 'output'
 
 export type Category =
   | 'graph'

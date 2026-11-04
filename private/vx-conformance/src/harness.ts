@@ -128,6 +128,8 @@ export function check(
     const start = marks.indexOf(`+${b}`)
     if (end === -1 || start === -1 || end > start) return `${b} started before ${a} finished`
   }
+  for (const [f, stale] of Object.entries(expect.filesNot ?? {}))
+    if (files[f] === stale) return `${f} is ${JSON.stringify(stale)}, a stale result`
   for (const text of expect.output ?? [])
     if (!out.includes(text)) return `output lacks ${JSON.stringify(text)}`
   for (const [f, want] of Object.entries(expect.files ?? {})) {
@@ -262,7 +264,10 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       refused === null ? await sh(argv, 'env' in step ? step.env : {}) : { exit: 1, out: refused }
     const marks = ((await readMaybe(path.join(root, RAN))) ?? '').split('\n').filter(Boolean)
     const files: Record<string, string | null> = {}
-    for (const f of Object.keys(step.expect.files ?? {}))
+    for (const f of [
+      ...Object.keys(step.expect.files ?? {}),
+      ...Object.keys(step.expect.filesNot ?? {}),
+    ])
       files[f] = await readMaybe(path.join(root, f))
     const failed = check(step.expect, r.exit, r.out, marks, files)
     if (failed !== null)

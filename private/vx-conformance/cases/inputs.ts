@@ -314,16 +314,53 @@ export default [
   }),
 
   defineCase({
-    id: 'inputs/default-inputs-cache',
+    id: 'inputs/unlisted-file-never-stale',
     category: 'inputs',
-    kind: 'efficiency',
-    title: 'A task that lists no inputs is still replayed when nothing changed',
-    why: 'Each tool has a default for unlisted inputs (the project’s files, or what the command read); none needs a list to cache.',
+    kind: 'correctness',
+    title: 'A task that lists no inputs never replays a stale result when a file it reads changes',
+    why: 'A default guesses what the task reads; a file outside the guess changes and the cache replays the old bytes.',
     from: ['configless-default-build', 'cache-declaration-warnings'],
-    workspace: one({ command: CONCAT, outputs: ['dist/**'] }),
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: {
+              command: 'mkdir -p dist && cat ../../shared.txt > dist/out.txt',
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'a\n' },
+        },
+      },
+      files: { 'shared.txt': 'one\n' },
+    },
     steps: [
-      { run: 'build', expect: { exit: 0 } },
-      { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'one\n' } } },
+      { write: { 'shared.txt': 'two\n' } },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'two\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/unlisted-env-never-stale',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A task that lists no inputs never replays a stale result when a variable it reads changes',
+    why: 'A cache keyed on files alone replays the output of a value the command no longer sees.',
+    from: ['configless-default-build', 'env-reads-complete'],
+    workspace: one({
+      command: 'mkdir -p dist && printf "%s\\n" "${MODE-unset}" > dist/out.txt',
+      outputs: ['dist/**'],
+    }),
+    steps: [
+      { run: 'build', env: { MODE: 'dev' }, expect: { exit: 0 } },
+      // A tool that hides the variable from the task prints `unset` both times, which is right.
+      {
+        run: 'build',
+        env: { MODE: 'prod' },
+        expect: { exit: 0, filesNot: { [out('a')]: 'dev\n' } },
+      },
     ],
   }),
 

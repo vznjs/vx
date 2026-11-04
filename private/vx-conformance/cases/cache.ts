@@ -20,7 +20,7 @@ export default [
   defineCase({
     id: 'logs/replay-shows-log',
     category: 'logs',
-    kind: 'correctness',
+    kind: 'output',
     title: 'A replayed task shows the output its run printed',
     from: ['parity-turbo', 'replay-fidelity', 'output-log'],
     workspace: one({
