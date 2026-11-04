@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 167,
+    "ported": 179,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -71,8 +71,6 @@
         "discover-stage",
         "discovery-node-modules",
         "discovery-refusals",
-        "download-policy",
-        "dry-json-stdout",
         "dte-sandbox.unsafe",
         "executor",
         "executor-demand",
@@ -186,12 +184,10 @@
         "sandbox-bridge-socket.unsafe",
         "sandbox-canary-home.unsafe",
         "sandbox-chdir-denied.unsafe",
-        "sandbox-credential-stores.unsafe",
         "sandbox-deny-scan",
         "sandbox-deny-scan.unsafe",
         "sandbox-dirfd-quote.unsafe",
         "sandbox-empty-grant-spelling.unsafe",
-        "sandbox-empty-outputs.unsafe",
         "sandbox-fd-records",
         "sandbox-fix",
         "sandbox-git-config.unsafe",
@@ -199,14 +195,10 @@
         "sandbox-glob-chars.unsafe",
         "sandbox-grant-ancestors.unsafe",
         "sandbox-grant-remove.unsafe",
-        "sandbox-grant-through-link.unsafe",
-        "sandbox-grants.unsafe",
         "sandbox-helper-env.unsafe",
-        "sandbox-hidden-reads.unsafe",
         "sandbox-hint",
         "sandbox-hint-spelling.unsafe",
         "sandbox-host-helpers.unsafe",
-        "sandbox-host-services.unsafe",
         "sandbox-lifecycle.unsafe",
         "sandbox-mkdir-ancestor.unsafe",
         "sandbox-network-patterns.unsafe",
@@ -214,13 +206,11 @@
         "sandbox-noscan-gone.unsafe",
         "sandbox-observer-drain.unsafe",
         "sandbox-output-link.unsafe",
-        "sandbox-parent-env.unsafe",
         "sandbox-paths",
         "sandbox-placeholder-nested.unsafe",
         "sandbox-port-bridge-ready.unsafe",
         "sandbox-port-held.unsafe",
         "sandbox-prewarm.unsafe",
-        "sandbox-proxy-denials.unsafe",
         "sandbox-proxy-ready.unsafe",
         "sandbox-readonly-masks.unsafe",
         "sandbox-records-key.unsafe",
@@ -652,7 +642,6 @@
         "capture-cap",
         "ci-env-readers",
         "ci-output",
-        "cli",
         "cli-arg-hygiene",
         "cli-bare",
         "cli-cache-dir-stages",
@@ -667,7 +656,6 @@
         "cli-verb-sections",
         "closure-search",
         "colors",
-        "continue-cache-properties",
         "core-source-key.unsafe",
         "dev",
         "disk-full.unsafe",
@@ -1007,16 +995,16 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 859,
-        "of": 860
+        "pass": 878,
+        "of": 880
       },
       "correctness": {
-        "pass": 716,
-        "of": 716
+        "pass": 733,
+        "of": 733
       },
       "efficiency": {
-        "pass": 134,
-        "of": 135
+        "pass": 136,
+        "of": 138
       },
       "data": {
         "pass": 9,
@@ -1031,46 +1019,50 @@
         "of": 7
       },
       "failure": {
-        "pass": 68,
-        "of": 68
+        "pass": 70,
+        "of": 70
       },
       "affected": {
         "pass": 93,
         "of": 94
       },
       "cache": {
-        "pass": 31,
-        "of": 31
+        "pass": 34,
+        "of": 35
       },
       "inputs": {
-        "pass": 278,
-        "of": 278
+        "pass": 279,
+        "of": 279
       },
       "outputs": {
         "pass": 214,
         "of": 214
       },
       "env": {
-        "pass": 25,
-        "of": 25
+        "pass": 27,
+        "of": 27
       },
       "report": {
         "pass": 9,
         "of": 9
+      },
+      "sandbox": {
+        "pass": 11,
+        "of": 11
       }
     },
     "turbo": {
       "all": {
-        "pass": 553,
-        "of": 803
+        "pass": 562,
+        "of": 812
       },
       "correctness": {
-        "pass": 468,
-        "of": 664
+        "pass": 475,
+        "of": 671
       },
       "efficiency": {
-        "pass": 81,
-        "of": 131
+        "pass": 83,
+        "of": 133
       },
       "data": {
         "pass": 4,
@@ -1085,16 +1077,16 @@
         "of": 3
       },
       "failure": {
-        "pass": 20,
-        "of": 41
+        "pass": 22,
+        "of": 43
       },
       "affected": {
         "pass": 59,
         "of": 94
       },
       "cache": {
-        "pass": 23,
-        "of": 31
+        "pass": 27,
+        "of": 35
       },
       "inputs": {
         "pass": 179,
@@ -1105,26 +1097,30 @@
         "of": 212
       },
       "env": {
-        "pass": 21,
-        "of": 25
+        "pass": 23,
+        "of": 27
       },
       "report": {
         "pass": 4,
         "of": 8
+      },
+      "sandbox": {
+        "pass": 1,
+        "of": 1
       }
     },
     "nx": {
       "all": {
-        "pass": 569,
-        "of": 828
+        "pass": 574,
+        "of": 834
       },
       "correctness": {
-        "pass": 442,
-        "of": 686
+        "pass": 444,
+        "of": 689
       },
       "efficiency": {
-        "pass": 123,
-        "of": 134
+        "pass": 126,
+        "of": 137
       },
       "data": {
         "pass": 4,
@@ -1147,38 +1143,42 @@
         "of": 94
       },
       "cache": {
-        "pass": 29,
-        "of": 31
+        "pass": 31,
+        "of": 33
       },
       "inputs": {
-        "pass": 173,
-        "of": 278
+        "pass": 174,
+        "of": 279
       },
       "outputs": {
         "pass": 156,
         "of": 212
       },
       "env": {
-        "pass": 19,
-        "of": 25
+        "pass": 21,
+        "of": 27
       },
       "report": {
         "pass": 4,
         "of": 8
+      },
+      "sandbox": {
+        "pass": 0,
+        "of": 1
       }
     },
     "vite-task": {
       "all": {
-        "pass": 461,
-        "of": 680
+        "pass": 466,
+        "of": 685
       },
       "correctness": {
-        "pass": 388,
-        "of": 568
+        "pass": 390,
+        "of": 570
       },
       "efficiency": {
-        "pass": 71,
-        "of": 104
+        "pass": 74,
+        "of": 107
       },
       "data": {
         "pass": 2,
@@ -1201,24 +1201,28 @@
         "of": 0
       },
       "cache": {
-        "pass": 27,
-        "of": 28
+        "pass": 28,
+        "of": 29
       },
       "inputs": {
-        "pass": 169,
-        "of": 270
+        "pass": 170,
+        "of": 271
       },
       "outputs": {
         "pass": 134,
         "of": 212
       },
       "env": {
-        "pass": 23,
-        "of": 24
+        "pass": 25,
+        "of": 26
       },
       "report": {
         "pass": 2,
         "of": 8
+      },
+      "sandbox": {
+        "pass": 1,
+        "of": 1
       }
     }
   },
@@ -17456,7 +17460,9 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
         },
         "turbo": {
           "status": "pass"
@@ -23143,6 +23149,235 @@
       }
     },
     {
+      "id": "failure/continue-runs-past-a-failure",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "Asked to continue, a run goes on past a failed task and still fails",
+      "why": "Going on is what the user asked for; a green exit would hide the failure.",
+      "from": [
+        "continue-taint",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs continue"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs continue"
+        }
+      }
+    },
+    {
+      "id": "failure/continue-saves-nothing-built-on-a-failure",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that ran past its dependency’s failure is not replayed once the dependency is fixed",
+      "why": "It was built on a failed dependency: replaying it would keep that result after the fix.",
+      "from": [
+        "continue-taint",
+        "continue-cache-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs continue"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs continue"
+        }
+      }
+    },
+    {
+      "id": "cache/force-runs-and-refreshes",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A forced run runs every task past its cache entry, and the next run replays what it saved",
+      "from": [
+        "parity-turbo",
+        "parity-nx",
+        "cli"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs force"
+        }
+      }
+    },
+    {
+      "id": "cache/read-only-replays-and-saves-nothing",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A run that only reads the cache replays a hit, and saves nothing for a miss",
+      "from": [
+        "download-policy",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs read-only-cache"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs read-only-cache"
+        }
+      }
+    },
+    {
+      "id": "cache/dry-run-runs-and-saves-nothing",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A planned run runs no task, writes no output, and saves nothing",
+      "from": [
+        "dry-json-stdout",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs dry-run"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs dry-run"
+        }
+      }
+    },
+    {
+      "id": "env/pass-through-reaches-task",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A variable passed through reaches the task",
+      "from": [
+        "env",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/pass-through-change-replays",
+      "category": "env",
+      "kind": "efficiency",
+      "title": "A change to a variable passed through, not keyed, replays the task",
+      "from": [
+        "env",
+        "parity-turbo-hashing-env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/dependency-inputs-off-replays",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A task ordered after a dependency, but not keyed on it, replays when only the dependency changes",
+      "from": [
+        "parity-nx-hashing",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs dependency-inputs-off"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/linked-worktree-replays-main-checkout",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A linked git worktree of the same commit replays what the main checkout built",
+      "why": "Same commit, same inputs: the second checkout asks nothing new of the task.",
+      "from": [
+        "parity-turbo-hashing"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "report/cache-miss",
       "category": "report",
       "kind": "data",
@@ -23359,6 +23594,301 @@
           "status": "fail",
           "step": 3,
           "detail": "reports no outputBytes"
+        }
+      }
+    },
+    {
+      "id": "sandbox/undeclared-env-hidden",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "A variable the task does not declare never reaches it",
+      "why": "A variable that reaches the command but not its key changes the output under the same key: a later run replays the wrong result.",
+      "from": [
+        "env",
+        "sandbox-parent-env.unsafe",
+        "parity-turbo-hashing-env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/dist/out.txt is \"leaked\", expected \"unset\""
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "sandbox/declared-reads-and-writes-pass",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that reads its inputs and writes its outputs succeeds",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/undeclared-read-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that reads a project file it never declared fails",
+      "why": "The file is outside the key: an edit to it would replay a stale result.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "sandbox-hidden-reads.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/granted-read-passes",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may read a file it is granted beyond its inputs",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/other-project-read-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that reads another project’s source fails",
+      "from": [
+        "sandbox-grants.unsafe",
+        "nested-boundary"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/undeclared-write-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that writes outside its outputs fails, and the file is not left behind",
+      "why": "The cache never stores that file: a replay would leave the tree without it.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "sandbox-empty-outputs.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/other-project-write-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that writes into another project fails, and leaves that project as it was",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/source-write-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that rewrites its own source fails, and the source is kept",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/credential-store-hidden",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task cannot read the user’s SSH key",
+      "from": [
+        "sandbox-credential-stores.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/network-refused",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task with no network grant cannot reach a server the run started",
+      "why": "A response is an input no key holds: the next run replays it whatever the server says now.",
+      "from": [
+        "sandbox-host-services.unsafe",
+        "sandbox-proxy-denials.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox, ready"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox, persistent, ready"
+        }
+      }
+    },
+    {
+      "id": "sandbox/link-out-of-grants-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task cannot read an undeclared file through a link inside its inputs",
+      "from": [
+        "sandbox-grant-through-link.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
         }
       }
     }
