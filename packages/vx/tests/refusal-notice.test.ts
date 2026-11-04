@@ -24,6 +24,15 @@ describe('messageParts', () => {
     })
   })
 
+  // `--filter a...` read `a..`: the hint's `. ` and then the full stop
+  // `bare` drops each took a dot of the pattern's own.
+  it("keeps a headline's trailing `...`", () => {
+    expect(messageParts('no projects matched filter(s): apq.... Did you mean app...?')).toEqual({
+      headline: 'no projects matched filter(s): apq...',
+      fix: 'app...',
+    })
+  })
+
   it('takes "(see `cmd`)" as the why line', () => {
     expect(messageParts('missing task name (see `vx run --help`)')).toEqual({
       headline: 'missing task name',
