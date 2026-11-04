@@ -1,6 +1,7 @@
 // Formatters for `--dry` (human / JSON).
 
 import type { AffectedReason, CacheStatus, RunPlan } from '../orchestrator/index.js'
+import { computeReverseDepCount } from '../graph/index.js'
 import { planList, type PlannedRow, skippedReason } from '../report/index.js'
 import { formatBytes, formatElapsed, maskedCommand } from '../util/index.js'
 import * as ui from '../ui/index.js'
@@ -121,30 +122,14 @@ export function planReport(plan: RunPlan): ui.Block {
 }
 
 /**
- * How many tasks are downstream of each, all of them (groups too), as the
- * run's `blocks` counts them.
+ * How many tasks are downstream of each, all of them (groups too), by the
+ * run's own count: a closure walked per task was quadratic, and a 10,000
+ * task chain's `--dry` spent 7 s here.
  */
 function downstream(plan: RunPlan): Map<string, number> {
-  const dependants = new Map<string, string[]>()
-  for (const t of plan.tasks)
-    for (const d of t.deps) {
-      const list = dependants.get(d)
-      if (list === undefined) dependants.set(d, [t.node.id])
-      else list.push(t.node.id)
-    }
-  const counts = new Map<string, number>()
-  for (const t of plan.tasks) {
-    const seen = new Set<string>()
-    const stack = [...(dependants.get(t.node.id) ?? [])]
-    while (stack.length > 0) {
-      const id = stack.pop()!
-      if (seen.has(id)) continue
-      seen.add(id)
-      stack.push(...(dependants.get(id) ?? []))
-    }
-    counts.set(t.node.id, seen.size)
-  }
-  return counts
+  return computeReverseDepCount(
+    new Map(plan.tasks.map((t) => [t.node.id, { ...t.node, deps: [...t.deps] }])),
+  )
 }
 
 /** The plan as plain text: what a pipe, a test or `grep` reads. */
