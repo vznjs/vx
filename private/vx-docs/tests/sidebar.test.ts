@@ -19,6 +19,7 @@ const PLACES: [string, string][] = [
   ['Docs', 'docs/'],
   ['Guides', 'guides/'],
   ['Reference', 'cli/'],
+  ['Conformance', 'conformance/'],
   ['Blog', 'blog/'],
   ['Releases', 'releases/'],
 ]
