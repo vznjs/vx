@@ -246,8 +246,9 @@ reaches.
 Whether a result exists is asked of R2, never of that copy, so every
 data center agrees.
 
-With `EXPIRY_DAYS` set to the bucket's expiry, a data center keeps
-R2's "exists" until R2 may drop the result. A repeat check there skips
+With `EXPIRY_DAYS` set to the bucket's expiry, an upload, a check or a
+download that R2 answers leaves an "exists" mark in that data center,
+until R2 may drop the result. A repeat check there skips
 R2. A miss always asks R2, so a later upload is never hidden.
 
 ## API

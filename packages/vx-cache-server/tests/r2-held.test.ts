@@ -21,7 +21,14 @@ function fixture(uploadedAgo: number | null) {
   const heads: string[] = []
   const bucket: R2Bucket = {
     put: async (_name, body) => void (await new Response(body).arrayBuffer()),
-    get: async () => null,
+    get: async () =>
+      uploadedAgo === null
+        ? null
+        : {
+            body: new Blob(['bytes']).stream(),
+            size: 5,
+            uploaded: new Date(Date.now() - uploadedAgo * 1000),
+          },
     head: async (name) => {
       heads.push(name)
       return uploadedAgo === null
@@ -29,22 +36,27 @@ function fixture(uploadedAgo: number | null) {
         : { size: 5, uploaded: new Date(Date.now() - uploadedAgo * 1000) }
     },
   }
-  const held = new Map<string, Response>()
+  const held = new Map<string, { headers: Headers; bytes: ArrayBuffer }>()
   const cache: Awaited<Parameters<typeof r2Blobs>[1]> = {
     match: async (key: Request) => {
       const res = held.get(key.url)
-      return res === undefined ? undefined : new Response(null, { headers: res.headers })
+      return res === undefined ? undefined : new Response(res.bytes, { headers: res.headers })
     },
-    put: async (key: Request, res: Response) => void held.set(key.url, res),
+    put: async (key: Request, res: Response) =>
+      void held.set(key.url, { headers: res.headers, bytes: await res.arrayBuffer() }),
     delete: async (key: Request) => held.delete(key.url),
   }
   const later: Promise<unknown>[] = []
   const blobs = (expiryDays?: number) =>
     r2Blobs(bucket, Promise.resolve(cache), { waitUntil: (p) => void later.push(p) }, expiryDays)
   const settle = () => Promise.all(later.splice(0))
+  const marks = () => [...held.keys()].filter((k) => k.startsWith('https://vx-cache.held/'))
   const maxAge = () =>
-    [...held.values()].map((r) => Number(/max-age=(\d+)/.exec(r.headers.get('cache-control')!)![1]))
-  return { heads, blobs, settle, maxAge }
+    marks()
+      .map((k) => held.get(k)!)
+      .map((r) => Number(/max-age=(\d+)/.exec(r.headers.get('cache-control')!)![1]))
+  const unmark = () => marks().forEach((k) => held.delete(k))
+  return { heads, blobs, settle, maxAge, unmark }
 }
 
 it('answers a repeat lookup of a held artifact without R2, until R2 may expire it', async () => {
@@ -100,5 +112,22 @@ it('asks R2 every time while no expiry is set', async () => {
   await f.settle()
   expect(await blobs.size('a/b/c/d')).toBe(5)
   expect(f.heads).toHaveLength(2)
+  expect(f.maxAge()).toEqual([])
+})
+
+it("marks an artifact held when R2 serves its download, never from the data center's copy", async () => {
+  const f = fixture(3600)
+  const blobs = f.blobs(1)
+  const got = await blobs.get('a/b/c/d')
+  await new Response(got!.body).arrayBuffer()
+  await f.settle()
+  expect(await blobs.size('a/b/c/d')).toBe(5)
+  expect(f.heads).toEqual([])
+  const [age] = f.maxAge()
+  expect(age).toBeLessThanOrEqual(DAY - 3600)
+  // The data center's copy can outlive R2's: a read of it marks nothing.
+  f.unmark()
+  await new Response((await blobs.get('a/b/c/d'))!.body).arrayBuffer()
+  await f.settle()
   expect(f.maxAge()).toEqual([])
 })

@@ -15,7 +15,7 @@ it("serves a read from R2 alone, the data center's copy from a read of its own",
     get: async () => {
       const body = new Blob([bytes]).stream()
       bodies.push(body)
-      return { body, size: bytes.byteLength }
+      return { body, size: bytes.byteLength, uploaded: new Date() }
     },
   }
   const copies: Response[] = []

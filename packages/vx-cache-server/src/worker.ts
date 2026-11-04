@@ -17,7 +17,9 @@ import type { Blobs } from './store.js'
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
 export interface R2Bucket {
   put(name: string, body: ReadableStream<Uint8Array>): Promise<unknown>
-  get(name: string): Promise<{ body: ReadableStream<Uint8Array>; size: number } | null>
+  get(
+    name: string,
+  ): Promise<{ body: ReadableStream<Uint8Array>; size: number; uploaded: Date } | null>
   head(name: string): Promise<{ size: number; uploaded: Date } | null>
 }
 /** The data center's cache (Workers Cache API): free, and per data center. */
@@ -63,8 +65,9 @@ const SIZE = 'vx-size'
  * checked the token and named the object before a read reaches here.
  *
  * With `expiryDays`, the bucket's lifecycle rule, whether R2 holds an
- * object is kept there too, until the rule may drop it: counted from its
- * upload, so a mark never outlives R2's copy. Only "held" is kept: a
+ * object is kept there too, once R2 takes, heads or serves it, until the
+ * rule may drop it: counted from its upload, so a mark never outlives
+ * R2's copy. Only "held" is kept: a
  * kept "missing" would hide an upload that lands later.
  */
 export function r2Blobs(
@@ -106,9 +109,11 @@ export function r2Blobs(
     get: async (name) => {
       const key = keyOf(name)
       const hit = await (await cache).match(key)
+      // No mark from this copy: it can outlive R2's.
       if (hit?.body) return { body: hit.body, size: Number(hit.headers.get('content-length')) }
       const o = await bucket.get(name)
       if (o === null) return null
+      mark(name, o.size, o.uploaded.getTime())
       // The copy is R2 read again, never a tee of the client's body: a tee
       // on Workers reads at its slower branch's pace, and the cache write
       // held a download for 19 minutes (main, 2026-10-28).
