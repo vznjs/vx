@@ -241,6 +241,14 @@ describe('resolveFilters', () => {
     expect(value).toEqual({ error: 'no projects matched filter(s): apq.... Did you mean app...?' })
   })
 
+  it('a task id given as a filter is hinted as its project', async () => {
+    const { value } = await quiet(() => resolveFilters(root, ['app#build...']))
+    expect(value).toEqual({
+      error:
+        'no projects matched filter(s): app#build.... A filter names projects; did you mean app...?',
+    })
+  })
+
   it('the hint reads a negated walk through its operators', async () => {
     // The strip's `^...` anchored to the string's start, so after `!` went
     // `...apq` kept its dots and `!...apq` listed the projects instead.

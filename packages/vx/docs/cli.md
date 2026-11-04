@@ -220,7 +220,8 @@ filter(s): …`, plus a hint:
 - `Did you mean <name>?` when a project name is within two edits, or
   when one scoped name matches after its `/` (`--filter vx-otel` hints
   `@vzn/vx-otel`). The hint is the pattern as typed with the name put
-  right, operators kept (`--filter apq...` hints `app...`).
+  right, operators kept (`--filter apq...` hints `app...`). A task id
+  (`--filter app#build`) hints its project: a filter names projects.
 - `A filter is one pattern: --filter a --filter b` for a comma list
   (`--filter a,b`, Nx's `--projects` habit), and `--filter {a} --filter {b}`
   for a braced one (`{a,b}`); a comma inside a glob's braces

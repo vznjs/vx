@@ -563,17 +563,23 @@ describe('a persistent server that dies before the run stops it', () => {
   // once the server's pid is gone, so the crash has landed before the
   // graph ends: alone, a slow runner's shell had not yet exited when vx
   // read READY, and the footer was right to say it ran (CI, 2026-11-01).
+  // The server exits only once its dependant has started: dead at once,
+  // the exit could land before vx read READY, and the server failed as
+  // never ready with its dependant skipped (CI, 2026-11-04).
   it('a requested server that died before the graph ended fails the footer', async () => {
     await addProject(
       root,
       'app',
       `export default { tasks: {
         srv: {
-          exec: { command: 'echo $$ > pid; echo READY; exit 3', persistent: { readyWhen: 'READY' } },
+          exec: {
+            command: 'echo $$ > pid; echo READY; until [ -f go ]; do sleep 0.02; done; exit 3',
+            persistent: { readyWhen: 'READY' },
+          },
         },
         e2e: {
           dependsOn: ['srv'],
-          exec: { command: 'while kill -0 $(cat pid) 2>/dev/null; do sleep 0.02; done' },
+          exec: { command: 'touch go; while kill -0 $(cat pid) 2>/dev/null; do sleep 0.02; done' },
         },
       } }`,
     )
