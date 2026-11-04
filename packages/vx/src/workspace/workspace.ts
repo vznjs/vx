@@ -159,6 +159,9 @@ export async function resolveStoreRoot(
   let id = repoIds.get(root)
   if (id === undefined) repoIds.set(root, (id = repoIdOf(root)))
   const resolved = await id
+  // No identity yet (no commit, no remote) is asked again: the first
+  // commit gives one, and `vx watch` runs on in the same process.
+  if (resolved === null) repoIds.delete(root)
   return resolved === null ? null : path.join(home, '.vx', resolved, 'cache')
 }
 

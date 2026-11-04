@@ -1368,7 +1368,9 @@ The id is Nx 23's: 16 hex of a sha256 of the remote (`origin`, then
 `upstream`, `base`, the first; `host/owner/repo` in lower case, so ssh
 and https agree) and the workspace's path in the repository; with no
 remote, the first commit. A repository with neither (no commit yet, a
-shallow clone with no remote) shares nothing. Each level of `~/.vx` is
+shallow clone with no remote) shares nothing: its workspace holds its
+entries, and once it has an identity (its first commit) the next run
+moves them into the store, so they still replay. Each level of `~/.vx` is
 owner-only; vx closes one of yours that others can read (chmod 700), and one others can write, or owned by another user, is not used. Design: [`design/shared-store-2026-10.md`](./design/shared-store-2026-10.md).
 
 ```

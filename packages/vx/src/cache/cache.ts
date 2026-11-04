@@ -1252,12 +1252,13 @@ export class Cache implements CacheLayer {
         }
       }
     }
-    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
-      // An index that held its entries itself would shadow the store's:
-      // SQLite resolves an unqualified name in `main` first. Its history
-      // and memos stay; its entries' artifact files are orphans `prune`
-      // reaps, and its inline artifacts go with their table.
-      const holds = readable(
+    // An index that held its entries itself (no store yet: a repository
+    // before its first commit) hands them to the store below.
+    const holds =
+      storeDir !== undefined &&
+      mode === 'open' &&
+      this.writeBlocked === null &&
+      readable(
         () =>
           this.db
             .prepare(
@@ -1265,16 +1266,6 @@ export class Cache implements CacheLayer {
             )
             .get() != null,
       )
-      if (holds) {
-        this.db
-          .transaction(() => {
-            for (const t of [...STORE_TABLES, ...ARTIFACT_TABLES]) {
-              this.db.exec(`DROP TABLE IF EXISTS main.${t}`)
-            }
-          })
-          .immediate()
-      }
-    }
     this.storeDir = storeDir
     this.artifactDir = storeDir ?? cacheDir
     if (storeDir !== undefined) {
@@ -1288,6 +1279,7 @@ export class Cache implements CacheLayer {
     if (mode === 'open' && this.writeBlocked === null && (foreign || storeDir !== recorded)) {
       readable(() => this.matchArtifactLayout(storeDir === undefined ? 'main' : 'store'))
     }
+    if (holds) this.carryEntries(cacheDir, storeDir!)
     if (mode === 'open' && this.writeBlocked === null && storeDir !== recorded) {
       if (storeDir === undefined)
         this.db.prepare("DELETE FROM schema_meta WHERE key = 'store_dir'").run()
@@ -1419,6 +1411,68 @@ export class Cache implements CacheLayer {
    * two runs on one `--cache-dir` share an index. A reading verb over a
    * store with no file or no tables yet reads an empty one in memory.
    */
+  /**
+   * The entries an index held itself, moved into the store it now opens:
+   * the same keys over the same bytes, so the first run after a
+   * repository's first commit replays what the run before it saved. Then
+   * dropped from the index, where an unqualified name would shadow the
+   * store's. An artifact file that cannot be renamed there (another
+   * device) is left for `prune`, and its entry is a miss.
+   */
+  private carryEntries(cacheDir: string, storeDir: string): void {
+    const has = (schema: 'main' | 'store', table: string): boolean =>
+      this.db
+        .prepare(`SELECT 1 FROM ${schema}.sqlite_master WHERE type = 'table' AND name = ?`)
+        .get(table) != null
+    const layout = (schema: 'main' | 'store'): string | undefined =>
+      has(schema, 'artifacts_meta')
+        ? (
+            this.db
+              .prepare(`SELECT value FROM ${schema}.artifacts_meta WHERE key = 'layout'`)
+              .get() as { value: string } | null
+          )?.value
+        : undefined
+    if (storeDir !== cacheDir) {
+      let names: string[] = []
+      try {
+        names = readdirSync(cacheDir)
+      } catch {
+        // No directory: nothing to carry.
+      }
+      for (const name of names) {
+        if (!name.endsWith('.tar.zst') && !name.endsWith('.tree')) continue
+        const to = path.join(storeDir, name)
+        if (existsSync(to)) continue
+        try {
+          renameSync(path.join(cacheDir, name), to)
+        } catch {
+          // Another device: the artifact stays an orphan here.
+        }
+      }
+    }
+    this.db
+      .transaction(() => {
+        // `entries` first: the other tables' rows reference it.
+        for (const t of STORE_TABLES.toReversed()) {
+          if (t !== 'store_meta' && has('main', t) && has('store', t)) {
+            this.db.exec(`INSERT OR IGNORE INTO store.${t} SELECT * FROM main.${t}`)
+          }
+        }
+        if (
+          has('main', 'artifacts') &&
+          has('store', 'artifacts') &&
+          layout('main') === ARTIFACT_LAYOUT &&
+          layout('store') === ARTIFACT_LAYOUT
+        ) {
+          this.db.exec('INSERT OR IGNORE INTO store.artifacts SELECT * FROM main.artifacts')
+        }
+        for (const t of [...STORE_TABLES, ...ARTIFACT_TABLES]) {
+          this.db.exec(`DROP TABLE IF EXISTS main.${t}`)
+        }
+      })
+      .immediate()
+  }
+
   private attachStore(storeDir: string, inspecting: boolean): void {
     const storeFile = path.join(storeDir, 'store.db')
     let absent = inspecting && !existsSync(storeFile)
