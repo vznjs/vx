@@ -648,6 +648,10 @@ value: `--dry=`, `--continue=` and
 (`--retries=`, `--timeout=`, `--cache-dir=`, `--filter=`, `--cache-policy=`,
 `--verbosity=`).
 
+`--affected` and `--profile` take a value with `=` only: in
+`vx run --affected main build`, `main` is a task. When no project
+declares it, the refusal names `--affected=main`.
+
 #### Cache control: `--cache-policy`, `--no-cache`, `--force`
 
 The cache has four independent axes — **localRead**, **localWrite**,
