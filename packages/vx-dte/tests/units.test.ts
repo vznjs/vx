@@ -1856,7 +1856,7 @@ it('a task whose entry reached no cache this machine reads names the upload firs
         (e: Error) => e.message,
       ),
     ).toBe(
-      "t1: worker#1 ran it, and no cache this machine reads gave its entry, asked twice: a download failed (warned above), worker#1's upload failed (its log says why), or the workers and this machine share no remote cache the workers write",
+      't1: worker#1 ran it, and no cache this machine reads gave its entry, asked twice: a download failed (warned above), or the workers and this machine share no remote cache the workers write',
     )
     expect(h.store.restored).toEqual(['k-t1', 'k-t1'])
   } finally {
@@ -2596,48 +2596,6 @@ it('a cached task’s dependant goes wherever it fits: a cache carries its outpu
   }
 })
 
-// A worker whose upload no remote took (too big, a 429) said it was saved,
-// and the run failed restoring it (2026-10-25): its files stay there,
-// its dependants go there, and its output comes with its `end`.
-it('a task no remote took the upload of: its output comes with it, its dependant follows it', async () => {
-  const cached = (id: string, deps: string[] = []) =>
-    [
-      id,
-      { id, deps, projectDir: '/ws', config: { cache: { outputs: { files: ['out/**'] } } } },
-    ] as unknown as readonly [string, TaskNode]
-  const h = await harness(new Map([cached('g'), cached('x'), cached('u', ['g'])]))
-  try {
-    const a = await h.worker(1, 'a')
-    const g = h.o.execute(h.req('g', 'k-g'))
-    expect(await a.batches()).toEqual([['g']])
-    await a.finish('g', 'k-g', {
-      exitCode: 0,
-      durationMs: 1,
-      unshared: true,
-      output: [
-        { text: 'built\n', err: false },
-        { text: 'warned\n', err: true },
-      ],
-    })
-    const got = await g
-    expect([got.stdout, got.stderr]).toEqual(['built\n', 'warned\n'])
-    if (got.outputs?.kind !== 'deferred') throw new Error('expected deferred outputs')
-    await expect(got.outputs.materialize()).rejects.toThrow('g: its files are on worker#1 alone')
-    void h.o.execute(h.req('x', 'k-x'))
-    expect(await a.batches()).toEqual([['x']])
-    const b = await h.worker(1, 'b')
-    const u = h.o.execute(h.req('u', 'k-u'))
-    await Bun.sleep(100)
-    await a.finish('x')
-    expect(await a.batches()).toEqual([['u']])
-    await a.finish('u')
-    expect((await u).exitCode).toBe(0)
-    expect(b.orders).toEqual([])
-  } finally {
-    await h.stop()
-  }
-})
-
 // A worker asked the remote before each upload (a HEAD per task on
 // turboCache()), though the run's probe had found the key in no cache:
 // requests the Vercel free tier's 300 a minute refused (2026-10-25).
@@ -2734,7 +2692,9 @@ it('a worker uploads a key the run found missing, and its run key, asking the re
   }
 })
 
-it('a worker says which task no remote took the upload of, sending its output with it', async () => {
+// A failed upload was quiet: the task's files stayed on its worker and its
+// log rode the socket. Its dependants then waited on that worker alone.
+it('a worker faults a task no remote took the upload of, and ends the rest', async () => {
   const root = await checkout()
   const served = servedRelay()
   try {
@@ -2785,9 +2745,16 @@ it('a worker says which task no remote took the upload of, sending its output wi
     })
     const tasks = [order('t'), order('u'), order('v')]
     const ends = new Map<string, WiredResult>()
-    for (let i = 0; i < 100 && ends.size < tasks.length; i++)
+    const faults = new Map<string, string>()
+    for (let i = 0; i < 100 && ends.size + faults.size < tasks.length; i++)
       for (const { from, body } of flat(await o.poll())) {
-        const m = body as { type: string; id?: string; task?: string; result?: WiredResult }
+        const m = body as {
+          type: string
+          id?: string
+          task?: string
+          reason?: string
+          result?: WiredResult
+        }
         if (from === 'relay' && m.type === 'joined') {
           await o.send(m.id!, {
             type: 'welcome',
@@ -2797,18 +2764,17 @@ it('a worker says which task no remote took the upload of, sending its output wi
             memory: 1e9,
           })
           await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks })
-        } else if (m.type === 'end') {
-          ends.set(m.task!, m.result!)
-          if (ends.size === tasks.length) await o.send(from, { type: 'exit' })
+        } else if (m.type === 'end' || m.type === 'fault') {
+          if (m.type === 'end') ends.set(m.task!, m.result!)
+          else faults.set(m.task!, m.reason!)
+          if (ends.size + faults.size === tasks.length) await o.send(from, { type: 'exit' })
         }
       }
     expect(await code).toBe(0)
-    expect([ends.get('t')?.unshared, ends.get('t')?.output]).toEqual([
-      true,
-      [{ text: 't\n', err: false }],
+    expect([...faults]).toEqual([
+      ['t', "no remote cache took its entry k-t (this worker's log says why)"],
     ])
-    for (const t of ['u', 'v'])
-      expect([ends.get(t)?.unshared, ends.get(t)?.output]).toEqual([undefined, undefined])
+    expect([...ends.keys()].sort()).toEqual(['u', 'v'])
   } finally {
     await served.stop()
   }
@@ -4384,159 +4350,6 @@ it('sends a result too long for one relay frame in parts, all of it arriving', a
     // Here, under the test's minute: 24 000 files outlast the 5 s hook
     // below on a loaded runner, which failed the test after it passed.
     await rm(root, { recursive: true, force: true })
-  }
-}, 60_000)
-
-// Parts were cut by UTF-16 length, not bytes: a part of CJK output
-// sealed past the relay's 1 MiB and its result never arrived (2026-10-25).
-it('sends a long non-ASCII output in parts the relay takes', async () => {
-  const root = await tmp()
-  await writeFile(path.join(root, 'log.txt'), '漢字の出力です。'.repeat(80_000))
-  const git = (...a: string[]) =>
-    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
-  git('init', '-q')
-  git('add', '-A')
-  git('commit', '-qm', 'i')
-  const served = servedRelay()
-  try {
-    const o = sealOrchestrator(
-      await join(served.url, R, 'orchestrator', null, undefined),
-      R,
-      secretProof('s'),
-    )
-    const code = runWorker({
-      relay: served.url,
-      run: R,
-      root,
-      token: async () => undefined,
-      proof: secretProof('s'),
-      // Shared with no remote: its output goes with its `end`.
-      artifacts: () => ({ ...fakeArtifacts().artifacts, uploaded: async () => false }),
-    })
-    const order: RunOrder = {
-      task: 'log',
-      runKey: runKey(R, 'log'),
-      deps: [],
-      nested: [],
-      command: 'cat log.txt',
-      cwd: '',
-      project: '',
-      env: { PATH: process.env['PATH'] ?? '' },
-      outputs: { files: [], workspaceFiles: [] },
-      cores: 1,
-      memory: 0,
-    }
-    let text = ''
-    let ended = false
-    for (let i = 0; i < 400 && !ended; i++)
-      for (const { from, body } of flat(await o.poll())) {
-        const m = body as {
-          type: string
-          id?: string
-          output?: { text: string }[]
-          result?: { output?: { text: string }[] }
-        }
-        if (from === 'relay' && m.type === 'joined') {
-          await o.send(m.id!, {
-            type: 'welcome',
-            name: 'a',
-            cache: { refs: [], lent: {} },
-            cores: 2,
-            memory: 1e9,
-          })
-          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
-        } else if (m.type === 'part') {
-          text += (m.output ?? []).map((c) => c.text).join('')
-        } else if (m.type === 'end') {
-          text += (m.result?.output ?? []).map((c) => c.text).join('')
-          ended = true
-          await o.send(from, { type: 'exit' })
-        }
-      }
-    expect(ended).toBe(true)
-    expect(text).toHaveLength(640_000)
-    expect(await code).toBe(0)
-  } finally {
-    await served.stop()
-  }
-}, 60_000)
-
-// Output cut every 32 768 UTF-16 units split an emoji's surrogate pair:
-// each half replayed alone printed as two replacement characters (2026-10-25).
-it('cuts a long output between characters, never inside one', async () => {
-  const root = await tmp()
-  await writeFile(path.join(root, 'log.txt'), `x${'😀'.repeat(40_000)}`)
-  const git = (...a: string[]) =>
-    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
-  git('init', '-q')
-  git('add', '-A')
-  git('commit', '-qm', 'i')
-  const served = servedRelay()
-  try {
-    const o = sealOrchestrator(
-      await join(served.url, R, 'orchestrator', null, undefined),
-      R,
-      secretProof('s'),
-    )
-    const code = runWorker({
-      relay: served.url,
-      run: R,
-      root,
-      token: async () => undefined,
-      proof: secretProof('s'),
-      // Shared with no remote: its output goes with its `end`.
-      artifacts: () => ({ ...fakeArtifacts().artifacts, uploaded: async () => false }),
-    })
-    const order: RunOrder = {
-      task: 'log',
-      runKey: runKey(R, 'log'),
-      deps: [],
-      nested: [],
-      command: 'cat log.txt',
-      cwd: '',
-      project: '',
-      env: { PATH: process.env['PATH'] ?? '' },
-      outputs: { files: [], workspaceFiles: [] },
-      cores: 1,
-      memory: 0,
-    }
-    let text = ''
-    const chunks: string[] = []
-    let ended = false
-    for (let i = 0; i < 400 && !ended; i++)
-      for (const { from, body } of flat(await o.poll())) {
-        const m = body as {
-          type: string
-          id?: string
-          output?: { text: string }[]
-          result?: { output?: { text: string }[] }
-        }
-        if (from === 'relay' && m.type === 'joined') {
-          await o.send(m.id!, {
-            type: 'welcome',
-            name: 'a',
-            cache: { refs: [], lent: {} },
-            cores: 2,
-            memory: 1e9,
-          })
-          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
-        } else if (m.type === 'part') {
-          for (const c of m.output ?? []) chunks.push(c.text)
-        } else if (m.type === 'end') {
-          for (const c of m.result?.output ?? []) chunks.push(c.text)
-          ended = true
-          await o.send(from, { type: 'exit' })
-        }
-      }
-    expect(ended).toBe(true)
-    text = chunks.join('')
-    expect(text).toHaveLength(80_001)
-    expect(chunks.length).toBeGreaterThan(1)
-    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
-    expect(chunks.filter((c) => lone.test(c))).toEqual([])
-    expect(await code).toBe(0)
-  } finally {
-    await served.stop()
   }
 }, 60_000)
 

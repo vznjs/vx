@@ -222,13 +222,11 @@ export async function runWorker(opts: {
         true,
       )
     }
-    // No remote took it: the orchestrator reads the remotes alone, so its
-    // dependants come here and its output goes with the `end` (2026-10-25).
+    // No remote took it after its tries: the run's other machines read the
+    // remotes alone, so the task is this worker's fault, run elsewhere.
     const saved = keys.at(-1)!
-    const wired: WiredResult =
-      (await artifacts.uploaded?.(saved)) === false
-        ? { ...result, unshared: true, output: pieces(output) }
-        : result
+    if ((await artifacts.uploaded?.(saved)) === false)
+      throw new Error(`no remote cache took its entry ${saved} (this worker's log says why)`)
     if (result.exitCode === 0)
       for (const k of keys) {
         present.set(k, Promise.resolve())
@@ -240,7 +238,7 @@ export async function runWorker(opts: {
       type: 'end',
       task: m.task,
       key: saved,
-      result: wired,
+      result,
       startedAt: t?.startedAt ?? endedAt,
       ranAt: t?.ranAt ?? endedAt,
       endedAt,
@@ -1031,25 +1029,6 @@ const gb = (n: number): string => `${(n / 1e9).toFixed(1)} GB`
 
 /** The most of a result one send carries: a relay frame is 1 MiB, which sealing grows by a third. */
 const PART_BYTES = 256 * 1024
-
-/** `output` cut so each chunk fits a part, escaped as JSON grows it up to six times. */
-function pieces(output: readonly CapturedChunk[]): CapturedChunk[] {
-  const most = PART_BYTES / 8
-  return output.flatMap((c) => {
-    if (c.text.length <= most) return [c]
-    const cut: CapturedChunk[] = []
-    for (let i = 0; i < c.text.length;) {
-      let end = Math.min(i + most, c.text.length)
-      // Not inside a surrogate pair: each half replayed alone printed as
-      // two replacement characters (2026-10-25).
-      const last = c.text.charCodeAt(end - 1)
-      if (end < c.text.length && last >= 0xd800 && last <= 0xdbff) end--
-      cut.push({ ...c, text: c.text.slice(i, end) })
-      i = end
-    }
-    return cut
-  })
-}
 
 /**
  * `end` as its sends: itself when it fits one frame, else its long lists
