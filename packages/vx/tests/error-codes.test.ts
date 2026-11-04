@@ -518,15 +518,15 @@ describe('a refusal under --format json', () => {
       await addProject(
         ws,
         'a',
-        `export default { tasks: { b: { exec: { command: 'true' } }, c: { exec: { command: 'true' } } } }\n`,
+        `export default { tasks: { build: { exec: { command: 'true' } }, lint: { exec: { command: 'true' } } } }\n`,
       )
-      expect((await vx(['run', 'b', '--all'], ws)).code).toBe(0)
-      const r = await vx(['last', '--log', 'a#c', '--format', 'json'], ws)
+      expect((await vx(['run', 'build', '--all'], ws)).code).toBe(0)
+      const r = await vx(['last', '--log', 'a#lint', '--format', 'json'], ws)
       expect([r.code, JSON.parse(r.stdout).error]).toEqual([
         1,
         {
           code: 'VX_E_NO_HISTORY',
-          message: 'vx last: no recorded run of a#c',
+          message: 'vx last: no recorded run of a#lint',
           docs: 'https://vznjs.github.io/vx/cli/#vx_e_no_history',
         },
       ])

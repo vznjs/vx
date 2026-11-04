@@ -33,6 +33,7 @@ import {
   detectColors,
   ERROR,
   formatElapsed,
+  nearest,
   paint,
   parseDecimalInt,
   refusal,
@@ -826,9 +827,21 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       const log = taskLog(db, await bareTaskId(db, await rootSpelled(root, parsed.log)), runId)
       if (log === null) {
         // The id's form is hinted only when it lacks one: a task that
-        // never ran was told how to spell a task id.
+        // never ran was told how to spell a task id. A typo of one that
+        // ran is named, as `vx why` names it.
+        const ran = parsed.log.includes('#')
+          ? nearest(
+              parsed.log,
+              (
+                db.query('SELECT DISTINCT project, task FROM runs').all() as {
+                  project: string
+                  task: string
+                }[]
+              ).map((r) => `${r.project}#${r.task}`),
+            )
+          : undefined
         throw new UserError(
-          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`}${parsed.log.includes('#') ? '' : ' (a task id is project#task)'}`,
+          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`}${parsed.log.includes('#') ? '' : ' (a task id is project#task)'}${ran === undefined ? '' : ` — did you mean ${ran}?`}`,
           'VX_E_NO_HISTORY',
         )
       }
