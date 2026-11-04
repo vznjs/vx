@@ -26,7 +26,8 @@ the repository (`../outside`), as a `file:` or `link:` dependency there
 is. Its steps write, delete, chmod and
 link files, run `sh`, install, commit, change the config, check the tree,
 and run a task (or several): in some projects, by selectors, from a directory, with
-args, a concurrency limit, a signal sent mid-run, going on past a failure,
+args, a concurrency limit, a signal sent mid-run (and again, as a second
+Ctrl-C), its stdin held open as an idle terminal, going on past a failure,
 forced past the cache, reading the cache without writing it, or planned
 without running. A watch step starts a tool's watch, makes each phase's
 edits once it has been quiet for 3 s, and checks what each phase ran
