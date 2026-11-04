@@ -260,13 +260,29 @@ export async function runCase(c: Case, adapter: Adapter): Promise<Outcome> {
       status: 'n/a',
       detail: `needs ${c.needs.filter((f) => adapter.lacks.includes(f)).join(', ')}`,
     }
-  const root = realpathSync(mkdtempSync(path.join(BASE, `conf-${adapter.name}-`)))
-  try {
-    return await play(c, adapter, root)
-  } finally {
-    if (process.env['CONFORMANCE_KEEP']) console.error(`kept ${root}`)
-    else rmSync(root, { recursive: true, force: true })
+  return await everyPlay(c.races ?? 1, async () => {
+    const root = realpathSync(mkdtempSync(path.join(BASE, `conf-${adapter.name}-`)))
+    try {
+      return await play(c, adapter, root)
+    } finally {
+      if (process.env['CONFORMANCE_KEEP']) console.error(`kept ${root}`)
+      else rmSync(root, { recursive: true, force: true })
+    }
+  })
+}
+
+/** `n` plays, each in a fresh tree: one that does not pass is the outcome. */
+export async function everyPlay(
+  n: number,
+  playOnce: (i: number) => Promise<Outcome>,
+): Promise<Outcome> {
+  for (let i = 0; i < n; i++) {
+    const o = await playOnce(i)
+    if (o.status === 'pass') continue
+    if (n === 1) return o
+    return { ...o, detail: `play ${i + 1} of ${n}${o.detail ? `: ${o.detail}` : ''}` }
   }
+  return { status: 'pass' }
 }
 
 async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {

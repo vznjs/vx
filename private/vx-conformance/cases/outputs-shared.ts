@@ -181,6 +181,7 @@ export const outputsShared = [
   ...COLLIDING.map(([slug, what, why, x, y]) =>
     defineCase({
       id: `outputs/unordered-overlap-${slug}`,
+      races: 5,
       category: 'outputs',
       kind: 'correctness',
       title: `${what}: neither loses its file`,

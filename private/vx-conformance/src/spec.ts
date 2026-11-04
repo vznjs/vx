@@ -239,6 +239,9 @@ export interface Case {
   /** The vx tests or issues this case was drawn from. */
   from: string[]
   needs?: Feature[]
+  /** Plays of the case, each from a fresh tree, when its outcome hangs on the order a tool
+   * picks for unordered tasks: a tool that loses even once fails. */
+  races?: number
   workspace: WorkspaceSpec
   steps: Step[]
 }
