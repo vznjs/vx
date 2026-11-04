@@ -165,6 +165,7 @@ async function resolveTarget(
   cache: Cache,
   target: string,
   cwdProject: () => Promise<string | null>,
+  declared: () => Promise<boolean>,
 ): Promise<string> {
   const db = indexDb(cache)
   if (target.includes('#')) {
@@ -202,11 +203,21 @@ async function resolveTarget(
   const ids = pairs.map((p) => `${p.project}#${p.task}`)
   const invoked = ids.length === 0 && db.query('SELECT 1 FROM invocations LIMIT 1').get() !== null
   if (ids.length === 0 && !invoked) {
+    // `vx run` of a task no project declares is refused: its advice was that.
+    const known = await declared()
     throw refusal(
-      { tone: 'info', headline: `no runs of ${target} yet`, fix: `vx run ${target}` },
+      known
+        ? { tone: 'info', headline: `no runs of ${target} yet`, fix: `vx run ${target}` }
+        : {
+            tone: 'info',
+            headline: `no project declares ${target}`,
+            fix: 'vx show lists the tasks',
+          },
       {
         code: 'VX_E_NO_HISTORY',
-        message: `vx why: no recorded runs for "${target}"${suggest(target, ids, invoked)}`,
+        message: known
+          ? `vx why: no recorded runs for "${target}"${suggest(target, ids, invoked)}`
+          : `vx why: no project declares "${target}" (vx show lists the tasks)`,
       },
     )
   }
@@ -264,8 +275,12 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   const cache = Cache.inspect(await cliCacheDir(root, parsed.cacheDir))
   try {
     const db = indexDb(cache)
-    const taskId = await resolveTarget(cache, await rootSpelled(root, parsed.target), () =>
-      findCwdProject(process.cwd()),
+    const target = await rootSpelled(root, parsed.target)
+    const taskId = await resolveTarget(
+      cache,
+      target,
+      () => findCwdProject(process.cwd()),
+      () => declares(root, target),
     )
     let runId: string | null
     if (parsed.runId !== undefined) {
@@ -487,6 +502,21 @@ function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffE
       `a dependency joined or left the graph (${edges.map((e) => `${e.name} ${e.change}`).join(', ')}): its \`dependsOn\` or a project edge changed, which re-keys the task by design`,
     )
   return out
+}
+
+/** Whether a project declares `target` (`pkg#task`, or a bare task); true when no config loads. */
+async function declares(root: string, target: string): Promise<boolean> {
+  try {
+    const projects = await loadCliProjects(root, await discoverCliProjects(root), 'all')
+    const [project, task] = target.includes('#') ? splitTaskId(target) : [undefined, target]
+    return [...projects.values()].some(
+      (p) =>
+        (project === undefined || p.name === project) && Object.hasOwn(p.config.tasks ?? {}, task),
+    )
+  } catch {
+    // quiet: with no lock or a broken config, the run says why itself
+    return true
+  }
 }
 
 /**
