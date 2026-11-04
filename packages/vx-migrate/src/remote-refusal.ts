@@ -27,5 +27,10 @@ export async function refusal(res: Response, what = ''): Promise<Error> {
   } catch {
     // quiet: the status alone still names the refusal
   }
-  return new Error(`${what}HTTP ${res.status}${said === '' ? '' : `: ${said.slice(0, 200)}`}`)
+  // Each control as `\xNN`: an `ESC ]` in the server's words retitled the terminal (L-31).
+  const line = said
+    .slice(0, 200)
+    // oxlint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+  return new Error(`${what}HTTP ${res.status}${line === '' ? '' : `: ${line}`}`)
 }
