@@ -10,7 +10,8 @@ export interface GitlabPluginOptions {
    * Name the run's cache scope and base commit from GitLab's predefined
    * variables: none on the default branch or a merge train, else
    * `<project path>:<branch>`; a merge request is compared with its diff
-   * base. The scope keys plugin entries only. `VX_CACHE_SCOPE` beats it.
+   * base, a merged results pipeline with the target head, a train car
+   * with the car ahead. The scope keys plugin entries only. `VX_CACHE_SCOPE` beats it.
    * Default: on; `false` opts out.
    */
   cacheScope?: boolean
@@ -41,7 +42,7 @@ export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined 
 /**
  * What a GitLab CI job knows of its branch. A merge request pipeline names
  * its source branch in the project it lives in (a fork's own,
- * `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`) and its diff base; a merge
+ * `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`) and its base (`baseOf`); a merge
  * train's pipeline builds what lands on the target, so it is trusted; a
  * branch or tag pipeline names its ref, none on the default branch.
  * `refs`, what a remote reads (2026-10-25): a merge train's only its
@@ -80,8 +81,24 @@ function gitlabBranch(
   return refs.length === 0 ? facts : { ...facts, refs }
 }
 
+/**
+ * The commit a bare `--affected` compares with. A merged results pipeline
+ * runs the merge onto the target's head, so it is compared with that head:
+ * the diff base took in every change the target got since the branch
+ * forked. A train's car is merged onto the car ahead (its first parent,
+ * GitLab's `first_parent_ref`), whose pipeline runs that car's changes.
+ * Any other merge request pipeline runs its source branch: the diff base.
+ */
+function baseOf(value: (key: string) => string | undefined): string | undefined {
+  const event = value('CI_MERGE_REQUEST_EVENT_TYPE')
+  if (event === 'merge_train') return 'HEAD^1'
+  const diffBase = value('CI_MERGE_REQUEST_DIFF_BASE_SHA')
+  if (event === 'merged_result') return value('CI_MERGE_REQUEST_TARGET_BRANCH_SHA') ?? diffBase
+  return diffBase
+}
+
 function scopeOf(value: (key: string) => string | undefined): BranchFacts {
-  const base = value('CI_MERGE_REQUEST_DIFF_BASE_SHA')
+  const base = baseOf(value)
   const withBase = (facts: BranchFacts): BranchFacts =>
     base === undefined ? facts : { ...facts, base }
   if (value('CI_MERGE_REQUEST_EVENT_TYPE') === 'merge_train') return withBase({ trusted: true })

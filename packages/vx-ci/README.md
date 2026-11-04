@@ -111,8 +111,12 @@ variables, as `github()` does on Actions. The default branch
 subgroup's project is `group/sub/app:feat-x`, the scope a laptop on
 `feat-x` derives. A merge request pipeline names its source branch
 (`CI_MERGE_REQUEST_SOURCE_BRANCH_NAME`) in the project it lives in (a
-fork's `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`) and its diff base
-(`CI_MERGE_REQUEST_DIFF_BASE_SHA`), the base of a bare `--affected`.
+fork's `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`) and the base of a bare
+`--affected`: its diff base (`CI_MERGE_REQUEST_DIFF_BASE_SHA`); in a
+merged results pipeline the target head it merged onto
+(`CI_MERGE_REQUEST_TARGET_BRANCH_SHA`), so changes the target took
+since are not run again; in a merge train the car ahead (`HEAD^1`),
+whose own pipeline runs its changes.
 A merge train's pipeline (`CI_MERGE_REQUEST_EVENT_TYPE=merge_train`)
 builds what lands on the target, so it is trusted: no scope. As on
 Actions, the scope keys only plugin entries. A remote reads the tag, else
