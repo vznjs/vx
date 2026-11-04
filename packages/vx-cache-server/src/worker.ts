@@ -1,5 +1,5 @@
 // `vx-cache-server` on Cloudflare Workers: artifacts in R2, nothing else.
-// `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and the limits are vars in
+// `wrangler.jsonc` deploys it; ALLOW, AUDIENCE, EXPIRY_DAYS and the limits are vars in
 // it (README.md § On Cloudflare Workers).
 
 import {
@@ -18,7 +18,7 @@ import type { Blobs } from './store.js'
 export interface R2Bucket {
   put(name: string, body: ReadableStream<Uint8Array>): Promise<unknown>
   get(name: string): Promise<{ body: ReadableStream<Uint8Array>; size: number } | null>
-  head(name: string): Promise<{ size: number } | null>
+  head(name: string): Promise<{ size: number; uploaded: Date } | null>
 }
 /** The data center's cache (Workers Cache API): free, and per data center. */
 interface WorkersCache {
@@ -46,21 +46,44 @@ export interface Env {
   /** A string, or a number as wrangler.jsonc may write it. */
   readonly MAX_CHECK_HASHES?: string | number
   readonly MAX_UPLOAD_BYTES?: string | number
+  /** The bucket's lifecycle rule in days; set, "held" is kept that long from each upload. */
+  readonly EXPIRY_DAYS?: string | number
 }
 
 /** An object's key in the data center's cache. */
 const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${name}`)
+/** The key of the mark that R2 holds an object, and its size. */
+const heldOf = (name: string): Request => new Request(`https://vx-cache.held/${name}`)
+const SIZE = 'vx-size'
 
 /**
  * R2, read through the data center's cache: an artifact never changes
  * under its name while R2 holds it, so a copy needs no expiry of its own;
  * an upload drops the copy, of bytes R2 has since let go. The server has
  * checked the token and named the object before a read reaches here.
+ *
+ * With `expiryDays`, the bucket's lifecycle rule, whether R2 holds an
+ * object is kept there too, until the rule may drop it: counted from its
+ * upload, so a mark never outlives R2's copy. Only "held" is kept: a
+ * kept "missing" would hide an upload that lands later.
  */
-
-export function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
+export function r2Blobs(
+  bucket: R2Bucket,
+  cache: Promise<WorkersCache>,
+  ctx: Context,
+  expiryDays?: number,
+): Blobs {
+  const mark = (name: string, size: number, uploaded: number): void => {
+    if (expiryDays === undefined) return
+    const left = Math.floor((uploaded + expiryDays * 86_400_000 - Date.now()) / 1000)
+    if (left <= 0) return
+    const headers = { [SIZE]: String(size), 'cache-control': `max-age=${left}` }
+    ctx.waitUntil(cache.then((c) => c.put(heldOf(name), new Response(null, { headers }))))
+  }
   return {
     async put(name, body, size) {
+      // Before R2's own upload time, so the mark ends no later than R2's copy.
+      const started = Date.now()
       // R2 takes a stream of known length; this one errors at any other.
       const fixed = new FixedLengthStream(size)
       const piped = body.pipeTo(fixed.writable)
@@ -78,6 +101,7 @@ export function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Con
       // R2 takes a name only once it holds none: a copy here is of bytes
       // R2 expired, a corrupt one too, and outlived the new ones a year.
       await (await cache).delete(keyOf(name))
+      mark(name, size, started)
     },
     get: async (name) => {
       const key = keyOf(name)
@@ -101,12 +125,21 @@ export function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Con
       )
       return { body: o.body, size: o.size }
     },
-    // R2 alone answers whether it holds an object: a check, a HEAD and a
-    // PUT's skip. The data center's copy outlives R2's (expiry, a wipe), so
-    // a writer told "held" there skipped its upload and a reader in another
-    // data center found nothing (2026-10-27: a DTE worker's save, then the
-    // run's read, a 404).
-    size: async (name) => (await bucket.head(name))?.size ?? null,
+    // R2 answers whether it holds an object (a check, a HEAD and a PUT's
+    // skip), or a mark it made: never the data center's copy of the bytes,
+    // which outlives R2's (expiry, a wipe), so a writer told "held" there
+    // skipped its upload and a reader in another data center found nothing
+    // (2026-10-27: a DTE worker's save, then the run's read, a 404).
+    size: async (name) => {
+      if (expiryDays !== undefined) {
+        const held = await (await cache).match(heldOf(name))
+        if (held !== undefined) return Number(held.headers.get(SIZE))
+      }
+      const o = await bucket.head(name)
+      if (o === null) return null
+      mark(name, o.size, o.uploaded.getTime())
+      return o.size
+    },
   }
 }
 
@@ -129,8 +162,24 @@ function workerLimits(env: Env): Limits {
   return { ...DEFAULT_LIMITS, maxCheckHashes: CHECK_LOOKUPS, ...limitsFrom(env) }
 }
 
+/** EXPIRY_DAYS: unset, nothing is kept of R2's answer. */
+function expiryOf(env: Env): number | undefined {
+  const v = env.EXPIRY_DAYS
+  if (v === undefined || v === '') return undefined
+  const n =
+    typeof v === 'number' ? v : typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : Number.NaN
+  if (!(Number.isSafeInteger(n) && n > 0)) {
+    throw new Error(
+      `EXPIRY_DAYS: the bucket's lifecycle rule, whole days above 0, not ${JSON.stringify(v)}`,
+    )
+  }
+  return n
+}
+
 /** What a request shares per isolate and settings. */
-let made: { key: string; authorize: Authorize; limits: Limits } | undefined
+let made:
+  | { key: string; authorize: Authorize; limits: Limits; expiryDays: number | undefined }
+  | undefined
 
 /**
  * The issuer's keys through the data center's cache: a fresh isolate read
@@ -154,6 +203,7 @@ export default {
       env.READ_ACCESS,
       env.MAX_CHECK_HASHES,
       env.MAX_UPLOAD_BYTES,
+      env.EXPIRY_DAYS,
     ].join('\0')
     if (made?.key !== key) {
       let allow
@@ -175,8 +225,10 @@ export default {
         return errorJson(500, `ALLOW: ${(err as Error).message}`)
       }
       let authorize
+      let expiryDays
       try {
         limits = workerLimits(env)
+        expiryDays = expiryOf(env)
         authorize = oidcAuth({
           allow,
           readAccess: env.READ_ACCESS,
@@ -188,11 +240,11 @@ export default {
       } catch (err) {
         return errorJson(500, (err as Error).message)
       }
-      made = { key, authorize, limits }
+      made = { key, authorize, limits, expiryDays }
     }
     // The bucket and cache are this request's: a Worker's I/O objects do not outlive it.
     return createCacheServer({
-      blobs: r2Blobs(env.BLOBS, caches.open('vx-cache'), ctx),
+      blobs: r2Blobs(env.BLOBS, caches.open('vx-cache'), ctx, made.expiryDays),
       authorize: made.authorize,
       limits: made.limits,
     })(req)

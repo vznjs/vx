@@ -10,8 +10,10 @@
   // writes main's scope, which every run reads after its own, and a
   // branch's run its own. vx-worker.yml is left out: it may be dispatched
   // on main to run a fork PR's code, and writes with its run's lent token.
+  // EXPIRY_DAYS: the bucket's rule below, so a repeat check skips R2.
   "vars": {
     "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml",
+    "EXPIRY_DAYS": 1,
   },
   // Expiry: one bucket lifecycle rule, every object after 1 day
   // (README): names are hashed, so no prefix tells main from a branch.
@@ -27,6 +29,7 @@
   "previews": {
     "vars": {
       "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml",
+      "EXPIRY_DAYS": 1,
     },
     "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
     "observability": {

@@ -90,6 +90,11 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
       'AUDIENCE: one string, the aud CI tokens name',
     ],
     [{ ALLOW: ALLOW_VAR, READ_ACCESS: 'yes' }, 500, 'READ_ACCESS: public, or unset, not yes'],
+    [
+      { ALLOW: ALLOW_VAR, EXPIRY_DAYS: '1d' },
+      500,
+      `EXPIRY_DAYS: the bucket's lifecycle rule, whole days above 0, not "1d"`,
+    ],
     // wrangler.jsonc may write a var as JSON: a list was refused "not public".
     [
       { ALLOW: ALLOW_VAR, READ_ACCESS: ['public'] },
@@ -155,7 +160,7 @@ it('reads AUDIENCE without the blanks around it', async () => {
   }
 })
 
-it("answers a read from the data center's cache once R2 served it, and whether it holds one from R2 alone", async () => {
+it("answers a read from the data center's cache once R2 served it, and, with no EXPIRY_DAYS, whether it holds one from R2 alone", async () => {
   const hash = crypto.randomUUID().replaceAll('-', '')
   const url = new URL(`/v1/artifacts/${hash}`, base)
   const auth = (job: 'main' | 'read') => iss.sign(JOBS[job], AUD).then((t) => `Bearer ${t}`)
@@ -369,6 +374,55 @@ it('takes a limit wrangler.jsonc writes as a number', async () => {
       headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
     })
     expect(((await res.json()) as { maxCheckHashes: number }).maxCheckHashes).toBe(20)
+  } finally {
+    await other.dispose()
+  }
+})
+
+// A repeat HEAD, check or upload skip in a data center read R2 each time
+// (2026-11-04): with EXPIRY_DAYS, R2's "held" is kept there until the
+// bucket's rule may drop the artifact, and a miss is still asked of R2.
+it('with EXPIRY_DAYS, answers whether it holds an artifact from the mark an upload left', async () => {
+  const other = await start({ ALLOW: ALLOW_VAR, EXPIRY_DAYS: 1 })
+  try {
+    const at = await other.ready
+    const auth = (job: 'main' | 'read') => iss.sign(JOBS[job], AUD).then((t) => `Bearer ${t}`)
+    const hash = crypto.randomUUID().replaceAll('-', '')
+    const url = new URL(`/v1/artifacts/${hash}`, at)
+    const head = async () =>
+      (
+        await fetch(url, {
+          method: 'HEAD',
+          headers: {
+            ...NAMED,
+            authorization: await auth('read'),
+            'vx-scope': scopeOf('refs/heads/main'),
+          },
+        })
+      ).status
+    expect(await head()).toBe(404)
+    const put = await fetch(url, {
+      method: 'PUT',
+      body: 'held',
+      headers: { ...NAMED, authorization: await auth('main') },
+    })
+    expect(put.status).toBe(204)
+    await Bun.sleep(200)
+    const bucket = (await other.getR2Bucket('BLOBS')) as unknown as {
+      list(): Promise<{ objects: { key: string }[] }>
+      delete(keys: string[]): Promise<void>
+    }
+    await bucket.delete((await bucket.list()).objects.map((o) => o.key))
+    // R2 no longer holds it: only the mark can answer.
+    expect(await head()).toBe(200)
+    const check = await fetch(new URL('/v1/artifacts', at), {
+      method: 'POST',
+      body: JSON.stringify({ hashes: [hash], scopes: [scopeOf('refs/heads/main')] }),
+      headers: { ...NAMED, authorization: await auth('read'), 'content-type': 'application/json' },
+    })
+    expect(await check.json()).toEqual({
+      [hash]: { size: 4, scope: scopeOf('refs/heads/main') },
+    })
   } finally {
     await other.dispose()
   }

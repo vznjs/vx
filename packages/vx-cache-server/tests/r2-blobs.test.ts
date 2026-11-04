@@ -11,7 +11,7 @@ it("serves a read from R2 alone, the data center's copy from a read of its own",
   const bodies: ReadableStream<Uint8Array>[] = []
   const bucket: R2Bucket = {
     put: async () => undefined,
-    head: async () => ({ size: bytes.byteLength }),
+    head: async () => ({ size: bytes.byteLength, uploaded: new Date() }),
     get: async () => {
       const body = new Blob([bytes]).stream()
       bodies.push(body)
