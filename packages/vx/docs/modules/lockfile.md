@@ -15,7 +15,7 @@ message per project that differs.
 
 ```ts
 export const LOCKFILE_NAME = '.vx/projects.lock.json'
-export const LOCKFILE_VERSION = 3
+export const LOCKFILE_VERSION = 5
 
 export interface LockedProject {
   file: string // the config file's name in the directory (`vx.config.ts`)
@@ -28,6 +28,9 @@ export interface Lockfile {
   projects: Record<string, LockedProject>
   validated?: string // the self-digest writeLockfile appends
 }
+// On disk only: `pool` holds each task, exec, env, sandbox, inputs or cache
+// value two places hold alike, once; each place holds its index. A read
+// puts the values back, shared, and drops `pool`.
 
 export function lockfilePath(root: string): string
 export const NO_LOCK = 'no lock: run `vx lock`' // a run's refusal when no lock exists
@@ -63,7 +66,15 @@ of an evaluation: an entry missing for the project is a
 (2026-10-14). A hand-broken entry that then crashes a run is
 named, not shown as a raw TypeError: on that crash's path only, a task
 or the CLI asks `lockEntryBroken` and prints `LOCK_INVALID`
-(2026-10-14). `writeLockfile` ends the lock with a `validated`
+(2026-10-14). `writeLockfile` writes a value two places hold alike once, in `pool`
+(`task`, `exec`, `env`, `sandbox`, `inputs`, `cache`), and puts its index
+in each place. Each slot is one the schema types as an object, so a number
+there can only be an index. Big workspaces repeat their tasks: 2,000
+projects of five tasks read in 0.71 ms against 2.62 ms, from a fifth of
+the bytes; this repo's lock went from 126 KB to 55 KB. `readLockfile`
+puts each value back once, so projects share it; the `project` and `graph`
+stages, which edit a config in place, copy it first. An index with no
+pool entry is a `UserError` (`no task 3 in its pool`). `writeLockfile` ends the lock with a `validated`
 field, a digest of the bytes above it under vx's version; no reader
 consults it. The CLI's own selection load (`loadCliProjects`, what a
 filter that walks the graph stages) reads the lock the same way, so
@@ -136,5 +147,8 @@ derivation once the lock itself holds.
   workspace and an entry whose config file was renamed. It compares a fresh evaluation in the
   lock's JSON form, so a field a config leaves `undefined` is not drift.
   An unknown argument exits 1 before anything is read or written.
+- A read lock's configs share each pooled value, so a reader never edits
+  one in place: the `project` and `graph` stages copy first
+  (`tests/plugin-pipeline.test.ts`, "an alike task").
 - `.vx/projects.lock.json` is globally excluded from cache inputs and
   `--affected` (it's vx's own metadata, never a task input).

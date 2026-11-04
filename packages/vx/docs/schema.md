@@ -2614,7 +2614,8 @@ Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projec
 | `<dir>: "//" names the workspace root — set another \`name\``                                   | A config away from the root says `name: '//'`.                            |
 | `.vx/projects.lock.json locks <dir>, but its <file> is gone — run \`vx lock\``                  | A locked project's config was deleted or renamed (X-144).                 |
 | `.vx/projects.lock.json locks <dir>, but its <file> is not readable by this user (<code>)`      | This user may not search the project's directory (D-132).                 |
-| `.vx/projects.lock.json has unsupported version <n> (this vx expects 3) — re-run \`vx lock\``   | A lock an earlier vx wrote (version 2 keyed by name).                     |
+| `.vx/projects.lock.json has unsupported version <n> (this vx expects 5) — re-run \`vx lock\``   | A lock an earlier vx wrote.                                               |
+| `.vx/projects.lock.json: no <pool> <n> in its pool — re-run \`vx lock\``                        | A hand-edited lock names a pooled value it does not hold.                 |
 | `git ls-files failed (exit <n>): <why>`                                                         | `vx lock` could not list the configs (a torn index).                      |
 
 Core reads no `package.json` or `pnpm-workspace.yaml`; the errors reading them are `@vzn/vx-migrate`'s (its README, "Errors reading the members").

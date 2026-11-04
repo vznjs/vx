@@ -252,7 +252,7 @@ describe('a project is a directory with a vx.config', () => {
         JSON.stringify({ version: 2, projects: { a: { tasks: {} } } }),
       )
       expect(planned(root, 'hello', '--all')).toBe(
-        'exit 1: ✗ vx run  .vx/projects.lock.json has unsupported version 2 (this vx expects 4) — re-run `vx lock`',
+        'exit 1: ✗ vx run  .vx/projects.lock.json has unsupported version 2 (this vx expects 5) — re-run `vx lock`',
       )
     },
     TIMEOUT,

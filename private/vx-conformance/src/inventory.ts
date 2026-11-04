@@ -303,6 +303,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lock-secret',
     'lock-shadowed-config',
     'lockfile-boundary',
+    'lockfile-pool',
     'lockfile-claim',
     'metrics',
     'migration',
