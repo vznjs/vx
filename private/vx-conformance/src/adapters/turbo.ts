@@ -30,7 +30,7 @@ export const turbo: Adapter = {
         }
     }
     // A bare task name in a run or a `^` dependency needs a root entry too.
-    for (const [name, p] of Object.entries(ws.projects))
+    for (const p of Object.values(ws.projects))
       for (const t of Object.keys(p.tasks ?? {})) tasks[t] ??= { dependsOn: [], outputs: [] }
     await writeFile(path.join(dir, 'turbo.json'), JSON.stringify({ tasks }, null, 2))
     return []
