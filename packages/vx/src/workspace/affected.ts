@@ -20,7 +20,7 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
-import { LOCKFILE_NAME, lockKey } from './lockfile.js'
+import { LOCKFILE_NAME, lockEntries, lockKey } from './lockfile.js'
 import {
   DEPENDENCIES_LOCK_NAME,
   type DependenciesLock,
@@ -545,20 +545,8 @@ export async function affectedChanges(
   if (diffed.paths.includes(LOCKFILE_NAME) || untracked.includes(LOCKFILE_NAME)) {
     // A side with no lock (or one that will not parse) ran nothing from
     // it: the paths of the configs say what changed, as before the lock.
-    const entries = (bytes: Uint8Array | null): Record<string, unknown> | null => {
-      if (bytes === null) return null
-      try {
-        const locked = (JSON.parse(new TextDecoder().decode(bytes)) as { projects?: unknown })
-          .projects
-        return typeof locked === 'object' && locked !== null
-          ? (locked as Record<string, unknown>)
-          : null
-      } catch {
-        return null
-      }
-    }
-    const before = entries(await gitBytesAt(args.workspaceRoot, base, LOCKFILE_NAME))
-    const after = entries(await bytesOrNull(path.join(args.workspaceRoot, LOCKFILE_NAME)))
+    const before = lockEntries(await gitBytesAt(args.workspaceRoot, base, LOCKFILE_NAME))
+    const after = lockEntries(await bytesOrNull(path.join(args.workspaceRoot, LOCKFILE_NAME)))
     const same = (dir: string): boolean =>
       before === null ||
       after === null ||

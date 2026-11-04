@@ -159,3 +159,22 @@ it('a rewritten dependencies lock alone selects nothing', async () => {
   const tasks = await dry(root, ['build', '--affected=HEAD~1'])
   expect(tasks.map((t) => t.id)).toEqual([])
 })
+
+// The base lock wrote the two alike tasks once, in its pool; the head lock,
+// with one project left, writes it inline. The entry is the same.
+it('a deleted project leaves the alike task it pooled with unselected', async () => {
+  const root = await makeWorkspace({ prefix: 'vx-affected-pooled-', edges: {} })
+  made.push(root)
+  for (const name of ['a', 'b'])
+    await addProject(root, name, { config: config(['src/**']), files: { 'src/x': '1\n' } })
+  await lock(root)
+  const git = gitIn(root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'init')
+  expect(JSON.parse(git('show', 'HEAD:.vx/projects.lock.json')).pool.task).toHaveLength(1)
+  await rm(path.join(root, 'packages/a'), { recursive: true })
+  await lock(root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'drop a')
+  expect(await dry(root, ['build', '--affected=HEAD~1'])).toEqual([])
+})
