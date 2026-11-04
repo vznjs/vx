@@ -200,6 +200,9 @@ function trimCores(n: number): string {
 
 /** `2 — app#test (3 of 7 runs failed on unchanged inputs); api#e2e (1 of 4)`, or `none`. */
 function describeProjects(f: InfoFacts): string {
+  // The count is the lock's: with none read, 0 would say the workspace has no project.
+  if (f.lockError != null) return '— (the lock is refused)'
+  if (!f.lockfile) return '— (no lock: `vx lock`)'
   return `${f.projects} (${f.tasks} task${f.tasks === 1 ? '' : 's'})`
 }
 
