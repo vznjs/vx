@@ -111,7 +111,7 @@ Slot rules (the point of the design — the display derives from the
   so far (`usage`, a `LiveUsage` of `{ cores, rssBytes }` from
   orchestrator/live-usage.ts, which looks only once the region asks),
   `blocks`, the worker (`where`, else `local`) and the id. Ids are identity-colored (`paintIdParts`):
-  each half in a hue hashed stably from its own name (`identityColor`),
+  each half in a hue hashed stably from its own name (`identityHue`),
   the `#` dim — never status colors. The id is the last column and is never
   truncated.
 

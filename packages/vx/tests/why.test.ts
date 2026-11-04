@@ -689,7 +689,9 @@ describe('vx why (e2e) — the exact lines', () => {
         /^ {2}changed {2}file {2}packages\/app\/package\.json {2}[0-9a-f]+ → [0-9a-f]+$/,
       )
       expect(rows[1]).toMatch(/^ {2}added {4}file {2}packages\/app\/src\/new\.txt {3}\+ [0-9a-f]+$/)
-      expect(rows[2]).toMatch(/^ {2}removed {2}file {2}packages\/app\/src\/old\.txt {3}- [0-9a-f]+$/)
+      expect(rows[2]).toMatch(
+        /^ {2}removed {2}file {2}packages\/app\/src\/old\.txt {3}- [0-9a-f]+$/,
+      )
       // One line per kind, in the rows' order, padded as they are.
       expect(lines.slice(lines.findIndex((l) => l.startsWith('─ What to do ')) + 1, -1)).toEqual([
         `  file      ${WHAT_TO_DO['file']}`,
@@ -762,7 +764,9 @@ describe('vx why (e2e) — the exact lines', () => {
       try {
         const lines = (await vx(root, ['why', 'app#build'])).out.split('\n')
         expect(lines.filter((l) => l.startsWith('  ') && l.includes('format'))).toEqual([
-          expect.stringMatching(/^ {2}changed +format +cache-version +vx-cache-v0 → vx-cache-v\d+$/),
+          expect.stringMatching(
+            /^ {2}changed +format +cache-version +vx-cache-v0 → vx-cache-v\d+$/,
+          ),
           `  format    ${WHAT_TO_DO['format']}`,
         ])
       } finally {

@@ -566,7 +566,7 @@ table spells the combinations out as `success` / `restored-local` /
 
 The colors / framing modules:
 
-- `util/colors.ts` — ANSI truecolor (`ansi-16m`), gated by
+- `ui/theme.ts` — ANSI truecolor (`ansi-16m`), gated by
   `NO_COLOR` / `FORCE_COLOR` / `isTTY`. Programmatic-logger callers
   always see plain text.
 - `report/framed-output.ts` — the `┌─` frames, the glyph grid

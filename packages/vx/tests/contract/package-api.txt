@@ -169,21 +169,21 @@ export class UserError extends Error {
   constructor(message: string, code: string)
   constructor(message: string, code = 'VX_E_REFUSED')
 }
-== const cmd (src/util/ui.ts)
-export const cmd = (text: string): Inline => ({ style: 'bold', text })
-== const dim (src/util/ui.ts)
-export const dim = (text: string): Inline => ({ style: 'dim', text })
-== const id (src/util/ui.ts)
+== const cmd (src/ui/components.ts)
+export const cmd = (text: string): Inline => ({ style: 'strong', text })
+== const dim (src/ui/components.ts)
+export const dim = (text: string): Inline => ({ style: 'muted', text })
+== const id (src/ui/components.ts)
 export const id = (text: string): Inline => ({ style: 'id', text })
 == const LOG_WIRE_VERSION (src/orchestrator/task-log-buffer.ts)
 export const LOG_WIRE_VERSION = 1
-== const path (src/util/ui.ts)
-export const path = (text: string): Inline => ({ style: 'bold', text })
+== const path (src/ui/components.ts)
+export const path = (text: string): Inline => ({ style: 'strong', text })
 == const PERSISTENT_TODO (src/workspace/migration.ts)
 export const PERSISTENT_TODO =
   'persistent task — set persistent.readyWhen (regex matched against output) so ' +
   'dependents unblock on readiness, and consider exec.timeout to bound the wait'
-== const place (src/util/ui.ts)
+== const place (src/ui/components.ts)
 export const place = (text: string): Inline => (text === 'local' ? text : id(text))
 == const PLATFORMS (src/config.ts)
 export const PLATFORMS = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const
@@ -214,10 +214,13 @@ export const PROJECT_CONFIG_FILENAMES = [
   'vx.config.cts',
   'vx.config.cjs',
 ]
+== const strong (src/ui/components.ts)
+export const strong = (text: string): Inline => ({ style: 'strong', text })
 == const TELEMETRY_SCHEMA_VERSION (src/orchestrator/telemetry.ts)
 export const TELEMETRY_SCHEMA_VERSION = 4
-== const tone (src/util/ui.ts)
-export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
+== const tone (src/ui/components.ts)
+export const tone = (t: Style, text: string, bold = false): Inline =>
+  bold ? { style: t, text, bold } : { style: t, text }
 == const VERSION (src/version.ts)
 export const VERSION: string = pkg.version
 == function answerRuntime (src/cache/inputs.ts)
@@ -231,8 +234,10 @@ export function answerRuntime(
 export async function applyMigration(args: ApplyMigrationArgs): Promise<number>
 == function branchCacheScope (src/workspace/config-schema.ts)
 export function branchCacheScope(repo: string, branch: string): string
-== function code (src/util/ui.ts)
+== function code (src/ui/components.ts)
 export function code(frame: string): Block
+== function colorsOf (src/ui/terminal.ts)
+export function colorsOf(stream: StreamName): ReturnType<typeof detectColors>
 == function criticalPath (src/graph/critical-path.ts)
 export function criticalPath(
   nodes: readonly TaskNode[],
@@ -246,6 +251,8 @@ export function currentBranch(
   flag?: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string | null
+== function data (src/ui/terminal.ts)
+export function data(stream: StreamName, bytes: string): void
 == function definePlugin (src/orchestrator/plugin.ts)
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
 == function defineProject (src/config.ts)
@@ -279,20 +286,20 @@ export function defineWorkspace<T extends WorkspaceConfig>(
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T
-== function excerpt (src/util/ui.ts)
+== function excerpt (src/ui/components.ts)
 export function excerpt(title: string, body: string): Block
 == function executorFallback (src/exec/executor.ts)
 export function executorFallback(reason: string): Error
 == function exitSignal (src/exec/runner.ts)
 export function exitSignal(code: number): string | undefined
-== function fields (src/util/ui.ts)
+== function fields (src/ui/components.ts)
 export function fields(rows: readonly FieldRow[]): Block
 == function findWorkspaceRoot (src/workspace/workspace.ts)
 export async function findWorkspaceRoot(
   start: string,
   uid: number = process.getuid?.() ?? 0,
 ): Promise<string>
-== function fix (src/util/ui.ts)
+== function fix (src/ui/components.ts)
 export function fix(action: Inline): Block
 == function foldScriptHooks (src/workspace/migration.ts)
 export function foldScriptHooks(
@@ -300,9 +307,11 @@ export function foldScriptHooks(
   body: string,
   post: string | undefined,
 ): string
+== function gap (src/ui/components.ts)
+export function gap(): Block
 == function hostPlatform (src/exec/executor.ts)
 export function hostPlatform(): string
-== function inline (src/util/ui.ts)
+== function inline (src/ui/components.ts)
 export function inline(x: Inline, c: ColorSupport): string
 == function isCacheHit (src/graph/task-status.ts)
 export function isCacheHit(status: string): boolean
@@ -316,6 +325,8 @@ export function isSecretUnavailable(err: unknown): err is SecretUnavailable
 export function isStarterConfig(file: string): boolean
 == function isUserError (src/util/errors.ts)
 export function isUserError(err: unknown): err is UserError
+== function line (src/ui/components.ts)
+export function line(...items: Inline[]): Block
 == function loadProjectConfig (src/workspace/project-loader.ts)
 export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
 == function loadResolvedProjects (src/orchestrator/projects.ts)
@@ -340,11 +351,11 @@ export async function mergeBaseWith(
   workspaceRoot: string,
   ref: string,
 ): Promise<string | undefined>
-== function next (src/util/ui.ts)
+== function next (src/ui/components.ts)
 export function next(command: Inline): Block
 == function normalizeGlob (src/util/paths.ts)
 export function normalizeGlob(glob: string): string
-== function notice (src/util/ui.ts)
+== function notice (src/ui/components.ts)
 export function notice(p: NoticeParts): Block
 == function outputDirPrefixes (src/util/paths.ts)
 export function outputDirPrefixes(globs: readonly string[]): string[] | null
@@ -356,8 +367,8 @@ export function packageManagerPath(root: string): string | null
 export async function planRun(options: RunOptions): Promise<RunPlan>
 == function prepareRun (src/orchestrator/prepare.ts)
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
-== function print (src/util/ui.ts)
-export function print(stream: 'out' | 'err', ...blocks: Block[]): void
+== function print (src/ui/terminal.ts)
+export function print(stream: StreamName, ...blocks: Block[]): void
 == function pruneOrphanPersistentNotes (src/workspace/migration.ts)
 export function pruneOrphanPersistentNotes(
   projects: readonly {
@@ -379,10 +390,10 @@ export function refuseUnknownOptions<T>(
   options: unknown,
   kinds: PluginOptionKinds<T>,
 ): void
-== function render (src/util/ui.ts)
+== function render (src/ui/components.ts)
 export function render(blocks: readonly Block[], colors: ColorSupport): string
-== function report (src/util/ui.ts)
-export function report(mark: string, rows: readonly FieldRow[]): Block
+== function report (src/ui/components.ts)
+export function report(title: string, rows: readonly FieldRow[]): Block
 == function restorableOutput (src/util/paths.ts)
 export function restorableOutput(
   globs: readonly string[],
@@ -404,27 +415,33 @@ export async function sandboxRequestFor(
   nested: readonly string[] = [],
   cacheDir?: string,
 ): Promise<SandboxRequest>
-== function say (src/util/ui.ts)
-export function say(t: Tone, line: string, stream: 'out' | 'err' = 'err'): void
+== function say (src/ui/terminal.ts)
+export function say(t: Tone, line: string, stream: StreamName = 'err'): void
 == function secretNamed (src/util/secret-mask.ts)
 export function secretNamed(name: string): boolean
+== function section (src/ui/components.ts)
+export function section(title: string, ...body: Block[]): Block
+export function section(title: string, count: Inline, ...body: Block[]): Block
+export function section(title: string, ...rest: (Block | Inline)[]): Block
 == function splitTaskId (src/util/task-id.ts)
 export function splitTaskId(id: string): [project: string, task: string]
-== function status (src/util/ui.ts)
+== function status (src/ui/components.ts)
 export function status(t: Tone, verb: string, headline: Inline): Block
 == function sweepPlaceholders (src/orchestrator/sandbox-request.ts)
 export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
-== function table (src/util/ui.ts)
-export function table(columns: readonly string[], rows: readonly (readonly Inline[])[]): Block
-== function tagged (src/util/ui.ts)
+== function table (src/ui/components.ts)
+export function table(columns: readonly Column[], rows: readonly (readonly Inline[])[]): Block
+== function tagged (src/ui/components.ts)
 export function tagged(t: Tone, line: string, c: ColorSupport): string
 == function taskDefinitions (src/graph/definition.ts)
 export function taskDefinitions(nodes: Iterable<TaskNode>): Map<string, string>
 == function taskNameProblem (src/workspace/config-schema.ts)
 export function taskNameProblem(name: string): string | null
-== function text (src/util/ui.ts)
+== function text (src/ui/components.ts)
 export function text(...items: Inline[]): Block
-== function why (src/util/ui.ts)
+== function transient (src/ui/terminal.ts)
+export function transient(line: Inline): () => void
+== function why (src/ui/components.ts)
 export function why(line: Inline): Block
 == function withForwardArgs (src/exec/runner.ts)
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
@@ -505,7 +522,7 @@ interface BaseContext {
   readonly cacheDir: string
   warn(message: string): void
 }
-== type Block (src/util/ui.ts)
+== type Block (src/ui/components.ts)
 export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
 }
@@ -722,11 +739,13 @@ export interface CiContext {
   job?: string
   attempt?: number
 }
-== type ColorSupport (src/util/colors.ts)
+== type ColorSupport (src/ui/theme.ts)
 export interface ColorSupport {
   enabled: boolean
   readonly columns?: number | undefined
 }
+== type Column (src/ui/components.ts)
+export type Column = string | { readonly title: string; readonly align: 'right' }
 == type CommandContext (src/orchestrator/plugin.ts)
 export interface CommandContext extends BaseContext {
   readonly concurrency: number
@@ -862,7 +881,7 @@ export interface FailedAttempt {
 }
 == type FailureMode (src/history/failure-mode.ts)
 export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
-== type FieldRow (src/util/ui.ts)
+== type FieldRow (src/ui/components.ts)
 export type FieldRow = readonly [label: string, ...values: Inline[]] | null
 == type FingerprintChange (src/orchestrator/plugin.ts)
 export interface FingerprintChange {
@@ -965,8 +984,8 @@ export interface IngestMeta {
   inputComponents?: readonly TaskInputRow[]
   outputs?: DeclaredOutputs
 }
-== type Inline (src/util/ui.ts)
-export type Inline = string | { readonly style: Style; readonly text: string } | readonly Inline[]
+== type Inline (src/ui/components.ts)
+export type Inline = string | Token | readonly Inline[]
 == type InputChanges (src/graph/scheduler.ts)
 export interface InputChanges {
   count: number
@@ -1160,7 +1179,7 @@ export interface MigrationPlan {
   extraFiles: { relPath: string; contents: string }[]
   notes: string[]
 }
-== type NoticeParts (src/util/ui.ts)
+== type NoticeParts (src/ui/components.ts)
 export interface NoticeParts {
   tone: Tone
   verb: string
@@ -1867,8 +1886,25 @@ export interface StoreOptions {
   embeddings: number
   decompress: boolean
 }
-== type Style (src/util/ui.ts)
-type Style = Tone | 'dim' | 'bold' | 'id'
+== type StreamName (src/ui/terminal.ts)
+export type StreamName = 'out' | 'err'
+== type Style (src/ui/theme.ts)
+export type Style =
+  | 'ok'
+  | 'warn'
+  | 'error'
+  | 'info'
+  | 'aborted'
+  | 'notRun'
+  | 'local'
+  | 'remote'
+  | 'heading'
+  | 'term'
+  | 'muted'
+  | 'strong'
+  | 'label'
+  | 'border'
+  | 'plain'
 == type TaskArtifacts (src/orchestrator/task-artifacts.ts)
 export interface TaskArtifacts {
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
@@ -2160,7 +2196,13 @@ export interface TelemetrySink {
   onRunSummary?(summary: RunSummaryRecord): void
   flush?(signal: AbortSignal): Promise<void>
 }
-== type Tone (src/util/ui.ts)
+== type Token (src/ui/components.ts)
+interface Token {
+  readonly style: Style | 'id'
+  readonly text: string
+  readonly bold?: boolean
+}
+== type Tone (src/ui/theme.ts)
 export type Tone = 'ok' | 'warn' | 'error' | 'info'
 == type TreeUsage (src/exec/proc-sample.ts)
 export interface TreeUsage {

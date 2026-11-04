@@ -655,9 +655,9 @@ describe('formatTaskRows', () => {
     [1, '1 sandbox violation'],
     [2, '2 sandbox violations'],
   ])('reports %d sandbox violations as "%s"', (n, want) => {
-    const line = L(formatTaskRows([
-      row('t', { status: 'failed', exitCode: 1, sandboxViolations: n }),
-    ]))[1]!
+    const line = L(
+      formatTaskRows([row('t', { status: 'failed', exitCode: 1, sandboxViolations: n })]),
+    )[1]!
     // The SUFFIX, exactly — not `toContain`. `'1 sandbox violations'`
     // contains `'1 sandbox violation'`, so a containment assertion passes
     // on the wrong plural and the mutation survived this row the first
@@ -671,9 +671,9 @@ describe('formatTaskRows', () => {
   })
 
   it('names what a remote read or write of the key met (the footer counts it ✗)', () => {
-    const line = L(formatTaskRows([
-      row('t', { remoteError: 'download: connection refused; upload: 503' }),
-    ]))[1]!
+    const line = L(
+      formatTaskRows([row('t', { remoteError: 'download: connection refused; upload: 503' })]),
+    )[1]!
     expect(line.slice(line.indexOf('h') + 1).trim()).toBe(
       'remote ✗ download: connection refused; upload: 503',
     )
@@ -683,13 +683,15 @@ describe('formatTaskRows', () => {
   // A platform skip and what it blocked are no failure (the run exits 0),
   // and the replay read `after p#mac failed` under an `ok` header.
   it('a skip behind another platform says so, not that its blocker failed', () => {
-    const lines = L(formatTaskRows([
-      row('mac', { status: 'skipped', exitCode: 0, cached: false, hash: '' }),
-      row('macdep', { status: 'skipped', exitCode: 1, blockedBy: 'p#mac', hash: '' }),
-      row('boom', { status: 'failed', exitCode: 3 }),
-      row('after', { status: 'skipped', exitCode: 1, blockedBy: 'p#boom', hash: '' }),
-      row('fast', { status: 'skipped', exitCode: 1, hash: '' }),
-    ]))
+    const lines = L(
+      formatTaskRows([
+        row('mac', { status: 'skipped', exitCode: 0, cached: false, hash: '' }),
+        row('macdep', { status: 'skipped', exitCode: 1, blockedBy: 'p#mac', hash: '' }),
+        row('boom', { status: 'failed', exitCode: 3 }),
+        row('after', { status: 'skipped', exitCode: 1, blockedBy: 'p#boom', hash: '' }),
+        row('fast', { status: 'skipped', exitCode: 1, hash: '' }),
+      ]),
+    )
     const reason = (task: string): string => {
       const line = lines.find((l) => l.includes(`p#${task} `))!
       return line.slice(line.indexOf('ms') + 2).trim()
@@ -709,13 +711,15 @@ describe('formatTaskRows', () => {
 
   it('orders failed, then executed and skipped, then hits, and folds the hits past sixteen', () => {
     const hits = Array.from({ length: 30 }, (_, i) => hit(i, 100 - i))
-    const lines = L(formatTaskRows([
-      ...hits.slice(0, 10),
-      row('ran'),
-      row('boom', { status: 'failed', exitCode: 3 }),
-      ...hits.slice(10),
-      row('after', { status: 'skipped', blockedBy: 'p#boom' }),
-    ]))
+    const lines = L(
+      formatTaskRows([
+        ...hits.slice(0, 10),
+        row('ran'),
+        row('boom', { status: 'failed', exitCode: 3 }),
+        ...hits.slice(10),
+        row('after', { status: 'skipped', blockedBy: 'p#boom' }),
+      ]),
+    )
     const words = lines.slice(1).map((l) => l.trim().split(/\s+/)[0])
     expect(words.slice(0, 3)).toEqual(['failed', 'success', 'skipped'])
     expect(words.slice(3, 19).every((w) => w === 'restored-local')).toBe(true)
@@ -765,27 +769,32 @@ describe('vx last --list rows', () => {
   // with the hits, so a failed run's count read as noise.
   it('paints the failed count as the replay header does', () => {
     const c = { enabled: true }
-    const [row] = L(formatRunList([{ inv: inv({ exitOk: false, failedCount: 2 }), id: 'r' }]), c).slice(1)
+    const [row] = L(
+      formatRunList([{ inv: inv({ exitOk: false, failedCount: 2 }), id: 'r' }]),
+      c,
+    ).slice(1)
     expect(row).toContain(ui.paint('error', ' · 2 failed', c))
   })
 
   it('aligns the counts, duration and command across runs whose counts differ', () => {
     expect(
-      L(formatRunList([
-        {
-          inv: inv({
-            exitOk: false,
-            taskCount: 6,
-            hitCount: 1,
-            upToDateCount: 1,
-            failedCount: 2,
-            totalDurationMs: 336,
-          }),
-          id: '01a1186a-4231',
-        },
-        { inv: inv({ hitCount: 4, upToDateCount: 4 }), id: '01a11869-c28c' },
-        { inv: inv({ taskCount: 1, totalDurationMs: 1500 }), id: '01a11869-c1e8a' },
-      ])),
+      L(
+        formatRunList([
+          {
+            inv: inv({
+              exitOk: false,
+              taskCount: 6,
+              hitCount: 1,
+              upToDateCount: 1,
+              failedCount: 2,
+              totalDurationMs: 336,
+            }),
+            id: '01a1186a-4231',
+          },
+          { inv: inv({ hitCount: 4, upToDateCount: 4 }), id: '01a11869-c28c' },
+          { inv: inv({ taskCount: 1, totalDurationMs: 1500 }), id: '01a11869-c1e8a' },
+        ]),
+      ),
     ).toEqual([
       '          when                      run             tasks                                                   time  command',
       '  FAILED  2026-10-07T22:09:06.700Z  01a1186a-4231   6 tasks · 1 hit (1 up-to-date, 0 restored) · 2 failed  336ms  vx run build --all',

@@ -74,21 +74,6 @@ export function defaultLogger(
 // log.warn, or log.status for a logger without it
 export function warnOf(log: Logger): (line: string) => void
 
-// path-links.ts: the path pattern both share
-export function linkPaths(text: string, dir: string, isFile: (abs: string) => boolean): string
-export interface OutputLocation {
-  file: string // absolute
-  line?: number
-  col?: number
-}
-// the existing files a text names, { file (absolute), line?, col? }, unique, first 50
-export function fileLocations(
-  text: string,
-  dir: string,
-  isFile: (abs: string) => boolean,
-): OutputLocation[]
-export function fileMemo(): (abs: string) => boolean
-
 // forecast.ts: the live ETA from history p50s (none: the graph alone,
 // what is blocked and by what, no ETA); the later of the longest
 // unfinished chain and the unfinished work spread over the workers. The

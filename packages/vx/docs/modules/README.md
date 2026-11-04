@@ -85,8 +85,6 @@ here, itself or in a brace group.
 | [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — which upstream hashes a key folds, by `inputs.tasks` (over `graph/folds.ts`'s `selectFoldedDeps`, one matcher for every path).                                                                                              |
 | [`affected-tasks.md`](./affected-tasks.md)         | `src/orchestrator/{affected-tasks,graph-stage}.ts` — which requested tasks `--affected`'s diff reaches along `dependsOn`; the `graph` stage.                                                                                                                 |
 | [`excluded-keys.md`](./excluded-keys.md)           | `src/orchestrator/excluded-keys.ts` — the key of a dependency `--exclude-dependencies` keeps from running, and the taint it seeds.                                                                                                                           |
-| [`colors.md`](./colors.md)                         | `src/util/{colors,report}.ts` — ANSI gate + truecolor helpers, the brand rule; task output stripped where vx prints plain.                                                                                                                                   |
-| [`ui.md`](./ui.md)                                 | `src/util/ui.ts` — output components (status, notice, fields, report, table) every verb and plugin draws with.                                                                                                                                               |
 | [`plan.md`](./plan.md)                             | `src/orchestrator/plan.ts` — `--dry` planning (no exec).                                                                                                                                                                                                     |
 | [`placement.md`](./placement.md)                   | `src/orchestrator/placement.ts` — where each task runs: pins, executor order, `'only'`, pools, the `--dry` view.                                                                                                                                             |
 |                                                    | `src/orchestrator/local-floor.ts` — the local executor for a plugin that runs tasks itself, arming the sandbox where no run did (executor.md).                                                                                                               |
@@ -115,15 +113,15 @@ here, itself or in a brace group.
 
 ## Report
 
-| File                                     | Topic                                                                                                                                                                                                       |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`logger.md`](./logger.md)               | `src/report/{logger,forecast,terminal-signals,path-links}.ts` — default logger (flow-aware policy, frames, replay), live ETA and critical path, tab progress and notification, file links in failed output. |
-| [`status-line.md`](./status-line.md)     | `src/report/status-line.ts` — serialized writer + dynamic bottom status line.                                                                                                                               |
-| [`framed-output.md`](./framed-output.md) | `src/report/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                                                                                                                   |
-| [`colors.md`](./colors.md)               | `src/report/plain-output.ts` — task output stripped of ANSI where no terminal reads it (see colors.md).                                                                                                     |
-| [`summary.md`](./summary.md)             | `src/report/summary.ts` — the footer: `projects` / `tasks` / `cache` meters, `info` and `time` rows.                                                                                                        |
-| [`tally.md`](./tally.md)                 | `src/report/tally.ts` — outcome tally for the end-of-run footer.                                                                                                                                            |
-| [`events.md`](./events.md)               | `src/report/events.ts` — run event bus + serializable `WireEvent` contract.                                                                                                                                 |
+| File                                     | Topic                                                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| [`logger.md`](./logger.md)               | `src/report/{logger,forecast}.ts` — default logger (flow-aware policy, frames, replay), live ETA and critical path. |
+| [`status-line.md`](./status-line.md)     | `src/report/status-line.ts` — serialized writer + dynamic bottom status line.                                       |
+| [`framed-output.md`](./framed-output.md) | `src/report/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                           |
+| [`ui.md`](./ui.md)                       | `src/report/plain-output.ts` — task output stripped of ANSI where no terminal reads it (see ui.md) .                |
+| [`summary.md`](./summary.md)             | `src/report/summary.ts` — the footer: `projects` / `tasks` / `cache` meters, `info` and `time` rows.                |
+| [`tally.md`](./tally.md)                 | `src/report/tally.ts` — outcome tally for the end-of-run footer.                                                    |
+| [`events.md`](./events.md)               | `src/report/events.ts` — run event bus + serializable `WireEvent` contract.                                         |
 
 ## History
 
@@ -208,33 +206,39 @@ here, itself or in a brace group.
 | [`scoped-cache.md`](./scoped-cache.md) | `src/cache/scoped-cache.ts` — the key a scope stores a plugin entry under.                          |
 | [`plugin-cache.md`](./plugin-cache.md) | `src/cache/{plugin-cache,run-store}.ts` — a plugin's own entries (`ctx.cache`); a run's kept bytes. |
 
+## UI
+
+| File               | Topic                                                                                                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`ui.md`](./ui.md) | `src/ui/{theme,components,terminal,kit,live-region,ansi,terminal-signals,links,refusal,version-line}.ts` — the only module that draws: tokens, components, panels, streams. |
+
 ## Utilities
 
-| File                                               | Topic                                                                                                                                                                                               |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`util-paths.md`](./util-paths.md)                 | `src/util/paths.ts` — POSIX-path normaliser for stable cache keys.                                                                                                                                  |
-| [`util-hash.md`](./util-hash.md)                   | `src/util/hash.ts` — xxHash3 helpers shared by every key-derivation site.                                                                                                                           |
-| [`util-ulid.md`](./util-ulid.md)                   | `src/util/ulid.ts` — run-id generator (`Bun.randomUUIDv7` wrapper).                                                                                                                                 |
-| [`util-errors.md`](./util-errors.md)               | `src/util/errors.ts` — `UserError` class for stack-less error reporting; `src/util/config-frame.ts` — a config refusal at its line; `src/util/refusal-notice.ts` — every refusal drawn as a notice. |
-| [`timing.md`](./timing.md)                         | `src/util/timing.ts` — the `VX_DEBUG_TIMING=1` stage table + per-task spans.                                                                                                                        |
-| [`util-edit-distance.md`](./util-edit-distance.md) | `src/util/edit-distance.ts` — the one "did you mean" rule.                                                                                                                                          |
-| [`util-bun-version.md`](./util-bun-version.md)     | `src/util/bun-version.ts` — the Bun floor, read at run time, and what breaks below it.                                                                                                              |
-| [`util-num.md`](./util-num.md)                     | `src/util/num.ts` — `MAX_TIMEOUT_MS`, `clampInt`, `parseDecimalInt`.                                                                                                                                |
-| [`util-settle.md`](./util-settle.md)               | `src/util/settle.ts` — the end-of-run settle bound for plugin teardown.                                                                                                                             |
-| [`util-tail.md`](./util-tail.md)                   | `src/util/tail.ts` — head-evicting tail for a persistent task's output.                                                                                                                             |
-| [`util-secret-mask.md`](./util-secret-mask.md)     | `src/util/secret-mask.ts` — masks secret-named variables' values in what vx shows.                                                                                                                  |
-| [`util-hide-env.md`](./util-hide-env.md)           | `src/util/hide-env.ts` — `hideEnvFromTasks`: non-dumpable on Linux, startup values zeroed on macOS, so tasks cannot read vx's env.                                                                  |
-| [`util-which.md`](./util-which.md)                 | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.                                                                                                        |
-| [`util-procfs.md`](./util-procfs.md)               | `src/util/procfs.ts` — `procfsIsOwn`: is `/proc` this pid namespace's view, asked once.                                                                                                             |
-| [`util-secrets.md`](./util-secrets.md)             | `src/util/{secrets,hidden-prompt}.ts` — `ctx.secret`: a plugin's OS keychain entries, asked once on a terminal when missing.                                                                        |
-| [`util-hangup.md`](./util-hangup.md)               | `src/util/hangup.ts` — `hangupIgnored`: did vx start with SIGHUP ignored (nohup), asked once.                                                                                                       |
-| [`util-git-ignored.md`](./util-git-ignored.md)     | `src/util/git-ignored.ts` — whether git ignores everything an output glob writes, asked of git (`check-ignore`, `ls-files`).                                                                        |
-| [`util-real-path.md`](./util-real-path.md)         | `src/util/real-path.ts` — `realPath`: the OS's final path; `realpathOf`: realpath past a backslash.                                                                                                 |
-| [`util-cgroup.md`](./util-cgroup.md)               | `src/util/cgroup.ts` — the cores and memory this process may use, as its cgroup bounds them.                                                                                                        |
-|                                                    | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration`, `treeBytes` (cli-cache.md) and the core verb list (cli.md).                                                                              |
-|                                                    | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                                                                                                           |
-|                                                    | `src/util/env-flag.ts` — `envFlagOn`: whether `CI` and the like are on (`0`, `false` and empty are off).                                                                                            |
-|                                                    | `src/util/write-file.ts` — `refuseSymlink`, `writeNoFollow`: a generated file never written through a link (migration.md).                                                                          |
+| File                                               | Topic                                                                                                                               |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [`util-paths.md`](./util-paths.md)                 | `src/util/paths.ts` — POSIX-path normaliser for stable cache keys.                                                                  |
+| [`util-hash.md`](./util-hash.md)                   | `src/util/hash.ts` — xxHash3 helpers shared by every key-derivation site.                                                           |
+| [`util-ulid.md`](./util-ulid.md)                   | `src/util/ulid.ts` — run-id generator (`Bun.randomUUIDv7` wrapper).                                                                 |
+| [`util-errors.md`](./util-errors.md)               | `src/util/errors.ts` — `UserError` class for stack-less error reporting; `src/util/config-frame.ts` — a config refusal at its line. |
+| [`timing.md`](./timing.md)                         | `src/util/timing.ts` — the `VX_DEBUG_TIMING=1` stage table + per-task spans.                                                        |
+| [`util-edit-distance.md`](./util-edit-distance.md) | `src/util/edit-distance.ts` — the one "did you mean" rule.                                                                          |
+| [`util-bun-version.md`](./util-bun-version.md)     | `src/util/bun-version.ts` — the Bun floor, read at run time, and what breaks below it.                                              |
+| [`util-num.md`](./util-num.md)                     | `src/util/num.ts` — `MAX_TIMEOUT_MS`, `clampInt`, `parseDecimalInt`.                                                                |
+| [`util-settle.md`](./util-settle.md)               | `src/util/settle.ts` — the end-of-run settle bound for plugin teardown.                                                             |
+| [`util-tail.md`](./util-tail.md)                   | `src/util/tail.ts` — head-evicting tail for a persistent task's output.                                                             |
+| [`util-secret-mask.md`](./util-secret-mask.md)     | `src/util/secret-mask.ts` — masks secret-named variables' values in what vx shows.                                                  |
+| [`util-hide-env.md`](./util-hide-env.md)           | `src/util/hide-env.ts` — `hideEnvFromTasks`: non-dumpable on Linux, startup values zeroed on macOS, so tasks cannot read vx's env.  |
+| [`util-which.md`](./util-which.md)                 | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.                                        |
+| [`util-procfs.md`](./util-procfs.md)               | `src/util/procfs.ts` — `procfsIsOwn`: is `/proc` this pid namespace's view, asked once.                                             |
+| [`util-secrets.md`](./util-secrets.md)             | `src/util/{secrets,hidden-prompt}.ts` — `ctx.secret`: a plugin's OS keychain entries, asked once on a terminal when missing.        |
+| [`util-hangup.md`](./util-hangup.md)               | `src/util/hangup.ts` — `hangupIgnored`: did vx start with SIGHUP ignored (nohup), asked once.                                       |
+| [`util-git-ignored.md`](./util-git-ignored.md)     | `src/util/git-ignored.ts` — whether git ignores everything an output glob writes, asked of git (`check-ignore`, `ls-files`).        |
+| [`util-real-path.md`](./util-real-path.md)         | `src/util/real-path.ts` — `realPath`: the OS's final path; `realpathOf`: realpath past a backslash.                                 |
+| [`util-cgroup.md`](./util-cgroup.md)               | `src/util/cgroup.ts` — the cores and memory this process may use, as its cgroup bounds them.                                        |
+|                                                    | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration`, `treeBytes` (cli-cache.md) and the core verb list (cli.md).              |
+|                                                    | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                                           |
+|                                                    | `src/util/env-flag.ts` — `envFlagOn`: whether `CI` and the like are on (`0`, `false` and empty are off).                            |
+|                                                    | `src/util/write-file.ts` — `refuseSymlink`, `writeNoFollow`: a generated file never written through a link (migration.md).          |
 
 For the public package surface (what `import('@vzn/vx')` resolves to)
 see [`index.md`](./index.md).

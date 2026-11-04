@@ -292,7 +292,12 @@ export function formatStatusRegion(
   if (lines.length > 0)
     out.push(
       '',
-      ...panel('Running', String(s.pinnedPersistent.length + running.length + (s.steps?.length ?? 0)), [formatRunningHeader(colors), ...lines], colors),
+      ...panel(
+        'Running',
+        String(s.pinnedPersistent.length + running.length + (s.steps?.length ?? 0)),
+        [formatRunningHeader(colors), ...lines],
+        colors,
+      ),
     )
   out.push(...s.summaryLines)
   return out

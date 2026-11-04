@@ -3,6 +3,10 @@
 // module and every plugin composes these (tests/ui-only-output.unsafe.test.ts).
 // Design: docs/design/ui-2026-11.md.
 
+// The façade's `ui`: the kit a plugin may draw with.
+import * as ui from './kit.js'
+export { ui }
+
 export {
   bar,
   barWidth,

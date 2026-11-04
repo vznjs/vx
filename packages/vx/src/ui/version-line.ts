@@ -5,7 +5,7 @@
 
 import { fstatSync } from 'node:fs'
 
-export function versionLine(version: string, where: string, on: boolean): string {
+function versionLine(version: string, where: string, on: boolean): string {
   const sgr = (code: string, text: string): string => (on ? `\x1b[${code}m${text}\x1b[0m` : text)
   return `${sgr('1', 'vx')} ${sgr('38;2;6;182;212', version)}${where === '' ? '' : sgr('2', where)}\n`
 }
