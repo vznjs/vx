@@ -836,7 +836,7 @@ export default [
   }),
 
   defineCase({
-    id: 'graph/concurrency-one-runs-one-at-a-time',
+    id: 'graph/concurrency-one-serializes-tasks',
     category: 'graph',
     kind: 'correctness',
     title: 'A concurrency of 1 runs independent tasks one at a time',

@@ -888,7 +888,7 @@ export default [
 
   // ------------------------------------------------ an output directory a user made a link
   defineCase({
-    id: 'outputs/output-dir-linked-out-of-project',
+    id: 'outputs/output-dir-link-out-of-project-kept',
     category: 'outputs',
     kind: 'correctness',
     title:
