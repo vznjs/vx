@@ -3,15 +3,30 @@
 // its default.
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Adapter } from '../adapter.ts'
+import { pnpmFilter, type Adapter } from '../adapter.ts'
 import { projectDir, type TaskReport } from '../spec.ts'
+
+/** A workspace-root-relative glob as Vite Task spells it: a glob with a workspace base. */
+function fromRoot(glob: string): { pattern: string; base: 'workspace' } {
+  return { pattern: glob, base: 'workspace' }
+}
 
 export const viteTask: Adapter = {
   name: 'vite-task',
   pkg: 'vite-plus',
   bins: ['vp'],
-  // `vp run` selects by package, never by a git change.
-  lacks: ['affected'],
+  // `vp run` selects by package, never by a git change; dependsOn names
+  // tasks exactly; a task has no time limit, no retries, and is never a
+  // long-running process the run stops.
+  lacks: [
+    'affected',
+    'task-pattern',
+    'timeout',
+    'retries',
+    'persistent',
+    'ready',
+    'runtime-inputs',
+  ],
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1', VITE_PLUS_TELEMETRY_DISABLED: '1' },
   // Vite Task installs the workspace's `packageManager` from the registry
   // before a run: the sandbox has none, so its home holds the bun that runs
@@ -37,9 +52,23 @@ export const viteTask: Adapter = {
               spec.cache === false
                 ? false
                 : {
-                    ...(spec.inputs ? { input: spec.inputs } : {}),
+                    ...(spec.inputs || spec.rootInputs
+                      ? {
+                          input: [
+                            ...(spec.inputs ?? [{ auto: true }]),
+                            ...(spec.rootInputs ?? []).map(fromRoot),
+                          ],
+                        }
+                      : {}),
                     ...(spec.env ? { env: spec.env } : {}),
-                    ...(spec.outputs ? { output: spec.outputs } : {}),
+                    ...(spec.outputs || spec.rootOutputs
+                      ? {
+                          output: [
+                            ...(spec.outputs ?? []),
+                            ...(spec.rootOutputs ?? []).map(fromRoot),
+                          ],
+                        }
+                      : {}),
                   },
           },
         ]),
@@ -51,11 +80,19 @@ export const viteTask: Adapter = {
     }
     return []
   },
-  run: (task, projects) => [
+  run: (task, projects, opts = {}) => [
     'node_modules/.bin/vp',
     'run',
-    ...(projects ? projects.flatMap((p) => ['--filter', p]) : ['-r']),
+    ...(opts.select
+      ? opts.select.flatMap((s) => ['--filter', pnpmFilter(s)])
+      : projects
+        ? projects.flatMap((p) => ['--filter', p])
+        : ['-r']),
+    ...(opts.only ? ['--ignore-depends-on'] : []),
+    ...(opts.concurrency !== undefined ? ['--concurrency-limit', String(opts.concurrency)] : []),
     task,
+    // Everything after the task specifier is the task's: `vp run` takes no `--`.
+    ...(opts.args ?? []),
   ],
   affected: () => {
     throw new Error('vite-task has no affected selection')

@@ -10,6 +10,8 @@ import path from 'node:path'
 export interface Result {
   exit: number
   out: string
+  /** Killed at `timeoutMs`: the run did not end on its own. */
+  timedOut?: boolean
 }
 
 const BWRAP = Bun.which('bwrap')
@@ -91,5 +93,10 @@ export async function sandboxed(
     console.error(
       `[${Math.round(performance.now() - started)} ms] ${argv.join(' ')} → ${exit}\n${stdout}${stderr}`,
     )
-  return { exit: proc.signalCode ? 128 : exit, out: stdout + stderr }
+  const timedOut = proc.signalCode !== null && performance.now() - started >= timeoutMs
+  return {
+    exit: proc.signalCode ? 128 : exit,
+    out: stdout + stderr,
+    ...(timedOut ? { timedOut } : {}),
+  }
 }

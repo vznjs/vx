@@ -1,4 +1,4 @@
-import type { Feature, TaskReport, WorkspaceSpec } from './spec.ts'
+import type { Feature, Selector, TaskReport, WorkspaceSpec } from './spec.ts'
 
 /** Runs a command in the case's sandbox; resolves to its output. */
 export type Read = (argv: string[]) => Promise<string>
@@ -26,9 +26,36 @@ export interface Adapter {
   /** Write the tool's config for `ws` into `dir`. Returns the commands to run after (each an argv). */
   configure(dir: string, ws: WorkspaceSpec, command: Command): Promise<string[][]>
   /** Run `task` in every project declaring it, or in `projects` and what they depend on. */
-  run(task: string, projects?: string[]): string[]
+  run(task: string, projects?: string[], opts?: RunOptions): string[]
   /** Run `task` where the changes since `base` reach. */
   affected(task: string, base: string): string[]
   /** What the tool reports about its last run, per `project#task`, from its own output, files or API. */
   report(root: string, read: Read): Promise<Record<string, TaskReport>>
+}
+
+/** How a run is asked to run, beyond what it runs. */
+export interface RunOptions {
+  /** At most this many tasks at once. */
+  concurrency?: number
+  /** The projects to run in, in place of `projects`. */
+  select?: Selector[]
+  /** Leave out what the selected tasks depend on. */
+  only?: boolean
+  /** Forwarded to the requested tasks' commands (a CLI's `-- <args>`). */
+  args?: string[]
+}
+
+/** A selector in the pnpm filter grammar Turborepo, Vite Task and vx share. */
+export function pnpmFilter(s: Selector): string {
+  const base = s.name ?? (s.with ? `{./${s.dir}}` : `./${s.dir}`)
+  const caret = s.self === false ? '^' : ''
+  const walked =
+    s.with === 'dependencies'
+      ? `${base}${caret}...`
+      : s.with === 'dependents'
+        ? `...${caret}${base}`
+        : s.with === 'dependents-and-dependencies'
+          ? `...${caret}${base}...`
+          : base
+  return (s.exclude ? '!' : '') + walked
 }

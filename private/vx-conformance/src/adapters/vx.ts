@@ -2,7 +2,7 @@
 // user's `bun()` reads them), then `vx lock`, which every run reads.
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Adapter } from '../adapter.ts'
+import { pnpmFilter, type Adapter } from '../adapter.ts'
 import { projectDir } from '../spec.ts'
 
 const LOCKFILE = path.join(
@@ -18,6 +18,8 @@ const LOCKFILE = path.join(
 )
 const VX = 'node_modules/.bin/vx'
 
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 export const vx: Adapter = {
   name: 'vx',
   pkg: '@vzn/vx',
@@ -28,39 +30,74 @@ export const vx: Adapter = {
     await mkdir(path.join(dir, '.vx'), { recursive: true })
     await writeFile(
       path.join(dir, '.vx', 'workspace.mjs'),
-      `import { bun } from ${JSON.stringify(LOCKFILE)}\nexport default { plugins: [bun()] }\n`,
+      `import { bun } from ${JSON.stringify(LOCKFILE)}\nexport default { plugins: [bun()]${ws.sharedOutputs ? ', run: { rules: { exclusiveOutputs: false } }' : ''} }\n`,
     )
     for (const [name, p] of Object.entries(ws.projects)) {
       const tasks = Object.fromEntries(
-        Object.entries(p.tasks ?? {}).map(([t, spec]) => [
-          t,
-          {
-            exec: {
-              command: command(name, t),
-              ...(spec.env ? { env: { passThrough: spec.env } } : {}),
+        Object.entries(p.tasks ?? {}).map(([t, spec]) => {
+          // vx has no default inputs: root inputs or a probe alone key no project file.
+          const files = spec.inputs ?? (spec.rootInputs || spec.runtime ? [] : undefined)
+          return [
+            t,
+            {
+              exec: {
+                command: command(name, t),
+                ...(spec.env ? { env: { passThrough: spec.env } } : {}),
+                ...(spec.timeout !== undefined ? { timeout: `${spec.timeout * 1000}ms` } : {}),
+                ...(spec.retries !== undefined ? { retries: spec.retries } : {}),
+                ...(spec.persistent
+                  ? {
+                      persistent:
+                        spec.persistent === true
+                          ? {}
+                          : { readyWhen: escapeRegExp(spec.persistent.ready) },
+                    }
+                  : {}),
+              },
+              ...(spec.dependsOn ? { dependsOn: spec.dependsOn } : {}),
+              ...(files
+                ? {
+                    inputs: {
+                      files,
+                      ...(spec.rootInputs ? { workspaceFiles: spec.rootInputs } : {}),
+                      ...(spec.runtime ? { workspaceRuntime: spec.runtime } : {}),
+                      ...(spec.env ? { env: spec.env } : {}),
+                    },
+                  }
+                : {}),
+              ...(files && (spec.outputs || spec.rootOutputs) && spec.cache !== false
+                ? {
+                    cache: {
+                      outputs: {
+                        files: spec.outputs ?? [],
+                        ...(spec.rootOutputs ? { workspaceFiles: spec.rootOutputs } : {}),
+                      },
+                    },
+                  }
+                : {}),
             },
-            ...(spec.dependsOn ? { dependsOn: spec.dependsOn } : {}),
-            ...(spec.inputs
-              ? { inputs: { files: spec.inputs, ...(spec.env ? { env: spec.env } : {}) } }
-              : {}),
-            ...(spec.inputs && spec.outputs && spec.cache !== false
-              ? { cache: { outputs: { files: spec.outputs } } }
-              : {}),
-          },
-        ]),
+          ]
+        }),
       )
       await writeFile(
         path.join(dir, projectDir(name, p), 'vx.config.mjs'),
-        `export default ${JSON.stringify({ tasks }, null, 2)}\n`,
+        `export default ${JSON.stringify({ name, tasks }, null, 2)}\n`,
       )
     }
     return [[VX, 'lock']]
   },
-  run: (task, projects) => [
+  run: (task, projects, opts = {}) => [
     VX,
     'run',
     task,
-    ...(projects ? projects.flatMap((p) => ['--filter', p]) : ['--all']),
+    ...(opts.select
+      ? opts.select.flatMap((s) => ['--filter', pnpmFilter(s)])
+      : projects
+        ? projects.flatMap((p) => ['--filter', p])
+        : ['--all']),
+    ...(opts.only ? ['--exclude-dependencies'] : []),
+    ...(opts.concurrency !== undefined ? [`--concurrency=${opts.concurrency}`] : []),
+    ...(opts.args ? ['--', ...opts.args] : []),
   ],
   affected: (task, base) => [VX, 'run', task, `--affected=${base}`],
   report: async (_root, read) => {

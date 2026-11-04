@@ -25,6 +25,7 @@ import {
   type Expect,
   type ReportCheck,
   type TaskReport,
+  type TreeCheck,
   type WorkspaceSpec,
 } from './spec.ts'
 
@@ -42,6 +43,11 @@ export interface Outcome {
 /** Where a run's marks go: each command appends `+id` when it starts and `-id` when it ends. */
 const RAN = '.ran'
 
+/** Where a supervised run lists the processes it left alive. */
+const LEFT = '.left'
+
+const SUPERVISE = path.join(import.meta.dir, 'supervise.ts')
+
 const MODULES = path.join(import.meta.dir, '..', 'node_modules')
 
 /** The command a tool runs for `project#task`: the case's own, between the harness's marks. */
@@ -51,7 +57,9 @@ export function marked(ws: WorkspaceSpec, project: string, task: string): string
   if (p === undefined || cmd === undefined) throw new Error(`no task ${project}#${task}`)
   const ran = path.posix.join(path.posix.relative(projectDir(project, p), '.'), RAN)
   const id = `${project}#${task}`
-  return `printf '+%s\\n' '${id}' >> ${ran} && (${cmd}) && printf -- '-%s\\n' '${id}' >> ${ran}`
+  const script = `printf '+%s\\n' '${id}' >> ${ran} && (${cmd}) && printf -- '-%s\\n' '${id}' >> ${ran}`
+  // Forwarded args land after the whole line: an inner shell takes them as its `$@`.
+  return p.tasks?.[task]?.takesArgs ? `sh -c '${script.replaceAll("'", `'\\''`)}' sh` : script
 }
 
 async function writeFiles(root: string, files: Record<string, string | null>): Promise<void> {
@@ -68,24 +76,41 @@ async function writeFiles(root: string, files: Record<string, string | null>): P
 
 /** The tree every tool starts from: package manifests, the case's files, git ignores. */
 async function writeWorkspace(root: string, ws: WorkspaceSpec): Promise<void> {
-  const dirs = Object.entries(ws.projects).map(([n, p]) => projectDir(n, p))
+  const members = Object.entries(ws.projects).filter(([n, p]) => projectDir(n, p) !== '.')
+  // A project at `.` is the root package itself: its name and dependencies go in the root manifest.
+  const rootProject = Object.entries(ws.projects).find(([n, p]) => projectDir(n, p) === '.')
   await writeFiles(root, {
     'package.json': JSON.stringify(
       {
-        name: 'conformance',
+        name: rootProject?.[0] ?? 'conformance',
+        ...(rootProject ? { version: '0.0.0' } : {}),
         private: true,
         packageManager: `bun@${Bun.version}`,
-        workspaces: dirs,
+        workspaces: members.map(([n, p]) => projectDir(n, p)),
+        ...(rootProject?.[1].deps
+          ? {
+              dependencies: Object.fromEntries(rootProject[1].deps.map((d) => [d, 'workspace:*'])),
+            }
+          : {}),
       },
       null,
       2,
     ),
-    '.gitignore': ['node_modules', '.home', RAN, '.turbo', '.nx', '.vx/cache', 'dist', ''].join(
-      '\n',
-    ),
+    '.gitignore': [
+      'node_modules',
+      '.home',
+      RAN,
+      LEFT,
+      '.turbo',
+      '.nx',
+      '.vx/cache',
+      'dist',
+      '',
+    ].join('\n'),
     ...ws.files,
+    ...rootProject?.[1].files,
   })
-  for (const [name, p] of Object.entries(ws.projects)) {
+  for (const [name, p] of members) {
     const dir = projectDir(name, p)
     await writeFiles(root, {
       [`${dir}/package.json`]: JSON.stringify(
@@ -120,11 +145,19 @@ export function check(
   out: string,
   marks: string[],
   files: Record<string, string | null>,
+  left: string[] = [],
+  timedOut = false,
+  retried: string[] = [],
 ): string | null {
+  if (timedOut)
+    return `did not finish within ${expect.within === undefined ? 'the sandbox bound' : `${expect.within} s`}`
+  if (expect.alone && left.length > 0) return `left running: ${left.join('; ')}`
+  if (expect.orRefused && exit !== 0 && marks.length === 0) return null
   if (expect.exit === 0 && exit !== 0) return `exited ${exit}, expected success`
   if (expect.exit === 'fail' && exit === 0) return 'succeeded, expected a failure'
   const started = marks.filter((m) => m.startsWith('+')).map((m) => m.slice(1))
-  const twice = started.filter((t, i) => started.indexOf(t) !== i)
+  // A task with retries starts again by design; its attempts are the case's to count.
+  const twice = started.filter((t, i) => started.indexOf(t) !== i && !retried.includes(t))
   if (twice.length > 0) return `ran ${[...new Set(twice)].join(', ')} more than once`
   const missed = (expect.ran ?? []).filter((t) => !started.includes(t))
   if (missed.length > 0) return `did not run ${missed.join(', ')}`
@@ -169,10 +202,7 @@ export function checkReport(want: ReportCheck, got: TaskReport | undefined): str
   return null
 }
 
-async function checkTree(
-  root: string,
-  want: { executable?: string[]; links?: Record<string, string> },
-): Promise<string | null> {
+async function checkTree(root: string, want: TreeCheck): Promise<string | null> {
   for (const f of want.executable ?? []) {
     const s = await stat(path.join(root, f)).catch(() => null)
     if (s === null) return `${f} is missing`
@@ -185,11 +215,32 @@ async function checkTree(
     const got = await readlink(path.join(root, f))
     if (got !== target) return `${f} links to ${got}, expected ${target}`
   }
+  for (const d of want.dirs ?? []) {
+    const s = await stat(path.join(root, d)).catch(() => null)
+    if (s === null) return `${d} is missing`
+    if (!s.isDirectory()) return `${d} is not a directory`
+  }
+  for (const f of want.missing ?? [])
+    if ((await lstat(path.join(root, f)).catch(() => null)) !== null) return `${f} exists`
+  for (const [f, mode] of Object.entries(want.modes ?? {})) {
+    const s = await stat(path.join(root, f)).catch(() => null)
+    if (s === null) return `${f} is missing`
+    if ((s.mode & 0o777) !== mode)
+      return `${f} has mode ${(s.mode & 0o777).toString(8)}, expected ${mode.toString(8)}`
+  }
   return null
 }
 
 async function readMaybe(file: string): Promise<string | null> {
   return readFile(file, 'utf8').catch(() => null)
+}
+
+/** Who a `sh` step's commits are by. */
+const GIT_IDENTITY = {
+  GIT_AUTHOR_NAME: 'c',
+  GIT_AUTHOR_EMAIL: 'c@c',
+  GIT_COMMITTER_NAME: 'c',
+  GIT_COMMITTER_EMAIL: 'c@c',
 }
 
 const BASE = process.env['CONFORMANCE_TMP'] ?? os.tmpdir()
@@ -210,8 +261,9 @@ export async function runCase(c: Case, adapter: Adapter): Promise<Outcome> {
 }
 
 async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
-  const sh = (argv: string[], env: Record<string, string> = {}) =>
-    sandboxed(root, root, argv, { ...adapter.env, ...env })
+  const sh = (argv: string[], env: Record<string, string> = {}, cwd = root) =>
+    sandboxed(root, cwd, argv, { ...adapter.env, ...env })
+  const install = () => setup([process.execPath, 'install', '--offline', '--no-progress'])
   const setup = async (argv: string[]) => {
     const r = await sh(argv)
     if (r.exit !== 0) throw new Error(`setup \`${argv.join(' ')}\` exited ${r.exit}:\n${r.out}`)
@@ -232,11 +284,12 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
   }
   let ws = c.workspace
   await writeWorkspace(root, ws)
-  await setup([process.execPath, 'install', '--offline', '--no-progress'])
+  await install()
   await linkTool(root, adapter)
   await adapter.seed?.(caseHome(root))
-  await configure(ws)
+  // A repository before the tool's own setup: what git ignores is known to it.
   await setup(['git', 'init', '-q', '-b', 'main'])
+  await configure(ws)
   await setup(['git', 'add', '-A'])
   await setup(['git', '-c', 'user.name=c', '-c', 'user.email=c@c', 'commit', '-qm', 'init'])
 
@@ -262,6 +315,10 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       if (failed !== null) return { status: 'fail', step: i + 1, detail: failed }
       continue
     }
+    if ('install' in step) {
+      await install()
+      continue
+    }
     if ('commit' in step) {
       await setup(['git', 'add', '-A'])
       await setup([
@@ -278,18 +335,58 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       ])
       continue
     }
+    if ('sh' in step) {
+      const r = await sh(['sh', '-c', step.sh], GIT_IDENTITY)
+      if (r.exit !== 0) throw new Error(`step ${i + 1} \`${step.sh}\` exited ${r.exit}:\n${r.out}`)
+      continue
+    }
     if ('configure' in step) {
       ws = step.configure(ws)
       await configure(ws)
       continue
     }
     await rm(path.join(root, RAN), { force: true })
-    const argv =
+    const cwd = 'cwd' in step && step.cwd ? path.join(root, step.cwd) : root
+    await rm(path.join(root, LEFT), { force: true })
+    const stop = 'stop' in step ? step.stop : undefined
+    if (stop) await rm(path.join(root, stop.when), { force: true })
+    const tool = (
       'run' in step
-        ? adapter.run(step.run, step.projects)
+        ? adapter.run(step.run, step.projects, {
+            ...(step.select ? { select: step.select } : {}),
+            ...(step.only ? { only: true } : {}),
+            ...(step.args ? { args: step.args } : {}),
+            ...(step.concurrency !== undefined ? { concurrency: step.concurrency } : {}),
+          })
         : adapter.affected(step.affected, step.base)
+    )
+      // An adapter names its bin from the root; started elsewhere, that path is the root's.
+      .map((a, j) => (j === 0 && a.startsWith('node_modules/') ? path.join(root, a) : a))
+    const argv =
+      stop || step.expect.alone
+        ? [
+            process.execPath,
+            SUPERVISE,
+            JSON.stringify({
+              ...(stop ? { stop } : {}),
+              ...(step.expect.alone ? { left: LEFT } : {}),
+            }),
+            ...tool,
+          ]
+        : tool
     const r =
-      refused === null ? await sh(argv, 'env' in step ? step.env : {}) : { exit: 1, out: refused }
+      refused === null
+        ? await sandboxed(
+            root,
+            cwd,
+            argv,
+            { ...adapter.env, ...('env' in step ? step.env : {}) },
+            step.expect.within === undefined ? undefined : step.expect.within * 1000,
+          )
+        : { exit: 1, out: refused }
+    const left: string[] = step.expect.alone
+      ? JSON.parse((await readMaybe(path.join(root, LEFT))) ?? '[]')
+      : []
     const marks = ((await readMaybe(path.join(root, RAN))) ?? '').split('\n').filter(Boolean)
     const files: Record<string, string | null> = {}
     for (const f of [
@@ -298,7 +395,20 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       ...Object.keys(step.expect.ifReplayed?.files ?? {}),
     ])
       files[f] = await readMaybe(path.join(root, f))
-    let failed = check(step.expect, r.exit, r.out, marks, files)
+    let failed = check(
+      step.expect,
+      r.exit,
+      r.out,
+      marks,
+      files,
+      left,
+      'timedOut' in r && r.timedOut === true,
+      Object.entries(ws.projects).flatMap(([n, p]) =>
+        Object.entries(p.tasks ?? {})
+          .filter(([, t]) => (t.retries ?? 0) > 0)
+          .map(([t]) => `${n}#${t}`),
+      ),
+    )
     if (failed === null && step.expect.report !== undefined && refused === null) {
       const { task, ...want } = step.expect.report
       const read = async (argv: string[]) => (await sh(argv)).out

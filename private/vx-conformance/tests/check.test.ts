@@ -72,3 +72,10 @@ test('a report check needs each metric named, within its bounds', () => {
     'reports outputBytes 4999, expected 5000–5000',
   )
 })
+
+test('orRefused passes a failed run that started nothing, and only that', () => {
+  const want = { exit: 0 as const, files: { f: 'x' }, orRefused: true }
+  expect(check(want, 1, '', [], { f: null })).toBeNull()
+  expect(check(want, 1, '', ['+a#b'], { f: null })).toBe('exited 1, expected success')
+  expect(check(want, 0, '', [], { f: null })).toBe('f is missing, expected "x"')
+})

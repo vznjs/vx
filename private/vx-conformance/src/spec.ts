@@ -16,12 +16,30 @@ export interface TaskSpec {
   env?: string[]
   /** Project-relative globs the task writes, stored and restored with it. Omitted: the tool's default; `[]`: none. */
   outputs?: string[]
+  /** Workspace-root-relative globs that also key the task, in any directory. */
+  rootInputs?: string[]
+  /** Workspace-root-relative globs the task also writes, stored and restored with it. */
+  rootOutputs?: string[]
+  /** Shell commands, run at the workspace root, whose output keys the task. */
+  runtime?: string[]
   /** `false`: never replayed from a cache. Default `true`. */
   cache?: boolean
+  /** The command reads the args a run forwards (`run`'s `args`) as `"$@"`. */
+  takesArgs?: boolean
+  /** Seconds the command may run before the tool kills it and fails it. */
+  timeout?: number
+  /** How many more times a failed attempt runs before the task fails. */
+  retries?: number
+  /**
+   * A long-running process (a dev server): never cached, and stopped by the
+   * tool once nothing needs it. `ready`: text the process prints once it is
+   * up; until then nothing that depends on it starts.
+   */
+  persistent?: true | { ready: string }
 }
 
 export interface ProjectSpec {
-  /** Directory under the workspace root. Default `packages/<name>`. */
+  /** Directory under the workspace root, or `.`: the root package itself. Default `packages/<name>`. */
   dir?: string
   /** Names of the workspace projects this one depends on (package.json `dependencies`). */
   deps?: string[]
@@ -34,6 +52,8 @@ export interface WorkspaceSpec {
   projects: Record<string, ProjectSpec>
   /** Files to create, relative to the workspace root. */
   files?: Record<string, string>
+  /** Tasks ordered by an edge may write into one output tree: a tool that refuses such a pair unless told is told. */
+  sharedOutputs?: boolean
 }
 
 /** What a step's run must show. Every field is optional; each one given is checked. */
@@ -56,6 +76,34 @@ export interface Expect {
   ifReplayed?: { task: string; files: Record<string, string | null> }
   /** What the tool reports about this task's run, through its output, files or API. */
   report?: { task: string } & ReportCheck
+  /** A run that fails before any task starts (a tool refusing the workspace) also passes. */
+  orRefused?: boolean
+  /** The run ends within this many seconds: it does not hang. */
+  within?: number
+  /** When the runner exits, no process it started (a task, what a task forked) is still alive. */
+  alone?: true
+}
+
+/** A stop sent to a run in flight. */
+export interface Stop {
+  signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP' | 'SIGQUIT'
+  /** Workspace-relative file a task creates; the signal is sent once it exists (or after 30 s). */
+  when: string
+  /** The runner was started with this signal ignored, as `nohup` starts it. */
+  ignored?: true
+}
+
+export interface TreeCheck {
+  /** These files are executable. */
+  executable?: string[]
+  /** Each path is a symlink to this target. */
+  links?: Record<string, string>
+  /** These paths are directories. */
+  dirs?: string[]
+  /** Nothing stands at these paths, not even a dangling link. */
+  missing?: string[]
+  /** Each path's permission bits (`0o755`). */
+  modes?: Record<string, number>
 }
 
 /** What a tool can report about one task's run. */
@@ -82,6 +130,18 @@ export type Step =
       projects?: string[]
       /** Variables set in the runner's environment for this run only. */
       env?: Record<string, string>
+      /** Args forwarded to the requested tasks' commands (a CLI's `-- <args>`). */
+      args?: string[]
+      /** Workspace-relative directory the runner is started from. Default the root. */
+      cwd?: string
+      /** Run `task` in the projects these select, in place of `projects`. */
+      select?: Selector[]
+      /** Run only the selected tasks: what they depend on is not run. */
+      only?: true
+      /** At most this many tasks at once. */
+      concurrency?: number
+      /** Stop the run as Ctrl-C or a supervisor does: `signal` to the runner's process group once `when` exists. */
+      stop?: Stop
       expect: Expect
     }
   /** Write files (workspace-relative); `null` deletes. */
@@ -90,14 +150,36 @@ export type Step =
   | { chmod: Record<string, number> }
   /** Make each path a symlink to its target, replacing what was there. */
   | { link: Record<string, string> }
-  /** Check the tree without running anything: executable files, symlinks and their targets. */
-  | { check: { executable?: string[]; links?: Record<string, string> } }
+  /** Check the tree without running anything. */
+  | { check: TreeCheck }
+  /** Run the package manager's install again (offline), as a user does after editing a manifest. */
+  | { install: true }
   /** Commit every change to git. */
   | { commit: string }
+  /** A `sh` command the user runs in the workspace root (git plumbing, a nested repository, a file's times); it must succeed. */
+  | { sh: string }
   /** Change the workspace's task definitions; the tool's config is written again. */
   | { configure: (ws: WorkspaceSpec) => WorkspaceSpec }
   /** Run `task` only where the changes since `base` reach. */
   | { affected: string; base: string; expect: Expect }
+
+/**
+ * Which projects a run selects, as a user names them. A run's selection is
+ * the union of its includes minus its excludes; excludes alone take from
+ * every project.
+ */
+export interface Selector {
+  /** A project name, or a `*` glob over names. */
+  name?: string
+  /** A workspace-relative directory, or a glob over directories: the projects there. */
+  dir?: string
+  /** Also take the matched projects' dependencies, their dependents, or their dependents and all those depend on. */
+  with?: 'dependencies' | 'dependents' | 'dependents-and-dependencies'
+  /** `false`: leave the matched projects out, keeping only what `with` adds. */
+  self?: false
+  /** Take what this matches out of the selection. */
+  exclude?: true
+}
 
 /**
  * `correctness`: a tool that fails it leaves a wrong tree or a wrong exit
@@ -119,7 +201,27 @@ export type Category =
   | 'failure'
 
 /** What a case needs from a tool beyond running tasks in order. A tool without it cannot express the case. */
-export type Feature = 'affected' | 'env-inputs' | 'uncached-task' | 'filter'
+export type Feature =
+  | 'affected'
+  | 'env-inputs'
+  | 'uncached-task'
+  | 'filter'
+  /** A selector's `with`: a project's dependencies or dependents. */
+  | 'select-walk'
+  /** A selector's `dir`. */
+  | 'select-dir'
+  /** A `*` pattern over task names in dependsOn (`lint.*`). */
+  | 'task-pattern'
+  /** A per-task time limit. */
+  | 'timeout'
+  /** Re-running a failed task before failing it. */
+  | 'retries'
+  /** A long-running task the tool stops when the run ends. */
+  | 'persistent'
+  /** Holding a persistent task's dependants until it prints a ready line. */
+  | 'ready'
+  /** Inputs that are a command's output (`runtime`). */
+  | 'runtime-inputs'
 
 export interface Case {
   /** `category/slug`, unique. */
