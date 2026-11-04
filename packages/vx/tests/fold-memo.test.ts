@@ -8,7 +8,7 @@ import { statSync, utimesSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
-import { FILE_HASH_RACY_MS } from '../src/cache/index.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/cache/index.js'
 import { GitFilesCache } from '../src/cache/git-inputs.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
@@ -150,6 +150,13 @@ it('an untracked or dirty file no declaration reads keeps the memo', async () =>
   // `vx lock`'s review file, left untracked, and an edit outside `src/**`.
   await writeFile(path.join(pkg, 'notes.txt'), 'untracked\n')
   await writeFile(path.join(pkg, 'README.md'), 'two\n')
+  // A file's stat vouches for it only outside the racy window: a run
+  // inside it remembered no fold, so the next one folded again (4 of 8
+  // runs here, CI 2026-11-04).
+  for (const f of ['notes.txt', 'README.md']) {
+    const c = statSync(path.join(pkg, f)).ctimeMs
+    while (Date.now() - c <= racyWindowMs(c, FILE_HASH_RACY_MS)) await Bun.sleep(10)
+  }
   expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
   const reads = spyOn(GitFilesCache.prototype, 'oidsFor')
   try {
