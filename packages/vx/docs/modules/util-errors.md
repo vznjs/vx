@@ -126,8 +126,9 @@ is not on PATH — the input enumeration and `--affected` say it (item 241): ins
 `configErrorFrame(message, cwd)` (`src/util/config-frame.ts`) is how
 `bin.ts` and `vx lock` print a config refusal: from the message the schema writes
 (`<file>: tasks.<name>.<path> …`, or `<file> has unknown field …`) it
-finds the field's key in the file, path segment after path segment, and
-returns the message with the file at `line:col` (relative to `cwd`
+finds the field's key in the file, each path segment inside the object
+literal of the one before (a field the object leaves out, `outputs is
+required`, is placed at that object's key), and returns the message with the file at `line:col` (relative to `cwd`
 unless that climbs out) and the lines up to it with a caret; undefined
 when it cannot place the field, and the message prints as it was. The
 loader's syntax error (`Project config <file>:<line>:<col>: …`, Bun's
