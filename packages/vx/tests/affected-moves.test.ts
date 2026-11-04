@@ -97,3 +97,25 @@ it('a change outside every project selects none', async () => {
   commit('readme')
   expect(await owners(projectsAt(ABC))).toEqual([])
 })
+
+// The rows above have no project config, so the branch that reads a
+// config the base had never ran. A moved one selected every project.
+const withConfigs = async () => {
+  for (const p of ['a', 'b', 'c'])
+    await writeFile(path.join(root, 'packages', p, 'vx.config.mjs'), 'export default {}\n')
+  commit('configs')
+}
+
+it('a moved project with a config is selected where it now lives, alone', async () => {
+  await withConfigs()
+  git('mv', 'packages/c', 'packages/cc')
+  commit('move project')
+  expect(await owners(projectsAt({ ...ABC, c: 'packages/cc' }))).toEqual(['c'])
+})
+
+it('a deleted project with a config selects every project: who held an edge to it is gone', async () => {
+  await withConfigs()
+  git('rm', '-rq', 'packages/c')
+  commit('drop c')
+  expect(await owners(projectsAt({ a: 'packages/a', b: 'packages/b' }))).toEqual(['a', 'b'])
+})
