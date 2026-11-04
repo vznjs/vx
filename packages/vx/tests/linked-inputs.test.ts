@@ -311,4 +311,24 @@ describe('a symlinked input keys what it points to', () => {
     },
     TIMEOUT,
   )
+
+  // An input link into the repository's own .git keys nothing behind it, as
+  // a `.git/**` input names nothing: walked, every commit re-keyed the task.
+  it(
+    'a link to the .git directory: a commit does not move the key',
+    async () => {
+      await project('src/a.txt')
+      await writeFile(path.join(app, 'src', 'a.txt'), 'a\n')
+      await symlink(
+        path.relative(path.join(app, 'src'), path.join(root, '.git')),
+        path.join(app, 'src', 'g'),
+      )
+      commit('fixture')
+      expect(statusOf(await build()), said.join('')).toBe('success')
+      await writeFile(path.join(root, 'shared', 'x.txt'), 'V2\n')
+      commit('elsewhere')
+      expect(statusOf(await build()), said.join('')).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
 })
