@@ -361,6 +361,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const detach = (): void => {
     unsubscribeTerminal()
     unsubscribeWarned()
+    // A run refused or thrown before its tasks (an unknown task, a plugin
+    // stage that threw) never reached the end that takes the live region
+    // down: a load slow enough to show its step left `vx:load running`
+    // on screen, and the CLI's refusal was written onto its last line.
+    terminal?.runDone?.()
     terminal?.settle()
   }
   // A plugin's `output` renders the run from its start; core's renderer
