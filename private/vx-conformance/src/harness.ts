@@ -163,7 +163,7 @@ async function linkTool(root: string, adapter: Adapter): Promise<void> {
 }
 
 /** One watch phase's marks against what it should have run. */
-export function checkWatch(want: WatchExpect, marks: string[]): string | null {
+function checkWatch(want: WatchExpect, marks: string[]): string | null {
   const started = marks.filter((m) => m.startsWith('+')).map((m) => m.slice(1))
   const missed = (want.ran ?? []).filter((t) => !started.includes(t))
   if (missed.length > 0) return `did not run ${missed.join(', ')}`
