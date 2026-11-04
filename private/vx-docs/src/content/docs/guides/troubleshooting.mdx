@@ -29,7 +29,7 @@ prints names its own fix too.
 | `--affected has no default on the base branch`     | On `main` itself, run `--all`: the cache skips what did not change. `vx show` drops `--affected`. |
 | `… has unknown field "<key>"`                      | A typo, or a Turbo or Nx key: the message lists the fields vx allows.  |
 | `dependsOn cycle`                     | Remove one `dependsOn` edge of the loop it prints.                      |
-| `dependsOn … but no such project or task is declared`  | Fix the name, or declare that task in that package.                 |
+| `dependsOn … but no such project or task is declared`  | Take the name it suggests, or declare that task in that package.    |
 | `no projects declare task(s)`                      | A typo, a config edited since `vx lock`, or no config declares it: `vx show` lists every task. |
 | `unknown flag`                                     | `vx run --help` lists the flags.                                        |
 | `no projects matched filter(s)`                    | A typo: the message suggests the closest name. `vx show` lists every project. |

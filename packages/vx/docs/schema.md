@@ -756,6 +756,11 @@ dependsOn: ['^build.*'] // all build.<x> tasks of the nearest deps
 
 Semantics:
 
+- **Cross-project (`'pkg#name'`)** — the project and its task must
+  exist; a miss is a hard error that offers the nearest declared one.
+  A project is named by its path unless its config sets `name`, so
+  `a#build` offers `packages/a#build`.
+
 - **Same-project (`'name'`)** — name must exist in this project's
   `tasks` map; missing is a hard error at graph-build time. When the
   config is authored through `defineProject`, a bare entry is also

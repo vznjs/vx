@@ -335,6 +335,31 @@ export function undeclaredDepsError(
   )
 }
 
+/**
+ * The `pkg#task` to offer for a cross-project miss: the task nearest
+ * `task` in the project named, or in the one nearest `project` — or the
+ * one whose path ends in it, since a project is named by its path unless
+ * named, and `a#build` is how a `packages/a` is first typed.
+ */
+function nearestTarget(
+  projects: ReadonlyMap<string, ProjectEntry>,
+  project: string,
+  task: string,
+): string | undefined {
+  const holder =
+    projects.get(project) ??
+    projects.get(nearest(project, projects.keys()) ?? '') ??
+    onlyOne([...projects.values()].filter((p) => p.name.endsWith(`/${project}`)))
+  if (holder === undefined) return undefined
+  const tasks = Object.keys(holder.config.tasks ?? {})
+  const name = tasks.includes(task) ? task : nearest(task, tasks)
+  return name === undefined ? undefined : taskId(holder.name, name)
+}
+
+function onlyOne<T>(list: readonly T[]): T | undefined {
+  return list.length === 1 ? list[0] : undefined
+}
+
 /** One task mid-expansion in `buildTaskGraph`'s walk. */
 interface Frame {
   node: TaskNode
@@ -656,8 +681,9 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             `${id}: dependsOn //#${spec.task}, the workspace root's task, but the root declares no such task: add a vx.config at the root declaring it and run \`vx lock\``,
             'VX_E_DEPENDS_ON',
           )
+        const meant = nearestTarget(projects, spec.project, spec.task)
         throw new UserError(
-          `${id}: dependsOn ${taskId(spec.project, spec.task)} but no such project or task is declared`,
+          `${id}: dependsOn ${taskId(spec.project, spec.task)} but no such project or task is declared${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
           'VX_E_DEPENDS_ON',
         )
       }
