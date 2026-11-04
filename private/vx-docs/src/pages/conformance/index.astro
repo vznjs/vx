@@ -168,7 +168,10 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
                     <tr id={c.id} data-case={c.id} data-agree={agree(c) ? '' : undefined}>
                       <th scope="row">
                         <span class="cfm-title" set:html={inline(c.title)} />
-                        {c.why && <span class="cfm-why" set:html={inline(c.why)} />}
+                        <details class="cfm-why">
+                          <summary>Why this is right</summary>
+                          <p set:html={inline(c.why)} />
+                        </details>
                         <span class="cfm-meta">
                           <a href={`#${c.id}`}>{c.id}</a> · {c.kind}
                         </span>

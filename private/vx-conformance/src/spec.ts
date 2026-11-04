@@ -103,20 +103,6 @@ export interface Expect {
 }
 
 /** A stop sent to a run in flight. */
-/** What a watch ran in one phase. */
-export interface WatchExpect extends Pick<Expect, 'ran' | 'notRan'> {
-  /** Each of these tasks started exactly this many times in the phase. */
-  times?: Record<string, number>
-}
-
-export interface WatchPhase {
-  /** Files written (workspace-relative) to start the phase; `null` deletes. Written in order, at once. */
-  write?: Record<string, string | null>
-  /** A shell line run in the root to start the phase, after `write`. */
-  sh?: string
-  expect: WatchExpect
-}
-
 export interface Stop {
   signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP' | 'SIGQUIT'
   /** Workspace-relative file a task creates; the signal is sent once it exists (or after 30 s). */
@@ -190,20 +176,6 @@ export type Step =
       openStdin?: true
       expect: Expect
     }
-  /**
-   * Watch `watch` (every project declaring it, or `projects`): `start` is
-   * what its first run runs; each phase's edits are made once the tool has
-   * been quiet a while, and what it runs after them is that phase's. Then
-   * the watch is stopped as Ctrl-C stops it.
-   */
-  | {
-      watch: string
-      projects?: string[]
-      start: WatchExpect
-      phases: WatchPhase[]
-      /** The tree once the watch stopped. */
-      files?: Record<string, string | null>
-    }
   /** Write files (workspace-relative); `null` deletes. */
   | { write: Record<string, string | null> }
   /** Set file modes (workspace-relative). */
@@ -222,6 +194,36 @@ export type Step =
   | { configure: (ws: WorkspaceSpec) => WorkspaceSpec }
   /** Run `task` only where the changes since `base` reach. */
   | { affected: string; base: string; expect: Expect }
+  /**
+   * Start the tool's watch mode for `watch` (in every project that declares
+   * it, or in `projects` and what they depend on), then play each phase:
+   * its change, then what must hold once the watch has acted on it. The
+   * first phase, with no change, is the initial run. The watch is stopped
+   * after the last phase.
+   */
+  | { watch: string; projects?: string[]; phases: WatchPhase[] }
+
+/** One change made under a running watch, and what must follow it. */
+export interface WatchPhase {
+  /** Write files (workspace-relative); `null` deletes. */
+  write?: Record<string, string | null>
+  /** A `sh` command the user runs in the workspace root (a rename, a new directory); it must succeed. */
+  sh?: string
+  /** Change the workspace's task definitions; the tool's config is written again, as a user does. */
+  configure?: (ws: WorkspaceSpec) => WorkspaceSpec
+  expect: WatchExpect
+}
+
+/**
+ * What must hold after a watch phase's change, judged by the marks and
+ * files the tasks leave, never by the watch's log. `ran` means the task
+ * ran to its end after the change; `notRan` and the once-only rule hold
+ * through a quiet window in which no task starts or ends.
+ */
+export type WatchExpect = Pick<Expect, 'ran' | 'notRan' | 'order' | 'files' | 'filesNot'> & {
+  /** Judge the moment the rest holds, a task maybe still running: the next change lands mid-run. */
+  inFlight?: true
+}
 
 /**
  * Which projects a run selects, as a user names them. A run's selection is
@@ -314,11 +316,14 @@ export interface Case {
   kind: Kind
   /** The behaviour, one sentence, in a user's words. */
   title: string
-  /** Why this is the correct outcome, when a tool could argue for another. */
-  why?: string
+  /** Why this outcome is right, in 3–4 sentences: the page shows it collapsed under the case. */
+  why: string
   /** The vx tests or issues this case was drawn from. */
   from: string[]
   needs?: Feature[]
+  /** Plays of the case, each from a fresh tree, when its outcome hangs on the order a tool
+   * picks for unordered tasks: a tool that loses even once fails. */
+  races?: number
   workspace: WorkspaceSpec
   steps: Step[]
 }

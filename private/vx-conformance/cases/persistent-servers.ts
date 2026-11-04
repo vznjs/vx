@@ -23,6 +23,7 @@ export default [
     kind: 'correctness',
     title:
       'A dev server starts after its dependencies’ builds and runs until Ctrl-C, which ends it',
+    why: 'A dev server serves what its dependencies built, so it starts only after those builds finish. It then runs until the user stops it, because a server has no natural end. Ctrl-C ends it, and the run with it, so the port is free for the next start.',
     from: ['persistent', 'signal-handling'],
     needs: ['persistent'],
     workspace: {
@@ -61,7 +62,7 @@ export default [
     kind: 'correctness',
     title:
       'A task that needs a server runs while the server is up, and the run ends when the task does',
-    why: 'An e2e suite against a dev server is the reason to depend on one; killing the server when the dependant starts (nx#27986), or refusing the edge, leaves no way to say it.',
+    why: 'Depending on a server means the task needs it running, as an e2e suite needs a dev server. The server stays up while the task runs, and the run ends when the task does, since nothing else needs the server. Killing the server when the dependant starts, or refusing the edge, leaves no way to express the most common use of a server.',
     from: ['persistent', 'persistent-shutdown'],
     needs: ['persistent'],
     workspace: app({
@@ -91,6 +92,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A run whose task fails beside a server fails promptly and stops the server',
+    why: 'Once the task that needs a server fails, the server has nothing left to serve. The run should fail at once and stop the server, not keep going until someone notices. In CI, a server left up after a failure holds the job open until its timeout and buries the real error under a cancelled job.',
     from: ['persistent'],
     needs: ['persistent'],
     workspace: app({
@@ -105,7 +107,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A server the run no longer needs is asked to stop politely, so its cleanup runs',
-    why: 'A server that is SIGKILLed outright cannot remove its lock file, flush its log or release its port cleanly.',
+    why: 'When a run no longer needs a server, the server should be asked to stop with a catchable signal before anything harsher. That gives it the chance to remove a lock file, flush its log and release its port. A server killed outright with SIGKILL leaves that state behind, and the next start may refuse to run.',
     from: ['persistent-shutdown'],
     needs: ['persistent'],
     workspace: app({
@@ -133,6 +135,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A server that ignores SIGTERM does not keep a finished run from exiting',
+    why: 'A finished run must exit even if a server it started will not stop politely. A server that ignores SIGTERM would otherwise hold the run open after its work is done. After a grace period the runner kills it, so CI moves on and no server is left behind.',
     from: ['persistent', 'persistent-shutdown'],
     needs: ['persistent'],
     workspace: app({
@@ -147,7 +150,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A server’s own child that ignores SIGTERM does not keep a finished run from exiting',
-    why: '`server & wait`: the shell dies on SIGTERM, the server it started ignores it and holds the output pipe (nx#8286).',
+    why: 'A run is not over until every process it started has ended. With `server & wait`, the shell dies on SIGTERM, but the server it started ignores the signal and keeps the output pipe open. A runner that waits for that pipe to close hangs, and one that never kills the child leaves it running.',
     from: ['task-tree-kill', 'persistent-shutdown'],
     needs: ['persistent'],
     workspace: app({
@@ -165,6 +168,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A server that exits non-zero as it starts fails the run instead of hanging it',
+    why: 'A server that exits non-zero as it starts has failed, and the run should say so. Waiting for a server that is already gone hangs the terminal or the CI job with no visible cause. Failing at once shows the server’s own error output while it is still on screen.',
     from: ['persistent'],
     needs: ['persistent'],
     workspace: app({ dev: { command: 'echo nope; exit 2', persistent: true } }),
@@ -176,6 +180,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A server whose shell exits leaves nothing it started holding its port',
+    why: 'When a server’s shell exits, everything it started must end with it. A process left behind keeps the port bound, so the next `dev` fails with an address-in-use error that has no visible cause. The run fails, and nothing from it is left running.',
     from: ['persistent'],
     needs: ['persistent'],
     workspace: app({ dev: { command: 'sleep 60 & exit 1', persistent: true } }),
@@ -187,7 +192,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'At a concurrency of 1 a server’s dependant still runs',
-    why: 'A server never exits: a scheduler that holds its one slot until it does never starts the task that needs it.',
+    why: 'A server never exits on its own, so it cannot hold a concurrency slot the way a build does. A scheduler that keeps the only slot for the server until it ends never starts the task that needs it, and the run hangs. Servers run beside the limit so their dependants can still run within it.',
     from: ['persistent'],
     needs: ['persistent'],
     workspace: app({
@@ -208,7 +213,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'At a concurrency of 1 the tasks behind a running server still run one at a time',
-    why: 'Once the server was up, its dependants ran together past the limit (nx#31494, nx#34117).',
+    why: 'A concurrency limit is often set to protect a machine or a shared resource, such as a database the tests use. Once a server is up, its dependants must still run within that limit, one at a time at a concurrency of 1. Releasing them all together breaks the limit and can make tests that share state fail.',
     from: ['persistent'],
     needs: ['persistent'],
     workspace: {
@@ -249,7 +254,7 @@ export default [
     kind: 'correctness',
     title:
       'A server that depends on another server starts after it, and both stay up while a task needs them',
-    why: 'An app’s dev server over a library’s watcher is the common shape; refusing the edge or starting the app without its upstream breaks it (turborepo#8484).',
+    why: 'An app’s dev server on top of a library’s watcher is a common setup. The app’s server must start after the server it depends on, and both must stay up while a task uses them. Refusing the edge, or starting the app before its upstream, leaves the developer starting the two by hand.',
     from: ['persistent'],
     needs: ['persistent'],
     workspace: {
@@ -292,7 +297,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Every server a run selects starts, at a concurrency below their count',
-    why: 'Servers never finish, so they cannot wait for a slot: some of a filter’s servers never started (turborepo#4107).',
+    why: 'Servers never finish, so they cannot wait in line for a concurrency slot that will never free up. If they count against the limit, some of the servers a filter selects never start, and the app that needs them waits forever. Every selected server starts, whatever the limit.',
     from: ['persistent'],
     needs: ['persistent'],
     workspace: {
@@ -335,7 +340,7 @@ export default [
     category: 'cache',
     kind: 'efficiency',
     title: 'A server only cached tasks need is not started when they all replay',
-    why: 'Booting a dev server for a run that runs nothing against it costs its whole start-up time (X-59). The server declares it reads no files, so its dependant can be keyed.',
+    why: 'A server is started only to serve the tasks that need it. When all of those tasks replay from the cache, nothing runs against it, so booting it wastes its whole start-up time. Here the server declares it reads no files, so its dependant can be keyed without it, and an edit to the dependant brings the server back.',
     from: ['persistent'],
     needs: ['persistent'],
     workspace: {
@@ -393,7 +398,7 @@ export default [
     kind: 'correctness',
     title:
       'A server that dies mid-run keeps the tasks that need it from starting, and fails the run',
-    why: 'Built against a dead server, the dependant reads as a pass or fails for the wrong reason; the run must say the server died.',
+    why: 'A task that needs a server cannot give a real result once the server is gone. Run anyway, it either fails with an unrelated connection error or passes against nothing. The run should skip what still needs the server and fail, so the server’s death is the error the developer sees.',
     from: ['server-crash-fail-fast', 'server-crash-through-group'],
     needs: ['persistent'],
     workspace: app({
@@ -427,7 +432,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'Ctrl-C before a server’s turn leaves it unstarted',
-    why: 'A server spawned after the stop comes up after the teardown and holds the run open.',
+    why: 'After Ctrl-C, no new task should start, servers included. A server spawned after the stop comes up after the teardown has run, so nothing ends it. It then holds the run open, or keeps running in the background with its port taken.',
     from: ['persistent-stop-before-spawn', 'stop-signal-before-spawn'],
     needs: ['persistent'],
     workspace: app({
@@ -449,13 +454,24 @@ export default [
     ],
   }),
 
-  ...(['SIGINT', 'SIGTERM'] as const).map((signal) =>
+  ...(
+    [
+      [
+        'SIGINT',
+        'A server should receive the signal the user sent, unchanged. Dev servers often bind their shutdown to SIGINT, the Ctrl-C signal, to close connections and remove temp files. If the runner forwards it as SIGTERM or SIGKILL, that hook never runs and the server’s state is left behind for the next start.',
+      ],
+      [
+        'SIGTERM',
+        'A server should receive SIGTERM as SIGTERM. Containers and CI agents send it to ask for a graceful shutdown, and servers bind their drain and cleanup code to it. Forwarded as another signal, that code is skipped, and open connections, lock files or temp files are left as they were.',
+      ],
+    ] as const
+  ).map(([signal, why]) =>
     defineCase({
       id: `failure/${signal.toLowerCase()}-reaches-server-as-itself`,
       category: 'failure',
       kind: 'correctness',
       title: `${signal} to the run reaches a running server as ${signal}`,
-      why: 'A server’s shutdown hook bound to one signal runs only if that signal arrives (turborepo#444, #12652, nx#23585).',
+      why,
       from: ['signal-handling'],
       needs: ['persistent'],
       workspace: app({
@@ -479,7 +495,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'Ctrl-C ends a server’s own child that traps every signal it can',
-    why: 'The child of a continuous task, trapping TERM, INT and HUP, outlived Ctrl-C (nx#33460, nx#32438).',
+    why: 'Ctrl-C must end everything a server started, even a child that traps every signal it can. Such a child would otherwise outlive the run, keep its port and keep printing into the terminal. After a grace period the runner kills it with SIGKILL, which cannot be trapped.',
     from: ['signal-handling'],
     needs: ['persistent'],
     workspace: app({

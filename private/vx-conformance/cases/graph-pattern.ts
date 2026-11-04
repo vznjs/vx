@@ -15,6 +15,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`lint.*` in dependsOn runs every task it matches and none it does not',
+    why: 'A pattern in dependsOn promises that every task it matches runs first, and only those. Missing one match lets the dependant run before a check it was meant to wait for, so a failing lint step can pass unseen. Pulling in a task the pattern does not match, like `build` here, spends time on work nobody asked for and writes files the run should not touch.',
     from: FROM,
     needs: ['task-pattern'],
     workspace: {
@@ -56,6 +57,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^build.*` waits for every matching task of each dependency',
+    why: '`^build.*` means every matching task in each dependency finishes before the dependant starts. A dependant that starts after only some of them reads a half-built dependency: here one of the two files could be missing or old. The result then depends on scheduling, so a failure shows up on one machine and not on the next.',
     from: FROM,
     needs: ['task-pattern'],
     workspace: {
@@ -98,7 +100,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A task on `build.*` reruns when a matched task’s input changes',
-    why: 'top copies what build.x wrote; replaying it after build.x’s source changed ships the old bytes.',
+    why: 'A task that depends on a pattern depends on what each matched task produced. `top` copies the file `build.x` wrote, so a change to `build.x`’s source must change `top`’s key too. Replaying `top` after that source changed ships the old bytes under a green run, and nothing in the output says so.',
     from: FROM,
     needs: ['task-pattern'],
     workspace: {
@@ -133,7 +135,7 @@ export default [
       category: 'config',
       kind: 'correctness',
       title: `\`${dep}\` alone in dependsOn fails the run`,
-      why: 'A pattern that matches every task makes the task wait on itself and everything else; the user meant a name.',
+      why: 'A dependency pattern that matches every task, the task itself included, is almost always a typo for a name. Accepted, it makes the task wait on itself, a cycle, or quietly runs every task in the project before it. Failing the run costs one edit; guessing what was meant hides a config mistake that later shows up only as slow or odd builds.',
       from: FROM,
       needs: ['task-pattern'],
       workspace: {

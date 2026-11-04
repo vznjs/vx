@@ -7,13 +7,13 @@ import { CONCAT, one, out } from './shapes.ts'
 const cached: TaskSpec = { command: CONCAT, inputs: ['src/**'], outputs: ['dist/**'] }
 
 /** Build, flag `packages/a/src/a.txt` in git's index, edit it: the build must run again. */
-function flagged(id: string, flag: string, title: string): Case {
+function flagged(id: string, flag: string, title: string, why: string): Case {
   return defineCase({
     id: `inputs/${id}`,
     category: 'inputs',
     kind: 'correctness',
     title,
-    why: 'The flag is a promise to git’s status, not to the build: the bytes on disk are what the task reads.',
+    why,
     from: ['affected-flagged'],
     workspace: one(cached),
     steps: [
@@ -49,7 +49,10 @@ function projectInNestedRepo(how: 'gitlink' | 'untracked'): Case {
     category: 'inputs',
     kind: 'correctness',
     title: `An edit to a project inside a nested repository (${how === 'gitlink' ? 'a submodule' : 'untracked'}) runs its task again`,
-    why: 'The outer repository holds the nested one as one entry, or none: none of its files are the outer git’s to list.',
+    why:
+      how === 'gitlink'
+        ? 'A submodule is held by the outer repository as one entry, a commit id, not as files. None of the project’s files are the outer git’s to list. A tool that keys the project from the outer index sees nothing change, and edits inside the submodule replay stale output.'
+        : 'A nested repository the outer one does not track is invisible to the outer git’s listing, yet its files are still the project’s sources. A tool that relies on the outer git alone keys none of them. Every edit then replays the old output, and the project never rebuilds until its cache is cleared.',
     from: ['nested-repo-inputs'],
     workspace: { projects: { b: project } },
     steps: [
@@ -72,7 +75,10 @@ function nestedRepoInProject(how: 'gitlink' | 'untracked'): Case {
     category: 'inputs',
     kind: 'correctness',
     title: `An edit inside a nested repository (${how === 'gitlink' ? 'a submodule' : 'untracked'}) under a project’s input glob runs its task again`,
-    why: 'The outer git holds the nested repository as one path, a directory; its files are still what the task reads.',
+    why:
+      how === 'gitlink'
+        ? 'The outer git holds a vendored submodule as one path pinned to a commit, but its working files can still change. Those files are what the task reads. Keying the gitlink alone misses edits made inside it, which replay stale output until someone commits the submodule.'
+        : 'An untracked nested repository under a project’s input glob is a directory of files the task reads. The outer git skips it as a separate repository. A tool that relies on that listing drops the files from the key, and their edits replay a stale result.',
     from: ['nested-repo-inputs', 'affected-submodule'],
     workspace: one(
       {
@@ -93,13 +99,13 @@ function nestedRepoInProject(how: 'gitlink' | 'untracked'): Case {
 }
 
 /** Project `a` reads `gen/d.txt`, where `gen` is a project of its own. */
-function inputInNestedProject(id: string, inputs: string[], title: string): Case {
+function inputInNestedProject(id: string, inputs: string[], title: string, why: string): Case {
   return defineCase({
     id: `inputs/${id}`,
     category: 'inputs',
     kind: 'correctness',
     title,
-    why: 'A tool may refuse the glob (another project’s files are its own) or key on it; replaying the old result is neither.',
+    why,
     from: ['nested-input'],
     workspace: {
       projects: {
@@ -133,11 +139,13 @@ export default [
     'assume-unchanged-edit',
     '--assume-unchanged',
     'Editing an input git was told to assume unchanged runs the task again',
+    '`--assume-unchanged` is a promise to git’s status, used to make it faster, not a statement about the build. The bytes on disk are what the task reads. A tool that trusts the flag and keys the committed blob replays stale output after every local edit to that file.',
   ),
   flagged(
     'skip-worktree-edit',
     '--skip-worktree',
     'Editing an input git was told to skip in the work tree runs the task again',
+    '`--skip-worktree` tells git to stop looking at a file, often for local config overrides or sparse checkouts. It says nothing about what the build reads. Keying the committed blob instead of the bytes on disk replays output built from content that is not there.',
   ),
 
   defineCase({
@@ -145,7 +153,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'A same-size edit that keeps the file’s modification time runs the task again',
-    why: 'Size and mtime are a hint, not the content: a file system with whole-second stamps, `cp -p` or `touch -r` leave both as they were.',
+    why: 'Size and modification time are a hint for when to look again, not the content. Copying with `cp -p` or `touch -r` can leave both as they were after a real edit. A tool that trusts them alone replays output built from the old bytes under a green run. The content is what the task reads.',
     from: ['whole-second-stamps', 'fs-clock-lag'],
     workspace: one(cached),
     steps: [
@@ -163,7 +171,7 @@ export default [
     kind: 'correctness',
     title:
       'A same-size edit within the same whole-second stamp as the first write runs the task again',
-    why: 'ext3, HFS+, FAT and some network mounts keep whole seconds: two writes in one second carry one stamp.',
+    why: 'ext3, HFS+, FAT and some network mounts keep only whole seconds. Two writes in one second then carry one stamp, and a same-size edit looks untouched. A tool that trusts the stamp replays stale output, a bug that only shows after quick edits such as a script or a fast save.',
     from: ['whole-second-stamps'],
     workspace: one(cached),
     steps: [
@@ -181,7 +189,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'An input edited while the task runs is not replayed under the key of the bytes before',
-    why: 'The output was made from the edited bytes: stored under the first bytes’ key, undoing the edit replays it.',
+    why: 'The output was made from bytes edited during the run, not the ones read when the key was taken. Stored under the first bytes’ key, undoing the edit later replays the edited result. The tool must notice the change and not file the output under a key it does not match.',
     from: ['fs-clock-lag'],
     workspace: one({
       command:
@@ -206,7 +214,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'A file a nested repository tracks despite its own ignore rule is an input',
-    why: 'An ignore rule only stops untracked files: one the repository force-added is a source like any other.',
+    why: 'An ignore rule only stops untracked files: one a repository force-added is source like any other. That holds inside a nested repository too. A tool that applies the nested `.gitignore` without checking that repository’s index drops the file, and edits to it replay stale output.',
     from: ['nested-repo-inputs'],
     workspace: one(
       {
@@ -231,16 +239,19 @@ export default [
     'glob-into-nested-project',
     ['src/**', 'gen/**'],
     'An input glob over a nested project never replays a stale result',
+    'Another project’s files belong to it, so a glob reaching into a nested project is a boundary question. A tool may refuse the glob, or key on those files. Silently dropping them while the command still reads them replays a stale result, which is the one wrong answer.',
   ),
   inputInNestedProject(
     'file-in-nested-project',
     ['src/**', 'gen/d.txt'],
     'An input naming a file of a nested project never replays a stale result',
+    'An input that names one file of a nested project is explicit, but the file belongs to that other project. A tool may refuse the path or key on it. Accepting the name and then keying nothing replays output built from the old file, with no sign that anything was skipped.',
   ),
   inputInNestedProject(
     'brace-into-nested-project',
     ['{src,gen}/**'],
     'A brace input reaching a nested project never replays a stale result',
+    'A brace alternative can reach a nested project as easily as a plain glob. A tool must apply the same rule to it: refuse it, or key the file. Expanding the brace without that check lets the nested file change unseen and replays a stale result.',
   ),
 
   defineCase({
@@ -248,7 +259,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A committed file in an output directory survives a run when git cannot read its index',
-    why: 'A git that lists nothing says nothing is committed: a tool that clears outputs must refuse, not delete the user’s file.',
+    why: 'A git that cannot read its index lists nothing, which looks like nothing is committed. A tool that clears outputs before a run must refuse when it cannot tell what is committed, not delete. Losing a user’s committed file is worse than any failed build.',
     from: ['committed-case'],
     workspace: one(
       {
@@ -269,7 +280,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A committed file reached through a linked output directory is never deleted',
-    why: 'The link (`public -> static`, made by a setup script) is the output’s path; the committed file behind it is the user’s source.',
+    why: 'A link such as `public -> static`, made by a setup script, is the output’s path; the committed files behind it are the user’s source. A tool that clears or restores outputs through the link must not delete them. Doing so destroys files in the repository during a routine build.',
     from: ['committed-through-link'],
     workspace: one(
       { command: 'cp src/a.txt public/a.txt', inputs: ['src/**'], outputs: ['public/**'] },

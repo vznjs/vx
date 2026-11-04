@@ -72,7 +72,7 @@ const rows = cases.map((c) => ({
   category: c.category,
   kind: c.kind,
   title: c.title,
-  ...(c.why ? { why: c.why } : {}),
+  why: c.why,
   from: c.from,
   outcomes: Object.fromEntries(tools.map((t) => [t.name, outcomeOf(t.name, c.id)])),
 }))

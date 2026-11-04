@@ -45,7 +45,7 @@ export interface Results {
     category: Category
     kind: Kind
     title: string
-    why?: string
+    why: string
     from: string[]
     outcomes: Record<string, Outcome>
   }[]

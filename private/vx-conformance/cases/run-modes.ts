@@ -14,7 +14,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'Asked to continue, a run goes on past a failed task and still fails',
-    why: 'Going on is what the user asked for; a green exit would hide the failure.',
+    why: 'Asked to continue, the run should go on with every task the failure does not block, so the user sees every error at once. The run as a whole still failed, though. A green exit would let a pipeline merge or deploy with a broken task the log mentions only in passing.',
     from: ['continue-taint', 'parity-turbo'],
     needs: ['continue'],
     workspace: {
@@ -43,7 +43,7 @@ export default [
     kind: 'correctness',
     title:
       'A task that ran past its dependency’s failure is not replayed once the dependency is fixed',
-    why: 'It was built on a failed dependency: replaying it would keep that result after the fix.',
+    why: 'When the run continued past a failed dependency, the task after it ran on whatever the failure left, which is not a valid build. Saving that result lets it replay after the dependency is fixed. The task must run again on the fixed dependency, or the stale output outlives the fix.',
     from: ['continue-taint', 'continue-cache-properties'],
     needs: ['continue'],
     workspace: {
@@ -82,6 +82,7 @@ export default [
     kind: 'correctness',
     title:
       'A forced run runs every task past its cache entry, and the next run replays what it saved',
+    why: 'Forcing a run asks for every task to run regardless of what the cache holds, often because the user suspects an entry. The fresh results must then replace the saved ones. A force that saves nothing leaves the doubted entry in place for the next run to replay.',
     from: ['parity-turbo', 'parity-nx', 'cli'],
     needs: ['force'],
     workspace: one(cached),
@@ -102,6 +103,7 @@ export default [
     category: 'cache',
     kind: 'correctness',
     title: 'A run that only reads the cache replays a hit, and saves nothing for a miss',
+    why: 'A read-only cache lets a run use what others built without writing, as an untrusted branch build should. A hit must still replay, or the mode saves nothing. A miss must run and leave the cache as it was, so the next normal run builds it again instead of replaying it.',
     from: ['download-policy', 'parity-turbo'],
     needs: ['read-only-cache'],
     workspace: one(cached),
@@ -119,6 +121,7 @@ export default [
     category: 'cache',
     kind: 'correctness',
     title: 'A planned run runs no task, writes no output, and saves nothing',
+    why: 'A planned run shows what would run without running it. No command may start, no output may be written and no cache entry may be saved. A plan that runs tasks surprises the user with side effects, and one that saves entries can later replay results nothing ever built.',
     from: ['dry-json-stdout', 'parity-turbo'],
     needs: ['dry-run'],
     workspace: one(cached),
@@ -137,6 +140,7 @@ export default [
     category: 'env',
     kind: 'correctness',
     title: 'A variable passed through reaches the task',
+    why: 'A pass-through variable is one the task needs to run, such as a token or a path, but whose value does not change the output. It must reach the command, or the task fails or behaves differently. Keeping it out of the key is a choice about caching, not about whether the task sees it.',
     from: ['env', 'parity-turbo'],
     needs: ['pass-through-env'],
     workspace: one({
@@ -155,6 +159,7 @@ export default [
     category: 'env',
     kind: 'efficiency',
     title: 'A change to a variable passed through, not keyed, replays the task',
+    why: 'The user declared that this variable reaches the task but does not change its output, such as a log level or a token. Changing it therefore leaves the result as it was. Running the task again ignores that declaration and costs a full build on every machine where the value differs.',
     from: ['env', 'parity-turbo-hashing-env'],
     needs: ['pass-through-env'],
     workspace: one({
@@ -175,6 +180,7 @@ export default [
     kind: 'efficiency',
     title:
       'A task ordered after a dependency, but not keyed on it, replays when only the dependency changes',
+    why: 'The task was told to run after its dependency but not to key on it, because it never reads what the dependency produces. A change only in the dependency leaves this task’s inputs as they were. Running it again ignores that declaration and costs a build that gives the same bytes.',
     from: ['parity-nx-hashing', 'task-hash-derive'],
     needs: ['dependency-inputs-off'],
     workspace: {
@@ -207,7 +213,7 @@ export default [
     category: 'cache',
     kind: 'efficiency',
     title: 'A linked git worktree of the same commit replays what the main checkout built',
-    why: 'Same commit, same inputs: the second checkout asks nothing new of the task.',
+    why: 'A linked git worktree at the same commit holds the same files as the main checkout. The task’s inputs are identical, so the result already built is right here too. Building again because the path differs makes every extra worktree start cold, which is the cost a shared cache should remove.',
     from: ['parity-turbo-hashing'],
     workspace: one(cached),
     steps: [
@@ -227,7 +233,7 @@ export default [
     category: 'cache',
     kind: 'efficiency',
     title: 'A run started through a link to the workspace replays what the real path built',
-    why: 'Same files, same commit: only the path the shell shows differs.',
+    why: 'Opening the workspace through a link leaves every file and the commit the same; only the path the shell shows differs. The task’s inputs are identical, so the saved result is right. Building again because of the path makes the same tree cost twice depending on how the user reached it.',
     from: ['discover-stage'],
     workspace: one(cached),
     steps: [

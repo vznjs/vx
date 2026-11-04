@@ -32,6 +32,7 @@ export const outputsLinks = [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output symlink to a file elsewhere in the workspace comes back as the same link',
+    why: 'A link in the outputs comes back as a link with the same target text, even when it points outside the output directory. Storing the target’s bytes instead turns the link into a copy that no longer follows the shared file. Dropping it leaves a missing path. Either way the replayed tree differs from the one the command made.',
     from: ['deferred-output-link'],
     workspace: {
       ...one({
@@ -54,6 +55,7 @@ export const outputsLinks = [
     category: 'outputs',
     kind: 'correctness',
     title: 'A symlink output beside a large file restores both',
+    why: 'A cache may store large files apart from small ones, but a restore must still give the whole tree. The link and the large file it points to come from one run; restoring one without the other leaves a broken link or a missing file. The file here is large and hard to compress so that such a separate path is taken.',
     from: ['ingest-output-link'],
     workspace: one(
       {
@@ -98,7 +100,7 @@ export const outputsLinks = [
       category: 'outputs',
       kind: 'correctness',
       title,
-      why: 'The user declared `dist`; that it is a link to `build` inside the project changes nothing a build writes.',
+      why: 'The user declared `dist` as the output, and `dist` is a link to `build` inside the same project. That changes where the bytes live, not what the task writes, so outputs are stored by following the link and restored through it. A tool that skips links caches an empty result, and the next replay leaves `build` empty under a green run.',
       from: ['output-glob-links', 'output-scan-root'],
       workspace: one(linkedHead([...outputs])),
       steps: [
@@ -120,7 +122,7 @@ export const outputsLinks = [
     kind: 'correctness',
     title:
       'An output path that is a link into a nested project never deletes or overwrites that project’s files',
-    why: 'Project boundaries hold through a link: the nested project’s build is its own.',
+    why: 'Project boundaries hold even through a link. Here `a/docs` is a link into the nested project `site`, which has its own build and outputs. If a clean or restore of `a` follows the link, it deletes or overwrites `site`’s files, so building one project silently breaks another. The nested project’s files belong to its own task.',
     from: ['output-glob-links'],
     needs: ['filter'],
     workspace: {
@@ -175,7 +177,7 @@ export const outputsLinks = [
     category: 'outputs',
     kind: 'correctness',
     title: 'A link into .git left inside an output directory never empties the repository',
-    why: 'Clearing an output directory removes a link in it; following it deletes git’s metadata.',
+    why: 'Clearing an output directory removes the links in it; it never deletes what they point to. Here a link to `.git` sits inside `dist`. A clean that follows it empties git’s metadata, and the repository, with any work not pushed, is lost. Deleting a link is always safe; deleting through it is not.',
     from: ['output-clean-link-git'],
     workspace: one({ command: CONCAT, inputs: ['src/**'], outputs: ['dist/**'] }),
     steps: [
@@ -195,7 +197,7 @@ export const outputsLinks = [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output directory that is a link into .git never empties the repository',
-    why: 'A tool may refuse the run or write through the link, but clearing `dist/**` through it deletes the repository.',
+    why: 'Here the output directory itself is a link into `.git`. A tool may refuse the run or write the build’s files through the link; both keep the repository. Clearing `dist/**` by following the link is never acceptable, because it deletes git’s objects and refs, and with them any work not pushed.',
     from: ['output-clean-link-git'],
     workspace: one({ command: CONCAT, inputs: ['src/**'], outputs: ['dist/**'] }),
     steps: [
@@ -227,7 +229,7 @@ export const outputsLinks = [
       category: 'outputs',
       kind: 'correctness',
       title: `A replay never writes an output through a link ${where}`,
-      why: 'An output restored through such a link plants a git hook that runs on the next commit.',
+      why: 'A replay writes only the files the task produced, and never through a link that leads into `.git`. A file under `.git/hooks` is code git runs on the next commit, so a restore that writes there plants a hook from a cache entry, which a shared cache may have filled from another machine. Running the command itself is the user’s own action and is not held to this.',
       from: ['restore-link-git'],
       workspace: one({
         command:
