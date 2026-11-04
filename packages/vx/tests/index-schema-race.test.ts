@@ -1,7 +1,7 @@
 // The workspace index's schema gate against another vx opening the same
 // `cache.db` mid-reset: two vx versions on one cache directory.
 import { Database } from 'bun:sqlite'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'bun:test'
@@ -143,11 +143,17 @@ describe('index schema reset', () => {
   it('a reset index beside a shared store holds no entry tables of its own', async () => {
     const root = await tmp()
     const cacheDir = path.join(root, 'cache')
-    const storeDir = path.join(root, 'store')
+    // Under an owner-only home: under `os.tmpdir()` (Linux's /tmp) the
+    // store was refused and the index held the entries in its place.
+    await mkdir(path.join(root, 'home'))
+    const storeDir = path.join(root, 'home', '.vx', 'id', 'cache')
     const dbFile = oldIndex(cacheDir)
     const cache = new Cache(cacheDir, undefined, undefined, undefined, 'open', storeDir)
     cache.close()
-    expect(cache.schemaReset).toEqual({ from: 'v0', to: SCHEMA_VERSION })
+    expect([cache.storeDir, cache.schemaReset]).toEqual([
+      storeDir,
+      { from: 'v0', to: SCHEMA_VERSION },
+    ])
     const db = new Database(dbFile, { readonly: true })
     const tables = (
       db.query("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
