@@ -130,7 +130,7 @@ export type Step =
       /** More tasks the same run asks for beside `run`, each over the same projects. */
       also?: string[]
       projects?: string[]
-      /** Variables set in the runner's environment for this run only. */
+      /** Variables set in the runner's environment for this run only; `$ROOT` in a value is the workspace's absolute path. */
       env?: Record<string, string>
       /** Args forwarded to the requested tasks' commands (a CLI's `-- <args>`). */
       args?: string[]

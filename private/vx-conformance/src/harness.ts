@@ -381,7 +381,14 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
             root,
             cwd,
             argv,
-            { ...adapter.env, ...('env' in step ? step.env : {}) },
+            {
+              ...adapter.env,
+              ...('env' in step && step.env
+                ? Object.fromEntries(
+                    Object.entries(step.env).map(([k, v]) => [k, v.replaceAll('$ROOT', root)]),
+                  )
+                : {}),
+            },
             step.expect.within === undefined ? undefined : step.expect.within * 1000,
           )
         : { exit: 1, out: refused }

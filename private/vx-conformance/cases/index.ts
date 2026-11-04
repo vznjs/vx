@@ -18,6 +18,7 @@ import graphPattern from './graph-pattern.ts'
 import graphSelect from './graph-select.ts'
 import graphShape from './graph-shape.ts'
 import graph from './graph.ts'
+import inputsAMore from './inputs-a-more.ts'
 import inputsGlobs from './inputs-globs.ts'
 import inputsRoot from './inputs-root.ts'
 import inputsRuns from './inputs-runs.ts'
@@ -47,6 +48,7 @@ export const CASES: Case[] = [
   ...inputsRoot,
   ...inputsRuns,
   ...gitInputs,
+  ...inputsAMore,
   ...outputs,
   ...outputsRestore,
   ...outputsLinks,
